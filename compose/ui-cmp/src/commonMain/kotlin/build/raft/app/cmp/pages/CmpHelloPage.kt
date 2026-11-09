@@ -61,7 +61,7 @@ internal fun CmpHelloPage() {
             color = colors.foregroundMuted,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(RaftSpacing.Sm)) {
-            Swatch(colors.primary)
+            Swatch(colors.brand)
             Swatch(colors.ink)
             Swatch(colors.infoSoft)
             Swatch(colors.successSoft)
@@ -86,7 +86,7 @@ private fun Swatch(color: Color) {
         Modifier
             .size(28.dp)
             .background(color, RoundedCornerShape(RaftRadius.Sticker))
-            .border(RaftStroke.Hairline, RaftTheme.colors.line, RoundedCornerShape(RaftRadius.Sticker)),
+            .border(RaftStroke.Hairline, RaftTheme.colors.lineSeam, RoundedCornerShape(RaftRadius.Sticker)),
     )
 }
 
@@ -99,7 +99,7 @@ private fun HelloButton(label: String, primary: Boolean = false, onClick: () -> 
         Modifier
             .fillMaxWidth()
             .heightIn(min = RaftSize.MinTouchTarget)
-            .background(if (primary) colors.primary else colors.layerCard, shape)
+            .background(if (primary) colors.brand else colors.layerCard, shape)
             .border(RaftStroke.Control, colors.ink, shape)
             .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,

@@ -84,9 +84,12 @@ internal data class RaftAppLinkChipHost(
  * card body ([AppLinkResult.Card.card]) and the message can show it. A preview with only its
  * title keeps the plain chip, a tap opening the link.
  */
-internal fun RaftAppLinkChipHost.opensCard(result: AppLinkResult.Card): Boolean = onOpenCard != null && result.card != null
+internal fun RaftAppLinkChipHost.opensCard(result: AppLinkResult.Card): Boolean = onOpenCard != null && result.hasCardBody
 
 internal val LocalRaftAppLinkChips = staticCompositionLocalOf<RaftAppLinkChipHost?> { null }
+
+/** String annotation over an App link card chip's words; the item is the link's URL. */
+internal const val RaftAppLinkHoverTag = "raft.build.markdown.appLinkHover"
 
 internal data class RaftAppLinkChipContent(
     val text: AnnotatedString,
@@ -123,8 +126,9 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
             links.mapNotNull { range ->
                 val link = range.item as? LinkAnnotation.Url ?: return@mapNotNull null
                 val target = parseArtifactLinkTarget(link.url, host.artifactHosts) ?: return@mapNotNull null
-                // Only a bare link becomes a chip: its text is its own address.
-                if (parseArtifactLinkTarget(text.substring(range.start, range.end).trim(), host.artifactHosts) != target) return@mapNotNull null
+                // Only a bare link becomes a chip: its text (without the layout-only break marks) is
+                // its own address.
+                if (parseArtifactLinkTarget(text.substring(range.start, range.end).raftCopyText().trim(), host.artifactHosts) != target) return@mapNotNull null
                 val summary = host.artifacts[target.key] ?: return@mapNotNull null
                 range to RaftArtifactLinkChip(target, summary)
             }
@@ -137,8 +141,10 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
                 val link = range.item as? LinkAnnotation.Url ?: return@mapNotNull null
                 val key = appLinkPreviewHref(link.url) ?: return@mapNotNull null
                 // Only a bare link becomes a chip: its text is its own address.
-                if (appLinkPreviewHref(text.substring(range.start, range.end).trim()) != key) return@mapNotNull null
+                if (appLinkPreviewHref(text.substring(range.start, range.end).raftCopyText().trim()) != key) return@mapNotNull null
                 val result = host.results[key] ?: return@mapNotNull null
+                // A block card with no `inline` (version 3): the link stays the author's own.
+                if (result is AppLinkResult.Card && !result.chip) return@mapNotNull null
                 range to result
             }
     if (chips.isEmpty() && artifactChips.isEmpty()) return RaftAppLinkChipContent(this, emptyMap())
@@ -170,7 +176,7 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
         when (result) {
             is AppLinkResult.Card -> {
                 suffix = raftAppLinkKeepEnd(domain, RaftAppLinkDomainMaxChars)
-                label = raftAppLinkCap(result.title, (RaftAppLinkChipMaxChars - suffix.length).coerceAtLeast(RaftAppLinkTitleMinChars))
+                label = raftAppLinkCap(result.chipTitle, (RaftAppLinkChipMaxChars - suffix.length).coerceAtLeast(RaftAppLinkTitleMinChars))
             }
             else -> label = raftAppLinkCap(appLinkShortAddress(result.url)?.let(::raftAppLinkAsciiHost) ?: domain, RaftAppLinkChipMaxChars)
         }
@@ -228,7 +234,12 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
                         }
                     }
                 }
+                // A card chip's words carry its URL: a mouse resting on them shows the card
+                // (RaftMarkdownAppLinkHoverCards, web AppLinkHoverCard).
+                val hoverUrl = (result as? AppLinkResult.Card)?.takeIf { host.opensCard(it) }?.url
+                if (hoverUrl != null) pushStringAnnotation(RaftAppLinkHoverTag, hoverUrl)
                 if (annotation != null) withLink(annotation) { chip() } else chip()
+                if (hoverUrl != null) pop()
             }
         }
         val anchor = (result as? AppLinkResult.Card)?.takeIf { host.opensCard(it) }?.let { host.cardAnchor?.invoke(it.url) }
@@ -364,7 +375,7 @@ private fun raftAppLinkChipLinkStyles(): TextLinkStyles {
             background = Color.Unspecified,
         )
     // raft-ui `active:overlay-medium`, as a wash over the chip's words (see the permalink chip).
-    return raftChipLinkStyles(base, pressed = base.copy(background = RaftAppThemeState.colors.fillPressed))
+    return raftChipLinkStyles(base, pressed = base.copy(background = RaftAppThemeState.colors.fillMedium))
 }
 
 private fun raftAppLinkIconInlineContent(result: AppLinkResult, anchor: Modifier): InlineTextContent {

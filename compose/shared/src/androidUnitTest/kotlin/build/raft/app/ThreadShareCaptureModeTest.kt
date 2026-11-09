@@ -96,7 +96,9 @@ class ThreadShareCaptureModeTest {
                 Row("normal-raft", RaftLinkMessage, capture = false, heights = heights)
                 Row("capture-raft", RaftLinkMessage, capture = true, heights = heights)
                 Row("capture-plain", PlainLinkMessage, capture = true, heights = heights)
-                Row("never-quoted-raft", RaftLinkMessage, capture = false, heights = heights, loader = null)
+                // Captured too: a captured row also drops its timeline-turn band (the share image
+                // draws its own row frame), so only the preview may differ.
+                Row("never-quoted-raft", RaftLinkMessage, capture = true, heights = heights, loader = null)
             }
 
         // Normal mode: the quote preview is drawn under the link.
@@ -157,8 +159,10 @@ class ThreadShareCaptureModeTest {
 
     @Test
     fun policyStripsOnlyInCaptureMode() {
-        val loaded = ThreadQuotedPermalinkUiState.Unavailable
+        val loaded = ThreadQuotedPermalinkUiState.Retracted
         assertTrue(threadQuotedPermalinkPreviewVisible(loaded, shareCaptureActive = false))
+        // The web draws no card for a quote it cannot read.
+        assertFalse(threadQuotedPermalinkPreviewVisible(ThreadQuotedPermalinkUiState.Unavailable, shareCaptureActive = false))
         assertFalse(threadQuotedPermalinkPreviewVisible(loaded, shareCaptureActive = true))
         assertFalse(threadQuotedPermalinkPreviewVisible(null, shareCaptureActive = false))
         assertTrue(threadAppLinkPreviewsEnabled(sentMessage = true, shareCaptureActive = false))
@@ -283,9 +287,9 @@ private fun SemanticsNode.collectTexts(into: MutableList<String>) {
     children.forEach { it.collectTexts(into) }
 }
 
-private const val RaftPermalink = "https://app.raft.build/s/acme/channel/c-private?msg=msg-1"
+private const val RaftPermalink = "https://app.raft.build/s/acme/channel/47d614ba-c55e-412a-874f-620e6d2fb849?msg=1949b70d-3814-4e40-8364-8ffad2fff299"
 // The same address on a host Raft doesn't own: a plain link that wraps like the permalink.
-private const val PlainLink = "https://app.raft.built/s/acme/channel/c-private?msg=msg-1"
+private const val PlainLink = "https://app.raft.built/s/acme/channel/47d614ba-c55e-412a-874f-620e6d2fb849?msg=1949b70d-3814-4e40-8364-8ffad2fff299"
 private const val QuotedBody = "Rolled back the migration"
 private const val StampPr = "https://stamp.build/botiverse/mobile/pull/3654"
 private const val StampTitle = "Fix the composer tray"
@@ -312,7 +316,7 @@ private val AppLinkMessage = message(AppLinkMessageId, "Merged: $StampPr")
 private val QuoteLoader: ThreadQuotedPermalinkLoader = { _ ->
     ThreadQuotedPermalinkMessage(
         RaftThreadMessageItem(
-            id = "msg-1",
+            id = "1949b70d-3814-4e40-8364-8ffad2fff299",
             authorId = "agent-alpha",
             authorName = "Alpha",
             authorKind = "agent",
@@ -343,6 +347,8 @@ private fun appLinkFixtureHost(): ThreadAppLinkPreviewHost {
 
 private object IdleAppLinkApi : RaftAppLinkPreviewApi {
     override suspend fun readPreviews(messageId: String, serverId: String): HomeNetworkResponse = awaitCancellation()
+
+    override suspend fun readLinkCards(messageId: String, serverId: String, body: build.raft.app.data.AppLinkCardReadRequestBody): HomeNetworkResponse = awaitCancellation()
 
     override suspend fun allow(appId: String, serverId: String): HomeNetworkResponse = awaitCancellation()
 

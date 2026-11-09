@@ -16,7 +16,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ActionCardSpecButton
@@ -28,7 +30,11 @@ import build.raft.app.data.ActionCardSpecTree
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.jointInviteRateLimitMinutes
+import build.raft.app.data.QuestionAskActionCardType
+import build.raft.app.data.SeatsAddActionCardType
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.expiresAtEpochMillis
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
 import build.raft.designsystem.components.RaftBanner
@@ -66,14 +72,22 @@ internal data class ThreadActionCardSpecHost(
     val clientOs: String = "",
     val feedbackPageAvailable: Boolean = false,
     val openFeedbackTicket: (ticketId: String?) -> Unit = {},
+    /** iOS view-only Billing: "View your plan" opens the view-only Plan & Billing page. */
+    val openPlan: () -> Unit = {},
 )
 
 internal val LocalThreadActionCardSpecHost = compositionLocalOf { ThreadActionCardSpecHost() }
 
-/** The frame's status for a card's `state`. */
+/**
+ * The frame's status for a card's `state` (web `ActionCardSpecCard`). A state this build doesn't
+ * know is drawn as Prepared, as before. Draw the card as of the client clock first
+ * ([build.raft.app.data.expiredAsOf]) so a prepared card past its `expiresAt` reads Expired.
+ */
 internal fun ThreadActionCard.actionCardSpecStatus(): RaftActionCardStatus =
     when {
         isExecuted -> RaftActionCardStatus.Executed
+        isExpired -> RaftActionCardStatus.Expired
+        isWithdrawn -> RaftActionCardStatus.Withdrawn
         isFrozen -> RaftActionCardStatus.Frozen
         needsReconfirmation -> RaftActionCardStatus.ReconfirmRequired
         else -> RaftActionCardStatus.Prepared
@@ -93,6 +107,75 @@ internal fun ActionCardSpecCard.withChangingButtonsLabelled(label: ActionCardSpe
     return copy(spec = relabel(spec))
 }
 
+/**
+ * Types that keep their own deadline rule (shared `isActionCardExpiryExempt`, slock #13254): a
+ * person's request among them keeps its own "No owner answered" line when it expires.
+ */
+internal val ActionCardExpiryExemptTypes: Set<String> =
+    setOf(QuestionAskActionCardType, "agent:approve_call", "assistant:owner_action", SeatsAddActionCardType, "plan:upgrade")
+
+/** Which line an expired card says under its title (web `useExpiredCardLine`, slock #13275). */
+internal sealed interface ActionCardExpiredLine {
+    /** A person's request with its own deadline (a seat or Pro request): "No owner answered within 7 days". */
+    data object PersonRequest : ActionCardExpiredLine
+
+    /** The viewer sent it: "Expired on {date}. Send a new request." */
+    data class Own(val date: String) : ActionCardExpiredLine
+
+    /** A person sent it under the 30-day rule and is a member here: "Ask {owner} to send a new request." */
+    data class FromPerson(val date: String, val owner: String) : ActionCardExpiredLine
+
+    /** An agent's card, or its sender is no longer known here: "Ask the agent to send a new request." */
+    data class FromAgent(val date: String) : ActionCardExpiredLine
+}
+
+/**
+ * The line for an expired card ([ActionCardExpiredLine]), or null: not expired, a question card
+ * (the web has its own ended lines), or no date. [formatDate] writes `expiresAt` as the done line
+ * writes its time (null: it can't); [requesterName] is the requester's name from this server's
+ * member directory (null when not a member here); [viewerUserId] is the signed-in person.
+ */
+internal fun ThreadActionCard.actionCardExpiredLine(
+    viewerUserId: String?,
+    requesterName: String?,
+    formatDate: (String) -> String?,
+): ActionCardExpiredLine? {
+    if (!isExpired || type.equals(QuestionAskActionCardType, ignoreCase = true)) return null
+    val requester = requesterUserId
+    if (requester != null && ActionCardExpiryExemptTypes.any { it.equals(type, ignoreCase = true) }) return ActionCardExpiredLine.PersonRequest
+    val at = expiresAt?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val date = formatDate(at)?.takeIf { it.isNotBlank() } ?: return null
+    return when {
+        requester != null && requester == viewerUserId?.trim() -> ActionCardExpiredLine.Own(date)
+        requester != null && !requesterName.isNullOrBlank() -> ActionCardExpiredLine.FromPerson(date, requesterName)
+        else -> ActionCardExpiredLine.FromAgent(date)
+    }
+}
+
+/**
+ * An ended card's line under its title ([actionCardExpiredLine]): the requester by name from the
+ * thread's member lookup ([LocalThreadActionCardNames]), the viewer from the spec host, the date
+ * in the app's time format (never the raw wire timestamp, nothing without a live time context).
+ */
+@Composable
+internal fun ThreadActionCard.actionCardEndedLine(): String? {
+    if (!isExpired) return null
+    val viewerUserId = LocalThreadActionCardSpecHost.current.viewerUserId
+    val names = LocalThreadActionCardNames.current
+    val context = currentRaftTimeContextProvider?.current
+    val requesterName = requesterUserId?.let { names.name(ThreadActionCardEntityKind.Human, it) }
+    val line =
+        actionCardExpiredLine(viewerUserId, requesterName) { at ->
+            context?.formatTimestampLabel(at)?.takeIf { it != at }
+        } ?: return null
+    return when (line) {
+        ActionCardExpiredLine.PersonRequest -> stringResource(Res.string.thread_action_card_seats_expired_line)
+        is ActionCardExpiredLine.Own -> stringResource(Res.string.thread_action_card_expired_line_own, line.date)
+        is ActionCardExpiredLine.FromPerson -> stringResource(Res.string.thread_action_card_expired_line_from_person, line.date, line.owner)
+        is ActionCardExpiredLine.FromAgent -> stringResource(Res.string.thread_action_card_expired_line, line.date)
+    }
+}
+
 /** An app string as a card Msg: the same words in [displayLocale] and as the English fallback. */
 internal fun actionCardAppMsg(key: String, text: String, displayLocale: String): ActionCardSpecMsg =
     ActionCardSpecMsg(key = key, text = mapOf("en" to text, displayLocale to text))
@@ -105,6 +188,7 @@ internal fun threadActionCardSpecErrorDesc(error: ThreadActionCardSpecError?): S
     when (error) {
         null -> null
         ThreadActionCardSpecError.FormRequired -> Res.string.thread_action_card_form_required.desc()
+        ThreadActionCardSpecError.QuestionNotSent -> Res.string.action_card_question_not_sent.desc()
         is ThreadActionCardSpecError.Failed -> error.serverMessage?.desc() ?: Res.string.thread_action_card_execute_failed.desc()
         // Web `settings.about.feedbackError.rateLimited` in substance; the minutes as the joint invite's 429.
         is ThreadActionCardSpecError.FeedbackRateLimited ->
@@ -143,6 +227,8 @@ internal fun ThreadActionCardSpecView(
     typedPending: Boolean,
     executedTimeLabel: String?,
     modifier: Modifier = Modifier,
+    /** The message's sender, for a question card: the agent that asks ("Fixer is asking you"). */
+    askerName: String? = null,
     onAction: (elementId: String) -> Unit,
 ) {
     val host = LocalThreadActionCardSpecHost.current
@@ -153,34 +239,84 @@ internal fun ThreadActionCardSpecView(
     val displayLocale = rememberActionCardDisplayLocale()
     val blockedReason =
         when {
-            card.isExecuted -> null
+            card.isExecuted || card.hasEnded -> null
             card.sourceServerId != null && viewerServerId != null && card.sourceServerId != viewerServerId ->
                 card.targetServerName?.let { stringResource(Res.string.thread_action_card_blocked_target_server, it) }
                     ?: stringResource(Res.string.thread_action_card_blocked_source_workspace)
             else -> null
         }
+    val endedLine = card.actionCardEndedLine()
     val committedBy = card.executedByUserName?.takeIf { it.isNotBlank() }?.let { stringResource(Res.string.thread_action_card_committed_by, it) }
     val record = committedBy?.let { by -> executedTimeLabel?.let { "$by · $it" } ?: by } ?: executedTimeLabel
     val reconfirmLabel = stringResource(Res.string.thread_action_card_reconfirm)
+    val viewPlanLabel = stringResource(Res.string.settings_billing_view_your_plan)
+    val offersUpgrade = settingsBillingOffersUpgrade()
     val rendered =
-        remember(spec, card.needsReconfirmation, reconfirmLabel, displayLocale) {
-            if (card.needsReconfirmation) {
-                spec.withChangingButtonsLabelled(actionCardAppMsg("actionCard.reconfirm", reconfirmLabel, displayLocale))
-            } else {
-                spec
-            }
+        remember(spec, card.needsReconfirmation, reconfirmLabel, viewPlanLabel, offersUpgrade, displayLocale) {
+            val labelled =
+                if (card.needsReconfirmation) {
+                    spec.withChangingButtonsLabelled(actionCardAppMsg("actionCard.reconfirm", reconfirmLabel, displayLocale))
+                } else {
+                    spec
+                }
+            // iOS view-only Billing: Add Seats / Upgrade read "View your plan" (threadActionCardSpecPress).
+            if (offersUpgrade) labelled else labelled.withUpgradeButtonsLabelled(actionCardAppMsg("planBilling.viewYourPlan", viewPlanLabel, displayLocale))
         }
+    // A question card the server placed on the card (`placement: "inline"`, spec §5.9): answered in
+    // its body, without its button or its question rows; every other card keeps its sheet.
+    val inline = remember(rendered, card) { card.inlineQuestionForm(rendered) }
+    // A question card (redesign 2026-11): C, a button row without a card, or B, a slim card.
+    val questionLayout = remember(rendered, card) { card.questionCardLayout(rendered) }
+    val question = questionLayout?.let { rememberQuestionCardWords(card, rendered, askerName, displayLocale, record) }
+    val singleQuestion = question?.single == true
+    val shown =
+        remember(rendered, inline, questionLayout, singleQuestion) {
+            val body = if (inline == null) rendered.spec else rendered.spec.withoutInlineQuestions(inline)
+            rendered.copy(spec = if (questionLayout == QuestionCardLayout.SlimCard) body.withoutSlimQuestionRows(singleQuestion) else body)
+        }
+    // Only the person asked (or anyone, on a card for anyone) may answer: the server refuses the rest (403 NOT_ADDRESSEE).
+    val canOperate = commitEnabled && blockedReason == null && (question?.asked ?: true)
+    val currentCard by rememberUpdatedState(card)
+    val error = threadActionCardSpecErrorText(slice.error)
+    val canAnswer = canOperate && card.actionCardSpecStatus() == RaftActionCardStatus.Prepared
+    val send = { form: ActionCardInlineQuestionForm ->
+        { values: Map<String, build.raft.app.data.ActionCardFormValue> ->
+            host.onIntent(ThreadActionCardSpecIntent.SubmitInlineForm(messageId, currentCard, form.formId, form.buttonId, values))
+        }
+    }
+    if (questionLayout == QuestionCardLayout.ButtonRow && question != null && blockedReason == null) {
+        val defaults = remember(inline) { inline?.let { initialActionCardFormValues(it.form) }.orEmpty() }
+        ActionCardQuestionButtonRow(
+            question = question.text ?: actionCardMsgPlain(rendered.title, RaftCardTreeContext(displayLocale = displayLocale)),
+            inline = inline,
+            values = slice.inlineValues ?: defaults,
+            onValuesChange = { host.onIntent(ThreadActionCardSpecIntent.InlineValuesChanged(messageId, it)) },
+            serverIssues = slice.inlineIssues,
+            canSubmit = canAnswer,
+            submitting = inline != null && slice.busy == inline.buttonId,
+            hint = question.buttonRowHint,
+            answeredLine = if (card.isExecuted) question.answeredLine else null,
+            error = error,
+            displayLocale = displayLocale,
+            onSend = { values -> inline?.let { send(it)(values) } },
+            modifier = modifier,
+        )
+        return
+    }
     val frame =
         RaftActionCardFrameState(
             status = card.actionCardSpecStatus(),
             record = record,
             blockedReason = blockedReason,
             readOnly = !commitEnabled,
+            // Someone else's question: the same card, its controls disabled (who is asked never changes the shape).
+            controlsDisabled = question?.asked == false,
             busyElementKey = slice.busyElement(typedPending),
-            error = threadActionCardSpecErrorText(slice.error),
+            error = error,
+            endedLine = endedLine,
         )
     RaftActionCardView(
-        card = rendered,
+        card = shown,
         state = frame,
         entityName = { ref, serverId -> names.actionCardSpecEntityName(ref, serverId, viewerServerId) },
         onAction = onAction,
@@ -188,6 +324,122 @@ internal fun ThreadActionCardSpecView(
         sourceServerId = card.sourceServerId,
         displayLocale = displayLocale,
         linkNavigable = { button -> button.actionCardSpecLinkNavigable(card.sourceServerId, viewerServerId) },
+        fitLabels = inline != null,
+        slim =
+            question?.let {
+                RaftActionCardSlim(
+                    title = it.slimTitle,
+                    description = it.slimDescription,
+                    statusLine = if (card.isExecuted) it.answeredLine else it.endedLine?.let(::AnnotatedString),
+                    statusCheck = card.isExecuted,
+                )
+            },
+        footer =
+            inline?.let { form ->
+                {
+                    val defaults = remember(form) { initialActionCardFormValues(form.form) }
+                    ActionCardQuestionInlineForm(
+                        inline = form,
+                        values = slice.inlineValues ?: defaults,
+                        onValuesChange = { host.onIntent(ThreadActionCardSpecIntent.InlineValuesChanged(messageId, it)) },
+                        serverIssues = slice.inlineIssues,
+                        canSubmit = canAnswer,
+                        showSubmit = canOperate,
+                        submitting = slice.busy == form.buttonId,
+                        displayLocale = displayLocale,
+                        onSend = send(form),
+                    )
+                }
+            },
+    )
+}
+
+/**
+ * The words a question card's two layouts say, worked out once per card:
+ * - [asked]: the viewer is the person asked ([questionAsksViewer]);
+ * - [single] / [text]: whether it asks one question, and that question's text;
+ * - C: [buttonRowHint] ("Fixer is waiting for your answer · 7 days left", or "Waiting for Maya to
+ *   answer");
+ * - B: [slimTitle] (the one question, or "Fixer has 3 questions", raft-design #1095) and
+ *   [slimDescription] ("Fixer is asking you · 7 days left", or "Waiting for Maya · 7 days left");
+ * - both, where the controls were once it is over: [answeredLine] ("✓ Maya answered **Postgres**")
+ *   or [endedLine] ("Mei didn't answer within 3 days. Scout was told.", "Scout withdrew these questions.").
+ */
+internal data class QuestionCardWords(
+    val asked: Boolean,
+    val single: Boolean,
+    val text: String?,
+    val buttonRowHint: String?,
+    val answeredLine: AnnotatedString?,
+    val slimTitle: String?,
+    val slimDescription: String?,
+    /** Ended without an answer: the one line where the question's options (C) or the card (B, folded) were. */
+    val endedLine: String?,
+)
+
+/**
+ * [QuestionCardWords] for [card]: the person asked by their name in this server's member list (by
+ * id), else the handle the server stored; the asker is the message's sender ([askerName]), else
+ * the agent the form names; the time left from the card's `expiresAt` on the live clock; who
+ * answered from `executedByUserName`, and what from the record's answer rows.
+ */
+@Composable
+private fun rememberQuestionCardWords(
+    card: ThreadActionCard,
+    spec: ActionCardSpecCard,
+    askerName: String?,
+    displayLocale: String,
+    record: String?,
+): QuestionCardWords {
+    val host = LocalThreadActionCardSpecHost.current
+    val names = LocalThreadActionCardNames.current
+    val viewerServerId = LocalThreadViewerServerId.current
+    val someone = stringResource(Res.string.action_card_question_someone)
+    val asked = card.questionAsksViewer(host.viewerUserId)
+    val count = card.questionCount(spec)
+    val single = count <= 1
+    val text = spec.singleQuestionText(displayLocale)
+    val addressee =
+        card.questionAddresseeUserId?.let { names.name(ThreadActionCardEntityKind.Human, it) }?.takeIf { it.isNotBlank() }
+            ?: card.questionAddresseeHandle?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
+            ?: someone
+    val asker =
+        askerName?.takeIf { it.isNotBlank() }
+            ?: spec.questionAskerRef()?.let { ref -> names.actionCardSpecEntityName(ref, ref.serverIdOr(card.sourceServerId), viewerServerId) ?: ref.fallback }
+            ?: card.agentName
+            ?: someone
+    val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
+    val timeLeft = questionTimeLeft(card.expiresAtEpochMillis(), nowMillis)?.let { questionTimeLeftText(it) }
+    val waiting = card.actionCardSpecStatus() == RaftActionCardStatus.Prepared || card.isFrozen
+    val answerer = card.executedByUserName?.takeIf { it.isNotBlank() } ?: addressee
+    val answer = spec.questionAnswerText(displayLocale)
+    // Expired: the person asked by name; asked of anyone (or no addressee on the card), "Nobody answered".
+    val endedLine = card.questionEndedLine(asker, addressee.takeIf { card.questionAddresseeUserId != null }, count.coerceAtLeast(1))
+    return QuestionCardWords(
+        asked = asked,
+        single = single,
+        text = text,
+        buttonRowHint =
+            when {
+                endedLine != null -> endedLine
+                !waiting -> null
+                asked -> questionLineWithTimeLeft(stringResource(Res.string.action_card_question_waiting_for_your_answer, asker), timeLeft)
+                else -> stringResource(Res.string.action_card_question_waiting_for_answer, addressee)
+            },
+        answeredLine = answer?.let { questionAnsweredText(answerer, it) } ?: record?.let(::AnnotatedString),
+        slimTitle =
+            when {
+                single -> text
+                count == 1 -> stringResource(Res.string.action_card_question_asker_has_questions_one, asker, count)
+                else -> stringResource(Res.string.action_card_question_asker_has_questions_other, asker, count)
+            },
+        slimDescription =
+            when {
+                !waiting -> null
+                asked -> questionLineWithTimeLeft(stringResource(Res.string.action_card_question_asking_you, asker), timeLeft)
+                else -> questionLineWithTimeLeft(stringResource(Res.string.action_card_question_waiting_for, addressee), timeLeft)
+            },
+        endedLine = endedLine,
     )
 }
 
@@ -218,7 +470,7 @@ internal fun ThreadActionCardSpecConfirmSheet(
             title = actionCardMsgPlain(state.confirm.title, context),
             commitLabel = actionCardMsgPlain(state.confirm.confirmLabel, context),
             onCommit = { onIntent(ThreadActionCardSpecIntent.ConfirmExecute) },
-            commitEnabled = !state.card.isExecuted && !state.card.isFrozen,
+            commitEnabled = !state.card.isExecuted && !state.card.isFrozen && !state.card.hasEnded,
             commitLoading = state.submitting,
             commitVariant = if (state.destructive) RaftButtonVariant.Danger else RaftButtonVariant.Primary,
             closeLabel = stringResource(Res.string.common_close),

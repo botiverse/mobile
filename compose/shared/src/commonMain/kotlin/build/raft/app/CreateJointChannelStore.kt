@@ -66,6 +66,9 @@ internal data class CreateJointArchivedCollision(
 internal sealed interface CreateJointChannelEffect {
     /** Created, or the colliding archived joint channel was unarchived: open it. */
     data class Open(val channel: JointChannelAccepted) : CreateJointChannelEffect
+
+    /** Web Open Channel (slock #12614): leave the dialog for the colliding archived channel, read-only. */
+    data class OpenArchived(val channelId: ChannelId) : CreateJointChannelEffect
 }
 
 internal data class CreateJointChannelState(
@@ -94,6 +97,17 @@ internal data class CreateJointChannelState(
     /** Web `billingError`: the failure is a plan limit, so the banner links to Billing. */
     val showsBillingLink: Boolean
         get() = (error as? CreateJointChannelError.Server)?.let(::createJointErrorIsBillingGate) == true
+
+    /**
+     * Web CreateJointChannelDialog `billingError`: `joint_free_server_limit` is the channel's Free
+     * places (`joint_channel_free_cap`); the rest (`joint_channel_free_limit_reached`, "requires the
+     * Pro plan") the servers it hosts (`joint_channel_host_limit`). Null when not a plan limit.
+     */
+    val billingGate: RaftUpgradeGate?
+        get() {
+            val server = (error as? CreateJointChannelError.Server)?.takeIf(::createJointErrorIsBillingGate) ?: return null
+            return if (server.details?.code == JOINT_FREE_SERVER_LIMIT) RaftUpgradeGate.JointChannelFreeCap else RaftUpgradeGate.JointChannelHostLimit
+        }
 }
 
 internal fun createJointErrorIsBillingGate(error: CreateJointChannelError.Server): Boolean {
@@ -124,6 +138,7 @@ internal sealed interface CreateJointChannelIntent {
     data object Submit : CreateJointChannelIntent
     data object UnarchiveCollision : CreateJointChannelIntent
     data object ChangeCollidingName : CreateJointChannelIntent
+    data object OpenCollision : CreateJointChannelIntent
     data object ConsumeEffect : CreateJointChannelIntent
 }
 
@@ -227,6 +242,11 @@ internal class CreateJointChannelStore(
             CreateJointChannelIntent.Submit -> submit(current)
             CreateJointChannelIntent.UnarchiveCollision -> unarchive(current)
             CreateJointChannelIntent.ChangeCollidingName -> update(current.copy(collision = null, name = ""))
+            CreateJointChannelIntent.OpenCollision -> {
+                val collision = current.collision ?: return
+                if (current.submitting) return
+                update(current.copy(collision = null, effect = CreateJointChannelEffect.OpenArchived(collision.archivedChannelId)))
+            }
             CreateJointChannelIntent.ConsumeEffect -> if (current.effect != null) update(current.copy(effect = null))
         }
     }

@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -82,6 +86,11 @@ fun RaftCodeBlock(
  * above and below them (a one-line value sits where it does in the 44dp box), and
  * ellipsizes past [maxLines] (`Int.MAX_VALUE`: never).
  *
+ * [prefix] is fixed text before the value that is part of its structure (the handle's `@`, a
+ * slug's `/`): [RaftTextField]'s container addon ([RaftTextFieldAddonVariant.Container]), Space
+ * Mono `text-mono-code` in `foreground-hint` on a `fill-muted` cell behind a 1dp `line-hairline`
+ * divider. It is not copied.
+ *
  * A long press copies [copyText] ([raftCopyable]): the shown value by default (what you see is
  * what you copy); null when the field shows a placeholder.
  */
@@ -92,10 +101,46 @@ fun RaftReadOnlyField(
     mono: Boolean = false,
     maxLines: Int = 1,
     copyText: String? = text,
+    prefix: String? = null,
 ) {
     val colors = RaftTheme.colors
     val shape = RoundedCornerShape(RaftRadius.Control)
     val wraps = maxLines > 1
+    val value: @Composable (Modifier) -> Unit = { valueModifier ->
+        RaftText(
+            text,
+            valueModifier,
+            style = if (mono) RaftTheme.typography.monoCode else RaftTheme.typography.subhead,
+            color = colors.foregroundMuted,
+            maxLines = maxLines.coerceAtLeast(1),
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+    if (prefix != null) {
+        Row(
+            modifier
+                .fillMaxWidth()
+                .then(if (wraps) Modifier.heightIn(min = 44.dp) else Modifier.height(44.dp))
+                .height(IntrinsicSize.Min)
+                .background(colors.fillMuted, shape)
+                .border(RaftStroke.Control, colors.lineHairline, shape)
+                .clip(shape)
+                .raftCopyable(copyText),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.fillMaxHeight().padding(start = 12.dp + RaftStroke.Control, end = 12.dp), contentAlignment = Alignment.Center) {
+                RaftText(prefix, style = RaftTheme.typography.monoCode, color = colors.foregroundHint, maxLines = 1, softWrap = false)
+            }
+            Box(Modifier.width(1.dp).fillMaxHeight().background(colors.lineHairline))
+            value(
+                Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp, end = 12.dp + RaftStroke.Control)
+                    .then(if (wraps) Modifier.padding(vertical = 12.dp) else Modifier),
+            )
+        }
+        return
+    }
     Box(
         modifier
             .fillMaxWidth()
@@ -107,12 +152,6 @@ fun RaftReadOnlyField(
             .then(if (wraps) Modifier.padding(vertical = 12.dp) else Modifier),
         contentAlignment = Alignment.CenterStart,
     ) {
-        RaftText(
-            text,
-            style = if (mono) RaftTheme.typography.monoCode else RaftTheme.typography.subhead,
-            color = colors.foregroundMuted,
-            maxLines = maxLines.coerceAtLeast(1),
-            overflow = TextOverflow.Ellipsis,
-        )
+        value(Modifier)
     }
 }

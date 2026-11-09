@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,11 +20,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftFocusedPreview
 import build.raft.designsystem.components.LocalRaftPressedPreview
+import build.raft.designsystem.components.LocalRaftTooltipPreview
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftMessageReaction
 import build.raft.designsystem.components.RaftMessageReactionAdd
+import build.raft.designsystem.components.RaftMessageReactionTooltip
 import build.raft.designsystem.components.RaftMessageReplies
 import build.raft.designsystem.components.RaftMessageRepliesItem
 import build.raft.designsystem.components.RaftMessageRepliesItemTime
@@ -39,6 +42,9 @@ import kotlin.test.Test
  *  - `message_reaction`: the reaction chip at rest, yours (`attention-soft`), failed, pressed
  *    and focused, a bare emoji and a wide count; the add chip at rest and pressed; the saved
  *    marker; a footer row as a message carries it.
+ *  - `message_reaction_tooltip`: who reacted, open under the chip (web hover tooltip): one name;
+ *    "You" first; five names with a truncated long one and "+3 more", wrapping; no names known
+ *    (the bare emoji); and a chip at the bottom edge, where it opens above.
  *  - `message_replies`: the thread summary with no new replies, with a new count sticker and a
  *    draft, pressed, and a narrow one whose previews truncate.
  * The emoji is a drawn stand-in (the app draws its sprite atlas through the glyph slot).
@@ -46,9 +52,9 @@ import kotlin.test.Test
 class MessageReactionScreenshotTest {
     private val appearances = listOf(RaftAppearance.Light, RaftAppearance.Dark)
 
-    private fun capture(name: String, content: @Composable () -> Unit) =
+    private fun capture(name: String, settleFrames: Int = 0, content: @Composable () -> Unit) =
         appearances.forEach { appearance ->
-            RaftScreenshot.capture("${name}_${appearance.name.lowercase()}", appearance, content = content)
+            RaftScreenshot.capture("${name}_${appearance.name.lowercase()}", appearance, settleFrames = settleFrames, content = content)
         }
 
     @Test
@@ -80,6 +86,45 @@ class MessageReactionScreenshotTest {
                 }
             }
         }
+
+    @Test
+    fun messageReactionTooltip() =
+        capture("message_reaction_tooltip", settleFrames = 2) {
+            CompositionLocalProvider(LocalRaftTooltipPreview provides true) {
+                Box(Modifier.width(560.dp).height(300.dp)) {
+                    Tipped(0, 0, names = listOf("Lagoon"), count = 1, mine = false)
+                    Tipped(200, 0, names = listOf("You", "Alice", "Bob"), count = 3, mine = true)
+                    Tipped(
+                        0,
+                        110,
+                        names = listOf("Alice", "A very long display name for a person", "Carol", "Dave", "Eve"),
+                        count = 8,
+                        mine = false,
+                        more = "+3 more",
+                    )
+                    Tipped(330, 110, names = emptyList(), count = 2, mine = false)
+                    Tipped(330, 276, names = listOf("Lagoon", "artin"), count = 2, mine = false)
+                }
+            }
+        }
+
+    @Composable
+    private fun Tipped(x: Int, y: Int, names: List<String>, count: Int, mine: Boolean, more: String? = null) {
+        // Opened as the web's hover tooltip (below the chip): a long press opens it above instead,
+        // see RaftMessageReactionTooltipPlacementTest.
+        CompositionLocalProvider(LocalRaftTooltipPreview provides true) {
+            RaftMessageReactionTooltip(
+                names = names,
+                moreLabel = more,
+                open = false,
+                onDismissRequest = {},
+                modifier = Modifier.offset(x.dp, y.dp),
+                emptyContent = { Face() },
+            ) {
+                RaftMessageReaction(count = count, mine = mine, glyph = { Face() }, onClick = {})
+            }
+        }
+    }
 
     @Test
     fun messageReplies() =

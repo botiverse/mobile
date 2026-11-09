@@ -540,7 +540,7 @@ jobs:
           # App strings and bundled files are Compose Multiplatform resources, copied by the
           # "[CP-User] Copy Compose resources to app" phase (:ui-cmp:syncComposeResourcesForXcodeApp).
           APP_RES="${APP_PATH}/compose-resources/composeResources/build.raft.app.resources"
-          for values_dir in values values-ja values-zh-rCN; do
+          for values_dir in values values-ja values-zh-rCN values-es values-pt-rBR values-ru values-ko values-zh-rTW; do
             find "${APP_RES}/${values_dir}" -name '*.cvr' -type f 2>/dev/null | grep -q . || { echo "Compose string catalog ${values_dir} missing from app" >&2; exit 1; }
           done
           [ -f "${APP_RES}/files/reactions/reaction_atlas_v1.png" ] || { echo "reaction atlas missing (expected files/reactions/reaction_atlas_v1.png in compose-resources)" >&2; exit 1; }

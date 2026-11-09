@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.network.raftResponseTraceIdOrNull
 import build.raft.app.resources.*
 import build.raft.app.raftAvatarDiagnosticsSource
 import build.raft.app.projectionRejectingDiagnosticsLogger
@@ -76,6 +77,12 @@ class SharedHomeDataSource(
         serverId: ServerId,
         priority: DataRequestPriority
     ): DataResult<ChannelUnreadSummary> = typedApi.channelUnreadSummary(serverId, priority)
+
+    /** `servers/unread-summary` alone ([RaftHomeApiClient.serverUnreadSummary]). */
+    suspend fun serverUnreadSummary(
+        serverId: ServerId,
+        priority: DataRequestPriority
+    ): DataResult<List<ServerUnreadSummaryDto>> = typedApi.serverUnreadSummary(serverId, priority)
 
     suspend fun currentSessionSnapshot(): DataResult<build.raft.app.model.SessionSnapshot> {
         val session = sessionStore.readSession()
@@ -267,6 +274,8 @@ class SharedHomeDataSource(
                 ?.permissions
                 ?.canManageMachines == true
         if (!canManageMachines) return DataResult.Content(emptyList())
+        val serverRole = session.servers.firstOrNull { it.id == serverId.value }?.role
+        val currentUserId = session.user.id
         val offlineComputerAlertsEnabled =
             notificationPreferenceRepository
                 ?.getNotificationPreference()
@@ -280,7 +289,11 @@ class SharedHomeDataSource(
         if (reusable != null) {
             diagnosticsLogger("home_machine_notifications serverId=${serverId.value} source=held network=false reason=incremental_sync")
             return DataResult.Content(
-                reusable.toSharedHomeMachineNotifications(offlineComputerAlertsEnabled = offlineComputerAlertsEnabled)
+                reusable.toSharedHomeMachineNotifications(
+                    offlineComputerAlertsEnabled = offlineComputerAlertsEnabled,
+                    serverRole = serverRole,
+                    currentUserId = currentUserId
+                )
             )
         }
         return when (val result = client.machines(serverId)) {
@@ -290,7 +303,9 @@ class SharedHomeDataSource(
                 }
                 DataResult.Content(
                     result.data.toSharedHomeMachineNotifications(
-                        offlineComputerAlertsEnabled = offlineComputerAlertsEnabled
+                        offlineComputerAlertsEnabled = offlineComputerAlertsEnabled,
+                        serverRole = serverRole,
+                        currentUserId = currentUserId
                     )
                 )
             }
@@ -323,6 +338,8 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is PerReceiverNotificationPrefsChanged,
         is PerReceiverPinnedChanged -> true
         is MemberPresenceUpdated -> false
+        // An edited thread reply only rewrites the parent's inline reply rows; no Home row changes.
+        is build.raft.app.model.ThreadReplyUpdated -> false
         // The server's answer to this app's own agent activity subscribe: no Home row changes.
         is build.raft.app.model.AgentActivitySubscribed -> false
         // read_receipts_v0: other participants' read positions only decorate the open message list.
@@ -337,6 +354,9 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is build.raft.app.model.ActivityChanged -> false
         // The member's theme lives on the stored server (process realtime owner); Home's rows do not change.
         is build.raft.app.model.ServerAppearanceUpdated -> false
+        // A person's new name / avatar is patched into the member directory (and the signed-in user's
+        // own record) in place; Home rows read their faces and names from there, so no reload.
+        is build.raft.app.model.UserProfileUpdated -> false
         // Notification levels, account settings and retractions change no Home row; the notification
         // level store and the platform tray handle them.
         is build.raft.app.model.NotificationLevelChanged,
@@ -385,7 +405,8 @@ internal fun String.isLocalHomeNotificationId(): Boolean =
 
 internal fun String.isMachineHomeNotificationId(): Boolean =
     startsWith("machine-offline:") ||
-        startsWith("machine-outdated:")
+        startsWith("machine-outdated:") ||
+        isComputerVersionGateHomeNotificationId()
 
 internal fun String.isAppUpdateHomeNotificationId(): Boolean =
     startsWith(APP_UPDATE_HOME_NOTIFICATION_ID)
@@ -463,9 +484,12 @@ private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionDesc():
     }
 
 private fun ComputerListSummary.toSharedHomeMachineNotifications(
-    offlineComputerAlertsEnabled: Boolean
+    offlineComputerAlertsEnabled: Boolean,
+    serverRole: String?,
+    currentUserId: String?
 ): List<SharedHomeNotification> {
     val notifications = mutableListOf<SharedHomeNotification>()
+    notifications += homeComputerVersionGateNotifications(machines, serverRole, currentUserId)
     val offlineMachines = machines.filter { it.status == ComputerStatus.Offline }
     if (offlineComputerAlertsEnabled && offlineMachines.isNotEmpty()) {
         val sortedIds = offlineMachines.map { it.id }.sorted()
@@ -590,6 +614,10 @@ data class HomeNetworkPayload(
     val followedThreadUnread: Map<String, HomeFollowedThreadUnread> = emptyMap(),
     /** Scopes the same summary reports marked unread with no count ([ChannelUnreadSummary.markedUnreadIds]). */
     val markedUnreadIds: Set<String> = emptySet(),
+    /** The same summary's newest message per scope ([ChannelUnreadSummary.latestActivitySeqs]). */
+    val unreadLatestActivitySeqs: Map<String, Long> = emptyMap(),
+    /** The same summary's read state per scope ([ChannelUnreadSummary.readFrontiers]). */
+    val unreadReadFrontiers: Map<String, ReadReceiptFrontier> = emptyMap(),
     val serverUnreadSummary: List<ServerUnreadSummaryDto>,
     /**
      * True when `/servers/unread-summary` itself completed and decoded. This
@@ -622,6 +650,10 @@ data class HomeNetworkResponse(
 ) {
     val isSuccessful: Boolean
         get() = code in 200..299
+
+    /** The server's `X-Trace-Id` for this request (validated); null when it got no answer. */
+    val traceId: String?
+        get() = responseHeaders.raftResponseTraceIdOrNull()
 }
 
 internal class RaftHomeApiClient(
@@ -730,6 +762,8 @@ internal class RaftHomeApiClient(
                 mentionedChannelIds = unreadSummary?.mentionedChannelIds ?: emptySet(),
                 followedThreadUnread = unreadSummary?.followedThreadUnread ?: emptyMap(),
                 markedUnreadIds = unreadSummary?.markedUnreadIds ?: emptySet(),
+                unreadLatestActivitySeqs = unreadSummary?.latestActivitySeqs ?: emptyMap(),
+                unreadReadFrontiers = unreadSummary?.readFrontiers ?: emptyMap(),
                 serverUnreadSummary = serverUnreadSummary,
                 serverUnreadSummaryAvailable = serverUnreadSummaryAvailable,
                 unreadEnrichmentAvailable = unreadEnrichmentAvailable,
@@ -738,6 +772,33 @@ internal class RaftHomeApiClient(
                     listOfNotNull(unreadCountsStale.retryAfterMillis, serverUnreadSummaryStale.retryAfterMillis).maxOrNull()
             )
         )
+    }
+
+    /**
+     * `servers/unread-summary` alone: every server's Activity unread for the launcher badge while Home
+     * is hidden (feedback fb-52cc0499). A remembered (stale) answer comes back as an error so the
+     * caller keeps the counts it has.
+     */
+    suspend fun serverUnreadSummary(
+        serverId: ServerId,
+        priority: DataRequestPriority
+    ): DataResult<List<ServerUnreadSummaryDto>> {
+        val staleness = HomeSectionStaleness()
+        val result =
+            requestHomeSection(
+                category = "server_unread_summary",
+                contractCode = "home_server_unread_summary_contract_mismatch",
+                serializer = ListSerializer(ServerUnreadSummaryDto.serializer()),
+                errorTextDecoder = HomeNetworkResponse::homeServerUnreadSummaryRouteErrorTextOrNull,
+                staleness = staleness
+            ) {
+                transport.serverUnreadSummary(serverId, priority)
+            }
+        return if (result is DataResult.Content && staleness.stale) {
+            DataResult.Error(ScreenError(code = "server_unread_summary_stale", retryable = true))
+        } else {
+            result
+        }
     }
 
     /**

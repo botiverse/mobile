@@ -98,6 +98,7 @@ import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import build.raft.designsystem.components.raftClickable
 
 /** Semantics, keyboard and touch of the interactive components (compose ui-test, desktop). */
 @OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
@@ -179,15 +180,16 @@ class RaftInteractiveSemanticsTest {
             assertTrue(dismissed, "the close button calls onDismiss")
         }
 
-    /** raft-ui 0.21: a plain row with a description centres its switch on the title's first line. */
+    /** raft-ui 0.21.1 (#703): a plain row with a description centres its switch on the whole row. */
     @Test
-    fun aPlainRowWithADescriptionCentresItsEndsOnTheTitle() =
+    fun aPlainRowWithADescriptionCentresItsEndsOnTheRow() =
         runComposeUiTest {
             setContent(
                 themed {
                     Box(Modifier.width(360.dp)) {
                         RaftListRow(
                             "Desktop notifications",
+                            modifier = Modifier.testTag("row"),
                             variant = RaftListRowVariant.Plain,
                             description = "Get a notification for mentions and replies, even when the app is in the background.",
                             wrapDescription = true,
@@ -196,9 +198,9 @@ class RaftInteractiveSemanticsTest {
                     }
                 },
             )
-            val title = onNodeWithText("Desktop notifications", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val row = onNodeWithTag("row", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
             val switch = onNodeWithTag("switch", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            assertEquals(title.center.y, switch.center.y, 1f, "the switch sits on the title's line, not the middle of the row")
+            assertEquals(row.center.y, switch.center.y, 1f, "the switch sits in the middle of the row, not on the title's line")
         }
 
     @Test
@@ -450,6 +452,8 @@ class RaftInteractiveSemanticsTest {
             waitForIdle()
             val right = onNodeWithText("Billing").fetchSemanticsNode().boundsInRoot.right / density.density
             assertTrue(right <= 220f, "the selected tab ends at ${right}dp, inside the 220dp strip")
+            // raft-ui reveals it with the row's 16dp padding: the last tab sits at the strip's end.
+            assertTrue(right <= 204.5f, "the last tab keeps the 16dp end padding (ends at ${right}dp)")
         }
 
     /**
@@ -758,5 +762,52 @@ class RaftInteractiveSemanticsTest {
             onNodeWithText("Done").assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.LiveRegion))
             onNodeWithText("Done").performTouchInput { click(Offset(centerX, height + 8.dp.toPx())) }
             assertTrue(done, "a tap 8dp under the word ends the mode")
+        }
+
+    /** raftClickable: a button by default (or the role asked for) with its click label, the same box, and no click when disabled. */
+    @Test
+    fun raftClickableIsANamedButtonThatTakesNoRoom() =
+        runComposeUiTest {
+            var clicks = 0
+            var enabled by mutableStateOf(true)
+            setContent(
+                themed {
+                    Column {
+                        Box(
+                            Modifier
+                                .testTag("plain")
+                                .size(width = 120.dp, height = 32.dp),
+                        )
+                        Box(
+                            Modifier
+                                .testTag("pressable")
+                                .size(width = 120.dp, height = 32.dp)
+                                .raftClickable(onClick = { clicks++ }, enabled = enabled, onClickLabel = "Open details"),
+                        )
+                        Box(
+                            Modifier
+                                .testTag("tab")
+                                .size(40.dp)
+                                .raftClickable(onClick = {}, role = Role.Tab),
+                        )
+                    }
+                },
+            )
+            val pressable = onNodeWithTag("pressable")
+            pressable.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            assertEquals("Open details", pressable.fetchSemanticsNode().config[SemanticsActions.OnClick].label)
+            assertEquals(
+                onNodeWithTag("plain").fetchSemanticsNode().size,
+                pressable.fetchSemanticsNode().size,
+                "the modifier takes no layout room",
+            )
+            pressable.performClick()
+            assertEquals(1, clicks)
+            onNodeWithTag("tab").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab))
+            enabled = false
+            waitForIdle()
+            pressable.assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
+            pressable.performClick()
+            assertEquals(1, clicks, "a disabled raftClickable does not click")
         }
 }

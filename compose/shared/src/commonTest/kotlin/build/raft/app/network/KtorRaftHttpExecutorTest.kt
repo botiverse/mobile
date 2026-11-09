@@ -431,9 +431,37 @@ class KtorRaftHttpExecutorTest {
         assertEquals(1L, lane.generation, "the lane is still replaced for the next calls")
     }
 
+    @Test
+    fun failedResponseTraceIdIsLoggedAndRecordedForTheErrorShownNext() = runBlocking {
+        val traceId = "4bf92f3577b34da6a3ce929d0e0e4736"
+        for ((status, recorded) in listOf(HttpStatusCode.InternalServerError to traceId, HttpStatusCode.Unauthorized to null, HttpStatusCode.OK to null)) {
+            val traceIds = RaftRecentFailedTraceId()
+            val harness =
+                Harness(failedTraceIds = traceIds) {
+                    respond("""{"error":"boom"}""", status, headersOf("x-trace-id", traceId.uppercase()))
+                }
+
+            val response =
+                harness.executor.execute(
+                    priority = RaftRequestPriority.Visible,
+                    url = "https://api.raft.test/api/messages/context",
+                    method = "GET",
+                    headers = emptyMap(),
+                    bodyText = null,
+                    jsonBody = false
+                )
+
+            assertEquals(status.value, response.code)
+            assertEquals(recorded, traceIds.recent(), "recorded trace id for $status")
+            val finish = harness.logs.single { it.startsWith("slock_http_execute_finish") }
+            assertTrue("traceId=$traceId" in finish, finish)
+        }
+    }
+
     private class Harness(
         coordinator: RaftNetworkRequestLifetimeCoordinator = RaftNetworkRequestLifetimeCoordinator(),
         engineReportsProtocol: Boolean = true,
+        failedTraceIds: RaftRecentFailedTraceId = RaftRecentFailedTraceId(),
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
     ) {
         val requests = mutableListOf<HttpRequestData>()
@@ -459,6 +487,7 @@ class KtorRaftHttpExecutorTest {
                 engineReportsProtocol = engineReportsProtocol,
                 // MockEngine consumes the body itself: count at the body writer here.
                 uploadProgress = BodyWriterUploadProgressTracker,
+                failedTraceIds = failedTraceIds,
             )
     }
 

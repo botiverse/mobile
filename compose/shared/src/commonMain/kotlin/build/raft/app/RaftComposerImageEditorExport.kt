@@ -136,7 +136,8 @@ internal class RaftComposerImageExportText(
 )
 
 /**
- * Renders [content] over [source] into a new bitmap of [raftComposerImageExportSize]. Edit
+ * Renders [content] over [source] into a new bitmap of [raftComposerImageExportSize], turned by
+ * the content's quarter turns (sides swapped for an odd turn). Edit
  * coordinates are editor-canvas pixels of a canvas of [canvasSize]; [density] is the editor's, so
  * dp-sized text boxes match the screen. Mosaic block colours are sampled from [mosaicSource] (the
  * editor's on-screen decode), so each block has the colour the user saw rather than one
@@ -161,8 +162,27 @@ internal fun renderRaftComposerImageExport(
             maxLongEdgePx = maxLongEdgePx,
             maxPixels = maxPixels,
         ) ?: return null
-    val bitmap = ImageBitmap(exportSize.width, exportSize.height)
+    val turns = raftComposerImageNormalizeQuarterTurns(content.rotationQuarterTurns)
+    val outputSize = raftComposerImageRotatedSize(exportSize, turns)
+    val bitmap = ImageBitmap(outputSize.width, outputSize.height)
     val canvas = Canvas(bitmap)
+    // Turn the whole picture: the edits are drawn in the unrotated canvas (see
+    // RaftComposerImageEditorTransform.kt), so the matrix maps the unrotated render onto the
+    // turned bitmap exactly as raftComposerImageRotatePoint does.
+    when (turns) {
+        1 -> {
+            canvas.translate(outputSize.width.toFloat(), 0f)
+            canvas.rotate(90f)
+        }
+        2 -> {
+            canvas.translate(outputSize.width.toFloat(), outputSize.height.toFloat())
+            canvas.rotate(180f)
+        }
+        3 -> {
+            canvas.translate(0f, outputSize.height.toFloat())
+            canvas.rotate(270f)
+        }
+    }
     canvas.scale(
         sx = exportSize.width.toFloat() / canvasSize.width,
         sy = exportSize.height.toFloat() / canvasSize.height,
@@ -199,7 +219,7 @@ internal fun DrawScope.drawRaftComposerImageDrawOperations(
                         color = operation.stroke.color,
                         start = segment[0],
                         end = segment[1],
-                        strokeWidth = RaftComposerImagePencilStrokeWidthPx,
+                        strokeWidth = operation.stroke.width,
                         cap = StrokeCap.Round,
                     )
                 }
@@ -240,7 +260,7 @@ private fun DrawScope.drawRaftComposerImageTextAnnotation(
     val layout =
         text.measurer.measure(
             text = annotation.text,
-            style = text.style,
+            style = text.style.copy(color = annotation.color),
             overflow = TextOverflow.Ellipsis,
             maxLines = RaftComposerImageTextMaxLines,
             constraints =

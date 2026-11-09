@@ -1,6 +1,6 @@
 package build.raft.app.assistant
 
-import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -45,13 +45,14 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 // The page side of the personal assistant's otter (web assistant/AssistantOtter.tsx
-// `AssistantOtterAnchor` / `AssistantOtterListEnd` and assistantOtterState.ts): which composer it
-// lies on, its mood's inputs, and what a press does: it opens the assistant's panel
-// (ThreadAssistantPanel.kt). The view is RaftAssistantOtter.kt.
+// `AssistantOtterAnchor` and assistantOtterState.ts): which composer it lies on, its mood's
+// inputs, and what a press does: it opens the assistant's panel (ThreadAssistantPanel.kt). The
+// view is RaftAssistantOtter.kt. Unlike the web there is no list-end band: the otter lies over
+// the message list, which never moves for it (artin 11-03).
 
 /**
  * One conversation's otter, when that conversation may carry it: its composer shows the otter
- * while [hostId] is the host it lies on ([hosts]), and its message list keeps the band free.
+ * while [hostId] is the host it lies on ([hosts]).
  *
  * A press ([onOpen]) opens the assistant's panel over the page ([panelOpen]; web AssistantOtter
  * `open`), which shows [assistantName] with its meta line ([readsDms], [mood]) and [paused], and
@@ -74,7 +75,15 @@ internal class ThreadAssistantOtter(
     val panelOpen: Boolean = false,
     val onPanelOpenChange: (Boolean) -> Unit = {},
     val panelEmbed: ThreadAssistantPanelEmbed? = null,
+    /** Where the otter rests on its composer: a wide window's panel opens above it. */
+    val rest: ThreadAssistantOtterRest = ThreadAssistantOtterRest(),
 )
+
+/** The otter's rest box in window coordinates (web `restRef`), reported by the composer drawing it. */
+@Stable
+internal class ThreadAssistantOtterRest {
+    var bounds: Rect? by mutableStateOf(null)
+}
 
 /** The current conversation's otter, or null where it has none. */
 internal val LocalThreadAssistantOtter = compositionLocalOf<ThreadAssistantOtter?> { null }
@@ -250,7 +259,8 @@ internal fun rememberThreadAssistantOtter(
         remember(agentId, server, dmChannelId) {
             ThreadAssistantPanelEmbed(agentId = agentId, onWaitingActionCard = { waitingActionCard = it })
         }
-    return remember(hostId, store, mood, scale, endInset, server, dmChannelId, assistant, paused, panelOpen, panelEmbed) {
+    val rest = remember(server, dmChannelId) { ThreadAssistantOtterRest() }
+    return remember(hostId, store, mood, scale, endInset, server, dmChannelId, assistant, paused, panelOpen, panelEmbed, rest) {
         ThreadAssistantOtter(
             hostId = hostId,
             hosts = store.otterHosts,
@@ -267,6 +277,7 @@ internal fun rememberThreadAssistantOtter(
             panelOpen = panelOpen,
             onPanelOpenChange = { panelOpen = it },
             panelEmbed = panelEmbed,
+            rest = rest,
         )
     }
 }
@@ -281,6 +292,8 @@ internal fun ThreadAssistantOtterFrameEdge(
     otter: ThreadAssistantOtter,
     composing: Boolean,
     focused: Boolean,
+    /** Something is stacked above the composer frame (measured by the composer): the otter goes in. */
+    covered: Boolean = false,
     animateEntrance: Boolean = true,
 ) {
     DisposableEffect(otter.hosts, otter.hostId) {
@@ -296,19 +309,21 @@ internal fun ThreadAssistantOtterFrameEdge(
     RaftAssistantOtter(
         mood = otter.mood,
         // Into the composer while the person types, and further while its panel is open.
-        tuck = threadAssistantOtterTuck(composing = composing, panelOpen = otter.panelOpen),
+        tuck = threadAssistantOtterTuck(composing = composing, panelOpen = otter.panelOpen, covered = covered),
         onClick = otter.onOpen,
         modifier = Modifier.fillMaxWidth().testTag(ThreadAssistantOtterTestTag),
         scale = otter.scale,
         endInset = otter.endInset,
         animateEntrance = animateEntrance,
+        onRestBounds = { otter.rest.bounds = it },
     )
 }
 
-/** Web `data-[open]` over `data-composing`: the panel's tuck wins. */
-internal fun threadAssistantOtterTuck(composing: Boolean, panelOpen: Boolean): RaftOtterTuck =
+/** Web `data-[open]` over `data-composing`: the panel's tuck wins; a card above the composer hides it too. */
+internal fun threadAssistantOtterTuck(composing: Boolean, panelOpen: Boolean, covered: Boolean = false): RaftOtterTuck =
     when {
         panelOpen -> RaftOtterTuck.PanelOpen
+        covered -> RaftOtterTuck.Covered
         composing -> RaftOtterTuck.Composing
         else -> RaftOtterTuck.None
     }
@@ -321,21 +336,5 @@ internal fun newAssistantOtterHostId(): String = "thread-otter-${Uuid.random()}"
 internal fun threadComposerComposing(text: String, attachmentCount: Int): Boolean =
     text.isNotBlank() || attachmentCount > 0
 
-/**
- * At the end of the conversation's message list (web `AssistantOtterListEnd`): while the otter
- * lies on this conversation's composer, a full-width band as tall as the otter, so the last
- * message is never under it. Nothing otherwise.
- */
-@Composable
-internal fun ThreadAssistantOtterListEnd(otter: ThreadAssistantOtter?) {
-    if (otter == null) return
-    val order by otter.hosts.order.collectAsState()
-    if (order.activeAssistantOtterHost() != otter.hostId) return
-    Box(Modifier.testTag(ThreadAssistantOtterListEndTestTag)) {
-        RaftAssistantOtterListEndBand(otter.mood, scale = otter.scale)
-    }
-}
-
-/** Web `data-testid="assistant-otter"` / `"assistant-otter-list-end"`. */
+/** Web `data-testid="assistant-otter"`. */
 internal const val ThreadAssistantOtterTestTag = "assistant-otter"
-internal const val ThreadAssistantOtterListEndTestTag = "assistant-otter-list-end"

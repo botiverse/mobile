@@ -66,8 +66,8 @@ internal enum class RaftNavRoute {
  * The app's top-level destinations. [id] is stable (it is the persisted shell tab key and the
  * future Nav3 back-stack key): never rename one. [label] and [icon] are the web LeftRail's
  * (`layout.leftRail.*`, lucide-react / raft-ui icons); [compactLabel] / [compactIcon] are what
- * the phone bar has always drawn where it differs (Home's house, Tasks' square-check), kept so the
- * phone bar does not change.
+ * the phone bar draws where it differs: Home's house, as the web's MobileNav (whose Tasks is
+ * ListTodo too, artin 2026-11-02).
  */
 internal enum class RaftAppDestination(
     val id: String,
@@ -105,7 +105,6 @@ internal enum class RaftAppDestination(
         badge = RaftNavBadgeSource.None,
         route = RaftNavRoute.ShellTab,
         navEvent = RaftNavDestination.Tasks,
-        compactIcon = RaftNavIcon.Lucide(RaftLucideIconName.SquareCheckBig),
     ),
     Search(
         id = "search",
@@ -114,6 +113,20 @@ internal enum class RaftAppDestination(
         badge = RaftNavBadgeSource.None,
         route = RaftNavRoute.ShellTab,
         navEvent = RaftNavDestination.Search,
+    ),
+    /**
+     * The Artifacts home (web LeftRail: after Tasks, only behind workspace_artifacts_v0,
+     * `useArtifactsRailShown`); a page in the content area beside the rail, like Computers. The
+     * phone opens it from the server panel ([RaftServerMenuEntry.Artifacts]). NAV_DESTINATIONS has
+     * no `artifacts` yet: no nav event.
+     */
+    Artifacts(
+        id = "artifacts",
+        label = Res.string.artifacts_dashboard_title,
+        icon = RaftNavIcon.Lucide(RaftLucideIconName.Artifact),
+        badge = RaftNavBadgeSource.None,
+        route = RaftNavRoute.Page,
+        navEvent = null,
     ),
     Members(
         id = "members",
@@ -196,13 +209,15 @@ internal enum class RaftNavPresentation(
             RaftAppDestination.Chat,
             RaftAppDestination.Activity,
             RaftAppDestination.Tasks,
+            RaftAppDestination.Artifacts,
             RaftAppDestination.Members,
             RaftAppDestination.Computers,
             RaftAppDestination.Apps,
         ),
-        // The web heads this footer with its "collapse sidebar" toggle (SidebarToggleRailItem,
-        // RaftAppRailFooterItem.Toggle here). It is an action on the shell, not a destination,
-        // and the app's wide layout has no collapsible sidebar, so the rail leaves it out.
+        // The web heads this footer with its "collapse sidebar" toggle (SidebarToggleRailItem).
+        // It is an action on the shell, not a destination, so it is not listed here: the rail
+        // adds it (RaftRailSidebarToggle) where a list column sits beside the main area
+        // (appShellCollapsibleColumn).
         footer = listOf(RaftAppDestination.Help, RaftAppDestination.Settings),
     ),
     ;
@@ -262,7 +277,9 @@ internal fun raftNavItems(
         val destination = RaftAppDestination.fromId(id)
         val selected =
             when (destination?.route) {
-                RaftNavRoute.Page -> false
+                // A page destination is selected only while it shows in the content area (the wide
+                // rail's inline Computers / Apps); pushed over the shell it never is.
+                RaftNavRoute.Page -> selectedKey == id
                 RaftNavRoute.Menu -> menuOpen
                 else -> selectedKey == id
             }

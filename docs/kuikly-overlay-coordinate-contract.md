@@ -65,4 +65,4 @@ anchorRef.resolve(RaftPopoverLocalPoint.BottomStart)
 
 - `compose/shared/src/commonMain/kotlin/build/raft/app/RaftFloatingOverlay.kt`
 - `compose/shared/src/commonMain/kotlin/build/raft/app/RaftLiveRootAnchorRef.kt`
-- `compose/shared/src/commonMain/kotlin/build/raft/app/components/RaftBrutalComponents.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/components/RaftAppControls.kt`

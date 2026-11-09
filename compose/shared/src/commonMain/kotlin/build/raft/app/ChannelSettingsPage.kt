@@ -11,6 +11,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.ARCHIVED_NAME_COLLISION
+import build.raft.app.data.ArchivedNameCollision
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.ScreenError
 import build.raft.designsystem.components.RaftTextFieldDefaults
@@ -41,6 +43,7 @@ import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftSection
+import build.raft.designsystem.components.RaftFormSection
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonList
@@ -64,7 +67,6 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -91,6 +93,8 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 internal const val CHANNEL_SETTINGS_PAGE = "compose_channel_settings"
 
@@ -99,11 +103,73 @@ internal data class ChannelSettingsRoute(
     val channelId: ChannelId
 )
 
-internal fun channelSettingsPageData(serverId: ServerId, channelId: ChannelId): JSONObject =
+/** [threadLinkKey]: the [ThreadSettingsPageLinks] entry of the conversation that opened the page. */
+internal fun channelSettingsPageData(
+    serverId: ServerId,
+    channelId: ChannelId,
+    threadLinkKey: String? = null,
+): JSONObject =
     JSONObject().apply {
         put("pageName", CHANNEL_SETTINGS_PAGE)
         put("serverId", serverId.value)
         put("channelId", channelId.value)
+        threadLinkKey?.let { put(THREAD_SETTINGS_LINK_KEY, it) }
+    }
+
+/** Where the conversation goes once the settings page has closed. */
+internal enum class ChannelSettingsCloseLanding {
+    /** Archive and Unarchive: the channel is still readable (web keeps it open). */
+    StayInChannel,
+
+    /** Leaving a public channel: still readable, the composer offers Join (web EditChannelDialog). */
+    StayNotJoined,
+
+    /** Deleted, disconnected, or a private or joint channel left: nothing to read here any more. */
+    LeaveConversation,
+}
+
+/**
+ * Web EditChannelDialog: Delete and Disconnect go elsewhere; Leave stays with membership false. A
+ * private or joint channel left is gone until someone invites you back, so that one goes too. A
+ * Leave without a loaded channel can't show it is public: it goes rather than show a stale page.
+ */
+internal fun channelSettingsCloseLanding(
+    closedBy: ChannelSettingsAction?,
+    channel: HomeChannelRow?,
+): ChannelSettingsCloseLanding =
+    when (closedBy) {
+        ChannelSettingsAction.Delete,
+        ChannelSettingsAction.Disconnect -> ChannelSettingsCloseLanding.LeaveConversation
+        ChannelSettingsAction.Leave ->
+            if (channel == null || channelSettingsIsPrivate(channel)) {
+                ChannelSettingsCloseLanding.LeaveConversation
+            } else {
+                ChannelSettingsCloseLanding.StayNotJoined
+            }
+        else -> ChannelSettingsCloseLanding.StayInChannel
+    }
+
+/** What Home does at once for [this] landing; its Refresh may read a replica that is behind. */
+internal fun ChannelSettingsCloseLanding.homeIntent(channelId: ChannelId): SharedHomeIntent? =
+    when (this) {
+        ChannelSettingsCloseLanding.StayInChannel -> null
+        ChannelSettingsCloseLanding.StayNotJoined -> SharedHomeIntent.ChannelMembershipEnded(channelId, keepListed = true)
+        ChannelSettingsCloseLanding.LeaveConversation -> SharedHomeIntent.ChannelMembershipEnded(channelId, keepListed = false)
+    }
+
+/**
+ * What Home does at once when the page closes. Archive keeps you on the page but the channel leaves
+ * Home (fetches no longer list it), so its guards must not bring it back.
+ */
+internal fun channelSettingsCloseHomeIntent(
+    closedBy: ChannelSettingsAction?,
+    landing: ChannelSettingsCloseLanding,
+    channelId: ChannelId,
+): SharedHomeIntent? =
+    if (closedBy == ChannelSettingsAction.Archive) {
+        SharedHomeIntent.ChannelMembershipEnded(channelId, keepListed = false)
+    } else {
+        landing.homeIntent(channelId)
     }
 
 internal fun JSONObject.toChannelSettingsRouteOrNull(): ChannelSettingsRoute? {
@@ -270,6 +336,47 @@ internal fun channelSettingsGuestPolicyApplies(channel: HomeChannelRow): Boolean
     return type == "channel" || (type == "private" && channelSettingsIsAllChannel(channel))
 }
 
+/**
+ * The settings store of one channel as the settings page and the conversation's settings drawer
+ * both use it: seeded from Home's snapshot and the members store (no blank first frame), then
+ * loading the channel's settings through the route's authority.
+ */
+internal fun createChannelSettingsStore(
+    route: ChannelSettingsRoute,
+    routeOwner: build.raft.app.data.AuthenticatedRouteOwner,
+    sharedStores: build.raft.app.data.RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    scope: kotlinx.coroutines.CoroutineScope,
+    logger: (String) -> Unit,
+): ChannelSettingsStore {
+    val homeStore = sharedStores.sharedHomeStore(storeScope)
+    val membersStore = sharedStores.serverMembersStore(storeScope)
+    val initialSharedHandoff =
+        channelSettingsSharedHandoffSnapshot(
+            owner = routeOwner,
+            route = route,
+            homeSnapshot = homeStore?.snapshotFor(route.serverId),
+            membersHandoff = membersStore.currentChannelMembersHandoff(routeOwner, route.channelId),
+        )
+    val dataSource =
+        RealChannelSettingsDataSource(
+            route = route,
+            authStore = sharedStores.authStore(storeScope),
+            owner = routeOwner,
+            gateway = sharedStores.authenticatedRouteAuthorityGateway(storeScope),
+            logger = logger,
+        )
+    return ChannelSettingsStore(
+        route = route,
+        owner = routeOwner,
+        dataSource = dataSource,
+        snapshotCache = sharedStores.channelSettingsSnapshotCache,
+        initialSharedHandoff = initialSharedHandoff,
+        initialAuthorityAccepted = sharedStores.currentAuthenticatedRouteOwner(storeScope) == routeOwner,
+        scope = scope,
+    )
+}
+
 @Page(CHANNEL_SETTINGS_PAGE, supportInLocal = true)
 internal class ComposeChannelSettingsPage : AuthenticatedProductPager(AuthenticatedProductRoute.ChannelSettings) {
     override fun willInit() {
@@ -290,6 +397,7 @@ private fun ChannelSettingsPageScreen() {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val params = pager.pageData.params
     val route = remember(params.toString()) { params.toChannelSettingsRouteOrNull() }
+    val threadLinkKey = remember(params.toString()) { params.optString(THREAD_SETTINGS_LINK_KEY).takeIf(String::isNotBlank) }
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
     if (route == null) {
         ChannelSettingsInvalidRouteScreen(onBack = router::closePage)
@@ -310,49 +418,11 @@ private fun ChannelSettingsPageScreen() {
             sharedStores.authenticatedRouteOwnerFlow(storeScope)
         }.collectAsState(sharedStores.currentAuthenticatedRouteOwner(storeScope))
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
-    val authorityGateway = remember(sharedStores, storeScope) {
-        sharedStores.authenticatedRouteAuthorityGateway(storeScope)
-    }
-    val snapshotCache = remember(sharedStores) { sharedStores.channelSettingsSnapshotCache }
     val homeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
     val membersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
-    val initialSharedHandoff = remember(route, routeOwner, homeStore, membersStore) {
-        channelSettingsSharedHandoffSnapshot(
-            owner = routeOwner,
-            route = route,
-            homeSnapshot = homeStore?.snapshotFor(route.serverId),
-            membersHandoff = membersStore.currentChannelMembersHandoff(routeOwner, route.channelId),
-        )
-    }
     val scope = rememberCoroutineScope()
-    val dataSource = remember(route, routeOwner, authStore, authorityGateway) {
-        RealChannelSettingsDataSource(
-            route = route,
-            authStore = authStore,
-            owner = routeOwner,
-            gateway = authorityGateway,
-            logger = { bridge.log("channel_settings_store $it") },
-        )
-    }
-    val settingsStore = remember(
-        route,
-        routeOwner,
-        dataSource,
-        snapshotCache,
-        sharedStores,
-        storeScope,
-        scope,
-    ) {
-        ChannelSettingsStore(
-            route = route,
-            owner = routeOwner,
-            dataSource = dataSource,
-            snapshotCache = snapshotCache,
-            initialSharedHandoff = initialSharedHandoff,
-            initialAuthorityAccepted =
-                sharedStores.currentAuthenticatedRouteOwner(storeScope) == routeOwner,
-            scope = scope,
-        )
+    val settingsStore = remember(route, routeOwner, sharedStores, storeScope, scope) {
+        createChannelSettingsStore(route, routeOwner, sharedStores, storeScope, scope) { bridge.log("channel_settings_store $it") }
     }
     val settingsState by settingsStore.state.collectAsState()
     val authorityAccepted = liveOwner == routeOwner
@@ -362,6 +432,24 @@ private fun ChannelSettingsPageScreen() {
     val pinned = settingsState.displayPinned(route.channelId.value)
     val muted = settingsState.displayMuted
     var confirm by remember(route) { mutableStateOf<ChannelSettingsConfirm?>(null) }
+    // Move to section reads and writes MY sidebar through Home's store, as the sidebar does.
+    val homeState by remember(homeStore) { homeStore?.state ?: kotlinx.coroutines.flow.MutableStateFlow(null) }.collectAsState()
+    val homeSidebarOrder = (homeState?.content as? SharedHomeContentState.Content)?.snapshot?.sidebarOrder
+    val sectionPin =
+        ThreadConversationPinUiState(
+            conversationId = route.channelId.value,
+            pinnedKind = "channel",
+            pinnedId = route.channelId.value,
+            pinned = pinned,
+            available = true,
+        )
+    val section =
+        channelSettingsSectionPlacement(
+            sidebarOrder = homeSidebarOrder ?: settingsState.sidebarOrder,
+            channelId = route.channelId.value,
+            pinned = homeSidebarOrder?.let { order -> channelSettingsSidebarPinned(order, route.channelId.value) } ?: pinned,
+            joint = channel?.let(::channelSettingsIsJoint) == true,
+        )
     val longMessageCollapseSetting =
         rememberRaftLongMessageCollapseConversationSetting(
             serverId = route.serverId.value,
@@ -428,8 +516,29 @@ private fun ChannelSettingsPageScreen() {
                 if (settingsState.closedWithAccessLost) {
                     sharedStores.publishChannelAccessLost(storeScope, route.channelId)
                 }
+                val landing = channelSettingsCloseLanding(settingsState.closedBy, settingsState.channel)
+                channelSettingsCloseHomeIntent(settingsState.closedBy, landing, route.channelId)?.let { intent -> homeStore?.dispatch(intent) }
                 homeStore?.dispatch(SharedHomeIntent.Refresh)
+                threadLinkKey?.let(ThreadSettingsPageLinks::get)?.sources?.onChannelSettingsClosed?.invoke(landing, route.channelId)
                 router.closePage()
+            }
+            // Web ArchivedNameCollisionBanner: settings close, then the archived channel opens
+            // (read-only), or restored after Unarchive.
+            is ChannelSettingsEffect.OpenChannel -> {
+                confirm = null
+                if (effect.unarchived) homeStore?.dispatch(SharedHomeIntent.Refresh)
+                val launch =
+                    buildStandaloneConversationThreadLaunchPayload(
+                        conversation = effect.conversation,
+                        timeContext = null,
+                        onWarn = bridge::logWarn,
+                    )
+                router.closePage()
+                if (launch != null) {
+                    pager.openRaftPage(THREAD_PAGE, threadLaunchPageData(launch), storeScopeOverride = storeScope)
+                } else {
+                    bridge.logWarn("channel_settings_archived_open_rejected reason=identity_unresolved")
+                }
             }
             null -> Unit
         }
@@ -455,7 +564,10 @@ private fun ChannelSettingsPageScreen() {
                                 actionInFlight = settingsState.actionInFlight,
                                 profileStatus = settingsState.profileStatus,
                                 profileErrorCode = settingsState.profileErrorCode,
+                                profileErrorMessage = settingsState.profileErrorMessage,
+                                profileCollision = settingsState.archivedCollisionFor(settingsStore),
                                 slackBridge = settingsState.slackBridge,
+                                section = section,
                             ),
                         longMessageCollapseSetting = longMessageCollapseSetting,
                         agentStatusResolver = agentStatusResolver,
@@ -513,6 +625,23 @@ private fun ChannelSettingsPageScreen() {
                                         storeScopeOverride = storeScope,
                                         authenticatedRouteAuthorityRequired = true,
                                     )
+                                },
+                                onMoveSection = { moves ->
+                                    if (settingsState.writeActionsEnabled && authorityAccepted) {
+                                        channelSectionHomeIntents(sectionPin, moves).forEach { homeStore?.dispatch(it) }
+                                    }
+                                },
+                                onCreateSection = { name, emoji ->
+                                    if (settingsState.writeActionsEnabled && authorityAccepted) {
+                                        homeStore?.dispatch(
+                                            SharedHomeIntent.CreateSidebarSection(
+                                                name = name,
+                                                emoji = emoji,
+                                                moveConversationId = route.channelId.value,
+                                                insertBeforeSectionId = section?.currentSectionKey,
+                                            )
+                                        )
+                                    }
                                 },
                             ),
                     )
@@ -585,8 +714,13 @@ internal data class ChannelSettingsUiModel(
     val actionInFlight: ChannelSettingsAction? = null,
     val profileStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val profileErrorCode: String? = null,
+    val profileErrorMessage: String? = null,
+    /** A rename refused for an archived channel's name (web `archivedCollision`); null hides the warning. */
+    val profileCollision: ChannelInfoArchivedCollision? = null,
     /** The Slack channel pick (web ChannelSlackBridgeField); null hides it. */
     val slackBridge: ChannelSlackBridgeState? = null,
+    /** Move to section (web ChannelSectionSelect, Pinned included); null keeps the Pin switch. */
+    val section: ChannelSectionPlacement? = null,
 )
 
 internal class ChannelSettingsCallbacks(
@@ -602,7 +736,30 @@ internal class ChannelSettingsCallbacks(
     val onUnarchive: () -> Unit = {},
     val onStopAllAgents: () -> Unit = {},
     val onOpenJointConnections: () -> Unit = {},
+    val onMoveSection: (List<ChannelSectionMove>) -> Unit = {},
+    val onCreateSection: (name: String, emoji: String?) -> Unit = { _, _ -> },
 )
+
+/** The rename's archived-name warning as [ChannelInfoForm] shows it, with its store hooks. */
+internal class ChannelInfoArchivedCollision(
+    val collision: ArchivedNameCollision,
+    val unarchiving: Boolean,
+    val onUnarchive: () -> Unit,
+    val onOpen: () -> Unit,
+    val onClear: () -> Unit,
+)
+
+/** The warning from the settings store's state, or null when there is none. */
+internal fun ChannelSettingsState.archivedCollisionFor(store: ChannelSettingsStore): ChannelInfoArchivedCollision? =
+    profileCollision?.let { collision ->
+        ChannelInfoArchivedCollision(
+            collision = collision,
+            unarchiving = collisionUnarchiving,
+            onUnarchive = { store.dispatch(ChannelSettingsIntent.UnarchiveArchivedCollision) },
+            onOpen = { store.dispatch(ChannelSettingsIntent.OpenArchivedCollision) },
+            onClear = { store.dispatch(ChannelSettingsIntent.ClearArchivedCollision) },
+        )
+    }
 
 internal data class ChannelSettingsFailureLabels(
     val update: String,
@@ -615,7 +772,7 @@ internal data class ChannelSettingsFailureLabels(
 )
 
 @Composable
-private fun channelSettingsFailureLabels(): ChannelSettingsFailureLabels =
+internal fun channelSettingsFailureLabels(): ChannelSettingsFailureLabels =
     ChannelSettingsFailureLabels(
         update = stringResource(Res.string.thread_settings_update_failed),
         visibility = stringResource(Res.string.channel_settings_visibility_failed),
@@ -731,6 +888,8 @@ internal fun ChannelSettingsContent(
                     slackBridge = model.slackBridge?.takeIf { channelSettingsSlackBridgeApplies(channel, permissions) },
                     onSave = callbacks.onSaveProfile,
                     onClearStatus = callbacks.onClearProfileStatus,
+                    archivedCollision = model.profileCollision,
+                    errorMessage = model.profileErrorMessage,
                 )
             }
         }
@@ -754,7 +913,10 @@ internal fun ChannelSettingsContent(
                 longMessageCollapseSetting = longMessageCollapseSetting,
                 onToggleMute = callbacks.onToggleMute,
                 onTogglePin = callbacks.onTogglePin,
-                notificationLevelTargetInput = notificationLevelTarget
+                notificationLevelTargetInput = notificationLevelTarget,
+                section = model.section,
+                onMoveSection = callbacks.onMoveSection,
+                onCreateSection = callbacks.onCreateSection,
             )
         }
         val actions = channelSettingsActionRows(model)
@@ -863,20 +1025,22 @@ private fun channelSettingsStatusLabel(channel: HomeChannelRow): String =
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ChannelMembersSection(
+internal fun ChannelMembersSection(
     slice: SharedServerChannelMembersSlice,
     fallbackCount: Int?,
     canAdd: Boolean,
     agentStatusResolver: RaftAgentStatusResolver,
     onOpen: () -> Unit,
     onAdd: () -> Unit,
+    separator: Boolean = true,
 ) {
     val members = slice.members.distinctBy { it.id }
     val loading = slice.status == SharedServerMembersLoadStatus.InFlight && members.isEmpty()
     val summary = channelSettingsMemberSummary(slice = slice, fallbackCount = fallbackCount)
     RaftSection(
         title = stringResource(Res.string.channel_settings_members),
-        modifier = Modifier.clickable(onClick = onOpen),
+        modifier = Modifier.raftClickable(onClick = onOpen, tier = RaftHoverTier.Subtle),
+        separator = separator,
         action = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 RaftText(summary, style = RaftTheme.typography.caption, color = RaftTheme.colors.foregroundHint)
@@ -1015,6 +1179,52 @@ private fun ChannelInfoSection(
     slackBridge: ChannelSlackBridgeState?,
     onSave: (name: String, description: String, slackBridge: ChannelSlackBridgeSelection?) -> Unit,
     onClearStatus: () -> Unit,
+    archivedCollision: ChannelInfoArchivedCollision?,
+    errorMessage: String?,
+) {
+    RaftSection(title = stringResource(Res.string.channel_settings_info)) {
+        RaftText(
+            stringResource(Res.string.channel_settings_info_detail),
+            modifier = Modifier.padding(bottom = 12.dp),
+            style = RaftTheme.typography.footnote,
+            color = RaftTheme.colors.foregroundHint,
+        )
+        ChannelInfoForm(
+            channel = channel,
+            nameEditable = nameEditable,
+            enabled = enabled,
+            status = status,
+            errorCode = errorCode,
+            slackBridge = slackBridge,
+            onSave = onSave,
+            onClearStatus = onClearStatus,
+            archivedCollision = archivedCollision,
+            errorMessage = errorMessage,
+        )
+    }
+}
+
+/**
+ * The Info form itself (web EditChannelDialog panel form): Name and Description, the Slack pick
+ * when given, the failure banner, then Cancel and Save on the right ("Changes saved" beside them
+ * after a save). Shared by the settings page and the settings drawer.
+ */
+@Composable
+internal fun ChannelInfoForm(
+    channel: HomeChannelRow,
+    nameEditable: Boolean,
+    enabled: Boolean,
+    status: ChannelProfileUpdateStatus,
+    errorCode: String?,
+    slackBridge: ChannelSlackBridgeState?,
+    onSave: (name: String, description: String, slackBridge: ChannelSlackBridgeSelection?) -> Unit,
+    onClearStatus: () -> Unit,
+    /** Unsaved edits (the drawer keeps them on a tap beside it). */
+    onDirtyChange: (Boolean) -> Unit = {},
+    /** The rename's archived-name warning (web EditChannelDialog `archivedCollision`); null hides it. */
+    archivedCollision: ChannelInfoArchivedCollision? = null,
+    /** The server's reason for a failed Unarchive from that warning, shown in the failure banner. */
+    errorMessage: String? = null,
 ) {
     val savedSlack = slackBridge?.pairedSlackChannelId
     var slackPick by remember(channel.channelId, savedSlack) { mutableStateOf(savedSlack) }
@@ -1036,6 +1246,7 @@ private fun ChannelInfoSection(
     val trimmedName = name.trim()
     val trimmedDescription = description.trim()
     val dirty = trimmedName != savedName.trim() || trimmedDescription != savedDescription.trim() || slackDirty
+    LaunchedEffect(dirty) { onDirtyChange(dirty) }
     val nameInvalid = trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()
     val nameError =
         when {
@@ -1045,109 +1256,119 @@ private fun ChannelInfoSection(
             else -> null
         }
     val clearStatusOnEdit: () -> Unit = { if (status != ChannelProfileUpdateStatus.Idle && !saving) onClearStatus() }
-    RaftSection(title = stringResource(Res.string.channel_settings_info)) {
-        RaftText(
-            stringResource(Res.string.channel_settings_info_detail),
-            modifier = Modifier.padding(bottom = 12.dp),
-            style = RaftTheme.typography.footnote,
-            color = RaftTheme.colors.foregroundHint,
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaftField(
-                label = stringResource(Res.string.thread_settings_name),
-                required = true,
-                error = nameError,
-                enabled = enabled && nameEditable && !saving,
-            ) {
-                RaftTextField(
-                    value = name,
-                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
-                    onValueChange = {
-                        name = it
-                        clearStatusOnEdit()
-                    },
-                    placeholder = stringResource(Res.string.thread_settings_name_placeholder),
-                )
-            }
-            RaftField(
-                label = stringResource(Res.string.thread_settings_description),
-                optional = true,
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Web: the warning sits above the name it is about, with Unarchive (when allowed) and Open
+        // Channel; no Change Name on a rename, the field is right below.
+        archivedCollision?.let { warning ->
+            ArchivedNameCollisionBanner(
+                archivedChannelName = warning.collision.archivedChannelName,
+                canUnarchive = warning.collision.canUnarchive,
+                unarchiving = warning.unarchiving,
+                onUnarchive = warning.onUnarchive,
+                onOpen = warning.onOpen,
+                onChangeName = null,
+            )
+        }
+        RaftField(
+            label = stringResource(Res.string.thread_settings_name),
+            required = true,
+            error = nameError,
+            enabled = enabled && nameEditable && !saving,
+        ) {
+            RaftTextField(
+                value = name,
+                keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
+                onValueChange = {
+                    name = it
+                    clearStatusOnEdit()
+                    // Web `handleNameChange`: a new name drops the warning.
+                    archivedCollision?.onClear?.invoke()
+                },
+                placeholder = stringResource(Res.string.thread_settings_name_placeholder),
+            )
+        }
+        RaftField(
+            label = stringResource(Res.string.thread_settings_description),
+            optional = true,
+            enabled = enabled && !saving,
+        ) {
+            RaftTextarea(
+                value = description,
+                onValueChange = {
+                    description = it
+                    clearStatusOnEdit()
+                },
+                placeholder = stringResource(Res.string.thread_settings_description_placeholder),
+            )
+        }
+        if (slackBridge != null) {
+            ChannelSlackBridgeField(
+                state = slackBridge,
+                selected = slackPick,
                 enabled = enabled && !saving,
-            ) {
-                RaftTextarea(
-                    value = description,
-                    onValueChange = {
-                        description = it
-                        clearStatusOnEdit()
+                onSelect = {
+                    slackPick = it
+                    clearStatusOnEdit()
+                },
+            )
+        }
+        // Web: the warning takes the place of the error for the refused rename.
+        val namedByWarning = errorCode == ARCHIVED_NAME_COLLISION && archivedCollision != null
+        if (status == ChannelProfileUpdateStatus.Failed && errorCode != "channel_name_invalid" && !namedByWarning) {
+            RaftBanner(
+                description =
+                    when (errorCode) {
+                        CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE ->
+                            stringResource(Res.string.channel_settings_slack_partial_failure)
+                        // Web ArchivedNameCollisionBanner `onError`: the server's reason, else its own line.
+                        CHANNEL_SETTINGS_ARCHIVED_UNARCHIVE_FAILED ->
+                            errorMessage ?: stringResource(Res.string.channel_create_failed_unarchive)
+                        else -> stringResource(Res.string.thread_settings_update_failed)
                     },
-                    placeholder = stringResource(Res.string.thread_settings_description_placeholder),
-                    limit = ChannelSettingsDescriptionLimit,
+                status = RaftBannerStatus.Warning,
+                size = RaftBannerSize.Sm,
+            )
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (status == ChannelProfileUpdateStatus.Succeeded && !dirty) {
+                RaftText(
+                    stringResource(Res.string.channel_settings_save_success),
+                    modifier = Modifier.weight(1f),
+                    style = RaftTheme.typography.footnote,
+                    color = RaftTheme.colors.foregroundHint,
                 )
             }
-            if (slackBridge != null) {
-                ChannelSlackBridgeField(
-                    state = slackBridge,
-                    selected = slackPick,
-                    enabled = enabled && !saving,
-                    onSelect = {
-                        slackPick = it
-                        clearStatusOnEdit()
-                    },
-                )
-            }
-            if (status == ChannelProfileUpdateStatus.Failed && errorCode != "channel_name_invalid") {
-                RaftBanner(
-                    description =
-                        stringResource(
-                            if (errorCode == CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE) {
-                                Res.string.channel_settings_slack_partial_failure
-                            } else {
-                                Res.string.thread_settings_update_failed
-                            }
-                        ),
-                    status = RaftBannerStatus.Warning,
-                    size = RaftBannerSize.Sm,
-                )
-            }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (status == ChannelProfileUpdateStatus.Succeeded && !dirty) {
-                    RaftText(
-                        stringResource(Res.string.channel_settings_save_success),
-                        modifier = Modifier.weight(1f),
-                        style = RaftTheme.typography.footnote,
-                        color = RaftTheme.colors.foregroundHint,
-                    )
-                }
-                RaftButton(
-                    text = stringResource(Res.string.common_cancel),
-                    onClick = {
-                        name = savedName
-                        description = savedDescription
-                        slackPick = savedSlack
-                        clearStatusOnEdit()
-                    },
-                    variant = RaftButtonVariant.Ghost,
-                    enabled = dirty && !saving,
-                )
-                RaftButton(
-                    text = stringResource(Res.string.common_save),
-                    onClick = {
-                        onSave(trimmedName, trimmedDescription, if (slackDirty) ChannelSlackBridgeSelection(slackPick) else null)
-                    },
-                    variant = RaftButtonVariant.Primary,
-                    enabled =
-                        enabled &&
-                            dirty &&
-                            trimmedName.isSubmittableChannelName() &&
-                            trimmedDescription.length <= ChannelSettingsDescriptionLimit,
-                    loading = saving,
-                    loadingLabel = stringResource(Res.string.thread_settings_saving),
-                )
-            }
+            RaftButton(
+                text = stringResource(Res.string.common_cancel),
+                onClick = {
+                    name = savedName
+                    description = savedDescription
+                    slackPick = savedSlack
+                    clearStatusOnEdit()
+                    // Web `resetDraft` drops the warning too.
+                    archivedCollision?.onClear?.invoke()
+                },
+                variant = RaftButtonVariant.Ghost,
+                enabled = dirty && !saving,
+            )
+            RaftButton(
+                text = stringResource(Res.string.common_save),
+                onClick = {
+                    onSave(trimmedName, trimmedDescription, if (slackDirty) ChannelSlackBridgeSelection(slackPick) else null)
+                },
+                variant = RaftButtonVariant.Primary,
+                enabled =
+                    enabled &&
+                        dirty &&
+                        trimmedName.isSubmittableChannelName() &&
+                        trimmedDescription.length <= ChannelSettingsDescriptionLimit,
+                loading = saving,
+                loadingLabel = stringResource(Res.string.thread_settings_saving),
+            )
         }
     }
 }
@@ -1205,19 +1426,19 @@ private const val ChannelSettingsDescriptionLimit = 500
  * (`-1`) on every plan today, so it is not shown.
  */
 @Composable
-private fun ChannelGuestAccessSection(
+internal fun ChannelGuestAccessSection(
     channel: HomeChannelRow,
     enabled: Boolean,
     onSetVisible: (Boolean) -> Unit,
     onSetJoinable: (Boolean) -> Unit,
+    /** False inside the settings drawer, whose body already has the side padding. */
+    inset: Boolean = true,
 ) {
-    RaftSection(title = stringResource(Res.string.channel_settings_guest_title)) {
-        RaftText(
-            stringResource(Res.string.channel_settings_guest_detail),
-            modifier = Modifier.padding(bottom = 12.dp),
-            style = RaftTheme.typography.footnote,
-            color = RaftTheme.colors.foregroundHint,
-        )
+    ChannelSettingsSectionFrame(
+        title = stringResource(Res.string.channel_settings_guest_title),
+        description = stringResource(Res.string.channel_settings_guest_detail),
+        inset = inset,
+    ) {
         RaftListRowGroup(Modifier.fillMaxWidth()) {
             ChannelPreferenceRow(
                 title = stringResource(Res.string.channel_settings_guest_visible),
@@ -1256,7 +1477,10 @@ private fun ChannelPreferencesSection(
     longMessageCollapseSetting: RaftLongMessageCollapseConversationSetting,
     onToggleMute: () -> Unit,
     onTogglePin: () -> Unit,
-    notificationLevelTargetInput: RaftNotificationLevelTarget? = null
+    notificationLevelTargetInput: RaftNotificationLevelTarget? = null,
+    section: ChannelSectionPlacement? = null,
+    onMoveSection: (List<ChannelSectionMove>) -> Unit = {},
+    onCreateSection: (name: String, emoji: String?) -> Unit = { _, _ -> },
 ) {
     // An older server without the unified API shows no Notifications row.
     val notificationLevelTarget = notificationLevelTargetInput.whenLevelsSupported()
@@ -1269,15 +1493,21 @@ private fun ChannelPreferencesSection(
         )
     }
     RaftSection(title = stringResource(Res.string.channel_settings_preferences)) {
+        // web ChannelPreferencesSection: Move to section (Pinned is one of its choices) comes first.
+        if (section != null) {
+            ChannelSectionSelectRow(state = section, enabled = enabled, onMove = onMoveSection, onCreate = onCreateSection)
+        }
         RaftListRowGroup(Modifier.fillMaxWidth()) {
-            ChannelPreferenceRow(
-                title = stringResource(Res.string.channel_settings_pin),
-                detail = stringResource(Res.string.channel_settings_pin_detail),
-                checked = pinned,
-                enabled = enabled,
-                divider = false,
-                onToggle = onTogglePin
-            )
+            if (section == null) {
+                ChannelPreferenceRow(
+                    title = stringResource(Res.string.channel_settings_pin),
+                    detail = stringResource(Res.string.channel_settings_pin_detail),
+                    checked = pinned,
+                    enabled = enabled,
+                    divider = false,
+                    onToggle = onTogglePin
+                )
+            }
             if (notificationLevelTarget == null) {
                 ChannelPreferenceRow(
                     title = stringResource(Res.string.channel_settings_mute),
@@ -1300,7 +1530,7 @@ private fun ChannelPreferencesSection(
             // Device-local display preference: available without write permission on the channel.
             ChannelPreferenceRow(
                 title = stringResource(Res.string.conversation_long_message_collapse),
-                detail = longMessageCollapseSetting.preference.localizedDetail(),
+                detail = stringResource(Res.string.channel_settings_collapse_detail),
                 checked = longMessageCollapseSetting.effective,
                 enabled = longMessageCollapseSetting.available,
                 divider = true,
@@ -1339,13 +1569,15 @@ private fun ChannelPreferenceRow(
  * (web `confirmDialogs`), except Unarchive and Stop All Agents (its own dialog).
  */
 @Composable
-private fun ChannelActionsSection(
+internal fun ChannelActionsSection(
     actions: List<ChannelSettingsActionRow>,
     enabled: Boolean,
     actionInFlight: ChannelSettingsAction?,
     callbacks: ChannelSettingsCallbacks,
+    /** False inside the settings drawer, whose body already has the side padding. */
+    inset: Boolean = true,
 ) {
-    RaftSection(title = stringResource(Res.string.channel_settings_actions)) {
+    ChannelSettingsSectionFrame(title = stringResource(Res.string.channel_settings_actions), inset = inset) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             actions.forEach { row ->
                 val buttonEnabled = enabled && actionInFlight == null
@@ -1410,7 +1642,7 @@ private fun ChannelActionsSection(
 }
 
 @Composable
-private fun ChannelActionButton(
+internal fun ChannelActionButton(
     text: String,
     icon: RaftLucideIconName,
     variant: RaftButtonVariant = RaftButtonVariant.Default,
@@ -1430,6 +1662,35 @@ private fun ChannelActionButton(
         loadingLabel = loadingLabel ?: text,
         leadingIcon = { RaftComputersIcon(icon) },
     )
+}
+
+/**
+ * A settings section: on the page a [RaftSection] (its own rule and side padding; the
+ * description as a footnote under the title), in the drawer a [RaftFormSection] (the drawer
+ * draws the rule and the padding).
+ */
+@Composable
+private fun ChannelSettingsSectionFrame(
+    title: String,
+    inset: Boolean,
+    description: String? = null,
+    content: @Composable () -> Unit,
+) {
+    if (inset) {
+        RaftSection(title = title) {
+            if (description != null) {
+                RaftText(
+                    description,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                    style = RaftTheme.typography.footnote,
+                    color = RaftTheme.colors.foregroundHint,
+                )
+            }
+            content()
+        }
+    } else {
+        RaftFormSection(title = title, description = description) { content() }
+    }
 }
 
 /** Joint channels: the entry to Connected servers (list, resend, invite another server). */
@@ -1458,7 +1719,7 @@ private fun ChannelJointConnectionsEntry(onClick: () -> Unit) {
  * the request runs; the dialog closes when it ends.
  */
 @Composable
-private fun ChannelSettingsConfirmDialog(
+internal fun ChannelSettingsConfirmDialog(
     confirm: ChannelSettingsConfirm,
     channelName: String,
     leaveVariant: LeaveChannelConfirmVariant,

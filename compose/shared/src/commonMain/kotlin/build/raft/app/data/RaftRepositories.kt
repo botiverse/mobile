@@ -227,6 +227,13 @@ interface ConversationRepository {
         channelId: ChannelId? = null,
         priority: DataRequestPriority
     ): DataResult<ThreadSnapshot> = getMessageContext(messageId, channelId)
+    /**
+     * A message's context for resolving a reference (a `#channel:shortid` chip) before opening it:
+     * only `messages/context`, without [getMessageContext]'s follow-up `channels/{id}` request, whose
+     * header detail the opened page loads itself. One round trip instead of two while the chip waits.
+     */
+    suspend fun resolveMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> =
+        getMessageContext(messageId, channelId)
     suspend fun loadOlderMessages(
         threadId: ThreadId,
         beforeSeq: Long,
@@ -451,6 +458,21 @@ interface MemberRepository {
         priority: DataRequestPriority,
         agentId: MemberId
     ): DataResult<AgentAppLoginSnapshot> =
+        DataResult.Empty(EmptyReason.NoMembers)
+    /** Web AgentAppAccessTab › App events: a page of the events apps sent to the agent. */
+    suspend fun getAgentAppEvents(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        clientId: String?,
+        before: String?
+    ): DataResult<AgentAppEventPage> =
+        DataResult.Empty(EmptyReason.NoMembers)
+    /** One app event with its payload. */
+    suspend fun getAgentAppEvent(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        eventId: String
+    ): DataResult<AgentAppEventDetail> =
         DataResult.Empty(EmptyReason.NoMembers)
     suspend fun startAgent(
         priority: DataRequestPriority,
@@ -730,11 +752,30 @@ enum class InboxFilter(val wireValue: String, val scopeWireValue: String? = null
      * included as in All (`filter=all&scope=pinned`, routes/channels.ts `parseInboxScopeParam`).
      */
     Pinned("all", scopeWireValue = "pinned"),
+
+    /**
+     * web Saved: a scope over All, after Pinned. The server lists the threads followed through a
+     * saved message (saving a message follows its thread): `filter=all&scope=saved`.
+     */
+    Saved("all", scopeWireValue = "saved"),
+
+    /**
+     * web Artifacts: a scope over All, after Saved. Only Artifact rows (object rows, no
+     * conversations): `filter=all&scope=artifacts`, the server's app scope (routes/channels.ts
+     * `parseInboxScopeParam`, `getObjectKindInboxItems`), none for a search or a channel.
+     */
+    Artifacts("all", scopeWireValue = "artifacts"),
 }
 
-/** All and Pinned (a scope over All) list unfollowed, not-Done threads too; the read filters don't. */
+/**
+ * All and its scopes (Pinned, Saved, Artifacts) list unfollowed, not-Done threads too; the read
+ * filters don't (web: the unfollowed rows are fetched per scope, under the All read filter; Artifacts
+ * lists no threads at all).
+ */
 internal val InboxFilter.listsUnfollowedActivityThreads: Boolean
-    get() = this == InboxFilter.All || this == InboxFilter.Pinned
+    get() =
+        this == InboxFilter.All || this == InboxFilter.Pinned || this == InboxFilter.Saved ||
+            this == InboxFilter.Artifacts
 
 const val DEFAULT_PAGE_LIMIT = 30
 

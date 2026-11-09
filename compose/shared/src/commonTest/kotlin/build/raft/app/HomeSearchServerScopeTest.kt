@@ -33,6 +33,27 @@ class HomeSearchServerScopeTest {
         assertEquals(emptyList(), frequentKeys(scoped, "channel-a"))
     }
 
+    /** tygg / artin 11-06: a channel just created is in the live Home, not this page's own snapshot. */
+    @Test
+    fun liveHomeOnSearchsServerWinsOverThePagesOwnSnapshot() {
+        val own = homeState(serverId = "server-a", channelId = "channel-old", channelName = "old")
+        val live = homeState(serverId = "server-a", channelId = "channel-new", channelName = "new")
+        assertSame(live, homeSearchCandidateState(live, own, "server-a"))
+    }
+
+    @Test
+    fun liveHomeOnAnotherServerLeavesThePagesOwnSnapshot() {
+        val own = homeState(serverId = "server-b", channelId = "channel-b", channelName = "b")
+        val live = homeState(serverId = "server-a", channelId = "channel-a", channelName = "a")
+        assertSame(own, homeSearchCandidateState(live, own, "server-b"))
+    }
+
+    @Test
+    fun liveHomeNotLoadedLeavesThePagesOwnSnapshot() {
+        val own = homeState(serverId = "server-a", channelId = "channel-a", channelName = "a")
+        assertSame(own, homeSearchCandidateState(SharedHomeState(), own, "server-a"))
+    }
+
     @Test
     fun matchingServerHomeSnapshotStillServesSearchRows() {
         val scoped = botiverseHome.scopedToSearchServer("server-a")

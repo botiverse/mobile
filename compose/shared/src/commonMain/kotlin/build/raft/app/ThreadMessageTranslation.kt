@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftTextLinkVariant
+import build.raft.designsystem.components.RaftTextLink
 import build.raft.app.resources.*
 import build.raft.app.data.SharedMessageTranslationCandidate
 import build.raft.app.data.SharedMessageTranslationEntry
@@ -8,12 +10,9 @@ import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.SharedMessageTranslationStatus
 import build.raft.app.data.TranslationModePreference
 import build.raft.app.data.isSilentTranslationEntry
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.animation.core.CubicBezierEasing
@@ -32,6 +31,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.designsystem.components.RaftSkeleton
+import build.raft.designsystem.components.RaftSkeletonVariant
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 
@@ -252,18 +253,23 @@ internal fun ThreadMessageTranslationIndicator(
                         ThreadMessageTranslationIndicatorAction.ToggleOriginal -> onToggleOriginal
                         ThreadMessageTranslationIndicatorAction.None -> null
                     }
-                RaftText(
-                    text = localizedActionLabel,
-                    style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.foreground,
-                    maxLines = 1,
-                    modifier =
-                        if (onAction != null) {
-                            Modifier.clickable(role = Role.Button, onClick = onAction)
-                        } else {
-                            Modifier
-                        }
-                )
+                if (onAction != null) {
+                    // A link inside the indicator's sentence: TextLink strong (ink, semibold).
+                    RaftTextLink(
+                        text = localizedActionLabel,
+                        onClick = onAction,
+                        variant = RaftTextLinkVariant.Strong,
+                        style = typography.caption,
+                        maxLines = 1,
+                    )
+                } else {
+                    RaftText(
+                        text = localizedActionLabel,
+                        style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.foreground,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
@@ -271,11 +277,5 @@ internal fun ThreadMessageTranslationIndicator(
 
 @Composable
 internal fun ThreadMessageTranslationPendingPlaceholder() {
-    Box(
-        modifier =
-            Modifier
-                .width(176.dp)
-                .height(16.dp)
-                .background(RaftColor.AccentStone)
-    )
+    RaftSkeleton(modifier = Modifier.width(176.dp), variant = RaftSkeletonVariant.Line)
 }

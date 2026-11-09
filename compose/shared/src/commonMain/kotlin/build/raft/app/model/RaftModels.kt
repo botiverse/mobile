@@ -161,7 +161,12 @@ data class ConversationSummary(
      * payload never carried the object — consumers must treat that as "unknown"
      * and hide capability-gated affordances rather than assume permission.
      */
-    val channelCapabilities: ChannelCapabilities? = null
+    val channelCapabilities: ChannelCapabilities? = null,
+    /**
+     * Agent Lounge v0: the agent this channel is the Lounge of (web `Channel.loungeAgentId`).
+     * Null: not a Lounge. A Lounge is a plain channel on the wire, kept out of every channel list.
+     */
+    val loungeAgentId: String? = null
 ) {
     val activityMuted: Boolean
         get() = activityNotificationPreference.activityMuted
@@ -253,6 +258,8 @@ data class ExternalMessageAuthor(
     val installId: String? = null,
     val appRegistrationId: String? = null,
     val actorProjectionRevision: Long? = null,
+    /** The external workspace's name ("Acme" for a Slack workspace); the identity card's "From …". */
+    val workspaceName: String? = null,
     /**
      * The wire carried no display name (no `externalAuthor.displayName`, no `senderName`):
      * [displayName] is an English stand-in, and every surface that shows the sender name shows
@@ -407,6 +414,13 @@ data class MemberProfile(
      */
     val agentLifecycleStatus: String? = null,
     /**
+     * The agent list's `blockedReason` (`GET /agents` and its incremental-sync rows; never
+     * `GET /agents/:id`): why the server runs this agent nowhere, raw. Only
+     * `computer_access_revoked` changes what the app shows ([build.raft.app.data.agentBlockedState]);
+     * any other value keeps the agent's ordinary state, as the web does for one it doesn't know.
+     */
+    val agentBlockedReason: String? = null,
+    /**
      * External agents (runtime `external`) have no managed liveness. Web keeps
      * `agent.external === true || runtime === "external"` as parallel sources
      * (agentStore.ts resolveAgentDisplayState); producers fold both via
@@ -456,7 +470,7 @@ data class MemberProfile(
     val managedByAppInstallId: String? = null,
     /**
      * App Bots only: the owning App's name (`managedByApp.name` on `GET /agents` and
-     * `GET /agents/:id`, botiverse/slock #11273). Web `AppBotBadge` reads it for "Bot · <App>".
+     * `GET /agents/:id`, botiverse/slock #11273). Web `AppBadge` reads it for "App · <App>".
      */
     val managedByAppName: String? = null,
     /**
@@ -486,8 +500,18 @@ data class MemberProfile(
      * role" (web `canChangeChannelRole`). Drives the flag-gated role-action UI;
      * kept as data so the gate can be enabled without another wire change.
      */
-    val canChangeChannelRole: Boolean? = null
-)
+    val canChangeChannelRole: Boolean? = null,
+    /**
+     * Only on the answer of an agent profile update (`PATCH /agents/:id` `configApply`): how the
+     * server applies a runtime config change. Never stored or cached (web #13372 keeps it off the
+     * agent too): stores drop it with [withoutConfigApply].
+     */
+    @Transient
+    val configApply: build.raft.app.data.AgentConfigApply? = null
+) {
+    /** This profile as stored: without the update answer's [configApply]. */
+    fun withoutConfigApply(): MemberProfile = if (configApply == null) this else copy(configApply = null)
+}
 
 /**
  * Slack-bridge (or future provider) participant projected into a channel's
@@ -506,7 +530,9 @@ data class ChannelExternalMemberProfile(
     val avatarUrl: String? = null,
     val avatarLabel: String = displayName.toRaftAvatarLabel(),
     /** External-agent credential last use; Web considers this online for 120s. */
-    val lastSeenAt: String? = null
+    val lastSeenAt: String? = null,
+    /** The Slack workspace's name (slock `getChannelExternalMembers` `workspaceName`). */
+    val workspaceName: String? = null,
 )
 
 @Serializable
@@ -626,6 +652,8 @@ data class ForwardMessageBundle(
 data class ForwardMessageSource(
     val label: String,
     val thread: Boolean = false,
+    /** A public task discussion source's title (slock #12620 `sourceTaskTitle`). */
+    val taskTitle: String? = null,
     /** Where the source opens (web `canOpenSourceLabel`): the conversation and message, or null. */
     val channelId: String? = null,
     val messageId: String? = null
@@ -716,26 +744,52 @@ data class MessageCommentHostSource(
 )
 
 // Task Models
+/**
+ * Task status. Wire values are slock `packages/shared` `TASK_STATUSES`
+ * (`"backlog" | "todo" | "in_progress" | "in_review" | "done" | "closed"`, slock #12962);
+ * entries run in board order (raft-ui `TASK_STATUS_IDS`: Backlog to Closed).
+ *
+ * [Backlog] ("not now", raft-design decision 0042) is task v2 only and not active work.
+ * [Unknown] is never sent by the server today: it holds a status a newer server added that
+ * this build does not know, so the task keeps showing (neutral, last) instead of dropping
+ * out of every list. It is never written back and never offered as a choice.
+ */
 @Serializable
 enum class TaskStatus {
+    Backlog,
     Todo,
     InProgress,
     InReview,
     Done,
-    Closed;
+    Closed,
+    Unknown;
 
     fun toWireValue(): String =
         when (this) {
+            Backlog -> "backlog"
             Todo -> "todo"
             InProgress -> "in_progress"
             InReview -> "in_review"
             Done -> "done"
             Closed -> "closed"
+            Unknown -> UNKNOWN_WIRE_VALUE
         }
 
+    /** A status the server knows and the app may write or filter by ([Unknown] is not one). */
+    val isKnown: Boolean
+        get() = this != Unknown
+
     companion object {
+        /** App-side token for [Unknown]; not a server status. */
+        const val UNKNOWN_WIRE_VALUE = "unknown"
+
+        /** Statuses the server knows, in board order (excludes [Unknown]). */
+        val known: List<TaskStatus> = entries.filter { it.isKnown }
+
+        /** Exact wire values only; null for anything else (see [fromWireValueOrUnknown]). */
         fun fromWireValue(value: String?): TaskStatus? =
             when (value?.trim()?.lowercase()) {
+                "backlog" -> Backlog
                 "todo" -> Todo
                 "in_progress" -> InProgress
                 "in_review" -> InReview
@@ -743,6 +797,14 @@ enum class TaskStatus {
                 "closed" -> Closed
                 else -> null
             }
+
+        /**
+         * A present status string the app does not know (a status added on the server after
+         * this build) reads as [Unknown], so the task stays visible; a missing or blank one is
+         * still null.
+         */
+        fun fromWireValueOrUnknown(value: String?): TaskStatus? =
+            fromWireValue(value) ?: value?.takeIf { it.isNotBlank() }?.let { Unknown }
     }
 }
 
@@ -889,6 +951,23 @@ data class AgentTypingUpdated(
     val taskId: String? = null,
 ) : RealtimeEvent
 
+/**
+ * `thread:reply_updated` (slock `messageService.emitExternalLinkedMessageUpdateToFrontend`, sent to the
+ * parent channel's room when a bridged (Slack) thread reply is edited): the edited reply, for the
+ * parent's inline replies. Never a new reply, never a count change.
+ */
+@Serializable
+data class ThreadReplyUpdated(
+    val parentMessageId: MessageId,
+    val parentChannelId: ChannelId,
+    val parentChannelType: String,
+    val threadChannelId: ChannelId,
+    val messageId: MessageId,
+    val seq: Long,
+    val content: String,
+    val updatedAt: String,
+) : RealtimeEvent
+
 @Serializable
 data class ThreadUpdated(
     val parentMessageId: MessageId,
@@ -970,6 +1049,11 @@ data class MemberPresenceUpdated(
      */
     val wakeCrashLoop: AgentWakeCrashLoop? = null,
     /**
+     * Why the last start failed, with [detailKind] `runtime_unavailable` (the `spawnFailure`
+     * carrier of `agent:activity`); null for every other status.
+     */
+    val spawnFailure: AgentSpawnFailure? = null,
+    /**
      * The agent is stuck on one tool call (the `toolStuck` carrier of `agent:activity`). The daemon
      * attaches it to every frame while that is true, so a frame without it means "not stuck".
      */
@@ -991,6 +1075,28 @@ data class MemberPresenceUpdated(
 data class AgentActivitySubscribed(
     val agentIds: List<String>
 ) : RealtimeEvent
+
+/**
+ * Why an agent's start failed (shared `SpawnFailureActivityDiagnostic`, botiverse/slock task #1123):
+ * the fields the client shows. [lookupReason] says how the Computer's lookup for the runtime ended
+ * (`not_on_path`, `lookup_timed_out`, ...), only with [reason] `runtime_not_found`; absent means
+ * no verdict (an older daemon), never "confirmed missing".
+ */
+@Serializable
+data class AgentSpawnFailure(
+    val reason: String,
+    val lookupReason: String? = null,
+    /** The agent's model the start failed on (`model_not_found`, `model_unsupported`); null when not sent. */
+    val model: String? = null,
+    /** The server paused automatic restarts after this failure (shared `autoRestartPaused`). */
+    val autoRestartPaused: Boolean = false,
+    /**
+     * When the paused agent's next automatic try starts, epoch ms (shared `pauseRetryAtMs`,
+     * botiverse/slock #13460): server-written, only while a pause that retries by itself is in
+     * effect; null when no time is known.
+     */
+    val pauseRetryAtMs: Long? = null
+)
 
 /**
  * The server paused automatic wakes after the agent stopped several times in a row (shared
@@ -1088,6 +1194,23 @@ data class ServerAppearanceUpdated(
     val serverId: ServerId,
     val theme: String?,
     val themeDecor: Boolean?
+) : RealtimeEvent
+
+/**
+ * `user:profile-updated` (botiverse/slock d311e6f0f9 #12688, `packages/shared/src/actorResolveContract.ts`
+ * `userProfileUpdatedEventSchema`, sent by `services/userProfileEvents.ts`): the person [userId]
+ * changed their name or avatar. Exactly the public profile a server's member list shows (never
+ * email), sent per server to the viewers who may see them in [serverId]'s member list. Clients
+ * patch that one member in place; the member list is not read again.
+ */
+@Serializable
+data class UserProfileUpdated(
+    val serverId: ServerId,
+    val userId: MemberId,
+    val name: String,
+    val displayName: String?,
+    val avatarUrl: String?,
+    val gravatarHash: String,
 ) : RealtimeEvent
 
 /**

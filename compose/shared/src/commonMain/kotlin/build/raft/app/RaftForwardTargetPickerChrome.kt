@@ -1,10 +1,8 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.app.resources.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,9 +33,14 @@ import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckbox
+import build.raft.designsystem.components.RaftConversationKindGlyph
+import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftIconTile
@@ -47,6 +50,8 @@ import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 // web ForwardComposerMobile (targets step): a phone PanelHeader whose 44dp ghost Back and
 // trailing actions sit 3dp from the screen edges, `main p-3` around the search InputGroup,
@@ -161,14 +166,7 @@ internal fun RaftForwardPickerSearchField(
         leading = { ForwardPickerGlyph(RaftLucideIconName.Search, 18.dp) },
         trailing =
             if (query.isNotEmpty()) {
-                {
-                    Box(
-                        modifier = Modifier.size(18.dp).clickable(enabled = enabled) { onQueryChange("") },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        ForwardPickerGlyph(RaftLucideIconName.X, 16.dp)
-                    }
-                }
+                { RaftTextFieldClearAction(onClear = { onQueryChange("") }, enabled = enabled) }
             } else {
                 null
             },
@@ -208,8 +206,6 @@ internal fun <T> RaftForwardPickerTargetRow(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     val shape = RoundedCornerShape(RaftAppRadius.Control)
     Row(
         modifier =
@@ -217,8 +213,7 @@ internal fun <T> RaftForwardPickerTargetRow(
                 .fillMaxWidth()
                 .padding(horizontal = ForwardPickerBodyPadding)
                 .alpha(if (interactive) 1f else 0.72f)
-                .background(if (pressed) colors.fillPressed else Color.Transparent, shape)
-                .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+                .raftClickable(onClick = onClick, shape = shape, tier = RaftHoverTier.Subtle)
                 .heightIn(min = ForwardPickerRowMinHeight)
                 .padding(horizontal = ForwardPickerRowPaddingHorizontal, vertical = ForwardPickerRowPaddingVertical),
         verticalAlignment = Alignment.CenterVertically,
@@ -258,12 +253,18 @@ internal fun <T> RaftForwardPickerTargetRow(
                 )
             RaftForwardTargetVisualKind.PublicChannel,
             RaftForwardTargetVisualKind.PrivateChannel,
-            RaftForwardTargetVisualKind.JointChannel ->
+            RaftForwardTargetVisualKind.JointChannel,
+            RaftForwardTargetVisualKind.Task ->
                 RaftIconTile(size = RaftIconTileSize.Sm) {
                     ForwardPickerGlyph(
                         target.visualKind.iconName() ?: RaftLucideIconName.Hash,
                         RaftIconTileSize.Sm.icon
                     )
+                }
+            // web `<IconTile size="sm"><ThreadMark /></IconTile>`: raft-ui ThreadIcon.
+            RaftForwardTargetVisualKind.Thread ->
+                RaftIconTile(size = RaftIconTileSize.Sm) {
+                    RaftConversationKindIcon(RaftConversationKindGlyph.Thread, size = RaftIconTileSize.Sm.icon)
                 }
         }
         // web `ForwardSearchTargetTitle` / `ChannelPicker` `ChannelRowContent`: a DM with an App
@@ -280,9 +281,17 @@ internal fun <T> RaftForwardPickerTargetRow(
                 color = colors.foreground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = appBot == null)
+                modifier = Modifier.weight(1f, fill = appBot == null && !target.current)
             )
             if (appBot != null) RaftAppBotBadge(identity = appBot, botName = target.title)
+            // web `ForwardConversationTargetTitle`: the conversation the forward was opened from.
+            if (target.current) {
+                RaftBadge(
+                    text = stringResource(Res.string.thread_forward_current_conversation),
+                    appearance = RaftBadgeAppearance.Soft,
+                    variant = RaftBadgeVariant.Muted
+                )
+            }
         }
     }
 }

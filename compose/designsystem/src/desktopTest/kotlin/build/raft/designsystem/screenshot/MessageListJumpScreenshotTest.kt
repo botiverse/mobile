@@ -97,7 +97,7 @@ class MessageListJumpScreenshotTest {
             Modifier
                 .width(width.dp)
                 .height(180.dp)
-                .background(RaftTheme.colors.layerCanvasMuted)
+                .background(RaftTheme.colors.layerSidebar)
                 .border(1.dp, RaftTheme.colors.lineHairline),
             content = content,
         )

@@ -16,6 +16,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -279,11 +280,15 @@ fun <T> RaftMultiChoiceList(
                     if (noMatches) item(key = "no-match") { ChoiceListNote(noMatchLabel) }
                 }
             }
+            val listState = rememberLazyListState()
             LazyColumn(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .then(if (fill) Modifier.weight(1f) else Modifier.heightIn(max = RaftChoiceListDefaults.ScrollMaxHeight)),
+                        .then(if (fill) Modifier.weight(1f) else Modifier.heightIn(max = RaftChoiceListDefaults.ScrollMaxHeight))
+                        // raft-ui 0.60 ScrollArea: the list's overlay scrollbar.
+                        .raftScrollbar(listState),
+                state = listState,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
                 content = rows,

@@ -2,8 +2,13 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import build.raft.app.base.BridgeModule
+import build.raft.app.base.Utils
 import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.PersistentLinkOpenPreferenceRepository
@@ -16,6 +21,15 @@ import build.raft.app.compat.pager.Pager
 internal enum class RaftLinkOpenIntent {
     Ordinary,
     ForceExternal,
+
+    /**
+     * A page of Raft's own web the app has no screen for (an announcement's
+     * `/settings/account#two-step`). The link setting still decides where it opens, but "Default
+     * browser" asks the host for a real browser (`browser: true`): Raft claims its own origin as
+     * Android App Links / iOS Universal Links, so a plain VIEW of it can route straight back into
+     * the app, which has nothing to show for it.
+     */
+    RaftWebPage,
 }
 
 internal enum class RaftLinkOpenTarget {
@@ -165,6 +179,8 @@ internal class RaftLinkNavigator(
     private val openInAppBrowser: (String) -> Boolean,
     private val openExternalBrowser: (String) -> Unit,
     private val onRejected: (RaftLinkRejectReason) -> Unit,
+    /** [RaftLinkOpenIntent.RaftWebPage] in the default browser: a browser even for a Raft link. */
+    private val openRaftWebPageInBrowser: (String) -> Unit = openExternalBrowser,
 ) {
     fun open(
         rawUrl: String,
@@ -181,7 +197,11 @@ internal class RaftLinkNavigator(
                 }
             }
             RaftLinkOpenTarget.ExternalBrowser -> {
-                openExternalBrowser(decision.url)
+                if (intent == RaftLinkOpenIntent.RaftWebPage) {
+                    openRaftWebPageInBrowser(decision.url)
+                } else {
+                    openExternalBrowser(decision.url)
+                }
                 decision
             }
             RaftLinkOpenTarget.Rejected -> {
@@ -198,16 +218,19 @@ internal fun rememberRaftLinkNavigator(
     bridge: BridgeModule,
     routeScope: RaftInAppBrowserRouteScope = RaftInAppBrowserRouteScope.InheritShell,
 ): RaftLinkNavigator {
+    // Lazy: every page has a navigator (ProvideRaftLinkOpening), few of them open a link.
     val preferenceRepository =
         remember {
-            PersistentLinkOpenPreferenceRepository(
-                KeyValueLinkOpenPreferenceStore(raftSharedPreferenceStore())
-            )
+            lazy {
+                PersistentLinkOpenPreferenceRepository(
+                    KeyValueLinkOpenPreferenceStore(raftSharedPreferenceStore())
+                )
+            }
         }
     val rejectedMessage = stringResource(Res.string.in_app_browser_unable_to_open_link)
     return remember(pager, bridge, preferenceRepository, routeScope, rejectedMessage) {
         RaftLinkNavigator(
-            modeProvider = { effectiveLinkOpenMode(preferenceRepository.getLinkOpenModeSync()) },
+            modeProvider = { effectiveLinkOpenMode(preferenceRepository.value.getLinkOpenModeSync()) },
             openInAppBrowser = { url ->
                 when (routeScope) {
                     RaftInAppBrowserRouteScope.InheritShell -> pager.openRaftInAppBrowserPage(url)
@@ -219,7 +242,45 @@ internal fun rememberRaftLinkNavigator(
                 bridge.logWarn("link_open_rejected reason=${reason.name.lowercase()}")
                 bridge.toast(rejectedMessage)
             },
+            openRaftWebPageInBrowser = { url -> bridge.openUrl(url, inBrowser = true) },
         )
+    }
+}
+
+internal val LocalRaftLinkNavigator = staticCompositionLocalOf<RaftLinkNavigator?> { null }
+
+/**
+ * The one way a page opens a link (artin, Hands ff72869f): Compose's [LocalUriHandler] default starts its own
+ * VIEW, so anything reading it opened differently from a message link. Every page sits under this (BasePager).
+ */
+@Composable
+internal fun ProvideRaftLinkOpening(pager: Pager, content: @Composable () -> Unit) {
+    val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
+    val navigator = rememberRaftLinkNavigator(pager, bridge)
+    val uriHandler =
+        remember(navigator) {
+            object : UriHandler {
+                override fun openUri(uri: String) {
+                    navigator.open(uri)
+                }
+            }
+        }
+    CompositionLocalProvider(
+        LocalRaftLinkNavigator provides navigator,
+        LocalUriHandler provides uriHandler,
+        content = content,
+    )
+}
+
+/** Opens in the system browser whatever the link setting is: where an account's sign-in lives. */
+@Composable
+internal fun rememberRaftSystemBrowserOpener(): (String) -> Unit {
+    val navigator = LocalRaftLinkNavigator.current
+    val uriHandler = LocalUriHandler.current
+    return remember(navigator, uriHandler) {
+        { url ->
+            if (navigator != null) navigator.open(url, RaftLinkOpenIntent.ForceExternal) else uriHandler.openUri(url)
+        }
     }
 }
 

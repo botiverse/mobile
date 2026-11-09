@@ -14,6 +14,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.use
 import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftPointerInput
+import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import com.dropbox.differ.Image
 import com.dropbox.differ.ImageComparator
@@ -78,6 +80,11 @@ object RaftScreenshot {
     /**
      * Renders [content] inside [RaftTheme] ([appearance], on the theme canvas with 16dp of
      * padding), sized to the content, and records or verifies `<name>.png`.
+     *
+     * [scale] is pinned, [RaftScale.Compact] by default, whatever the capture size: the
+     * theme's own choice (the window width) would flip with the scene's width. [pointerInput]
+     * is pinned too, [RaftPointerInput.Touch] by default, so a test that drove a mouse never
+     * changes another's controls. Themes nested in [content] inherit both.
      */
     fun capture(
         name: String,
@@ -86,10 +93,12 @@ object RaftScreenshot {
         maxHeightDp: Int = 2400,
         // Frames rendered before the captured one: a popup lays itself out a frame late.
         settleFrames: Int = 0,
+        scale: RaftScale = RaftScale.Compact,
+        pointerInput: RaftPointerInput = RaftPointerInput.Touch,
         content: @Composable () -> Unit,
     ) {
         val framed: @Composable (Modifier) -> Unit = { modifier ->
-            RaftTheme(appearance = appearance, systemDark = false) {
+            RaftTheme(appearance = appearance, systemDark = false, scale = scale, pointerInput = pointerInput) {
                 Box(
                     modifier
                         .background(RaftTheme.colors.layerCanvas)

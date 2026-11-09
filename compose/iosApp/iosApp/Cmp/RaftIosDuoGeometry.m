@@ -53,15 +53,17 @@ BOOL RaftIosSideColumnIsActive(UIWindow * _Nullable window) {
 /// The system does not report the strip's width directly, so it is measured: the area of the
 /// window the system leaves for the strip. The strip is the system chrome (status bar and
 /// navigation) on the trailing edge, which the window's safe area reports; the native tab bar
-/// inside it is reported separately.
+/// inside it is reported separately. In a Split View half the strip holds only the tab bar, so
+/// the window has no inset there; the bar's own safe area still reports the strip.
 CGFloat RaftIosSideColumnWidthPoints(UIWindow * _Nullable window) {
     if (!RaftIosSideColumnIsActive(window)) {
         return 0;
     }
+    UIEdgeInsets bar = RaftIosNativeTabBarView(window).safeAreaInsets;
     if ([RaftIosSideColumnEdgeName(window) isEqualToString:@"left"]) {
-        return window.safeAreaInsets.left;
+        return MAX(window.safeAreaInsets.left, bar.left);
     }
-    return window.safeAreaInsets.right;
+    return MAX(window.safeAreaInsets.right, bar.right);
 }
 
 /// The native tab bar in the window's hierarchy, if it has one.

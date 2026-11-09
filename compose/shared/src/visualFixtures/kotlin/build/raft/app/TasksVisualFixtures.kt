@@ -23,6 +23,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -157,7 +158,11 @@ private val tasksPanelStatusMenuRecycleTasks: List<TaskSummary> =
         }
 
 @Composable
-internal fun TasksPanelVisualContent(fixture: String = "") {
+internal fun TasksPanelVisualContent(
+    fixture: String = "",
+    // PROTOTYPE (native nav): the whole screen (the host draws the tab bar).
+    protoFullScreen: Boolean = false,
+) {
     val chineseLocalizationFixture = fixture == TasksPanelChineseLocalizationFixture
     val previousLocaleType = remember(chineseLocalizationFixture) { StringDesc.localeType }
     if (chineseLocalizationFixture) {
@@ -178,9 +183,7 @@ internal fun TasksPanelVisualContent(fixture: String = "") {
         }
     Box(
         modifier =
-            Modifier
-                .width(390.dp)
-                .height(844.dp)
+            (if (protoFullScreen) Modifier.fillMaxSize() else Modifier.width(390.dp).fillMaxHeight())
                 .background(RaftColor.SurfaceWhite)
     ) {
         SharedTasksPanel(
@@ -241,7 +244,7 @@ internal fun TasksStatusMenuVisualContent() {
             Spacer(Modifier.height(4.dp))
             RaftTaskStatusMenuPanel(
                 items =
-                    TaskStatus.entries.map { status ->
+                    build.raft.app.data.taskStatusChoices(TaskStatus.InProgress, v2Task = false).map { status ->
                         RaftBaseMenuItem(id = status.name, label = status.localizedLabel())
                     },
                 selectedId = TaskStatus.InProgress.name,

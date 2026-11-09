@@ -1,7 +1,9 @@
 package build.raft.app
 
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.data.ActionCardSpecIntent
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.actionCardFromMessageMetadata
@@ -65,42 +67,63 @@ class RaftFeedbackCardEntryTest {
         )
 
     @Test
-    fun feedbackCardIsNeverAnInlineCommitButOpensTheFormOnlyWhileTheFlagIsOn() {
+    fun preparedFeedbackCardOpensTheFeedbackWebPageWhereFeedbackIsTheWebPage() {
+        // Compose desktop (settingsFeedbackUsesWebPage), no server flag: a prepared feedback card
+        // opens the ticket web page once the viewing server is known, with the card's entry in the URL.
         val card = preparedFeedbackCard()
+        assertTrue(raftFeedbackCardEntryEnabled(viewingServerId, feedbackWeb = true))
+        assertTrue(card.opensFeedbackCardEntry())
+        val entry = raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId, feedbackWeb = true)
+        assertEquals(RaftFeedbackCardEntry(actionCardMessageId = cardMessageId, serverId = viewingServerId), entry)
+        assertEquals(
+            "https://web.example.test/feedback/?embed=raft-settings-v1&shell=host&actionCard=$cardMessageId&server=$viewingServerId",
+            settingsFeedbackWebUrl("https://web.example.test", entry),
+        )
+        // An unknown viewing server keeps the button off (the entry needs it).
+        assertFalse(raftFeedbackCardEntryEnabled(null, feedbackWeb = true))
+        assertFalse(raftFeedbackCardEntryEnabled(" ", feedbackWeb = true))
+    }
 
-        assertFalse(card.isSupportedCommitAction())
-        assertTrue(card.opensFeedbackCardEntry(productFeedbackMultiAppEnabled = true))
-        assertFalse(card.opensFeedbackCardEntry(productFeedbackMultiAppEnabled = false))
-        assertFalse(preparedFeedbackCard(state = "executed").opensFeedbackCardEntry(productFeedbackMultiAppEnabled = true))
+    @Test
+    fun feedbackCardHasNoInAppEntryWhereFeedbackIsTheNativeForm() {
+        // artin (1.22.0): Android and iOS are as 1.21 with the flag off. Settings > Feedback is the
+        // native submit form, so a card neither opens the web page nor offers the feedback form
+        // intent (its button is "Open in web"), and a done card has no "View in Settings".
+        assertFalse(settingsFeedbackUsesWebPage(nativeSubmit = true))
+        val feedbackWeb = settingsFeedbackUsesWebPage(nativeSubmit = true)
+        val card = preparedFeedbackCard()
+        assertFalse(raftFeedbackCardEntryEnabled(viewingServerId, feedbackWeb))
+        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId, feedbackWeb))
         assertFalse(
-            card.copy(type = "channel:create").opensFeedbackCardEntry(productFeedbackMultiAppEnabled = true)
+            ActionCardSpecIntent.FeedbackForm.capability in
+                raftAppActionCardCapabilities(feedbackFormAvailable = raftFeedbackCardEntryEnabled(viewingServerId, feedbackWeb))
+        )
+        assertTrue(
+            ActionCardSpecIntent.FeedbackForm.capability in
+                raftAppActionCardCapabilities(feedbackFormAvailable = raftFeedbackCardEntryEnabled(viewingServerId, feedbackWeb = true))
         )
     }
 
     @Test
-    fun entryRequiresFlagCardTypeOpenStateAndBothIds() {
+    fun feedbackCardIsNeverAnInlineCommitButOpensTheFormWhilePrepared() {
         val card = preparedFeedbackCard()
-        assertEquals(
-            RaftFeedbackCardEntry(actionCardMessageId = cardMessageId, serverId = viewingServerId),
-            raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId, productFeedbackMultiAppEnabled = true),
-        )
 
-        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId, productFeedbackMultiAppEnabled = false))
+        assertFalse(card.isSupportedCommitAction())
+        assertFalse(preparedFeedbackCard(state = "executed").opensFeedbackCardEntry())
+        assertFalse(card.copy(type = "channel:create").opensFeedbackCardEntry())
+    }
+
+    @Test
+    fun entryRequiresCardTypeOpenStateAndBothIds() {
+        val card = preparedFeedbackCard()
+        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, preparedFeedbackCard(state = "executed"), viewingServerId, feedbackWeb = true))
         assertNull(
-            raftFeedbackCardEntryOrNull(
-                cardMessageId,
-                preparedFeedbackCard(state = "executed"),
-                viewingServerId,
-                productFeedbackMultiAppEnabled = true,
-            )
+            raftFeedbackCardEntryOrNull(cardMessageId, card.copy(type = "agent:create"), viewingServerId, feedbackWeb = true)
         )
-        assertNull(
-            raftFeedbackCardEntryOrNull(cardMessageId, card.copy(type = "agent:create"), viewingServerId, true)
-        )
-        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, null, viewingServerId, true))
+        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, null, viewingServerId, feedbackWeb = true))
         listOf(null, "", "  ").forEach { blank ->
-            assertNull(raftFeedbackCardEntryOrNull(blank, card, viewingServerId, true), "messageId=$blank")
-            assertNull(raftFeedbackCardEntryOrNull(cardMessageId, card, blank, true), "server=$blank")
+            assertNull(raftFeedbackCardEntryOrNull(blank, card, viewingServerId, feedbackWeb = true), "messageId=$blank")
+            assertNull(raftFeedbackCardEntryOrNull(cardMessageId, card, blank, feedbackWeb = true), "server=$blank")
         }
     }
 
@@ -111,7 +134,7 @@ class RaftFeedbackCardEntryTest {
         assertEquals(cardServerId, card.sourceServerId)
         assertEquals(cardServerId, actionCardFromMessageMetadata(card.toMessageMetadata())?.sourceServerId)
 
-        val entry = assertNotNull(raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId, true))
+        val entry = assertNotNull(raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId, feedbackWeb = true))
 
         assertEquals(viewingServerId, entry.serverId)
         val url = settingsFeedbackWebUrl("https://web.example.test", entry)

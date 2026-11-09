@@ -14,6 +14,7 @@ TestFlight states, audit tag), `docs/mobile-paired-release-sop.md` (rule 9 /
 
 ## 1. Coordinates
 
+- Pick the bump first (minor / patch / build): `raft-release-versioning`.
 - Marketing version = train version (`1.15.0`), since 1.12.0.
 - `version_build` restarts at 1 per marketing version; `CFBundleVersion` =
   `scripts/ci/version_code.sh X Y Z BUILD` (e.g. 1.15.0 b1 → `11500001`).

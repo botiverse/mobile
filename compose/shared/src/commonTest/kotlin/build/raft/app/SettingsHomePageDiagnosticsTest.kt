@@ -252,12 +252,6 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
-    fun settingsAccountInputForegroundUsesSpaceMono() {
-        assertEquals(RaftMonoFamily, settingsAccountInputTextStyle().fontFamily)
-        assertEquals(RaftMonoFamily, settingsAccountInputTextStyle(RaftColor.TextMutedGray).fontFamily)
-    }
-
-    @Test
     fun feedbackComposerBottomPaddingLiftsAboveKeyboard() {
         assertEquals(
             24.dp,
@@ -392,7 +386,16 @@ class SettingsHomePageDiagnosticsTest {
         val rows = payload.sections.first { it.title == "Diagnostics" }.rows
 
         assertEquals(listOf("API Server", "Diagnostics"), payload.sections.map { it.title })
-        assertEquals(listOf("diagnostics", "router", DEVELOPER_ACTION_TEXT_INPUT_TRACE), rows.map { it.key })
+        assertEquals(
+            listOf(
+                "diagnostics",
+                "router",
+                DEVELOPER_ACTION_TEXT_INPUT_TRACE,
+                DEVELOPER_ACTION_VERBOSE_DIAGNOSTICS,
+                DEVELOPER_ACTION_NAV3_STACK
+            ),
+            rows.map { it.key }
+        )
         assertEquals("Diagnostics", rows.first().title)
         assertTrue(rows.first().detail.contains("auth"))
         assertFalse(rows.first().detail.contains("network"))
@@ -416,6 +419,25 @@ class SettingsHomePageDiagnosticsTest {
             assertEquals((!enabled).toString(), row.value)
             assertEquals(if (enabled) "On" else "Off", row.status)
             assertTrue(row.enabled)
+        }
+    }
+
+    @Test
+    fun developerPayloadVerboseDiagnosticsRowTogglesToTheOtherState() {
+        listOf(false, true).forEach { enabled ->
+            val payload =
+                SharedSettingsDeveloperSnapshot().toDeveloperPayload(
+                    state = ScreenLoadState.Content(SharedSettingsDeveloperSnapshot()),
+                    actionState = null,
+                    errorStrings = englishErrorPresentationStringsForTest(),
+                    verboseDiagnosticsEnabled = enabled
+                )
+            val row =
+                payload.sections.first { it.title == "Diagnostics" }.rows.first { it.key == DEVELOPER_ACTION_VERBOSE_DIAGNOSTICS }
+
+            assertEquals(enabled, row.toggleValue)
+            assertEquals((!enabled).toString(), row.value)
+            assertEquals(if (enabled) "On" else "Off", row.status)
         }
     }
 

@@ -62,6 +62,12 @@ fun rememberRaftFonts(): RaftFonts {
  * Every style centres the line box the way CSS half-leading does
  * ([LineHeightStyle.Alignment.Center], no trim), so a 24sp line box puts the glyphs
  * where the web puts them.
+ *
+ * The sizes below are the default ([RaftScale.Compact]) scale. Under [RaftScale.Wide] (raft-ui
+ * 0.54 styles.css "Desktop type"; the app takes it from its wide breakpoint, any input)
+ * headline is 16/24; body, subhead, callout, control, field and card title 14/22; footnote,
+ * caption and mono-meta 12/18; mono-code stays 13/20. Hero, display, title and label do
+ * not change. Weights and tracking are the same in both.
  */
 @Immutable
 data class RaftTypography(
@@ -93,27 +99,64 @@ data class RaftTypography(
     val field: TextStyle,
     /** `--card-title-*` 16/24 600: CardTitle. */
     val cardTitle: TextStyle,
+    /**
+     * `text-control` 13/18 (14/22 on a desktop): the label of a 32dp control, a Button at
+     * `md`, a picker trigger, a combobox's clear. Its own style because on a desktop it is
+     * 14 where [footnote] drops to 12. Bold on a button: `.copy(fontWeight = …)`.
+     */
+    val control: TextStyle,
 ) {
     companion object {
-        /** CSS half-leading: extra line height split above and below, nothing trimmed. */
+        /**
+         * CSS half-leading: extra line height split above and below, nothing trimmed, and
+         * [LineHeightStyle.Mode.Tight] so the line box is never padded past the line height.
+         * Android still grows a line holding Han text to its fallback font's height (Noto Sans
+         * CJK, ~1.45em); [build.raft.designsystem.text.RaftText] and the markdown text provider (through
+         * [build.raft.designsystem.text.forCjkLineBox]) swap in a trimming style for
+         * such text there (artin 2026-11-02, the typography specimen).
+         */
         val CssLineHeightStyle =
             LineHeightStyle(
                 alignment = LineHeightStyle.Alignment.Center,
                 trim = LineHeightStyle.Trim.None,
+                mode = LineHeightStyle.Mode.Tight,
             )
 
         /**
          * The scale in [fonts]. [localeList] goes on every style (null: none, the platform
          * uses the device locale): it picks the CJK fallback glyphs, so a Japanese,
          * Korean or Traditional Chinese UI passes its language and Han characters take
-         * that language's forms.
+         * that language's forms. [scale] picks the default (compact) or the wide sizes.
          */
-        fun from(fonts: RaftFonts, localeList: LocaleList? = null): RaftTypography {
+        fun from(
+            fonts: RaftFonts,
+            localeList: LocaleList? = null,
+            scale: RaftScale = RaftScale.Compact,
+        ): RaftTypography {
             fun sans(size: Int, lineHeight: Int, weight: FontWeight, tracking: TextUnit = 0.sp) =
                 style(fonts.sans, size, lineHeight, weight, tracking, localeList)
 
             fun mono(size: Int, lineHeight: Int) = style(fonts.mono, size, lineHeight, FontWeight.Normal, 0.sp, localeList)
 
+            if (scale == RaftScale.Wide) {
+                return RaftTypography(
+                    hero = sans(40, 44, FontWeight.Bold, (-0.03).em),
+                    display = sans(34, 40, FontWeight.Bold, (-0.02).em),
+                    title = sans(22, 28, FontWeight.Bold, (-0.01).em),
+                    headline = sans(16, 24, FontWeight.Bold),
+                    body = sans(14, 22, FontWeight.Normal),
+                    subhead = sans(14, 22, FontWeight.Normal),
+                    callout = sans(14, 22, FontWeight.Normal),
+                    footnote = sans(12, 18, FontWeight.Normal),
+                    caption = sans(12, 18, FontWeight.Medium),
+                    label = sans(11, 13, FontWeight.SemiBold),
+                    monoMeta = mono(12, 18),
+                    monoCode = mono(13, 20),
+                    field = sans(14, 22, FontWeight.Normal),
+                    cardTitle = sans(14, 22, FontWeight.SemiBold),
+                    control = sans(14, 22, FontWeight.Normal),
+                )
+            }
             return RaftTypography(
                 hero = sans(40, 44, FontWeight.Bold, (-0.03).em),
                 display = sans(34, 40, FontWeight.Bold, (-0.02).em),
@@ -129,8 +172,12 @@ data class RaftTypography(
                 monoCode = mono(13, 20),
                 field = sans(16, 24, FontWeight.Normal),
                 cardTitle = sans(16, 24, FontWeight.SemiBold),
+                control = sans(13, 18, FontWeight.Normal),
             )
         }
+
+        /** [from] at [RaftScale.Wide]: raft-ui's desktop type, which the app takes from its wide breakpoint. */
+        fun wide(fonts: RaftFonts, localeList: LocaleList? = null): RaftTypography = from(fonts, localeList, RaftScale.Wide)
 
         private fun style(
             family: FontFamily,

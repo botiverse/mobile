@@ -285,6 +285,14 @@ class RealConversationRepository private constructor(
         PrioritySingleFlight<TaskConversationContextFlightKey, TaskSummary?>()
 
     /**
+     * Hands fa151b10: the thread store's initial access lookup and the page's task bar both read a
+     * conversation's ref as the page opens; overlapping reads share one `GET /channels/:id`.
+     * Keyed by principal, server and conversation.
+     */
+    private val taskConversationRefFlights =
+        PrioritySingleFlight<Triple<String, String, String>, DataResult<TaskConversationChannelRef>>()
+
+    /**
      * Hands 4cf4c781: the last ref / parent / task seen per task conversation (insertion-ordered,
      * bounded). The ref never changes; the parent here only names the title (write authority is
      * always read fresh); the task is reused for [taskConversationTaskReuseMillis].
@@ -795,6 +803,16 @@ class RealConversationRepository private constructor(
         messageId: MessageId,
         channelId: ChannelId?,
         priority: DataRequestPriority
+    ): DataResult<ThreadSnapshot> = loadMessageContext(messageId, channelId, priority, includeConversationDetail = true)
+
+    override suspend fun resolveMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> =
+        loadMessageContext(messageId, channelId, DataRequestPriority.Foreground, includeConversationDetail = false)
+
+    private suspend fun loadMessageContext(
+        messageId: MessageId,
+        channelId: ChannelId?,
+        priority: DataRequestPriority,
+        includeConversationDetail: Boolean,
     ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
         var canonicalTargetKind: String? = null
@@ -827,6 +845,7 @@ class RealConversationRepository private constructor(
                 ).copy(rawMessagePage = rawMessagePageWitness(bodyText, requestedLimit = 0))
             }
         )
+        if (!includeConversationDetail) return result
         val snapshot = (result as? DataResult.Content)?.data ?: return result
         val detailChannelId = snapshot.conversation.channelId ?: channelId ?: return result
         val detail = loadConversationDetail(detailChannelId, priority, context.server.id)
@@ -1248,12 +1267,23 @@ class RealConversationRepository private constructor(
         val context = currentContext() ?: return authRequired()
         // A task conversation's parent channel and task never change; reuse a ref this process read.
         recentTaskConversationRef(context.server.id, conversationChannelId)?.let { return DataResult.Content(it) }
+        val flightKey =
+            Triple(sessionStore.readSession()?.user?.id.orEmpty(), context.server.id.value, conversationChannelId.value)
+        return taskConversationRefFlights.run(flightKey, DataRequestPriority.Visible) {
+            fetchTaskConversationRef(context.server.id, conversationChannelId)
+        }
+    }
+
+    private suspend fun fetchTaskConversationRef(
+        serverId: ServerId,
+        conversationChannelId: ChannelId,
+    ): DataResult<TaskConversationChannelRef> {
         val response =
             try {
                 networkClient.request(
                     priority = DataRequestPriority.Visible,
                     path = "channels/${conversationChannelId.value}",
-                    serverIdOverride = context.server.id,
+                    serverIdOverride = serverId,
                 )
             } catch (cancellation: kotlinx.coroutines.CancellationException) {
                 throw cancellation
@@ -1270,7 +1300,7 @@ class RealConversationRepository private constructor(
             "task_conversation_ref channelId=${conversationChannelId.value} " +
                 "resolved=${ref != null}"
         )
-        ref?.let { updateRecentTaskConversation(taskConversationContextKey(context.server.id, it), it) { recent -> recent } }
+        ref?.let { updateRecentTaskConversation(taskConversationContextKey(serverId, it), it) { recent -> recent } }
         return ref?.let { DataResult.Content(it) } ?: DataResult.Empty(EmptyReason.NoMessages)
     }
 
@@ -1539,7 +1569,9 @@ class RealConversationRepository private constructor(
                         bodyText,
                         ThreadId(resolvedThreadChannelId.value),
                         warningLogger,
-                    )
+                    ).also { page ->
+                        RaftHiddenHistoryStore.record(resolvedThreadChannelId.value, page.historyLimited, page.hiddenHistory)
+                    }
                 }
             )
         val rawMessages: List<Message> =
@@ -1605,6 +1637,8 @@ class RealConversationRepository private constructor(
                     source = source,
                     mapper = { bodyText ->
                         val payload = parseSharedChannelMessages(bodyText, threadId, warningLogger)
+                        // Latest and older pages only (no `after` cursor): what the Free window hides.
+                        RaftHiddenHistoryStore.record(threadId.value, payload.historyLimited, payload.hiddenHistory)
                         buildSharedThreadSnapshot(
                             payload = payload,
                             threadId = threadId,
@@ -2104,7 +2138,7 @@ private fun buildSharedThreadSnapshot(
  * body that is not an object with a `messages` array yields no witness (nothing will be persisted);
  * the rendered snapshot is unaffected either way.
  */
-private fun rawMessagePageWitness(bodyText: String, requestedLimit: Int): RawMessagePageWitness {
+internal fun rawMessagePageWitness(bodyText: String, requestedLimit: Int): RawMessagePageWitness {
     val root =
         runCatching { rawMessagePageJson.parseToJsonElement(bodyText) as? JsonObject }
             .getOrNull()
@@ -2118,7 +2152,26 @@ private fun rawMessagePageWitness(bodyText: String, requestedLimit: Int): RawMes
             messageWindow = decodeChannelMessageWindow(root["messageWindow"]),
             historyLimited = (root["historyLimited"] as? JsonPrimitive)?.booleanOrNull ?: false,
             replyCountsByParentId = embeddedReplyCountsOrNull(root["threadSummariesByParentMessageId"]),
+            context = rawMessageContextFieldsOrNull(root),
         ),
+    )
+}
+
+/** Phase 2c: a `messages/context` response's own fields; `null` when it names no `channelId` (any other page). */
+private fun rawMessageContextFieldsOrNull(root: JsonObject): RawMessageContextFields? {
+    fun JsonObject.text(key: String): String? =
+        (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+    val channelId = root.text("channelId") ?: return null
+    val target = (root["canonicalTarget"] as? JsonObject)?.takeIf { target ->
+        target.text("kind") == "thread" && target.text("threadChannelId") == channelId
+    }
+    return RawMessageContextFields(
+        channelId = channelId,
+        targetMessageId = root.text("targetMessageId"),
+        hasOlder = (root["hasOlder"] as? JsonPrimitive)?.booleanOrNull ?: false,
+        hasNewer = (root["hasNewer"] as? JsonPrimitive)?.booleanOrNull ?: false,
+        threadParentChannelId = target?.text("channelId"),
+        threadRootMessageId = target?.text("threadParentMessageId"),
     )
 }
 

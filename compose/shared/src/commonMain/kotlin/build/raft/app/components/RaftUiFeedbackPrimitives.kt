@@ -46,94 +46,10 @@ internal enum class RaftCheckMarkerTone(val background: Color, val foregroundArg
     YellowFill(RaftColor.BrandYellow, "#FF000000")
 }
 
-internal enum class RaftProgressBarTone(val color: Color) {
-    Pink(RaftColor.AccentPink),
-    Cyan(RaftColor.AccentCyan),
-    Lime(RaftColor.AccentLime),
-    Orange(RaftColor.AccentOrange)
-}
-
 internal enum class RaftAppSkeletonVariant {
     Line,
     Block,
     Circle
-}
-
-internal const val RaftSpinnerActiveSweepAngle = 46f
-
-/**
- * raft-ui Spinner sizes: a 2x2 grid of [pixel] squares [gap] apart
- * (`--spinner-pixel` / `--spinner-gap`). [brutalDiameter] is the legacy arc's box.
- */
-internal enum class RaftAppSpinnerSize(val pixel: Dp, val gap: Dp, val brutalDiameter: Dp) {
-    Xs(4.dp, 1.5.dp, 10.dp),
-    Sm(5.dp, 2.dp, 16.dp),
-    Md(6.dp, 2.dp, 20.dp),
-    Lg(8.dp, 3.dp, 32.dp);
-
-    /** Edge of the grid: two pixels and the gap between them. */
-    val extent: Dp get() = pixel * 2 + gap
-}
-
-/** raft-ui `raft-spinner-pixel` cycle: 1s, in four `steps(1)` quarters. */
-internal const val RaftAppSpinnerCycleMillis = 1000
-internal const val RaftAppSpinnerStepMillis = RaftAppSpinnerCycleMillis / 4
-
-/** Lit pixel opacity and the resting opacity of the other three (`opacity-20`). */
-internal const val RaftSpinnerPixelRestAlpha = 0.2f
-
-/**
- * Grid cell (0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right, the DOM order) lit at
- * [step]. raft-ui delays the children 0 / 0.25 / 0.75 / 0.5s, so the light walks clockwise:
- * top-left, top-right, bottom-right, bottom-left.
- */
-internal fun raftAppSpinnerLitCell(step: Int): Int = RaftSpinnerClockwiseCells[((step % 4) + 4) % 4]
-
-/** Animation step at [elapsedMillis] into the cycle. */
-internal fun raftSpinnerStepAt(elapsedMillis: Int): Int =
-    ((elapsedMillis % RaftAppSpinnerCycleMillis + RaftAppSpinnerCycleMillis) % RaftAppSpinnerCycleMillis) / RaftAppSpinnerStepMillis
-
-private val RaftSpinnerClockwiseCells = intArrayOf(0, 1, 3, 2)
-
-@Composable
-internal fun RaftAttentionDot(
-    modifier: Modifier = Modifier,
-    size: Dp = 10.dp,
-    color: Color = RaftColor.AccentPink
-) {
-    // raft attention pixel: 9px pink (`bg-attention`) square, 2px radius, 1.5px sticker-ink
-    // edge; the legacy 10dp default lands on the 9px DS pixel, smaller sizes keep a 1px edge.
-    val pixel = if (size == 10.dp) RaftMetrics.StatusSize else size
-    RaftStatusIndicator(
-        color = if (color == RaftColor.AccentPink) RaftColor.Attention else color,
-        modifier = modifier,
-        size = pixel,
-        shape = RaftStatusIndicatorShape.Square,
-        borderColor = RaftColor.StickerInk,
-        borderWidth = if (pixel < 8.dp) RaftAppStroke.Thin else RaftAppStroke.Control
-    )
-}
-
-@Suppress("UNUSED_PARAMETER")
-@Composable
-internal fun RaftAppStatusDot(
-    modifier: Modifier = Modifier,
-    size: Dp = 10.dp,
-    // react StatusDot.tsx defaults to bg-gray-400 (#99A1AF); no production call
-    // site relies on this default today, only the states fixture exercises it.
-    color: Color = RaftColor.StatusNeutralGray,
-    pulsing: Boolean = false
-) {
-    // raft presence light: square 9px pixel with a 1.5px sticker-ink edge; the neutral
-    // default is `--presence-offline`. Raft status lights never animate.
-    RaftStatusIndicator(
-        color = if (color == RaftColor.StatusNeutralGray) RaftColor.PresenceOffline else color,
-        modifier = modifier,
-        size = if (size == 10.dp) RaftMetrics.StatusSize else size,
-        shape = RaftStatusIndicatorShape.Square,
-        borderColor = RaftColor.StickerInk,
-        borderWidth = RaftAppStroke.Control
-    )
 }
 
 @Suppress("UNUSED_PARAMETER")
@@ -210,89 +126,6 @@ private fun RaftLookCheckMarker(
     }
 }
 
-@Composable
-internal fun RaftProgressBar(
-    value: Int?,
-    modifier: Modifier = Modifier.fillMaxWidth(),
-    tone: RaftProgressBarTone = RaftProgressBarTone.Pink,
-    label: String = "",
-    showPercent: Boolean = false
-) {
-    val percent = value?.coerceIn(0, 100)
-    RaftLookProgressBar(percent = percent, modifier = modifier, tone = tone, label = label, showPercent = showPercent)
-}
-
-/**
- * raft-ui 0.6.0 Progress (web `ProgressBar`): optional header (13/18 semibold label, mono
- * 12/16 hint percent, 6dp gap), an 8dp `--fill-muted` track with sticker radius, and an
- * indicator in the tone colour with a 1.5dp sticker-ink edge. raft has no pink progress:
- * pink and cyan both map to `information`.
- */
-@Composable
-private fun RaftLookProgressBar(
-    percent: Int?,
-    modifier: Modifier,
-    tone: RaftProgressBarTone,
-    label: String,
-    showPercent: Boolean
-) {
-    val indicatorColor =
-        when (tone) {
-            RaftProgressBarTone.Pink,
-            RaftProgressBarTone.Cyan -> RaftColor.Info
-            RaftProgressBarTone.Lime -> RaftColor.Success
-            RaftProgressBarTone.Orange -> RaftColor.Warning
-        }
-    val shape = RoundedCornerShape(RaftAppRadius.Sticker)
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (label.isNotBlank() || (showPercent && percent != null)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = label,
-                    style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.SemiBold),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                if (showPercent && percent != null) {
-                    Text(
-                        text = "$percent%",
-                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                        color = RaftColor.ForegroundHint,
-                        maxLines = 1
-                    )
-                }
-            }
-        }
-        // Indeterminate keeps the brutal 40% placeholder width (no animation here).
-        val fraction = ((percent ?: 40).toFloat() / 100f).coerceIn(0f, 1f)
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(shape)
-                    .background(RaftColor.FillMuted, shape)
-        ) {
-            if (fraction > 0f) {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth(fraction)
-                            .height(8.dp)
-                            .background(indicatorColor, shape)
-                            .border(RaftAppStroke.Control, RaftColor.StickerInk, shape)
-                )
-            }
-        }
-    }
-}
-
 @Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftAppSkeleton(
@@ -321,21 +154,4 @@ internal fun RaftSkeletonRow(
             }
         }
     }
-}
-
-@Composable
-internal fun RaftAppSpinner(
-    modifier: Modifier = Modifier,
-    size: RaftAppSpinnerSize = RaftAppSpinnerSize.Sm,
-    inverse: Boolean = false,
-    // A fixed step instead of the animation, so still captures are deterministic.
-    stillStep: Int? = null
-) {
-    // The design system's spinner, in the app's theme-following ink.
-    RaftSpinner(
-        modifier = modifier,
-        size = RaftSpinnerSize.valueOf(size.name),
-        color = if (inverse) RaftColor.ForegroundInverse else RaftColor.TextBlack,
-        stillStep = stillStep
-    )
 }

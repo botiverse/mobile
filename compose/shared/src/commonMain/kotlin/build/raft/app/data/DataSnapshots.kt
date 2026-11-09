@@ -315,6 +315,9 @@ sealed interface HomeConversationRow {
     /** Channel `guestJoinable` (see [HomeChannelWireDto.guestJoinable]); only channels carry one. */
     val guestJoinable: Boolean
         get() = false
+    /** Agent Lounge v0: the agent this channel is the Lounge of; only channels carry one. */
+    val loungeAgentId: String?
+        get() = null
     val activityNotificationPreference: ChannelActivityNotificationPreference
     val permissions: ConversationPermissions
     /**
@@ -374,7 +377,9 @@ data class HomeChannelRow(
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
     override val permissions: ConversationPermissions = ConversationPermissions(),
-    override val channelCapabilities: ChannelCapabilities? = null
+    override val channelCapabilities: ChannelCapabilities? = null,
+    /** Agent Lounge v0 (see [HomeConversationRow.loungeAgentId]). */
+    override val loungeAgentId: String? = null
 ) : HomeConversationRow
 
 @Serializable
@@ -417,7 +422,12 @@ data class HomeDirectMessageRow(
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
     override val permissions: ConversationPermissions = ConversationPermissions(),
-    override val channelCapabilities: ChannelCapabilities? = null
+    override val channelCapabilities: ChannelCapabilities? = null,
+    /**
+     * Agent Lounge v0: on an agent DM row (`GET /channels/dm` `lounge`), that agent's Lounge, present
+     * only once it exists. Its unread comes from the unread summary by the Lounge's channel id.
+     */
+    val lounge: AgentLoungeSummary? = null
 ) : HomeConversationRow
 
 fun HomeConversationRow.toConversationSummary(): ConversationSummary =
@@ -461,7 +471,8 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         guestJoinable = guestJoinable,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,
-        channelCapabilities = channelCapabilities
+        channelCapabilities = channelCapabilities,
+        loungeAgentId = loungeAgentId
     )
 
 fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
@@ -505,7 +516,8 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         guestJoinable = guestJoinable,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,
-        channelCapabilities = channelCapabilities
+        channelCapabilities = channelCapabilities,
+        loungeAgentId = loungeAgentId
     )
 
 fun ConversationSummary.toHomeDirectMessageRow(): HomeDirectMessageRow =
@@ -619,7 +631,18 @@ data class HomeSnapshot(
     val unreadStale: Boolean = false,
     /** Task #164: the server's `Retry-After` on that stale or overloaded read. Never persisted. */
     @Transient
-    val unreadRetryAfterMillis: Long? = null
+    val unreadRetryAfterMillis: Long? = null,
+    /**
+     * The unread summary's newest message per scope, by channel id value
+     * ([ChannelUnreadSummary.latestActivitySeqs]): how far past a saved read a row's count can reach.
+     * Never persisted, and kept apart from the rows' [HomeConversationRow.lastMessageSeq], which
+     * decides whether a realtime message is new.
+     */
+    @Transient
+    val unreadLatestActivitySeqs: Map<String, Long> = emptyMap(),
+    /** The unread summary's read state per scope, by channel id value. Never persisted. */
+    @Transient
+    val unreadReadFrontiers: Map<String, ReadReceiptFrontier> = emptyMap()
 )
 
 @Serializable
@@ -676,6 +699,21 @@ data class RawMessagePage(
     val historyLimited: Boolean = false,
     /** Phase 2b: the page's embedded reply counts by parent message id; `null` = the page carried none. */
     val replyCountsByParentId: Map<String, Int>? = null,
+    /** Phase 2c: what a `messages/context` response says about itself; `null` on any other page. */
+    val context: RawMessageContextFields? = null,
+)
+
+/**
+ * The top-level fields of a `messages/context` response the durable writer needs. [channelId] is the page's scope key;
+ * [threadParentChannelId] / [threadRootMessageId] are its `canonicalTarget` when that is a reply in [channelId].
+ */
+data class RawMessageContextFields(
+    val channelId: String,
+    val targetMessageId: String?,
+    val hasOlder: Boolean,
+    val hasNewer: Boolean,
+    val threadParentChannelId: String?,
+    val threadRootMessageId: String?,
 )
 
 /**
@@ -892,10 +930,25 @@ enum class ExternalAgentSetupState {
     }
 }
 
+/** Web `AgentHostedRuntimeSummary`, what the profile shows. */
+@Serializable
+data class AgentHostedRuntimeSnapshot(
+    val state: String,
+    val syncPending: Boolean = false,
+    /** Null until the provider has answered about message delivery. */
+    val pushRegistered: Boolean? = null,
+    val pushError: String? = null,
+    val lastErrorCode: String? = null,
+    val lastErrorMessage: String? = null,
+    /** The provider refused the picked model: a retry must name a model (null is its default). */
+    val retryNeedsModel: Boolean = false
+)
+
 data class ExternalAgentStatusSnapshot(
     val setupState: ExternalAgentSetupState,
     val credentialLastUsedAt: String? = null,
-    val lastActivityAt: String? = null
+    val lastActivityAt: String? = null,
+    val hostedRuntime: AgentHostedRuntimeSnapshot? = null
 )
 
 data class AgentDetailSummary(
@@ -915,6 +968,8 @@ data class AgentDetailSummary(
     val machineId: String? = null,
     val machineName: String? = null,
     val daemonVersion: String? = null,
+    /** The workspace path the agent's runtime reported; null when it reported none. */
+    val workspacePath: String? = null,
     val avatarUrl: String? = null,
     val creatorId: String? = null,
     val creatorType: String? = null,
@@ -926,14 +981,38 @@ data class AgentDetailSummary(
     val activity: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
+    /** A personal assistant's owner; null for a shared agent (Agent Lounge v0 hides the Lounge for it). */
+    val assistantOwnerUserId: String? = null,
     /** External agents only: `lastSeenAt` — credential last-use; realtime `agent:seen` advances it (task #410). */
     val lastSeenAt: String? = null,
     /** The typed kind behind [activityDetail] (`activityDetailKind`); null from older servers. */
     val activityDetailKind: String? = null,
     /** Why automatic wakes are paused, with [activityDetailKind] `wake_crash_loop_blocked`. */
     val wakeCrashLoop: build.raft.app.model.AgentWakeCrashLoop? = null,
+    /** Why the last start failed, with [activityDetailKind] `runtime_unavailable` (web `activityState.spawnFailure`). */
+    val spawnFailure: build.raft.app.model.AgentSpawnFailure? = null,
+    /** `lastRuntimeError.message`: the runtime error the server kept (web `agent.lastRuntimeError`); null when none. */
+    val lastRuntimeErrorMessage: String? = null,
+    /** `lastRuntimeError.errorClass` / `errorReason`: its typed diagnostic (web `typedRuntimeError`), when it has one. */
+    val lastRuntimeErrorClass: String? = null,
+    val lastRuntimeErrorReason: String? = null,
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
-    val toolStuck: build.raft.app.model.AgentToolStuck? = null
+    val toolStuck: build.raft.app.model.AgentToolStuck? = null,
+    /**
+     * `modelLimits.defaultsReported` (botiverse/slock #13492): the agent's Computer reported that the
+     * current session filled at least one limit of its Built-in custom gateway model with a Raft
+     * default. Only true shows the warning; false, null and an old server's absent field show nothing.
+     */
+    val modelLimitsDefaultsReported: Boolean = false,
+    /** A cloud agent's provisioning record (web `agent.hostedRuntime`); null for any other agent. */
+    val hostedRuntime: AgentHostedRuntimeSnapshot? = null,
+    /**
+     * What the running process reports it runs (`runtimeProfile.current.runtime` / `.model`); null
+     * when unknown. A saved change waiting for the agent's next idle point differs from the saved
+     * [runtime] / [model] (web AgentProfileInfo `runningConfigHint`, botiverse/slock #13372).
+     */
+    val runningRuntime: String? = null,
+    val runningModel: String? = null
 )
 
 data class AgentCreatorSummary(
@@ -1048,7 +1127,9 @@ data class AgentAppLoginItem(
     val createdAt: String? = null,
     val resolvedAt: String? = null,
     val resolvedByUserId: String? = null,
-    val revokedAt: String? = null
+    val revokedAt: String? = null,
+    /** How the grant came about (web `grantSource`): person, agent_login, app_request, legacy_import; null when not reported. */
+    val grantSource: String? = null
 )
 
 enum class AgentAppLoginType {
@@ -1070,7 +1151,9 @@ data class AgentSkillPathGroup(
 
 data class AgentSkillSummary(
     val name: String,
-    val detail: String? = null
+    val detail: String? = null,
+    /** The `/command` a user can invoke it with (web `userInvocable` -> `/{name}`); null when not invocable. */
+    val command: String? = null
 )
 
 data class AgentDmSummary(
@@ -1452,7 +1535,13 @@ data class SettingsBillingSnapshot(
     val plans: List<SettingsBillingPlanSnapshot>,
     val notices: List<SettingsBillingNoticeSnapshot> = emptyList(),
     val actions: List<SettingsBillingActionSnapshot> = emptyList(),
-    val comparePlansUrl: String = "https://raft.build/#pricing"
+    val comparePlansUrl: String = "https://raft.build/#pricing",
+    /** `GET /billing/subscription` as loaded; null when it failed or was empty. */
+    val summary: SettingsBillingSubscriptionSnapshot? = null,
+    /** The server's own plan (the session's), for when [summary] is missing. */
+    val serverPlan: String? = null,
+    /** When the server was moved down to Free; its grace period runs from here. */
+    val planDowngradedAt: String? = null
 )
 
 data class SettingsBillingSubscriptionSnapshot(
@@ -1463,7 +1552,43 @@ data class SettingsBillingSubscriptionSnapshot(
     val billingInterval: String? = null,
     val canManageBilling: Boolean = false,
     val displayName: String? = null,
-    val effectivePlan: String? = null
+    val effectivePlan: String? = null,
+    /** `server`, `subscription` or `appsumo`: what the plan comes from. */
+    val source: String? = null,
+    val appsumoBillingReserved: Boolean = false,
+    val appsumo: SettingsBillingAppSumoSnapshot? = null,
+    /** Seats the plan holds; -1 unlimited, null when billing does not say. */
+    val maxUniversalSeats: Double? = null,
+    val usage: SettingsBillingSeatUsageSnapshot? = null,
+    val provisionedHumans: Int = 0,
+    val provisionedAgents: Int = 0,
+    val proPackQuantity: Int = 0,
+    val fileUploadQuota: SettingsBillingFileUploadQuotaSnapshot? = null,
+    val priceBillingInterval: String? = null
+)
+
+/** An AppSumo lifetime license: its allowances and what is used of them. */
+data class SettingsBillingAppSumoSnapshot(
+    val tier: Int,
+    val maxHumans: Int,
+    val maxAgents: Int,
+    val maxHostedJointChannels: Int,
+    val hostedJointChannels: Int
+)
+
+/** Who is on the server for billing: people, agents and the seats they take (a person 1, an agent 0.1). */
+data class SettingsBillingSeatUsageSnapshot(
+    val humans: Int,
+    val agents: Int,
+    val universalSeats: Double
+)
+
+/** The monthly file upload allowance: [limitBytes] and [remainingBytes] are -1 when unlimited. */
+data class SettingsBillingFileUploadQuotaSnapshot(
+    val month: String?,
+    val limited: Boolean,
+    val limitBytes: Long,
+    val remainingBytes: Long
 )
 
 data class SettingsServerUsageSnapshot(
@@ -1757,7 +1882,10 @@ data class SettingsServerProfileSnapshot(
     val name: String,
     val slug: String,
     val hideHumansFromMembers: Boolean = false,
-    val canSave: Boolean = false
+    val canSave: Boolean = false,
+    /** The server's id and uploaded avatar (`servers[].avatarUrl`), for the profile card's tile. */
+    val serverId: String? = null,
+    val avatarUrl: String? = null
 )
 
 data class SettingsServerSectionSnapshot(
@@ -1963,7 +2091,7 @@ data class SettingsMobileSnapshot(
             enabled = false,
             available = true,
             statusLabel = "Off",
-            detail = "Swipe left from the right edge of Home to reopen the most recent channel or direct message after going back."
+            detail = "After going back from a chat to Home, swipe left from the right edge to reopen it."
         ),
     val foregroundMessageBanners: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(

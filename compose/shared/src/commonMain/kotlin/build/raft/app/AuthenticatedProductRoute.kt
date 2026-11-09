@@ -4,6 +4,7 @@ import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import build.raft.app.base.Utils
+import build.raft.app.data.AuthSessionClearReason
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RaftProductPageView
 import build.raft.app.data.RaftSharedStoreRegistry
@@ -15,6 +16,7 @@ internal enum class AuthenticatedProductRoute(val pageName: String) {
     Thread(THREAD_PAGE),
     ThreadMembers(THREAD_MEMBERS_PAGE),
     ChannelSettings(CHANNEL_SETTINGS_PAGE),
+    ThreadSettings(THREAD_SETTINGS_PAGE),
     JointChannelConnections(JOINT_CHANNEL_CONNECTIONS_PAGE),
     ThreadForwardBundle(THREAD_FORWARD_BUNDLE_PAGE),
     HomeSearch(HOME_SEARCH_PAGE),
@@ -32,6 +34,7 @@ internal enum class AuthenticatedProductRoute(val pageName: String) {
     SettingsComputers(SETTINGS_COMPUTERS_PAGE),
     ReleaseNotes(RELEASE_NOTES_PAGE),
     ArtifactViewer(RAFT_ARTIFACT_VIEWER_PAGE),
+    ArtifactsHome(ARTIFACTS_HOME_PAGE),
 }
 
 internal val authenticatedProductRoutePageNames: Set<String> =
@@ -90,6 +93,23 @@ internal fun AuthenticatedProductRouteEffect(
                 "generation=${signal.generation ?: 0L} " +
                 "reason=${signal.reason.name.lowercase()} action=replace_login"
         )
-        pager.openLoginReplacingCurrentPage(sessionExpiredMessage)
+        pager.openLoginReplacingCurrentPage(
+            authenticatedRouteTerminalLoginMessage(signal, sessionExpiredMessage)
+        )
     }
 }
+
+/**
+ * The sign-in page's message after a route is terminalized: "Session expired" only for a real auth
+ * loss. A deliberate sign-out (or account switch) clears the session with [AuthSessionClearReason.Logout];
+ * its Cleared event reaches this route before the sign-out flow opens the sign-in page itself, so it
+ * must not be worded as an expiry.
+ */
+internal fun authenticatedRouteTerminalLoginMessage(
+    signal: AuthSessionTerminalRouteSignal,
+    sessionExpiredMessage: String,
+): String? =
+    when (signal.reason) {
+        AuthSessionClearReason.AuthLoss -> sessionExpiredMessage
+        AuthSessionClearReason.Logout -> null
+    }

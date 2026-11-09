@@ -1,31 +1,23 @@
 package build.raft.app
 
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftTextarea
+import build.raft.app.components.rememberRaftTextareaEditorModifier
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalCard
-import build.raft.app.components.RaftBrutalInputField
-import build.raft.app.components.RaftBrutalTextarea
-import build.raft.app.components.RaftAttentionDot
-import build.raft.app.components.RaftProgressBar
-import build.raft.app.components.RaftProgressBarTone
-import build.raft.app.components.RaftSectionHeader
-import build.raft.app.components.RaftAppSectionEyebrow
+import build.raft.designsystem.components.RaftTextField
 import build.raft.app.components.RaftAppSelectTrigger
 import build.raft.app.components.RaftSelectionPopover
 import build.raft.app.components.RaftSelectionPopoverOption
 import build.raft.app.components.RaftAppSkeleton
 import build.raft.app.components.RaftSkeletonRow
 import build.raft.app.components.RaftAppSkeletonVariant
-import build.raft.app.components.RaftSlugInput
-import build.raft.app.components.RaftAppSpinner
-import build.raft.app.components.RaftAppSpinnerSize
-import build.raft.app.components.RaftAppStatusDot
-import build.raft.app.components.RaftSurfaceListItem
+import build.raft.designsystem.components.RaftTextFieldAddonVariant
+import build.raft.app.components.raftCardSurface
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.alpha
@@ -48,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.designsystem.components.RaftButtonSize
 
 @Composable
 internal fun UiSegmentedControlVisualContent() {
@@ -78,7 +71,7 @@ internal fun UiSegmentedControlVisualContent() {
 
 @Composable
 internal fun UiButtonThemeVisualContent() {
-    // Phase 1 theme-axis proof: the SAME RaftBrutalActionButton rendered under each
+    // Phase 1 theme-axis proof: the SAME button rendered under each
     // register via RaftThemeProvider. Top row = brutalTheme (default, byte-identical
     // to the shipping look: square, 2dp black hairline, hard 4dp offset shadow, black
     // ink). Bottom row = elegantTheme (8dp rounded, 1dp gray hairline, near-black ink).
@@ -129,41 +122,29 @@ internal fun UiCardVisualContent() {
                 .background(RaftColor.Canvas)
                 .padding(start = 16.dp, top = 16.dp)
     ) {
-        RaftBrutalCard(modifier = Modifier.width(cardWidth)) {
-            Text(
-                text = "Channel settings",
-                style = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
-                color = theme.ink,
-                maxLines = 1
-            )
-            Text(
-                text = "Control who can post and how the channel appears to members.",
-                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = theme.inkMuted
-            )
-            RaftBrutalActionButton(
-                label = "Save changes",
-                onClick = {},
-                // React places <Button size="sm"> in a flex-col so it stretches to the card
-                // content width (~280dp); Kuikly Column keeps it content-sized without this,
-                // so fill the card width to match (XiShi actual-capture audit, both registers).
-                //
-                // Shadow-ink contract (brutal): RaftBrutalActionButton uses shadowOffset as BOTH
-                // the offset-box shadow displacement AND its end/bottom layout reserve. React's
-                // size="sm" button shadow is 2px, so shadowOffset = 2.dp gives a matching 2dp
-                // shadow ink (the standalone button fixture already sets 2.dp per size; the card
-                // fixture previously omitted it and fell to brutalTheme.shadow.offset = 4dp). To
-                // keep the already-parity brutal footprint (Card border 128dp, nested Button core
-                // 278dp), a brutal-only external end/bottom = 2.dp reserve restores the original
-                // 4dp footprint (2dp external + 2dp internal). Elegant renders via Modifier.shadow
-                // (no offset-box), so it ignores shadowOffset and takes NO external reserve — its
-                // geometry (the accepted waiver capture) is unchanged.
-                modifier = Modifier.fillMaxWidth(),
-                backgroundColor = RaftColor.BrandYellow,
-                minHeight = 28.dp,
-                minWidth = 0.dp,
-                textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
-            )
+        RaftCard(modifier = Modifier.width(cardWidth)) {
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Channel settings",
+                    style = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
+                    color = theme.ink,
+                    maxLines = 1
+                )
+                Text(
+                    text = "Control who can post and how the channel appears to members.",
+                    style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = theme.inkMuted
+                )
+                RaftButton(
+                    text = "Save changes",
+                    onClick = {},
+                    // React places <Button size="sm"> in a flex-col so it stretches to the card
+                    // content width; fill the card width to match.
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Md
+                )
+            }
         }
     }
 }
@@ -190,40 +171,22 @@ internal fun UiFormFieldVisualContent() {
                 label = "Email",
                 required = true
             ) {
-                RaftBrutalInputField(
-                    value = "cindy@slock.ai",
-                    onValueChange = {},
-                    placeholder = "",
-                    autoFocus = false,
-                    fieldMinHeight = 42.dp
-                )
+                RaftTextField(value = "cindy@slock.ai", onValueChange = {}, modifier = Modifier.fillMaxWidth())
             }
             RaftField(
                 label = "Description",
                 optional = true,
                 description = "Shown in channel discovery."
             ) {
-                RaftBrutalInputField(
-                    value = "Visual parity fixture",
-                    onValueChange = {},
-                    placeholder = "",
-                    autoFocus = false,
-                    fieldMinHeight = 42.dp
-                )
+                RaftTextField(value = "Visual parity fixture", onValueChange = {}, modifier = Modifier.fillMaxWidth())
             }
             RaftField(
                 label = "Server Name",
                 labelSize = RaftFieldLabelSize.Sm,
                 error = "Name is required"
             ) {
-                RaftBrutalInputField(
-                    value = "",
-                    onValueChange = {},
-                    placeholder = "",
-                    autoFocus = false,
-                    fieldMinHeight = 42.dp,
-                    borderColor = RaftColor.AccentRed
-                )
+                // Invalid through the field's error (LocalRaftFieldState).
+                RaftTextField(value = "", onValueChange = {}, modifier = Modifier.fillMaxWidth())
             }
         }
     }
@@ -242,89 +205,23 @@ internal fun UiTextareaVisualContent() {
                 .background(RaftColor.Canvas)
                 .padding(16.dp)
     ) {
-        RaftBrutalTextarea(
-            value = "This agreement copy is too long for the configured limit.",
-            onValueChange = {},
-            error = "Agreement body must be shorter.",
-            showCounter = true,
-            limit = 40,
-            fieldHeight = 96.dp,
-            maxLines = 2
-        )
+        RaftField(label = null, modifier = Modifier.fillMaxWidth(), error = "Agreement body must be shorter.") {
+            // Two 24dp field lines inside the 10dp padding stay under the 96dp minimum.
+            RaftTextarea(
+                value = "This agreement copy is too long for the configured limit.",
+                onValueChange = {},
+                limit = 40,
+                minHeight = 96.dp,
+                maxHeight = 96.dp,
+                inputModifier = rememberRaftTextareaEditorModifier()
+            )
+        }
     }
 }
 
 /** Tailwind `text-sm font-bold`: 14px on a 20px line. */
 private val UiTextSmBold
     @Composable get() = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp).withRaftFontWeight(FontWeight.Bold)
-
-@Composable
-internal fun UiAttentionDotVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(80.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                RaftAttentionDot()
-                Text("Unread", style = UiTextSmBold, color = RaftColor.TextBlack)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                // web `size="sm"`: the 6px compact pixel.
-                RaftAttentionDot(size = 6.dp)
-                Text("Compact", style = UiTextSmBold, color = RaftColor.TextBlack)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                // web `tone="bg-presence-error"`.
-                RaftAttentionDot(color = RaftColor.PresenceError)
-                Text("Warning", style = UiTextSmBold, color = RaftColor.TextBlack)
-            }
-        }
-    }
-}
-
-@Composable
-internal fun UiStatusDotVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(92.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        // web `ui-status-dot`: a single `gap-3` row of four StatusDots - online (md 9px),
-        // error sm (8px), offline lg (11px), external (md). No pulse row (raft lights never
-        // animate and the web case has none).
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            RaftAppStatusDot(color = RaftColor.PresenceOnline)
-            RaftAppStatusDot(color = RaftColor.PresenceError, size = 8.dp)
-            RaftAppStatusDot(color = RaftColor.PresenceOffline, size = 11.dp)
-            RaftAppStatusDot(color = RaftColor.PresenceExternal)
-        }
-    }
-}
-
-@Composable
-internal fun UiProgressBarVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(124.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            RaftProgressBar(modifier = Modifier.width(310.dp), value = 64, label = "Downloading update", showPercent = true, tone = RaftProgressBarTone.Cyan)
-            RaftProgressBar(modifier = Modifier.width(310.dp), value = 28, label = "Verifying package", showPercent = true, tone = RaftProgressBarTone.Cyan)
-        }
-    }
-}
 
 @Composable
 internal fun UiSkeletonVisualContent() {
@@ -357,38 +254,6 @@ internal fun UiSkeletonVisualContent() {
 }
 
 @Composable
-internal fun UiSpinnerVisualContent() {
-    // web: `flex items-center gap-5` of Spinner xs / sm / md / lg and an inverse sm in a
-    // `bg-black p-2` span. The span is a flex item holding an inline-flex spinner, so its
-    // content box is one 24px line with the spinner sitting on the baseline (the bottom).
-    // The spinners are pinned to the rest step 0 (top-left pixel lit), the frame web shows
-    // with `animation: none` (and raft-ui's reduced-motion rest frame).
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(92.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            RaftAppSpinner(size = RaftAppSpinnerSize.Xs, stillStep = UiSpinnerVisualStillStep)
-            RaftAppSpinner(size = RaftAppSpinnerSize.Sm, stillStep = UiSpinnerVisualStillStep)
-            RaftAppSpinner(size = RaftAppSpinnerSize.Md, stillStep = UiSpinnerVisualStillStep)
-            RaftAppSpinner(size = RaftAppSpinnerSize.Lg, stillStep = UiSpinnerVisualStillStep)
-            Box(
-                modifier = Modifier.background(Color.Black).padding(8.dp).height(24.dp),
-                contentAlignment = Alignment.BottomStart
-            ) {
-                RaftAppSpinner(size = RaftAppSpinnerSize.Sm, inverse = true, stillStep = UiSpinnerVisualStillStep)
-            }
-        }
-    }
-}
-
-private const val UiSpinnerVisualStillStep = 0
-
-@Composable
 internal fun UiSlugInputVisualContent() {
     Box(
         modifier =
@@ -404,39 +269,20 @@ internal fun UiSlugInputVisualContent() {
         // raft-ui InputGroup has no shadow gutter, so react's gap-4 is 16dp.
         // React renders the second row read-only at opacity-60 (not disabled).
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            RaftSlugInput(value = "design-lab", onValueChange = {}, modifier = Modifier.width(310.dp))
-            RaftSlugInput(
+            RaftTextField(
+                value = "design-lab",
+                onValueChange = {},
+                modifier = Modifier.width(310.dp),
+                prefix = "/",
+                addonVariant = RaftTextFieldAddonVariant.Container
+            )
+            RaftTextField(
                 value = "partner-workspace",
                 onValueChange = {},
-                modifier = Modifier.width(310.dp).alpha(0.6f)
+                modifier = Modifier.width(310.dp).alpha(0.6f),
+                prefix = "/",
+                addonVariant = RaftTextFieldAddonVariant.Container
             )
-        }
-    }
-}
-
-@Composable
-internal fun UiSectionEyebrowVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(92.dp)
-                .clipToBounds()
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        // web `ui-section-eyebrow`: hint "Recent Activity", ink "Applications", and a
-        // `bg-fill-muted px-2 py-1` label "Choose Avatar" that the flex column stretches to
-        // the full 310px content width. The 92px canvas is too short on both sides: web
-        // overflows and clips (`overflow: hidden`), so this lays the column out unbounded
-        // and clips at the frame rather than squashing the third row to nothing. Raise
-        // both canvases together (~112) to show the whole stack.
-        Column(Modifier.wrapContentHeight(Alignment.Top, unbounded = true), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaftAppSectionEyebrow(label = "Recent Activity")
-            RaftAppSectionEyebrow(label = "Applications", color = RaftColor.TextBlack)
-            Box(modifier = Modifier.fillMaxWidth().background(RaftColor.FillMuted).padding(horizontal = 8.dp, vertical = 4.dp)) {
-                RaftAppSectionEyebrow(label = "Choose Avatar")
-            }
         }
     }
 }
@@ -490,29 +336,18 @@ internal fun UiSelectVisualContent() {
     }
 }
 
+/**
+ * The web case's legacy SurfaceListItem (raft-ui has since dropped it; the app's reminder card is a
+ * DS `RaftCard`): a card-surface row, `info-soft` when selected, padded 16 x 12.
+ */
 @Composable
-internal fun UiSectionHeaderVisualContent() {
+private fun UiSurfaceListItemFixtureRow(selected: Boolean, content: @Composable () -> Unit) {
     Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(88.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        // web: SectionHeader "Applications" with `border-b border-line-seam pb-2`.
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            RaftSectionHeader(
-                label = "Applications",
-                count = 3,
-                modifier = Modifier.fillMaxWidth(),
-                action = {
-                    RaftButton(text = "Add", onClick = {})
-                }
-            )
-            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
-        }
-    }
+        Modifier
+            .fillMaxWidth()
+            .raftCardSurface(fill = if (selected) RaftColor.InfoSoft else RaftColor.Card)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) { content() }
 }
 
 @Composable
@@ -529,13 +364,13 @@ internal fun UiSurfaceListItemVisualContent() {
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaftSurfaceListItem(interactive = false) {
+            UiSurfaceListItemFixtureRow(selected = false) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Private app", style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp), color = RaftColor.TextBlack, maxLines = 1)
                     Text("Available to this server", style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp), color = RaftColor.TextMuted, maxLines = 1)
                 }
             }
-            RaftSurfaceListItem(selected = true, interactive = false) {
+            UiSurfaceListItemFixtureRow(selected = true) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Active integration", style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp), color = RaftColor.TextBlack, maxLines = 1)
                     Text("Selected list item state", style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp), color = RaftColor.TextMuted, maxLines = 1)

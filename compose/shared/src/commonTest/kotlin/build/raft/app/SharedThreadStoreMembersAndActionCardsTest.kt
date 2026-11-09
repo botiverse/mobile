@@ -702,6 +702,65 @@ class SharedThreadStoreMembersAndActionCardsTest {
         assertEquals(emptyList(), payload.memberCandidates.map { it.id })
     }
     @Test
+    fun channelCreateActionCardHandsOverTheNewChannelEvenWhenMarkingFails() = runTest {
+        listOf(200, 500).forEach { markCode ->
+            val dataSource =
+                testSharedThreadDataSource(
+                    storeScope = backgroundScope,
+                    networkApi = FakeThreadApi(),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                    channelRepository = FakeChannelRepository(),
+                    actionCardsApiClient =
+                        RaftIntegrationsActionsPushApiClient(
+                            RecordingActionCardsApi(
+                                markResponse =
+                                    HomeNetworkResponse(
+                                        code = markCode,
+                                        bodyText = """{"messageId":"m-card","metadata":{"kind":"action-card"}}""",
+                                    ),
+                            ),
+                        ),
+                )
+            val created = mutableListOf<String>()
+
+            val result =
+                dataSource.commitThreadActionCard(
+                    basePayload(),
+                    "m-card",
+                    ThreadActionCard(type = "channel:create", name = "design-review"),
+                    onChannelCreated = { created += it.channelId.value },
+                )
+
+            assertEquals(listOf("channel-created"), created, "mark $markCode")
+            assertEquals(markCode == 200, result is DataResult.Content, "mark $markCode")
+        }
+    }
+
+    @Test
+    fun aChannelCardThatCreatesNothingHandsOverNothing() = runTest {
+        val dataSource =
+            testSharedThreadDataSource(
+                storeScope = backgroundScope,
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                channelRepository = FakeChannelRepository(),
+                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(RecordingActionCardsApi()),
+            )
+        val created = mutableListOf<String>()
+
+        dataSource.commitThreadActionCard(
+            basePayload(),
+            "m-card",
+            ThreadActionCard(type = "channel:create", name = "  "),
+            onChannelCreated = { created += it.channelId.value },
+        )
+
+        assertTrue(created.isEmpty())
+    }
+
+    @Test
     fun channelCreateActionCardUsesTypedRepositoryAndMarksExecuted() = runTest {
         val channelRepository = FakeChannelRepository()
         val actionCardsApi = RecordingActionCardsApi()

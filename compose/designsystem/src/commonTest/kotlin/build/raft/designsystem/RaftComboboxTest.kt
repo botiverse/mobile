@@ -10,6 +10,7 @@ import build.raft.designsystem.components.raftComboboxFocusesSearch
 import build.raft.designsystem.components.raftComboboxPresentation
 import build.raft.designsystem.components.raftComboboxLabelOf
 import build.raft.designsystem.components.raftComboboxRows
+import build.raft.designsystem.components.raftComboboxToggled
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -153,5 +154,19 @@ class RaftComboboxCreateQueryTest {
     fun aChosenValueThatIsNotAnOptionIsNotOfferedAgain() {
         assertEquals(null, raftComboboxCreateQuery(options, "my-model", taken = listOf("my-model")))
         assertEquals("other", raftComboboxCreateQuery(options, "other", taken = listOf("my-model")))
+    }
+}
+
+class RaftComboboxToggledTest {
+    @Test
+    fun aValueNotChosenIsAddedAtTheEnd() {
+        assertEquals(listOf("a", "b", "c"), raftComboboxToggled(listOf("a", "b"), "c"))
+        assertEquals(listOf("a"), raftComboboxToggled(emptyList(), "a"))
+    }
+
+    @Test
+    fun aChosenValueIsRemovedKeepingTheOrder() {
+        assertEquals(listOf("a", "c"), raftComboboxToggled(listOf("a", "b", "c"), "b"))
+        assertEquals(emptyList<String>(), raftComboboxToggled(listOf("a"), "a"))
     }
 }

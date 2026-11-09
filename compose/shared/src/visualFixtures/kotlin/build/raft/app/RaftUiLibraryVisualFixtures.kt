@@ -4,6 +4,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
+import build.raft.designsystem.components.RaftStatusDot
+import build.raft.designsystem.components.RaftStatusSize
 import build.raft.app.components.RaftUiAvatar
 import build.raft.app.components.RaftUiAvatarGroup
 import build.raft.app.components.RaftUiAvatarType
@@ -18,7 +22,8 @@ import build.raft.app.components.RaftUiCheckboxLabelRow
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiControlledSelect
 import build.raft.app.components.RaftUiControlledSelectionPopover
-import build.raft.app.components.RaftUiEmptyState
+import build.raft.designsystem.components.RaftEmptyState
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftUiField
 import build.raft.app.components.RaftUiInlineCode
 import build.raft.app.components.RaftUiInputGroup
@@ -30,9 +35,6 @@ import build.raft.app.components.RaftUiSegmentedControl
 import build.raft.app.components.RaftUiSegmentedItem
 import build.raft.app.components.RaftUiSelectTrigger
 import build.raft.app.components.RaftUiSelectionOption
-import build.raft.app.components.RaftUiSpinner
-import build.raft.app.components.RaftAppSpinnerSize
-import build.raft.app.components.RaftUiStatusDot
 import build.raft.app.components.RaftUiTextarea
 import build.raft.app.components.RaftUiMenuRow
 import build.raft.app.components.RaftUiMenuSurface
@@ -117,10 +119,11 @@ internal fun RaftUiEmptyStateVisualContent() {
                     .fillMaxSize()
                     .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.30f))
         ) {
-            RaftUiEmptyState(
+            RaftEmptyState(
                 title = "No visual changes",
                 description = "Library fixtures are ready, but no reviewer has opened this run yet.",
-                action = {
+                icon = { RaftSlotIcon(RaftLucideIconName.Inbox) },
+                actions = {
                     RaftUiButton(label = "Create fixture", variant = RaftUiButtonVariant.Primary)
                 }
             )
@@ -269,19 +272,19 @@ internal fun RaftUiCheckboxStatusVisualContent() {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RaftUiStatusDot(color = RaftColor.AccentLime, size = 11.dp)
+                    RaftStatusDot(color = RaftColor.AccentLime, size = RaftStatusSize.Lg)
                     RaftUiTextSans("Online")
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RaftUiStatusDot(color = RaftColor.AccentOrange, size = 10.dp, pulsing = true)
+                    RaftStatusDot(color = RaftColor.AccentOrange, size = RaftStatusSize.Md)
                     RaftUiTextSans("Pending")
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RaftUiStatusDot(color = RaftColor.AccentRed, size = 8.dp)
+                    RaftStatusDot(color = RaftColor.AccentRed, size = RaftStatusSize.Sm)
                     RaftUiTextSans("Failed")
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RaftUiSpinner(size = RaftAppSpinnerSize.Md)
+                    RaftSpinner(size = RaftSpinnerSize.Md, color = RaftColor.TextBlack)
                     RaftUiTextSans("Syncing")
                 }
             }

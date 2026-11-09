@@ -33,17 +33,53 @@ internal suspend fun resolveSharedTaskReference(
     taskNumber: Int,
     currentChannelId: ChannelId?,
     tasksDataSource: SharedTasksDataSource,
-    tasksDataStore: SharedTasksDataStore?
+    tasksDataStore: SharedTasksDataStore?,
+    /**
+     * The ref names its conversation (`#proj:#7`, `dm:@peer:#7`): only a task of
+     * [currentChannelId] matches; another conversation's `#7` never does.
+     */
+    channelQualified: Boolean = false,
+    /**
+     * The resolver whose single fetch phase the network lookup runs in, so a task ref's spinner is
+     * the same state as a thread or message ref's. Null: no loading state is published.
+     */
+    referenceResolver: SharedReferenceResolver? = null,
+    /** The chip this open started from. */
+    actionId: String? = null
 ): SharedTaskReferenceResolution {
+    if (channelQualified && currentChannelId == null) return SharedTaskReferenceResolution.NotFound
     tasksDataStore?.bindCurrentOwnerIdentity()
     tasksDataStore
         ?.loadedTaskReferenceResolution(
             serverId = serverId.value,
             taskNumber = taskNumber,
-            currentChannelId = currentChannelId
+            currentChannelId = currentChannelId,
+            channelQualified = channelQualified
         )
         ?.let { return it }
 
+    val fetch: suspend () -> SharedTaskReferenceResolution = {
+        fetchSharedTaskReference(
+            serverId = serverId,
+            taskNumber = taskNumber,
+            currentChannelId = currentChannelId,
+            tasksDataSource = tasksDataSource,
+            tasksDataStore = tasksDataStore,
+            channelQualified = channelQualified
+        )
+    }
+    return referenceResolver?.fetchPhase(actionId) { fetch() } ?: fetch()
+}
+
+/** A local miss: the channel's task by number, then the server's task list. */
+private suspend fun fetchSharedTaskReference(
+    serverId: ServerId,
+    taskNumber: Int,
+    currentChannelId: ChannelId?,
+    tasksDataSource: SharedTasksDataSource,
+    tasksDataStore: SharedTasksDataStore?,
+    channelQualified: Boolean
+): SharedTaskReferenceResolution {
     currentChannelId?.let { channelId ->
         when (
             val channelResult =
@@ -58,11 +94,16 @@ internal suspend fun resolveSharedTaskReference(
                 val task = channelResult.data.task
                 val foldOutcome = tasksDataStore?.upsertTaskForCurrentServer(serverId.value, task)
                 if (tasksDataStore != null && foldOutcome != SharedTaskFactFoldOutcome.Accepted) {
-                    return tasksDataStore.loadedTaskReferenceResolution(
+                    tasksDataStore.loadedTaskReferenceResolution(
                         serverId = serverId.value,
                         taskNumber = taskNumber,
-                        currentChannelId = currentChannelId
-                    ) ?: SharedTaskReferenceResolution.Failed
+                        currentChannelId = currentChannelId,
+                        channelQualified = channelQualified
+                    )?.let { return it }
+                    // The store already holds this revision (a realtime frame), only not in a loaded
+                    // list, or its copy conflicts: the server just answered, so the task exists and
+                    // opens on that answer. Null: this store is no longer on this server.
+                    if (foldOutcome == null) return SharedTaskReferenceResolution.Failed
                 }
                 return SharedTaskReferenceResolution.Found(
                     task = task,
@@ -102,14 +143,16 @@ internal suspend fun resolveSharedTaskReference(
     return snapshot.tasks.taskReferenceResolution(
         taskNumber = taskNumber,
         currentChannelId = currentChannelId,
-        source = SharedTaskReferenceResolutionSource.NetworkServer
+        source = SharedTaskReferenceResolutionSource.NetworkServer,
+        channelQualified = channelQualified
     ) ?: SharedTaskReferenceResolution.NotFound
 }
 
 private fun SharedTasksDataStore.loadedTaskReferenceResolution(
     serverId: String,
     taskNumber: Int,
-    currentChannelId: ChannelId?
+    currentChannelId: ChannelId?,
+    channelQualified: Boolean = false
 ): SharedTaskReferenceResolution? {
     currentChannelId?.let { channelId ->
         val channelProjection = projection(serverId, SharedTasksScope.Channel(channelId))
@@ -137,16 +180,21 @@ private fun SharedTasksDataStore.loadedTaskReferenceResolution(
     return serverProjection.tasks.taskReferenceResolution(
         taskNumber = taskNumber,
         currentChannelId = currentChannelId,
-        source = SharedTaskReferenceResolutionSource.LoadedServer
+        source = SharedTaskReferenceResolutionSource.LoadedServer,
+        channelQualified = channelQualified
     )
 }
 
 private fun List<TaskSummary>.taskReferenceResolution(
     taskNumber: Int,
     currentChannelId: ChannelId?,
-    source: SharedTaskReferenceResolutionSource
+    source: SharedTaskReferenceResolutionSource,
+    channelQualified: Boolean = false
 ): SharedTaskReferenceResolution? {
-    val matches = filter { task -> task.taskNumber == taskNumber }
+    val matches =
+        filter { task ->
+            task.taskNumber == taskNumber && (!channelQualified || task.channelId == currentChannelId)
+        }
     val selected =
         when (matches.size) {
             0 -> return null

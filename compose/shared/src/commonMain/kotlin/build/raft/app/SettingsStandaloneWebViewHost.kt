@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -69,9 +70,12 @@ internal fun settingsWebViewPageData(
     versionCode: String = "",
     feedbackCardEntry: RaftFeedbackCardEntry? = null,
     feedbackTicketId: String? = null,
+    /** A search result's setting: the web page opens at `#<id>` (Billing, Administration). */
+    anchor: SettingsSearchAnchorRequest? = null,
 ): JSONObject =
     JSONObject().apply {
         put("pageName", SETTINGS_WEB_VIEW_PAGE)
+        putSettingsSearchAnchor(anchor)
         put(SETTINGS_WEB_VIEW_SURFACE, surface.diagnosticsName)
         put(RAFT_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
         storeScope.initialServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
@@ -97,10 +101,11 @@ internal fun Pager.openSettingsWebViewPage(
     versionCode: String = "",
     feedbackCardEntry: RaftFeedbackCardEntry? = null,
     feedbackTicketId: String? = null,
+    anchor: SettingsSearchAnchorRequest? = null,
 ) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         SETTINGS_WEB_VIEW_PAGE,
-        settingsWebViewPageData(surface, storeScope, versionCode, feedbackCardEntry, feedbackTicketId),
+        settingsWebViewPageData(surface, storeScope, versionCode, feedbackCardEntry, feedbackTicketId, anchor),
     )
 }
 
@@ -156,6 +161,8 @@ private fun SettingsWebViewScreen() {
             settingsWebViewSurfaceFromPageData(pager.pageData.params)
         }
     val wideDetailClose = LocalRaftSettingsWideDetailClose.current
+    // A Settings search result opens the web page at its setting (`#<id>`, web useScrollToSettingsSection).
+    val searchAnchor = remember(pager.pageData.params) { settingsSearchAnchorFromPageData(pager.pageData.params) }
     fun closeSection() =
         settingsPageClose(wideDetailClose) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
     when (surface) {
@@ -166,12 +173,18 @@ private fun SettingsWebViewScreen() {
         // (list, or one machine via settingsComputerId) compatible by rendering it here.
         SettingsWebViewSurface.Computers -> RaftSettingsComputersRoute()
         SettingsWebViewSurface.Billing ->
-            StandaloneSettingsWebViewPage(
-                pager = pager,
-                title = stringResource(Res.string.settings_billing_title),
-                iconName = RaftLucideIconName.CreditCard,
-                spec = settingsBillingWebViewSpec,
-            )
+            // iOS: never the in-app WebView (its page offers Stripe payment; artin 11-02).
+            when (settingsBillingOpenTarget()) {
+                SettingsBillingOpenTarget.ExternalBrowser -> SettingsBillingExternalPage(pager)
+                SettingsBillingOpenTarget.InAppWebView ->
+                    StandaloneSettingsWebViewPage(
+                        pager = pager,
+                        title = stringResource(Res.string.settings_billing_title),
+                        iconName = RaftLucideIconName.CreditCard,
+                        spec = remember(searchAnchor) { settingsBillingWebViewSpec.withSettingsSearchAnchor(searchAnchor) },
+                    )
+                SettingsBillingOpenTarget.ViewOnly -> SettingsBillingViewOnlyPage(pager)
+            }
         SettingsWebViewSurface.Marketplace ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
@@ -209,7 +222,7 @@ private fun SettingsWebViewScreen() {
                 pager = pager,
                 title = stringResource(Res.string.settings_server_administration_title),
                 iconName = RaftLucideIconName.Shield,
-                spec = settingsAdministrationWebViewSpec,
+                spec = remember(searchAnchor) { settingsAdministrationWebViewSpec.withSettingsSearchAnchor(searchAnchor) },
             )
         SettingsWebViewSurface.ImBridges ->
             StandaloneSettingsWebViewPage(
@@ -218,6 +231,7 @@ private fun SettingsWebViewScreen() {
                 iconName = RaftLucideIconName.Network,
                 spec = settingsImBridgesWebViewSpec,
             )
+        SettingsWebViewSurface.AccountDeletion -> SettingsAccountDeletionWebViewPage(pager)
         // Keep old settings-webview route payloads compatible while rendering
         // the Hands-hosted Release Notes WebView.
         SettingsWebViewSurface.ReleaseNotes -> ReleaseNotesScreen()
@@ -227,7 +241,7 @@ private fun SettingsWebViewScreen() {
 
 @Composable
 private fun SettingsWebViewInvalidRoute(pager: Pager) {
-    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
+    Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         RaftTopPageHeader(
             title = stringResource(Res.string.settings_title),
             iconName = RaftLucideIconName.Settings,
@@ -249,6 +263,13 @@ private fun SettingsWebViewInvalidRoute(pager: Pager) {
  * deliberately no [build.raft.app.data.SharedSettingsDestination] here: a Web surface must not
  * start a second native Settings store load for content that the SPA is already fetching.
  */
+/** [this] spec, its page opened at [anchor]'s setting (`#<id>`); unchanged without one. */
+internal fun StandaloneSettingsWebViewSpec.withSettingsSearchAnchor(anchor: SettingsSearchAnchorRequest?): StandaloneSettingsWebViewSpec {
+    if (anchor == null) return this
+    val build = buildWebUrl
+    return copy(buildWebUrl = { webBaseUrl, session, localeTag -> settingsSearchWebUrlWithAnchor(build(webBaseUrl, session, localeTag), anchor) })
+}
+
 internal data class StandaloneSettingsWebViewSpec(
     val surface: SettingsWebViewSurface,
     val includeLocaleQuery: Boolean = false,
@@ -344,7 +365,7 @@ internal fun SettingsWebViewPageScaffold(
         onBack = ::goBackOrClose,
     )
 
-    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
+    Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         // This wrapper, rather than RaftTopPageHeader's inner content Box, is the sibling of the
         // WebView body. The layer must live here so it can order those two layout siblings.
         Box(modifier = Modifier.fillMaxWidth().zIndex(SETTINGS_WEB_VIEW_HEADER_Z_INDEX)) {
@@ -367,7 +388,7 @@ internal fun SettingsWebViewPageScaffold(
                     .weight(1f)
                     .fillMaxWidth()
                     .zIndex(SETTINGS_WEB_VIEW_BODY_Z_INDEX)
-                    .background(RaftColor.SurfaceCream),
+                    .background(RaftTheme.colors.layerCanvas),
         ) {
             if (bodyReady) {
                 content(webViewController) { update ->
@@ -629,7 +650,7 @@ internal fun SettingsWebViewContent(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(RaftColor.SurfaceCream)
+                .background(RaftTheme.colors.layerCanvas)
                 .onGloballyPositioned { coordinates ->
                     bodyFrameReady =
                         settingsWebViewFrameIsReady(
@@ -657,7 +678,7 @@ internal fun SettingsWebViewContent(
                         Modifier
                             .fillMaxWidth()
                             .height(webViewHeight)
-                            .background(RaftColor.SurfaceCream)
+                            .background(RaftTheme.colors.layerCanvas)
                             .padding(bottom = bottomContentPadding)
                             .alpha(if (contentVisible) 1f else 0f),
                     allowNavigation = allowNavigation,
@@ -723,7 +744,7 @@ internal fun SettingsWebViewContent(
 
 @Composable
 internal fun SettingsWebViewLoadingCover() {
-    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream))
+    Box(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas))
 }
 
 @Composable
@@ -733,7 +754,7 @@ internal fun SettingsWebViewErrorContent(
     onAction: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         RaftStickerTile(fill = RaftColor.Brand, size = RaftIconTileSize.Lg) {
@@ -942,17 +963,17 @@ private const val SETTINGS_WEB_VIEW_ATTACH_DELAY_FRAMES = 2
 @Composable
 private fun rememberStandaloneSettingsLocaleTag(enabled: Boolean): String =
     remember(enabled) {
-        if (!enabled) {
-            AppLocale.Default.languageTag
-        } else {
-            try {
-                KeyValueLocalePreferenceStore(raftSharedPreferenceStore()).readLocaleSync().languageTag
-            } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                AppLocale.Default.languageTag
-            }
-        }
+        if (!enabled) AppLocale.Default.languageTag else readStandaloneSettingsLocaleTag()
+    }
+
+/** The in-app language's tag for a Settings web page's `lang` query (the default when unreadable). */
+internal fun readStandaloneSettingsLocaleTag(): String =
+    try {
+        KeyValueLocalePreferenceStore(raftSharedPreferenceStore()).readLocaleSync().languageTag
+    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+        throw cancellation
+    } catch (_: Throwable) {
+        AppLocale.Default.languageTag
     }
 
 internal fun standaloneSettingsServerSlug(session: StoredAuthSession?): String? =

@@ -114,8 +114,12 @@ internal sealed interface TaskHistoryDetail {
     /** "Task #7 · Status: Todo"; [status] null = a status the app does not know (shown as Todo, as web does). */
     data class Created(val taskNumber: String, val status: TaskStatus?) : TaskHistoryDetail
 
-    /** Two status badges, `from → to`. */
-    data class Transition(val from: TaskStatus, val to: TaskStatus) : TaskHistoryDetail
+    /**
+     * Two status badges, `from → to`. [reason]: a move into Backlog says what would bring the task
+     * back (web `TimelineDetail`, slock #12963): shown under the badges. Only there: the server words
+     * `reason` itself on other moves.
+     */
+    data class Transition(val from: TaskStatus, val to: TaskStatus, val reason: String? = null) : TaskHistoryDetail
 
     /** A transition between statuses the app does not know: the raw values as text. */
     data class TransitionText(val from: String, val to: String) : TaskHistoryDetail
@@ -184,7 +188,7 @@ private fun TaskHistoryEvent.historyMarkerStatus(): TaskStatus? =
 
 /** A wire status exactly as the server writes it (`todo`, `in_progress`, ...); anything else is not one. */
 private fun exactTaskStatusOrNull(value: String): TaskStatus? =
-    TaskStatus.entries.firstOrNull { it.toWireValue() == value }
+    TaskStatus.known.firstOrNull { it.toWireValue() == value }
 
 private fun TaskHistoryEvent.historyDetail(): TaskHistoryDetail {
     if (eventType == "created") {
@@ -199,7 +203,8 @@ private fun TaskHistoryEvent.historyDetail(): TaskHistoryDetail {
             val fromStatus = exactTaskStatusOrNull(from)
             val toStatus = exactTaskStatusOrNull(to)
             return if (fromStatus != null && toStatus != null) {
-                TaskHistoryDetail.Transition(fromStatus, toStatus)
+                val reason = if (toStatus == TaskStatus.Backlog) payload.stringOrNull("reason")?.takeIf { it.isNotEmpty() } else null
+                TaskHistoryDetail.Transition(fromStatus, toStatus, reason)
             } else {
                 TaskHistoryDetail.TransitionText(from, to)
             }

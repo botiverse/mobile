@@ -29,7 +29,8 @@ import org.robolectric.annotation.GraphicsMode
  * The @mention hover card's profile content (web `ProfilePreviewCardContent`) on the raft-ui
  * PreviewCard surface, light and dark, without the popup (the design system's
  * `preview_card_open_*` holds the card open over its trigger):
- *  - a person: avatar, name, @handle, the description under a hairline, Message and View Profile;
+ *  - a person: avatar, name, @handle, the description under a hairline, View Profile and Message
+ *    at the card's end (raft-design #939: the bordered Message last);
  *  - an agent: its status light and words after the name, @handle, "Not read yet", Runtime and
  *    Model under a hairline, the description.
  * Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
@@ -93,5 +94,6 @@ private val agentModel =
                 .toRaftAgentStatusIndicatorState(),
         runtimeLabel = "Claude Code",
         modelLabel = "Claude Opus",
+        computer = RaftProfilePreviewComputer.Named("studio-mac"),
         readReceipt = RaftProfilePreviewReadReceipt.Unread,
     )

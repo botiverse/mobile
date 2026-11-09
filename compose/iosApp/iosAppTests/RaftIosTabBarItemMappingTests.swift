@@ -173,6 +173,32 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         )
     }
 
+    func testBandOfASideBarStopsAtTheStripItsSafeAreaReports() {
+        // iPhone Duo Split View, Raft in the left half: the bar's frame is 132 pt wide, but the
+        // strip the system keeps for it (the bar's safe area) is 84 pt.
+        let container = CGRect(x: 0, y: 0, width: 469, height: 669)
+        let bar = CGRect(x: 0, y: 0, width: 132, height: 669)
+        XCTAssertEqual(
+            RaftIosTabBarItemMapping.band(container: container, tabBar: bar, safeArea: UIEdgeInsets(top: 0, left: 84, bottom: 34, right: 0)),
+            RaftIosTabBarBand(edge: .left, points: 84)
+        )
+        XCTAssertEqual(
+            RaftIosTabBarItemMapping.band(container: container, tabBar: bar),
+            RaftIosTabBarBand(edge: .left, points: 132)
+        )
+    }
+
+    func testBandOfASideBarInFromTheEdgeMeasuresItsSafeAreaFromTheContainerEdge() {
+        // A bar 11 pt in from the right edge with 73 pt of it in the strip: the strip ends 84 pt
+        // from the container's edge, past the bar's inner edge (81 pt), so the band is the bar's.
+        let container = CGRect(x: 0, y: 0, width: 951, height: 669)
+        let bar = CGRect(x: 870, y: 180, width: 70, height: 310)
+        XCTAssertEqual(
+            RaftIosTabBarItemMapping.band(container: container, tabBar: bar, safeArea: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 73)),
+            RaftIosTabBarBand(edge: .right, points: 81)
+        )
+    }
+
     func testBandOfAFloatingBottomBarRunsToTheContainerBottom() {
         // iOS 26 floating glass bar: narrower than the window and above the home indicator, so its
         // maxY is not the container's maxY. It is still a bottom bar, and the band includes the gap.

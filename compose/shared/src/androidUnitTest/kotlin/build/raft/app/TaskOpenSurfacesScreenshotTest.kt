@@ -32,8 +32,8 @@ import org.robolectric.annotation.GraphicsMode
  * `task.open.pending{,.refused,.not-joined}` — a pre-v2 task's conversation before its first
  * message as the task conversation page (its bar, its head with the Status and Assignee editors,
  * web `TaskConversationDialog` empty: "No discussion in this task yet" and where its earlier
- * discussion is) with the composer pinned at the bottom; `task.open.pending.guest` — the same for
- * a guest, status and assignee as plain facts; after a refused first send
+ * discussion is) with the composer pinned at the bottom; `task.open.pending.read-only` — the same for
+ * a read-only (historical joint) task, status and assignee as plain facts; after a refused first send
  * (the server's words, the text kept); for a reader outside the channel (web ThreadPanel "Join
  * Channel to Reply" instead of the composer); `task.open.legacy` — web `LegacyTaskPanel`.
  * Verify / record as [RaftRobolectricScreenshot]; reports land in `build/reports/home-screenshots/`.
@@ -64,7 +64,7 @@ class TaskOpenSurfacesScreenshotTest {
     fun pendingNotJoinedDark() = capture("task.open.pending.not-joined.dark", RaftAppAppearance.Dark) { Pending(joined = false, refused = false) }
 
     @Test
-    fun pendingGuestLight() = capture("task.open.pending.guest", RaftAppAppearance.Light) { Pending(joined = true, refused = false, role = "guest") }
+    fun pendingReadOnlyLight() = capture("task.open.pending.read-only", RaftAppAppearance.Light) { Pending(joined = true, refused = false, readOnly = true) }
 
     @Test
     fun legacyLight() = capture("task.open.legacy", RaftAppAppearance.Light) { Legacy() }
@@ -88,14 +88,13 @@ class TaskOpenSurfacesScreenshotTest {
      * channel, so web's "Join Channel to Reply" replaces the composer.
      */
     @Composable
-    private fun Pending(joined: Boolean?, refused: Boolean, role: String = "member") {
-        val task = sampleTask(hostMessageId = MessageId("msg-host"))
+    private fun Pending(joined: Boolean?, refused: Boolean, readOnly: Boolean = false) {
+        val task = sampleTask(hostMessageId = MessageId("msg-host")).let { if (readOnly) it.copy(readOnlyReason = "historical_joint") else it }
         TaskPendingConversationPage(
             task = task,
             details = TaskHeadDetailsHandle(build.raft.app.data.TaskConversationDetailsState(), null),
             members = emptyList(),
             timeContext = null,
-            serverRole = role,
             editable = true,
             statusUpdating = false,
             sending = false,

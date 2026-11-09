@@ -105,7 +105,7 @@ class ThemeDecorScreenshotTest {
 
     @Composable
     private fun RowScope.Actions() {
-        RaftAvatarGroup(ringColor = RaftTheme.colors.layerFrame) {
+        RaftAvatarGroup {
             RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Sm, initials = "A")
             RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Sm)
         }

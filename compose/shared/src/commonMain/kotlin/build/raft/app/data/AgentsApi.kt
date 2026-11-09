@@ -2,10 +2,13 @@ package build.raft.app.data
 
 import build.raft.app.model.isExternalAgent
 import build.raft.app.model.AgentToolStuck
+import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
 import build.raft.app.data.realtime.ToolStuckDto
+import build.raft.app.data.realtime.SpawnFailureDto
 import build.raft.app.data.realtime.WakeCrashLoopDto
+import build.raft.app.data.realtime.toAgentSpawnFailure
 import build.raft.app.data.realtime.toAgentToolStuck
 import build.raft.app.data.realtime.toAgentWakeCrashLoop
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
@@ -175,6 +178,12 @@ internal interface RaftAgentsApi {
     suspend fun agentSkills(agentId: MemberId): HomeNetworkResponse
     /** `GET /agents/:id/external-status` — external agents only (400 otherwise), permission-gated (403). */
     suspend fun agentExternalStatus(agentId: MemberId): HomeNetworkResponse
+    /** `POST /agents/:id/hosted-runtime/retry`: provision a cloud agent again. */
+    suspend fun retryHostedRuntime(agentId: MemberId, body: String): HomeNetworkResponse =
+        error("retryHostedRuntime is not implemented")
+    /** `GET /agents/:id/hosted-runtime/model`: what a cloud agent's next turn runs on (web `AgentHostedRuntimeModel`). */
+    suspend fun agentHostedRuntimeModel(agentId: MemberId): HomeNetworkResponse =
+        error("agentHostedRuntimeModel is not implemented")
     // #89 React parity: agent permissions (scope grants) per React
     // `AgentScopesPanel.tsx`. Mirrors `GET / PUT /api/agents/:id/scopes`.
     // `updateAgentScopes` body is `{ scopes: AgentGrantableScope[] }`;
@@ -313,6 +322,20 @@ internal class RaftAgentsNetworkApi(
         networkClient.request(
             priority = DataRequestPriority.Visible,
             path = "agents/${agentId.value}/skills"
+        )
+
+    override suspend fun retryHostedRuntime(agentId: MemberId, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/hosted-runtime/retry",
+            method = "POST",
+            bodyText = body
+        )
+
+    override suspend fun agentHostedRuntimeModel(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "agents/${agentId.value}/hosted-runtime/model"
         )
 
     override suspend fun agentExternalStatus(agentId: MemberId): HomeNetworkResponse =
@@ -553,7 +576,37 @@ internal class RaftAgentsApiClient(
             ExternalAgentStatusSnapshot(
                 setupState = ExternalAgentSetupState.fromWireValue(wire.setupState),
                 credentialLastUsedAt = wire.credentialLastUsedAt?.takeIf { it.isNotBlank() },
-                lastActivityAt = wire.lastActivityAt?.takeIf { it.isNotBlank() }
+                lastActivityAt = wire.lastActivityAt?.takeIf { it.isNotBlank() },
+                hostedRuntime = wire.hostedRuntime?.toSnapshot()
+            )
+        }
+
+    /** [namesDefaultModel]: a retry after a refused model, on the provider's default. */
+    suspend fun retryHostedRuntime(agentId: MemberId, namesDefaultModel: Boolean): DataResult<Unit> =
+        transport.retryHostedRuntime(agentId, if (namesDefaultModel) """{"model":null}""" else "{}").mapAgentsBody(
+            "agent_hosted_runtime_retry_contract_mismatch",
+            HostedRuntimeRetryWireDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
+        ) { Unit }
+
+    /**
+     * Web `AgentHostedRuntimeModel`'s load. A 4xx (not hosted, not provisioned yet, no permission)
+     * is a non-Content result: the profile shows no Model row then, as on the web.
+     */
+    suspend fun agentHostedRuntimeModel(agentId: MemberId): DataResult<HostedAgentModelView> =
+        transport.agentHostedRuntimeModel(agentId).mapAgentsBody(
+            "agent_hosted_runtime_model_contract_mismatch",
+            HostedAgentModelWireDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
+        ) { wire ->
+            HostedAgentModelView(
+                models = wire.models.map { HostedRuntimeModelOption(it.id, it.label) },
+                defaultLabel = wire.defaultLabel?.takeIf { it.isNotBlank() },
+                model = wire.model?.takeIf { it.isNotBlank() },
+                label = wire.label?.takeIf { it.isNotBlank() },
+                source = wire.source,
+                locked = wire.locked,
+                picker = wire.picker
             )
         }
 
@@ -611,6 +664,8 @@ internal data class AgentSummary(
     val machineId: String?,
     val machineName: String?,
     val daemonVersion: String?,
+    /** The workspace path the agent's runtime reported (`runtimeProfile.current.workspacePathRef`). */
+    val workspacePath: String? = null,
     val avatarUrl: String?,
     val creatorId: String?,
     val creatorType: String?,
@@ -622,6 +677,8 @@ internal data class AgentSummary(
     val activity: String?,
     val activityDetail: String?,
     val deletedAt: String?,
+    /** A personal assistant's owner (`assistantOwnerUserId`); null for a shared agent. */
+    val assistantOwnerUserId: String? = null,
     /** Web parity: `agent.external === true || runtime === "external"`. */
     val isExternal: Boolean = false,
     /** External agents only: `lastSeenAt` from `GET /agents*` (`agent:seen` updates it in the store). */
@@ -630,12 +687,26 @@ internal data class AgentSummary(
     val activityDetailKind: String? = null,
     /** Why automatic wakes are paused, with [activityDetailKind] `wake_crash_loop_blocked`. */
     val wakeCrashLoop: AgentWakeCrashLoop? = null,
+    /** Why the last start failed, with [activityDetailKind] `runtime_unavailable`. */
+    val spawnFailure: AgentSpawnFailure? = null,
+    /** `lastRuntimeError.message`: the runtime error the server kept for the agent; null when none. */
+    val lastRuntimeErrorMessage: String? = null,
+    /** `lastRuntimeError.errorClass` / `errorReason`: the kept error's typed diagnostic, when it has one. */
+    val lastRuntimeErrorClass: String? = null,
+    val lastRuntimeErrorReason: String? = null,
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
-    val toolStuck: AgentToolStuck? = null
+    val toolStuck: AgentToolStuck? = null,
+    /** `modelLimits.defaultsReported`: true only when the server says so; false, null or absent is false. */
+    val modelLimitsDefaultsReported: Boolean = false,
+    val hostedRuntime: AgentHostedRuntimeSnapshot? = null,
+    /** What the running process reports it runs: `runtimeProfile.current.runtime` / `.model`, raw. */
+    val runningRuntime: String? = null,
+    val runningModel: String? = null
 )
 
 internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
     AgentDetailSummary(
+        hostedRuntime = hostedRuntime,
         id = id,
         name = name,
         displayName = displayName,
@@ -652,6 +723,7 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         machineId = machineId,
         machineName = machineName,
         daemonVersion = daemonVersion,
+        workspacePath = workspacePath,
         avatarUrl = avatarUrl,
         creatorId = creatorId,
         creatorType = creatorType,
@@ -663,10 +735,18 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         activity = activity,
         activityDetail = activityDetail,
         deletedAt = deletedAt,
+        assistantOwnerUserId = assistantOwnerUserId,
         lastSeenAt = lastSeenAt,
         activityDetailKind = activityDetailKind,
         wakeCrashLoop = wakeCrashLoop,
-        toolStuck = toolStuck
+        spawnFailure = spawnFailure,
+        lastRuntimeErrorMessage = lastRuntimeErrorMessage,
+        lastRuntimeErrorClass = lastRuntimeErrorClass,
+        lastRuntimeErrorReason = lastRuntimeErrorReason,
+        toolStuck = toolStuck,
+        modelLimitsDefaultsReported = modelLimitsDefaultsReported,
+        runningRuntime = runningRuntime,
+        runningModel = runningModel
     )
 internal data class AgentCommandResult(val ok: Boolean)
 internal data class AgentDmPage(val itemCount: Int)
@@ -872,6 +952,8 @@ private data class AgentWireDto(
     val activity: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
+    /** Personal assistant (botiverse/slock packages/shared agent `assistantOwnerUserId`): its owner, else null. */
+    val assistantOwnerUserId: String? = null,
     /**
      * External agents only: ISO-8601 `lastSeenAt` from `GET /agents*` — last
      * credential use; presence derives from it (`agent:seen` supersedes).
@@ -882,8 +964,33 @@ private data class AgentWireDto(
     val activityDetailKind: String? = null,
     /** Shared `WakeCrashLoopActivityDiagnostic`, sent with `activityDetailKind` `wake_crash_loop_blocked`. */
     val wakeCrashLoop: WakeCrashLoopDto? = null,
+    /** Shared `SpawnFailureActivityDiagnostic`, sent with `activityDetailKind` `runtime_unavailable`. */
+    val spawnFailure: SpawnFailureDto? = null,
+    /** Shared `AgentRuntimeErrorState`: the runtime error the server kept (web `agent.lastRuntimeError`). */
+    val lastRuntimeError: AgentLastRuntimeErrorWireDto? = null,
     /** Shared `ToolStuckActivityDiagnostic`, served with any activity while the agent is stuck. */
     val toolStuck: ToolStuckDto? = null,
+    /**
+     * botiverse/slock #13492 (`routes/agents.ts`): `{ defaultsReported }` on the detail, the list and the
+     * PATCH answer of a Built-in custom gateway agent; absent elsewhere and from older servers, null in a
+     * PATCH answer with nothing to report.
+     */
+    val modelLimits: AgentModelLimitsWireDto? = null,
+    val hostedRuntime: AgentHostedRuntimeWireDto? = null
+)
+
+@Serializable
+private data class AgentModelLimitsWireDto(
+    val defaultsReported: Boolean? = null,
+)
+
+/** The fields of shared `AgentRuntimeErrorState` the client reads. */
+@Serializable
+private data class AgentLastRuntimeErrorWireDto(
+    val message: String? = null,
+    /** #688(c) typed diagnostic (`RuntimeErrorClass` / `RuntimeErrorReason`); absent for an untyped error. */
+    val errorClass: String? = null,
+    val errorReason: String? = null,
 )
 
 @Serializable
@@ -900,6 +1007,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
     val currentProfile = runtimeProfile?.current
     val configuredModel = runtimeConfig?.model?.valueOrNull()
     return AgentSummary(
+        hostedRuntime = hostedRuntime?.toSnapshot(),
         id = id,
         name = name,
         displayName = displayName,
@@ -915,11 +1023,15 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
                 external = external,
                 runtime = runtimeConfig?.runtime?.takeIf { it.isNotBlank() } ?: runtime ?: currentProfile?.runtime
             ),
-        reasoning = reasoningEffort ?: currentProfile?.reasoningEffort,
+        // Web profile shows the saved effort only (`hydrateRuntimeConfigForm` over the agent's
+        // columns), never `runtimeProfile.current`: a saved Default (null) must not read back as
+        // the last run's effort.
+        reasoning = reasoningEffort,
         executionMode = executionMode ?: currentProfile?.executionMode,
         machineId = machineId ?: currentProfile?.machineId,
         machineName = currentProfile?.machineName,
         daemonVersion = daemonVersion ?: currentProfile?.daemonVersion,
+        workspacePath = currentProfile?.workspacePathRef.runtimeProfileRefPath(),
         avatarUrl = avatarUrl,
         creatorId = creatorId,
         creatorType = creatorType,
@@ -931,10 +1043,18 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         activity = activity,
         activityDetail = activityDetail,
         deletedAt = deletedAt,
+        assistantOwnerUserId = assistantOwnerUserId?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
         activityDetailKind = activityDetailKind?.trim()?.takeIf { it.isNotEmpty() },
         wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(activityDetailKind),
-        toolStuck = toolStuck.toAgentToolStuck()
+        spawnFailure = spawnFailure.toAgentSpawnFailure(activityDetailKind),
+        lastRuntimeErrorMessage = lastRuntimeError?.message?.trim()?.takeIf { it.isNotEmpty() },
+        lastRuntimeErrorClass = lastRuntimeError?.errorClass?.trim()?.takeIf { it.isNotEmpty() },
+        lastRuntimeErrorReason = lastRuntimeError?.errorReason?.trim()?.takeIf { it.isNotEmpty() },
+        toolStuck = toolStuck.toAgentToolStuck(),
+        modelLimitsDefaultsReported = modelLimits?.defaultsReported == true,
+        runningRuntime = currentProfile?.runtime?.trim()?.takeIf { it.isNotEmpty() },
+        runningModel = currentProfile?.model?.trim()?.takeIf { it.isNotEmpty() }
     )
 }
 
@@ -942,8 +1062,55 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
 private data class ExternalAgentStatusWireDto(
     val setupState: String? = null,
     val credentialLastUsedAt: String? = null,
-    val lastActivityAt: String? = null
+    val lastActivityAt: String? = null,
+    val hostedRuntime: AgentHostedRuntimeWireDto? = null
 )
+
+@Serializable
+private data class HostedAgentModelOptionWireDto(val id: String, val label: String)
+
+/** Web shared `HostedAgentModelView`. */
+@Serializable
+private data class HostedAgentModelWireDto(
+    val models: List<HostedAgentModelOptionWireDto> = emptyList(),
+    val defaultLabel: String? = null,
+    val model: String? = null,
+    val label: String? = null,
+    val source: String? = null,
+    val locked: Boolean = false,
+    val picker: Boolean? = null
+)
+
+@Serializable
+private data class HostedRuntimeRetryWireDto(val hostedRuntime: AgentHostedRuntimeWireDto? = null)
+
+@Serializable
+private data class AgentHostedRuntimeWireDto(
+    val state: String? = null,
+    val syncPending: Boolean = false,
+    val push: AgentHostedRuntimePushWireDto? = null,
+    val lastError: AgentHostedRuntimeErrorWireDto? = null,
+    val retryNeedsModel: Boolean = false
+) {
+    fun toSnapshot(): AgentHostedRuntimeSnapshot? =
+        state?.takeIf { it.isNotBlank() }?.let {
+            AgentHostedRuntimeSnapshot(
+                state = it,
+                syncPending = syncPending,
+                pushRegistered = push?.registered,
+                pushError = push?.error?.takeIf { text -> text.isNotBlank() },
+                lastErrorCode = lastError?.code,
+                lastErrorMessage = lastError?.message?.takeIf { text -> text.isNotBlank() },
+                retryNeedsModel = retryNeedsModel
+            )
+        }
+}
+
+@Serializable
+private data class AgentHostedRuntimePushWireDto(val registered: Boolean = false, val error: String? = null)
+
+@Serializable
+private data class AgentHostedRuntimeErrorWireDto(val code: String? = null, val message: String? = null)
 
 @Serializable
 private data class AgentRuntimeConfigWireDto(
@@ -1074,8 +1241,22 @@ private data class AgentRuntimeProfileCurrentDto(
     val model: String? = null,
     val reasoningEffort: String? = null,
     val executionMode: String? = null,
-    val daemonVersion: String? = null
+    val daemonVersion: String? = null,
+    /** Shared `AgentRuntimeProfileReport.workspacePathRef`: `AgentRuntimeProfileRef | string | null`. */
+    val workspacePathRef: JsonElement? = null
 )
+
+/** Web `runtimeProfileRefPath`: the ref's `path` (or the ref itself when it is a string), trimmed. */
+private fun JsonElement?.runtimeProfileRefPath(): String? {
+    val ref = this ?: return null
+    val raw =
+        when (ref) {
+            is JsonPrimitive -> ref.contentOrNull
+            is kotlinx.serialization.json.JsonObject -> (ref["path"] as? JsonPrimitive)?.contentOrNull
+            else -> null
+        }
+    return raw?.trim()?.takeIf { it.isNotEmpty() }
+}
 
 @Serializable
 private data class AgentCommandResponseDto(val ok: Boolean)
@@ -1169,7 +1350,10 @@ internal data class CreateAgentBody(
      * Indicates this create call comes from the external-agent flow (no Computer).
      * Mirrors React `CreateAgentDialog` `external` flag.
      */
-    val external: Boolean? = null
+    val external: Boolean? = null,
+    /** Cloud agent: the provider runs it, with [external] true (web `provider`, `hostedModel`). */
+    val provider: String? = null,
+    val hostedModel: String? = null
 )
 
 @Serializable

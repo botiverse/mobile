@@ -80,6 +80,7 @@ class KmpVisualScreenshotCaptureTest {
             override fun starting(description: Description) {
                 startUptimeMs = SystemClock.uptimeMillis()
                 currentCaseId = null
+                lastFullLength = null
                 activeCaptureLocale =
                     parseVisualCaptureLocale(
                         InstrumentationRegistry.getArguments().getString("capture_locale")
@@ -322,7 +323,7 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Android-only theme-axis case: captures RaftBrutalActionButton under both
+    // Android-only theme-axis case: captures the action button under both
     // RaftThemeProvider(brutal) and (elegant). No React parity counterpart (mobile
     // theme axis) — guards that the LocalRaftTheme switch keeps driving border/corner/
     // shadow/ink (brutal row must stay byte-identical to the shipping look).
@@ -335,34 +336,11 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Elegant-register capture of the button (same content as button.states, under
-    // RaftThemeProvider(elegantTheme)). Paired against the React elegant render as
-    // components.ui.button.states.elegant → react-elegant <-> android-elegant parity.
-    @Test
-    fun captureUiButtonStatesElegant() {
-        captureKmpComponentCase(
-            caseId = "components.ui.button.states.elegant",
-            pageName = "compose_ui_button_elegant_visual",
-            crop = UI_BUTTON_CROP
-        )
-    }
-
     @Test
     fun captureUiCardStates() {
         captureKmpComponentCase(
             caseId = "components.ui.card.states",
             pageName = "compose_ui_card_visual",
-            crop = UI_CARD_CROP
-        )
-    }
-
-    // Elegant-register card capture (same content under RaftThemeProvider(elegantTheme)).
-    // Paired against the React elegant card render as components.ui.card.states.elegant.
-    @Test
-    fun captureUiCardStatesElegant() {
-        captureKmpComponentCase(
-            caseId = "components.ui.card.states.elegant",
-            pageName = "compose_ui_card_elegant_visual",
             crop = UI_CARD_CROP
         )
     }
@@ -376,18 +354,6 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Elegant-register form-field capture (same content under RaftThemeProvider(elegantTheme)):
-    // flat rounded #CACACE-hairline inputs, no brutal offset shadow. Paired against the React
-    // elegant render as components.ui.form-field.states.elegant.
-    @Test
-    fun captureUiFormFieldStatesElegant() {
-        captureKmpComponentCase(
-            caseId = "components.ui.form-field.states.elegant",
-            pageName = "compose_ui_form_field_elegant_visual",
-            crop = UI_FORM_FIELD_CROP
-        )
-    }
-
     @Test
     fun captureUiTextareaStates() {
         captureKmpComponentCase(
@@ -397,35 +363,11 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Elegant-register textarea capture (same content under RaftThemeProvider(elegantTheme)):
-    // inherits the RaftBrutalInputField elegant flat-field register. Paired against the React
-    // elegant render as components.ui.textarea.states.elegant.
-    @Test
-    fun captureUiTextareaStatesElegant() {
-        captureKmpComponentCase(
-            caseId = "components.ui.textarea.states.elegant",
-            pageName = "compose_ui_textarea_elegant_visual",
-            crop = UI_TEXTAREA_CROP
-        )
-    }
-
     @Test
     fun captureUiCheckboxStates() {
         captureKmpComponentCase(
             caseId = "components.ui.checkbox.states",
             pageName = "compose_ui_checkbox_visual",
-            crop = UI_CHECKBOX_CROP
-        )
-    }
-
-    // Elegant-register checkbox capture (same content under RaftThemeProvider(elegantTheme)):
-    // rounded 4dp box + #CACACE hairline + #0A0A0A ink fill. Paired against the React elegant
-    // render as components.ui.checkbox.states.elegant.
-    @Test
-    fun captureUiCheckboxStatesElegant() {
-        captureKmpComponentCase(
-            caseId = "components.ui.checkbox.states.elegant",
-            pageName = "compose_ui_checkbox_elegant_visual",
             crop = UI_CHECKBOX_CROP
         )
     }
@@ -440,29 +382,11 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureUiAttentionDotStates() {
+    fun captureUiTypographySpecimen() {
         captureKmpComponentCase(
-            caseId = "components.ui.attention-dot.states",
-            pageName = "compose_ui_attention_dot_visual",
-            crop = UI_ATTENTION_DOT_CROP
-        )
-    }
-
-    @Test
-    fun captureUiStatusDotStates() {
-        captureKmpComponentCase(
-            caseId = "components.ui.status-dot.states",
-            pageName = "compose_ui_status_dot_visual",
-            crop = UI_STATUS_DOT_CROP
-        )
-    }
-
-    @Test
-    fun captureUiProgressBarStates() {
-        captureKmpComponentCase(
-            caseId = "components.ui.progress-bar.states",
-            pageName = "compose_ui_progress_bar_visual",
-            crop = UI_PROGRESS_BAR_CROP
+            caseId = "components.ui.typography.specimen",
+            pageName = "compose_ui_typography_specimen_visual",
+            crop = UI_TYPOGRAPHY_SPECIMEN_CROP
         )
     }
 
@@ -476,29 +400,11 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureUiSpinnerStates() {
-        captureKmpComponentCase(
-            caseId = "components.ui.spinner.states",
-            pageName = "compose_ui_spinner_visual",
-            crop = UI_SPINNER_CROP
-        )
-    }
-
-    @Test
     fun captureUiSlugInputStates() {
         captureKmpComponentCase(
             caseId = "components.ui.slug-input.states",
             pageName = "compose_ui_slug_input_visual",
             crop = UI_SLUG_INPUT_CROP
-        )
-    }
-
-    @Test
-    fun captureUiSectionEyebrowStates() {
-        captureKmpComponentCase(
-            caseId = "components.ui.section-eyebrow.states",
-            pageName = "compose_ui_section_eyebrow_visual",
-            crop = UI_SECTION_EYEBROW_CROP
         )
     }
 
@@ -535,15 +441,6 @@ class KmpVisualScreenshotCaptureTest {
             caseId = "components.ui.badge.states",
             pageName = "compose_ui_badge_visual",
             crop = UI_BADGE_CROP
-        )
-    }
-
-    @Test
-    fun captureUiSectionHeaderStates() {
-        captureKmpComponentCase(
-            caseId = "components.ui.section-header.states",
-            pageName = "compose_ui_section_header_visual",
-            crop = UI_SECTION_HEADER_CROP
         )
     }
 
@@ -773,7 +670,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-empty")
                     .put("visualFixture", "empty"),
-            crop = THREAD_COMPOSER_COMPONENT_CROP
+            crop = THREAD_COMPOSER_EMPTY_CROP
         )
     }
 
@@ -786,7 +683,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer")
                     .put("visualFixture", "states"),
-            crop = THREAD_COMPOSER_COMPONENT_CROP
+            crop = THREAD_COMPOSER_TWO_LINE_CROP
         )
     }
 
@@ -872,7 +769,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-as-task")
                     .put("visualFixture", "as_task_selected"),
-            crop = THREAD_COMPOSER_COMPONENT_CROP
+            crop = THREAD_COMPOSER_TWO_LINE_CROP
         )
     }
 
@@ -885,7 +782,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-member-suggestions")
                     .put("visualFixture", "member_suggestions"),
-            crop = THREAD_COMPOSER_SUGGESTIONS_CROP
+            crop = THREAD_COMPOSER_MEMBER_SUGGESTIONS_CROP
         )
     }
 
@@ -911,7 +808,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-image-preview")
                     .put("visualFixture", "image_preview"),
-            crop = THREAD_COMPOSER_ATTACHMENTS_CROP,
+            crop = THREAD_COMPOSER_IMAGE_PREVIEW_CROP,
             settleMs = 1_500
         )
     }
@@ -1086,13 +983,17 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureThreadMessageBodyTapOpensThread() {
+        // Positive control for the token the long-press case asserts is absent.
+        val threadOpenedToken =
+            "thread_body_tap_thread_opened_${visualAttempt()}_${SystemClock.elapsedRealtimeNanos()}"
         captureKmpComponentCase(
             caseId = "components.thread.message-body-tap",
             pageName = "compose_thread_message_row_visual",
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-body-tap")
-                    .put("visualFixture", "default"),
+                    .put("visualFixture", "default")
+                    .put("threadOpenedToken", threadOpenedToken),
             crop = FULL_VIEWPORT_CROP,
             requireReactionAtlas = true,
             beforeScreenshot = {
@@ -1112,6 +1013,10 @@ class KmpVisualScreenshotCaptureTest {
                     assertTrue(
                         "Tapping the ordinary message body must open its thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
                         yellowAfter >= yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                    )
+                    assertTrue(
+                        "Tapping the ordinary message body must report the thread open; token=$threadOpenedToken",
+                        logcatContainsToken(threadOpenedToken)
                     )
                 } finally {
                     before?.recycle()
@@ -1219,13 +1124,22 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureThreadMessageBodyLongPressOpensActionsWithoutOpeningThread() {
+        // The fixture reports both outcomes as launch-unique log tokens. The old oracle counted
+        // brand-yellow pixels in the top band, but the quick-reaction emoji in that band are yellow
+        // too: once #4266 enlarged the reaction row (36dp buttons, 22dp drawings) the menu alone
+        // read as an opened thread (run 41784346875: yellowBefore=36 yellowAfter=137).
+        val launchTokenSuffix = "${visualAttempt()}_${SystemClock.elapsedRealtimeNanos()}"
+        val longPressMenuVisibleToken = "thread_body_long_press_menu_visible_$launchTokenSuffix"
+        val threadOpenedToken = "thread_body_long_press_thread_opened_$launchTokenSuffix"
         captureKmpComponentCase(
             caseId = "components.thread.message-body-long-press",
             pageName = "compose_thread_message_row_visual",
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-body-long-press")
-                    .put("visualFixture", "default"),
+                    .put("visualFixture", "default")
+                    .put("longPressMenuVisibleToken", longPressMenuVisibleToken)
+                    .put("threadOpenedToken", threadOpenedToken),
             crop = FULL_VIEWPORT_CROP,
             requireReactionAtlas = true,
             beforeScreenshot = {
@@ -1235,24 +1149,39 @@ class KmpVisualScreenshotCaptureTest {
                 var after: Bitmap? = null
                 try {
                     before = captureAppWindowsScreenshot("components.thread.message-body-long-press.before")
-                    val yellowBefore = before.countThreadOpenProbeYellowSamplesInTopBand()
                     after = captureAfterLongPressRendered(
                         label = "components.thread.message-body-long-press",
                         before = before,
                         longPress = { longPressDisplayDp(x = 300f, y = 70f) },
                         rendered = { _, _, changedRatio ->
-                            changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
+                            changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
+                                logcatContainsToken(longPressMenuVisibleToken)
                         },
                     )
-                    val yellowAfter = after.countThreadOpenProbeYellowSamplesInTopBand()
+                    // Let a stray thread-open (a tap fired on release) land before checking.
+                    waitForIdleBounded()
+                    Thread.sleep(300)
+                    val menuLine = logcatFindToken(longPressMenuVisibleToken)
+                    val threadOpenedLine = logcatFindToken(threadOpenedToken)
                     val changedRatio = before.fullBitmapChangedPixelRatio(after)
+                    Log.i(
+                        VISUAL_LOG_TAG,
+                        "components.thread.message-body-long-press menuLine=${menuLine ?: "<none>"} " +
+                            "threadOpenedLine=${threadOpenedLine ?: "<none>"} changedRatio=$changedRatio"
+                    )
+                    // The menu token is also what proves the logcat read works, so the
+                    // absent-token check below cannot pass just because logcat was unreadable.
+                    assertTrue(
+                        "Long-pressing the ordinary body must compose the actions menu; menuVisibleTokenObserved=false",
+                        menuLine != null
+                    )
                     assertTrue(
                         "Long-pressing the ordinary body must render the actions menu; changedRatio=$changedRatio",
                         changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
                     )
                     assertTrue(
-                        "Long press must not open the thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
-                        yellowAfter < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                        "Long press must not open the thread; threadOpenedLine=$threadOpenedLine",
+                        threadOpenedLine == null
                     )
                 } finally {
                     before?.recycle()
@@ -2389,14 +2318,45 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureThreadMessageSharePreview() {
+        // The generated share image (Copy / Download), not the dialog: a phone-width card.
+        captureThreadShareImageCase(caseId = "components.thread.message-share.preview", cardWidthDp = 390)
+    }
+
+    @Test
+    fun captureThreadMessageSharePreviewDesktop() {
+        // The same message exported from a desktop chat column (web: a 640px row).
+        captureThreadShareImageCase(caseId = "components.thread.message-share.preview-desktop", cardWidthDp = 640)
+    }
+
+    /**
+     * The share image for the `share_image` message, [cardWidthDp] wide, cropped to the image
+     * the host draws pixel for pixel at the top left. A card wider than the pinned 390dp screen
+     * widens the display for the capture (as full-length cases grow it) and restores it after.
+     */
+    private fun captureThreadShareImageCase(caseId: String, cardWidthDp: Int) {
+        val instanceId = "visual-thread-message-share-image-$cardWidthDp"
+        var baseDisplay: Pair<Int, Int>? = null
+        val widen = cardWidthDp > 390
+        val widenDisplay: () -> Unit = {
+            val base = currentDisplaySizePx().also { baseDisplay = it }
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            resizeDisplayWidth(caseId, (cardWidthDp * density).roundToInt(), base.second)
+        }
+        val restoreDisplay: () -> Unit = {
+            baseDisplay?.let { restoreDisplaySize(caseId, it) }
+        }
         captureKmpComponentCase(
-            caseId = "components.thread.message-share.preview",
+            caseId = caseId,
             pageName = "compose_thread_message_row_visual",
             pageData =
                 JSONObject()
-                    .put("instanceId", "visual-thread-message-share-preview")
-                    .put("visualFixture", "share_preview"),
-            crop = FULL_VIEWPORT_CROP
+                    .put("instanceId", instanceId)
+                    .put("visualFixture", "share_image")
+                    .put("shareImageWidth", cardWidthDp),
+            crop = FULL_VIEWPORT_CROP,
+            beforeScreenshot = widenDisplay.takeIf { widen },
+            afterScreenshot = restoreDisplay.takeIf { widen },
+            cropOverride = { awaitThreadRowContentCrop(caseId, instanceId, widthDp = cardWidthDp) }
         )
     }
 
@@ -3135,6 +3095,10 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // The entity row under the search header, whose filter chips wrap onto two lines
+    // since #4160; the Pin item opens 30dp below the press.
+    private val SEARCH_PIN_ROW_Y_DP = 260f
+
     private fun captureHomeSearchEntityPinMenu(
         caseId: String,
         pageName: String,
@@ -3160,7 +3124,7 @@ class KmpVisualScreenshotCaptureTest {
                     menuOpen = captureAfterLongPressRendered(
                         label = "$caseId.open",
                         before = before,
-                        longPress = { longPressDisplayDp(x = 180f, y = 220f) },
+                        longPress = { longPressDisplayDp(x = 180f, y = SEARCH_PIN_ROW_Y_DP) },
                         rendered = { _, _, changedRatio ->
                             changedRatio >= SEARCH_PIN_MENU_MIN_CHANGED_RATIO
                         },
@@ -3176,7 +3140,7 @@ class KmpVisualScreenshotCaptureTest {
                         yellowMenuOpen < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
                     )
 
-                    tapDisplayDp(x = 240f, y = 250f)
+                    tapDisplayDp(x = 240f, y = SEARCH_PIN_ROW_Y_DP + 30f)
                     waitForIdleBounded()
                     Thread.sleep(300)
                     selected = captureActivityScreenshot("$caseId.selected")
@@ -3198,7 +3162,7 @@ class KmpVisualScreenshotCaptureTest {
 
                     Thread.sleep(1_000)
                     waitForIdleBounded()
-                    longPressDisplayDp(x = 180f, y = 220f)
+                    longPressDisplayDp(x = 180f, y = SEARCH_PIN_ROW_Y_DP)
                     waitForIdleBounded()
                     Thread.sleep(500)
                 } finally {
@@ -3489,17 +3453,6 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // React renders its onboarding ("Meet Cindy") step here; the shared dialog
-    // has no onboarding layout, so Android captures the standard form for the
-    // same seed and the product gap stays visible in the report.
-    @Test
-    fun captureMembersCreateAgentDialogOnboarding() {
-        captureMembersCreateAgentStateCase(
-            caseId = "components.members.create-agent.dialog-onboarding",
-            variant = "onboarding"
-        )
-    }
-
     @Test
     fun captureMembersCreateAgentDialogEmpty() {
         captureMembersCreateAgentStateCase(
@@ -3538,6 +3491,9 @@ class KmpVisualScreenshotCaptureTest {
 
     /** Clear the editable field currently showing [text] through its accessibility SetText action. */
     private fun clearEditableTextField(text: String) {
+        // As the tap helpers do: a sleeping display, the keyguard or a system dialog (a launcher
+        // ANR) takes the active window, and the fixture's field is then not in the tree read here.
+        awaitFixtureIsActiveInputWindow("the field showing \"$text\"")
         val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
         val deadline = SystemClock.uptimeMillis() + EDITABLE_FIELD_LOOKUP_TIMEOUT_MS
         var field: android.view.accessibility.AccessibilityNodeInfo? = null
@@ -3552,7 +3508,11 @@ class KmpVisualScreenshotCaptureTest {
             if (field != null || SystemClock.uptimeMillis() >= deadline) break
             Thread.sleep(250)
         }
-        requireNotNull(field) { "No editable field showing \"$text\" to clear" }
+        requireNotNull(field) {
+            val active = uiAutomation.rootInActiveWindow
+            "No editable field showing \"$text\" to clear; activeWindowPackage=${active?.packageName} " +
+                "windows=${uiAutomation.windows.size}"
+        }
         val cleared =
             field.performAction(
                 android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
@@ -3967,7 +3927,17 @@ class KmpVisualScreenshotCaptureTest {
             pageName = "compose_thread_followers_visual",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500,
-            beforeScreenshot = { tapDp(265f, 28f); Thread.sleep(500) },
+            // Tap the avatar-chip trigger by its accessibility label, not a fixed point: #4032 moved a
+            // reply thread's Search / View in Channel into the ⋯ menu, the chip slid right and the
+            // old (265dp, 28dp) tap missed it, leaving a near-blank page (nightlies from 10-31).
+            beforeScreenshot = {
+                tapComposeNodeWithText(
+                    // `thread_followers_count` for the fixture's three agents (it renders zh-CN).
+                    texts = listOf("3 个 Agent 正在关注", "3 watching", "3 エージェントがフォロー中"),
+                    what = "Thread followers trigger",
+                )
+                Thread.sleep(500)
+            },
         )
     }
 
@@ -4102,13 +4072,13 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("destination", "appearance")
                     .put("fixtureKey", "canonical")
-                    .put("fixtureRevision", "settings-appearance-v1")
+                    .put("fixtureRevision", "settings-appearance-v2")
                     // SHA-256 of the frozen rendered goal:
                     // route=compose_settings_route_visual;destination=appearance;fixture=canonical;
-                    // fixtureRevision=settings-appearance-v1;viewport=1170x2532@480
+                    // fixtureRevision=settings-appearance-v2;viewport=1170x2532@480
                     .put(
                         "renderedGoalSha256",
-                        "6f8210b1c05e7f09df898d6b38d7d3f0f98bd5b270d9f56d9975f33002f3d234"
+                        "bc0d82ab7b79ef4008cefdaf0db0ffdcb8d5daeefbce8911e7614f65ecc28624"
                     ),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500,
@@ -4175,20 +4145,6 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "screens.auth.choose-server",
             pageName = "compose_auth_choose_server_visual",
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 4_500
-        )
-    }
-
-    @Test
-    fun captureAuthProfileSetupScreen() {
-        captureKmpComponentCase(
-            caseId = "screens.auth.profile-setup",
-            pageName = "compose_auth_profile_setup_visual",
-            pageData =
-                JSONObject()
-                    .put("profileSetupHandle", "new_designer")
-                    .put("profileSetupDisplayName", "New Designer"),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
         )
@@ -4433,6 +4389,8 @@ class KmpVisualScreenshotCaptureTest {
         cropOverride: (() -> VisualCrop)? = null
     ) {
         currentCaseId = caseId
+        lastFullLength = null
+        var fullLengthBaseDisplay: Pair<Int, Int>? = null
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
             Intent(context, RaftCmpActivity::class.java)
@@ -4473,7 +4431,16 @@ class KmpVisualScreenshotCaptureTest {
                     "$caseId host error surface was rendered; refusing to capture CALL_KOTLIN fallback"
                 }
             }
-            val effectiveCrop = cropOverride?.invoke() ?: crop
+            val baseCrop = cropOverride?.invoke() ?: crop
+            val fullLength =
+                if (caseId in fullLengthCases) {
+                    fullLengthBaseDisplay = currentDisplaySizePx()
+                    expandToFullLength(caseId, requireNotNull(fullLengthBaseDisplay))
+                } else {
+                    null
+                }
+            lastFullLength = fullLength
+            val effectiveCrop = fullLength?.extend(baseCrop) ?: baseCrop
             val normalized =
                 if (capturedBitmapAfterBeforeScreenshot != null) {
                     val screenshot = capturedBitmapAfterBeforeScreenshot.invoke()
@@ -4537,6 +4504,7 @@ class KmpVisualScreenshotCaptureTest {
                 Log.w(VISUAL_LOG_TAG, "after-screenshot teardown failed: ${t.message}")
             }
             closeScenarioBounded(scenario)
+            fullLengthBaseDisplay?.let { restoreDisplaySize(caseId, it) }
         }
     }
 
@@ -5076,6 +5044,30 @@ class KmpVisualScreenshotCaptureTest {
         }
         visit(root, 0)
         return matches
+    }
+
+    /** Taps the clickable node (or its clickable ancestor) whose text or description is one of [texts]. */
+    private fun tapComposeNodeWithText(texts: List<String>, what: String) {
+        awaitFixtureIsActiveInputWindow(what)
+        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val deadline = SystemClock.uptimeMillis() + PENDING_MENTION_VIEW_ACTION_TIMEOUT_MS
+        var target: android.view.accessibility.AccessibilityNodeInfo? = null
+        while (target == null) {
+            target =
+                texts
+                    .asSequence()
+                    .flatMap { findComposeNodesWithText(uiAutomation.rootInActiveWindow, it).asSequence() }
+                    .mapNotNull { node -> generateSequence(node) { it.parent }.firstOrNull { it.isClickable } }
+                    .firstOrNull()
+            if (target != null || SystemClock.uptimeMillis() >= deadline) break
+            Thread.sleep(250)
+        }
+        requireNotNull(target) { "$what is not visible (looked for ${texts.joinToString(" | ")})" }
+        val bounds = android.graphics.Rect()
+        target.getBoundsInScreen(bounds)
+        require(!bounds.isEmpty) { "$what has empty bounds" }
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        tapDp(bounds.exactCenterX() / density, bounds.exactCenterY() / density)
     }
 
     private fun openPendingMentionDrawer() {
@@ -5703,68 +5695,214 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
-    /**
-     * Full-height Settings capture (task #388, approach 1). The window is pinned
-     * to the display, so a long route can never lay out taller than the screen —
-     * instead we grow the emulator display itself (wm size) so the existing
-     * LazyColumn's viewport covers the whole route and every item composes, then
-     * crop the single frame to the content bottom the render-side sentinel
-     * reports (#250: `settings_route_visual_fullheight contentBottomPx=N` on the
-     * bridge tag). Crop height = true content bottom (includes the route's own
-     * trailing padding), matching the React fullPage document-height contract —
-     * the grown display's excess white is cropped away, never baselined.
-     * The display is restored in finally; a wm-size failure surfaces as a crop
-     * bounds/validation failure, never a silent short baseline (#135 history).
-     */
-    private fun captureKmpFullHeightSettingsCase(caseId: String, destination: String) {
-        runShellCommand("wm size ${FULL_HEIGHT_DISPLAY_WIDTH_PX}x$FULL_HEIGHT_DISPLAY_HEIGHT_PX")
-        try {
-            captureKmpComponentCase(
-                caseId = caseId,
-                pageName = "compose_settings_route_visual",
-                pageData =
-                    JSONObject()
-                        .put("destination", destination)
-                        .put("fixtureKey", "canonical")
-                        .put("slockVisualFullHeight", true),
-                crop = FULL_VIEWPORT_CROP,
-                settleMs = 2_500,
-                cropOverride = { awaitFullHeightCrop(caseId) }
+    /** Case ids flagged `capture.fullLength` in slock sharedCases.json (instrumentation arg). */
+    private val fullLengthCases: Set<String> by lazy {
+        VisualFullLength.requestedCases(
+            InstrumentationRegistry.getArguments().getString(VisualFullLength.ARG_CASES)
+        )
+    }
+
+    private var lastFullLength: FullLengthResult? = null
+
+    private data class FullLengthResult(
+        val baseHeightPx: Int,
+        val expandedHeightPx: Int,
+        val density: Float,
+        val initialOverflowPx: Int,
+        val residualOverflowPx: Int,
+        val iterations: Int,
+        val capped: Boolean,
+        val maxHeightDp: Int,
+        val scroller: String?
+    ) {
+        val addedDp: Int get() = ((expandedHeightPx - baseHeightPx) / density).roundToInt()
+
+        /**
+         * A crop that reached the bottom of the base viewport (FULL_VIEWPORT_CROP
+         * and other bottom-anchored crops) grows with the display; a component
+         * crop above the fold is left alone.
+         */
+        fun extend(crop: VisualCrop): VisualCrop {
+            if (addedDp <= 0) return crop
+            val baseHeightDp = (baseHeightPx / density).roundToInt()
+            if (crop.topDp + crop.heightDp < baseHeightDp) return crop
+            return crop.copy(
+                heightDp = crop.heightDp + addedDp,
+                captureMethod = crop.captureMethod + "-full-length"
             )
-        } finally {
-            runShellCommand("wm size reset")
         }
+
+        fun toJson(): String =
+            JSONObject()
+                .put("requested", true)
+                .put("baseViewportHeight", (baseHeightPx / density).roundToInt())
+                .put("expandedViewportHeight", (expandedHeightPx / density).roundToInt())
+                .put("initialOverflowDp", kotlin.math.ceil(initialOverflowPx / density).toInt())
+                .put("residualOverflowDp", kotlin.math.ceil(residualOverflowPx / density).toInt())
+                .put("iterations", iterations)
+                .put("capped", capped)
+                .put("maxHeight", maxHeightDp)
+                .put("scroller", scroller ?: JSONObject.NULL)
+                .toString()
+    }
+
+    private fun currentDisplaySizePx(): Pair<Int, Int> {
+        var size = 0 to 0
+        onActivityNoIdle { activity ->
+            val root = activity.window.decorView.rootView
+            size = root.width to root.height
+        }
+        // The run script pins 1170x2532 @ 480dpi; fall back to it if the window
+        // has not reported a size.
+        return if (size.first > 0 && size.second > 0) size else 1170 to 2532
+    }
+
+    private fun windowRoots(activity: Activity): List<View> =
+        listOf(activity.window.decorView.rootView) + fixtureOwnedWindowViews(activity)
+
+    private fun mainScroller(): VisualFullLength.Scroller? {
+        var scroller: VisualFullLength.Scroller? = null
+        onActivityNoIdle { scroller = VisualFullLength.mainScroller(windowRoots(it)) }
+        return scroller
+    }
+
+    private fun scrollerAnchors(scrollerId: Int): Map<Int, Float> {
+        var anchors: Map<Int, Float> = emptyMap()
+        onActivityNoIdle { anchors = VisualFullLength.anchorTops(windowRoots(it), scrollerId) }
+        return anchors
     }
 
     /**
-     * Block until the render-side full-height sentinel reports the content
-     * bottom, then build the dynamic crop. Fails loud on timeout: a viewport
-     * fallback here would silently publish a short baseline that looks green.
+     * Pixels of content outside the viewport of [scroller] (below the fold, or
+     * above it for a bottom-anchored reversed list). `verticalScroll` reports
+     * them exactly; a lazy list is scrolled forward in half-viewport steps and
+     * the travelled distance is read from how far its composed descendants move
+     * (in either direction), then scrolled back to its start.
      */
-    private fun awaitFullHeightCrop(caseId: String): VisualCrop {
-        val deadline = SystemClock.uptimeMillis() + FULL_HEIGHT_TOKEN_TIMEOUT_MS
-        while (SystemClock.uptimeMillis() < deadline) {
-            val line = logcatLastTokenLine(FULL_HEIGHT_TOKEN)
-            val bottomPx = line?.substringAfter("contentBottomPx=", "")?.trim()?.takeWhile { it.isDigit() }?.toIntOrNull()
-            if (bottomPx != null && bottomPx > 0) {
-                val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-                val heightDp = kotlin.math.ceil(bottomPx / density).toInt()
-                Log.i(VISUAL_LOG_TAG, "$caseId full-height content bottom ${bottomPx}px -> ${heightDp}dp crop")
-                return VisualCrop(
-                    leftDp = 0,
-                    topDp = 0,
-                    widthDp = 390,
-                    heightDp = heightDp,
-                    contract = "full-height",
-                    captureMethod = "app-window-root-draw-full-height-density-resize"
-                )
+    private fun measureOverflowPx(caseId: String, scroller: VisualFullLength.Scroller, limitPx: Int): Int {
+        if (!scroller.lazy) return kotlin.math.ceil(scroller.maxValue).toInt()
+        val stepPx = (scroller.heightPx * 0.5f).coerceAtLeast(48f)
+        var travelled = 0f
+        for (step in 0 until FULL_LENGTH_MAX_SCROLL_STEPS) {
+            val before = scrollerAnchors(scroller.nodeId)
+            if (before.isEmpty()) {
+                throw AssertionError("$caseId full-length: scroller ${scroller.label} has no composed descendants to track")
             }
+            onActivityNoIdle { VisualFullLength.scrollBy(windowRoots(it), scroller.nodeId, stepPx) }
+            waitForIdleBounded()
+            Thread.sleep(FULL_LENGTH_SCROLL_SETTLE_MS)
+            val moved =
+                VisualFullLength.displacement(before, scrollerAnchors(scroller.nodeId))
+                    ?: throw AssertionError("$caseId full-length: lost every anchor of ${scroller.label} after a ${stepPx}px step")
+            val magnitude = kotlin.math.abs(moved)
+            if (magnitude < 0.5f) break
+            travelled += magnitude
+            if (travelled >= limitPx) break
+        }
+        onActivityNoIdle { VisualFullLength.scrollToTop(windowRoots(it), scroller.nodeId) }
+        waitForIdleBounded()
+        Thread.sleep(FULL_LENGTH_SCROLL_SETTLE_MS)
+        return kotlin.math.ceil(travelled).toInt()
+    }
+
+    private fun resizeDisplay(caseId: String, widthPx: Int, heightPx: Int) {
+        runShellCommand("wm size ${widthPx}x$heightPx")
+        val deadline = SystemClock.uptimeMillis() + FULL_LENGTH_RESIZE_TIMEOUT_MS
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (currentDisplaySizePx().second == heightPx) break
             Thread.sleep(FULL_HEIGHT_POLL_MS)
         }
-        throw AssertionError(
-            "$caseId full-height sentinel token '$FULL_HEIGHT_TOKEN' not seen within " +
-                "${FULL_HEIGHT_TOKEN_TIMEOUT_MS}ms — render hook missing or route never rendered"
+        val actual = currentDisplaySizePx()
+        if (actual.second != heightPx) {
+            throw AssertionError("$caseId full-length: window is ${actual.first}x${actual.second} after wm size ${widthPx}x$heightPx")
+        }
+        waitForIdleBounded()
+        Thread.sleep(FULL_LENGTH_RESIZE_SETTLE_MS)
+    }
+
+    /** Widens the display to [widthPx] (height kept), waiting until the window reports it. */
+    private fun resizeDisplayWidth(caseId: String, widthPx: Int, heightPx: Int) {
+        runShellCommand("wm size ${widthPx}x$heightPx")
+        val deadline = SystemClock.uptimeMillis() + FULL_LENGTH_RESIZE_TIMEOUT_MS
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (currentDisplaySizePx().first == widthPx) break
+            Thread.sleep(FULL_HEIGHT_POLL_MS)
+        }
+        val actual = currentDisplaySizePx()
+        if (actual.first != widthPx) {
+            throw AssertionError("$caseId: window is ${actual.first}x${actual.second} after wm size ${widthPx}x$heightPx")
+        }
+        waitForIdleBounded()
+        Thread.sleep(FULL_LENGTH_RESIZE_SETTLE_MS)
+    }
+
+    private fun restoreDisplaySize(caseId: String, base: Pair<Int, Int>) {
+        // Restore the run script's pinned size, never `wm size reset` (that is
+        // the emulator's physical 1440x3120 and would break every later case).
+        runShellCommand("wm size ${base.first}x${base.second}")
+        Thread.sleep(FULL_LENGTH_RESIZE_SETTLE_MS)
+        Log.i(VISUAL_LOG_TAG, "$caseId full-length display restored to ${base.first}x${base.second}")
+    }
+
+    /**
+     * Grow the display until the main scroller has nothing below the fold (see
+     * [VisualFullLength]). Fails loud when a flagged case cannot be measured: a
+     * silent one-screen fallback would publish a short image that looks green.
+     */
+    private fun expandToFullLength(caseId: String, base: Pair<Int, Int>): FullLengthResult {
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        val maxHeightPx = (VisualFullLength.DEFAULT_MAX_HEIGHT_DP * density).roundToInt()
+        var heightPx = base.second
+        var initialOverflow = 0
+        var residual = 0
+        var capped = false
+        var iterations = 0
+        var label: String? = null
+        while (iterations < VisualFullLength.MAX_ITERATIONS) {
+            val scroller = mainScroller()
+            if (scroller == null) {
+                residual = 0
+                break
+            }
+            label = label ?: scroller.label
+            val overflowPx = measureOverflowPx(caseId, scroller, maxHeightPx)
+            if (iterations == 0) initialOverflow = overflowPx
+            residual = overflowPx
+            if (overflowPx <= 0) break
+            // Grow in whole dp so the image height is a dp multiple, like React.
+            val growPx = (kotlin.math.ceil(overflowPx / density) * density).roundToInt()
+            val next = minOf(maxHeightPx, heightPx + growPx)
+            if (next <= heightPx) {
+                capped = true
+                break
+            }
+            onActivityNoIdle { VisualFullLength.scrollToTop(windowRoots(it), scroller.nodeId) }
+            resizeDisplay(caseId, base.first, next)
+            heightPx = next
+            iterations += 1
+        }
+        if (heightPx != base.second) {
+            mainScroller()?.let { scroller -> onActivityNoIdle { VisualFullLength.scrollToTop(windowRoots(it), scroller.nodeId) } }
+            waitForIdleBounded()
+        }
+        val result =
+            FullLengthResult(
+                baseHeightPx = base.second,
+                expandedHeightPx = heightPx,
+                density = density,
+                initialOverflowPx = initialOverflow,
+                residualOverflowPx = residual,
+                iterations = iterations,
+                capped = capped,
+                maxHeightDp = VisualFullLength.DEFAULT_MAX_HEIGHT_DP,
+                scroller = label
+            )
+        Log.i(
+            VISUAL_LOG_TAG,
+            "full-length case=$caseId base=${base.first}x${base.second} expanded=$heightPx " +
+                "initialOverflowPx=$initialOverflow residualPx=$residual iterations=$iterations capped=$capped scroller=$label"
         )
+        return result
     }
 
     /**
@@ -6229,6 +6367,7 @@ class KmpVisualScreenshotCaptureTest {
                 "capturedAtMonotonicNs": $capturedAtMonotonicNs
               },
               "clampedToShortWindow": $lastCaptureClampedToShortWindow,
+              "fullLength": ${lastFullLength?.toJson() ?: "null"},
               "capturedAt": "$capturedAtEpochMs"
             }
             """.trimIndent() + "\n"
@@ -6524,9 +6663,9 @@ class KmpVisualScreenshotCaptureTest {
     companion object {
         private const val PENDING_MENTION_VIEW_ACTION_TIMEOUT_MS = 10_000L
         private const val ACCESSIBILITY_TREE_MAX_DEPTH = 60
-        // A 4dp x 4dp solid patch at the pinned 480dpi (3x). Measured on
-        // components.ui.status-dot.states: the smallest dot fill is 196 px and
-        // the largest anti-aliased edge blend 63 px.
+        // A 4dp x 4dp solid patch at the pinned 480dpi (3x). Measured on the
+        // status dots of the former components.ui.status-dot.states case: the
+        // smallest dot fill is 196 px and the largest anti-aliased edge blend 63 px.
         private const val SOLID_CONTENT_COLOR_MIN_PIXELS = 144
         private const val UI_AUTOMATION_CAPTURE_METHOD =
             "ui-automation-take-screenshot-viewport-crop"
@@ -6584,7 +6723,7 @@ class KmpVisualScreenshotCaptureTest {
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 390,
-                heightDp = 58
+                heightDp = 60
             )
         private val NAVIGATION_TABBAR_MOCKUP_CROP =
             VisualCrop(
@@ -6712,30 +6851,12 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 342,
                 heightDp = 112
             )
-        private val UI_ATTENTION_DOT_CROP =
+        private val UI_TYPOGRAPHY_SPECIMEN_CROP =
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 342,
-                heightDp = 80
-            )
-        // The web case is four 8-11dp presence dots in a 342x92 frame, so the
-        // frame is ~98.8% canvas by design. Require the sticker ink plus the four
-        // presence fills (online, error, offline, external) instead.
-        private val UI_STATUS_DOT_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 342,
-                heightDp = 92,
-                minSolidContentColors = 5
-            )
-        private val UI_PROGRESS_BAR_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 342,
-                heightDp = 124
+                heightDp = 300
             )
         private val UI_SKELETON_CROP =
             VisualCrop(
@@ -6744,26 +6865,12 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 342,
                 heightDp = 150
             )
-        private val UI_SPINNER_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 342,
-                heightDp = 92
-            )
         private val UI_SLUG_INPUT_CROP =
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 122
-            )
-        private val UI_SECTION_EYEBROW_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 342,
-                heightDp = 92
             )
         private val UI_SELECTION_POPOVER_CROP =
             VisualCrop(
@@ -6795,13 +6902,6 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 92
-            )
-        private val UI_SECTION_HEADER_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 342,
-                heightDp = 88
             )
         // React pins this element at 182dp; fixture canvas matches so the
         // top-aligned content's bottom slack exposes real spacing diffs
@@ -6976,12 +7076,22 @@ class KmpVisualScreenshotCaptureTest {
             )
         // The host lays the composer out as web's 342x100 canvas does (20dp in, 8dp down),
         // so the window is that canvas: the 342dp component box, 24dp from the screen edge.
-        private val THREAD_COMPOSER_COMPONENT_CROP =
+        // The web case's box follows the composer (slock VisualTestingCases `height: "auto"`):
+        // 108dp with the one-line placeholder, 132dp with the two-line seed draft. A fixed
+        // 100dp cut the two-line composer's toolbar and bottom edge.
+        private val THREAD_COMPOSER_EMPTY_CROP =
             VisualCrop(
                 leftDp = 24,
                 topDp = 0,
                 widthDp = 342,
-                heightDp = 100
+                heightDp = 108
+            )
+        private val THREAD_COMPOSER_TWO_LINE_CROP =
+            VisualCrop(
+                leftDp = 24,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 132
             )
         private val THREAD_COMPOSER_PENDING_MENTION_ACTIONS_CROP =
             VisualCrop(
@@ -6996,6 +7106,23 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 320
+            )
+        // React `components.thread.composer.member-suggestions`: `composerOffsetTop: 250` with
+        // the height following the composer, a 342x358 capture.
+        private val THREAD_COMPOSER_MEMBER_SUGGESTIONS_CROP =
+            VisualCrop(
+                leftDp = 24,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 358
+            )
+        // slock VisualTestingCases: the image-preview case box is 210px tall (file-previews 270).
+        private val THREAD_COMPOSER_IMAGE_PREVIEW_CROP =
+            VisualCrop(
+                leftDp = 24,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 210
             )
         private val THREAD_COMPOSER_ATTACHMENTS_CROP =
             VisualCrop(
@@ -7186,11 +7313,13 @@ class KmpVisualScreenshotCaptureTest {
         // Full-height Settings captures (task #388): display grown so the whole
         // route composes in one frame; crop height comes from the render-side
         // sentinel token. 7500px ≈ 3 viewports, under common GL texture limits.
-        private const val FULL_HEIGHT_DISPLAY_WIDTH_PX = 1170
-        private const val FULL_HEIGHT_DISPLAY_HEIGHT_PX = 7500
-        private const val FULL_HEIGHT_TOKEN = "settings_route_visual_fullheight"
         private const val FULL_HEIGHT_TOKEN_TIMEOUT_MS = 20_000L
         private const val FULL_HEIGHT_POLL_MS = 250L
+        // Full-length capture (sharedCases.json capture.fullLength).
+        private const val FULL_LENGTH_MAX_SCROLL_STEPS = 40
+        private const val FULL_LENGTH_SCROLL_SETTLE_MS = 350L
+        private const val FULL_LENGTH_RESIZE_TIMEOUT_MS = 8_000L
+        private const val FULL_LENGTH_RESIZE_SETTLE_MS = 800L
 
         // Logcat tag for per-case timing (CASE_START/CASE_END) and idle-wait
         // warnings — grep this out of the uploaded logcat artifact (task #362).

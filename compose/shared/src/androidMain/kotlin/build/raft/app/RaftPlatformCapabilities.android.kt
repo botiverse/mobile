@@ -7,6 +7,8 @@ import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
 
+internal actual fun raftPlatformIsiOSAppOnMac(): Boolean = false
+
 internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle =
     RaftPullToRefreshStyle.Material
 
@@ -34,6 +36,8 @@ internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = false
 internal actual fun raftPlatformMessageTextPointerSelectable(): Boolean = false
 
 internal actual fun raftPlatformHasFinePointer(): Boolean = false
+
+internal actual fun raftPlatformShortcutsUseCommand(): Boolean = false
 
 internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = true
 
@@ -116,11 +120,17 @@ internal actual fun raftPlatformSupportsHandsFeedbackSubmit(): Boolean = true
 
 internal actual fun raftFeedbackWebViewClientKind(): String = "android"
 
+internal actual fun raftComposerCameraAvailable(): Boolean = true
+
 internal actual fun raftSlugSlashCenteringOffsetDp(): Float = -1.5f
 
 internal actual fun raftPlatformTabPagerStartEdgeInsetDp(): Float = 0f
 
 internal actual fun raftPlatformTabPagerOverscrollEnabled(): Boolean = true
 
+internal actual fun raftPlatformTabPagerSwipeEnabled(): Boolean = true
+
 /** Bottom tabs switch at once, with no fade through (artin 10-30: "我不是很喜欢 删了吧"); see expect. */
 internal actual fun raftPlatformAppShellTabFadeThrough(): Boolean = false
+
+internal actual fun raftPlatformFollowsAppStoreBillingRules(): Boolean = false

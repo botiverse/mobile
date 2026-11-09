@@ -7,8 +7,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import build.raft.app.components.RaftBrutalBadge
-import build.raft.app.components.RaftBrutalTone
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedSettingsApiEnvironmentOption
 import build.raft.app.data.RaftAppScopeApiEnvironment
@@ -89,7 +90,7 @@ internal fun RaftEnvironmentIndicatorHost(
     }
 
     val density = LocalDensity.current
-    val topSafeArea = raftTopSafeAreaPadding()
+    val topSafeArea = raftWindowTopSafeAreaPadding()
     val bottomSafeArea = raftBottomSafeAreaPadding()
     var badgeSize by remember { mutableStateOf(IntSize.Zero) }
     // Deliberately window-scoped rather than durable configuration: tabs and in-shell routes keep
@@ -136,8 +137,8 @@ internal fun RaftEnvironmentIndicatorHost(
                         )
                     }
             }
-        RaftBrutalBadge(
-            label = label,
+        RaftBadge(
+            text = label,
             modifier =
                 placementModifier
                     .widthIn(max = RaftEnvironmentIndicatorMaxWidth)
@@ -160,7 +161,8 @@ internal fun RaftEnvironmentIndicatorHost(
                         }
                     }
                     .zIndex(RaftEnvironmentIndicatorZIndex),
-            tone = RaftBrutalTone.Yellow,
+            appearance = RaftBadgeAppearance.Soft,
+            variant = RaftBadgeVariant.Primary,
         )
     }
 }

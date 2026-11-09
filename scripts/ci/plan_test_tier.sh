@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name> [dispatch-scope:pr|full] [xcode-app-path]" >&2
+  echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name> [dispatch-scope:pr|ios|full] [xcode-app-path]" >&2
   exit 2
 }
 
@@ -58,26 +58,6 @@ change_keeps_ios() {
 main_push_keeps_ios() {
   change_keeps_ios "$@"
 }
-
-# Native iOS app code (Swift/ObjC, Xcode project) under compose/iosApp. Such a
-# change selects the extra GitHub-hosted Xcode 27.1 compile lane when iOS runs
-# at all, so 27.1-only SDK APIs (iPhone Duo: UIViewReservedRegion, UIHinge) are
-# compiled before release. An unavailable diff fails closed to "touched".
-change_touches_ios_app() {
-  local changed_paths_file="$1"
-  local path
-  test -f "$changed_paths_file" || return 1
-  while IFS= read -r path || test -n "$path"; do
-    path="${path%$'\r'}"
-    case "$path" in
-      "$UNKNOWN_PATH_SENTINEL"|compose/iosApp/*)
-        return 0
-        ;;
-    esac
-  done < "$changed_paths_file"
-  return 1
-}
-
 
 # Classify one repository path. The function mutates the platform booleans in
 # the caller and returns 0 only when Test owns coverage for that path.
@@ -177,9 +157,10 @@ emit_plan() {
   local run_device_suite=false
   local run_canonical_final=false
   local attachment_api_levels="[]"
-  # Full tier = full-ci PR, release-* push, nightly, scope=full dispatch. It
-  # (or a compose/iosApp change) adds the GitHub Xcode 27.1 iOS compile lane.
-  local full_tier=false
+  # The GitHub-hosted Xcode 27.1 iOS compile lane runs only on the nightly
+  # schedule and release-* pushes (cost cut 2026-11-05: ~48 min on the most
+  # expensive runner). 27.1-only SDK breakage is caught by the nightly within
+  # 24h and by ios-release.yml's 27.1 build before any release.
   local run_ios_xcode271=false
   local ios_lanes="[]"
   reason=""
@@ -202,7 +183,6 @@ emit_plan() {
         run_device_suite=true
         run_canonical_final=false
         attachment_api_levels="[31]"
-        full_tier=true
         reason="pull-request-full-ci"
       else
         # Task #37 (artin 2026-10-09): iOS compile runs only on the trunk
@@ -260,7 +240,7 @@ emit_plan() {
           run_device_suite=false
           run_canonical_final=false
           attachment_api_levels="[]"
-          full_tier=true
+          run_ios_xcode271=true
           reason="release-push-full-readback"
           ;;
         *)
@@ -276,7 +256,7 @@ emit_plan() {
       run_device_suite=true
       run_canonical_final=true
       attachment_api_levels="[29,31,34]"
-      full_tier=true
+      run_ios_xcode271=true
       reason="schedule-full-readback"
       ;;
     workflow_dispatch)
@@ -284,8 +264,10 @@ emit_plan() {
       # PR-equivalent tier instead of an unconditional full readback. A
       # dispatch has no trustworthy PR diff, so the pr tier is a fixed set:
       # Linux gates + Android compile, no iOS, no device suite. scope=full
-      # keeps the deliberate full readback. An empty/unknown scope is rejected
-      # so the choice is always explicit in the workflow input.
+      # keeps the deliberate full readback. scope=ios (2026-11-05) is the
+      # pre-merge iOS check: plan + the Blacksmith Xcode 27.0 iOS compile only
+      # (Android is already covered by the PR-tier run). An empty/unknown scope
+      # is rejected so the choice is always explicit in the workflow input.
       case "$dispatch_scope" in
         pr)
           run_android=true
@@ -295,16 +277,23 @@ emit_plan() {
           attachment_api_levels="[]"
           reason="workflow_dispatch-pr-tier"
           ;;
+        ios)
+          run_android=false
+          run_ios=true
+          run_device_suite=false
+          run_canonical_final=false
+          attachment_api_levels="[]"
+          reason="workflow_dispatch-ios-tier"
+          ;;
         full)
           mark_all_platforms
           run_device_suite=true
           run_canonical_final=true
           attachment_api_levels="[29,31,34]"
-          full_tier=true
           reason="workflow_dispatch-full-readback"
           ;;
         *)
-          echo "workflow_dispatch scope must be pr or full, got: '${dispatch_scope}'" >&2
+          echo "workflow_dispatch scope must be pr, ios or full, got: '${dispatch_scope}'" >&2
           return 1
           ;;
       esac
@@ -328,23 +317,24 @@ emit_plan() {
     return 1
   fi
   # xcode_app_path (workflow_dispatch) only reaches the iOS compile job. A plan that skips iOS
-  # (scope=pr) would go green without ever compiling with that Xcode, so refuse it.
+  # (scope=pr, docs-only PRs, ...) would go green without ever compiling with that Xcode, so refuse it.
   if test -n "$xcode_app_path" && test "$run_ios" != true; then
-    echo "::error::xcode_app_path=${xcode_app_path} is set but this plan skips the iOS compile (run_ios=${run_ios}, reason=${reason}). Re-dispatch with scope=full, or clear xcode_app_path." >&2
+    echo "::error::xcode_app_path=${xcode_app_path} is set but this plan skips the iOS compile (run_ios=${run_ios}, reason=${reason}). Re-dispatch with scope=ios or scope=full, or clear xcode_app_path." >&2
     return 1
   fi
 
   # iOS compile lanes (matrix of the test.yml `ios` job). Every iOS run gets the
   # Blacksmith Xcode 27.0 lane. The GitHub-hosted Xcode 27.1 lane is added only
-  # on the full tier or for compose/iosApp changes: GitHub Macs share one
-  # concurrency cap with ios-release.yml / ios-simulator-app.yml.
-  if test "$run_ios" = true; then
-    if test "$full_tier" = true || change_touches_ios_app "$changed_paths_file"; then
-      run_ios_xcode271=true
-      ios_lanes='["blacksmith-xcode27.0","github-xcode27.1"]'
-    else
-      ios_lanes='["blacksmith-xcode27.0"]'
-    fi
+  # on the nightly schedule and release-* pushes (run_ios_xcode271 above); GitHub
+  # Macs are the most expensive runner and share one concurrency cap with
+  # ios-release.yml / ios-simulator-app.yml.
+  if test "$run_ios" != true; then
+    run_ios_xcode271=false
+  fi
+  if test "$run_ios_xcode271" = true; then
+    ios_lanes='["blacksmith-xcode27.0","github-xcode27.1"]'
+  elif test "$run_ios" = true; then
+    ios_lanes='["blacksmith-xcode27.0"]'
   fi
 
   printf 'run_android=%s\n' "$run_android"

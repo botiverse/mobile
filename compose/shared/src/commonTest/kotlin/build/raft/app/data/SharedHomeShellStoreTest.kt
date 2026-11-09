@@ -366,6 +366,31 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
+    fun selectedConversationCountsInActivityWhileItIsNotSeen() {
+        // Seen = read: a conversation left open in a hidden or idle window is not being read, so its
+        // live messages count in Activity like the server counts them; once seen again they skip.
+        var seen = false
+        val fixture = fixture(selectedConversationSeen = { seen })
+        val store = fixture.store
+        val event = SyncResumeResponse(messages = emptyList(), currentSeq = 1L, hasMore = false)
+
+        store.dispatch(SharedHomeShellIntent.SetSelectedConversation("channel-1"))
+        store.dispatch(SharedHomeShellIntent.SetSurfaceVisible(true))
+        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+        seen = true
+        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+
+        assertEquals(
+            listOf<SharedActivityIntent>(
+                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null),
+                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = "channel-1")
+            ),
+            fixture.activityIntents
+        )
+        fixture.cancel()
+    }
+
+    @Test
     fun clearingSelectedConversationForwardsClearToHomeStore() {
         // task #299: leaving a conversation must clear the home store's
         // selectedConversationId too, otherwise realtime merges keep
@@ -541,7 +566,8 @@ class SharedHomeShellStoreTest {
     private fun fixture(
         homeState: SharedHomeState = SharedHomeState(),
         activityState: SharedActivityState = SharedActivityState(),
-        searchSavedState: SharedHomeSearchSavedState = SharedHomeSearchSavedState()
+        searchSavedState: SharedHomeSearchSavedState = SharedHomeSearchSavedState(),
+        selectedConversationSeen: () -> Boolean = { true }
     ): ShellFixture {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val homeFlow = MutableStateFlow(homeState)
@@ -563,7 +589,8 @@ class SharedHomeShellStoreTest {
                     activitySummaryRefreshes += serverId to reason
                 },
                 resetActivity = {},
-                scope = scope
+                scope = scope,
+                selectedConversationSeen = selectedConversationSeen
             )
         return ShellFixture(
             store,

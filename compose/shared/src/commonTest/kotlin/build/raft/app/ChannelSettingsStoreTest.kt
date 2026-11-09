@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.ARCHIVED_NAME_COLLISION
 import build.raft.app.data.AUTHENTICATED_ROUTE_AUTHORITY_CHANGED
 import build.raft.app.data.AuthenticatedRouteAuthorityGateway
 import build.raft.app.data.AuthenticatedRouteAuthorityReceipt
@@ -543,10 +544,10 @@ class ChannelSettingsStoreTest {
     fun leaveAndDeleteLoseAccessButArchiveKeepsTheChannelReadable() = runTest {
         // An archived channel is still readable, so Activity keeps its rows; leave / delete lose it.
         listOf(
-            ChannelSettingsIntent.Leave to true,
-            ChannelSettingsIntent.Delete to true,
-            ChannelSettingsIntent.Archive to false,
-        ).forEach { (intent, accessLost) ->
+            Triple(ChannelSettingsIntent.Leave, true, ChannelSettingsAction.Leave),
+            Triple(ChannelSettingsIntent.Delete, true, ChannelSettingsAction.Delete),
+            Triple(ChannelSettingsIntent.Archive, false, ChannelSettingsAction.Archive),
+        ).forEach { (intent, accessLost, closedBy) ->
             val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
             val store = store(dataSource)
             store.dispatch(ChannelSettingsIntent.Load)
@@ -557,6 +558,7 @@ class ChannelSettingsStoreTest {
 
             assertEquals(ChannelSettingsEffect.Close, store.state.value.effect, "$intent")
             assertEquals(accessLost, store.state.value.closedWithAccessLost, "$intent")
+            assertEquals(closedBy, store.state.value.closedBy, "$intent")
             store.clear()
         }
     }
@@ -624,6 +626,174 @@ class ChannelSettingsStoreTest {
         assertEquals(0, live.unarchiveCalls)
         memberStore.clear()
         liveStore.clear()
+        store.clear()
+    }
+
+    private fun collisionRefusal(
+        type: String = "private",
+        canUnarchive: Boolean = true,
+        withId: Boolean = true,
+    ): DataResult<ChannelProfileUpdateResult> =
+        DataResult.Error(
+            ScreenError(
+                code = ARCHIVED_NAME_COLLISION,
+                retryable = false,
+                serverMessage = "Channel name \"launch-room\" is held by an archived channel",
+                serverFields =
+                    buildMap {
+                        if (withId) put("archivedChannelId", "channel-old")
+                        put("archivedChannelName", "launch-room")
+                        put("archivedChannelType", type)
+                        put("canUnarchiveArchivedChannel", canUnarchive.toString())
+                    },
+            )
+        )
+
+    @Test
+    fun aRenameOntoAnArchivedChannelNameShowsTheWarningAndOpenChannelLeavesForIt() = runTest {
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
+        dataSource.profileResult = collisionRefusal()
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room", ""))
+        runCurrent()
+
+        val collision = store.state.value.profileCollision
+        assertEquals(ChannelId("channel-old"), collision?.archivedChannelId)
+        assertEquals("launch-room", collision?.archivedChannelName)
+        assertEquals("private", collision?.archivedChannelType)
+        assertTrue(collision?.canUnarchive == true)
+        assertEquals(ChannelProfileUpdateStatus.Failed, store.state.value.profileStatus)
+        assertEquals(ARCHIVED_NAME_COLLISION, store.state.value.profileErrorCode)
+        assertEquals("#canonical", store.state.value.channel?.name)
+
+        // A description edit clears the status but keeps the warning, as the web does.
+        store.dispatch(ChannelSettingsIntent.ClearProfileStatus)
+        assertEquals(collision, store.state.value.profileCollision)
+
+        store.dispatch(ChannelSettingsIntent.OpenArchivedCollision)
+        val effect = assertIs<ChannelSettingsEffect.OpenChannel>(store.state.value.effect)
+        assertFalse(effect.unarchived)
+        assertEquals(ChannelId("channel-old"), effect.conversation.channelId)
+        assertEquals("private", effect.conversation.channelType)
+        assertEquals(ConversationKind.Channel, effect.conversation.kind)
+        assertNull(store.state.value.profileCollision)
+        assertTrue(dataSource.unarchivedChannels.isEmpty())
+        store.clear()
+    }
+
+    @Test
+    fun aJointArchivedChannelHoldingTheNameOpensAsAJointChannel() = runTest {
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(jointSnapshot()))
+        dataSource.profileResult = collisionRefusal(type = "joint", canUnarchive = false)
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room", ""))
+        runCurrent()
+
+        assertFalse(store.state.value.profileCollision?.canUnarchive ?: true)
+        // Not offered: Unarchive does nothing for someone who may not unarchive.
+        store.dispatch(ChannelSettingsIntent.UnarchiveArchivedCollision)
+        runCurrent()
+        assertTrue(dataSource.unarchivedChannels.isEmpty())
+
+        store.dispatch(ChannelSettingsIntent.OpenArchivedCollision)
+        val effect = assertIs<ChannelSettingsEffect.OpenChannel>(store.state.value.effect)
+        assertEquals(ConversationKind.Joint, effect.conversation.kind)
+        assertEquals("joint", effect.conversation.channelType)
+        store.clear()
+    }
+
+    @Test
+    fun unarchiveFromTheWarningRestoresTheArchivedChannelAndOpensIt() = runTest {
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
+        dataSource.profileResult = collisionRefusal()
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room", ""))
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.UnarchiveArchivedCollision)
+        assertTrue(store.state.value.collisionUnarchiving)
+        runCurrent()
+
+        assertEquals(listOf(ChannelId("channel-old")), dataSource.unarchivedChannels)
+        assertEquals(0, dataSource.unarchiveCalls)
+        val effect = assertIs<ChannelSettingsEffect.OpenChannel>(store.state.value.effect)
+        assertTrue(effect.unarchived)
+        assertEquals(ChannelId("channel-old"), effect.conversation.channelId)
+        assertFalse(store.state.value.collisionUnarchiving)
+        assertNull(store.state.value.profileCollision)
+        store.clear()
+    }
+
+    @Test
+    fun aFailedUnarchiveFromTheWarningKeepsItAndShowsTheServerReason() = runTest {
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
+        dataSource.profileResult = collisionRefusal()
+        dataSource.unarchiveChannelResult =
+            DataResult.Error(ScreenError(code = "http_400", retryable = false, serverMessage = "Channel is not archived"))
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room", ""))
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.UnarchiveArchivedCollision)
+        runCurrent()
+
+        assertFalse(store.state.value.collisionUnarchiving)
+        assertEquals(ChannelId("channel-old"), store.state.value.profileCollision?.archivedChannelId)
+        assertEquals(ChannelProfileUpdateStatus.Failed, store.state.value.profileStatus)
+        assertEquals(CHANNEL_SETTINGS_ARCHIVED_UNARCHIVE_FAILED, store.state.value.profileErrorCode)
+        assertEquals("Channel is not archived", store.state.value.profileErrorMessage)
+        store.clear()
+    }
+
+    @Test
+    fun aNewNameOrSaveDropsTheWarning() = runTest {
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
+        dataSource.profileResult = collisionRefusal()
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room", ""))
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.ClearArchivedCollision)
+        assertNull(store.state.value.profileCollision)
+
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room", ""))
+        runCurrent()
+        assertEquals(ChannelId("channel-old"), store.state.value.profileCollision?.archivedChannelId)
+        dataSource.profileResult = null
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room-2", ""))
+        runCurrent()
+        assertNull(store.state.value.profileCollision)
+        assertEquals(ChannelProfileUpdateStatus.Succeeded, store.state.value.profileStatus)
+        store.clear()
+    }
+
+    @Test
+    fun aRefusalWithoutTheArchivedChannelKeepsTheErrorLine() = runTest {
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
+        // The plain "already taken" (no archived channel the user can see), or details missing.
+        dataSource.profileResult = collisionRefusal(withId = false)
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room", ""))
+        runCurrent()
+
+        assertNull(store.state.value.profileCollision)
+        assertEquals(ChannelProfileUpdateStatus.Failed, store.state.value.profileStatus)
+        assertEquals(ARCHIVED_NAME_COLLISION, store.state.value.profileErrorCode)
+        store.dispatch(ChannelSettingsIntent.OpenArchivedCollision)
+        assertNull(store.state.value.effect as? ChannelSettingsEffect.OpenChannel)
         store.clear()
     }
 
@@ -1039,9 +1209,22 @@ private class FakeChannelSettingsDataSource(
         return pinResult?.await() ?: DataResult.Content(SettingsServerSidebarOrderSnapshot())
     }
 
+    var profileResult: DataResult<ChannelProfileUpdateResult>? = null
+
     override suspend fun updateProfile(name: String, description: String): DataResult<ChannelProfileUpdateResult> {
         profileCalls += 1
-        return DataResult.Content(ChannelProfileUpdateResult(ChannelId("channel-1"), name, description))
+        return profileResult ?: DataResult.Content(ChannelProfileUpdateResult(ChannelId("channel-1"), name, description))
+    }
+
+    val unarchivedChannels = mutableListOf<ChannelId>()
+    var unarchiveChannelResult: DataResult<HomeChannelRow>? = null
+
+    override suspend fun unarchiveChannel(channelId: ChannelId): DataResult<HomeChannelRow> {
+        unarchivedChannels += channelId
+        return unarchiveChannelResult
+            ?: DataResult.Content(
+                HomeChannelRow(threadId = ThreadId(channelId.value), channelId = channelId, channelType = "private", name = "#launch-room")
+            )
     }
 
     override suspend fun makePrivate(): DataResult<Unit> {

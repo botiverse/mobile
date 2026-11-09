@@ -131,6 +131,7 @@ import build.raft.designsystem.components.RaftMeterSize
 import build.raft.designsystem.components.RaftProgressBar
 import build.raft.designsystem.components.RaftProgressBarSize
 import build.raft.designsystem.components.RaftProgressBarVariant
+import build.raft.designsystem.components.RaftSlider
 import build.raft.designsystem.components.raftSticker
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
@@ -192,10 +193,25 @@ class DisplayComponentScreenshotTest {
                         .border(RaftStroke.Hairline, colors.lineSeam, RoundedCornerShape(RaftRadius.Container)),
                 ) {
                     Row(Modifier.fillMaxWidth().height(40.dp).raftInsetFocusOutline(true, colors.foreground).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RaftText("Search channels", color = colors.foregroundPlaceholder)
+                        RaftText("Search channels", color = colors.foregroundHint)
                     }
                     Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         RaftText("general")
+                    }
+                }
+            }
+        }
+
+    @Test
+    fun conversationKindGlyphs() =
+        capture("conversation_kind_glyphs") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Caption("Thread, DirectMessage, Chat, Feedback: 16 at 1.5 and 2 (sidebar icon)")
+                listOf(1.5f, 2f).forEach { stroke ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        RaftConversationKindGlyph.entries.forEach { glyph ->
+                            RaftConversationKindIcon(glyph, size = 16.dp, strokeWidth = stroke)
+                        }
                     }
                 }
             }
@@ -253,7 +269,7 @@ class DisplayComponentScreenshotTest {
     fun iconButton() =
         capture("icon_button") {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Caption("Md (32, 36 on the frame) and Lg (44): rest, pressed, hovered, focused, disabled")
+                Caption("Xs (24) and Sm (28) at the chip radius, Md (32, 36 on the frame) and Lg (44): rest, pressed, hovered, focused, disabled")
                 RaftButtonVariant.entries.forEach { variant ->
                     val onFrame = variant == RaftButtonVariant.OnFrame
                     Row(
@@ -537,7 +553,7 @@ class DisplayComponentScreenshotTest {
                     DelegatedOwner(deleted = true) { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xxs) }
                     Caption("Presence, face, placeholder, deleted")
                 }
-                val rowFill = RaftTheme.colors.fillPressed.compositeOver(RaftTheme.colors.layerCanvas)
+                val rowFill = RaftTheme.colors.fillMedium.compositeOver(RaftTheme.colors.layerCanvas)
                 Row(
                     Modifier.background(rowFill).padding(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(24.dp),
@@ -754,6 +770,21 @@ class DisplayComponentScreenshotTest {
                 )
                 RaftProgressBar(value = 1f, label = "Downloaded", valueText = "100%")
                 RaftProgressBar(value = null, label = "Waiting for the server", animated = false)
+            }
+        }
+
+    /** The slider: at its start, part way with a header, at its end, keyboard focus, disabled. */
+    @Test
+    fun slider() =
+        capture("slider") {
+            Column(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                RaftSlider(value = 320, onValueChange = {}, valueRange = 320..1080, contentDescription = "Start")
+                RaftSlider(value = 560, onValueChange = {}, valueRange = 320..1080, label = "Image width", valueText = "560 dp")
+                RaftSlider(value = 1080, onValueChange = {}, valueRange = 320..1080, label = "Image width", valueText = "1080 dp")
+                CompositionLocalProvider(LocalRaftFocusedPreview provides true) {
+                    RaftSlider(value = 700, onValueChange = {}, valueRange = 320..1080, contentDescription = "Focused")
+                }
+                RaftSlider(value = 600, onValueChange = {}, valueRange = 320..1080, enabled = false, label = "Off", valueText = "600 dp")
             }
         }
 
@@ -991,6 +1022,17 @@ class DisplayComponentScreenshotTest {
                         ChannelRow("release-announcements", RaftRowTone.Default, "Wug: Release notes are drafted.")
                         ChannelRow("invites", RaftRowTone.Default, "Sent to", meta = "ada.lovelace@analytical-engine.example", divider = true)
                     }
+                    Caption("Narrow, 240dp: a setting title wraps to two lines")
+                    RaftListRowGroup(Modifier.width(240.dp)) {
+                        RaftListRow(
+                            "Receive notifications on this device",
+                            variant = RaftListRowVariant.Plain,
+                            description = "Your other devices still get them.",
+                            wrapDescription = true,
+                            titleMaxLines = 2,
+                            trailing = { RaftSwitch(checked = true, onCheckedChange = {}) },
+                        )
+                    }
                 }
             }
         }
@@ -1089,7 +1131,7 @@ class DisplayComponentScreenshotTest {
                     actions = {
                         RaftSidebarSectionAction(RaftGlyph.ArrowDownUp, "Sort Channels", onClick = {})
                         // Any icon: an app icon through the slot.
-                        RaftSidebarSectionAction(tooltip = "Create Channel", onClick = {}) { Glyph(RaftGlyph.Plus) }
+                        RaftSidebarSectionAction(tooltip = "Create Channel", onClick = {}) { Glyph(RaftGlyph.Plus, size = 14.dp) }
                     },
                 )
                 RaftSidebarChannelItem("proj-raft-computer", onClick = {}, mentioned = true, unreadCount = 4, threadCount = 2)
@@ -1238,7 +1280,7 @@ class DisplayComponentScreenshotTest {
     @Test
     fun sectionAndCode() =
         capture("section_code") {
-            Column(Modifier.width(360.dp).background(RaftTheme.colors.layerPanel)) {
+            Column(Modifier.width(360.dp).background(RaftTheme.colors.layerCanvas)) {
                 RaftSection("Connect a computer", separator = false) {
                     RaftCodeBlock(
                         "npx @raft/agent connect --token rft_9c2b1f7e4a8d4c0e9b6f3a2d1c0b9a8f",
@@ -1277,7 +1319,7 @@ class DisplayComponentScreenshotTest {
     @Test
     fun sectionHeading() =
         capture("section_heading") {
-            Column(Modifier.width(360.dp).background(RaftTheme.colors.layerPanel)) {
+            Column(Modifier.width(360.dp).background(RaftTheme.colors.layerCanvas)) {
                 Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     RaftSectionEyebrow("Profile")
                     RaftSectionEyebrow("Created agents", count = "3")
@@ -1349,12 +1391,12 @@ class DisplayComponentScreenshotTest {
                     RaftMessageImageGallery(listOf(RaftMessageImageDimensions(300, 1000)), Modifier.width(80.dp)) { FakeImage(9f / 16f, it.fit) }
                 }
                 RaftMessageImageGallery(listOf(RaftMessageImageDimensions())) { FakeImage(9f / 19f, it.fit) }
-                Caption("At its full 360dp: two (144dp rows), then three (128dp; the third wraps)")
+                Caption("At its full 360dp: two, then three (rows of two, 144dp; the third sits alone)")
                 RaftMessageImageGallery(List(2) { RaftMessageImageDimensions(800, 600) }) { FakeImage(4f / 3f, it.fit) }
                 RaftMessageImageGallery(listOf(RaftMessageImageDimensions(800, 600), RaftMessageImageDimensions(300, 1000), RaftMessageImageDimensions(800, 600))) {
                     FakeImage(if (it.index == 1) 0.3f else 4f / 3f, it.fit)
                 }
-                Caption("Narrower, 300dp: two (128dp rows), then three (112dp)")
+                Caption("Narrower, 300dp: two, then three (rows of two, 128dp)")
                 RaftMessageImageGallery(List(2) { RaftMessageImageDimensions(800, 600) }, Modifier.width(300.dp)) { FakeImage(4f / 3f, it.fit) }
                 RaftMessageImageGallery(
                     listOf(RaftMessageImageDimensions(800, 600), RaftMessageImageDimensions(300, 1000), RaftMessageImageDimensions(800, 600)),

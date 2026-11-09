@@ -1,5 +1,6 @@
 package build.raft.app.network.sync
 
+import build.raft.app.model.ThreadReplyUpdated
 import build.raft.app.model.ThreadUpdated
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -218,6 +219,52 @@ internal class ThreadRepliesSyncHost(
         }
         return ThreadRepliesAcceptedProjection(identity, model, revision)
     }
+
+    /**
+     * Folds an edited reply (`thread:reply_updated`) into the accepted window of its scope, as web
+     * `consumeThreadReplyUpdateWithSyncCore` does: only a reply the window already holds changes,
+     * the seq watermark stays put, and nothing happens for a scope this host never accepted.
+     * [baseline] seeds a never-seen scope from the rendered window, as [ingestFrame] does.
+     */
+    fun ingestReplyUpdate(
+        page: ThreadRepliesPageIdentity,
+        event: ThreadReplyUpdated,
+        baseline: ThreadRepliesReadModel? = null,
+    ): ThreadRepliesAcceptedProjection? =
+        synchronized(linearizationLock) {
+            if (event.parentChannelType != page.parentScopeKind || event.parentChannelId.value != page.parentScopeId) {
+                return@synchronized null
+            }
+            val identity =
+                ThreadRepliesScopeIdentity(page, event.parentMessageId.value, event.threadChannelId.value)
+                    .takeIf(ThreadRepliesScopeIdentity::isValid)
+                    ?: return@synchronized null
+            if (baseline != null) seedOwnerIfAbsent(identity, baseline)
+            val scopeOwner = ownerOrNull(identity.scopeId) ?: return@synchronized null
+            synchronized(scopeOwner.lock) {
+                val before = scopeOwner.activeCore.threadRepliesState(identity.scopeId)
+                val updated = before.applyReplyUpdate(event.messageId.value, event.seq, event.content, event.updatedAt)
+                if (updated === before) return@synchronized null
+                val syncState = scopeOwner.activeCore.scopeSyncState(THREAD_REPLIES_SYNC_DOMAIN, identity.scopeId)
+                    ?: return@synchronized null
+                val replacement = newThreadRepliesSyncCore()
+                val outcome =
+                    replacement.ingestSnapshot(
+                        THREAD_REPLIES_SYNC_DOMAIN,
+                        SyncSnapshot(
+                            scopeId = identity.scopeId,
+                            watermark = syncState.appliedSeq,
+                            epoch = null,
+                            state = updated,
+                        ),
+                    )
+                if (outcome !is SyncIngestOutcome.Applied) return@synchronized null
+                scopeOwner.activeCore = replacement
+                scopeOwner.revision += 1L
+                scopeOwner.seededFromCache = false
+                ThreadRepliesAcceptedProjection(identity, updated, scopeOwner.revision)
+            }
+        }
 
     fun ingestAuthoritativeSnapshots(
         page: ThreadRepliesPageIdentity,

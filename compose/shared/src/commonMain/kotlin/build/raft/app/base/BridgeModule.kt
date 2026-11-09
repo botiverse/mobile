@@ -5,7 +5,15 @@ import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.AttachmentOwnerLease
 import build.raft.app.ThreadComposerTemporaryFileRetirement
 import build.raft.app.data.RAFT_SOCKET_BASE_URL
+import build.raft.app.cmp.RaftCmpToasts
+import build.raft.app.data.ScreenError
+import build.raft.app.network.RaftFailedRequestTraceIds
+import build.raft.app.network.raftValidTraceIdOrNull
+import build.raft.app.RaftTraceIdToastStrings
+import build.raft.app.localizedRaftTraceIdToastStrings
+import build.raft.app.raftShortTraceId
 import build.raft.app.host.HostCapabilities
+import build.raft.app.host.RaftBriefToastMillis
 import build.raft.app.network.AttachmentDownloadCoordinator
 import build.raft.app.raftLogDebug
 import build.raft.app.raftLogError
@@ -328,7 +336,60 @@ internal class BridgeModule : Module() {
         callNativeMethod("callPhone", methodArgs, null)
     }
 
+    /**
+     * A design-system toast on the window showing this page (`RaftCmpToasts`, the root's
+     * `RaftToastHost`); the native `toast` only while no window is in the foreground (the app in
+     * the background, before the first frame). Any thread.
+     */
     fun toast(content: String) {
+        if (RaftCmpToasts.post(content, origin = pager?.host?.capabilities)) return
+        val methodArgs = JSONObject()
+        methodArgs.put("content", content)
+        callNativeMethod("toast", methodArgs, null)
+    }
+
+    /**
+     * [toast] for an error (AGENTS.md "Errors carry the trace ID"): with the failed request's
+     * [traceId] the toast shows "Trace ID a1b2c3d4…" under [content] and a Copy action that copies
+     * the whole id ("Trace ID copied"), as the web's error toasts do. [traceId] defaults to the
+     * failure the HTTP layer saw just now (web `recentFailedRequestTraceId`); pass the error's own
+     * ([build.raft.app.data.ScreenError.traceId]) when there is one. Without one: a plain [toast].
+     */
+    fun errorToast(
+        content: String,
+        traceId: String? = RaftFailedRequestTraceIds.recent(),
+        strings: () -> RaftTraceIdToastStrings = ::localizedRaftTraceIdToastStrings,
+    ) {
+        val id = raftValidTraceIdOrNull(traceId)
+        if (id == null) {
+            toast(content)
+            return
+        }
+        val copy = strings()
+        val line = copy.line(raftShortTraceId(id))
+        val posted =
+            RaftCmpToasts.post(
+                content,
+                origin = pager?.host?.capabilities,
+                description = line,
+                actionLabel = copy.copyAction,
+                onAction = {
+                    copyToPasteboard(id)
+                    briefToast(copy.copied)
+                },
+            )
+        if (posted) return
+        val methodArgs = JSONObject()
+        methodArgs.put("content", "$content\n$line")
+        callNativeMethod("toast", methodArgs, null)
+    }
+
+    /** [errorToast] with [error]'s own trace id. */
+    fun errorToast(content: String, error: ScreenError) = errorToast(content, error.traceId)
+
+    /** [toast] for a confirmation that needs no reading ("Copied"): 1.5s, not a notification's 5s. */
+    fun briefToast(content: String) {
+        if (RaftCmpToasts.post(content, origin = pager?.host?.capabilities, durationMillis = RaftBriefToastMillis)) return
         val methodArgs = JSONObject()
         methodArgs.put("content", content)
         callNativeMethod("toast", methodArgs, null)
@@ -1041,6 +1102,22 @@ internal class BridgeModule : Module() {
             methodArgs.put("capture", capture)
             methodArgs.put("compressImages", compressImages)
             callNativeMethod("threadAttachmentUpload", methodArgs) {
+                continuation.resume(it)
+            }
+        }
+
+    /**
+     * Files dropped on the composer ([fileRefs]: desktop paths, Android `content:` URIs), read by
+     * the host as a File pick: the same files envelope as [threadAttachmentUpload] (`code`,
+     * `files`, `skippedCount`, `errorCode`), images never compressed.
+     */
+    suspend fun threadAttachmentDrop(fileRefs: List<String>): JSONObject? =
+        suspendCoroutine { continuation ->
+            val refs = JSONArray()
+            fileRefs.forEach(refs::put)
+            val methodArgs = JSONObject()
+            methodArgs.put("fileRefs", refs)
+            callNativeMethod("threadAttachmentDrop", methodArgs) {
                 continuation.resume(it)
             }
         }

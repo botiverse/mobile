@@ -1,5 +1,12 @@
 package build.raft.app
 
+import build.raft.app.resources.Res
+import build.raft.app.resources.common_close
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
+import org.jetbrains.compose.resources.stringResource
+
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.PushPreviewMode
@@ -24,6 +31,9 @@ import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.app.model.conversationSafeDisplayTitleOrNull
 import build.raft.app.model.threadIdentity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,7 +41,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,7 +59,6 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -67,6 +75,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import build.raft.designsystem.components.raftClickable
 
 private const val ForegroundBannerAutoDismissMs = 5_000L
 private const val ForegroundBannerPreviewMaxLength = 96
@@ -184,6 +193,25 @@ internal class SharedForegroundBannerStore(
     fun visibleRouteIdentity(): ThreadRouteIdentity? = synchronized(lock) { visibleRoute }
 }
 
+/**
+ * The page's banner as its host would show it, handed to [content] ([LocalRaftForegroundBannerHandoff])
+ * for a window opened over the page that must show it on top instead (the assistant's panel
+ * sheet: the page's own banner would sit under its scrim). While [coveredByWindow] is true the page
+ * leaves its banner to that window. Read through the local, not captured: ThreadPage's content
+ * lambda is at the JVM's limit for captured values.
+ */
+internal class RaftForegroundBannerHandoff(
+    val banner: RaftForegroundMessageBanner?,
+    val topSafeArea: Dp,
+    val serverMembersStore: SharedServerMembersStore?,
+    val currentServerId: ServerId?,
+    val onClick: (RaftForegroundMessageBanner) -> Unit,
+    val onDismiss: (RaftForegroundMessageBanner) -> Unit,
+    val coveredByWindow: MutableState<Boolean>,
+)
+
+internal val LocalRaftForegroundBannerHandoff = compositionLocalOf<RaftForegroundBannerHandoff?> { null }
+
 @Composable
 internal fun RaftForegroundBannerHost(
     banner: RaftForegroundMessageBanner?,
@@ -193,6 +221,7 @@ internal fun RaftForegroundBannerHost(
     currentServerIdOverride: ServerId? = null,
     onBannerClick: (RaftForegroundMessageBanner) -> Unit,
     onBannerDismiss: (RaftForegroundMessageBanner) -> Unit = {},
+    handoff: RaftForegroundBannerHandoff? = null,
     content: @Composable () -> Unit
 ) {
     val currentSessionFlow =
@@ -202,7 +231,11 @@ internal fun RaftForegroundBannerHost(
     val currentSession by currentSessionFlow.collectAsState(null)
     val currentServerId = currentServerIdOverride ?: currentSession?.currentServerId
     Box(modifier = Modifier.fillMaxSize()) {
-        content()
+        if (handoff == null) {
+            content()
+        } else {
+            CompositionLocalProvider(LocalRaftForegroundBannerHandoff provides handoff, content = content)
+        }
         if (banner != null) {
             RaftForegroundMessageBannerView(
                 banner = banner,
@@ -309,7 +342,7 @@ internal fun RaftForegroundMessageBannerView(
                     modifier =
                         Modifier
                             .weight(1f)
-                            .clickable(role = Role.Button, onClick = onClick),
+                            .raftClickable(onClick = onClick),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     RaftForegroundBannerAvatar(
@@ -424,12 +457,13 @@ private fun RaftForegroundBannerActionIcon(
     iconName: RaftLucideIconName,
     onClick: () -> Unit
 ) {
-    Box(
-        modifier =
-            Modifier
-                .size(24.dp)
-                .clickable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center
+    RaftIconButton(
+        onClick = onClick,
+        // No tooltip: a long press on the banner stays a drag / the banner's own gesture.
+        tooltip = null,
+        contentDescription = stringResource(Res.string.common_close),
+        variant = RaftButtonVariant.Ghost,
+        size = RaftIconButtonSize.Xs,
     ) {
         RaftLucideIcon(
             iconName,

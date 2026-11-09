@@ -1,6 +1,8 @@
 package build.raft.app.cmp.host
 
+import build.raft.app.cmp.RaftCmpToasts
 import build.raft.app.host.HostCapabilities
+import build.raft.app.host.RaftBriefToastMillis
 import build.raft.app.parseRaftJsonObjectOrNull
 import build.raft.app.toRaftJsonString
 import kotlinx.atomicfu.atomic
@@ -47,7 +49,19 @@ class BridgeWireHostCapabilities(
 ) : HostCapabilities {
     private val compressionRequestSequence = atomic(0L)
 
-    override fun toast(content: String) = send("toast", params("content" to content))
+    /**
+     * The design-system toast of the window showing this host's pages ([RaftCmpToasts]); the
+     * native `toast` only while no window is in the foreground (background, before the first frame).
+     */
+    override fun toast(content: String) {
+        if (!RaftCmpToasts.post(content, origin = this)) send("toast", params("content" to content))
+    }
+
+    override fun briefToast(content: String) {
+        if (!RaftCmpToasts.post(content, origin = this, durationMillis = RaftBriefToastMillis)) {
+            send("toast", params("content" to content))
+        }
+    }
 
     override fun copyToPasteboard(content: String) = send("copyToPasteboard", params("content" to content))
 

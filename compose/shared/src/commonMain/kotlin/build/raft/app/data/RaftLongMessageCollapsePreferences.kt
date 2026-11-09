@@ -172,6 +172,26 @@ internal class RaftLongMessageCollapsePreferenceStore(
             channelOverride = readChannelOverride(serverId, channelId)
         )
 
+    /**
+     * Moves this conversation's device-local value to the account once (see
+     * [raftLongMessageCollapseMigrationWrite]); the local override is dropped after, since the
+     * account holds it. A failed write is tried again the next time the conversation opens.
+     */
+    suspend fun migrateToAccountOnce(serverId: String, channelId: String, account: RaftMessageDisplayPrefs) {
+        val migratedKey = raftLongMessageCollapseMigratedKey(serverId, channelId)
+        if (store.getString(migratedKey) != null) return
+        val write = raftLongMessageCollapseMigrationWrite(readConversation(serverId, channelId).effective, account)
+        if (write != null) {
+            val result = RaftMessageDisplayPrefsStore.setCollapseLongMessages(serverId, channelId, write)
+            if (result !is RaftMessageDisplayPrefsResult.Loaded) return
+        }
+        store.putString(migratedKey, "1")
+        if (store.getString(raftLongMessageCollapseOverrideKey(serverId, channelId)) != null) {
+            store.putString(raftLongMessageCollapseOverrideKey(serverId, channelId), null)
+            RaftLongMessageCollapsePreferenceRevision.bump()
+        }
+    }
+
     /** Sets one conversation's switch; see [raftLongMessageCollapseOverrideAfterSet]. */
     fun setConversationEnabled(
         serverId: String?,

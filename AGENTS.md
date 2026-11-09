@@ -33,6 +33,8 @@ summarizes.
 - `raft-stamp-git` — push, PR, review/approve and merge through Stamp.
 - `raft-release-changeset` — a version-targeted change needs its changeset;
   aggregating release notes.
+- `raft-release-versioning` — minor vs patch vs build: which bump, what may
+  go on the release branch, who approves.
 - `raft-android-release` — Android release train on Hands (draft-first).
 - `raft-ios-release` — iOS release build, TestFlight, iOS audit tag.
 - `blacksmith-testbox` / `blacksmith-visual-testbox` — warm CI VM for focused
@@ -134,6 +136,39 @@ test -d "$SLOCK_SOURCE_REPO/packages/shared"
 - After changing `compose/shared`, validate from the compose Gradle root. The Android
   app consumes `:shared` as a direct project dependency, so no MavenLocal publish step
   is needed for normal app validation.
+
+## Errors carry the trace ID
+
+Owner rule (artin, 2026-11-03: "有报错的地方必定要有 traceid"): every
+user-visible error that comes from a server response shows that request's
+trace ID with a way to copy it, as the web does (`TraceIdNote`,
+botiverse/slock #12392 / #proj-o11y:#18).
+
+- Where it comes from: the server returns `X-Trace-Id` on every response.
+  The bottom HTTP layer (`KtorRaftHttpExecutor`) logs it on the
+  `slock_http_execute_finish` line and records a failed (non-2xx, non-401)
+  response's id in `RaftFailedRequestTraceIds`
+  (`network/RaftRequestTraceId.kt`); `HomeNetworkResponse.traceId` reads it
+  from the headers. `ScreenError.traceId` and `PermissionBlocker.traceId`
+  default to the failure seen in the last 5 s (the web's
+  `recentFailedRequestTraceId`), so repositories get it without threading it;
+  pass it explicitly only when you have the response at hand. A request that
+  got no response has none, and its error shows as before.
+- Never add a request to get one, and never put it in route/pageData.
+- Show it through the central helpers, never hand-built text:
+  - toast: `bridge.errorToast(message, error)` (or `traceId`), not
+    `bridge.toast(...)`, for an error from a server request. It shows
+    "Trace ID a1b2c3d4…" and a Copy action that copies all 32 digits.
+  - inline (page, card, dialog): `RaftTraceIdNote(error.traceId)` under the
+    message (`SettingsLoadStateCard(traceId = ...)` already does).
+  - keep `traceId` when mapping an error into UI state: carry the
+    `ScreenError` (or its `traceId`) next to the resolved string.
+- Local-only failures (missing route identity, no shell scope) have no server
+  request to trace: they stay a plain `bridge.toast`, but say why and what to
+  do in plain words and log a distinct reason code (see `ThreadOpenFailure`:
+  `thread_open_failed reason=missing_identity|stale_source|missing_scope`).
+- Strings: `error_trace_id_*` (en/zh-CN/ja, copied from the web
+  `errors.traceId.*`). Guard: `RaftErrorTraceIdTest`.
 
 ## Environment Web Link URL Rule
 
@@ -572,6 +607,16 @@ The canonical flow is (Stamp commands, run from a Stamp checkout):
    ones that were skipped or not run (for example, iOS compile for ordinary
    `commonMain` changes runs only in the nightly `Test` schedule).
 
+   To check iOS before merge, dispatch
+   `bin/stamp workflow run test.yml --repo botiverse/mobile --ref <branch> -f scope=ios`
+   (plan + Blacksmith `iOS compile` only). Run it once per PR, right before
+   merge — not after every push; re-run only if a later push touches iOS or
+   shared Kotlin code that could break the iOS build. `scope=full` is only for
+   release candidates or a deliberate full readback (it adds the Android
+   emulator/device suite and canonical-final). The `iOS compile (Xcode 27.1)`
+   lane runs only in the nightly schedule and on `release-*` pushes. Details:
+   skill `raft-ci-validation`.
+
    A new push voids the approval and any auto-merge registration. The reviewer
    reviews and approves the new head, and the author registers auto-merge
    again. For a pure rebase onto a newer base, the reviewer may approve without
@@ -622,9 +667,9 @@ or helper scripts as a workaround for branch protection.
   strokes, states, type), with screenshot tests, then use it. Do not fix the
   same visual primitive separately inside each page; page-local UI is only for
   one-off layout composition around design-system controls.
-- The older `RaftBrutal*` components (`RaftBrutalActionButton`,
-  `RaftBrutalIconButton`, `RaftBrutalTextField`, `RaftBrutalSearchField`, ...)
-  and the helpers under `compose/shared/src/commonMain/kotlin/build/raft/app/components/`
+- The older `RaftBrutal*` component layer has been removed (see
+  `docs/raftbrutal-migration.md`); do not bring it back. The remaining helpers
+  under `compose/shared/src/commonMain/kotlin/build/raft/app/components/`
   are pending migration: add no new usages, and replace them with the
   design-system component when you touch that UI.
 - Local wrappers are acceptable only as semantic adapters and keep the

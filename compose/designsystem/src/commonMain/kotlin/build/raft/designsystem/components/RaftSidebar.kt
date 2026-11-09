@@ -6,6 +6,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -48,11 +49,13 @@ import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
 
-// raft-ui 0.10 Sidebar (sidebar-item.recipe.ts, sidebar-section.recipe.ts) at its phone
-// size: below `md` a SidebarItem is at least 44px in `text-body` at 600 (raft-ui 0.8.1+),
-// which is how the web draws Home's Search / Activity / Saved rows, the channel and DM
-// rows and the group headers on a phone. The rows sit 8dp in from the page edge
-// (`SidebarContentInner` `px-2`); the page owns that padding.
+// raft-ui Sidebar (sidebar-item.recipe.ts, sidebar-section.recipe.ts) at its phone size:
+// below `md` a SidebarItem is at least 44px in `text-body` at 600 (raft-ui 0.8.1+), which is
+// how the web draws Home's Search / Activity / Saved rows, the channel and DM rows and the
+// group headers on a phone. Since raft-ui 0.49 (#815, lib/list-cell.ts) a row is a list
+// cell: its shape sits 8dp in from the list's sides (the page owns that padding), its content
+// 12dp inside the shape (20dp from the list's edges), and the list spaces the rows 2dp apart.
+// Group labels and section headers start their words on the same 20dp edge (`px-5`).
 
 /** The hint ink of the enclosing [RaftSidebarItem] (`sticker-ink` when it is selected). */
 private val LocalRaftSidebarItemHint = staticCompositionLocalOf<Color?> { null }
@@ -65,11 +68,19 @@ internal object RaftSidebarItemMetrics {
     /** `max-md:py-[8.5px]`, inside the 1.5dp border. */
     val PaddingVertical = 8.5.dp
 
-    /** `pl-2`, inside the border. */
-    val PaddingStart = 8.dp
+    /**
+     * Under a fine pointer (sizing v12, raft-ui 0.65 desktop density) the row takes the shared
+     * 34dp row height ([build.raft.designsystem.theme.RaftControlMetrics.rowHeight]) in place of
+     * [MinHeight], and this padding in place of [PaddingVertical]: (34 - 24) / 2 less the 1.5dp
+     * border, so one 24dp line fills it exactly.
+     */
+    val PointerPaddingVertical = 3.5.dp
 
-    /** `pr-2.5`, inside the border. */
-    val PaddingEnd = 10.dp
+    /** `--cell-pad-x` (12dp from the shape's edge), inside the 1.5dp border. */
+    val PaddingStart = 10.5.dp
+
+    /** `--cell-pad-x` (12dp from the shape's edge), inside the 1.5dp border. */
+    val PaddingEnd = 10.5.dp
 
     /** `gap-2` between icon, text and aside. */
     val Gap = 8.dp
@@ -78,11 +89,12 @@ internal object RaftSidebarItemMetrics {
     val AsideGap = 4.dp
 
     /**
-     * `my-px`: in the web's block flow the 1px margins above and below collapse, so rows
-     * stand 1dp apart. Compose margins add up, so each row keeps half of it above and below:
-     * 1dp between rows, and about 1dp at either end of a run (before a group header).
+     * The list's `gap-0.5` (lib/list-cell.ts: `SidebarList` and every list of cells space their
+     * rows 2dp apart). The app's lists hold headers and rows in one column, so each row keeps
+     * half of the gap above and below: 2dp between rows. A list that also spaces its rows
+     * itself would add up to more than the web's 46dp pitch.
      */
-    val MarginVertical = 0.5.dp
+    val MarginVertical = 1.dp
 
     /** `SidebarItemIcon` / `SidebarItemChannelIcon`: a 19dp box with a 16dp icon. */
     val IconBox = 19.dp
@@ -125,9 +137,10 @@ enum class RaftSidebarItemVariant(
  * raft-ui SidebarItem at its phone size: one place in the Home list (Search, Activity,
  * Saved, a channel, a DM). The whole row is the target.
  *
- * - Box: at least 44dp tall (it grows with the font scale), 8dp start / 10dp end padding
- *   inside a 1.5dp edge that is always there (transparent at rest), control radius, gap 8,
- *   0.5dp above and below, so rows stand 1dp apart (the web's collapsed `my-px`). The row fills the width it is given.
+ * - Box: at least 44dp tall (it grows with the font scale), the content 12dp inside the
+ *   shape at both ends (10.5dp inside a 1.5dp edge that is always there, transparent at
+ *   rest), control radius, gap 8, 1dp above and below, so rows stand 2dp apart (raft-ui
+ *   0.49 list cells, `gap-0.5`). The row fills the width it is given.
  * - [leading]: a 19dp slot for a 16dp icon ([RaftSidebarItemIcon]) or a 19dp avatar, drawn
  *   in `foreground-hint` ([LocalRaftContentColor]), 8dp from the name. [variant]
  *   [RaftSidebarItemVariant.Entry] (Home's Search / Activity / Saved) makes it a 20dp icon
@@ -237,6 +250,41 @@ fun RaftSidebarItem(
     )
 }
 
+/**
+ * raft-ui SidebarItem `wrap` with `SidebarItemContent stacked` (a Settings search result): the
+ * name over a second line, both drawn by the caller in the given style and ink ([title] in body
+ * semibold, [subtitle] in footnote `foreground-muted`; `sticker-ink` on the selected sticker), so
+ * a result can mark the words it matched. Otherwise [RaftSidebarItem]: the same shape, states,
+ * padding and minimum height; the second line makes it about 56dp with a finger.
+ */
+@Composable
+fun RaftSidebarItemStacked(
+    title: @Composable (modifier: Modifier, style: TextStyle, ink: Color) -> Unit,
+    subtitle: @Composable (modifier: Modifier, style: TextStyle, ink: Color) -> Unit,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    selected: Boolean = false,
+    interactionSource: MutableInteractionSource? = null,
+) {
+    RaftSidebarItemLayout(
+        titleText = title,
+        modifier = modifier,
+        onClick = onClick,
+        selected = selected,
+        tone = RaftRowTone.Default,
+        subtitle = null,
+        leading = null,
+        trailing = null,
+        interactionSource = interactionSource,
+        onLongClick = null,
+        onLongClickLabel = null,
+        menuOpen = false,
+        titleTrailing = null,
+        variant = RaftSidebarItemVariant.Default,
+        stackedSubtitle = subtitle,
+    )
+}
+
 /** [RaftSidebarItem]'s layout; [titleText] draws the one-line name in the given style and ink. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -255,6 +303,7 @@ private fun RaftSidebarItemLayout(
     menuOpen: Boolean,
     titleTrailing: (@Composable () -> Unit)?,
     variant: RaftSidebarItemVariant,
+    stackedSubtitle: (@Composable (modifier: Modifier, style: TextStyle, ink: Color) -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -285,6 +334,8 @@ private fun RaftSidebarItemLayout(
     val titleWeight = if (selected || tone == RaftRowTone.Unread) FontWeight.Bold else FontWeight.SemiBold
     val surface = if (selected) RaftUiPalette.selected else RaftTheme.surfaceColor
     val edge = RaftStroke.Control
+    val pointerRow = RaftTheme.controls.rowHeight
+    val padY = if (pointerRow != null) RaftSidebarItemMetrics.PointerPaddingVertical else RaftSidebarItemMetrics.PaddingVertical
     CompositionLocalProvider(
         LocalRaftContentColor provides hintInk,
         LocalRaftSidebarItemHint provides hintInk,
@@ -298,7 +349,7 @@ private fun RaftSidebarItemLayout(
                 .raftSafeAreaHorizontalPadding()
                 .padding(vertical = RaftSidebarItemMetrics.MarginVertical)
                 .fillMaxWidth()
-                .heightIn(min = RaftSidebarItemMetrics.MinHeight)
+                .heightIn(min = pointerRow ?: RaftSidebarItemMetrics.MinHeight)
                 .raftSticker(look, RaftRadius.Control, focused = focused, colors = colors)
                 // Over the sticker's fill (transparent unless selected, and a selected row
                 // lays nothing), under its edge.
@@ -329,8 +380,8 @@ private fun RaftSidebarItemLayout(
                 .padding(
                     start = RaftSidebarItemMetrics.PaddingStart + edge,
                     end = RaftSidebarItemMetrics.PaddingEnd + edge,
-                    top = RaftSidebarItemMetrics.PaddingVertical + edge,
-                    bottom = RaftSidebarItemMetrics.PaddingVertical + edge,
+                    top = padY + edge,
+                    bottom = padY + edge,
                 ),
             horizontalArrangement = Arrangement.spacedBy(RaftSidebarItemMetrics.Gap),
             verticalAlignment = Alignment.CenterVertically,
@@ -343,7 +394,13 @@ private fun RaftSidebarItemLayout(
                     contentAlignment = Alignment.Center,
                 ) { leading() }
             }
-            Row(
+            if (stackedSubtitle != null) {
+                // SidebarItemContent `stacked`: the name over its second line.
+                Column(Modifier.weight(1f)) {
+                    titleText(Modifier, typography.body.copy(fontWeight = titleWeight), look.ink)
+                    stackedSubtitle(Modifier, typography.footnote, subtitleInk)
+                }
+            } else Row(
                 Modifier.weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -639,40 +696,52 @@ fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier) {
 
 /**
  * raft-ui SidebarGroupLabel: a plain group heading that doesn't collapse (the web settings
- * hub's Personal / Workspace / Resources, `SettingsSidebarList`). `px-2 pt-4 pb-1.5`, the
+ * hub's Personal / Workspace / Resources, `SettingsSidebarList`). `px-5 pt-4 pb-0` (20dp from the
+ * list's edges with the page's 8dp; nothing under it, the group's `py-2` list is the gap to its
+ * first row), the
  * [title] in `text-footnote` 700 `foreground-hint`, sentence case as written; a heading in
  * semantics. It is [RaftSectionEyebrow] with the sidebar's padding.
  */
 @Composable
 fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
-    RaftSectionEyebrow(title, modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 8.dp, end = 8.dp, top = 16.dp, bottom = 6.dp))
+    RaftSectionEyebrow(title, modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 12.dp, end = 12.dp, top = 16.dp))
 }
 
 /**
  * raft-ui SidebarSectionHeader with its SidebarSectionDisclosure: the heading of a
  * collapsible group of rows (Pinned, Channels, a custom group).
  *
- * - `px-2 pt-4 pb-1.5`, gap 8: 40dp tall at the default font scale.
+ * - `px-5 pt-4` (20dp from the list's edges with the page's 8dp), gap 8: 40dp tall at the
+ *   default font scale.
  * - The disclosure: a 14dp `chevron-right` (turned down when [expanded]; `size-3.5`),
  *   an optional [icon] (a custom group's emoji), the [title] in `text-footnote` 700 and
- *   [count] in Space Mono 12 tabular, all `foreground-hint`, 6dp apart. It is one button
- *   spanning the header's height (so a finger can hit it), with the expand / collapse
- *   action and state in semantics, and the focus ring round its words.
+ *   [count] in Space Mono 12 tabular, all `foreground-hint`, 6dp apart. The whole header is
+ *   one button (so a finger can hit it anywhere on it), with the expand / collapse action
+ *   and state in semantics; the controls are buttons of their own on top of it.
  * - [countSeparator]: printed inside the count, straight after the title with no gap
  *   (web members page: `<SidebarSectionCount>{" · "}{count}</SidebarSectionCount>`, so
  *   "Humans · 11"). Null (the sidebar): the count stands 6dp after the title.
  * - [attention]: the pink status pixel (`SidebarSectionAttention`) of a collapsed group
- *   holding something unread; hidden while [expanded].
- * - [actions]: the group's controls (`SidebarSectionControls`), always shown on a phone:
- *   [RaftSidebarSectionAction]s, 4dp apart. They overhang the 18dp line instead of
- *   growing the header (`-my-1.5`).
- * - Press: the disclosure lights up its hit area with `fill-pressed` (States: a text
- *   button lights up its hit area when pressed).
+ *   holding something unread, before the controls; hidden only while [expanded] (raft-ui
+ *   0.57.1, #942: hiding it while a menu is open moved the controls sideways).
+ * - [actions]: the group's controls (`SidebarSectionControls`): [RaftSidebarSectionAction]s,
+ *   4dp apart with every input (raft-ui 0.57, #935). They overhang the 18dp line instead of
+ *   growing the header (`-my-1`), and the last one's icon box, not its button, ends on the
+ *   header's line: the row of them hangs 5dp past it (`-mr-icon-inset`, 0.56 #922), as the
+ *   chevron starts on the other end. Pass only [RaftSidebarSectionAction]s.
+ *   They always show, after the attention pixel, with a mouse or trackpad as with a finger
+ *   (raft-ui 0.57.1, #942, stdrc 2026-11-02: shown only on hover they hid what the header
+ *   can do and changed a long title's room as the pointer passed), so a long title truncates
+ *   before them.
+ * - Press: the header lights up the whole row with the attention pixel and the controls,
+ *   with `fill-medium` on the control radius (States: a text button lights up its hit
+ *   area when pressed): its line with 6dp above and below, so the words sit in the middle
+ *   of the fill (30dp at the default font scale). The 10dp above that is the gap between
+ *   sections: still part of the target, never painted. Keyboard focus rings the same shape.
  * - Touch: [onLongClick] is the press and hold that opens the group's menu (the web's
  *   right-click menu on the header), named [onLongClickLabel]; it does not also toggle.
- *   While that menu is open pass [menuOpen] = true: the disclosure stays pressed and the
- *   attention pixel hides (raft-ui `group-data-popup-open/section-header:hidden`). Both
- *   need [onExpandedChange].
+ *   While that menu is open pass [menuOpen] = true: the header stays pressed. Both need
+ *   [onExpandedChange].
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -699,56 +768,67 @@ fun RaftSidebarSectionHeader(
     val focused = interactive && isFocused
     val isPressed = raftIsPressed(source)
     val pressed = interactive && (isPressed || menuOpen)
-    val showAttention = attention && !expanded && !menuOpen
+    val showAttention = attention && !expanded
     val hint = colors.foregroundHint
     val lineHeight = 18.dp
+    // The whole header is the disclosure's target, and its press fill and focus ring cover it
+    // all, the attention pixel and the controls included, on the rows' rounded shape: lit only
+    // up to the trailing box, the fill stopped short of the controls (artin, 2026-11-04). The
+    // controls are buttons of their own on top, so a tap on one never toggles the section.
+    // The fill and the ring paint only the header's line with `pb-1.5` (6dp) on both sides of
+    // it, so the words sit in the middle; the rest of `pt-4` above (10dp) is the gap between
+    // sections, still part of the target but never painted (artin, 2026-11-04: lit from the
+    // top of the gap, the words sat low in the fill).
     Row(
-        modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Box(
-            Modifier
-                .weight(1f)
-                .raftPressOverlay(pressed, colors.fillPressed, RaftRadius.Control)
-                .then(
-                    if (onExpandedChange != null) {
-                        val toggle = { onExpandedChange(!expanded) }
-                        Modifier
-                            .then(
-                                if (onLongClick != null) {
-                                    Modifier.combinedClickable(
-                                        interactionSource = source,
-                                        indication = null,
-                                        role = Role.Button,
-                                        onLongClickLabel = onLongClickLabel,
-                                        onLongClick = onLongClick,
-                                        onClick = toggle,
-                                    )
-                                } else {
-                                    Modifier.clickable(
-                                        interactionSource = source,
-                                        indication = null,
-                                        role = Role.Button,
-                                        onClick = toggle,
-                                    )
-                                },
-                            )
-                            .semantics {
-                                if (expanded) {
-                                    collapse { onExpandedChange(false); true }
-                                } else {
-                                    expand { onExpandedChange(true); true }
-                                }
+        modifier
+            .fillMaxWidth()
+            .raftSafeAreaHorizontalPadding()
+            .then(
+                if (onExpandedChange != null) {
+                    val toggle = { onExpandedChange(!expanded) }
+                    Modifier
+                        .then(
+                            if (onLongClick != null) {
+                                Modifier.combinedClickable(
+                                    interactionSource = source,
+                                    indication = null,
+                                    role = Role.Button,
+                                    onLongClickLabel = onLongClickLabel,
+                                    onLongClick = onLongClick,
+                                    onClick = toggle,
+                                )
+                            } else {
+                                Modifier.clickable(
+                                    interactionSource = source,
+                                    indication = null,
+                                    role = Role.Button,
+                                    onClick = toggle,
+                                )
+                            },
+                        )
+                        .semantics {
+                            if (expanded) {
+                                collapse { onExpandedChange(false); true }
+                            } else {
+                                expand { onExpandedChange(true); true }
                             }
-                    } else {
-                        Modifier
-                    },
-                )
-                .padding(top = 16.dp, bottom = 6.dp),
-        ) {
+                        }
+                } else {
+                    Modifier
+                },
+            )
+            // Below the gap: the ring and the fill paint only the line and its 6dp.
+            .padding(top = RaftSidebarSectionHeaderGap)
+            .raftFocusRing(focused, RaftRadius.Control, colors)
+            .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Control)
+            // `px-5` (raft-ui 0.49, #815): the words 12dp inside the fill, 20dp from the list's
+            // edges with the page's 8dp, on the rows' content edge.
+            .padding(horizontal = 12.dp, vertical = RaftSidebarSectionHeaderInset),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.weight(1f)) {
             Row(
-                Modifier.raftFocusRing(focused, RaftRadius.Sticker, colors),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -785,26 +865,45 @@ fun RaftSidebarSectionHeader(
                 }
             }
         }
-        // The trailing box stays while a menu hides the pixel (`min-w-4.5`), so nothing moves.
+        // The trailing box (`min-w-4.5`): the attention pixel, then the controls.
         if ((attention && !expanded) || actions != null) {
             Row(
-                Modifier.padding(top = 16.dp, bottom = 6.dp).widthIn(min = 18.dp).overhang(lineHeight),
+                Modifier.widthIn(min = 18.dp).overhang(lineHeight),
                 horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (showAttention) RaftStatusDot(variant = RaftStatusVariant.Accent, size = RaftStatusSize.Md)
-                actions?.invoke(this)
+                if (actions != null) {
+                    Row(
+                        Modifier.hangEnd(RaftSidebarSectionActionIconInset),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        content = actions,
+                    )
+                }
             }
         }
     }
 }
 
+/** `pb-1.5`: the header's fill reaches this far below and above its line. */
+private val RaftSidebarSectionHeaderInset = 6.dp
+
+/** The rest of `pt-4` (16dp) above the fill: the gap between sections, tappable but unpainted. */
+private val RaftSidebarSectionHeaderGap = 16.dp - RaftSidebarSectionHeaderInset
+
 /**
- * A group header's control (`SidebarSectionControl`: ghost, `h-7 min-w-7`): a 28dp
- * (touch target widened to 44dp) [RaftIconButton]
- * [RaftButtonVariant.Ghost] with a 16dp [glyph] in `foreground`, named
- * by [tooltip] (Title Case: "Sort Channels", "Create Channel"). Sort is
- * [RaftGlyph.ArrowUpDown] (or [RaftGlyph.ArrowDownUp]), create [RaftGlyph.Plus].
+ * A group header's control (`SidebarSectionControl`: ghost, `h-6 min-w-6`, raft-ui 0.55 #916):
+ * a 24dp [RaftIconButton] [RaftButtonVariant.Ghost] with a 14dp [glyph], named by [tooltip]
+ * (Title Case: "Sort Channels", "Create Channel"). Sort is [RaftGlyph.ArrowUpDown] (or
+ * [RaftGlyph.ArrowDownUp]), create [RaftGlyph.Plus].
+ *
+ * - Ink (0.56 #922): at rest the title's `foreground-hint`, so the header reads as one label;
+ *   `foreground` under the pointer, pressed, in keyboard focus or with [menuOpen].
+ * - [menuOpen]: what it opens is open (`data-popup-open`): the ghost fill stays
+ *   (`fill-medium`).
+ * - Touch target: 44dp high and 10dp past its edges; between two controls 4dp apart the
+ *   nearer one takes a tap in the gap, so the areas meet in its middle (0.57 #935).
  */
 @Composable
 fun RaftSidebarSectionAction(
@@ -813,16 +912,18 @@ fun RaftSidebarSectionAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    menuOpen: Boolean = false,
 ) {
-    RaftSidebarSectionAction(tooltip = tooltip, onClick = onClick, modifier = modifier, enabled = enabled) {
+    RaftSidebarSectionAction(tooltip = tooltip, onClick = onClick, modifier = modifier, enabled = enabled, menuOpen = menuOpen) {
         RaftGlyphIcon(glyph, size = RaftSidebarSectionActionIconSize)
     }
 }
 
 /**
  * [RaftSidebarSectionAction] with any [icon] (an app icon the module has no [RaftGlyph]
- * for), drawn in a 16dp box in the button's ink ([LocalRaftContentColor]: `foreground`,
- * `foreground-disabled` when not [enabled]). Size the icon 16dp or let it fill the box.
+ * for), drawn in a 14dp box in the control's ink ([LocalRaftContentColor]: `foreground-hint`
+ * at rest, `foreground` when active, `foreground-disabled` when not [enabled]). Size the icon
+ * 14dp or let it fill the box.
  */
 @Composable
 fun RaftSidebarSectionAction(
@@ -830,23 +931,51 @@ fun RaftSidebarSectionAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    menuOpen: Boolean = false,
     icon: @Composable () -> Unit,
 ) {
+    val colors = RaftTheme.colors
+    val source = remember { MutableInteractionSource() }
+    val hovered = raftIsHovered(source)
+    val pressed = raftIsPressed(source)
+    val focused = raftIsFocused(source)
+    val active = hovered || pressed || focused || menuOpen
     RaftSizedIconButton(
         onClick = onClick,
         tooltip = tooltip,
-        box = 28.dp,
+        box = 24.dp,
         glyph = RaftSidebarSectionActionIconSize,
         modifier = modifier,
         variant = RaftButtonVariant.Ghost,
         enabled = enabled,
+        interactionSource = source,
+        open = menuOpen,
     ) {
-        Box(Modifier.size(RaftSidebarSectionActionIconSize), contentAlignment = Alignment.Center) { icon() }
+        val ink = if (!enabled) LocalRaftContentColor.current else if (active) colors.foreground else colors.foregroundHint
+        CompositionLocalProvider(LocalRaftContentColor provides ink) {
+            Box(Modifier.size(RaftSidebarSectionActionIconSize), contentAlignment = Alignment.Center) { icon() }
+        }
     }
 }
 
-/** `SidebarSectionControl` `[&>svg]:size-4`. */
-private val RaftSidebarSectionActionIconSize = 16.dp
+/** `SidebarSectionControl` `[&_svg:not([class*='size-'])]:size-3.5`. */
+private val RaftSidebarSectionActionIconSize = 14.dp
+
+/** `--icon-inset`: (24 - 14) / 2, the empty part of the control past its icon. */
+private val RaftSidebarSectionActionIconInset = 5.dp
+
+/**
+ * Lays the content out at its own width but reports [hang] less, so it overhangs the end of
+ * its slot by [hang] (CSS negative end margin; mirrored in RTL).
+ */
+private fun Modifier.hangEnd(hang: Dp): Modifier =
+    layout { measurable, constraints ->
+        val extra = hang.roundToPx()
+        val placeable = measurable.measure(constraints.copy(maxWidth = if (constraints.hasBoundedWidth) constraints.maxWidth + extra else constraints.maxWidth))
+        layout((placeable.width - extra).coerceAtLeast(0), placeable.height) {
+            placeable.placeRelative(0, 0)
+        }
+    }
 
 /**
  * Lays the content out at its own height but reports [height] (padding included in the

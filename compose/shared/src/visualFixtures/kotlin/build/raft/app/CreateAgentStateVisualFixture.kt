@@ -15,15 +15,14 @@ import build.raft.app.compat.pager.Page
  * they stay comparable with components.members.create-agent.dialog.
  *
  *  - `error`            dialog-error: invalid prefilled name -> inline name error
- *  - `onboarding`       dialog-onboarding: React renders its onboarding step; the
- *                       shared dialog has no onboarding layout, so this captures the
- *                       standard form with the same seed (the gap stays visible)
  *  - `empty`            dialog-empty: empty description; the harness clears the
  *                       name field because a blank initial name is replaced by a
  *                       random suggestion
- *  - `no-computer`      dialog-no-computer: zero machines
- *  - `builtin-provider` builtin-provider-dialog: runtime builtin
- *  - `pi-provider`      pi-provider-dialog: runtime pi
+ *  - `no-computer`      dialog-no-computer: zero machines (loaded, no error) -> the short
+ *                       centred "Connect a computer first" dialog with Cancel + Add Computer
+ *
+ * builtin-provider-dialog and pi-provider-dialog are React-only in slock's case list (no Android
+ * capture), so they have no variant here.
  */
 @Page("compose_create_agent_state_visual", supportInLocal = true)
 internal class ComposeCreateAgentStateVisualPage : BasePager() {
@@ -49,11 +48,8 @@ private const val CREATE_AGENT_STATE_VISUAL_DESCRIPTION =
 private fun createAgentStateVisualSpec(variant: String): CreateAgentStateVisualSpec =
     when (variant) {
         "error" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"), name = "bad name!!")
-        "onboarding" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"))
         "empty" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"), description = "")
         "no-computer" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"), noMachines = true)
-        "builtin-provider" -> CreateAgentStateVisualSpec("builtin", listOf("builtin", "claude", "codex"))
-        "pi-provider" -> CreateAgentStateVisualSpec("pi", listOf("pi", "claude", "codex"))
         else -> error("unknown create-agent visual variant: $variant")
     }
 
@@ -90,6 +86,8 @@ private fun CreateAgentStateVisualContent(spec: CreateAgentStateVisualSpec) {
             currentAgentCount = 2,
             maxAgents = 2,
             limitPlanLabel = "Free",
+            // React's fixture offers Add Computer; a non-null callback shows the button.
+            onAddComputer = {},
             onDismiss = {},
             onSubmit = {}
         )

@@ -370,13 +370,14 @@ internal fun raftChipLinkStyles(style: SpanStyle, pressed: SpanStyle = style): T
 
 /**
  * The text without reserved chip gaps (each gap placeholder and the word joiner gluing it to its
- * chip): exactly the characters the source rendered.
+ * chip) and without the other layout-only characters ([raftCopyText]): exactly the
+ * characters the source rendered.
  */
 internal fun AnnotatedString.raftTextWithoutInlineGaps(): String {
     val gaps =
         getStringAnnotations(RaftInlineContentAnnotationTag, 0, length)
             .filter { it.item.startsWith(RaftInlineGapInlineIdPrefix) }
-    if (gaps.isEmpty()) return text
+    if (gaps.isEmpty()) return text.raftCopyText()
     val drop = BooleanArray(length)
     gaps.forEach { gap ->
         for (i in gap.start until gap.end) drop[i] = true
@@ -384,6 +385,7 @@ internal fun AnnotatedString.raftTextWithoutInlineGaps(): String {
         if (gap.start > 0 && text[gap.start - 1] == '\u2060') drop[gap.start - 1] = true
     }
     return buildString(length) { text.forEachIndexed { i, c -> if (!drop[i]) append(c) } }
+        .raftCopyText()
 }
 
 private const val RaftInlineContentAnnotationTag = "androidx.compose.foundation.text.inlineContent"

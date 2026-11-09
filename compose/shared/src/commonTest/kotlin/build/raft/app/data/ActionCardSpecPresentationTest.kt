@@ -117,7 +117,7 @@ class ActionCardSpecPresentationTest {
             mapOf(
                 "en" to "en", "zh-Hans" to "zh-cn", "zh-CN" to "zh-cn", "zh_rCN" to "zh-cn", "zh" to "zh-cn",
                 "zh-Hant" to "zh-tw", "zh-TW" to "zh-tw", "zh-Hant-HK" to "zh-tw", "ja" to "ja", "ja-JP" to "ja",
-                "ko-KR" to "ko", "es-419" to "es", "pt-BR" to "pt-br", "pt" to "pt-br", "fr" to "en", "" to "en", null to "en",
+                "ko-KR" to "ko", "ru-RU" to "ru", "ru" to "ru", "es-419" to "es", "pt-BR" to "pt-br", "pt" to "pt-br", "fr" to "en", "" to "en", null to "en",
             )
         for ((tag, key) in tags) assertEquals(key, actionCardDisplayLocale(tag), "$tag")
         val locales =

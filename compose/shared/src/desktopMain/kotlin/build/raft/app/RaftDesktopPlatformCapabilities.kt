@@ -7,6 +7,8 @@ import build.raft.app.data.RaftDesktopClipboardAttachments
 import java.text.BreakIterator
 import java.util.Locale
 
+internal actual fun raftPlatformIsiOSAppOnMac(): Boolean = false
+
 // Desktop draws with Skia like iOS but has no system bars, haptics or native media hosts.
 // No pull gesture on desktop: wheel / trackpad overscroll must not drag a pull indicator in.
 internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle = RaftPullToRefreshStyle.None
@@ -33,6 +35,9 @@ internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = true
 internal actual fun raftPlatformMessageTextPointerSelectable(): Boolean = true
 
 internal actual fun raftPlatformHasFinePointer(): Boolean = true
+
+internal actual fun raftPlatformShortcutsUseCommand(): Boolean =
+    System.getProperty("os.name").orEmpty().startsWith("Mac", ignoreCase = true)
 
 internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = false
 
@@ -76,8 +81,10 @@ internal actual fun raftPlatformSupportsPrivateAttachmentExport(): Boolean = fal
 
 internal actual fun raftPlatformPreservesEncodedFontWeightForFallback(): Boolean = true
 
-// TODO(desktop): no Hands release stream for desktop yet.
-internal actual fun raftReleaseNotesAppSlug(): String = "raft-desktop"
+// TODO(desktop): no Hands app (release stream) for desktop yet; hands.build/notes/raft-desktop is a
+// 404 and the dmg has no numeric version code. Blank hides Settings › Release Notes
+// (settingsReleaseNotesAvailable) until both exist.
+internal actual fun raftReleaseNotesAppSlug(): String = ""
 
 internal actual fun raftPlatformProductName(): String = "Desktop"
 
@@ -95,10 +102,16 @@ internal actual fun raftFirstComposedCharacterEnd(text: String): Int? {
 
 internal actual fun raftFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024L
 
-// TODO(desktop): RaftDesktopSettingsCapability has no `submitFeedback` yet.
+// TODO(desktop): RaftDesktopSettingsCapability has no `submitFeedback` yet, so Feedback is always
+// the web page here (settingsFeedbackUsesWebPage).
 internal actual fun raftPlatformSupportsHandsFeedbackSubmit(): Boolean = false
 
-internal actual fun raftFeedbackWebViewClientKind(): String = "desktop"
+// The server's feedback sources are web / ios / android / ohos (slock productFeedbackApps.ts); any
+// other X-Raft-Client-Kind is rejected (400 feedback_invalid). With no desktop Hands app, the
+// desktop app reports as the web app (the web and the Electron app send no kind, which is web).
+internal actual fun raftFeedbackWebViewClientKind(): String = "web"
+
+internal actual fun raftComposerCameraAvailable(): Boolean = false
 
 internal actual fun raftSlugSlashCenteringOffsetDp(): Float = 0f
 
@@ -106,5 +119,10 @@ internal actual fun raftPlatformTabPagerStartEdgeInsetDp(): Float = 0f
 
 internal actual fun raftPlatformTabPagerOverscrollEnabled(): Boolean = false
 
+/** Tabs switch from the tab strip only; a trackpad's sideways scroll never pages them. See expect. */
+internal actual fun raftPlatformTabPagerSwipeEnabled(): Boolean = false
+
 /** Desktop keeps its instant tab switch; see expect. */
 internal actual fun raftPlatformAppShellTabFadeThrough(): Boolean = false
+
+internal actual fun raftPlatformFollowsAppStoreBillingRules(): Boolean = false

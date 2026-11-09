@@ -46,6 +46,7 @@ enum class RaftRichTextChromeKind(val wireValue: String) {
     Channel("channel"),
     Thread("thread"),
     Task("task"),
+    Message("message"),
     SelfMention("selfMention"),
     OrdinaryMention("ordinaryMention"),
     Active("active")
@@ -58,6 +59,7 @@ val RaftRichTextChromeKind.styleToken: RaftRichTextChromeStyleToken
             RaftRichTextChromeKind.Channel -> RaftRichTextChromeStyleTokens.Channel
             RaftRichTextChromeKind.Thread -> RaftRichTextChromeStyleTokens.Thread
             RaftRichTextChromeKind.Task -> RaftRichTextChromeStyleTokens.Task
+            RaftRichTextChromeKind.Message -> RaftRichTextChromeStyleTokens.Message
             RaftRichTextChromeKind.SelfMention -> RaftRichTextChromeStyleTokens.SelfMention
             RaftRichTextChromeKind.OrdinaryMention -> RaftRichTextChromeStyleTokens.OrdinaryMention
             RaftRichTextChromeKind.Active -> RaftRichTextChromeStyleTokens.Active
@@ -132,7 +134,7 @@ object RaftRichTextChromeStyleTokens {
             chipFill = RaftRichTextColorToken.AttentionSoft
         )
 
-    // A thing in it (thread, message) is cyan: variant="info", `bg-info-soft`.
+    // A thing in it (thread) is cyan: variant="info", `bg-info-soft`.
     val Thread =
         referenceChip(
             id = "thread",
@@ -165,6 +167,14 @@ object RaftRichTextChromeStyleTokens {
     val Active =
         stickerChip(
             id = "active"
+        )
+
+    // A message ref (`#channel msg=id`, `dm:@peer msg=id`) is cyan like a thread ref (web #13664,
+    // raft-design #1083): yellow is reserved for the reader's own mention.
+    val Message =
+        referenceChip(
+            id = "message",
+            chipFill = RaftRichTextColorToken.InfoSoft
         )
 
     private fun referenceChip(
@@ -208,6 +218,7 @@ enum class RaftRichTextRefKind(val wireValue: String) {
     DirectMessageThread("directMessageThread"),
     DirectMessage("directMessage"),
     Task("task"),
+    Message("message"),
     UserMention("userMention")
 }
 
@@ -428,9 +439,20 @@ private fun RaftRichTextContext.toMarkdownTagValidator(): (ThreadMarkdownTag) ->
     return { tag ->
         when (tag.kind) {
             ThreadMarkdownTagKind.Task ->
-                knownTaskNumbers?.contains(tag.label.removePrefix("#").toIntOrNull()) ?: true
+                when {
+                    tag.channelName != null -> channelKeys.contains(tag.channelName.trim().lowercase())
+                    tag.directMessagePeerName != null ->
+                        directMessagePeerKeys.contains(tag.directMessagePeerName.trim().lowercase())
+                    else -> knownTaskNumbers?.contains(tag.label.removePrefix("#").toIntOrNull()) ?: true
+                }
             ThreadMarkdownTagKind.UserMention ->
                 mentionKeys.contains(tag.label.removePrefix("@").trim().lowercase())
+            ThreadMarkdownTagKind.Message ->
+                if (tag.directMessagePeerName != null) {
+                    directMessagePeerKeys.contains(tag.directMessagePeerName.trim().lowercase())
+                } else {
+                    channelKeys.contains(tag.channelName.orEmpty().trim().lowercase())
+                }
             ThreadMarkdownTagKind.DirectMessageThread ->
                 directMessagePeerKeys.contains(tag.directMessagePeerName.orEmpty().trim().lowercase()) &&
                     !tag.threadShortId.isNullOrBlank()
@@ -478,6 +500,8 @@ private fun ThreadMarkdownTag.toRichTextChromeKind(
     when {
         active && (kind == ThreadMarkdownTagKind.ChannelThread || kind == ThreadMarkdownTagKind.DirectMessageThread) ->
             RaftRichTextChromeKind.Thread
+        // A pending message ref keeps its cyan chip (yellow is only "@you").
+        active && kind == ThreadMarkdownTagKind.Message -> RaftRichTextChromeKind.Message
         active -> RaftRichTextChromeKind.Active
         kind == ThreadMarkdownTagKind.UserMention && highlighted -> RaftRichTextChromeKind.SelfMention
         kind == ThreadMarkdownTagKind.UserMention -> RaftRichTextChromeKind.OrdinaryMention
@@ -486,6 +510,7 @@ private fun ThreadMarkdownTag.toRichTextChromeKind(
         kind == ThreadMarkdownTagKind.DirectMessageThread -> RaftRichTextChromeKind.Thread
         kind == ThreadMarkdownTagKind.DirectMessage -> RaftRichTextChromeKind.Channel
         kind == ThreadMarkdownTagKind.Task -> RaftRichTextChromeKind.Task
+        kind == ThreadMarkdownTagKind.Message -> RaftRichTextChromeKind.Message
         else -> RaftRichTextChromeKind.OrdinaryMention
     }
 
@@ -496,6 +521,7 @@ private fun ThreadMarkdownTagKind.toRichTextRefKind(): RaftRichTextRefKind =
         ThreadMarkdownTagKind.DirectMessageThread -> RaftRichTextRefKind.DirectMessageThread
         ThreadMarkdownTagKind.DirectMessage -> RaftRichTextRefKind.DirectMessage
         ThreadMarkdownTagKind.Task -> RaftRichTextRefKind.Task
+        ThreadMarkdownTagKind.Message -> RaftRichTextRefKind.Message
         ThreadMarkdownTagKind.UserMention -> RaftRichTextRefKind.UserMention
     }
 

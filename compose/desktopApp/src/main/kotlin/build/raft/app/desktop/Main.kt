@@ -1,6 +1,11 @@
 package build.raft.app.desktop
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -11,6 +16,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import build.raft.app.cmp.RaftCmpRouter
@@ -25,6 +31,8 @@ import java.awt.Dimension
 fun main(args: Array<String>) {
     // First: a second launch only forwards its sign-in callback to the running app.
     RaftDesktopLoginCallbacks.install(args)
+    // Then the log file and crash recording (~/Library/Logs/Raft), before anything else can fail.
+    RaftDesktopCrashReporting.install()
     val debugBuild = System.getProperty("raft.desktop.debug") == "true"
     RaftCmpRouter.configure(debugBuild = debugBuild)
     RaftPageRegistry.install()
@@ -38,6 +46,8 @@ fun main(args: Array<String>) {
     RaftDesktopRealtimeHost.install()
     // macOS Hide (Cmd-H) puts the pages in the background like minimizing; losing focus does not.
     RaftDesktopAppVisibility.install()
+    // What is on screen is read only while the window is in use (focused, input in the last 3 min).
+    RaftDesktopInUse.install()
     // Pasted images: retired by the composer after send / removal; stale ones swept here.
     RaftDesktopComposerTemporaryFiles.install()
 
@@ -52,6 +62,18 @@ fun main(args: Array<String>) {
             onCloseRequest = ::exitApplication,
             state = windowState,
             title = "Raft",
+            // ⌘K / Ctrl+K before the content: the shell opens search even from a text field.
+            onPreviewKeyEvent = { event ->
+                raftDesktopSearchShortcut(
+                    keyDown = event.type == KeyEventType.KeyDown,
+                    key = event.key,
+                    meta = event.isMetaPressed,
+                    ctrl = event.isCtrlPressed,
+                    alt = event.isAltPressed,
+                    shift = event.isShiftPressed,
+                    mac = RaftDesktopHistoryInput.isMac,
+                ) && navigator.searchShortcut()
+            },
             onKeyEvent = { event ->
                 raftDesktopHistoryShortcut(
                     keyDown = event.type == KeyEventType.KeyDown,
@@ -65,7 +87,17 @@ fun main(args: Array<String>) {
             },
         ) {
             LaunchedEffect(Unit) { window.minimumSize = Dimension(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT) }
-            RaftDesktopHostLifecycle { RaftDesktopHost(navigator) }
+            RaftDesktopInUseTracker(window)
+            // A composition failure is logged before Compose's error dialog closes the window.
+            @OptIn(ExperimentalComposeUiApi::class)
+            LaunchedEffect(Unit) { window.exceptionHandler = RaftDesktopCrashReporting.wrapWindowExceptionHandler(window.exceptionHandler) }
+            // macOS: the title bar over the app's top bar, traffic lights inside it (web desktop app).
+            val titleBar = remember { RaftDesktopTitleBar.install(window) }
+            RaftDesktopTitleBarProvider(titleBar, fullscreen = windowState.placement == WindowPlacement.Fullscreen) { hitTest ->
+                Box(Modifier.fillMaxSize().then(hitTest)) {
+                    RaftDesktopHostLifecycle { RaftDesktopHost(navigator) }
+                }
+            }
         }
     }
 }

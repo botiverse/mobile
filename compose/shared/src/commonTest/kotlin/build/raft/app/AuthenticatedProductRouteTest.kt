@@ -12,6 +12,8 @@ class AuthenticatedProductRouteTest {
                 THREAD_PAGE,
                 THREAD_MEMBERS_PAGE,
                 CHANNEL_SETTINGS_PAGE,
+                // A phone's channel / DM settings, pushed over the conversation.
+                THREAD_SETTINGS_PAGE,
                 JOINT_CHANNEL_CONNECTIONS_PAGE,
                 THREAD_FORWARD_BUNDLE_PAGE,
                 HOME_SEARCH_PAGE,
@@ -31,6 +33,8 @@ class AuthenticatedProductRouteTest {
                 RELEASE_NOTES_PAGE,
                 // The in-app Artifact viewer: its own authenticated page (sign-out replaces it with login).
                 RAFT_ARTIFACT_VIEWER_PAGE,
+                // The Artifacts home (workspace_artifacts_v0), pushed from the server panel.
+                ARTIFACTS_HOME_PAGE,
             )
 
         assertEquals(expected, authenticatedProductRoutePageNames)

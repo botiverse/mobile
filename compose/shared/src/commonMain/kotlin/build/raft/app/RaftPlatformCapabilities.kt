@@ -4,6 +4,12 @@ import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
 
+/**
+ * The iPad app is running on a Mac ("Designed for iPad", `NSProcessInfo.isiOSAppOnMac`), where it
+ * behaves like the desktop app (RaftIosAppOnMac.kt). False on every other host.
+ */
+internal expect fun raftPlatformIsiOSAppOnMac(): Boolean
+
 /** The platform's own pull-to-refresh feel: Android = Material 3, iOS = UIRefreshControl-style, desktop = none. */
 internal expect fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle
 
@@ -58,6 +64,12 @@ internal expect fun raftPlatformMessageTextPointerSelectable(): Boolean
  * the composer copy talks about Enter. Phones and tablets keep their touch layout and copy.
  */
 internal expect fun raftPlatformHasFinePointer(): Boolean
+
+/**
+ * Keyboard shortcuts take ⌘ rather than Ctrl (web `isApplePlatform`): iOS / iPadOS and the
+ * Compose desktop app on macOS. The rail's ⌘\ / Ctrl+\ sidebar toggle reads it.
+ */
+internal expect fun raftPlatformShortcutsUseCommand(): Boolean
 
 /**
  * An in-app browser page can show a web page. Desktop has no embedded web view yet
@@ -227,6 +239,13 @@ internal expect fun raftPlatformSupportsHandsFeedbackSubmit(): Boolean
 internal expect fun raftFeedbackWebViewClientKind(): String
 
 /**
+ * Whether the composer can take a photo with a camera. The desktop app has no capture path (the
+ * web's desktop composer has no camera either), so its camera button would only fail with an
+ * upload error (artin, Mac app 11-08).
+ */
+internal expect fun raftComposerCameraAvailable(): Boolean
+
+/**
  * task #232: start-edge region (in dp) a [build.raft.app.components.TabPager]
  * must leave to the platform's own edge gesture. iOS injects its interactive
  * edge-back width; platforms without a competing start-edge gesture return 0.
@@ -244,8 +263,24 @@ internal expect fun raftPlatformTabPagerStartEdgeInsetDp(): Float
 internal expect fun raftPlatformTabPagerOverscrollEnabled(): Boolean
 
 /**
+ * Whether a [build.raft.app.components.TabPager] pages with the pointer (a drag, a trackpad's
+ * horizontal scroll). Phones and tablets swipe between tabs. Desktop returns false: Compose Desktop
+ * hands a Mac trackpad's two-finger sideways swipe (the gesture people use for Back) to the pager as
+ * horizontal scroll, so a conversation the person never touched turned from Chat to Tasks or Files
+ * on its own (artin 2026-11-03). Desktop switches tabs with the tab strip only, as the web does.
+ */
+internal expect fun raftPlatformTabPagerSwipeEnabled(): Boolean
+
+/**
  * Whether switching the phone bottom tabs plays Material's fade through
  * ([build.raft.designsystem.motion.RaftMotion.fadeThrough]). Android only (artin 2026-10-29):
  * iOS switches at once like its system tab bar, and desktop keeps its instant switch.
  */
 internal expect fun raftPlatformAppShellTabFadeThrough(): Boolean
+
+/**
+ * The App Store's payment rules (guideline 3.1.1) apply to Billing: the in-app web billing page
+ * offers Stripe payment, so it must not show inside the app (artin 11-02). iOS only; what iOS
+ * shows instead is [iosBillingPresentation]. Android and the Compose desktop app keep the WebView.
+ */
+internal expect fun raftPlatformFollowsAppStoreBillingRules(): Boolean

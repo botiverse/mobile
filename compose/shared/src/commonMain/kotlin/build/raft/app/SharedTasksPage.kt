@@ -3,9 +3,19 @@ package build.raft.app
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerSize
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftRadioRow
+import build.raft.designsystem.components.RaftTextField
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import androidx.compose.ui.draw.clip
@@ -19,12 +29,16 @@ import build.raft.app.markdown.RaftTaskStatusPixel
 import build.raft.app.markdown.RaftTaskStatusPixelStyle
 import build.raft.app.markdown.raftTaskStatusColor
 import build.raft.app.markdown.raftTaskStatusSoft
+import build.raft.app.markdown.raftTaskStatusOutline
+import build.raft.app.markdown.raftTaskStatusPixelStyle
 import build.raft.app.components.RaftAnchoredPickerTrigger
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftToolbarChip
 import build.raft.app.data.KeyValueTasksViewPreferenceRepository
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedTasksRouteIntent
+import build.raft.app.data.taskStatusChoices
+import build.raft.app.data.taskStatusPickAsksBacklogReason
+import build.raft.app.data.currentTaskSummary
+import build.raft.app.data.DefaultTaskCreateStatus
 import build.raft.app.data.TasksContent
 import build.raft.app.data.TasksPresentationIntent
 import build.raft.app.data.TasksPresentationState
@@ -34,6 +48,7 @@ import build.raft.app.data.TasksVisibleContent
 import build.raft.app.data.TasksViewMode
 import build.raft.app.data.hasCompletedTasksSnapshot
 import build.raft.app.data.boardColumns
+import build.raft.app.data.inConversationSectionOrder
 import build.raft.app.data.isCreatingTasksFor
 import build.raft.app.data.reduce
 import build.raft.app.data.raftSharedPreferenceStore
@@ -59,7 +74,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -74,7 +88,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -109,6 +122,8 @@ import build.raft.app.components.rememberRaftStorePullRefreshState
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 private const val TasksListMaxBeyondBoundsItemCount = 4
 
@@ -124,7 +139,8 @@ internal fun SharedTasksScreen(
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {},
     identityOptions: List<MemberProfile> = emptyList(),
-    timeContext: RaftTimeContext? = null
+    timeContext: RaftTimeContext? = null,
+    taskV2Enabled: Boolean = false
 ) {
     SharedTasksPanel(
         state = state,
@@ -139,7 +155,8 @@ internal fun SharedTasksScreen(
         initialListPosition = initialListPosition,
         onListPositionSnapshot = onListPositionSnapshot,
         identityOptions = identityOptions,
-        timeContext = timeContext
+        timeContext = timeContext,
+        taskV2Enabled = taskV2Enabled
     )
 }
 
@@ -166,7 +183,9 @@ internal fun SharedTasksPanel(
      *  mirroring the React capture's "Show Done" click (task #330/#353). */
     initialPresentationOverride: TasksPresentationState? = null,
     identityOptions: List<MemberProfile> = emptyList(),
-    timeContext: RaftTimeContext? = null
+    timeContext: RaftTimeContext? = null,
+    /** The server's `task_v2_conversations_v0`: In Review is retired for its v2 tasks (web slock #12884). */
+    taskV2Enabled: Boolean = false
 ) {
     var lastContent by remember { mutableStateOf<TasksContent?>(null) }
     val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
@@ -212,7 +231,8 @@ internal fun SharedTasksPanel(
                     onListPositionSnapshot = onListPositionSnapshot,
                     initialPresentationOverride = initialPresentationOverride,
                     identityOptions = identityOptions,
-                    timeContext = timeContext
+                    timeContext = timeContext,
+                    taskV2Enabled = taskV2Enabled
                 )
             is ScreenLoadState.Empty -> {
                 val showEmptyToolbar = sharedTasksEmptyToolbarVisible(createTasksChannelId)
@@ -237,7 +257,8 @@ internal fun SharedTasksPanel(
                             initialPresentationOverride
                                 ?: TasksPresentationState.Default.copy(selectedMode = TasksViewMode.List),
                         identityOptions = identityOptions,
-                        timeContext = timeContext
+                        timeContext = timeContext,
+                        taskV2Enabled = taskV2Enabled
                     )
                 } else {
                     if (showHeader) {
@@ -386,7 +407,8 @@ private fun SharedTasksLoadedBody(
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit,
     initialPresentationOverride: TasksPresentationState?,
     identityOptions: List<MemberProfile>,
-    timeContext: RaftTimeContext?
+    timeContext: RaftTimeContext?,
+    taskV2Enabled: Boolean
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         SharedTasksLoadedBodyContent(
@@ -405,7 +427,8 @@ private fun SharedTasksLoadedBody(
             onListPositionSnapshot = onListPositionSnapshot,
             initialPresentationOverride = initialPresentationOverride,
             identityOptions = identityOptions,
-            timeContext = timeContext
+            timeContext = timeContext,
+            taskV2Enabled = taskV2Enabled
         )
     }
 }
@@ -449,7 +472,8 @@ private fun SharedTasksLoadedBodyContent(
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit,
     initialPresentationOverride: TasksPresentationState?,
     identityOptions: List<MemberProfile>,
-    timeContext: RaftTimeContext?
+    timeContext: RaftTimeContext?,
+    taskV2Enabled: Boolean
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val viewModeRepository =
@@ -508,21 +532,28 @@ private fun SharedTasksLoadedBodyContent(
         if (next != presentationState) presentationState = next
     }
 
-    // boardColumns always covers every TaskStatus so the user can see empty columns
-    // (you can't drop a task into a column that doesn't exist). renderLimit = 0 means
+    // boardColumns covers every TaskStatus so the user can see empty columns
+    // (you can't drop a task into a column that doesn't exist), except In Review with
+    // task v2 on: only while a pre-v2 task is still in it. renderLimit = 0 means
     // "include all tasks per column" — pagination would be a separate feature.
-    val boardColumns = remember(visibleContent.filteredContent) {
-        visibleContent.filteredContent.boardColumns(renderLimit = 0)
+    val boardColumns = remember(visibleContent.filteredContent, taskV2Enabled) {
+        visibleContent.filteredContent.boardColumns(renderLimit = 0, taskV2Enabled = taskV2Enabled)
     }
     // For list mode we hide totally-empty status groups; otherwise the screen looks
     // like a wall of "No X tasks" headers.
-    val listColumns = remember(boardColumns) { boardColumns.filter { it.totalCount > 0 } }
+    // Beside a conversation (no page header) Backlog waits after the active groups.
+    val listColumns =
+        remember(boardColumns, showHeader) {
+            boardColumns.filter { it.totalCount > 0 }.let { columns -> if (showHeader) columns else columns.inConversationSectionOrder() }
+        }
     val collapsedStatuses = presentationState.collapsedStatuses
 
     // The status chip provides a root-space BottomEnd anchor. Keep that exact trigger
     // coordinate after a LazyColumn scroll; reconstructing it from item layout offsets
     // moves the menu away from the chip and can leave the menu under the touch barrier.
     var statusMenuTask by remember { mutableStateOf<TaskSummary?>(null) }
+    // A move into Backlog picked from the status menu: its reason is asked first (web TaskBacklogReasonPopover).
+    var backlogReasonTask by remember { mutableStateOf<TaskSummary?>(null) }
     var statusMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     var assigneeMenuTask by remember { mutableStateOf<TaskSummary?>(null) }
     var assigneeMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
@@ -941,7 +972,7 @@ private fun SharedTasksLoadedBodyContent(
             // menu interaction (Todo / In progress / …) — no modal.
             RaftTaskStatusMenuOverlay(
                 anchor = resolvedStatusAnchor,
-                items = TaskStatus.values().map { status ->
+                items = task.statusMenuChoices(taskV2Enabled).map { status ->
                     RaftBaseMenuItem(id = status.name, label = status.localizedLabel())
                 },
                 selectedId = task.status.name,
@@ -950,7 +981,26 @@ private fun SharedTasksLoadedBodyContent(
                     statusMenuTask = null
                     val next = TaskStatus.values().firstOrNull { it.name == selectedId }
                     if (!updating && next != null && next != task.status) {
-                        onIntent(SharedTasksRouteIntent.UpdateStatus(task, next))
+                        if (taskStatusPickAsksBacklogReason(task.status, next)) {
+                            backlogReasonTask = task
+                        } else {
+                            onIntent(SharedTasksRouteIntent.UpdateStatus(task, next))
+                        }
+                    }
+                }
+            )
+        }
+
+        backlogReasonTask?.takeIf { it.readOnlyReason == null && !state.standIn }?.let { task ->
+            TaskBacklogReasonDialog(
+                taskNumber = task.taskNumber,
+                onDismiss = { backlogReasonTask = null },
+                onConfirm = { reason ->
+                    backlogReasonTask = null
+                    // Someone else may have parked it meanwhile: then there is nothing left to write.
+                    val current = state.currentTaskSummary(task.id.value) ?: task
+                    if (current.status != TaskStatus.Backlog) {
+                        onIntent(SharedTasksRouteIntent.UpdateStatus(current, TaskStatus.Backlog, reason))
                     }
                 }
             )
@@ -1011,16 +1061,18 @@ private fun SharedTasksLoadedBodyContent(
 
         if (createDialogOpen && createTasksChannelId != null && !state.standIn) {
             TasksCreateDialog(
+                // Task v2: a task can start in Backlog, Todo or In Progress (web Create Task's Status field).
+                statusField = taskV2Enabled,
                 loading = createLoading,
                 errorCode = state.createErrorCode.takeIf { createFailureVisible && !createLoading },
                 onDismiss = {
                     if (!createLoading) createDialogOpen = false
                 },
-                onSubmit = { titles ->
+                onSubmit = { titles, status ->
                     if (!createLoading) {
                         createFailureVisible = false
                         createSubmitted = true
-                        onIntent(SharedTasksRouteIntent.CreateTasks(createTasksChannelId, titles))
+                        onIntent(SharedTasksRouteIntent.CreateTasks(createTasksChannelId, titles, status))
                     }
                 }
             )
@@ -1153,12 +1205,11 @@ private fun SharedTasksToolbar(
         )
     }
     val clearAllChip: @Composable () -> Unit = {
-        RaftToolbarChip(
-            label = stringResource(Res.string.tasks_action_clear_all),
-            iconName = RaftLucideIconName.X,
-            uppercase = false,
-            active = false,
-            onClick = onClearAll
+        RaftPickerTriggerButton(
+            text = stringResource(Res.string.tasks_action_clear_all),
+            onClick = onClearAll,
+            showIndicator = false,
+            leadingIcon = { RaftSlotIcon(RaftLucideIconName.X) }
         )
     }
     val newTaskButton: @Composable () -> Unit = {
@@ -1316,12 +1367,8 @@ private fun SharedTasksBoardColumn(
                 .width(320.dp)
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(RaftAppRadius.Container))
-                .background(RaftColor.SurfaceWhite)
-                .border(
-                    RaftAppStroke.Default,
-                    RaftColor.BorderBlack.copy(alpha = 0.2f),
-                    RoundedCornerShape(RaftAppRadius.Container),
-                )
+                // The design-system card surface: card layer, container radius, hairline.
+                .raftCardSurface()
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -1371,11 +1418,13 @@ private fun SharedTasksBoardColumn(
 private fun localizedTasksEmptyStatus(status: TaskStatus): String =
     stringResource(
         when (status) {
+            TaskStatus.Backlog -> Res.string.tasks_empty_backlog
             TaskStatus.Todo -> Res.string.tasks_empty_todo
             TaskStatus.InProgress -> Res.string.tasks_empty_in_progress
             TaskStatus.InReview -> Res.string.tasks_empty_in_review
             TaskStatus.Done -> Res.string.tasks_empty_done
             TaskStatus.Closed -> Res.string.tasks_empty_closed
+            TaskStatus.Unknown -> Res.string.tasks_empty_unknown
         }
     )
 
@@ -1401,7 +1450,7 @@ internal fun BoardSectionHeader(
         modifier =
             modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .raftClickable(onClick = onClick, tier = RaftHoverTier.Subtle)
                 .height(32.dp)
                 .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1409,7 +1458,7 @@ internal fun BoardSectionHeader(
     ) {
         if (chevronLeading) TaskSectionChevron(collapsed)
         RaftTaskStatusPixel(
-            style = RaftTaskStatusPixelStyle(fill = status.raftTaskStatusColor(colors), stroke = RaftUiPalette.stickerInk)
+            style = status.raftTaskStatusPixelStyle(colors)
         )
         Text(
             text = status.localizedLabel(),
@@ -1673,7 +1722,9 @@ internal fun RaftTaskStatusChip(
         trailingIconName = RaftLucideIconName.ChevronDown,
         trailingIconSize = 12.dp,
         trailingIconColorArgb = RaftColor.TextBlackArgb,
-        borderWidth = 0.dp,
+        // Backlog's chip is outlined (`line-hairline`, no tint); the tinted statuses have no edge.
+        borderWidth = if (status.raftTaskStatusOutline(colors) != null) 1.dp else 0.dp,
+        borderColor = status.raftTaskStatusOutline(colors),
         minHeight = 22.dp,
         horizontalPadding = 6.dp,
         verticalPadding = 0.dp,
@@ -1683,7 +1734,7 @@ internal fun RaftTaskStatusChip(
         contentSpacing = 4.dp,
         leadingContent = {
             RaftTaskStatusPixel(
-                style = RaftTaskStatusPixelStyle(fill = status.raftTaskStatusColor(colors), stroke = RaftUiPalette.stickerInk),
+                style = status.raftTaskStatusPixelStyle(colors),
                 modifier = Modifier.padding(end = 1.dp)
             )
         },
@@ -1739,19 +1790,15 @@ private fun SharedTasksNotice(
     detail: String,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1064
-                .background(RaftColor.AccentRed.copy(alpha = 0.12f), RoundedCornerShape(RaftAppRadius.Container))
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Container))
-                .padding(RaftAppSpacing.Sm),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(text = title, style = RaftType.ButtonBold, color = RaftColor.TextBlack)
-        Text(text = detail, style = RaftType.Caption, color = RaftColor.AccentRed)
-    }
+    // A recoverable failure: the design-system warning banner (raft-ui keeps `destructive`
+    // for what cannot be undone).
+    RaftBanner(
+        description = detail,
+        status = RaftBannerStatus.Warning,
+        modifier = modifier.fillMaxWidth(),
+        title = title,
+        size = RaftBannerSize.Sm
+    )
 }
 
 @Composable
@@ -1780,11 +1827,13 @@ private fun SharedTasksStateBody(
 internal fun TaskStatus.localizedLabel(): String =
     stringResource(
         when (this) {
+            TaskStatus.Backlog -> Res.string.tasks_status_backlog
             TaskStatus.Todo -> Res.string.tasks_status_todo
             TaskStatus.InProgress -> Res.string.tasks_status_in_progress
             TaskStatus.InReview -> Res.string.tasks_status_in_review
             TaskStatus.Done -> Res.string.tasks_status_done
             TaskStatus.Closed -> Res.string.tasks_status_closed
+            TaskStatus.Unknown -> Res.string.tasks_status_unknown
         }
     )
 
@@ -1793,6 +1842,8 @@ private val SharedTaskCardAssigneeChipMaxWidth = 160.dp
 private val TaskStatus.iconName: RaftLucideIconName
     get() =
         when (this) {
+            TaskStatus.Backlog -> RaftLucideIconName.CircleDashed
+            TaskStatus.Unknown -> RaftLucideIconName.CircleQuestionMark
             TaskStatus.Todo -> RaftLucideIconName.Circle
             TaskStatus.InProgress -> RaftLucideIconName.Play
             TaskStatus.InReview -> RaftLucideIconName.Eye
@@ -1803,6 +1854,7 @@ private val TaskStatus.iconName: RaftLucideIconName
 
 private fun TaskStatus.nextStatus(): TaskStatus =
     when (this) {
+        TaskStatus.Backlog, TaskStatus.Unknown -> TaskStatus.Todo
         TaskStatus.Todo -> TaskStatus.InProgress
         TaskStatus.InProgress -> TaskStatus.InReview
         TaskStatus.InReview -> TaskStatus.Done
@@ -1890,15 +1942,16 @@ private fun TasksStatusDialog(
                     color = RaftColor.TextBlack.copy(alpha = 0.65f)
                 )
             }
-            items(TaskStatus.values().size) { idx ->
-                val status = TaskStatus.values()[idx]
+            val choices = taskStatusChoices(task.status, v2Task = false)
+            items(choices.size) { idx ->
+                val status = choices[idx]
                 val selected = status == task.status
-                RaftModalFullWidthActionButton(
+                // The design-system radio row: the current status is the selected one.
+                RaftRadioRow(
                     label = status.localizedLabel(),
-                    icon = if (selected) RaftLucideIconName.Check else RaftLucideIconName.Circle,
-                    color = if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite,
-                    enabled = !updating && !selected,
-                    onClick = { onSelect(status) }
+                    selected = selected,
+                    onClick = { if (!selected) onSelect(status) },
+                    enabled = !updating
                 )
             }
             errorCode?.takeIf { it.isNotBlank() }?.let { code ->
@@ -1915,13 +1968,17 @@ private fun TasksStatusDialog(
 }
 
 @Composable
-private fun TasksCreateDialog(
+internal fun TasksCreateDialog(
     loading: Boolean,
     errorCode: String?,
     onDismiss: () -> Unit,
-    onSubmit: (List<String>) -> Unit
+    /** The titles, and the Status field's value (null without the field: the server's default). */
+    onSubmit: (List<String>, TaskStatus?) -> Unit,
+    /** Task v2: the Status field (Backlog, Todo or In Progress; Todo by default). Off, titles only. */
+    statusField: Boolean = false
 ) {
     var titles by remember { mutableStateOf(listOf("")) }
+    var status by remember { mutableStateOf(DefaultTaskCreateStatus) }
     val anyNonBlank = titles.any { it.isNotBlank() }
     RaftUnifiedDialog(
         title = stringResource(Res.string.tasks_label_new_tasks),
@@ -1947,32 +2004,45 @@ private fun TasksCreateDialog(
             }
             items(titles.size) { index ->
                 val value = titles[index]
-                TextField(
+                val titleEditor =
+                    rememberRaftDesignSystemEditor(
+                        keyboardOptions = KeyboardOptions.Default,
+                        keyboardActions = KeyboardActions.Default,
+                        keyboardHeightChange = {},
+                        focusRequester = remember { FocusRequester() },
+                        autoFocus = index == 0,
+                        onFocus = {},
+                        onBlur = {}
+                    )
+                RaftTextField(
                     value = value,
                     onValueChange = { next ->
                         titles = titles.toMutableList().also { it[index] = next }
                     },
+                    modifier = Modifier.fillMaxWidth().then(titleEditor.modifier),
                     placeholder = stringResource(Res.string.tasks_label_title),
-                    placeholderColor = RaftColor.TextMutedGray,
                     enabled = !loading,
-                    autoFocus = index == 0,
-                    maxLines = 2,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 36.dp)
-                        .background(RaftColor.AppBgLightBlue.copy(alpha = 0.6f), RoundedCornerShape(RaftAppRadius.Control))
-                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Control))
-                        .padding(horizontal = RaftAppSpacing.Sm, vertical = 6.dp)
+                    keyboardOptions = titleEditor.keyboardOptions
                 )
             }
             item {
-                RaftToolbarChip(
-                    label = stringResource(Res.string.tasks_action_add_another),
-                    iconName = RaftLucideIconName.Plus,
-                    active = false,
+                RaftPickerTriggerButton(
+                    text = stringResource(Res.string.tasks_action_add_another),
+                    onClick = { titles = titles + "" },
                     enabled = !loading,
-                    onClick = { titles = titles + "" }
+                    showIndicator = false,
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) }
                 )
+            }
+            if (statusField) {
+                item {
+                    TaskCreateStatusField(
+                        value = status,
+                        onValueChange = { status = it },
+                        titleCount = titles.count { it.isNotBlank() },
+                        enabled = !loading
+                    )
+                }
             }
             errorCode?.takeIf { it.isNotBlank() }?.let { code ->
                 item {
@@ -2002,7 +2072,7 @@ private fun TasksCreateDialog(
                     },
                 leadingIcon = { RaftSlotIcon(RaftLucideIconName.Check) },
                 enabled = anyNonBlank && !loading,
-                onClick = { onSubmit(titles) },
+                onClick = { onSubmit(titles, status.takeIf { statusField }) },
                 variant = RaftButtonVariant.Primary,
                 size = RaftButtonSize.Lg
             )

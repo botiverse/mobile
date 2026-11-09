@@ -17,11 +17,14 @@ internal data class SharedTaskStatusChipMeta(
 
 internal val SharedTaskStatusChipMetas: List<SharedTaskStatusChipMeta> =
     listOf(
+        SharedTaskStatusChipMeta(TaskStatus.Backlog, "Backlog", "Backlog", RaftLucideIconName.CircleDashed, Color.Transparent),
         SharedTaskStatusChipMeta(TaskStatus.Todo, "Todo", "Todo", RaftLucideIconName.Circle, RaftColor.AccentOrange),
         SharedTaskStatusChipMeta(TaskStatus.InProgress, "InProgress", "In progress", RaftLucideIconName.Play, RaftColor.AccentCyan),
         SharedTaskStatusChipMeta(TaskStatus.InReview, "InReview", "In review", RaftLucideIconName.Eye, RaftColor.AccentLavender),
         SharedTaskStatusChipMeta(TaskStatus.Done, "Done", "Done", RaftLucideIconName.CircleCheckBig, RaftColor.AccentLime),
-        SharedTaskStatusChipMeta(TaskStatus.Closed, "Closed", "Closed", RaftLucideIconName.Ban, RaftColor.AccentStone)
+        SharedTaskStatusChipMeta(TaskStatus.Closed, "Closed", "Closed", RaftLucideIconName.Ban, RaftColor.AccentStone),
+        // A status this build does not know (strictTaskStatusOrNull): neutral, never a choice.
+        SharedTaskStatusChipMeta(TaskStatus.Unknown, "Unknown", "Unknown", RaftLucideIconName.CircleQuestionMark, Color.Transparent)
     )
 
 internal fun TaskStatus.sharedTaskStatusChipMeta(): SharedTaskStatusChipMeta =
@@ -32,7 +35,7 @@ internal fun String?.sharedTaskStatusChipMetaOrDefault(default: TaskStatus = Tas
     return SharedTaskStatusChipMetas.firstOrNull { meta ->
         meta.key.normalizedTaskStatusToken() == normalized ||
             meta.label.normalizedTaskStatusToken() == normalized
-    } ?: default.sharedTaskStatusChipMeta()
+    } ?: if (normalized.isNotEmpty()) TaskStatus.Unknown.sharedTaskStatusChipMeta() else default.sharedTaskStatusChipMeta()
 }
 
 private fun String?.normalizedTaskStatusToken(): String =

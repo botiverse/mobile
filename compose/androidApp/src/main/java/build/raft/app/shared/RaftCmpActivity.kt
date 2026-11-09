@@ -24,7 +24,6 @@ import android.graphics.drawable.ColorDrawable
 import androidx.compose.ui.graphics.toArgb
 import build.raft.app.data.RaftAppAppearanceRuntime
 import android.graphics.Matrix
-import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
@@ -74,7 +73,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.core.content.res.ResourcesCompat
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
@@ -85,6 +83,8 @@ import build.raft.app.R
 import build.raft.app.MainActivity
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.cmp.RaftCmpRoot
+import build.raft.app.cmp.RaftCmpToastLayer
+import build.raft.app.cmp.RaftCmpToasts
 import build.raft.app.RaftWebViewFileChooserHost
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
 import build.raft.app.cmp.host.HostBridgeTransport
@@ -93,7 +93,15 @@ import build.raft.app.cmp.host.RaftHostEvents
 import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.cmp.host.RaftCmpPageArgs
+import build.raft.app.nav.RaftPageStack
+import build.raft.app.nav.RaftPageStackSavedState
+import build.raft.app.nav.RaftStackOpenRoute
+import build.raft.app.nav.RaftStackPage
+import build.raft.app.nav.LocalRaftStackRootTab
+import build.raft.app.nav.RaftStackRootTab
+import androidx.compose.runtime.remember
 import build.raft.app.parseRaftJsonObjectOrNull
+import build.raft.app.renderThreadShareImageBitmap
 import build.raft.app.toRaftJsonString
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView
@@ -114,7 +122,6 @@ import build.raft.app.FeedbackDiagnosticsReference
 import build.raft.app.RaftHostStrings
 import build.raft.app.releaseRaftShellStoreScope
 import build.raft.app.selectExternalWebHandlerPackage
-import build.raft.app.openUrlUsesBrowserPackage
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.AndroidApiServerEnvironment
@@ -129,6 +136,7 @@ import build.raft.app.core.data.diagnostics.RaftAuthCriticalJournal
 import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.core.data.diagnostics.RaftPerformanceDiagnostics
 import build.raft.app.core.data.diagnostics.RaftResumeFrameProbe
+import build.raft.app.core.data.diagnostics.RaftNavTransitionFrameProbe
 import build.raft.app.core.data.diagnostics.RaftScrollFrameProbe
 import build.raft.app.core.data.storage.StorageClearTarget
 import build.raft.app.core.data.storage.StorageManagementRepository
@@ -174,7 +182,6 @@ import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.network.sync.ProcessReadStateV1DiagnosticOverride
 import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideMode
 import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideSnapshot
-import com.caverock.androidsvg.SVG
 import build.hands.update.HandsDeviceId
 import build.hands.update.HandsFeedback
 import build.hands.update.HandsUpdateEventListener
@@ -624,14 +631,24 @@ private fun StringBuilder.appendDiagnosticsExportLine(label: String, value: Stri
     appendLine(value?.takeIf { it.isNotBlank() } ?: "--")
 }
 
-internal fun threadShareChromeHeaderHeight(width: Int): Int =
-        (width * 0.12f).roundToInt().coerceIn(72, 96)
-
-internal fun threadShareChromeCaptionTextSize(width: Int): Float =
-        (width * 0.034f).coerceIn(18f, 26f)
-
-internal fun threadShareChromeOutputHeight(width: Int, contentHeight: Int): Int =
-        contentHeight.coerceAtLeast(1) + threadShareChromeHeaderHeight(width)
+/**
+ * The capture slices of `exportThreadShareImage`'s `fragments`: one PNG path per line, a blank
+ * line between messages (ThreadPage `threadShareFragmentsParam`). Each group is one message.
+ */
+internal fun threadShareFragmentGroups(fragments: String): List<List<String>> {
+    val groups = mutableListOf<List<String>>()
+    var current = mutableListOf<String>()
+    fragments.lineSequence().map { it.trim() }.forEach { line ->
+        if (line.isEmpty()) {
+            if (current.isNotEmpty()) groups += current
+            current = mutableListOf()
+        } else {
+            current += line
+        }
+    }
+    if (current.isNotEmpty()) groups += current
+    return groups
+}
 
 internal data class RaftLoadReadiness(
     val succeeded: Boolean,
@@ -730,6 +747,9 @@ private fun PendingAndroidAttachmentSaveAs.ownerOperationIsCurrent(): Boolean =
  *   heights in pageData and as `slockWindowInsetsChanged` host events (Kuikly host contract).
  * - Back: Compose `BackHandler`s registered by the page run first; this host's fallback callback
  *   moves the app shell task to the back or finishes the page.
+ * - Navigation 3 (`mobile_nav3_stack_v1`, off by default): the app shell draws the shared page
+ *   stack and opens the allowlisted pages on it ([RaftAndroidNav3StackContent], rules in
+ *   RaftAndroidNav3Stack.kt). Off, nothing here changes.
  * - Native capabilities: [RaftBridgeModule] behind [RaftCmpHost.bridgeTransport]
  *   (sync and async), host-bound ones through [RaftHostActivity].
  */
@@ -759,6 +779,20 @@ internal open class RaftCmpActivity :
     @Volatile private var renderReadinessTopPageLoad: RaftLoadReadiness? = null
     private val renderReadinessChildLoads = ConcurrentHashMap<String, RaftLoadReadiness>()
     private var pageSpec: RaftPageSpec? = null
+    // Navigation 3 page stack of the app shell window; null with the switch off or on any other page.
+    private var nav3Stack: RaftPageStack? = null
+    // nav_transition_frames: one line per push, pop and predictive back gesture of that stack.
+    private val nav3TransitionProbe by lazy { RaftNavTransitionFrameProbe(this) }
+    // The page keys saved before this instance was recreated (process death, recreation).
+    private var nav3SavedKeysText: String? = null
+    // The shell tab under the stack's pages: written by the shell, saved with the keys.
+    private val nav3RootTab = RaftStackRootTab()
+    private var nav3SavedRootTab: String? = null
+    // onNewIntent resets the window to the shell: the recreation must not bring the stack back.
+    private var nav3DropStackOnSave = false
+    // Activity results asked for by stack pages (picker, camera, WebView file chooser), by page key.
+    // Made in onCreate, as results can come back before the (deferred) stack is attached.
+    private var nav3Results: RaftStackActivityResults? = null
     // Instance-owned: onNewIntent may replace the Intent before this instance is destroyed.
     private var loginTransitionToken: String? = null
     private var homeColdStartSplashGate: HomeColdStartSplashGate? = null
@@ -820,10 +854,19 @@ internal open class RaftCmpActivity :
             registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
                 val callback = pendingWebViewFileChooserCallback
                 pendingWebViewFileChooserCallback = null
-                callback?.onReceiveValue(
-                        WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+                val requestId = pendingWebViewFileChooserStackRequest
+                pendingWebViewFileChooserStackRequest = null
+                if (callback == null) {
+                    nav3Results?.dropRecreated(RAFT_STACK_RESULT_WEB_FILE_CHOOSER)
+                    return@registerForActivityResult
+                }
+                // A stack page's chooser: its files only while that page is still open.
+                val deliver = requestId == null || nav3Results?.complete(requestId) != false
+                callback.onReceiveValue(
+                        if (deliver) WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data) else null
                 )
             }
+    private var pendingWebViewFileChooserStackRequest: String? = null
 
     override fun launchSandboxWebViewFileChooser(
         params: WebChromeClient.FileChooserParams,
@@ -835,11 +878,22 @@ internal open class RaftCmpActivity :
         }
         return runCatching {
             pendingWebViewFileChooserCallback = callback
+            // A file input is a tap on the page on screen: the top stack page asked (not the shell).
+            pendingWebViewFileChooserStackRequest =
+                nav3TopPageKey()?.let { key -> nav3Results?.begin(key, RAFT_STACK_RESULT_WEB_FILE_CHOOSER) }
             webViewFileChooserLauncher.launch(params.createIntent())
         }.onFailure {
             pendingWebViewFileChooserCallback = null
+            pendingWebViewFileChooserStackRequest?.let { nav3Results?.complete(it) }
+            pendingWebViewFileChooserStackRequest = null
             callback.onReceiveValue(null)
         }.isSuccess
+    }
+
+    /** The content key of the stack page on screen, or null (stack off, or the shell on top). */
+    private fun nav3TopPageKey(): String? {
+        val pages = nav3Stack?.pages ?: return null
+        return pages.lastOrNull()?.takeIf { pages.size > 1 }?.contentKey
     }
     private val screenshotFeedbackEventGate =
             ScreenshotFeedbackEventGate(SCREENSHOT_FEEDBACK_MINIMUM_INTERVAL_MILLIS)
@@ -879,6 +933,13 @@ internal open class RaftCmpActivity :
         requestHighestSupportedDisplayMode()
         schedulePickedThreadAttachmentCacheCleanup()
         installHuaweiAndroid12InsetsAnimationWorkaroundIfNeeded()
+        nav3SavedKeysText = savedInstanceState?.getString(RAFT_NAV3_STACK_STATE_KEY)
+        nav3SavedRootTab = savedInstanceState?.getString(RAFT_NAV3_STACK_ROOT_TAB_KEY)
+        nav3Results =
+            RaftStackActivityResults(
+                isOpen = { key -> nav3Stack?.pages?.any { it.contentKey == key } == true },
+                log = { line -> RaftAppLog.record(TAG, line) },
+            ).apply { restore(savedInstanceState?.getString(RAFT_NAV3_STACK_RESULTS_KEY)) }
         pendingAttachmentSaveAs =
                 savedInstanceState
                     ?.getBundle(ATTACHMENT_SAVE_AS_STATE_KEY)
@@ -898,7 +959,8 @@ internal open class RaftCmpActivity :
                 )
             }
         onBackPressedDispatcher.addCallback(this, hostSystemBackCallback)
-        // Seed the OS light/dark setting before anything is drawn. Later OS switches arrive
+        // Seed the light/dark mode before anything is drawn: the resources carry the app's own
+        // choice (RaftAndroidNightMode; the OS setting under System). Later switches arrive
         // through onConfigurationChanged (uiMode is a handled config change, see the manifest).
         RaftAppAppearanceRuntime.onSystemDarkChanged(androidSystemDark())
         RaftAppAppearanceRuntime.ensureLoaded()
@@ -1032,16 +1094,42 @@ internal open class RaftCmpActivity :
                 events = hostEvents,
                 childPageLoads = RaftChildPageLoadListener(::onCmpChildPageLoadComplete),
             )
+        val stack = createNav3StackIfEnabled(spec.pageName)
+        nav3Stack = stack
+        val shellArgs = raftAndroidNav3ShellArgs(args, stack, nav3SavedRootTab)
+        nav3SavedRootTab = null
         val composeView =
             ComposeView(this).apply {
                 setContent {
-                    CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
-                        RaftCmpRoot(
-                            args,
-                            host,
-                            onSystemBarsResolved = ::applySystemBarAppearance,
-                            onCanvasColorResolved = { color -> applyHostCanvasColor(color.toArgb()) },
-                        )
+                    // One toast host for the window, over the shell and every stack page (each
+                    // page's RaftCmpRoot uses it instead of adding its own).
+                    RaftCmpToastLayer {
+                        CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
+                            if (stack == null) {
+                                RaftCmpRoot(
+                                    args,
+                                    host,
+                                    onSystemBarsResolved = ::applySystemBarAppearance,
+                                    onCanvasColorResolved = { color -> applyHostCanvasColor(color.toArgb()) },
+                                )
+                            } else {
+                                RaftAndroidNav3StackContent(
+                                    stack = stack,
+                                    onSystemBars = ::applySystemBarAppearance,
+                                    onCanvas = { color -> applyHostCanvasColor(color.toArgb()) },
+                                    shell = { onBars, onCanvas ->
+                                        CompositionLocalProvider(LocalRaftStackRootTab provides nav3RootTab) {
+                                            RaftCmpRoot(shellArgs, host, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas)
+                                        }
+                                    },
+                                    page = { page, onBars, onCanvas ->
+                                        val pageHost = remember(page) { nav3PageHost(stack, page, transport) }
+                                        RaftCmpRoot(page.args, pageHost, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas)
+                                    },
+                                    transitions = nav3TransitionProbe,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1058,6 +1146,60 @@ internal open class RaftCmpActivity :
             reportRealtimeVisibility(AndroidHostVisibility.Visible, "deferred_host_attach")
         }
         RaftAndroidLocalDiagnostics.reportAppFullLaunch()
+    }
+
+    /**
+     * The shell window's Navigation 3 page stack when the switch is on for this process
+     * ([raftAndroidNav3StackEnabled]), with the pages saved before a recreation put back over the
+     * shell (unusable saved keys: the shell alone).
+     */
+    private fun createNav3StackIfEnabled(pageName: String): RaftPageStack? {
+        if (!raftAndroidNav3StackEnabled(pageName, ::raftSharedPreferenceStore)) return null
+        val stack =
+            RaftPageStack(
+                hostPageData = { name, data -> nav3StackPageData(name, data) },
+                log = { line -> RaftAppLog.record(TAG, "nav3_stack $line") },
+            )
+        val savedText = nav3SavedKeysText
+        nav3SavedKeysText = null
+        if (savedText != null) {
+            val keys = raftAndroidNav3RestoredKeys(savedText)
+            val restored = keys != null && stack.restore(keys)
+            RaftAppLog.record(TAG, "nav3_stack_restore restored=$restored pages=${keys?.size ?: 0} chars=${savedText.length} rootTab=${nav3SavedRootTab.orEmpty()}")
+        }
+        stack.onChangeRequested = { nav3TransitionProbe.onNavigate() }
+        RaftAppLog.record(TAG, "nav3_stack_on pages=${stack.pages.size}")
+        return stack
+    }
+
+    /** A stack page's args: its key pageData plus what [start] adds to an Activity's (host facts, insets). */
+    private fun nav3StackPageData(pageName: String, pageData: JsonObject): JsonObject {
+        val hostData = JSONObject(pageData.toRaftJsonString()).withAndroidHostPageData(pageName)
+        val withInsets = RaftPageData.fromJson(hostData).withAndroidRuntimeWindowInsets()
+        return parseRaftJsonObjectOrNull(withInsets.text) ?: pageData
+    }
+
+    /** The host of one stack page: the Activity's bridge, its own navigator and events. */
+    private fun nav3PageHost(stack: RaftPageStack, page: RaftStackPage, activityTransport: HostBridgeTransport): RaftCmpHost {
+        val transport =
+            RaftStackPageBridgeTransport(
+                activityTransport,
+                onClosePage = { stack.close(page) },
+                pageKey = page.contentKey,
+                results = nav3Results,
+            )
+        return RaftCmpHost(
+            capabilities = BridgeWireHostCapabilities(transport),
+            navigator =
+                object : RaftCmpNavigator {
+                    override fun openPage(pageName: String, pageData: JsonObject) = openPageFrom(page, pageName, pageData)
+
+                    override fun closePage() = stack.close(page)
+                },
+            bridgeTransport = transport,
+            events = page.events,
+            childPageLoads = RaftChildPageLoadListener(::onCmpChildPageLoadComplete),
+        )
     }
 
     /** Child page load: render readiness for the embedded page (see [renderReadinessSnapshot]). */
@@ -1145,10 +1287,15 @@ internal open class RaftCmpActivity :
     /** Kuikly `sendEvent`: delivered to the hosted page(s) as a pager event, on the main thread. */
     private fun sendHostEvent(event: String, data: Map<String, Any?>) {
         val payload = parseRaftJsonObjectOrNull(JSONObject(data).toString()) ?: JsonObject(emptyMap())
-        if (Looper.myLooper() == Looper.getMainLooper()) {
+        val send = {
             hostEvents.send(event, payload)
+            // Stack pages get the window's events too (each Activity had its own).
+            nav3Stack?.pages?.drop(1)?.forEach { page -> page.events.send(event, payload) }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            send()
         } else {
-            runOnUiThread { hostEvents.send(event, payload) }
+            runOnUiThread { send() }
         }
     }
 
@@ -1269,6 +1416,9 @@ internal open class RaftCmpActivity :
         androidShellLaunchTarget?.let { AndroidShellWindowRegistry.unregister(it.shellInstanceId) }
         setIntent(intent)
         registerAndroidShellWindow(intent)
+        // As today: a new intent resets the window to the shell (singleTask cleared the Activities
+        // above it); pages on the stack are not brought back by the recreation.
+        nav3DropStackOnSave = true
         RaftAppLog.record(
                 "SlockKuiklyActivity",
                 "host_new_intent page=${resolvedPageName(intent)} currentPage=${pageSpec?.pageName.orEmpty()}"
@@ -1277,15 +1427,18 @@ internal open class RaftCmpActivity :
     }
 
     /**
-     * uiMode is a handled config change (manifest), so an OS light/dark switch no longer
-     * recreates the host: the page keeps its tab, pushed pages and scroll positions. Compose
-     * follows the new [Configuration] by itself (isSystemInDarkTheme in RaftTheme); report the
-     * setting to the process-wide theme too, so native host surfaces (window canvas, bar icons)
-     * switch on the same frame under System appearance.
+     * uiMode is a handled config change (manifest), so a light/dark switch (the OS's, or the
+     * app's own choice, which RaftAndroidNightMode puts into the configuration) does not recreate
+     * the host: the page keeps its tab, pushed pages and scroll positions. Compose follows the new
+     * [Configuration] by itself; report the mode to the process-wide theme too, so native host
+     * surfaces (window canvas, bar icons) switch on the same frame under System appearance.
+     * Read from the resources after super: on API 29-30 RaftAndroidNightMode puts the app
+     * choice's night bits back there (a listener of super) when the system rebuilt them from the
+     * OS setting.
      */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (RaftAppAppearanceRuntime.onSystemDarkChanged(isAndroidSystemDark(newConfig.uiMode))) {
+        if (RaftAppAppearanceRuntime.onSystemDarkChanged(androidSystemDark())) {
             applyHostCanvasColor(RaftAppAppearanceRuntime.canvasArgb)
             // Bar icons: the page reports them on its next frame (onSystemBarsResolved), from
             // what it paints under the bars; the mode alone would be wrong on a dark light-mode
@@ -1332,6 +1485,16 @@ internal open class RaftCmpActivity :
         }
         pendingThreadCameraCapture?.let { pending ->
             outState.putString(THREAD_CAMERA_CAPTURE_STATE_KEY, pending.file.canonicalPath)
+        }
+        if (!nav3DropStackOnSave) nav3Results?.encode()?.let { outState.putString(RAFT_NAV3_STACK_RESULTS_KEY, it) }
+        nav3Stack?.takeUnless { nav3DropStackOnSave }?.savedKeys()?.takeIf { it.isNotEmpty() }?.let { keys ->
+            val text = RaftPageStackSavedState.encode(keys)
+            if (text != null) {
+                outState.putString(RAFT_NAV3_STACK_STATE_KEY, text)
+                nav3RootTab.tab?.let { outState.putString(RAFT_NAV3_STACK_ROOT_TAB_KEY, it) }
+            } else {
+                RaftAppLog.record(TAG, "nav3_stack_save_skipped pages=${keys.size} reason=size_guard")
+            }
         }
         super.onSaveInstanceState(outState)
     }
@@ -1512,6 +1675,7 @@ internal open class RaftCmpActivity :
     override fun onPause() {
         RaftResumeFrameProbe.onActivityPaused(this)
         RaftScrollFrameProbe.onActivityPaused(this)
+        if (nav3Stack != null) nav3TransitionProbe.onPaused()
         if (hostAttached) {
             reportRealtimeVisibility(AndroidHostVisibility.Hidden, "activity_on_pause")
         }
@@ -1634,11 +1798,30 @@ internal open class RaftCmpActivity :
      * Kuikly `RouterModule.openPage` (formerly the Kuikly router adapter): login replacement,
      * post-authentication hand-off, the app shell launch path and `slockReplaceCurrentPage`.
      */
-    override fun openPage(pageName: String, pageData: JsonObject) {
+    override fun openPage(pageName: String, pageData: JsonObject) = openPageFrom(null, pageName, pageData)
+
+    /**
+     * An open from the shell (or this page, [from] null) or from a stack page ([from]): onto the
+     * stack for an allowlisted page with the stack on ([raftAndroidNav3OpenRoute]), else the Activity
+     * path, where `slockReplaceCurrentPage` from a stack page closes that page instead of the window.
+     */
+    private fun openPageFrom(from: RaftStackPage?, pageName: String, pageData: JsonObject) {
+        val stack = nav3Stack
+        if (stack != null && raftAndroidNav3OpenRoute(stack, pageName, pageData, from) == RaftStackOpenRoute.Stack) {
+            stack.open(pageName, pageData, from = from ?: stack.pages.first())
+            return
+        }
         val data = JSONObject(pageData.toRaftJsonString())
         val replaceCurrent = shouldReplaceCurrentPage(data)
         if (pageName == RaftPages.LOGIN && replaceCurrent) {
             AndroidLoginTransitionRouting.openReplacement(this, data)
+            // Sign-out from a stack page (Account): the window is replaced as today; nothing on the
+            // stack survives it, nor comes back with a recreation.
+            if (stack != null && isFinishing) {
+                RaftAppLog.record(TAG, "nav3_stack_window_replaced pages=${stack.pages.size}")
+                raftAndroidNav3ClearForWindowReplace(stack, nav3Results)
+                nav3DropStackOnSave = true
+            }
             return
         }
         val startDestination = {
@@ -1648,7 +1831,7 @@ internal open class RaftCmpActivity :
                 start(this, pageName, data, animated = !shouldOpenWithoutAnimation(data))
             }
         }
-        if (AndroidLoginTransitionRouting.isPostAuthReplacement(
+        if (from == null && AndroidLoginTransitionRouting.isPostAuthReplacement(
                 intent?.getStringExtra(KEY_PAGE_NAME), pageName, replaceCurrent,
             )) {
             if (!AndroidLoginTransitionRouting.afterSuccessfulAuthentication(
@@ -1658,7 +1841,7 @@ internal open class RaftCmpActivity :
             startDestination()
         }
         if (replaceCurrent) {
-            finish()
+            if (from != null && stack != null) stack.close(from) else finish()
         }
     }
 
@@ -1888,19 +2071,11 @@ internal open class RaftCmpActivity :
             } else {
                 when (result.status) {
                     AndroidAttachmentOpenStatus.Opened ->
-                            Toast.makeText(
-                                    this,
-                                    getString(R.string.attachment_save_as_saved_toast),
-                                    Toast.LENGTH_SHORT
-                            ).show()
+                            showRaftHostToast(this, getString(R.string.attachment_save_as_saved_toast))
                     AndroidAttachmentOpenStatus.SaveCancelled,
                     AndroidAttachmentOpenStatus.Cancelled -> Unit
                     else ->
-                            Toast.makeText(
-                                    this,
-                                    getString(R.string.attachment_save_as_failed_toast),
-                                    Toast.LENGTH_SHORT
-                            ).show()
+                            showRaftHostToast(this, getString(R.string.attachment_save_as_failed_toast))
                 }
             }
         }
@@ -1979,9 +2154,13 @@ internal open class RaftCmpActivity :
     }
 
     private fun handleThreadCameraCaptureResult(captured: Boolean) {
-        val cameraCapture = pendingThreadCameraCapture ?: return
+        val cameraCapture = pendingThreadCameraCapture ?: run {
+            nav3Results?.dropRecreated(RAFT_STACK_RESULT_ATTACHMENT_PICKER)
+            return
+        }
         pendingThreadCameraCapture = null
         if (cameraCapture.restoredAfterActivityRecreation) {
+            nav3Results?.dropRecreated(RAFT_STACK_RESULT_ATTACHMENT_PICKER)
             val cleaned = runCatching {
                 discardRestoredThreadCameraCaptureResult(cameraCapture.file)
             }.getOrDefault(false)
@@ -2011,7 +2190,11 @@ internal open class RaftCmpActivity :
             source: String = "platform_picker",
             sourceFilesToDelete: List<File> = emptyList()
     ) {
-        val pending = pendingThreadAttachmentUpload ?: return
+        val pending = pendingThreadAttachmentUpload ?: run {
+            // A picker result for a request made before this window was recreated: dropped.
+            nav3Results?.dropRecreated(RAFT_STACK_RESULT_ATTACHMENT_PICKER)
+            return
+        }
         pendingThreadAttachmentUpload = null
         RaftAppLog.record(
                 "SlockKuiklyAttachment",
@@ -2043,6 +2226,19 @@ internal open class RaftCmpActivity :
                 )
                 pending.callback?.invoke(result)
             }
+        }
+    }
+
+    override fun readDroppedThreadAttachments(uris: List<String>, callback: RaftBridgeCallback?) {
+        val parsed = uris.mapNotNull { ref -> runCatching { Uri.parse(ref) }.getOrNull()?.takeIf { it.scheme == "content" } }
+        RaftAppLog.record("SlockKuiklyAttachment", "drop_result uriCount=${parsed.size}")
+        if (parsed.isEmpty()) {
+            callback?.invoke(mapOf("code" to 204, "bodyText" to ""))
+            return
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            val result = readThreadPlatformPickedFiles(uris = parsed, source = "drop")
+            withContext(Dispatchers.Main) { callback?.invoke(result) }
         }
     }
 
@@ -2179,7 +2375,9 @@ internal open class RaftCmpActivity :
             compressImages: Boolean = false,
     ): PickedThreadAttachment {
         val fileName = queryPickedFileName(uri) ?: uri.lastPathSegment ?: "attachment"
-        val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+        // A provider that reports nothing or a generic type (octet-stream) for invoice.pdf would
+        // upload it untyped; the display name's extension decides then.
+        val mimeType = androidAttachmentShareMimeType(fileName, contentResolver.getType(uri))
         val shouldCompress = compressImages && isImageAttachment(uri, fileName, mimeType, imageOnly)
         val cachedFile =
                 if (shouldCompress) {
@@ -3526,6 +3724,21 @@ internal fun raftAndroidBridgeUrlDecode(value: String): String =
  * (`RaftCmpActivity`) create one directly and pass [hostActivity], since they have no Kuikly
  * render context to derive [activity] from. Kuikly pages leave it null (unchanged behaviour).
  */
+/**
+ * A notice from the Android host itself (a save, a link that no app opens): the design-system
+ * toast of the foreground Compose window ([RaftCmpToasts]), the system toast when none is in the
+ * foreground. Any thread.
+ */
+internal fun showRaftHostToast(context: Context, message: String, long: Boolean = false) {
+    if (message.isBlank()) return
+    val show = {
+        if (!RaftCmpToasts.post(message)) {
+            Toast.makeText(context.applicationContext, message, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
+        }
+    }
+    if (Looper.myLooper() == Looper.getMainLooper()) show() else Handler(Looper.getMainLooper()).post { show() }
+}
+
 internal class RaftBridgeModule(
         private val appContext: Context,
         private val hostActivity: (() -> Activity?)? = null,
@@ -3690,6 +3903,20 @@ internal class RaftBridgeModule(
                                 "errorBodyText" to "Attachment picker unavailable"
                         )
                 )
+                null
+            }
+            "threadAttachmentDrop" -> {
+                val refs = JSONObject(params ?: "{}").optJSONArray("fileRefs")
+                val uris = (0 until (refs?.length() ?: 0)).mapNotNull { index -> refs?.optString(index)?.takeIf { it.isNotBlank() } }
+                (activity as? RaftHostActivity)?.readDroppedThreadAttachments(uris, callback)
+                        ?: callback?.invoke(
+                                mapOf(
+                                        "code" to 0,
+                                        "bodyText" to "",
+                                        "errorCode" to "attachment_picker_unavailable",
+                                        "errorBodyText" to "Attachment picker unavailable"
+                                )
+                        )
                 null
             }
             "compressThreadImage" -> {
@@ -4057,6 +4284,11 @@ internal class RaftBridgeModule(
         RaftAndroidLocalDiagnostics.reportKuiklySnapshot(JSONObject(params ?: "{}"))
     }
 
+    /**
+     * The bridge `toast`: shared's `BridgeModule.toast` and the wire capabilities send it only
+     * when no Compose window is in the foreground (`RaftCmpToasts.post` failed: the app in the
+     * background, before the first frame), so it stays the system toast.
+     */
     private fun toast(params: String?): Any? {
         val content = JSONObject(params ?: "{}").optString("content")
         if (content.isNotBlank()) {
@@ -4353,14 +4585,9 @@ internal class RaftBridgeModule(
             onResult(mapOf("status" to "failed", "message" to "Thread view is not ready"))
             return
         }
-        val fragmentPaths =
-                request.optString("fragments")
-                        .lineSequence()
-                        .map { it.trim() }
-                        .filter { it.isNotBlank() }
-                        .toList()
-        if (fragmentPaths.isNotEmpty()) {
-            onResult(stitchThreadShareFragments(fragmentPaths))
+        val fragmentGroups = threadShareFragmentGroups(request.optString("fragments"))
+        if (fragmentGroups.isNotEmpty()) {
+            onResult(stitchThreadShareFragments(fragmentGroups))
             return
         }
         val requestedX = request.optDouble("x", 0.0).roundToInt()
@@ -4453,62 +4680,79 @@ internal class RaftBridgeModule(
         }
     }
 
-    private fun stitchThreadShareFragments(fragmentPaths: List<String>): Map<String, Any> {
-        val fragments = mutableListOf<Bitmap>()
-        fragmentPaths.forEach { path ->
-            val fragment = runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
-            if (fragment == null) {
-                fragments.forEach { it.recycle() }
-                return mapOf("status" to "failed", "message" to "Unable to capture image")
-            }
-            fragments += fragment
-        }
-        if (fragments.isEmpty()) {
-            return mapOf("status" to "failed", "message" to "Unable to capture image")
-        }
-        val width = fragments.maxOf { it.width }.coerceAtLeast(1)
-        val height = fragments.sumOf { it.height }.coerceAtLeast(1)
-        val stitched =
-                runCatching {
-                    Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { output ->
-                        val canvas = Canvas(output)
-                        canvas.drawColor(Color.WHITE)
-                        var top = 0f
-                        fragments.forEach { fragment ->
-                            val left = ((width - fragment.width) / 2f).coerceAtLeast(0f)
-                            canvas.drawBitmap(fragment, left, top, null)
-                            top += fragment.height
-                        }
-                    }
-                }
-                        .getOrElse {
+    /**
+     * One bitmap per selected message, its capture slices stacked in order; the share image frames
+     * each message on its own (see renderThreadShareImageBitmap).
+     */
+    private fun stitchThreadShareFragments(fragmentGroups: List<List<String>>): Map<String, Any> {
+        val rows = mutableListOf<Bitmap>()
+        fun recycleRows() = rows.forEach { it.recycle() }
+        for (group in fragmentGroups) {
+            val fragments = mutableListOf<Bitmap>()
+            for (path in group) {
+                val fragment = runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
+                if (fragment == null) {
                     fragments.forEach { it.recycle() }
+                    recycleRows()
                     return mapOf("status" to "failed", "message" to "Unable to capture image")
                 }
-        fragments.forEach { it.recycle() }
-        return saveThreadShareBitmap(stitched, frame = true)
+                fragments += fragment
+            }
+            val row =
+                    if (fragments.size == 1) {
+                        fragments.single()
+                    } else {
+                        val width = fragments.maxOf { it.width }.coerceAtLeast(1)
+                        val height = fragments.sumOf { it.height }.coerceAtLeast(1)
+                        runCatching {
+                            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { output ->
+                                val canvas = Canvas(output)
+                                var top = 0f
+                                fragments.forEach { fragment ->
+                                    canvas.drawBitmap(fragment, 0f, top, null)
+                                    top += fragment.height
+                                }
+                            }
+                        }.also { fragments.forEach { it.recycle() } }
+                                .getOrElse {
+                                    recycleRows()
+                                    return mapOf("status" to "failed", "message" to "Unable to capture image")
+                                }
+                    }
+            rows += row
+        }
+        if (rows.isEmpty()) {
+            return mapOf("status" to "failed", "message" to "Unable to capture image")
+        }
+        return saveThreadShareRows(rows)
     }
 
-    private fun saveThreadShareBitmap(bitmap: Bitmap, frame: Boolean): Map<String, Any> {
-        val exportBitmap =
-                if (frame) {
-                    runCatching { bitmap.withThreadShareChrome() }
-                        .getOrElse {
-                            bitmap.recycle()
-                            return mapOf("status" to "failed", "message" to "Unable to frame image")
-                        }
-                } else {
-                    bitmap
-                }
-        if (frame) {
-            bitmap.recycle()
+    /** Frames [rows] (one per message) as the share image and saves it; recycles [rows]. */
+    private fun saveThreadShareRows(rows: List<Bitmap>): Map<String, Any> {
+        val framed = runCatching { renderThreadShareImageBitmap(appContext, rows) }.getOrNull()
+        rows.forEach { it.recycle() }
+        if (framed == null) {
+            return mapOf("status" to "failed", "message" to "Unable to frame image")
         }
+        return writeThreadShareBitmap(framed, shareImage = true)
+    }
+
+    private fun saveThreadShareBitmap(bitmap: Bitmap, frame: Boolean): Map<String, Any> =
+            if (frame) {
+                // One capture of the whole selection: it is the share image's only row.
+                saveThreadShareRows(listOf(bitmap))
+            } else {
+                writeThreadShareBitmap(bitmap, shareImage = false)
+            }
+
+    /** Writes [exportBitmap] (recycled) to the share cache: a capture slice, or the [shareImage] itself. */
+    private fun writeThreadShareBitmap(exportBitmap: Bitmap, shareImage: Boolean): Map<String, Any> {
         val exportDir = threadShareImageCacheDir()
         if (!exportDir.exists() && !exportDir.mkdirs()) {
             exportBitmap.recycle()
             return mapOf("status" to "failed", "message" to "Storage unavailable")
         }
-        if (frame) {
+        if (shareImage) {
             cleanupThreadShareImageCache(exportDir)
         }
         val file = File(exportDir, "raft-message-share-${System.currentTimeMillis()}-${System.nanoTime()}.png")
@@ -4539,101 +4783,6 @@ internal class RaftBridgeModule(
                 "width" to exportWidth,
                 "height" to exportHeight
         )
-    }
-
-    private fun Bitmap.withThreadShareChrome(): Bitmap {
-        val headerHeight = threadShareChromeHeaderHeight(width)
-        val horizontalInset = (width * 0.048f).roundToInt().coerceIn(26, 38).toFloat()
-        val framed =
-                Bitmap.createBitmap(width, threadShareChromeOutputHeight(width, height), Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(framed)
-        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = Color.WHITE
-        }
-        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 3f
-            color = Color.BLACK
-        }
-        val captionTypeface =
-                raftShareChromeTypeface(appContext, build.raft.app.shared.R.font.space_grotesk_semibold)
-                        ?: Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        val titleTypeface =
-                raftShareChromeTypeface(appContext, build.raft.app.shared.R.font.space_grotesk_bold)
-                        ?: captionTypeface
-        val caption = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(24, 24, 24)
-            textSize = threadShareChromeCaptionTextSize(width)
-            typeface = captionTypeface
-            letterSpacing = 0.045f
-        }
-        canvas.drawRect(0f, 0f, width.toFloat(), framed.height.toFloat(), fill)
-        fill.color = Color.rgb(255, 216, 77)
-        canvas.drawRect(0f, 0f, width.toFloat(), headerHeight.toFloat(), fill)
-        val logo =
-                loadThreadShareLogoBitmap(
-                        maxWidth = (width * 0.36f).roundToInt().coerceIn(190, 300),
-                        maxHeight = (headerHeight - 34).coerceAtLeast(48)
-                )
-        if (logo != null) {
-            val logoTop = ((headerHeight - logo.height) / 2f).coerceAtLeast(0f)
-            canvas.drawBitmap(logo, horizontalInset, logoTop, null)
-            logo.recycle()
-        } else {
-            val fallbackTitle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.BLACK
-                textSize = (width * 0.07f).coerceIn(36f, 48f)
-                typeface = titleTypeface
-            }
-            canvas.drawText("RAFT", horizontalInset, headerHeight.centeredTextBaseline(fallbackTitle), fallbackTitle)
-        }
-        val site = "raft.build"
-        canvas.drawText(
-                site,
-                width - caption.measureText(site) - horizontalInset,
-                headerHeight.centeredTextBaseline(caption),
-                caption
-        )
-        canvas.drawBitmap(this, 0f, headerHeight.toFloat(), null)
-        canvas.drawLine(0f, headerHeight.toFloat(), width.toFloat(), headerHeight.toFloat(), stroke)
-        canvas.drawRect(1.5f, 1.5f, width - 1.5f, framed.height - 1.5f, stroke)
-        return framed
-    }
-
-    private fun loadThreadShareLogoBitmap(maxWidth: Int, maxHeight: Int): Bitmap? =
-            runCatching {
-                appContext.assets.open("lucide/raft-logo.svg").use { input ->
-                    val svg = SVG.getFromInputStream(input)
-                    val aspectRatio =
-                            svg.documentAspectRatio
-                                    .takeIf { it > 0f }
-                                    ?: (svg.documentWidth / svg.documentHeight).takeIf { it > 0f }
-                                    ?: 4.05f
-                    var logoWidth = maxWidth.coerceAtLeast(1)
-                    val logoHeight =
-                            (logoWidth / aspectRatio)
-                                    .roundToInt()
-                                    .coerceAtLeast(1)
-                    if (logoHeight > maxHeight) {
-                        logoWidth = (maxHeight * aspectRatio).roundToInt().coerceAtLeast(1)
-                    }
-                    val finalLogoHeight =
-                            (logoWidth / aspectRatio)
-                                    .roundToInt()
-                                    .coerceAtLeast(1)
-                    svg.setDocumentWidth(logoWidth.toFloat())
-                    svg.setDocumentHeight(finalLogoHeight.toFloat())
-                    val picture = svg.renderToPicture(logoWidth, finalLogoHeight)
-                    Bitmap.createBitmap(logoWidth, finalLogoHeight, Bitmap.Config.ARGB_8888).also { bitmap ->
-                        picture.draw(Canvas(bitmap))
-                    }
-                }
-            }.getOrNull()
-
-    private fun Int.centeredTextBaseline(paint: Paint): Float {
-        val metrics = paint.fontMetrics
-        return this / 2f - (metrics.ascent + metrics.descent) / 2f
     }
 
     private fun saveThreadShareImage(params: String?, callback: RaftBridgeCallback?) {
@@ -5046,9 +5195,7 @@ internal class RaftBridgeModule(
                             )
                     )
                     val intent =
-                            Intent(Intent.ACTION_VIEW, Uri.parse(startResult.data.authorizationUrl)).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
+                            externalUrlIntent(Uri.parse(startResult.data.authorizationUrl), mimeType = null)
                     runCatching {
                                 appContext.startActivity(intent)
                             }
@@ -5063,7 +5210,7 @@ internal class RaftBridgeModule(
                                         } else {
                                             "Unable to open ${provider.socialProviderDisplayName()} account linking"
                                         }
-                                Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
+                                showRaftHostToast(appContext, message)
                                 callback?.invoke(
                                         mapOf(
                                                 "status" to "error",
@@ -6252,7 +6399,7 @@ internal class RaftBridgeModule(
             val shareText = buildHandsFeedbackShareText(ticketId, description, attachmentNames)
             withContext(Dispatchers.Main) {
                 copyText("Hands feedback", shareText)
-                Toast.makeText(appContext, RaftHostStrings.feedbackCopiedMessage(), Toast.LENGTH_LONG).show()
+                showRaftHostToast(appContext, RaftHostStrings.feedbackCopiedMessage(), long = true)
             }
             RaftAppLog.record("SlockDiagnostics", "hands_feedback_submitted ticket=${ticketId.take(8)}")
             mapOf<String, Any>(
@@ -6267,7 +6414,7 @@ internal class RaftBridgeModule(
                     "hands_feedback_submit_failed error=${it.javaClass.simpleName} message=${it.message ?: "-"}"
             )
             withContext(Dispatchers.Main) {
-                Toast.makeText(appContext, RaftHostStrings.feedbackFailedMessage(it.message), Toast.LENGTH_LONG).show()
+                showRaftHostToast(appContext, RaftHostStrings.feedbackFailedMessage(it.message), long = true)
             }
             mapOf<String, Any>(
                     "status" to "error",
@@ -6982,7 +7129,7 @@ internal class RaftBridgeModule(
                     }
             )
         }.onFailure {
-            Toast.makeText(appContext, appContext.getString(R.string.share_sheet_unavailable_toast), Toast.LENGTH_SHORT).show()
+            showRaftHostToast(appContext, appContext.getString(R.string.share_sheet_unavailable_toast))
         }
     }
 
@@ -7004,18 +7151,16 @@ internal class RaftBridgeModule(
         val url = request.optString("url").takeIf { it.isNotBlank() } ?: return null
         val mimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
         val uri = Uri.parse(url)
-        // HostLinkCapability.openUrlInBrowser: VIEW pinned to a browser package, so App Links can't
-        // bring a Raft link back into Raft; with no browser found, the ordinary path below.
-        if (openUrlUsesBrowserPackage(request.optBoolean("browser", false), mimeType, uri.scheme)) {
-            val browser = browserPackage()
-            val opened =
-                    browser != null &&
-                            runCatching { appContext.startActivity(browserViewIntent(uri, browser)) }
-                                    .onFailure { throwable ->
-                                        RaftAppLog.record("SlockOpenUrl", "browserPackage=failed type=${throwable::class.java.simpleName}")
-                                    }
-                                    .isSuccess
-            if (opened) return null
+        // `browser: true` (BridgeModule.openUrl inBrowser): a browser even for a Raft link. Without one,
+        // the shared in-app browser rather than a plain VIEW, which Raft's own App Links route back here.
+        val inBrowser = request.optBoolean("browser", false) && mimeType == null &&
+            uri.scheme?.lowercase() in setOf("http", "https")
+        if (inBrowser && androidExternalBrowserIntent(appContext, uri) == null) {
+            RaftAppLog.record("SlockOpenUrl", "browser=unavailable fallback=in_app_browser")
+            if (!openInAppBrowserFallback(url, mimeType)) {
+                showRaftHostToast(appContext, appContext.getString(R.string.open_link_no_app_toast))
+            }
+            return null
         }
         val viewIntent = externalUrlIntent(uri, mimeType)
         runCatching {
@@ -7025,10 +7170,9 @@ internal class RaftBridgeModule(
                 if (openInAppBrowserFallback(url, mimeType)) {
                     return@onFailure
                 }
-                Toast.makeText(appContext, appContext.getString(R.string.open_link_no_app_toast), Toast.LENGTH_SHORT)
-                        .show()
+                showRaftHostToast(appContext, appContext.getString(R.string.open_link_no_app_toast))
             } else {
-                Toast.makeText(appContext, appContext.getString(R.string.open_link_failed_toast), Toast.LENGTH_SHORT).show()
+                showRaftHostToast(appContext, appContext.getString(R.string.open_link_failed_toast))
             }
         }
         return null
@@ -7056,32 +7200,8 @@ internal class RaftBridgeModule(
     }
 
     /**
-     * The browser to pin a VIEW to: an app that takes `https` with no host (a browser, not an app
-     * whose App Links name hosts), the default one first, never a Raft app
-     * ([selectExternalWebHandlerPackage]). The manifest's `<queries>` lists this probe. Not the
-     * CATEGORY_APP_BROWSER selector: some browsers' launcher activity drops the URL.
-     */
-    private fun browserPackage(): String? {
-        val packageManager = appContext.packageManager
-        val probe = Intent(Intent.ACTION_VIEW, Uri.parse("https://")).addCategory(Intent.CATEGORY_BROWSABLE)
-        val candidates = packageManager.queryIntentActivities(probe, PackageManager.MATCH_ALL).map { it.activityInfo.packageName }
-        val defaultPackage = packageManager.resolveActivity(probe, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
-        return selectExternalWebHandlerPackage(
-                ownPackage = appContext.packageName,
-                defaultPackage = defaultPackage,
-                candidatePackages = candidates
-        )
-    }
-
-    private fun browserViewIntent(uri: Uri, browserPackage: String): Intent =
-            Intent(Intent.ACTION_VIEW, uri)
-                    .addCategory(Intent.CATEGORY_BROWSABLE)
-                    .setPackage(browserPackage)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
-    /**
-     * HTTP(S) links must leave Raft even when Android App Links resolve the same URL back to this
-     * application. Other schemes retain the platform's ordinary implicit-handler behavior.
+     * HTTP(S) links open as the web login does ([androidExternalBrowserIntent]): every open goes to the
+     * same app, and never back into Raft. Other schemes retain the platform's ordinary implicit handler.
      */
     private fun externalUrlIntent(uri: Uri, mimeType: String?): Intent {
         val isWebUrl = mimeType == null && uri.scheme?.lowercase() in setOf("http", "https")
@@ -7100,33 +7220,7 @@ internal class RaftBridgeModule(
         if (!isWebUrl) {
             return implicit
         }
-        // MATCH_DEFAULT_ONLY only lists apps the user picked as defaults; devices without a
-        // default browser (or that never show the disambiguation sheet) report an empty list.
-        // Retry without the flag before giving up on a target package.
-        var candidates =
-                appContext.packageManager.queryIntentActivities(
-                        implicit,
-                        PackageManager.MATCH_DEFAULT_ONLY
-                )
-        if (candidates.isEmpty()) {
-            candidates =
-                    appContext.packageManager.queryIntentActivities(
-                            implicit,
-                            PackageManager.MATCH_ALL
-                    )
-        }
-        val defaultPackage =
-                appContext.packageManager
-                        .resolveActivity(implicit, PackageManager.MATCH_DEFAULT_ONLY)
-                        ?.activityInfo
-                        ?.packageName
-        val selectedPackage =
-                selectExternalWebHandlerPackage(
-                        ownPackage = appContext.packageName,
-                        defaultPackage = defaultPackage,
-                        candidatePackages = candidates.map { it.activityInfo.packageName }
-                ) ?: return implicit
-        return implicit.setPackage(selectedPackage)
+        return androidExternalBrowserIntent(appContext, uri)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) ?: implicit
     }
 
     private fun openAttachment(params: String?, callback: RaftBridgeCallback?) {
@@ -7857,6 +7951,53 @@ internal class RaftBridgeModule(
             source: AndroidAttachmentContentUriSource,
             privateSourceFile: File? = null
     ): AndroidAttachmentOpenResult {
+        val share = request.optBoolean("share", false)
+        val packageArchive = !share && isAndroidPackageArchive(source.displayName, source.mimeType)
+        if (!packageArchive) {
+            // Share and Open with hand receivers a file named after the attachment: WeChat/QQ and
+            // many viewers read the URI's last segment, which for the open cache is the
+            // extension-less hash name (and for a public download a MediaStore row id). The
+            // package installer reads the archive itself, so Install keeps the cache URI.
+            val attachmentId = request.optString("attachmentId").ifBlank { "attachment" }
+            val shareMimeType = androidAttachmentShareMimeType(source.displayName, source.mimeType)
+            val staged =
+                    runCatching {
+                        stageAndroidAttachmentShareFile(
+                                shareRoot = androidAttachmentShareRoot(appContext),
+                                displayName = source.displayName,
+                                mimeType = shareMimeType,
+                                expectedSizeBytes = source.sizeBytes,
+                                linkFrom =
+                                        privateSourceFile.takeIf {
+                                            source.kind == AndroidAttachmentOpenSourceKind.PrivateCache
+                                        }
+                        ) {
+                            appContext.contentResolver.openInputStream(Uri.parse(source.contentUri))
+                                    ?: error("Attachment source is unavailable")
+                        }
+                    }.getOrElse { throwable ->
+                        RaftAppLog.record(
+                                "SlockAttachmentOpen",
+                                "attachmentId=${attachmentId.take(8)} phase=handoff_stage status=failed share=$share source=${source.kind.diagnosticName} type=${throwable::class.java.simpleName}"
+                        )
+                        return AndroidAttachmentOpenResult.storageFailed()
+                    }
+            return launchResolvedAttachment(
+                    request = request,
+                    owner = owner,
+                    source = androidAttachmentShareSource(appContext, staged, shareMimeType),
+                    privateSourceFile = staged
+            )
+        }
+        return launchResolvedAttachment(request, owner, source, privateSourceFile)
+    }
+
+    private fun launchResolvedAttachment(
+            request: JSONObject,
+            owner: AndroidAttachmentOwnerLease,
+            source: AndroidAttachmentContentUriSource,
+            privateSourceFile: File?
+    ): AndroidAttachmentOpenResult {
         val attachmentId = request.optString("attachmentId").ifBlank { "attachment" }
         val startedAt = System.currentTimeMillis()
         val requestedFileName = source.displayName
@@ -8397,21 +8538,13 @@ internal class RaftBridgeModule(
         if (normalized.equals(ANDROID_PACKAGE_ARCHIVE_MIME_TYPE, ignoreCase = true)) {
             return ANDROID_PACKAGE_ARCHIVE_MIME_TYPE
         }
-        if (!normalized.isNullOrBlank()) return normalized
-        val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase(Locale.US)
-        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
-                ?: "application/octet-stream"
+        // A generic server type (application/octet-stream, ...) defers to the file extension.
+        return androidAttachmentShareMimeType(fileName, normalized)
     }
 
     private fun isAndroidPackageArchive(fileName: String, mimeType: String): Boolean =
             mimeType.equals(ANDROID_PACKAGE_ARCHIVE_MIME_TYPE, ignoreCase = true) ||
                     fileName.substringAfterLast('.', missingDelimiterValue = "").equals("apk", ignoreCase = true)
-
-    private fun showToast(message: String) {
-        Handler(Looper.getMainLooper()).post {
-            Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
-        }
-    }
 
     private fun safeUrlForDiagnostics(rawUrl: String): String =
             runCatching {
@@ -8928,11 +9061,6 @@ private fun JSONObject?.toStableStringMap(): Map<String, String> {
     }
     return result
 }
-
-
-/** Bundled font (the TTFs live in :shared `res/font`) for natively drawn share-image chrome. */
-private fun raftShareChromeTypeface(context: Context, fontRes: Int): Typeface? =
-        runCatching { ResourcesCompat.getFont(context, fontRes) }.getOrNull()
 
 /**
  * Drives [RaftBridgeModule.call] the way the Kuikly renderer did: asynchronous calls on the

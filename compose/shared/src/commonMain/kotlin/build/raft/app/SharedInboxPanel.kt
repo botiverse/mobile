@@ -1,6 +1,8 @@
 package build.raft.app
 
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.testTag
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.artifactWebUrl
@@ -8,8 +10,6 @@ import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.base.BridgeModule
-import build.raft.app.components.RaftBrutalBadge
-import build.raft.app.components.RaftBrutalTone
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
@@ -115,6 +115,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import build.raft.app.components.RaftPullToRefreshBox
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.raftHeaderRefreshIndicatorVisible
 import build.raft.app.components.rememberRaftDelayedIndicatorVisible
 import androidx.compose.ui.Alignment
@@ -159,6 +160,8 @@ import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import build.raft.app.data.RaftAgentLounges
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.runningFold
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.delay
@@ -388,6 +391,8 @@ internal fun SharedHomeActivityScreen(
                         .runningFold(initial) { previous, content ->
                             nextActivityConversationListContext(previous, content, serverId)
                         }
+                        // Agent Lounge v0: Lounges known by id rename their rows as they become known.
+                        .combine(RaftAgentLounges.lounges) { context, lounges -> context?.withKnownLounges(lounges[serverId]) }
                         .distinctUntilChanged()
             }
         }
@@ -594,6 +599,16 @@ internal fun SharedHomeActivityScreen(
             activityStore.dispatch(SharedActivityIntent.Refresh)
         }
     }
+    // web: Saved lists the threads followed through a save, so a save or unsave the server accepted
+    // while Saved is shown reloads it (web savedStore `writeRevision`).
+    val savedScopeReloadEdge = remember(activitySummaryServerId) { ActivitySavedScopeReloadEdge() }
+    val savedWriteRevision by sharedStores.homeSavedStateCache.writeRevision.collectAsState()
+    LaunchedEffect(savedScopeReloadEdge, savedWriteRevision) {
+        if (savedScopeReloadEdge.onSavedWrite(savedWriteRevision, latestSelectedFilter)) {
+            bridge.log("shared_activity_saved_scope_reload reason=saved_changed")
+            activityStore.dispatch(SharedActivityIntent.Refresh)
+        }
+    }
     // botiverse/slock #11273: a DM row with an App Bot shows the Bot badge after the name.
     val activityAppBotResolver =
         remember(sharedStores.serverMembersStore, activitySummaryServerId) {
@@ -602,6 +617,9 @@ internal fun SharedHomeActivityScreen(
     CompositionLocalProvider(
         LocalActivityAvatarSource provides activityAvatarSource,
         LocalRaftMemberAppBotResolver provides activityAppBotResolver,
+        // An Artifact row opens the in-app viewer from the Activity tab's child page, whose own
+        // page data has no shell scope (RaftArtifactViewerPage.kt).
+        LocalRaftArtifactOpenStoreScope provides storeScope,
     ) {
     SharedActivityPanelContent(
         state = safeOpenProjectedState,
@@ -983,9 +1001,11 @@ private fun SharedActivityPanelContent(
     // [activityScrollToTopTarget] (mapping unit-tested).
     // One retained scroll state per filter. Explicit calls (not a
     // loop over the experimental LazyListState constructor): the filter
-    // set is a closed enum of four, and this list is index-aligned with
-    // InboxFilter.entries (All/Unread/Mentions/Pinned entry order).
+    // set is a closed enum of six, and this list is index-aligned with
+    // InboxFilter.entries (All/Unread/Mentions/Pinned/Saved/Artifacts entry order).
     val pageListStates = listOf(
+        rememberLazyListState(),
+        rememberLazyListState(),
         rememberLazyListState(),
         rememberLazyListState(),
         rememberLazyListState(),
@@ -1163,6 +1183,8 @@ private fun SharedActivityBodyContent(
                             InboxFilter.Unread -> stringResource(Res.string.inbox_state_no_unread_chats)
                             InboxFilter.All -> stringResource(Res.string.inbox_state_activity_empty)
                             InboxFilter.Pinned -> stringResource(Res.string.inbox_state_no_pinned)
+                            InboxFilter.Saved -> stringResource(Res.string.inbox_state_no_saved)
+                            InboxFilter.Artifacts -> stringResource(Res.string.inbox_state_no_artifacts)
                         },
                     detail = state.selectedFilter.localizedEmptyCopy(),
                     refreshing = state.refreshing,
@@ -1351,7 +1373,7 @@ internal fun SharedActivityFilterBar(
     }
 }
 
-/** The Filter menu's rows: the read filters, then Pinned (a scope over All) after a separator. */
+/** The Filter menu's rows: the read filters, then the scopes over All (Pinned, Saved, Artifacts) after a separator. */
 @Composable
 internal fun ActivityFilterMenuRows(selectedFilter: InboxFilter, onPick: (InboxFilter) -> Unit) {
     InboxFilter.entries.forEach { filter ->
@@ -1366,7 +1388,7 @@ internal fun ActivityFilterMenuRows(selectedFilter: InboxFilter, onPick: (InboxF
 }
 
 @Composable
-private fun SharedActivityList(
+internal fun SharedActivityList(
     active: Boolean,
     snapshot: InboxSnapshot,
     selectedFilter: InboxFilter,
@@ -1496,20 +1518,21 @@ private fun SharedActivityList(
         if (!active) return@LaunchedEffect
         entryTopAnchorOwner.fenceUserScroll(snapshotFlow { listState.isScrollInProgress })
     }
+    // "At the top" is the web's (ThreadsInbox `scrollTop < 50`): within [ActivityNearTopThreshold].
+    val nearTopPx = with(LocalDensity.current) { ActivityNearTopThreshold.roundToPx() }
+    // The day headings' clock, read when a change lands (settleTopEdge's head signature).
+    val headTimeContext by rememberUpdatedState(currentRaftTimeContext(timeContext))
     // The reader reached the top themselves: nothing new is hidden above any more.
-    LaunchedEffect(listState, active) {
+    LaunchedEffect(listState, active, nearTopPx) {
         if (!active) return@LaunchedEffect
-        snapshotFlow {
-            activityListParkedAtTop(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
-        }
+        snapshotFlow { listState.activityNearTop(nearTopPx) }
             .collect { atTop -> if (atTop && newActivityAboveKeys.isNotEmpty()) newActivityAboveKeys = emptySet() }
     }
     fun shouldAnchorTop(pullRefreshOwnsTop: Boolean, genuineTopUpdate: Boolean): Boolean =
         activityShouldAnchorTopOnCanonicalSnapshot(
             entryOwnerArmed = entryTopAnchorOwner.armed,
             pullRefreshOwnsTop = pullRefreshOwnsTop,
-            parkedAtTop =
-                activityListParkedAtTop(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset),
+            parkedAtTop = listState.activityNearTop(nearTopPx),
             scrollInProgress = listState.isScrollInProgress,
             genuineTopUpdate = genuineTopUpdate,
             followParkedTop = !stableOrderEnabled,
@@ -1518,8 +1541,12 @@ private fun SharedActivityList(
     // LazyList cannot first re-anchor on the old head key and no delayed job exists.
     // [anchorTop] decides the ORDER (adopt the canonical rows now); the POSITION follows the root
     // rule in every mode: a list parked at the top stays at the top (keepTopIfParked, b205bd89).
+    // The head compared is the laid-out one (rows and day heading, activityListHeadSignature): LazyList
+    // anchors on the first laid-out key, which with day headings is a heading.
     fun settleTopEdge(previousItems: List<InboxItem>, nextItems: List<InboxItem>, anchorTop: Boolean) {
-        val keptTop = listState.keepTopIfParked(previousItems.firstOrNull()?.key, nextItems.firstOrNull()?.key)
+        fun head(items: List<InboxItem>) =
+            activityListHeadSignature(items.filterNot { it.hasUnopenableInternalJointParentSource() }, headTimeContext)
+        val keptTop = listState.keepTopIfParked(head(previousItems), head(nextItems), nearTopPx)
         if (keptTop) {
             // Feedback zip: where LazyList would have carried the list (the old head's new index).
             val previousHead = previousItems.firstOrNull()?.key
@@ -1805,10 +1832,14 @@ private fun SharedActivityList(
     var swipeOpenRow by remember { mutableStateOf(ActivitySwipeOpenRow()) }
     val swipeOpenRowGeometry = remember { ActivitySwipeOpenRowGeometry() }
     val swipeDoneHiddenKey = swipeDoneUndo.hiddenKey
+    // Day headings (web slock #13030) by the live clock: they turn at the person's midnight.
+    val listTimeContext = currentRaftTimeContext(timeContext)
+    val listToday = listTimeContext?.activityTodayEpochDay()
+    val listOffsetMinutes = listTimeContext?.localOffsetMinutes
     val conversationListEntries =
-        remember(renderedItems, swipeDoneHiddenKey, committedUnfollowKeys) {
+        remember(renderedItems, swipeDoneHiddenKey, committedUnfollowKeys, listToday, listOffsetMinutes) {
             val listed = activitySwipeListedItems(renderedItems, swipeDoneHiddenKey, committedUnfollowKeys)
-            activityConversationListEntries(listed)
+            activityConversationListEntries(listed, listTimeContext)
         }
     // LazyColumn key order as laid out, for the pill.
     val lazyItemKeys =
@@ -2086,9 +2117,11 @@ private fun SharedActivityList(
                     // TODO(dark-mode): these rows paint with RaftTheme.colors (foreground, lineHairline, infoSoft)
                     // over the panel's fixed RaftColor.SurfaceWhite background; migrate the panel surface to a
                     // theme token with the rest of Activity's dark-mode pass.
-                    items(items = conversationListEntries, key = { entry -> entry.key }) { entry ->
+                    conversationListEntries.forEach { entry ->
                         when (entry) {
-                            is ActivityConversationListEntry.Row -> {
+                            // On the panel's own surface, so no row shows through the stuck heading.
+                            is ActivityConversationListEntry.DayHeading -> activityDayHeadingItem(entry, RaftColor.SurfaceWhite)
+                            is ActivityConversationListEntry.Row -> item(key = entry.key, contentType = "activity_row") {
                                 val item = entry.item
                                 val model =
                                     remember(item, conversationList, selectedFilter, senderProfiles, dmPeerNames, activityTaskStatusBadgesEnabled) {
@@ -2190,7 +2223,7 @@ private fun SharedActivityList(
                     revealRequest += 1
                     savePresentation()
                 },
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp).testTag(ActivityNewUpdatesPillTag),
             )
         } else if (newActivityAboveCount > 0) {
             // Task #47: newer rows landed above a reader who had already scrolled;
@@ -2205,7 +2238,7 @@ private fun SharedActivityList(
                     newActivityAboveKeys = emptySet()
                     revealRequest += 1
                 },
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp).testTag(ActivityNewUpdatesPillTag),
             )
         }
         swipeDoneUndo.pending?.let { pending ->
@@ -2648,12 +2681,12 @@ internal fun SharedActivityFooterBadge(
     modifier: Modifier = Modifier
 ) {
     val visual = slot.badgeVisual(taskStatus)
-    RaftBrutalBadge(
-        label = label,
+    RaftBadge(
+        text = label,
         modifier = modifier,
-        tone = visual.tone,
-        uppercase = false,
-        leadingIcon = visual.leadingIcon
+        appearance = RaftBadgeAppearance.Soft,
+        variant = visual.variant,
+        icon = visual.leadingIcon?.let { icon -> { RaftSlotIcon(icon) } }
     )
 }
 
@@ -2768,16 +2801,21 @@ private fun InboxFilter.localizedLabel(): String =
             InboxFilter.Unread -> Res.string.activity_filter_unread
             InboxFilter.Mentions -> Res.string.activity_filter_mentions
             InboxFilter.Pinned -> Res.string.activity_filter_pinned
+            InboxFilter.Saved -> Res.string.activity_filter_saved
+            InboxFilter.Artifacts -> Res.string.activity_filter_artifacts
         }
     )
 
-/** web inbox filters' icons, shown alone when the four labels don't fit (`in-data-icons-only:block`). */
+/** web inbox filters' icons, shown alone when the labels don't fit (`in-data-icons-only:block`). */
 internal fun InboxFilter.iconName(): RaftLucideIconName =
     when (this) {
         InboxFilter.All -> RaftLucideIconName.Inbox
         InboxFilter.Unread -> RaftLucideIconName.CircleDot
         InboxFilter.Mentions -> RaftLucideIconName.AtSign
         InboxFilter.Pinned -> RaftLucideIconName.Pin
+        InboxFilter.Saved -> RaftLucideIconName.Bookmark
+        // web raft-ui `ArtifactIcon` (object-icons.tsx), drawn path for path.
+        InboxFilter.Artifacts -> RaftLucideIconName.Artifact
     }
 
 private fun InboxFilter.emptyCopy(): String =
@@ -2786,6 +2824,8 @@ private fun InboxFilter.emptyCopy(): String =
         InboxFilter.Unread -> "No unread conversations."
         InboxFilter.Mentions -> "No mentions yet."
         InboxFilter.Pinned -> "No pinned conversations."
+        InboxFilter.Saved -> "No saved threads."
+        InboxFilter.Artifacts -> "No Artifacts here."
     }
 
 @Composable
@@ -2796,6 +2836,8 @@ private fun InboxFilter.localizedEmptyCopy(): String =
             InboxFilter.Unread -> Res.string.inbox_empty_unread_detail
             InboxFilter.Mentions -> Res.string.inbox_empty_mentions_detail
             InboxFilter.Pinned -> Res.string.inbox_empty_pinned_detail
+            InboxFilter.Saved -> Res.string.inbox_empty_saved_detail
+            InboxFilter.Artifacts -> Res.string.inbox_empty_artifacts_detail
         }
     )
 
@@ -2819,15 +2861,17 @@ internal fun InboxItem.channelLabel(dmPeerNames: Map<String, String> = emptyMap(
             if (parentChannelKind == ConversationKind.DirectMessage) {
                 "@${dmPeerLabelOrFallback(dmPeerNames)}"
             } else {
-                "#${(parentChannelName ?: channelName).ifBlank { channelId.value }}"
+                agentLoungeLabelOrNull((parentChannelId ?: channelId).value)
+                    ?: "#${(parentChannelName ?: channelName).ifBlank { channelId.value }}"
             }
         InboxItemKind.MentionAction ->
             if (channelKind == ConversationKind.DirectMessage) {
                 "@${channelName.ifBlank { channelId.value }}"
             } else {
-                "#${channelName.ifBlank { channelId.value }}"
+                agentLoungeLabelOrNull(channelId.value) ?: "#${channelName.ifBlank { channelId.value }}"
             }
-        InboxItemKind.Channel, InboxItemKind.System -> "#${channelName.ifBlank { channelId.value }}"
+        InboxItemKind.Channel, InboxItemKind.System ->
+            agentLoungeLabelOrNull(channelId.value) ?: "#${channelName.ifBlank { channelId.value }}"
     }
 
 /**
@@ -2962,7 +3006,7 @@ internal enum class SharedActivityFooterSlot {
 }
 
 internal data class SharedActivityFooterBadgeVisual(
-    val tone: RaftBrutalTone,
+    val variant: RaftBadgeVariant,
     val leadingIcon: RaftLucideIconName? = null
 )
 
@@ -2971,25 +3015,27 @@ internal fun SharedActivityFooterSlot.badgeVisual(taskStatus: TaskStatus? = null
         SharedActivityFooterSlot.Task -> {
             val status = taskStatus ?: TaskStatus.Todo
             val statusMeta = status.sharedTaskStatusChipMeta()
-            val tone =
+            val variant =
                 when (status) {
-                    TaskStatus.Todo -> RaftBrutalTone.Orange
-                    TaskStatus.InProgress -> RaftBrutalTone.Cyan
-                    TaskStatus.InReview -> RaftBrutalTone.Lavender
-                    TaskStatus.Done -> RaftBrutalTone.Lime
-                    TaskStatus.Closed -> RaftBrutalTone.Stone
+                    // Backlog has no hue; an Unknown status reads neutral too.
+                    TaskStatus.Backlog, TaskStatus.Unknown -> RaftBadgeVariant.Default
+                    TaskStatus.Todo -> RaftBadgeVariant.Warning
+                    TaskStatus.InProgress -> RaftBadgeVariant.Information
+                    TaskStatus.InReview -> RaftBadgeVariant.Information
+                    TaskStatus.Done -> RaftBadgeVariant.Success
+                    TaskStatus.Closed -> RaftBadgeVariant.Muted
                 }
             SharedActivityFooterBadgeVisual(
-                tone = tone,
+                variant = variant,
                 leadingIcon = statusMeta.icon
             )
         }
-        SharedActivityFooterSlot.Replies -> SharedActivityFooterBadgeVisual(RaftBrutalTone.White)
-        SharedActivityFooterSlot.Mention -> SharedActivityFooterBadgeVisual(RaftBrutalTone.Yellow, RaftLucideIconName.AtSign)
-        SharedActivityFooterSlot.New -> SharedActivityFooterBadgeVisual(RaftBrutalTone.Pink)
+        SharedActivityFooterSlot.Replies -> SharedActivityFooterBadgeVisual(RaftBadgeVariant.Default)
+        SharedActivityFooterSlot.Mention -> SharedActivityFooterBadgeVisual(RaftBadgeVariant.Primary, RaftLucideIconName.AtSign)
+        SharedActivityFooterSlot.New -> SharedActivityFooterBadgeVisual(RaftBadgeVariant.Accent)
         SharedActivityFooterSlot.Unfollowed ->
-            SharedActivityFooterBadgeVisual(RaftBrutalTone.Stone, RaftLucideIconName.BellOff)
-        SharedActivityFooterSlot.Draft -> SharedActivityFooterBadgeVisual(RaftBrutalTone.White, RaftLucideIconName.Pencil)
+            SharedActivityFooterBadgeVisual(RaftBadgeVariant.Muted, RaftLucideIconName.BellOff)
+        SharedActivityFooterSlot.Draft -> SharedActivityFooterBadgeVisual(RaftBadgeVariant.Default, RaftLucideIconName.Pencil)
     }
 
 internal fun activityShouldRequestLoadMore(
@@ -3019,7 +3065,7 @@ internal const val ACTIVITY_LOAD_MORE_ROW_KEY = "activity_load_more"
 
 /**
  * True only when at least one activity row is visible and none of the visible
- * rows still exists. The load-more footer is not an activity row, and an empty
+ * rows still exists. The load-more footer and the day headings are not activity rows, and an empty
  * visible set is a transient layout state; neither is evidence that the rows
  * the reader was looking at were removed.
  */
@@ -3029,7 +3075,7 @@ internal fun activityListShouldRecoverVisibleContent(
     currentItemKeys: List<String>
 ): Boolean {
     if (firstVisibleItemIndex <= 0 || currentItemKeys.isEmpty()) return false
-    val visibleRowKeys = visibleItemKeys.filter { it != ACTIVITY_LOAD_MORE_ROW_KEY }
+    val visibleRowKeys = visibleItemKeys.filter { it != ACTIVITY_LOAD_MORE_ROW_KEY && !it.startsWith(ACTIVITY_DAY_GROUP_KEY_PREFIX) }
     if (visibleRowKeys.isEmpty()) return false
     val currentKeys = currentItemKeys.toSet()
     return visibleRowKeys.none(currentKeys::contains)

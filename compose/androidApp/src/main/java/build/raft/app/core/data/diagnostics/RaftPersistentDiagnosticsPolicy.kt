@@ -19,6 +19,16 @@ internal object RaftPersistentDiagnosticsPolicy {
             contains("slock_networkkmm_execute_finish") ||
             contains("slock_networkkmm_multipart_start") ||
             contains("slock_networkkmm_multipart_finish") ||
+            // The Ktor executor's per-request pair (KtorRaftHttpExecutor). The networkkmm names above
+            // predate it, so every request start/finish (about 3 per second while a thread is open,
+            // 6 of the 28 MB in Hands fb-52cc0499) went to the ring. A failed, slow, cancelled or
+            // non-2xx/3xx request, and anything auth, still persists through isNoteworthyNetworkMessage.
+            contains("slock_http_execute_start") ||
+            contains("slock_http_execute_finish") ||
+            contains("slock_http_multipart_start") ||
+            contains("slock_http_multipart_finish") ||
+            contains("slock_http_binary_start") ||
+            contains("slock_http_binary_finish") ||
             contains("endpoint category=") ||
             contains("network_prewarm")
 
@@ -40,6 +50,7 @@ internal object RaftPersistentDiagnosticsPolicy {
             contains(" result=network_error") ||
             hasFailedHttpStatus() ||
             hasTransportErrorCode() ||
+            hasNoHttpResponse() ||
             hasSlowDuration()
 
     private fun String.isAuthRelated(): Boolean =
@@ -56,6 +67,9 @@ internal object RaftPersistentDiagnosticsPolicy {
             match.groupValues[1].toIntOrNull()?.let { it !in 200..399 } == true
         }
 
+    /** `code=0`: the executor got no HTTP response (transport failure, retirement or caller cancel). */
+    private fun String.hasNoHttpResponse(): Boolean = NoHttpResponseCode.containsMatchIn(this)
+
     private fun String.hasTransportErrorCode(): Boolean =
         TransportErrorCode.findAll(this).any { match ->
             match.groupValues[1].toIntOrNull()?.let { it != 0 } == true
@@ -67,6 +81,7 @@ internal object RaftPersistentDiagnosticsPolicy {
         }
 
     private val HttpStatus = Regex("""(?:^|[\s,])(?:code|status|http)\s*[:=]\s*(\d{3})(?:[\s,]|$)""")
+    private val NoHttpResponseCode = Regex("""(?:^|\s)code=0(?:\s|$)""")
     private val TransportErrorCode = Regex("""(?:^|[\s,])errcode\s*[:=]\s*(-?\d+)(?:[\s,]|$)""")
     private val Duration =
         Regex("""(?:durationms|elapsedms|totalelapsedms|totalms)\s*[:=]\s*(\d+)(?:\.\d+)?""")

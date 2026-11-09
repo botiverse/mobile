@@ -614,14 +614,60 @@ fun parseSharedSettingsServerUsage(bodyText: String): SettingsServerUsageSnapsho
     )
 }.getOrNull()
 
+// `GET /billing/subscription` (botiverse/slock v1.21.44 billingService.getBillingSummary).
 @Serializable
 private data class WireSettingsBillingSubscription(
     val plan: String? = null,
     val displayName: String? = null,
+    val source: String? = null,
+    val appsumoBillingReserved: Boolean = false,
+    val appsumo: WireSettingsBillingAppSumo? = null,
+    val capacity: WireSettingsBillingCapacity? = null,
+    val usage: WireSettingsBillingUsage? = null,
+    val provisioned: WireSettingsBillingProvisioned? = null,
+    val fileUploadQuota: WireSettingsFileUploadQuota? = null,
+    val price: WireSettingsBillingPrice? = null,
     val subscription: WireSettingsSubscription? = null,
     val stripeConfigured: Boolean,
     val permissions: WireSettingsBillingPermissions = WireSettingsBillingPermissions()
 )
+
+@Serializable
+private data class WireSettingsBillingAppSumo(
+    val tier: Int = 0,
+    val maxHumans: Int = 0,
+    val maxAgents: Int = 0,
+    val maxHostedJointChannels: Int = 0,
+    val hostedJointChannels: Int? = null,
+)
+
+@Serializable
+private data class WireSettingsBillingCapacity(val maxUniversalSeats: Double? = null)
+
+@Serializable
+private data class WireSettingsBillingUsage(
+    val humans: Int = 0,
+    val agents: Int = 0,
+    val universalSeats: Double = 0.0,
+)
+
+@Serializable
+private data class WireSettingsBillingProvisioned(
+    val humans: Int = 0,
+    val agents: Int = 0,
+    val proPackQuantity: Int = 0,
+)
+
+@Serializable
+private data class WireSettingsFileUploadQuota(
+    val month: String? = null,
+    val limited: Boolean = false,
+    val limitBytes: Long = -1,
+    val remainingBytes: Long = -1,
+)
+
+@Serializable
+private data class WireSettingsBillingPrice(val billingInterval: String? = null)
 
 @Serializable
 private data class WireSettingsSubscription(
@@ -647,7 +693,34 @@ fun parseSharedSettingsBillingSubscription(bodyText: String): SettingsBillingSub
         stripeConfigured = billing.stripeConfigured,
         canManageBilling = billing.permissions.canManageBilling,
         displayName = billing.displayName?.takeIf { it.isNotBlank() },
-        effectivePlan = billing.plan?.takeIf { it.isNotBlank() }
+        effectivePlan = billing.plan?.takeIf { it.isNotBlank() },
+        source = billing.source?.takeIf { it.isNotBlank() },
+        appsumoBillingReserved = billing.appsumoBillingReserved,
+        appsumo = billing.appsumo?.takeIf { it.tier > 0 }?.let {
+            SettingsBillingAppSumoSnapshot(
+                tier = it.tier,
+                maxHumans = it.maxHumans,
+                maxAgents = it.maxAgents,
+                maxHostedJointChannels = it.maxHostedJointChannels,
+                hostedJointChannels = it.hostedJointChannels ?: 0,
+            )
+        },
+        maxUniversalSeats = billing.capacity?.maxUniversalSeats,
+        usage = billing.usage?.let {
+            SettingsBillingSeatUsageSnapshot(humans = it.humans, agents = it.agents, universalSeats = it.universalSeats)
+        },
+        provisionedHumans = billing.provisioned?.humans ?: 0,
+        provisionedAgents = billing.provisioned?.agents ?: 0,
+        proPackQuantity = billing.provisioned?.proPackQuantity ?: 0,
+        fileUploadQuota = billing.fileUploadQuota?.let {
+            SettingsBillingFileUploadQuotaSnapshot(
+                month = it.month?.takeIf { month -> month.isNotBlank() },
+                limited = it.limited,
+                limitBytes = it.limitBytes,
+                remainingBytes = it.remainingBytes,
+            )
+        },
+        priceBillingInterval = billing.price?.billingInterval?.takeIf { it.isNotBlank() },
     )
 }.getOrNull()
 

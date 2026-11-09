@@ -1,6 +1,7 @@
 package build.raft.app.core.data.diagnostics
 
 import build.raft.app.BuildConfig
+import build.raft.app.RaftVerboseDiagnostics
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Caller-facing log facade. Applies verbosity gates before delegating to Android local diagnostics. */
@@ -11,8 +12,11 @@ object RaftAppLog {
         verboseLoggingEnabled.set(BuildConfig.DEBUG || enabled)
     }
 
+    /** Debug builds, or Settings > Developer > Verbose diagnostics. */
+    private fun verbose(): Boolean = verboseLoggingEnabled.get() || RaftVerboseDiagnostics.enabled
+
     fun d(tag: String, message: String) {
-        if (!verboseLoggingEnabled.get()) return
+        if (!verbose()) return
         RaftAndroidLocalDiagnostics.recordLog(
             level = "debug",
             tag = tag,
@@ -25,7 +29,7 @@ object RaftAppLog {
             level = "debug",
             tag = tag,
             message = message,
-            includeNonCritical = verboseLoggingEnabled.get(),
+            includeNonCritical = verbose(),
         )
     }
 
@@ -35,7 +39,7 @@ object RaftAppLog {
     }
 
     fun i(tag: String, message: String) {
-        if (!verboseLoggingEnabled.get()) return
+        if (!verbose()) return
         RaftAndroidLocalDiagnostics.recordLog("info", tag, message)
     }
 

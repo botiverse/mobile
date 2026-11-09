@@ -16,6 +16,7 @@ class RaftAppDestinationsTest {
                 RaftAppDestination.Activity to "activity",
                 RaftAppDestination.Tasks to "tasks",
                 RaftAppDestination.Search to "search",
+                RaftAppDestination.Artifacts to "artifacts",
                 RaftAppDestination.Members to "members",
                 RaftAppDestination.Computers to "computers",
                 RaftAppDestination.Apps to "apps",
@@ -30,13 +31,13 @@ class RaftAppDestinationsTest {
 
     @Test
     fun thePhoneBarKeepsTodaysTabsAndIcons() {
-        // The phone bar must not change: keys, order and icons as before the shared list.
+        // Keys and order as before the shared list; icons as the web's MobileNav (House, ListTodo).
         assertEquals(listOf("home", "activity", "tasks", AppShellSearchTabKey, "more"), AppShellPhoneBottomBarKeys)
         assertEquals(
             listOf(
                 RaftLucideIconName.House,
                 RaftLucideIconName.Activity,
-                RaftLucideIconName.SquareCheckBig,
+                RaftLucideIconName.ListTodo,
                 RaftLucideIconName.Search,
                 RaftLucideIconName.Ellipsis,
             ),
@@ -52,7 +53,7 @@ class RaftAppDestinationsTest {
         assertEquals(RaftNavPresentation.PhoneBar, raftNavPresentation(navRailActive = false))
         assertEquals(RaftNavPresentation.Rail, raftNavPresentation(navRailActive = true))
         assertEquals(
-            listOf("home", "activity", "tasks", "members", "computers", "apps"),
+            listOf("home", "activity", "tasks", "artifacts", "members", "computers", "apps"),
             RaftNavPresentation.Rail.destinations.map { it.id },
         )
         assertEquals(listOf("help", "settings"), RaftNavPresentation.Rail.footer.map { it.id })
@@ -81,15 +82,20 @@ class RaftAppDestinationsTest {
     @Test
     fun routesSayWhatATapDoes() {
         assertEquals(
-            setOf(RaftAppDestination.Computers, RaftAppDestination.Apps),
+            setOf(RaftAppDestination.Artifacts, RaftAppDestination.Computers, RaftAppDestination.Apps),
             RaftAppDestination.entries.filter { it.route == RaftNavRoute.Page }.toSet(),
         )
         assertEquals(RaftNavRoute.Menu, RaftAppDestination.Help.route)
         assertEquals(RaftNavRoute.ServerPanel, RaftAppDestination.Server.route)
-        // A page entry is never selected, a menu only while open.
+        // A page entry is selected only while it is the selection (the wide rail's inline page,
+        // artin 11-01), a menu only while open.
         val items =
-            raftNavItems(RaftNavPresentation.Rail, listOf("computers", "help"), selectedKey = "computers", labelFor = { it }, menuOpen = true)
+            raftNavItems(RaftNavPresentation.Rail, listOf("computers", "help"), selectedKey = "home", labelFor = { it }, menuOpen = true)
         assertEquals(listOf(false, true), items.map { it.selected })
+        assertEquals(
+            listOf(true, false),
+            raftNavItems(RaftNavPresentation.Rail, listOf("computers", "help"), selectedKey = "computers", labelFor = { it }).map { it.selected },
+        )
         assertTrue(items.none { it.attentionDot })
     }
 }

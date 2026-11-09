@@ -10,12 +10,26 @@ class RaftResourceLocaleTest {
     private val english = RaftResourceLocale("en", "")
     private val japanese = RaftResourceLocale("ja", "")
     private val simplifiedChinese = RaftResourceLocale("zh", "CN")
+    private val traditionalChinese = RaftResourceLocale("zh", "TW")
+    private val spanish = RaftResourceLocale("es", "")
+    private val brazilianPortuguese = RaftResourceLocale("pt", "BR")
+    private val korean = RaftResourceLocale("ko", "")
+    private val russian = RaftResourceLocale("ru", "")
 
     private fun system(vararg tags: String) = raftResourceLocale(StringDesc.LocaleType.System, tags.toList())
 
     @Test
     fun explicitAppLanguagesPickTheirCatalog() {
-        listOf("en" to english, "ja" to japanese, "zh-CN" to simplifiedChinese).forEach { (tag, expected) ->
+        listOf(
+            "en" to english,
+            "ja" to japanese,
+            "zh-CN" to simplifiedChinese,
+            "zh-TW" to traditionalChinese,
+            "es" to spanish,
+            "pt-BR" to brazilianPortuguese,
+            "ko" to korean,
+            "ru" to russian,
+        ).forEach { (tag, expected) ->
             assertEquals(expected, raftResourceLocale(StringDesc.LocaleType.Custom(tag), listOf("fr-FR")), tag)
         }
     }
@@ -34,13 +48,25 @@ class RaftResourceLocaleTest {
         ).forEach { (tags, expected) -> assertEquals(expected, system(*tags.toTypedArray()), "$tags") }
     }
 
+    /** The web's `matchDisplayLocale`: script decides Chinese, the region (or none) the rest. */
     @Test
-    fun traditionalChineseIsSkippedLikeAnyUnsupportedLanguage() {
+    fun theFourLaterLanguagesMatchLikeTheWeb() {
         mapOf(
-            listOf("zh-Hant-TW") to english,
-            listOf("zh-TW") to english,
-            listOf("zh-HK", "ja-JP") to japanese,
-            listOf("zh-Hant", "zh-Hans") to simplifiedChinese,
+            listOf("zh-Hant-TW") to traditionalChinese,
+            listOf("zh-TW") to traditionalChinese,
+            listOf("zh-HK", "ja-JP") to traditionalChinese,
+            listOf("zh-MO") to traditionalChinese,
+            listOf("zh-Hant", "zh-Hans") to traditionalChinese,
+            listOf("zh-Hans-TW") to simplifiedChinese,
+            listOf("es-MX") to spanish,
+            listOf("es_ES") to spanish,
+            listOf("pt-BR") to brazilianPortuguese,
+            listOf("pt-PT") to brazilianPortuguese,
+            listOf("ko-KR") to korean,
+            listOf("ru-RU") to russian,
+            listOf("ru") to russian,
+            listOf("fr-FR", "ru-RU", "ja-JP") to russian,
+            listOf("fr-FR", "ko-KR", "ja-JP") to korean,
         ).forEach { (tags, expected) -> assertEquals(expected, system(*tags.toTypedArray()), "$tags") }
     }
 }

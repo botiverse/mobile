@@ -1,6 +1,10 @@
 package build.raft.app.components
 
 import androidx.compose.runtime.MonotonicFrameClock
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.unit.Density
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -352,5 +356,32 @@ class RaftPullToRefreshControllerTest {
         c.onPullDown(pullFor(20f))
         c.onRelease(0f)
         assertEquals(2, ignored.size)
+    }
+
+    @Test
+    fun aWheelOrTrackpadScrollIsAPointerAndAFingerIsNot() {
+        assertTrue(raftPullToRefreshPointerScrolling(false, PointerEventType.Scroll, PointerType.Mouse))
+        assertTrue(raftPullToRefreshPointerScrolling(false, PointerEventType.Scroll, PointerType.Unknown))
+        assertTrue(raftPullToRefreshPointerScrolling(false, PointerEventType.Move, PointerType.Mouse))
+        assertFalse(raftPullToRefreshPointerScrolling(true, PointerEventType.Press, PointerType.Touch), "a finger goes down")
+        assertFalse(raftPullToRefreshPointerScrolling(true, PointerEventType.Press, PointerType.Stylus))
+        // A finger moving or lifting keeps what its press decided; so does anything else.
+        assertTrue(raftPullToRefreshPointerScrolling(true, PointerEventType.Move, PointerType.Touch))
+        assertFalse(raftPullToRefreshPointerScrolling(false, PointerEventType.Release, PointerType.Touch))
+    }
+
+    @Test
+    fun aPointerScrollPastTheTopNeitherPullsNorOverScrolls() = runTest {
+        val c = controller(RaftPullToRefreshStyle.Cupertino)
+        c.pointerScrolling = true
+        val consumed =
+            c.nestedScrollConnection.onPostScroll(Offset.Zero, Offset(0f, 40f), NestedScrollSource.UserInput)
+        assertEquals(Offset(0f, 40f), consumed, "spent here, so the list's overscroll gets nothing")
+        assertEquals(RaftPullToRefreshPhase.Idle, c.phase)
+        assertEquals(0f, c.contentOffset)
+        // A finger on the same list still pulls.
+        c.pointerScrolling = false
+        c.nestedScrollConnection.onPostScroll(Offset.Zero, Offset(0f, 40f), NestedScrollSource.UserInput)
+        assertEquals(RaftPullToRefreshPhase.Pulling, c.phase)
     }
 }

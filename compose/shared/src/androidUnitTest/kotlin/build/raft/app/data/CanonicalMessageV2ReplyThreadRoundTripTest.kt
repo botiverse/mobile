@@ -58,6 +58,7 @@ class CanonicalMessageV2ReplyThreadRoundTripTest {
                 30,
                 parent,
                 null,
+                pagingWindowFor(ThreadDurablePageDirection.Newer, 70, replyPageArray(80), scopeId = "thread-1"),
             ) { true }
             assertEquals(
                 listOf(50L, 60L, 70L, 80L),
@@ -92,7 +93,7 @@ class CanonicalMessageV2ReplyThreadRoundTripTest {
             )
             assertEquals(
                 "canonical_v2_context_page server=server-1 scope=thread-1 scopeKind=thread anchor=r40 outcome=committed " +
-                    "reason=window_extended_older facts=2",
+                    "reason=head_extended facts=3",
                 rig.logs.last(),
             )
         }

@@ -7,7 +7,8 @@ import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
-import build.raft.app.data.artifactMessageLinkTargets
+import build.raft.app.links.planRaftMessageLinks
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -62,7 +63,7 @@ class ThreadArtifactMessageRefsTest {
             "First https://app.raft.build/artifacts/$b then https://app.raft.build/artifacts/$a/v/2, " +
                 "hidden https://app.raft.build/artifacts/$c and https://app.raft.build/artifacts/pt_failed " +
                 "and https://app.raft.build/artifacts/$b again"
-        val targets = artifactMessageLinkTargets(content, hosts)
+        val targets = planRaftMessageLinks(content, hosts).objectTargets
         assertEquals(listOf(b, "$a;version=2", c, "pt_failed"), targets.map { it.key }, "each reference once, in order")
         val pinned = summary(version = 2, pinned = true)
         val view =
@@ -141,5 +142,23 @@ class ThreadArtifactMessageRefsTest {
         assertEquals("1000" to 1, artifactSizeValue(1_023_999))
         assertEquals("2.5" to 2, artifactSizeValue(2_621_440))
         assertEquals("1.0" to 2, artifactSizeValue(1024 * 1024))
+    }
+
+    @Test
+    fun aPhoneWidthWindowShowsThePhoneScreenshot() {
+        // web PHONE_QUERY `(max-width: 767px)`.
+        assertEquals(true, artifactScreenshotPhoneLayout(390.dp))
+        assertEquals(true, artifactScreenshotPhoneLayout(767.dp))
+        assertEquals(false, artifactScreenshotPhoneLayout(768.dp))
+        assertEquals(false, artifactScreenshotPhoneLayout(1024.dp))
+    }
+
+    @Test
+    fun theScreenshotIsSixteenByTenAtMostTheMaxHeight() {
+        assertEquals(192f, ArtifactCardScreenshotMaxHeight.value)
+        assertEquals(100, artifactCardScreenshotHeightPx(widthPx = 160, maxHeightPx = 576))
+        assertEquals(500, artifactCardScreenshotHeightPx(widthPx = 800, maxHeightPx = 576))
+        // Wider than 16:10 at the max height: cut to it (cover, top-aligned).
+        assertEquals(576, artifactCardScreenshotHeightPx(widthPx = 1320, maxHeightPx = 576))
     }
 }

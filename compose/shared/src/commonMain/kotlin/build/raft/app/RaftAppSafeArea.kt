@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.raftTrackPointerInput
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -9,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
@@ -224,6 +226,17 @@ private fun raftHostWindowIdEnsuringObserver(): String {
 }
 
 /**
+ * PROTOTYPE (native nav bar): the host's live top inset even while the status bar is hidden
+ * (landscape iPhone), where it is the host bar's height; null without a live host snapshot.
+ */
+@Composable
+internal fun raftNativeNavBarLiveTop(): Dp? {
+    val windowId = raftHostWindowIdEnsuringObserver()
+    val live = RaftHostWindowInsets.current(windowId) ?: return null
+    return resolveRaftLiveTopSafeArea(live, LocalDensity.current.density)
+}
+
+/**
  * The top inset a page header keeps: the host's top safe area, and at least
  * [RaftSideColumnTopInset] while a system side column replaces the top band (iPhone Duo held
  * sideways: the camera sits in the column, so the safe area has no top and a header would start
@@ -231,6 +244,25 @@ private fun raftHostWindowIdEnsuringObserver(): String {
  */
 @Composable
 internal fun raftTopSafeAreaPadding(): Dp {
+    if (LocalRaftTopSafeAreaConsumed.current) return 0.dp
+    return raftWindowTopSafeAreaPadding()
+}
+
+/**
+ * True inside the wide shell's content, under its top bar (RaftAppShellSurface): the bar already
+ * clears the status bar, so a page there (a list, a right-pane detail: Members, Settings, Tasks,
+ * Computers, Activity) keeps no top safe area of its own. A [Modal] resets it: it is a
+ * full-window layer again.
+ */
+internal val LocalRaftTopSafeAreaConsumed = staticCompositionLocalOf { false }
+
+/**
+ * The window's top safe area, whatever is above the caller: for layers that cover the whole window
+ * (a [Modal]'s content read before it rehosts, a fullscreen viewer) and for the shell itself.
+ * Page content uses [raftTopSafeAreaPadding].
+ */
+@Composable
+internal fun raftWindowTopSafeAreaPadding(): Dp {
     val host = raftHostTopSafeAreaPadding()
     return if (LocalRaftSideColumnPosture.current.sideColumn) maxOf(host, RaftSideColumnTopInset) else host
 }
@@ -247,8 +279,12 @@ private fun raftHostTopSafeAreaPadding(): Dp {
     // When the host hides the status bar (immersive / fullscreen), the reported
     // bar height would reserve a strip of dead space; keep a small fixed
     // padding instead so page headers are not flush against the top edge.
+    // A Mac has no status bar (raftHostStatusBarHidden): it takes the live inset, like desktop.
     val statusBarHidden =
-        live?.statusBarHidden ?: params.optBoolean(KEY_STATUS_BAR_HIDDEN, false)
+        raftHostStatusBarHidden(
+            reported = live?.statusBarHidden ?: params.optBoolean(KEY_STATUS_BAR_HIDDEN, false),
+            onMac = raftPlatformIsiOSAppOnMac(),
+        )
     if (statusBarHidden) return RaftAppSpacing.Md
     // A live host snapshot is authoritative (it replaces, so 0 means 0), except that a
     // sheet-presented page keeps its header off the sheet's top edge. The renderer-native and
@@ -405,7 +441,9 @@ internal fun RaftHorizontalSafeAreaShell(
     val padding = if (windowRoot) required else RaftHorizontalSafeArea.Zero
     val paddingValues = PaddingValues.Absolute(left = padding.left, right = padding.right)
     // Always the same node, whatever the insets: a rotation must not reset the page's state.
-    Box(Modifier.fillMaxSize().padding(paddingValues).consumeWindowInsets(paddingValues)) {
+    // Every page's root also tells the design system which input is in use (a finger, or a mouse
+    // or trackpad), which picks the control metrics.
+    Box(Modifier.fillMaxSize().raftTrackPointerInput().padding(paddingValues).consumeWindowInsets(paddingValues)) {
         CompositionLocalProvider(
             LocalRaftWindowHorizontalSafeArea provides window,
             LocalRaftHorizontalSafeAreaBleed provides padding,

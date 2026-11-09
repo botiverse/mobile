@@ -30,6 +30,12 @@ private data class PersistedSyncCursor(
     val accountId: String,
     val serverId: String,
     val cursor: String,
+    /**
+     * Consecutive failed pulls (network, 5xx, timeout) on [cursor]. Stored with the cursor so an
+     * app restart does not make every failure the first one (#proj-mobile:#112). A new cursor
+     * starts at 0; documents written before this field read as 0.
+     */
+    val failures: Int = 0,
 )
 
 @Serializable
@@ -50,6 +56,10 @@ private val syncCursorJson = Json {
  * Same lifetime as the other account caches: kept on sign-out with the account's stored data
  * (owner decision 2026-10-27, see AccountLocalData), [clearServer] when the account loses a server. A missing cursor means "first sync"
  * (snapshots, then pull), so clearing is always safe.
+ *
+ * Each cursor carries its count of consecutive failed pulls ([recordFailure]): the engine forgets
+ * a cursor only on the second one in a row (#proj-mobile:#112). [write] (a new cursor, or a pull
+ * that succeeded) sets it back to 0.
  */
 class RaftSyncCursorStore(
     private val store: SharedPreferenceStore,
@@ -60,6 +70,26 @@ class RaftSyncCursorStore(
     fun read(scope: RaftSyncScope): String? =
         synchronized(lock) { readLocked().firstOrNull { it.matches(scope) }?.cursor }
 
+    /** Consecutive failed pulls on [scope]'s stored cursor (0 without one). */
+    fun failures(scope: RaftSyncScope): Int =
+        synchronized(lock) { readLocked().firstOrNull { it.matches(scope) }?.failures ?: 0 }
+
+    /**
+     * One more failed pull on [cursor]; returns the count including it. Only a stored cursor
+     * counts: when [cursor] is no longer [scope]'s (cleared or replaced meanwhile) nothing is
+     * written and this is the first failure (1).
+     */
+    fun recordFailure(scope: RaftSyncScope, cursor: String): Int =
+        synchronized(lock) {
+            val entries = readLocked()
+            val index = entries.indexOfFirst { it.matches(scope) }
+            val stored = entries.getOrNull(index)?.takeIf { it.cursor == cursor } ?: return@synchronized 1
+            val failures = stored.failures.coerceAtLeast(0) + 1
+            writeLocked(entries.toMutableList().also { it[index] = stored.copy(failures = failures) })
+            failures
+        }
+
+    /** Stores [cursor] for [scope] with no failures counted (a new cursor, or a pull that succeeded). */
     fun write(scope: RaftSyncScope, cursor: String) {
         if (cursor.isBlank()) return
         synchronized(lock) {

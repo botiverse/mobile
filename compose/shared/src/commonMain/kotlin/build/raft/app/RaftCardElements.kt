@@ -93,6 +93,8 @@ internal class RaftCardTreeContext(
     val onAction: (elementId: String) -> Unit = {},
     val columnGap: Dp = 6.dp,
     val buttonState: (elementId: String, button: ActionCardSpecButton) -> RaftCardButtonState = { _, _ -> RaftCardButtonState.Enabled },
+    /** Property labels take only their width (raft-ui `fitLabels`): a question card answered on the card. */
+    val fitLabels: Boolean = false,
 )
 
 /** How the frame lets a card Button show. */
@@ -334,7 +336,7 @@ internal fun actionCardColumnRuns(elements: Map<String, CardElement>, children: 
 private fun RaftCardFields(fields: List<ActionCardSpecDisplayElement.Field>, context: RaftCardTreeContext) {
     if (fields.isEmpty()) return
     val colors = RaftTheme.colors
-    RaftMessageActionCardProperties {
+    RaftMessageActionCardProperties(fitLabels = context.fitLabels) {
         fields.forEach { field ->
             RaftMessageActionCardProperty(
                 label = actionCardMsgText(field.label, context).text,
@@ -459,9 +461,21 @@ private fun RaftCardButton(id: String, button: ActionCardSpecButton, state: Raft
 /** How long something took (web `LinkCardDuration`): ticking each second while it runs. */
 @Composable
 private fun RaftCardDuration(node: CardDuration) {
-    val start = remember(node.start) { parseRaftTimestampEpochMillisOrNull(node.start, localOffsetMinutes = 0) } ?: return
+    val text = raftCardDurationText(node) ?: return
+    RaftText(
+        text = text,
+        style = RaftTheme.typography.monoMeta,
+        color = RaftTheme.colors.foregroundMuted,
+        maxLines = 1,
+    )
+}
+
+/** A Duration's words ("1m 5s"), ticking each second while it runs; null when its start can't be read. */
+@Composable
+internal fun raftCardDurationText(node: CardDuration): String? {
+    val start = remember(node.start) { parseRaftTimestampEpochMillisOrNull(node.start, localOffsetMinutes = 0) } ?: return null
     val end = remember(node.end) { node.end?.let { parseRaftTimestampEpochMillisOrNull(it, localOffsetMinutes = 0) } }
-    val clock = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis
+    val clock = currentRaftTimeContextProvider?.current?.nowEpochMillis
     var now by remember { mutableLongStateOf(clock ?: Clock.System.now().toEpochMilliseconds()) }
     if (end == null && clock == null) {
         LaunchedEffect(node.start) {
@@ -473,17 +487,11 @@ private fun RaftCardDuration(node: CardDuration) {
     }
     val seconds = (((end ?: clock ?: now) - start).coerceAtLeast(0) / 1_000).toInt()
     val minutes = seconds / 60
-    RaftText(
-        text =
-            when {
-                seconds < 60 -> stringResource(Res.string.member_activity_overview_duration_seconds, seconds)
-                minutes < 60 -> stringResource(Res.string.member_activity_overview_duration_minutes, minutes, seconds % 60)
-                else -> stringResource(Res.string.member_activity_overview_duration_hours, minutes / 60, minutes % 60)
-            },
-        style = RaftTheme.typography.monoMeta,
-        color = RaftTheme.colors.foregroundMuted,
-        maxLines = 1,
-    )
+    return when {
+        seconds < 60 -> stringResource(Res.string.member_activity_overview_duration_seconds, seconds)
+        minutes < 60 -> stringResource(Res.string.member_activity_overview_duration_minutes, minutes, seconds % 60)
+        else -> stringResource(Res.string.member_activity_overview_duration_hours, minutes / 60, minutes % 60)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -502,11 +510,14 @@ internal fun rememberActionCardDisplayLocale(): String {
 internal fun actionCardEntityName(ref: ActionCardSpecEntityRef, context: RaftCardTreeContext): String =
     context.entityName(ref)?.trim()?.removePrefix("@")?.removePrefix("#")?.takeIf { it.isNotBlank() } ?: ref.fallback
 
-/** An entity as a mention: `@name` for people and agents, `#name` for channels, a computer's name. */
+/**
+ * An entity as a card shows it: the name for people and agents (raft-design #1027, web #13310: a card
+ * uses the display name, no `@`), `#name` for channels, a computer's name.
+ */
 internal fun actionCardEntityMention(ref: ActionCardSpecEntityRef, context: RaftCardTreeContext): String {
     val name = actionCardEntityName(ref, context)
     return when (ref.kind) {
-        ActionCardSpecEntityKind.User, ActionCardSpecEntityKind.Agent -> "@$name"
+        ActionCardSpecEntityKind.User, ActionCardSpecEntityKind.Agent -> name
         ActionCardSpecEntityKind.Channel -> "#$name"
         ActionCardSpecEntityKind.Computer -> name
     }

@@ -28,6 +28,12 @@ internal enum class SettingsNativeDetailPage(
      * snapshot of its own; Appearance's is the nearest (the server theme reads the stored session).
      */
     Theme("theme", SharedSettingsDestination.Appearance),
+    /**
+     * How the current server notifies the member (web Settings > On {server} > Notifications,
+     * `CurrentServerNotificationsCard`): the server's notification level alone. It reads the
+     * Notifications snapshot, which holds that level.
+     */
+    ServerNotifications("server-notifications", SharedSettingsDestination.Notifications),
     Mobile("mobile", SharedSettingsDestination.Mobile),
     Server("server", SharedSettingsDestination.Server),
     About("about", SharedSettingsDestination.About),
@@ -111,9 +117,12 @@ internal fun settingsNativeDetailPageData(
     storeScope: RaftShellStoreScope,
     itemId: String? = null,
     launchIntent: SettingsNativeDetailLaunchIntent = SettingsNativeDetailLaunchIntent(),
+    /** A search result's setting to open the page at (scrolled to and located). */
+    anchor: SettingsSearchAnchorRequest? = null,
 ): JSONObject? {
     val route = SettingsNativeDetailRoute.create(page, itemId, launchIntent) ?: return null
     return JSONObject().apply {
+        putSettingsSearchAnchor(anchor)
         put("pageName", SETTINGS_NATIVE_DETAIL_PAGE)
         put(SETTINGS_NATIVE_DETAIL_PAGE_KEY, route.page.key)
         route.itemId?.let { put(SETTINGS_NATIVE_DETAIL_ITEM_ID, it) }
@@ -164,6 +173,7 @@ internal fun Pager.openSettingsNativeDetailPage(
     storeScope: RaftShellStoreScope,
     itemId: String? = null,
     launchIntent: SettingsNativeDetailLaunchIntent = SettingsNativeDetailLaunchIntent(),
+    anchor: SettingsSearchAnchorRequest? = null,
 ): Boolean {
     val pageData =
         settingsNativeDetailPageData(
@@ -171,6 +181,7 @@ internal fun Pager.openSettingsNativeDetailPage(
             storeScope = storeScope,
             itemId = itemId,
             launchIntent = launchIntent,
+            anchor = anchor,
         ) ?: return false
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(SETTINGS_NATIVE_DETAIL_PAGE, pageData)
     return true
@@ -179,16 +190,18 @@ internal fun Pager.openSettingsNativeDetailPage(
 internal fun settingsStandalonePageData(
     pageName: String,
     storeScope: RaftShellStoreScope,
+    anchor: SettingsSearchAnchorRequest? = null,
 ): JSONObject =
     JSONObject().apply {
         put("pageName", pageName)
+        putSettingsSearchAnchor(anchor)
         put(RAFT_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
         storeScope.initialServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
     }
 
-internal fun Pager.openSettingsAccountPage(storeScope: RaftShellStoreScope) {
+internal fun Pager.openSettingsAccountPage(storeScope: RaftShellStoreScope, anchor: SettingsSearchAnchorRequest? = null) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-        .openPage(SETTINGS_ACCOUNT_PAGE, settingsStandalonePageData(SETTINGS_ACCOUNT_PAGE, storeScope))
+        .openPage(SETTINGS_ACCOUNT_PAGE, settingsStandalonePageData(SETTINGS_ACCOUNT_PAGE, storeScope, anchor))
 }
 
 internal fun Pager.openSettingsStoragePage(storeScope: RaftShellStoreScope) {

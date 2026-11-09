@@ -41,12 +41,12 @@ import org.robolectric.annotation.GraphicsMode
  * `ForwardComposerTargetList`, `ChannelMemberList`, `ChannelMembers`, `CreateChannelDialog`).
  * Every agent here has a live status (Online on a runtime, or Offline) so the frames show what a
  * Bot leaves out:
- *  - `Stamp` is a Bot named after its App: plain "Bot".
- *  - `Release helper` is a Bot shown under another name: "Bot · Listing Bot App".
+ *  - `Stamp` is a Bot named after its App: plain "App".
+ *  - `Release helper` is a Bot shown under another name: "App · Listing Bot App".
  *  - `Volta` is an ordinary agent: its light, runtime, "Agent" tag and "Offline" line stay.
  *
- * Frames: Home DMs (badge after the name; no light, no runtime), search results (the outline Bot
- * tag replaces the kind tag; a Bot's subtitle is "@stamp", not "Agent · @stamp"; no light), @-mention suggestions (Bot replaces "Agent"; no light),
+ * Frames: Home DMs (badge after the name; no light, no runtime), search results (the outline App
+ * tag replaces the kind tag; a Bot's subtitle is "@stamp", not "Agent · @stamp"; no light), @-mention suggestions (App replaces "Agent"; no light),
  * forward targets (open DM and new DM), channel members + Create Channel's member picker (badge
  * after the name; no light, no "Offline" line). Reports land in
  * `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].

@@ -1,5 +1,8 @@
 package build.raft.app.assistant
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
@@ -14,9 +17,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,7 +57,6 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
-import kotlin.math.ceil
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
@@ -108,6 +108,12 @@ enum class RaftOtterTuck(
 
     /** The assistant's panel is open (web `data-open`: `translate-y-[105%]`), all of it gone. */
     PanelOpen(1.05f),
+
+    /**
+     * A card sits on the composer's top edge, where the otter lies (a mention's Add / Notify /
+     * Ignore): all of it gone like [PanelOpen], so it never covers the card's buttons (artin 11-02).
+     */
+    Covered(1.05f),
 }
 
 /**
@@ -172,16 +178,6 @@ fun raftOtterPaws(mood: RaftOtterMood, entering: Boolean = false): List<Dp> =
 /** Whether the state bubble shows beside its head (web: not while entering, only `new` / `confirm`). */
 fun raftOtterShowsBubble(mood: RaftOtterMood, entering: Boolean = false): Boolean =
     !entering && (mood == RaftOtterMood.New || mood == RaftOtterMood.Confirm)
-
-/**
- * The list-end band a host's message list keeps free while the otter lies on its composer: as tall
- * as the pose at [scale], rounded up (web `Math.ceil(pose.h * scale)`). It follows the settled pose
- * for [mood]; the web also follows the running pose for its 620ms pop-in, which here would move the
- * list end twice for a few dp.
- */
-fun raftAssistantOtterBandHeight(mood: RaftOtterMood, scale: Float = RaftAssistantOtterDefaults.PhoneScale): Dp =
-    // Less a hair of float error: 0.8f is a little over 0.8, and 60 x 0.8 must stay 48.
-    ceil(raftOtterPose(mood).height.value.toDouble() * scale - 1e-4).dp
 
 object RaftAssistantOtterDefaults {
     /** Phones and thread panels: 80% (web `SMALL_SCALE`, `max-md:scale-80`). */
@@ -265,12 +261,14 @@ private const val EdgeFadeMillis = 150
  * ```
  * It takes no height: it draws upward from its top (the frame's edge), its head's middle
  * [endInset] from its right end, its body clipped 1dp under the edge (the lower body behind the
- * frame) and its paws 9dp × [scale] over the frame. Pair it with [RaftAssistantOtterListEndBand]
- * at the end of that conversation's message list so it never covers the last message.
+ * frame) and its paws 9dp × [scale] over the frame. It lies over the message list's end and
+ * takes no space there: the list neither moves nor scrolls when it comes or goes (artin 11-03),
+ * a reader scrolls if it covers something.
  *
  * - [mood]: its face ([raftOtterPose]); `new` / `confirm` also show their state beside its head.
  * - [tuck]: [RaftOtterTuck.Composing] while the composer holds text or an attachment,
- *   [RaftOtterTuck.PanelOpen] while the assistant's panel is open: it slides into the frame
+ *   [RaftOtterTuck.PanelOpen] while the assistant's panel is open, [RaftOtterTuck.Covered] while a
+ *   card sits above the composer: it slides into the frame
  *   (200ms `ease-slide`), and its paws and bubble fade out.
  * - [onClick]: opens the assistant. No press or hover state (the web has none).
  * - [animateEntrance]: on its first composition it runs in (running pose) and pops up over 620ms.
@@ -289,6 +287,8 @@ fun RaftAssistantOtter(
     scale: Float = RaftAssistantOtterDefaults.PhoneScale,
     endInset: Dp = RaftAssistantOtterDefaults.PhoneEndInset,
     animateEntrance: Boolean = true,
+    /** Where the otter rests (its pose's box, in window coordinates, before any tuck or pop). */
+    onRestBounds: ((Rect) -> Unit)? = null,
 ) {
     val reducedMotion = rememberRaftReducedMotion()
     // First appearance on this composer: it runs in and pops up, then settles.
@@ -321,6 +321,7 @@ fun RaftAssistantOtter(
         reducedMotion = reducedMotion,
         popOffset = { pop.value },
         modifier = modifier,
+        onRestBounds = onRestBounds,
     )
 }
 
@@ -353,6 +354,7 @@ internal fun RaftAssistantOtterLayout(
     reducedMotion: Boolean,
     modifier: Modifier = Modifier,
     popOffset: () -> Float = { 0f },
+    onRestBounds: ((Rect) -> Unit)? = null,
 ) {
     val tuckFraction by animateFloatAsState(
         targetValue = tuck.fraction,
@@ -391,6 +393,24 @@ internal fun RaftAssistantOtterLayout(
                                 Modifier
                                     .padding(start = ClipHalfWidth - pose.headX, top = PopHeadroom)
                                     .size(pose.width, pose.height)
+                                    // Before the tuck and the pop: where it rests (web `restRef`).
+                                    .then(
+                                        if (onRestBounds != null) {
+                                            // Corner to corner through the scale, not clipped to the
+                                            // frame (boundsInWindow would cut it at an ancestor's clip).
+                                            Modifier.onGloballyPositioned {
+                                                val size = it.size
+                                                onRestBounds(
+                                                    Rect(
+                                                        it.localToWindow(Offset.Zero),
+                                                        it.localToWindow(Offset(size.width.toFloat(), size.height.toFloat())),
+                                                    ),
+                                                )
+                                            }
+                                        } else {
+                                            Modifier
+                                        },
+                                    )
                                     .graphicsLayer {
                                         translationY = tuckFraction * pose.height.toPx() + popOffset().dp.toPx()
                                     }
@@ -465,21 +485,6 @@ internal fun RaftAssistantOtterLayout(
             )
         }
     }
-}
-
-/**
- * Goes at the end of the host's message list (web `AssistantOtterListEnd`): while the otter lies
- * on this conversation's composer, the list ends a full-width band as tall as the otter higher,
- * so a reader at the bottom sees the last message whole above it and no content gets narrower.
- * Don't compose it while that composer has no otter.
- */
-@Composable
-fun RaftAssistantOtterListEndBand(
-    mood: RaftOtterMood,
-    modifier: Modifier = Modifier,
-    scale: Float = RaftAssistantOtterDefaults.PhoneScale,
-) {
-    Spacer(modifier.fillMaxWidth().height(raftAssistantOtterBandHeight(mood, scale)).clearAndSetSemantics {})
 }
 
 /** Web otter/paw.svg (22 x 15): fixed otter art, the same in light and dark. */

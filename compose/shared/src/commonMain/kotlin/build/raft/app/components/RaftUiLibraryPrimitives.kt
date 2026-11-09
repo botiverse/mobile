@@ -3,9 +3,15 @@ package build.raft.app.components
 import build.raft.app.RaftAppAvatar
 import build.raft.app.RaftAvatarStep
 import build.raft.app.RaftAvatarWithStatus
-import build.raft.app.RaftBrutalDropdownMenuItem
 import build.raft.app.RaftMonoFamily
-import build.raft.app.RaftBrutalDropdownMenuSurface
+import build.raft.app.raftFloatingContentClickTarget
+import build.raft.app.resources.Res
+import build.raft.app.resources.common_no_actions_available
+import build.raft.app.resources.stringResource
+import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.components.RaftMenuSeparator
+import build.raft.designsystem.components.RaftMenuSurface
+import build.raft.designsystem.tokens.RaftMenuMetrics
 import build.raft.app.RaftColor
 import build.raft.app.raftArgbHex
 import build.raft.app.RaftLucideIcon
@@ -25,7 +31,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftFieldLabelSize
 import androidx.compose.foundation.layout.height
@@ -34,6 +44,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
+import build.raft.designsystem.components.RaftCheckboxIndicator
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -46,6 +57,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftTab
+import build.raft.designsystem.components.RaftTabs
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
 
 internal enum class RaftUiBannerStatus(val background: Color) {
     // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1042
@@ -81,11 +97,11 @@ internal enum class RaftUiButtonVariant(val background: Color) {
     Outline(RaftColor.SurfaceWhite)
 }
 
-internal enum class RaftUiBadgeVariant(val tone: RaftBrutalTone) {
-    Success(RaftBrutalTone.Lime),
-    Information(RaftBrutalTone.Cyan),
-    Warning(RaftBrutalTone.Warning),
-    Danger(RaftBrutalTone.Red)
+internal enum class RaftUiBadgeVariant(val variant: RaftBadgeVariant) {
+    Success(RaftBadgeVariant.Success),
+    Information(RaftBadgeVariant.Information),
+    Warning(RaftBadgeVariant.Warning),
+    Danger(RaftBadgeVariant.Danger)
 }
 
 internal data class RaftUiTabItem(val value: String, val label: String)
@@ -113,24 +129,23 @@ internal fun RaftUiButton(
     enabled: Boolean = true,
     size: RaftUiBannerSize = RaftUiBannerSize.Small
 ) {
-    RaftBrutalActionButton(
-        label = label,
+    // Both banner sizes are the raft-ui `md` (32dp) button.
+    RaftButton(
+        text = label,
         onClick = {},
         modifier = modifier,
-        enabled = enabled,
-        // The paper / cream variants read the themed token here (the enum value is fixed at init).
-        backgroundColor =
+        variant =
             when (variant) {
-                RaftUiButtonVariant.Default, RaftUiButtonVariant.Outline -> RaftColor.SurfaceWhite
-                RaftUiButtonVariant.Muted -> RaftColor.SurfaceCream
-                else -> variant.background
+                RaftUiButtonVariant.Primary -> RaftButtonVariant.Primary
+                RaftUiButtonVariant.Danger -> RaftButtonVariant.Danger
+                RaftUiButtonVariant.Default, RaftUiButtonVariant.Muted, RaftUiButtonVariant.Outline -> RaftButtonVariant.Default
             },
-        minHeight = if (size == RaftUiBannerSize.Small) 28.dp else 32.dp,
-        minWidth = 0.dp,
-        textStyle = RaftType.ButtonBold.copy(fontSize = if (size == RaftUiBannerSize.Small) 12.sp else 14.sp, lineHeight = 14.sp)
+        size = RaftButtonSize.Md,
+        enabled = enabled
     )
 }
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftUiBadge(
     label: String,
@@ -138,7 +153,8 @@ internal fun RaftUiBadge(
     variant: RaftUiBadgeVariant = RaftUiBadgeVariant.Information,
     uppercase: Boolean = false
 ) {
-    RaftBrutalBadge(label = label, modifier = modifier, tone = variant.tone, uppercase = uppercase)
+    // raft-ui badges keep the source case: [uppercase] is ignored.
+    RaftBadge(text = label, modifier = modifier, appearance = RaftBadgeAppearance.Soft, variant = variant.variant)
 }
 
 @Composable
@@ -194,29 +210,22 @@ internal fun RaftUiCheckboxLabelRow(
     label: String,
     checked: Boolean,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    size: Dp = 16.dp
+    enabled: Boolean = true
 ) {
-    RaftCheckboxLabelRow(label = label, checked = checked, modifier = modifier, enabled = enabled, size = size)
-}
-
-@Composable
-internal fun RaftUiStatusDot(
-    color: Color,
-    modifier: Modifier = Modifier,
-    size: Dp = 10.dp,
-    pulsing: Boolean = false
-) {
-    RaftAppStatusDot(modifier = modifier, size = size, color = color, pulsing = pulsing)
-}
-
-@Composable
-internal fun RaftUiSpinner(
-    modifier: Modifier = Modifier,
-    size: RaftAppSpinnerSize = RaftAppSpinnerSize.Sm,
-    inverse: Boolean = false
-) {
-    RaftAppSpinner(modifier = modifier, size = size, inverse = inverse)
+    Row(
+        modifier = modifier.widthIn(min = 0.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RaftCheckboxIndicator(checked = checked, enabled = enabled)
+        Text(
+            text = label,
+            style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
+            color = if (enabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable
@@ -307,52 +316,6 @@ private fun RaftLookBanner(
                 Box(modifier = Modifier.padding(top = 8.dp)) {
                     it()
                 }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun RaftUiEmptyState(
-    title: String,
-    description: String,
-    modifier: Modifier = Modifier,
-    iconText: String = "∅",
-    action: (@Composable () -> Unit)? = null
-) {
-    // raft-ui EmptyState: px-6 py-12, 8dp gap, hint-ink icon (36), headline 17/22 bold
-    // muted title, callout 14/20 hint description (max 300dp), actions 20dp below.
-    Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Text(
-            text = iconText,
-            style = RaftType.PageTitle.copy(fontSize = 34.sp, lineHeight = 38.sp),
-            color = RaftColor.ForegroundHint,
-            maxLines = 1
-        )
-        Text(
-            text = title,
-            style = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp).withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.TextMuted,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = description,
-            modifier = Modifier.widthIn(max = 300.dp),
-            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
-            color = RaftColor.ForegroundHint,
-            textAlign = TextAlign.Center,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis
-        )
-        action?.let {
-            Box(modifier = Modifier.padding(top = 12.dp)) {
-                it()
             }
         }
     }
@@ -468,20 +431,28 @@ internal fun RaftUiTextarea(
     fieldHeight: Dp = 76.dp,
     maxLines: Int = 3
 ) {
-    RaftBrutalTextarea(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier,
-        placeholder = placeholder,
-        hint = hint,
-        error = error,
-        showCounter = showCounter,
-        limit = limit,
-        enabled = enabled,
-        fieldHeight = fieldHeight,
-        maxLines = maxLines
-    )
+    RaftField(
+        label = null,
+        modifier = modifier.fillMaxWidth(),
+        description = hint?.takeIf { it.isNotBlank() },
+        error = error?.takeIf { it.isNotBlank() },
+        enabled = enabled
+    ) {
+        RaftTextarea(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = placeholder.takeIf { it.isNotEmpty() },
+            limit = limit.takeIf { showCounter },
+            minHeight = fieldHeight,
+            maxHeight = raftTextareaMaxHeight(fieldHeight, maxLines),
+            inputModifier = rememberRaftTextareaEditorModifier()
+        )
+    }
 }
+
+/** [maxLines] lines of the field type (24dp line) inside the textarea's 10dp vertical padding. */
+private fun raftTextareaMaxHeight(fieldHeight: Dp, maxLines: Int): Dp =
+    if (maxLines == Int.MAX_VALUE) Dp.Infinity else maxOf(fieldHeight, 24.dp * maxLines + 20.dp)
 
 @Composable
 internal fun RaftUiInputGroup(
@@ -597,7 +568,7 @@ internal enum class RaftUiSurfaceStatus(val icon: RaftLucideIconName, val backgr
 
 @Composable
 internal fun RaftUiAvatarGroup(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy((-6).dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy((-5).dp), verticalAlignment = Alignment.CenterVertically) {
         content()
     }
 }
@@ -609,18 +580,18 @@ internal fun RaftUiTabs(
     modifier: Modifier = Modifier,
     panelText: String
 ) {
-    // raft-ui Tabs (`variant="default"`): a 2dp-gap row of 32dp control-radius tabs;
-    // the active tab is the yellow `--brand` sticker (ink edge, bold ink type). The
-    // panel has no chrome of its own.
+    // raft-ui Tabs (`variant="default"`): the design system's tab row; the active tab is the
+    // yellow sticker. The panel has no chrome of its own.
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-            items.forEach { item ->
-                RaftSegmentedItem(
-                    label = item.label,
-                    selected = item.value == selectedValue,
-                    enabled = true,
-                    onClick = {}
-                )
+        RaftDesignSystemTheme {
+            RaftTabs {
+                items.forEach { item ->
+                    RaftTab(
+                        text = item.label,
+                        selected = item.value == selectedValue,
+                        onClick = {}
+                    )
+                }
             }
         }
         RaftUiTextSans(panelText)
@@ -647,6 +618,17 @@ internal fun RaftUiSelectTrigger(
     )
 }
 
+/**
+ * The design-system menu popup ([RaftMenuSurface]: container radius, popover layer, seam ring,
+ * float shadow, `p-1`, at least `min-w-60`) with a [RaftMenuItem] per item: a spinner in
+ * place of the icon while [RaftUiMenuItem.loading], the check on a selected row without
+ * trailing text, the trailing text as the mono shortcut, a [RaftMenuSeparator] before
+ * [RaftUiMenuItem.dividerBefore]. A tap selects an enabled item, then dismisses. A [header]
+ * (the message menu's reaction bar) sits above a separator. An empty list shows one disabled
+ * "No actions available" row. [rowHeight], [shadowOffset] and [showDividers] are ignored:
+ * raft menu rows are 36dp, cast no shadow and only draw explicit separators.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftUiMenuSurface(
     items: List<RaftUiMenuItem>,
@@ -656,30 +638,49 @@ internal fun RaftUiMenuSurface(
     shadowOffset: Dp = 0.dp,
     showDividers: Boolean = false,
     onSelect: (String) -> Unit = {},
-    onDismiss: () -> Unit = {}
+    onDismiss: () -> Unit = {},
+    header: (@Composable () -> Unit)? = null
 ) {
-    RaftBrutalDropdownMenuSurface(
-        items =
-            items.map { item ->
-                RaftBrutalDropdownMenuItem(
-                    id = item.id,
-                    label = item.label,
-                    icon = item.icon,
-                    trailing = item.trailing,
-                    trailingIcon = if (item.selected && item.trailing == null) RaftLucideIconName.Check else null,
-                    destructive = item.destructive,
+    RaftMenuSurface(
+        modifier = modifier.raftFloatingContentClickTarget(),
+        width = width?.let(::raftMenuWidth)
+    ) {
+        header?.let { content ->
+            Box(modifier = Modifier.fillMaxWidth()) { content() }
+            RaftMenuSeparator()
+        }
+        if (items.isEmpty()) {
+            RaftMenuItem(
+                text = stringResource(Res.string.common_no_actions_available),
+                onClick = {},
+                enabled = false
+            )
+        } else {
+            items.forEachIndexed { index, item ->
+                if (index > 0 && item.dividerBefore) {
+                    RaftMenuSeparator()
+                }
+                RaftMenuItem(
+                    text = item.label,
+                    onClick = {
+                        if (item.enabled) {
+                            onSelect(item.id)
+                        }
+                        onDismiss()
+                    },
                     enabled = item.enabled,
-                    loading = item.loading
+                    checked = item.selected && item.trailing == null,
+                    leadingIcon =
+                        if (item.loading) {
+                            { RaftIconSpinner() }
+                        } else {
+                            item.icon?.let { icon -> { RaftSlotIcon(icon) } }
+                        },
+                    shortcut = item.trailing
                 )
-            },
-        onSelect = onSelect,
-        modifier = modifier,
-        width = width,
-        rowHeight = rowHeight,
-        showDividers = showDividers,
-        dividerBeforeIds = items.filter { it.dividerBefore }.map { it.id }.toSet(),
-        onDismiss = onDismiss
-    )
+            }
+        }
+    }
 }
 
 @Composable
@@ -687,7 +688,7 @@ internal fun RaftUiPopupSurface(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    // raft popup: container radius, popover layer, seam ring, float shadow, 6dp inset.
+    // raft popup: container radius, popover layer, seam ring, float shadow, `p-1` inset.
     Column(modifier = modifier.raftLookOverlaySurface().padding(RaftMetrics.PopupPadding)) {
         content()
     }
@@ -696,7 +697,7 @@ internal fun RaftUiPopupSurface(
 @Composable
 internal fun RaftUiSurfaceLabel(text: String, modifier: Modifier = Modifier) {
     // raft menu group label: px-2.5 pt-2 pb-1, caption 12/16 bold hint ink, no rule.
-    Box(modifier = modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 4.dp)) {
+    Box(modifier = modifier.fillMaxWidth().padding(start = RaftMetrics.MenuItemPaddingHorizontal, end = RaftMetrics.MenuItemPaddingHorizontal, top = RaftMetrics.MenuLabelPaddingTop, bottom = RaftMetrics.MenuLabelPaddingBottom)) {
         Text(
             text = text,
             style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withRaftFontWeight(FontWeight.Bold),
@@ -715,7 +716,7 @@ internal fun RaftUiMenuRow(
     highlighted: Boolean = false,
     disabled: Boolean = false
 ) {
-    // raft menu item: min 36dp, control radius, px-2.5, callout 14/20 medium; the
+    // raft menu item: min 36dp, chip radius, px-2.5, callout 14/20 medium; the
     // highlighted row is `--brand-soft`; shortcut text is mono 12/16 hint.
     Row(
         modifier =
@@ -724,10 +725,10 @@ internal fun RaftUiMenuRow(
                 .height(RaftMetrics.MenuRowHeight)
                 .background(
                     if (highlighted && !disabled) RaftColor.BrandSoft else Color.Transparent,
-                    RoundedCornerShape(RaftAppRadius.Control)
+                    RoundedCornerShape(RaftMenuMetrics.ItemRadius)
                 )
-                .padding(horizontal = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(horizontal = RaftMetrics.MenuItemPaddingHorizontal),
+        horizontalArrangement = Arrangement.spacedBy(RaftMetrics.MenuItemGap),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -782,14 +783,16 @@ internal fun RaftUiNotificationItem(
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 text = title,
-                style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                // raft-ui notification-center title: text-subhead font-bold (15/20 700).
+                style = RaftType.ButtonBold,
                 color = RaftColor.TextBlack,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = body,
-                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                // raft-ui notification-center body: text-callout (14/20 400).
+                style = RaftType.Callout,
                 color = RaftColor.TextBlack.copy(alpha = 0.70f),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis

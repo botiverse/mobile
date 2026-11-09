@@ -82,4 +82,62 @@ class RaftPersistentDiagnosticsPolicyTest {
             )
         }
     }
+
+    @Test
+    fun skipsRoutineKtorRequestStartAndFinish() {
+        assertFalse(
+            RaftPersistentDiagnosticsPolicy.shouldPersist(
+                "warn",
+                "shared_network slock_http_execute_start path=https://api.raft.build/api/product-events/batch " +
+                    "method=POST priority=Background jsonBody=true requestBytes=478 engine=ktor_okhttp " +
+                    "lane=background_nonidempotent configTotalTimeoutMillis=30000 configConnectTimeoutMillis=5000 " +
+                    "clientRequestId=mobile-653b769f2 headers=none"
+            )
+        )
+        assertFalse(
+            RaftPersistentDiagnosticsPolicy.shouldPersist(
+                "info",
+                "shared_network slock_http_execute_finish path=https://api.raft.build/api/channels/inbox " +
+                    "method=GET priority=Foreground requestBytes=0 responseBytes=11372 errorBytes=0 code=200 " +
+                    "durationMs=765 engine=ktor_okhttp status=200 kind=none rawCode=none detail=none totalMs=764"
+            )
+        )
+        assertFalse(
+            RaftPersistentDiagnosticsPolicy.shouldPersist(
+                "info",
+                "shared_network slock_http_multipart_finish path=https://api.raft.build/api/upload code=201 durationMs=900"
+            )
+        )
+    }
+
+    @Test
+    fun keepsKtorFailuresCancellationsErrorsSlowAndAuthRequests() {
+        val base = "shared_network slock_http_execute_finish path=https://api.raft.build/api/channels/inbox method=GET "
+        assertTrue(RaftPersistentDiagnosticsPolicy.shouldPersist("warn", base + "code=503 durationMs=90 status=503"))
+        assertTrue(RaftPersistentDiagnosticsPolicy.shouldPersist("warn", base + "code=200 durationMs=4500 status=200"))
+        assertTrue(
+            RaftPersistentDiagnosticsPolicy.shouldPersist(
+                "warn",
+                base + "responseBytes=0 errorBytes=0 code=0 durationMs=12 status=none kind=CANCELLED rawCode=CANCELED"
+            )
+        )
+        assertTrue(
+            RaftPersistentDiagnosticsPolicy.shouldPersist(
+                "info",
+                "shared_network slock_http_execute_finish path=https://api.raft.build/api/auth/refresh code=200 durationMs=90"
+            )
+        )
+        assertTrue(
+            RaftPersistentDiagnosticsPolicy.shouldPersist(
+                "warn",
+                "shared_network slock_http_execute_failed path=https://api.raft.build/api/channels durationMs=10 class=IOException"
+            )
+        )
+        assertTrue(
+            RaftPersistentDiagnosticsPolicy.shouldPersist(
+                "warn",
+                "shared_network slock_http_execute_retry_fresh_session lane=foreground_idempotent"
+            )
+        )
+    }
 }

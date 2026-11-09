@@ -22,6 +22,7 @@ import build.raft.app.data.RaftServerNotificationLevels
 import build.raft.app.data.inheritedNotificationLevel
 import build.raft.app.data.resolveEffectiveNotificationLevel
 import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftSelect
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 
@@ -330,3 +331,56 @@ internal fun raftNotificationLevelNotes(target: RaftNotificationLevelTarget): Li
         }
         if (target.scope == RaftNotificationLevelScope.Thread) add(Res.string.notification_level_thread_note)
     }
+
+/**
+ * The Notifications select of a channel's settings (web `NotificationLevelSelect` in
+ * ChannelPreferencesSection): the same choices and writes as [RaftNotificationLevelDialog], as
+ * a raft-ui Select the row shows in place, with the muted note under it. [refresh] reloads the
+ * server's levels when it appears (off in fixtures).
+ */
+@Composable
+internal fun RaftNotificationLevelSelect(
+    target: RaftNotificationLevelTarget,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    refresh: Boolean = true,
+    label: String? = null,
+    onSetMuted: ((Boolean) -> Unit)? = null
+) {
+    val all by RaftNotificationLevelStore.state.collectAsState()
+    val levels = all[target.serverId] ?: RaftServerNotificationLevels(target.serverId)
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    if (refresh) LaunchedEffect(target.serverId) { RaftNotificationLevelStore.refresh(target.serverId) }
+    val inherited = target.inherited(levels)
+    val shownTarget = if (onSetMuted == null) target.copy(muteSupported = false, muted = false) else target
+    val selected = raftNotificationChoiceShown(shownTarget, levels)
+    val shownLevel = (raftNotificationChoiceShown(shownTarget.copy(muted = false), levels) as RaftNotificationChoice.Level).setting
+    val choices = raftNotificationChoices(shownTarget.scope, shownTarget.hasMuteChoice, shownLevel, shownTarget.muted)
+    val labels = choices.associateWith { it.localizedLabel(target, inherited) }
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        RaftSelect(
+            value = selected,
+            options = choices,
+            onValueChange = { option ->
+                if (option == selected || saving) return@RaftSelect
+                val plan = raftNotificationChoicePlan(option, shownTarget, levels)
+                plan.setMuted?.let { muted -> onSetMuted?.invoke(muted) }
+                val write = plan.writeLevel ?: return@RaftSelect
+                saving = true
+                failed = false
+                scope.launch {
+                    val result = RaftNotificationLevelStore.setLevel(target.serverId, target.scope, target.id, write)
+                    saving = false
+                    failed = result !is DataResult.Content
+                }
+            },
+            optionLabel = { labels.getValue(it) },
+            enabled = enabled && !saving,
+            label = label,
+        )
+        if (shownTarget.muted) SettingsFormDetailText(stringResource(Res.string.notification_level_muted_note))
+        if (failed) SettingsFormErrorText(stringResource(Res.string.notification_level_save_failed))
+    }
+}

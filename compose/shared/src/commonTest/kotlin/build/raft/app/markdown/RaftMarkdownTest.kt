@@ -20,7 +20,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.TextUnit
@@ -38,7 +37,6 @@ import androidx.compose.runtime.snapshots.Snapshot
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.appendRaftInlineCodeWithEdgeBoxes
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
-import com.tencent.kuiklybase.markdown.compose.elements.updateMarkdownTableColumnWidth
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.MarkdownImageStateImpl
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
@@ -95,7 +93,7 @@ class RaftMarkdownTest {
 
     @Test
     fun messagePermalinkRenderConfigDefaultsToOrdinaryLink() {
-        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val url = "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132?msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val source = buildAnnotatedString {
             withLink(LinkAnnotation.Url(url)) { append(url) }
         }
@@ -112,7 +110,7 @@ class RaftMarkdownTest {
 
     @Test
     fun messagePermalinkRenderConfigCanEnableTagProjection() {
-        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val url = "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132?msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val source = buildAnnotatedString {
             withLink(LinkAnnotation.Url(url)) { append(url) }
         }
@@ -129,7 +127,7 @@ class RaftMarkdownTest {
 
     @Test
     fun raftMessagePermalinkUsesGenericInlineBoxChip() {
-        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val url = "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132?msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val source =
             buildAnnotatedString {
                 append("See ")
@@ -139,7 +137,7 @@ class RaftMarkdownTest {
 
         val resolved =
             source.withRaftMessagePermalinkChips { target ->
-                "proj-server-management".takeIf { target.channelId.value == "channel-1" }
+                "proj-server-management".takeIf { target.channelId.value == "6cb4981e-00c7-4076-81b0-0d46c208c132" }
             }
         val link = resolved.getLinkAnnotations(0, resolved.length).single().item as LinkAnnotation.Url
 
@@ -168,7 +166,7 @@ class RaftMarkdownTest {
     @Test
     fun externalAndContentlessRaftLinksRemainOrdinaryLinks() {
         val external = "https://example.com/page"
-        val contentless = "https://app.raft.build/s/mobile/channel/channel-1"
+        val contentless = "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132"
         val source =
             buildAnnotatedString {
                 withLink(LinkAnnotation.Url(external)) { append("external") }
@@ -181,7 +179,7 @@ class RaftMarkdownTest {
 
     @Test
     fun unresolvedRaftMessagePermalinkUsesNeutralFallback() {
-        val url = "https://app.raft.build/s/another/channel/private-id?msg=message-1"
+        val url = "https://app.raft.build/s/another/channel/72f3745a-4faa-49fc-8712-c71973eb3b01?msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val source =
             buildAnnotatedString {
                 withLink(LinkAnnotation.Url(url)) { append(url) }
@@ -195,7 +193,7 @@ class RaftMarkdownTest {
 
     @Test
     fun permalinkChipUsesNativeTextRunsInsteadOfEstimatedWholeChipWidth() {
-        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val url = "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132?msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val source = buildAnnotatedString {
             withLink(LinkAnnotation.Url(url)) { append(url) }
         }
@@ -216,8 +214,8 @@ class RaftMarkdownTest {
     @Test
     fun threadPermalinkUsesTypedThreadSuffix() {
         val url =
-            "https://app.raft.build/s/mobile/channel/channel-1" +
-                "?thread=channel-1%3Aparent-1&msg=message-1"
+            "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132" +
+                "?thread=6cb4981e-00c7-4076-81b0-0d46c208c132%3A857c43c7-2439-4a80-869a-3fc22745ba27&msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val source =
             buildAnnotatedString {
                 withLink(LinkAnnotation.Url(url)) { append(url) }
@@ -231,8 +229,8 @@ class RaftMarkdownTest {
     @Test
     fun markdownAutolinkPreservesEncodedThreadPermalinkTarget() {
         val url =
-            "https://app.raft.build/s/mobile/channel/channel-1" +
-                "?thread=channel-1%3Aparent-1&msg=message-1"
+            "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132" +
+                "?thread=6cb4981e-00c7-4076-81b0-0d46c208c132%3A857c43c7-2439-4a80-869a-3fc22745ba27&msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val source = buildRaftMarkdownParagraphAnnotatedString("Thread reply: $url")
 
         val resolved = source.withRaftMessagePermalinkChips { "proj-server-management" }
@@ -245,7 +243,7 @@ class RaftMarkdownTest {
 
     @Test
     fun raftPermalinkInsideInlineCodeRemainsLiteral() {
-        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val url = "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132?msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val externalUrl = "https://example.com/visual"
         val source =
             buildAnnotatedString {
@@ -375,34 +373,6 @@ class RaftMarkdownTest {
             snapshot.dispose()
         }
         return writes
-    }
-
-    @Test
-    fun markdownTableColumnWidthIgnoresNoOpUpdates() {
-        val widths = mutableMapOf<Int, Dp>()
-
-        assertTrue(widths.updateMarkdownTableColumnWidth(index = 0, measuredWidth = 140.dp, maxWidth = 120.dp))
-        assertEquals(120.dp, widths[0])
-
-        assertFalse(widths.updateMarkdownTableColumnWidth(index = 0, measuredWidth = 140.dp, maxWidth = 120.dp))
-        assertEquals(120.dp, widths[0])
-
-        assertFalse(widths.updateMarkdownTableColumnWidth(index = 0, measuredWidth = 80.dp, maxWidth = 120.dp))
-        assertEquals(120.dp, widths[0])
-    }
-
-    @Test
-    fun markdownTableColumnWidthCanGrowWhenUnbounded() {
-        val widths = mutableMapOf<Int, Dp>()
-
-        assertTrue(widths.updateMarkdownTableColumnWidth(index = 1, measuredWidth = 80.dp, maxWidth = Dp.Unspecified))
-        assertEquals(80.dp, widths[1])
-
-        assertTrue(widths.updateMarkdownTableColumnWidth(index = 1, measuredWidth = 96.dp, maxWidth = Dp.Unspecified))
-        assertEquals(96.dp, widths[1])
-
-        assertFalse(widths.updateMarkdownTableColumnWidth(index = 1, measuredWidth = 90.dp, maxWidth = Dp.Unspecified))
-        assertEquals(96.dp, widths[1])
     }
 
     @Test
@@ -650,9 +620,10 @@ class RaftMarkdownTest {
                 annotator = annotator
             )
 
-        assertTrue(annotated.text.contains(shortCode))
-        assertTrue(annotated.text.contains(longCode))
-        assertTrue(annotated.raftMarkdownInlineContentIds().isEmpty())
+        assertTrue(annotated.raftTextWithoutInlineGaps().contains(shortCode))
+        assertTrue(annotated.raftTextWithoutInlineGaps().contains(longCode))
+        // Only the reserved `px-1` gaps, never a Raft chip placeholder.
+        assertTrue(annotated.raftMarkdownInlineContentIds().all { raftInlineGapWidth(it) != null })
         assertEquals(
             listOf(
                 inlineCodeSegment(shortCode),
@@ -679,7 +650,7 @@ class RaftMarkdownTest {
                 annotator = raftMarkdownAnnotator(body)
             )
 
-        assertEquals("Run ${inlineCodeSegment(command)} before review", annotated.text)
+        assertEquals("Run ${inlineCodeSegment(command)} before review", annotated.raftTextWithoutInlineGaps())
         assertEquals(
             listOf(inlineCodeSegment(command)),
             annotated.raftInlineCodeMarkerTextSegments()
@@ -920,7 +891,7 @@ class RaftMarkdownTest {
         assertEquals(Color.Unspecified, ordinaryPressed?.background)
         val channelPressed = raftMarkdownRichTextTagLinkStyles(RaftRichTextChromeKind.Channel).pressedStyle
         assertEquals(TextDecoration.None, channelPressed?.textDecoration)
-        assertEquals(RaftAppThemeState.colors.fillPressed, channelPressed?.background)
+        assertEquals(RaftAppThemeState.colors.fillMedium, channelPressed?.background)
         assertEquals(
             RaftColor.StickerPressed,
             raftMarkdownRichTextTagLinkStyles(RaftRichTextChromeKind.SelfMention).pressedStyle?.background
@@ -1047,7 +1018,8 @@ class RaftMarkdownTest {
                     (range.item as? LinkAnnotation.Clickable)
                         ?.let { annotated.raftInlineBoxWithin(range.start, range.end) } != null
                 }
-                .map { range -> annotated.text.substring(range.start, range.end) }
+                // Chip labels carry word joiners where they must not wrap (withRaftInlineChipGlue).
+                .map { range -> annotated.text.substring(range.start, range.end).raftCopyText() }
 
         assertEquals(
             listOf("#31", "@Android-Developer-4", "#521", "#521", "#31", "#521"),
@@ -1128,7 +1100,8 @@ class RaftMarkdownTest {
                     )
             )
 
-        assertEquals(body, annotated.text)
+        // Plain text, with only the web's invisible line-break marks (a break after "KMP-").
+        assertEquals(body, annotated.text.replace("\u200B", "").replace("\u2060", ""))
         assertEquals(listOf("@KMP-专家", "#520"), body.threadInlineTagMatches().map { it.tag.label })
         assertEquals(emptySet(), annotated.raftMarkdownClickableTags())
         assertTrue(annotated.raftMarkdownInlineContentIds().isEmpty())
@@ -1281,8 +1254,11 @@ class RaftMarkdownTest {
                 annotator = raftMarkdownAnnotator(body),
                 codeSpanStyle = inlineCodeStyle.toSpanStyle(),
             ).withRaftMarkdownSpanFonts(RaftType.Body)
-        val codeStart = rendered.text.indexOf("effective-family")
-        val codeEnd = codeStart + "effective-family".length
+        // The code run: its reserved `px-1` gaps and the code, break marks included.
+        val codeRange = rendered.getStringAnnotations(raftInlineCodeAnnotationTag, 0, rendered.length).single()
+        assertEquals("effective-family", rendered.subSequence(codeRange.start, codeRange.end).raftTextWithoutInlineGaps())
+        val codeStart = codeRange.start
+        val codeEnd = codeRange.end
         fun effectiveSpanStyleAt(index: Int): SpanStyle =
             rendered.spanStyles
                 .filter { range -> range.start <= index && range.end > index }
@@ -1897,7 +1873,8 @@ class RaftMarkdownTest {
             )
 
         assertTrue(initialAnnotated.text.endsWith(" @member0"))
-        assertTrue(hydratedAnnotated.text.endsWith(" @Display Name"))
+        // A chip label never wraps inside: word joiners glue "@Display Name" into one run.
+        assertTrue(hydratedAnnotated.text.replace("\u2060", "").endsWith(" @Display Name"))
         currentHandler = { openedBy = "new:${it.label}" }
         val mentionLink =
             hydratedAnnotated.getLinkAnnotations(0, hydratedAnnotated.length)
@@ -2261,7 +2238,7 @@ class RaftMarkdownTest {
         return renderRaftMarkdownListItemAnnotatedStrings(
             content = content,
             annotator = raftMarkdownAnnotator(content)
-        ).map { it.text }
+        ).map { it.raftTextWithoutInlineGaps() }
     }
 
     private fun renderRaftMarkdownListItemAnnotatedStrings(
@@ -2344,6 +2321,9 @@ class RaftMarkdownTest {
                     knownTaskNumbers?.contains(tag.label.removePrefix("#").toIntOrNull()) ?: true
                 ThreadMarkdownTagKind.UserMention ->
                     tag.label.removePrefix("@").trim().lowercase() in mentionKeys
+                ThreadMarkdownTagKind.Message ->
+                    tag.directMessagePeerName?.let { it.trim().lowercase() in directMessagePeerKeys }
+                        ?: (tag.channelName.orEmpty().trim().lowercase() in channelKeys)
                 ThreadMarkdownTagKind.DirectMessageThread ->
                     tag.directMessagePeerName.orEmpty().trim().lowercase() in directMessagePeerKeys &&
                         !tag.threadShortId.isNullOrBlank()
@@ -2395,7 +2375,8 @@ class RaftMarkdownTest {
 
     private fun AnnotatedString.raftInlineCodeMarkerTextSegments(): List<String> =
         getStringAnnotations(raftInlineCodeAnnotationTag, start = 0, end = length).map { range ->
-            text.substring(range.start, range.end)
+            // The code as written: without its reserved `px-1` gaps and wrap marks.
+            subSequence(range.start, range.end).raftTextWithoutInlineGaps()
         }
 
     private fun AnnotatedString.raftInlineCodeTrailingMarginSegments(): List<String> =
@@ -2419,18 +2400,20 @@ class RaftMarkdownTest {
                 range.item.background != Color.Unspecified &&
                     range.start < annotated.length && range.end > 0
             }
-        val firstClusterBoundary = code.indexOf(expectedLeading) + expectedLeading.length
+        // The box starts after the reserved leading `px-1` gap and its word joiner.
+        val boxStart = boxRanges.firstOrNull()?.start ?: 0
+        val firstClusterBoundary = boxStart + code.indexOf(expectedLeading) + expectedLeading.length
         val splitRange =
             annotated.spanStyles.first { range ->
-                range.start == 0 && range.end == firstClusterBoundary
+                range.start == boxStart && range.end == firstClusterBoundary
             }
 
-        assertEquals(code, annotated.text)
+        assertEquals(code, annotated.raftTextWithoutInlineGaps())
         assertEquals(1, boxRanges.size)
         assertTrue(glyphBackgroundRanges.isEmpty())
         assertEquals(code, annotated.text.substring(boxRanges.single().start, boxRanges.single().end))
         assertEquals(expectedLeading, annotated.text.substring(splitRange.start, splitRange.end))
-        assertTrue(annotated.text.endsWith(expectedTrailing))
+        assertTrue(annotated.raftTextWithoutInlineGaps().endsWith(expectedTrailing))
         assertEquals(
             RaftColor.FillMuted,
             boxRanges.single().item.backgroundColor,

@@ -34,6 +34,13 @@ internal interface RaftHostActivity : LifecycleOwner {
         callback: RaftBridgeCallback?,
     )
 
+    /**
+     * Files dragged onto the composer from another app (`content:` URIs the page holds the
+     * drag-and-drop read permission for): copied into the picker cache and answered with the
+     * picker's files envelope, as a File pick of the same files.
+     */
+    fun readDroppedThreadAttachments(uris: List<String>, callback: RaftBridgeCallback?)
+
     fun requestAttachmentSaveAs(
         dispatch: AndroidAttachmentOpenDispatch.SaveAs,
         callback: RaftBridgeCallback?,

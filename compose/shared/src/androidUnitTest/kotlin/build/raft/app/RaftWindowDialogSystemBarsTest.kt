@@ -26,6 +26,11 @@ import org.robolectric.annotation.Config
  * The menu half (RaftPopupWindowPolicy) has no test here: Robolectric does not model which window drives
  * the bar icons, a popup test passed on the old code too, and an open RaftDropdownMenu hung the
  * Robolectric run (60s watchdog). It is verified on a device.
+ *
+ * artin (dm 302181ad, 2026-11-01): the dialog's window is shown before its content composes, so a
+ * copy made from the content leaves the focused window a frame of the default icons. The second
+ * test reads the window as its content first composes, before any effect has run: it already has
+ * to ask for the host's icons (RaftPrepareDialogWindow, set before show() as Material3 does).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [29])
@@ -54,6 +59,36 @@ class RaftWindowDialogSystemBarsTest {
         assertTrue(
             root.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR == 0,
             "the dialog keeps the host's light icons on a dark frame, light mode or not"
+        )
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun aDialogWindowAsksForTheHostsIconsBeforeItsContentRuns() {
+        var firstComposition: Int? = null
+        var dialogRoot: View? = null
+        val activity = activities.launch()
+        // The page asked for DARK icons; the activity theme's default (no windowLightStatusBar) is
+        // light icons, which is what a window created without the host's appearance shows.
+        activity.window.decorView.systemUiVisibility =
+            activity.window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        activity.setContent {
+            RaftTheme(appearance = RaftAppearance.Light) {
+                RaftWindowDialog(onDismissRequest = {}) {
+                    val root = LocalView.current.rootView
+                    // In composition, ahead of every effect: what the window asked for when shown.
+                    if (firstComposition == null) firstComposition = root.systemUiVisibility
+                    dialogRoot = root
+                }
+            }
+        }
+        repeat(4) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(50)) }
+        val root = assertNotNull(dialogRoot, "the dialog window")
+        assertTrue(root !== activity.window.decorView, "the dialog is its own window")
+        val shown = assertNotNull(firstComposition, "the dialog content composed")
+        assertTrue(
+            shown and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR != 0,
+            "the dialog window already asks for the host's dark icons when it is shown, before its content runs"
         )
     }
 }

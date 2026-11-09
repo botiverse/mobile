@@ -120,6 +120,24 @@ class MainActivityLaunchTest {
         )
     }
 
+    /**
+     * The web's social sign-in callback (`/?auth_callback=social&code=…`) is no longer completed in
+     * the app: without the browser's binding cookie the server refuses it (`social_completion_binding`,
+     * Tenny 2026-11-07). The link goes back to the browser, where the sign-in started.
+     */
+    @Test
+    fun webSocialSignInCallbackGoesBackToTheBrowser() {
+        assertTrue(
+            shouldOpenUnsupportedRaftWebLinkExternally(
+                action = "android.intent.action.VIEW",
+                dataScheme = "https",
+                dataHost = "app.raft.build",
+                dataPath = "/",
+                verifyToken = null
+            )
+        )
+    }
+
     @Test
     fun exactEmailVerificationLinkIsConsumedBeforeGenericBrowserFallback() {
         assertEquals(
@@ -256,6 +274,60 @@ class MainActivityLaunchTest {
     }
 
     @Test
+    fun externalBrowserSelectionLooksPastAVerifiedAppLink() {
+        // dm:@artin #97: for a verified App Link path (`/s/hq/settings/account#two-step`) Android 12+
+        // reports only Raft under MATCH_DEFAULT_ONLY; MATCH_ALL still lists the browsers.
+        var allQueried = false
+        assertEquals(
+            "org.mozilla.firefox",
+            selectExternalBrowserPackage(
+                ownPackage = "build.raft.app",
+                defaultPackage = "build.raft.app",
+                defaultBrowserPackage = { "org.mozilla.firefox" },
+                defaultOnlyCandidates = listOf("build.raft.app"),
+                allCandidates = {
+                    allQueried = true
+                    listOf("build.raft.app", "com.android.chrome", "org.mozilla.firefox")
+                },
+            )
+        )
+        assertTrue(allQueried)
+        // No default browser named: the first browser listed.
+        assertEquals(
+            "com.android.chrome",
+            selectExternalBrowserPackage(
+                ownPackage = "build.raft.app",
+                defaultPackage = "build.raft.app",
+                defaultBrowserPackage = { null },
+                defaultOnlyCandidates = listOf("build.raft.app"),
+                allCandidates = { listOf("build.raft.app", "com.android.chrome") },
+            )
+        )
+        // A browser already among the defaults: MATCH_ALL is never read.
+        assertEquals(
+            "com.android.chrome",
+            selectExternalBrowserPackage(
+                ownPackage = "build.raft.app",
+                defaultPackage = "com.android.chrome",
+                defaultBrowserPackage = { error("not needed") },
+                defaultOnlyCandidates = listOf("com.android.chrome"),
+                allCandidates = { error("not needed") },
+            )
+        )
+        // No browser installed at all.
+        assertEquals(
+            null,
+            selectExternalBrowserPackage(
+                ownPackage = "build.raft.app",
+                defaultPackage = "build.raft.app",
+                defaultBrowserPackage = { null },
+                defaultOnlyCandidates = listOf("build.raft.app"),
+                allCandidates = { listOf("build.raft.app", "build.raft.app.alpha") },
+            )
+        )
+    }
+
+    @Test
     fun externalBrowserSelectionSkipsOtherInstalledRaftBuilds() {
         // An alpha build next to the release build: the release app is the App Link default, not a browser.
         assertEquals(
@@ -387,17 +459,6 @@ class MainActivityLaunchTest {
 
         assertTrue(pageData.optBoolean("slockSuppressRestoreLanding", false))
         assertTrue(pageData.optString("slockAuthGateInstanceId").isNotBlank())
-    }
-
-    @Test
-    fun onlyABrowserRequestForAnUntypedWebUrlIsPinnedToABrowser() {
-        assertTrue(openUrlUsesBrowserPackage(browser = true, mimeType = null, scheme = "https"))
-        assertTrue(openUrlUsesBrowserPackage(browser = true, mimeType = null, scheme = "HTTP"))
-        // An ordinary openUrl keeps the external-handler path; typed or non-web URLs never take a browser.
-        assertFalse(openUrlUsesBrowserPackage(browser = false, mimeType = null, scheme = "https"))
-        assertFalse(openUrlUsesBrowserPackage(browser = true, mimeType = "application/pdf", scheme = "https"))
-        assertFalse(openUrlUsesBrowserPackage(browser = true, mimeType = null, scheme = "mailto"))
-        assertFalse(openUrlUsesBrowserPackage(browser = true, mimeType = null, scheme = null))
     }
 
     @Test

@@ -22,6 +22,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftPendingMentionActionItem
 import build.raft.app.RaftThreadComposerPayload
 import build.raft.app.RobolectricComposeActivityRule
 import build.raft.app.ThreadComposerContent
@@ -48,7 +49,7 @@ import build.raft.designsystem.text.RaftText
 
 /**
  * The otter on a real composer (ThreadComposerContent's `frameEdge`, as ThreadComposerRoute wires
- * it) and its list-end band: it shows on the conversation's composer, moves to a thread opened
+ * it): it shows on the conversation's composer, lying over the list's end without moving it, moves to a thread opened
  * over it and back when that leaves, takes a focused composer, never shows where the page has
  * no otter, and a press opens the assistant. Web parity: assistantOtterState.ts `useOtterHost`.
  */
@@ -71,18 +72,29 @@ class ThreadAssistantOtterUiTest {
 
     /** One conversation: its list's end, then its composer, as ThreadPage lays them out. */
     @Composable
-    private fun Conversation(tag: String, otter: ThreadAssistantOtter?) {
+    private fun Conversation(
+        tag: String,
+        otter: ThreadAssistantOtter?,
+        pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
+        onCovered: (Boolean) -> Unit = {},
+    ) {
         Column(Modifier.fillMaxWidth().testTag(tag)) {
-            Spacer(Modifier.height(24.dp))
-            ThreadAssistantOtterListEnd(otter)
+            // The message list's end: the otter lies over it and takes no space there.
+            Spacer(Modifier.height(24.dp).testTag("$tag-list-end"))
             ThreadComposerContent(
-                payload = RaftThreadComposerPayload(instanceId = tag, placeholder = "Message #$tag"),
+                payload =
+                    RaftThreadComposerPayload(
+                        instanceId = tag,
+                        placeholder = "Message #$tag",
+                        pendingMentionActions = pendingMentionActions,
+                    ),
                 onEvent = { _, _, _, _ -> },
                 attachmentPreviewEnabled = false,
                 frameEdge =
                     otter?.let {
-                        val edge: @Composable (Boolean, Boolean) -> Unit = { composing, focused ->
-                            ThreadAssistantOtterFrameEdge(it, composing, focused, animateEntrance = false)
+                        val edge: @Composable (Boolean, Boolean, Boolean) -> Unit = { composing, focused, covered ->
+                            onCovered(covered)
+                            ThreadAssistantOtterFrameEdge(it, composing, focused, covered, animateEntrance = false)
                         }
                         edge
                     },
@@ -101,9 +113,6 @@ class ThreadAssistantOtterUiTest {
     private fun ComposeUiTest.otterIn(conversation: String): SemanticsNodeInteraction =
         onNode(hasTestTag(ThreadAssistantOtterTestTag) and hasAnyAncestor(hasTestTag(conversation)))
 
-    private fun ComposeUiTest.bandIn(conversation: String): SemanticsNodeInteraction =
-        onNode(hasTestTag(ThreadAssistantOtterListEndTestTag) and hasAnyAncestor(hasTestTag(conversation)))
-
     @Test
     fun showsOnTheComposerAndMovesToAThreadOpenedOverIt() =
         runRobolectricComposeUiTest {
@@ -114,18 +123,44 @@ class ThreadAssistantOtterUiTest {
                 if (threadOpen) Conversation(THREAD, otter(hosts, THREAD))
             }
             otterIn(CHANNEL).assertExists()
-            bandIn(CHANNEL).assertExists()
 
             runOnIdle { threadOpen = true }
             otterIn(THREAD).assertExists()
-            bandIn(THREAD).assertExists()
             otterIn(CHANNEL).assertDoesNotExist()
-            bandIn(CHANNEL).assertDoesNotExist()
 
             runOnIdle { threadOpen = false }
             otterIn(CHANNEL).assertExists()
-            bandIn(CHANNEL).assertExists()
             runOnIdle { assertEquals(listOf(CHANNEL), hosts.order.value) }
+        }
+
+    /**
+     * artin 11-03: the otter lies over the message list; its coming or going neither resizes nor
+     * moves the list (no list-end band). Here the channel's list end keeps its place while the
+     * otter leaves the channel's composer for another one and comes back.
+     */
+    @Test
+    fun theOtterComingOrGoingNeverMovesTheList() =
+        runRobolectricComposeUiTest {
+            val hosts = RaftAssistantOtterHosts()
+            var threadOpen by mutableStateOf(false)
+            show {
+                Conversation(CHANNEL, otter(hosts, CHANNEL))
+                if (threadOpen) Conversation(THREAD, otter(hosts, THREAD))
+            }
+            otterIn(CHANNEL).assertExists()
+            val listEnd = onNode(hasTestTag("$CHANNEL-list-end"))
+            val withOtter = listEnd.fetchSemanticsNode().boundsInRoot
+            val composerTop = onNode(hasTestTag(CHANNEL)).fetchSemanticsNode().boundsInRoot
+
+            runOnIdle { threadOpen = true }
+            otterIn(CHANNEL).assertDoesNotExist()
+            assertEquals(withOtter, listEnd.fetchSemanticsNode().boundsInRoot)
+            assertEquals(composerTop, onNode(hasTestTag(CHANNEL)).fetchSemanticsNode().boundsInRoot)
+
+            runOnIdle { threadOpen = false }
+            otterIn(CHANNEL).assertExists()
+            assertEquals(withOtter, listEnd.fetchSemanticsNode().boundsInRoot)
+            assertEquals(composerTop, onNode(hasTestTag(CHANNEL)).fetchSemanticsNode().boundsInRoot)
         }
 
     @Test
@@ -141,7 +176,26 @@ class ThreadAssistantOtterUiTest {
             runOnIdle { hosts.activate(CHANNEL) }
             otterIn(CHANNEL).assertExists()
             otterIn(THREAD).assertDoesNotExist()
-            bandIn(THREAD).assertDoesNotExist()
+        }
+
+    /**
+     * artin 11-02: while the "not in #channel — Add / Notify / Ignore" card sits above the
+     * composer, the composer tells its frame edge it is covered, and the otter goes in (it stays
+     * registered on this composer); when the card goes, it comes back out.
+     */
+    @Test
+    fun aMentionCardAboveTheComposerHidesTheOtter() =
+        runRobolectricComposeUiTest {
+            val hosts = RaftAssistantOtterHosts()
+            var actions by mutableStateOf(listOf(RaftPendingMentionActionItem(resolutionId = "res-1", targetHandle = "Volta", availableActions = listOf("add", "notify_only"))))
+            var covered: Boolean? = null
+            show { Conversation(CHANNEL, otter(hosts, CHANNEL), pendingMentionActions = actions, onCovered = { covered = it }) }
+            runOnIdle { assertEquals(true, covered) }
+            otterIn(CHANNEL).assertExists()
+
+            runOnIdle { actions = emptyList() }
+            runOnIdle { assertEquals(false, covered) }
+            otterIn(CHANNEL).assertExists()
         }
 
     @Test
@@ -149,7 +203,6 @@ class ThreadAssistantOtterUiTest {
         runRobolectricComposeUiTest {
             show { Conversation(CHANNEL, otter = null) }
             otterIn(CHANNEL).assertDoesNotExist()
-            bandIn(CHANNEL).assertDoesNotExist()
         }
 
     @Test

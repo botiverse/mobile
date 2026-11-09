@@ -7,14 +7,23 @@ import platform.CoreFoundation.CFStringCreateWithCString
 import platform.CoreFoundation.CFStringGetRangeOfComposedCharactersAtIndex
 import platform.CoreFoundation.kCFAllocatorDefault
 import platform.CoreFoundation.kCFStringEncodingUTF8
+import platform.Foundation.NSNumber
 import platform.Foundation.NSProcessInfo
+import platform.Foundation.valueForKey
 import platform.UIKit.UIApplication
 import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
 
+// Read once: an app's process never moves between an iPad and a Mac. Read by its getter name: the Kotlin/Native
+// Foundation bindings have no accessor for `-[NSProcessInfo isiOSAppOnMac]` (iOS 14+; we target 15).
+private val isiOSAppOnMac: Boolean =
+    (NSProcessInfo.processInfo.valueForKey("isiOSAppOnMac") as? NSNumber)?.boolValue == true
+
+internal actual fun raftPlatformIsiOSAppOnMac(): Boolean = isiOSAppOnMac
+
 internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle =
-    RaftPullToRefreshStyle.Cupertino
+    raftIosPullToRefreshStyle(onMac = isiOSAppOnMac)
 
 internal actual fun raftPlatformPageVisibleLifecycleState(): Lifecycle.State = Lifecycle.State.RESUMED
 
@@ -36,11 +45,20 @@ internal actual fun raftPlatformSupportsMultiShellHost(): Boolean =
 
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = true
 
-internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = false
+// Read at every call, not once: the keyboard state is snapshot state, so a page reading the
+// preference (ThreadPage reads it in composition) follows a keyboard being attached or removed.
+// LocalPreferences only falls back to this while the user has not chosen in Settings.
+internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean =
+    raftIosComposerEnterSendsByDefault(
+        onMac = isiOSAppOnMac,
+        hardwareKeyboard = RaftIosHardwareKeyboardState.connected,
+    )
 
 internal actual fun raftPlatformMessageTextPointerSelectable(): Boolean = false
 
 internal actual fun raftPlatformHasFinePointer(): Boolean = false
+
+internal actual fun raftPlatformShortcutsUseCommand(): Boolean = true
 
 internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = true
 
@@ -135,6 +153,8 @@ internal actual fun raftPlatformSupportsHandsFeedbackSubmit(): Boolean = true
 
 internal actual fun raftFeedbackWebViewClientKind(): String = "ios"
 
+internal actual fun raftComposerCameraAvailable(): Boolean = true
+
 internal actual fun raftSlugSlashCenteringOffsetDp(): Float = 0f
 
 /** Native pop arbitration yields to paging while it can consume the drag. */
@@ -143,5 +163,9 @@ internal actual fun raftPlatformTabPagerStartEdgeInsetDp(): Float = 0f
 /** Cupertino rubber band can stick at an offset when its spring is cancelled; see expect. */
 internal actual fun raftPlatformTabPagerOverscrollEnabled(): Boolean = false
 
+internal actual fun raftPlatformTabPagerSwipeEnabled(): Boolean = true
+
 /** The system tab bar switches at once; see expect. */
 internal actual fun raftPlatformAppShellTabFadeThrough(): Boolean = false
+
+internal actual fun raftPlatformFollowsAppStoreBillingRules(): Boolean = true

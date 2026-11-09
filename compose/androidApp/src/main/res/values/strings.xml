@@ -522,9 +522,6 @@
     <string name="browser_unavailable_toast">No browser is available to open this link</string>
     <string name="email_verified_toast">Email verified</string>
     <string name="email_verified_sign_in_toast">Email verified. Sign in to continue.</string>
-    <string name="provider_unavailable_toast">This sign-in provider is not available on Android yet</string>
-    <string name="google_sign_in_no_code_toast">Google sign-in did not return an authorization code</string>
-    <string name="google_sign_in_failed_toast">Google sign-in failed. Try again.</string>
     <string name="oauth_request_expired_toast">Sign-in request expired. Try again.</string>
     <string name="provider_no_handoff_code_toast">%1$s did not return a handoff code</string>
     <string name="provider_linked_toast">%1$s account linked.</string>

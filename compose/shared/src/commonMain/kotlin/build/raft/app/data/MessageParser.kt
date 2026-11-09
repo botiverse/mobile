@@ -181,6 +181,8 @@ private data class MessagesWireThreadSummary(
 private data class MessagesWireChannelResponse(
     val messages: List<MessagesWireMessage> = emptyList(),
     val historyLimited: Boolean = false,
+    // Free plan: what the 30-day window hides, on a page that reached its start ([parseHiddenHistory]).
+    val hiddenHistory: JsonElement? = null,
     val threadSummariesByParentMessageId: JsonElement? = null,
     // Message storage Phase 1: decoded leniently ([decodeChannelMessageWindow]) so a drifted window never
     // fails the page.
@@ -259,6 +261,8 @@ data class SharedMessagesPayload(
     val hasOlder: Boolean = false,
     val hasNewer: Boolean = false,
     val historyLimited: Boolean = false,
+    /** `messages/channel` only: what the Free plan's history window hides ([RaftHiddenHistoryStore]). */
+    val hiddenHistory: HiddenHistory? = null,
     val channelArchived: Boolean = false,
     /** `messages/channel` only: the page's server coverage bounds ([ChannelMessageWindow]); no reader yet. */
     val messageWindow: ChannelMessageWindow? = null,
@@ -313,6 +317,7 @@ fun parseSharedChannelMessages(
             ),
         replySummariesAuthority = embeddedAuthority,
         historyLimited = response.historyLimited,
+        hiddenHistory = parseHiddenHistory(response.hiddenHistory),
         messageWindow = decodeChannelMessageWindow(response.messageWindow),
     )
 }
@@ -388,6 +393,18 @@ fun parseSharedSyncMessages(
     return SharedMessagesPayload(
         messages = wireMessages.mapNotNull { it.toDomain(fallbackThreadId, diagnostics) },
     )
+}
+
+/**
+ * One message list row (a `GET /api/messages/channel/:channelId` item), as the sync log's
+ * `message` entity carries it (RFC 082 §4.4); null when it doesn't read.
+ */
+internal fun parseSharedMessageRow(
+    row: JsonObject,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): Message? {
+    val wire = runCatching { messagesJson.decodeFromJsonElement(MessagesWireMessage.serializer(), row) }.getOrNull() ?: return null
+    return wire.toDomain(ThreadId(wire.channelId), diagnostics)
 }
 
 fun parseSharedSentMessage(
@@ -529,7 +546,7 @@ private fun MessagesWireMessage.toDomain(
         createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(createdAt),
         body = content,
         messageType = resolvedMessageType,
-        metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
+        metadata = actionMetadata.toMessageItemMetadata(),
         attachments = attachments.map { it.toDomain() },
         randomId = randomId?.takeIf { it.isNotBlank() },
         reactions = reactions.mapNotNull { it.toDomain() }.takeIf { it.isNotEmpty() },

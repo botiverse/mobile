@@ -97,6 +97,7 @@ private data class WireChannelExternalMember(
     val actorKind: String? = null,
     val avatarUrl: String? = null,
     val lastSeenAt: String? = null,
+    val workspaceName: String? = null,
 )
 
 @Serializable
@@ -158,6 +159,12 @@ private data class WireAgent(
      * `projectAssistantPause`); who paused it (`assistantPausedBy`) is not read here.
      */
     val assistantPausedAt: String? = null,
+    /**
+     * `GET /agents` only (botiverse/slock #13575 `agentBlockedReason`): why the server runs the agent
+     * nowhere: `computer_access_revoked` (its Computer's key was revoked) or
+     * `computer_version_unsupported`; null otherwise. Additive: an unknown value is kept raw.
+     */
+    val blockedReason: String? = null,
 )
 
 /** slock `routes/agents.ts` `managedByApp`: `{ clientId, name, logoUrl, description, botStatusText }`. */
@@ -428,15 +435,39 @@ fun parseSharedAgentActivity(
     AgentActivitySnapshot(
         agentId = agentId,
         activity = memberAgentJson.decodeFromString(ListSerializer(WireActivityLogEntry.serializer()), bodyText)
-            .mapIndexedNotNull { index, row -> row.toDomain(index) },
+            .withActivityRowKeys()
+            .mapNotNull { (row, rowKey) -> row.toDomain(rowKey) },
     )
 }.getOrNull()
 
-private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
+/**
+ * Each log row's key, from the row itself: its content's hash and which repeat of identical content at
+ * that time it is. Never its position in the response: `activity-log` returns the latest window, so a
+ * position shifts every time the window slides, and an id built from it renamed every row on each
+ * reload (the Activity list then rebuilt all rows and lost its place, and merges kept both copies).
+ */
+private fun List<WireActivityLogEntry>.withActivityRowKeys(): List<Pair<WireActivityLogEntry, String>> {
+    val seen = HashMap<String, Int>()
+    return map { row ->
+        val content = "${row.entry.kind}:${row.entry.toString().activityContentHash()}"
+        val atTime = "${row.timestamp}:$content"
+        val repeat = seen[atTime] ?: 0
+        seen[atTime] = repeat + 1
+        row to "$content:$repeat"
+    }
+}
+
+private fun String.activityContentHash(): String {
+    var hash = 0
+    for (char in this) hash = hash * 31 + char.code
+    return hash.toUInt().toString(16)
+}
+
+private fun WireActivityLogEntry.toDomain(rowKey: String): AgentActivityEntry? =
     when (entry.kind) {
         "thinking" ->
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = "thinking",
                 title = "Thinking",
                 body = entry.text,
@@ -451,7 +482,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
             } else {
                 val input = entry.toolInput.toToolInputPreview()
                 trajectoryEntry(
-                    index = index,
+                    rowKey = rowKey,
                     type = "tool_start",
                     title = toolName.toToolLogLabel(),
                     body = input,
@@ -468,7 +499,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
         }
         "text" ->
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = "text",
                 title = "Output",
                 body = entry.text,
@@ -478,7 +509,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
             )
         "slock_action" ->
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = "slock_action",
                 title = entry.title?.takeIf { it.isNotBlank() } ?: "Raft action",
                 body = entry.text ?: entry.message,
@@ -487,7 +518,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
             )
         "system" ->
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = "system",
                 title = entry.title?.takeIf { it.isNotBlank() } ?: "System",
                 body = entry.text ?: entry.message,
@@ -496,13 +527,13 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
             )
         "compaction_started" ->
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = "compaction_started",
                 title = "Context Compaction Started"
             )
         "compaction_finished" ->
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = "compaction_finished",
                 title = "Context Compaction Finished"
             )
@@ -513,7 +544,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
                 detailKind = entry.detailKind,
             )
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = "status",
                 title = display.first,
                 body = display.second.takeIf { it.isNotBlank() },
@@ -527,7 +558,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
         }
         else ->
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = entry.kind,
                 title = entry.summary ?: entry.activity?.toAgentActivityTitle() ?: entry.kind.toAgentActivityTitle(),
                 body = entry.detail ?: entry.message ?: entry.text ?: entry.toolName ?: entry.name,
@@ -539,7 +570,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
     }
 
 private fun WireActivityLogEntry.trajectoryEntry(
-    index: Int,
+    rowKey: String,
     type: String,
     title: String,
     body: String? = null,
@@ -555,7 +586,7 @@ private fun WireActivityLogEntry.trajectoryEntry(
     refTextEnabled: Boolean = false
 ): AgentActivityEntry =
     AgentActivityEntry(
-        id = "$timestamp:$index",
+        id = "$timestamp:$rowKey",
         type = type,
         title = title,
         body = body?.sanitizeActivityText(),
@@ -682,12 +713,17 @@ fun parseSharedAgentSkillsSnapshot(
     agentId: MemberId,
 ): AgentSkillsSnapshot? = runCatching {
     val decoded = memberAgentJson.decodeFromString(WireAgentSkillsResponse.serializer(), bodyText)
+    // Web AgentSkills: with any skill at all both sub-sections show (an empty one says so);
+    // with none, the section is its header alone.
+    val hasSkills = decoded.global.isNotEmpty() || decoded.workspace.isNotEmpty()
     AgentSkillsSnapshot(
         agentId = agentId,
-        groups = listOf(
-            decoded.global.toSkillGroup("Global"),
-            decoded.workspace.toSkillGroup("Workspace"),
-        ).filter { group -> group.paths.any { it.skills.isNotEmpty() } },
+        groups =
+            if (hasSkills) {
+                listOf(decoded.global.toSkillGroup("Global"), decoded.workspace.toSkillGroup("Workspace"))
+            } else {
+                emptyList()
+            },
     )
 }.getOrNull()
 
@@ -695,7 +731,8 @@ private fun List<WireSkillInfo>.toSkillGroup(title: String): AgentSkillGroup =
     AgentSkillGroup(
         title = title,
         count = size,
-        paths = groupBy { it.sourcePath ?: title }
+        // Web `groupByPath`: `skill.sourcePath || "unknown"`.
+        paths = groupBy { it.sourcePath?.takeIf { path -> path.isNotBlank() } ?: "unknown" }
             .map { (path, skills) ->
                 AgentSkillPathGroup(
                     path = path,
@@ -704,6 +741,7 @@ private fun List<WireSkillInfo>.toSkillGroup(title: String): AgentSkillGroup =
                         AgentSkillSummary(
                             name = it.displayName.takeIf { display -> display.isNotBlank() } ?: it.name,
                             detail = it.description.takeIf { description -> description.isNotBlank() },
+                            command = it.name.takeIf { name -> it.userInvocable && name.isNotBlank() },
                         )
                     },
                 )
@@ -742,6 +780,7 @@ private fun WireChannelExternalMember.toModel(): ChannelExternalMemberProfile {
         avatarUrl = avatarUrl,
         avatarLabel = label.toRaftAvatarLabel(),
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
+        workspaceName = workspaceName?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 
@@ -876,6 +915,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
             },
         agentStatus = agentStatus,
         agentLifecycleStatus = status.trim().lowercase().takeIf { it.isNotBlank() },
+        agentBlockedReason = blockedReason?.trim()?.takeIf { it.isNotBlank() },
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },

@@ -1,7 +1,10 @@
 package com.tencent.kuiklybase.markdown.compose
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.staticCompositionLocalOf
+import org.intellij.markdown.ast.ASTNode
 import kotlin.time.TimeSource
 
 /**
@@ -297,6 +300,13 @@ val LocalRaftMarkdownAnnotationRevision =
 val LocalRaftMarkdownParagraphFillWidth = compositionLocalOf { true }
 
 /**
+ * Slock (App link block cards, raft-design #1010): drawn right after a list item's paragraph, inside
+ * the item, with the paragraph's node. List items draw their paragraph directly, not through
+ * `MarkdownComponents.paragraph`, so a card that follows it needs this hook. Null: nothing follows.
+ */
+val LocalRaftMarkdownAfterListParagraph = staticCompositionLocalOf<(@Composable (ASTNode) -> Unit)?> { null }
+
+/**
  * Raft: table cell insets as separate horizontal / vertical values (web `th`/`td` `px-2 py-1`).
  * Null keeps the legacy uniform `MarkdownDimens.tableCellPadding`.
  */
@@ -308,6 +318,14 @@ val LocalRaftMarkdownTableCellPadding = compositionLocalOf<PaddingValues?> { nul
  * legacy behaviour (rules only where the source has `|`).
  */
 val LocalRaftMarkdownTableClosedGrid = compositionLocalOf { false }
+
+/**
+ * Raft (share image): wide content fits the width it is given instead of scrolling sideways, as
+ * the web's share capture forces it (slock `selectScreenshot.ts` `constrainWideContentForScreenshot`:
+ * a table takes 100% of the width and its cells wrap, header cells included). False keeps the
+ * conversation's behaviour: a table too wide for the message scrolls.
+ */
+val LocalRaftMarkdownFitWidth = compositionLocalOf { false }
 
 /**
  * Single decision point for AnnotatedString memoization, shared by

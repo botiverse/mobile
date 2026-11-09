@@ -32,6 +32,7 @@ import build.raft.app.data.ConversationRepository
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
+import build.raft.app.data.TaskConversationChannelRef
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.InboxDoneFrontier
 import build.raft.app.data.MemberRepository
@@ -126,6 +127,10 @@ internal object SharedThreadStoreTestFakes {
             requestedLimit: Int,
             replyParent: ThreadDurableReplyParent?,
             requestHeadEpoch: Long?,
+            messageWindow: ChannelMessageWindow?,
+            historyLimited: Boolean,
+            revAtRequest: Long?,
+            replyCountByParentId: Map<String, Int>?,
             stillCurrent: () -> Boolean
         ) {
             replyParents += replyParent
@@ -490,6 +495,11 @@ internal object SharedThreadStoreTestFakes {
     ) : ConversationRepository {
         var getThreadStarted: CompletableDeferred<Unit>? = null
         var releaseGetThread: CompletableDeferred<Unit>? = null
+        /** Task v2: `GET /channels/:id` refs by conversation id; any other id answers "not a task". */
+        var taskConversationRefs: Map<ChannelId, TaskConversationChannelRef> = emptyMap()
+        val taskConversationRefRequests: MutableList<ChannelId> = mutableListOf()
+        /** Virtual-time latency of [loadTaskConversationRef]. */
+        var taskConversationRefDelayMillis: Long = 0L
         var syncNewerStarted: CompletableDeferred<Unit>? = null
         var releaseSyncNewer: CompletableDeferred<Unit>? = null
         /** Task #168 step 1: the gap catch-up's latest page; `null` answers with [getThread]'s result. */
@@ -525,6 +535,13 @@ internal object SharedThreadStoreTestFakes {
         val getReplyThreadLimits: MutableList<Int> = mutableListOf()
         val getReplyThreadPriorities: MutableList<DataRequestPriority> = mutableListOf()
         val getMessageContextPriorities: MutableList<DataRequestPriority> = mutableListOf()
+
+        override suspend fun loadTaskConversationRef(conversationChannelId: ChannelId): DataResult<TaskConversationChannelRef> {
+            taskConversationRefRequests += conversationChannelId
+            if (taskConversationRefDelayMillis > 0L) delay(taskConversationRefDelayMillis)
+            return taskConversationRefs[conversationChannelId]?.let { DataResult.Content(it) }
+                ?: DataResult.Empty(EmptyReason.NoMessages)
+        }
 
         override suspend fun getThread(
             threadId: ThreadId,

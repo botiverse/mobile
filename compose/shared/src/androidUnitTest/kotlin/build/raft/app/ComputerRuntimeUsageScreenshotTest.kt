@@ -1,7 +1,9 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
@@ -30,6 +32,11 @@ import build.raft.app.data.toRuntimeAccountUsageRead
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.raftEpochDayForDate
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftPreviewCardDefaults
+import build.raft.designsystem.components.RaftPreviewCardSurface
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
@@ -66,6 +73,22 @@ class ComputerRuntimeUsageScreenshotTest {
 
     @Test
     fun sheetDark() = capture("settings.computer.runtime_usage.sheet.dark", RaftAppAppearance.Dark) { RuntimeUsageSheetContent(it) }
+
+    // The desktop card a mouse rests on (web RuntimeUsageHoverCard, 390 wide): pinned, with its
+    // close button; the same content as the sheet.
+    @Test
+    @Config(sdk = [34], qualifiers = "w520dp-h640dp-xxhdpi")
+    fun previewCardLight() = capture("settings.computer.runtime_usage.preview_card", RaftAppAppearance.Light) { RuntimeUsagePreviewCardContent(CLAUDE_USAGE) }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w520dp-h640dp-xxhdpi")
+    fun previewCardDark() = capture("settings.computer.runtime_usage.preview_card.dark", RaftAppAppearance.Dark) { RuntimeUsagePreviewCardContent(CLAUDE_USAGE) }
+
+    // A stale snapshot: the orange-soft notice over the sunken accounts.
+    @Test
+    @Config(sdk = [34], qualifiers = "w520dp-h640dp-xxhdpi")
+    fun previewCardStaleLight() =
+        capture("settings.computer.runtime_usage.preview_card.stale", RaftAppAppearance.Light) { RuntimeUsagePreviewCardContent(KIMI_USAGE, label = "Kimi") }
 
     // The agent profile's usage card says what is used, like the sheet above (web #11855).
     @Test
@@ -207,5 +230,30 @@ private fun RuntimeUsageMemberCardContent() {
     val read = remember { Json.parseToJsonElement(CLAUDE_USAGE).toRuntimeAccountUsageRead() as RuntimeAccountUsageRead.Available }
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp)) {
         MembersRuntimeUsageAccountCard(account = read.snapshot.accounts.single(), stale = false, timeContext = usageTimeContext)
+    }
+}
+
+/** The usage card as a pinned preview card shows it, under the chip it belongs to. */
+@Composable
+private fun RuntimeUsagePreviewCardContent(usage: String, label: String = "Claude Code") {
+    val read = remember(usage) { Json.parseToJsonElement(usage).toRuntimeAccountUsageRead()!! }
+    Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(24.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        RaftBadge(text = label, appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information)
+        RaftPreviewCardSurface(width = RaftPreviewCardDefaults.WideWidth) {
+            ComputerRuntimeUsageCard(
+                runtimeLabel = label,
+                state =
+                    ComputerRuntimeUsageSheetState(
+                        load = RuntimeAccountUsageLoad.Loaded(read),
+                        loading = false,
+                        refresh = ComputerRuntimeUsageRefreshStatus.Idle,
+                        cooldownLeftMillis = 0L,
+                        runtimeVersion = "2.1.304 (Claude Code)".takeIf { label == "Claude Code" },
+                    ),
+                timeContext = usageTimeContext,
+                onRefresh = {},
+                onClose = {},
+            )
+        }
     }
 }

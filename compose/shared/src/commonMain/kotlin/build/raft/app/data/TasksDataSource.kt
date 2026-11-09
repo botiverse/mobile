@@ -101,9 +101,16 @@ class SharedTasksDataSource(
         serverId: ServerId,
         taskId: TaskId,
         status: TaskStatus
+    ): DataResult<TaskActionResult> = updateTaskStatus(serverId, taskId, status, reason = null)
+
+    override suspend fun updateTaskStatus(
+        serverId: ServerId,
+        taskId: TaskId,
+        status: TaskStatus,
+        reason: String?
     ): DataResult<TaskActionResult> =
         try {
-            typedApi.updateTaskStatus(serverId, taskId, status)
+            typedApi.updateTaskStatus(serverId, taskId, status, reason)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
@@ -135,13 +142,22 @@ class SharedTasksDataSource(
         serverId: ServerId,
         channelId: ChannelId,
         titles: List<String>
+    ): DataResult<TaskSnapshot> = createTasks(serverId, channelId, titles, status = null)
+
+    /** [status] (task v2, web `createTasks(..., status)`): every created task starts in it; null sends none. */
+    override suspend fun createTasks(
+        serverId: ServerId,
+        channelId: ChannelId,
+        titles: List<String>,
+        status: TaskStatus?
     ): DataResult<TaskSnapshot> =
         try {
             typedApi.createTasks(
                 serverId = serverId,
                 channelId = channelId,
                 drafts = titles.map { TaskCreateDraft(title = it) },
-                priority = DataRequestPriority.Foreground
+                priority = DataRequestPriority.Foreground,
+                status = status
             )
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -152,13 +168,15 @@ class SharedTasksDataSource(
     /**
      * Task v2 "Create Task from Message" (slock web `CreateTaskDialog` → taskStore `createTasks`):
      * `POST /tasks/channel/:channelId` `{ tasks: [{ title, sourceMessageId }] }`, every task hanging
-     * under [sourceMessageId]. Blank titles are dropped here; none left is an Empty result.
+     * under [sourceMessageId]. Blank titles are dropped here; none left is an Empty result. [status]:
+     * the status every task starts in (`{ tasks, status }`, slock #12963); null sends none.
      */
     suspend fun createTasksFromMessage(
         serverId: ServerId,
         channelId: ChannelId,
         titles: List<String>,
         sourceMessageId: MessageId,
+        status: TaskStatus? = null,
     ): DataResult<TaskSnapshot> {
         val drafts = titles.map { it.trim() }.filter { it.isNotBlank() }.map { TaskCreateDraft(title = it, sourceMessageId = sourceMessageId) }
         if (drafts.isEmpty()) return DataResult.Empty(EmptyReason.NoTasks)
@@ -167,7 +185,8 @@ class SharedTasksDataSource(
                 serverId = serverId,
                 channelId = channelId,
                 drafts = drafts,
-                priority = DataRequestPriority.Foreground
+                priority = DataRequestPriority.Foreground,
+                status = status
             )
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -425,12 +444,20 @@ internal class NetworkRaftTasksApi(
         channelId: ChannelId,
         drafts: List<TaskCreateDraft>,
         priority: DataRequestPriority
+    ): HomeNetworkResponse = createTasks(serverId, channelId, drafts, priority, status = null)
+
+    override suspend fun createTasks(
+        serverId: ServerId,
+        channelId: ChannelId,
+        drafts: List<TaskCreateDraft>,
+        priority: DataRequestPriority,
+        status: TaskStatus?
     ): HomeNetworkResponse =
         networkClient.request(
             priority = priority,
             path = "tasks/channel/${channelId.value}",
             method = "POST",
-            bodyText = buildSharedTasksCreateBody(drafts),
+            bodyText = buildSharedTasksCreateBody(drafts, status),
             serverIdOverride = serverId
         )
 
@@ -509,12 +536,19 @@ internal class NetworkRaftTasksApi(
         serverId: ServerId,
         taskId: TaskId,
         status: TaskStatus
+    ): HomeNetworkResponse = updateTaskStatus(serverId, taskId, status, reason = null)
+
+    override suspend fun updateTaskStatus(
+        serverId: ServerId,
+        taskId: TaskId,
+        status: TaskStatus,
+        reason: String?
     ): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Foreground,
             path = "tasks/${taskId.value}/status",
             method = "PATCH",
-            bodyText = buildSharedTaskStatusBody(status),
+            bodyText = buildSharedTaskStatusBody(status, reason),
             serverIdOverride = serverId
         )
 
@@ -576,6 +610,17 @@ interface RaftTasksApi {
         drafts: List<TaskCreateDraft>,
         priority: DataRequestPriority
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+    /**
+     * Task v2 (slock #12963): `{ tasks, status }`, every task starting in [status]. The default
+     * (fakes) drops the status; the network transport sends it.
+     */
+    suspend fun createTasks(
+        serverId: ServerId,
+        channelId: ChannelId,
+        drafts: List<TaskCreateDraft>,
+        priority: DataRequestPriority,
+        status: TaskStatus?
+    ): HomeNetworkResponse = createTasks(serverId, channelId, drafts, priority)
     suspend fun claimTask(taskId: TaskId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun claimTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
@@ -593,6 +638,12 @@ interface RaftTasksApi {
     suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+    /**
+     * `PATCH /api/tasks/:taskId/status` `{ status, reason? }` (slock #12962): [reason] only on a move
+     * into Backlog. The default (fakes) drops the reason; the network transport sends it.
+     */
+    suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus, reason: String?): HomeNetworkResponse =
+        updateTaskStatus(serverId, taskId, status)
 
     /**
      * `PATCH /api/tasks/:taskId/assignee` (server contract: body `{ assignee:
@@ -662,7 +713,11 @@ internal fun HomeNetworkResponse.toTaskConversationOpenResult(
 }
 
 @Serializable
-data class TaskStatusUpdateRequestBody(val status: String)
+data class TaskStatusUpdateRequestBody(
+    val status: String,
+    // slock `checkTaskStatusReason`: only a move into backlog takes one; omitted (explicitNulls = false) otherwise.
+    val reason: String? = null
+)
 
 @Serializable
 data class TaskCreateRequestBody(
@@ -674,13 +729,38 @@ data class TaskCreateRequestBody(
 )
 
 @Serializable
-data class TasksCreateRequestBody(val tasks: List<TaskCreateRequestBody>)
+data class TasksCreateRequestBody(
+    val tasks: List<TaskCreateRequestBody>,
+    // Task v2 (slock `TASK_CREATE_STATUSES`): backlog, todo or in_progress; omitted for the server's default.
+    val status: String? = null
+)
 
 @Serializable
 data class TaskConvertRequestBody(val messageId: String)
 
-fun TaskStatus.toTaskStatusUpdateRequestBody(): TaskStatusUpdateRequestBody =
-    TaskStatusUpdateRequestBody(status = toWireValue())
+fun TaskStatus.toTaskStatusUpdateRequestBody(reason: String? = null): TaskStatusUpdateRequestBody =
+    TaskStatusUpdateRequestBody(status = toWireValue(), reason = taskBacklogReasonOrNull(this, reason))
+
+/** slock `TASK_BACKLOG_REASON_MAX_LENGTH`: the server refuses a longer reason. */
+const val TaskBacklogReasonMaxLength = 500
+
+/**
+ * The reason a status write sends (web taskStore `updateTaskStatus`: trimmed, blank is none). Only a
+ * move into Backlog takes one: the server refuses a reason with any other status
+ * (`task_status_reason_invalid`). Whitespace runs read as one space, as the server stores it.
+ */
+fun taskBacklogReasonOrNull(status: TaskStatus, reason: String?): String? {
+    if (status != TaskStatus.Backlog) return null
+    return reason?.replace(Regex("[\\s\u0085]+"), " ")?.trim()?.takeIf { it.isNotEmpty() }?.take(TaskBacklogReasonMaxLength)
+}
+
+/**
+ * The statuses a task can be created in (slock `TASK_CREATE_STATUSES`, web Create Task's Status
+ * field), in that order: Backlog, Todo, In Progress. Todo is the field's default.
+ */
+val TaskCreateStatuses: List<TaskStatus> = listOf(TaskStatus.Backlog, TaskStatus.Todo, TaskStatus.InProgress)
+
+val DefaultTaskCreateStatus: TaskStatus = TaskStatus.Todo
 
 fun TaskCreateDraft.toTaskCreateRequestBody(): TaskCreateRequestBody =
     TaskCreateRequestBody(
@@ -689,11 +769,16 @@ fun TaskCreateDraft.toTaskCreateRequestBody(): TaskCreateRequestBody =
         sourceMessageId = sourceMessageId?.value?.takeIf { it.isNotBlank() }
     )
 
-fun buildSharedTaskStatusBody(status: TaskStatus): String =
-    tasksJson.encodeToString(status.toTaskStatusUpdateRequestBody())
+fun buildSharedTaskStatusBody(status: TaskStatus, reason: String? = null): String =
+    tasksJson.encodeToString(status.toTaskStatusUpdateRequestBody(reason))
 
-fun buildSharedTasksCreateBody(drafts: List<TaskCreateDraft>): String =
-    tasksJson.encodeToString(TasksCreateRequestBody(drafts.map { it.toTaskCreateRequestBody() }))
+fun buildSharedTasksCreateBody(drafts: List<TaskCreateDraft>, status: TaskStatus? = null): String =
+    tasksJson.encodeToString(
+        TasksCreateRequestBody(
+            tasks = drafts.map { it.toTaskCreateRequestBody() },
+            status = status?.takeIf { it in TaskCreateStatuses }?.toWireValue()
+        )
+    )
 
 fun buildSharedTaskConvertBody(messageId: MessageId): String =
     tasksJson.encodeToString(TaskConvertRequestBody(messageId.value))
@@ -849,9 +934,10 @@ internal class RaftTasksApiClient(
         serverId: ServerId,
         channelId: ChannelId,
         drafts: List<TaskCreateDraft>,
-        priority: DataRequestPriority
+        priority: DataRequestPriority,
+        status: TaskStatus? = null
     ): DataResult<TaskSnapshot> =
-        transport.createTasks(serverId, channelId, drafts, priority).toTasksResultOffUi(
+        transport.createTasks(serverId, channelId, drafts, priority, status).toTasksResultOffUi(
             source = "tasks_create",
             diagnosticsLogger = diagnosticsLogger
         )
@@ -890,9 +976,10 @@ internal class RaftTasksApiClient(
     suspend fun updateTaskStatus(
         serverId: ServerId,
         taskId: TaskId,
-        status: TaskStatus
+        status: TaskStatus,
+        reason: String? = null
     ): DataResult<TaskActionResult> =
-        transport.updateTaskStatus(serverId, taskId, status).toTaskActionResult(
+        transport.updateTaskStatus(serverId, taskId, status, reason).toTaskActionResult(
             source = "tasks_status",
             diagnostics = diagnosticsLogger,
             requestedStatus = status,

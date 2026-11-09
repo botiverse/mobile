@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlin.time.TimeSource
@@ -129,6 +131,35 @@ internal class SharedHomeSearchSavedStore(
         if (personalizationRepository != null) {
             prewarmSearchPersonalization()
         }
+        // Hands afae9ebb: the From list and Search's person / agent hits are the server's member
+        // directory, so they must always agree with it. A copy taken when Search opened went stale
+        // in the kept-alive Search tab: an agent created afterwards was in the directory (refreshed
+        // by the create) but never findable in Search. Follow the directory; no extra requests.
+        serverMembersStore?.let { members ->
+            scope.launch {
+                members.state
+                    .map { current ->
+                        senderFiltersOwner?.let { owner -> owner to current.entryFor(owner.serverId)?.members }
+                    }
+                    .distinctUntilChanged()
+                    .collect { followed -> followed?.first?.let(::followMemberDirectory) }
+            }
+        }
+    }
+
+    /** Re-derives the loaded sender filters from the member directory after it changed. */
+    private fun followMemberDirectory(owner: SenderFiltersOwner) {
+        val members = serverMembersStore ?: return
+        // An in-flight load publishes the same directory itself; before the first load there is
+        // nothing to follow, and a different owner means a server switch is being handled.
+        if (!searchOpened || senderFiltersOwner != owner || senderFiltersJob?.isActive == true) return
+        val directory = members.currentServerMembers(owner.serverId)
+        if (directory.isEmpty()) return
+        val next = directory.toSearchSenderFilters(owner.principalId, owner.serverId)
+        val current = _state.value.search
+        if (next == current.senderFilters) return
+        _state.value = _state.value.copy(search = current.copy(senderFilters = next, senderFiltersErrorCode = null))
+        diagnosticsLogger("store_load domain=home_search_sender_filters result=directory_follow count=${next.size}")
     }
 
     /** Re-reads the session's server and drops server-scoped Search state when it changed. */
@@ -1016,6 +1047,7 @@ internal class SharedHomeSearchSavedStore(
                 when (savedRepository.unsaveMessage(owner.serverId, messageId)) {
                     is DataResult.Content -> {
                         completeSavedUnsave(messageId)
+                        savedStateCache?.recordSavedWrite()
                         // Confirmed: the stored list loses the row too (a failed unsave leaves it).
                         savedStateCache?.savedList?.let { resource ->
                             resource.key(owner.userId, owner.serverId.value, Unit)?.let { key ->
@@ -1464,6 +1496,17 @@ class SharedHomeSavedStateCache internal constructor(
 
     private var ownerKey: String? = null
     private var state: SharedHomeSavedPanelState? = null
+    private val _writeRevision = MutableStateFlow(0L)
+
+    /**
+     * Bumped for every save or unsave the server accepted (web savedStore `writeRevision`): Activity's
+     * Saved filter, which lists the threads followed through a save, reloads on it.
+     */
+    val writeRevision: StateFlow<Long> = _writeRevision.asStateFlow()
+
+    fun recordSavedWrite() {
+        _writeRevision.value += 1
+    }
 
     fun read(serverId: String, userId: String): SharedHomeSavedPanelState? =
         state.takeIf { ownerKey == savedStateCacheKey(serverId, userId) }

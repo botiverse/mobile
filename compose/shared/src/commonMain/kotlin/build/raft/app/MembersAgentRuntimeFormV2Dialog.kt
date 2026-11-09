@@ -11,7 +11,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.data.DataResult
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
@@ -39,7 +38,8 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import build.raft.app.components.RaftSlotIcon
+import androidx.compose.foundation.layout.widthIn
 
 /**
  * Edit an agent's runtime settings through runtime form v2: the same form create
@@ -62,6 +62,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     runtimeId: String,
     machineRuntimeIds: List<String>,
     activeAgent: Boolean,
+    /** The agent's `modelLimits.defaultsReported` (botiverse/slock #13492). */
+    modelLimitsDefaultsReported: Boolean = false,
     saving: Boolean,
     error: String?,
     errorFieldKeys: Set<String>,
@@ -69,7 +71,11 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     onRuntimeSelected: () -> Unit,
     /** The computer's runtime-options rows (for the selected runtime's v2 marker), or null if unknown. */
     runtimeCatalog: suspend (machineId: String) -> SharedCreateAgentRuntimeCatalog?,
-    onSave: (submit: RuntimeFormV2SubmitBody, runtimeSwitched: Boolean) -> Unit
+    /**
+     * [newSession]: the change runs on a new session (a runtime switch, or a Codex model change),
+     * so Restart now resets the session (web AgentProfileInfo `newSession`, botiverse/slock #13372).
+     */
+    onSave: (submit: RuntimeFormV2SubmitBody, runtimeSwitched: Boolean, newSession: Boolean) -> Unit
 ) {
     var selectedRuntimeId by remember(access, agentId, machineId, runtimeId) { mutableStateOf(runtimeId) }
     val runtimeSwitched = membersRuntimeFormV2EditRuntimeSwitched(runtimeId, selectedRuntimeId)
@@ -120,12 +126,41 @@ internal fun MembersAgentRuntimeFormV2Dialog(
 
     // Read here: dialog content is hosted at the page root, outside the route's usage access.
     val quotaMachine = machineId?.let { RuntimeQuotaMachine(it, access = LocalMembersRuntimeAccountUsageAccess.current) }
+    // The one commit: the footer's Save on a wide window, the phone sheet's head button.
+    val commitLabel =
+        if (saving) stringResource(Res.string.member_action_saving)
+        else stringResource(Res.string.member_action_save_runtime_config)
+    val commit: () -> Unit = commit@{
+        val submitting = current ?: form ?: return@commit
+        val submit =
+            RuntimeFormV2SubmitBody(
+                runtimeId = submitting.form.runtimeId,
+                formValues = runtimeFormV2Submission(submitting.form, values, submitting.sources)
+            )
+        val newSession =
+            membersRuntimeConfigSaveStartsNewSession(
+                runtimeSwitched = runtimeSwitched,
+                runtimeId = submit.runtimeId,
+                modelChanged = values["model"] != initialValues["model"]
+            )
+        // Web (botiverse/slock #13372): only a stopped agent's runtime switch is confirmed; a
+        // running agent's change saves at once and applies when it is next idle.
+        if (membersRuntimeFormV2SaveNeedsSwitchConfirmation(runtimeSwitched, activeAgent)) {
+            pendingSwitchSubmit = submit
+        } else {
+            onSave(submit, runtimeSwitched, newSession)
+        }
+    }
     RaftUnifiedDialog(
         title = stringResource(Res.string.member_dialog_edit_runtime_config),
         dismissEnabled = !saving,
         dismissOnOutsideTap = false,
         keyboardAvoidanceEnabled = true,
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        presentation = RaftDialogPresentation.Sheet,
+        commitLabel = commitLabel,
+        onCommit = commit,
+        commitEnabled = saveEnabled
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
@@ -147,16 +182,17 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                             description = Res.string.runtime_form_v2_load_failed.format(listOf(failureCode)).localized(),
                             size = RaftUiBannerSize.Medium,
                             action = {
-                                RaftBrutalActionButton(
-                                    label = stringResource(Res.string.common_retry),
+                                RaftButton(
+                                    text = stringResource(Res.string.common_retry),
                                     onClick = {
                                         staleReloads = 0
                                         loadAttempt += 1
                                     },
+                                    modifier = Modifier.widthIn(min = 72.dp),
+                                    variant = RaftButtonVariant.Default,
+                                    size = RaftButtonSize.Md,
                                     enabled = !saving,
-                                    leadingIcon = RaftLucideIconName.RefreshCw,
-                                    minWidth = 72.dp,
-                                    minHeight = 32.dp
+                                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
                                 )
                             }
                         )
@@ -207,12 +243,15 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                         }
                     }
                 }
-                item(key = "restart-hint") {
-                    Text(
-                        text = stringResource(Res.string.member_hint_runtime_restart),
-                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                        color = RaftColor.TextMutedGray
+                // Web: under the runtime fields, only while the draft is still the saved Built-in target.
+                if (
+                    membersAgentModelLimitsWarningInEditor(
+                        defaultsReported = modelLimitsDefaultsReported,
+                        selectedRuntimeId = selectedRuntimeId,
+                        draftChanged = runtimeSwitched || values != initialValues
                     )
+                ) {
+                    item(key = "model-limits-defaults-warning") { MembersAgentModelLimitsWarning() }
                 }
                 error?.takeIf { it.isNotBlank() }?.let { message ->
                     item(key = "save-error") {
@@ -234,35 +273,24 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                 )
                 // Web AgentDetailPanel runtime editor: accent (primary) lg commit.
                 RaftButton(
-                    text =
-                        if (saving) stringResource(Res.string.member_action_saving)
-                        else stringResource(Res.string.member_action_save_runtime_config),
+                    text = commitLabel,
                     enabled = saveEnabled,
                     variant = RaftButtonVariant.Primary,
                     size = RaftButtonSize.Lg,
-                    onClick = {
-                        val submitting = current ?: form ?: return@RaftButton
-                        val submit =
-                            RuntimeFormV2SubmitBody(
-                                runtimeId = submitting.form.runtimeId,
-                                formValues = runtimeFormV2Submission(submitting.form, values, submitting.sources)
-                            )
-                        // A runtime switch resets the session: confirm it first, as web does.
-                        if (runtimeSwitched) pendingSwitchSubmit = submit else onSave(submit, false)
-                    }
+                    onClick = commit
                 )
             }
         }
 
     pendingSwitchSubmit?.let { submit ->
-        val confirmation = membersRuntimeFormV2SwitchConfirmation(runtimeId, submit.runtimeId, activeAgent)
+        val confirmation = membersRuntimeFormV2SwitchConfirmation(runtimeId, submit.runtimeId)
         MembersRuntimeSwitchConfirmationDialog(
             title = confirmation.title.localized(),
             message = confirmation.message.localized(),
             confirmLabel = confirmation.confirmLabel.localized(),
             onConfirm = {
                 pendingSwitchSubmit = null
-                onSave(submit, true)
+                onSave(submit, true, true)
             },
             onCancel = { pendingSwitchSubmit = null }
         )
@@ -348,27 +376,31 @@ internal data class MembersRuntimeFormV2SwitchConfirmation(
     val confirmLabel: StringDesc
 )
 
-/** Web `switchRuntime{Active,Inactive}Message`: only the from/to runtimes, no model copy. */
+/**
+ * Web AgentProfileInfo (botiverse/slock #13372): only a stopped agent's runtime switch is
+ * confirmed (it starts on a new session). A running agent is not interrupted: its change, a
+ * runtime switch included, saves without a confirmation and applies when it is next idle.
+ */
+internal fun membersRuntimeFormV2SaveNeedsSwitchConfirmation(runtimeSwitched: Boolean, activeAgent: Boolean): Boolean =
+    runtimeSwitched && !activeAgent
+
+/**
+ * Web `newSession`: a runtime switch, or a Codex model change (Codex `thread/resume` pins the
+ * model, so the server clears the session), runs on a new session.
+ */
+internal fun membersRuntimeConfigSaveStartsNewSession(runtimeSwitched: Boolean, runtimeId: String, modelChanged: Boolean): Boolean =
+    runtimeSwitched || (runtimeId.trim() == "codex" && modelChanged)
+
+/** Web `switchRuntimeInactiveMessage` (a stopped agent's switch): only the from/to runtimes. */
 internal fun membersRuntimeFormV2SwitchConfirmation(
     fromRuntimeId: String,
-    toRuntimeId: String,
-    activeAgent: Boolean
+    toRuntimeId: String
 ): MembersRuntimeFormV2SwitchConfirmation {
     val from = runtimeCatalogDisplayName(fromRuntimeId)
     val to = runtimeCatalogDisplayName(toRuntimeId)
     return MembersRuntimeFormV2SwitchConfirmation(
         title = Res.string.member_action_switch_runtime_config.desc(),
-        message =
-            if (activeAgent) {
-                Res.string.member_runtime_switch_active_message.format(listOf(from, to))
-            } else {
-                Res.string.member_runtime_switch_inactive_message.format(listOf(from, to))
-            },
-        confirmLabel =
-            if (activeAgent) {
-                Res.string.member_action_reset_runtime_session.desc()
-            } else {
-                Res.string.member_action_save_runtime_change.desc()
-            }
+        message = Res.string.member_runtime_switch_inactive_message.format(listOf(from, to)),
+        confirmLabel = Res.string.member_action_save_runtime_change.desc()
     )
 }

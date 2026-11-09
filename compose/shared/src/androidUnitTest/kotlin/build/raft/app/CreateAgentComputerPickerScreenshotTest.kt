@@ -39,9 +39,9 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The create-agent computer picker with each computer's compact quota line for the chosen
- * runtime (Claude Code), by Jasper's picker rule for a field in a longer form: 4 computers are
- * radios; 7 are a Select whose bottom sheet lists them (captured as the trigger and the sheet
- * surface, no window). Quota lines come through the real usage store from a fake transport:
+ * runtime (Claude Code). It is a select at any count, as the web's (artin 2026-11-02): 4
+ * computers show as the closed select; 7 as the select and its bottom sheet (captured as the
+ * trigger and the sheet surface, no window). Quota lines come through the real usage store from a fake transport:
  * plenty left, a used-up 5-hour window with its reset, only a weekly window, no snapshot, an
  * offline computer (greyed out) and a computer the viewer may not see (no line, never read).
  */
@@ -53,10 +53,10 @@ class CreateAgentComputerPickerScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun radiosLight() = capture("agent.create.computer_picker.radios", RaftAppAppearance.Light) { RadiosContent() }
+    fun selectLight() = capture("agent.create.computer_picker.select", RaftAppAppearance.Light) { SelectContent() }
 
     @Test
-    fun radiosDark() = capture("agent.create.computer_picker.radios.dark", RaftAppAppearance.Dark) { RadiosContent() }
+    fun selectDark() = capture("agent.create.computer_picker.select.dark", RaftAppAppearance.Dark) { SelectContent() }
 
     @Test
     fun sheetLight() = capture("agent.create.computer_picker.sheet", RaftAppAppearance.Light) { SheetContent() }
@@ -187,11 +187,11 @@ private fun PickerContent(machines: List<SharedCreateAgentMachineOption>, headin
 }
 
 @Composable
-private fun RadiosContent() = PickerContent(fewMachines, "4 computers: radios")
+private fun SelectContent() = PickerContent(fewMachines, "4 computers: a select")
 
 @Composable
 private fun SheetContent() {
-    PickerContent(moreMachines, "7 computers: a Select opening a sheet")
+    PickerContent(moreMachines, "7 computers: a select opening a sheet")
     val lines = rememberCreateAgentMachineQuotaLines(rememberPickerAccess(), moreMachines, "claude")
     RaftChoicePickerSheetSurface(
         value = "m-1",

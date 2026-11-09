@@ -3,9 +3,14 @@ package build.raft.app
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.app.base.BasePager
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalInputField
-import build.raft.app.components.RaftBrutalListRow
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextFieldClearAction
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.app.data.KeyValueRouterPreferenceRepository
 import build.raft.app.data.raftSharedPreferenceStore
 import androidx.compose.runtime.Composable
@@ -15,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +46,12 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.urlParams
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
+import androidx.compose.foundation.layout.widthIn
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 private const val ROUTER_PAGE = "router"
 private const val ROUTE_PAYLOAD_PREVIEW = "with smoke payload"
@@ -205,15 +215,18 @@ internal fun ComposeRouteImpl() {
             }
             items(group.routes.size, key = { "${group.title}-${group.routes[it].pageName}-${group.routes[it].title}" }) { index ->
                 val route = group.routes[index]
-                RaftBrutalListRow(
-                    title = route.title,
-                    subtitle = route.subtitle,
-                    onClick = {
-                        routePreferenceRepository.saveLastRouteInput(route.pageName)
-                        textFieldValue = developerRouteInputReplaced(route.pageName)
-                        jumpPage(localPager, route.pageName, route.payloadProvider?.invoke())
-                    }
-                )
+                RaftListRowGroup(modifier = Modifier.fillMaxWidth()) {
+                    RaftListRow(
+                        title = route.title,
+                        variant = RaftListRowVariant.Plain,
+                        description = route.subtitle.takeIf { it.isNotBlank() },
+                        onClick = {
+                            routePreferenceRepository.saveLastRouteInput(route.pageName)
+                            textFieldValue = developerRouteInputReplaced(route.pageName)
+                            jumpPage(localPager, route.pageName, route.payloadProvider?.invoke())
+                        }
+                    )
+                }
             }
         }
         item {
@@ -268,20 +281,31 @@ private fun DeveloperRouterJumpCard(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RaftBrutalInputField(
+                val editor =
+                    rememberRaftDesignSystemEditor(
+                        keyboardOptions = KeyboardOptions.Default,
+                        keyboardActions = KeyboardActions.Default,
+                        keyboardHeightChange = {},
+                        focusRequester = remember { FocusRequester() },
+                        autoFocus = false,
+                        onFocus = {},
+                        onBlur = {}
+                    )
+                RaftTextField(
                     value = value,
                     onValueChange = onValueChange,
-                    placeholder = ComposeRoutePager.PLACEHOLDER,
-                    fieldMinHeight = 42.dp,
-                    showClearWhenNotEmpty = true,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).then(editor.modifier),
+                    placeholder = ComposeRoutePager.PLACEHOLDER.ifEmpty { null },
+                    trailingAction =
+                        if (value.text.isNotEmpty()) ({ RaftTextFieldClearAction(onClear = { onValueChange(TextFieldValue("")) }) }) else null,
+                    keyboardOptions = editor.keyboardOptions
                 )
-                RaftBrutalActionButton(
-                    label = ComposeRoutePager.JUMP_TEXT,
+                RaftButton(
+                    text = ComposeRoutePager.JUMP_TEXT,
                     onClick = onOpen,
-                    backgroundColor = RaftColor.BrandYellow,
-                    minWidth = 72.dp,
-                    minHeight = 42.dp
+                    modifier = Modifier.widthIn(min = 72.dp),
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg
                 )
             }
             if (suggestions.isNotEmpty()) {
@@ -313,7 +337,7 @@ private fun DeveloperRouterSuggestionList(
                     Modifier
                         .fillMaxWidth()
                         .background(RaftColor.SurfaceWhite)
-                        .clickable(onClick = { onSuggestionSelected(route) })
+                        .raftClickable(onClick = { onSuggestionSelected(route) }, tier = RaftHoverTier.Subtle)
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {

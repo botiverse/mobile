@@ -1,6 +1,14 @@
 package build.raft.app.components
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import build.raft.app.compat.ui.KeyboardParams
+import build.raft.app.raftAppEditorBehavior
+import build.raft.app.raftResolvedKeyboardOptions
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,9 +32,7 @@ import build.raft.app.RaftPopoverAnchorResolver
 import build.raft.app.RaftPopoverLocalPoint
 import build.raft.app.raftCaptureLiveRootAnchor
 import build.raft.app.raftArgbHex
-import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
-import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
@@ -119,21 +125,6 @@ internal fun raftIconButtonVariantFor(backgroundColor: Color): RaftButtonVariant
         else -> variant
     }
 
-/** raft-ui button size for a legacy min height: below 38dp `md` (32), below 52dp `lg` (44), else `xl` (52). */
-internal fun raftButtonSizeFor(minHeight: Dp): RaftButtonSize =
-    when {
-        minHeight >= 52.dp -> RaftButtonSize.Xl
-        minHeight >= 38.dp -> RaftButtonSize.Lg
-        else -> RaftButtonSize.Md
-    }
-
-/**
- * raft-ui icon-button size for a legacy box size: up to 38dp `icon-md` (32; raft-ui 0.21 has no
- * smaller icon button, `icon-xs` and `icon-sm` render as it), above it `icon-lg` (44).
- */
-internal fun raftIconButtonSizeFor(size: Dp): RaftIconButtonSize =
-    if (size > 38.dp) RaftIconButtonSize.Lg else RaftIconButtonSize.Md
-
 /**
  * A filter trigger in a toolbar filter row (Search, Tasks): the design-system
  * [RaftPickerTriggerButton] (32dp, control radius, `line-seam` ring at rest, `info-soft` once
@@ -153,7 +144,7 @@ internal fun RaftAnchoredPickerTrigger(
 ) {
     val currentOnAnchorChanged by rememberUpdatedState(onAnchorChanged)
     val anchor = remember(anchorIdentity) { RaftLiveRootAnchorRef(identity = anchorIdentity) }
-    val anchorResolver = remember(anchor) { anchor.resolver(RaftPopoverLocalPoint.BottomStart) }
+    val anchorResolver = remember(anchor) { anchor.currentCaptureResolver(RaftPopoverLocalPoint.BottomStart) }
     var resolverNotified by remember(anchorResolver) { mutableStateOf(false) }
     Box(
         modifier =
@@ -172,4 +163,76 @@ internal fun RaftAnchoredPickerTrigger(
             leadingIcon = iconName?.let { name -> { RaftSlotIcon(name) } }
         )
     }
+}
+
+internal class RaftDesignSystemEditor(val modifier: Modifier, val keyboardOptions: KeyboardOptions)
+
+/**
+ * The app editor behaviour ([raftAppEditorBehavior]: IME enter action, keyboard-height
+ * events, focus callbacks, tap-outside focus dismiss) for a single-line design-system
+ * `RaftTextField`, plus the delayed [autoFocus] request of the app editor. Put
+ * [RaftDesignSystemEditor.modifier] on the field and pass its
+ * [RaftDesignSystemEditor.keyboardOptions].
+ */
+@Composable
+internal fun rememberRaftDesignSystemEditor(
+    keyboardOptions: KeyboardOptions,
+    keyboardActions: KeyboardActions,
+    keyboardHeightChange: (KeyboardParams) -> Unit,
+    focusRequester: FocusRequester,
+    autoFocus: Boolean,
+    onFocus: () -> Unit,
+    onBlur: () -> Unit
+): RaftDesignSystemEditor {
+    val resolvedKeyboardOptions = raftResolvedKeyboardOptions(keyboardOptions, singleLine = true, imeActionRequested = true)
+    val modifier =
+        Modifier.raftAppEditorBehavior(
+            singleLine = true,
+            resolvedKeyboardOptions = resolvedKeyboardOptions,
+            keyboardActions = keyboardActions,
+            keyboardHeightChange = keyboardHeightChange,
+            focusRequester = focusRequester,
+            onFocus = onFocus,
+            onBlur = onBlur
+        )
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) {
+            delay(100)
+            focusRequester.requestFocus()
+        }
+    }
+    return RaftDesignSystemEditor(modifier, resolvedKeyboardOptions)
+}
+
+/**
+ * The app editor behaviour ([raftAppEditorBehavior], multi-line: keyboard-height events, focus
+ * callbacks, tap-outside focus dismiss) for a design-system `RaftTextarea`'s `inputModifier`,
+ * plus the delayed [autoFocus] request of the app editor.
+ */
+@Composable
+internal fun rememberRaftTextareaEditorModifier(
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    focusRequester: FocusRequester = remember { FocusRequester() },
+    autoFocus: Boolean = false,
+    onFocus: () -> Unit = {},
+    onBlur: () -> Unit = {}
+): Modifier {
+    val modifier =
+        Modifier.raftAppEditorBehavior(
+            singleLine = false,
+            resolvedKeyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            keyboardHeightChange = {},
+            focusRequester = focusRequester,
+            onFocus = onFocus,
+            onBlur = onBlur
+        )
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) {
+            delay(100)
+            focusRequester.requestFocus()
+        }
+    }
+    return modifier
 }

@@ -1,5 +1,7 @@
 package build.raft.app.components
 
+import build.raft.app.RaftAppTypeScale
+
 import build.raft.app.resources.*
 import build.raft.app.RaftAppThemeState
 import build.raft.app.RaftUiTextLocaleState
@@ -68,6 +70,11 @@ internal fun RaftDesignSystemTheme(forceDark: Boolean, content: @Composable () -
         raftTheme = RaftAppThemeState.raftTheme,
         decor = RaftAppThemeState.decor,
     ) {
+        // The app's own RaftType roles follow the scale this theme resolved (wide from the wide
+        // breakpoint, by window width alone). Written in composition, ahead of the content that reads it,
+        // so the first frame already has the right sizes; only on a change.
+        val scale = RaftTheme.scale
+        if (RaftAppTypeScale.scale != scale) RaftAppTypeScale.scale = scale
         CompositionLocalProvider(
             LocalTextSelectionColors provides appSelectionColors,
             LocalRaftStrings provides strings,
@@ -117,6 +124,7 @@ internal fun raftAppDesignSystemStrings(): RaftStrings =
         cancel = stringResource(Res.string.common_cancel),
         dismiss = stringResource(Res.string.common_dismiss),
         copy = stringResource(Res.string.common_copy),
+        moreActions = stringResource(Res.string.common_more_actions),
         saved = stringResource(Res.string.settings_state_saved),
     )
 
@@ -128,8 +136,8 @@ internal fun RaftProvideDesignSystemStrings(content: @Composable () -> Unit) {
 
 /**
  * The design system's long-press copy ([build.raft.designsystem.components.raftCopyable]) through
- * the native host: [HostFeedbackCapability.copyToPasteboard], then the host toast "Copied"
- * (`common_copied`), the same pair every other Copy in the app uses. Provided round every page
+ * the native host: [HostFeedbackCapability.copyToPasteboard], then a brief "Copied"
+ * (`common_copied`, [HostFeedbackCapability.briefToast]: 1.5s, not a 5s notification). Provided round every page
  * (the pager host).
  */
 @Composable
@@ -139,7 +147,7 @@ internal fun RaftProvideDesignSystemCopy(feedback: HostFeedbackCapability, conte
         remember(feedback, copied) {
             RaftCopyHandler { text ->
                 feedback.copyToPasteboard(text)
-                feedback.toast(copied)
+                feedback.briefToast(copied)
             }
         }
     CompositionLocalProvider(LocalRaftCopyHandler provides handler, content = content)

@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
  *    `managedByAppInstallId`, `managedByApp: { clientId, name, logoUrl, description,
  *    botStatusText }` and `inMemberLists` (#11295, `appBotMemberListing.api.test.ts`); ordinary
  *    agents omit `inMemberLists`.
- *  - web `AppBotBadge` (#11273): "Bot" / "Bot · <App>"; no model on a bot's message row.
+ *  - web `AppBadge` (#11273, renamed in #11845): "App" / "App · <App>"; no model on a bot's message row.
  *  - web `isRemovedAppBot` (#11303 / #11321): its DM and that DM's threads are read-only.
  */
 class RaftAppBotTest {

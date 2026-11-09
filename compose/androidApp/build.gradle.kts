@@ -619,6 +619,12 @@ android {
         versionName = raftAndroidVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // 64-bit only (artin 2026-11-07): MMKV 2.x, which holds the sign-in, refuses a 32-bit process
+        // (UnsupportedArchitectureException at launch, Hands 317d4e9a). Without armeabi-v7a a 32-bit-only
+        // phone can't install the app instead of crashing on open. x86_64 keeps the emulators.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
         buildConfigField(
             "Boolean",
             "SHOW_TEST_BUILD_BADGE",
@@ -634,6 +640,9 @@ android {
         buildConfigField("Boolean", "SCREENSHOT_FEEDBACK_ENABLED", "false")
         buildConfigField("Boolean", "HANDS_APK_UPDATE_ENABLED", "true")
         buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "false")
+        // RaftNav3StackFlag's build default: the Navigation 3 page stack, on for everyone from 1.19.1
+        // (artin 11-03). The developer switch can still turn it off on a device.
+        buildConfigField("Boolean", "NAV3_STACK_DEFAULT_ON", "true")
         buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"\"")
         buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"\"")
         buildConfigField("String", "OAUTH_CALLBACK_SCHEME", "\"raft\"")
@@ -661,6 +670,7 @@ android {
             buildConfigField("Boolean", "SCREENSHOT_FEEDBACK_ENABLED", "true")
             buildConfigField("String", "HANDS_CHANNEL", "\"debug\"")
             buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "true")
+            buildConfigField("Boolean", "NAV3_STACK_DEFAULT_ON", "true")
             buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"$handsAlphaDeltaAppSlug\"")
             buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"$handsAlphaDeltaChannelSlug\"")
             if (raftAlphaOptimized) {
@@ -783,6 +793,16 @@ kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
     }
+}
+
+// CI full tier (test.yml with BUILD_CONNECTED_APKS) builds the connected-test APKs and runs the
+// :shared JVM suite in one Gradle call. D8's dex merges run as background work, so they could start
+// before the suite and overlap with its ~5 GB test JVM. That exhausted the 16 GB hosted runner
+// ("The runner has received a shutdown signal", PR #4081, run 41303254799), while runs that merged
+// after the suite passed. Pin that order; it adds no dependency, so builds without the suite are
+// unaffected.
+tasks.matching { it.name.startsWith("mergeLibDexConnectedTest") }.configureEach {
+    mustRunAfter(":shared:testDebugUnitTest")
 }
 
 // Keep the custom connectedTest target on the production dependency graph. Forcing newer

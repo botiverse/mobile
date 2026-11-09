@@ -38,6 +38,7 @@ import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadId
+import build.raft.app.model.RaftTimeContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -342,6 +343,9 @@ private val homeSearchResultsVisualSearchState =
             ),
         items =
             listOf(
+                // The rows as the search mapping (InboxParser) reads searchResultsFixture.json:
+                // createdAt as the time (relative to the fixture's now, as the web formats it),
+                // the sender's id and kind (Cindy's avatar is the fixture agent's).
                 InboxItem(
                     key = "msg-visual-search-1",
                     kind = InboxItemKind.Channel,
@@ -349,12 +353,18 @@ private val homeSearchResultsVisualSearchState =
                     channelName = "design",
                     lastMessageId = MessageId("msg-visual-search-1"),
                     lastMessagePreview = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
-                    lastMessageAt = "10:30",
-                    lastMessageSenderName = "Cindy",
+                    lastMessageAt = VisualFixtureData.Times.THREAD_MESSAGE_AT_ISO,
+                    lastMessageSenderName = VisualFixtureData.Agents.Cindy.NAME,
+                    lastMessageSenderId = VisualFixtureData.Agents.Cindy.ID,
+                    lastMessageSenderKind = MemberKind.Agent,
+                    lastMessageSenderAvatarWireValue = VisualFixtureData.Agents.Cindy.AVATAR,
                     latestActivityMessageId = MessageId("msg-visual-search-1"),
                     latestActivityPreview = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
-                    latestActivityAt = "10:30",
-                    latestActivitySenderName = "Cindy"
+                    latestActivityAt = VisualFixtureData.Times.THREAD_MESSAGE_AT_ISO,
+                    latestActivitySenderName = VisualFixtureData.Agents.Cindy.NAME,
+                    latestActivitySenderId = VisualFixtureData.Agents.Cindy.ID,
+                    latestActivitySenderKind = MemberKind.Agent,
+                    latestActivitySenderAvatarWireValue = VisualFixtureData.Agents.Cindy.AVATAR
                 ),
                 InboxItem(
                     key = "msg-visual-search-2",
@@ -363,9 +373,14 @@ private val homeSearchResultsVisualSearchState =
                     channelName = "design",
                     lastMessageId = MessageId("msg-visual-search-2"),
                     lastMessagePreview = "Review the Android composer crop before release.",
-                    lastMessageAt = "10:35",
-                    lastMessageSenderName = "artin",
-                    threadChannelId = ChannelId("thread-msg-agent-reply"),
+                    lastMessageAt = VisualFixtureData.Times.THREAD_REPLY_AT_ISO,
+                    lastMessageSenderName = VisualFixtureData.Humans.Owner.NAME,
+                    lastMessageSenderId = VisualFixtureData.Humans.Owner.ID,
+                    lastMessageSenderKind = MemberKind.Human,
+                    // The fixture row has `"threadId": null`, so the web lists it as a plain hit
+                    // (it groups a hit under its thread only with a threadId); no thread key here
+                    // keeps the app's grouping on the same data.
+                    threadChannelId = null,
                     parentChannelId = ChannelId("ch_design"),
                     parentChannelName = "design",
                     parentChannelKind = ConversationKind.Channel,
@@ -373,8 +388,10 @@ private val homeSearchResultsVisualSearchState =
                     parentMessagePreview = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
                     latestActivityMessageId = MessageId("msg-visual-search-2"),
                     latestActivityPreview = "Review the Android composer crop before release.",
-                    latestActivityAt = "10:35",
-                    latestActivitySenderName = "artin"
+                    latestActivityAt = VisualFixtureData.Times.THREAD_REPLY_AT_ISO,
+                    latestActivitySenderName = VisualFixtureData.Humans.Owner.NAME,
+                    latestActivitySenderId = VisualFixtureData.Humans.Owner.ID,
+                    latestActivitySenderKind = MemberKind.Human
                 )
             ),
         totalCount = 2,
@@ -442,6 +459,14 @@ internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
             includeTopSafeArea = false,
             showSenderFilter = true,
             initialOpenFilterId = openFilterId,
+            // The phone Search tab root, as the React capture: the field in the frame head, no Back.
+            tabHead = true,
+            // The React capture's clock is fixed at the fixture's now (locale.nowEpochMillis).
+            timeContext =
+                RaftTimeContext(
+                    localOffsetMinutes = 0,
+                    nowEpochMillis = VisualFixtureData.Locale.NOW_EPOCH_MILLIS
+                ),
             onOpenItem = {},
             onOpenEntity = {},
             bottomContentPadding = 12.dp,

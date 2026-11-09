@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 // Persistent XCUITest loop for QA acceptance AND ios-use interactions.
@@ -447,5 +448,226 @@ final class QaAcceptanceLoopTests: XCTestCase {
 
     private enum HarnessError: Error {
         case bad(String)
+    }
+}
+
+// Signed-in home screenshot on a chosen simulator runtime (ios-simulator-app.yml,
+// home_screenshot=true). Lives in this file on purpose: the workflow copies this one file onto
+// an older product ref (e.g. a release branch) before building, and a new file would also need
+// a project.pbxproj entry there.
+//
+// Deterministic, no typing into the web page. This test and the workflow's host script
+// (scripts/ci/ios_home_shot_host.mjs) take turns over files in $HOME_SHOT_IO_DIR:
+//   1. test: tick the terms box, tap "Sign in to Raft"     -> signin-tapped.json
+//      (the app starts a real app-login request and opens the web sign-in sheet)
+//   2. host: read that request id from the app's container, approve it with the QA account
+//      (CI secrets, API), `simctl openurl` the callback        -> callback-opened.json
+//   3. test: confirm SpringBoard's "Open in “Raft”?", wait for the native tab bar (pick OranixSlockTest if a server picker shows),
+//      dismiss the leftover sign-in sheet / system alerts       -> home-ready.json
+//   4. host: `simctl io screenshot`                            -> shot-done.json
+final class SignedInHomeShotTests: XCTestCase {
+    private var ioDir = ""
+
+    override func setUpWithError() throws {
+        continueAfterFailure = true
+    }
+
+    func testSignedInHomeWithNativeTabBar() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let dir = env["HOME_SHOT_IO_DIR"], !dir.isEmpty else {
+            throw XCTSkip("HOME_SHOT_IO_DIR not set - home screenshot not requested")
+        }
+        ioDir = dir
+        let app = XCUIApplication(bundleIdentifier: env["HOME_SHOT_BUNDLE"] ?? "build.raft.app")
+        // iOS native navigation for this launch (Debug builds read RAFT_NATIVE_NAV=1|0); unset
+        // leaves the app's own decision (server flag, default off).
+        if let nativeNav = env["HOME_SHOT_NATIVE_NAV"], !nativeNav.isEmpty {
+            app.launchEnvironment["RAFT_NATIVE_NAV"] = nativeNav
+        }
+        app.launch()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+
+        // 1. Sign-in page: tick the terms box, then the button.
+        let signIn = element(app, label: "Sign in to Raft")
+        guard signIn.waitForExistence(timeout: 120) else {
+            fail("signin-tapped", "no \"Sign in to Raft\" on screen", app)
+            return
+        }
+        let agreement = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH[c] %@", "I agree")).firstMatch
+        guard agreement.waitForExistence(timeout: 10) else {
+            fail("signin-tapped", "no terms agreement text", app)
+            return
+        }
+        // The 18pt box sits 10pt left of the text, 2pt below its top (AuthTermsAgreement);
+        // the text itself carries the Terms / Privacy links, so do not tap it.
+        let a = agreement.frame
+        tap(app, x: a.minX - 19, y: a.minY + 11)
+        Thread.sleep(forTimeInterval: 1)
+        tap(app, x: signIn.frame.midX, y: signIn.frame.midY)
+        write("signin-tapped", ["ok": true])
+
+        // 2. The host approves the request and opens the callback.
+        guard waitFor("callback-opened", timeout: 240) != nil else {
+            fail("home-ready", "host never opened the callback", app)
+            return
+        }
+
+        // 3. Home: the system tab bar. Until the web sign-in sheet is closed, the shell under it is
+        // hidden from accessibility (the sheet is modal), so: confirm "Open in “Raft”?" for the
+        // callback, give the app a moment to exchange the code, then close the sheet, then look
+        // for the tab bar. A server picker may come first; first-run alerts may follow.
+        let tabBar = app.tabBars.firstMatch
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
+        let deadline = Date().addingTimeInterval(150)
+        var pickedServer = false
+        var openedAt: Date?
+        var sheetClosed = false
+        var closeAttempts = 0
+        var events: [String] = []
+        while Date() < deadline {
+            if let answered = answerAlert(springboard: springboard, app: app, events: &events) {
+                if answered == "Open" { openedAt = Date() }
+                Thread.sleep(forTimeInterval: 1)
+                continue
+            }
+            if !sheetClosed, closeAttempts < 2, !(tabBar.exists && tabBar.frame.height > 0),
+               let at = openedAt, Date().timeIntervalSince(at) > Double(6 + 6 * closeAttempts) {
+                closeAttempts += 1
+                sheetClosed = closeWebSheet(app: app, safari: safari)
+                events.append("closed sheet: \(sheetClosed)")
+                Thread.sleep(forTimeInterval: 2)
+                continue
+            }
+            if tabBar.exists && tabBar.frame.height > 0 { break }
+            let server = element(app, label: "OranixSlockTest")
+            if !pickedServer && server.exists && server.frame.height > 0 {
+                tap(app, x: server.frame.midX, y: server.frame.midY)
+                pickedServer = true
+                events.append("picked OranixSlockTest")
+            }
+            Thread.sleep(forTimeInterval: 1)
+        }
+        guard tabBar.exists else {
+            fail("home-ready", "no native tab bar after the callback (\(events.joined(separator: "; ")))", app)
+            return
+        }
+        // Late first-run alerts.
+        for _ in 0..<5 {
+            _ = answerAlert(springboard: springboard, app: app, events: &events)
+            Thread.sleep(forTimeInterval: 1)
+        }
+        // Let avatars, badges and the channel list settle.
+        Thread.sleep(forTimeInterval: 8)
+
+        let buttons = tabBar.buttons.allElementsBoundByIndex.map { b -> [String: Any] in
+            let f = b.frame
+            return [
+                "label": b.label, "identifier": b.identifier, "selected": b.isSelected,
+                "frame": [f.origin.x, f.origin.y, f.size.width, f.size.height],
+            ]
+        }
+        let f = tabBar.frame
+        write("home-ready", [
+            "ok": true,
+            "ios": UIDevice.current.systemVersion,
+            "device": UIDevice.current.name,
+            "pickedServer": pickedServer,
+            "events": events,
+            "tabBarFrame": [f.origin.x, f.origin.y, f.size.width, f.size.height],
+            "tabBarButtons": buttons,
+        ])
+        attach(app, name: "home")
+        // 4. Keep the app up until the host has its screenshot.
+        _ = waitFor("shot-done", timeout: 120)
+    }
+
+    // One system alert, if any: "Open in “Raft”?" (the callback) -> Open; the web sign-in
+    // prompt "“Raft” Wants to Use … to Sign In" -> Cancel (no sheet needed: the request was
+    // approved through the API, and closing the browser keeps the pending request); anything
+    // else (first-run permissions) -> Allow / OK. Returns the button tapped.
+    private func answerAlert(springboard: XCUIApplication, app: XCUIApplication, events: inout [String]) -> String? {
+        for host in [springboard, app] {
+            let alert = host.alerts.firstMatch
+            guard alert.exists else { continue }
+            let label = alert.label
+            let order: [String]
+            if label.hasPrefix("Open in") {
+                order = ["Open"]
+            } else if label.localizedCaseInsensitiveContains("to Sign In") {
+                order = ["Cancel"]
+            } else {
+                order = ["Allow", "OK", "Don’t Allow", "Don't Allow", "Cancel"]
+            }
+            if let button = order.map({ alert.buttons[$0] }).first(where: { $0.exists }) {
+                let name = button.label
+                events.append("alert \(label): \(name)")
+                button.tap()
+                return name
+            }
+        }
+        return nil
+    }
+
+    // The web sign-in sheet's close (X) button: by label when the sheet exposes one, else its
+    // spot in the sheet's top-left corner.
+    private func closeWebSheet(app: XCUIApplication, safari: XCUIApplication) -> Bool {
+        for host in [safari, app] {
+            for label in ["Cancel", "Close", "Done"] {
+                let button = host.buttons[label].firstMatch
+                if button.exists && button.frame.minY < 200 {
+                    button.tap()
+                    return true
+                }
+            }
+        }
+        let host = safari.exists ? safari : app
+        host.coordinate(withNormalizedOffset: CGVector(dx: 0.095, dy: 0.115)).tap()
+        return false
+    }
+
+    private func element(_ app: XCUIApplication, label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    // Coordinate taps: Compose nodes can report isHittable=false yet take a tap at their frame.
+    private func tap(_ app: XCUIApplication, x: CGFloat, y: CGFloat) {
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x, dy: y)).tap()
+    }
+
+    private func attach(_ app: XCUIApplication, name: String) {
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+        let tree = XCTAttachment(string: app.debugDescription)
+        tree.name = "\(name)-tree"
+        tree.lifetime = .keepAlways
+        add(tree)
+    }
+
+    private func fail(_ stage: String, _ reason: String, _ app: XCUIApplication) {
+        attach(app, name: "failure-\(stage)")
+        write(stage, ["ok": false, "error": reason])
+        XCTFail(reason)
+    }
+
+    private func waitFor(_ name: String, timeout: TimeInterval) -> Data? {
+        let path = "\(ioDir)/\(name).json"
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let data = FileManager.default.contents(atPath: path) { return data }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return nil
+    }
+
+    // tmp + rename so the polling host never reads a half-written file.
+    private func write(_ name: String, _ json: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: json) else { return }
+        let path = "\(ioDir)/\(name).json"
+        try? data.write(to: URL(fileURLWithPath: path + ".tmp"))
+        try? FileManager.default.removeItem(atPath: path)
+        try? FileManager.default.moveItem(atPath: path + ".tmp", toPath: path)
     }
 }

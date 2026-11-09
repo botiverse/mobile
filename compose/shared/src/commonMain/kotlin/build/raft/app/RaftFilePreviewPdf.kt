@@ -228,7 +228,7 @@ internal fun RaftFilePreviewPdfViewerFrame(
     modifier: Modifier = Modifier,
     viewer: @Composable (Modifier) -> Unit
 ) {
-    Box(modifier.background(RaftTheme.colors.layerCanvasMuted)) {
+    Box(modifier.background(RaftTheme.colors.layerSidebar)) {
         viewer(Modifier.fillMaxSize())
         raftFilePreviewPdfPageIndicatorArgs(currentPage, pageCount)?.let { (current, count) ->
             RaftBadge(

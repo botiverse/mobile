@@ -3,6 +3,37 @@ package build.raft.app.data
 
 internal const val CREATE_AGENT_BUILTIN_RUNTIME_ID = "builtin"
 
+/** The cloud agents' provider: an API value only, copy says "cloud agent" (slock cloudAgentWording). */
+internal const val CREATE_AGENT_HOSTED_PROVIDER = "antiproton"
+
+internal data class HostedRuntimeModelOption(val id: String, val label: String)
+
+/** Web `HostedRuntimeModelsView`. */
+internal data class HostedRuntimeModels(
+    val models: List<HostedRuntimeModelOption>,
+    val defaultLabel: String?,
+    val defaultModel: String? = null,
+    /** An administrator decides the model: a create must not name one. */
+    val locked: Boolean = false,
+    /** Whether this server may pick a model (`antiproton_model_picker`). */
+    val picker: Boolean = true
+)
+
+/**
+ * Web shared `HostedAgentModelView` (`GET /agents/:id/hosted-runtime/model`): the models the
+ * provider offers and what a cloud agent's next turn runs on. [source] is `default` (nothing
+ * picked), `chosen` or `admin`; [picker] false = Raft decides and no Model row is shown.
+ */
+internal data class HostedAgentModelView(
+    val models: List<HostedRuntimeModelOption>,
+    val defaultLabel: String?,
+    val model: String?,
+    val label: String?,
+    val source: String?,
+    val locked: Boolean = false,
+    val picker: Boolean? = null
+)
+
 internal data class SharedCreateAgentRuntimeCatalog(
     val machineId: String,
     val options: List<SharedCreateAgentRuntimeOption>

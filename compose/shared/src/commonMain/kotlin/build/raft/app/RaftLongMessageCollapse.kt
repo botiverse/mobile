@@ -36,6 +36,11 @@ import build.raft.app.data.raftLongMessageCollapseDetailKind
 import build.raft.app.data.RaftLongMessageCollapsePreferenceRevision
 import build.raft.app.data.RaftLongMessageCollapsePreferenceStore
 import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.data.RaftMessageDisplayPrefsResult
+import build.raft.app.data.RaftMessageDisplayPrefsStore
+import build.raft.app.data.raftMessageDisplayPrefsKey
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.math.max
@@ -447,14 +452,20 @@ internal fun RaftThreadScreenPayload.longMessageCollapseConversationId(): String
         (sourceThreadId?.trim()?.takeIf { it.isNotEmpty() } ?: streamChannelId?.trim()?.takeIf { it.isNotEmpty() })
     }
 
-/** One conversation's collapse switch as a settings row and the thread read it. */
+/**
+ * One conversation's collapse switch as a settings row and the thread read it. [accountEnabled]
+ * is the account's value (web `message-display-settings`, the same on every device) once it is
+ * known; until then, and where the server keeps none (a thread, an older server), the
+ * device-local [preference] applies.
+ */
 @Stable
 internal class RaftLongMessageCollapseConversationSetting(
     val preference: RaftLongMessageCollapseConversationPreference,
     val available: Boolean,
-    val onSetEnabled: (Boolean) -> Unit
+    val onSetEnabled: (Boolean) -> Unit,
+    val accountEnabled: Boolean? = null,
 ) {
-    val effective: Boolean get() = preference.effective
+    val effective: Boolean get() = accountEnabled ?: preference.effective
 }
 
 @Composable
@@ -471,11 +482,30 @@ internal fun rememberRaftLongMessageCollapseConversationSetting(
     LaunchedEffect(store, serverId, conversationId, revision) {
         store.pruneVoidOverride(serverId, conversationId)
     }
-    return remember(store, preference, serverId, conversationId) {
+    val accountPrefs by RaftMessageDisplayPrefsStore.state.collectAsState()
+    val unsupported by RaftMessageDisplayPrefsStore.unsupported.collectAsState()
+    val key = raftMessageDisplayPrefsKey(serverId, conversationId)
+    val accountEnabled = key?.takeIf { it !in unsupported }?.let { accountPrefs[it]?.collapseLongMessages }
+    // Read the account's value when the conversation opens; the first time, move this device's
+    // value there (raftLongMessageCollapseMigrationWrite).
+    LaunchedEffect(store, serverId, conversationId) {
+        if (serverId.isNullOrBlank() || conversationId.isNullOrBlank()) return@LaunchedEffect
+        val loaded = RaftMessageDisplayPrefsStore.refresh(serverId, conversationId)
+        if (loaded is RaftMessageDisplayPrefsResult.Loaded) store.migrateToAccountOnce(serverId, conversationId, loaded.prefs)
+    }
+    val scope = rememberCoroutineScope()
+    return remember(store, preference, serverId, conversationId, accountEnabled) {
         RaftLongMessageCollapseConversationSetting(
             preference = preference,
             available = !serverId.isNullOrBlank() && !conversationId.isNullOrBlank(),
-            onSetEnabled = { enabled -> store.setConversationEnabled(serverId, conversationId, enabled) }
+            accountEnabled = accountEnabled,
+            onSetEnabled = { enabled ->
+                if (accountEnabled != null && serverId != null && conversationId != null) {
+                    scope.launch { RaftMessageDisplayPrefsStore.setCollapseLongMessages(serverId, conversationId, enabled) }
+                } else {
+                    store.setConversationEnabled(serverId, conversationId, enabled)
+                }
+            }
         )
     }
 }

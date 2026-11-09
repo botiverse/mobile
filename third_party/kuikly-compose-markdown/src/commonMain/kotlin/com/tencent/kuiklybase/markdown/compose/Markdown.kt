@@ -276,8 +276,12 @@ fun MarkdownSuccess(
             "contentLength=${content().length} nodeListSize=${state.nodeListState.size}"
     }
     CompositionLocalProvider(LocalRaftMarkdownRenderTiming provides nodeTiming) {
+        val blockMargins = LocalRaftMarkdownBlockMargins.current
         Column(modifier = modifier) {
+            // Slock: the web's paragraph / heading / list margins between top-level blocks.
+            val blockGaps = blockMargins?.let(::RaftMarkdownBlockGapTracker)
             state.nodeListState.forEachIndexed { index, result ->
+                blockGaps?.Before(result.node.type)
                 handleElement(
                     result,
                     rememberedComponents,

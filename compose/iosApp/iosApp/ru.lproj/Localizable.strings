@@ -1,0 +1,17 @@
+/* Push notification preview modes. The server sends these keys (title-loc-key / loc-key / loc-args)
+   when this device asked for "sender_only" or "hidden" previews; the alert text in the payload is the
+   English fallback. Keys must match the server's PUSH_PREVIEW_KEYS. */
+"push.preview.hidden.title" = "Raft";
+"push.preview.hidden.message" = "У вас новое сообщение";
+"push.preview.hidden.mention" = "Вас упомянули";
+"push.preview.sender_only.message" = "%@: новое сообщение";
+"push.preview.sender_only.mention" = "%@ упоминает вас";
+/* Per-category wording (slock docs/contracts/notifications.md §1.5). */
+"push.preview.sender_only.task" = "%@: обновление задачи";
+"push.preview.sender_only.agent" = "%@: нужно ваше внимание";
+"push.preview.sender_only.reminder" = "%@: напоминание";
+"push.preview.sender_only.notice" = "%@: новое оповещение";
+"push.preview.hidden.task" = "Есть обновление по задаче";
+"push.preview.hidden.agent" = "Агенту нужно ваше внимание";
+"push.preview.hidden.reminder" = "Сработало напоминание";
+"push.preview.hidden.notice" = "У вас новое оповещение";

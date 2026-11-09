@@ -145,53 +145,50 @@ class SettingsHomePageAuthGateTest {
                 session,
                 phase = SharedAuthReadyPhase.CachedRestorePending
             )
-
-        assertTrue(
-            appShellCanRenderCachedHomePreview(
-                readySession = session,
-                readyPhase = SharedAuthReadyPhase.CachedRestorePending,
-                featureDecision = ServerSetupFeatureDecision.Checking,
-                setupAdmissionAllowsHome = false,
-                readyServerId = "server-1",
-                state = state
-            )
+        val identity = ServerSetupAdmissionIdentity("env", session.user.id, "server-1", "generation:1")
+        val admitted = ServerSetupAdmissionState.Admitted(identity, setupProjection(blocksChat = false))
+        // admission state -> preview during CachedRestorePending / CachedRestoreCompleted
+        val cases = listOf(
+            Triple<ServerSetupAdmissionState?, Boolean, Boolean>(null, true, true),
+            Triple(ServerSetupAdmissionState.Loading(identity), true, true),
+            Triple(admitted, true, false),
+            Triple(ServerSetupAdmissionState.Blocked(identity, setupProjection(blocksChat = true)), false, false),
+            // A failed check lets Home through; only a failure while setup is showing takes the screen.
+            Triple(ServerSetupAdmissionState.Failed(identity, build.raft.app.data.ScreenError("offline")), true, false),
+            Triple(
+                ServerSetupAdmissionState.Failed(identity, build.raft.app.data.ScreenError("offline"), duringSetup = true),
+                false,
+                false,
+            ),
         )
+        for ((admission, pendingPreview, completedPreview) in cases) {
+            assertEquals(
+                pendingPreview,
+                appShellCanRenderCachedHomePreview(
+                    readySession = session,
+                    readyPhase = SharedAuthReadyPhase.CachedRestorePending,
+                    setupAdmissionState = admission,
+                    readyServerId = "server-1",
+                    state = state
+                ),
+                "pending $admission"
+            )
+            assertEquals(
+                completedPreview,
+                appShellCanRenderCachedHomePreview(
+                    readySession = session,
+                    readyPhase = SharedAuthReadyPhase.CachedRestoreCompleted,
+                    setupAdmissionState = admission,
+                    readyServerId = "server-1",
+                    state = state
+                ),
+                "completed $admission"
+            )
+        }
         assertFalse(
             appShellCanRenderCachedHomePreview(
                 readySession = session.copy(user = session.user.copy(id = "other-user")),
                 readyPhase = SharedAuthReadyPhase.CachedRestorePending,
-                featureDecision = ServerSetupFeatureDecision.Checking,
-                setupAdmissionAllowsHome = false,
-                readyServerId = "server-1",
-                state = state
-            )
-        )
-        assertFalse(
-            appShellCanRenderCachedHomePreview(
-                readySession = session,
-                readyPhase = SharedAuthReadyPhase.CachedRestorePending,
-                featureDecision = ServerSetupFeatureDecision.Enabled,
-                setupAdmissionAllowsHome = false,
-                readyServerId = "server-1",
-                state = state
-            )
-        )
-        assertTrue(
-            appShellCanRenderCachedHomePreview(
-                readySession = session,
-                readyPhase = SharedAuthReadyPhase.CachedRestorePending,
-                featureDecision = ServerSetupFeatureDecision.Enabled,
-                setupAdmissionAllowsHome = true,
-                readyServerId = "server-1",
-                state = state
-            )
-        )
-        assertTrue(
-            appShellCanRenderCachedHomePreview(
-                readySession = session,
-                readyPhase = SharedAuthReadyPhase.CachedRestorePending,
-                featureDecision = ServerSetupFeatureDecision.Bypassed,
-                setupAdmissionAllowsHome = false,
                 readyServerId = "server-1",
                 state = state
             )
@@ -213,8 +210,6 @@ class SettingsHomePageAuthGateTest {
             appShellCanRenderCachedHomePreview(
                 readySession = session,
                 readyPhase = SharedAuthReadyPhase.CachedRestorePending,
-                featureDecision = ServerSetupFeatureDecision.Checking,
-                setupAdmissionAllowsHome = false,
                 readyServerId = "server-2",
                 state = state
             )
@@ -223,8 +218,6 @@ class SettingsHomePageAuthGateTest {
             appShellCanRenderCachedHomePreview(
                 readySession = session,
                 readyPhase = SharedAuthReadyPhase.CachedRestorePending,
-                featureDecision = ServerSetupFeatureDecision.Checking,
-                setupAdmissionAllowsHome = false,
                 readyServerId = "server-1",
                 selectedTab = "tasks",
                 state = state
@@ -337,4 +330,14 @@ class SettingsHomePageAuthGateTest {
         // No usable cache and no confirmed authority (mismatched account, blocked admission): still dropped.
         assertFalse(appShellHomeConversationOpenAllowed(authoritativeHomeStartAllowed = false, cachedRestoreUsable = false))
     }
+
+    private fun setupProjection(blocksChat: Boolean) =
+        build.raft.app.data.ServerSetupProjection(
+            surface = if (blocksChat) "computer_runtime" else "complete",
+            phase = if (blocksChat) "in_progress" else "complete",
+            currentStep = null,
+            blocksChat = blocksChat,
+            allowedExits = emptySet(),
+            gateReason = null,
+        )
 }

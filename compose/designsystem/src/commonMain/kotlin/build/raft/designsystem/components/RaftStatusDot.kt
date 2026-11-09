@@ -55,10 +55,10 @@ enum class RaftStatusVariant(val color: Color) {
      */
     Primary(RaftUiPalette.presenceBusy),
     Information(RaftUiPalette.info),
-    Muted(RaftUiPalette.secondary400),
+    Muted(RaftUiPalette.paletteStone400),
 
     /** The attention dot: something waits, on an icon with no room for a number. */
-    Accent(RaftUiPalette.accent400),
+    Accent(RaftUiPalette.attention400),
     Success(RaftUiPalette.success),
     Warning(RaftUiPalette.warning),
     Danger(RaftUiPalette.danger),

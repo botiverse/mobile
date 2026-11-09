@@ -1,5 +1,6 @@
 package build.raft.designsystem
 
+import build.raft.designsystem.theme.RaftControlMetrics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -75,7 +76,7 @@ class RaftActiveStickerTest {
         assertEquals(RaftUiPalette.selected, look.fill)
         assertEquals(RaftUiPalette.stickerInk, look.edge)
         assertEquals(RaftUiPalette.stickerInk, look.ink)
-        assertEquals(RaftUiPalette.stickerPressed, look.pressOverlay)
+        assertEquals(RaftUiPalette.stickerMedium, look.pressOverlay)
         // Same in both modes, plus the die-cut edge in dark only.
         val darkLook = raftActiveStickerLook(active = true, colors = dark)
         assertEquals(look.fill, darkLook.fill)
@@ -89,14 +90,14 @@ class RaftActiveStickerTest {
         assertEquals(Color.Transparent, look.edge)
         assertEquals(Color.Transparent, look.dieCut)
         assertEquals(dark.foregroundMuted, look.ink)
-        assertEquals(dark.fillPressed, look.pressOverlay)
+        assertEquals(dark.fillMedium, look.pressOverlay)
     }
 
     @Test
     fun pressOverlayFollowsTheSurface() {
-        assertEquals(light.fillPressed, raftPressOverlayColor(RaftPressSurface.Paper, light))
-        assertEquals(RaftUiPalette.stickerPressed, raftPressOverlayColor(RaftPressSurface.Sticker, light))
-        assertEquals(light.fillFramePressed, raftPressOverlayColor(RaftPressSurface.Frame, light))
+        assertEquals(light.fillMedium, raftPressOverlayColor(RaftPressSurface.Paper, light))
+        assertEquals(RaftUiPalette.stickerMedium, raftPressOverlayColor(RaftPressSurface.Sticker, light))
+        assertEquals(light.fillFrameMedium, raftPressOverlayColor(RaftPressSurface.Frame, light))
     }
 }
 
@@ -112,7 +113,7 @@ class RaftButtonLookTest {
             assertEquals(fill, look.fill, "$variant")
             assertEquals(RaftUiPalette.stickerInk, look.ink, "$variant")
             assertEquals(dark.stickerEdge, look.outerRing, "$variant")
-            assertEquals(RaftUiPalette.stickerPressed, look.pressOverlay, "$variant")
+            assertEquals(RaftUiPalette.stickerMedium, look.pressOverlay, "$variant")
         }
     }
 
@@ -145,6 +146,64 @@ class RaftButtonLookTest {
         assertEquals(36.dp, raftButtonMetrics(RaftButtonSize.Md, RaftButtonVariant.OnFrame).height)
         assertEquals(44.dp, raftButtonMetrics(RaftButtonSize.Lg, RaftButtonVariant.Default).height)
         assertEquals(52.dp, raftButtonMetrics(RaftButtonSize.Xl, RaftButtonVariant.Primary).height)
+    }
+
+    /** Sizing v12 (raft-ui 0.65 desktop density): under a fine pointer md and lg share 34, the frame item is 32. */
+    @Test
+    fun pointerSizesShareTheControlHeight() {
+        val desktop = RaftControlMetrics.Desktop
+        assertEquals(34.dp, raftButtonMetrics(RaftButtonSize.Md, RaftButtonVariant.Default, desktop).height)
+        assertEquals(32.dp, raftButtonMetrics(RaftButtonSize.Md, RaftButtonVariant.OnFrame, desktop).height)
+        assertEquals(34.dp, raftButtonMetrics(RaftButtonSize.Lg, RaftButtonVariant.Default, desktop).height)
+        assertEquals(40.dp, raftButtonMetrics(RaftButtonSize.Xl, RaftButtonVariant.Primary, desktop).height)
+        // A finger keeps every size it had.
+        val mobile = RaftControlMetrics.Mobile
+        assertEquals(32.dp, raftButtonMetrics(RaftButtonSize.Md, RaftButtonVariant.Default, mobile).height)
+        assertEquals(36.dp, raftButtonMetrics(RaftButtonSize.Md, RaftButtonVariant.OnFrame, mobile).height)
+    }
+
+    /**
+     * The touch metrics are the sizes the components drew before sizing v12, so a finger sees no
+     * change; the pointer ones are v12's.
+     */
+    @Test
+    fun densityMetricsByInput() {
+        with(RaftControlMetrics.Mobile) {
+            assertEquals(44.dp, height)
+            assertEquals(null, rowHeight)
+            assertEquals(56.dp, headHeight)
+            assertEquals(44.dp, barButtonSize)
+            assertEquals(22.dp, barIconSize)
+            assertEquals(5.dp, barEdgeInset)
+            assertEquals(48.dp, topBarHeight)
+            assertEquals(36.dp, topBarItemSize)
+            assertEquals(false, railCompact)
+            assertEquals(50.dp, switchWidth)
+            assertEquals(30.dp, switchHeight)
+            assertEquals(22.dp, switchKnobSize)
+            assertEquals(16.dp, settingsCardPadding)
+            assertEquals(12.dp, settingsCardGap)
+        }
+        with(RaftControlMetrics.Desktop) {
+            assertEquals(34.dp, height)
+            assertEquals(5.dp, hitInset)
+            assertEquals(34.dp, rowHeight)
+            assertEquals(44.dp, headHeight)
+            assertEquals(28.dp, barButtonSize)
+            assertEquals(16.dp, barIconSize)
+            assertEquals(6.dp, barButtonRadius)
+            // The 16dp glyph lands on the 16dp content margin.
+            assertEquals(16.dp, barEdgeInset + (barButtonSize - barIconSize) / 2)
+            assertEquals(44.dp, topBarHeight)
+            assertEquals(32.dp, topBarItemSize)
+            assertEquals(true, railCompact)
+            assertEquals(38.dp, switchWidth)
+            assertEquals(22.dp, switchHeight)
+            assertEquals(14.dp, switchKnobSize)
+            assertEquals(20.dp, settingsCardPadding)
+            assertEquals(16.dp, settingsCardGap)
+        }
+        assertEquals(16.dp, RaftControlMetrics.Mobile.let { it.barEdgeInset + (it.barButtonSize - it.barIconSize) / 2 })
     }
 }
 

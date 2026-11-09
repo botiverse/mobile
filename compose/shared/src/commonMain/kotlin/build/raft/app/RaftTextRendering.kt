@@ -17,6 +17,7 @@ import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextMotion
 import build.raft.app.data.AppLocale
+import build.raft.app.data.appLocaleForResourceLocale
 import build.raft.app.resources.raftSystemPreferredLanguageTagsOrEmpty
 import build.raft.app.resources.raftSystemResourceLocale
 import build.raft.designsystem.theme.RaftTypography
@@ -50,26 +51,40 @@ internal expect fun raftPlatformTextMotion(): TextMotion?
  *
  * - User content (message and markdown bodies, names, previews, typed text): always zh-Hans,
  *   like the Web. Use [withRaftUserContentLocale].
- * - UI text (the RaftType tokens, [LocalTextStyle]): follows the app UI language. A Japanese UI
- *   ([AppLocale.Japanese], or "System" on a Japanese device) uses `ja`, so its kanji keep
- *   Japanese forms; every other UI language uses zh-Hans, the Web's stack.
+ * - UI text (the RaftType tokens, [LocalTextStyle]): follows the app UI language, as the Web's
+ *   `:root:lang(...)` font stacks do. A Japanese UI ([AppLocale.Japanese], or "System" on a
+ *   Japanese device) uses `ja`, so its kanji keep Japanese forms; a Traditional Chinese UI uses
+ *   `zh-Hant` (Traditional forms), a Korean UI `ko` (a Korean face for Hangul) and a Russian UI `ru`
+ *   (Space Grotesk has no Cyrillic: the Cyrillic falls back to the platform face, Roboto / SF,
+ *   not to a zh-Hans CJK face a Chinese locale hint would prefer; raft-design#994 puts Arial /
+ *   Helvetica before the CJK families on the web); every other UI language uses zh-Hans, the
+ *   Web's default stack.
  */
 internal val RaftUserContentLocaleList: LocaleList = LocaleList("zh-Hans")
 private val RaftJapaneseUiLocaleList: LocaleList = LocaleList("ja")
+private val RaftTraditionalChineseUiLocaleList: LocaleList = LocaleList("zh-Hant")
+private val RaftKoreanUiLocaleList: LocaleList = LocaleList("ko")
+private val RaftRussianUiLocaleList: LocaleList = LocaleList("ru")
 
 internal fun raftUiTextLocaleList(
     appLocale: AppLocale? = KmmResourceLocaleRuntime.locale.value,
     systemLanguageTags: () -> List<String> = ::raftSystemPreferredLanguageTagsOrEmpty,
 ): LocaleList {
-    val japaneseUi =
+    val uiLocale =
         when (appLocale) {
-            AppLocale.Japanese -> true
             // Not seeded yet / "System default": the catalog the strings take from the device's
             // preferred languages ([raftSystemResourceLocale]).
-            null, AppLocale.System -> raftSystemResourceLocale(systemLanguageTags()).language == "ja"
-            AppLocale.English, AppLocale.SimplifiedChinese -> false
+            null, AppLocale.System ->
+                raftSystemResourceLocale(systemLanguageTags()).let { appLocaleForResourceLocale(it.language, it.region) }
+            else -> appLocale
         }
-    return if (japaneseUi) RaftJapaneseUiLocaleList else RaftUserContentLocaleList
+    return when (uiLocale) {
+        AppLocale.Japanese -> RaftJapaneseUiLocaleList
+        AppLocale.TraditionalChinese -> RaftTraditionalChineseUiLocaleList
+        AppLocale.Korean -> RaftKoreanUiLocaleList
+        AppLocale.Russian -> RaftRussianUiLocaleList
+        else -> RaftUserContentLocaleList
+    }
 }
 
 /**

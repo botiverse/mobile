@@ -29,8 +29,10 @@ import build.raft.app.data.AppLinkResult
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.artifactWebUrl
-import build.raft.designsystem.components.RaftButton
-import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftPreviewCardButton
+import build.raft.designsystem.components.RaftPreviewCardButtonKind
+import build.raft.designsystem.components.RaftPreviewCardDefaults
+import build.raft.designsystem.components.RaftPreviewCardDetail
 
 /** The card open in one message: its link and where its chip was when it was tapped. */
 internal data class ThreadAppLinkOpenCard(val url: String, val anchor: RaftPopoverAnchor)
@@ -43,7 +45,7 @@ internal data class ThreadAppLinkOpenCard(val url: String, val anchor: RaftPopov
  */
 internal class ThreadAppLinkCards(
     private val messageId: String,
-    private val openLink: (String) -> Unit,
+    val openLink: (String) -> Unit,
 ) {
     private val refs = mutableMapOf<String, RaftLiveRootAnchorRef>()
 
@@ -82,9 +84,8 @@ internal class ThreadAppLinkCards(
 }
 
 @Composable
-internal fun rememberThreadAppLinkCards(messageId: String): ThreadAppLinkCards {
-    val uriHandler = LocalUriHandler.current
-    val openLink by rememberUpdatedState<(String) -> Unit> { uriHandler.openUri(it) }
+internal fun rememberThreadAppLinkCards(messageId: String, onOpenLink: (String) -> Unit): ThreadAppLinkCards {
+    val openLink by rememberUpdatedState(onOpenLink)
     return remember(messageId) { ThreadAppLinkCards(messageId) { openLink(it) } }
 }
 
@@ -133,16 +134,19 @@ internal fun ThreadAppLinkCardPopoverHost(
                     RaftArtifactLinkCardView(
                         summary = summary,
                         modifier = modifier,
-                        actions = {
-                            RaftButton(
-                                text = stringResource(Res.string.thread_link_preview_open_link),
-                                onClick = {
-                                    cards.close()
-                                    artifactOpener.open(target, RaftArtifactViewerHeader.of(summary, target), "chat_card")
-                                },
-                                variant = RaftButtonVariant.Default,
-                            )
-                        },
+                        // Opens Raft's own viewer: a link that stays in Raft, so no ↗.
+                        buttons =
+                            listOf(
+                                RaftPreviewCardButton(
+                                    label = stringResource(Res.string.thread_link_preview_open_link),
+                                    kind = RaftPreviewCardButtonKind.Link,
+                                    leavesRaft = false,
+                                    onClick = {
+                                        cards.close()
+                                        artifactOpener.open(target, RaftArtifactViewerHeader.of(summary, target), "chat_card")
+                                    },
+                                ),
+                            ),
                     )
                 }
             }
@@ -150,7 +154,7 @@ internal fun ThreadAppLinkCardPopoverHost(
         return
     }
     if (fixture != null) {
-        val card = (results[fixture.openUrl] as? AppLinkResult.Card)?.takeIf { it.card != null }
+        val card = (results[fixture.openUrl] as? AppLinkResult.Card)?.takeIf { it.hasCardBody }
         LaunchedEffect(card) {
             if (card == null) return@LaunchedEffect
             // Two frames: the chip's inline content is placed after the text is laid out.
@@ -161,12 +165,12 @@ internal fun ThreadAppLinkCardPopoverHost(
         return
     }
     val opened = cards.opened ?: return
-    val card = (results[opened.url] as? AppLinkResult.Card)?.takeIf { it.card != null }
+    val card = (results[opened.url] as? AppLinkResult.Card)?.takeIf { it.hasCardBody }
     LaunchedEffect(opened, card == null) {
         if (card == null) cards.close()
     }
     if (card == null) return
-    val uriHandler = LocalUriHandler.current
+    val openInSystemBrowser = rememberRaftSystemBrowserOpener()
     Modal(onWillDismiss = { cards.close() }) {
         RaftDesignSystemTheme {
             ThreadAppLinkCardPopover(
@@ -175,7 +179,8 @@ internal fun ThreadAppLinkCardPopoverHost(
                 onDismiss = cards::close,
                 onOpenLink = {
                     cards.close()
-                    uriHandler.openUri(card.url)
+                    val address = card.connectUrl ?: card.url
+                    openThreadAppLinkAddress(address, card.connectUrl, cards.openLink, openInSystemBrowser)
                 },
             )
         }
@@ -183,10 +188,12 @@ internal fun ThreadAppLinkCardPopoverHost(
 }
 
 /**
- * An App link's item card by its chip (web `AppLinkChip` `PreviewCardContent`: 300 wide, start
- * aligned with the chip, 6 below it, or above it when it doesn't fit below; artin chose a
- * popover on the phone, #proj-raft-ui). [RaftAppLinkCardView] with Open Link in
- * PreviewCardActions (an outline, ink-bordered button, never pink). Taller than the window, its
+ * An App link's item card by its chip (web `AppLinkChip` `PreviewCardContent size="item"`: 400
+ * wide, start aligned with the chip, 6 below it, or above it when it doesn't fit below; artin
+ * chose a popover on the phone, #proj-raft-ui). On a phone it takes the window's width less 8 each
+ * side. [RaftAppLinkCardView] with [appButtons] (the App's, in its order) and then Raft's Open
+ * Link (a bordered link out of Raft, ↗), laid out as raft-design #939 says: the App's first two
+ * actions on the row, or the first link; the rest in the More menu. Taller than the window, its
  * body scrolls and its footer, where the link goes, stays. A tap outside or Back closes it.
  * v1 cards have no buttons of their own: an action is only logged.
  */
@@ -196,19 +203,25 @@ internal fun ThreadAppLinkCardPopover(
     anchor: RaftPopoverAnchor,
     onDismiss: () -> Unit,
     onOpenLink: () -> Unit,
+    appButtons: List<RaftPreviewCardButton> = emptyList(),
+    eyebrow: String? = null,
+    details: List<RaftPreviewCardDetail> = emptyList(),
 ) {
+    // onOpenLink opens the card's address: the link, or a connect_account card's connect URL.
+    val openLink =
+        if (card.connectUrl != null) {
+            raftAppLinkCardOpenButton(card) { onOpenLink() }
+        } else {
+            raftAppLinkOpenLinkButton(onOpenLink)
+        }
     ThreadAppLinkCardPopoverFrame(key = card.url, anchor = anchor, onDismiss = onDismiss) { modifier ->
         RaftAppLinkCardView(
             card = card,
             onAction = { elementId -> raftLogInfo(ThreadAppLinkCardLogTag, "app_link_card_action_ignored element=$elementId") },
             modifier = modifier,
-            actions = {
-                RaftButton(
-                    text = stringResource(Res.string.thread_link_preview_open_link),
-                    onClick = onOpenLink,
-                    variant = RaftButtonVariant.Default,
-                )
-            },
+            buttons = appButtons + openLink,
+            eyebrow = eyebrow,
+            details = details,
         )
     }
 }
@@ -262,8 +275,8 @@ internal fun threadArtifactCardKey(refKey: String): String = "artifact:$refKey"
 
 internal fun threadArtifactRefKeyOrNull(openKey: String): String? = openKey.takeIf { it.startsWith("artifact:") }?.removePrefix("artifact:")
 
-/** raft-ui PreviewCardContent: 300px. */
-private val ThreadAppLinkCardWidth = 300.dp
+/** raft-ui `PreviewCardContent size="item"`: 400px (raft-design #939); narrower windows give less. */
+private val ThreadAppLinkCardWidth = RaftPreviewCardDefaults.ItemWidth
 private val ThreadAppLinkCardViewportGap = 8.dp
 
 /** The chip starts this far before its leading mark (the inline chip's start padding). */

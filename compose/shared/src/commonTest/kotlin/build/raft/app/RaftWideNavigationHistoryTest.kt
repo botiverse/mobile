@@ -220,4 +220,28 @@ class RaftWideNavigationHistoryTest {
         assertEquals("slockWideHistoryNavigate", RAFT_WIDE_HISTORY_NAVIGATE_EVENT)
         assertEquals("direction", RAFT_WIDE_HISTORY_DIRECTION)
     }
+
+    /** Review L1: Artifacts turned off for a server leaves no stop behind the arrows. */
+    @Test
+    fun aSurfaceThatWentAwayIsDroppedFromTheHistory() {
+        val artifacts = RaftWideNavEntry("s1", AppShellRailArtifactsKey, null)
+        val tasks = RaftWideNavEntry("s1", "tasks", null)
+        val history = RaftWideNavHistory().recordAll(home("a"), artifacts, tasks)
+        val dropped = history.withoutSurface(AppShellRailArtifactsKey)
+        assertEquals(listOf(home("a"), tasks), dropped.entries)
+        assertEquals(tasks, dropped.current)
+        assertEquals(home("a"), dropped.step(RaftWideNavDirection.Back).current)
+
+        // Standing on it: the place before it is current; a restore of it ends.
+        val onIt = RaftWideNavHistory().recordAll(home("a"), artifacts).withoutSurface(AppShellRailArtifactsKey)
+        assertEquals(home("a"), onIt.current)
+        val restoring = RaftWideNavHistory().recordAll(artifacts, home("a")).go(RaftWideNavDirection.Back).withoutSurface(AppShellRailArtifactsKey)
+        assertEquals(null, restoring.pendingRestore)
+        assertEquals(listOf(home("a")), restoring.entries)
+
+        // Per server, and nothing to drop is the same history.
+        val histories = RaftWideNavHistories().record(home("a")).record(artifacts)
+        assertEquals(listOf(home("a")), histories.withoutSurface("s1", AppShellRailArtifactsKey).of("s1").entries)
+        assertEquals(dropped, dropped.withoutSurface(AppShellRailArtifactsKey))
+    }
 }

@@ -12,6 +12,7 @@ import build.raft.app.data.TaskHistoryDetail
 import build.raft.app.data.TaskSourceMessagePreview
 import build.raft.app.data.parseSharedServerTasksPayload
 import build.raft.app.data.parseTaskHistory
+import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
@@ -56,7 +57,7 @@ class TaskConversationHeadModelTest {
                 source = TaskDetailLoad.Loaded(TaskSourceMessagePreview(MessageId("source-1"), members[0], "first line", null)),
             )
         val model =
-            task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), details, "member", false, members, null, serverId = "server-1")
+            task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), details, false, members, null, serverId = "server-1")
         assertEquals("Ship the bar", model.title)
         // Source and Created by name who they are, so their faces resolve from the server's directory
         // (RaftMemberAvatar) rather than from the sparse task / message payload.
@@ -84,7 +85,7 @@ class TaskConversationHeadModelTest {
     fun creatorOutsideTheChannelReadsAsTheHandleAndNoSourceRowForAHostSource() {
         // A pre-v2 task whose source IS its host: Earlier discussion leads there, so no Source row.
         val task = task().copy(hostMessageId = MessageId("host-1"), sourceMessageId = MessageId("host-1"))
-        val unknownCount = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), TaskConversationDetailsState(), null, false, emptyList(), null)
+        val unknownCount = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), TaskConversationDetailsState(), false, emptyList(), null)
         assertEquals("@Artin", unknownCount.createdBy)
         assertNull(unknownCount.source)
         assertEquals(TaskHeadEarlierDiscussion(replyCount = null), unknownCount.earlierDiscussion)
@@ -94,10 +95,10 @@ class TaskConversationHeadModelTest {
                 hostMessageId = MessageId("host-1"),
                 earlierDiscussion = TaskDetailLoad.Loaded(TaskEarlierDiscussion(MessageId("host-1"), count, ChannelId("th-1"))),
             )
-        val counted = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), withReplies(3), null, false, emptyList(), null)
+        val counted = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), withReplies(3), false, emptyList(), null)
         assertEquals(TaskHeadEarlierDiscussion(replyCount = 3), counted.earlierDiscussion)
         // Known to have no replies: hidden (web).
-        val empty = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), withReplies(0), null, false, emptyList(), null)
+        val empty = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), withReplies(0), false, emptyList(), null)
         assertNull(empty.earlierDiscussion)
     }
 
@@ -187,37 +188,6 @@ class TaskConversationHeadModelTest {
     }
 
     @Test
-    fun onAPhoneTheHeadMovesWithTheConversationScrollAndOffAPhoneItStays() {
-        val state = TaskHeadScrollState()
-        state.updateHeight(300f)
-        // Pinned (tablet): nothing moves.
-        assertEquals(0f, state.consume(-50f))
-        state.scrollsWithConversation = true
-        // A drag towards newer messages slides it away first, up to its height.
-        assertEquals(-120f, state.connection.onPreScroll(androidx.compose.ui.geometry.Offset(0f, -120f), androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput).y)
-        assertEquals(-180f, state.connection.onPreScroll(androidx.compose.ui.geometry.Offset(0f, -500f), androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput).y)
-        assertEquals(true, state.collapsed)
-        // A drag back down: the list scrolls first; only what it leaves (at its oldest) brings the head back.
-        assertEquals(0f, state.connection.onPreScroll(androidx.compose.ui.geometry.Offset(0f, 80f), androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput).y)
-        assertEquals(
-            80f,
-            state.connection.onPostScroll(
-                androidx.compose.ui.geometry.Offset.Zero,
-                androidx.compose.ui.geometry.Offset(0f, 80f),
-                androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput,
-            ).y,
-        )
-        assertEquals(false, state.collapsed)
-        // The keyboard folds it away (even before it is measured); the top bar's summary brings it back.
-        val fresh = TaskHeadScrollState().apply { scrollsWithConversation = true }
-        fresh.collapse()
-        fresh.updateHeight(200f)
-        assertEquals(true, fresh.collapsed)
-        fresh.expand()
-        assertEquals(false, fresh.collapsed)
-    }
-
-    @Test
     fun sourceAndViewInChannelOpenTheTaskChannelAtItsMessage() {
         val dmTask = task().copy(channelId = ChannelId("dm-1"), channelType = "dm", sourceMessageId = MessageId("source-1"))
         val dm = dmTask.taskChannelOpenRequest("server-1", dmTask.taskViewInChannelAnchor())!!
@@ -291,6 +261,28 @@ class TaskConversationHeadModelTest {
 
     private fun event(id: String) =
         TaskHistoryEvent(id, "created", "user", "artin", "2026-10-27T09:00:00.000Z", kotlinx.serialization.json.JsonObject(emptyMap()))
+
+    @Test
+    fun creatorFromAnotherWorkspaceWearsTheChannelMembersAvatar() {
+        // artin 1.22.0 (#wg-deck:#158): a joint channel's task created by an agent of another
+        // workspace showed the default robot; the reader's server directory does not know it, but
+        // the channel's member row carries its avatar.
+        val avatar = "https://cdn.raft.build/avatars/other-server/imprint.webp"
+        val task = task().copy(creator = MemberProfile(id = MemberId("agent-9"), displayName = "Imprint", handle = "imprint", kind = MemberKind.Agent))
+        val members =
+            listOf(
+                MemberProfile(
+                    id = MemberId("agent-9"),
+                    displayName = "Imprint",
+                    handle = "imprint",
+                    kind = MemberKind.Agent,
+                    avatar = AvatarReference.Url(avatar),
+                ),
+            )
+        val model =
+            task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), TaskConversationDetailsState(), false, members, null, serverId = "server-1")
+        assertEquals(TaskHeadPerson(MemberKind.Agent, "agent-9", avatar), model.creator)
+    }
 
     private fun task(): TaskSummary =
         parseSharedServerTasksPayload(

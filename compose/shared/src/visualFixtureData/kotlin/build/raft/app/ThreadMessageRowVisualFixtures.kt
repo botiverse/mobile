@@ -1,20 +1,13 @@
 package build.raft.app
 
 import build.raft.app.components.RaftAnchoredMetaChip
-import build.raft.app.components.RaftAttachmentPreviewCard
-import build.raft.app.components.RaftAttachmentPreviewCardWidth
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftChipLoadingIndicator
-import build.raft.app.components.RaftBrutalIconButton
-import build.raft.app.components.RaftBrutalSearchField
-import build.raft.app.components.RaftBrutalTextField
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.SharedHomeSearchInput
-import build.raft.app.components.RaftToolbarChip
 import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
 import build.raft.app.base.reduceAttachmentDownloadProgress
@@ -345,6 +338,11 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MESSAGE_ROW = "message_row"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_NEW_MESSAGE_MENU_DEMO = "new_message_menu_demo"
 /** Leading messages of the new-message-menu fixture that form its compact group. */
 internal const val THREAD_NEW_MESSAGE_MENU_TARGET_GROUP_SIZE = 3
+/**
+ * Messages in the new-message-menu fixture. A compact row is ~32dp, so 40 rows are ~1300dp:
+ * well over any phone viewport, which the compact-scroll case's drag needs.
+ */
+internal const val THREAD_NEW_MESSAGE_MENU_DEMO_MESSAGE_COUNT = 40
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD = "markdown_link_child"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD = "markdown_mention_child"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
@@ -357,7 +355,9 @@ private const val ThreadMessageVisualInlineImageUri =
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES = "inline_replies"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION = "share_selection"
-internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW = "share_preview"
+// The message the share image cases export (components.thread.message-share.preview[-desktop]):
+// avatar, name, a body line and a link line, as in artin's report.
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_IMAGE = "share_image"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE = "long_inline_code"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF = "md_link_ref"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP = "wide_markdown_wrap"
@@ -402,7 +402,18 @@ internal fun threadVisualFixtureTaskStatuses(fixture: String): Map<Int, TaskStat
                 34 to TaskStatus.InProgress,
                 56 to TaskStatus.Closed,
             )
-        else -> null
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_TASK_STATUS_CHIPS_LEGACY -> null
+        // Every other row has a loaded task source, as on the web (MessageItem `taskByNumber`):
+        // the fixture's tasks, with each message's own linked task layered on by the row.
+        else ->
+            threadVisualFixture(fixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }, instanceId = "")
+                .tasks
+                .mapNotNull { task ->
+                    val number = task.taskNumber?.takeIf { it > 0 } ?: return@mapNotNull null
+                    val status = TaskStatus.fromWireValue(task.status) ?: return@mapNotNull null
+                    number to status
+                }
+                .toMap()
     }
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_ESCAPES = "md_escapes"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE = "md_latest_release"
@@ -487,8 +498,12 @@ internal fun threadVisualFixture(
             base.copy(
                 alignOwnMessagesRight = false,
                 compactConsecutiveMessages = true,
+                // The compact-scroll case drags this list and requires it to move,
+                // so it must overflow the viewport by a wide margin. 20 rows only
+                // just overflowed at the old 8/8 row padding; at the web's 4/4
+                // continuation rhythm (#4325) they all fit on screen.
                 messages =
-                    List(20) { index ->
+                    List(THREAD_NEW_MESSAGE_MENU_DEMO_MESSAGE_COUNT) { index ->
                         val inTargetGroup = index < THREAD_NEW_MESSAGE_MENU_TARGET_GROUP_SIZE
                         seed.copy(
                             id = "visual-new-message-menu-$index",
@@ -513,6 +528,9 @@ internal fun threadVisualFixture(
         THREAD_MESSAGE_VISUAL_FIXTURE_MESSAGE_ROW -> {
             val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
             base.copy(
+                // The app's default "my messages" alignment is Left (no 82% cap on others'
+                // messages), which is what the web row shows.
+                alignOwnMessagesRight = false,
                 messages =
                     base.messages.mapIndexed { index, message ->
                         if (index == 0) {
@@ -1070,43 +1088,37 @@ internal fun threadVisualFixture(
                         enabled = false
                     )
             )
-        THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW ->
+        THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_IMAGE ->
             RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
-                title = "#design",
-                subtitle = "Share selected messages fixture",
+                title = "#visual-testing",
+                subtitle = "Share image fixture",
                 status = "content",
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                streamChannelId = "channel-design",
-                sourceThreadId = "channel-design",
+                streamChannelId = "channel-visual-testing",
+                sourceThreadId = "channel-visual-testing",
                 selectedTab = "chat",
                 showModeTabs = false,
                 alignOwnMessagesRight = false,
                 showMessageSaveAction = false,
                 showTaskOpenActions = false,
                 showTaskStatusActions = false,
+                knownMarkdownTaskNumbers = ThreadVisualNoKnownTaskNumbers,
                 messages =
                     listOf(
+                        // slock VisualTestingCases.tsx THREAD_MESSAGE_SHARE_IMAGE, byte for byte.
                         RaftThreadMessageItem(
-                            id = "msg-share-visual-a",
+                            id = "msg_share_image_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "06/27 09:20",
+                            timestampLabel = "07/25 16:20",
                             messageType = "Chat",
-                            body = "Selected the two discussion points that should become a summarized handoff message."
-                        ),
-                        RaftThreadMessageItem(
-                            id = "msg-share-visual-b",
-                            authorId = "visual-user",
-                            authorName = "artin",
-                            authorKind = "human",
-                            avatarLabel = "AR",
-                            timestampLabel = "06/27 09:24",
-                            messageType = "Chat",
-                            body = "Generate a message from these selected items, but keep it editable in the composer before sending."
+                            body =
+                                "Share image check: the avatar, name, body and link line should sit where the web puts them.\n\n" +
+                                    "https://github.com/botiverse/mobile/pull/4325"
                         )
                     ),
                 members =
@@ -1117,13 +1129,6 @@ internal fun threadVisualFixture(
                             handle = "Cindy",
                             kind = "agent",
                             avatarLabel = "CI"
-                        ),
-                        RaftThreadMemberItem(
-                            id = "visual-user",
-                            displayName = "artin",
-                            handle = "artin",
-                            kind = "human",
-                            avatarLabel = "AR"
                         )
                     ),
                 showComposer = false,
@@ -2424,10 +2429,10 @@ internal fun threadMessagePermalinkVisualPayload(instanceId: String): RaftThread
                     timestampLabel = "07/11 23:55",
                     messageType = "Chat",
                     body =
-                        "Single line: https://app.raft.build/s/mobile/channel/channel-proj-server-management?msg=msg-single\n\n" +
-                            "Line-end collision keeps text on both sides before https://app.raft.build/s/mobile/channel/channel-proj-server-management?msg=msg-edge after.\n\n" +
-                            "Thread reply: https://app.raft.build/s/mobile/channel/channel-proj-server-management?thread=channel-proj-server-management%3Amsg-parent&msg=msg-reply and DM: https://app.raft.build/s/mobile/dm/dm-mahua?msg=msg-dm.\n\n" +
-                            "External negative stays a link: https://example.com/visual. Code negative stays literal: `https://app.raft.build/s/mobile/channel/channel-design?msg=msg-code`.",
+                        "Single line: https://app.raft.build/s/mobile/channel/a7475818-d6b2-426d-8529-5ccdd26c295e?msg=71e10f8e-a8ec-47fb-8226-4dd6bb9c4a3b\n\n" +
+                            "Line-end collision keeps text on both sides before https://app.raft.build/s/mobile/channel/a7475818-d6b2-426d-8529-5ccdd26c295e?msg=5ce5a4ea-11d2-4290-8127-aa09604e4fa9 after.\n\n" +
+                            "Thread reply: https://app.raft.build/s/mobile/channel/a7475818-d6b2-426d-8529-5ccdd26c295e?thread=a7475818-d6b2-426d-8529-5ccdd26c295e%3A5a059894-e2a9-4443-8893-538cd34de603&msg=a95ecf0b-0378-4933-8b60-c4c81fa2b714 and DM: https://app.raft.build/s/mobile/dm/fa6b89fc-4186-42b5-885e-5a19d9f5e86e?msg=be443272-d7d6-4421-81b4-144791c13638.\n\n" +
+                            "External negative stays a link: https://example.com/visual. Code negative stays literal: `https://app.raft.build/s/mobile/channel/ebe61630-08ec-4c4f-8359-3caac639fa5b?msg=fc6d63c2-95bf-4df5-8b34-50f5defc95a6`.",
                     threadChannelId = "thread-msg-permalink-visual"
                 )
             ),
@@ -2705,4 +2710,33 @@ private fun threadMermaidVisualFixture(
                 instanceId = resolvedInstanceId,
                 enabled = false
             )
+    )
+
+/**
+ * Share image width picker (artin, 2026-11-06): a message whose table is wider than a phone and
+ * whose code has a line longer than any image width. In the conversation the table scrolls
+ * sideways; the share image fits both to its width, cells and code lines wrapping
+ * (ThreadShareImageScreenshotTest `wideTable*`).
+ */
+internal val ThreadShareImageWideTableVisualMessage =
+    RaftThreadMessageItem(
+        id = "msg_share_image_wide_table_visual",
+        authorId = "agent-cindy",
+        authorName = "Cindy",
+        authorDescription = "Keeps visual testing release notes aligned.",
+        authorKind = "agent",
+        avatarLabel = "CI",
+        timestampLabel = "2026-10-30T01:30:00Z",
+        messageType = "Chat",
+        body =
+            "Release checklist for 1.21:\n\n" +
+                "| Area | Owner | Status | Evidence | Notes for the release lane |\n" +
+                "|------|-------|--------|----------|----------------------------|\n" +
+                "| Share image width | Artin | Ready | Goldens at 390 and 768 recorded in CI | Tables and code fit the picked width |\n" +
+                "| Thread selection regroup | Cindy | Shipped | thread.share-image.continuation | The first picked message always names its author |\n" +
+                "| Offline durable timeline | Remy | In review | SharedThreadStoreDurableLastKnownTest | Waiting on one more Android pass |\n\n" +
+                "```\n" +
+                "curl -fsSL https://raft.build/api/releases/1.21.0/checklist?include=share-image,thread-selection,offline-timeline&format=markdown\n" +
+                "```\n\n" +
+                "Everything above should read without scrolling sideways."
     )

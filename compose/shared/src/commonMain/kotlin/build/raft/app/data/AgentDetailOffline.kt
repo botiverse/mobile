@@ -102,6 +102,7 @@ internal data class StoredAgentSummary(
     val createdAgents: List<StoredAgentCreated> = emptyList(),
     val deletedAt: String? = null,
     val lastSeenAt: String? = null,
+    val hostedRuntime: AgentHostedRuntimeSnapshot? = null
 )
 
 @Serializable
@@ -172,7 +173,7 @@ internal data class StoredAgentSkillPath(
 )
 
 @Serializable
-internal data class StoredAgentSkill(val name: String, val detail: String? = null)
+internal data class StoredAgentSkill(val name: String, val detail: String? = null, val command: String? = null)
 
 @Serializable
 internal data class StoredAgentAppLogin(
@@ -234,7 +235,7 @@ internal fun RaftCachedAgentDetail.toStoredAgentDetail(): StoredAgentDetail =
                     count = group.count,
                     paths =
                         group.paths.map { path ->
-                            StoredAgentSkillPath(path.path, path.count, path.skills.map { StoredAgentSkill(it.name, it.detail) })
+                            StoredAgentSkillPath(path.path, path.count, path.skills.map { StoredAgentSkill(it.name, it.detail, it.command) })
                         },
                 )
             },
@@ -264,6 +265,7 @@ internal fun RaftCachedAgentDetail.toStoredAgentDetail(): StoredAgentDetail =
 
 private fun AgentDetailSummary.toStored(): StoredAgentSummary =
     StoredAgentSummary(
+        hostedRuntime = hostedRuntime,
         id = id,
         name = name,
         displayName = displayName,
@@ -304,6 +306,7 @@ internal fun StoredAgentDetail.toCachedAgentDetail(): RaftCachedAgentDetail {
                 summary =
                     summary?.let {
                         AgentDetailSummary(
+                            hostedRuntime = it.hostedRuntime,
                             id = it.id,
                             name = it.name,
                             displayName = it.displayName,
@@ -354,7 +357,7 @@ internal fun StoredAgentDetail.toCachedAgentDetail(): RaftCachedAgentDetail {
                                     count = group.count,
                                     paths =
                                         group.paths.map { path ->
-                                            AgentSkillPathGroup(path.path, path.count, path.skills.map { AgentSkillSummary(it.name, it.detail) })
+                                            AgentSkillPathGroup(path.path, path.count, path.skills.map { AgentSkillSummary(it.name, it.detail, it.command) })
                                         },
                                 )
                             },

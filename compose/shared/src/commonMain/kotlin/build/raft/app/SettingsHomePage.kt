@@ -1,6 +1,9 @@
 package build.raft.app
 
+import build.raft.app.data.updatedAgentIdOrNull
 import build.raft.app.data.raftDedupeKey
+import build.raft.app.data.ArchivedNameCollision
+import build.raft.app.data.archivedNameCollisionOrNull
 import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
@@ -9,18 +12,23 @@ import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftTextFieldDefaults
-import build.raft.designsystem.components.RaftPickerTriggerButton
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextarea
+import androidx.compose.foundation.text.KeyboardActions
+import build.raft.designsystem.components.RaftMobileNavServerPopoverItem
+import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.data.raftHostShowsContent
 import build.raft.app.data.RaftNavDestination
 import build.raft.app.data.RaftNavSurface
 import build.raft.app.data.RaftProductEvents
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
-import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
 import build.raft.app.data.SHELL_OVERLAY_REQUEST_ID
 import build.raft.app.data.AuthenticatedRouteOwner
@@ -40,6 +48,16 @@ import build.raft.app.data.visibleSideThread
 import build.raft.app.data.AdaptiveSideThread
 import build.raft.app.data.RAFT_SIDE_THREAD_COLUMN_DP
 import build.raft.app.data.RaftListPaneKind
+import build.raft.app.data.RaftCollapsibleColumn
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import build.raft.app.data.RAFT_SIDE_THREAD_DIVIDER_DP
 import build.raft.app.data.closeDetailCompletely
 import build.raft.app.data.withOpenedDetail
@@ -50,14 +68,14 @@ import build.raft.app.data.hasVisibleDetailBackHistory
 import build.raft.app.data.NetworkRaftThreadApi
 import build.raft.app.base.Utils
 import build.raft.app.network.raftNetworkKmmRecoveryEnvironmentId
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalListRow
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.app.components.RaftAnchoredPickerTrigger
-import build.raft.app.components.RaftBrutalSearchField
-import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.app.components.rememberRaftTextareaEditorModifier
 import build.raft.app.components.SharedHomeSearchEditorOwner
 import build.raft.app.components.SharedHomeSearchInput
-import build.raft.app.components.RaftLinkButton
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.raftCardSurface
@@ -67,7 +85,6 @@ import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.BridgeRaftAvatarNativeCache
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.KeyValuePushPreviewModePreferenceStore
-import build.raft.app.data.PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.RaftHostNetworkEvents
 import build.raft.app.data.RaftAppUpdateEvents
@@ -75,6 +92,7 @@ import build.raft.app.data.RaftChatLayoutPreferenceEvents
 import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.RealtimeRoomLeaseOwner
 import build.raft.app.data.isAppUpdateHomeNotificationId
+import build.raft.app.data.homeComputerVersionGateTargetOrNull
 import build.raft.app.data.isMachineHomeNotificationId
 import build.raft.app.data.normalizedAgentRuntimeStatus
 import build.raft.app.data.AppLocale
@@ -130,6 +148,7 @@ import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
 import build.raft.app.data.ConversationForwardAction
+import build.raft.app.data.appShellConversationForwardGestureArmed
 import build.raft.app.data.toConversationForwardEntry
 import build.raft.app.data.RaftSystemNotificationContract
 import build.raft.app.data.hasCompletedTasksSnapshot
@@ -147,6 +166,9 @@ import build.raft.app.data.HomeParentThreadUnread
 import build.raft.app.data.SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY
 import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
 import build.raft.app.data.DRAFTS_SECTION_FEATURE_FLAG_KEY
+import build.raft.app.data.agentLoungeEnabled
+import build.raft.app.data.AGENT_LOUNGE_FEATURE_FLAG_KEY
+import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.foldThreadUnreadByParent
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeServerDrawerState
@@ -296,6 +318,7 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.MemberSnapshot
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.agentAvatarFallbackWireValue
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ChannelId
@@ -396,7 +419,6 @@ import build.raft.app.compat.ui.bouncesEnable
 import build.raft.app.compat.ui.nestedScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -409,12 +431,17 @@ import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.RaftWindowDialogProperties
+import build.raft.designsystem.components.RaftWindowDialog
+import build.raft.designsystem.components.RaftKeyGlyph
 import androidx.compose.material3.Text
 import build.raft.app.components.RaftPullToRefreshBox
 import build.raft.app.components.raftHeaderRefreshIndicatorVisible
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import build.raft.app.components.RaftMetrics
+import build.raft.app.components.RaftUiControlledMenu
+import build.raft.app.components.RaftUiMenuItem
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -472,6 +499,8 @@ import kotlinx.serialization.json.contentOrNull
 import kotlin.time.Clock
 import kotlin.time.TimeSource
 import build.raft.app.model.isExternalAgent
+import build.raft.app.components.RaftSlotIcon
+import build.raft.designsystem.components.raftClickable
 
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_ROUTE_VISUAL_PAGE = "compose_settings_route_visual"
@@ -499,7 +528,9 @@ internal sealed interface AuthGateMessage {
 
     data class Static(
         val value: StringDesc,
-        val pinSignOut: Boolean = false
+        val pinSignOut: Boolean = false,
+        /** The server error's trace id, shown with the message on the login page. */
+        val traceId: String? = null
     ) : AuthGateMessage
 }
 
@@ -526,6 +557,8 @@ internal const val SettingsDestinationBilling = "billing"
 internal const val SettingsDestinationStorage = "storage"
 internal const val SettingsDestinationReleaseNotes = "releaseNotes"
 internal const val SettingsDestinationHandsFeedback = "hands-feedback"
+/** Settings > Resources > Documentation: the docs site in the browser (web: a link, ↗). */
+internal const val SettingsDestinationDocumentation = "documentation"
 
 private const val SettingsRouteVisualDestinationKey = "destination"
 private const val SettingsRouteVisualFixtureKey = "fixtureKey"
@@ -540,8 +573,7 @@ internal val SettingsRouteVisualPageDataFields =
         "fullHeight",
         "slockVisualFullHeight"
     )
-private const val SettingsDeveloperUnlockTapCount = 7
-private const val AppShellInitialTabKey = "slockInitialTab"
+internal const val AppShellInitialTabKey = "slockInitialTab"
 private const val DiagnosticsDeepLinkIdKey = "slockDiagnosticsDeepLinkId"
 private const val DiagnosticsDeepLinkAutoCloseMsKey = "slockDiagnosticsDeepLinkAutoCloseMs"
 internal const val SharedSettingsDefaultWebBaseUrl = "https://app.raft.build"
@@ -573,9 +605,16 @@ private const val MessageLinkServerNamePlaceholder = "__raft_message_link_server
 internal fun appShellChildPageGlassStyle(bottomTabBarOverlaysContent: Boolean): String? = null
 
 private val AppShellNotificationLaunchJson = Json { ignoreUnknownKeys = true }
-private val SearchControlsHorizontalPadding = 16.dp
-private val SearchMessagesHorizontalPadding = 16.dp
-private val SavedSelectedRowShadowOffset = 2.dp
+// raft-ui SearchShellRoot sets its column's margin (`--column-margin`) to 20dp, the content edge of
+// its list-cell rows (8dp inset + 12dp padding): the filters, summary, headings, rows and notices
+// all start there.
+private val SearchControlsHorizontalPadding = 20.dp
+private val SearchMessagesHorizontalPadding = 20.dp
+// The search head (the Search tab's frame bar, or the Back + field row) keeps the page head's 16dp
+// (nav spec §2/§7.1).
+private val SearchHeadHorizontalPadding = 16.dp
+// web SearchFilterBar in the ⌘K overlay: `px-3`.
+private val SearchOverlayFiltersHorizontalPadding = 12.dp
 private val SavedUnsaveHitTargetSize = 44.dp
 private val SearchPopoverBorderColor: Color get() = RaftColor.BorderBlack
 private val SearchPopoverShadowColor: Color get() = RaftColor.ShadowBlack
@@ -765,36 +804,6 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                     )
                 }
             }
-    }
-}
-
-// search-message `messageSender`: a 14dp avatar and the name in `text-callout` bold ink.
-@Composable
-private fun SharedHomeSearchSenderMeta(
-    sender: String,
-    avatarWireValue: String?,
-    avatarCacheIdentity: RaftMemberAvatarCacheIdentity? = null,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftAppAvatar(
-            avatarWireValue = avatarWireValue ?: AvatarReference.Random(sender.searchAvatarSeed()).wireValue,
-            label = sender,
-            avatarSize = RaftSearchMetrics.SenderAvatar,
-            cacheSubject = avatarCacheIdentity?.subject,
-            cacheServerId = avatarCacheIdentity?.serverId
-        )
-        RaftText(
-            text = sender,
-            style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold),
-            color = RaftColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 
@@ -995,8 +1004,8 @@ private val settingsPageVisualPayload: RaftSharedSettingsPayload
 
 private val bottomTabBarSmokeItems = listOf(
     RaftBottomTabItemPayload("home", "Home", RaftLucideIconName.House, selected = true),
-    RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity, attentionDot = true),
-    RaftBottomTabItemPayload("tasks", "Tasks", RaftLucideIconName.SquareCheckBig),
+    RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity),
+    RaftBottomTabItemPayload("tasks", "Tasks", RaftLucideIconName.ListTodo),
     RaftBottomTabItemPayload(AppShellSearchTabKey, "Search", RaftLucideIconName.Search),
     RaftBottomTabItemPayload("more", "More", RaftLucideIconName.Ellipsis)
 )
@@ -1008,6 +1017,47 @@ internal const val AppShellRailSearchKey = "rail_search"
 /** Saved opened from the Home sidebar in desktop mode: an inline list pane, like rail Search. */
 internal const val AppShellRailSavedKey = "rail_saved"
 internal const val AppShellRailDraftsKey = "rail_drafts"
+
+/**
+ * artin 11-01: the rail's page destinations (Computers, Apps) open in the shell's content area
+ * beside the rail on the wide layout, like Chat / Activity / Tasks / Members (web LeftRail), not as
+ * a page over the shell. Inline keys, like [AppShellRailSearchKey]; not persisted tab keys.
+ */
+internal const val AppShellRailComputersKey = "rail_computers"
+internal const val AppShellRailAppsKey = "rail_apps"
+internal const val AppShellRailArtifactsKey = "rail_artifacts"
+
+/** The inline key a rail page destination opens as on the wide layout, or null. */
+internal fun appShellRailInlinePageKey(destination: RaftAppDestination?): String? =
+    when (destination) {
+        RaftAppDestination.Computers -> AppShellRailComputersKey
+        RaftAppDestination.Apps -> AppShellRailAppsKey
+        RaftAppDestination.Artifacts -> AppShellRailArtifactsKey
+        else -> null
+    }
+
+/** The rail entry an inline page key highlights ("computers" / "apps"), or null for none / a list pane. */
+internal fun appShellRailInlinePageRailId(railInlineSecondaryDestination: String?): String? =
+    when (railInlineSecondaryDestination) {
+        AppShellRailComputersKey -> RaftAppDestination.Computers.id
+        AppShellRailAppsKey -> RaftAppDestination.Apps.id
+        AppShellRailArtifactsKey -> RaftAppDestination.Artifacts.id
+        else -> null
+    }
+
+/** The page an inline page key shows in the content area: the page its Settings row shows in the wide pane. */
+internal fun appShellRailInlinePage(railInlineSecondaryDestination: String?, storeScope: RaftShellStoreScope): Pair<String, JSONObject>? =
+    when (railInlineSecondaryDestination) {
+        AppShellRailComputersKey -> settingsWideDetailPage(SettingsDestinationComputers, storeScope)
+        AppShellRailAppsKey -> settingsWideDetailPage(SettingsDestinationConnectedApps, storeScope)
+        // Its head without Back (the rail is the way out), as Computers.
+        AppShellRailArtifactsKey -> ARTIFACTS_HOME_PAGE to artifactsHomePageData(storeScope)
+        else -> null
+    }
+
+/** An inline rail destination that is a list pane (Search, Saved, Drafts) hosting the shared detail beside it. */
+private fun appShellRailInlineListPane(railInlineSecondaryDestination: String?): Boolean =
+    railInlineSecondaryDestination != null && appShellRailInlinePageRailId(railInlineSecondaryDestination) == null
 
 /**
  * The phone bottom bar (stdrc 2026-10-21): Home · Activity · Tasks · Search · More for
@@ -1126,7 +1176,7 @@ internal fun appShellSharedDetailSurfaceVisible(
                 // task #34: the Tasks board hosts the detail in a bounded overlay while a task
                 // opened from the board is showing.
                 (retainedAppShellSelectedTab(selectedTab) == "tasks" && tasksDetailOverlayOpen) ||
-                railInlineSecondaryDestination != null
+                appShellRailInlineListPane(railInlineSecondaryDestination)
         )
 
 /**
@@ -1151,7 +1201,7 @@ internal fun appShellRailSurfaceBackDismissesDetailFirst(
 ): Boolean =
     selectionPresent &&
         (
-            railInlineSecondaryDestination != null ||
+            appShellRailInlineListPane(railInlineSecondaryDestination) ||
                 retainedAppShellSelectedTab(selectedTab) == "activity" ||
                 retainedAppShellSelectedTab(selectedTab) == "dms" ||
                 (retainedAppShellSelectedTab(selectedTab) == "tasks" && tasksDetailOverlayOpen)
@@ -1735,9 +1785,8 @@ internal fun appShellHomeConversationOpenAllowed(
 internal fun appShellCanRenderCachedHomePreview(
     readySession: StoredAuthSession?,
     readyPhase: SharedAuthReadyPhase?,
-    featureDecision: ServerSetupFeatureDecision,
-    setupAdmissionAllowsHome: Boolean,
     setupAdmissionState: ServerSetupAdmissionState? = null,
+    serverSetupGateEnabled: Boolean = true,
     readyServerId: String?,
     selectedTab: String = "home",
     selectedHomeDestination: String? = null,
@@ -1750,20 +1799,16 @@ internal fun appShellCanRenderCachedHomePreview(
     val session = readySession ?: return false
     val phase = readyPhase ?: return false
     if (phase == SharedAuthReadyPhase.Confirmed) return false
+    // The cached Home stays while the server setup check is still running; once it answers (or
+    // with the setup gate off, when there is no check), Home hands over to the authoritative Home
+    // and setup takes the screen only on a positive blocksChat.
     if (
         phase == SharedAuthReadyPhase.CachedRestoreCompleted &&
-        featureDecision != ServerSetupFeatureDecision.Checking
+        (!serverSetupGateEnabled || serverSetupAdmissionResolved(setupAdmissionState))
     ) {
         return false
     }
-    if (setupAdmissionState is ServerSetupAdmissionState.Blocked || setupAdmissionState is ServerSetupAdmissionState.Failed) {
-        return false
-    }
-    if (
-        !setupAdmissionAllowsHome &&
-        featureDecision != ServerSetupFeatureDecision.Checking &&
-        featureDecision != ServerSetupFeatureDecision.Bypassed
-    ) {
+    if (serverSetupBlocksHome(setupAdmissionState)) {
         return false
     }
     val serverId = readyServerId?.trim()?.takeIf { it.isNotBlank() } ?: return false
@@ -2063,7 +2108,9 @@ internal fun RaftAppShellContent(
     /** A desktop shortcut or mouse button's step through the wide layout's history. */
     wideHistoryRequest: RaftWideNavRequest? = null,
     searchHandoff: RaftSearchTabQueryRequest? = null,
-    onSearchHandoffApplied: () -> Unit = {}
+    onSearchHandoffApplied: () -> Unit = {},
+    /** Advances with each ⌘K / Ctrl+K from the host window (the desktop app). */
+    searchShortcutTick: Int = 0,
 ) {
     // #85 follow-up: seed the KmmResource `StringDesc.localeType`
     // global from the persisted `AppLocale` as early as possible
@@ -2085,6 +2132,7 @@ internal fun RaftAppShellContent(
         wideHistoryRequest = wideHistoryRequest,
         searchHandoff = searchHandoff,
         onSearchHandoffApplied = onSearchHandoffApplied,
+        searchShortcutTick = searchShortcutTick,
         sharedStores = sharedStores,
     )
 }
@@ -2099,6 +2147,7 @@ private fun RaftAppShellReadyContent(
     wideHistoryRequest: RaftWideNavRequest? = null,
     searchHandoff: RaftSearchTabQueryRequest? = null,
     onSearchHandoffApplied: () -> Unit = {},
+    searchShortcutTick: Int = 0,
     sharedStores: RaftSharedStoreProvider,
 ) {
     val errorStrings = localizedErrorPresentationStrings()
@@ -2107,6 +2156,7 @@ private fun RaftAppShellReadyContent(
     val notificationSignInMessage = stringResource(Res.string.home_error_notification_sign_in)
     val channelCreatedMessage = stringResource(Res.string.thread_action_card_success_channel)
     val channelNotCreatedMessage = stringResource(Res.string.channel_create_error_not_created)
+    val channelUnarchiveFailedMessage = stringResource(Res.string.channel_create_failed_unarchive)
     val conversationUnavailableMessage = stringResource(Res.string.home_error_conversation_unavailable)
     val pager = LocalActivity.current.getPager() as Pager
     val timestampDisplayState =
@@ -2130,7 +2180,15 @@ private fun RaftAppShellReadyContent(
         pager.pageData.params.optString(APP_SHELL_AUTH_GATE_INSTANCE_ID)
     }
     var selectedTab by remember { mutableStateOf(launchSelection.selectedTab) }
+    // Navigation 3 (Android, stack on): the host saves the tab under the stack's pages with them.
+    val stackRootTab = build.raft.app.nav.LocalRaftStackRootTab.current
+    if (stackRootTab != null) SideEffect { stackRootTab.tab = selectedTab }
+    // Navigation 3 (Android, stack on): the window's shell tabs for the server pages pushed over
+    // the shell (AppShellServerStackPage.kt); null when the shell is not a stack root.
+    val stackShellTabs = LocalRaftStackShellTabs.current
     var childTabSwitchEpoch by remember { mutableStateOf(0) }
+    // artin 2026-11-02: the tabs picked before this one; Back on a tab root walks back through them.
+    var appShellTabHistory by remember { mutableStateOf(AppShellTabHistory()) }
     var homeFocusLossDismissEpoch by remember { mutableStateOf(0) }
     var retainedAppShellTabs by remember {
         mutableStateOf(setOf("home", launchSelection.selectedTab))
@@ -2139,7 +2197,7 @@ private fun RaftAppShellReadyContent(
     val prewarmAdmissionGate = remember { sharedPrewarmAdmissionGate() }
     val childPagePrewarmPolicy =
         remember { appShellChildPagePrewarmPolicy(raftPlatformAppShellChildPagePrewarmMode()) }
-    var settingsHeaderTapCount by remember { mutableStateOf(0) }
+    val settingsHeaderTaps = remember { SettingsDeveloperUnlockTaps() }
     var homeListPositions by remember { mutableStateOf(AppShellServerLazyListPositions()) }
     var pendingHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
     var observedHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
@@ -2165,6 +2223,8 @@ private fun RaftAppShellReadyContent(
     // The inline Search's field focuses as it opens; opening it again while it is open (top bar
     // search field, the Duo rail's Search) focuses the field again, like web's search shortcut.
     var railInlineSearchFocusRequest by remember { mutableStateOf(0) }
+    // "Search for" hands the panel's query to the list column's Search; each hand-over is new.
+    var searchOverlayHandoffNonce by remember { mutableStateOf(-1L) }
     // page_viewed for the wide rail's inline list panes (Search, Saved): they are not pages of their own.
     val railInlineProductPageSlot = remember(pager.pagerId) { "${pager.pagerId}#rail-inline" }
     val railInlineProductPageView = appShellRailInlineProductPageView(railInlineSecondaryDestination)
@@ -2220,6 +2280,15 @@ private fun RaftAppShellReadyContent(
     // whenever it appears (another window's shell may have taken over meanwhile).
     LaunchedEffect(sharedStores, storeScope, visibleAppearanceGeneration) {
         sharedStores.followServerTheme(storeScope)
+    }
+    // The account is scheduled for deletion (a 403 `account_deletion_pending` on any request): open
+    // the web deletion page, which shows the pending state and its Cancel. Once per session; the
+    // signal hands each request to one shell only.
+    LaunchedEffect(bridge, storeScope) {
+        build.raft.app.data.RaftAccountDeletionPendingSignal.Process.openRequests.collect {
+            bridge.logWarn("account_deletion_pending_open_page shell=${storeScope.shellInstanceId}")
+            pager.openSettingsAccountDeletionPage(storeScope)
+        }
     }
     val authStore = sharedStores.authStore
     val shellAuthStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
@@ -2966,7 +3035,8 @@ private fun RaftAppShellReadyContent(
                 channelRepository = channelRepository,
                 prewarmReplyThread = homeActivityReplyThreadPrewarmDataSource::prewarmReplyThread,
                 replyThreadContentCached = homeActivityReplyThreadPrewarmDataSource::hasCurrentReplyThreadContent,
-                onUnreadCountsChanged = { homeStore.dispatch(SharedHomeIntent.ForegroundRefresh) },
+                // Hidden Home folds these into one read when it shows (fb-52cc0499 request storm).
+                onUnreadCountsChanged = { homeStore.requestUnreadCountsReconcile(reason = "activity_unread_counts") },
                 // task #436: shared store — both call sites must use one identity.
                 diagnosticsLogger = sharedActivityStoreDiagnosticsLogger()
             )
@@ -3013,6 +3083,8 @@ private fun RaftAppShellReadyContent(
             RaftAnnouncementsRemindersApiClient(NetworkRaftAnnouncementsRemindersApi(appShellNetworkClient))
         }
     var createChannelError by remember { mutableStateOf<String?>(null) }
+    // Web ArchivedNameCollisionBanner (slock #12614): an archived channel holds the name.
+    var createChannelCollision by remember { mutableStateOf<ArchivedNameCollision?>(null) }
     var createChannelMembersLoading by remember { mutableStateOf(false) }
     var createChannelMembers by remember { mutableStateOf<List<MemberProfile>>(emptyList()) }
     val hostThreadTimeCapabilities = remember(pager.pageData.params.toString()) {
@@ -3042,18 +3114,18 @@ private fun RaftAppShellReadyContent(
                         .initialServerId
             )
         }
-    var systemNotificationNavigationTick by remember { mutableStateOf(0) }
+    // #4260: links and notification opens are taken and opened by this intake, which does not wait
+    // for the shell to recompose (a covered shell does not).
+    val navigationIntake =
+        remember(windowNavigationCoordinator) { RaftShellNavigationIntake(windowNavigationCoordinator) }
     // A notification without a conversation (reminder, notice, test, agent route; contract §4.5):
     // switch to its server and open Activity. From the launch pageData (Android) or the open event (iOS).
     var pendingNotificationActivityServerId by remember(pager.pageData.params.toString()) {
         mutableStateOf(pager.pageData.params.appShellNotificationActivityServerId())
     }
-    var desktopShortcutNavigationTick by remember { mutableStateOf(0) }
     // #proj-mobile #25/#26: external message links wait in the process inbox (through sign-in)
     // and, once resolved for this account, enter the same window navigation queue as a
-    // notification tap.
-    var messageLinkNavigationTick by remember { mutableStateOf(0) }
-    val pendingMessageLink by RaftMessageLinkInbox.Process.pending.collectAsState()
+    // notification tap ([navigationIntake]).
     val messageLinkSwitchedServerTemplate =
         stringResource(Res.string.message_link_switched_server, MessageLinkServerNamePlaceholder)
     DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
@@ -3071,12 +3143,11 @@ private fun RaftAppShellReadyContent(
                     bridge.logWarn("window_navigation_drop source=app_shortcut reason=invalid_identity")
                     return@observe
                 }
-                val enqueued = windowNavigationCoordinator.enqueue(intent)
+                val enqueued = navigationIntake.enqueue(intent)
                 bridge.log(
                     "window_navigation_received source=app_shortcut enqueued=$enqueued " +
                         "targetServerId=${intent.serverId}"
                 )
-                desktopShortcutNavigationTick += 1
             }
         eventBus.post(
             eventName = build.raft.app.data.RaftDesktopShortcutContract.OpenReadyEventName,
@@ -3113,12 +3184,11 @@ private fun RaftAppShellReadyContent(
                     bridge.logWarn("window_navigation_drop source=system_notification reason=invalid_identity")
                     return@observe
                 }
-                val enqueued = windowNavigationCoordinator.enqueue(intent)
+                val enqueued = navigationIntake.enqueue(intent)
                 bridge.log(
                     "window_navigation_received source=system_notification enqueued=$enqueued " +
                         "targetServerId=${intent.serverId}"
                 )
-                systemNotificationNavigationTick += 1
             }
         eventBus.post(
             eventName = RaftSystemNotificationContract.OpenReadyEventName,
@@ -3178,7 +3248,8 @@ private fun RaftAppShellReadyContent(
                 },
                 resetActivity = homeActivityStore::reset,
                 diagnosticsLogger = raftLogger("SlockHomeShell", "shared_home_shell"),
-                scope = appShellCoroutineScope
+                scope = appShellCoroutineScope,
+                selectedConversationSeen = { raftHostShowsContent(storeScope.shellInstanceId) }
             )
         }
     DisposableEffect(homeShellStore) {
@@ -3224,6 +3295,9 @@ private fun RaftAppShellReadyContent(
                 ?.takeIf { authGateState == SharedAuthGateState.Restoring }
                 ?.let { SharedAuthReadyPhase.CachedRestorePending }
     val readyServerId = selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: readySession?.currentServerId
+    val serverLastConversationRepository = ServerLastConversationRepository.App
+    val serverLastConversationOwnerKey =
+        messageBodyFontSizeOwnerKey(sharedStores.apiEnvironmentStore.current().apiBaseUrl, readySession?.user?.id.orEmpty())
     val tasksOwner = SharedTasksRouteOwner(
         environment = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
         accountId = readySession?.user?.id,
@@ -3288,6 +3362,8 @@ private fun RaftAppShellReadyContent(
             selectedTab = "home"
             retainedAppShellTabs = retainedAppShellTabs + "home"
         }
+        // Back never returns to a tab that is no longer available.
+        appShellTabHistory = appShellTabHistory.sanitized(allowedKeys)
     }
 
     // task #45: rail-only transient surfaces must not leak into the single-column
@@ -3319,6 +3395,12 @@ private fun RaftAppShellReadyContent(
             raftScopedAgentStatusResolver(appShellServerMembersStore, readyServerId)
         }
     val appShellEnvironment = sharedStores.apiEnvironmentStore.current()
+    val serverSetupFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val serverSetupGateServerId = readyServerId?.takeIf(String::isNotBlank) ?: homePreviewServerId
+    val serverSetupGateOn =
+        remember(serverSetupFlagRevision, serverSetupGateServerId) {
+            serverSetupGateEnabled(sharedStores.serverFeatureFlags, serverSetupGateServerId.orEmpty())
+        }
     val setupAdmissionHost =
         if (readySession != null && !readyServerId.isNullOrBlank()) {
             rememberServerSetupAdmissionHost(
@@ -3335,26 +3417,16 @@ private fun RaftAppShellReadyContent(
                 networkClient = appShellNetworkClient,
                 shellAuthStore = shellAuthStore,
                 authEvents = sharedStores.authStore,
-                featureFlags = sharedStores.serverFeatureFlags,
                 authDataSource = authDataSource,
                 bridge = bridge,
                 openExternalUrl = linkNavigator::open,
                 refreshSignal = pageVisibleTick,
+                gateEnabled = serverSetupGateOn,
             )
         } else {
             null
         }
     val setupAdmissionAllowsHome = setupAdmissionHost?.allowsHome == true
-    val setupAdmissionFeatureDecision =
-        setupAdmissionHost?.featureDecision
-            ?: homePreviewServerId
-                ?.takeIf { it.isNotBlank() }
-                ?.let { serverId ->
-                    serverSetupFeatureDecision(
-                        sharedStores.serverFeatureFlags.snapshotFor(ServerId(serverId))
-                    )
-                }
-            ?: ServerSetupFeatureDecision.Checking
     val authoritativeHomeStartAllowed =
         appShellAuthoritativeHomeStartAllowed(
             authGateState = authGateState,
@@ -3377,9 +3449,8 @@ private fun RaftAppShellReadyContent(
         appShellCanRenderCachedHomePreview(
             readySession = homePreviewSession,
             readyPhase = readyAuthPhase,
-            featureDecision = setupAdmissionFeatureDecision,
-            setupAdmissionAllowsHome = setupAdmissionAllowsHome,
             setupAdmissionState = setupAdmissionHost?.state,
+            serverSetupGateEnabled = serverSetupGateOn,
             readyServerId = homePreviewServerId,
             selectedTab = selectedTab,
             selectedHomeDestination = selectedHomeDestination,
@@ -3394,9 +3465,8 @@ private fun RaftAppShellReadyContent(
         appShellCanRenderCachedHomePreview(
             readySession = homePreviewSession,
             readyPhase = readyAuthPhase,
-            featureDecision = setupAdmissionFeatureDecision,
-            setupAdmissionAllowsHome = setupAdmissionAllowsHome,
             setupAdmissionState = setupAdmissionHost?.state,
+            serverSetupGateEnabled = serverSetupGateOn,
             readyServerId = homePreviewServerId,
             state = homeState
         )
@@ -3473,9 +3543,14 @@ private fun RaftAppShellReadyContent(
     // only when the finger lifts, so dragging across the threshold and back loses nothing.
     val listPanePreferenceStore = remember { KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()) }
     val adaptiveListPaneWidths = rememberRaftListPaneWidths(listPanePreferenceStore)
+    // The rail's Collapse / Expand Sidebar: each list column's hidden state, saved per device.
+    val sidebarCollapse = rememberRaftSidebarCollapseState(listPanePreferenceStore)
     var adaptiveListPaneResizing by remember { mutableStateOf(false) }
     // artin 2026-10-29: the section the wide Settings detail shows (null: the default, Account).
     var settingsWidePicked by remember { mutableStateOf<String?>(null) }
+    // The setting a Settings search result opened the picked section at (its row and the request).
+    var settingsWideAnchor by remember { mutableStateOf<Pair<String, SettingsSearchAnchorRequest>?>(null) }
+    var settingsSearchOpenNonce by remember { mutableStateOf(0L) }
     // A drag only defers the fold while it can still be in progress: desktop mode on, dual pane.
     // (The handle also reports the end when it goes inactive or leaves composition.)
     val listPaneResizeDefersFold =
@@ -3972,6 +4047,9 @@ private fun RaftAppShellReadyContent(
         if (build.raft.app.data.RaftNotificationAccountSettingsStore.ownerUserId != notificationAccountUserId) {
             build.raft.app.data.RaftNotificationLevelStore.clear()
             build.raft.app.data.RaftNotificationAccountSettingsStore.clear()
+            build.raft.app.data.RaftNotificationChannelNames.clear()
+            // What another account's Free servers hid is not this account's to show.
+            build.raft.app.data.RaftHiddenHistoryStore.clear()
             build.raft.app.data.RaftNotificationAccountSettingsStore.ownerUserId = notificationAccountUserId
         }
         build.raft.app.data.RaftNotificationAccountSettingsStore.load(build.raft.app.data.DataRequestPriority.Background)
@@ -4165,6 +4243,26 @@ private fun RaftAppShellReadyContent(
         pageVisible &&
             selectedTab == "home" &&
             selectedHomeDestination == null
+    val homeContentReadyForConversationForward = homeState.content is SharedHomeContentState.Content
+
+    // The one arming rule for the iOS Forward recognizer ([appShellConversationForwardGestureArmed]).
+    fun armConversationForwardGesture() {
+        val armed =
+            appShellConversationForwardGestureArmed(
+                preferenceEnabled = conversationForwardGestureEnabled,
+                authoritativeHomeStartAllowed = authoritativeHomeStartAllowed,
+                homeSurfaceVisible = homeSurfaceVisible,
+                homeContentReady = homeContentReadyForConversationForward,
+                canForward = conversationForwardHistory.canForward,
+            )
+        bridge.setConversationForwardGestureEnabled(armed)
+        if (conversationForwardGestureEnabled && homeSurfaceVisible) {
+            bridge.log(
+                "conversation_forward_arm armed=$armed authoritative=$authoritativeHomeStartAllowed " +
+                    "homeReady=$homeContentReadyForConversationForward available=${conversationForwardHistory.canForward}"
+            )
+        }
+    }
     val parentShouldStartHome =
         authoritativeHomeStartAllowed &&
         appShellParentShouldStartHome(
@@ -4264,15 +4362,37 @@ private fun RaftAppShellReadyContent(
                 }
                 .withTimeFormat(sessionTimeFormat)
         }
-    fun selectAppShellTab(nextTab: String, directChildSwitch: Boolean = false) {
+    fun selectAppShellTab(
+        nextTab: String,
+        directChildSwitch: Boolean = false,
+        source: AppShellTabSwitchSource = AppShellTabSwitchSource.Programmatic,
+    ) {
         prewarmAdmissionGate.invalidate("tab_select:$nextTab")
         serverMenuState.dismiss()
         val retainedTab = retainedAppShellSelectedTab(nextTab)
+        appShellTabHistory =
+            when (source) {
+                AppShellTabSwitchSource.User ->
+                    appShellTabHistory.selected(
+                        from = selectedTab,
+                        to = retainedTab,
+                        roots =
+                            appShellTabHistoryRoots(
+                                raftAdaptiveNavRailActive(
+                                    desktopModeEnabled = desktopModeOnLargeScreen,
+                                    paneState = shellScope.adaptivePane
+                                )
+                            ),
+                    )
+                AppShellTabSwitchSource.Back -> appShellTabHistory.arrivedByBack(retainedTab)
+                AppShellTabSwitchSource.Programmatic -> AppShellTabHistory()
+            }
         val nextEpoch = appShellNextChildTabSwitchEpoch(selectedTab, retainedTab, childTabSwitchEpoch)
         val direct = directChildSwitch && retainedTab in slackNavTabKeys
         bridge.log(
             "app_shell_select_tab next=$nextTab retained=$retainedTab from=$selectedTab " +
-                "epoch=$childTabSwitchEpoch->$nextEpoch direct=$direct mode=single_child"
+                "epoch=$childTabSwitchEpoch->$nextEpoch direct=$direct mode=single_child " +
+                "source=${source.name} history=${appShellTabHistory.tabs.size}"
         )
         childTabSwitchEpoch = nextEpoch
         selectedTab = retainedTab
@@ -4484,6 +4604,21 @@ private fun RaftAppShellReadyContent(
         resetAppShellSessionState()
     }
 
+    // An organization requires single sign-on and this session isn't one (a 403 `SSO_REQUIRED` on any
+    // request): sign out and ask the person to sign in again, which goes through the web sign-in page
+    // and its "Continue with SSO". Once per session; the signal hands each request to one shell only.
+    LaunchedEffect(bridge, storeScope) {
+        build.raft.app.data.RaftSsoRequiredSignal.Process.signInRequests.collect { request ->
+            bridge.logWarn("sso_required_sign_in shell=${storeScope.shellInstanceId}")
+            authDataSource.logout()
+            bridge.realtimeDisconnect("sso_required")
+            authGateMessage =
+                AuthGateMessage.Static(Res.string.auth_error_sso_required.desc(), traceId = request.traceId)
+            authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+            resetAppShellSessionState()
+        }
+    }
+
     val conversationForwardGestureRuntimeAuthority =
         remember(
             settingsCapabilities.supportsConversationForwardGesture,
@@ -4549,13 +4684,7 @@ private fun RaftAppShellReadyContent(
     }
     LaunchedEffect(conversationForwardGestureEnabled, authoritativeHomeStartAllowed) {
         conversationForwardHistory.setEnabled(conversationForwardGestureEnabled)
-        bridge.setConversationForwardGestureEnabled(
-            conversationForwardGestureEnabled &&
-                authoritativeHomeStartAllowed &&
-                homeSurfaceVisible &&
-                homeState.content is SharedHomeContentState.Content &&
-                conversationForwardHistory.canForward
-        )
+        armConversationForwardGesture()
     }
     val latestForegroundMessageBannersEnabled by rememberUpdatedState(foregroundMessageBannersEnabled)
     // The in-app banner obeys the device push preview choice (read per event from the single store).
@@ -4591,8 +4720,9 @@ private fun RaftAppShellReadyContent(
         }
         SharedAuthGateState.AuthRequired -> {
             val localizedAuthGateMessage = authGateMessage.localizedMessage()
+            val authGateTraceId = (authGateMessage as? AuthGateMessage.Static)?.traceId
             LaunchedEffect(localizedAuthGateMessage) {
-                pager.openLoginReplacingCurrentPage(localizedAuthGateMessage)
+                pager.openLoginReplacingCurrentPage(localizedAuthGateMessage, authGateTraceId)
             }
             AppShellRestoreSplashContent()
             return
@@ -4875,27 +5005,51 @@ private fun RaftAppShellReadyContent(
         if (content.snapshot.server.id.value != serverId) return@LaunchedEffect
         val conversations: List<HomeConversationRow> =
             content.snapshot.channels + content.snapshot.directMessages
-        val landingId =
-            resolveRaftAdaptiveHomeLandingId(
+        // Switching servers clears the selection; the server's remembered conversation (web
+        // `slock:serverSurface:v1:<slug>`) comes back instead of #all while it is still listed.
+        val remembered = serverLastConversationRepository.read(serverLastConversationOwnerKey, serverId)
+        val resolution =
+            resolveRaftAdaptiveHomeLanding(
                 selectedThreadId = selectedHomeConversationId,
+                remembered = remembered,
                 candidates =
                     conversations.map { row ->
                         RaftAdaptiveHomeLandingCandidate(
                             threadId = row.threadId.value,
                             name = row.name,
+                            kind = row.kind,
                         )
                     },
             )
-        val target = conversations.firstOrNull { row -> row.threadId.value == landingId }
+        if (resolution.rememberedUnavailable) {
+            bridge.log("server_last_conversation_forget serverId=$serverId reason=not_listed")
+            serverLastConversationRepository.forget(serverLastConversationOwnerKey, serverId)
+        }
         adaptiveDefaultLandingServerId = serverId
-        target?.let { row ->
+        val landingConversation =
+            when (val landing = resolution.landing) {
+                is RaftAdaptiveHomeLanding.Row ->
+                    conversations
+                        .firstOrNull { row -> row.threadId.value == landing.threadId }
+                        ?.toThreadLaunchConversationIdentity()
+                is RaftAdaptiveHomeLanding.ReplyThread -> landing.toThreadLaunchConversationIdentity()
+                null -> null
+            }
+        landingConversation?.let { conversation ->
             openHomeConversation(
-                conversation = row.toThreadLaunchConversationIdentity(),
+                conversation = conversation,
                 source = "adaptive_default_landing",
                 recordForwardHistory = false,
                 adaptiveDefaultLanding = true,
             )
         }
+    }
+
+    // Every conversation the wide detail shows becomes its server's last conversation.
+    LaunchedEffect(adaptiveWorkspaceState?.selection?.identity, serverLastConversationOwnerKey) {
+        val identity = adaptiveWorkspaceState?.selection?.identity ?: return@LaunchedEffect
+        val conversation = identity.toServerLastConversation() ?: return@LaunchedEffect
+        serverLastConversationRepository.write(serverLastConversationOwnerKey, identity.serverId, conversation)
     }
 
     LaunchedEffect(pageVisibleTick, authoritativeHomeStartAllowed) {
@@ -4911,32 +5065,27 @@ private fun RaftAppShellReadyContent(
                     "available=${conversationForwardHistory.canForward}"
             )
         }
-        bridge.setConversationForwardGestureEnabled(
-            conversationForwardGestureEnabled &&
-                homeSurfaceVisible &&
-                homeState.content is SharedHomeContentState.Content &&
-                conversationForwardHistory.canForward
-        )
+        armConversationForwardGesture()
     }
 
+    // Also keyed on the inputs of the arming rule, so the gesture is armed as soon as they all
+    // hold: a Home whose list is still loading when the shell reappears, or a Beta preference
+    // switched on with Home showing, used to stay unarmed until the next page appearance.
     LaunchedEffect(
         homeSurfaceVisible,
         readyServerId,
         renderedHomeServerId,
         conversationForwardRequestTick,
         authoritativeHomeStartAllowed,
+        homeContentReadyForConversationForward,
+        conversationForwardGestureEnabled,
     ) {
         if (!authoritativeHomeStartAllowed) {
             bridge.setConversationForwardGestureEnabled(false)
             return@LaunchedEffect
         }
         if (conversationForwardRequestTick <= handledConversationForwardRequestTick) {
-            bridge.setConversationForwardGestureEnabled(
-                conversationForwardGestureEnabled &&
-                    homeSurfaceVisible &&
-                    homeState.content is SharedHomeContentState.Content &&
-                    conversationForwardHistory.canForward
-            )
+            armConversationForwardGesture()
             return@LaunchedEffect
         }
         handledConversationForwardRequestTick = conversationForwardRequestTick
@@ -4974,24 +5123,19 @@ private fun RaftAppShellReadyContent(
             }
             null -> {
                 bridge.log("conversation_forward_defer reason=home_or_directory_not_ready")
-                bridge.setConversationForwardGestureEnabled(
-                    conversationForwardGestureEnabled &&
-                        homeState.content is SharedHomeContentState.Content &&
-                        conversationForwardHistory.canForward
-                )
+                armConversationForwardGesture()
             }
         }
     }
 
     // External sources only transport this typed identity envelope in pageData. The queue and
     // its consumed/opened markers live with the window's RaftShellStoreScope, so an AppShell
-    // recreation or duplicate PendingIntent cannot replay the route.
+    // recreation or duplicate PendingIntent cannot replay the route. #4260: the opens themselves
+    // run in [navigationIntake], which reads the latest shell state below; this effect only wakes
+    // it when that state changes while the shell composes.
     LaunchedEffect(
         notificationWindowNavigationIntent?.key,
         desktopShortcutWindowNavigationIntent?.key,
-        systemNotificationNavigationTick,
-        desktopShortcutNavigationTick,
-        messageLinkNavigationTick,
         readySession?.currentServerId,
         readySession?.servers,
         homeState.content,
@@ -5000,19 +5144,26 @@ private fun RaftAppShellReadyContent(
         myMessageAlignment,
         authoritativeHomeStartAllowed
     ) {
-        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
-        notificationWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
-        desktopShortcutWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
+        if (authoritativeHomeStartAllowed) {
+            notificationWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
+            desktopShortcutWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
+        }
+        navigationIntake.wake()
+    }
+    val latestNavigationReadiness by rememberUpdatedState {
+        if (!authoritativeHomeStartAllowed) return@rememberUpdatedState null
         val content = homeState.content as? SharedHomeContentState.Content
-        val readiness =
-            WindowNavigationReadiness(
-                knownServerIds = readySession?.servers.orEmpty().mapTo(linkedSetOf()) { server -> server.id },
-                canonicalServerId = readySession?.currentServerId,
-                homeSnapshotServerId = content?.snapshot?.server?.id?.value,
-                homeSessionServerId = content?.session?.currentServerId,
-                conversationDirectory = appShellConversationDirectory
-            )
-        when (val action = windowNavigationCoordinator.advance(readiness)) {
+        WindowNavigationReadiness(
+            knownServerIds = readySession?.servers.orEmpty().mapTo(linkedSetOf()) { server -> server.id },
+            canonicalServerId = readySession?.currentServerId,
+            homeSnapshotServerId = content?.snapshot?.server?.id?.value,
+            homeSessionServerId = content?.session?.currentServerId,
+            conversationDirectory = appShellConversationDirectory
+        )
+    }
+    val latestNavigationPerform by rememberUpdatedState<suspend (WindowNavigationAction) -> Unit> { action ->
+        val content = homeState.content as? SharedHomeContentState.Content
+        when (action) {
             is WindowNavigationAction.ActivateServer -> {
                 bridge.log(
                     "window_navigation_server_activate source=${action.intent.source} " +
@@ -5077,7 +5228,7 @@ private fun RaftAppShellReadyContent(
                 )
                 if (action.intent.source == MessageLinkNavigationSource) {
                     pager.openRaftMessageLinkNotFoundPage(navigationStoreScope)
-                    return@LaunchedEffect
+                    return@rememberUpdatedState
                 }
                 bridge.toast(
                     if (action.reason == "server_unavailable") {
@@ -5087,50 +5238,69 @@ private fun RaftAppShellReadyContent(
                     }
                 )
             }
-            null -> Unit
         }
     }
     // An external message link (Android App Link / iOS Universal Link). It waits in the process
-    // inbox while signed out or restoring; with a ready session this shell takes it once,
+    // inbox while signed out or restoring; with a ready session [navigationIntake] takes it once,
     // resolves {slug}/conversation/message for this account, and either queues the same
     // identity-only WindowNavigationIntent a notification tap queues, or shows the one
-    // "Message not found" page. The resolve runs in the shell scope so a session/key change
+    // "Message not found" page. The resolve runs in the intake's scope so a session/key change
     // after the take cannot drop the link half-way.
     val messageLinkSessionReady = authoritativeHomeStartAllowed && readySession != null
-    LaunchedEffect(pendingMessageLink?.id, messageLinkSessionReady) {
-        val pending = pendingMessageLink
-        if (!raftMessageLinkShouldTake(pending, messageLinkSessionReady)) return@LaunchedEffect
-        val taken = RaftMessageLinkInbox.Process.take(pending!!.id)
-        if (taken == null) {
-            bridge.log("message_link_take_skipped id=${pending.id} reason=taken_replaced_or_expired")
-            return@LaunchedEffect
-        }
+    LaunchedEffect(messageLinkSessionReady) { navigationIntake.wake() }
+    val latestMessageLinkSessionReady by rememberUpdatedState(messageLinkSessionReady)
+    val latestResolveMessageLink by rememberUpdatedState<suspend (RaftPendingMessageLink) -> WindowNavigationIntent?> { taken ->
         val servers = readySession?.servers.orEmpty()
-        bridge.log("message_link_take id=${taken.id} source=${taken.source} servers=${servers.size}")
-        val resolver = RaftMessageLinkResolver(appShellNetworkClient, diagnosticsLogger = bridge::log)
-        appShellCoroutineScope.launch {
-            when (val resolution = resolver.resolve(taken.link, servers)) {
-                is RaftMessageLinkResolution.Open -> {
-                    val intent =
-                        WindowNavigationIntent(
-                            serverId = resolution.serverId,
-                            sourceIdentity = resolution.sourceIdentity,
-                            source = MessageLinkNavigationSource,
-                            launchId = "message-link-${taken.id}"
-                        )
-                    val enqueued = windowNavigationCoordinator.enqueue(intent)
-                    bridge.log(
-                        "window_navigation_received source=$MessageLinkNavigationSource enqueued=$enqueued " +
-                            "targetServerId=${intent.serverId}"
-                    )
-                    messageLinkNavigationTick += 1
-                }
-                is RaftMessageLinkResolution.NotFound ->
-                    pager.openRaftMessageLinkNotFoundPage(navigationStoreScope)
-                is RaftMessageLinkResolution.PublicPreview ->
-                    pager.openRaftMessageLinkPublicPreviewPage(resolution.link, navigationStoreScope)
+        bridge.log("message_link_resolve id=${taken.id} servers=${servers.size}")
+        val resolver = RaftMessageLinkResolver(
+            appShellNetworkClient,
+            diagnosticsLogger = bridge::log,
+            contextPageSink = sharedStores.messageContextPageSink(storeScope),
+        )
+        when (val resolution = resolver.resolve(taken.link, servers)) {
+            is RaftMessageLinkResolution.Open ->
+                WindowNavigationIntent(
+                    serverId = resolution.serverId,
+                    sourceIdentity = resolution.sourceIdentity,
+                    source = MessageLinkNavigationSource,
+                    launchId = "message-link-${taken.id}"
+                )
+            is RaftMessageLinkResolution.NotFound -> {
+                // The page's button goes back to the conversation list (Home tab) on a phone, the
+                // server's channel list on a wide window: leave the Home tab with nothing open under it.
+                selectAppShellTab("home")
+                retainedAppShellTabs = retainedAppShellTabs + "home"
+                homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+                pager.openRaftConversationUnavailablePage(navigationStoreScope)
+                null
+            }
+            is RaftMessageLinkResolution.PublicPreview -> {
+                pager.openRaftMessageLinkPublicPreviewPage(resolution.link, navigationStoreScope)
+                null
             }
         }
+    }
+    // Phone layout: the conversation page on top of the shell, so a link to it is not pushed twice.
+    val latestNavigationTopPageRoute by rememberUpdatedState {
+        if (desktopModeOnLargeScreen) null else foregroundBannerStore.visibleRouteIdentity()
+    }
+    LaunchedEffect(navigationIntake) {
+        navigationIntake.run(
+            object : RaftShellNavigationIntakeHost {
+                override fun messageLinkSessionReady(): Boolean = latestMessageLinkSessionReady
+
+                override suspend fun resolveMessageLink(taken: RaftPendingMessageLink): WindowNavigationIntent? =
+                    latestResolveMessageLink(taken)
+
+                override fun readiness(): WindowNavigationReadiness? = latestNavigationReadiness()
+
+                override fun topPageRoute(): ThreadRouteIdentity? = latestNavigationTopPageRoute()
+
+                override suspend fun perform(action: WindowNavigationAction) = latestNavigationPerform(action)
+
+                override fun log(message: String) = bridge.log(message)
+            }
+        )
     }
     LaunchedEffect(
         processRealtimeAuthority?.witness?.connectionFamilyId,
@@ -5217,6 +5387,7 @@ private fun RaftAppShellReadyContent(
         if (createChannelDialogOpen) {
             createChannelDialogOpen = false
             createChannelError = null
+            createChannelCollision = null
             return true
         }
         if (homeState.serverSwitcherExpanded) {
@@ -5277,25 +5448,34 @@ private fun RaftAppShellReadyContent(
         }
         // A server page (Members, Settings) goes back to the page the server panel opened it
         // from, or Home after a deep link, on the phone layout; focus returns to the server tab.
+        val backNavRail =
+            raftAdaptiveNavRailActive(
+                desktopModeEnabled = desktopModeOnLargeScreen,
+                paneState = shellScope.adaptivePane
+            )
         appShellMoreChildBackTarget(
             selectedTab = selectedTab,
-            navRailActive =
-                raftAdaptiveNavRailActive(
-                    desktopModeEnabled = desktopModeOnLargeScreen,
-                    paneState = shellScope.adaptivePane
-                ),
+            navRailActive = backNavRail,
             origin = serverPageOrigin,
         )?.let { target ->
-            selectAppShellTab(target, directChildSwitch = true)
+            selectAppShellTab(target, directChildSwitch = true, source = AppShellTabSwitchSource.Back)
             retainedAppShellTabs = retainedAppShellTabs + target
             serverTabFocusPending = true
             return true
         }
-        if (selectedTab != "home") {
-            selectAppShellTab("home")
-            homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+        // artin 2026-11-02: Back on a tab root returns to the tab picked before it (Activity ->
+        // Search -> Back = Activity); with none left it goes Home, and Home leaves the app.
+        fun backToEarlierTab(): Boolean {
+            val target =
+                appShellTabHistory.backTarget(selectedTab, appShellTabHistoryRoots(backNavRail))
+                    ?: return false
+            bridge.log("app_back_tab_history from=$selectedTab to=$target history=${appShellTabHistory.tabs.size}")
+            selectAppShellTab(target, directChildSwitch = true, source = AppShellTabSwitchSource.Back)
+            if (isRetainedAppShellTab(target)) retainedAppShellTabs = retainedAppShellTabs + target
+            if (target == "home") homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
             return true
         }
+        if (selectedTab != "home") return backToEarlierTab()
         if (
             desktopModeOnLargeScreen &&
             adaptiveWorkspaceState?.presentation == RaftAdaptiveWorkspacePresentation.DetailOnly
@@ -5303,7 +5483,7 @@ private fun RaftAppShellReadyContent(
             dismissAdaptiveDetailSelection()
             return true
         }
-        return false
+        return backToEarlierTab()
     }
 
     fun openAppShellActivityTab(source: String) {
@@ -5313,7 +5493,7 @@ private fun RaftAppShellReadyContent(
             homeFocusLossDismissEpoch += 1
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
         }
-        selectAppShellTab("activity", directChildSwitch = true)
+        selectAppShellTab("activity", directChildSwitch = true, source = AppShellTabSwitchSource.User)
         retainedAppShellTabs = retainedAppShellTabs + "activity"
     }
 
@@ -5348,7 +5528,7 @@ private fun RaftAppShellReadyContent(
             homeFocusLossDismissEpoch += 1
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
         }
-        selectAppShellTab(AppShellSearchTabKey, directChildSwitch = true)
+        selectAppShellTab(AppShellSearchTabKey, directChildSwitch = true, source = AppShellTabSwitchSource.User)
         retainedAppShellTabs = retainedAppShellTabs + AppShellSearchTabKey
     }
 
@@ -5371,6 +5551,24 @@ private fun RaftAppShellReadyContent(
             AppShellSearchHandoffTarget.RailInlineSearch -> railInlineSecondaryDestination = AppShellRailSearchKey
         }
         onSearchHandoffApplied()
+    }
+
+    // Settings search's No match > Search everywhere: Search with the same query, the way a
+    // conversation search's "Search all" hands it over (the Search tab, or the rail's inline Search).
+    fun openSearchEverywhere(query: String, source: String) {
+        val navRail =
+            raftAdaptiveNavRailActive(
+                desktopModeEnabled = desktopModeOnLargeScreen,
+                paneState = shellScope.adaptivePane
+            )
+        val target = appShellSearchHandoffTarget(navRail)
+        bridge.log("app_shell_search_everywhere source=$source queryLength=${query.length} target=$target")
+        searchOverlayHandoffNonce -= 1
+        searchTabQueryRequest = RaftSearchTabQueryRequest(query.trim(), nonce = searchOverlayHandoffNonce)
+        when (target) {
+            AppShellSearchHandoffTarget.SearchTab -> openSearchTab(source = source)
+            AppShellSearchHandoffTarget.RailInlineSearch -> railInlineSecondaryDestination = AppShellRailSearchKey
+        }
     }
 
     val handleAppShellBack by rememberUpdatedState {
@@ -5491,6 +5689,7 @@ private fun RaftAppShellReadyContent(
     fun openCreateChannelDialog() {
         createChannelDialogOpen = true
         createChannelError = null
+        createChannelCollision = null
         createChannelMembers = emptyList()
         loadCreateChannelMembers()
     }
@@ -5508,6 +5707,7 @@ private fun RaftAppShellReadyContent(
         }
         createChannelSubmitting = true
         createChannelError = null
+        createChannelCollision = null
         appShellCoroutineScope.launch {
             try {
                 when (
@@ -5533,12 +5733,22 @@ private fun RaftAppShellReadyContent(
                         createChannelDialogOpen = false
                         createChannelError = null
                         bridge.toast(channelCreatedMessage)
+                        // tygg 11-06: land in the new channel, as the archived-name Open and Unarchive do.
+                        openHomeConversation(channel.toThreadLaunchConversationIdentity(), "create_channel")
                     }
                     is DataResult.Empty -> {
                         createChannelError = channelNotCreatedMessage
                     }
                     is DataResult.Error -> {
-                        createChannelError = result.error.code
+                        // An archived channel the user can see holds the name: say so and offer
+                        // Open Channel / Unarchive / Change Name (web, slock #12614). Any other
+                        // refusal, including the plain "already taken", keeps the error line.
+                        val collision = result.error.archivedNameCollisionOrNull()
+                        if (collision != null) {
+                            createChannelCollision = collision
+                        } else {
+                            createChannelError = result.error.code
+                        }
                     }
                     is DataResult.NoPermission -> {
                         createChannelError = result.blocker.code
@@ -5548,6 +5758,58 @@ private fun RaftAppShellReadyContent(
                 throw cancellation
             } catch (_: Throwable) {
                 createChannelError = "channel_create_failed"
+            } finally {
+                createChannelSubmitting = false
+            }
+        }
+    }
+
+    // Web Open Channel: leave the dialog for the archived channel, read-only.
+    fun openCreateChannelCollision() {
+        val collision = createChannelCollision ?: return
+        if (createChannelSubmitting) return
+        createChannelDialogOpen = false
+        createChannelError = null
+        createChannelCollision = null
+        openHomeConversation(
+            buildThreadLaunchConversationIdentity(
+                kind = ConversationKind.Channel,
+                channelId = collision.archivedChannelId,
+                channelType = collision.archivedChannelType,
+            ),
+            "create_channel_archived_open",
+        )
+    }
+
+    // Web Unarchive: restore the archived channel, then leave the dialog for it.
+    fun unarchiveCreateChannelCollision() {
+        val collision = createChannelCollision ?: return
+        if (createChannelSubmitting || !collision.canUnarchive) return
+        createChannelSubmitting = true
+        createChannelError = null
+        appShellCoroutineScope.launch {
+            try {
+                when (val result = channelRepository.unarchiveChannel(collision.archivedChannelId)) {
+                    is DataResult.Content -> {
+                        createChannelDialogOpen = false
+                        createChannelCollision = null
+                        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
+                        openHomeConversation(result.data.toThreadLaunchConversationIdentity(), "create_channel_archived_unarchive")
+                    }
+                    is DataResult.Error -> {
+                        createChannelError = result.error.serverMessage ?: channelUnarchiveFailedMessage
+                    }
+                    is DataResult.NoPermission -> {
+                        createChannelError = result.blocker.serverMessage ?: channelUnarchiveFailedMessage
+                    }
+                    is DataResult.Empty -> {
+                        createChannelError = channelUnarchiveFailedMessage
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                createChannelError = channelUnarchiveFailedMessage
             } finally {
                 createChannelSubmitting = false
             }
@@ -5656,6 +5918,10 @@ private fun RaftAppShellReadyContent(
                     // only the agents, as web re-reads /api/agents.
                     if (event.isAgentProfileUpdate()) {
                         agentProfileRefreshCoalescer.request(serverId)
+                        // An open agent Profile shows `GET /agents/:id`, not the roster: it re-reads too.
+                        event.updatedAgentIdOrNull()?.let { agentId ->
+                            sharedStores.agentUpdatedSignals.publish(serverId, agentId)
+                        }
                     }
                     if (
                         event.scope == build.raft.app.model.RealtimeRefreshScope.ServerMembers &&
@@ -6181,13 +6447,16 @@ private fun RaftAppShellReadyContent(
     /** Reopens [entry] through the normal open paths (identity only; the stores load the content). */
     fun restoreWideNavEntry(entry: RaftWideNavEntry) {
         serverMenuState.dismiss()
-        if (entry.surface == AppShellRailSearchKey || entry.surface == AppShellRailSavedKey || entry.surface == AppShellRailDraftsKey) {
+        if (
+            entry.surface == AppShellRailSearchKey || entry.surface == AppShellRailSavedKey || entry.surface == AppShellRailDraftsKey ||
+                appShellRailInlinePageRailId(entry.surface) != null
+        ) {
             railInlineSecondaryDestination = entry.surface
         } else {
             railInlineSecondaryDestination = null
             if (retainedAppShellSelectedTab(selectedTab) != entry.surface) {
                 // As a rail tap selects a tab (onAppShellTabSelected).
-                selectAppShellTab(entry.surface, directChildSwitch = true)
+                selectAppShellTab(entry.surface, directChildSwitch = true, source = AppShellTabSwitchSource.Back)
                 if (isRetainedAppShellTab(entry.surface)) retainedAppShellTabs = retainedAppShellTabs + entry.surface
             }
             // A Home entry is the Home list, never a Home secondary page.
@@ -6261,7 +6530,6 @@ private fun RaftAppShellReadyContent(
     val railNavLabels = raftNavLabels(RaftNavPresentation.Rail)
     val homeTabLabel = phoneNavLabels.getValue(RaftAppDestination.Chat.id)
     val tasksTabLabel = phoneNavLabels.getValue(RaftAppDestination.Tasks.id)
-    val membersTabLabel = stringResource(RaftAppDestination.Members.label)
     val settingsTabLabel = stringResource(RaftAppDestination.Settings.label)
     val dmsTabLabel = stringResource(Res.string.tab_dms)
     val activityTabLabel = phoneNavLabels.getValue(RaftAppDestination.Activity.id)
@@ -6357,6 +6625,22 @@ private fun RaftAppShellReadyContent(
     // The menu belongs to the bar or the rail it rose from: it closes when they go (a pushed page
     // hides the bar, the window crosses the rail breakpoint).
     LaunchedEffect(showAppShellBottomTabs, navRailActive) { serverMenuState.dismiss() }
+    // web `useArtifactsRailShown`: the Artifacts entries (server panel row, wide rail tab) only where the current server's
+    // workspace_artifacts_v0 is already loaded and on (the panel never asks for flags itself).
+    val artifactsFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val serverMenuArtifactsShown =
+        remember(serverMenuModel?.currentServer?.id, artifactsFlagRevision) {
+            appShellArtifactsShown(sharedStores.serverFeatureFlags, serverMenuModel?.currentServer?.id)
+        }
+    // Artifacts off for this server (or the flag turned off): its inline page closes and the wide
+    // history's arrows never reopen it (review L1).
+    LaunchedEffect(serverMenuArtifactsShown, readyServerId) {
+        if (serverMenuArtifactsShown) return@LaunchedEffect
+        val serverId = readyServerId ?: return@LaunchedEffect
+        wideNavHistories = wideNavHistories.withoutSurface(serverId, AppShellRailArtifactsKey)
+        if (railInlineSecondaryDestination == AppShellRailArtifactsKey) railInlineSecondaryDestination = null
+    }
+
     // artin 10-23: a server switch that ends without the server's Home (dropped load, error,
     // timeout) says so once (web ServerSwitcherMenu `switchFailed`); the list is already back.
     val serverSwitchFailedMessage = stringResource(Res.string.home_server_switch_failed)
@@ -6423,14 +6707,51 @@ private fun RaftAppShellReadyContent(
     }
     // The wide rail keeps the web LeftRail entries (Direction A, #proj-mobile 10-30): Chat,
     // Activity, Tasks, Members, Computers, Apps; Members is a rail root there.
-    val appShellRailTabItems = remember(selectedTab, railNavLabels, activityTabUnreadCount, moreAttention) {
+    val appShellRailTabItems = remember(selectedTab, railInlineSecondaryDestination, railNavLabels, activityTabUnreadCount, moreAttention, serverMenuArtifactsShown) {
         appShellRailTabs(
+            artifacts = serverMenuArtifactsShown,
             selectedTab = selectedTab,
+            inlinePageRailId = appShellRailInlinePageRailId(railInlineSecondaryDestination),
             activityUnreadCount = activityTabUnreadCount,
             moreAttention = moreAttention,
             labelFor = { key -> railNavLabels[key] ?: key },
         )
     }
+    // The rail's tabs in the person's own order, saved on the account (web SortableRailTabs,
+    // slock #10279): the session's `auth/me` seeds it, a drop saves it.
+    val railTabOrderStore = sharedStores.railTabOrderStore
+    val railTabOrderState by railTabOrderStore.state.collectAsState()
+    val railTabOrderUser = readySession?.user
+    LaunchedEffect(railTabOrderStore, railTabOrderUser?.id, railTabOrderUser?.railTabOrder) {
+        if (railTabOrderUser != null) {
+            railTabOrderStore.dispatch(
+                build.raft.app.data.SharedRailTabOrderIntent.SessionLoaded(railTabOrderUser.id, railTabOrderUser.railTabOrder)
+            )
+        }
+    }
+    LaunchedEffect(railTabOrderStore, navRailActive) {
+        railTabOrderStore.dispatch(build.raft.app.data.SharedRailTabOrderIntent.RailShown(navRailActive))
+    }
+    val railTabOrderSaveFailed = stringResource(Res.string.rail_tab_order_save_failed)
+    LaunchedEffect(railTabOrderState.effect) {
+        if (railTabOrderState.effect == build.raft.app.data.SharedRailTabOrderEffect.SaveFailed) {
+            bridge.toast(railTabOrderSaveFailed)
+            railTabOrderStore.dispatch(build.raft.app.data.SharedRailTabOrderIntent.ConsumeEffect)
+        }
+    }
+    val railTabReorder =
+        remember(railTabOrderStore) {
+            RaftRailTabReorder { keys ->
+                railTabOrderStore.dispatch(
+                    build.raft.app.data.SharedRailTabOrderIntent.Reorder(
+                        build.raft.app.data.raftRailTabOrderWithVisibleOrder(
+                            fullOrder = railTabOrderStore.state.value.order,
+                            visibleOrder = keys.mapNotNull(::raftRailTabIdForKey),
+                        )
+                    )
+                )
+            }
+        }
     // The rail's Help menu (web LeftRail HelpMenu), beside the rail.
     var railHelpOpen by remember { mutableStateOf(false) }
     // It belongs to the rail: it closes when the window leaves the wide layout, and when the
@@ -6786,7 +7107,7 @@ private fun RaftAppShellReadyContent(
                         SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
                     )
                 }
-                selectAppShellTab(nextTab, directChildSwitch = true)
+                selectAppShellTab(nextTab, directChildSwitch = true, source = AppShellTabSwitchSource.User)
                 if (isRetainedAppShellTab(nextTab)) {
                     retainedAppShellTabs = retainedAppShellTabs + nextTab
                 }
@@ -6846,14 +7167,24 @@ private fun RaftAppShellReadyContent(
         bridge.log("app_shell_server_menu_open row=${entry.key} from=$selectedTab")
         if (!navRailActive) serverPageOrigin = appShellServerPageOrigin(selectedTab, serverPageOrigin)
         when (entry) {
+            RaftServerMenuEntry.Artifacts -> {
+                // web MobileServerTab `openArtifacts`: the page pushed over the shell.
+                if (!navRailActive) serverTabFocusOnPageReturn = true
+                pager.openArtifactsHomePage(storeScope)
+            }
             RaftServerMenuEntry.Members -> {
                 RaftProductEvents.navEntrySelected(
                     destination = RaftNavDestination.Members,
                     surface = RaftNavSurface.MobileMore,
                     wasActive = retainedAppShellSelectedTab(selectedTab) == "members",
                 )
-                selectAppShellTab("members", directChildSwitch = true)
-                retainedAppShellTabs = retainedAppShellTabs + "members"
+                if (appShellServerPagePushes(stackShellTabs != null, navRailActive)) {
+                    serverTabFocusOnPageReturn = true
+                    pager.openAppShellServerStackPage("members")
+                } else {
+                    selectAppShellTab("members", directChildSwitch = true, source = AppShellTabSwitchSource.User)
+                    retainedAppShellTabs = retainedAppShellTabs + "members"
+                }
             }
             RaftServerMenuEntry.Computers -> {
                 RaftProductEvents.navEntrySelected(
@@ -6864,6 +7195,12 @@ private fun RaftAppShellReadyContent(
                 if (!navRailActive) serverTabFocusOnPageReturn = true
                 openComputersPage()
             }
+            RaftServerMenuEntry.Apps -> {
+                // The phone's Apps (web MobileServerTab `openApps`): the page the wide rail's Apps
+                // shows. The app's nav events have no `apps` yet (RaftAppDestination.Apps).
+                if (!navRailActive) serverTabFocusOnPageReturn = true
+                pager.openSettingsMarketplacePage(storeScope)
+            }
             RaftServerMenuEntry.Settings -> {
                 // On the phone Settings is the pushed page under the `more` key; the pinned rail
                 // entry when wide.
@@ -6873,9 +7210,95 @@ private fun RaftAppShellReadyContent(
                     surface = RaftNavSurface.MobileMore,
                     wasActive = retainedAppShellSelectedTab(selectedTab) == settingsKey,
                 )
-                selectAppShellTab(settingsKey, directChildSwitch = true)
-                retainedAppShellTabs = retainedAppShellTabs + settingsKey
+                if (appShellServerPagePushes(stackShellTabs != null, navRailActive)) {
+                    serverTabFocusOnPageReturn = true
+                    pager.openAppShellServerStackPage(settingsKey)
+                } else {
+                    selectAppShellTab(settingsKey, directChildSwitch = true, source = AppShellTabSwitchSource.User)
+                    retainedAppShellTabs = retainedAppShellTabs + settingsKey
+                }
             }
+        }
+    }
+
+    // raft-design #712: on the phone Settings is a pushed page titled Settings, opened
+    // from the server panel, with Back (Members and Computers are on the panel now,
+    // so they no longer lead it); its rows keep their attention dots. The wide rail
+    // keeps its Settings page as before.
+    // A Settings row's page; [anchor]: a Settings search result's setting to open it at.
+    val openSettingsRowAt: (String, SettingsSearchAnchorRequest?) -> Unit = { key, anchor ->
+        prewarmAdmissionGate.invalidate("settings_open_page:$key")
+        settingsHeaderTaps.reset()
+        when (key) {
+            SettingsDestinationAccount -> pager.openSettingsAccountPage(storeScope, anchor)
+            SettingsDestinationStorage -> pager.openSettingsStoragePage(storeScope)
+            SettingsDestinationReleaseNotes -> pager.openReleaseNotesPage(storeScope = storeScope)
+            SettingsDestinationDocumentation -> bridge.openUrl(RaftDocumentationUrl, inBrowser = true)
+            SettingsDestinationBilling -> pager.openSettingsBillingPage(storeScope, anchor)
+            SettingsDestinationComputers -> {
+                if (!navRailActive) {
+                    RaftProductEvents.navEntrySelected(
+                        destination = RaftNavDestination.Computers,
+                        surface = RaftNavSurface.MobileMore,
+                        wasActive = false,
+                    )
+                }
+                openComputersPage()
+            }
+            SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope, anchor)
+            SettingsDestinationImBridges -> pager.openSettingsImBridgesPage(storeScope)
+            SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
+            // The native submit form on Android / iOS; the ticket web page only where the App cannot
+            // submit natively (Compose desktop), see settingsFeedbackUsesWebPage.
+            SettingsDestinationHandsFeedback ->
+                if (settingsFeedbackUsesWebPage()) {
+                    pager.openSettingsFeedbackWebViewPage(storeScope)
+                } else {
+                    pager.openSettingsHandsFeedbackPage(storeScope)
+                }
+            else -> {
+                val page = SettingsNativeDetailPage.fromKey(key)
+                if (page == null || !pager.openSettingsNativeDetailPage(page, storeScope, anchor = anchor)) {
+                    bridge.logWarn("settings_native_detail_rejected page=$key")
+                }
+            }
+        }
+    }
+    val openSettingsRow: (String) -> Unit = { key -> openSettingsRowAt(key, null) }
+
+    // A link to Raft's own web Settings (an announcement's "Choose a theme"): the in-app page, on
+    // the server the link names, as the Settings rows open it; the Settings home for a tab the
+    // app has no page of its own for.
+    fun openSettingsFromLink(link: RaftSettingsLink, target: RaftSettingsLinkTarget, source: String) {
+        serverMenuState.dismiss()
+        target.switchToServerId?.let { serverId ->
+            readySession
+                ?.withAppShellSelectedServer(serverId)
+                ?.let { switched -> authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(switched)) }
+            homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(serverId)))
+        }
+        val key = target.destinationKey
+        bridge.log(
+            "settings_link_open source=$source tab=${link.webTab ?: "home"} page=${key ?: "home"} " +
+                "section=${link.section != null} switched=${target.switchToServerId != null}"
+        )
+        if (navRailActive) {
+            // The wide rail's Settings: the section beside the list, or a page over it.
+            selectAppShellTab("settings", directChildSwitch = true, source = AppShellTabSwitchSource.User)
+            retainedAppShellTabs = retainedAppShellTabs + "settings"
+            when {
+                key == null -> settingsWidePicked = null
+                settingsWidePick(key, settingsFeedbackUsesWebPage()) is SettingsWidePick.Detail -> settingsWidePicked = key
+                else -> openSettingsRow(key)
+            }
+        } else if (key != null) {
+            openSettingsRow(key)
+        } else if (appShellServerPagePushes(stackShellTabs != null, navRailActive)) {
+            pager.openAppShellServerStackPage(AppShellServerTabKey)
+        } else {
+            selectAppShellTab(AppShellServerTabKey, directChildSwitch = true, source = AppShellTabSwitchSource.User)
+            retainedAppShellTabs = retainedAppShellTabs + AppShellServerTabKey
         }
     }
 
@@ -6911,6 +7334,7 @@ private fun RaftAppShellReadyContent(
                         serverMenuModel.entries,
                         wide = navRailActive,
                         guest = serverMenuContent.snapshot.server.role.equals("guest", ignoreCase = true),
+                        artifacts = serverMenuArtifactsShown,
                     ),
                 onPick = ::onServerMenuPick,
                 switchPending = homeServerSwitchListPending(homeState.serverSwitchState.pendingServerId),
@@ -6952,13 +7376,164 @@ private fun RaftAppShellReadyContent(
     // Starts with this layout's value, so the first frame's panes are right; later changes (the
     // posture arriving, the window turning) land after composition (sindresorhus, #3906).
     val appShellTopBar = remember { RaftAppShellTopBarState().apply { drawn = !railWithoutTopBar } }
+    // web SidebarToggleRailItem: the column the rail's toggle and ⌘\ / Ctrl+\ collapse here, if any.
+    val collapsibleColumn =
+        appShellCollapsibleColumn(
+            navRailActive = navRailActive,
+            selectedTab = selectedTab,
+            selectedHomeDestination = selectedHomeDestination,
+            railInlineSecondaryDestination = railInlineSecondaryDestination,
+        )
+    val shortcutsUseCommand = remember { raftPlatformShortcutsUseCommand() }
+    // The web's desktop search (artin dm:@artin:#33): on the wide layout (desktop and iPad alike)
+    // the top bar's search field and ⌘K / Ctrl+K open the search panel over the page, which stays
+    // as it is behind the scrim; "Search for" goes on to the full results page (the list column's
+    // Search). The phone layout keeps its Search tab: ⌘K there opens it.
+    var searchOverlayOpen by remember { mutableStateOf(false) }
+    var searchOverlayFocusRequest by remember { mutableStateOf(0) }
+    LaunchedEffect(navRailActive) { if (!navRailActive) searchOverlayOpen = false }
+    fun openSearchOverlay(source: String) {
+        if (!navRailActive) {
+            openSearchTab(source)
+            return
+        }
+        serverMenuState.dismiss()
+        appShellTopBar.bellOpen.value = false
+        RaftProductEvents.navEntrySelected(
+            destination = appShellNavDestination(AppShellRailSearchKey),
+            surface = RaftNavSurface.TopBar,
+            wasActive = searchOverlayOpen,
+        )
+        // Already open: its field takes focus again (web: ⌘K on search focuses the mounted field).
+        if (searchOverlayOpen) searchOverlayFocusRequest += 1
+        searchOverlayOpen = true
+        bridge.log("app_shell_search_overlay_open from=$source")
+    }
+    LaunchedEffect(searchShortcutTick) {
+        if (searchShortcutTick > 0) openSearchOverlay(source = "host_shortcut")
+    }
+    if (searchOverlayOpen && navRailActive) {
+        val density = LocalDensity.current
+        val fieldBounds = appShellTopBar.searchFieldBounds.takeIf { appShellTopBar.drawn }
+        val visited = remember(wideNavHistory) { wideNavHistory.visitedThreadIds() }
+        val closeOverlay = {
+            searchOverlayOpen = false
+            // A reopened panel focuses as a new one, not as a ⌘K refocus.
+            searchOverlayFocusRequest = 0
+        }
+        RaftWindowDialog(
+            onDismissRequest = {
+                bridge.log("app_shell_search_overlay_close")
+                closeOverlay()
+            },
+            // The panel draws the scrim itself, so a click on it closes the panel.
+            properties = RaftWindowDialogProperties(drawScrim = false),
+        ) {
+            HomeSecondaryRouterContent(
+                destination = HomeDestinationSearch,
+                routeVisibleTick = pageVisibleTick,
+                adaptivePane = shellScope.adaptivePane,
+                // A row opens where the list column's Search opens it: in the detail pane.
+                inlineOpenRequest = { request, source -> openHomeMessageRequest(request, source) },
+                inlineOpenEntity = { entity ->
+                    entity.homeSearchInlineConversationOrNull()?.let { conversation ->
+                        openHomeConversation(conversation = conversation, source = "home_search_overlay_entity")
+                        true
+                    } ?: false
+                },
+                searchOverlay =
+                    HomeSearchOverlayChrome(
+                        anchorTop = fieldBounds?.let { with(density) { it.top.toDp() } },
+                        anchorWidth = fieldBounds?.let { with(density) { it.width.toDp() } } ?: 0.dp,
+                        visitedThreadIds = visited,
+                        excludeThreadId = adaptiveWorkspaceState?.selection?.identity?.threadId,
+                        onDismiss = closeOverlay,
+                        focusRequest = searchOverlayFocusRequest,
+                        onOpenFullResults = { query ->
+                            bridge.log("app_shell_search_overlay_full_results queryLength=${query.length}")
+                            closeOverlay()
+                            searchOverlayHandoffNonce -= 1
+                            searchTabQueryRequest = RaftSearchTabQueryRequest(query.trim(), nonce = searchOverlayHandoffNonce)
+                            if (railInlineSecondaryDestination == AppShellRailSearchKey) railInlineSearchFocusRequest += 1
+                            railInlineSecondaryDestination = AppShellRailSearchKey
+                        },
+                    ),
+            )
+        }
+    }
+    // Held down, the key repeats: one press toggles once.
+    var sidebarShortcutHeld by remember { mutableStateOf(false) }
     SideEffect { appShellTopBar.drawn = !railWithoutTopBar }
     LaunchedEffect(appShellTopBar.bellOpen.value) { if (appShellTopBar.bellOpen.value) railHelpOpen = false }
+    // Who is working on this server (Live agent activity): the wide top bar and the Home bar read it.
+    val latestThreadTimeContext by rememberUpdatedState(threadTimeContext)
+    val workingNowSource =
+        remember(sharedStores, storeScope, readyServerId, appShellServerMembersStore) {
+            readyServerId?.trim()?.takeIf(String::isNotBlank)?.let { serverId ->
+                RaftWorkingNowSource(
+                    serverId = serverId,
+                    items = sharedStores.liveAgentActivity(storeScope).itemsFlow(serverId),
+                    agentStatusResolver = raftScopedAgentStatusResolver(appShellServerMembersStore, serverId),
+                    subscriptions = sharedStores.agentActivitySubscriptions,
+                    onOpenAgent = { agentId ->
+                        val identity =
+                            MemberDetailIdentity(memberId = MemberId(agentId), kind = MemberKind.Agent, sourceServerId = ServerId(serverId))
+                        val pageData = homeSearchMemberDetailPageData(identity, latestThreadTimeContext)
+                        bridge.log("working_now_open_agent agentId=$agentId opened=${pageData != null}")
+                        if (pageData != null) {
+                            pager.openRaftPage(pageName = MEMBER_DETAIL_PAGE, pageData = pageData, storeScopeOverride = storeScope)
+                        }
+                    },
+                )
+            }
+        }
     val mainRouteSurface: @Composable () -> Unit = {
-        CompositionLocalProvider(LocalRaftAppShellTopBar provides appShellTopBar.takeIf { navRailActive }) {
+        CompositionLocalProvider(
+            LocalRaftAppShellTopBar provides appShellTopBar.takeIf { navRailActive },
+            LocalRaftWorkingNow provides workingNowSource,
+        ) {
         RaftAppShellSurface(
             shellScope = shellScope,
             bottomTabs = appShellBottomTabItems,
+            // web MainLayout: ⌘\ / Ctrl+\ anywhere in the app, a text field included, while a
+            // column can collapse.
+            modifier =
+                Modifier.onPreviewKeyEvent { event ->
+                    // web MainLayout: ⌘K / Ctrl+K anywhere opens search (a text field included).
+                    if (
+                        raftSearchShortcut(
+                            keyDown = event.type == KeyEventType.KeyDown,
+                            key = event.key,
+                            meta = event.isMetaPressed,
+                            ctrl = event.isCtrlPressed,
+                            alt = event.isAltPressed,
+                            shift = event.isShiftPressed,
+                            apple = shortcutsUseCommand,
+                        )
+                    ) {
+                        openSearchOverlay(source = "shortcut")
+                        return@onPreviewKeyEvent true
+                    }
+                    if (event.key == Key.Backslash && event.type == KeyEventType.KeyUp) sidebarShortcutHeld = false
+                    val column = collapsibleColumn ?: return@onPreviewKeyEvent false
+                    val shortcut =
+                        raftSidebarToggleShortcut(
+                            keyDown = event.type == KeyEventType.KeyDown,
+                            key = event.key,
+                            meta = event.isMetaPressed,
+                            ctrl = event.isCtrlPressed,
+                            alt = event.isAltPressed,
+                            shift = event.isShiftPressed,
+                            apple = shortcutsUseCommand,
+                        )
+                    if (!shortcut) return@onPreviewKeyEvent false
+                    if (!sidebarShortcutHeld) {
+                        sidebarShortcutHeld = true
+                        sidebarCollapse.toggle(column)
+                        bridge.log("app_shell_sidebar_toggle column=$column hidden=${sidebarCollapse.isHidden(column)} from=shortcut")
+                    }
+                    true
+                },
             bottomServerTab =
                 serverMenuModel?.let { model ->
                     { tabModifier ->
@@ -7003,9 +7578,10 @@ private fun RaftAppShellReadyContent(
                         // web LeftRail footer: Help, then Settings. Computers has its own entry and
                         // dot now, so Settings dots only for an app update (Settings > About).
                         val railBottomItems =
-                            remember(railNavLabels, selectedTab, moreAttention, railHelpOpen) {
+                            remember(railNavLabels, selectedTab, railInlineSecondaryDestination, moreAttention, railHelpOpen) {
                                 appShellRailFooterTabs(
-                                    selectedTab = selectedTab,
+                                    // An inline page (Computers, Apps) is the selection: Settings is not.
+                                    selectedTab = if (appShellRailInlinePageRailId(railInlineSecondaryDestination) != null) "" else selectedTab,
                                     labelFor = { key -> railNavLabels[key] ?: key },
                                     helpOpen = railHelpOpen,
                                     moreAttention = moreAttention,
@@ -7022,7 +7598,7 @@ private fun RaftAppShellReadyContent(
                                 } else {
                                     items
                                 }
-                            }
+                            }.orderedLikeRailTabOrder(railTabOrderState.order)
                         if (railWithoutTopBar) {
                             // Without the top bar the system's side column holds the history's Back.
                             raftSideColumnFallbackBack(
@@ -7055,8 +7631,9 @@ private fun RaftAppShellReadyContent(
                                 railHelpOpen = false
                                 val destination = RaftAppDestination.fromId(key)
                                 if (destination?.route == RaftNavRoute.Page) {
-                                    // Computers and Apps open the pages their Settings rows open,
-                                    // over the shell; the selected tab stays.
+                                    // Computers and Apps open the pages their Settings rows open, in
+                                    // the content area beside the rail (an inline page; the selected
+                                    // tab stays under it).
                                     serverMenuState.dismiss()
                                     appShellTopBar.bellOpen.value = false
                                     RaftProductEvents.navEntrySelected(
@@ -7065,10 +7642,16 @@ private fun RaftAppShellReadyContent(
                                         wasActive = false,
                                     )
                                     bridge.log("app_shell_rail_page_open key=$key")
-                                    when (destination) {
-                                        RaftAppDestination.Computers -> openComputersPage()
-                                        RaftAppDestination.Apps -> pager.openSettingsMarketplacePage(storeScope)
-                                        else -> bridge.logWarn("app_shell_rail_page_unrouted key=$key")
+                                    val inlinePage = appShellRailInlinePageKey(destination)
+                                    if (inlinePage == null) {
+                                        bridge.logWarn("app_shell_rail_page_unrouted key=$key")
+                                    } else {
+                                        if (destination == RaftAppDestination.Computers) {
+                                            writeComputerAttentionSeen(
+                                                build.raft.app.data.raftComputerAttentionMarkSeen(computerAttentionSeen, currentComputerAttention)
+                                            )
+                                        }
+                                        railInlineSecondaryDestination = inlinePage
                                     }
                                     return@RaftNavigationRailTabBar
                                 }
@@ -7086,6 +7669,7 @@ private fun RaftAppShellReadyContent(
                                 onAppShellTabSelected(key)
                             },
                             modifier = Modifier.fillMaxHeight(),
+                            reorder = railTabReorder,
                             // The server tab at the foot is the phone's; the top bar holds the server.
                             bottomItems =
                                 if (railWithoutTopBar && railInlineSecondaryDestination == AppShellRailSearchKey) {
@@ -7105,10 +7689,24 @@ private fun RaftAppShellReadyContent(
                                 RaftProductEvents.navEntrySelected(
                                     destination = appShellNavDestination(key),
                                     surface = RaftNavSurface.Rail,
-                                    wasActive = retainedAppShellSelectedTab(selectedTab) == key,
+                                    wasActive = railInlineSecondaryDestination == null && retainedAppShellSelectedTab(selectedTab) == key,
                                 )
+                                // Like a rail tab: Settings replaces an inline destination (Computers,
+                                // Apps) even when Settings is the tab under it.
+                                railInlineSecondaryDestination = null
                                 onAppShellTabSelected(key)
                             },
+                            sidebarToggle =
+                                collapsibleColumn?.let { column ->
+                                    RaftRailSidebarToggle(
+                                        hidden = sidebarCollapse.isHidden(column),
+                                        onHiddenChange = { hidden ->
+                                            sidebarCollapse.setHidden(column, hidden)
+                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=rail")
+                                        },
+                                        shortcutLabel = raftSidebarToggleShortcutLabel(shortcutsUseCommand),
+                                    )
+                                },
                             // The top bar above the rail clears the status bar; without it the rail does.
                             topSafeArea = if (railWithoutTopBar) shellScope.topSafeArea else 0.dp,
                             bottomSafeArea = shellScope.bottomSafeArea,
@@ -7168,19 +7766,10 @@ private fun RaftAppShellReadyContent(
                                 switchServerFromServerMenu(serverId)
                             },
                             searchLabel = searchTabLabel,
-                            onSearchClick = {
-                                // The rail's old Search entry: the inline Search over the current tab.
-                                serverMenuState.dismiss()
-                                appShellTopBar.bellOpen.value = false
-                                RaftProductEvents.navEntrySelected(
-                                    destination = appShellNavDestination(AppShellRailSearchKey),
-                                    surface = RaftNavSurface.TopBar,
-                                    wasActive = railInlineSecondaryDestination == AppShellRailSearchKey,
-                                )
-                                if (railInlineSecondaryDestination == AppShellRailSearchKey) railInlineSearchFocusRequest += 1
-                                railInlineSecondaryDestination = AppShellRailSearchKey
-                                bridge.log("app_shell_rail_secondary_open destination=search from=top_bar")
-                            },
+                            // The search panel over the page (web SearchOverlay); its "Search for"
+                            // opens the list column's Search.
+                            onSearchClick = { openSearchOverlay(source = "top_bar") },
+                            searchShortcut = RaftKeyGlyph.searchShortcut(apple = shortcutsUseCommand),
                             windowWidth =
                                 shellScope.adaptivePane
                                     .takeIf { it.widthPx > 0 && it.density > 0f }
@@ -7231,7 +7820,13 @@ private fun RaftAppShellReadyContent(
                                 railHelpOpen = false
                                 bridge.log("app_shell_rail_help_pick item=feedback")
                                 // The Settings Feedback row's page (web Help > Feedback opens Settings' Feedback).
-                                if (sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)) {
+                                val feedbackWeb = settingsFeedbackUsesWebPage()
+                                if (feedbackWeb && navRailActive) {
+                                    // Wide: Settings with Feedback in its detail pane, as the web.
+                                    railInlineSecondaryDestination = null
+                                    settingsWidePicked = SettingsDestinationHandsFeedback
+                                    onAppShellTabSelected("settings")
+                                } else if (feedbackWeb) {
                                     pager.openSettingsFeedbackWebViewPage(storeScope)
                                 } else {
                                     pager.openSettingsHandsFeedbackPage(storeScope)
@@ -7321,14 +7916,15 @@ private fun RaftAppShellReadyContent(
                                 }
                             }
                         } else {
-                            RaftBrutalDropdownMenu(
+                            RaftUiControlledMenu(
+                                expanded = true,
                                 // The anchor arrives already resolved in WINDOW space: the page owns the
                                 // conversion, and re-deriving it here is what produced four rounds of
                                 // wrong positions.
                                 anchor = RaftPopoverAnchor.forRootOffset(open.request.anchor),
                                 items =
                                     open.request.items.map { item ->
-                                        RaftBrutalDropdownMenuItem(
+                                        RaftUiMenuItem(
                                             id = item.id,
                                             label = item.label,
                                             enabled = item.enabled
@@ -7344,7 +7940,9 @@ private fun RaftAppShellReadyContent(
                                     )
                                     shellOverlayMenu = null
                                 },
-                                onDismiss = dismissShellOverlay
+                                onDismiss = dismissShellOverlay,
+                                // raft-ui DropdownMenuContent's `sideOffset` 6.
+                                verticalOffset = RaftMetrics.MenuSideOffset
                             )
                         }
                     }
@@ -7355,8 +7953,12 @@ private fun RaftAppShellReadyContent(
                     // the active host reports its measured width for the column decision.
                     val adaptiveDetailPane: @Composable (Modifier, Boolean, Boolean, Boolean) -> Unit = { paneModifier, active, detailAccepted, allowSideColumn ->
                         val density = LocalDensity.current
+                        // Only the selected tab's pane hosts the reply-thread column: every kept-alive tab
+                        // (Home, Activity, ...) composes this pane, and each composed its own thread page
+                        // for the same side thread (desktop freeze on opening a reply, 11-03).
+                        val tabSelected = LocalRaftAppShellTabSelected.current
                         val sideThread: AdaptiveSideThread? =
-                            adaptiveWorkspaceSession.visibleSideThread()?.takeIf { allowSideColumn && detailAccepted }
+                            adaptiveWorkspaceSession.visibleSideThread()?.takeIf { allowSideColumn && detailAccepted && tabSelected }
                         val showSideColumn =
                             sideThread != null &&
                                 (adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen) ||
@@ -7375,6 +7977,16 @@ private fun RaftAppShellReadyContent(
                         // Wide pane roles (RaftWidePanes.kt): a page the conversation opens with a
                         // Supporting role shows in the pane on the right; the conversation stays.
                         // The task overlay has no room for one: its pages open as before.
+                        // Inside the list + detail split the detail's columns stand in the split's row,
+                        // right of this pane: the width the side column decision reads is that of the
+                        // pane and its columns together, as when they stood inside it.
+                        val gridRoomDp = raftPaneGridRoomDp()
+                        LaunchedEffect(active, allowSideColumn, gridRoomDp) {
+                            if (!active || !allowSideColumn || gridRoomDp == null) return@LaunchedEffect
+                            adaptiveWorkspaceStore.update {
+                                if (it.detailPaneWidthDp == gridRoomDp) it else it.copy(detailPaneWidthDp = gridRoomDp)
+                            }
+                        }
                         val supportingPaneHost = navRailActive && allowSideColumn
                         val supportingOpen = supportingPaneHost && detailAccepted && supportingPanes.isOpen
                         // Only the main detail pane reports whether the pane is shown (RaftWidePanes.kt).
@@ -7384,7 +7996,7 @@ private fun RaftAppShellReadyContent(
                                 paneModifier
                                     .fillMaxSize()
                                     .onSizeChanged { size ->
-                                        if (!active || !allowSideColumn) return@onSizeChanged
+                                        if (!active || !allowSideColumn || gridRoomDp != null) return@onSizeChanged
                                         val widthDp = with(density) { size.width.toDp().value }
                                         adaptiveWorkspaceStore.update {
                                             if (it.detailPaneWidthDp == widthDp) it else it.copy(detailPaneWidthDp = widthDp)
@@ -7422,21 +8034,6 @@ private fun RaftAppShellReadyContent(
                             wide = supportingPaneHost,
                             openInPane = { _, pageName, pageData -> supportingPanes = supportingPanes.replace(pageName, pageData) },
                         ) {
-                        Row(modifier = detailModifier) {
-                        // task #180: in Focus mode the thread owns the row and the parent channel/DM
-                        // gets no space. It is collapsed by WIDTH, never by weight -- `weight(0f)` is
-                        // illegal in Compose and threw IllegalArgumentException "invalid weight 0.0"
-                        // the moment Focus was entered. See raftParentPaneLayout.
-                        val paneLayout = raftParentPaneLayout(focused = sideThreadFocusActive)
-                        val modifier =
-                            when {
-                                // Collapsed by width; a focused pane deliberately takes NO weight.
-                                paneLayout.widthDp != null ->
-                                    Modifier.width(paneLayout.widthDp.dp).fillMaxHeight()
-                                paneLayout.weight != null ->
-                                    Modifier.weight(paneLayout.weight).fillMaxHeight()
-                                else -> Modifier.fillMaxHeight()
-                            }
                         val workspace = adaptiveWorkspaceState
                         // task #33: a surface may decline the shared selection (the DMs tab shows only
                         // DMs); a declined selection renders the empty placeholder, never its composer.
@@ -7474,19 +8071,69 @@ private fun RaftAppShellReadyContent(
                                 generation = mounted.generation,
                             )
                         }
+                        // One right-hand column at a time: the side thread steps aside while the
+                        // supporting pane is open and comes back when it closes.
+                        val sideThreadColumn: RaftPaneGridColumn? =
+                            if (showSideColumn && sideThread != null && workspace != null && !supportingOpen) {
+                                // task #180: the page data key is deliberately independent of Focus mode.
+                                // Toggling re-lays-out the same child page instead of recreating it, which is
+                                // what keeps the reader's scroll position across Focus <-> Standard.
+                                val sidePageData =
+                                    remember(sideThread, navigationStoreScope.shellInstanceId, navigationStoreScope.initialServerId) {
+                                        threadLaunchPageData(sideThread.payload)
+                                            .withRaftShellStoreScope(navigationStoreScope)
+                                            .put(RAFT_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
+                                            .put(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY, sideThread.identity.key)
+                                            .put(RAFT_ADAPTIVE_DETAIL_GENERATION, sideThread.generation)
+                                    }
+                                val sideThreadPageData by rememberUpdatedState(sidePageData)
+                                val sideThreadResizeLabel = stringResource(Res.string.thread_side_thread_resize)
+                                remember(sideThreadResizeLabel, childActive) {
+                                    RaftPaneGridColumn(
+                                        bounds = RaftPaneGridColumns.Thread,
+                                        resizeLabel = sideThreadResizeLabel,
+                                        cells =
+                                            listOf(
+                                                RaftPaneGridCell(id = "thread") {
+                                                    RaftChildPage(
+                                                        pageName = THREAD_PAGE,
+                                                        pageData = sideThreadPageData,
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        active = childActive,
+                                                    )
+                                                }
+                                            ),
+                                    )
+                                }
+                            } else {
+                                null
+                            }
+                        // The detail is the main pane of the pane grid (RaftPaneGrid.kt; web
+                        // MainLayout's row): the thread's column right of it (web COLUMN_BOUNDS.thread:
+                        // 400 by default, at least 360, its left seam dragging it until the
+                        // conversation is down to 360; the width is kept), then the columns the
+                        // conversation declares (Task v2's Tasks / Files), the rightmost giving way
+                        // first. Inside the list + detail split they all stand in its row. In Focus
+                        // mode the thread takes the row (task #180: the conversation is collapsed by
+                        // width and stays composed).
+                        RaftPaneGrid(
+                            columns = listOfNotNull(sideThreadColumn),
+                            modifier = detailModifier,
+                            fillColumn = RaftPaneGridColumns.Thread.id.takeIf { sideThreadFocusActive && sideThreadColumn != null },
+                        ) {
                             if (detailPageData == null) {
                                 // The wide detail with nothing open: the shared empty state (icon,
                                 // muted title) on the pane's surface, not a bare line of text.
                                 RaftEmptyState(
                                     title = adaptiveEmptyLabel,
-                                    modifier = modifier.fillMaxSize(),
+                                    modifier = Modifier.fillMaxSize(),
                                     iconName = RaftLucideIconName.MessageSquare,
                                 )
                             } else {
                                 RaftChildPage(
                                     pageName = THREAD_PAGE,
                                     pageData = detailPageData,
-                                    modifier = modifier.fillMaxSize(),
+                                    modifier = Modifier.fillMaxSize(),
                                     active = childActive,
                                     onLoadSuccess = {
                                         selection?.generation?.let(::releaseAdaptiveHandoffLease)
@@ -7496,41 +8143,6 @@ private fun RaftAppShellReadyContent(
                                     },
                                 )
                             }
-                        // One right-hand column at a time: the side thread steps aside while the
-                        // supporting pane is open and comes back when it closes.
-                        if (showSideColumn && sideThread != null && workspace != null && !supportingOpen) {
-                            // task #180: the page data key is deliberately independent of Focus mode.
-                            // Toggling re-lays-out the same child page instead of recreating it, which is
-                            // what keeps the reader's scroll position across Focus <-> Standard.
-                            val sidePageData =
-                                remember(sideThread, navigationStoreScope.shellInstanceId, navigationStoreScope.initialServerId) {
-                                    threadLaunchPageData(sideThread.payload)
-                                        .withRaftShellStoreScope(navigationStoreScope)
-                                        .put(RAFT_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
-                                        .put(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY, sideThread.identity.key)
-                                        .put(RAFT_ADAPTIVE_DETAIL_GENERATION, sideThread.generation)
-                                }
-                            if (!sideThreadFocusActive) {
-                                Spacer(
-                                    modifier =
-                                        Modifier
-                                            .width(RAFT_SIDE_THREAD_DIVIDER_DP.dp)
-                                            .fillMaxHeight()
-                                            .background(RaftColor.BorderSeam), // raft-ui: one line-seam between regions, as the rail's
-                                )
-                            }
-                            RaftChildPage(
-                                pageName = THREAD_PAGE,
-                                pageData = sidePageData,
-                                modifier =
-                                    if (sideThreadFocusActive) {
-                                        Modifier.weight(1f).fillMaxHeight()
-                                    } else {
-                                        Modifier.width(RAFT_SIDE_THREAD_COLUMN_DP.dp).fillMaxHeight()
-                                    },
-                                active = childActive,
-                            )
-                        }
                         }
                         }
                         }
@@ -7599,7 +8211,6 @@ private fun RaftAppShellReadyContent(
                                     authStore = shellAuthStore,
                                     tasksDataSource = tasksDataSource,
                                     tasksDataStore = sharedStores.tasksDataStore,
-                                    serverRole = readySession?.servers?.firstOrNull { it.id == readyServerId }?.role,
                                     onFailed = { code ->
                                         when {
                                             code.startsWith("tasks_status") -> bridge.toast(tasksUpdateFailedLabel)
@@ -7669,6 +8280,7 @@ private fun RaftAppShellReadyContent(
                             },
                             identityOptions = tasksServerMembersEntry.members,
                             timeContext = threadTimeContext,
+                            taskV2Enabled = tasksOpenTaskV2Enabled,
                             onOpenTask = open@{ task ->
                                 prewarmAdmissionGate.invalidate("tasks_open_task")
                                 // Task v2 (web useOpenTask): with the flag on every non-legacy task opens as its conversation.
@@ -7735,7 +8347,8 @@ private fun RaftAppShellReadyContent(
                             detailAccepted: Boolean,
                             listKind: RaftListPaneKind,
                             fillListWhenNothingPicked: Boolean,
-                        ) -> Unit = { enabled, active, listPane, detailAccepted, listKind, fillListWhenNothingPicked ->
+                            collapseColumn: RaftCollapsibleColumn?,
+                        ) -> Unit = { enabled, active, listPane, detailAccepted, listKind, fillListWhenNothingPicked, collapseColumn ->
                         val workspace = adaptiveWorkspaceState
                         val selection = workspace?.selection?.takeIf { detailAccepted }
                         val detailPane: @Composable (Modifier) -> Unit = { modifier ->
@@ -7754,6 +8367,18 @@ private fun RaftAppShellReadyContent(
                                 listPane = listPane,
                                 detailPane = detailPane,
                                 fillListWhenNothingPicked = fillListWhenNothingPicked,
+                                collapsed = collapseColumn != null && sidebarCollapse.isHidden(collapseColumn),
+                                // web `snap` "collapse": only where the rail's toggle can bring it back.
+                                onCollapsedChange =
+                                    collapseColumn?.takeIf { it == collapsibleColumn }?.let { column ->
+                                        { hidden ->
+                                            sidebarCollapse.setHidden(column, hidden)
+                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=handle")
+                                        }
+                                    },
+                                // Web: Activity's list with an item open is at most half the row, so the
+                                // conversation is never narrower than the list (stdrc).
+                                maxShare = 0.5f.takeIf { collapseColumn == RaftCollapsibleColumn.ActivityList && selection != null },
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 log = { bridge.log(it) },
                             )
@@ -7795,6 +8420,18 @@ private fun RaftAppShellReadyContent(
                                     sharedStores.serverFeatureFlags.isEnabled(
                                         ServerId(flagServerId),
                                         SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY
+                                    )
+                            }
+                        // agent_lounge_v0 (web useAgentLoungeEnabled): flag on and not a Guest.
+                        val homeAgentLoungeEnabled =
+                            remember(homeListServerId, homeFeatureFlagRevision, homeState) {
+                                val flagServerId = homeListServerId?.takeIf { it.isNotBlank() }
+                                val role =
+                                    (homeState.content as? SharedHomeContentState.Content)?.baseSnapshot?.server?.role
+                                flagServerId != null &&
+                                    agentLoungeEnabled(
+                                        sharedStores.serverFeatureFlags.isEnabled(ServerId(flagServerId), AGENT_LOUNGE_FEATURE_FLAG_KEY),
+                                        role
                                     )
                             }
                         // drafts_section_v0 (web DRAFTS_SECTION_FLAG_KEY): the Drafts row under Saved.
@@ -7844,6 +8481,7 @@ private fun RaftAppShellReadyContent(
                                 searchAndActivityOnShellNav = appShellNavCarriesSearchAndActivity(navRailActive),
                                 threadUnreadBadgeEnabled = homeThreadUnreadBadgeEnabled,
                                 sidebarMarkAllReadEnabled = homeSidebarMarkAllReadEnabled,
+                                agentLoungeEnabled = homeAgentLoungeEnabled,
                                 onIntent = { intent ->
                                     prewarmAdmissionGate.invalidate("home_intent:${intent::class.simpleName}")
                                     if (intent is SharedHomeIntent.SelectServer) {
@@ -7946,6 +8584,16 @@ private fun RaftAppShellReadyContent(
                                     retainedAppShellTabs = retainedAppShellTabs + "settings"
                                     openComputersPage()
                                 },
+                                onOpenComputer = { machineId ->
+                                    selectAppShellTab("settings")
+                                    retainedAppShellTabs = retainedAppShellTabs + "settings"
+                                    val identity = settingsComputerRouteIdentity(readyServerId, machineId)
+                                    if (identity == null) {
+                                        openComputersPage()
+                                    } else {
+                                        pager.openSettingsComputerPage(storeScope, identity)
+                                    }
+                                },
                                 onOpenUrl = settingsCapabilities::openUrl,
                                 onOpenServerSelection = {
                                     pager.openAuthChooseServerPage(
@@ -7999,6 +8647,7 @@ private fun RaftAppShellReadyContent(
                             true,
                             RaftListPaneKind.Sidebar,
                             false,
+                            RaftCollapsibleColumn.Sidebar,
                         )
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
@@ -8056,6 +8705,8 @@ private fun RaftAppShellReadyContent(
                             // Web Activity is two columns at every desktop width (slock #10842).
                             RaftListPaneKind.List,
                             false,
+                            // Collapsible like the sidebar, remembered on its own (web activityList).
+                            RaftCollapsibleColumn.ActivityList,
                         )
                     }
                     // Members and Settings are server pages pushed from the server panel on the phone
@@ -8064,14 +8715,17 @@ private fun RaftAppShellReadyContent(
                     val moreChildBack: (() -> Unit)? =
                         appShellMoreChildBackTarget(selectedTab, navRailActive, serverPageOrigin)?.let { target ->
                             {
-                                selectAppShellTab(target, directChildSwitch = true)
+                                selectAppShellTab(target, directChildSwitch = true, source = AppShellTabSwitchSource.Back)
                                 retainedAppShellTabs = retainedAppShellTabs + target
                                 serverTabFocusPending = true
                             }
                         }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        // On the Navigation 3 stack (AppShellServerStackPage.kt) Back closes the page
+                        // and no bottom bar sits under it.
+                        val stackPageClose = LocalAppShellServerStackPageClose.current
                         SharedMembersScreen(
-                            onBack = moreChildBack,
+                            onBack = stackPageClose ?: moreChildBack,
                             bridge = bridge,
                             storeScope = navigationStoreScope,
                             sharedStores = sharedStores,
@@ -8097,7 +8751,8 @@ private fun RaftAppShellReadyContent(
                                 membersListRefreshKey += 1
                             },
                             timeContext = threadTimeContext,
-                            bottomContentPadding = appShellBottomContentInset,
+                            bottomContentPadding =
+                                if (stackPageClose != null) shellScope.contentBottomInset(false) else appShellBottomContentInset,
                             scrollToTopRequest = tabScrollToTopRequests.members,
                             initialListState = membersListState,
                             onListStateSnapshot = {
@@ -8111,57 +8766,19 @@ private fun RaftAppShellReadyContent(
                             onDetailOpenRequestHandled = { wideNavMemberOpenRequest = null },
                             onForegroundActivity = { reason ->
                                 prewarmAdmissionGate.invalidate("members_$reason")
-                            }
-                        )
-                    }
-                    // raft-design #712: on the phone Settings is a pushed page titled Settings, opened
-                    // from the server panel, with Back (Members and Computers are on the panel now,
-                    // so they no longer lead it); its rows keep their attention dots. The wide rail
-                    // keeps its Settings page as before.
-                    val openSettingsRow: (String) -> Unit = { key ->
-                        prewarmAdmissionGate.invalidate("settings_open_page:$key")
-                        settingsHeaderTapCount = 0
-                        when (key) {
-                            SettingsMoreMembersRowKey -> {
-                                RaftProductEvents.navEntrySelected(
-                                    destination = RaftNavDestination.Members,
-                                    surface = RaftNavSurface.MobileMore,
-                                    wasActive = false,
-                                )
-                                bridge.log("app_shell_more_open row=$key from=$selectedTab")
-                                selectAppShellTab("members", directChildSwitch = true)
-                                retainedAppShellTabs = retainedAppShellTabs + "members"
-                            }
-                            SettingsDestinationAccount -> pager.openSettingsAccountPage(storeScope)
-                            SettingsDestinationStorage -> pager.openSettingsStoragePage(storeScope)
-                            SettingsDestinationReleaseNotes -> pager.openReleaseNotesPage(storeScope = storeScope)
-                            SettingsDestinationBilling -> pager.openSettingsBillingPage(storeScope)
-                            SettingsDestinationComputers -> {
-                                if (!navRailActive) {
-                                    RaftProductEvents.navEntrySelected(
-                                        destination = RaftNavDestination.Computers,
-                                        surface = RaftNavSurface.MobileMore,
-                                        wasActive = false,
-                                    )
-                                }
-                                openComputersPage()
-                            }
-                            SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope)
-                            SettingsDestinationImBridges -> pager.openSettingsImBridgesPage(storeScope)
-                            SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
-                            SettingsDestinationHandsFeedback ->
-                                if (sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)) {
-                                    pager.openSettingsFeedbackWebViewPage(storeScope)
+                            },
+                            // Web: the profile's DM button goes to the DM in Chat, beside the rail.
+                            openDirectMessageInShell =
+                                if (navRailActive) {
+                                    { conversation ->
+                                        onAppShellTabSelected("home")
+                                        openHomeConversation(conversation, "members_direct_message")
+                                        true
+                                    }
                                 } else {
-                                    pager.openSettingsHandsFeedbackPage(storeScope)
-                                }
-                            else -> {
-                                val page = SettingsNativeDetailPage.fromKey(key)
-                                if (page == null || !pager.openSettingsNativeDetailPage(page, storeScope)) {
-                                    bridge.logWarn("settings_native_detail_rejected page=$key")
-                                }
-                            }
-                        }
+                                    null
+                                },
+                        )
                     }
                     val settingsSession = (authGateState as? SharedAuthGateState.Ready)?.session
                     val settingsTabContent: @Composable (active: Boolean) -> Unit = { active ->
@@ -8172,12 +8789,20 @@ private fun RaftAppShellReadyContent(
                             remember(readyServerId, settingsFeatureFlagRevision) {
                                 settingsImBridgesEnabled(sharedStores.serverFeatureFlags, readyServerId)
                             }
+                        // Search settings (raft-design settings.md#searching-settings): the query
+                        // stays while Settings stays on one server; who can find what follows the
+                        // role and the server flags the pages read themselves.
+                        val settingsSearchState = rememberSettingsSearchState(readyServerId)
+                        val settingsSearchContext =
+                            remember(settingsSession, readyServerId, settingsFeatureFlagRevision) {
+                                settingsSearchContext(settingsSession, sharedStores.serverFeatureFlags, readyServerId)
+                            }
+                        val settingsSearchServerName = settingsSession?.settingsThemeServer()?.name.orEmpty()
                         if (navRailActive) {
                             // artin 2026-10-29: the wide Settings is list + detail like the web's; the
-                            // section opens beside the list (SettingsWideSplit.kt).
-                            // Feedback is the web page (and opens in the pane) behind this flag.
-                            val feedbackWeb =
-                                sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)
+                            // section opens beside the list (SettingsWideSplit.kt). Feedback opens in
+                            // the pane only as the web page (settingsFeedbackUsesWebPage).
+                            val feedbackWeb = settingsFeedbackUsesWebPage()
                             SettingsWideListDetail(
                                 payload = appShellSettingsHomePayload(settingsSession, imBridgesEnabled = imBridgesEnabled),
                                 widths = adaptiveListPaneWidths,
@@ -8194,6 +8819,7 @@ private fun RaftAppShellReadyContent(
                                             }
                                             bridge.log("settings_wide_pick row=$key")
                                             settingsWidePicked = pick.key
+                                            settingsWideAnchor = null
                                         }
                                         SettingsWidePick.Push -> openSettingsRow(key)
                                     }
@@ -8201,13 +8827,45 @@ private fun RaftAppShellReadyContent(
                                 onBackToDefault = {
                                     bridge.log("settings_wide_back from=$settingsWidePicked")
                                     settingsWidePicked = null
+                                    settingsWideAnchor = null
                                 },
+                                search =
+                                    SettingsSearchHost(
+                                        state = settingsSearchState,
+                                        context = settingsSearchContext,
+                                        serverName = settingsSearchServerName,
+                                        active = active,
+                                        selectedId = settingsWideAnchor?.takeIf { it.first == settingsWidePicked }?.second?.id,
+                                        onOpen = { setting ->
+                                            val anchor = SettingsSearchAnchorRequest(setting.id, ++settingsSearchOpenNonce)
+                                            bridge.log("settings_search_open id=${setting.id} row=${setting.rowKey} mode=wide")
+                                            when (val pick = settingsWidePick(setting.rowKey, feedbackWeb)) {
+                                                is SettingsWidePick.Detail -> {
+                                                    settingsWidePicked = pick.key
+                                                    settingsWideAnchor = pick.key to anchor
+                                                }
+                                                SettingsWidePick.Push -> openSettingsRowAt(setting.rowKey, anchor)
+                                            }
+                                        },
+                                        onSearchEverywhere = { query -> openSearchEverywhere(query, "settings_search_everywhere") },
+                                    ),
                                 detailBottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
                                 bottomContentPadding = appShellBottomContentInset,
+                                collapsed = sidebarCollapse.isHidden(RaftCollapsibleColumn.Sidebar),
+                                onCollapsedChange =
+                                    RaftCollapsibleColumn.Sidebar.takeIf { it == collapsibleColumn }?.let { column ->
+                                        { hidden ->
+                                            sidebarCollapse.setHidden(column, hidden)
+                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=handle")
+                                        }
+                                    },
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 detailPane = { key, modifier ->
+                                    val detailAnchor = settingsWideAnchor?.takeIf { it.first == key }?.second
                                     val detailPage =
-                                        remember(key, storeScope, feedbackWeb) { settingsWideDetailPage(key, storeScope, feedbackWeb) }
+                                        remember(key, storeScope, feedbackWeb, detailAnchor) {
+                                            settingsWideDetailPage(key, storeScope, feedbackWeb, detailAnchor)
+                                        }
                                     if (detailPage != null) {
                                         RaftChildPage(
                                             pageName = detailPage.first,
@@ -8219,6 +8877,7 @@ private fun RaftAppShellReadyContent(
                                 },
                             )
                         } else {
+                        val stackPageClose = LocalAppShellServerStackPageClose.current
                         SettingsAppShellHomeContent(
                             moreRoot =
                                 if (navRailActive) {
@@ -8226,24 +8885,36 @@ private fun RaftAppShellReadyContent(
                                 } else {
                                     SettingsMoreRoot(
                                         title = settingsTabLabel,
-                                        membersTitle = membersTabLabel,
                                         attentionRowKeys = moreAttention.mapTo(mutableSetOf()) { it.settingsRowKey },
-                                        leadsWithMembersAndComputers = false,
                                     )
                                 },
-                            onBack = moreChildBack,
+                            onBack = stackPageClose ?: moreChildBack,
                             session = settingsSession,
                             imBridgesEnabled = imBridgesEnabled,
-                            bottomContentPadding = appShellBottomContentInset,
+                            bottomContentPadding =
+                                if (stackPageClose != null) shellScope.contentBottomInset(false) else appShellBottomContentInset,
                             scrollToTopRequest = tabScrollToTopRequests.more,
+                            search =
+                                SettingsSearchHost(
+                                    state = settingsSearchState,
+                                    context = settingsSearchContext,
+                                    serverName = settingsSearchServerName,
+                                    active = active,
+                                    // The page is pushed; Back returns to the results with the query kept.
+                                    onOpen = { setting ->
+                                        bridge.log("settings_search_open id=${setting.id} row=${setting.rowKey} mode=push")
+                                        openSettingsRowAt(setting.rowKey, SettingsSearchAnchorRequest(setting.id, ++settingsSearchOpenNonce))
+                                    },
+                                    onSearchEverywhere = { query ->
+                                        // Settings may be a page over the shell (the server panel's): close it first.
+                                        stackPageClose?.invoke()
+                                        openSearchEverywhere(query, "settings_search_everywhere")
+                                    },
+                                ),
                             onSettingsHeaderClick = {
                                 prewarmAdmissionGate.invalidate("settings_header")
-                                val nextTapCount = settingsHeaderTapCount + 1
-                                if (nextTapCount >= SettingsDeveloperUnlockTapCount) {
-                                    settingsHeaderTapCount = 0
+                                if (settingsHeaderTaps.tap()) {
                                     pager.openSettingsNativeDetailPage(SettingsNativeDetailPage.Developer, storeScope)
-                                } else {
-                                    settingsHeaderTapCount = nextTapCount
                                 }
                             },
                             onSelect = openSettingsRow,
@@ -8327,6 +8998,10 @@ private fun RaftAppShellReadyContent(
                             renderer = childTabRenderer
                         )
                         childTabEntry.modalHostState = appShellModalHostState
+                        if (stackShellTabs != null) {
+                            stackShellTabs.entry = childTabEntry
+                            stackShellTabs.renderer = childTabRenderer
+                        }
                     }
                     LaunchedEffect(childTabShellId, childTabEntry.debugId) {
                         bridge.log(
@@ -8337,6 +9012,10 @@ private fun RaftAppShellReadyContent(
                     }
                     DisposableEffect(childTabShellId, childTabEntry) {
                         onDispose {
+                            if (stackShellTabs != null && stackShellTabs.entry === childTabEntry) {
+                                stackShellTabs.entry = null
+                                stackShellTabs.renderer = null
+                            }
                             val removed = AppShellChildTabRegistry.unregister(childTabShellId, childTabEntry)
                             bridge.log(
                                 "app_shell_child_tab_registry_unregister shellId=$childTabShellId " +
@@ -8413,21 +9092,15 @@ private fun RaftAppShellReadyContent(
                                     }
                                 },
                                 inlineOpenEntity = { entity ->
-                                    when (entity.destinationOrNull()) {
-                                        is HomeSearchEntityDestination.Conversation -> {
-                                            // Conversation entities open in the shared detail
-                                            // pane; everything else still needs a full page.
-                                            val destination =
-                                                entity.destinationOrNull()
-                                                    as HomeSearchEntityDestination.Conversation
-                                            openHomeConversation(
-                                                conversation = destination.identity,
-                                                source = "home_search_entity",
-                                            )
-                                            true
-                                        }
-                                        else -> false
-                                    }
+                                    // Conversation entities open in the shared detail pane;
+                                    // computers and people decline and open their page.
+                                    entity.homeSearchInlineConversationOrNull()?.let { conversation ->
+                                        openHomeConversation(
+                                            conversation = conversation,
+                                            source = "home_search_entity",
+                                        )
+                                        true
+                                    } ?: false
                                 },
                             )
                         }
@@ -8439,7 +9112,29 @@ private fun RaftAppShellReadyContent(
                             // Web Search fills the width until a result is picked (searchMasterDetail).
                             RaftListPaneKind.List,
                             true,
+                            // Its list stays put (web: Search does not collapse).
+                            null,
                         )
+                    } else if (appShellRailInlinePage(railInlineSecondaryDestination, storeScope) != null) {
+                        val inlinePage =
+                            remember(railInlineSecondaryDestination, storeScope) {
+                                appShellRailInlinePage(railInlineSecondaryDestination, storeScope)
+                            }
+                        if (inlinePage != null) {
+                            // The page as in the wide Settings pane: its head without Back (the rail
+                            // is the way out), under the top bar.
+                            CompositionLocalProvider(
+                                LocalRaftSettingsWideDetail provides true,
+                                LocalRaftSettingsWideDetailClose provides { railInlineSecondaryDestination = null },
+                            ) {
+                                RaftChildPage(
+                                    pageName = inlinePage.first,
+                                    pageData = inlinePage.second,
+                                    modifier = Modifier.fillMaxSize(),
+                                    active = pageVisible,
+                                )
+                            }
+                        }
                     } else {
                     AppShellTabPager(
                         selectedTab = selectedTab,
@@ -8479,6 +9174,17 @@ private fun RaftAppShellReadyContent(
                                 readySession?.jointSameAdminContext(jointHomeSnapshot?.server?.id?.value)
                             },
                         onDismiss = { createJointChannelDialogOpen = false },
+                        onOpenArchivedChannel = { channelId ->
+                            createJointChannelDialogOpen = false
+                            openHomeConversation(
+                                buildThreadLaunchConversationIdentity(
+                                    kind = ConversationKind.Joint,
+                                    channelId = channelId,
+                                    channelType = "joint",
+                                ),
+                                "create_joint_channel_archived_open",
+                            )
+                        },
                         onOpenChannel = { channel ->
                             createJointChannelDialogOpen = false
                             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
@@ -8491,9 +9197,15 @@ private fun RaftAppShellReadyContent(
                                 "create_joint_channel",
                             )
                         },
-                        onOpenBilling = {
+                        onOpenBilling = { gate ->
                             createJointChannelDialogOpen = false
-                            pager.openSettingsBillingPage(storeScope)
+                            // The upgrade dialog for the limit hit (web `paywallUpgrade(billingError)`);
+                            // iOS view-only Billing: "View your plan", the view-only page.
+                            if (settingsBillingOffersUpgrade()) {
+                                pager.openRaftUpgradeDialog(gate, storeScope)
+                            } else {
+                                pager.openSettingsBillingPage(storeScope)
+                            }
                         },
                     )
                 }
@@ -8503,11 +9215,16 @@ private fun RaftAppShellReadyContent(
                         membersLoading = createChannelMembersLoading,
                         members = createChannelMembers,
                         errorMessage = createChannelError,
+                        archivedCollision = createChannelCollision,
+                        onOpenArchivedCollision = { openCreateChannelCollision() },
+                        onUnarchiveArchivedCollision = { unarchiveCreateChannelCollision() },
+                        onClearArchivedCollision = { createChannelCollision = null },
                         agentStatusResolver = createChannelAgentStatusResolver,
                         onDismiss = {
                             if (!createChannelSubmitting) {
                                 createChannelDialogOpen = false
                                 createChannelError = null
+                                createChannelCollision = null
                             }
                         },
                         onSubmit = { name, description, visibility, agentMemberIds, userMemberIds ->
@@ -8528,11 +9245,20 @@ private fun RaftAppShellReadyContent(
                         },
                         onOpenUrl = { url ->
                             if (announcementOwner == latestAnnouncementOwner) {
-                                resolveAnnouncementLink(
-                                    url,
-                                    announcementWebBase,
-                                    readySession?.servers?.firstOrNull { it.id == readyServerId }?.slug,
-                                )?.let { linkNavigator.open(it) }
+                                when (
+                                    val action =
+                                        announcementLinkAction(
+                                            href = url,
+                                            webBaseUrl = announcementWebBase,
+                                            currentServerId = readyServerId,
+                                            servers = readySession?.servers.orEmpty(),
+                                        )
+                                ) {
+                                    is AnnouncementLinkAction.OpenSettings ->
+                                        openSettingsFromLink(action.link, action.target, source = "announcement")
+                                    is AnnouncementLinkAction.OpenUrl -> linkNavigator.open(action.url, action.openIntent)
+                                    null -> Unit
+                                }
                             }
                         }
                     )
@@ -8582,7 +9308,7 @@ private fun RaftAppShellReadyContent(
                 if (crossServerSource != null) {
                     // Another workspace: switch to it first, then open (window navigation).
                     val enqueued =
-                        windowNavigationCoordinator.enqueue(
+                        navigationIntake.enqueue(
                             WindowNavigationIntent(
                                 serverId = target.serverId,
                                 sourceIdentity = crossServerSource,
@@ -8590,7 +9316,6 @@ private fun RaftAppShellReadyContent(
                             )
                         )
                     bridge.log("window_navigation_received source=foreground_banner enqueued=$enqueued targetServerId=${target.serverId}")
-                    systemNotificationNavigationTick += 1
                 } else {
                     openHomeMessageRequest(
                         request = target.openRequest,
@@ -9259,13 +9984,14 @@ internal fun Pager.openAppShellReplacingCurrentPage(pageData: JSONObject) {
         .openPage(RAFT_APP_SHELL_PAGE, pageData)
 }
 
-internal fun Pager.openLoginReplacingCurrentPage(message: String? = null) {
+internal fun Pager.openLoginReplacingCurrentPage(message: String? = null, traceId: String? = null) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(
             LOGIN_PAGE,
             loginPageData(
                 replaceCurrent = true,
-                message = message
+                message = message,
+                traceId = traceId
             )
         )
 }
@@ -9493,7 +10219,8 @@ internal fun AppShellServerGateContent(
                         }
                     else -> stringResource(Res.string.auth_server_title_choose)
                 },
-            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
+            // Web AuthPageIntro h1: text-title (22/28 700).
+            style = RaftType.PageTitle.copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
         Text(
@@ -9502,7 +10229,8 @@ internal fun AppShellServerGateContent(
                     Res.string.auth_server_signed_in_as,
                     listOf(latestSession.user.bestDisplayName)
                 ).localized(),
-            style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
+            // Web AuthPageIntro description: text-subhead (15/20 400).
+            style = RaftType.Subhead.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center
         )
@@ -9602,21 +10330,24 @@ internal fun AppShellServerGateContent(
                 )
             } else {
                 latestSession.servers.forEach { server ->
-                    RaftBrutalListRow(
-                        title = server.name,
-                        subtitle =
-                            if (pendingServerId == server.id) {
-                                stringResource(Res.string.auth_state_opening_server)
-                            } else {
-                                "/${server.slug.orEmpty().ifBlank { server.id }}"
-                            },
-                        enabled = !loading,
-                        onClick = {
-                            loading = true
-                            errorPresentation = null
-                            pendingServerId = server.id
-                        }
-                    )
+                    RaftListRowGroup(modifier = Modifier.fillMaxWidth()) {
+                        RaftListRow(
+                            title = server.name,
+                            variant = RaftListRowVariant.Plain,
+                            description =
+                                if (pendingServerId == server.id) {
+                                    stringResource(Res.string.auth_state_opening_server)
+                                } else {
+                                    "/${server.slug.orEmpty().ifBlank { server.id }}"
+                                },
+                            enabled = !loading,
+                            onClick = {
+                                loading = true
+                                errorPresentation = null
+                                pendingServerId = server.id
+                            }
+                        )
+                    }
                 }
                 AuthActionButton(
                     text = stringResource(Res.string.auth_action_create_new_server),
@@ -9626,14 +10357,19 @@ internal fun AppShellServerGateContent(
                 )
             }
             if (!showPinnedSignOut) {
-                RaftLinkButton(
-                    text = stringResource(Res.string.auth_action_sign_out),
-                    enabled = !loading,
-                    onClick = {
-                        pendingServerId = "__logout__"
-                        loading = true
-                    }
-                )
+                RaftDesignSystemTheme {
+                    RaftTextLink(
+                        text = stringResource(Res.string.auth_action_sign_out),
+                        enabled = !loading,
+                        onClick = {
+                            pendingServerId = "__logout__"
+                            loading = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        style = RaftTheme.typography.callout.copy(textAlign = TextAlign.Center),
+                        maxLines = 1
+                    )
+                }
             }
         }
     }
@@ -9886,7 +10622,8 @@ internal fun AppShellEmailVerificationGateContent(
         AuthLogoBadge("RAFT")
         Text(
             text = stringResource(Res.string.auth_title_verify_email),
-            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
+            // Web AuthPageIntro h1: text-title (22/28 700).
+            style = RaftType.PageTitle.copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
         Text(
@@ -9899,7 +10636,8 @@ internal fun AppShellEmailVerificationGateContent(
                 } else {
                     stringResource(Res.string.auth_hint_verify_email)
                 },
-            style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
+            // Web EmailVerificationPage: text-callout, muted (14/20 400).
+            style = RaftType.Callout.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center
         )
@@ -9929,16 +10667,21 @@ internal fun AppShellEmailVerificationGateContent(
                 tone = AuthButtonTone.White,
                 enabled = !loading
             )
-            RaftLinkButton(
-                text = stringResource(Res.string.auth_action_sign_out),
-                enabled = !loading,
-                onClick = {
-                    loading = true
-                    errorPresentation = null
-                    sentPresentation = null
-                    pendingSignOut = true
-                }
-            )
+            RaftDesignSystemTheme {
+                RaftTextLink(
+                    text = stringResource(Res.string.auth_action_sign_out),
+                    enabled = !loading,
+                    onClick = {
+                        loading = true
+                        errorPresentation = null
+                        sentPresentation = null
+                        pendingSignOut = true
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    style = RaftTheme.typography.callout.copy(textAlign = TextAlign.Center),
+                    maxLines = 1
+                )
+            }
         }
     }
 }
@@ -9977,7 +10720,9 @@ private fun SharedMembersScreen(
     /** A member the wide layout's Back / Forward reopens in the split's detail pane, until handled. */
     detailOpenRequest: MemberDetailIdentity? = null,
     onDetailOpenRequestHandled: () -> Unit = {},
-    onForegroundActivity: (String) -> Unit = {}
+    onForegroundActivity: (String) -> Unit = {},
+    /** The split detail's DM button: open the DM in the shell (Chat, the DM selected); false = a page. */
+    openDirectMessageInShell: ((ThreadLaunchConversationIdentity) -> Boolean)? = null,
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val membersTitle = stringResource(Res.string.tab_members)
@@ -9993,6 +10738,10 @@ private fun SharedMembersScreen(
         mutableStateOf<SharedMembersUiState>(initialContent ?: SharedMembersUiState.Loading)
     }
     var refreshing by remember { mutableStateOf(false) }
+    // Hands afae9ebb: the agent just created here, until its profile is opened (see the effect
+    // beside MembersAdaptiveWorkspace). The app shell's Members (Settings and the server menu)
+    // creates through this screen, not MembersPage, so task #399's jump never reached it.
+    var createdAgentToOpen by remember(currentServerId) { mutableStateOf<MemberProfile?>(null) }
     val pager = LocalActivity.current.getPager() as Pager
     val routeScope = rememberCoroutineScope()
     val agentPanelTabOrderState by agentPanelTabOrderStore.state.collectAsState()
@@ -10238,6 +10987,9 @@ private fun SharedMembersScreen(
                         }
                     state = nextState
                     (nextState as? SharedMembersUiState.Content)?.let(onContentLoaded)
+                    // Stage the jump inside submit, before the dialog's teardown cancels this
+                    // coroutine (the same ordering as MembersPage, task #399 / #3140).
+                    createdAgentToOpen = profile
                     // The row above is only a stand-in: replace it with the server's record. Re-entering
                     // the page seeds the store from this cached content, so without a forced refresh the
                     // stand-in was served as a cache hit indefinitely (task #148, HuaTuo 23bc896b).
@@ -10272,6 +11024,71 @@ private fun SharedMembersScreen(
                     build.raft.app.data.raftSharedPreferenceStore()
                 )
             }
+            val openMemberDetail: (MemberProfile) -> Unit = { member ->
+                onForegroundActivity("open_member")
+                if (showMemberSplit) {
+                    // Resolve local fallback now, never from a later selected server.
+                    val identity = MemberDetailIdentity(member.id, member.kind, member.serverId ?: ServerId(serverId))
+                    selectedDetail = membersPayload.toMemberDetailPageData(identity)?.toRaftMemberDetailPayload()
+                } else routeScope.launch {
+                    val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
+                    val accessMode = identity.memberDetailAccessMode(serverId)
+                    val launchPayload =
+                        if (
+                            member.kind == MemberKind.Agent &&
+                                accessMode.allowsPrivateAgentSurfaces &&
+                                (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
+                        ) {
+                            loadAgentPanelTabOrderForSharedMembers()
+                                ?.also { order ->
+                                    agentPanelTabOrderStore.applyLoaded(
+                                        serverId = serverId,
+                                        order = order,
+                                        source = "shared_members_detail_open_preload",
+                                        logger = raftLogger("SlockAgentPanelTabOrder")
+                                    )
+                                }
+                                ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
+                                ?: membersPayload
+                        } else {
+                            membersPayload
+                        }
+                    val pageData =
+                        launchPayload.toMemberDetailPageData(
+                            identity
+                        )
+                    if (pageData == null) {
+                        bridge.toast(openProfileFailedMessage)
+                        bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
+                    } else {
+                        val seedMember =
+                            member.copy(
+                                serverId =
+                                    member.serverId
+                                        ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
+                            )
+                        agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
+                        pager.openRaftPage(
+                            pageName = MEMBER_DETAIL_PAGE,
+                            pageData = pageData,
+                            storeScopeOverride = storeScope,
+                            onMissingScope = {
+                                bridge.toast(openProfileFailedMessage)
+                                bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
+                            }
+                        )
+                    }
+                }
+            }
+            // Hands afae9ebb: land on the just-created agent's profile, as MembersPage and the thread
+            // member panel do. Runs after the stand-in row is in state; cleared at once so returning
+            // to the list does not reopen it.
+            LaunchedEffect(createdAgentToOpen) {
+                val created = createdAgentToOpen ?: return@LaunchedEffect
+                createdAgentToOpen = null
+                bridge.log("members_create_agent_open_profile memberId=${created.id.value} source=app_shell")
+                openMemberDetail(created)
+            }
             MembersAdaptiveWorkspace(
                 split = showMemberSplit,
                 selected = selectedDetail != null,
@@ -10286,62 +11103,7 @@ private fun SharedMembersScreen(
                         paneLayout = paneLayout,
                         onAddHuman = { onForegroundActivity("add_human") },
                         agentStatusResolver = agentStatusResolver,
-                        onOpenMemberDetail = { member ->
-                            onForegroundActivity("open_member")
-                            if (showMemberSplit) {
-                                // Resolve local fallback now, never from a later selected server.
-                                val identity = MemberDetailIdentity(member.id, member.kind, member.serverId ?: ServerId(serverId))
-                                selectedDetail = membersPayload.toMemberDetailPageData(identity)?.toRaftMemberDetailPayload()
-                            } else routeScope.launch {
-                                val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
-                                val accessMode = identity.memberDetailAccessMode(serverId)
-                                val launchPayload =
-                                    if (
-                                        member.kind == MemberKind.Agent &&
-                                            accessMode.allowsPrivateAgentSurfaces &&
-                                            (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
-                                    ) {
-                                        loadAgentPanelTabOrderForSharedMembers()
-                                            ?.also { order ->
-                                                agentPanelTabOrderStore.applyLoaded(
-                                                    serverId = serverId,
-                                                    order = order,
-                                                    source = "shared_members_detail_open_preload",
-                                                    logger = raftLogger("SlockAgentPanelTabOrder")
-                                                )
-                                            }
-                                            ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
-                                            ?: membersPayload
-                                    } else {
-                                        membersPayload
-                                    }
-                                val pageData =
-                                    launchPayload.toMemberDetailPageData(
-                                        identity
-                                    )
-                                if (pageData == null) {
-                                    bridge.toast(openProfileFailedMessage)
-                                    bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
-                                } else {
-                                    val seedMember =
-                                        member.copy(
-                                            serverId =
-                                                member.serverId
-                                                    ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
-                                        )
-                                    agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
-                                    pager.openRaftPage(
-                                        pageName = MEMBER_DETAIL_PAGE,
-                                        pageData = pageData,
-                                        storeScopeOverride = storeScope,
-                                        onMissingScope = {
-                                            bridge.toast(openProfileFailedMessage)
-                                            bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
-                                        }
-                                    )
-                                }
-                            }
-                        },
+                        onOpenMemberDetail = openMemberDetail,
                         canCreateAgents = membersPayload.canCreateAgents,
                         createAgent = MembersCreateAgentInputs(
                             createAgentSubmit = createAgentSubmit,
@@ -10353,7 +11115,8 @@ private fun SharedMembersScreen(
                             createAgentRetryMachines = retryMachines,
                             createAgentFormStore = createAgentFormStore,
                             createAgentServerId = serverId,
-                            createAgentTakenAgentNames = current.members.takenAgentNames()
+                            createAgentTakenAgentNames = current.members.takenAgentNames(),
+                            createAgentAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) }
                         ),
                         inviteHuman = MembersInviteHumanInputs(inviteHumanDialog = inviteHumanDialog),
                         bottomContentPadding = bottomContentPadding,
@@ -10394,6 +11157,7 @@ private fun SharedMembersScreen(
                                 embeddedPayload = detail,
                                 storeScopeOverride = storeScope,
                                 onClose = { selectedDetail = null },
+                                openDirectMessageInShell = openDirectMessageInShell,
                             )
                         }
                     }
@@ -10702,6 +11466,8 @@ private fun SharedHomeScreen(
     threadUnreadBadgeEnabled: Boolean = false,
     /** Server flag `sidebar_mark_all_read_v0`: with the thread badge on, rows offer "Mark All as Read". */
     sidebarMarkAllReadEnabled: Boolean = false,
+    /** Server flag `agent_lounge_v0` and not a Guest: agent DM rows carry their Lounge's sub-row. */
+    agentLoungeEnabled: Boolean = false,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
     onAppUpdateOpen: (() -> Unit)? = null,
@@ -10717,6 +11483,8 @@ private fun SharedHomeScreen(
     draftsSource: RaftDraftsSource? = null,
     onOpenDrafts: () -> Unit = {},
     onOpenComputers: () -> Unit = {},
+    /** One Computer's page (a version-gate notice's View); falls back to the Computers list. */
+    onOpenComputer: (machineId: String) -> Unit = { onOpenComputers() },
     onOpenUrl: (String) -> Unit = bridge::openUrl,
     onOpenServerSelection: () -> Unit,
     /** Server switcher "Invite Human" for the given server; null hides the entry. */
@@ -10730,7 +11498,8 @@ private fun SharedHomeScreen(
     jointInviteStore: build.raft.app.data.SharedJointInviteStore? = null,
     secondFactorRecoveryStore: build.raft.app.data.SharedSecondFactorRecoveryStore? = null,
     topSafeAreaOverride: Dp? = null,
-    bottomContentPadding: Dp = RaftAppSpacing.Lg,
+    // web Sidebar scroll content `pb-2`: 8dp under the last section's list.
+    bottomContentPadding: Dp = RaftAppSpacing.Sm,
     listPositionServerId: String? = null,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
@@ -11013,20 +11782,27 @@ private fun SharedHomeScreen(
                         emptyMap<ChannelId, HomeParentThreadUnread>()
                     }
                 }
+            // Agent Lounge v0: a Lounge joined here (your first post) shows its row without a Home reload.
+            val knownAgentLounges by RaftAgentLounges.lounges.collectAsState()
             val conversationRowProjector =
                 remember(
                     conversationDirectoryProjections,
                     draftProjection,
                     restoredRowHints,
                     threadUnreadByParent,
-                    snapshot.markedUnreadIds
+                    snapshot.markedUnreadIds,
+                    agentLoungeEnabled,
+                    snapshot.server.id,
+                    knownAgentLounges,
                 ) {
                     SharedHomeConversationRowProjector(
                         directoryProjections = conversationDirectoryProjections,
                         draftProjection = draftProjection,
                         restoredRowHints = restoredRowHints,
                         threadUnreadByParent = threadUnreadByParent,
-                        markedUnreadIds = snapshot.markedUnreadIds
+                        markedUnreadIds = snapshot.markedUnreadIds,
+                        agentLoungeEnabled = agentLoungeEnabled,
+                        agentLoungeServerId = snapshot.server.id.value,
                     )
                 }
             val servers =
@@ -11087,19 +11863,9 @@ private fun SharedHomeScreen(
             val homeShellLabels = RaftHomeShellLabels.localized()
             // Row menu "Leave Channel" awaiting its confirmation (web Sidebar `leaveConfirm`).
             var leaveConfirmChannel by remember(snapshot.server.id) { mutableStateOf<HomeChannelRow?>(null) }
-            // Web "Hide Empty Sections": a device-local display preference.
-            val hideEmptySectionsStore = remember {
-                runCatching {
-                    build.raft.app.data.KeyValueRaftSidebarHideEmptySectionsStore(
-                        build.raft.app.data.raftSharedPreferenceStore()
-                    )
-                }.getOrNull()
-            }
-            var hideEmptySections by remember(hideEmptySectionsStore) {
-                mutableStateOf(
-                    hideEmptySectionsStore?.read() ?: build.raft.app.data.RaftSidebarHideEmptySectionsDefault
-                )
-            }
+            // Web "Hide Empty Sections": a device-local display preference, shared with
+            // Settings > Appearance "Hide empty sidebar sections".
+            val hideEmptySections = build.raft.app.data.RaftDisplayPreferenceRuntime.hideEmptySidebarSections
             RaftStructuralHomeShell(
                 currentServerName = snapshot.server.name,
                 currentServerId = snapshot.server.id.value,
@@ -11200,6 +11966,7 @@ private fun SharedHomeScreen(
                 },
                 onNotificationView = { notification ->
                     val jointInviteId = notification.id.jointInviteIdFromHomeNotificationIdOrNull()
+                    val versionGateComputerId = homeComputerVersionGateTargetOrNull(notification.id, notification.targetId)
                     when {
                         notification.id == SECOND_FACTOR_RECOVERY_HOME_NOTIFICATION_ID ->
                             secondFactorRecovery.cancel()
@@ -11207,6 +11974,8 @@ private fun SharedHomeScreen(
                             jointInviteStore?.dispatch(build.raft.app.data.SharedJointInviteIntent.Accept(jointInviteId))
                         notification.id.isAppUpdateHomeNotificationId() && onAppUpdateOpen != null ->
                             onAppUpdateOpen()
+                        versionGateComputerId != null ->
+                            onOpenComputer(versionGateComputerId)
                         notification.id.isMachineHomeNotificationId() ->
                             onOpenComputers()
                         notification.targetId?.startsWith("http://") == true ||
@@ -11234,7 +12003,17 @@ private fun SharedHomeScreen(
                 },
                 onChannelClick = { threadId ->
                     val conversation = conversationsByThreadId[threadId]
-                    if (conversation == null) {
+                    // Agent Lounge v0: a Lounge's sub-row opens a conversation no list holds.
+                    val loungeIdentity =
+                        if (conversation == null) {
+                            agentLoungeConversationIdentityOrNull(snapshot.server.id.value, threadId, snapshot.directMessages)
+                        } else {
+                            null
+                        }
+                    if (loungeIdentity != null) {
+                        onOpenConversation(loungeIdentity)
+                        onIntent(SharedHomeIntent.SelectConversation(threadId))
+                    } else if (conversation == null) {
                         bridge.toast(conversationUnavailableMessage)
                     } else {
                         onOpenConversation(conversation.toThreadLaunchConversationIdentity())
@@ -11247,7 +12026,9 @@ private fun SharedHomeScreen(
                         bridge.toast(directMessageUnavailableMessage)
                     } else {
                         pinnedMemberOpenScope.launch {
-                            when (val result = repository.openPinnedMemberDirectMessage(identity)) {
+                            val result =
+                                repository.openPinnedMemberDirectMessage(identity, snapshot) ?: return@launch
+                            when (result) {
                                 is DataResult.Content -> {
                                     val conversation = result.data.conversation
                                     onOpenConversation(conversation.toThreadLaunchConversationIdentity())
@@ -11256,8 +12037,8 @@ private fun SharedHomeScreen(
                                 }
                                 is DataResult.Empty -> bridge.toast(openDirectMessageFailedMessage)
                                 is DataResult.Error ->
-                                    bridge.toast(openDirectMessageFailedPrefix + result.error.code)
-                                is DataResult.NoPermission -> bridge.toast(openDirectMessagePermissionMessage)
+                                    bridge.errorToast(openDirectMessageFailedPrefix + result.error.code, result.error)
+                                is DataResult.NoPermission -> bridge.errorToast(openDirectMessagePermissionMessage, result.blocker.traceId)
                             }
                         }
                     }
@@ -11273,8 +12054,7 @@ private fun SharedHomeScreen(
                     onIntent(SharedHomeIntent.SetJointChannelSortMode(mode))
                 },
                 onHideEmptySectionsChange = { hide ->
-                    hideEmptySections = hide
-                    hideEmptySectionsStore?.write(hide)
+                    build.raft.app.data.RaftDisplayPreferenceRuntime.setHideEmptySidebarSections(hide)
                 },
                 onSidebarOrderChange = { target, order ->
                     onIntent(target.toReorderSidebarIntent(order))
@@ -11374,6 +12154,10 @@ private fun SharedCreateChannelDialog(
     membersLoading: Boolean,
     members: List<MemberProfile>,
     errorMessage: String?,
+    archivedCollision: ArchivedNameCollision? = null,
+    onOpenArchivedCollision: () -> Unit = {},
+    onUnarchiveArchivedCollision: () -> Unit = {},
+    onClearArchivedCollision: () -> Unit = {},
     initialName: String = "",
     initialDescription: TextFieldValue = TextFieldValue(""),
     initialVisibility: SharedCreateChannelVisibility = SharedCreateChannelVisibility.Public,
@@ -11402,13 +12186,16 @@ private fun SharedCreateChannelDialog(
         onDispose { createChannelScrollCoordinator.invalidate() }
     }
     var memberSearchFocused by remember { mutableStateOf(false) }
+    // The member picker's item in the list below: after name, description and visibility, and
+    // after the archived-name warning when one is shown above them.
+    val memberPickerItemIndex = if (archivedCollision != null) 4 else 3
 
     fun scrollToMemberPicker() {
         val requestGeneration = createChannelScrollCoordinator.begin()
         val job = createChannelScrollScope.launch {
             raftUnifiedDialogScrollToTargetItem(
                 keyboardHeight = 1f,
-                targetItemIndex = 3,
+                targetItemIndex = memberPickerItemIndex,
                 targetItemScrollOffset = 0,
                 awaitRelayoutFrame = { withFrameNanos { } },
                 scrollToItem = { index, scrollOffset ->
@@ -11431,16 +12218,42 @@ private fun SharedCreateChannelDialog(
         }
     val canSubmit = trimmedName.isSubmittableChannelName() && !submitting
     val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
+    // The one commit: the footer's Create on a wide window, the phone sheet's head button.
+    val commitLabel =
+        if (submitting) {
+            stringResource(Res.string.channel_create_action_creating)
+        } else {
+            stringResource(Res.string.channel_create_action_create)
+        }
+    val commit: () -> Unit = {
+        val selectedMembers =
+            selectableMembers.filter { it.memberPickerKey in selectedMemberKeys }
+        onSubmit(
+            name,
+            description.text,
+            visibility.wireValue,
+            selectedMembers.filter { it.kind == MemberKind.Agent }.map { it.id.value },
+            selectedMembers.filter { it.kind == MemberKind.Human }.map { it.id.value }
+        )
+    }
     RaftUnifiedDialog(
         title = stringResource(Res.string.channel_create_title),
         dismissEnabled = !submitting,
         dismissOnOutsideTap = false,
         keyboardAvoidanceEnabled = true,
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        presentation = RaftDialogPresentation.Sheet,
+        commitLabel = commitLabel,
+        onCommit = commit,
+        commitEnabled = canSubmit
     ) {
         val focusedEditorBounds = rememberRaftFocusedInputBoundsResolver()
         val dialogKeyboardHeightChange = LocalRaftDialogKeyboardHeightChange.current
 
+        // The dialog's own handler first: it lifts the centred card, or shrinks the phone sheet
+        // onto the keyboard. Two frames later the list below (the card's or the sheet's body,
+        // whichever is drawn) has its keyboard-reduced viewport, and the focused field is kept
+        // inside it.
         fun keepFocusedCreateChannelEditorVisible(params: KeyboardParams) {
             dialogKeyboardHeightChange(params)
             val requestGeneration = createChannelScrollCoordinator.begin()
@@ -11449,7 +12262,7 @@ private fun SharedCreateChannelDialog(
                 if (memberSearchFocused) {
                     raftUnifiedDialogScrollToTargetItem(
                         keyboardHeight = params.height,
-                        targetItemIndex = 3,
+                        targetItemIndex = memberPickerItemIndex,
                         targetItemScrollOffset = 0,
                         awaitRelayoutFrame = { withFrameNanos { } },
                         scrollToItem = { index, scrollOffset ->
@@ -11499,43 +12312,79 @@ private fun SharedCreateChannelDialog(
                         .onGloballyPositioned { createChannelViewport = it.boundsInRoot() },
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-            item {
-                RaftBrutalTextField(
-                    label = stringResource(Res.string.channel_create_label_name),
-                    required = true,
-                    value = name,
-                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
-                    onValueChange = { name = it },
-                    placeholder = stringResource(Res.string.channel_create_placeholder_name),
-                    enabled = !submitting,
-                    hint = stringResource(Res.string.channel_create_hint_name_format),
-                    error = nameError,
-                    autoFocus = false,
-                    onFocusChanged = { isFocused ->
-                        if (isFocused) {
-                            memberSearchFocused = false
-                            createChannelScrollCoordinator.invalidate()
-                        }
-                    }
-                )
+            // Web CreateChannelDialog: the archived-name warning sits above the name it is about.
+            archivedCollision?.let { collision ->
+                item(key = "archived-name-collision") {
+                    ArchivedNameCollisionBanner(
+                        archivedChannelName = collision.archivedChannelName,
+                        canUnarchive = collision.canUnarchive,
+                        unarchiving = submitting,
+                        onUnarchive = onUnarchiveArchivedCollision,
+                        onOpen = onOpenArchivedCollision,
+                        // Web `handleChangeCollidingName`: drop the warning and clear the name.
+                        onChangeName = {
+                            name = ""
+                            onClearArchivedCollision()
+                        },
+                    )
+                }
             }
             item {
-                RaftBrutalTextField(
-                    label = stringResource(Res.string.channel_create_label_description),
-                    optional = true,
-                    value = description,
-                    onValueChange = { description = it },
-                    placeholder = stringResource(Res.string.channel_create_placeholder_description),
+                RaftField(
+                    label = stringResource(Res.string.channel_create_label_name),
+                    modifier = Modifier.fillMaxWidth(),
+                    description = stringResource(Res.string.channel_create_hint_name_format),
+                    error = nameError?.takeIf { it.isNotBlank() },
                     enabled = !submitting,
-                    maxLines = 2,
-                    autoFocus = false,
-                    onFocusChanged = { isFocused ->
-                        if (isFocused) {
-                            memberSearchFocused = false
-                            createChannelScrollCoordinator.invalidate()
-                        }
-                    }
-                )
+                    required = true
+                ) {
+                    val editor =
+                        rememberRaftDesignSystemEditor(
+                            keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
+                            keyboardActions = KeyboardActions.Default,
+                            keyboardHeightChange = {},
+                            focusRequester = remember { FocusRequester() },
+                            autoFocus = false,
+                            onFocus = {
+                                memberSearchFocused = false
+                                createChannelScrollCoordinator.invalidate()
+                            },
+                            onBlur = {}
+                        )
+                    RaftTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                        placeholder = stringResource(Res.string.channel_create_placeholder_name),
+                        keyboardOptions = editor.keyboardOptions
+                    )
+                }
+            }
+            item {
+                RaftField(
+                    label = stringResource(Res.string.channel_create_label_description),
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !submitting,
+                    optional = true
+                ) {
+                    // Two field lines (web `<textarea rows={2}>`): 42dp, growing to two 24dp lines in
+                    // the textarea's 10dp vertical padding (68dp), then it scrolls.
+                    RaftTextarea(
+                        value = description,
+                        onValueChange = { description = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = stringResource(Res.string.channel_create_placeholder_description),
+                        minHeight = 42.dp,
+                        maxHeight = maxOf(42.dp, 24.dp * 2 + 20.dp),
+                        inputModifier =
+                            rememberRaftTextareaEditorModifier(
+                                onFocus = {
+                                    memberSearchFocused = false
+                                    createChannelScrollCoordinator.invalidate()
+                                }
+                            )
+                    )
+                }
             }
             item {
                 SharedCreateChannelVisibilityControl(
@@ -11592,27 +12441,13 @@ private fun SharedCreateChannelDialog(
                 variant = RaftButtonVariant.Ghost,
                 size = RaftButtonSize.Lg
             )
-            RaftBrutalActionButton(
-                label =
-                    if (submitting) {
-                        stringResource(Res.string.channel_create_action_creating)
-                    } else {
-                        stringResource(Res.string.channel_create_action_create)
-                    },
+            RaftButton(
+                text = commitLabel,
                 enabled = canSubmit,
-                minWidth = 126.dp,
-                backgroundColor = RaftColor.AccentPink,
-                onClick = {
-                    val selectedMembers =
-                        selectableMembers.filter { it.memberPickerKey in selectedMemberKeys }
-                    onSubmit(
-                        name,
-                        description.text,
-                        visibility.wireValue,
-                        selectedMembers.filter { it.kind == MemberKind.Agent }.map { it.id.value },
-                        selectedMembers.filter { it.kind == MemberKind.Human }.map { it.id.value }
-                    )
-                }
+                modifier = Modifier.widthIn(min = 126.dp),
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg,
+                onClick = commit
             )
         }
     }
@@ -11775,7 +12610,9 @@ internal fun SharedHomeSearchPanel(
     timeContext: AppShellThreadTimeContext? = null,
     shellScope: RaftAppShellScope = rememberRaftAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
-    modifier: Modifier = Modifier.fillMaxSize()
+    modifier: Modifier = Modifier.fillMaxSize(),
+    // The wide layout's search panel over the page (web SearchOverlay); null: the page or column.
+    overlay: HomeSearchOverlayChrome? = null,
 ) {
     val channelFilters = remember(homeState) { homeSearchChannelFilters(homeState) }
     val channelEntityLabel = stringResource(Res.string.search_entity_channel)
@@ -11944,6 +12781,212 @@ internal fun SharedHomeSearchPanel(
             historyEditing -> historyEditing = false
         }
     }
+    val searchFilters: @Composable () -> Unit = {
+                SharedHomeSearchFilters(
+                    state = state,
+                    channelFilters = channelFilters,
+                    scopeAnchorChanged = { scopeAnchorResolver = it },
+                    senderAnchorChanged = { senderAnchorResolver = it },
+                    channelAnchorChanged = { channelAnchorResolver = it },
+                    timeAnchorChanged = { timeAnchorResolver = it },
+                    sortAnchorChanged = { sortAnchorResolver = it },
+                    onOpenFilter = { id, anchor ->
+                        when (id) {
+                            "scope" -> scopeAnchor = anchor
+                            "sender" -> senderAnchor = anchor
+                            "channel" -> channelAnchor = anchor
+                            "time" -> timeAnchor = anchor
+                            "sort" -> sortAnchor = anchor
+                        }
+                        openFilterId = id
+                    },
+                    onIntent = onIntent,
+                    showSenderFilter = showSenderFilter,
+                    horizontalPadding = if (overlay != null) SearchOverlayFiltersHorizontalPadding else SearchControlsHorizontalPadding,
+                    // From and Channel open the web's Combobox popup under the chip, with search,
+                    // at any number of options (artin 2026-11-02), never a sheet.
+                    // Composed only while open, so a closed chip builds no option list.
+                    chipPopover = { id ->
+                        if (openFilterId == id) when (id) {
+                            "sender" ->
+                                RaftFilterComboboxPopover(
+                                    expanded = true,
+                                    title = stringResource(Res.string.search_filter_from),
+                                    searchPlaceholder = stringResource(Res.string.search_filter_search),
+                                    searchText = senderSearch,
+                                    onSearchChange = { senderSearch = it },
+                                    options = state.senderFilterOptions(),
+                                    // One sender, like the web: a pick replaces the current sender.
+                                    selectedIds = setOfNotNull(state.selectedSenderId),
+                                    onToggle = {
+                                        onIntent(SharedHomeSearchSavedIntent.SetSearchSender(it))
+                                    },
+                                    onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchSender(null)) },
+                                    onDismiss = { openFilterId = null },
+                                    multiSelect = false,
+                                    showClear = true,
+                                    // An empty list while senders load (or fail) says so.
+                                    status =
+                                        when {
+                                            state.senderFiltersLoading -> stringResource(Res.string.search_filter_loading_senders)
+                                            else -> state.senderFiltersErrorCode
+                                        }
+                                )
+                            "channel" ->
+                                RaftFilterComboboxPopover(
+                                    expanded = true,
+                                    title = stringResource(Res.string.search_filter_channels),
+                                    searchPlaceholder = stringResource(Res.string.search_filter_search),
+                                    searchText = channelSearch,
+                                    onSearchChange = { channelSearch = it },
+                                    options = channelFilters.map { RaftFilterOption(it.id, it.label, it.icon) },
+                                    selectedIds = state.selectedChannelId?.let { setOf(it) } ?: emptySet(),
+                                    onToggle = {
+                                        onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(it))
+                                    },
+                                    onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(null)) },
+                                    onDismiss = { openFilterId = null },
+                                    multiSelect = false,
+                                    showClear = true
+                                )
+                            else -> Unit
+                        }
+                    }
+                )
+    }
+    val searchPopups: @Composable () -> Unit = {
+            when (openFilterId) {
+                "scope" ->
+                    RaftFilterPopover(
+                        anchor = scopeAnchor,
+                        title = stringResource(Res.string.search_filter_scope),
+                        searchPlaceholder = "",
+                        searchText = "",
+                        onSearchChange = {},
+                        options = SearchScope.entries.map { RaftFilterOption(it.key, it.localizedSearchLabel()) },
+                        selectedIds = state.selectedScopes.mapTo(linkedSetOf()) { it.key },
+                        onToggle = { key ->
+                            SearchScope.entries.firstOrNull { it.key == key }?.let {
+                                onIntent(SharedHomeSearchSavedIntent.ToggleSearchScope(it))
+                            }
+                        },
+                        onClear = { onIntent(SharedHomeSearchSavedIntent.ClearSearchScopes) },
+                        onDismiss = { openFilterId = null },
+                        widthDp = 180f,
+                        multiSelect = true,
+                        searchable = false,
+                        surfaceBorderColor = SearchPopoverBorderColor,
+                        surfaceShadowColor = SearchPopoverShadowColor,
+                        selectedRowColor = RaftColor.SurfaceWhite,
+                        showClearWhenSelected = true
+                    )
+                "time" ->
+                    RaftFilterPopover(
+                        anchor = timeAnchor,
+                        title = stringResource(Res.string.search_filter_time),
+                        searchPlaceholder = "",
+                        searchText = "",
+                        onSearchChange = {},
+                        options = SearchTimeRange.entries.map { RaftFilterOption(it.key, it.localizedSearchLabel()) },
+                        selectedIds = setOf(state.timeRange.key),
+                        onToggle = { key ->
+                            SearchTimeRange.entries.firstOrNull { it.key == key }?.let {
+                                onIntent(SharedHomeSearchSavedIntent.SetSearchTimeRange(it))
+                            }
+                        },
+                        onClear = {},
+                        onDismiss = { openFilterId = null },
+                        widthDp = 168f,
+                        multiSelect = false,
+                        searchable = false,
+                        surfaceBorderColor = SearchPopoverBorderColor,
+                        surfaceShadowColor = SearchPopoverShadowColor,
+                        selectedRowColor = RaftColor.SurfaceWhite
+                    )
+                "sort" ->
+                    RaftFilterPopover(
+                        anchor = sortAnchor,
+                        title = stringResource(Res.string.search_filter_sort),
+                        searchPlaceholder = "",
+                        searchText = "",
+                        onSearchChange = {},
+                        options =
+                            listOf(
+                                RaftFilterOption("relevance", stringResource(Res.string.search_sort_relevant)),
+                                RaftFilterOption("recent", stringResource(Res.string.search_sort_recent))
+                            ),
+                        selectedIds = setOf(state.sort.searchKey),
+                        onToggle = { key ->
+                            when (key) {
+                                "recent" -> onIntent(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Recent))
+                                else -> onIntent(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Relevance))
+                            }
+                        },
+                        onClear = {},
+                        onDismiss = { openFilterId = null },
+                        widthDp = 148f,
+                        multiSelect = false,
+                        searchable = false,
+                        surfaceBorderColor = SearchPopoverBorderColor,
+                        surfaceShadowColor = SearchPopoverShadowColor,
+                        selectedRowColor = RaftColor.SurfaceWhite
+                    )
+                else -> Unit
+            }
+            activePinMenu?.let { menu ->
+                RaftBaseMenuOverlay(
+                    anchor = menu.anchor,
+                    items =
+                        listOf(
+                            RaftBaseMenuItem(
+                                id = SharedHomeSearchPinMenuActionToggle,
+                                label = if (menu.isPinned) unpinLabel else pinLabel,
+                                icon = if (menu.isPinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin
+                            )
+                        ),
+                    selectedId = "",
+                    uppercaseLabels = false,
+                    onDismiss = { activePinMenu = null },
+                    onSelect = { actionId ->
+                        activePinMenu = null
+                        dispatchSearchEntityPinMenuSelection(
+                            actionId = actionId,
+                            target = menu.target,
+                            onTogglePin = onTogglePin
+                        )
+                    }
+                )
+            }
+    }
+    if (overlay != null) {
+        CompositionLocalProvider(LocalRaftMemberAppBotResolver provides memberAppBotResolver) {
+            RaftDesignSystemTheme {
+                HomeSearchOverlayPanel(
+                    overlay = overlay,
+                    state = state,
+                    homeState = homeState,
+                    entityResults = entityResults,
+                    frequentEntityResults = frequentEntityResults,
+                    groupedResults = groupedResults,
+                    editor = searchEditor,
+                    focusRequester = searchFocusRequester,
+                    fieldModifier = searchInputFocus.fieldModifier,
+                    filterMenuOpen = openFilterId != null || activePinMenu != null,
+                    filters = searchFilters,
+                    popups = searchPopups,
+                    cacheServerId = cacheServerId,
+                    agentStatusResolver = agentStatusResolver,
+                    memberAvatarResolver = memberAvatarResolver,
+                    timeContext = timeContext,
+                    listState = listState,
+                    onIntent = onIntent,
+                    onOpenItem = onOpenItem,
+                    onOpenEntity = onOpenEntity,
+                )
+            }
+        }
+        return
+    }
     // raft-ui search panel: designsystem type tokens and badges, on the canvas layer.
     CompositionLocalProvider(LocalRaftMemberAppBotResolver provides memberAppBotResolver) {
     RaftDesignSystemTheme {
@@ -11973,7 +13016,8 @@ internal fun SharedHomeSearchPanel(
                 if (!tabHead) SharedHomeSearchDivider()
                 RaftAppShellBodyTopBanner()
                 if (onExpandToSearchTab != null) {
-                    channelFilters.firstOrNull { it.id == state.selectedChannelId }?.let { scope ->
+                    (channelFilters.firstOrNull { it.id == state.selectedChannelId }
+                        ?: agentLoungeSearchScopeOrNull(state.selectedChannelId))?.let { scope ->
                         SharedHomeSearchScopeRow(
                             scopeLabel = scope.searchScopeLabel(),
                             onExpand = {
@@ -11983,27 +13027,7 @@ internal fun SharedHomeSearchPanel(
                         )
                     }
                 }
-                SharedHomeSearchFilters(
-                    state = state,
-                    channelFilters = channelFilters,
-                    scopeAnchorChanged = { scopeAnchorResolver = it },
-                    senderAnchorChanged = { senderAnchorResolver = it },
-                    channelAnchorChanged = { channelAnchorResolver = it },
-                    timeAnchorChanged = { timeAnchorResolver = it },
-                    sortAnchorChanged = { sortAnchorResolver = it },
-                    onOpenFilter = { id, anchor ->
-                        when (id) {
-                            "scope" -> scopeAnchor = anchor
-                            "sender" -> senderAnchor = anchor
-                            "channel" -> channelAnchor = anchor
-                            "time" -> timeAnchor = anchor
-                            "sort" -> sortAnchor = anchor
-                        }
-                        openFilterId = id
-                    },
-                    onIntent = onIntent,
-                    showSenderFilter = showSenderFilter
-                )
+                searchFilters()
                 SharedHomeSearchDivider()
                 LazyColumn(
                     state = listState,
@@ -12107,7 +13131,8 @@ internal fun SharedHomeSearchPanel(
                                     modifier =
                                         Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = SearchMessagesHorizontalPadding, vertical = 12.dp),
+                                            // web `px-(--column-margin) py-2`; the heading's 8dp is the top.
+                                            .padding(start = SearchMessagesHorizontalPadding, end = SearchMessagesHorizontalPadding, bottom = 8.dp),
                                 ) {
                                     RaftText(
                                         text = stringResource(Res.string.search_home_frequent_empty),
@@ -12144,11 +13169,13 @@ internal fun SharedHomeSearchPanel(
                                 )
                                 }
                             }
+                            item(key = "search-home-frequent-end") { RaftSearchListEnd() }
                         }
                     }
                     if (entityResults.isNotEmpty()) {
                         item {
-                            SharedHomeSearchSectionLabel(stringResource(Res.string.search_section_entities))
+                            // web SearchEntityResultsSection: "Server entities" and their count.
+                            SharedHomeSearchSectionLabel(stringResource(Res.string.search_section_entities), count = entityResults.size)
                         }
                         items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
                             Box(
@@ -12185,10 +13212,15 @@ internal fun SharedHomeSearchPanel(
                             )
                             }
                         }
+                        item(key = "search-entities-end") { RaftSearchListEnd() }
                     }
                     if (groupedResults.isNotEmpty()) {
                         item {
-                            SharedHomeSearchSectionLabel(stringResource(Res.string.search_section_messages))
+                            // web SearchMessageResultsSection: the message count once loaded.
+                            SharedHomeSearchSectionLabel(
+                                stringResource(Res.string.search_section_messages),
+                                count = state.totalCount.takeIf { it > 0 && !state.loading },
+                            )
                         }
                     }
                     groupedResults.forEachIndexed { groupIndex, group ->
@@ -12241,6 +13273,9 @@ internal fun SharedHomeSearchPanel(
                             }
                         }
                     }
+                    if (groupedResults.isNotEmpty()) {
+                        item(key = "search-messages-end") { RaftSearchListEnd() }
+                    }
                     if (state.hasMore) {
                         item {
                             SharedHomeLoadMoreRow(
@@ -12255,147 +13290,7 @@ internal fun SharedHomeSearchPanel(
                     }
                 }
             }
-            when (openFilterId) {
-                "scope" ->
-                    RaftFilterPopover(
-                        anchor = scopeAnchor,
-                        title = stringResource(Res.string.search_filter_scope),
-                        searchPlaceholder = "",
-                        searchText = "",
-                        onSearchChange = {},
-                        options = SearchScope.entries.map { RaftFilterOption(it.key, it.localizedSearchLabel()) },
-                        selectedIds = state.selectedScopes.mapTo(linkedSetOf()) { it.key },
-                        onToggle = { key ->
-                            SearchScope.entries.firstOrNull { it.key == key }?.let {
-                                onIntent(SharedHomeSearchSavedIntent.ToggleSearchScope(it))
-                            }
-                        },
-                        onClear = { onIntent(SharedHomeSearchSavedIntent.ClearSearchScopes) },
-                        onDismiss = { openFilterId = null },
-                        widthDp = 180f,
-                        multiSelect = true,
-                        searchable = false,
-                        surfaceBorderColor = SearchPopoverBorderColor,
-                        surfaceShadowColor = SearchPopoverShadowColor,
-                        selectedRowColor = RaftColor.SurfaceWhite,
-                        showClearWhenSelected = true
-                    )
-                "sender" ->
-                    RaftFilterSheet(
-                        title = stringResource(Res.string.search_filter_from),
-                        searchPlaceholder = stringResource(Res.string.search_filter_search_senders),
-                        searchText = senderSearch,
-                        onSearchChange = { senderSearch = it },
-                        options = state.senderFilterOptions(),
-                        // One sender, like the web: a pick replaces the current sender.
-                        selectedIds = setOfNotNull(state.selectedSenderId),
-                        onToggle = {
-                            onIntent(SharedHomeSearchSavedIntent.SetSearchSender(it))
-                        },
-                        onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchSender(null)) },
-                        onDismiss = { openFilterId = null },
-                        multiSelect = false,
-                        showClear = true,
-                        // An empty list while senders load (or fail) says so.
-                        status =
-                            when {
-                                state.senderFiltersLoading -> stringResource(Res.string.search_filter_loading_senders)
-                                else -> state.senderFiltersErrorCode
-                            }
-                    )
-                "channel" ->
-                    RaftFilterSheet(
-                        title = stringResource(Res.string.search_filter_channels),
-                        searchPlaceholder = stringResource(Res.string.search_filter_search),
-                        searchText = channelSearch,
-                        onSearchChange = { channelSearch = it },
-                        options = channelFilters.map { RaftFilterOption(it.id, it.label, it.icon) },
-                        selectedIds = state.selectedChannelId?.let { setOf(it) } ?: emptySet(),
-                        onToggle = {
-                            onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(it))
-                        },
-                        onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(null)) },
-                        onDismiss = { openFilterId = null },
-                        multiSelect = false,
-                        showClear = true
-                    )
-                "time" ->
-                    RaftFilterPopover(
-                        anchor = timeAnchor,
-                        title = stringResource(Res.string.search_filter_time),
-                        searchPlaceholder = "",
-                        searchText = "",
-                        onSearchChange = {},
-                        options = SearchTimeRange.entries.map { RaftFilterOption(it.key, it.localizedSearchLabel()) },
-                        selectedIds = setOf(state.timeRange.key),
-                        onToggle = { key ->
-                            SearchTimeRange.entries.firstOrNull { it.key == key }?.let {
-                                onIntent(SharedHomeSearchSavedIntent.SetSearchTimeRange(it))
-                            }
-                        },
-                        onClear = {},
-                        onDismiss = { openFilterId = null },
-                        widthDp = 168f,
-                        multiSelect = false,
-                        searchable = false,
-                        surfaceBorderColor = SearchPopoverBorderColor,
-                        surfaceShadowColor = SearchPopoverShadowColor,
-                        selectedRowColor = RaftColor.SurfaceWhite
-                    )
-                "sort" ->
-                    RaftFilterPopover(
-                        anchor = sortAnchor,
-                        title = stringResource(Res.string.search_filter_sort),
-                        searchPlaceholder = "",
-                        searchText = "",
-                        onSearchChange = {},
-                        options =
-                            listOf(
-                                RaftFilterOption("relevance", stringResource(Res.string.search_sort_relevant)),
-                                RaftFilterOption("recent", stringResource(Res.string.search_sort_recent))
-                            ),
-                        selectedIds = setOf(state.sort.searchKey),
-                        onToggle = { key ->
-                            when (key) {
-                                "recent" -> onIntent(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Recent))
-                                else -> onIntent(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Relevance))
-                            }
-                        },
-                        onClear = {},
-                        onDismiss = { openFilterId = null },
-                        widthDp = 148f,
-                        multiSelect = false,
-                        searchable = false,
-                        surfaceBorderColor = SearchPopoverBorderColor,
-                        surfaceShadowColor = SearchPopoverShadowColor,
-                        selectedRowColor = RaftColor.SurfaceWhite
-                    )
-                else -> Unit
-            }
-            activePinMenu?.let { menu ->
-                RaftBaseMenuOverlay(
-                    anchor = menu.anchor,
-                    items =
-                        listOf(
-                            RaftBaseMenuItem(
-                                id = SharedHomeSearchPinMenuActionToggle,
-                                label = if (menu.isPinned) unpinLabel else pinLabel,
-                                icon = if (menu.isPinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin
-                            )
-                        ),
-                    selectedId = "",
-                    uppercaseLabels = false,
-                    onDismiss = { activePinMenu = null },
-                    onSelect = { actionId ->
-                        activePinMenu = null
-                        dispatchSearchEntityPinMenuSelection(
-                            actionId = actionId,
-                            target = menu.target,
-                            onTogglePin = onTogglePin
-                        )
-                    }
-                )
-            }
+            searchPopups()
         }
     }
     }
@@ -12520,7 +13415,7 @@ private fun SharedHomeSearchHistoryTextAction(
         modifier =
             Modifier
                 .height(44.dp)
-                .clickable(onClick = onClick)
+                .raftClickable(onClick = onClick)
                 .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -12662,8 +13557,8 @@ private fun SharedHomeSearchToolbar(
         RaftTopPageHeaderFrame(
             backgroundColor = RaftColor.Frame,
             topSafeArea = topSafeAreaPadding,
-            contentStartPadding = SearchControlsHorizontalPadding,
-            contentEndPadding = SearchControlsHorizontalPadding,
+            contentStartPadding = SearchHeadHorizontalPadding,
+            contentEndPadding = SearchHeadHorizontalPadding,
         ) {
             SharedHomeSearchInput(
                 query = editor.value,
@@ -12688,7 +13583,7 @@ private fun SharedHomeSearchToolbar(
     SharedHomeSearchControlsRow(
         topSafeAreaPadding = topSafeAreaPadding,
         // Back sits at the top-bar edge inset, its arrow 14dp in, like every page header.
-        startPadding = if (onClose != null) RaftBackButtonDefaults.EdgeInset else SearchControlsHorizontalPadding
+        startPadding = if (onClose != null) RaftBackButtonDefaults.EdgeInset else SearchHeadHorizontalPadding
     ) {
         if (onClose != null) {
             RaftBackButton(onClick = onClose, label = stringResource(Res.string.common_back))
@@ -12750,7 +13645,7 @@ private fun SharedHomeSearchScopeRow(scopeLabel: String, onExpand: () -> Unit) {
 @Composable
 private fun SharedHomeSearchControlsRow(
     topSafeAreaPadding: Dp,
-    startPadding: Dp = SearchControlsHorizontalPadding,
+    startPadding: Dp = SearchHeadHorizontalPadding,
     content: @Composable RowScope.() -> Unit
 ) {
     Row(
@@ -12759,9 +13654,10 @@ private fun SharedHomeSearchControlsRow(
                 .fillMaxWidth()
                 .background(RaftColor.Canvas)
                 .padding(top = topSafeAreaPadding)
-                .height(56.dp)
+                // A head: 56 with a finger, 44 under a mouse or trackpad (sizing v12).
+                .height(RaftTheme.controls.headHeight)
                 .raftSafeAreaHorizontalPadding()
-                .padding(start = startPadding, end = SearchControlsHorizontalPadding),
+                .padding(start = startPadding, end = SearchHeadHorizontalPadding),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content
@@ -13064,6 +13960,7 @@ private fun SharedHomeSavedHeader(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SharedHomeSearchFilters(
     state: SharedHomeSearchPanelState,
@@ -13075,7 +13972,11 @@ internal fun SharedHomeSearchFilters(
     sortAnchorChanged: (RaftPopoverAnchorResolver) -> Unit,
     onOpenFilter: (String, RaftPopoverAnchor) -> Unit,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
-    showSenderFilter: Boolean = true
+    showSenderFilter: Boolean = true,
+    horizontalPadding: Dp = SearchControlsHorizontalPadding,
+    // The popup a chip opens under itself (the sender and channel comboboxes), composed in the
+    // chip's own box so it anchors to it; given the filter id.
+    chipPopover: @Composable (String) -> Unit = {}
 ) {
     val hasActiveFilters =
         state.selectedScopes.isNotEmpty() ||
@@ -13092,38 +13993,35 @@ internal fun SharedHomeSearchFilters(
     val scopeLabel = stringResource(Res.string.search_filter_scope)
     val channelLabel = stringResource(Res.string.search_filter_channel)
     // raft-ui PickerTriggerButton: an applied filter (web `appliedFilterProps`) is the
-    // `info-soft` wash. Web MessageSearchPage labels every chip (From, Scope, Channel, the time
-    // range, the sort) and wraps them; a phone row scrolls sideways instead, its first and last
-    // chips 16dp in from the edges (content padding, so a scrolled chip runs to the edge). A chip
-    // is never wider than the row (web `max-w-full`): a long sender or channel name ends in an
-    // ellipsis.
+    // `info-soft` wash. Web SearchFilterBar labels every chip (From, Scope, Channel, the time
+    // range, the sort, Clear All) in a `flex flex-wrap gap-2` row: the chips wrap onto more
+    // lines, 8dp apart both ways, 16dp in from the edges. A chip is never wider than the row
+    // (web `max-w-full`): a long sender or channel name ends in an ellipsis.
     SharedHomeSearchControlsBlock {
-        val backSwipeRowState = rememberLazyListState()
-        val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
         BoxWithConstraints(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding()) {
-            val chipModifier = Modifier.widthIn(max = (maxWidth - SearchControlsHorizontalPadding * 2).coerceAtLeast(0.dp))
-            LazyRow(
-                state = backSwipeRowState,
-                userScrollEnabled = backSwipeRow.userScrollEnabled,
-                modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = SearchControlsHorizontalPadding),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            val chipModifier = Modifier.widthIn(max = (maxWidth - horizontalPadding * 2).coerceAtLeast(0.dp))
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = horizontalPadding),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 homeSearchFilterOrder(showSenderFilter).forEach { filter ->
-                    item(key = "search-filter-${filter.id}") {
+                    key("search-filter-${filter.id}") {
                         when (filter) {
                             HomeSearchFilter.Sender ->
-                                RaftAnchoredPickerTrigger(
-                                    modifier = chipModifier,
-                                    label = state.localizedSenderFilterLabel(),
-                                    anchorIdentity = "search_filter:sender",
-                                    hasValue = senderActive,
-                                    iconName = RaftLucideIconName.CircleUser,
-                                    onAnchorChanged = senderAnchorChanged,
-                                    onClick = { anchor ->
-                                        onOpenFilter("sender", anchor)
-                                    }
-                                )
+                                Box(chipModifier) {
+                                    RaftAnchoredPickerTrigger(
+                                        label = state.localizedSenderFilterLabel(),
+                                        anchorIdentity = "search_filter:sender",
+                                        hasValue = senderActive,
+                                        iconName = RaftLucideIconName.CircleUser,
+                                        onAnchorChanged = senderAnchorChanged,
+                                        onClick = { anchor ->
+                                            onOpenFilter("sender", anchor)
+                                        }
+                                    )
+                                    chipPopover("sender")
+                                }
                             HomeSearchFilter.Scope ->
                                 RaftAnchoredPickerTrigger(
                                     modifier = chipModifier,
@@ -13137,17 +14035,19 @@ internal fun SharedHomeSearchFilters(
                                     }
                                 )
                             HomeSearchFilter.Channel ->
-                                RaftAnchoredPickerTrigger(
-                                    modifier = chipModifier,
-                                    label = selectedChannel?.label ?: channelLabel,
-                                    anchorIdentity = "search_filter:channel",
-                                    hasValue = channelActive,
-                                    iconName = selectedChannel?.iconName ?: RaftLucideIconName.Hash,
-                                    onAnchorChanged = channelAnchorChanged,
-                                    onClick = { anchor ->
-                                        onOpenFilter("channel", anchor)
-                                    }
-                                )
+                                Box(chipModifier) {
+                                    RaftAnchoredPickerTrigger(
+                                        label = selectedChannel?.label ?: channelLabel,
+                                        anchorIdentity = "search_filter:channel",
+                                        hasValue = channelActive,
+                                        iconName = selectedChannel?.iconName ?: RaftLucideIconName.Hash,
+                                        onAnchorChanged = channelAnchorChanged,
+                                        onClick = { anchor ->
+                                            onOpenFilter("channel", anchor)
+                                        }
+                                    )
+                                    chipPopover("channel")
+                                }
                             HomeSearchFilter.Time ->
                                 RaftAnchoredPickerTrigger(
                                     modifier = chipModifier,
@@ -13163,32 +14063,25 @@ internal fun SharedHomeSearchFilters(
                         }
                     }
                 }
-                item {
-                    RaftAnchoredPickerTrigger(
-                        modifier = chipModifier,
-                        label = state.sort.localizedSearchLabel(),
-                        anchorIdentity = "search_filter:sort",
-                        hasValue = sortActive,
-                        iconName = RaftLucideIconName.ArrowDownUp,
-                        onAnchorChanged = sortAnchorChanged,
-                        onClick = { anchor ->
-                            onOpenFilter("sort", anchor)
-                        }
-                    )
-                }
+                RaftAnchoredPickerTrigger(
+                    modifier = chipModifier,
+                    label = state.sort.localizedSearchLabel(),
+                    anchorIdentity = "search_filter:sort",
+                    hasValue = sortActive,
+                    iconName = RaftLucideIconName.ArrowDownUp,
+                    onAnchorChanged = sortAnchorChanged,
+                    onClick = { anchor ->
+                        onOpenFilter("sort", anchor)
+                    }
+                )
                 if (hasActiveFilters) {
-                    item {
-                        RaftPickerTriggerButton(
-                            text = stringResource(Res.string.search_filter_clear_all),
-                            showIndicator = false,
-                            onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) }
-                        )
-                    }
-                }
-                if (!showSenderFilter) {
-                    item {
-                        Spacer(Modifier.width(0.dp))
-                    }
+                    // web SearchFilterBar: Clear All is a `ghost` `md` Button, not a picker chip.
+                    RaftButton(
+                        text = stringResource(Res.string.search_filter_clear_all),
+                        onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) },
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftButtonSize.Md
+                    )
                 }
             }
         }
@@ -13297,7 +14190,8 @@ private fun SharedHomePanelMessage(
             )
         }
         if (actionLabel != null && onAction != null) {
-            SharedHomePanelButton(label = actionLabel, selected = false, onClick = onAction)
+            // raft-ui Button md: an action in a card.
+            RaftButton(text = actionLabel, onClick = onAction)
         }
     }
 }
@@ -13345,8 +14239,10 @@ private fun SharedHomeSavedResultCard(
     val source =
         when {
             item.kind == InboxItemKind.DirectMessage -> item.channelName.takeIf { it.isNotBlank() }?.let { "@$it" }
-            item.kind == InboxItemKind.Thread -> item.parentChannelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
-            else -> item.channelName.takeIf { it.isNotBlank() }?.let { "#$it" }
+            item.kind == InboxItemKind.Thread ->
+                agentLoungeLabelOrNull(item.parentChannelId?.value)
+                    ?: item.parentChannelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
+            else -> agentLoungeLabelOrNull(item.channelId.value) ?: item.channelName.takeIf { it.isNotBlank() }?.let { "#$it" }
         }
     val contentAnchor = remember(openGestureKey) { RaftLiveRootAnchorRef(identity = openGestureKey) }
     fun dispatchSavedGesture(owner: SharedHomeSavedGestureOwner, source: String) {
@@ -13685,11 +14581,12 @@ private fun SharedHomeSearchErrorState(
         actions =
             if (showAction) {
                 {
-                    RaftBrutalActionButton(
-                        label = copy.actionLabel,
+                    RaftButton(
+                        text = copy.actionLabel,
                         onClick = onAction,
-                        leadingIcon = RaftLucideIconName.RefreshCw,
-                        backgroundColor = RaftColor.SurfaceWhite
+                        variant = RaftButtonVariant.Default,
+                        size = RaftButtonSize.Lg,
+                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
                     )
                 }
             } else {
@@ -13737,9 +14634,12 @@ internal fun TextStyle.withHomeSearchVisualTextScale(scale: Float): TextStyle {
 private fun SharedHomeSearchSectionLabel(
     label: String,
     visualTextScale: Float = 1f,
+    count: Int? = null,
 ) {
     RaftSearchSectionHeading(
         label = label,
+        count = count,
+        countStyle = RaftTheme.typography.monoMeta.withHomeSearchVisualTextScale(visualTextScale),
         style =
             RaftTheme.typography.footnote
                 .copy(fontWeight = FontWeight.Bold)
@@ -13759,10 +14659,10 @@ internal fun sharedHomeSearchTimestampTextStyle() =
         letterSpacing = 0.sp
     )
 
-// raft-ui search-entity: a flat `px-4 py-3` row (min 64dp) on the panel, `gap-3` between a
-// 27dp leading avatar / IconTile and the text; `text-body` semibold title with its type
-// Badge, `text-callout` `foreground-muted` description; hairline separators from 55dp;
-// pressed lays `fill-pressed`. An archived channel mutes its title and description.
+// raft-ui search-entity: a flat list-cell row, `py-3` (min 64dp) with its content 20dp in,
+// `gap-3` between a 27dp leading avatar / IconTile and the text; `text-body` semibold title with
+// its type Badge, `text-callout` `foreground-muted` description; 2dp between rows, no line;
+// pressed fills the cell shape. An archived channel mutes its title and description.
 @Composable
 internal fun SharedHomeSearchEntityRow(
     result: SearchEntityResult,
@@ -13794,7 +14694,7 @@ internal fun SharedHomeSearchEntityRow(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = RaftSearchMetrics.EntityMinHeight)
-                .raftSearchRowSeparator(showSeparator, RaftSearchMetrics.EntitySeparatorInset, RaftColor.BorderHairline)
+                .raftSearchRowGap(showSeparator)
                 .raftSearchRowPressed(pressed, RaftColor.FillPressed)
                 .raftCaptureLiveRootAnchor(contentAnchor)
                 .raftGesturePointerInput(gestureOwner, interactionSource) { owner ->
@@ -13852,7 +14752,7 @@ internal fun SharedHomeSearchEntityRow(
                 if (appBot != null) {
                     RaftAppBotBadge(identity = appBot, botName = result.title, appearance = RaftBadgeAppearance.Outline)
                 } else {
-                    SharedHomeEntityTypeBadge(result.type, muted = mutedArchived)
+                    SharedHomeEntityTypeBadge(result.type, agent = result.showPresence, muted = mutedArchived)
                 }
                 if (result.archived) {
                     RaftBadge(
@@ -13862,18 +14762,30 @@ internal fun SharedHomeSearchEntityRow(
                     )
                 }
             }
-            // A channel matched by its description shows it cut like a message snippet (web
+            // A channel says "Channel" (web `searchEntities` subtitle `{ kind: "channel" }`); one
+            // matched by its description shows that instead, cut like a message snippet (web
             // `searchEntitySubtitleForQuery`): only when the description holds a hit.
+            val channelLabel = stringResource(Res.string.search_entity_channel)
+            val channelDescriptionHit =
+                shown.type == SearchEntityType.Channel &&
+                    shown.subtitleDataRange == null &&
+                    homeSearchHighlightRanges(shown.subtitle, query).isNotEmpty()
             val subtitle =
-                if (shown.type == SearchEntityType.Channel && shown.subtitleDataRange == null) {
-                    channelDescriptionSnippet(shown.subtitle, query)
-                } else {
-                    shown.subtitle
+                when {
+                    channelDescriptionHit -> channelDescriptionSnippet(shown.subtitle, query)
+                    shown.type == SearchEntityType.Channel -> channelLabel
+                    else -> shown.subtitle
                 }
             if (subtitle.isNotBlank() || appBot == null) RaftSearchHitText(
                 text = subtitle,
                 query = query,
-                highlightRange = shown.subtitleDataRange.takeIf { subtitle == shown.subtitle },
+                // Only real data (a handle, a description) is marked, never the "Channel" label.
+                highlightRange =
+                    when {
+                        channelDescriptionHit -> null
+                        shown.type == SearchEntityType.Channel -> IntRange.EMPTY
+                        else -> shown.subtitleDataRange
+                    },
                 style = typography.callout.withHomeSearchVisualTextScale(visualTextScale),
                 color = if (mutedArchived) RaftColor.ForegroundHint else RaftColor.TextMuted,
                 maxLines = 1,
@@ -13954,27 +14866,30 @@ internal fun SettingsServerSidebarOrderSnapshot?.pinnedChannelConversationIds():
 
 // raft-ui search-entity Badge: `solid` `default`, or `soft` `muted` on an archived channel.
 @Composable
-private fun SharedHomeEntityTypeBadge(type: SearchEntityType, muted: Boolean = false) {
+// web EntityResultRow: the kind is a machine label after the name in the outline badge
+// (DS `rf-tag`) — Channel, Computer, Agent, or Human; a DM says who it is with (an agent's DM
+// is Agent, a person's Human).
+private fun SharedHomeEntityTypeBadge(type: SearchEntityType, agent: Boolean, muted: Boolean = false) {
     RaftBadge(
         text =
             when (type) {
                 SearchEntityType.Channel -> stringResource(Res.string.search_entity_channel)
-                SearchEntityType.DirectMessage -> stringResource(Res.string.search_entity_dm)
-                SearchEntityType.Human -> stringResource(Res.string.search_entity_dm)
-                SearchEntityType.Agent -> stringResource(Res.string.search_entity_dm)
                 SearchEntityType.Computer -> stringResource(Res.string.search_entity_computer)
+                SearchEntityType.Agent -> stringResource(Res.string.search_entity_agent)
+                SearchEntityType.Human -> stringResource(Res.string.search_badge_human)
+                SearchEntityType.DirectMessage ->
+                    stringResource(if (agent) Res.string.search_entity_agent else Res.string.search_badge_human)
             },
-        appearance = if (muted) RaftBadgeAppearance.Soft else RaftBadgeAppearance.Solid,
+        appearance = RaftBadgeAppearance.Outline,
         variant = if (muted) RaftBadgeVariant.Muted else RaftBadgeVariant.Default
     )
 }
 
-// raft-ui search-thread: a flat block (hairline separator from 16dp, no card or wash). The
-// `px-4 pt-3 pb-1` header holds a mono-meta `foreground-hint` line (Thread Badge, #channel,
-// hit count, time at the end) over the `text-callout` semibold title; the hits follow as
+// raft-ui search-thread: a flat block (no line, card or wash). The `px-5 pt-3` header holds a
+// mono-meta `foreground-hint` line (Thread Badge, #channel, hit count, time at the end) over the `text-callout` semibold title; the hits follow as
 // search-message rows.
 @Composable
-private fun SharedHomeThreadResultGroup(
+internal fun SharedHomeThreadResultGroup(
     group: HomeSearchResultGroup.Thread,
     query: String,
     showSeparator: Boolean = false,
@@ -13991,13 +14906,14 @@ private fun SharedHomeThreadResultGroup(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .raftSearchRowSeparator(showSeparator, RaftSearchMetrics.MessageSeparatorInset, RaftColor.BorderHairline)
+                .raftSearchRowGap(showSeparator)
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .raftSafeAreaHorizontalPadding().padding(start = RaftSearchMetrics.Inset, top = 12.dp, end = RaftSearchMetrics.Inset, bottom = 4.dp),
+                    // threadHeader `pt-3 pb-0`, then threadMessages' `py-2` before the first hit.
+                    .raftSafeAreaHorizontalPadding().padding(start = RaftSearchMetrics.Inset, top = 12.dp, end = RaftSearchMetrics.Inset, bottom = RaftSearchMetrics.ListPaddingVertical),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Row(
@@ -14013,8 +14929,9 @@ private fun SharedHomeThreadResultGroup(
                     RaftBadge(
                         text = stringResource(Res.string.search_meta_thread),
                         icon = {
+                            // raft-ui ThreadIcon, as the web's thread Badge.
                             RaftLucideIcon(
-                                RaftLucideIconName.MessageSquare,
+                                RaftLucideIconName.Thread,
                                 color = raftArgbHex(RaftColor.StickerInk),
                                 modifier = Modifier.size(11.dp)
                             )
@@ -14061,7 +14978,6 @@ private fun SharedHomeThreadResultGroup(
             SharedHomeSearchMessageResultRow(
                 item = item,
                 query = query,
-                nested = true,
                 showSeparator = index > 0,
                 cacheServerId = cacheServerId,
                 memberAvatarResolver = memberAvatarResolver,
@@ -14069,18 +14985,18 @@ private fun SharedHomeThreadResultGroup(
                 onOpen = { onOpenItem(item) }
             )
         }
+        RaftSearchListEnd()
     }
 }
 
-// raft-ui search-message: a flat `px-4 py-3` row (hairline separator from 16dp, pressed
-// `fill-pressed`). The header line is mono-meta `foreground-hint` with the sender first
-// (14dp avatar, `text-callout` bold `foreground`), then #channel, thread, and the time at
-// the end; the body is `text-callout` `foreground-muted`, two lines, 2dp below.
+// raft-ui search-message: a flat list-cell row, `py-3` with its content 20dp in (8dp cell inset +
+// 12dp padding), 2dp from the row above and no line between hits; pressed fills the cell shape.
+// The header line is mono-meta `foreground-hint` with the sender first (14dp avatar,
+// `text-callout` bold `foreground`), then #channel, thread, and the time at the end; the body is `text-callout` `foreground-muted`, two lines, 2dp below.
 @Composable
 internal fun SharedHomeSearchMessageResultRow(
     item: InboxItem,
     query: String,
-    nested: Boolean = false,
     showSeparator: Boolean = false,
     cacheServerId: String? = null,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
@@ -14096,35 +15012,54 @@ internal fun SharedHomeSearchMessageResultRow(
     val metaStyle = sharedHomeSearchTimestampTextStyle()
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    Column(
+    // web MessageHitRow (DS `.rf-hit`): the sender's 27dp avatar in its own column, then who /
+    // where / thread / when on one line and a two-line excerpt under it, 12dp after the avatar.
+    Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .raftSearchRowSeparator(showSeparator, RaftSearchMetrics.MessageSeparatorInset, RaftColor.BorderHairline)
+                .raftSearchRowGap(showSeparator)
                 .raftSearchRowPressed(pressed, RaftColor.FillPressed)
                 .clickable(interactionSource = interactionSource, indication = null, onClick = onOpen)
                 .raftSafeAreaHorizontalPadding().padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        horizontalArrangement = Arrangement.spacedBy(RaftSearchMetrics.EntityGap),
+        verticalAlignment = Alignment.Top
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        val senderLabel = sender?.takeIf { it.isNotBlank() }
+        // web MessageHitRow AvatarSlot: a sender without an avatar shows the kind's default, the
+        // robot for an agent and the person glyph on lavender for anyone else.
+        val resolvedAvatar = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver)
+        val senderIsAgent = (item.latestActivitySenderKind ?: item.lastMessageSenderKind) == MemberKind.Agent
+        RaftAppAvatar(
+            avatarWireValue = resolvedAvatar ?: if (senderIsAgent) agentAvatarFallbackWireValue(item.key) else null,
+            label = if (resolvedAvatar == null && !senderIsAgent) "" else senderLabel.orEmpty(),
+            avatarSize = RaftSearchMetrics.EntityLeading,
+            cacheSubject = avatarCacheIdentity?.subject,
+            cacheServerId = avatarCacheIdentity?.serverId
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (!sender.isNullOrBlank()) {
-                    SharedHomeSearchSenderMeta(
-                        sender = sender,
-                        avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
-                        avatarCacheIdentity = avatarCacheIdentity,
-                        modifier = Modifier.widthIn(max = 180.dp)
-                    )
-                }
-                if (!nested) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (senderLabel != null) {
+                        RaftText(
+                            text = senderLabel,
+                            style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold),
+                            color = RaftColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 180.dp)
+                        )
+                    }
+                    // web MessageHitRow: a hit nested in its thread still names its channel and
+                    // says "thread", like a top-level one.
                     Text(
                         text = searchResultSourceLabel(item),
                         style = metaStyle,
@@ -14133,36 +15068,37 @@ internal fun SharedHomeSearchMessageResultRow(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (item.kind == InboxItemKind.Thread) {
+                        SharedHomeSearchThreadMeta(metaStyle)
+                    }
+                    if (item.hasDraft) {
+                        SharedHomeDraftPencilIcon(compact = true)
+                    }
                 }
-                if (item.kind == InboxItemKind.Thread && !nested) {
-                    SharedHomeSearchThreadMeta(metaStyle)
-                }
-                if (item.hasDraft) {
-                    SharedHomeDraftPencilIcon(compact = true)
+                if (!time.isNullOrBlank()) {
+                    RaftRelativeTimestampText(
+                        value = time,
+                        timeContext = timeContext,
+                        style = metaStyle,
+                        color = RaftColor.ForegroundHint,
+                        maxLines = 1
+                    )
                 }
             }
-            if (!time.isNullOrBlank()) {
-                RaftRelativeTimestampText(
-                    value = time,
-                    timeContext = timeContext,
-                    style = metaStyle,
-                    color = RaftColor.ForegroundHint,
-                    maxLines = 1
-                )
-            }
+            RaftSearchHitText(
+                text = preview,
+                query = query,
+                style = RaftTheme.typography.callout,
+                color = RaftColor.TextMuted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
-        RaftSearchHitText(
-            text = preview,
-            query = query,
-            style = RaftTheme.typography.callout,
-            color = RaftColor.TextMuted,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 
-// search-message `messageThreadMeta`: a 12dp message icon and "thread" in the meta type.
+// search-message `messageThreadMeta`: a 12dp raft-ui ThreadIcon and "thread" (web
+// `search.threadInline`, lower case in English) in the meta type.
 @Composable
 private fun SharedHomeSearchThreadMeta(style: TextStyle) {
     Row(
@@ -14170,12 +15106,12 @@ private fun SharedHomeSearchThreadMeta(style: TextStyle) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         RaftLucideIcon(
-            RaftLucideIconName.MessageSquare,
+            RaftLucideIconName.Thread,
             color = raftArgbHex(RaftColor.ForegroundHint),
             modifier = Modifier.size(12.dp)
         )
         Text(
-            text = stringResource(Res.string.search_meta_thread),
+            text = stringResource(Res.string.search_meta_thread_inline),
             style = style,
             color = RaftColor.ForegroundHint,
             maxLines = 1
@@ -14202,7 +15138,17 @@ private fun searchResultSourceLabel(item: InboxItem): String {
         } else {
             item.channelName
         }
-    return if (item.kind == InboxItemKind.DirectMessage) "@$name" else "#$name"
+    if (item.kind == InboxItemKind.DirectMessage) return "@$name"
+    // Agent Lounge v0: a hit in a Lounge (or a thread in one) names the Lounge, never `#<agent>-lounge`.
+    val placeId = if (item.kind == InboxItemKind.Thread) item.parentChannelId ?: item.channelId else item.channelId
+    return agentLoungeLabelOrNull(placeId.value) ?: "#$name"
+}
+
+/** Agent Lounge v0: a search scoped to a Lounge (no channel list holds it) reads "{Name}'s Lounge". */
+internal fun agentLoungeSearchScopeOrNull(channelId: String?): SearchChannelFilterItem? {
+    val id = channelId?.takeIf { it.isNotBlank() } ?: return null
+    val label = agentLoungeLabelOrNull(id) ?: return null
+    return SearchChannelFilterItem(id = id, label = label, icon = RaftLucideIconName.Users)
 }
 
 /** The raft-ui search hit spans; [RaftSearchHitText] draws the sticker behind them. */
@@ -14306,47 +15252,13 @@ private fun SharedHomeLoadMoreRow(
                 .fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
-        RaftBrutalActionButton(
-            label = if (loading) stringResource(Res.string.common_loading) else label,
-            enabled = !loading,
-            minWidth = 0.dp,
-            minHeight = RaftMetrics.ControlHeightMd,
-            // raft-ui Button `md` (32dp): `text-footnote` bold.
-            textStyle = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.Bold),
-            onClick = onClick
-        )
-    }
-}
-
-@Composable
-private fun SharedHomePanelButton(
-    label: String,
-    enabled: Boolean = true,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    dense: Boolean = false,
-    onClick: () -> Unit
-) {
-    val background =
-        when {
-            !enabled -> RaftColor.TextMutedGray.copy(alpha = 0.18f)
-            selected -> RaftColor.BrandYellow
-            else -> RaftColor.SurfaceWhite
-        }
-    Button(
-        enabled = enabled,
-        onClick = onClick,
-        modifier =
-            modifier
-                .raftControlSurface(fill = background, border = if (enabled && selected) RaftColor.StickerInk else RaftColor.BorderBlack)
-                .padding(horizontal = if (dense) 5.dp else 11.dp, vertical = if (dense) 6.dp else 7.dp)
-    ) {
-        Text(
-            text = label,
-            style = RaftType.SectionLabel.copy(fontSize = if (dense) 9.sp else 11.sp, lineHeight = if (dense) 11.sp else 13.sp),
-            color = if (!enabled) RaftColor.TextMutedGray else if (selected) RaftColor.StickerInk else RaftColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+        // raft-ui Button `md` (32dp).
+        RaftButton(
+            text = if (loading) stringResource(Res.string.common_loading) else label,
+            onClick = onClick,
+            variant = RaftButtonVariant.Default,
+            size = RaftButtonSize.Md,
+            enabled = !loading
         )
     }
 }
@@ -14521,7 +15433,26 @@ internal fun SearchEntityResult.destinationOrNull(): HomeSearchEntityDestination
     return HomeSearchEntityDestination.Member(identity)
 }
 
-private sealed interface HomeSearchResultGroup {
+/**
+ * The conversation a search entity opens in the wide shell's detail pane beside the inline
+ * Search, or null when it has no inline home there (a computer, a person or agent): those open
+ * their page, as on the phone.
+ */
+internal fun SearchEntityResult.homeSearchInlineConversationOrNull(): ThreadLaunchConversationIdentity? =
+    (destinationOrNull() as? HomeSearchEntityDestination.Conversation)?.identity
+
+/**
+ * Opens a search entity: inline first when [openInline] takes it, else its page. An inline host
+ * that declines (returns false) must not swallow the click: the wide Search returned false for
+ * computers and people, and `false ?: page` never reached the page (artin 11-02, Compose 版).
+ */
+internal fun openHomeSearchEntityResult(
+    entity: SearchEntityResult,
+    openInline: ((SearchEntityResult) -> Boolean)?,
+    openPage: () -> Boolean,
+): Boolean = openInline?.invoke(entity) == true || openPage()
+
+internal sealed interface HomeSearchResultGroup {
     data class Message(val item: InboxItem) : HomeSearchResultGroup
     data class Thread(
         val key: String,
@@ -14933,20 +15864,15 @@ internal fun SearchSenderFilterItem.toHomeSearchEntityResult(
         key = "sender:${sourceServerId.value}:$kind:${identity.memberId.value}",
         type = if (kind == MemberKind.Agent) SearchEntityType.Agent else SearchEntityType.Human,
         title = displayLabel,
+        // web searchEntities: an agent's subtitle is its "@handle", a person's their handle; with
+        // none, the fixed kind label, which is never marked.
         subtitle =
-            buildString {
-                append(if (kind == MemberKind.Agent) agentLabel else personLabel)
-                if (handle.isNotBlank()) append(" · @$handle")
-                if (conversationIdentity == null) append(" · $membersLabel")
+            when {
+                handle.isBlank() -> if (kind == MemberKind.Agent) agentLabel else personLabel
+                kind == MemberKind.Agent -> "@$handle"
+                else -> handle
             },
-        // Only the "@handle" is data; "Agent" and "Members" are fixed labels.
-        subtitleDataRange =
-            if (handle.isBlank()) {
-                IntRange.EMPTY
-            } else {
-                val start = (if (kind == MemberKind.Agent) agentLabel else personLabel).length + " · ".length
-                start until start + 1 + handle.length
-            },
+        subtitleDataRange = if (handle.isBlank()) IntRange.EMPTY else null,
         threadId = conversationIdentity?.threadId?.value,
         memberIdentity = identity,
         conversationIdentity = conversationIdentity,
@@ -14999,12 +15925,6 @@ private val SearchSort.searchKey: String
             SearchSort.Relevance -> "relevance"
             SearchSort.Recent -> "recent"
         }
-
-private fun String.searchAvatarSeed(): String =
-    lowercase()
-        .replace(Regex("[^a-z0-9]+"), "-")
-        .trim('-')
-        .ifBlank { "default" }
 
 @Composable
 private fun SharedHomeSessionShell(
@@ -15197,7 +16117,10 @@ internal data class SharedHomeConversationRowProjector(
      */
     val threadUnreadByParent: Map<ChannelId, HomeParentThreadUnread> = emptyMap(),
     /** [HomeSnapshot.markedUnreadIds]: rows marked unread with no count (botiverse/slock #11795). */
-    val markedUnreadIds: Set<String> = emptySet()
+    val markedUnreadIds: Set<String> = emptySet(),
+    /** Agent Lounge v0 gate (flag on, not a Guest): agent DM rows get their Lounge's sub-row. */
+    val agentLoungeEnabled: Boolean = false,
+    val agentLoungeServerId: String? = null,
 ) {
     fun project(conversation: HomeConversationRow): RaftHomeConversationItem {
         // Only channel rows carry the followed-thread segment (web `SidebarChannelItem`).
@@ -15214,6 +16137,9 @@ internal data class SharedHomeConversationRowProjector(
                     // A known count (read prediction, realtime) is newer than anything restored.
                     restoredRowHints[conversation.threadId.value]?.takeIf { !conversation.unreadCountKnown }
                 )
+        ).copy(
+            agentLounge =
+                (conversation as? HomeDirectMessageRow)?.agentLoungeSidebarRow(agentLoungeEnabled, agentLoungeServerId)
         )
     }
 
@@ -15289,8 +16215,11 @@ internal fun HomeServerDrawerState.toRaftHomeServerDrawerHostedSections(
 internal fun SharedHomeConversationRowSeed.withRestoredHint(hint: HomeRowRestoredHint?): SharedHomeConversationRowSeed {
     if (hint == null) return this
     val usePreview = lastMessagePreview.isNullOrBlank() && !hint.lastMessagePreview.isNullOrBlank()
+    val restoredUnread = if (unreadCount > 0) unreadCount else hint.unreadCount.coerceAtLeast(0)
     return copy(
-        unreadCount = if (unreadCount > 0) unreadCount else hint.unreadCount.coerceAtLeast(0),
+        unreadCount = restoredUnread,
+        // The last-known @ mark rides with the last-known count it belongs to.
+        mentioned = mentioned || (restoredUnread > 0 && hint.mentionCount > 0),
         lastMessagePreview = if (usePreview) hint.lastMessagePreview else lastMessagePreview,
         lastMessageAt = if (usePreview) hint.lastMessageAt ?: lastMessageAt else lastMessageAt,
         lastMessageSenderName = if (usePreview) hint.lastMessageSenderName else lastMessageSenderName
@@ -16146,6 +17075,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is MessageUpdated -> "message_updated"
         is DirectMessageCreated -> "dm_new"
         is ThreadFollowersUpdated -> "thread_followers_updated"
+        is build.raft.app.model.ThreadReplyUpdated -> "thread_reply_updated"
         is ScopeReadUpdated -> "scope_read_updated"
         is AgentTypingUpdated -> "agent_typing"
         is ThreadUpdated -> "thread_updated"
@@ -16161,6 +17091,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is ServerFeaturesChanged -> "server_features_changed"
         is ActivityChanged -> "activity_changed"
         is ServerAppearanceUpdated -> "appearance_updated"
+        is build.raft.app.model.UserProfileUpdated -> "user_profile_updated"
         is ComputerRestartDone -> "computer_restart_done"
         is AgentCreated -> "agent_created"
         is SyncResumeResponse -> "sync_resume"
@@ -16183,6 +17114,7 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is MessageNew,
         is MessageUpdated,
         is ThreadFollowersUpdated,
+        is build.raft.app.model.ThreadReplyUpdated,
         is ScopeReadUpdated,
         is AgentTypingUpdated,
         is ThreadUpdated,
@@ -16199,6 +17131,7 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is ServerDeleted,
         is ServerPlanUpdated,
         is ServerAppearanceUpdated,
+        is build.raft.app.model.UserProfileUpdated,
         is AgentCreated -> "realtime_membership_apply"
         is Heartbeat -> "realtime_heartbeat"
         is PerReceiverReadStateChanged,
@@ -16349,6 +17282,7 @@ private fun RealtimeEvent.serverIdHint(): ServerId? =
         is ServerFeaturesChanged -> serverId
         is ActivityChanged -> serverId
         is ServerAppearanceUpdated -> serverId
+        is build.raft.app.model.UserProfileUpdated -> serverId
         else -> null
     }
 
@@ -16439,7 +17373,7 @@ internal fun PageErrorContent(
     subtitle: String,
     iconName: RaftLucideIconName?,
     headerContentStartPadding: Dp = 20.dp,
-    headerTitleStyle: TextStyle = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+    headerTitleStyle: TextStyle = RaftType.Headline,
     message: String,
     code: String,
     retryLabel: String? = "Retry",
@@ -16512,11 +17446,12 @@ private fun PageErrorBody(
                 color = RaftColor.AccentRed
             )
             if (retryLabel != null && onRetry != null) {
-                RaftBrutalActionButton(
-                    label = retryLabel,
+                RaftButton(
+                    text = retryLabel,
                     onClick = onRetry,
-                    leadingIcon = RaftLucideIconName.RefreshCw,
-                    backgroundColor = RaftColor.SurfaceWhite
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Lg,
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
                 )
             }
         }
@@ -16625,10 +17560,21 @@ internal fun BottomTabBarVisualContent() {
     // rather than fillMaxWidth because the capture window can be wider than 390dp
     // (task #370).
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
+        // The fifth tab is the current server, as on the web: fixtureData homeChannelList.serverName.
+        val serverState = rememberRaftMobileNavServerPopoverState()
         RaftBottomTabBar(
             items = bottomTabBarSmokeItems,
             onSelect = {},
-            modifier = Modifier.width(390.dp)
+            modifier = Modifier.width(390.dp),
+            serverTab = { tabModifier ->
+                val server = RaftServerSwitcherItem(id = "visual-server", name = "Raft Design", slug = "raft-design")
+                RaftMobileNavServerPopoverItem(
+                    label = server.name,
+                    state = serverState,
+                    avatar = { size -> ServerSwitcherAvatarTile(server, size = size) },
+                    modifier = tabModifier,
+                )
+            },
         )
     }
 }
@@ -16652,11 +17598,15 @@ internal fun SettingsRowVisualContent() {
 }
 
 @Composable
-internal fun SettingsPageVisualContent() {
+internal fun SettingsPageVisualContent(
+    // PROTOTYPE (native nav): a pushed page with its safe area and a working Back.
+    protoVariant: String? = null,
+    protoOnBack: (() -> Unit)? = null,
+) {
     val pager = LocalActivity.current.getPager() as Pager
     val variant =
         remember(pager.pageData.params.toString()) {
-            pager.pageData.params.optString("variant", "account").ifBlank { "account" }
+            protoVariant ?: pager.pageData.params.optString("variant", "account").ifBlank { "account" }
         }
     if (variant == "server-danger-modal") {
         SettingsServerDangerModalVisualContent()
@@ -16669,15 +17619,15 @@ internal fun SettingsPageVisualContent() {
     Box(
         modifier =
             Modifier
-                .width(390.dp)
+                .then(if (protoOnBack != null) Modifier.fillMaxSize() else Modifier.width(390.dp))
                 .background(RaftColor.SurfaceWhite)
     ) {
         SettingsDetailShell(
             title = spec.title,
             subtitle = settingsVisualHeaderSubtitle(spec.variant),
             iconName = spec.iconName,
-            applyTopSafeArea = false,
-            onBack = {}
+            applyTopSafeArea = protoOnBack != null,
+            onBack = protoOnBack ?: {}
         ) {
             SettingsVisualPageBody(spec)
         }
@@ -16764,7 +17714,10 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
                 passwordExpanded = variant == "account-password-expanded",
                 // web components.settings.account.error-state surfaces only the avatar upload
                 // failure (`accountInitialError`); no save, password or provider error.
-                avatarErrorCode = "upload_failed".takeIf { variant == "account-error" }
+                avatarErrorCode = "upload_failed".takeIf { variant == "account-error" },
+                // web SettingsPanel account tab: UsageDataSettingsCard, on by default.
+                usageDataVisible = true,
+                usageDataSharing = true
             ),
         applyTopSafeArea = false,
         onPasswordChange = { _, _ -> },
@@ -16890,9 +17843,21 @@ private fun SettingsVisualNotificationsContent() {
         onPermission = {},
         onSettings = {},
         onTest = {},
-        onRetry = {}
+        onRetry = {},
+        // The web case's account and zone (packages/visual-testing: a browser in Asia/Shanghai).
+        nowEpochMillis = SETTINGS_VISUAL_NOTIFICATIONS_NOW_MILLIS,
+        timeZoneId = "Asia/Shanghai",
+        accountSettingsOverride =
+            build.raft.app.data.RaftNotificationAccountSettings(
+                quietHours = build.raft.app.data.RaftNotificationQuietHours(timeZone = "Asia/Shanghai"),
+                mobileDelay = "inactive",
+                version = 1
+            )
     )
 }
+
+/** 2026-11-03T08:00:00Z: a fixed clock for the notifications fixture's pause choices. */
+private const val SETTINGS_VISUAL_NOTIFICATIONS_NOW_MILLIS = 1_793_692_800_000L
 
 private fun settingsVisualServerSnapshot(): SettingsServerSnapshot {
     val fixture = settingsVisualFixtureValues
@@ -17319,17 +18284,20 @@ private val homeActivityVisualDraftProjection =
     ).toSharedThreadComposerDraftProjection()
 
 @Composable
-internal fun HomeSavedVisualContent() {
+internal fun HomeSavedVisualContent(
+    // PROTOTYPE (native nav): a pushed full-screen page with a working Back.
+    protoOnBack: (() -> Unit)? = null,
+) {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
-    Box(modifier = Modifier.width(342.dp).height(620.dp)) {
+    Box(modifier = if (protoOnBack != null) Modifier.fillMaxSize() else Modifier.width(342.dp).height(620.dp)) {
         SharedHomeSavedPanel(
             state = homeSavedVisualState.copy(refreshing = params.optBoolean("task797Refreshing", false)),
             onIntent = {},
-            onClose = {},
+            onClose = protoOnBack ?: {},
             onOpenItem = {},
             bottomContentPadding = 12.dp,
-            includeTopSafeArea = params.optBoolean("task797IncludeTopSafeArea", false)
+            includeTopSafeArea = protoOnBack != null || params.optBoolean("task797IncludeTopSafeArea", false)
         )
     }
 }
@@ -17358,7 +18326,11 @@ internal fun HomeActivityVisualContent() {
  * `segment` picks all / unread / mentions / pinned.
  */
 @Composable
-internal fun RaftActivityTabVisualContent(stale: Boolean = false) {
+internal fun RaftActivityTabVisualContent(
+    stale: Boolean = false,
+    // PROTOTYPE (native nav): the whole screen with its safe area, the host draws the tab bar.
+    protoFullScreen: Boolean = false,
+) {
     val pager = LocalActivity.current.getPager() as Pager
     val segment =
         remember(pager.pageData.params.toString()) {
@@ -17367,7 +18339,11 @@ internal fun RaftActivityTabVisualContent(stale: Boolean = false) {
     val filter =
         build.raft.app.data.InboxFilter.entries.firstOrNull { (it.scopeWireValue ?: it.wireValue) == segment }
             ?: build.raft.app.data.InboxFilter.All
-    Column(modifier = Modifier.width(390.dp).height(844.dp).background(RaftColor.SurfaceWhite)) {
+    Column(
+        modifier =
+            (if (protoFullScreen) Modifier.fillMaxSize() else Modifier.width(390.dp).height(844.dp))
+                .background(RaftColor.SurfaceWhite)
+    ) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             SharedHomeActivityScreen(
                 state =
@@ -17380,7 +18356,7 @@ internal fun RaftActivityTabVisualContent(stale: Boolean = false) {
                 onIntent = {},
                 onOpenItem = {},
                 onClose = null,
-                includeTopSafeArea = false,
+                includeTopSafeArea = protoFullScreen,
                 activityTaskStatusBadgesEnabled = true,
                 draftProjection = homeActivityVisualDraftProjection,
                 foregroundEpoch = 0L,
@@ -17388,7 +18364,7 @@ internal fun RaftActivityTabVisualContent(stale: Boolean = false) {
                 modifier = Modifier.fillMaxSize()
             )
         }
-        RaftBottomTabBar(
+        if (!protoFullScreen) RaftBottomTabBar(
             items =
                 appShellPhoneBottomTabs(
                     selectedTab = "activity",
@@ -17489,29 +18465,45 @@ internal fun SettingsRouteVisualScreen() {
         )
     }
 
-    if (route.destination == SettingsDestinationHome) {
-        SettingsHomeContent(
-            payload = appShellSettingsHomePayload(session),
-            onSelect = {},
-        )
-    } else {
-        SettingsRouteVisualFixtureDetailContent(
-            pager = pager,
-            eventBus = eventBus,
-            session = session,
-            authDataSource = authDataSource,
-            settingsCapabilities = settingsCapabilities,
-            storeScope = storeScope,
-            handsFeedbackVisualFixture = handsFeedbackVisualFixture,
-            settingsState = state,
-            notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
-            onSettingsIntent = {},
-            route = route,
-            onBack = {},
-            bottomContentPadding = RaftAppSpacing.Lg,
-            timeContext = null,
-            onLogout = {},
-        )
+    // The web case's frozen clock: the Appearance preview message is sent at 20:30. Its device
+    // switches are a fresh browser's (nothing saved, no app-only rows), not this device's.
+    CompositionLocalProvider(
+        LocalSettingsAppearancePreviewTimeLabel provides "20:30",
+        LocalSettingsAppearanceVisualSwitches provides
+            SettingsAppearanceVisualSwitches(
+                showLiveAgentActivity = true,
+                showAgentModelName = true,
+                hideEmptySidebarSections = false,
+                showAppOnlyRows = false,
+            ),
+    ) {
+        if (route.destination == SettingsDestinationHome) {
+            // On a phone Settings is a page pushed from the server panel (raft-design #712), so it
+            // has Back, as the web's phone Settings does.
+            SettingsHomeContent(
+                payload = appShellSettingsHomePayload(session, serverPanelPages = true),
+                onBack = {},
+                onSelect = {},
+            )
+        } else {
+            SettingsRouteVisualFixtureDetailContent(
+                pager = pager,
+                eventBus = eventBus,
+                session = session,
+                authDataSource = authDataSource,
+                settingsCapabilities = settingsCapabilities,
+                storeScope = storeScope,
+                handsFeedbackVisualFixture = handsFeedbackVisualFixture,
+                settingsState = state,
+                notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
+                onSettingsIntent = {},
+                route = route,
+                onBack = {},
+                bottomContentPadding = RaftAppSpacing.Lg,
+                timeContext = null,
+                onLogout = {},
+            )
+        }
     }
 }
 

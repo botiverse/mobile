@@ -5,10 +5,8 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
-import kotlin.math.roundToInt
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.objcPtr
-import kotlinx.cinterop.useContents
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSError
 import platform.Foundation.NSTimer
@@ -19,7 +17,6 @@ import platform.Foundation.NSURLRequest
 import platform.Foundation.NSURLRequestReloadIgnoringLocalCacheData
 import platform.Foundation.NSURLRequestUseProtocolCachePolicy
 import platform.UIKit.UIColor
-import platform.UIKit.UIScreen
 import platform.UIKit.UIView
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
 import platform.UIKit.UIViewAutoresizingFlexibleWidth
@@ -104,7 +101,8 @@ internal fun raftIsSameObjCObject(a: Any?, b: Any?): Boolean =
  * Port of the Kuikly iOS `RaftSandboxWebView.m`: WKWebView rebuilt whenever a configuration-time
  * attribute changes (scripts, navigation policy, storage, ephemeral store, injected script, host
  * bridge), sandbox navigation fence, `raftHostPort` bridge with origin + document checks, KVO
- * navigation state, desktop `pageZoom` (task #514) and web content process recovery (task #6).
+ * navigation state and web content process recovery (task #6). Desktop width comes from the injected
+ * viewport meta ([raftWebViewDesktopModeViaViewportMeta]), which WKWebView honours on its own.
  */
 internal class RaftIosSandboxWebView(
     private val container: UIView,
@@ -119,7 +117,6 @@ internal class RaftIosSandboxWebView(
     private var cacheEnabled = false
     private var ephemeral = true
     private var injectedJavaScript = ""
-    private var useWideViewPort = false
     private var allowedNavigationSchemes: Set<String> = emptySet()
     private var hostEventsEnabled = false
     /** [RaftWebViewConfig.mainFrameOrigin]: every top-level document stays on it. */
@@ -176,10 +173,6 @@ internal class RaftIosSandboxWebView(
             loadCurrentSrc()
         }
         updateAllowedNavigationSchemes(config.allowedNavigationSchemes)
-        if (useWideViewPort != config.useWideViewPort) {
-            useWideViewPort = config.useWideViewPort
-            applyDesktopModeScale()
-        }
     }
 
     fun bindController(controller: RaftWebViewController) {
@@ -191,8 +184,6 @@ internal class RaftIosSandboxWebView(
 
     fun layout() {
         webView?.setFrame(container.bounds)
-        // task #514: the widen flag can arrive before the first layout pass (width 0).
-        applyDesktopModeScale()
     }
 
     fun dispose() {
@@ -264,7 +255,6 @@ internal class RaftIosSandboxWebView(
         currentLoading = false
         currentTitle = ""
         lastNavigationStateKey = ""
-        applyDesktopModeScale()
         loadCurrentSrc()
     }
 
@@ -310,21 +300,6 @@ internal class RaftIosSandboxWebView(
         currentProgress = (view.estimatedProgress * 100.0 + 0.5).toInt().coerceIn(0, 100)
         currentLoading = view.loading
         notifyNavigationState(force = false)
-    }
-
-    /** task #514: desktop fit via `pageZoom`, ratio from the shared formula (physical pixels). */
-    private fun applyDesktopModeScale() {
-        val view = webView ?: return
-        if (!useWideViewPort) {
-            if (view.pageZoom != 1.0) view.pageZoom = 1.0
-            return
-        }
-        val widthPoints = container.bounds.useContents { size.width }
-        if (widthPoints <= 0.0) return
-        val scale = view.window?.screen?.scale?.takeIf { it > 0.0 } ?: UIScreen.mainScreen.scale.takeIf { it > 0.0 } ?: 1.0
-        val viewportPx = (widthPoints * scale).roundToInt()
-        val percent = raftFilePreviewDesktopScalePercent(viewportPx, scale.toFloat()) ?: return
-        view.pageZoom = maxOf(percent / 100.0, 0.01)
     }
 
     private fun updateAllowedNavigationSchemes(next: Set<String>) {
@@ -670,3 +645,10 @@ private class RaftIosWebViewScriptMessageHandler(
 
 /** WKWebView applies the safe area and the keyboard itself. */
 internal actual val raftWebViewNeedsHostBottomInsets: Boolean = false
+
+/**
+ * WKWebView lays a `width=1280` viewport meta out at 1280 CSS px and fits it to the view, pinch-zoomable,
+ * with no flag. `pageZoom` (task #514, before) scaled CSS px without widening the layout: a page with
+ * its own `width=device-width` (the Artifact page) drew at ~0.3x in the top-left corner (1.19.2).
+ */
+internal actual val raftWebViewDesktopModeViaViewportMeta: Boolean = true

@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -27,11 +28,19 @@ import build.raft.app.data.AppLinkResult
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
+import build.raft.app.data.SharedArtifactScreenshotStore
 import build.raft.app.data.SharedArtifactSummaryStore
 import build.raft.app.data.SharedServerFeatureFlags
+import build.raft.app.data.APP_LINK_READ_MODE_V1
+import build.raft.app.data.AppLinkBatchRead
+import build.raft.app.data.AppLinkCardView
+import build.raft.app.data.INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY
+import build.raft.app.data.appLinkCardReadLocale
+import build.raft.app.data.runtimeFormRequestLanguageTag
+import kotlinx.coroutines.awaitCancellation
 import build.raft.app.data.WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
 import build.raft.app.data.answersFor
-import build.raft.app.data.artifactMessageLinkTargets
+import build.raft.app.links.planRaftMessageLinks
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.model.ServerId
@@ -42,6 +51,8 @@ import build.raft.app.data.appLinkDomain
 import build.raft.app.data.appLinkPreviewsApply
 import build.raft.app.data.messageView
 import build.raft.app.markdown.LocalRaftAppLinkChips
+import build.raft.app.markdown.LocalRaftMarkdownBlockCardHost
+import build.raft.app.markdown.RaftMarkdownBlockCardHost
 import build.raft.app.markdown.RaftAppLinkChipHost
 import build.raft.app.markdown.raftAppLinkAsciiHost
 import build.raft.app.markdown.raftAppLinkKeepEnd
@@ -68,6 +79,8 @@ internal data class ThreadAppLinkPreviewHost(
     val toast: (String) -> Unit,
     /** Workspace Artifacts links; null where they aren't read (fixtures, no provider). */
     val artifacts: ThreadArtifactLinkHost? = null,
+    /** Where `interactive_link_cards` is read (the batched link-card read); null: always the GET (fixtures). */
+    val featureFlags: SharedServerFeatureFlags? = null,
 )
 
 /**
@@ -81,6 +94,8 @@ internal data class ThreadArtifactLinkHost(
     val appHosts: StateFlow<List<String>>,
     val featureFlags: SharedServerFeatureFlags?,
     val webBaseUrl: String,
+    /** The cards' screenshots (in memory for this viewer); null where none are read (fixtures). */
+    val screenshots: SharedArtifactScreenshotStore? = null,
 )
 
 /** One message's Artifact links answered `ok`, and the hosts they were split on. */
@@ -96,7 +111,7 @@ internal data class ThreadArtifactLinks(
 
 /**
  * One message's Artifact references (web core `useMessageLinkCards`: its bare links on the app
- * hosts, in message order, each reference once, at most [build.raft.app.data.MESSAGE_OBJECT_LINK_LIMIT])
+ * hosts, in message order, each reference once, at most [build.raft.app.links.MESSAGE_OBJECT_LINK_LIMIT])
  * and their answers so far, by [build.raft.app.data.ArtifactLinkTarget.key]; a target with no
  * answer is still loading.
  */
@@ -122,7 +137,7 @@ internal fun rememberThreadArtifactLinkAnswers(host: ThreadArtifactLinkHost?, se
     if (host == null) return ThreadArtifactLinkAnswers.None
     val enabled = rememberServerFeatureLatched(host.featureFlags, ServerId(serverId), WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY)
     val appHosts by host.appHosts.collectAsState()
-    val targets = remember(enabled, appHosts, body) { if (enabled) artifactMessageLinkTargets(body, appHosts) else emptyList() }
+    val targets = remember(enabled, appHosts, body) { if (enabled) planRaftMessageLinks(body, appHosts).objectTargets else emptyList() }
     if (targets.isEmpty()) return ThreadArtifactLinkAnswers.None
     val answersFlow = remember(host.summaries, serverId, targets) { host.summaries.answersFlow(serverId, targets) }
     val answers by answersFlow.collectAsState(initial = host.summaries.state.value.answersFor(serverId, targets))
@@ -156,6 +171,8 @@ internal fun ThreadAppLinkPreviewScope(
     messageId: String,
     body: String,
     enabled: Boolean,
+    /** Opens a link as the message's own links open (the app's link setting, or Raft's own page). */
+    onOpenLink: (String) -> Unit,
     content: @Composable () -> Unit,
 ) {
     val host = LocalThreadAppLinkPreviewHost.current
@@ -170,17 +187,35 @@ internal fun ThreadAppLinkPreviewScope(
         content()
         return
     }
+    val batch = rememberThreadAppLinkBatchRead(host, messageId, body)
     val state by host.store.state.collectAsState()
     val view =
-        remember(state, host.viewerKey, messageId, body, host.conversationId) {
-            state.messageView(host.viewerKey, messageId, body, host.conversationId, host.store.artifactHosts())
+        remember(state, host.viewerKey, messageId, body, host.conversationId, batch) {
+            state.messageView(
+                host.viewerKey, messageId, body, host.conversationId, host.store.artifactHosts(),
+                mode = batch.read?.mode ?: APP_LINK_READ_MODE_V1,
+                viewId = batch.read?.view?.id,
+            )
         }
-    LaunchedEffect(host.store, host.viewerKey, messageId, body, view.wantsRead, view.readSignature) {
-        if (view.wantsRead) host.store.read(host.viewerKey, host.serverId, messageId, body, host.conversationId)
+    LaunchedEffect(host.store, host.viewerKey, messageId, body, view.wantsRead, view.readSignature, batch) {
+        // Until the flag is decided the row waits (one evaluation at most), so it is read once, the right way.
+        if (view.wantsRead && !batch.pending) host.store.read(host.viewerKey, host.serverId, messageId, body, host.conversationId, batch.read)
+    }
+    // Links Raft answered rate_limited are read again only while this row is on screen.
+    LaunchedEffect(host.store, batch, view.readsLimited) {
+        val read = batch.read
+        if (read != null && view.readsLimited) {
+            val job = host.store.keepReadingLimited(host.viewerKey, host.serverId, messageId, body, read)
+            try {
+                awaitCancellation()
+            } finally {
+                job.cancel()
+            }
+        }
     }
     var asking by remember(messageId) { mutableStateOf<AppLinkResult.Consent?>(null) }
     // #proj-mobile: a chip whose App sent a card body opens its item card beside it.
-    val cards = rememberThreadAppLinkCards(messageId)
+    val cards = rememberThreadAppLinkCards(messageId, onOpenLink)
     val artifactWebBaseUrl = host.artifacts?.webBaseUrl.orEmpty()
     val chipHost =
         remember(view.results, cards, artifacts, artifactWebBaseUrl) {
@@ -195,7 +230,43 @@ internal fun ThreadAppLinkPreviewScope(
                 artifactAnchor = { key -> cards.anchor(threadArtifactCardKey(key)) },
             )
         }
-    CompositionLocalProvider(LocalRaftAppLinkChips provides chipHost, content = content)
+    // raft-design #1010: the block cards of this message, drawn after their paragraphs. Only the
+    // message itself: quotes, forwards, search and Activity have no scope, so they show chips.
+    val openInSystemBrowser = rememberRaftSystemBrowserOpener()
+    val currentOnOpenLink by rememberUpdatedState(onOpenLink)
+    val read = batch.read
+    val actionHost =
+        remember(host, messageId, body, read) {
+            read?.let { batchRead ->
+                ThreadAppLinkCardActionHost(
+                    prepare = { handle, revision -> host.store.prepareAction(host.serverId, handle, revision) },
+                    execute = { handle, requestId, prepared -> host.store.executeAction(host.serverId, handle, requestId, prepared) },
+                    reread = { url -> host.store.rereadLink(host.viewerKey, host.serverId, messageId, body, batchRead, url) },
+                    toast = host.toast,
+                )
+            }
+        }
+    val blockHost =
+        remember(view.results, openInSystemBrowser, actionHost) {
+            if (view.results.values.none { it is AppLinkResult.Card && it.block != null }) {
+                null
+            } else {
+                RaftMarkdownBlockCardHost(view.results) { card ->
+                    ThreadAppLinkBlockCard(
+                        card,
+                        openUri = { address ->
+                            openThreadAppLinkAddress(address, card.connectUrl, currentOnOpenLink, openInSystemBrowser)
+                        },
+                        actions = actionHost,
+                    )
+                }
+            }
+        }
+    CompositionLocalProvider(
+        LocalRaftAppLinkChips provides chipHost,
+        LocalRaftMarkdownBlockCardHost provides blockHost,
+        content = content,
+    )
     ThreadAppLinkCardPopoverHost(results = view.results, cards = cards, artifacts = artifacts.summaries, artifactWebBaseUrl = artifactWebBaseUrl)
     // An Artifact chip on screen: boot the in-app viewer's web page ahead of a tap.
     RaftArtifactViewerPrewarm(enabled = artifacts.summaries.isNotEmpty())
@@ -203,10 +274,32 @@ internal fun ThreadAppLinkPreviewScope(
     // The prompt closes itself once its chip is gone (answered, or asked on another message).
     val promptShown = prompt != null && view.results[prompt.url] is AppLinkResult.Consent
     if (prompt != null && promptShown) {
-        ThreadAppLinkConsentSheet(host = host, prompt = prompt, onDismiss = { asking = null })
+        ThreadAppLinkConsentSheet(host = host, prompt = prompt, onOpenLink = onOpenLink, onDismiss = { asking = null })
     }
     LaunchedEffect(prompt, promptShown) {
         if (prompt != null && !promptShown) asking = null
+    }
+}
+
+/** How a message row reads its App links: [read] null is the GET; [pending] while the flag isn't decided yet. */
+@Immutable
+internal data class ThreadAppLinkBatch(val read: AppLinkBatchRead?, val pending: Boolean)
+
+/**
+ * The Server's `interactive_link_cards` flag (latched for the row, re-read for another Server) and,
+ * when on, this message view of the batched read: its `view_instance_id` made once when the row
+ * is shown and kept while it stays, in the app's language.
+ */
+@Composable
+private fun rememberThreadAppLinkBatchRead(host: ThreadAppLinkPreviewHost, messageId: String, body: String): ThreadAppLinkBatch {
+    val flags = host.featureFlags ?: return remember { ThreadAppLinkBatch(read = null, pending = false) }
+    val serverId = ServerId(host.serverId)
+    val on = rememberServerFeatureLatched(flags, serverId, INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY)
+    val revision by flags.snapshotRevision.collectAsState()
+    val pending = remember(flags, host.serverId, revision, on) { !on && flags.isDecisionPending(serverId, INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY) }
+    val locale = remember { appLinkCardReadLocale(runtimeFormRequestLanguageTag()) }
+    return remember(on, pending, host.serverId, messageId, body, locale) {
+        ThreadAppLinkBatch(read = if (on) AppLinkBatchRead(AppLinkCardView.create(), locale) else null, pending = pending)
     }
 }
 
@@ -222,16 +315,29 @@ internal fun String.isAppLinkMessageId(): Boolean =
  * allowing tells it, then where the link goes, with Open Link. Allow is the ink-bordered
  * button, Don't Allow the frameless one, neither pink nor orange.
  */
+/**
+ * A card's address opens as a message link does; a connect_account card's connect URL goes to the
+ * system browser, where the account's sign-in is.
+ */
+internal fun openThreadAppLinkAddress(
+    address: String,
+    connectUrl: String?,
+    openLink: (String) -> Unit,
+    openInSystemBrowser: (String) -> Unit,
+) {
+    if (address == connectUrl) openInSystemBrowser(address) else openLink(address)
+}
+
 @Composable
 private fun ThreadAppLinkConsentSheet(
     host: ThreadAppLinkPreviewHost,
     prompt: AppLinkResult.Consent,
+    onOpenLink: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val state by host.store.state.collectAsState()
     val status = state.status[appLinkAppKey(host.viewerKey, prompt.app.id)]
     val scope = rememberCoroutineScope()
-    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     val unavailable = stringResource(Res.string.thread_link_preview_prompt_unavailable, prompt.app.name)
     val declined = stringResource(Res.string.thread_link_preview_prompt_declined, prompt.app.name)
     val declineFailed = stringResource(Res.string.thread_link_preview_prompt_decline_failed, prompt.app.name)
@@ -271,7 +377,7 @@ private fun ThreadAppLinkConsentSheet(
             },
             onOpenLink = {
                 onDismiss()
-                uriHandler.openUri(prompt.url)
+                onOpenLink(prompt.url)
             },
         )
     }

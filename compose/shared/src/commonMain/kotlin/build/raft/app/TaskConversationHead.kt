@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -7,6 +8,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import build.raft.designsystem.components.RaftAvatarSize
@@ -23,6 +25,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -35,13 +38,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalDensity
-import kotlin.math.roundToInt
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import androidx.compose.material3.minimumInteractiveComponentSize
-import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -50,18 +49,14 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.foundation.lazy.LazyListLayoutInfo
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.ui.layout.layout
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.State
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.layout.onSizeChanged
 import build.raft.app.model.ServerId
 import build.raft.app.model.ChannelId
 import build.raft.app.data.TaskConversationDetailsViewModel
@@ -96,6 +91,7 @@ import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.TaskConversationHeaderState
+import build.raft.app.data.taskStatusPickAsksBacklogReason
 import build.raft.app.data.TaskDetailLoad
 import build.raft.app.data.TaskHistoryDetail
 import build.raft.app.data.TaskHistoryField
@@ -210,7 +206,6 @@ internal fun List<MemberProfile>.taskHeadDisplayName(kind: MemberKind, id: Strin
 internal fun TaskSummary.taskConversationHeadModel(
     state: TaskConversationHeaderState,
     details: TaskConversationDetailsState,
-    serverRole: String?,
     statusUpdating: Boolean,
     members: List<MemberProfile>,
     timeContext: RaftTimeContext?,
@@ -245,7 +240,7 @@ internal fun TaskSummary.taskConversationHeadModel(
         }
     return TaskConversationHeadModel(
         bar =
-            taskConversationHeaderBarModel(state, serverRole, statusUpdating).let { bar ->
+            taskConversationHeaderBarModel(state, statusUpdating).let { bar ->
                 if (editable) bar else bar.copy(statusOptions = emptyList(), assigneeEditable = false)
             },
         title = title,
@@ -266,7 +261,17 @@ internal fun TaskSummary.taskConversationHeadModel(
         creator =
             creator?.let { member ->
                 member.id.value.trim().takeIf { it.isNotEmpty() }?.let { id ->
-                    TaskHeadPerson(member.kind, id, member.avatarWireValueForRenderedAvatar())
+                    // The task DTO names the creator without a face, and the head reads faces from
+                    // the reader's current server directory: a joint channel's agent from another
+                    // workspace is not in it and fell back to the default robot. The channel's own
+                    // member row (joint members included) carries the avatar.
+                    val channelMember = members.firstOrNull { it.kind == member.kind && it.id.value == member.id.value }
+                    TaskHeadPerson(
+                        member.kind,
+                        id,
+                        channelMember?.avatar?.let { channelMember.avatarWireValueForRenderedAvatar() }
+                            ?: member.avatarWireValueForRenderedAvatar(),
+                    )
                 }
             },
         avatarServerId = serverId?.trim()?.takeIf { it.isNotEmpty() },
@@ -293,68 +298,51 @@ private fun TaskHistoryRow.toHeadRow(members: List<MemberProfile>, timeContext: 
 /** The description folds to three lines (web `DESCRIPTION_COLLAPSE_LINE_LIMIT`). */
 private const val TaskHeadDescriptionCollapsedLines = 3
 
-/** On a phone the head shows at most this much of the page at once (the rest comes as it scrolls). */
-private const val TaskHeadPhoneMaxFraction = 0.6f
-
-/** Narrower than this the head scrolls with the conversation (web `mobile-modal`); wider it stays pinned. */
+/** Narrower than this (a phone) the head is the conversation's first row ([TaskHeadScrollState]); wider it stays pinned. */
 internal val TaskHeadPinnedMinWidth = 600.dp
 
 /**
- * Where the head of a phone's task conversation is: web puts the head in the conversation as its
- * first row, so it scrolls away with it (Artea, #wg-task-v2 #7: pinned, it left the replies a
- * sliver). Here the head sits above the conversation and moves with the conversation's scroll
- * ([connection], on an ancestor of the message list): a drag towards newer messages slides it away
- * before the list scrolls; a drag back down brings it back only once the list is at its oldest
- * message, as the first row would. [collapsed]: out of view (the top bar then names the task's
- * state). Off a phone it stays pinned and none of this applies.
+ * Where the head of a phone's task conversation is (web `mobile-modal`, artin 2026-11-06,
+ * #proj-mobile:ec53b56a): the conversation's first row, above where it begins ("Beginning of
+ * conversation", or the older messages still to load), so it moves with the conversation like
+ * any message: opening a short conversation shows it above the messages, a long one opens at the
+ * newest message with it out of view above. Nothing holds it or slides it on its own.
  *
- * While it is out of view, the top bar pulls it down over the messages ([floatOpen], web
- * `TaskHeadPullDown`, slock #11722): [toggleFloat] on the bar; it closes on the bar again, a tap
- * outside it, a swipe up on it, Back / Escape, focus in the composer ([closeFloat]) and as soon as
- * the reader scrolls the messages ([connection]) or the head comes back in view.
+ * While the row is out of view ([headInView] false, from the list's layout:
+ * [taskHeadRowInView]) the top bar names the task's state ([collapsed]) and pulls the same head
+ * down over the messages ([floatOpen], web `TaskHeadPullDown`, slock #11722): [toggleFloat] on the
+ * bar. It closes on the bar again, a tap outside it, a swipe up on it, Back / Escape, focus in the
+ * composer or the keyboard coming up ([closeFloat]), as soon as the reader scrolls the messages
+ * ([connection]) and when the row comes back in view. It never opens by itself.
  *
- * The list stays bottom-anchored like any chat, so the head folds only as far as the conversation
- * has messages to show in its place ([foldLimitPx], from [minShownHeightPx]): a short
- * conversation keeps the head in view rather than open a blank gap above its oldest message
- * (Kirby, #proj-mobile:#69), as web's first row scrolls only as far as the list does.
+ * Off a phone the head stays pinned above the conversation and none of this applies.
  */
 @Stable
 internal class TaskHeadScrollState {
-    var heightPx by mutableFloatStateOf(0f)
-        internal set
-    /** How far the head was moved away, before [foldLimitPx] holds it back. */
-    private var requestedOffsetPx by mutableFloatStateOf(0f)
-
-    /** How much of the head is out of view (from its top). */
-    val offsetPx: Float
-        get() = requestedOffsetPx.coerceAtMost(foldLimitPx).coerceAtLeast(0f)
+    /** The page is narrower than [TaskHeadPinnedMinWidth] ([updatePhone]). */
+    var phone by mutableStateOf(false)
+        private set
 
     /**
-     * How much of the head must stay on the page for the conversation below to fill the rest:
-     * the room the two share less the conversation's content, from the list's last layout
-     * ([Modifier.taskHeadConversationOverflow]). Negative infinity while the list has rows out of
-     * view. It does not change as the head folds or grows, only with the content or the room.
+     * Some of the head's row is on screen (web: the row intersects the timeline). True until the
+     * list says otherwise, and again once the row is no longer in a list (web unmount).
      */
-    internal var minShownHeightPx by mutableFloatStateOf(Float.NEGATIVE_INFINITY)
+    var headInView by mutableStateOf(true)
+        private set
 
-    /** The height the head took on the page in its last layout (set while measuring, not observed). */
-    internal var shownHeightPx: Float = 0f
+    /** The height of the head in its row, in px (the rest of the row is where the conversation begins). */
+    internal var rowHeadHeightPx by mutableIntStateOf(0)
 
-    /** How far the head may fold without the conversation leaving a gap above its oldest row. */
-    val foldLimitPx: Float
-        get() = taskHeadFoldLimitPx(heightPx, minShownHeightPx)
-    var scrollsWithConversation by mutableStateOf(false)
-        internal set
-
+    /** On a phone with the head's row out of view: the top bar summarizes the task. */
     val collapsed: Boolean
-        get() = scrollsWithConversation && heightPx > 0f && offsetPx >= heightPx - 0.5f
+        get() = phone && !headInView
 
     private var floatRequested by mutableStateOf(false)
 
     /** The bottom edge of the pulled-down head in root coordinates (a press below it is outside). */
     internal var floatBottomInRootPx: Float = 0f
 
-    /** The head pulled down from the top bar over the messages: only while it is out of view. */
+    /** The head pulled down from the top bar over the messages: only while its row is out of view. */
     val floatOpen: Boolean
         get() = floatRequested && collapsed
 
@@ -370,123 +358,122 @@ internal class TaskHeadScrollState {
         return wasOpen
     }
 
-    /** Back in view, the head needs no panel (and one must not come back with the next scroll away). */
-    private fun dropFloatIfInView() {
-        if (!collapsed) floatRequested = false
+    /** [phone]: the page is narrower than [TaskHeadPinnedMinWidth]. Off a phone the head is pinned: no panel. */
+    internal fun updatePhone(phone: Boolean) {
+        this.phone = phone
+        if (!phone) floatRequested = false
     }
 
-    /** Moves the head by a drag [delta] (negative: up, away); returns the part it took. */
-    fun consume(delta: Float): Float {
-        if (!scrollsWithConversation) return 0f
-        val old = offsetPx
-        val next = (old - delta).coerceIn(0f, foldLimitPx)
-        requestedOffsetPx = next
-        dropFloatIfInView()
-        return old - next
+    /** The head's row came into view or went out of it. Back in view, the head needs no panel (web). */
+    internal fun updateHeadInView(inView: Boolean) {
+        if (headInView != inView) headInView = inView
+        if (inView) floatRequested = false
     }
 
-    /** Out of view: the keyboard came up (the conversation keeps the room above it). */
-    fun collapse() {
-        // Before the head is measured, "all of it": [updateHeight] clamps it to the height.
-        if (scrollsWithConversation) requestedOffsetPx = if (heightPx > 0f) heightPx else Float.POSITIVE_INFINITY
-    }
-
-    /** Back in view. */
-    fun expand() {
-        requestedOffsetPx = 0f
-        floatRequested = false
-    }
-
-    internal fun updateHeight(height: Float) {
-        if (height == heightPx) return
-        val wasCollapsed = scrollsWithConversation && heightPx > 0f && requestedOffsetPx >= heightPx - 0.5f
-        heightPx = height
-        requestedOffsetPx = if (wasCollapsed) height else requestedOffsetPx.coerceIn(0f, height)
-        dropFloatIfInView()
-    }
-
+    /** On an ancestor of the messages: the reader starts scrolling them, so the pulled-down head goes back up (web). */
     val connection: NestedScrollConnection =
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                // The reader starts scrolling the messages: the pulled-down head goes back up (web).
                 if (source == NestedScrollSource.UserInput && available.y != 0f) floatRequested = false
-                return if (available.y < 0f) Offset(0f, consume(available.y)) else Offset.Zero
+                return Offset.Zero
             }
-
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
-                if (available.y > 0f) Offset(0f, consume(available.y)) else Offset.Zero
         }
 }
 
 /**
- * How far the head may fold ([TaskHeadScrollState.foldLimitPx]): the conversation's viewport grows
- * by what the head gives up and must not outgrow its content, so at least [minShownPx] of the
- * head stays. Rows out of view (negative infinity): all the way. Never past the head, never below
- * zero. A head taller than its share of the page shows only its top, so folding the hidden rest
- * moves nothing and is allowed.
+ * Whether any of the head is on screen (web: `IntersectionObserver`, any part of the row): the head
+ * sits at the top of its row, [rowOffsetPx] from the viewport's start in forward (top-down) terms
+ * ([ThreadListViewport.layoutInfo]), [headHeightPx] tall (unmeasured: the whole row, [rowSizePx]).
+ * Null [rowOffsetPx]: the row is not laid out (scrolled far away), so out of view.
  */
-internal fun taskHeadFoldLimitPx(heightPx: Float, minShownPx: Float): Float {
-    if (heightPx <= 0f) return 0f
-    return (heightPx - minShownPx).coerceIn(0f, heightPx)
+internal fun taskHeadRowInView(
+    rowOffsetPx: Int?,
+    rowSizePx: Int,
+    headHeightPx: Int,
+    viewportStartPx: Int,
+    viewportEndPx: Int,
+): Boolean {
+    if (rowOffsetPx == null) return false
+    val headHeight = if (headHeightPx > 0) headHeightPx else rowSizePx
+    if (headHeight <= 0) return false
+    return rowOffsetPx + headHeight > viewportStartPx && rowOffsetPx < viewportEndPx
 }
 
 /**
- * [TaskHeadScrollState.minShownHeightPx] from one layout: the head showed [shownPx] and the list's
- * content overflowed its viewport by [overflowPx] (infinite: rows out of view).
+ * Task v2 on a phone: the head as the conversation's first row, for the message list to draw
+ * ([LocalTaskConversationHeadRow]). [Content] is the page's head ([TaskHeadPlacement.FirstRow]),
+ * kept current without changing this holder, so the list does not recompose for it.
  */
-internal fun taskHeadMinShownHeightPx(shownPx: Float, overflowPx: Float): Float =
-    if (overflowPx == Float.POSITIVE_INFINITY) Float.NEGATIVE_INFINITY else shownPx - overflowPx
-
-/**
- * How much taller a bottom-anchored list's content is than its viewport: exact when every row is
- * laid out, infinite while some are out of view (then it overflows by more than any head).
- */
-internal fun taskHeadConversationOverflowPx(
-    totalRows: Int,
-    laidOutRowHeights: List<Int>,
-    rowSpacingPx: Int,
-    paddingPx: Int,
-    viewportPx: Int,
-): Float {
-    if (laidOutRowHeights.size < totalRows) return Float.POSITIVE_INFINITY
-    val content = laidOutRowHeights.sum() + rowSpacingPx * (totalRows - 1).coerceAtLeast(0) + paddingPx
-    return (content - viewportPx).toFloat()
+@Stable
+internal class TaskConversationHeadRow(
+    val scrollState: TaskHeadScrollState,
+    private val content: State<@Composable () -> Unit>,
+) {
+    @Composable
+    fun Content() {
+        content.value()
+    }
 }
 
-private fun LazyListLayoutInfo.taskHeadConversationOverflowPx(): Float =
-    taskHeadConversationOverflowPx(
-        totalRows = totalItemsCount,
-        laidOutRowHeights = visibleItemsInfo.map { it.size },
-        rowSpacingPx = mainAxisItemSpacing,
-        paddingPx = beforeContentPadding + afterContentPadding,
-        viewportPx = viewportSize.height,
-    )
+@Composable
+internal fun rememberTaskConversationHeadRow(scrollState: TaskHeadScrollState, content: @Composable () -> Unit): TaskConversationHeadRow {
+    val current = rememberUpdatedState(content)
+    return remember(scrollState, current) { TaskConversationHeadRow(scrollState, current) }
+}
 
-/** The task head of the page around a conversation list, if it scrolls with it ([taskHeadConversationOverflow]). */
-internal val LocalTaskHeadScrollState = staticCompositionLocalOf<TaskHeadScrollState?> { null }
+/** The task head the conversation's message list draws as its first row (null: not a task conversation). */
+internal val LocalTaskConversationHeadRow = compositionLocalOf<TaskConversationHeadRow?> { null }
 
 /**
- * On the conversation's list: after each of its layouts, tells the task head above it how much of
- * it must stay for the content to fill the rest, so the head folds no further than the content can follow
- * ([TaskHeadScrollState.foldLimitPx]). Reads the list's layout only; it never scrolls it.
+ * The head in its row: measured, so the list can tell when it is out of view ([taskHeadRowInView]).
+ * The row ends where the conversation begins: no rule under it (web: the first message follows it
+ * as the messages follow one another, Kirby).
  */
-internal fun Modifier.taskHeadConversationOverflow(scrollState: TaskHeadScrollState?, listState: LazyListState): Modifier =
-    if (scrollState == null) {
-        this
-    } else {
-        layout { measurable, constraints ->
-            val placeable = measurable.measure(constraints)
-            // The list has just measured, so its layout info is this frame's, and the head above
-            // was measured earlier in the same pass ([shownHeightPx]): read together they give the
-            // room both share. Not observed: they change on every measure and are not its inputs.
-            val minShown =
-                Snapshot.withoutReadObservation {
-                    taskHeadMinShownHeightPx(scrollState.shownHeightPx, listState.layoutInfo.taskHeadConversationOverflowPx())
-                }
-            if (minShown != Snapshot.withoutReadObservation { scrollState.minShownHeightPx }) scrollState.minShownHeightPx = minShown
-            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+@Composable
+internal fun TaskConversationHeadRowContent(row: TaskConversationHeadRow, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().onSizeChanged { row.scrollState.rowHeadHeightPx = it.height }) {
+        row.Content()
+    }
+}
+
+/**
+ * A task conversation with no messages to list yet (loading, or empty): on a phone the head is
+ * still its first row, above [state] (web: the parent slot over the replies' placeholder). In view
+ * for as long as it is drawn here. Without a [row], or wider, [state] alone.
+ */
+@Composable
+internal fun TaskConversationHeadAboveState(row: TaskConversationHeadRow?, state: @Composable () -> Unit) {
+    if (row == null) {
+        state()
+        return
+    }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        if (maxWidth >= TaskHeadPinnedMinWidth) {
+            state()
+        } else {
+            SideEffect { row.scrollState.updateHeadInView(true) }
+            val pageHeight = maxHeight
+            // At least the page's height, so the state fills what the head leaves; a taller head scrolls.
+            val fill = if (pageHeight.value.isFinite()) Modifier.heightIn(min = pageHeight) else Modifier
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).then(fill)) {
+                TaskConversationHeadRowContent(row)
+                Box(Modifier.fillMaxWidth().weight(1f)) { state() }
+            }
         }
     }
+}
+
+/** Where [TaskConversationHeadRoute] draws the head. */
+internal enum class TaskHeadPlacement {
+    /** Above the conversation: pinned off a phone; on a phone no room (it tells the state the page is a phone's). */
+    Page,
+
+    /** On a phone: the conversation's first row ([TaskConversationHeadRowContent]). */
+    FirstRow,
+
+    /** On a phone: pulled down from the top bar over the messages ([TaskHeadFloat]). */
+    PullDown,
+}
 
 /**
  * Task v2: the head of a task conversation (web `TaskModalHead` in `TaskConversationDialog`). In the
@@ -495,10 +482,13 @@ internal fun Modifier.taskHeadConversationOverflow(scrollState: TaskHeadScrollSt
  * facts: Status and Assignee as the editors they were, Source, Created by, Created at, Earlier
  * discussion), and what happened to it (History, folded, as on web).
  *
- * On a phone (narrower than [TaskHeadPinnedMinWidth]) it scrolls with the conversation
- * ([TaskHeadScrollState]) and folds away while the keyboard is up ([keyboardUp]); wider it stays
- * pinned and never takes more than [maxHeightFraction] of the page: past that it scrolls inside
- * itself (web's pinned head, `max-h-[45%]`).
+ * On a phone (narrower than [TaskHeadPinnedMinWidth]) it takes no room above the conversation:
+ * the head is the conversation's first row there ([TaskConversationHeadRowContent]) and is pulled
+ * down from the top bar while that row is out of view ([TaskHeadFloat], [TaskHeadScrollState]);
+ * this only tells the state the page is a phone's, and the keyboard coming up ([keyboardUp]) puts
+ * the pulled-down head back up. Wider it stays pinned and never takes more than
+ * [maxHeightFraction] of the page: past that it scrolls inside itself (web's pinned head,
+ * `max-h-[45%]`).
  */
 @Composable
 internal fun TaskConversationHead(
@@ -508,6 +498,8 @@ internal fun TaskConversationHead(
     /** Null (also [onOpenEarlierDiscussion]): a plain fact, as on the pending task page. */
     onOpenSource: (() -> Unit)?,
     onOpenEarlierDiscussion: (() -> Unit)?,
+    /** Null: the creator is a plain fact. */
+    onOpenCreator: ((TaskHeadPerson) -> Unit)? = null,
     modifier: Modifier = Modifier,
     scrollState: TaskHeadScrollState = remember { TaskHeadScrollState() },
     keyboardUp: Boolean = false,
@@ -517,63 +509,36 @@ internal fun TaskConversationHead(
     onRetryHistory: (() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
-    val content: @Composable () -> Unit = {
-        TaskHeadContent(
-            model = model,
-            onSelectStatus = onSelectStatus,
-            onOpenAssignee = onOpenAssignee,
-            onOpenSource = onOpenSource,
-            onOpenEarlierDiscussion = onOpenEarlierDiscussion,
-            initiallyHistoryOpen = initiallyHistoryOpen,
-            initiallyDescriptionExpanded = initiallyDescriptionExpanded,
-            onRetryHistory = onRetryHistory,
-        )
-    }
-    val padding = Modifier.raftSafeAreaHorizontalPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
     BoxWithConstraints(modifier.fillMaxWidth().background(colors.layerCanvas)) {
         val pageHeight = maxHeight
         val phone = maxWidth < TaskHeadPinnedMinWidth
-        SideEffect { scrollState.scrollsWithConversation = phone }
+        SideEffect { scrollState.updatePhone(phone) }
         LaunchedEffect(phone, keyboardUp) {
-            if (phone && keyboardUp) {
-                scrollState.collapse()
-                // Typing: the composer has focus, so the pulled-down head goes back up.
-                scrollState.closeFloat()
-            }
+            // Typing: the composer has focus, so the pulled-down head goes back up.
+            if (phone && keyboardUp) scrollState.closeFloat()
         }
-        Column(Modifier.fillMaxWidth()) {
-            if (phone) {
-                // The head at its full height, shown from [offsetPx] down: it slides up under the top bar.
-                Layout(
-                    content = {
-                        Column(Modifier.fillMaxWidth().onSizeChanged { scrollState.updateHeight(it.height.toFloat()) }.then(padding)) {
-                            content()
-                        }
-                    },
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clipToBounds()
-                            .draggable(
-                                orientation = Orientation.Vertical,
-                                state = rememberDraggableState { delta -> scrollState.consume(delta) },
-                            ),
-                ) { measurables, constraints ->
-                    val placeable = measurables.single().measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
-                    val offset = scrollState.offsetPx.roundToInt().coerceIn(0, placeable.height)
-                    // Never more than [TaskHeadPhoneMaxFraction] of the page: the conversation and the
-                    // composer keep the rest; a taller head shows its top, the rest comes with the drag.
-                    val visibleCap =
-                        if (pageHeight.value.isFinite()) (pageHeight * TaskHeadPhoneMaxFraction).roundToPx() else placeable.height
-                    val shown = (placeable.height - offset).coerceAtMost(visibleCap)
-                    scrollState.shownHeightPx = shown.toFloat()
-                    layout(placeable.width, shown) { placeable.place(0, -offset) }
-                }
-                if (!scrollState.collapsed) TaskHeadDivider()
-            } else {
-                val cap = if (pageHeight.value.isFinite()) pageHeight * maxHeightFraction else pageHeight
-                Column(Modifier.fillMaxWidth().heightIn(max = cap).verticalScroll(rememberScrollState()).then(padding)) {
-                    content()
+        if (!phone) {
+            val cap = if (pageHeight.value.isFinite()) pageHeight * maxHeightFraction else pageHeight
+            Column(Modifier.fillMaxWidth()) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = cap)
+                        .verticalScroll(rememberScrollState())
+                        .raftSafeAreaHorizontalPadding()
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
+                ) {
+                    TaskHeadContent(
+                        model = model,
+                        onSelectStatus = onSelectStatus,
+                        onOpenAssignee = onOpenAssignee,
+                        onOpenSource = onOpenSource,
+                        onOpenEarlierDiscussion = onOpenEarlierDiscussion,
+                        onOpenCreator = onOpenCreator,
+                        initiallyHistoryOpen = initiallyHistoryOpen,
+                        initiallyDescriptionExpanded = initiallyDescriptionExpanded,
+                        onRetryHistory = onRetryHistory,
+                    )
                 }
                 TaskHeadDivider()
             }
@@ -600,6 +565,7 @@ internal fun TaskHeadContent(
     onOpenAssignee: () -> Unit = {},
     onOpenSource: (() -> Unit)? = null,
     onOpenEarlierDiscussion: (() -> Unit)? = null,
+    onOpenCreator: ((TaskHeadPerson) -> Unit)? = null,
     initiallyHistoryOpen: Boolean = false,
     initiallyDescriptionExpanded: Boolean = false,
     /** Null: no Retry after a failed History read. */
@@ -609,7 +575,7 @@ internal fun TaskHeadContent(
         TaskHeadTitleRow(model)
         Column {
             model.description?.let { TaskHeadDescription(it, initiallyDescriptionExpanded) }
-            TaskHeadFacts(model, onSelectStatus, onOpenAssignee, onOpenSource, onOpenEarlierDiscussion)
+            TaskHeadFacts(model, onSelectStatus, onOpenAssignee, onOpenSource, onOpenEarlierDiscussion, onOpenCreator)
             TaskHeadHistorySection(model.history, initiallyHistoryOpen, onRetryHistory)
         }
     }
@@ -666,6 +632,7 @@ private fun TaskHeadFacts(
     onOpenAssignee: () -> Unit,
     onOpenSource: (() -> Unit)?,
     onOpenEarlierDiscussion: (() -> Unit)?,
+    onOpenCreator: ((TaskHeadPerson) -> Unit)?,
 ) {
     val bar = model.bar
     val statusLabel = bar.status.localizedLabel()
@@ -675,12 +642,15 @@ private fun TaskHeadFacts(
     var statusMenuOpen by remember { mutableStateOf(false) }
     RaftDescriptionList(direction = RaftDescriptionListDirection.Inline) {
         Item(stringResource(Res.string.task_head_status)) {
-            Box {
+            val anchor = LocalTaskHeadStatusMenuAnchor.current
+            Box(if (anchor != null) Modifier.onGloballyPositioned(anchor) else Modifier) {
+                // Web InlineBadgeEditor: the chip opens the status menu; a status the reader may not
+                // change is the plain badge, with no chevron.
                 RaftTaskStatusBadge(
                     status = bar.status.raftTaskStatus(),
                     text = statusLabel,
                     // raft-ui inline: a leading chip hangs its padding outward (the text lines up).
-                    modifier = Modifier.offset(x = TaskHeadChipHang),
+                    modifier = Modifier.offset(x = TaskHeadChipHang).testTag(TaskHeadStatusTestTag),
                     onClick = if (bar.statusEditable) ({ statusMenuOpen = true }) else null,
                     enabled = !bar.statusUpdating,
                     contentDescription = "$statusFieldLabel: $statusLabel",
@@ -688,23 +658,11 @@ private fun TaskHeadFacts(
                 RaftDropdownMenu(
                     expanded = statusMenuOpen && bar.statusEditable,
                     onDismissRequest = { statusMenuOpen = false },
-                    minWidth = 200.dp,
+                    minWidth = TaskHeadStatusMenuMinWidth,
                 ) {
-                    bar.statusOptions.forEach { option ->
-                        RaftMenuItem(
-                            text =
-                                if (option.reopensToTodo) {
-                                    stringResource(Res.string.tasks_status_reopen_to_todo)
-                                } else {
-                                    option.status.localizedLabel()
-                                },
-                            checked = option.status == bar.status,
-                            leadingIcon = { RaftTaskStatusPixel(option.status.raftTaskStatus()) },
-                            onClick = {
-                                statusMenuOpen = false
-                                if (option.status != bar.status) onSelectStatus(option.status)
-                            },
-                        )
+                    TaskHeadStatusMenuRows(bar) { status ->
+                        statusMenuOpen = false
+                        if (status != bar.status) onSelectStatus(status)
                     }
                 }
             }
@@ -722,7 +680,7 @@ private fun TaskHeadFacts(
                 hasValue = bar.assigneeName != null,
                 enabled = bar.assigneeEditable,
                 showIndicator = bar.assigneeEditable,
-                modifier = Modifier.offset(x = TaskHeadChipHang).widthIn(max = 200.dp),
+                modifier = Modifier.offset(x = TaskHeadChipHang).widthIn(max = 200.dp).testTag(TaskHeadAssigneeTestTag),
                 // The status badge's box (22dp chip): web InlineBadgeEditor draws both as the same chip.
                 size = RaftPickerTriggerSize.Chip,
             )
@@ -733,7 +691,7 @@ private fun TaskHeadFacts(
             }
         }
         Item(stringResource(Res.string.task_head_created_by)) {
-            TaskHeadCreatedByValue(model.createdBy ?: unknown, model.creator, model.avatarServerId)
+            TaskHeadCreatedByValue(model.createdBy ?: unknown, model.creator, model.avatarServerId, onOpenCreator)
         }
         model.createdAt?.let { Item(stringResource(Res.string.task_head_created_at), it.localized(), mono = true, copyable = false) }
         // Where it cannot open (the pending task page) it is a plain count, and hidden while unknown.
@@ -753,6 +711,35 @@ private fun TaskHeadFacts(
                 }
             }
         }
+    }
+}
+
+internal const val TaskHeadStatusTestTag = "task-head-status"
+internal const val TaskHeadAssigneeTestTag = "task-head-assignee"
+internal const val TaskBarSummaryTestTag = "task-bar-summary"
+internal val TaskHeadStatusMenuMinWidth = 200.dp
+
+/** Screenshots only: the status menu's anchor (the chip's box), so a capture can draw the popup's surface in place. */
+internal val LocalTaskHeadStatusMenuAnchor = staticCompositionLocalOf<((LayoutCoordinates) -> Unit)?> { null }
+
+/**
+ * The status menu's rows (web InlineBadgeEditor's options): every status, the current one checked,
+ * each with its status pixel; Closed -> Todo reads "Reopen to Todo". [onPick] gets the row's status.
+ */
+@Composable
+internal fun TaskHeadStatusMenuRows(bar: TaskConversationHeaderBarModel, onPick: (TaskStatus) -> Unit) {
+    bar.statusOptions.forEach { option ->
+        RaftMenuItem(
+            text =
+                if (option.reopensToTodo) {
+                    stringResource(Res.string.tasks_status_reopen_to_todo)
+                } else {
+                    option.status.localizedLabel()
+                },
+            checked = option.status == bar.status,
+            leadingIcon = { RaftTaskStatusPixel(option.status.raftTaskStatus()) },
+            onClick = { onPick(option.status) },
+        )
     }
 }
 
@@ -777,7 +764,7 @@ private fun TaskHeadLinkValue(
             // The padding hangs outward: the text starts where a plain fact's does.
             .offset(x = (-6).dp)
             .clip(shape)
-            .then(if (pressed) Modifier.background(colors.fillPressed, shape) else Modifier)
+            .then(if (pressed) Modifier.background(colors.fillMedium, shape) else Modifier)
             .then(
                 if (onClick != null) {
                     Modifier.clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onClick)
@@ -831,12 +818,26 @@ private val TaskHeadFactAvatarSize = 18.dp
 
 /** Created by: the creator's face (as on the Source row) and name; just the name without a creator. */
 @Composable
-private fun TaskHeadCreatedByValue(name: String, creator: TaskHeadPerson?, serverId: String?) {
+private fun TaskHeadCreatedByValue(name: String, creator: TaskHeadPerson?, serverId: String?, onOpenCreator: ((TaskHeadPerson) -> Unit)?) {
     if (creator == null) {
         RaftDescriptionValue(name, copyable = false)
         return
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    // The face and name open the creator's profile, as a message author's avatar does (artin,
+    // task #35). The row keeps its size: the platform widens a small target's touch area.
+    val open = onOpenCreator?.let { { it(creator) } }
+    Row(
+        if (open != null) {
+            Modifier
+                .clip(RoundedCornerShape(RaftRadius.Control))
+                .clickable(role = Role.Button, onClick = open)
+                .semantics(mergeDescendants = true) {}
+        } else {
+            Modifier
+        },
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         RaftMemberAvatar(
             identity = RaftMemberAvatarIdentity(creator.kind, creator.id, serverId),
             label = name.removePrefix("@"),
@@ -929,7 +930,11 @@ private fun TaskHeadHistoryTimeline(rows: List<TaskHeadHistoryRow>) {
                 taskStatus = row.markerStatus?.raftTaskStatus(),
                 content =
                     if (detail is TaskHistoryDetail.Transition) {
-                        { TaskHeadTransition(detail.from, detail.to) }
+                        {
+                            TaskHeadTransition(detail.from, detail.to)
+                            // What would bring it back, under the move (web TimelineDetail).
+                            detail.reason?.let { reason -> RaftTimelineDetail(reason) }
+                        }
                     } else {
                         details[index]?.let { text -> { RaftTimelineDetail(text) } }
                     },
@@ -997,7 +1002,6 @@ internal fun TaskConversationHeadRoute(
     task: TaskSummary,
     state: TaskConversationHeaderState,
     details: TaskConversationDetailsState,
-    serverRole: String?,
     statusUpdating: Boolean,
     assigneeCandidates: List<MemberProfile>,
     timeContext: RaftTimeContext?,
@@ -1006,20 +1010,35 @@ internal fun TaskConversationHeadRoute(
     /** Null (also [onOpenEarlierDiscussion]): a plain fact (the pending task page). */
     onOpenSource: (() -> Unit)?,
     onOpenEarlierDiscussion: (() -> Unit)?,
+    /** Null: the creator is a plain fact. */
+    onOpenCreator: ((TaskHeadPerson) -> Unit)? = null,
     scrollState: TaskHeadScrollState,
-    /** The keyboard is up: on a phone the head folds away. */
+    /** The keyboard is up: on a phone the pulled-down head goes back up. */
     keyboardUp: Boolean = false,
     onRetryHistory: (() -> Unit)? = null,
-    /** False: status and assignee are plain facts whatever the role ([taskConversationHeadModel]). */
+    /** False: status and assignee are plain facts ([taskConversationHeadModel]). */
     editable: Boolean = true,
-    /** The head pulled down from the top bar over the messages ([TaskHeadFloat]), not the one in the conversation. */
-    floating: Boolean = false,
+    /** Above the conversation (pinned off a phone), its first row on a phone, or pulled down from the bar. */
+    placement: TaskHeadPlacement = TaskHeadPlacement.Page,
     /** The task's server: the head's faces read its member directory. */
     serverId: String? = null,
+    /**
+     * A move into Backlog, after its reason was asked (web TaskBacklogReasonPopover): the reason, null
+     * for none. Null: Backlog goes through [onUpdateStatus] without asking.
+     */
+    onMoveToBacklog: ((reason: String?) -> Unit)? = null,
 ) {
     var assigneeSheetOpen by remember(task.id) { mutableStateOf(false) }
+    var backlogReasonOpen by remember(task.id) { mutableStateOf(false) }
+    val onSelectStatus: (TaskStatus) -> Unit = { status ->
+        if (onMoveToBacklog != null && taskStatusPickAsksBacklogReason(task.status, status)) {
+            backlogReasonOpen = true
+        } else {
+            onUpdateStatus(status)
+        }
+    }
     var assigneeQuery by remember(task.id) { mutableStateOf("") }
-    val model = task.taskConversationHeadModel(state, details, serverRole, statusUpdating, assigneeCandidates, timeContext, editable, serverId)
+    val model = task.taskConversationHeadModel(state, details, statusUpdating, assigneeCandidates, timeContext, editable, serverId)
     val onOpenAssignee = {
         if (model.bar.assigneeEditable) {
             assigneeQuery = ""
@@ -1027,25 +1046,31 @@ internal fun TaskConversationHeadRoute(
         }
     }
     RaftDesignSystemTheme {
-        if (floating) {
-            val label = task.taskNumber?.let { stringResource(Res.string.tasks_detail_task_identifier, it) } ?: task.title
-            TaskHeadFloat(scrollState = scrollState, label = label) {
-                TaskHeadContent(
-                    model = model,
-                    onSelectStatus = onUpdateStatus,
-                    onOpenAssignee = onOpenAssignee,
-                    onOpenSource = onOpenSource,
-                    onOpenEarlierDiscussion = onOpenEarlierDiscussion,
-                    onRetryHistory = onRetryHistory,
-                )
-            }
-        } else {
-            TaskConversationHead(
+        val content: @Composable () -> Unit = {
+            TaskHeadContent(
                 model = model,
-                onSelectStatus = onUpdateStatus,
+                onSelectStatus = onSelectStatus,
                 onOpenAssignee = onOpenAssignee,
                 onOpenSource = onOpenSource,
                 onOpenEarlierDiscussion = onOpenEarlierDiscussion,
+                onOpenCreator = onOpenCreator,
+                onRetryHistory = onRetryHistory,
+            )
+        }
+        when (placement) {
+            TaskHeadPlacement.PullDown -> {
+                val label = task.taskNumber?.let { stringResource(Res.string.tasks_detail_task_identifier, it) } ?: task.title
+                TaskHeadFloat(scrollState = scrollState, label = label, content = content)
+            }
+            // The panel's frame without the panel: the head reads the same in the row as pulled down.
+            TaskHeadPlacement.FirstRow -> TaskHeadFrame(content)
+            TaskHeadPlacement.Page -> TaskConversationHead(
+                model = model,
+                onSelectStatus = onSelectStatus,
+                onOpenAssignee = onOpenAssignee,
+                onOpenSource = onOpenSource,
+                onOpenEarlierDiscussion = onOpenEarlierDiscussion,
+                onOpenCreator = onOpenCreator,
                 scrollState = scrollState,
                 keyboardUp = keyboardUp,
                 onRetryHistory = onRetryHistory,
@@ -1063,6 +1088,18 @@ internal fun TaskConversationHeadRoute(
                     if (currentId != nextId) onAssign(member)
                 },
                 onDismiss = { assigneeSheetOpen = false },
+            )
+        }
+        // Held by the placement whose menu asked (each placement is its own route), beside the assignee sheet.
+        if (backlogReasonOpen && onMoveToBacklog != null) {
+            TaskBacklogReasonDialog(
+                taskNumber = task.taskNumber,
+                onDismiss = { backlogReasonOpen = false },
+                onConfirm = { reason ->
+                    backlogReasonOpen = false
+                    // Someone else may have parked it meanwhile: then there is nothing left to write.
+                    if (task.status != TaskStatus.Backlog) onMoveToBacklog(reason)
+                },
             )
         }
     }
@@ -1157,9 +1194,10 @@ internal fun TaskHeadDateTime.localized(): String {
 
 /**
  * The task conversation's top bar (web `TaskConversationBar`): the task's ref (`#channel:#7`, Space
- * Mono, muted) over "Task #7". While the head is scrolled away ([summarized]) the second line is
- * "Task #7", the status badge, the assignee's face and a chevron (slock #11722): tapping the bar
- * pulls the head down over the messages ([headFloatOpen]) and tapping it again puts it back. The
+ * Mono, muted) over "Task #7". On a phone, while the head's row in the conversation is out of view
+ * ([summarized]), the second line is "Task #7", the status badge, the assignee's face and a chevron
+ * (slock #11722): tapping the bar pulls the head down over the messages ([headFloatOpen]) and
+ * tapping it again puts it back. The
  * More menu's View in Channel and Follow / Unfollow Task go with it.
  */
 @Immutable
@@ -1220,7 +1258,7 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
         chrome.taskNumber?.let { stringResource(Res.string.tasks_detail_task_identifier, it) } ?: chrome.ref
     // At large text the bar has room for one line: the task line keeps it.
     val refLine = LocalDensity.current.fontScale <= 1.3f
-    // The whole bar is the toggle while the head is away (web: the summary button; here the bar's
+    // The whole bar is the toggle while the head is out of view (web: the summary button; here the bar's
     // title block, the ref line included, so a tap anywhere on it opens the head).
     val focusManager = LocalFocusManager.current
     val toggle =
@@ -1237,12 +1275,22 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
                 .semantics(mergeDescendants = true) {
                     if (open) collapse { onToggle(); true } else expand { onToggle(); true }
                 }
+                .testTag(TaskBarSummaryTestTag)
         } else {
             Modifier
         }
     Column(modifier.then(toggle), verticalArrangement = Arrangement.Top) {
         if (refLine) {
-            RaftText(chrome.ref, style = typography.monoMeta, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // The ref names the task's channel: a tap goes there, to the task (artin, task #35).
+            val viewInChannel = stringResource(Res.string.task_conversation_view_in_channel)
+            RaftTextLink(
+                text = chrome.ref,
+                onClick = chrome.onViewInChannel,
+                // Screen readers say where the ref goes, not just the ref.
+                modifier = Modifier.semantics { onClick(label = viewInChannel) { chrome.onViewInChannel(); true } },
+                style = typography.monoMeta,
+                maxLines = 1,
+            )
         }
         if (chrome.summarized) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1280,8 +1328,9 @@ private fun TaskBarChevron(open: Boolean) {
 
 /**
  * The head pulled down from the top bar over the messages (web `TaskHeadPullDown`, slock #11722):
- * the same title, description, facts and History as the head in the conversation, editable the
- * same way, without losing the reader's place. Composed at the top of the box over the messages.
+ * on a phone, while the head's row in the conversation is out of view ([TaskHeadScrollState]). The
+ * same title, description, facts and History as that row, editable the same way, without losing
+ * the reader's place. Composed at the top of the box over the messages.
  */
 @Composable
 internal fun TaskHeadFloat(
@@ -1298,9 +1347,15 @@ internal fun TaskHeadFloat(
         paneTitle = label,
         reducedMotion = reducedMotion,
     ) {
-        Column(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)) {
-            content()
-        }
+        TaskHeadFrame(content)
+    }
+}
+
+/** The head's insets on a phone, in the conversation's first row and pulled down from the bar alike. */
+@Composable
+internal fun TaskHeadFrame(content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)) {
+        content()
     }
 }
 

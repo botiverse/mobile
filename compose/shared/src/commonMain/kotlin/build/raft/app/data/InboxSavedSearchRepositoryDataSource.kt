@@ -32,16 +32,19 @@ private suspend fun RaftNetworkClient.inbox(
     offset: Int,
     serverId: ServerId
 ): HomeNetworkResponse =
-    request(
+    // Like web, only a first-page read (a reset) says why; a continuation page does not.
+    requestWithHeaders(
         priority,
         "channels/inbox",
+        headers = if (offset == 0) currentInboxFetchReasonHeaders() else emptyMap(),
         query = inboxRequestQuery(filter, limit, offset),
         serverIdOverride = serverId
     )
 
 /**
  * `GET /channels/inbox` query (botiverse/slock routes/channels.ts `channelRouter.get("/inbox")`):
- * `filter`, `limit`, `offset`, and `scope` for a scoped filter (Pinned: `scope=pinned`).
+ * `filter`, `limit`, `offset`, and `scope` for a scoped filter (Pinned: `scope=pinned`, Saved: `scope=saved`,
+ * Artifacts: `scope=artifacts`).
  */
 internal fun inboxRequestQuery(filter: InboxFilter, limit: Int, offset: Int): List<Pair<String, String>> =
     listOfNotNull(

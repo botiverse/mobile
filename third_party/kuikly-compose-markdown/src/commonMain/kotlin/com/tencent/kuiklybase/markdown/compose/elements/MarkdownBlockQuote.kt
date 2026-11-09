@@ -20,6 +20,8 @@ import com.tencent.kuiklybase.markdown.compose.LocalMarkdownComponents
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownDimens
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownPadding
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownBlockMargins
+import com.tencent.kuiklybase.markdown.compose.RaftMarkdownBlockGapTracker
 import com.tencent.kuiklybase.markdown.compose.handleElement
 import com.tencent.kuiklybase.markdown.utils.findChildOfTypeRecursive
 import org.intellij.markdown.MarkdownElementTypes
@@ -64,7 +66,10 @@ fun MarkdownBlockQuote(
 
             if (nonBlockquotes.isNotEmpty()) {
                 Column(modifier = Modifier.fillMaxWidth().padding(blockQuoteText)) {
+                    // Slock: quoted paragraphs keep the web's `mb-1` between them.
+                    val blockGaps = LocalRaftMarkdownBlockMargins.current?.let(::RaftMarkdownBlockGapTracker)
                     nonBlockquotes.onEach { quote ->
+                        blockGaps?.Before(quote.type)
                         when {
                             requiresBlockQuotePlainTextFallback(quote) -> {
                                 MarkdownText(

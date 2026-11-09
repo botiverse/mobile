@@ -157,6 +157,9 @@ kotlin {
 
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.kotlinx.coroutines.core)
+                // The shared page back stack (nav/RaftPageStack, RaftStackScene): desktop hosts it
+                // today; Android and iOS move onto it behind a flag (Navigation 3 plan, step 0).
+                implementation(libs.cmp.navigation3.ui)
                 // Common platform-safe monitor used by the synchronous shell-store cache.
                 implementation(libs.atomicfu)
                 implementation(libs.sqldelight.runtime)

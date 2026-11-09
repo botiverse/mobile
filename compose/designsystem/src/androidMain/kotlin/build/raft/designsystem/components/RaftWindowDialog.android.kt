@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
+import build.raft.designsystem.R
 
 internal actual fun raftWindowDialogPlatformProperties(properties: RaftWindowDialogProperties): DialogProperties =
     DialogProperties(
@@ -29,12 +30,18 @@ internal actual fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
     )
 
 @Composable
-internal actual fun RaftDialogWindowPolicy(isDark: Boolean) {
+internal actual fun RaftDialogWindowPolicy(isDark: Boolean, keepsHostKeyboard: Boolean) {
     val window = (LocalView.current.parent as? DialogWindowProvider)?.window ?: return
     DisposableEffect(window) {
         // RaftWindowDialog draws RaftTheme.scrim; the theme's dim would double it.
         window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         window.applyRaftTransparentSystemBars()
+        onDispose {}
+    }
+    // Composed while the window is being attached, before it gains focus: the system would
+    // otherwise hide the keyboard for a focused window with no editor.
+    DisposableEffect(window, keepsHostKeyboard) {
+        if (keepsHostKeyboard) window.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
         onDispose {}
     }
     // The host activity's bar icons, not a guess from isDark: the page sets them from what it
@@ -54,6 +61,29 @@ internal actual fun RaftDialogWindowPolicy(isDark: Boolean) {
         onDispose {}
     }
 }
+
+@Composable
+internal actual fun RaftPrepareDialogWindow(isDark: Boolean) {
+    val context = LocalView.current.context
+    val appearance =
+        context.raftActivity()?.window?.raftSystemBarsAppearance()
+            ?: RaftSystemBarsAppearance(lightStatusBars = !isDark, lightNavigationBars = !isDark)
+    // In composition, ahead of the Dialog: its window wraps this context's theme
+    // (ContextThemeWrapper) and reads windowLightStatusBar / windowLightNavigationBar into the
+    // window's appearance when it is created, before it is shown. Re-applying is idempotent.
+    // This mutates the theme itself (usually the Activity's), not a copy: the RaftDialogBars_*
+    // styles may only hold attributes read when a window is created, never anything the host's
+    // own views read later.
+    context.theme.applyStyle(appearance.raftDialogBarsStyle(), true)
+}
+
+private fun RaftSystemBarsAppearance.raftDialogBarsStyle(): Int =
+    when {
+        lightStatusBars && lightNavigationBars -> R.style.RaftDialogBars_LightStatus_LightNav
+        lightStatusBars -> R.style.RaftDialogBars_LightStatus_DarkNav
+        lightNavigationBars -> R.style.RaftDialogBars_DarkStatus_LightNav
+        else -> R.style.RaftDialogBars_DarkStatus_DarkNav
+    }
 
 @Composable
 internal actual fun RaftPopupWindowPolicy(onReady: () -> Unit) {

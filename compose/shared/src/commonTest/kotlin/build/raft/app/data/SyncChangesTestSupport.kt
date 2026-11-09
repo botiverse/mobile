@@ -36,6 +36,13 @@ internal fun syncDelete(seq: Long, entity: String, id: String): String =
 internal fun syncStale(seq: Long, conversationId: String, refSeq: Long?): String =
     """{"seq":$seq,"entity":"conversation","id":"$conversationId","op":"stale","refSeq":${refSeq ?: "null"}}"""
 
+/** A `conversation` change carrying its state parts (raw JSON objects, null = left out), as slock bab9dd8c0 sends them. */
+internal fun syncStaleWithState(seq: Long, conversationId: String, refSeq: Long? = null, read: String? = null, done: String? = null, follow: String? = null): String {
+    val parts = listOfNotNull(read?.let { "\"read\":$it" }, done?.let { "\"done\":$it" }, follow?.let { "\"follow\":$it" })
+    return """{"seq":$seq,"entity":"conversation","id":"$conversationId","op":"stale","refSeq":${refSeq ?: "null"}""" +
+        parts.joinToString("") { ",$it" } + "}"
+}
+
 internal fun syncScope(seq: Long, kind: String, id: String, op: String, snapshots: List<String>): String =
     """{"seq":$seq,"entity":"scope","id":"$id","op":"$op","scopeKind":"$kind","snapshots":[${snapshots.joinToString(",") { "\"$it\"" }}]}"""
 

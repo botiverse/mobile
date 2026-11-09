@@ -8,7 +8,7 @@
   "sources": {
     "web": [
       "packages/web/src/utils/channelUnreadIndicator.ts (getChannelUnreadIndicatorState)",
-      "packages/web/src/components/layout/Sidebar.tsx (channel row)"
+      "packages/web/src/features/sidebar/rows/ChannelRow.tsx"
     ],
     "app": [
       "compose/shared/src/commonMain/kotlin/build/raft/app/RaftHomeComponents.kt (homeChannelRowMarks)"

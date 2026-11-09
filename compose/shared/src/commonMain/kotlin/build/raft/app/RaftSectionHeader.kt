@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.LocalRaftBarButtons
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.CompositionLocalProvider
 import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
@@ -38,13 +42,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftBackButtonDefaults
@@ -68,7 +74,8 @@ internal val RaftCollapsibleSectionCountColor: Color get() = RaftColor.Foregroun
 internal val RaftMainTabHeaderStartPadding = 16.dp
 // Task #179: getter so the header follows the Settings font option.
 internal val RaftMainTabHeaderTitleStyle: TextStyle
-    get() = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
+    // Web TabRootBar: `text-headline` 17/22 700 (it was 16/20).
+    get() = RaftType.Headline
 internal val RaftTopPageHeaderContentStartPadding = 18.dp
 internal val RaftTopPageHeaderContentSpacing = 12.dp
 // After a 44dp Back: its 22dp arrow keeps 11dp of its own inset, so the title sits 17dp past it.
@@ -125,12 +132,14 @@ internal fun RaftTopPageHeader(
     modifier: Modifier = Modifier,
     applyTopSafeArea: Boolean = true,
     topSafeAreaOverride: Dp? = null,
-    headerHeight: Dp = RaftAppSize.PageHeaderHeight,
+    // 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+    headerHeight: Dp = RaftTheme.controls.headHeight,
     // [onBack] sets the Back button's 3dp edge inset and the 6dp gap after it.
     contentStartPadding: Dp = if (onBack != null) RaftBackButtonDefaults.EdgeInset else RaftTopPageHeaderContentStartPadding,
     contentEndPadding: Dp = RaftTopPageHeaderContentEndPadding,
     contentSpacing: Dp = if (onBack != null) RaftTopPageHeaderBackContentSpacing else RaftTopPageHeaderContentSpacing,
-    titleStyle: TextStyle = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+    // Web PanelHeader: `text-headline` 17/22 700 (it was 18/22).
+    titleStyle: TextStyle = RaftType.Headline,
     refreshing: Boolean = false,
     leadingContent: (@Composable BoxScope.() -> Unit)? = null,
     titleLeadingContent: (@Composable RowScope.() -> Unit)? = null,
@@ -140,10 +149,56 @@ internal fun RaftTopPageHeader(
     showBodyTopBanner: Boolean = true,
     // Long-press copy (raftCopyable) of the title when it is an identifier (a file name).
     titleCopyText: String? = null,
+    // PROTOTYPE (native nav bar): what a host-drawn UINavigationBar shows for this head.
+    nativeSubtitle: String? = subtitle,
+    nativeActions: List<RaftNativeNavBarAction> = emptyList(),
+    nativeTitleExtras: RaftNativeNavBarTitleExtras = RaftNativeNavBarTitleExtras(),
+    nativeTitleMenu: List<RaftNativeNavBarAction> = emptyList(),
+    nativeOnTitleClick: (() -> Unit)? = null,
+    // PROTOTYPE: the head's Back when it draws it itself (in [titleLeadingContent]).
+    nativeOnBack: (() -> Unit)? = null,
 ) {
     val topSafeArea =
         (topSafeAreaOverride ?: if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp)
             .coerceAtLeast(0.dp)
+    // iOS native navigation (mobile_ios_native_nav_v1): the host's UINavigationBar draws this head
+    // (title, Back, actions). The page's top safe area already includes the bar, so only that space
+    // is kept. A head with Compose buttons but no bar buttons mapped keeps its Compose head (and
+    // the host hides its bar) instead of losing those buttons.
+    // iPhone Duo side column: the column holds Back and the actions, so the Compose head stays.
+    val nativeHeadMapped = !raftSideColumnActive() && raftNativeNavBarHeadMapped(trailingContent != null, nativeActions)
+    if (!nativeHeadMapped) RaftNativeNavBarDecline()
+    // The title's channel tile / DM avatar as this head draws it, captured offscreen for the bar.
+    val nativeTitleLeading = nativeTitleExtras.leading
+    var nativeTitleImage by remember(nativeTitleLeading) { mutableStateOf<RaftNativeTabBarAvatar?>(null) }
+    if (
+        nativeHeadMapped &&
+        raftNativeNavBarPublish(
+            title = title,
+            subtitle = nativeSubtitle,
+            actions = nativeActions,
+            extras = nativeTitleExtras.copy(refreshing = nativeTitleExtras.refreshing || refreshing),
+            titleMenu = nativeTitleMenu,
+            onBack = onBack ?: nativeOnBack,
+            onTitleClick = onTitleClick ?: nativeOnTitleClick,
+            titleImage = nativeTitleImage,
+        )
+    ) {
+        RaftNativeNavBarHeadSpacer(
+            bridge = LocalRaftNativeNavBar.current!!,
+            modifier = modifier.fillMaxWidth(),
+            // The page's top safe area includes the host bar; a head below the top keeps none.
+            liveTop = topSafeArea,
+        ) {
+            if (nativeTitleLeading != null) {
+                RaftNativeNavBarTitleImageCapture(nativeTitleLeading) { nativeTitleImage = it }
+            }
+        }
+        if (showBodyTopBanner) {
+            RaftAppShellBodyTopBanner()
+        }
+        return
+    }
     // iPhone Duo (raft-design #859): with the system's side column, Back is the column's first
     // button, and the header keeps the title from the 16dp margin.
     val backInColumn = onBack != null && raftSideColumnControls(back = raftSideColumnBackAction(onBack))
@@ -186,13 +241,22 @@ internal fun RaftTopPageHeader(
             if (titleContent != null) {
                 titleContent.invoke(this)
             } else {
+                val titleTapModifier =
+                    if (onTitleClick != null) {
+                        // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onTitleClick,
+                        )
+                    } else {
+                        // No title action: no clickable at all. A disabled clickable still takes the
+                        // tap, so the header's own [modifier] click (Settings' 7-tap Developer entry)
+                        // never fired from the title.
+                        Modifier
+                    }
                 Column(
-                    // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
-                    modifier = Modifier.weight(1f).clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        enabled = onTitleClick != null
-                    ) { onTitleClick?.invoke() },
+                    modifier = Modifier.weight(1f).then(titleTapModifier),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Text(
@@ -206,7 +270,8 @@ internal fun RaftTopPageHeader(
                     subtitle?.takeIf { it.isNotBlank() }?.let {
                         Text(
                             text = it,
-                            style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                            // raft-ui PanelMeta: font-sans text-caption (12/16 500).
+                            style = RaftType.Caption,
                             color = RaftColor.ForegroundHint,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -232,6 +297,10 @@ internal fun RaftTopPageHeader(
  * canvas row with a 1dp seam, 16dp start edge; the 44dp ghost Back (22dp glyph) is pulled 13dp
  * into that edge (`-ml-[13px]`), then an 8dp gap, the `text-headline` title over the
  * `text-caption` hint meta line.
+ *
+ * [leadingContent] takes Back's place (a 44dp icon button on the same edge: a side card's
+ * collapse chevron); [trailingContent] holds the head's actions, its last 44dp icon button's
+ * glyph ending on the 16dp line (web `PanelActions`).
  */
 @Composable
 internal fun RaftPanelBackHeader(
@@ -242,8 +311,28 @@ internal fun RaftPanelBackHeader(
     topSafeArea: Dp = 0.dp,
     refreshing: Boolean = false,
     onTitleClick: (() -> Unit)? = null,
+    leadingContent: (@Composable () -> Unit)? = null,
+    trailingContent: (@Composable RowScope.() -> Unit)? = null,
+    // PROTOTYPE (native nav bar): the head's buttons on the host bar.
+    nativeActions: List<RaftNativeNavBarAction> = emptyList(),
 ) {
     val safeTop = topSafeArea.coerceAtLeast(0.dp)
+    // iOS native navigation: the host's UINavigationBar draws this head (unless its Compose
+    // buttons have no bar buttons mapped, see RaftTopPageHeader).
+    val nativeHeadMapped =
+        leadingContent == null && !raftSideColumnActive() && raftNativeNavBarHeadMapped(trailingContent != null, nativeActions)
+    if (!nativeHeadMapped) RaftNativeNavBarDecline()
+    if (
+        nativeHeadMapped &&
+        raftNativeNavBarPublish(title, subtitle, nativeActions, RaftNativeNavBarTitleExtras(refreshing = refreshing), onBack = onBack, onTitleClick = onTitleClick)
+    ) {
+        RaftNativeNavBarHeadSpacer(
+            bridge = LocalRaftNativeNavBar.current!!,
+            modifier = modifier.fillMaxWidth(),
+            liveTop = safeTop,
+        )
+        return
+    }
     // iPhone Duo: Back moves to the system's side column (raft-design #859).
     val backInColumn = onBack != null && raftSideColumnControls(back = raftSideColumnBackAction(onBack))
     @Suppress("NAME_SHADOWING")
@@ -265,41 +354,51 @@ internal fun RaftPanelBackHeader(
                     // horizontal safe area.
                     .raftSafeAreaHorizontalPadding()
                     // The last 44dp icon button's 22dp glyph ends on the 16dp line, like Back's.
-                    .padding(start = if (onBack != null) RaftBackButtonDefaults.EdgeInset else 16.dp, end = RaftBackButtonDefaults.EdgeInset),
+                    .padding(
+                        start = if (onBack != null || leadingContent != null) RaftBackButtonDefaults.EdgeInset else 16.dp,
+                        end = RaftBackButtonDefaults.EdgeInset,
+                    ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (onBack != null) {
-                RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
-            }
-            Column(
-                // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
-                modifier =
-                    Modifier.weight(1f).clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        enabled = onTitleClick != null
-                    ) { onTitleClick?.invoke() },
-            ) {
-                Text(
-                    text = title,
-                    style = RaftPanelHeaderTitleStyle,
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                subtitle?.takeIf { it.isNotBlank() }?.let {
+            // The head's icon-lg buttons are bar buttons: 28dp under a mouse or trackpad (sizing v12).
+            CompositionLocalProvider(LocalRaftBarButtons provides true) {
+                if (onBack != null) {
+                    RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
+                }
+                leadingContent?.invoke()
+                Column(
+                    // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
+                    modifier =
+                        Modifier.weight(1f).clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            enabled = onTitleClick != null
+                        ) { onTitleClick?.invoke() },
+                ) {
                     Text(
-                        text = it,
-                        style = RaftType.Caption,
-                        color = RaftColor.ForegroundHint,
+                        text = title,
+                        style = RaftPanelHeaderTitleStyle,
+                        color = RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    subtitle?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            text = it,
+                            style = RaftType.Caption,
+                            color = RaftColor.ForegroundHint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-            }
-            if (refreshing) {
-                RaftHeaderRefreshIndicator()
+                if (refreshing) {
+                    RaftHeaderRefreshIndicator()
+                }
+                if (trailingContent != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically, content = trailingContent)
+                }
             }
         }
         Box(
@@ -313,19 +412,23 @@ internal fun RaftPanelBackHeader(
     }
 }
 
-private val RaftPanelHeaderHeight = 56.dp
+// 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+private val RaftPanelHeaderHeight: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.headHeight
 
 
 // raft-ui `text-headline`: 17/22 700, no tracking.
 private val RaftPanelHeaderTitleStyle: TextStyle
-    get() = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp, letterSpacing = 0.sp)
+    get() = RaftType.Headline
 
 @Composable
 internal fun RaftTopPageHeaderFrame(
     modifier: Modifier = Modifier,
     backgroundColor: Color = RaftColor.Canvas,
     topSafeArea: Dp = 0.dp,
-    headerHeight: Dp = RaftAppSize.PageHeaderHeight,
+    // 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+    headerHeight: Dp = RaftTheme.controls.headHeight,
     contentStartPadding: Dp = RaftTopPageHeaderContentStartPadding,
     contentEndPadding: Dp = RaftTopPageHeaderContentEndPadding,
     contentSpacing: Dp = RaftTopPageHeaderContentSpacing,
@@ -360,8 +463,10 @@ internal fun RaftTopPageHeaderFrame(
                     .padding(start = contentStartPadding, end = contentEndPadding),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(contentSpacing),
-            content = content,
-        )
+        ) {
+            // The head's icon-lg buttons are bar buttons: 28dp under a mouse or trackpad (sizing v12).
+            CompositionLocalProvider(LocalRaftBarButtons provides true) { content() }
+        }
         // raft-ui panel head: a 1dp seam splits the head from the body (no ink rule). Flattened
         // onto the canvas first so it rounds like the web (a draw-time 8-bit blend lands a level dark).
         Box(
@@ -384,7 +489,9 @@ internal fun RaftMainTabPageHeader(
     onBack: (() -> Unit)? = null,
     contentStartPadding: Dp = if (onBack != null) RaftBackButtonDefaults.EdgeInset else RaftMainTabHeaderStartPadding,
     refreshing: Boolean = false,
-    leadingContent: (@Composable BoxScope.() -> Unit)? = null
+    leadingContent: (@Composable BoxScope.() -> Unit)? = null,
+    // PROTOTYPE (native nav bar): a title tap on the host bar (the head's own modifier click).
+    nativeOnTitleClick: (() -> Unit)? = null,
 ) {
     RaftTopPageHeader(
         title = title,
@@ -395,7 +502,8 @@ internal fun RaftMainTabPageHeader(
         contentStartPadding = contentStartPadding,
         titleStyle = RaftMainTabHeaderTitleStyle,
         refreshing = refreshing,
-        leadingContent = leadingContent
+        leadingContent = leadingContent,
+        nativeOnTitleClick = nativeOnTitleClick,
     )
 }
 
@@ -420,18 +528,15 @@ internal fun RaftHeaderRefreshIndicator(
 internal fun RaftPanelAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    open: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    var pressed by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(RaftAppRadius.Control)
-    Button(
+    build.raft.designsystem.components.RaftPanelAction(
         onClick = onClick,
-        pressOffset = 0.dp,
-        onPressedChange = { pressed = it },
-        modifier =
-            modifier
-                .clip(shape)
-                .background(if (pressed) RaftColor.FillPressed else Color.Transparent, shape),
+        modifier = modifier,
+        enabled = enabled,
+        open = open,
         content = content
     )
 }
@@ -453,130 +558,14 @@ internal fun RaftCenteredLoading(
             RaftIconSpinner(size = 16.dp, color = RaftColor.TextMutedGray)
             Text(
                 text = resolvedMessage,
-                style = RaftType.Caption
-                    .copy(
-                        fontFamily = raftMonoFamilyForWeight(FontWeight.SemiBold),
-                        fontSize = 14.sp,
-                        lineHeight = 18.sp,
-                        fontWeight = FontWeight.Normal
-                    ),
+                // Web ContentLoading: sans text-callout (14/20 400).
+                style = RaftType.Callout,
                 color = RaftColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.widthIn(max = 220.dp)
             )
         }
-    }
-}
-
-@Composable
-internal fun RaftCollapsibleSectionHeader(
-    label: String,
-    count: Int,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-    showCollapsedUnreadDot: Boolean = false,
-    minHeight: Dp = 30.dp,
-    // raft-ui section titles keep source case (`normal-case`); callers may still opt in.
-    uppercaseLabel: Boolean = false,
-    countPrefix: String = "",
-    sortContentDescription: String? = null,
-    onSortClick: ((RaftPopoverAnchor) -> Unit)? = null,
-    // task #512: custom section headers open their context menu on long-press
-    // (web right-click). Null keeps the plain tap-to-collapse clickable.
-    // [longPressAnchorIdentity] must uniquely identify the header (a section
-    // id, not its display label) so the popover anchor registry never mixes
-    // two same-named sections.
-    onLongPress: ((RaftPopoverAnchor) -> Unit)? = null,
-    longPressAnchorIdentity: String = label,
-    trailingContent: (@Composable BoxScope.() -> Unit)? = null
-) {
-    val longPressAnchorRef = remember(longPressAnchorIdentity) { RaftLiveRootAnchorRef(identity = "section-header:$longPressAnchorIdentity") }
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = minHeight)
-            .then(
-                if (onLongPress != null) {
-                    Modifier
-                        .raftCaptureLiveRootAnchor(longPressAnchorRef)
-                        .pointerInput(onExpandedChange, expanded) {
-                            detectTapGestures(
-                                onTap = { onExpandedChange(!expanded) },
-                                onLongPress = {
-                                    longPressAnchorRef.resolve(RaftPopoverLocalPoint.BottomStart)?.let(onLongPress)
-                                }
-                            )
-                        }
-                } else {
-                    Modifier.clickable { onExpandedChange(!expanded) }
-                }
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(RaftCollapsibleSectionContentGap)
-    ) {
-        RaftLucideIcon(
-            RaftLucideIconName.ChevronRight,
-            Modifier.size(SectionChevronSize),
-            color = raftArgbHex(RaftColor.ForegroundHint),
-            rotationDegrees = if (expanded) 90f else 0f,
-            rotationAnimationDurationSeconds = RaftCollapsibleSectionTokens.AnimationDurationSeconds
-        )
-        Text(
-            if (uppercaseLabel) label.raftDisplayUppercase() else label,
-            // raft-ui `SidebarSectionDisclosure`: normal tracking in source case.
-            style = if (uppercaseLabel) RaftType.SectionLabel else RaftType.SectionLabel.copy(letterSpacing = 0.sp),
-            color = RaftColor.ForegroundHint
-        )
-        Text(
-            countPrefix + count,
-            style = RaftCollapsibleSectionCountTextStyle,
-            color = RaftCollapsibleSectionCountColor
-        )
-        if (!expanded && showCollapsedUnreadDot) {
-            RaftStatusIndicator(
-                color = RaftColor.AccentPink,
-                size = RaftStatusIndicatorTokens.InlineSize,
-                modifier = Modifier.padding(start = RaftAppSpacing.Xs)
-            )
-        }
-        Spacer(Modifier.weight(1f))
-        if (sortContentDescription != null && onSortClick != null) {
-            RaftSectionHeaderIconAction(
-                icon = RaftLucideIconName.ArrowDownUp,
-                contentDescription = sortContentDescription,
-                onClick2 = onSortClick
-            )
-        }
-        if (trailingContent != null) {
-            Box(content = trailingContent)
-        }
-    }
-}
-
-@Suppress("UNUSED_PARAMETER")
-@Composable
-internal fun RaftSectionHeaderIconAction(
-    icon: RaftLucideIconName,
-    contentDescription: String,
-    onClick: () -> Unit = {},
-    onClick2: (RaftPopoverAnchor) -> Unit = {},
-    size: Dp = SectionHeaderActionSize,
-    iconSize: Dp = SectionHeaderActionIconSize
-) {
-    val anchorRef = remember(contentDescription) { RaftLiveRootAnchorRef(identity = contentDescription) }
-    Button(
-        onClick = {
-            onClick()
-            anchorRef.resolve(RaftPopoverLocalPoint.BottomStart)?.let(onClick2)
-        },
-        modifier =
-            Modifier
-                .size(size)
-                .raftCaptureLiveRootAnchor(anchorRef)
-    ) {
-        RaftLucideIcon(icon, Modifier.size(iconSize))
     }
 }
 

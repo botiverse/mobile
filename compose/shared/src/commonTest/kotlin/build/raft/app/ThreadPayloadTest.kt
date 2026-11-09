@@ -49,7 +49,11 @@ import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksScope
+import build.raft.app.data.SharedTaskFactFoldOutcome
+import build.raft.app.data.TaskActionResult
+import build.raft.app.data.SharedTaskReferenceResolution
 import build.raft.app.data.SharedTaskReferenceResolutionSource
+import build.raft.app.data.resolveSharedTaskReference
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedConversationDirectoryState
@@ -79,7 +83,7 @@ import build.raft.app.data.parseSharedMessageContext
 import build.raft.app.data.toHomeChannelRow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import build.raft.app.raftMonoFamilyForWeight
+import build.raft.app.RaftMonoFamily
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -490,18 +494,18 @@ class ThreadPayloadTest {
     fun threadMessagePermalinkMatchesReactChannelRoute() {
         val payload =
             RaftThreadScreenPayload(
-                sourceThreadId = "channel-1",
+                sourceThreadId = "c0c0c0c0-0000-4000-8000-000000000001",
                 channelKind = "channel"
             )
 
         val permalink =
             payload.threadMessagePermalink(
-                message = threadMessage("message-1", "u-artin", "artin"),
+                message = threadMessage("a0a0a0a0-0000-4000-8000-000000000001", "u-artin", "artin"),
                 serverSlug = "workspace"
             )
 
         assertEquals(
-            "https://app.raft.build/s/workspace/channel/channel-1?msg=message-1",
+            "https://app.raft.build/s/workspace/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000001",
             permalink
         )
     }
@@ -511,8 +515,8 @@ class ThreadPayloadTest {
         val payload =
             RaftThreadScreenPayload(
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                parentChannelId = "channel-1",
-                parentMessageId = "parent-1",
+                parentChannelId = "c0c0c0c0-0000-4000-8000-000000000001",
+                parentMessageId = "a0a0a0a0-0000-4000-8000-000000000004",
                 sourceThreadId = "thread-1",
                 streamChannelId = "thread-1",
                 parentChannelKind = "channel"
@@ -520,12 +524,12 @@ class ThreadPayloadTest {
 
         val permalink =
             payload.threadMessagePermalink(
-                message = threadMessage("reply-1", "u-artin", "artin"),
+                message = threadMessage("a0a0a0a0-0000-4000-8000-000000000003", "u-artin", "artin"),
                 serverSlug = "workspace"
             )
 
         assertEquals(
-            "https://app.raft.build/s/workspace/channel/channel-1?msg=reply-1&thread=channel-1%3Aparent-1",
+            "https://app.raft.build/s/workspace/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000003&thread=c0c0c0c0-0000-4000-8000-000000000001%3Aa0a0a0a0-0000-4000-8000-000000000004",
             permalink
         )
     }
@@ -538,8 +542,8 @@ class ThreadPayloadTest {
         val payload =
             RaftThreadScreenPayload(
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                parentChannelId = "dm-parent",
-                parentMessageId = "parent-1",
+                parentChannelId = "d0d0d0d0-0000-4000-8000-000000000002",
+                parentMessageId = "a0a0a0a0-0000-4000-8000-000000000004",
                 sourceThreadId = "thread-1",
                 streamChannelId = "thread-1",
                 parentChannelKind = "direct"
@@ -547,12 +551,12 @@ class ThreadPayloadTest {
 
         val permalink =
             payload.threadMessagePermalink(
-                message = threadMessage("reply-1", "u-artin", "artin"),
+                message = threadMessage("a0a0a0a0-0000-4000-8000-000000000003", "u-artin", "artin"),
                 serverSlug = "workspace"
             )
 
         assertEquals(
-            "https://app.raft.build/s/workspace/dm/dm-parent?msg=reply-1&thread=dm-parent%3Aparent-1",
+            "https://app.raft.build/s/workspace/dm/d0d0d0d0-0000-4000-8000-000000000002?msg=a0a0a0a0-0000-4000-8000-000000000003&thread=d0d0d0d0-0000-4000-8000-000000000002%3Aa0a0a0a0-0000-4000-8000-000000000004",
             permalink
         )
     }
@@ -758,13 +762,12 @@ class ThreadPayloadTest {
     fun threadDateDividerTextStyleUsesCompactMetaScale() {
         val style = threadDateDividerTextStyle()
 
-        assertEquals(11.sp, style.fontSize)
-        assertEquals(14.sp, style.lineHeight)
+        // raft-ui MessageListDateDivider: font-mono text-mono-meta, 12/16 regular.
+        assertEquals(12.sp, style.fontSize)
+        assertEquals(16.sp, style.lineHeight)
         assertEquals(0.sp, style.letterSpacing)
-        // Space Mono ships weight in the family (Kuikly drops serialized weight),
-        // so the bold divider uses the mono Bold family with Normal weight (#375).
         assertEquals(FontWeight.Normal, style.fontWeight)
-        assertEquals(raftMonoFamilyForWeight(FontWeight.Bold), style.fontFamily)
+        assertEquals(RaftMonoFamily, style.fontFamily)
     }
 
     @Test
@@ -6102,7 +6105,7 @@ class ThreadPayloadTest {
                                     senderId = "u1",
                                     senderName = "Artin",
                                     messageType = "chat",
-                                    content = "keep message without invalid task",
+                                    content = "keep task with a status this build does not know",
                                     taskNumber = 1,
                                     taskStatus = "future-status",
                                 ),
@@ -6140,9 +6143,10 @@ class ThreadPayloadTest {
             listOf("task-invalid-status", "task-invalid-assignee", "valid-message"),
             payload.messages.map { it.id },
         )
+        // A status a newer server added keeps the task, as Unknown (not dropped, not Todo).
         val invalidStatus = payload.messages[0]
-        assertNull(invalidStatus.taskId)
-        assertNull(invalidStatus.taskStatus)
+        assertEquals("task-invalid-status", invalidStatus.taskId)
+        assertEquals(TaskStatus.UNKNOWN_WIRE_VALUE, invalidStatus.taskStatus)
         val invalidAssignee = payload.messages[1]
         assertEquals("task-invalid-assignee", invalidAssignee.taskId)
         assertEquals("todo", invalidAssignee.taskStatus)
@@ -6151,7 +6155,7 @@ class ThreadPayloadTest {
         assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_sender field=member_kind value=future-member" })
         assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_sender field=member_kind value=system" })
         assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_message field=message_type value=future-message" })
-        assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_task field=task_status value=future-status" })
+        assertTrue(logs.any { it == "projection_value_unknown source=thread_wire_task field=task_status value=future-status" })
         assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_task_assignee field=member_kind value=future-member" })
         assertTrue(
             logs.none {
@@ -7433,6 +7437,44 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun markdownTaskNumberNetworkStepsRunInTheSharedReferenceFetchPhase() = runBlocking {
+        // A joint v2 task: the number lookup and the `POST /tasks/:id/conversation` are both
+        // network, so the shared spinner must cover each of them, and nothing after.
+        val resolver = build.raft.app.data.SharedReferenceResolver()
+        val busyDuring = mutableMapOf<String, Boolean>()
+        val api =
+            FakeMarkdownTaskNumberApi(
+                channelTaskBody =
+                    """{"task":{"id":"task-77","channelId":"parent-channel","channelType":"joint","conversationChannelId":"joint-canonical","conversationAnchored":true,"taskNumber":77,"title":"Joint task","status":"in_progress"}}""",
+                serverTasksBody = """{"tasks":[]}""",
+                onRequest = { request -> busyDuring[request] = resolver.isFetching("message-a:task") }
+            )
+
+        openMarkdownTaskNumberPayload(
+            serverId = ServerId("server-1"),
+            taskNumber = 77,
+            currentPayload =
+                RaftThreadScreenPayload(
+                    status = "content",
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
+                    channelKind = "channel",
+                    sourceThreadId = "parent-channel",
+                    streamChannelId = "parent-channel"
+                ),
+            currentTaskChannelId = ChannelId("parent-channel"),
+            tasksDataSource = SharedTasksDataSource(api),
+            tasksDataStore = null,
+            taskV2Enabled = true,
+            referenceResolver = resolver,
+            actionId = "message-a:task"
+        )
+
+        assertEquals(listOf("taskByNumber:server-1:parent-channel:77", "openConversation:task-77"), api.calls)
+        assertEquals(mapOf("taskByNumber" to true, "openConversation" to true), busyDuring)
+        assertTrue(resolver.inFlight.value.isEmpty(), "the spinner ends with the open")
+    }
+
+    @Test
     fun markdownTaskNumberOpenUsesLoadedServerStoreWithoutNetwork() = runBlocking {
         val store = SharedTasksDataStore()
         store.publishSnapshot(
@@ -7512,6 +7554,50 @@ class ThreadPayloadTest {
         assertEquals("target-channel", found.payload.parentChannelId)
         assertEquals("target-message", found.payload.parentMessageId)
         assertEquals(emptyList(), api.calls)
+    }
+
+    /**
+     * Hands 10e5cecd: a task the store already holds (a realtime frame), in a channel whose list is
+     * not loaded. The server's answer at that revision folds as stale, or as a conflict if the copies
+     * differ; either way the task exists and opens on the answer, on every tap.
+     */
+    @Test
+    fun markdownTaskRefOpensATaskTheStoreAlreadyHolds() = runBlocking {
+        val channel = ChannelId("wg-mobile")
+        val api =
+            FakeMarkdownTaskNumberApi(
+                channelTaskBody =
+                    """{"task":{"id":"task-16","title":"From the server","status":"in_progress","taskNumber":16,""" +
+                        """"channelId":"wg-mobile","messageId":"host","revision":3}}""",
+                serverTasksBody = """{"tasks":[]}"""
+            )
+        val source = SharedTasksDataSource(api)
+        val answer =
+            assertIs<DataResult.Content<TaskActionResult>>(
+                source.loadChannelTaskByNumber(ServerId("server-1"), channel, 16, DataRequestPriority.Foreground)
+            ).data.task
+
+        suspend fun assertOpens(store: SharedTasksDataStore) =
+            repeat(2) {
+                val resolution =
+                    resolveSharedTaskReference(
+                        serverId = ServerId("server-1"),
+                        taskNumber = 16,
+                        currentChannelId = channel,
+                        tasksDataSource = source,
+                        tasksDataStore = store,
+                        channelQualified = true
+                    )
+                assertEquals("From the server", assertIs<SharedTaskReferenceResolution.Found>(resolution).task.title)
+            }
+
+        val sameCopy = SharedTasksDataStore()
+        assertEquals(SharedTaskFactFoldOutcome.Accepted, sameCopy.upsertTaskForCurrentServer("server-1", answer))
+        assertOpens(sameCopy)
+
+        val differentCopy = SharedTasksDataStore()
+        differentCopy.upsertTaskForCurrentServer("server-1", answer.copy(title = "An older wording"))
+        assertOpens(differentCopy)
     }
 
     @Test
@@ -8474,6 +8560,27 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadTasksJoinStartsForChannelWithNoMessages() {
+        // 1.21.0: a channel with no messages loads as "empty"; its Tasks tab sent no request and
+        // stayed on Loading.
+        val taskChannelId = ChannelId("channel-1")
+        val emptyChannel =
+            RaftThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                status = "empty",
+                selectedTab = "tasks",
+                showTaskStatusActions = true
+            )
+
+        assertTrue(shouldStartThreadTasksLoad(emptyChannel, taskChannelId = taskChannelId))
+        assertTrue(shouldStartThreadTasksJoin(emptyChannel, startedThreadId = null, taskChannelId = taskChannelId))
+        assertFalse(shouldStartThreadTasksJoin(emptyChannel, startedThreadId = "channel-1", taskChannelId = taskChannelId))
+        assertFalse(shouldStartThreadTasksJoin(emptyChannel.copy(status = "error"), startedThreadId = null, taskChannelId = taskChannelId))
+    }
+
+    @Test
     fun resolvedAuxiliaryThreadIdUsesCurrentPayloadIdentityAfterLoading() {
         val launchPayload =
             RaftThreadScreenPayload(
@@ -9413,15 +9520,24 @@ class ThreadPayloadTest {
 
     private class FakeMarkdownTaskNumberApi(
         private val channelTaskBody: String,
-        private val serverTasksBody: String
+        private val serverTasksBody: String,
+        /** Runs inside every request (reads the reference resolver's fetch phase). */
+        private val onRequest: (String) -> Unit = {}
     ) : RaftTasksApi {
         val calls = mutableListOf<String>()
+
+        override suspend fun openTaskConversation(serverId: ServerId, taskId: TaskId): HomeNetworkResponse {
+            calls += "openConversation:${taskId.value}"
+            onRequest("openConversation")
+            return HomeNetworkResponse(code = 200, bodyText = """{"conversationChannelId":"joint-local-conversation"}""")
+        }
 
         override suspend fun serverTasks(
             serverId: ServerId,
             priority: DataRequestPriority
         ): HomeNetworkResponse {
             calls += "serverTasks:${serverId.value}"
+            onRequest("serverTasks")
             return HomeNetworkResponse(code = 200, bodyText = serverTasksBody)
         }
 
@@ -9432,6 +9548,7 @@ class ThreadPayloadTest {
             priority: DataRequestPriority
         ): HomeNetworkResponse {
             calls += "taskByNumber:${serverId.value}:${channelId.value}:$taskNumber"
+            onRequest("taskByNumber")
             return HomeNetworkResponse(code = 200, bodyText = channelTaskBody)
         }
 

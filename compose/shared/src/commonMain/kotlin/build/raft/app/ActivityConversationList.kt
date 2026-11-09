@@ -72,6 +72,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.formatTaskConversationRef
@@ -152,6 +153,12 @@ internal data class ActivityConversationListContext(
      * ([homeChannelSymbol]: `#`, lock, joint branch, public-page hash-globe).
      */
     val channelSymbolsByChannelId: Map<String, String> = emptyMap(),
+    /**
+     * Agent Lounge v0: the Lounges known here, keyed by their channel id (an agent DM row's `lounge`,
+     * or a Lounge this client opened or loaded). Their rows are named "{Name}'s Lounge" and lead
+     * with the agent's face and the Lounge mark, never `#<agent>-lounge`.
+     */
+    val loungesByChannelId: Map<String, ActivityConversationLounge> = emptyMap(),
 ) {
     companion object {
         val Empty = ActivityConversationListContext()
@@ -195,7 +202,43 @@ internal fun HomeSnapshot?.toActivityConversationListContext(activityServerId: S
             },
         currentMemberId = snapshot.currentMember.id.value.takeIf { it.isNotBlank() },
         channelSymbolsByChannelId = snapshot.activityChannelSymbolsByChannelId(),
+        loungesByChannelId = snapshot.activityLoungesByChannelId(),
     )
+}
+
+/** An agent's Lounge as an Activity row draws it. */
+internal data class ActivityConversationLounge(
+    val agentId: String,
+    val agentName: String,
+    val avatarWireValue: String? = null,
+)
+
+/** The Lounges this server's DM rows carry (see [withKnownLounges] for those known by id). */
+internal fun HomeSnapshot.activityLoungesByChannelId(): Map<String, ActivityConversationLounge> =
+    directMessages.mapNotNull { dm ->
+        val lounge = dm.lounge ?: return@mapNotNull null
+        val agentId = dm.presenceMemberId?.value?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        lounge.channelId.value to
+            ActivityConversationLounge(
+                agentId = agentId,
+                agentName = dm.name,
+                avatarWireValue = dm.directMessagePeerAvatarWireValue,
+            )
+    }.toMap()
+
+/**
+ * This context with the Lounges the client knows by id ([RaftAgentLounges], e.g. one just opened
+ * or loaded from Activity) added; what the DM rows carry wins. Follows the registry, so a Lounge
+ * becoming known renames its rows without waiting for Home.
+ */
+internal fun ActivityConversationListContext.withKnownLounges(
+    known: Map<String, build.raft.app.data.RaftAgentLounge>?,
+): ActivityConversationListContext {
+    if (known.isNullOrEmpty()) return this
+    val fromRegistry =
+        known.mapValues { (_, lounge) -> ActivityConversationLounge(agentId = lounge.agentId, agentName = lounge.displayAgentName) }
+    val merged = fromRegistry + loungesByChannelId
+    return if (merged == loungesByChannelId) this else copy(loungesByChannelId = merged)
 }
 
 /** The Home sidebar's glyph per channel id ([homeChannelSymbol]), for Activity's channel icons. */
@@ -247,15 +290,27 @@ internal sealed interface ActivityConversationListEntry {
     data class Row(val item: InboxItem, val divider: Boolean) : ActivityConversationListEntry {
         override val key: String = item.key
     }
+
+    /** A day's heading over its rows (web slock #13030, [groupActivityRowsByDay]); sticky. */
+    data class DayHeading(override val key: String, val label: ActivityDayLabel, val first: Boolean) : ActivityConversationListEntry
 }
 
 /**
- * web `visibleItems` (slock #10785): one row per item in the order the server lists them, a hairline
- * between two rows. There are no Pinned / All conversations sections: Pinned is a filter of its own
+ * web `visibleItems` (slock #10785): one row per item in the order the server lists them, under a
+ * heading per day (slock #13030, [groupActivityRowsByDay]), a hairline between two rows of one day.
+ * There are no Pinned / All conversations sections: Pinned is a filter of its own
  * (`InboxFilter.Pinned`, `scope=pinned`).
  */
-internal fun activityConversationListEntries(items: List<InboxItem>): List<ActivityConversationListEntry> =
-    items.mapIndexed { index, item -> ActivityConversationListEntry.Row(item, divider = index > 0) }
+internal fun activityConversationListEntries(
+    items: List<InboxItem>,
+    timeContext: RaftTimeContext? = null,
+): List<ActivityConversationListEntry> =
+    buildList {
+        groupActivityRowsByDay(items, timeContext).forEach { group ->
+            group.label?.let { label -> add(ActivityConversationListEntry.DayHeading(group.key, label, first = isEmpty())) }
+            group.rows.forEachIndexed { index, item -> add(ActivityConversationListEntry.Row(item, divider = index > 0)) }
+        }
+    }
 
 /**
  * The rows in the order the person sees them. "Prewarm the next thread after the clicked one" follows
@@ -358,6 +413,8 @@ internal data class ActivityConversationRowModel(
      */
     val taskConversation: Boolean = false,
     val taskStatusMark: TaskStatus? = null,
+    /** Agent Lounge v0: the row is a Lounge (or a thread in one); named and drawn as the Lounge. */
+    val lounge: ActivityConversationLounge? = null,
 ) {
     /** The thread badge sits in the leading corner (on the channel tile or the DM peer's face). */
     val leadingThreadBadge: Boolean
@@ -542,6 +599,12 @@ internal fun InboxItem.activityConversationRowModel(
         delegatedBy = previewDelegatedBy(),
         taskConversation = taskConversationRow,
         taskStatusMark = taskStatus.takeIf { taskConversationRow },
+        lounge =
+            if (directMessage || threadInDirectMessage) {
+                null
+            } else {
+                context.loungesByChannelId[(if (kind == InboxItemKind.Thread) parentChannelId ?: channelId else channelId).value]
+            },
     )
 }
 
@@ -801,7 +864,10 @@ internal fun ActivityConversationListRow(
                 true
             }
         }
-    val threadChannelText = model.threadChannelLabel?.let { stringResource(Res.string.activity_list_thread_channel, it) }
+    val loungeTitle = model.lounge?.let { agentLoungeTitle(it.agentName) }
+    val threadChannelText =
+        (loungeTitle?.takeIf { model.threadChannelLabel != null && model.taskConversation.not() } ?: model.threadChannelLabel)
+            ?.let { stringResource(Res.string.activity_list_thread_channel, it) }
     // A DM thread's face says the peer, so its line drops "@peer ·"; screen readers still hear it.
     val visibleThreadChannelText = threadChannelText?.takeIf { model.threadChannelLabelVisible }
     val untitledObject = stringResource(Res.string.artifacts_activity_untitled)
@@ -846,9 +912,9 @@ internal fun ActivityConversationListRow(
                     .then(
                         when {
                             selected -> Modifier.background(colors.infoSoft)
-                            menuOpen -> Modifier.background(colors.fillRowOpen)
+                            menuOpen -> Modifier.background(colors.fillSubtle)
                             // raft-ui 0.20: an inbox row presses with the medium tier.
-                            pressed -> Modifier.background(colors.fillPressed)
+                            pressed -> Modifier.background(colors.fillMedium)
                             else -> Modifier
                         }
                     )
@@ -904,7 +970,10 @@ internal fun ActivityConversationListRow(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             RaftText(
-                                text = model.title?.toAnnotatedString() ?: AnnotatedString(fallback),
+                                text =
+                                    loungeTitle?.takeIf { item.kind != InboxItemKind.Thread }?.let(::AnnotatedString)
+                                        ?: model.title?.toAnnotatedString()
+                                        ?: AnnotatedString(fallback),
                                 modifier = Modifier.weight(1f, fill = false),
                                 style = typography.subhead.copy(fontWeight = if (model.strong) FontWeight.Bold else FontWeight.SemiBold),
                                 color = titleColor,
@@ -926,7 +995,7 @@ internal fun ActivityConversationListRow(
                         }
                         // web `reveal="hover"`: the Done button takes the trailing column's place and the
                         // timestamp and marks step aside (transparent, so nothing moves).
-                        ActivityConversationTime(item, timeContext, Modifier.alpha(if (showHoverDone) 0f else 1f))
+                        ActivityConversationTime(item, timeContext, pointerHovering || hoverPreview, Modifier.alpha(if (showHoverDone) 0f else 1f))
                     }
                     // One AnnotatedString for "#channel · [face] Sender: preview" so the line truncates as a
                     // whole like web's InboxItemBody: a long channel name ellipsizes the line instead of
@@ -1072,7 +1141,12 @@ internal fun ActivityConversationLeading(
         if (flipped) {
             {
                 RaftInboxItemLeadingBadge {
-                    HomeSidebarChannelGlyph(model.channelSymbol, size = RaftInboxItemLeadingDefaults.BadgeIcon)
+                    if (model.lounge != null) {
+                        // Agent Lounge v0: a thread in a Lounge wears the Lounge mark as its place badge.
+                        RaftContentLucideIcon(RaftLucideIconName.Users, size = RaftInboxItemLeadingDefaults.BadgeIcon)
+                    } else {
+                        HomeSidebarChannelGlyph(model.channelSymbol, size = RaftInboxItemLeadingDefaults.BadgeIcon)
+                    }
                 }
             }
         } else if (model.leadingThreadBadge) {
@@ -1096,7 +1170,17 @@ internal fun ActivityConversationLeading(
         }
     RaftInboxItemLeading(badge = threadBadge) {
         val peer = model.dmPeer
-        if (peer != null) {
+        val lounge = model.lounge
+        if (lounge != null && !flipped && model.leadingKind == ActivityConversationLeadingKind.Channel) {
+            // Agent Lounge v0: a Lounge is drawn as its agent's face with the Lounge mark, not a # tile.
+            RaftLoungeAvatar(
+                agentId = lounge.agentId,
+                avatarWireValue = lounge.avatarWireValue,
+                label = lounge.agentName,
+                cacheServerId = null,
+                avatarSize = ConversationLeadingAvatar,
+            )
+        } else if (peer != null) {
             val label = peer.displayName ?: fallbackLabel
             val avatarKind = if (peer.peerIsAgent) MemberKind.Agent else MemberKind.Human
             // An agent's DM row carries its status light, as on its sidebar row; people do not, and a
@@ -1150,10 +1234,46 @@ internal fun ActivityConversationLeading(
     }
 }
 
+/**
+ * The time at the end of the row's first line, in a list grouped by day (web ActivityRowTime, slock
+ * #13030): today's rows and any row under an hour old show it short ("now", "3m", "2h"); an earlier
+ * day's row, whose heading names the day, shows its clock only while a pointer hovers it, and a finger
+ * never does. Screen readers hear it in words on every row ("yesterday at 17:20").
+ */
 @Composable
-private fun ActivityConversationTime(item: InboxItem, timeContext: RaftTimeContext?, modifier: Modifier = Modifier) {
+private fun ActivityConversationTime(
+    item: InboxItem,
+    timeContext: RaftTimeContext?,
+    pointerHovering: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val effectiveContext = currentRaftTimeContext(timeContext)
+    val rowTime = activityRowTime(item.activityRowTimeValue(), effectiveContext)
+    if (rowTime == null) {
+        ActivityConversationTimeFallback(item, timeContext, modifier)
+        return
+    }
+    val words = rowTime.words()
+    val shown = rowTime !is ActivityRowTime.Older || pointerHovering
+    RaftText(
+        text = rowTime.shownLabel(),
+        modifier =
+            modifier
+                .widthIn(max = 96.dp)
+                .then(if (shown) Modifier else Modifier.alpha(0f))
+                .clearAndSetSemantics { contentDescription = words },
+        style = RaftTheme.typography.monoMeta.copy(fontFeatureSettings = "tnum"),
+        color = RaftTheme.colors.foregroundHint,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/** No live clock or no readable time: the plain relative time, as before day groups. */
+@Composable
+private fun ActivityConversationTimeFallback(item: InboxItem, timeContext: RaftTimeContext?, modifier: Modifier = Modifier) {
     RaftRelativeTimestampText(
-        value = item.latestActivityAt ?: item.lastMessageAt,
+        value = item.activityRowTimeValue(),
         timeContext = timeContext,
         style = RaftTheme.typography.monoMeta.copy(fontFeatureSettings = "tnum"),
         color = RaftTheme.colors.foregroundHint,

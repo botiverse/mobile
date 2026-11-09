@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.toSystemNotificationActionResult
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
@@ -142,7 +143,10 @@ internal fun SettingsNativeDetailScreen() {
         serverId =
             session?.currentServerId
                 ?.trim()
-                ?.takeIf { it.isNotBlank() && route.page == SettingsNativeDetailPage.Notifications },
+                ?.takeIf {
+                    it.isNotBlank() &&
+                        route.page in setOf(SettingsNativeDetailPage.Notifications, SettingsNativeDetailPage.ServerNotifications)
+                },
         dispatch = settingsViewModel::dispatch,
     )
     LaunchedEffect(environment.chatLayoutPreferenceRepository) {
@@ -168,6 +172,8 @@ internal fun SettingsNativeDetailScreen() {
         }
     }
 
+    // A Settings search result opened this page at a setting: its row is brought into view and located.
+    ProvideSettingsSearchLocator(pager.pageData.params) {
     SettingsNativeDetailPageContent(
         session = session,
         authDataSource = environment.authDataSource,
@@ -184,10 +190,13 @@ internal fun SettingsNativeDetailScreen() {
         onOpenSourceLicensesPage = { openNativePage(SettingsNativeDetailPage.OpenSourceLicenses) },
         onOpenApiEnvironmentPage = { openNativePage(SettingsNativeDetailPage.ApiEnvironment) },
         onOpenDiagnosticsPage = { openNativePage(SettingsNativeDetailPage.Diagnostics) },
+        onOpenDeveloperPage = { openNativePage(SettingsNativeDetailPage.Developer) },
         onOpenLocalFeatureOverridesPage = { openNativePage(SettingsNativeDetailPage.LocalFeatureOverrides) },
         onOpenLocalFeatureOverridePage = { key ->
             openNativePage(SettingsNativeDetailPage.LocalFeatureOverride, key)
         },
+        onOpenThemePage = { openNativePage(SettingsNativeDetailPage.Theme) },
+        onOpenServerNotificationsPage = { openNativePage(SettingsNativeDetailPage.ServerNotifications) },
         onMessageAlignmentSelected = {},
         onCompactConsecutiveMessagesSelected = {},
         onForegroundMessageBannersSelected = {},
@@ -208,10 +217,19 @@ internal fun SettingsNativeDetailScreen() {
         serverPublicVisibilityRepository = environment.serverPublicVisibilityRepository,
         serverAppearanceRepository = environment.serverAppearanceRepository,
         authStore = environment.authStore,
-        onOpenBillingPage = { pager.openSettingsBillingPage(environment.storeScope) },
+        // Only the Pro theme gate opens it: the upgrade dialog (`pro_theme`) where the app offers
+        // upgrades, the view-only Plan & Billing page on iOS.
+        onOpenBillingPage = {
+            if (settingsBillingOffersUpgrade()) {
+                pager.openRaftUpgradeDialog(RaftUpgradeGate.ProTheme, environment.storeScope)
+            } else {
+                pager.openSettingsBillingPage(environment.storeScope)
+            }
+        },
         webBaseUrl = environment.webBaseUrl,
         onLogout = { pager.openLoginReplacingCurrentPage() },
     )
+    }
 }
 
 /**
@@ -267,8 +285,12 @@ internal fun SettingsNativeDetailPageContent(
     onOpenSourceLicensesPage: () -> Unit,
     onOpenApiEnvironmentPage: () -> Unit,
     onOpenDiagnosticsPage: () -> Unit,
+    onOpenDeveloperPage: (() -> Unit)? = null,
     onOpenLocalFeatureOverridesPage: () -> Unit,
     onOpenLocalFeatureOverridePage: (String) -> Unit,
+    /** Appearance's "Theme on <server>" row (Web `ServerThemeLink`): Settings > Theme. */
+    onOpenThemePage: () -> Unit = {},
+    onOpenServerNotificationsPage: () -> Unit = {},
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
     onForegroundMessageBannersSelected: (Boolean) -> Unit,
@@ -566,6 +588,8 @@ internal fun SettingsNativeDetailPageContent(
                     },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) },
                     showModeCard = settingsAppearanceShowsModeCard(session),
+                    themeServerName = session?.settingsThemeServer()?.name,
+                    onOpenTheme = onOpenThemePage,
                     appPreferenceItems =
                         if (settingsAppPreferencesUnderAppearance()) {
                             {
@@ -633,8 +657,10 @@ internal fun SettingsNativeDetailPageContent(
                     }
                 }
             }
-            SettingsNativeDetailPage.Notifications ->
+            SettingsNativeDetailPage.Notifications,
+            SettingsNativeDetailPage.ServerNotifications ->
                 SettingsNotificationsContent(
+                    serverOnly = route.page == SettingsNativeDetailPage.ServerNotifications,
                     state = settingsState.mobile,
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
@@ -683,7 +709,10 @@ internal fun SettingsNativeDetailPageContent(
                     onPermission = { onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission) },
                     onSettings = { onSettingsIntent(SharedSettingsIntent.OpenNotificationSettings) },
                     onTest = { onSettingsIntent(SharedSettingsIntent.SendTestNotification) },
-                    onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) }
+                    onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) },
+                    servers = remember(session) { settingsNotificationServers(session) },
+                    onOpenServerNotifications =
+                        if (route.page == SettingsNativeDetailPage.Notifications) onOpenServerNotificationsPage else null
                 )
             SettingsNativeDetailPage.Mobile ->
                 SettingsMobileContent(
@@ -716,6 +745,7 @@ internal fun SettingsNativeDetailPageContent(
                     onCopyEnvironmentInfo = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
                     onOpenApiEnvironment = onOpenApiEnvironmentPage,
                     onOpenDiagnostics = onOpenDiagnosticsPage,
+                    onOpenDeveloper = onOpenDeveloperPage,
                 )
             SettingsNativeDetailPage.OpenSourceLicenses ->
                 SharedSettingsOpenSourceLicensesContent(
@@ -787,8 +817,10 @@ internal fun SharedSettingsSectionContent(
     onAction: (String, String?) -> Unit
 ) {
     LazyColumn(
+        // The 16dp content inset stays under a mouse or trackpad; the cards move 16 apart there
+        // (12 with a finger: sizing v12, raft-ui 0.65 desktop density).
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(RaftTheme.controls.settingsCardGap)
     ) {
         payload.sections.forEach { section ->
             item { SharedSettingsSectionCard(section, onCopyValue, onAction) }
@@ -807,6 +839,7 @@ private fun settingsNativeDetailPageTitle(route: SettingsNativeDetailRoute): Str
         SettingsNativeDetailPage.Appearance -> stringResource(Res.string.settings_appearance_title)
         SettingsNativeDetailPage.Notifications -> stringResource(Res.string.settings_notifications_title)
         SettingsNativeDetailPage.Theme -> stringResource(Res.string.settings_theme_title)
+        SettingsNativeDetailPage.ServerNotifications -> stringResource(Res.string.settings_notifications_title)
         SettingsNativeDetailPage.Mobile -> stringResource(Res.string.settings_mobile_title)
         SettingsNativeDetailPage.Server -> stringResource(Res.string.settings_server_profile_title)
         SettingsNativeDetailPage.About -> stringResource(Res.string.settings_about_title)
@@ -832,6 +865,7 @@ private fun settingsNativeDetailPageIcon(page: SettingsNativeDetailPage): RaftLu
         SettingsNativeDetailPage.Appearance -> RaftLucideIconName.Type
         SettingsNativeDetailPage.Notifications -> RaftLucideIconName.Bell
         SettingsNativeDetailPage.Theme -> RaftLucideIconName.Palette
+        SettingsNativeDetailPage.ServerNotifications -> RaftLucideIconName.BellDot
         SettingsNativeDetailPage.Mobile -> RaftLucideIconName.Smartphone
         SettingsNativeDetailPage.Server -> RaftLucideIconName.Building2
         SettingsNativeDetailPage.About -> RaftLucideIconName.BadgeInfo

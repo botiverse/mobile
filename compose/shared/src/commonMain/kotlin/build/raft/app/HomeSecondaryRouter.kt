@@ -13,6 +13,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftStroke
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DataRequestPriority
@@ -128,6 +130,8 @@ private data class HomeSecondaryRouteEnvironment(
     // OpenDetail instead of pushing a standalone page (which would cover the rail).
     // Null = legacy standalone behavior (push).
     val inlineOpenRequest: ((HomeMessageOpenRequest, String) -> Unit)? = null,
+    // True when the entity opened inline; false when it has no inline home (a computer, a
+    // person), and the caller then opens its page.
     val inlineOpenEntity: ((SearchEntityResult) -> Boolean)? = null,
     // When embedded inline there is no pushed page to pop — "close" returns to the host tab.
     val inlineOnClose: (() -> Unit)? = null,
@@ -291,6 +295,8 @@ internal fun HomeSecondaryRouterContent(
     onSearchQueryApplied: () -> Unit = {},
     // The rail's inline list (two-pane): marks the row whose conversation is open in the detail.
     inlineListSelection: RaftInlineListSelection? = null,
+    // The wide layout's search panel over the page (web SearchOverlay); Search only.
+    searchOverlay: HomeSearchOverlayChrome? = null,
 ) {
     val environment = rememberHomeSecondaryRouteEnvironment(
         routeVisibleTick,
@@ -325,6 +331,7 @@ internal fun HomeSecondaryRouterContent(
                     queryRequest = searchQueryRequest,
                     onQueryApplied = onSearchQueryApplied,
                     inlineListSelection = inlineListSelection,
+                    overlay = searchOverlay,
                 )
             HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick, inlineListSelection)
             HomeDestinationDrafts -> HomeDraftsRouterContent(environment, routeVisibleTick, inlineListSelection)
@@ -597,9 +604,9 @@ private fun HomeActivityRouterContent(
             }
             Spacer(
                 modifier = Modifier
-                    .width(1.dp)
+                    .width(RaftStroke.Hairline)
                     .fillMaxHeight()
-                    .background(RaftColor.BorderBlack),
+                    .background(RaftTheme.colors.lineSeam),
             )
             Box(
                 modifier = Modifier
@@ -770,6 +777,24 @@ internal fun SharedHomeState.scopedToSearchServer(serverId: String?): SharedHome
     return copy(content = SharedHomeContentState.Loading(loaded.session))
 }
 
+/**
+ * Search's candidates: the app's live Home when it is on Search's server, so a channel created or
+ * changed a moment ago is findable (tygg, artin 11-06; this page's own Home only loads when it opens);
+ * this page's own snapshot otherwise (Home on another server, no shared store).
+ */
+internal fun homeSearchCandidateState(
+    liveHome: SharedHomeState,
+    ownHome: SharedHomeState,
+    serverId: String?,
+): SharedHomeState {
+    val live = liveHome.scopedToSearchServer(serverId)
+    return if (liveHome.content is SharedHomeContentState.Content && live.content is SharedHomeContentState.Content) {
+        live
+    } else {
+        ownHome.scopedToSearchServer(serverId)
+    }
+}
+
 @Composable
 private fun HomeSearchRouterContent(
     environment: HomeSecondaryRouteEnvironment,
@@ -785,6 +810,7 @@ private fun HomeSearchRouterContent(
     queryRequest: RaftSearchTabQueryRequest? = null,
     onQueryApplied: () -> Unit = {},
     inlineListSelection: RaftInlineListSelection? = null,
+    overlay: HomeSearchOverlayChrome? = null,
 ) {
     val conversationNotReadyMessage = stringResource(Res.string.home_error_conversation_not_ready)
     val homeDataSource =
@@ -863,7 +889,9 @@ private fun HomeSearchRouterContent(
         }
     }
     val searchHomeState =
-        remember(homeState, searchScopeServerId) { homeState.scopedToSearchServer(searchScopeServerId) }
+        remember(sharedHomeState, homeState, searchScopeServerId) {
+            homeSearchCandidateState(sharedHomeState, homeState, searchScopeServerId)
+        }
     val searchServerId =
         (searchHomeState.content as? SharedHomeContentState.Content)
             ?.snapshot
@@ -1014,8 +1042,7 @@ private fun HomeSearchRouterContent(
         },
         onOpenEntity = { entity ->
             val opened =
-                environment.inlineOpenEntity?.invoke(entity)
-                    ?: run {
+                openHomeSearchEntityResult(entity, environment.inlineOpenEntity) {
                         // task #45: OFF standalone entity opens (channel/DM search results)
                         // park the current selection so re-enabling restores this
                         // conversation — same contract as the message-open fallback above.
@@ -1099,7 +1126,8 @@ private fun HomeSearchRouterContent(
             bottomContentPadding ?: environment.shellScope.bottomInset(includeBottomTabBar = chrome.aboveBottomBar),
         timeContext = environment.timeContext,
         shellScope = environment.shellScope,
-        listState = searchListState
+        listState = searchListState,
+        overlay = overlay,
     )
 }
 

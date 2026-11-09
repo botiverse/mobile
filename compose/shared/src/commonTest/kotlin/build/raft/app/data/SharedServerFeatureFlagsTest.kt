@@ -167,6 +167,8 @@ class SharedServerFeatureFlagsTest {
         // attachment_comments_v0 is no longer read or prefetched; the server keeps its record for older clients.
         assertFalse("attachment_comments_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertFalse("attachment_comments_v0" in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+        // agent_migration_v0 is no longer read: agent migration is always shown, as on web.
+        assertFalse("agent_migration_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         // sync_core_messages_v1 is no longer read: the sync-core offline-cache line is always on.
         assertFalse("sync_core_messages_v1" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertFalse("sync_core_messages_v1" in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
@@ -184,9 +186,12 @@ class SharedServerFeatureFlagsTest {
         assertEquals("personal_assistant", PERSONAL_ASSISTANT_FEATURE_FLAG_KEY)
         // botiverse/slock #12159 packages/web/src/store/serverFeatureFlags.ts DRAFTS_SECTION_FLAG_KEY (default off).
         assertEquals("drafts_section_v0", DRAFTS_SECTION_FEATURE_FLAG_KEY)
+        // New mobile switch for server setup; the old enable_webview_onboarding_v0 is no longer read.
+        assertEquals("mobile_server_setup_v1", MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY)
+        assertFalse("enable_webview_onboarding_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         for (
             key in listOf(
-                WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY,
+                MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
                 ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
                 THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
                 SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
@@ -301,7 +306,7 @@ class SharedServerFeatureFlagsTest {
                     started.complete(Unit)
                     release.await()
                     return ok(
-                        """{"evaluations":[{"key":"$WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY","enabled":false}]}"""
+                        """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":false}]}"""
                     )
                 }
             }
@@ -320,7 +325,7 @@ class SharedServerFeatureFlagsTest {
         assertTrue(first.await().resolved)
         assertTrue(second.await().resolved)
         assertEquals(1, calls)
-        assertFalse(flags.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
     }
 
     @Test
@@ -372,13 +377,13 @@ class SharedServerFeatureFlagsTest {
                             withContext(NonCancellable) { releaseFirst.await() }
                             firstReturned.complete(Unit)
                             return ok(
-                                """{"evaluations":[{"key":"$WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY","enabled":false}]}"""
+                                """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":false}]}"""
                             )
                         }
                         else -> {
                             secondStarted.complete(Unit)
                             return ok(
-                                """{"evaluations":[{"key":"$WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY","enabled":true}]}"""
+                                """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":true}]}"""
                             )
                         }
                     }
@@ -386,7 +391,7 @@ class SharedServerFeatureFlagsTest {
             }
         val flags =
             SharedServerFeatureFlags(api) { _, key, enabled, _, _, _, _ ->
-                if (key == WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY) {
+                if (key == DRAFTS_SECTION_FEATURE_FLAG_KEY) {
                     observed += enabled
                 }
             }
@@ -401,12 +406,12 @@ class SharedServerFeatureFlagsTest {
         releaseFirst.complete(Unit)
         val fresh = async { flags.prefetch(server) }
         secondStarted.await()
-        assertTrue(fresh.await().isEnabled(WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+        assertTrue(fresh.await().isEnabled(DRAFTS_SECTION_FEATURE_FLAG_KEY))
         firstReturned.await()
 
         assertEquals(2, calls)
         assertEquals(listOf(true), observed)
-        assertTrue(flags.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+        assertTrue(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
     }
 
     @Test

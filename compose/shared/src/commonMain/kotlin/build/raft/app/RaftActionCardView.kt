@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ActionCardSpecAction
@@ -25,7 +26,22 @@ import build.raft.designsystem.components.RaftMessageActionCardStatusTone
 import build.raft.designsystem.theme.RaftTheme
 
 /** `actionMetadata.state` as the frame shows it. */
-internal enum class RaftActionCardStatus { Prepared, Executed, Frozen, ReconfirmRequired }
+internal enum class RaftActionCardStatus {
+    Prepared,
+    Executed,
+    Frozen,
+    ReconfirmRequired,
+
+    /** Past its deadline without running (wire `expired`, or `expiresAt` behind the client clock). */
+    Expired,
+
+    /** A question card its agent took back (wire `withdrawn`). */
+    Withdrawn;
+
+    /** Ended without running: folded, no Button that changes it. */
+    val ended: Boolean
+        get() = this == Expired || this == Withdrawn
+}
 
 /**
  * What the frame reads from `actionMetadata` and the viewer, never from the spec (S0: the
@@ -39,6 +55,8 @@ internal enum class RaftActionCardStatus { Prepared, Executed, Frozen, Reconfirm
  *   only, no buttons but navigation.
  * - [busyElementKey]: the Button whose action is running; the others wait.
  * - [error]: the last action's failure, under the body.
+ * - [endedLine]: an [RaftActionCardStatus.ended] card's line under the title: when it expired and
+ *   to ask for a new one, or a seat request's "no owner answered".
  * - [runsOnServerName]: `actionMetadata.targetServerName` when the card's message is in a joint
  *   channel (web `useActionCardAccess.runsOnTargetServer`): the action always runs on that
  *   server, never the viewer's, and the body opens with "Runs on {server}". Null otherwise.
@@ -51,6 +69,28 @@ internal data class RaftActionCardFrameState(
     val busyElementKey: String? = null,
     val error: String? = null,
     val runsOnServerName: String? = null,
+    val endedLine: String? = null,
+    /**
+     * The viewer may not act here, but the card keeps the shape everyone sees (a question card for
+     * someone else): every Button that changes the card is disabled, nothing folds or says "View only".
+     */
+    val controlsDisabled: Boolean = false,
+)
+
+/**
+ * A question card's slim frame (B, question-card redesign 2026-11, raft-design questions.md): no
+ * icon tile and no "Answer question(s)" title. [title] replaces the card's (a single question's
+ * text, or "Fixer has 3 questions"), [description] is the line under it while the card waits
+ * ("Fixer is asking you · 7 days left", "Waiting for Maya · 7 days left"). It never folds and wears
+ * no status tag: once answered or ended its controls give way to one [statusLine] where they were
+ * ("✓ Maya answered **Postgres**" with [statusCheck], "Maya didn't answer within 7 days. Fixer
+ * was told.", "Fixer withdrew these questions.").
+ */
+internal data class RaftActionCardSlim(
+    val title: String?,
+    val description: String?,
+    val statusLine: AnnotatedString? = null,
+    val statusCheck: Boolean = false,
 )
 
 /**
@@ -80,9 +120,9 @@ internal fun actionCardFrameButtonState(
     return when {
         inSpecOfExecutedCard -> RaftCardButtonState.Hidden
         link -> if (linkNavigable) RaftCardButtonState.Enabled else RaftCardButtonState.Disabled
-        state.readOnly || state.status == RaftActionCardStatus.Executed -> RaftCardButtonState.Hidden
+        state.readOnly || state.status == RaftActionCardStatus.Executed || state.status.ended -> RaftCardButtonState.Hidden
         elementId == state.busyElementKey -> RaftCardButtonState.Busy
-        state.busyElementKey != null || state.status == RaftActionCardStatus.Frozen || state.blockedReason != null -> RaftCardButtonState.Disabled
+        state.busyElementKey != null || state.status == RaftActionCardStatus.Frozen || state.blockedReason != null || state.controlsDisabled -> RaftCardButtonState.Disabled
         else -> RaftCardButtonState.Enabled
     }
 }
@@ -99,7 +139,8 @@ internal fun actionCardFrameButtonState(
  *   executed, the spec stays as the record without its buttons, then the `result` tree (web
  *   `ActionCardSpecCard`).
  * - Status, as [ThreadActionCardView]: Done with the success pixel and the [record] under the
- *   title (with a check), folded; Frozen with every action button disabled; Confirm again
+ *   title (with a check), folded; Expired / Withdrawn folded with the [endedLine] under the title
+ *   and no action button; Frozen with every action button disabled; Confirm again
  *   with the pink pixel; View only for [RaftActionCardFrameState.blockedReason] (folded, the
  *   reason under the title, buttons disabled) or [RaftActionCardFrameState.readOnly] (no action
  *   buttons). A done, frozen, to-reconfirm or view-only card folds by the reader's hand.
@@ -125,10 +166,18 @@ internal fun RaftActionCardView(
     initiallyExpanded: Boolean? = null,
     /** Whether a link Button leads somewhere this viewer can open ([actionCardFrameButtonState] `linkNavigable`). */
     linkNavigable: (ActionCardSpecButton) -> Boolean = { true },
+    /** Property labels take only their width ([RaftCardTreeContext.fitLabels]). */
+    fitLabels: Boolean = false,
+    /** Drawn under the body, before the error: a question card's inline answer ([ActionCardQuestionInlineForm]). */
+    footer: (@Composable () -> Unit)? = null,
+    /** A question card's slim frame ([RaftActionCardSlim]); null: the generic frame. */
+    slim: RaftActionCardSlim? = null,
 ) {
     val executed = state.status == RaftActionCardStatus.Executed
-    val viewOnly = !executed && (state.readOnly || state.blockedReason != null)
-    val foldsByDefault = executed || (state.blockedReason != null && state.status == RaftActionCardStatus.Prepared)
+    val ended = state.status.ended
+    val viewOnly = !executed && !ended && (state.readOnly || state.blockedReason != null)
+    // A slim question card never folds (raft-design questions.md).
+    val foldsByDefault = slim == null && (executed || ended || (state.blockedReason != null && state.status == RaftActionCardStatus.Prepared))
     var expanded by remember(foldsByDefault, initiallyExpanded) { mutableStateOf(initiallyExpanded ?: !foldsByDefault) }
     fun context(inSpecOfExecutedCard: Boolean) =
         RaftCardTreeContext(
@@ -137,29 +186,40 @@ internal fun RaftActionCardView(
             onAction = onAction,
             columnGap = 8.dp,
             buttonState = { id, button -> actionCardFrameButtonState(state, id, button, inSpecOfExecutedCard, linkNavigable(button)) },
+            fitLabels = fitLabels,
         )
     val context = context(inSpecOfExecutedCard = executed)
-    val title = actionCardMsgPlainMentions(card.title, context)
+    val cardTitle = actionCardMsgPlainMentions(card.title, context)
+    val slimDescription = slim?.description?.takeIf { !executed && !ended && it.isNotBlank() }
+    val title = slim?.title?.takeIf { it.isNotBlank() } ?: cardTitle
     RaftDesignSystemTheme {
         val iconColor = raftArgbHex(RaftTheme.colors.foregroundMuted)
         RaftMessageActionCard(
             title = title,
             modifier = modifier,
+            showIcon = slim == null,
             icon =
                 actionCardIconName(card.icon)?.let { name ->
                     { RaftLucideIcon(name = name, color = iconColor, modifier = Modifier.size(RaftMessageActionCardDefaults.HeaderGlyphSize)) }
                 },
             description =
                 when {
+                    slim != null ->
+                        (state.blockedReason ?: slimDescription)?.takeIf { it.isNotBlank() }?.let { line -> { RaftMessageActionCardHeaderDescription(line) } }
                     executed -> state.record?.takeIf { it.isNotBlank() }?.let { line -> { RaftMessageActionCardHeaderDescription(line, check = true) } }
+                    ended -> state.endedLine?.takeIf { it.isNotBlank() }?.let { line -> { RaftMessageActionCardHeaderDescription(line) } }
                     else -> state.blockedReason?.takeIf { foldsByDefault }?.let { reason -> { RaftMessageActionCardHeaderDescription(reason) } }
                 },
             status =
                 when {
+                    // A slim question card says answered / expired / withdrawn in its status line, not a tag.
+                    slim != null && (executed || ended) -> null
                     executed -> stringResource(Res.string.common_done)
+                    state.status == RaftActionCardStatus.Expired -> stringResource(Res.string.thread_action_card_status_expired)
+                    state.status == RaftActionCardStatus.Withdrawn -> stringResource(Res.string.thread_action_card_status_withdrawn)
                     state.status == RaftActionCardStatus.Frozen -> stringResource(Res.string.thread_action_card_frozen)
                     state.status == RaftActionCardStatus.ReconfirmRequired -> stringResource(Res.string.thread_action_card_status_reconfirm)
-                    viewOnly -> stringResource(Res.string.thread_action_card_view_only)
+                    viewOnly && (slim == null || state.blockedReason != null) -> stringResource(Res.string.thread_action_card_view_only)
                     else -> null
                 },
             statusTone =
@@ -170,14 +230,16 @@ internal fun RaftActionCardView(
                 },
             expanded = expanded,
             onExpandedChange =
-                if (executed || viewOnly || state.status != RaftActionCardStatus.Prepared) ({ expanded = it }) else null,
+                if (slim == null && (executed || viewOnly || state.status != RaftActionCardStatus.Prepared)) ({ expanded = it }) else null,
             toggleLabel = stringResource(Res.string.thread_action_card_toggle_details),
         ) {
             state.runsOnServerName?.takeIf { it.isNotBlank() }?.let { server ->
                 RaftMessageActionCardNotice(stringResource(Res.string.thread_action_card_runs_on_server, server))
             }
             RaftCardTree(card.spec.root, card.spec.elements, context)
-            if (executed) card.result?.let { result -> RaftCardTree(result.root, result.elements, context(inSpecOfExecutedCard = false)) }
+            if (executed && slim == null) card.result?.let { result -> RaftCardTree(result.root, result.elements, context(inSpecOfExecutedCard = false)) }
+            slim?.statusLine?.takeIf { (executed || ended) && it.isNotBlank() }?.let { line -> QuestionStatusLine(line, check = slim.statusCheck) }
+            footer?.invoke()
             state.error?.takeIf { it.isNotBlank() }?.let { error ->
                 RaftBanner(description = error, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
             }

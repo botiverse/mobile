@@ -69,28 +69,6 @@ class RaftButtonAccessibilityTest {
     }
 
     @Test
-    fun productionGestureArbiterDispatchesExactlyOneAction() {
-        var galleryCount = 0
-        var cameraCount = 0
-
-        RaftButtonGestureArbiter(hasLongClick = true).dispatchTap { galleryCount += 1 }
-        assertEquals(1, galleryCount)
-        assertEquals(0, cameraCount)
-
-        val longPress = RaftButtonGestureArbiter(hasLongClick = true)
-        assertTrue(longPress.dispatchLongClick { cameraCount += 1 })
-        assertFalse(longPress.dispatchTap { galleryCount += 1 })
-        assertEquals(1, galleryCount)
-        assertEquals(1, cameraCount)
-
-        val withoutLongClick = RaftButtonGestureArbiter(hasLongClick = false)
-        assertFalse(withoutLongClick.dispatchLongClick(null))
-        assertTrue(withoutLongClick.dispatchTap { galleryCount += 1 })
-        assertEquals(2, galleryCount)
-        assertEquals(1, cameraCount)
-    }
-
-    @Test
     fun disabledButtonRemainsAButtonButRejectsAccessibilityClick() {
         var clickCount = 0
         val config =

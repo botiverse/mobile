@@ -21,6 +21,7 @@
  * inventory — stdrc #proj-theme:ac79cf20 msg=12665926.
  */
 @source "./components";
+@source "./features";
 @source "./pages";
 @source "../node_modules/@botiverse/raft-ui/dist";
 
@@ -150,82 +151,12 @@
     outline: 2px solid var(--line-strong);
     outline-offset: 2px;
   }
-
-  /* Scrollbars: shared desktop treatment with native touch overlays.
-     stdrc 2026-05-20 #proj-uiux:d7e5c75b (task #282): "桌面端还是加回来滚动时
-     显示进度条吧，移动端本身就会有进度条". Reverts the 5/11 desktop-hide
-     rule. Desktop pointer devices keep a quiet 10px hit area around a 6px
-     thumb on a transparent track; scroller and thumb hover progressively
-     strengthen it. Touch devices stay on their platform overlay indicator.
-     Surfaces that need to opt out entirely (e.g. horizontal tab strips) use
-     Tailwind's `scrollbar-none` with `[&::-webkit-scrollbar]:hidden`. */
-  @media (hover: hover) and (pointer: fine) {
-    /* `scrollbar-color` is an INHERITED property. Changing it on the scroller
-       (`:hover` below) used to make every descendant recompute its style:
-       entering/leaving the message list or sidebar restyled ~10k elements
-       (up to 15k; 66 of 528 pointer moves across the window, measured on a
-       real busy channel). Children get a constant value instead of inheriting,
-       so the hover change stays on the scroller itself. Declared before the
-       `.scrollbar-quiet` rule so a nested `.scrollbar-quiet` scroller still
-       uses its own (equal specificity, later wins). */
-    .scrollbar-quiet > * {
-      scrollbar-color: color-mix(in oklch, var(--foreground) 24%, transparent) transparent;
-    }
-
-    .scrollbar-quiet {
-      scrollbar-color: color-mix(in oklch, var(--foreground) 24%, transparent) transparent;
-      scrollbar-width: thin;
-    }
-
-    .scrollbar-quiet:hover {
-      scrollbar-color: color-mix(in oklch, var(--foreground) 36%, transparent) transparent;
-    }
-
-    .scrollbar-quiet::-webkit-scrollbar {
-      width: 10px;
-    }
-
-    .scrollbar-quiet::-webkit-scrollbar-track,
-    .scrollbar-quiet::-webkit-scrollbar-corner {
-      background: transparent;
-    }
-
-    .scrollbar-quiet::-webkit-scrollbar-thumb {
-      min-height: 32px;
-      background: color-mix(in oklch, var(--foreground) 24%, transparent);
-      background-clip: padding-box;
-      border: 2px solid transparent;
-      border-radius: 5px;
-    }
-
-    .scrollbar-quiet:hover::-webkit-scrollbar-thumb {
-      background: color-mix(in oklch, var(--foreground) 36%, transparent);
-      background-clip: padding-box;
-      border: 2px solid transparent;
-    }
-
-    .scrollbar-quiet::-webkit-scrollbar-thumb:hover {
-      background: color-mix(in oklch, var(--foreground) 52%, transparent);
-      background-clip: padding-box;
-      border: 2px solid transparent;
-    }
-  }
 }
 
 @layer components {
   .safe-top { padding-top: env(safe-area-inset-top); }
   .safe-left { padding-left: env(safe-area-inset-left); }
   .safe-right { padding-right: env(safe-area-inset-right); }
-
-  .overflow-y-overlay {
-    overflow-y: auto;
-  }
-
-  @supports (overflow: overlay) {
-    .overflow-y-overlay {
-      overflow-y: overlay;
-    }
-  }
 
   @keyframes onboarding-connect-success-reveal {
     0% { opacity: 0; transform: translateY(-4px); }
@@ -556,7 +487,6 @@
 .agent-profile-responsive-actions {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
 }
 
 .agent-profile-responsive-actions .agent-profile-inline-actions {
@@ -569,7 +499,8 @@
 
 /* The profile drawer is commonly ~600px wide even on a very wide desktop
    viewport. Keep its compact icon actions visible there; reserve the menu
-   for genuinely narrow drawers and phones. */
+   for genuinely narrow drawers and phones. Direct Message sits outside both
+   groups, so it shows at every width. */
 @container (max-width: 480px) {
   .agent-profile-responsive-actions .agent-profile-inline-actions {
     display: none;
@@ -1145,6 +1076,42 @@
 }
 .migration-chord[data-zoomed] {
   touch-action: none;
+  /* Zoomed in, a drag pans: say so. */
+  cursor: grab;
+}
+.migration-chord[data-dragging] {
+  cursor: grabbing;
+}
+/* Zoom enlarges the drawing, not the ink: lines keep their width, and labels and
+   step numbers keep their size (--chord-k is the zoom, set every frame). */
+.migration-chord path,
+.migration-chord circle {
+  vector-effect: non-scaling-stroke;
+}
+.migration-chord-fixed {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(calc(1 / var(--chord-k, 1)));
+}
+.migration-chord-label {
+  transition: opacity 150ms ease-out;
+}
+.migration-chord-label[data-hidden] {
+  opacity: 0;
+  pointer-events: none;
+}
+.migration-chord-hint {
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+.migration-chord-hint[data-shown] {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .migration-chord-label,
+  .migration-chord-hint {
+    transition: none;
+  }
 }
 .migration-chord:focus-visible .migration-chord-ribbon[data-active],
 .migration-chord:focus-visible .migration-chord-computer[data-active] > .migration-chord-hit {

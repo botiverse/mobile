@@ -12,6 +12,10 @@ import build.raft.app.compat.ui.KuiklyFont
 import androidx.compose.ui.unit.TextUnit
 import build.raft.designsystem.theme.RaftFonts
 import build.raft.designsystem.theme.RaftTypography
+import build.raft.designsystem.theme.RaftScale as DesignSystemScale
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
@@ -91,9 +95,9 @@ internal object RaftColor {
     // Opaque neutral fills: resting/disabled control fill and the 8% pressed wash.
     val FillMuted: Color get() = RaftAppThemeState.colors.fillMuted
     val FillStrong: Color get() = RaftAppThemeState.colors.fillStrong
-    val FillPressed: Color get() = RaftAppThemeState.colors.fillPressed
+    val FillPressed: Color get() = RaftAppThemeState.colors.fillMedium
     // Pressed wash on the yellow frame (`fill-frame-pressed`), e.g. header controls.
-    val FillFramePressed: Color get() = RaftAppThemeState.colors.fillFramePressed
+    val FillFramePressed: Color get() = RaftAppThemeState.colors.fillFrameMedium
     // `--line-field` (input ink); card edges and menu separators use [BorderHairline].
     val LineField: Color get() = RaftAppThemeState.colors.lineField
     // The yellow frame (`--layer-frame`) and the overlay backdrop.
@@ -130,7 +134,7 @@ internal object RaftColor {
     val StickerInk = RaftUiPalette.stickerInk
     val StickerPaper = RaftUiPalette.stickerPaper
     // 12% ink laid over a pressed sticker (`press-overlay-sticker`).
-    val StickerPressed = RaftUiPalette.stickerPressed
+    val StickerPressed = RaftUiPalette.stickerMedium
     // Die-cut edge around stickers: transparent in light, a 35% paper ring in dark.
     val StickerEdge: Color get() = RaftAppThemeState.colors.stickerEdge
     // Presence lights (`--presence-*`): fixed meanings, same in both modes.
@@ -201,11 +205,13 @@ internal object RaftAppSize {
     val MinTouchTarget = 48.dp
     val IconButton = 44.dp
     val HeaderIcon = 36.dp
-    // raft panel heads are 56px (48px under 600px window height).
+    // raft panel heads are 56px (48px under 600px window height). This is the touch head; the
+    // heads themselves read RaftTheme.controls.headHeight, 44 under a mouse or trackpad (sizing
+    // v12, raft-ui 0.65 desktop density).
     val PageHeaderHeight = 56.dp
     val PageHeaderContentHeight = PageHeaderHeight - RaftAppStroke.Default
-    val PageHeaderCompactHeight = 48.dp
-    val BottomBarHeight = 53.dp
+    // raft-ui MobileNav bar, without the safe-area inset.
+    val BottomBarHeight = 60.dp
 }
 
 // raft-ui 0.6.0: controls never cast a shadow (`--theme-shadow-xs/sm/md` are 0); only
@@ -290,6 +296,21 @@ private fun FontFamily.encodedSpaceGroteskWeight(): FontWeight? =
         SpaceGroteskMedium -> FontWeight.Medium
         SpaceGroteskRegular -> FontWeight.Normal
         SpaceGroteskLight -> FontWeight.Light
+        else -> null
+    }
+
+/**
+ * The PostScript name of a Space Grotesk token's face ("SpaceGrotesk-Bold"), the name a native
+ * host resolves with `UIFont(name:size:)` (the faces are registered through UIAppFonts); null for
+ * any other family.
+ */
+internal fun TextStyle.raftSpaceGroteskFaceName(): String? =
+    when (fontFamily) {
+        SpaceGroteskBold -> "SpaceGrotesk-Bold"
+        SpaceGroteskSemiBold -> "SpaceGrotesk-SemiBold"
+        SpaceGroteskMedium -> "SpaceGrotesk-Medium"
+        SpaceGroteskRegular -> "SpaceGrotesk-Regular"
+        SpaceGroteskLight -> "SpaceGrotesk-Light"
         else -> null
     }
 
@@ -378,8 +399,24 @@ private fun TextStyle.resolveRaftFontFamily(): TextStyle {
  * The family comes from the per-weight Space Grotesk faces above, so the families passed in are
  * placeholders.
  */
-private val RaftScale: RaftTypography =
+private val RaftScaleCompact: RaftTypography =
     RaftTypography.from(RaftFonts(sans = FontFamily.SansSerif, mono = FontFamily.Monospace))
+
+private val RaftScaleWide: RaftTypography =
+    RaftTypography.from(RaftFonts(sans = FontFamily.SansSerif, mono = FontFamily.Monospace), scale = DesignSystemScale.Wide)
+
+/**
+ * The scale the app's [build.raft.app.components.RaftDesignSystemTheme] resolved
+ * ([build.raft.designsystem.theme.RaftTheme.scale]: wide from the wide breakpoint, by window
+ * width alone, any input). Snapshot state, so text styled through [RaftType] recomposes when a
+ * window crosses it.
+ */
+internal object RaftAppTypeScale {
+    var scale by mutableStateOf(DesignSystemScale.Compact)
+}
+
+private val RaftScale: RaftTypography
+    get() = if (RaftAppTypeScale.scale == DesignSystemScale.Wide) RaftScaleWide else RaftScaleCompact
 
 private fun raftTextStyle(token: TextStyle, fontWeight: FontWeight = token.fontWeight ?: FontWeight.Normal): TextStyle =
     raftTextStyle(fontWeight, token.fontSize, token.lineHeight, token.letterSpacing)
@@ -406,6 +443,18 @@ internal object RaftType {
     /** `text-title` 22/28 700, -0.01em. */
     val PageTitle: TextStyle
         get() = raftTextStyle(RaftScale.title)
+    /** `text-headline` 17/22 700: page, panel, dialog and empty-state titles (web PanelHeader, TabRootBar). */
+    val Headline: TextStyle
+        get() = raftTextStyle(RaftScale.headline)
+    /** `text-callout` 14/20 400: empty-state details, previews, list values. */
+    val Callout: TextStyle
+        get() = raftTextStyle(RaftScale.callout)
+    /** `text-subhead` 15/20 400: auth intro descriptions, dialog bodies, profile descriptions. */
+    val Subhead: TextStyle
+        get() = raftTextStyle(RaftScale.subhead)
+    /** `text-footnote` 13/18 400: hints, secondary detail lines. */
+    val Footnote: TextStyle
+        get() = raftTextStyle(RaftScale.footnote)
     /**
      * raft-ui sidebar group / section label: `text-footnote font-bold normal-case
      * tracking-normal` (13/18 700), source case, no tracking.

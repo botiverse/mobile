@@ -53,6 +53,33 @@ class SettingsWideSplitTest {
     }
 
     @Test
+    fun feedbackIsTheWebPageOnlyOnAHostWithoutNativeHandsSubmit() {
+        // artin (1.22.0): Android and iOS open the native submit form again (no server flag); the
+        // Compose desktop app (artin 11-01) cannot send natively, so it keeps the web page, in the pane.
+        assertTrue(settingsFeedbackUsesWebPage(nativeSubmit = false))
+        assertFalse(settingsFeedbackUsesWebPage(nativeSubmit = true))
+        assertEquals(
+            SettingsWidePick.Detail(SettingsDestinationHandsFeedback),
+            settingsWidePick(SettingsDestinationHandsFeedback, settingsFeedbackUsesWebPage(nativeSubmit = false)),
+        )
+        assertEquals(
+            SettingsWidePick.Push,
+            settingsWidePick(SettingsDestinationHandsFeedback, settingsFeedbackUsesWebPage(nativeSubmit = true)),
+        )
+    }
+
+    @Test
+    fun releaseNotesRowOnlyWhereThePlatformHasAHandsApp() {
+        assertTrue(settingsReleaseNotesAvailable("raft-android"))
+        assertFalse(settingsReleaseNotesAvailable(""))
+        assertFalse(SettingsDestinationReleaseNotes in settingsHomeRowKeys(hasThemeServer = true, releaseNotes = false))
+        assertEquals(
+            settingsHomeRowKeys(hasThemeServer = true, releaseNotes = true) - SettingsDestinationReleaseNotes,
+            settingsHomeRowKeys(hasThemeServer = true, releaseNotes = false),
+        )
+    }
+
+    @Test
     fun webSectionsInThePaneAreTheSettingsWebPage() {
         val scope = RaftShellStoreScope.create("shell-wide-settings")
         mapOf(

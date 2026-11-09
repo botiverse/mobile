@@ -4,11 +4,13 @@ import build.raft.app.model.AvatarReference
 import build.raft.app.toRaftAvatarLabel
 import build.raft.app.MemberKindWireContract
 import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.data.ReplyPreviewWireSenderTypes
 import build.raft.app.data.TaskSourceMessageIdAbsent
 import build.raft.app.data.reportedSourceMessageId
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.ServerPushMode
 import build.raft.app.data.PushPreviewMode
+import build.raft.app.data.AgentActivityDetailKindRuntimeUnavailable
 import build.raft.app.data.AgentActivityDetailKindWakeCrashLoopBlocked
 import build.raft.app.data.AgentActivityStatusProjection
 import build.raft.app.commentHostTypeOrNull
@@ -23,6 +25,7 @@ import build.raft.app.model.AgentCreated
 import build.raft.app.model.AgentActivitySubscribed
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentToolStuck
+import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
@@ -80,6 +83,7 @@ import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.ServerAppearanceUpdated
+import build.raft.app.model.UserProfileUpdated
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.SyncResumeResponse
@@ -93,6 +97,7 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadFollowersUpdated
+import build.raft.app.model.ThreadReplyUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.canonical.message.CanonicalMessageCarry
@@ -102,10 +107,9 @@ import build.raft.app.data.toAgentTypingUpdated
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.WireForwardMessageBundle
 import build.raft.app.data.projectAgentActivityStatus
-import build.raft.app.data.toThreadActionCard
 import build.raft.app.data.toForwardMessageBundle
 import build.raft.app.data.toScopeReadUpdated
-import build.raft.app.data.toMessageMetadata
+import build.raft.app.data.toMessageItemMetadata
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import build.raft.app.network.sync.decodeCanonicalMessageWire
@@ -266,6 +270,8 @@ class RealtimeEventMapper(
                 decodeOrNull(ScopeReadUpdatedWire.serializer(), element)?.toScopeReadUpdated()
             RealtimeSocketEvents.ThreadUpdated ->
                 decodeOrNull(ThreadUpdatedDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.ThreadReplyUpdated ->
+                decodeOrNull(ThreadReplyUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.ChannelUpdated ->
                 decodeChannelRefresh(element, RealtimeRefreshScope.Home, RealtimeSocketEvents.ChannelUpdated)
             RealtimeSocketEvents.ChannelMembersUpdated ->
@@ -342,6 +348,8 @@ class RealtimeEventMapper(
                 decodeOrNull(ServerAppearanceUpdatedDto.serializer(), element)
                     ?.takeIf { it.serverId.isNotBlank() }
                     ?.let { ServerAppearanceUpdated(ServerId(it.serverId), it.theme, it.themeDecor) }
+            RealtimeSocketEvents.UserProfileUpdated ->
+                decodeOrNull(UserProfileUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.ServerFeaturesChanged ->
                 decodeOrNull(ServerFeaturesChangedDto.serializer(), element)
                     ?.takeIf { it.serverId.isNotBlank() }
@@ -540,7 +548,7 @@ private data class MessageMentionWireDto(
  * thread messages. Absent on servers that pre-date the field.
  */
 @Serializable
-private data class ConversationContextWireDto(
+internal data class ConversationContextWireDto(
     val channelType: String? = null,
     val parentMessageId: String? = null,
     val parentChannelId: String? = null,
@@ -590,6 +598,45 @@ private data class CommentRefWireDto(
 
 @Serializable
 private data class ThreadFollowersUpdatedDto(val threadChannelId: String)
+
+/**
+ * `thread:reply_updated`: the edited reply as the enriched message payload (slock
+ * `emitExternalLinkedMessageUpdateToFrontend`, `projectRichMessageSocketPayload`) with its
+ * `conversationContext` (`FrontendConversationContext`). Only the fields the parent's inline
+ * replies need are read.
+ */
+@Serializable
+private data class ThreadReplyUpdatedDto(
+    val id: String = "",
+    val channelId: String = "",
+    val seq: Long? = null,
+    val content: String? = null,
+    val updatedAt: String? = null,
+    val conversationContext: ThreadReplyConversationContextDto? = null,
+)
+
+@Serializable
+private data class ThreadReplyConversationContextDto(
+    val channelType: String = "",
+    val parentMessageId: String? = null,
+    val parentChannelId: String? = null,
+    val parentChannelType: String? = null,
+)
+
+private fun ThreadReplyUpdatedDto.toDomain(): ThreadReplyUpdated? {
+    val context = conversationContext ?: return null
+    if (context.channelType != "thread") return null
+    return ThreadReplyUpdated(
+        parentMessageId = MessageId(context.parentMessageId?.takeIf { it.isNotBlank() } ?: return null),
+        parentChannelId = ChannelId(context.parentChannelId?.takeIf { it.isNotBlank() } ?: return null),
+        parentChannelType = context.parentChannelType?.takeIf { it.isNotBlank() } ?: return null,
+        threadChannelId = ChannelId(channelId.takeIf { it.isNotBlank() } ?: return null),
+        messageId = MessageId(id.takeIf { it.isNotBlank() } ?: return null),
+        seq = seq?.takeIf { it > 0L } ?: return null,
+        content = content ?: return null,
+        updatedAt = updatedAt?.takeIf { it.isNotBlank() } ?: return null,
+    )
+}
 
 @Serializable
 private data class ThreadUpdatedDto(
@@ -656,6 +703,7 @@ private data class ThreadLatestReplyDto(
     val senderDisplayName: String? = null,
     val senderAvatarUrl: String? = null,
     val createdAt: String = "",
+    val updatedAt: String? = null,
     val messageType: String? = null,
     /** The reply is the enriched message payload, so it carries `mentions` like `message:new`. */
     val mentions: List<MessageMentionWireDto>? = null,
@@ -745,6 +793,8 @@ private data class AgentActivityDto(
     val serverSeq: Long? = null,
     /** Shared `WakeCrashLoopActivityDiagnostic`, sent with detailKind `wake_crash_loop_blocked`. */
     val wakeCrashLoop: WakeCrashLoopDto? = null,
+    /** Shared `SpawnFailureActivityDiagnostic`, sent with detailKind `runtime_unavailable`. */
+    val spawnFailure: SpawnFailureDto? = null,
     /** Shared `ToolStuckActivityDiagnostic`, on every frame while the agent is stuck on a tool call. */
     val toolStuck: ToolStuckDto? = null,
 )
@@ -784,6 +834,36 @@ internal fun ToolStuckDto?.toAgentToolStuck(
  * The fields of shared `WakeCrashLoopActivityDiagnostic` the client shows (botiverse/slock
  * 24873fd5be37 packages/shared/src/index.ts; `lastExitReason` from #10860, absent on older servers).
  */
+/** The fields of shared `SpawnFailureActivityDiagnostic` the client shows (botiverse/slock task #1123, #1242, #13460). */
+@Serializable
+internal data class SpawnFailureDto(
+    val reason: String? = null,
+    val lookupReason: String? = null,
+    /** The agent's model the start failed on (`model_not_found`, `model_unsupported`). */
+    val model: String? = null,
+    /** The server paused automatic restarts after this failure. */
+    val autoRestartPaused: Boolean? = null,
+    /**
+     * Server-written epoch ms of the next automatic try, only while a pause that retries by itself
+     * is in effect (botiverse/slock #13460, filled by #13486). Read as a number so a fractional
+     * value never fails the whole frame.
+     */
+    val pauseRetryAtMs: Double? = null,
+)
+
+/** The start-failure carrier of a `runtime_unavailable` status (web agentStore); null for any other kind or without a reason. */
+internal fun SpawnFailureDto?.toAgentSpawnFailure(detailKind: String?): AgentSpawnFailure? {
+    if (this == null || detailKind?.trim() != AgentActivityDetailKindRuntimeUnavailable) return null
+    val failureReason = reason?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return AgentSpawnFailure(
+        reason = failureReason,
+        lookupReason = lookupReason?.trim()?.takeIf { it.isNotEmpty() },
+        model = model?.trim()?.takeIf { it.isNotEmpty() },
+        autoRestartPaused = autoRestartPaused == true,
+        pauseRetryAtMs = pauseRetryAtMs?.takeIf { it.isFinite() && it > 0.0 }?.toLong(),
+    )
+}
+
 @Serializable
 internal data class WakeCrashLoopDto(
     val earlyExitCount: Int? = null,
@@ -849,6 +929,31 @@ private data class ServerAppearanceUpdatedDto(
     val theme: String? = null,
     val themeDecor: Boolean? = null,
 )
+
+/** `user:profile-updated` (botiverse/slock d311e6f0f9 `userProfileUpdatedEventSchema`, a strict object). */
+@Serializable
+private data class UserProfileUpdatedDto(
+    val serverId: String,
+    val userId: String,
+    val name: String,
+    val displayName: String? = null,
+    val avatarUrl: String? = null,
+    // Optional: Gravatar is being retired (#triage:#238); a missing field must not drop the whole event.
+    val gravatarHash: String = "",
+) {
+    fun toDomain(): UserProfileUpdated? {
+        val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return null
+        val user = userId.trim().takeIf { it.isNotEmpty() } ?: return null
+        return UserProfileUpdated(
+            serverId = ServerId(server),
+            userId = MemberId(user),
+            name = name,
+            displayName = displayName,
+            avatarUrl = avatarUrl,
+            gravatarHash = gravatarHash,
+        )
+    }
+}
 
 @Serializable
 private data class ServerPlanUpdatedDto(
@@ -1039,7 +1144,7 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         body = content,
         messageType = resolvedMessageType,
         systemEventType = null,
-        metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
+        metadata = actionMetadata.toMessageItemMetadata(),
         attachments = attachments.map { it.toDomain() },
         randomId = randomId?.takeIf { it.isNotBlank() },
         senderMembershipStatus = senderMembershipStatus,
@@ -1067,7 +1172,7 @@ private fun List<MessageMentionWireDto>?.toDomainMentions(): List<MessageMention
 // Kind strings parse through the #417 contract: unknown values become null
 // (never a guessed Channel), and the whole context is dropped when it says
 // nothing — consumers treat that the same as an old server omitting it.
-private fun ConversationContextWireDto.toDomain(): MessageConversationContext? {
+internal fun ConversationContextWireDto.toDomain(): MessageConversationContext? {
     val context = MessageConversationContext(
         channelKind = parseConversationKindOrNull(channelType),
         parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
@@ -1213,7 +1318,7 @@ private fun ThreadLatestReplyDto.toReplyPreview(): ReplyPreview? {
         } else {
             senderType.trim().lowercase()
         }
-    if (projectedSenderType !in setOf("user", "agent", "system")) return null
+    if (projectedSenderType !in ReplyPreviewWireSenderTypes) return null
     val cleanSenderName = senderName.trim()
     return ReplyPreview(
         messageId = cleanMessageId,
@@ -1225,6 +1330,7 @@ private fun ThreadLatestReplyDto.toReplyPreview(): ReplyPreview? {
         senderAvatarUrl = senderAvatarUrl?.trim()?.takeIf { it.isNotBlank() },
         createdAt = createdAt.trim(),
         senderDisplayName = senderDisplayName?.trim()?.takeIf { it.isNotBlank() },
+        updatedAt = updatedAt?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 
@@ -1309,6 +1415,7 @@ private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
         activityToolName = projectedActivity.toolName,
         serverSeq = serverSeq,
         wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(projectedActivity.detailKind),
+        spawnFailure = spawnFailure.toAgentSpawnFailure(projectedActivity.detailKind),
         toolStuck =
             toolStuck.toAgentToolStuck(
                 // The server stamps the frame with its own clock in epoch ms.

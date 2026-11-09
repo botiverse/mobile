@@ -58,6 +58,15 @@ object RaftMessageQuotedPreviewDefaults {
     /** The author's face: an `xs` avatar (19dp, web AvatarSlot `compact-list`). */
     val AvatarSize = RaftAvatarSize.Xs
 
+    /**
+     * A header part's line: the web's middle dot is a span in the page's 24dp body line, so every
+     * header line is 24dp tall and the face and the labels centre in it.
+     */
+    val HeaderLineHeight = 24.dp
+
+    /** Under the header: raft-ui's `pb-0.5` (2dp) and the card's `mb-1` (4dp). */
+    val HeaderGap = 6.dp
+
     /** The excerpt is cut at 2 lines. */
     const val TextMaxLines = 2
 }
@@ -78,8 +87,8 @@ private fun QuotedPreviewShell(
     val colors = RaftTheme.colors
     val shape = RoundedCornerShape(RaftRadius.Container)
     val source = remember { MutableInteractionSource() }
-    // message-reference.recipe.ts: `hover:overlay-medium active:overlay-medium`.
-    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Medium, enabled = onClick != null)
+    // web PreviewShell: `hover:overlay-subtle active:overlay-medium` (a card people read).
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Subtle, enabled = onClick != null)
     val isFocused = raftIsFocused(source)
     val focused = onClick != null && isFocused
     Box(
@@ -138,6 +147,8 @@ fun RaftMessageQuotedPreview(
     attachments: List<String> = emptyList(),
     onClick: (() -> Unit)? = null,
     onClickLabel: String? = null,
+    /** False when [channel] is a place that is not a `#` channel (an agent's Lounge): no `#` glyph. */
+    channelGlyph: Boolean = true,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -145,7 +156,7 @@ fun RaftMessageQuotedPreview(
     QuotedPreviewShell(modifier, muted = false, onClick = onClick, onClickLabel = onClickLabel) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
             Row(
-                Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                Modifier.fillMaxWidth().padding(bottom = RaftMessageQuotedPreviewDefaults.HeaderGap),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.Top,
             ) {
@@ -155,8 +166,8 @@ fun RaftMessageQuotedPreview(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     if (channel != null) {
-                        Row(Modifier.align(Alignment.CenterVertically), verticalAlignment = Alignment.CenterVertically) {
-                            if (!direct) {
+                        Row(Modifier.align(Alignment.CenterVertically).heightIn(min = RaftMessageQuotedPreviewDefaults.HeaderLineHeight), verticalAlignment = Alignment.CenterVertically) {
+                            if (!direct && channelGlyph) {
                                 RaftGlyphIcon(RaftGlyph.Hash, size = 14.dp, color = colors.foregroundHint)
                                 Box(Modifier.width(4.dp))
                             }
@@ -172,7 +183,7 @@ fun RaftMessageQuotedPreview(
                     // Each part carries the dot before it, so a wrapped line never starts with a
                     // lone dot.
                     Row(
-                        Modifier.align(Alignment.CenterVertically),
+                        Modifier.align(Alignment.CenterVertically).heightIn(min = RaftMessageQuotedPreviewDefaults.HeaderLineHeight),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -200,18 +211,18 @@ fun RaftMessageQuotedPreview(
                     }
                     if (threadLabel != null) {
                         Row(
-                            Modifier.align(Alignment.CenterVertically),
+                            Modifier.align(Alignment.CenterVertically).heightIn(min = RaftMessageQuotedPreviewDefaults.HeaderLineHeight),
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             QuotedDot(Modifier.padding(end = 2.dp))
-                            RaftGlyphIcon(RaftGlyph.MessageSquare, size = 14.dp, color = colors.foregroundHint)
+                            RaftGlyphIcon(RaftGlyph.Thread, size = 14.dp, color = colors.foregroundHint)
                             RaftText(threadLabel, style = hintPart, color = colors.foregroundHint, maxLines = 1)
                         }
                     }
                     if (archivedLabel != null) {
                         Row(
-                            Modifier.align(Alignment.CenterVertically),
+                            Modifier.align(Alignment.CenterVertically).heightIn(min = RaftMessageQuotedPreviewDefaults.HeaderLineHeight),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -221,9 +232,8 @@ fun RaftMessageQuotedPreview(
                     }
                 }
                 if (time != null) {
-                    // The time centres on the first line of the header (an 18dp footnote line,
-                    // or the 19dp face).
-                    Box(Modifier.heightIn(min = 19.dp), contentAlignment = Alignment.Center) { time() }
+                    // `items-start`: the time sits at the top of the header's first line.
+                    time()
                 }
             }
             RaftText(

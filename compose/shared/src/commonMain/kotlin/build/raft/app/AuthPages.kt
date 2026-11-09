@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -11,7 +12,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.BridgeRaftAvatarNativeCache
 import build.raft.app.data.DataResult
@@ -80,7 +80,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
@@ -96,12 +95,9 @@ const val AUTH_ABOUT_PAGE = "compose_auth_developer"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 internal const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
 private const val AUTH_MESSAGE_KEY = "slockAuthMessage"
+private const val AUTH_TRACE_ID_KEY = "slockAuthTraceId"
 internal const val AUTH_DESTINATION_KEY = "slockAuthDestination"
 internal const val AUTH_DESTINATION_API_ENVIRONMENT = "apiEnvironment"
-private const val AUTH_PROFILE_SETUP_VISUAL_HANDLE_KEY = "profileSetupHandle"
-private const val AUTH_PROFILE_SETUP_VISUAL_DISPLAY_NAME_KEY = "profileSetupDisplayName"
-private const val AUTH_PROFILE_SETUP_VISUAL_DEFAULT_HANDLE = "new_designer"
-private const val AUTH_PROFILE_SETUP_VISUAL_DEFAULT_DISPLAY_NAME = "New Designer"
 internal const val AUTH_TERMS_URL = "https://raft.build/terms"
 internal const val AUTH_PRIVACY_URL = "https://raft.build/privacy"
 
@@ -732,27 +728,6 @@ private val AuthDiagnosticsEmailPattern =
     Regex("""\b([A-Za-z0-9._%+-]{2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b""")
 
 @Composable
-internal fun AuthProfileSetupVisualScreen() {
-    val pager = LocalActivity.current.getPager() as Pager
-    val params = pager.pageData.params
-    AuthProfileSetupContent(
-        handle = TextFieldValue(
-            params.optString(AUTH_PROFILE_SETUP_VISUAL_HANDLE_KEY)
-                .ifBlank { AUTH_PROFILE_SETUP_VISUAL_DEFAULT_HANDLE }
-        ),
-        displayName = TextFieldValue(
-            params.optString(AUTH_PROFILE_SETUP_VISUAL_DISPLAY_NAME_KEY)
-                .ifBlank { AUTH_PROFILE_SETUP_VISUAL_DEFAULT_DISPLAY_NAME }
-        ),
-        submitting = false,
-        errorMessage = null,
-        onHandleChange = {},
-        onDisplayNameChange = {},
-        onSubmit = {}
-    )
-}
-
-@Composable
 internal fun AuthProfileSetupContent(
     handle: TextFieldValue,
     displayName: TextFieldValue,
@@ -778,13 +753,15 @@ internal fun AuthProfileSetupContent(
         AuthCenterMark()
         Text(
             text = stringResource(Res.string.auth_title_profile_setup),
-            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
+            // Web AuthPageIntro h1: text-title (22/28 700).
+            style = RaftType.PageTitle.copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
         )
         Text(
             text = stringResource(Res.string.auth_hint_profile_setup),
-            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextMutedGray),
+            // Web AuthPageIntro description: text-subhead (15/20 400).
+            style = RaftType.Subhead.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
             modifier = Modifier.authPageStaticTextFocus()
         )
@@ -928,10 +905,11 @@ internal fun authTermsAgreementText(
 internal fun authLegalConnectorText(connector: String): String = connector.replace('\u00A0', ' ')
 
 private val AuthTermsTextColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.70f)
+// Web LegalAcceptanceCheckbox label: text-callout font-semibold (14/20 600); the links inherit 600.
 private val AuthTermsTextStyle: TextStyle
-    get() = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = AuthTermsTextColor)
+    get() = RaftType.Callout.withRaftFontWeight(FontWeight.SemiBold).copy(color = AuthTermsTextColor)
 private val AuthTermsLinkStyle: TextStyle
-    get() = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack, textDecoration = TextDecoration.Underline)
+    get() = RaftType.Callout.withRaftFontWeight(FontWeight.SemiBold).copy(color = RaftColor.TextBlack, textDecoration = TextDecoration.Underline)
 
 internal fun Pager.openAuthPage(pageName: String, destination: String? = null) {
     val pageData =
@@ -1000,24 +978,29 @@ internal fun StoredAuthSession.isSamePostAuthSession(
 
 internal fun loginPageData(
     replaceCurrent: Boolean = false,
-    message: String? = null
+    message: String? = null,
+    traceId: String? = null
 ): JSONObject =
     authPageData(
         pageName = LOGIN_PAGE,
         replaceCurrent = replaceCurrent,
-        message = message
+        message = message,
+        traceId = traceId
     )
 
 internal fun authPageData(
     pageName: String,
     replaceCurrent: Boolean = false,
-    message: String? = null
+    message: String? = null,
+    traceId: String? = null
 ): JSONObject =
     JSONObject().apply {
         put("pageName", pageName)
         message
             ?.takeIf { it.isNotBlank() }
             ?.let { put(AUTH_MESSAGE_KEY, it) }
+        // The trace id of the server error behind [message], shown with it (AGENTS.md "Errors carry the trace ID").
+        raftValidTraceIdOrNull(traceId)?.let { put(AUTH_TRACE_ID_KEY, it) }
         if (replaceCurrent) {
             put(AUTH_REPLACE_CURRENT_PAGE, true)
         }
@@ -1025,6 +1008,8 @@ internal fun authPageData(
 
 internal fun JSONObject.authRouteMessage(): String? =
     optString(AUTH_MESSAGE_KEY).takeIf { it.isNotBlank() }
+
+internal fun JSONObject.authRouteTraceId(): String? = raftValidTraceIdOrNull(optString(AUTH_TRACE_ID_KEY))
 
 internal fun SharedAuthRuntimeCapabilityStore.seedFromAuthPageData(
     pageData: JSONObject

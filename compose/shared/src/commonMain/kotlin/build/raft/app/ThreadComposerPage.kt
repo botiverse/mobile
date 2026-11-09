@@ -26,20 +26,24 @@ import build.raft.designsystem.components.RaftComposerAttachmentRemoveOverhang
 import build.raft.designsystem.components.RaftComposerAttachmentOverlay
 import build.raft.designsystem.components.RaftComposerAttachmentPhase
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftAppCheckbox
-import build.raft.app.components.RaftBrutalIconButton
+import build.raft.designsystem.components.RaftCheckboxIndicator
+import build.raft.app.components.RaftSlotIcon
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.app.components.raftCardSurface
 import build.raft.app.components.raftControlSurface
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.format.RaftFormat
 import build.raft.app.model.ConversationSummary
+import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberKind
+import build.raft.app.model.Presence
 import build.raft.app.model.MemberProfile
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -49,14 +53,19 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.text.TextStyle
@@ -104,6 +113,7 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -112,8 +122,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.layoutId
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
@@ -127,6 +142,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 
@@ -151,36 +168,28 @@ private val ThreadComposerTextFieldMaxHeight = 80.dp
 private val ThreadComposerToolbarMinHeight = 32.dp
 private val ThreadComposerIconButtonSize = 32.dp
 private val ThreadComposerIconSize = 18.dp
-private val ThreadComposerActionShadowOffset = 2.dp
-// raft-ui `Composer`: the card's padding round the text, and `--control-embedded-inset`, how far
-// the toolbar's buttons sit inside the card's outer edge (raft-design Shape > Inside a frame).
-private val ThreadComposerCardPadding = 8.dp
+// raft-ui 0.59 `Composer`: `px-3 pt-3` round the text and `pb-[calc(var(--control-embedded-inset)-1px)]`
+// under the toolbar; `--control-embedded-inset` is how far the toolbar's buttons sit inside the
+// card's outer edge (raft-design Shape > Inside a frame). `ComposerInput` adds its own `px-0.5`.
+private val ThreadComposerCardPadding = 12.dp
 private val ThreadComposerEmbeddedInset = 6.dp
+private val ThreadComposerCardPaddingBottom = ThreadComposerEmbeddedInset - 1.dp
+private val ThreadComposerInputPaddingHorizontal = 2.dp
 // raft-ui `ComposerActions` / `ComposerMeta`: `gap-embedded-inset`. Buttons embedded in the frame
 // sit as far apart as they sit from its edge (raft-design #810, shape.md "The space is even on
 // every side"), so 6dp, not the old `gap-2` 8dp. Raft chrome casts no offset shadow, so this is
 // the visible gap.
 private val ThreadComposerLeftActionGroupSpacing = ThreadComposerEmbeddedInset
 private val ThreadComposerRightActionGroupSpacing = ThreadComposerEmbeddedInset
-// raft-ui `ComposerAttachments`: the composer's 321dp less the tray's 6dp `pe-1.5`; 64dp image
-// tiles and 176dp file tiles (`size-16`, `w-44`), 8dp apart (`gap-2`).
-private const val ThreadComposerAttachmentTrayMaxWidthDp = 315
-private const val ThreadComposerAttachmentImageTileSizeDp = 64
-private const val ThreadComposerAttachmentFileTileWidthDp = 176
-private const val ThreadComposerAttachmentRowGapDp = 8
 private const val ThreadComposerMentionActionNoticeDurationMillis = 1800L
 private const val ThreadComposerSuggestionQueryDebounceMillis = 24L
 private const val ThreadComposerNativeSnapshotTimeoutMillis = 1_000L
-private val ThreadComposerDisabledSendBackground = Color(0xFFFFD8E5) // raft-color: legacy disabled-send sticker args, ignored by the themed RaftBrutalIconButton
-private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3) // raft-color: legacy disabled-send sticker args, ignored by the themed RaftBrutalIconButton
-private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8) // raft-color: legacy disabled-send sticker args, ignored by the themed RaftBrutalIconButton
-private const val ThreadComposerDisabledSendIconArgb = "#FFB3B3B3"
-// raft-ui 0.6.0 `ComposerSuggestionList` geometry: `max-h-60` root with `p-1.5`, opening
+// raft-ui 0.58.1 `ComposerSuggestionList` geometry: `max-h-60` root with `p-1`, opening
 // `mb-2` above the composer; `min-h-9 px-2.5 py-1 gap-2.5` options with a `gap-1.5`
 // title/meta content row; `px-2.5 pt-2 pb-1` caption group labels; 19dp compact avatars
 // and framed channel tiles (11dp glyph).
 private val ComposerSuggestionPanelMaxHeight = 240.dp
-private val ComposerSuggestionPanelInset = 6.dp
+private val ComposerSuggestionPanelInset = 4.dp
 private val ComposerSuggestionPopoverGap = 8.dp
 private val ComposerSuggestionHeaderEstimatedHeight = 28.dp
 private val ComposerMemberSuggestionRowMinHeight = 36.dp
@@ -192,7 +201,8 @@ private val ComposerSuggestionItemGap = 10.dp
 private val ComposerSuggestionContentGap = 6.dp
 private val ComposerMemberSuggestionAvatarSize = 19.dp
 private val ComposerMemberSuggestionAvatarNameGap = ComposerSuggestionItemGap
-// web `AgentActivityDot size="sm"` on the 19dp compact avatar.
+// web `AgentActivityDot` in raft-ui `AvatarBadge` on the xs (19px) avatar: the badge shell
+// sets the light to `size-[7px] -right-0.5 -bottom-0.5`.
 private val ComposerMemberSuggestionStatusSize = 7.dp
 // web `ComposerSuggestionTitle max-w-[12rem]`, server meta `max-w-[10rem]`, handle `max-w-[7rem]`.
 private val ComposerSuggestionTitleMaxWidth = 192.dp
@@ -208,6 +218,10 @@ private val ComposerChannelSuggestionGlyphSize = 11.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
 private val ThreadComposerVisualComponentMinHeight = 100.dp
 private const val ThreadComposerVisualSuggestionAnchorOffset = 216f
+// web cases `composerOffsetTop`: the React capture puts the composer frame's top edge at 258px
+// (member, offset 250) and 218px (channel, offset 210); the visual input sits 8dp into the box.
+private const val ThreadComposerVisualMemberSuggestionAnchorOffset = 250f
+private const val ThreadComposerVisualChannelSuggestionAnchorOffset = 210f
 private const val ThreadComposerVisualSuggestionRepositionOffset = 336f
 private const val ThreadComposerSuggestionScrollOracleFixture = "member_suggestions_scroll_oracle"
 private const val ThreadComposerSuggestionRepositionOracleFixture = "member_suggestions_reposition_oracle"
@@ -459,6 +473,7 @@ internal data class RaftThreadComposerPayload(
     val syncNonce: Int = 0,
     @kotlinx.serialization.Transient val editorCommand: ThreadComposerEditorCommand? = null,
     val focusRequestNonce: Int = 0,
+    @kotlinx.serialization.Transient val focusRequestShowsKeyboard: Boolean = true,
     val placeholder: String = "Message",
     val enabled: Boolean = true,
     val attachmentActionsEnabled: Boolean = true,
@@ -562,6 +577,7 @@ internal data class ThreadComposerUiState(
     val syncNonce: Int = 0,
     val editorCommand: ThreadComposerEditorCommand? = null,
     val focusRequestNonce: Int = 0,
+    val focusRequestShowsKeyboard: Boolean = true,
     val placeholder: String = "Message",
     val enabled: Boolean = true,
     val attachmentActionsEnabled: Boolean = true,
@@ -600,7 +616,64 @@ internal data class ThreadComposerEditorCommand(
     val asTask: Boolean = false,
     val expectedText: String? = null,
     val expectedAsTask: Boolean? = null,
+    /**
+     * The edit a [ThreadComposerEditorCommandKind.Replace] stands for, when it is an edit of the
+     * draft (a mention, a quote) rather than a whole new draft. A command held back during an IME
+     * composition re-applies this edit to the text the composition committed; a whole-draft
+     * Replace (null here) is instead re-checked against [expectedText] and dropped if the user
+     * typed.
+     */
+    val edit: ThreadComposerDraftEdit? = null,
 )
+
+internal sealed interface ThreadComposerDraftEdit {
+    val logKind: ThreadComposerProgrammaticEditKind
+
+    fun applyTo(text: String): String
+
+    data class InsertMention(val handle: String) : ThreadComposerDraftEdit {
+        override val logKind: ThreadComposerProgrammaticEditKind get() = ThreadComposerProgrammaticEditKind.Mention
+
+        override fun applyTo(text: String): String = text.withInsertedThreadMention(handle)
+    }
+
+    data class AppendQuote(val quote: String) : ThreadComposerDraftEdit {
+        override val logKind: ThreadComposerProgrammaticEditKind get() = ThreadComposerProgrammaticEditKind.Quote
+
+        override fun applyTo(text: String): String = appendThreadQuoteToComposer(text, quote)
+    }
+}
+
+/** The `kind=` of a `composer_programmatic_edit` diagnostics line. */
+internal enum class ThreadComposerProgrammaticEditKind(val wire: String) {
+    Replace("replace"),
+    Clear("clear"),
+    Mention("mention"),
+    Quote("quote"),
+    Suggestion("suggestion"),
+    Token("token"),
+    SendSnapshot("sendSnapshot"),
+}
+
+/**
+ * Always-on diagnostics for edits the app (not the IME) makes to the composer text: which kind,
+ * whether an IME composition (marked text) was open, and whether the edit was held back until it
+ * ended. Never the text. Goes to the same bridge-free channel as `bridge.log`.
+ */
+internal object ThreadComposerProgrammaticEditLog {
+    var sink: (String) -> Unit = { raftLogInfo(BridgeModule.BRIDGE_LOG_TAG, it) }
+
+    fun record(kind: ThreadComposerProgrammaticEditKind, composing: Boolean, deferred: Boolean) {
+        sink("composer_programmatic_edit kind=${kind.wire} composing=$composing deferred=$deferred")
+    }
+}
+
+private val ThreadComposerEditorCommand.logKind: ThreadComposerProgrammaticEditKind
+    get() =
+        when {
+            kind == ThreadComposerEditorCommandKind.Clear -> ThreadComposerProgrammaticEditKind.Clear
+            else -> edit?.logKind ?: ThreadComposerProgrammaticEditKind.Replace
+        }
 
 internal fun shouldApplyThreadComposerEditorCommand(
     localText: String,
@@ -614,6 +687,8 @@ internal enum class ThreadComposerEditorCommandOutcome {
     Applied,
     Stale,
     AlreadyHandled,
+    /** Held back while an IME composition is open; see [ThreadComposerControlledEditorOwner.applyDeferredCommands]. */
+    Deferred,
 }
 
 internal fun acceptThreadComposerEditorSessionUiEvent(
@@ -636,11 +711,17 @@ internal fun threadComposerSessionFocusRestorePlan(
     editorSessionReplaced: Boolean,
     editorFocused: Boolean,
     keyboardInsetDp: Float,
+    explicitRequestShowsKeyboard: Boolean = true,
 ): ThreadComposerSessionFocusRestorePlan {
-    val transferVisibleEditor = editorSessionReplaced && editorFocused && keyboardInsetDp > 0f
+    val keyboardVisible = keyboardInsetDp > 0f
+    val transferVisibleEditor = editorSessionReplaced && editorFocused && keyboardVisible
+    // A keep-only request (Send) holds an open keyboard across the clear but never raises a
+    // keyboard the user has put away.
+    val explicitRaises = explicitFocusRequest && explicitRequestShowsKeyboard
+    val explicitKeeps = explicitFocusRequest && !explicitRequestShowsKeyboard && keyboardVisible
     return ThreadComposerSessionFocusRestorePlan(
-        requestFocus = explicitFocusRequest || transferVisibleEditor,
-        showKeyboard = explicitFocusRequest || transferVisibleEditor,
+        requestFocus = explicitRaises || explicitKeeps || transferVisibleEditor,
+        showKeyboard = explicitRaises || explicitKeeps || transferVisibleEditor,
     )
 }
 
@@ -734,20 +815,99 @@ internal class ThreadComposerControlledEditorOwner(
         return true
     }
 
+    /**
+     * Store commands that arrived while an IME composition was open, in arrival order. Writing a
+     * whole new value then would end the composition and commit the raw marked text (Pinyin
+     * letters instead of the chosen characters), so they wait for [applyDeferredCommands].
+     */
+    private val deferredCommands = mutableStateListOf<ThreadComposerEditorCommand>()
+
+    /** True when held commands can be applied now: some are held and no composition is open. */
+    val hasDeferredCommandsReady: Boolean
+        get() = deferredCommands.isNotEmpty() && value.composition == null
+
     fun apply(command: ThreadComposerEditorCommand): ThreadComposerEditorCommandOutcome {
         if (command.id <= handledCommandId) return ThreadComposerEditorCommandOutcome.AlreadyHandled
+        handledCommandId = command.id
         if (!shouldApplyThreadComposerEditorCommand(value.text, asTask, command)) {
-            handledCommandId = command.id
             return ThreadComposerEditorCommandOutcome.Stale
         }
-        val nextText = if (command.kind == ThreadComposerEditorCommandKind.Clear) "" else command.text
+        val composing = value.composition != null
+        // Clear (Send) is immediate: the send already took the committed and composing text.
+        if (composing && command.kind != ThreadComposerEditorCommandKind.Clear) {
+            deferredCommands += command
+            ThreadComposerProgrammaticEditLog.record(command.logKind, composing = true, deferred = true)
+            return ThreadComposerEditorCommandOutcome.Deferred
+        }
+        ThreadComposerProgrammaticEditLog.record(command.logKind, composing = composing, deferred = false)
         if (command.kind == ThreadComposerEditorCommandKind.Clear) {
+            // The draft these were edits of has been sent.
+            deferredCommands.clear()
             editorSessionId += 1
         }
+        writeCommandText(command, if (command.kind == ThreadComposerEditorCommandKind.Clear) "" else command.text)
+        return ThreadComposerEditorCommandOutcome.Applied
+    }
+
+    /**
+     * Applies the commands [apply] held back, once the composition has ended, against the text it
+     * committed: a mention or quote is re-applied to that text; a whole-draft Replace still needs
+     * the text it expected and is dropped if the user typed. Returns null when nothing was
+     * applied or dropped (nothing held, or a composition is still open), else whether any held
+     * command was applied.
+     */
+    fun applyDeferredCommands(): Boolean? {
+        if (!hasDeferredCommandsReady) return null
+        val held = deferredCommands.toList()
+        deferredCommands.clear()
+        var applied = false
+        for (command in held) {
+            val edit = command.edit
+            val nextText =
+                when {
+                    command.expectedAsTask != null && command.expectedAsTask != asTask -> null
+                    edit != null -> edit.applyTo(value.text)
+                    shouldApplyThreadComposerEditorCommand(value.text, asTask, command) -> command.text
+                    else -> null
+                } ?: continue
+            writeCommandText(command, nextText)
+            applied = true
+        }
+        return applied
+    }
+
+    private fun writeCommandText(command: ThreadComposerEditorCommand, nextText: String) {
         value = TextFieldValue(nextText, selection = TextRange(nextText.length))
         asTask = if (command.kind == ThreadComposerEditorCommandKind.Clear) false else command.asTask
-        handledCommandId = command.id
-        return ThreadComposerEditorCommandOutcome.Applied
+    }
+}
+
+/**
+ * Runs the store's [ThreadComposerEditorCommand]s against [owner]: each new command once, and the
+ * commands the owner held back during an IME composition as soon as it ends. A held command that
+ * changes the text reports it as a `change` (the store's draft must follow the editor); one that
+ * was dropped reports `staleEditorCommandIgnored`, as a stale command does.
+ */
+@Composable
+internal fun ThreadComposerEditorCommandEffects(
+    instanceId: String,
+    command: ThreadComposerEditorCommand?,
+    owner: ThreadComposerControlledEditorOwner,
+    onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+) {
+    val currentOnEvent by rememberUpdatedState(onEvent)
+    LaunchedEffect(instanceId, command?.id) {
+        command ?: return@LaunchedEffect
+        if (owner.apply(command) == ThreadComposerEditorCommandOutcome.Stale) {
+            currentOnEvent("staleEditorCommandIgnored", owner.value.text, owner.asTask, null)
+        }
+    }
+    LaunchedEffect(instanceId, owner) {
+        snapshotFlow { owner.hasDeferredCommandsReady }.collect { ready ->
+            if (!ready) return@collect
+            val applied = owner.applyDeferredCommands() ?: return@collect
+            currentOnEvent(if (applied) "change" else "staleEditorCommandIgnored", owner.value.text, owner.asTask, null)
+        }
     }
 }
 
@@ -1287,7 +1447,7 @@ internal class ThreadComposerSuggestionSelectionDispatcher(
                 selectionEnd = currentContext.selectionEnd,
                 triggerStart = currentContext.triggerStart,
                 replacement = "@${member.handle} "
-            ) ?: return false
+            )?.copy(mention = member.composerStructuredMentionOrNull()) ?: return false
         onCommit(edit)
         return true
     }
@@ -1465,6 +1625,10 @@ internal fun ThreadComposerScreen() {
                                     when {
                                         suggestionRepositionOracleEnabled && suggestionRepositioned ->
                                             ThreadComposerVisualSuggestionRepositionOffset
+                                        visualFixture == "member_suggestions" ->
+                                            ThreadComposerVisualMemberSuggestionAnchorOffset
+                                        visualFixture == "channel_suggestions" ->
+                                            ThreadComposerVisualChannelSuggestionAnchorOffset
                                         payload.suggestionsOpen -> ThreadComposerVisualSuggestionAnchorOffset
                                         else -> 0f
                                     }
@@ -1484,6 +1648,12 @@ internal fun ThreadComposerScreen() {
                                     (visualFixture == ThreadComposerMentionBatchDetailsVisualFixture ||
                                         visualFixture == "pending_mention_actions_batch_partial"),
                             attachmentPreviewEnabled = false,
+                            agentStatusResolver =
+                                if (visualFixture.isNotBlank()) {
+                                    ThreadComposerVisualAgentStatusResolver
+                                } else {
+                                    EmptyRaftAgentStatusResolver
+                                },
                             onEvent = { action, _, _, attachmentId ->
                                 if (
                                     suggestionInteractionOracleEnabled &&
@@ -1614,6 +1784,21 @@ private fun parseThreadComposerLaunchPayload(
     }
 }
 
+private const val ThreadComposerVisualOwnerId = "visual-user"
+private const val ThreadComposerVisualCindyId = "agent-cindy"
+
+/**
+ * The visual fixture's agent activity: web VisualFixtureData agents are all `activity: "working"`
+ * (the channel-members mock carries Cindy's), so their avatar light is the busy yellow.
+ */
+internal val ThreadComposerVisualAgentStatusResolver: RaftAgentStatusResolver = { memberId ->
+    flowOf(
+        memberId?.takeIf { it.startsWith("agent-") }?.let {
+            raftAgentStatusIndicatorState(status = AgentStatus.Working, presence = Presence.Active, external = false)
+        }
+    )
+}
+
 private fun threadComposerVisualFixture(
     fixture: String,
     instanceId: String
@@ -1628,8 +1813,21 @@ private fun threadComposerVisualFixture(
             syncNonce = 1,
             focusRequestNonce = 0,
             placeholder = "Message design",
+            // web `components.thread.composer.member-suggestions`: the channel's members from the
+            // react-provider `/channels/visual-thread-composer/members` mock (artin, Cindy), then the
+            // rest of the server's agents in store order (VisualFixtureData fxProductUx, fxAndroidDev4).
             memberSuggestions =
                 listOf(
+                    RaftComposerMemberItem(
+                        displayName = "artin",
+                        handle = "artin",
+                        inMentionChannel = true,
+                        // The web row shows no description for artin (the channel-members mock's
+                        // role is not a mention description).
+                        kind = MemberKind.Human,
+                        avatarLabel = "AR",
+                        memberId = ThreadComposerVisualOwnerId
+                    ),
                     RaftComposerMemberItem(
                         displayName = "Cindy",
                         handle = "Cindy",
@@ -1637,25 +1835,28 @@ private fun threadComposerVisualFixture(
                         kind = MemberKind.Agent,
                         description = "Keeps visual testing release notes aligned.",
                         avatarWireValue = "pixel:robot",
-                        avatarLabel = "C"
+                        avatarLabel = "CI",
+                        memberId = ThreadComposerVisualCindyId
                     ),
                     RaftComposerMemberItem(
                         displayName = "Product UX Designer",
                         handle = "Product-UX-Designer",
-                        inMentionChannel = true,
+                        inMentionChannel = false,
                         kind = MemberKind.Agent,
-                        description = "Turns screenshots into actionable UI specs.",
-                        avatarWireValue = "pixel:paint",
-                        avatarLabel = "P"
+                        description = "Turns product feedback, screenshots, and release notes into actionable UX specs.",
+                        avatarWireValue = "pixel:robot",
+                        avatarLabel = "PU",
+                        memberId = "agent-product-ux"
                     ),
                     RaftComposerMemberItem(
-                        displayName = "Android Developer",
+                        displayName = "Android Developer 4",
                         handle = "Android-Developer-4",
                         inMentionChannel = false,
                         kind = MemberKind.Agent,
                         description = "Implements shared Android/KMP UI fixes.",
                         avatarWireValue = "pixel:robot",
-                        avatarLabel = "A"
+                        avatarLabel = "AD",
+                        memberId = "agent-android-dev-4"
                     )
                 ),
             channelSuggestions =
@@ -1858,6 +2059,7 @@ internal fun RaftThreadComposerPayload.toThreadComposerUiState(): ThreadComposer
         syncNonce = syncNonce,
         editorCommand = editorCommand,
         focusRequestNonce = focusRequestNonce,
+        focusRequestShowsKeyboard = focusRequestShowsKeyboard,
         placeholder = placeholder,
         enabled = enabled,
         attachmentActionsEnabled = attachmentActionsEnabled,
@@ -2005,6 +2207,7 @@ internal fun ThreadComposerContent(
     composerSendKeyEnabled: Boolean = false,
     dismissKeyboardOnBlur: Boolean = false,
     attachmentPreviewEnabled: Boolean,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
@@ -2014,7 +2217,7 @@ internal fun ThreadComposerContent(
      * frame's own box after the frame, given whether the composer holds text or an attachment
      * and whether its editor is focused (the assistant's otter, [build.raft.app.assistant.ThreadAssistantOtterFrameEdge]).
      */
-    frameEdge: (@Composable (composing: Boolean, focused: Boolean) -> Unit)? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
 ) {
     ThreadComposerContent(
         surface =
@@ -2033,6 +2236,7 @@ internal fun ThreadComposerContent(
         composerSendKeyEnabled = composerSendKeyEnabled,
         dismissKeyboardOnBlur = dismissKeyboardOnBlur,
         attachmentPreviewEnabled = attachmentPreviewEnabled,
+        agentStatusResolver = agentStatusResolver,
         insertMentionRequest = insertMentionRequest,
         onInsertMentionConsumed = onInsertMentionConsumed,
         onSuggestionDemandChanged = onSuggestionDemandChanged,
@@ -2071,17 +2275,21 @@ internal fun ThreadComposerContent(
      * frame's own box after the frame, given whether the composer holds text or an attachment
      * and whether its editor is focused (the assistant's otter, [build.raft.app.assistant.ThreadAssistantOtterFrameEdge]).
      */
-    frameEdge: (@Composable (composing: Boolean, focused: Boolean) -> Unit)? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
+    /** Take the focus when this conversation opens (ComposerAutofocusPolicy.kt); focus only, no soft keyboard. */
+    autofocusOnOpen: Boolean = false,
 ) {
     val editorOwner = remember(state.instanceId) {
         ThreadComposerControlledEditorOwner(state.seedText, state.seedAsTask)
     }
-    LaunchedEffect(state.instanceId, state.editorCommand?.id) {
-        val command = state.editorCommand ?: return@LaunchedEffect
-        if (editorOwner.apply(command) == ThreadComposerEditorCommandOutcome.Stale) {
-            onEvent("staleEditorCommandIgnored", editorOwner.value.text, editorOwner.asTask, null)
-        }
-    }
+    ThreadComposerEditorCommandEffects(
+        instanceId = state.instanceId,
+        command = state.editorCommand,
+        owner = editorOwner,
+        onEvent = onEvent,
+    )
+    // The conversation composer's own focus never counts as another field's (RaftAutofocusGuard).
+    CompositionLocalProvider(LocalRaftEditorIsConversationComposer provides true) {
     ThreadComposerContentLeaf(
         surface = surface,
         state = state,
@@ -2110,7 +2318,9 @@ internal fun ThreadComposerContent(
         initialMentionActionDetailsVisible = initialMentionActionDetailsVisible,
         externalNativeEditingStateReader = externalNativeEditingStateReader,
         frameEdge = frameEdge,
+        autofocusOnOpen = autofocusOnOpen,
     )
+    }
 }
 
 @Composable
@@ -2141,7 +2351,8 @@ internal fun ThreadComposerContentLeaf(
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
     initialMentionActionDetailsVisible: Boolean = false,
     externalNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
-    frameEdge: (@Composable (composing: Boolean, focused: Boolean) -> Unit)? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
+    autofocusOnOpen: Boolean = false,
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
@@ -2197,11 +2408,15 @@ internal fun ThreadComposerContentLeaf(
         )
     }
     val suggestionAnchorRef = remember(state.instanceId) { RaftLiveRootAnchorRef(suggestionPortalOwner) }
+    // Remembered across the stack's push and pop over this page (the node reattaches, this stays):
+    // a lease-bound resolver left the panel unable to place itself until the page was rebuilt.
     val suggestionAnchorResolver =
         remember(state.instanceId, suggestionAnchorRef) {
-            suggestionAnchorRef.resolver(RaftPopoverLocalPoint.Exact(Offset.Zero))
+            suggestionAnchorRef.currentCaptureResolver(RaftPopoverLocalPoint.Exact(Offset.Zero))
         }
     var composerCardSize by remember(state.instanceId) { mutableStateOf(IntSize.Zero) }
+    // Something sits above the composer frame (see the measured column below).
+    var contentAboveFrame by remember(state.instanceId) { mutableStateOf(false) }
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
     LaunchedEffect(state.instanceId, editorSessionId, state.focusRequestNonce) {
         val explicitFocusRequest = state.focusRequestNonce > handledFocusRequestNonce
@@ -2212,6 +2427,7 @@ internal fun ThreadComposerContentLeaf(
                 editorSessionReplaced = editorSessionReplaced,
                 editorFocused = focused,
                 keyboardInsetDp = keyboardInsetDp,
+                explicitRequestShowsKeyboard = state.focusRequestShowsKeyboard,
             )
         handledEditorSessionId = editorSessionId
         if (explicitFocusRequest) {
@@ -2234,6 +2450,13 @@ internal fun ThreadComposerContentLeaf(
             }
         }
     }
+    // Desktop / hardware keyboard: opening the conversation puts the focus here (web MessageInput
+    // autoFocus). Focus only: no softwareKeyboardController.show(), unlike the explicit requests above.
+    ComposerAutofocusOnOpenEffect(
+        key = state.instanceId,
+        enabled = autofocusOnOpen,
+        focusRequester = composerFocusRequester,
+    )
     val selectionStart = minOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
     val selectionEnd = maxOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
     val suggestionTrigger =
@@ -2477,9 +2700,22 @@ internal fun ThreadComposerContentLeaf(
         return true
     }
 
+    // Read by the mention effect after it waited out a composition: the field's latest value and
+    // an insert that works on it.
+    val latestFieldValue by rememberUpdatedState(fieldValue)
+    val latestInsertMentionAtCursor by rememberUpdatedState<(String) -> Boolean> { handle -> insertMentionAtCursor(handle) }
     LaunchedEffect(insertMentionRequest?.nonce) {
         val request = insertMentionRequest ?: return@LaunchedEffect
-        if (insertMentionAtCursor(request.handle)) {
+        // An avatar mention mid-composition would end it and commit the raw marked text; insert
+        // at the caret of the text the composition commits instead.
+        val composing = latestFieldValue.composition != null
+        ThreadComposerProgrammaticEditLog.record(
+            ThreadComposerProgrammaticEditKind.Mention,
+            composing = composing,
+            deferred = composing,
+        )
+        if (composing) snapshotFlow { latestFieldValue.composition }.first { it == null }
+        if (latestInsertMentionAtCursor(request.handle)) {
             // The avatar long-press starts outside the composer, so the shared root may already
             // have armed an outside-focus dismissal for this pointer sequence. Mention insertion
             // is a newer explicit editing intent; invalidate that old token before refocusing so
@@ -2522,6 +2758,12 @@ internal fun ThreadComposerContentLeaf(
             selectionEnd = selectionEnd,
             triggerStart = triggerStart
         )?.let { edit ->
+            // Enter / Space on an open trigger commits the typed token now, composition included.
+            ThreadComposerProgrammaticEditLog.record(
+                ThreadComposerProgrammaticEditKind.Token,
+                composing = fieldValue.composition != null,
+                deferred = false,
+            )
             val nextFieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
             if (!onEditorValueChange(editorSessionId, nextFieldValue)) return@let
             suggestionSelectionDispatcher.updateDraft(
@@ -2555,6 +2797,11 @@ internal fun ThreadComposerContentLeaf(
                         return@readCurrentValue
                     }
                 }
+            ThreadComposerProgrammaticEditLog.record(
+                ThreadComposerProgrammaticEditKind.SendSnapshot,
+                composing = nativeValue.composition != null,
+                deferred = false,
+            )
             if (!onEditorValueChange(sourceSessionId, nativeValue)) return@readCurrentValue
             suggestionSelectionDispatcher.updateDraft(
                 text = nativeValue.text,
@@ -2701,6 +2948,13 @@ internal fun ThreadComposerContentLeaf(
             memberSuggestions = filteredMemberSuggestions,
             channelSuggestions = filteredChannelSuggestions,
             onCommit = onCommit@ { edit ->
+                // A tapped suggestion replaces the typed query, composition included: the tap is
+                // the commit, so it is not held back.
+                ThreadComposerProgrammaticEditLog.record(
+                    ThreadComposerProgrammaticEditKind.Suggestion,
+                    composing = latestFieldValue.composition != null,
+                    deferred = false,
+                )
                 val nextFieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
                 if (!onEditorValueChange(editorSessionId, nextFieldValue)) return@onCommit
                 suggestionSelectionDispatcher.updateDraft(
@@ -2709,6 +2963,8 @@ internal fun ThreadComposerContentLeaf(
                     selectionEnd = nextFieldValue.selection.end
                 )
                 onEvent("change", edit.text, asTask, null)
+                // After the text: the draft keeps a mention only while its `@handle` is in the text.
+                edit.mention?.let { mention -> onEvent(ThreadComposerSelectMentionEvent, encodeThreadComposerMentionEvent(mention), asTask, null) }
             }
         )
         if (suggestionPresentation == null) {
@@ -2746,73 +3002,85 @@ internal fun ThreadComposerContentLeaf(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = contentPaddingTop, bottom = contentPaddingBottom),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(top = contentPaddingTop, bottom = contentPaddingBottom)
         ) {
-            state.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
-                Text(
-                    text = localizedThreadComposerStatusLabel(status),
-                    style = RaftType.Caption.copy(
-                        color = if (state.composerMode == "failed") RaftColor.AccentRed else RaftColor.TextMutedGray
-                    ),
-                    color = if (state.composerMode == "failed") RaftColor.AccentRed else RaftColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (state.pendingAttachments.isNotEmpty()) {
-                ComposerAttachmentTray(
-                    attachments = state.pendingAttachments,
-                    enabled = state.enabled,
-                    previewEnabled = state.enabled && attachmentPreviewEnabled
-                ) { action, attachmentId ->
-                    onEvent(action, null, null, attachmentId)
+            // Everything stacked above the composer frame (status, attachment tray, mention
+            // notice and cards): measured, so whatever sits on the frame's top edge (the otter)
+            // can make way for any of it without listing them (artin 11-02).
+            Column(
+                modifier = Modifier.fillMaxWidth().onSizeChanged { size ->
+                    val stacked = size.height > 0
+                    if (contentAboveFrame != stacked) contentAboveFrame = stacked
+                },
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                state.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
+                    Text(
+                        text = localizedThreadComposerStatusLabel(status),
+                        style = RaftType.Caption.copy(
+                            color = if (state.composerMode == "failed") RaftColor.AccentRed else RaftColor.TextMutedGray
+                        ),
+                        color = if (state.composerMode == "failed") RaftColor.AccentRed else RaftColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-            }
-            val localizedMentionActionNotice =
-                state.mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
-                    if (notice == ThreadComposerMentionBatchPartialNoticeVisualMarker) {
-                        stringResource(Res.string.thread_composer_mention_batch_error_member_authority)
-                    } else {
-                        notice
+                if (state.pendingAttachments.isNotEmpty()) {
+                    ComposerAttachmentTray(
+                        attachments = state.pendingAttachments,
+                        enabled = state.enabled,
+                        previewEnabled = state.enabled && attachmentPreviewEnabled
+                    ) { action, attachmentId ->
+                        onEvent(action, null, null, attachmentId)
                     }
                 }
-            val localizedMentionActionNoticeTitle =
-                state.mentionActionNoticeTitle?.takeIf { it.isNotBlank() }?.let { title ->
-                    if (title == ThreadComposerMentionBatchPartialNoticeTitleVisualMarker) {
-                        stringResource(Res.string.thread_composer_mention_batch_result_summary, 1, 3)
-                    } else {
-                        title
+                val localizedMentionActionNotice =
+                    state.mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
+                        if (notice == ThreadComposerMentionBatchPartialNoticeVisualMarker) {
+                            stringResource(Res.string.thread_composer_mention_batch_error_member_authority)
+                        } else {
+                            notice
+                        }
                     }
+                val localizedMentionActionNoticeTitle =
+                    state.mentionActionNoticeTitle?.takeIf { it.isNotBlank() }?.let { title ->
+                        if (title == ThreadComposerMentionBatchPartialNoticeTitleVisualMarker) {
+                            stringResource(Res.string.thread_composer_mention_batch_result_summary, 1, 3)
+                        } else {
+                            title
+                        }
+                    }
+                localizedMentionActionNotice?.let { notice ->
+                    MentionActionNotice(title = localizedMentionActionNoticeTitle, detail = notice)
                 }
-            localizedMentionActionNotice?.let { notice ->
-                MentionActionNotice(title = localizedMentionActionNoticeTitle, detail = notice)
-            }
-            if (state.pendingMentionActions.isNotEmpty()) {
-                PendingMentionActionBanner(
-                    actions = state.pendingMentionActions,
-                    memberSuggestions = state.memberSuggestions,
-                    channelLabel = surface.localizedMentionScopeChannelLabel(),
-                    actionStates = state.mentionActionStates,
-                    removingIds = state.removingMentionActionIds.toSet(),
-                    executingIds = state.executingMentionActionIds.toSet(),
-                    executingStates = state.executingMentionActionStates,
-                    onInvite = { resolutionId -> onEvent("inviteMention", resolutionId, null, null) },
-                    onNotify = { resolutionId -> onEvent("notifyMention", resolutionId, null, null) },
-                    onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) },
-                    onAddAll = { onEvent("addAllMentions", null, null, null) },
-                    mentionActionNoticeTitle = localizedMentionActionNoticeTitle,
-                    mentionActionNotice = localizedMentionActionNotice,
-                    initialDetailsVisible = initialMentionActionDetailsVisible,
-                    onOpenDetails = {
-                        currentDismissSuggestions()
-                        softwareKeyboardController?.hide()
-                    }
-                )
+                if (state.pendingMentionActions.isNotEmpty()) {
+                    PendingMentionActionBanner(
+                        actions = state.pendingMentionActions,
+                        memberSuggestions = state.memberSuggestions,
+                        channelLabel = surface.localizedMentionScopeChannelLabel(),
+                        actionStates = state.mentionActionStates,
+                        removingIds = state.removingMentionActionIds.toSet(),
+                        executingIds = state.executingMentionActionIds.toSet(),
+                        executingStates = state.executingMentionActionStates,
+                        onInvite = { resolutionId -> onEvent("inviteMention", resolutionId, null, null) },
+                        onNotify = { resolutionId -> onEvent("notifyMention", resolutionId, null, null) },
+                        onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) },
+                        onAddAll = { onEvent("addAllMentions", null, null, null) },
+                        mentionActionNoticeTitle = localizedMentionActionNoticeTitle,
+                        mentionActionNotice = localizedMentionActionNotice,
+                        initialDetailsVisible = initialMentionActionDetailsVisible,
+                        onOpenDetails = {
+                            currentDismissSuggestions()
+                            softwareKeyboardController?.hide()
+                        }
+                    )
+                }
             }
             Box(
                 modifier =
                     Modifier
+                        // The 6dp gap to what is stacked above, only when something is.
+                        .padding(top = if (contentAboveFrame) 6.dp else 0.dp)
                         .fillMaxWidth()
                         .raftCaptureLiveRootAnchor(suggestionAnchorRef) { nextSize ->
                             if (composerCardSize != nextSize) composerCardSize = nextSize
@@ -2840,7 +3108,7 @@ internal fun ThreadComposerContentLeaf(
                             start = ThreadComposerCardPadding,
                             top = ThreadComposerCardPadding,
                             end = ThreadComposerCardPadding,
-                            bottom = ThreadComposerEmbeddedInset
+                            bottom = ThreadComposerCardPaddingBottom
                         ),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -2950,6 +3218,7 @@ internal fun ThreadComposerContentLeaf(
                             focusRequester = composerFocusRequester,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .padding(horizontal = ThreadComposerInputPaddingHorizontal)
                                 .heightIn(
                                     min = ThreadComposerTextFieldMinHeight,
                                     max = ThreadComposerTextFieldMaxHeight
@@ -2983,6 +3252,7 @@ internal fun ThreadComposerContentLeaf(
                                 horizontalArrangement = Arrangement.spacedBy(ThreadComposerLeftActionGroupSpacing)
                             ) {
                                 if (state.attachmentActionsEnabled) {
+                                    val cameraAvailable = remember { raftComposerCameraAvailable() }
                                     // Gallery / camera / file, in that order (artin, task #1096). Camera
                                     // used to exist only as this button's long-press, which meant nobody
                                     // found it; the long-press stays so existing muscle memory keeps
@@ -2991,33 +3261,37 @@ internal fun ThreadComposerContentLeaf(
                                         icon = RaftLucideIconName.ImagePlus,
                                         enabled = composerEnabled,
                                         contentDescription = stringResource(Res.string.composer_add_image),
-                                        longClickLabel = stringResource(Res.string.composer_take_photo),
-                                        onLongClick = {
-                                            onEvent(threadComposerImageAction(longPress = true), null, null, null)
+                                        longClickLabel = if (cameraAvailable) stringResource(Res.string.composer_take_photo) else null,
+                                        onLongClick = if (cameraAvailable) {
+                                            { onEvent(threadComposerImageAction(longPress = true), null, null, null) }
+                                        } else {
+                                            null
                                         },
                                         onClick = {
                                             onEvent(threadComposerImageAction(longPress = false), null, null, null)
                                         }
                                     )
-                                    ComposerIconButton(
-                                        icon = RaftLucideIconName.Camera,
-                                        enabled = composerEnabled,
-                                        contentDescription = stringResource(Res.string.composer_take_photo),
-                                        onClick = {
-                                            // longPress = true is what makes this the camera: it emits
-                                            // captureImage, so capture keeps its existing confirm/cancel
-                                            // editor step and nothing reaches the pending tray until the
-                                            // user confirms. Flipping it to false silently turns this
-                                            // button into a second gallery entry.
-                                            //
-                                            // No test covers this call site. commonTest cannot drive
-                                            // Compose and the composer has no visual host, so nothing in
-                                            // the repo can reach ComposerIconButton. The helper's mapping
-                                            // is tested (ThreadPayloadTest), but the argument passed here
-                                            // is not -- do not read that test as guarding this line.
-                                            onEvent(threadComposerImageAction(longPress = true), null, null, null)
-                                        }
-                                    )
+                                    if (cameraAvailable) {
+                                        ComposerIconButton(
+                                            icon = RaftLucideIconName.Camera,
+                                            enabled = composerEnabled,
+                                            contentDescription = stringResource(Res.string.composer_take_photo),
+                                            onClick = {
+                                                // longPress = true is what makes this the camera: it emits
+                                                // captureImage, so capture keeps its existing confirm/cancel
+                                                // editor step and nothing reaches the pending tray until the
+                                                // user confirms. Flipping it to false silently turns this
+                                                // button into a second gallery entry.
+                                                //
+                                                // No test covers this call site. commonTest cannot drive
+                                                // Compose and the composer has no visual host, so nothing in
+                                                // the repo can reach ComposerIconButton. The helper's mapping
+                                                // is tested (ThreadPayloadTest), but the argument passed here
+                                                // is not -- do not read that test as guarding this line.
+                                                onEvent(threadComposerImageAction(longPress = true), null, null, null)
+                                            }
+                                        )
+                                    }
                                     ComposerIconButton(
                                         icon = RaftLucideIconName.Paperclip,
                                         enabled = composerEnabled,
@@ -3033,8 +3307,8 @@ internal fun ThreadComposerContentLeaf(
                                 if (surface.showTaskButton) {
                                     Row(
                                         modifier = Modifier
-                                            .clickable(enabled = composerEnabled) {
-                                                val newValue = !asTask
+                                            // The whole label row is the checkbox (one target, checkbox role).
+                                            .toggleable(value = asTask, enabled = composerEnabled, role = Role.Checkbox) { newValue ->
                                                 if (onEditorAsTaskChange(editorSessionId, newValue)) {
                                                     onEvent("toggleAsTask", null, newValue, null)
                                                 }
@@ -3043,16 +3317,7 @@ internal fun ThreadComposerContentLeaf(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        RaftAppCheckbox(
-                                            checked = asTask,
-                                            onCheckedChange = { checked ->
-                                                if (onEditorAsTaskChange(editorSessionId, checked)) {
-                                                    onEvent("toggleAsTask", null, checked, null)
-                                                }
-                                            },
-                                            enabled = composerEnabled,
-                                            size = 14.dp
-                                        )
+                                        RaftCheckboxIndicator(checked = asTask, enabled = composerEnabled)
                                         // raft-ui `ComposerToolbarLabel`: text-callout (14/20) semibold on
                                         // foreground, foreground-disabled when the composer is off.
                                         val labelColor = if (composerEnabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled
@@ -3078,7 +3343,11 @@ internal fun ThreadComposerContentLeaf(
                 }
                 // Web MessageInput `frameEdge`: drawn on the frame's top edge, after the frame (the
                 // assistant's otter). Neither this box nor its parents clip, so it reaches up over the list.
-                frameEdge?.invoke(threadComposerComposing(text, state.pendingAttachments.size), focused)
+                frameEdge?.invoke(
+                    threadComposerComposing(text, state.pendingAttachments.size),
+                    focused,
+                    contentAboveFrame,
+                )
             }
         }
     }
@@ -3092,7 +3361,8 @@ internal fun ThreadComposerContentLeaf(
  */
 private fun Modifier.composerToolbarBleed(): Modifier =
     layout { measurable, constraints ->
-        val bleed = (ThreadComposerCardPadding - ThreadComposerEmbeddedInset).roundToPx()
+        // raft-ui `ComposerToolbar`: `mx-[calc(var(--control-embedded-inset)-0.75rem-1px)]`.
+        val bleed = (ThreadComposerCardPadding - ThreadComposerCardPaddingBottom).roundToPx()
         val placeable = measurable.measure(constraints.offset(horizontal = bleed * 2))
         layout(placeable.width - bleed * 2, placeable.height) { placeable.place(-bleed, 0) }
     }
@@ -3268,6 +3538,7 @@ private fun ThreadComposerSurface.localizedMentionScopeChannelLabel(): String =
 @Composable
 private fun localizedThreadComposerPlaceholder(rawPlaceholder: String): String {
     val normalized = rawPlaceholder.trim()
+    val loungeName = LocalAgentLoungeComposerName.current
     return when {
         normalized == "Message" -> stringResource(Res.string.thread_composer_placeholder_message)
         normalized == "Reply in thread" -> stringResource(Res.string.thread_composer_placeholder_reply)
@@ -3277,6 +3548,9 @@ private fun localizedThreadComposerPlaceholder(rawPlaceholder: String): String {
                 Res.string.thread_composer_placeholder_dm,
                 normalized.removePrefix("Message @")
             )
+        // Agent Lounge v0: "Message {Name}'s Lounge", never the raw `#<agent>-lounge`.
+        normalized.startsWith("Message #") && loungeName != null ->
+            stringResource(Res.string.thread_composer_placeholder_named, loungeName)
         normalized.startsWith("Message #") ->
             stringResource(
                 Res.string.thread_composer_placeholder_channel,
@@ -3379,8 +3653,18 @@ internal fun RaftPendingAttachmentItem.canOpenComposerAttachmentPreview(composer
                 (status == "queued" && source == "external_share" && !previewUri.isNullOrBlank())
         )
 
+/**
+ * Agent Lounge v0 (botiverse/slock messageService `lounge_agent_excluded`): another agent mentioned
+ * in an agent's Lounge can only read there. Never deliverable: no Notify or Add, whatever the
+ * answer lists; only Ignore.
+ */
+internal const val PendingMentionReasonLoungeAgentExcluded = "lounge_agent_excluded"
+
+internal fun RaftPendingMentionActionItem.isLoungeAgentExcluded(): Boolean =
+    reason == PendingMentionReasonLoungeAgentExcluded
+
 internal fun RaftPendingMentionActionItem.supportsMentionAction(verb: String): Boolean =
-    availableActions.any { action ->
+    !isLoungeAgentExcluded() && availableActions.any { action ->
         when (verb) {
             "notify" -> action == "notify" || action == "notify_only"
             "invite" -> action == "invite" || action == "add"
@@ -3435,6 +3719,9 @@ internal fun RaftPendingMentionActionItem.pendingMentionActionDescription(
     localState: String? = null
 ): String {
     val target = targetLabel()
+    if (isLoungeAgentExcluded()) {
+        return "$target won't be notified: other agents can only read this chat."
+    }
     if (localState == "added") {
         return "$target was added to $channelLabel"
     }
@@ -3461,6 +3748,9 @@ private fun RaftPendingMentionActionItem.localizedPendingMentionActionDescriptio
     localState: String?
 ): String {
     val target = targetLabel()
+    if (isLoungeAgentExcluded()) {
+        return stringResource(Res.string.thread_composer_mention_lounge_agent_excluded, target)
+    }
     if (localState == "added") {
         return stringResource(Res.string.thread_composer_mention_added, target, channelLabel)
     }
@@ -3761,6 +4051,8 @@ internal fun ComposerMemberSuggestionRow(
         when (member.kind) {
             MemberKind.Human -> stringResource(Res.string.composer_mention_actor_human)
             MemberKind.Agent -> stringResource(Res.string.composer_mention_actor_agent)
+            // web `MentionCandidateBody`: a Slack participant's kind tag is the provider badge.
+            MemberKind.External -> stringResource(Res.string.channel_bridge_provider_slack)
             else -> null
         }
     val muted = !inChannel
@@ -3789,77 +4081,155 @@ internal fun ComposerMemberSuggestionRow(
                 statusColor = agentStatus?.color,
                 avatarSize = ComposerMemberSuggestionAvatarSize,
                 statusSize = ComposerMemberSuggestionStatusSize,
-                statusPulsing = agentStatus?.pulsing == true
+                // web StatusDot: "status dots mark ambient states and never animate".
+                statusPulsing = false
             ) {
                 RaftMemberAvatar(
                     identity = RaftMemberAvatarIdentity(member.kind, member.memberId, member.sourceServerId),
-                    label = member.displayName.ifBlank { member.avatarLabel },
+                    // web `MentionCandidateAvatar`: a person is a Gravatar or, without one, the
+                    // placeholder person icon, never initials (an empty label falls back to the icon).
+                    label = if (member.kind == MemberKind.Human) "" else member.displayName.ifBlank { member.avatarLabel },
                     avatarSize = ComposerMemberSuggestionAvatarSize,
                     carriedAvatarWireValue = member.avatarWireValue,
                 )
             }
         }
         if (muted) {
-            // web: `ComposerSuggestionIcon variant="auxiliary"` UserX after the avatar.
+            // web `chatMentionGroups`: `<UserX size={12} />` in a `ComposerSuggestionIcon
+            // variant="auxiliary"` (`-ml-1 size-3 text-foreground-hint`) after the avatar.
             Spacer(modifier = Modifier.width(ComposerSuggestionItemGap - 4.dp))
             RaftLucideIcon(
-                RaftLucideIconName.UserMinus,
+                RaftLucideIconName.UserX,
                 modifier = Modifier.size(12.dp),
                 color = raftArgbHex(RaftColor.ForegroundHint)
             )
         }
         Spacer(modifier = Modifier.width(ComposerMemberSuggestionAvatarNameGap))
-        Row(
-            modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(ComposerSuggestionContentGap)
-        ) {
-            Text(
-                text = member.displayName,
-                // raft-ui suggestion item: text-callout (14/20) medium on foreground.
-                style = ComposerSuggestionTitleStyle,
-                color = RaftColor.TextBlack,
-                // Web `max-w-48`: the title takes its natural width up to 192dp and is never
-                // squeezed into an equal share with the metas; only description/server flex.
-                modifier = Modifier.widthIn(max = ComposerSuggestionTitleMaxWidth),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+        val metas =
+            listOfNotNull<Pair<String, Dp?>>(
+                description?.let { text -> text to null },
+                serverLabel?.let { text -> text to ComposerSuggestionServerMaxWidth }
             )
-            if (appBot != null) {
-                RaftAppBotBadge(identity = appBot, botName = member.displayName)
-            } else {
-                actorTypeLabel?.let { ComposerSuggestionSoftBadge(it) }
-            }
-            description?.let {
+        ComposerMentionSuggestionContent(
+            modifier = Modifier.weight(1f),
+            metas = metas,
+            title = {
                 Text(
-                    text = it,
-                    style = ComposerSuggestionMetaStyle,
+                    text = member.displayName,
+                    // raft-ui suggestion item: text-callout (14/20) medium on foreground.
+                    style = ComposerSuggestionTitleStyle,
+                    color = RaftColor.TextBlack,
+                    // web `max-w-[12rem]`.
+                    modifier = Modifier.widthIn(max = ComposerSuggestionTitleMaxWidth),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            hasBadge = appBot != null || actorTypeLabel != null,
+            badge = {
+                if (appBot != null) {
+                    RaftAppBotBadge(identity = appBot, botName = member.displayName)
+                } else {
+                    actorTypeLabel?.let { ComposerSuggestionSoftBadge(it) }
+                }
+            },
+            aside = {
+                // raft-ui `ComposerSuggestionAside` + `ComposerSuggestionMeta variant="code"`
+                // (`max-w-[7rem] truncate`).
+                Text(
+                    text = "@${member.handle}",
+                    style = ComposerSuggestionMetaStyle.copy(fontFamily = RaftMonoFamily),
                     color = RaftColor.ForegroundHint,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.widthIn(max = ComposerSuggestionHandleMaxWidth),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            serverLabel?.let {
+        )
+    }
+}
+
+/**
+ * raft-ui `ComposerSuggestionContent` (`flex items-center gap-1.5`) for a mention row, with the
+ * web flex priorities (raft-ui composer-suggestion-list recipe): the kind badge never shrinks
+ * (`shrink-0`); the handle aside shows in full up to a third of the row (`ml-auto shrink-0
+ * max-w-[33%]`); the name takes the rest (`flex-[0_1_auto]`, truncating only when it alone cannot
+ * fit); text metas (`flex-1 basis-0`) start from zero and split what the name leaves. A plain Row
+ * measured the name first, so a long name squeezed the badge out of the row.
+ */
+@Composable
+private fun ComposerMentionSuggestionContent(
+    modifier: Modifier,
+    /** Text metas in order, each with its own max width (`max-w-*`) or null. */
+    metas: List<Pair<String, Dp?>>,
+    title: @Composable () -> Unit,
+    hasBadge: Boolean,
+    badge: @Composable () -> Unit,
+    aside: @Composable () -> Unit
+) {
+    Layout(
+        modifier = modifier,
+        content = {
+            Box(modifier = Modifier.layoutId("title")) { title() }
+            if (hasBadge) Box(modifier = Modifier.layoutId("badge")) { badge() }
+            metas.forEachIndexed { index, (text, _) ->
                 Text(
-                    text = it,
+                    text = text,
                     style = ComposerSuggestionMetaStyle,
                     color = RaftColor.ForegroundHint,
-                    modifier = Modifier.weight(1f, fill = false).widthIn(max = ComposerSuggestionServerMaxWidth),
+                    modifier = Modifier.layoutId("meta-$index"),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+            Box(modifier = Modifier.layoutId("aside")) { aside() }
+        }
+    ) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val gap = ComposerSuggestionContentGap.roundToPx()
+        val loose = Constraints(maxWidth = width)
+        val asidePlaceable =
+            measurables.first { it.layoutId == "aside" }
+                .measure(Constraints(maxWidth = (width * 0.33f).toInt()))
+        val badgePlaceable = measurables.firstOrNull { it.layoutId == "badge" }?.measure(loose)
+        val metaMeasurables = metas.indices.map { index -> measurables.first { it.layoutId == "meta-$index" } }
+        val itemCount = 2 + (if (badgePlaceable != null) 1 else 0) + metaMeasurables.size
+        val gaps = gap * (itemCount - 1)
+        val titleMax = (width - asidePlaceable.width - (badgePlaceable?.width ?: 0) - gaps).coerceAtLeast(0)
+        val titlePlaceable = measurables.first { it.layoutId == "title" }.measure(Constraints(maxWidth = titleMax))
+        var leftover = (titleMax - titlePlaceable.width).coerceAtLeast(0)
+        // `flex-1 basis-0` metas share the leftover equally; a capped meta's surplus goes to the rest.
+        val shares = IntArray(metaMeasurables.size)
+        val open = metaMeasurables.indices.toMutableList()
+        while (open.isNotEmpty()) {
+            val share = leftover / open.size
+            val capped = open.filter { index -> metas[index].second?.roundToPx()?.let { it < share } == true }
+            if (capped.isEmpty()) {
+                open.forEach { index -> shares[index] = share }
+                break
+            }
+            capped.forEach { index ->
+                shares[index] = metas[index].second!!.roundToPx()
+                leftover -= shares[index]
+                open.remove(index)
             }
         }
-        // raft-ui `ComposerSuggestionAside` + `ComposerSuggestionMeta variant="code"`.
-        Text(
-            text = "@${member.handle}",
-            style = ComposerSuggestionMetaStyle.copy(fontFamily = RaftMonoFamily),
-            color = RaftColor.ForegroundHint,
-            modifier = Modifier.padding(start = ComposerSuggestionContentGap).widthIn(max = ComposerSuggestionHandleMaxWidth),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        val metaPlaceables = metaMeasurables.mapIndexed { index, measurable -> measurable.measure(Constraints(maxWidth = shares[index])) }
+        val height =
+            (listOfNotNull(titlePlaceable, badgePlaceable, asidePlaceable) + metaPlaceables)
+                .maxOf { it.height }
+                .coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(width, height) {
+            var x = 0
+            fun place(placeable: Placeable, advance: Int = placeable.width) {
+                placeable.placeRelative(x, (height - placeable.height) / 2)
+                x += advance + gap
+            }
+            place(titlePlaceable)
+            badgePlaceable?.let { place(it) }
+            metaPlaceables.forEachIndexed { index, placeable -> place(placeable, advance = shares[index]) }
+            asidePlaceable.placeRelative(width - asidePlaceable.width, (height - asidePlaceable.height) / 2)
+        }
     }
 }
 
@@ -3888,38 +4258,25 @@ private fun MentionActionNotice(
     title: String?,
     detail: String
 ) {
-    Row(
+    // Web MessageInput mention notice: one line, `rounded-control bg-fill-muted px-2.5 py-1.5
+    // text-caption font-semibold text-foreground-muted` (12/16 600).
+    val heading = title?.trim()?.takeIf { it.isNotEmpty() }
+    val text =
+        when {
+            heading == null -> detail
+            heading.last() in ".!?。！？" -> "$heading $detail"
+            else -> "$heading. $detail"
+        }
+    Text(
+        text = text,
+        style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold),
+        color = RaftTheme.colors.foregroundMuted,
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(RaftColor.AccentOrange.copy(alpha = 0.12f))
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        RaftLucideIcon(
-            name = RaftLucideIconName.TriangleAlert,
-            modifier = Modifier.size(14.dp)
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            title?.takeIf { it.isNotBlank() }?.let { text ->
-                Text(
-                    text = text,
-                    style = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Text(
-                text = detail,
-                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                color = RaftColor.TextBlack.copy(alpha = 0.72f),
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
+                .background(RaftTheme.colors.fillMuted, RaftTheme.shapes.control)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+    )
 }
 
 @Composable
@@ -4287,7 +4644,12 @@ private fun PendingMentionActionCompactRow(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = stringResource(Res.string.thread_composer_mention_batch_row_status, channelLabel),
+                text =
+                    if (action.isLoungeAgentExcluded()) {
+                        stringResource(Res.string.thread_composer_mention_lounge_agent_excluded, action.targetLabel())
+                    } else {
+                        stringResource(Res.string.thread_composer_mention_batch_row_status, channelLabel)
+                    },
                 style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
                 color = RaftColor.TextMutedGray.copy(alpha = contentAlpha),
                 maxLines = 1,
@@ -4413,7 +4775,8 @@ private fun PendingMentionActionRow(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = targetLabel,
-                    style = RaftType.Button.copy(fontSize = 12.sp),
+                    // Web PendingMentionActionStripRow: text-footnote font-bold (13/18 700).
+                    style = RaftType.SectionLabel,
                     color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -4493,32 +4856,28 @@ internal fun ComposerAttachmentTray(
     previewEnabled: Boolean,
     onEvent: (action: String, attachmentId: String) -> Unit
 ) {
-    // raft-ui `ComposerAttachments` (`flex-wrap gap-2 pt-1.5 pe-1.5`): the top and end room
-    // keeps each tile's overhanging remove sticker inside the tray.
+    // raft-ui `ComposerAttachments` (`gap-2 pt-1.5 pe-1.5`): the top and end room keeps each
+    // tile's overhanging remove sticker inside the tray. One row that scrolls sideways (#4067): on
+    // a phone a file tile fills a wrapped row, and a few of them pushed the text field off the
+    // screen. The tile cut off at the edge shows there is more.
     RaftDesignSystemTheme {
-        Column(
+        Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(top = RaftComposerAttachmentRemoveOverhang, end = RaftComposerAttachmentRemoveOverhang),
-            verticalArrangement = Arrangement.spacedBy(RaftComposerAttachmentGap)
+            horizontalArrangement = Arrangement.spacedBy(RaftComposerAttachmentGap)
         ) {
-            composerAttachmentRows(attachments).forEach { rowAttachments ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(RaftComposerAttachmentGap)
-                ) {
-                    rowAttachments.forEach { attachment ->
-                        ComposerAttachmentPreviewChip(
-                            attachment = attachment,
-                            enabled = enabled,
-                            previewEnabled = previewEnabled,
-                            onPreview = { onEvent("previewAttachment", attachment.id) },
-                            onRemove = { onEvent("removeAttachment", attachment.id) },
-                            onRetry = { onEvent("retryAttachments", attachment.id) }
-                        )
-                    }
-                }
+            attachments.forEach { attachment ->
+                ComposerAttachmentPreviewChip(
+                    attachment = attachment,
+                    enabled = enabled,
+                    previewEnabled = previewEnabled,
+                    onPreview = { onEvent("previewAttachment", attachment.id) },
+                    onRemove = { onEvent("removeAttachment", attachment.id) },
+                    onRetry = { onEvent("retryAttachments", attachment.id) }
+                )
             }
         }
     }
@@ -4604,46 +4963,6 @@ private fun RaftComposerUploadPhase.toComposerAttachmentPhase(): RaftComposerAtt
         RaftComposerUploadPhase.Failed -> RaftComposerAttachmentPhase.Failed
     }
 
-internal fun composerAttachmentRows(
-    attachments: List<RaftPendingAttachmentItem>,
-    maxWidthDp: Int = ThreadComposerAttachmentTrayMaxWidthDp
-): List<List<RaftPendingAttachmentItem>> {
-    if (attachments.isEmpty()) return emptyList()
-    val rows = mutableListOf<MutableList<RaftPendingAttachmentItem>>()
-    var row = mutableListOf<RaftPendingAttachmentItem>()
-    var rowWidthDp = 0
-    attachments.forEach { attachment ->
-        val widthDp = attachment.composerAttachmentPreviewWidthDp()
-        val nextWidthDp =
-            if (row.isEmpty()) {
-                widthDp
-            } else {
-                rowWidthDp + ThreadComposerAttachmentRowGapDp + widthDp
-            }
-        if (row.isNotEmpty() && nextWidthDp > maxWidthDp) {
-            rows += row
-            row = mutableListOf()
-            rowWidthDp = 0
-        }
-        row += attachment
-        rowWidthDp =
-            if (rowWidthDp == 0) {
-                widthDp
-            } else {
-                rowWidthDp + ThreadComposerAttachmentRowGapDp + widthDp
-            }
-    }
-    if (row.isNotEmpty()) rows += row
-    return rows
-}
-
-internal fun RaftPendingAttachmentItem.composerAttachmentPreviewWidthDp(): Int =
-    if (isComposerImageAttachment()) {
-        ThreadComposerAttachmentImageTileSizeDp
-    } else {
-        ThreadComposerAttachmentFileTileWidthDp
-    }
-
 internal fun RaftPendingAttachmentItem.isComposerImageAttachment(): Boolean {
     val normalizedMime = mimeType?.substringBefore(";")?.trim()?.lowercase().orEmpty()
     return normalizedMime.startsWith("image/") && normalizedMime != "image/svg+xml"
@@ -4670,7 +4989,7 @@ private fun ComposerSuggestionPanel(
         LazyColumn(
             modifier = Modifier.fillMaxWidth().height(panelHeight)
         ) {
-            // `p-1.5` block inset; the side inset lives on the rows and labels.
+            // `p-1` block inset; the side inset lives on the rows and labels.
             item(key = "inset-top", contentType = "inset") {
                 Spacer(modifier = Modifier.height(ComposerSuggestionPanelInset))
             }
@@ -4770,14 +5089,14 @@ private fun ComposerSuggestionInteractiveRow(
             selected || pressed -> selectedColor
             else -> Color.Transparent
         }
-    // raft-ui `ComposerSuggestionList` item: inset 6dp (p-1.5) inside the
-    // popover, rounded-control highlight, px-2.5.
+    // raft-ui `ComposerSuggestionList` item: inset 4dp (p-1) inside the
+    // popover, rounded-chip highlight, px-2.5.
     Column(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = ComposerSuggestionPanelInset)
-                .background(background, RoundedCornerShape(RaftAppRadius.Control))
+                .background(background, RoundedCornerShape(RaftAppRadius.Chip))
     ) {
         Box(
             modifier =
@@ -4823,33 +5142,27 @@ private fun ComposerIconButton(
     modifier: Modifier = Modifier,
     contentDescription: String,
     // raft-ui `ComposerIconButton`: ghost (no fill, no ring) on foreground-icon.
-    backgroundColor: Color = Color.Transparent,
-    disabledBackgroundColor: Color = RaftColor.EmptyStateGray,
-    disabledAlpha: Float = 1f,
-    disabledIconColor: String = "#4D000000",
+    variant: RaftButtonVariant = RaftButtonVariant.Ghost,
     loading: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     longClickLabel: String? = null,
     onClick: () -> Unit
 ) {
-    RaftBrutalIconButton(
-        iconName = icon,
+    RaftIconButton(
         onClick = onClick,
-        contentDescription = contentDescription,
+        tooltip = contentDescription.takeIf { it.isNotBlank() },
         modifier = modifier,
+        variant = variant,
+        size = RaftIconButtonSize.Md,
         enabled = enabled,
-        backgroundColor = backgroundColor,
-        disabledBackgroundColor = disabledBackgroundColor,
-        disabledAlpha = disabledAlpha,
-        disabledBorderColor = RaftColor.BorderBlack,
-        disabledShadowColor = RaftColor.ShadowBlack,
-        disabledIconColor = disabledIconColor,
-        size = ThreadComposerIconButtonSize,
-        iconSize = ThreadComposerIconSize,
         loading = loading,
         onLongClick = onLongClick,
         longClickLabel = longClickLabel,
-    )
+    ) {
+        // raft-ui `ComposerIconButton`: `text-foreground-muted` glyphs; the send button keeps
+        // its primary ink, and a disabled button keeps the button's own disabled ink.
+        RaftSlotIcon(icon, color = RaftTheme.colors.foregroundMuted.takeIf { variant == RaftButtonVariant.Ghost && enabled })
+    }
 }
 
 @Composable
@@ -4858,37 +5171,15 @@ private fun ComposerSendButton(
     sending: Boolean,
     onClick: () -> Unit
 ) {
-    val icon = RaftLucideIconName.Send
-    val contentDescription = stringResource(Res.string.common_send)
-    if (sending) {
-        ComposerIconButton(
-            icon = icon,
-            // Busy keeps the pink under the spinner and ignores taps (raft-ui Button > States).
-            enabled = true,
-            contentDescription = contentDescription,
-            backgroundColor = RaftColor.AccentPink,
-            disabledBackgroundColor = RaftColor.AccentPink,
-            disabledAlpha = 1f,
-            disabledIconColor = "#FF000000",
-            loading = true,
-            onClick = onClick
-        )
-    } else {
-        RaftBrutalIconButton(
-            iconName = icon,
-            onClick = onClick,
-            contentDescription = contentDescription,
-            enabled = enabled,
-            backgroundColor = RaftColor.AccentPink,
-            disabledBackgroundColor = ThreadComposerDisabledSendBackground,
-            disabledAlpha = 1f,
-            disabledBorderColor = ThreadComposerDisabledSendBorder,
-            disabledShadowColor = ThreadComposerDisabledSendShadow,
-            disabledIconColor = ThreadComposerDisabledSendIconArgb,
-            size = ThreadComposerIconButtonSize,
-            iconSize = ThreadComposerIconSize
-        )
-    }
+    // Busy keeps the pink under the spinner and ignores taps (raft-ui Button > States).
+    ComposerIconButton(
+        icon = RaftLucideIconName.Send,
+        enabled = enabled || sending,
+        contentDescription = stringResource(Res.string.common_send),
+        variant = RaftButtonVariant.Primary,
+        loading = sending,
+        onClick = onClick
+    )
 }
 
 internal fun threadComposerVisibleLeftActionGapDp(): Float =
@@ -4898,6 +5189,12 @@ internal fun threadComposerVisibleRightActionGapDp(): Float =
     ThreadComposerRightActionGroupSpacing.value
 
 internal fun threadComposerEmbeddedInsetDp(): Float = ThreadComposerEmbeddedInset.value
+
+/** The card's padding round the text (start/end, top, bottom) and the input's own inset, in dp. */
+internal fun threadComposerCardPaddingDp(): List<Float> =
+    listOf(ThreadComposerCardPadding.value, ThreadComposerCardPadding.value, ThreadComposerCardPaddingBottom.value)
+
+internal fun threadComposerInputPaddingHorizontalDp(): Float = ThreadComposerInputPaddingHorizontal.value
 
 internal fun threadComposerIconButtonSizeDp(): Float = ThreadComposerIconButtonSize.value
 
@@ -4920,22 +5217,14 @@ private fun ComposerTextChip(
     onClick: () -> Unit
 ) {
     if (variant == ComposerTextChipVariant.MutedText) {
-        val mutedColor = RaftColor.TextBlack.copy(alpha = if (enabled) 0.45f else 0.3f)
-        Button(
+        // Web PendingMentionActionStripRow: Dismiss is a raft-ui `Button variant="ghost" size="md"`.
+        RaftButton(
+            text = text,
             onClick = onClick,
+            variant = RaftButtonVariant.Ghost,
+            size = RaftButtonSize.Md,
             enabled = enabled,
-            modifier =
-                Modifier
-                    .padding(horizontal = 6.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = text,
-                style = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = mutedColor),
-                color = mutedColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        )
         return
     }
 
@@ -4970,23 +5259,49 @@ private fun ComposerTextChip(
         return
     }
 
-    RaftBrutalActionButton(
-        label = text,
+    RaftButton(
+        text = text,
         onClick = onClick,
+        variant = if (variant == ComposerTextChipVariant.Pink) RaftButtonVariant.Primary else RaftButtonVariant.Default,
+        size = RaftButtonSize.Md,
         enabled = enabled,
         loading = loading,
-        backgroundColor = if (variant == ComposerTextChipVariant.Pink) RaftColor.AccentPink else RaftColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = 26.dp,
-        leadingIcon = leadingIcon,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack)
+        leadingIcon = leadingIcon?.let { icon -> { RaftSlotIcon(icon) } }
     )
 }
 
 internal data class RaftComposerSuggestionEdit(
     val text: String,
-    val cursor: Int
+    val cursor: Int,
+    /** The structured mention a picked Slack participant adds (`POST /messages` `mentions[]`). */
+    val mention: build.raft.app.data.ThreadSendMessageMention? = null,
 )
+
+/** Composer event carrying a picked structured mention ([encodeThreadComposerMentionEvent]). */
+internal const val ThreadComposerSelectMentionEvent = "selectMention"
+
+private val ThreadComposerMentionEventJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+internal fun encodeThreadComposerMentionEvent(mention: build.raft.app.data.ThreadSendMessageMention): String =
+    ThreadComposerMentionEventJson.encodeToString(build.raft.app.data.ThreadSendMessageMention.serializer(), mention)
+
+internal fun decodeThreadComposerMentionEvent(value: String?): build.raft.app.data.ThreadSendMessageMention? =
+    value?.let {
+        runCatching {
+            ThreadComposerMentionEventJson.decodeFromString(build.raft.app.data.ThreadSendMessageMention.serializer(), it)
+        }.getOrNull()
+    }
+
+/**
+ * Only a Slack participant (`MemberKind.External`) becomes a structured mention, as web sends it
+ * (`{ type: "external", id: <projection id>, name: <handle> }`). People and agents keep the
+ * server's name resolution (this PR does not change how their mentions are sent).
+ */
+internal fun RaftComposerMemberItem.composerStructuredMentionOrNull(): build.raft.app.data.ThreadSendMessageMention? {
+    if (kind != MemberKind.External) return null
+    val id = memberId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return build.raft.app.data.ThreadSendMessageMention(type = ComposerStructuredMentionExternalType, id = id, name = handle)
+}
 
 internal fun applyRaftComposerSuggestionEdit(
     text: String,

@@ -1,22 +1,16 @@
 package build.raft.app
 
+import build.raft.app.links.ParsedRaftPermalink
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 
 import build.raft.app.components.RaftAnchoredMetaChip
-import build.raft.app.components.RaftAttachmentPreviewCard
-import build.raft.app.components.RaftAttachmentPreviewCardWidth
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftChipLoadingIndicator
-import build.raft.app.components.RaftBrutalIconButton
-import build.raft.app.components.RaftBrutalSearchField
-import build.raft.app.components.RaftBrutalTextField
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.SharedHomeSearchInput
-import build.raft.app.components.RaftToolbarChip
 import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
 import build.raft.app.base.reduceAttachmentDownloadProgress
@@ -352,9 +346,10 @@ private val ThreadMessageMenuVisualViewportHeight = 844.dp
 @Composable
 internal fun ThreadMessageVisualScreen() {
     val visualFixture = (LocalActivity.current.getPager() as Pager).pageData.params.optString("visualFixture")
+    val taskStatuses = remember(visualFixture) { threadVisualFixtureTaskStatuses(visualFixture) }
     ThreadReactionAtlasProvider {
         CompositionLocalProvider(
-            LocalRaftMarkdownTaskStatuses provides threadVisualFixtureTaskStatuses(visualFixture)
+            LocalRaftMarkdownTaskStatuses provides taskStatuses
         ) {
             ThreadMessageVisualScreenContent()
         }
@@ -382,6 +377,10 @@ internal fun ThreadMessageVisualScreenContent() {
         }
     val longPressReadyToken = params.optString("longPressReadyToken")
     val longPressMenuVisibleToken = params.optString("longPressMenuVisibleToken")
+    // The thread-open oracle the capture harness reads instead of pixel colour: the yellow
+    // marker below shares its colour with the quick-reaction emoji, so once #4266 enlarged the
+    // menu's reaction row (36dp buttons, 22dp drawings) the menu alone looked like an opened thread.
+    val threadOpenedToken = params.optString("threadOpenedToken")
     val newMessageMenuComposerBoundaryVisible =
         params.optBoolean("newMessageMenuComposerBoundaryVisible", false)
     val newMessageMenuTargetReplyCount = params.optInt("newMessageMenuTargetReplyCount", 0)
@@ -481,9 +480,11 @@ internal fun ThreadMessageVisualScreenContent() {
         }
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION) {
         val messages = payload.toThreadTimelineSlice().messages
-        // React docks the selection toolbar at the bottom of the 390x844
-        // viewport (web MessageList), so the rows sit at the top and the
-        // toolbar at the viewport bottom.
+        // React floats the selection toolbar (SelectModeToolbar, a centred
+        // MessageMultiSelectToolbar pill 20px from the sides and 12px above
+        // the bottom) over the bottom of the 390x844 viewport, so the rows sit
+        // at the top and the pill at the viewport bottom. No select-all (the
+        // case is a channel, not a thread).
         Column(
             modifier =
                 Modifier
@@ -534,7 +535,6 @@ internal fun ThreadMessageVisualScreenContent() {
             Spacer(modifier = Modifier.weight(1f))
             ThreadShareSelectionToolbar(
                 selectedCount = messages.size,
-                selectableCount = messages.size,
                 onCancel = {},
                 onForward = {},
                 onExportImage = {},
@@ -548,15 +548,43 @@ internal fun ThreadMessageVisualScreenContent() {
         }
         return
     }
-    if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW) {
-        Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-            ThreadSharePreviewModal(
-                messages = payload.toThreadTimelineSlice().messages,
-                image = null,
-                onDismiss = {},
-                onCopyMarkdown = {},
-                onDownloadImage = {}
-            )
+    if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_IMAGE) {
+        val message = payload.toThreadTimelineSlice().messages.first()
+        ThreadShareImageVisualCase(
+            cardWidth = params.optInt("shareImageWidth", 390).dp,
+            onImageBottom = { bottom ->
+                visualReadyBridge.log("thread_visual_content_bounds instanceId=$instanceId contentBottomPx=$bottom")
+            },
+        ) {
+            // The export captures rows in share-capture mode (no viewer-only previews).
+            CompositionLocalProvider(LocalThreadShareCaptureActive provides true) {
+                ThreadMessageCard(
+                    memberAvatarResolver = ThreadVisualMemberAvatarResolver,
+                    message = message,
+                    messageBodyTextStyle = messageBodyTextStyle,
+                    agentStatusResolver = agentStatusResolver,
+                    replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
+                    highlightedMentions = highlightedMentions,
+                    memberModelLabelResolver = ThreadMessageVisualModelLabels,
+                    showReplyAction = payload.showReplyActions,
+                    taskOpenEnabled = payload.showTaskOpenActions,
+                    taskStatusActionsEnabled = payload.showTaskStatusActions,
+                    showReactionAddAction = payload.showReactionActions,
+                    isMarkdownTagValid = isMarkdownTagValid,
+                    markdownTagContextSignature = markdownTagContextSignature,
+                    timestampLabel = message.timestampLabel,
+                    onShowActions = {},
+                    onOpenMember = {},
+                    onOpenThread = {},
+                    onOpenTask = {},
+                    onOpenTaskStatusMenu = {},
+                    onToggleReaction = {},
+                    onOpenAttachment = {},
+                    onOpenMarkdownTag = { _, _ -> },
+                    onOpenMarkdownUrl = {},
+                    outerPadding = RaftAppSpacing.Sm
+                )
+            }
         }
         return
     }
@@ -718,15 +746,15 @@ internal fun ThreadMessageVisualScreenContent() {
         }
     val visualMessagePermalinkLabelResolver =
         remember(visualFixture) {
-            { target: RaftMessagePermalinkTarget ->
+            { target: ParsedRaftPermalink ->
                 when (target.channelId.value) {
-                    "channel-proj-server-management" ->
+                    "a7475818-d6b2-426d-8529-5ccdd26c295e" ->
                         if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW) {
                             "proj"
                         } else {
                             "proj-server-management"
                         }
-                    "dm-mahua" -> "Mahua"
+                    "fa6b89fc-4186-42b5-885e-5a19d9f5e86e" -> "Mahua"
                     else -> null
                 }
             }
@@ -935,7 +963,14 @@ internal fun ThreadMessageVisualScreenContent() {
                         }
                     },
                     onOpenMember = {},
-                    onOpenThread = { openedVisualThreadMessageId = it },
+                    onOpenThread = {
+                        openedVisualThreadMessageId = it
+                        if (threadOpenedToken.isNotBlank()) {
+                            // This page's own bridge: a click callback runs outside the
+                            // Kuikly call that sets BridgeManager.currentPageId.
+                            visualReadyBridge.log("$threadOpenedToken messageId=$it")
+                        }
+                    },
                     onOpenTask = {},
                     onOpenTaskStatusMenu = {},
                     onToggleReaction = {},
@@ -1211,6 +1246,7 @@ private fun threadMessageVisualAgentStatusResolver(
             // React markdown specimens render her with that status badge.
             THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE,
             THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF,
+            THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_IMAGE,
             THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_STATUS606,
             THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_ADJACENT,
             THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY,

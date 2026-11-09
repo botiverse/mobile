@@ -80,10 +80,15 @@ internal fun raftDecodeWebViewHostMessage(raw: String): Pair<String, JSONObject>
             "feedback:integration-unavailable" -> "integration-unavailable"
             FeedbackDiagnosticsBridge.START_KIND -> FeedbackDiagnosticsBridge.START_KIND
             FeedbackDiagnosticsBridge.CANCEL_KIND -> FeedbackDiagnosticsBridge.CANCEL_KIND
+            // botiverse/slock `packages/web/src/embed/hostBridge.ts`: the user signed out on the page.
+            RAFT_HOST_EVENT_SESSION_LOGOUT -> RAFT_HOST_EVENT_SESSION_LOGOUT
             else -> null
         } ?: return null
     return acceptedKind to payload
 }
+
+/** Web `emitHostEvent("session:logout")`: an explicit sign-out completed on the page (payload `{}`). */
+internal const val RAFT_HOST_EVENT_SESSION_LOGOUT = "session:logout"
 
 /** `window.RaftHost` bridge installed at document start when host events are enabled. */
 internal const val RaftWebViewHostPortName = "raftHostPort"
@@ -108,3 +113,12 @@ internal expect fun RaftSandboxWebViewHost(
  * the page no bottom safe-area inset. iOS: WKWebView handles both. Desktop: neither exists.
  */
 internal expect val raftWebViewNeedsHostBottomInsets: Boolean
+
+/**
+ * How a host lays a page out at a desktop width (`useWideViewPort`, task #188, the Artifact
+ * viewer's Desktop Mode). Android: the page's viewport meta says `width=1280` (injected) and
+ * `useWideViewPort` + `setInitialScale` fit it. iOS: the same injected meta, which WKWebView lays
+ * out and fits by itself (its `pageZoom` only shrank CSS px, never widened the layout: 1.19.2).
+ * Desktop: no such mode.
+ */
+internal expect val raftWebViewDesktopModeViaViewportMeta: Boolean

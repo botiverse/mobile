@@ -3,11 +3,13 @@ package build.raft.app
 import build.raft.app.data.DataResult
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedTasksDataSource
+import build.raft.app.data.taskStatusChoices
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskId
+import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import build.raft.app.model.topLevelThreadId
@@ -54,6 +56,10 @@ internal fun TaskSummary.taskOpenTarget(taskV2Enabled: Boolean): TaskOpenTarget 
 /** Web `opensAsTaskConversation(task, taskV2Enabled)`: never for a legacy orphan; else with the flag on, or per task. */
 internal fun TaskSummary.opensAsTaskConversation(taskV2Enabled: Boolean): Boolean =
     !isLegacy && (taskV2Enabled || conversationAnchored)
+
+/** Web `getTaskStatusOptions(task, ..., taskV2)`: what this task's status menu offers (no In Review on a v2 task). */
+internal fun TaskSummary.statusMenuChoices(taskV2Enabled: Boolean): List<TaskStatus> =
+    taskStatusChoices(status, v2Task = opensAsTaskConversation(taskV2Enabled))
 
 /** The launch identity of a task conversation: a flat, root-less stream keyed by its channel id. */
 internal fun taskConversationLaunchIdentity(conversationChannelId: ChannelId): ThreadLaunchConversationIdentity =

@@ -16,55 +16,55 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/**
- * Task v2 status transitions, mirrored from web `taskStatusUi.ts` `VALID_TRANSITIONS` (itself the
- * mirror of slock `taskService.ts` `VALID_TRANSITIONS`), so the menu only offers what the server
- * accepts.
- */
-internal val TaskStatusValidTransitions: Map<TaskStatus, List<TaskStatus>> =
-    mapOf(
-        TaskStatus.Todo to listOf(TaskStatus.InProgress, TaskStatus.Closed),
-        TaskStatus.InProgress to listOf(TaskStatus.InReview, TaskStatus.Done, TaskStatus.Closed),
-        TaskStatus.InReview to listOf(TaskStatus.Done, TaskStatus.InProgress, TaskStatus.Closed),
-        TaskStatus.Done to listOf(TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.InReview, TaskStatus.Closed),
-        TaskStatus.Closed to listOf(TaskStatus.Todo, TaskStatus.InProgress),
-    )
-
 /** One row of the status menu. [reopensToTodo]: web labels Closed -> Todo "Reopen to Todo". */
 internal data class TaskStatusOption(val status: TaskStatus, val reopensToTodo: Boolean = false)
 
 /**
- * Web `getTaskStatusOptions`: members get the current status and its legal transitions; a server
- * owner or admin (`deleteAnyTask`) may force any status.
+ * Web `getTaskStatusOptions`: every status, from any status, for members and admins alike (the
+ * server has no transition table: slock `taskService.getTaskStatusTransitionError` only refuses the
+ * current status). Closed -> Todo reads "Reopen to Todo". [v2Task]: see [taskStatusChoices].
  */
-internal fun taskStatusOptions(current: TaskStatus, canManageServer: Boolean): List<TaskStatusOption> {
-    val allowed =
-        if (canManageServer) {
-            listOf(TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.InReview, TaskStatus.Done, TaskStatus.Closed)
-        } else {
-            listOf(current) + TaskStatusValidTransitions.getValue(current)
-        }
-    return allowed.map { status ->
+internal fun taskStatusOptions(current: TaskStatus, v2Task: Boolean): List<TaskStatusOption> =
+    taskStatusChoices(current, v2Task).map { status ->
         TaskStatusOption(status = status, reopensToTodo = current == TaskStatus.Closed && status == TaskStatus.Todo)
     }
-}
-
-/** slock `serverPermissions.ts`: owners and admins hold `deleteAnyTask` (web `canManageServer`). */
-internal fun taskServerRoleCanManage(role: String?): Boolean =
-    role?.trim()?.lowercase().let { it == "owner" || it == "admin" }
-
-private fun taskServerRoleIsGuest(role: String?): Boolean = role?.trim()?.lowercase() == "guest"
-
-/** Web `canEditTaskStatus`: any non-guest who can see the task, unless it is read-only (historical joint). */
-internal fun TaskSummary.canEditStatus(serverRole: String?): Boolean =
-    readOnlyReason == null && !taskServerRoleIsGuest(serverRole)
 
 /**
- * Web TaskProperties `canEditAssignee` (`authorizeTaskAction({action: "assign"})`): not a guest, not
- * read-only, and not done (the server freezes a completed task's assignee).
+ * The statuses a task's status menu offers, in board order (Backlog first). [v2Task]: the task opens
+ * as its own conversation (web `opensAsTaskConversation(task, taskV2)`).
+ *
+ * - In Review is retired for a task v2 task (#wg-task-v2:f7043517, raft-design decision 0043; web
+ *   slock #12884): the server stores In Progress when asked for it.
+ * - Backlog is task v2 only (slock #12963 `getTaskStatusOptions` noBacklog): the server refuses it on
+ *   a pre-v2 task with the flag off (`task_status_not_available`), so a legacy task, or any task with
+ *   task v2 off, is not offered it.
+ *
+ * A task already in either keeps it as its current option. [TaskStatus.Unknown] is never a choice.
  */
-internal fun TaskSummary.canEditAssignee(serverRole: String?): Boolean =
-    status != TaskStatus.Done && readOnlyReason == null && !taskServerRoleIsGuest(serverRole)
+internal fun taskStatusChoices(current: TaskStatus, v2Task: Boolean): List<TaskStatus> =
+    TaskStatus.known.filter { status ->
+        !(v2Task && status == TaskStatus.InReview && current != TaskStatus.InReview) &&
+            !(!v2Task && status == TaskStatus.Backlog && current != TaskStatus.Backlog)
+    }
+
+/**
+ * A pick in a status menu that asks for a reason first (web `TaskBacklogReasonPopover`): a move into
+ * Backlog from another status. A task already in Backlog asks nothing.
+ */
+internal fun taskStatusPickAsksBacklogReason(current: TaskStatus, next: TaskStatus): Boolean =
+    next == TaskStatus.Backlog && current != TaskStatus.Backlog
+
+/**
+ * Web `canEditTaskStatus`: anyone who can see the task, unless it is read-only (historical joint).
+ * A guest sees only its own channel's tasks and moves them like a member (slock task matrix §1).
+ */
+internal fun TaskSummary.canEditStatus(): Boolean = readOnlyReason == null
+
+/**
+ * Web TaskProperties `canEditAssignee` (`authorizeTaskAction({action: "assign"})`): not read-only and
+ * not done (the server freezes a completed task's assignee). A guest assigns in its channel like a member.
+ */
+internal fun TaskSummary.canEditAssignee(): Boolean = status != TaskStatus.Done && readOnlyReason == null
 
 internal enum class TaskConversationRefStatus {
     Loading,

@@ -27,7 +27,7 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation(libs.cmp.lifecycle.viewmodel.compose)
     implementation(libs.cmp.lifecycle.runtime.compose)
-    // The page back stack (NavDisplay + a scene strategy). Desktop only: Android and iOS keep their
+    // NavDisplay over :shared's page stack (build.raft.app.nav). Android and iOS keep their
     // Activity / view-controller hosts until they move to the same back stack.
     implementation(libs.cmp.navigation3.ui)
     implementation(libs.kotlinx.coroutines.core)
@@ -38,7 +38,15 @@ dependencies {
     implementation(libs.okhttp.transport)
     // System open / save panels (RaftDesktopFileDialogs).
     implementation(libs.filekit.dialogs)
+    // The JetBrains Runtime's API: its macOS custom title bar (RaftDesktopTitleBar). The packaged
+    // runtime is JBR (the Gradle daemon JVM, gradle/gradle-daemon-jvm.properties); on any other
+    // JDK the API reports itself unavailable and the window takes the apple.awt fallback.
+    implementation(libs.jbr.api)
     testImplementation(kotlin("test"))
+    // RaftDesktopSqliteDriverTest (the shared desktop driver over SQLDelight's JDBC driver).
+    testImplementation(libs.sqldelight.sqlite.driver)
+    // RaftDesktopImageLoaderTest (the shared loader's desktop decode cap).
+    testImplementation(libs.coil.compose)
     // NavDisplay host tests (runComposeUiTest).
     testImplementation(libs.cmp.ui.test)
 }
@@ -58,12 +66,15 @@ tasks.withType<Test>().configureEach {
 //   is also ComposeMediaPlayer's file type, resolved to FileKit's version.
 // - io.github.kdroidfilter:composemediaplayer-jvm (via :shared desktopMain): video playback; its jar
 //   carries the JNI bridge to AVFoundation (libNativeVideoPlayer.dylib, macOS arm64 / x86_64).
+// - org.jetbrains.runtime:jbr-api: binds to the JetBrains Runtime's window decorations (the macOS
+//   title bar, RaftDesktopTitleBar).
 val pinnedDesktopJarSha256 =
     mapOf(
         "io.github.kdroidfilter:wrywebview" to "513d30357154de4c5494abe4b133729fc1c111331cc18100ec3a9bf338b7947f",
         "io.github.vinceglb:filekit-dialogs-jvm" to "1c2afa8001a9cc5f136c25a53856573c65334cdd7d2352a6c8da8bd91a983557",
         "io.github.vinceglb:filekit-core-jvm" to "d35a1c44b47b6566712e8f6e7340778c3bb6f49b61496152d9bc64125387e992",
         "io.github.kdroidfilter:composemediaplayer-jvm" to "ef8f7ab9a6fcb8a56052453f217432b978477ae15db03cccdc271354deaf5c24",
+        "org.jetbrains.runtime:jbr-api" to "7e37284e33b5b304ee6174dcaa92db949b257cc4c8991ca865e7daf5113d8279",
     )
 val verifyPinnedDesktopJars by tasks.registering {
     val artifacts = configurations.named("runtimeClasspath").flatMap { it.incoming.artifacts.resolvedArtifacts }
@@ -88,6 +99,10 @@ compose.desktop {
     application {
         mainClass = "build.raft.app.desktop.MainKt"
         jvmArgs += listOf("-Dapple.awt.application.name=Raft")
+        // Skiko calls System.gc() every 30 s while frames are drawn (skiko.gc.auto, to release native
+        // Skia memory); on G1 that is a stop-the-world full collection of the whole heap, which the
+        // freeze's sample caught (VM_G1CollectFull). Run those as concurrent cycles instead.
+        jvmArgs += listOf("-XX:+ExplicitGCInvokesConcurrent")
         nativeDistributions {
             // macOS dmg only for now (Linux packages would need their own data-dir and URL handler story).
             targetFormats(TargetFormat.Dmg)
@@ -95,8 +110,9 @@ compose.desktop {
             packageVersion = raftDesktopVersion.get()
             description = "Raft"
             vendor = "Raft"
-            // java.sql: SQLDelight's JDBC SQLite driver; jdk.unsupported: OkHttp / Skiko.
-            modules("java.sql", "jdk.unsupported", "java.naming")
+            // java.sql: SQLDelight's JDBC SQLite driver; jdk.unsupported: OkHttp / Skiko;
+            // java.management + jdk.management: the garbage-collection log lines (RaftDesktopCrashReporting).
+            modules("java.sql", "jdk.unsupported", "java.naming", "java.management", "jdk.management")
             macOS {
                 // Not the iOS app's build.raft.app: on Apple Silicon the iOS app can be installed too.
                 bundleID = "build.raft.app.desktop"

@@ -932,9 +932,9 @@ class RaftAppShellTest {
 
     @Test
     fun sharedBottomTabHostKeepsSafeAreaOutsideTabContent() {
-        // stdrc 2026-10-21: the 58dp edge bar, then the bottom safe area below it.
-        assertEquals(58.dp, raftSharedBottomTabBarHostHeight(0.dp))
-        assertEquals(76.dp, raftSharedBottomTabBarHostHeight(18.dp))
+        // The 60dp edge bar (raft-ui MobileNav), then the bottom safe area below it.
+        assertEquals(60.dp, raftSharedBottomTabBarHostHeight(0.dp))
+        assertEquals(78.dp, raftSharedBottomTabBarHostHeight(18.dp))
         assertEquals(
             raftSharedBottomTabBarHostHeight(18.dp) + RaftAppSpacing.Lg,
             raftSharedBottomTabBarContentInset(18.dp)
@@ -1615,7 +1615,7 @@ class RaftAppShellTest {
     }
 
     @Test
-    fun moreRootSettingsLeadsWithMembersAndComputersAndDotsAttentionRows() {
+    fun phoneSettingsRootDotsAttentionRows() {
         val items =
             listOf(
                 SettingsHomePageLinkPayload(key = "account", title = "Account", section = "Personal"),
@@ -1626,16 +1626,13 @@ class RaftAppShellTest {
         // The wide rail keeps its Settings page unchanged.
         assertEquals(items, settingsHomeItemsForMoreRoot(items, moreRoot = null))
 
-        val root = SettingsMoreRoot(title = "More", membersTitle = "Members", attentionRowKeys = setOf("computers", "about"))
+        val root = SettingsMoreRoot(title = "Settings", attentionRowKeys = setOf("computers", "about"))
         val phone = settingsHomeItemsForMoreRoot(items, root)
-        assertEquals(listOf("members", "computers", "account", "server", "about"), phone.map { it.key })
-        // Members and Computers form the first group (no section heading) ahead of the sections.
-        assertEquals(listOf(null, null, "Personal", "Workspace", "About"), phone.map { it.section })
-        assertEquals(SettingsMoreMembersRowKey, phone.first().key)
-        assertEquals("members", appShellActiveChildPagerTab(SettingsMoreMembersRowKey))
-        assertEquals(listOf(false, true, false, false, true), phone.map { it.attentionDot })
+        // The rows and their sections are the Settings rows as they are (raft-design #712).
+        assertEquals(items.map { it.key to it.section }, phone.map { it.key to it.section })
+        assertEquals(listOf(false, false, true, true), phone.map { it.attentionDot })
         assertEquals(
-            listOf(false, false, false, false, false),
+            listOf(false, false, false, false),
             settingsHomeItemsForMoreRoot(items, root.copy(attentionRowKeys = emptySet())).map { it.attentionDot }
         )
     }

@@ -23,7 +23,7 @@ class CanonicalMessageV2SegmentAlgebraTest {
         oldest: Boolean = false,
         head: Boolean = false,
         at: Long = 1L,
-        source: CanonicalMessageV2SegmentSource = CanonicalMessageV2SegmentSource.Older,
+        source: CanonicalMessageV2SegmentSource = CanonicalMessageV2SegmentSource.Latest,
     ) = CanonicalMessageV2Segment(low, high, oldest, head, at, source)
 
     private fun List<CanonicalMessageV2Segment>.ranges() = map { it.lowSeq to it.highSeq }
@@ -72,6 +72,30 @@ class CanonicalMessageV2SegmentAlgebraTest {
         assertTrue(union(listOf(seg(1, 9, head = true)), seg(2, 3)).single().headAtVerify)
         // Same high: either verification at the head counts.
         assertTrue(union(listOf(seg(1, 9)), seg(5, 9, head = true)).single().headAtVerify)
+    }
+
+    @Test
+    fun anIslandIsNeverTheHeadEvenAboveTheWindow() {
+        val window = seg(10, 20, source = CanonicalMessageV2SegmentSource.Latest)
+        val island = seg(100, 110, source = CanonicalMessageV2SegmentSource.Context)
+        assertEquals(window, head(listOf(window, island)))
+        assertEquals(window, head(listOf(window, seg(100, 110, source = CanonicalMessageV2SegmentSource.Newer))))
+        assertNull(head(listOf(island)))
+    }
+
+    @Test
+    fun aMergeWithARootedRangeStaysRootedAndTwoIslandsStayAnIsland() {
+        val rooted = union(
+            listOf(seg(1, 5, at = 10, source = CanonicalMessageV2SegmentSource.Latest)),
+            seg(6, 9, at = 20, source = CanonicalMessageV2SegmentSource.Context),
+        ).single()
+        assertEquals(CanonicalMessageV2SegmentSource.Latest, rooted.source)
+        assertEquals(20L, rooted.verifiedAtMs)
+        val island = union(
+            listOf(seg(1, 5, at = 10, source = CanonicalMessageV2SegmentSource.Context)),
+            seg(6, 9, at = 20, source = CanonicalMessageV2SegmentSource.Newer),
+        ).single()
+        assertNull(head(listOf(island)))
     }
 
     @Test
@@ -154,16 +178,17 @@ class CanonicalMessageV2SegmentAlgebraTest {
     fun aContextPageProvesItsRowsAndAnOpenEdgeOnlyWhereTheServerSaysSo() {
         assertEquals(
             CanonicalMessageV2Coverage(7, 9, reachesOldest = false, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
-            CanonicalMessageV2Coverage.fromContextPage(listOf(9, 7, 8), hasOlder = true, hasNewer = true, historyLimited = false),
+            CanonicalMessageV2Coverage.fromContextPage(listOf(9, 7, 8), hasOlder = true, historyLimited = false),
         )
         assertEquals(
-            CanonicalMessageV2Coverage(7, 9, reachesOldest = true, headAtVerify = true, CanonicalMessageV2SegmentSource.Context),
-            CanonicalMessageV2Coverage.fromContextPage(listOf(9, 7, 8), hasOlder = false, hasNewer = false, historyLimited = false),
+            // hasNewer false proves nothing: seqs are allocated before commit.
+            CanonicalMessageV2Coverage(7, 9, reachesOldest = true, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
+            CanonicalMessageV2Coverage.fromContextPage(listOf(9, 7, 8), hasOlder = false, historyLimited = false),
         )
         assertFalse(
-            CanonicalMessageV2Coverage.fromContextPage(listOf(7), hasOlder = false, hasNewer = false, historyLimited = true)!!.reachesOldest,
+            CanonicalMessageV2Coverage.fromContextPage(listOf(7), hasOlder = false, historyLimited = true)!!.reachesOldest,
         )
-        assertNull(CanonicalMessageV2Coverage.fromContextPage(emptyList(), hasOlder = false, hasNewer = false, historyLimited = false))
+        assertNull(CanonicalMessageV2Coverage.fromContextPage(emptyList(), hasOlder = false, historyLimited = false))
     }
 
     @Test

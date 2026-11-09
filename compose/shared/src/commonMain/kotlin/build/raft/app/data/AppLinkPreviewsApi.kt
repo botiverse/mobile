@@ -37,9 +37,9 @@ private val appLinkPreviewsJson = Json {
  * `appIcons`) are read as one list and the prompts as another, so an entry this client can't
  * read drops only its own list. Each preview is strict (`.strict()`): an unknown key, or a `card`
  * outside the read-only catalog ([RaftAppLinkCard]), makes it unreadable, like the web. One
- * result per link, one prompt per App. This client reads with
- * the GET only: it declares no `card.v2`, so the batched link-card read (and its
- * `connect_account` chip) is not used.
+ * result per link, one prompt per App. Where the Server's `interactive_link_cards` flag is on,
+ * this client reads with the batched link-card read instead ([AppLinkCardV2.kt]), declaring
+ * [APP_LINK_CARD_READ_CAPABILITIES] (`card.v2`, `inline.v1`, `inline.tone.v2`, `button.v1`, `confirm.v1`, `undo.v1`, `block.v1`, `preview.v3`).
  *
  * Field names are exact camelCase. No snake_case fallbacks.
  */
@@ -91,7 +91,28 @@ sealed interface AppLinkResult {
         val app: AppLinkApp,
         val title: String,
         val card: RaftAppLinkCard? = null,
-    ) : AppLinkResult
+        /** A v2 answer's card (the batched read), in place of [card]. */
+        val cardV2: RaftAppLinkCardV2? = null,
+        /** A v2 answer's inline label: its title is the chip's words ([chipTitle]). */
+        val inline: AppLinkInline? = null,
+        /** A version 3 `card` item with `placement: "block"`: drawn after the link's paragraph, never in a chip's card. */
+        val block: AppLinkBlockCard? = null,
+        /**
+         * Whether the link is drawn as the chip. Always, except a version 3 answer that lists a block
+         * card and no `inline`: the link stays the author's plain link and only the card is drawn.
+         */
+        val chip: Boolean = true,
+        /** A version 3 `connect_account` item: the chip's card asks the reader to connect, with one button to this URL. */
+        val connectUrl: String? = null,
+        /** The signed handle per `execute` action id Raft gave this card (version 3; see [AppLinkBlockCard]): what a pressed button sends. */
+        val handles: Map<String, String> = emptyMap(),
+    ) : AppLinkResult {
+        /** The words on the chip (web `appLinkChipTitle`): the inline title, else [title]. The card always shows [title]. */
+        val chipTitle: String get() = inline?.title ?: title
+
+        /** Whether the App sent a card body to open (v1 [card] or v2 [cardV2]). */
+        val hasCardBody: Boolean get() = card != null || cardV2 != null || connectUrl != null
+    }
 
     /** The viewer hasn't answered this App: a grey chip that asks first. */
     data class Consent(override val url: String, val app: AppLinkPromptApp) : AppLinkResult
@@ -155,176 +176,6 @@ internal fun appLinkShortAddress(url: String): String? {
 }
 
 /**
- * The bare links of a message, as the server picks the ones it previews (web
- * `messagePreviewUrls`): an autolink, `<url>` or `[url](url)` whose text is its own address, in
- * message order, deduplicated, at most [limit]. A link the author gave words to, links in code
- * and images are left out.
- */
-internal fun appLinkMessagePreviewUrls(
-    content: String,
-    limit: Int = APP_LINK_PREVIEW_V1_LINK_LIMIT,
-    /**
-     * Links the server leaves out before it counts (slock `appLinkReadUrls`, appLinkPreviewService.ts:
-     * Artifact links by id, [isArtifactIdLink]): an Artifact link never takes one of the first three.
-     */
-    excluded: (String) -> Boolean = { false },
-): List<String> =
-    appLinkMessageBareLinks(content, limit) { raw -> appLinkPreviewHref(raw)?.takeUnless { excluded(raw) } }
-
-/**
- * The bare links of a message as [normalize] keeps them (null: not this kind of link), in message
- * order, deduplicated, at most [limit]: an autolink, `<url>` or `[url](url)` whose text is its own
- * address; links in code and images are left out. http(s) are both scanned; [normalize] decides.
- */
-internal fun appLinkMessageBareLinks(content: String, limit: Int, normalize: (String) -> String?): List<String> {
-    val text = content.take(32_000).withoutAppLinkCode()
-    val urls = LinkedHashSet<String>()
-    fun add(raw: String) {
-        normalize(raw)?.let(urls::add)
-    }
-    var index = 0
-    while (index < text.length && urls.size < limit) {
-        val char = text[index]
-        when {
-            char == '!' && text.startsWith("![", index) -> {
-                index = text.markdownLinkEnd(index + 1)?.end ?: (index + 2)
-            }
-            char == '[' -> {
-                val link = text.markdownLinkEnd(index)
-                if (link == null) {
-                    index++
-                } else {
-                    if (normalize(link.label.trim()) != null && normalize(link.label.trim()) == normalize(link.destination)) {
-                        add(link.destination)
-                    }
-                    index = link.end
-                }
-            }
-            char == '<' && (text.startsWith("https://", index + 1, ignoreCase = true) || text.startsWith("http://", index + 1, ignoreCase = true)) -> {
-                val close = text.indexOf('>', index)
-                val candidate = if (close < 0) null else text.substring(index + 1, close)
-                if (candidate != null && candidate.none { it.isWhitespace() || it == '<' }) {
-                    add(candidate)
-                    index = close + 1
-                } else {
-                    index++
-                }
-            }
-            (char == 'h' || char == 'H') &&
-                (text.startsWith("https://", index, ignoreCase = true) || text.startsWith("http://", index, ignoreCase = true)) &&
-                (index == 0 || !text[index - 1].isLetterOrDigit()) -> {
-                var end = index
-                while (end < text.length && !text[end].isWhitespace() && text[end] != '<') end++
-                add(text.substring(index, end).trimAutolinkTail())
-                index = end
-            }
-            else -> index++
-        }
-    }
-    return urls.toList().take(limit)
-}
-
-private data class MarkdownInlineLink(val label: String, val destination: String, val end: Int)
-
-/** `[label](destination)` or `[label](<destination>)` starting at [open] (a `[`), or null. */
-private fun String.markdownLinkEnd(open: Int): MarkdownInlineLink? {
-    if (getOrNull(open) != '[') return null
-    var depth = 0
-    var close = -1
-    for (i in open until length) {
-        when (this[i]) {
-            '[' -> depth++
-            ']' -> {
-                depth--
-                if (depth == 0) {
-                    close = i
-                    break
-                }
-            }
-            '\n' -> if (i + 1 < length && this[i + 1] == '\n') return null
-        }
-    }
-    if (close < 0 || getOrNull(close + 1) != '(') return null
-    val destinationStart = close + 2
-    val end = indexOf(')', destinationStart).takeIf { it >= 0 } ?: return null
-    val inside = substring(destinationStart, end).trim()
-    val destination =
-        if (inside.startsWith("<")) {
-            inside.removePrefix("<").substringBefore('>')
-        } else {
-            inside.substringBefore(' ')
-        }
-    return MarkdownInlineLink(label = substring(open + 1, close), destination = destination, end = end + 1)
-}
-
-/** GFM autolink end: trailing punctuation and an unbalanced `)` are not part of the link. */
-private fun String.trimAutolinkTail(): String {
-    var value = this
-    while (value.isNotEmpty()) {
-        val last = value.last()
-        value =
-            when {
-                last in "?!.,:*_~'\";" -> value.dropLast(1)
-                last == ')' && value.count { it == ')' } > value.count { it == '(' } -> value.dropLast(1)
-                else -> return value
-            }
-    }
-    return value
-}
-
-/** The text with fenced code blocks and code spans blanked out (same offsets do not matter here). */
-private fun String.withoutAppLinkCode(): String {
-    val lines = lines()
-    val kept = StringBuilder()
-    var fence: String? = null
-    for (line in lines) {
-        val trimmed = line.trimStart()
-        val marker = when {
-            trimmed.startsWith("```") -> "```"
-            trimmed.startsWith("~~~") -> "~~~"
-            else -> null
-        }
-        if (fence == null && marker != null) {
-            fence = marker
-            kept.append('\n')
-            continue
-        }
-        if (fence != null) {
-            if (marker == fence) fence = null
-            kept.append('\n')
-            continue
-        }
-        kept.append(line.withoutCodeSpans()).append('\n')
-    }
-    return kept.toString()
-}
-
-private fun String.withoutCodeSpans(): String {
-    if ('`' !in this) return this
-    val out = StringBuilder()
-    var index = 0
-    while (index < length) {
-        if (this[index] != '`') {
-            out.append(this[index])
-            index++
-            continue
-        }
-        var run = 0
-        while (index + run < length && this[index + run] == '`') run++
-        val ticks = "`".repeat(run)
-        val close = indexOf(ticks, index + run)
-        if (close < 0) {
-            out.append(ticks)
-            index += run
-        } else {
-            out.append(' ')
-            index = close + run
-        }
-    }
-    return out.toString()
-}
-
-/**
  * Reads a `GET messages/:id/app-link-previews` answer into one result per link (web
  * `readAppLinkPreviewAnswer`): previews first, then the prompts, one per App, on links that
  * have no preview. Null when the body is not JSON at all (a failed read). [resolveIcon] makes
@@ -341,12 +192,22 @@ fun parseAppLinkPreviewAnswer(
     readAppLinkPreviews(list)?.forEach { card ->
         if (card.url !in results) results[card.url] = card.copy(app = card.app.copy(icon = card.app.icon?.let(resolveIcon)))
     }
+    return appLinkResultsWithPrompts(results, list.prompts.orEmpty(), resolveIcon)
+}
+
+/** Adds an answer's prompts (the GET's and the batched read's are alike: web `withPrompts`), one per App, on links without a result. */
+internal fun appLinkResultsWithPrompts(
+    results: Map<String, AppLinkResult>,
+    prompts: List<JsonElement>,
+    resolveIcon: (String) -> String?,
+): Map<String, AppLinkResult> {
+    val all = LinkedHashMap(results)
     val asked = mutableSetOf<String>()
-    readAppLinkPrompts(list.prompts.orEmpty())?.forEach { prompt ->
-        if (prompt.url in results || !asked.add(prompt.app.id)) return@forEach
-        results[prompt.url] = prompt.copy(app = prompt.app.copy(icon = prompt.app.icon?.let(resolveIcon)))
+    readAppLinkPrompts(prompts)?.forEach { prompt ->
+        if (prompt.url in all || !asked.add(prompt.app.id)) return@forEach
+        all[prompt.url] = prompt.copy(app = prompt.app.copy(icon = prompt.app.icon?.let(resolveIcon)))
     }
-    return results
+    return all
 }
 
 /** The previews as one list, or null when any of them (or `appIcons`) can't be read. */
@@ -361,16 +222,25 @@ private fun readAppLinkPreviews(list: WireAppLinkPreviewList): List<AppLinkResul
 /** The keys a v1 list preview may carry (`appLinkPreviewResponseSchema.extend({ url, appName })`, strict). */
 private val APP_LINK_PREVIEW_KEYS = setOf("version", "title", "card", "url", "appName")
 
+/** The keys of a v1 preview itself (`appLinkPreviewResponseSchema`, strict): a batched read's `v1` item. */
+internal val APP_LINK_PREVIEW_CONTENT_KEYS = setOf("version", "title", "card")
+
+/** A v1 preview's title and card (`appLinkPreviewResponseSchema`) when [obj] has only [keys], or null. */
+internal fun readAppLinkPreviewContent(obj: JsonObject, keys: Set<String>): Pair<String, RaftAppLinkCard?>? {
+    if (!keys.containsAll(obj.keys)) return null
+    if (!obj["version"].isJsonNumber(1.0)) return null
+    val title = obj["title"].jsonStringOrNull()?.takeIf { it.length in 1..160 } ?: return null
+    val card = if ("card" in obj) parseRaftAppLinkCard(obj.getValue("card")) ?: return null else null
+    return title to card
+}
+
 /** One preview of the list, or null when the web's schema would refuse it. */
 private fun readAppLinkPreview(element: JsonElement, icons: Map<String, String?>): AppLinkResult.Card? {
     val obj = element as? JsonObject ?: return null
-    if (!APP_LINK_PREVIEW_KEYS.containsAll(obj.keys)) return null
-    if (!obj["version"].isJsonNumber(1.0)) return null
+    val (title, card) = readAppLinkPreviewContent(obj, APP_LINK_PREVIEW_KEYS) ?: return null
     val rawUrl = obj["url"].jsonStringOrNull() ?: return null
     val url = appLinkPreviewHref(rawUrl) ?: return null
-    val title = obj["title"].jsonStringOrNull()?.takeIf { it.length in 1..160 } ?: return null
     val appName = obj["appName"].jsonStringOrNull()?.takeIf { it.length <= 300 } ?: return null
-    val card = if ("card" in obj) parseRaftAppLinkCard(obj.getValue("card")) ?: return null else null
     return AppLinkResult.Card(url = url, app = AppLinkApp(name = appName, icon = icons[rawUrl]), title = title, card = card)
 }
 
@@ -429,6 +299,20 @@ internal interface RaftAppLinkPreviewApi {
     /** `GET messages/:messageId/app-link-previews`. */
     suspend fun readPreviews(messageId: String, serverId: String): HomeNetworkResponse
 
+    /**
+     * `POST messages/:messageId/link-cards/read` (the batched link-card read, flag
+     * `interactive_link_cards` on): 404 where the server has no batched read.
+     */
+    suspend fun readLinkCards(messageId: String, serverId: String, body: AppLinkCardReadRequestBody): HomeNetworkResponse
+
+    /** `POST link-cards/prepare` (RFC 076 section 6.2): the description a `confirm: "prepare"` button shows. */
+    suspend fun prepareLinkCardAction(serverId: String, body: AppLinkPrepareRequestBody): HomeNetworkResponse =
+        throw UnsupportedOperationException("prepareLinkCardAction")
+
+    /** `POST link-cards/execute` (RFC 076 section 6.3). */
+    suspend fun executeLinkCardAction(serverId: String, body: AppLinkExecuteRequestBody): HomeNetworkResponse =
+        throw UnsupportedOperationException("executeLinkCardAction")
+
     /** `POST integrations/clients/:clientId/link-preview-consent`. */
     suspend fun allow(appId: String, serverId: String): HomeNetworkResponse
 
@@ -445,6 +329,35 @@ internal class NetworkRaftAppLinkPreviewApi(
             priority = DataRequestPriority.Visible,
             path = "messages/${messageId.appLinkPathSegment()}/app-link-previews",
             serverIdOverride = ServerId(serverId),
+        )
+
+    override suspend fun readLinkCards(messageId: String, serverId: String, body: AppLinkCardReadRequestBody): HomeNetworkResponse =
+        networkClient.request(
+            // The same on-screen decoration as the GET it replaces.
+            priority = DataRequestPriority.Visible,
+            path = "messages/${messageId.appLinkPathSegment()}/link-cards/read",
+            method = "POST",
+            serverIdOverride = ServerId(serverId),
+            bodyText = body.toJson(),
+        )
+
+    override suspend fun prepareLinkCardAction(serverId: String, body: AppLinkPrepareRequestBody): HomeNetworkResponse =
+        networkClient.request(
+            // A person pressed a button.
+            priority = DataRequestPriority.Foreground,
+            path = "link-cards/prepare",
+            method = "POST",
+            serverIdOverride = ServerId(serverId),
+            bodyText = body.toJson(),
+        )
+
+    override suspend fun executeLinkCardAction(serverId: String, body: AppLinkExecuteRequestBody): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "link-cards/execute",
+            method = "POST",
+            serverIdOverride = ServerId(serverId),
+            bodyText = body.toJson(),
         )
 
     override suspend fun allow(appId: String, serverId: String): HomeNetworkResponse =

@@ -89,6 +89,26 @@ internal fun MembersAgentIssueReportDialog(
     }
     var machineLogTailChoice by remember(agentName) { mutableStateOf<Boolean?>(null) }
     val includeMachineLogTail = membersAgentIssueMachineLogTailChecked(machineLogTailChoice, canIncludeMachineLog)
+    // The one commit: the footer's Submit on a wide window, the phone sheet's head button.
+    val commitLabel =
+        if (busy) {
+            stringResource(Res.string.member_report_issue_submitting)
+        } else {
+            stringResource(Res.string.member_report_issue_submit)
+        }
+    val commitIcon: @Composable () -> Unit = { RaftSlotIcon(RaftLucideIconName.Bug) }
+    val commit: () -> Unit = {
+        onSubmit(
+            MembersAgentIssueReportSelection(
+                description = description.text,
+                includeRecentMessages = includeRecentMessages,
+                includeLiveActivity = includeLiveActivity,
+                includeActivityHistory = includeActivityHistory,
+                includeRuntimeTranscript = includeRuntimeTranscript && runtimeTranscriptAvailable,
+                includeMachineLogTail = includeMachineLogTail
+            )
+        )
+    }
     RaftUnifiedDialog(
         title = stringResource(Res.string.member_report_issue_title),
         dismissEnabled = !busy,
@@ -96,9 +116,13 @@ internal fun MembersAgentIssueReportDialog(
         keyboardAvoidanceEnabled = true,
         maxWidth = 384.dp,
         contentPadding = 24.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22,
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        presentation = RaftDialogPresentation.Sheet,
+        commitLabel = commitLabel,
+        onCommit = commit,
+        commitEnabled = consented,
+        commitLoading = busy,
+        commitIcon = commitIcon
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
@@ -249,30 +273,14 @@ internal fun MembersAgentIssueReportDialog(
                 size = RaftButtonSize.Lg
             )
             RaftButton(
-                text =
-                    if (busy) {
-                        stringResource(Res.string.member_report_issue_submitting)
-                    } else {
-                        stringResource(Res.string.member_report_issue_submit)
-                    },
-                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Bug) },
+                text = commitLabel,
+                leadingIcon = commitIcon,
                 enabled = consented,
                 loading = busy,
                 // Web ReportIssueDialog submits with the pink primary action, lg in the footer.
                 variant = RaftButtonVariant.Primary,
                 size = RaftButtonSize.Lg,
-                onClick = {
-                    onSubmit(
-                        MembersAgentIssueReportSelection(
-                            description = description.text,
-                            includeRecentMessages = includeRecentMessages,
-                            includeLiveActivity = includeLiveActivity,
-                            includeActivityHistory = includeActivityHistory,
-                            includeRuntimeTranscript = includeRuntimeTranscript && runtimeTranscriptAvailable,
-                            includeMachineLogTail = includeMachineLogTail
-                        )
-                    )
-                }
+                onClick = commit
             )
         }
     }
@@ -344,8 +352,6 @@ internal fun MembersAgentIssueReportReceiptDialog(
         title = stringResource(Res.string.member_report_issue_success_title),
         maxWidth = 384.dp,
         contentPadding = 24.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22,
         onDismiss = onDismiss
     ) {
         Column(

@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
+import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -118,6 +119,8 @@ internal data class ActivityTurnSummaryWire(
     val hiddenSentCount: Int? = null,
     val appEvents: List<ActivityTurnAppEventWire>? = null,
     val appEventCount: Int? = null,
+    /** The last text the runtime output in the turn, sent to no one; the server drops it for viewers it should not reach. */
+    val lastText: String? = null,
 )
 
 /** slock `ACTIVITY_TURN_OUTCOMES`. */
@@ -257,6 +260,8 @@ data class AgentActivityTurn(
     val appEventCount: Int? = null,
     /** The turn still running (the first page's `current`). */
     val running: Boolean = false,
+    /** The last text the runtime output in the turn, sent to no one. */
+    val lastText: String? = null,
 ) {
     /** Stable list key: the row id, or the time span for an older server; the running turn has its own. */
     val key: String
@@ -348,6 +353,7 @@ private fun ActivityTurnSummaryWire.toDomain(running: Boolean): AgentActivityTur
             )
         },
         appEventCount = appEventCount,
+        lastText = lastText?.takeIf { it.isNotBlank() },
         running = running,
     )
 
@@ -500,6 +506,8 @@ interface AgentActivityOverviewRepository {
 class RealAgentActivityOverviewRepository(
     private val networkClient: RaftNetworkClient,
     private val logger: (String) -> Unit = {},
+    /** Message storage Phase 2c: where a loaded reply's context page is offered; it never changes the result. */
+    private val contextPageSink: RaftMessageContextPageSink? = null,
 ) : AgentActivityOverviewRepository {
     override suspend fun loadTurns(
         priority: DataRequestPriority,
@@ -530,10 +538,13 @@ class RealAgentActivityOverviewRepository(
     }
 
     override suspend fun loadReply(priority: DataRequestPriority, messageId: MessageId): AgentActivityTurnReply {
+        // Before the request, which is bound to the same server: the page is stored under the server that answered it.
+        val pendingContextPage = contextPageSink?.beginRequest(serverId = null)
         val response = networkClient.request(
             priority = priority,
             path = "messages/context/${messageId.value}",
             query = listOf("before" to "0", "after" to "0"),
+            serverIdOverride = pendingContextPage?.serverId?.let(::ServerId),
         )
         if (response.code == 401 || response.code == 403 || response.code == 404) {
             return AgentActivityTurnReply.Unavailable
@@ -543,6 +554,7 @@ class RealAgentActivityOverviewRepository(
         val payload = parseSharedMessageContext(body, fallbackThreadId = ThreadId(messageId.value))
         val targetId = payload.targetMessageId ?: messageId
         val message = payload.messages.firstOrNull { it.id == targetId } ?: return AgentActivityTurnReply.Unavailable
+        pendingContextPage?.offer(body)
         return AgentActivityTurnReply.Loaded(
             content = message.body,
             createdAtEpochMillis = message.createdAtEpochMillis,

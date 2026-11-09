@@ -94,6 +94,7 @@ private val MarkdownRerenderKnownChannelNames =
 private fun isMarkdownRerenderTagValid(tag: ThreadMarkdownTag): Boolean =
     when (tag.kind) {
         ThreadMarkdownTagKind.Task -> true
+        ThreadMarkdownTagKind.Message -> false
         ThreadMarkdownTagKind.UserMention -> tag.label.removePrefix("@").equals("artin", ignoreCase = true)
         ThreadMarkdownTagKind.DirectMessageThread,
         ThreadMarkdownTagKind.DirectMessage ->

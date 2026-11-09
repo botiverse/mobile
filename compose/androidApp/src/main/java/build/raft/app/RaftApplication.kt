@@ -7,12 +7,15 @@ import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
+import build.raft.app.core.data.diagnostics.AndroidSystemKillReporter
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import build.raft.app.data.raftClearLegacyFontPreference
 import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.shared.AndroidRealtimeKeepAliveController
 import build.raft.app.shared.RaftAndroidHostHooks
+import build.raft.app.shared.RaftAndroidNightMode
+import build.raft.app.shared.RaftBuildStamp
 import build.raft.app.shared.ProcessAndroidAttachmentMediaStoreCleanup
 import build.raft.app.shared.ProcessAndroidAttachmentPublicDownloads
 import build.raft.app.shared.installAndroidThreadComposerTemporaryFileRetirement
@@ -29,6 +32,9 @@ class RaftApplication : Application() {
     override fun attachBaseContext(base: Context) {
         installCoroutineWorkerKeepAlive()
         super.attachBaseContext(base)
+        // Before ContentProvider init and onCreate, so an ANR or system kill anywhere in startup
+        // still records which build exited (RaftBuildStamp).
+        RaftBuildStamp.stampProcess(base, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong())
     }
 
     override fun onCreate() {
@@ -38,6 +44,8 @@ class RaftApplication : Application() {
         RaftCmpRouter.configure(debugBuild = BuildConfig.DEBUG)
         RaftPageRegistry.install()
         RaftAndroidHostHooks.install(this)
+        // Alpha builds default the Navigation 3 page stack on; set before any window reads it.
+        build.raft.app.nav.RaftNav3StackFlag.buildDefaultOn = BuildConfig.NAV3_STACK_DEFAULT_ON
         // All notification channels up front, independent of permission (see RaftNotificationChannels).
         build.raft.app.shared.RaftNotificationChannels.ensureAll(this)
         // Download centre notifications attach when the centre is first used, not at startup.
@@ -67,13 +75,17 @@ class RaftApplication : Application() {
                 RaftPlatformLogHint.AuthCritical ->
                     RaftAndroidLocalDiagnostics.recordCriticalLog(record.level, record.tag, record.message)
                 RaftPlatformLogHint.None ->
-                    RaftAndroidLocalDiagnostics.recordLog(record.level, record.tag, record.message)
+                    // Shared lines were already admitted by the shared RaftDiagnosticsVolumePolicy.
+                    RaftAndroidLocalDiagnostics.recordSharedLog(record.level, record.tag, record.message, record.persist)
             }
         }
         installAndroidAppScopeSharedKeyValueStores(this)
         // Settings > Appearance > Theme, applied before any page composes.
         RaftAppAppearanceRuntime.onSystemDarkChanged(isAndroidSystemDark(resources.configuration.uiMode))
         RaftAppAppearanceRuntime.ensureLoaded()
+        // The window theme follows that choice (DayNight Theme.Raft): WebViews, system dialogs,
+        // pickers and bar icons match the app, not just the OS.
+        RaftAndroidNightMode.install(this)
         // The font picker is gone (the design system fixes the faces); drop its stored choice.
         raftClearLegacyFontPreference()
         installAndroidAppScopePlatformFileResolver(this)
@@ -106,6 +118,9 @@ class RaftApplication : Application() {
                 selectedServerSlug = session.selectedServerSlug
             )
         }
+        // Keep our `raft-build` stamp (AndroidSystemKillReporter reads it); the SDK's ANR
+        // reporter reads it too, so it need not rewrite it to its own `hands-build` format.
+        HandsCrash.setAnrBuildStampingEnabled(false)
         HandsCrash.install(
             context = this,
             baseUrl = BuildConfig.HANDS_BASE_URL,
@@ -114,9 +129,20 @@ class RaftApplication : Application() {
             versionCode = BuildConfig.VERSION_CODE.toLong(),
             channel = BuildConfig.HANDS_CHANNEL,
             clientKey = BuildConfig.HANDS_CLIENT_KEY,
+            // ANRs are filed with the hung build, read from each exit's RaftBuildStamp.
+            captureAnrs = true,
             extraContext = {
                 RaftAndroidLocalDiagnostics.exportRecentDiagnosticsText(this)
             }
+        )
+        // System kills (low memory, freezer, OEM `reason=other`) leave no crash for HandsCrash to
+        // catch; report the ones the user saw as crash tickets (ANRs stay with HandsCrash).
+        AndroidSystemKillReporter.start(
+            context = this,
+            baseUrl = BuildConfig.HANDS_BASE_URL,
+            appSlug = BuildConfig.HANDS_APP_SLUG,
+            channel = BuildConfig.HANDS_CHANNEL,
+            clientKey = BuildConfig.HANDS_CLIENT_KEY,
         )
     }
 }

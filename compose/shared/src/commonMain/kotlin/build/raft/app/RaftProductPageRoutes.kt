@@ -60,6 +60,7 @@ internal fun SettingsNativeDetailPage.productSettingsTab(): RaftSettingsTab? =
         // The shared contract has `theme` (SETTINGS_PAGE_TABS); RaftSettingsTab does not mirror it yet,
         // so no page_viewed rather than a wrong tab.
         SettingsNativeDetailPage.Theme,
+        SettingsNativeDetailPage.ServerNotifications,
         SettingsNativeDetailPage.Developer,
         SettingsNativeDetailPage.OpenSourceLicenses,
         SettingsNativeDetailPage.ApiEnvironment,
@@ -76,6 +77,8 @@ internal fun SettingsWebViewSurface.productPageView(): RaftProductPageView? =
         // Settings > Connected apps: the web's Integrations section.
         SettingsWebViewSurface.Marketplace -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Integrations)
         SettingsWebViewSurface.Feedback -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Feedback)
+        // The web's Account > Delete Account page.
+        SettingsWebViewSurface.AccountDeletion -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Account)
         SettingsWebViewSurface.Computers -> RaftProductPageView(RaftPageRoute.Computers)
         SettingsWebViewSurface.ReleaseNotes -> RaftProductPageView(RaftPageRoute.ReleaseNotes)
         SettingsWebViewSurface.Onboarding,
@@ -123,12 +126,15 @@ internal fun authenticatedProductPageView(
         AuthenticatedProductRoute.ReleaseNotes -> RaftProductPageView(RaftPageRoute.ReleaseNotes)
         AuthenticatedProductRoute.ThreadMembers,
         AuthenticatedProductRoute.ChannelSettings,
+        AuthenticatedProductRoute.ThreadSettings,
         AuthenticatedProductRoute.JointChannelConnections,
         AuthenticatedProductRoute.ThreadForwardBundle,
         // No `drafts` route in the shared page_viewed registry yet.
         AuthenticatedProductRoute.HomeDrafts,
         AuthenticatedProductRoute.FilePreview,
-        AuthenticatedProductRoute.ArtifactViewer -> null
+        AuthenticatedProductRoute.ArtifactViewer,
+        // No `artifacts` route in the shared page_viewed registry yet.
+        AuthenticatedProductRoute.ArtifactsHome -> null
     }
 
 private val productPageRouteJson = Json { ignoreUnknownKeys = true }

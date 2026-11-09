@@ -38,10 +38,12 @@ class RaftDesktopBridgeTransport(
             "reportRealTime" -> RaftDesktopRealtimeHost.report(params)
             "settingsCapability" -> RaftDesktopSettingsCapability.handle(params, callback)
             "threadAttachmentUpload" -> attachments.threadAttachmentUpload(params, callback)
+            "threadAttachmentDrop" -> attachments.threadAttachmentDrop(params, callback)
             "compressThreadImage" -> attachments.compressThreadImage(params, callback)
             "cancelCompressThreadImage" -> attachments.cancelCompressThreadImage(params)
             "saveAttachment" -> attachments.saveAttachment(params, callback)
             "cancelAttachmentExport" -> attachments.cancelAttachmentExport(params)
+            "saveThreadShareImage" -> attachments.saveThreadShareImage(params, callback)
             // TODO(desktop): app badge, shortcuts and performance markers have no desktop surface.
             "appBadge", "syncDesktopShortcuts", "performanceScene", "performanceMarker" -> Unit
             else -> {

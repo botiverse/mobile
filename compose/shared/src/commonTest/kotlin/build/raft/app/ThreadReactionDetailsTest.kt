@@ -3,52 +3,77 @@ package build.raft.app
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-// task #569: reactor tooltip label — first N names + "+K" truncation, with a
-// bare-count fallback when the payload carries no reactor names.
+// task #569: who the reaction tooltip names, as web MessageItem `reactionReactorNames`: "You"
+// first when you reacted, at most 5 names, the rest counted from the reaction's count.
 class ThreadReactionDetailsTest {
+    private fun reaction(
+        names: List<String>,
+        count: Int,
+        ids: List<String> = names.indices.map { "u$it" },
+        selected: Boolean = false
+    ) = RaftThreadReactionItem(emoji = "👌", count = count, selected = selected, reactorIds = ids, reactorNames = names)
+
+    private fun names(item: RaftThreadReactionItem, viewer: String? = "me") =
+        threadReactionTooltipNames(item, viewerUserId = viewer, youLabel = "You")
+
     @Test
     fun singleReactorShowsTheName() {
-        assertEquals("Alice", threadReactionDetailsLabel(listOf("Alice"), count = 1))
+        assertEquals(ThreadReactionTooltipNames(listOf("Lagoon"), 0), names(reaction(listOf("Lagoon"), count = 1)))
     }
 
     @Test
-    fun fewReactorsJoinWithCommas() {
+    fun fiveNamesThenTheRestAsHiddenCount() {
         assertEquals(
-            "Alice, Bob, Carol",
-            threadReactionDetailsLabel(listOf("Alice", "Bob", "Carol"), count = 3)
+            ThreadReactionTooltipNames(listOf("A", "B", "C", "D", "E"), 3),
+            names(reaction(listOf("A", "B", "C", "D", "E", "F"), count = 8))
         )
     }
 
     @Test
-    fun manyReactorsTruncateToMaxNamesPlusRemainder() {
+    fun hiddenCountCoversUnnamedReactors() {
+        // Five reacted, two are named: "Alice, Bob, +3 more".
         assertEquals(
-            "A, B, C, D +2",
-            threadReactionDetailsLabel(listOf("A", "B", "C", "D", "E", "F"), count = 6)
+            ThreadReactionTooltipNames(listOf("Alice", "Bob"), 3),
+            names(reaction(listOf("Alice", "Bob"), count = 5))
         )
     }
 
     @Test
-    fun remainderCountsUnnamedReactorsBeyondTheNameList() {
-        // Server counted 5 reactors but only sent 2 names — the tooltip must
-        // not silently understate the count.
+    fun youComeFirstAndYourNameIsDropped() {
         assertEquals(
-            "Alice, Bob +3",
-            threadReactionDetailsLabel(listOf("Alice", "Bob"), count = 5)
+            ThreadReactionTooltipNames(listOf("You", "Alice", "Bob"), 0),
+            names(reaction(listOf("Alice", "Artin", "Bob"), count = 3, ids = listOf("a", "me", "b"), selected = true))
         )
     }
 
     @Test
-    fun blankAndDuplicateNamesAreDropped()  {
+    fun optimisticSelfReactionNotYetInTheRosterStillSaysYou() {
         assertEquals(
-            "Alice, Bob",
-            threadReactionDetailsLabel(listOf(" Alice ", "", "Alice", "Bob"), count = 2)
+            ThreadReactionTooltipNames(listOf("You", "Alice"), 0),
+            names(reaction(listOf("Alice"), count = 2, ids = listOf("a"), selected = true))
         )
     }
 
     @Test
-    fun noNamesFallsBackToBareCount() {
-        assertEquals("1 person", threadReactionDetailsLabel(emptyList(), count = 1))
-        assertEquals("4 people", threadReactionDetailsLabel(emptyList(), count = 4))
+    fun misalignedRosterWithYouInsideShowsTheNamesAsTheyAre() {
+        assertEquals(
+            ThreadReactionTooltipNames(listOf("Artin"), 1),
+            names(reaction(listOf("Artin"), count = 2, ids = listOf("me", "ghost"), selected = true))
+        )
+    }
+
+    @Test
+    fun noViewerIdNoYou() {
+        assertEquals(
+            ThreadReactionTooltipNames(listOf("Artin"), 0),
+            names(reaction(listOf("Artin"), count = 1, ids = listOf("me"), selected = true), viewer = null)
+        )
+    }
+
+    @Test
+    fun blankNamesAreDroppedAndNoNamesLeavesTheCount() {
+        assertEquals(ThreadReactionTooltipNames(listOf("Alice"), 1), names(reaction(listOf(" Alice ", " "), count = 2)))
+        assertEquals(ThreadReactionTooltipNames(emptyList(), 4), names(reaction(emptyList(), count = 4)))
     }
 }
 
@@ -99,8 +124,8 @@ class ResolveThreadReactorNamesTest {
 
     @Test
     fun unknownIdsAreSkippedSoTheLabelCanFallBackToCount() {
-        // Reactor not in the roster — leave it out; the "+K" remainder in
-        // threadReactionDetailsLabel still reflects the true count.
+        // Reactor not in the roster — leave it out; the "+K more" remainder in
+        // threadReactionTooltipNames still reflects the true count.
         assertEquals(
             emptyList<String>(),
             resolveThreadReactorNames(

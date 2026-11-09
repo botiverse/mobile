@@ -4,6 +4,10 @@ import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftFieldLabelSize
+import build.raft.designsystem.components.RaftReadOnlyField
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.rememberRaftCopyAction
@@ -13,6 +17,8 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftCardVariant
+import build.raft.designsystem.components.RaftRadio
 import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftField
@@ -21,14 +27,15 @@ import build.raft.designsystem.components.RaftSaveStatusDefaults
 import build.raft.designsystem.components.RaftSaveStatusState
 import build.raft.designsystem.components.RaftTextField
 import build.raft.app.components.RaftSlotIcon
-import build.raft.app.components.RaftSwitchButton
+import build.raft.designsystem.components.RaftSwitch
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.raftCardSurface
-import build.raft.app.components.raftControlSurface
 import build.raft.app.data.SharedSettingsActionState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -51,6 +58,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.serialization.Serializable
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 @Serializable
 internal data class RaftSharedSettingsPayload(
@@ -85,7 +94,12 @@ internal data class RaftSharedSettingsRow(
     /** When non-blank and a copy handler is wired, long-pressing the row copies this value. */
     val copyValue: String = "",
     /** The row takes people to another site: it ends in ↗ (raft-ui 0.26, #758). */
-    val external: Boolean = false
+    val external: Boolean = false,
+    /**
+     * A hidden tap target on a row that does not look like a control (About's version row: 7 taps
+     * open Developer): taps reach the action with no press wash, the row keeps its [enabled] look.
+     */
+    val hiddenTap: Boolean = false
 )
 
 /** A settings row's "Beta" (or similar) mark: the raft-ui solid `primary` Badge. */
@@ -102,10 +116,13 @@ internal fun SettingsLoadStateCard(
     retryLabel: String?,
     onRetry: () -> Unit,
     // Still loading: a spinner in place of [iconName].
-    loading: Boolean = false
+    loading: Boolean = false,
+    // The failed request's trace id (ScreenError/PermissionBlocker.traceId), shown with a copy action.
+    traceId: String? = null,
 ) {
     SettingsFormSectionCard(iconName = iconName, title = title, loading = loading) {
         SettingsFormDetailText(detail)
+        RaftTraceIdNote(traceId)
         retryLabel?.let {
             RaftButton(
                 text = it,
@@ -144,14 +161,37 @@ internal fun SettingsFormSectionCard(
     loading: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    SettingsFormSection(iconName = iconName, title = title, loading = loading) {
+        RaftCard(modifier = Modifier.fillMaxWidth()) {
+            // The card's own `p-4`, grown to 20 under a mouse or trackpad (sizing v12, raft-ui 0.65
+            // desktop density): nothing more with a finger.
+            val extra = (RaftTheme.controls.settingsCardPadding - 16.dp).coerceAtLeast(0.dp)
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(extra),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                content = content,
+            )
+        }
+    }
+}
+
+/**
+ * Web `SectionHeader className="mb-3"` over a section's own cards ([content], 12dp apart): the
+ * header without the one card [SettingsFormSectionCard] adds.
+ */
+@Composable
+internal fun SettingsFormSection(
+    iconName: RaftLucideIconName,
+    title: String,
+    loading: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit
+) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         SettingsServerSectionHeader(iconName = iconName, title = title, loading = loading)
-        RaftCard(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
-        }
+        content()
     }
 }
 
@@ -226,36 +266,17 @@ internal fun SettingsServerSelectRow(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    // raft selection card: primary-soft with an ink edge when chosen, no offset shadow.
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .raftControlSurface(
-                        fill = if (selected) RaftColor.BrandSoft else RaftColor.Card,
-                        border = if (selected) RaftColor.BorderBlack else RaftColor.BorderHairline,
-                        radius = RaftAppRadius.Container,
-                        borderWidth = if (selected) RaftAppStroke.Control else RaftAppStroke.Thin
-                    )
-                    .clickable(enabled = enabled, onClick = onClick)
-                    .padding(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RaftLucideIcon(
-                if (selected) RaftLucideIconName.CircleCheck else RaftLucideIconName.Circle,
-                modifier = Modifier.size(16.dp),
-                color = RaftColor.TextBlackArgb,
-            )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(title, style = RaftType.Button.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
-                detail.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
-                }
-            }
-        }
-    }
+    // The design-system option card: the radio shows the pick, the whole card is the target.
+    RaftCard(
+        modifier = Modifier.fillMaxWidth(),
+        variant = RaftCardVariant.Option,
+        title = title,
+        description = detail.takeIf { it.isNotBlank() },
+        leading = { RaftRadio(selected = selected, onClick = null) },
+        onClick = onClick,
+        selected = selected,
+        enabled = enabled
+    )
 }
 
 /** A settings text field: raft-ui Field (`sm` label) around an Input. */
@@ -287,7 +308,8 @@ internal fun SettingsTextField(
  */
 @Composable
 internal fun SettingsComboboxField(
-    label: String,
+    /** Null inside a section card whose title already names the choice. */
+    label: String?,
     description: String,
     value: String,
     options: List<RaftComboboxOption<String>>,
@@ -399,7 +421,7 @@ private fun SharedSettingsRow(
                         },
                         onTap = {
                             (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
-                                if (callbacks.row.enabled) {
+                                if (callbacks.row.enabled || callbacks.row.hiddenTap) {
                                     callbacks.onAction(
                                         callbacks.row.key,
                                         callbacks.row.value.takeIf { it.isNotBlank() }
@@ -414,8 +436,12 @@ private fun SharedSettingsRow(
                         }
                     )
                 }
+            } else if (row.hiddenTap && !row.enabled) {
+                Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                    onAction(row.key, row.value.takeIf { it.isNotBlank() })
+                }
             } else {
-                Modifier.clickable(enabled = row.enabled) { onAction(row.key, row.value.takeIf { it.isNotBlank() }) }
+                Modifier.raftClickable(onClick = { onAction(row.key, row.value.takeIf { it.isNotBlank() }) }, enabled = row.enabled, tier = RaftHoverTier.Subtle)
             }
         Row(
             modifier = Modifier
@@ -470,7 +496,7 @@ private fun SharedSettingsRow(
                 RaftLucideIcon(RaftLucideIconName.ArrowUpRight, modifier = Modifier.size(16.dp), color = RaftColor.TextMutedGrayArgb)
             }
             row.toggleValue?.let { enabled ->
-                RaftSwitchButton(checked = enabled, enabled = row.enabled)
+                RaftSwitch(checked = enabled, onCheckedChange = null, enabled = row.enabled)
             }
         }
     }
@@ -481,3 +507,61 @@ private data class SharedSettingsRowGestureCallbacks(
     val onCopyValue: ((String) -> Unit)?,
     val onAction: (String, String?) -> Unit
 )
+
+/**
+ * Web `SettingsProfileCard` (Account and Server Profile): a card (p-4, 16dp stack) whose head is
+ * the avatar in a 64dp box beside the title (headline) over a mono subtitle, then a separator and
+ * the form ([content], 12dp apart).
+ */
+@Composable
+internal fun SettingsProfileIdentityCard(
+    title: String,
+    subtitle: String,
+    avatar: @Composable () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    RaftCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
+                Box(modifier = Modifier.size(64.dp), contentAlignment = Alignment.Center) { avatar() }
+                Column(modifier = Modifier.weight(1f).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    RaftText(
+                        title,
+                        modifier = Modifier.raftCopyable(title),
+                        style = RaftTheme.typography.headline,
+                        color = RaftTheme.colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (subtitle.isNotBlank()) {
+                        RaftText(
+                            subtitle,
+                            modifier = Modifier.raftCopyable(subtitle),
+                            style = RaftTheme.typography.monoCode,
+                            color = RaftTheme.colors.foregroundMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            Column(modifier = Modifier.fillMaxWidth()) {
+                RaftSeparator()
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    content = content
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Web read-only `PrefixedInput` / `SlugInput` (the username's "@", the server slug's "/"): the
+ * design system's read-only field with its container prefix. Long-press copies [copyText].
+ */
+@Composable
+internal fun SettingsReadOnlyPrefixedField(prefix: String, text: String, copyText: String? = text) {
+    RaftReadOnlyField(text = text, prefix = prefix, copyText = copyText)
+}

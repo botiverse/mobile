@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
-import androidx.compose.foundation.clickable
+import build.raft.app.components.raftUpsellCopy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,7 +14,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.AgentMigrationActionError
@@ -30,6 +29,8 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import org.jetbrains.compose.resources.StringResource
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 internal fun migrationCopyResource(copy: MigrationCopy): StringResource =
     when (copy) {
@@ -49,7 +50,7 @@ internal fun migrationCopyResource(copy: MigrationCopy): StringResource =
         MigrationCopy.ErrorHostedMemoryUnimportable -> Res.string.agent_migration_error_hosted_memory_unimportable
         MigrationCopy.ErrorNotCancelable -> Res.string.agent_migration_error_not_cancelable
         MigrationCopy.ErrorAlreadyInProgress -> Res.string.agent_migration_error_already_in_progress
-        MigrationCopy.ErrorProPlanRequired -> Res.string.agent_migration_error_pro_plan_required
+        MigrationCopy.ErrorProPlanRequired -> raftUpsellCopy(Res.string.agent_migration_error_pro_plan_required)
         MigrationCopy.ErrorTransportNotProvisioned -> Res.string.agent_migration_error_transport_not_provisioned
         MigrationCopy.ErrorTransportProvisionFailed -> Res.string.agent_migration_error_transport_provision_failed
         MigrationCopy.ErrorWorkspaceAlreadyExists -> Res.string.agent_migration_error_workspace_already_exists
@@ -126,7 +127,7 @@ internal fun AgentMigrationTechnicalDetails(code: String, modifier: Modifier = M
     var open by remember(code) { mutableStateOf(false) }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
-            modifier = Modifier.clickable(role = Role.Button) { open = !open },
+            modifier = Modifier.raftClickable(onClick = { open = !open }, tier = RaftHoverTier.Subtle),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             RaftLucideIcon(

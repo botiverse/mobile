@@ -29,8 +29,8 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The in-app Artifact viewer's one native bar (artin's approved mock, 2026-11-01): Back, the title
  * over "#channel · vN ▾ · N read", Comments with its count, ⋮. States: the default bar; its ⋮ menu
- * open; the version list open; the reads failed (no counts, the page still shown); and the state a
- * 403/404 puts in place of the page. The menu and the sheet are windows on a device, so their
+ * open; the ⋮ menu where Desktop Mode is offered (checked); the version list open; the reads failed
+ * (no counts, the page still shown); and the state a 403/404 puts in place of the page. The menu and the sheet are windows on a device, so their
  * surfaces are drawn here over the page as the windows place them. Verify / record as
  * [RaftRobolectricScreenshot].
  */
@@ -52,6 +52,12 @@ class RaftArtifactViewerScreenshotTest {
     @Test fun menuLight() = capture("artifact.viewer.bar.menu", RaftAppAppearance.Light) { Viewer(Loaded, overlay = { Menu() }) }
 
     @Test fun menuDark() = capture("artifact.viewer.bar.menu.dark", RaftAppAppearance.Dark) { Viewer(Loaded, overlay = { Menu() }) }
+
+    @Test
+    fun desktopModeMenuLight() = capture("artifact.viewer.desktop-mode.menu", RaftAppAppearance.Light) { Viewer(DesktopMode, overlay = { Menu(desktopMode = true) }) }
+
+    @Test
+    fun desktopModeMenuDark() = capture("artifact.viewer.desktop-mode.menu.dark", RaftAppAppearance.Dark) { Viewer(DesktopMode, overlay = { Menu(desktopMode = true) }) }
 
     @Test fun versionsLight() = capture("artifact.viewer.bar.versions", RaftAppAppearance.Light) { Viewer(Loaded, overlay = { Versions() }) }
 
@@ -97,6 +103,9 @@ private val Loaded =
         following = false,
     )
 
+/** Where Desktop Mode is offered, on: the ⋮ menu lists it, checked. */
+private val DesktopMode = Loaded.copy(desktopMode = true)
+
 /** The reads failed: the version from the opener's card, no place, no counts, no Follow. */
 private val Failed = RaftArtifactViewerBarContent(version = 3)
 
@@ -106,6 +115,7 @@ private val Actions =
         onPickVersion = {},
         onCopyLink = {},
         onToggleFollow = {},
+        onToggleDesktopMode = {},
         onOpenInBrowser = {},
     )
 
@@ -135,10 +145,10 @@ private fun Unavailable() {
 
 /** The ⋮ menu where its window puts it: under the bar, at its end. */
 @Composable
-private fun Menu() {
+private fun Menu(desktopMode: Boolean? = null) {
     Box(Modifier.fillMaxSize().padding(top = 56.dp + 6.dp, end = 8.dp), contentAlignment = Alignment.TopEnd) {
         RaftMenuSurface(minWidth = 220.dp) {
-            RaftArtifactViewerMenuItems(following = false, actions = Actions, onDone = {})
+            RaftArtifactViewerMenuItems(following = false, actions = Actions, onDone = {}, desktopMode = desktopMode)
         }
     }
 }

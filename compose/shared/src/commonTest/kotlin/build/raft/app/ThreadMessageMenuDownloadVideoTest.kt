@@ -38,11 +38,11 @@ class ThreadMessageMenuDownloadVideoTest {
     }
 
     @Test
-    fun downloadRowSitsInTheMessageGroupAndRunsTheCallback() {
+    fun downloadRowSitsInTheTakeItElsewhereGroupAndRunsTheCallback() {
         var downloads = 0
         val actions = classicActions(onDownloadVideo = { downloads++ })
         val download = actions.single { it.label == Res.string.file_preview_action_download.desc() }
-        assertEquals("message", download.group)
+        assertEquals("copy", download.group)
         assertEquals(RaftLucideIconName.Download, download.icon)
         download.onClick()
         assertEquals(1, downloads)

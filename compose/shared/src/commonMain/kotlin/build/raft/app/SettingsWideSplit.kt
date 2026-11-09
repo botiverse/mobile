@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -60,6 +61,7 @@ internal val SettingsWideNativeDetailKeys: Set<String> =
         SettingsNativeDetailPage.Mobile.key,
         SettingsDestinationStorage,
         SettingsNativeDetailPage.Theme.key,
+        SettingsNativeDetailPage.ServerNotifications.key,
         SettingsNativeDetailPage.Server.key,
         SettingsDestinationComputers,
         SettingsNativeDetailPage.About.key,
@@ -68,7 +70,7 @@ internal val SettingsWideNativeDetailKeys: Set<String> =
 /**
  * The web-backed Settings sections that open in the wide detail pane too (artin 2026-10-29: like
  * the native ones, not a page over the rail). Feedback joins them only when it is the web page
- * (the product-feedback flag); the older native Hands feedback page keeps being pushed.
+ * ([settingsFeedbackUsesWebPage]); the native Hands feedback page keeps being pushed.
  */
 internal val SettingsWideWebDetailKeys: Set<String> =
     setOf(
@@ -78,6 +80,16 @@ internal val SettingsWideWebDetailKeys: Set<String> =
         SettingsDestinationConnectedApps,
         SettingsDestinationReleaseNotes,
     )
+
+/**
+ * Whether Settings > Feedback is the ticket web page: only on a host that cannot submit Hands
+ * feedback itself (the Compose desktop app). Android and iOS open the native submit form (artin,
+ * 1.22.0: the ticket web page goes back out; the ticket list is rewritten natively). No server
+ * flag. `feedback:submit` cards follow the same rule ([raftFeedbackCardEntryEnabled]).
+ */
+internal fun settingsFeedbackUsesWebPage(
+    nativeSubmit: Boolean = raftPlatformSupportsHandsFeedbackSubmit(),
+): Boolean = !nativeSubmit
 
 /** Every Settings row that opens in the wide detail pane. */
 internal fun settingsWideDetailKeys(feedbackWeb: Boolean): Set<String> =
@@ -121,6 +133,15 @@ internal fun settingsWideDetailPage(
     key: String,
     storeScope: RaftShellStoreScope,
     feedbackWeb: Boolean = false,
+    /** A search result's setting to open the section at ([SETTINGS_SEARCH_ANCHOR]). */
+    anchor: SettingsSearchAnchorRequest? = null,
+): Pair<String, JSONObject>? =
+    settingsWideDetailPageWithoutAnchor(key, storeScope, feedbackWeb)?.also { (_, pageData) -> pageData.putSettingsSearchAnchor(anchor) }
+
+private fun settingsWideDetailPageWithoutAnchor(
+    key: String,
+    storeScope: RaftShellStoreScope,
+    feedbackWeb: Boolean,
 ): Pair<String, JSONObject>? =
     when (key) {
         SettingsDestinationBilling -> settingsWideWebPage(SettingsWebViewSurface.Billing, storeScope)
@@ -146,6 +167,8 @@ private fun settingsWideWebPage(surface: SettingsWebViewSurface, storeScope: Raf
  * The wide Settings tab: the Settings list in the sidebar column ([RaftListPaneKind.Sidebar], the
  * Home sidebar's width) with the [selectedKey] row highlighted, and [detailPane] beside it. Back
  * while a non-default section shows returns to the default one ([settingsWideBackReturnsToDefault]).
+ * [collapsed]: the rail's Collapse Sidebar hid the list, so the section takes the whole width;
+ * [onCollapsedChange] lets the list's handle collapse it too (a drag past its minimum, Enter).
  */
 @Composable
 internal fun SettingsWideListDetail(
@@ -153,14 +176,18 @@ internal fun SettingsWideListDetail(
     widths: RaftListPaneWidths,
     active: Boolean,
     picked: String?,
-    /** The product-feedback flag: Feedback is the web page, which opens in the pane. */
+    /** [settingsFeedbackUsesWebPage]: Feedback is the web page, which opens in the pane. */
     feedbackWeb: Boolean = false,
     onPick: (String) -> Unit,
     onBackToDefault: () -> Unit,
     detailBottomInset: Dp,
     bottomContentPadding: Dp,
     detailPane: @Composable (key: String, modifier: Modifier) -> Unit,
+    collapsed: Boolean = false,
+    onCollapsedChange: ((Boolean) -> Unit)? = null,
     onResizingChange: (Boolean) -> Unit = {},
+    /** Search settings at the top of the list (the results stay there, the open one selected). */
+    search: SettingsSearchHost? = null,
 ) {
     val rowKeys = payload.items.map { it.key }
     val showing = settingsWideDetailKey(picked, rowKeys, feedbackWeb)
@@ -182,6 +209,7 @@ internal fun SettingsWideListDetail(
                 selectedKey = showing,
                 bottomContentPadding = bottomContentPadding,
                 onSelect = onPick,
+                search = search,
             )
         },
         detailPane = { modifier ->
@@ -194,6 +222,8 @@ internal fun SettingsWideListDetail(
                 }
             }
         },
+        collapsed = collapsed,
+        onCollapsedChange = onCollapsedChange,
         onResizingChange = onResizingChange,
     )
 }
@@ -209,33 +239,57 @@ internal fun SettingsWideSidebarList(
     selectedKey: String?,
     bottomContentPadding: Dp,
     onSelect: (String) -> Unit,
+    search: SettingsSearchHost? = null,
 ) {
     val groups = payload.items.groupConsecutiveBy { it.section }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite).padding(horizontal = RaftAppSpacing.Sm),
-    ) {
-        groups.forEach { (section, rows) ->
-            if (section != null) {
-                item(key = "section:$section") { RaftSidebarGroupLabel(section) }
-            }
-            item(key = "gap-top:${rows.first().key}") { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
-            items(rows, key = { it.key }) { row ->
-                RaftSidebarItem(
-                    title = row.title,
-                    selected = row.key == selectedKey,
-                    onClick = { onSelect(row.key) },
-                    leading = {
-                        RaftLucideIcon(
-                            row.iconName,
-                            Modifier.size(raftSidebarItemIconSize()),
-                            color = raftArgbHex(LocalRaftContentColor.current),
-                        )
-                    },
-                )
-            }
-            item(key = "gap-bottom:${rows.first().key}") { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
+    val searchResults = search?.let { rememberSettingsSearchResults(it, payload) }
+    Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+        if (search != null) {
+            // web: the field at the top of the sidebar, `px-2 pt-2 pb-1`, pinned as the list scrolls.
+            SettingsSearchField(
+                host = search,
+                results = searchResults.orEmpty(),
+                modifier = Modifier.padding(start = RaftAppSpacing.Sm, top = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs),
+            )
         }
-        item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = RaftAppSpacing.Sm),
+        ) {
+            if (search != null && search.state.searching) {
+                settingsSearchResultItems(search, searchResults.orEmpty())
+                item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
+                return@LazyColumn
+            }
+            groups.forEach { (section, rows) ->
+                if (section != null) {
+                    item(key = "section:$section") { RaftSidebarGroupLabel(section) }
+                }
+                item(key = "gap-top:${rows.first().key}") { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
+                items(rows, key = { it.key }) { row ->
+                    RaftSidebarItem(
+                        title = row.title,
+                        selected = row.key == selectedKey,
+                        onClick = { onSelect(row.key) },
+                        leading = { SettingsRowIcon(row.key, row.iconName) },
+                        // raft-ui 0.26 (#758): a row that leaves Raft (iOS Billing) ends in ↗.
+                        trailing =
+                            if (row.opensExternally) {
+                                {
+                                    RaftLucideIcon(
+                                        RaftLucideIconName.ArrowUpRight,
+                                        Modifier.size(raftSidebarItemIconSize()),
+                                        color = raftArgbHex(LocalRaftContentColor.current),
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                    )
+                }
+                item(key = "gap-bottom:${rows.first().key}") { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
+            }
+            item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
+        }
     }
 }
 

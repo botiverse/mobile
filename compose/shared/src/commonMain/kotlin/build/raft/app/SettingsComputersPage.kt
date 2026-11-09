@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,12 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.data.RaftShellStoreScope
 
 internal const val SETTINGS_COMPUTER_ID = "settingsComputerId"
+
+/**
+ * Page flag: the Computers list opens its Add Computer dialog once its snapshot has loaded (web
+ * Create Agent's "Add Computer" -> `setShowAddMachine(true)`).
+ */
+internal const val SETTINGS_COMPUTERS_OPEN_ADD = "settingsComputersOpenAdd"
 
 /**
  * Identity-only target for the native Computers page. The page loads the
@@ -56,10 +63,12 @@ internal fun settingsComputerPageData(
         put(SETTINGS_COMPUTER_ID, target.machineId)
     }
 
-internal fun Pager.openSettingsComputersPage(storeScope: RaftShellStoreScope) {
+internal fun Pager.openSettingsComputersPage(storeScope: RaftShellStoreScope, openAddComputer: Boolean = false) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         SETTINGS_COMPUTERS_PAGE,
-        settingsComputersPageData(storeScope),
+        settingsComputersPageData(storeScope).apply {
+            if (openAddComputer) put(SETTINGS_COMPUTERS_OPEN_ADD, true)
+        },
     )
 }
 
@@ -75,5 +84,5 @@ internal fun Pager.openSettingsComputerPage(
 
 @Composable
 internal fun SettingsComputersLoadingContent() {
-    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream))
+    Box(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas))
 }

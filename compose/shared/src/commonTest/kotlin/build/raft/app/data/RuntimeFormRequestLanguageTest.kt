@@ -23,6 +23,8 @@ class RuntimeFormRequestLanguageTest {
         assertEquals("zh-CN", runtimeFormRequestLanguageTag({ AppLocale.SimplifiedChinese }, { "en-US" }))
         assertEquals("en", runtimeFormRequestLanguageTag({ AppLocale.English }, { "zh-CN" }))
         assertEquals("ja", runtimeFormRequestLanguageTag({ AppLocale.Japanese }, { null }))
+        assertEquals("zh-TW", runtimeFormRequestLanguageTag({ AppLocale.TraditionalChinese }, { "en-US" }))
+        assertEquals("pt-BR", runtimeFormRequestLanguageTag({ AppLocale.BrazilianPortuguese }, { "en-US" }))
         assertEquals("zh-Hans-CN", runtimeFormRequestLanguageTag({ AppLocale.System }, { "zh-Hans-CN" }))
         assertEquals("zh-CN", runtimeFormRequestLanguageTag({ AppLocale.System }, { " zh_CN " }), "normalized")
         assertNull(runtimeFormRequestLanguageTag({ AppLocale.System }, { null }), "unknown: no header")

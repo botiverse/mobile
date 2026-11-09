@@ -21,7 +21,8 @@ import org.robolectric.annotation.GraphicsMode
  * The file page an attachment without an in-app preview opens to (task #75: a tap on an apk in
  * the conversation opens this page; the download runs here). Three states, light and dark:
  * idle (Download), downloading (progress card with percent, bytes, speed, Pause / Cancel) and
- * done (Install for an apk, Share, Open in browser). Rendered through the page's own scaffold
+ * done (Install for an apk, Share, Open in browser); and on Compose 版 once saved (Show in Finder,
+ * Open, Open in browser). Rendered through the page's own scaffold
  * and [RaftFilePreviewPayloadContent]; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -49,6 +50,13 @@ class FileDetailPageScreenshotTest {
     @Test
     fun doneDark() = capture("file.detail.done.dark", RaftAppAppearance.Dark, FileDetailState.Done)
 
+    /** Compose 版 after the save panel: Show in Finder, Open, and where it went. */
+    @Test
+    fun desktopSavedLight() = capture("file.detail.desktop-saved", RaftAppAppearance.Light, FileDetailState.DesktopSaved)
+
+    @Test
+    fun desktopSavedDark() = capture("file.detail.desktop-saved.dark", RaftAppAppearance.Dark, FileDetailState.DesktopSaved)
+
     private fun capture(name: String, appearance: RaftAppAppearance, state: FileDetailState) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
@@ -59,7 +67,7 @@ class FileDetailPageScreenshotTest {
         }
 }
 
-private enum class FileDetailState { Idle, Downloading, Done }
+private enum class FileDetailState { Idle, Downloading, Done, DesktopSaved }
 
 private val apkPayload =
     RaftFilePreviewPayload(
@@ -79,7 +87,7 @@ private fun FileDetailPage(state: FileDetailState) {
     val payload = apkPayload
     val downloadState =
         when (state) {
-            FileDetailState.Idle -> RaftFilePreviewDownloadUiState.NotDownloaded
+            FileDetailState.Idle, FileDetailState.DesktopSaved -> RaftFilePreviewDownloadUiState.NotDownloaded
             FileDetailState.Downloading -> RaftFilePreviewDownloadUiState.Downloading
             FileDetailState.Done -> RaftFilePreviewDownloadUiState.Downloaded
         }
@@ -110,6 +118,18 @@ private fun FileDetailPage(state: FileDetailState) {
             downloadInProgress = view.inProgress,
             downloadView = view,
             downloadState = downloadState,
+            savedFileActions =
+                if (state == FileDetailState.DesktopSaved) {
+                    RaftFilePreviewSavedFileActions(
+                        revealLabel = "Show in Finder",
+                        openLabel = "Open",
+                        message = "Saved to Downloads",
+                        onReveal = {},
+                        onOpen = {},
+                    )
+                } else {
+                    null
+                },
             onDownload = {},
             onPauseDownload = {},
             onResumeDownload = {},

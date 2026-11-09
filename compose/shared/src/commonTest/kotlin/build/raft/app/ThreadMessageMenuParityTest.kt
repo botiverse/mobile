@@ -14,6 +14,7 @@ import build.raft.app.model.ForwardMessageBundle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -69,6 +70,34 @@ class ThreadMessageMenuParityTest {
                 case.name,
             )
         }
+    }
+
+    @Test
+    fun hoverToolbarOffersWhatTheMenuOffers() {
+        // web MessageHoverToolbar: Add Reaction, Reply in Thread, Forward, Save, More Actions, each
+        // where the menu has it; a system message has no reaction and no More.
+        fun toolbar(message: RaftThreadMessageItem, slice: ThreadTimelineSlice = slice()) =
+            threadMessageHoverToolbarActions(
+                message = message,
+                capabilities = capabilities(message, slice = slice),
+                onShowReactions = {},
+                onForward = {},
+                onToggleSave = {},
+            )
+
+        val ordinary = assertNotNull(toolbar(message(isSaved = true)))
+        assertTrue(ordinary.reaction && ordinary.reply && ordinary.forward && ordinary.save && ordinary.more)
+        assertTrue(ordinary.saved)
+        val guest = assertNotNull(toolbar(message(), slice().withThreadViewerMessageActions(viewerIsGuest = true, forwardSourceAvailable = true)))
+        assertFalse(guest.forward)
+        val system = assertNotNull(toolbar(message(messageType = "System")))
+        assertFalse(system.reaction)
+        assertFalse(system.more)
+        // The header fades under the toolbar's own width (raft-ui --mi-toolbar-width): 164 for
+        // five buttons, 132 for four.
+        assertEquals(5, ordinary.buttonCount)
+        assertEquals(164f, build.raft.designsystem.components.RaftMessageItemToolbarDefaults.width(ordinary.buttonCount).value)
+        assertEquals(132f, build.raft.designsystem.components.RaftMessageItemToolbarDefaults.width(guest.buttonCount).value)
     }
 
     @Test
@@ -149,27 +178,29 @@ class ThreadMessageMenuParityTest {
     }
 
     @Test
-    fun classicMenuOrdersReplyInThreadForwardThenSave() {
+    fun classicMenuFollowsTheWebSectionsThreadThenElsewhereThenSave() {
         var forwarded = 0
         val actions = classicActions(message(), showForwardAction = true, onForward = { forwarded += 1 })
 
+        // web MessageItem: thread and task, then take it elsewhere, then just for me.
         assertEquals(
             listOf(
+                Res.string.thread_action_reply_in_thread.desc(),
                 Res.string.thread_action_copy_link.desc(),
                 Res.string.thread_action_copy_markdown.desc(),
                 Res.string.thread_action_select_text.desc(),
-                Res.string.thread_action_select_message.desc(),
-                Res.string.thread_action_reply_in_thread.desc(),
                 Res.string.thread_action_forward.desc(),
+                Res.string.thread_action_select_message.desc(),
                 Res.string.thread_action_save_message.desc()
             ),
             actions.map { it.label }
         )
+        assertEquals(listOf("message", "copy", "copy", "copy", "copy", "copy", "personal"), actions.map { it.group })
         assertFalse(
             actions.any { it.icon == RaftLucideIconName.SmilePlus },
             "Add Reaction ends the reaction row, it is not an action row"
         )
-        assertEquals(RaftLucideIconName.Send, actions.single { it.label == Res.string.thread_action_forward.desc() }.icon)
+        assertEquals(RaftLucideIconName.Forward, actions.single { it.label == Res.string.thread_action_forward.desc() }.icon)
         actions.single { it.label == Res.string.thread_action_forward.desc() }.onClick()
         assertEquals(1, forwarded)
     }
@@ -210,8 +241,8 @@ class ThreadMessageMenuParityTest {
     fun theClassicMenuWidensForTheAddReactionSlot() {
         val withoutAdd = threadMessageMenuWidthDp(showReactionActions = true)
         val withAdd = threadMessageMenuWidthDp(showReactionActions = true, showAddReactionAction = true)
-        // One more 28dp button and its 4dp gap, so the quick emojis are not squeezed or clipped.
-        assertEquals(withoutAdd + 32f, withAdd)
+        // One more 36dp button and its 2dp gap, so the quick emojis are not squeezed or clipped.
+        assertEquals(withoutAdd + 38f, withAdd)
         assertEquals(threadMessageMenuWidthDp(showReactionActions = false), threadMessageMenuWidthDp(false, showAddReactionAction = true))
     }
 
@@ -229,7 +260,7 @@ class ThreadMessageMenuParityTest {
 
     @Test
     fun classicSaveTogglesToRemoveFromSaved() {
-        val saved = classicActions(message(isSaved = true)).single { it.group == "message" && it.icon == RaftLucideIconName.BookmarkMinus }
+        val saved = classicActions(message(isSaved = true)).single { it.group == "personal" && it.icon == RaftLucideIconName.BookmarkMinus }
         assertEquals(Res.string.thread_action_remove_from_saved.desc(), saved.label)
     }
 
@@ -308,7 +339,7 @@ class ThreadMessageMenuParityTest {
         }
         val plain = capabilities(message()).toThreadNewMessageMenuActionAvailability(message(), message().toThreadReplyMetadata())
         assertEquals(Res.string.thread_action_select_text, ThreadNewMessageMenuTool.SelectText.compactLabelResource(plain))
-        assertEquals(RaftLucideIconName.FileText, ThreadNewMessageMenuTool.SelectText.compactIcon(plain))
+        assertEquals(RaftLucideIconName.SquareDashedText, ThreadNewMessageMenuTool.SelectText.compactIcon(plain))
         // An in-place selection already picks text: the sheet's entry is not offered there.
         for (coversAll in listOf(true, false)) {
             assertFalse(ThreadNewMessageMenuTool.SelectText in threadInPlaceSelectionMenuAvailability(plain, coversAll).secondaryTools())
@@ -402,7 +433,8 @@ class ThreadMessageMenuParityTest {
         assertEquals(plain.primaryTools(), overSelection.primaryTools(), "the full message menu stays")
         assertTrue(overSelection.showsReactionRow())
         assertEquals(Res.string.common_copy, ThreadNewMessageMenuTool.CopySelection.compactLabelResource(overSelection))
-        assertEquals(RaftLucideIconName.Copy, ThreadNewMessageMenuTool.CopySelection.compactIcon(overSelection))
+        // Not Copy: that is Copy Markdown in the same menu.
+        assertEquals(RaftLucideIconName.Type, ThreadNewMessageMenuTool.CopySelection.compactIcon(overSelection))
         assertFalse(
             ThreadNewMessageMenuTool.CopySelection in threadInPlaceSelectionMenuAvailability(overSelection, coversAll = false).secondaryTools(),
             "the selection menu has its own Copy"

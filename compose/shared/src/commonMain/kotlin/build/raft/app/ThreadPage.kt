@@ -1,18 +1,28 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftControlMetrics
+import androidx.compose.runtime.ReadOnlyComposable
+import build.raft.app.links.extractFirstQuotedRaftPermalink
+import build.raft.app.links.raftPermalinkHostnames
+import build.raft.app.data.RaftClientConfigAppHosts
+import build.raft.app.links.ParsedRaftPermalink
+import build.raft.app.links.toParsedRaftPermalink
 import build.raft.app.assistant.LocalThreadAssistantOtter
 import build.raft.app.assistant.LocalThreadAssistantPanelEmbed
 import build.raft.app.assistant.ThreadAssistantPanelConversationMissing
 import build.raft.app.assistant.ThreadAssistantPanelMessagesReport
 import build.raft.app.assistant.ThreadAssistantPanelSheet
 import build.raft.app.assistant.ThreadAssistantOtterFrameEdge
-import build.raft.app.assistant.ThreadAssistantOtterListEnd
 import build.raft.app.assistant.assistantOtterDmOpenRequest
 import build.raft.app.assistant.newAssistantOtterHostId
 import build.raft.app.assistant.rememberThreadAssistantOtter
+import build.raft.app.assistant.threadForegroundBannerOnPage
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
+import build.raft.designsystem.components.raftToastAvoid
+import build.raft.app.compat.ui.LocalRaftPageActive
+import build.raft.app.nav.LocalRaftStackPageInMotion
 import build.raft.app.resources.*
 import build.raft.app.emoji.RaftEmojiCatalog
 import build.raft.app.emoji.RaftEmojiPickerPreferences
@@ -38,7 +48,12 @@ import build.raft.designsystem.components.RaftMessageListJumpPill
 import build.raft.designsystem.components.RaftMessageListJumpControls
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconToggleButton
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftFormSection
+import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.RaftSideDrawerDefaults
+import build.raft.designsystem.components.RaftSwitch
 import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.components.rememberRaftStorePullRefreshState
 import build.raft.app.components.RaftSlotIcon
@@ -46,7 +61,15 @@ import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftSideAction
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftSegment
+import build.raft.designsystem.components.RaftPickerTriggerButton
+import build.raft.designsystem.components.RaftSegmentedControl
+import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftToast
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTooltip
@@ -89,22 +112,25 @@ import build.raft.app.data.AdaptiveThreadOpenRoute
 import build.raft.app.data.routeThreadOpen
 
 import build.raft.app.components.RaftAnchoredMetaChip
-import build.raft.app.components.RaftAttachmentPreviewCard
-import build.raft.app.components.RaftAttachmentPreviewCardAction
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalInputField
+import build.raft.designsystem.components.RaftMessageAttachmentAction
+import build.raft.designsystem.components.RaftMessageAttachmentCard
 import build.raft.app.components.RaftExternalBridgeBadge
 import build.raft.app.components.RaftChipLoadingIndicator
-import build.raft.app.components.RaftBrutalSearchField
-import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.app.components.rememberRaftTextareaEditorModifier
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextarea
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.focus.FocusRequester
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
-import build.raft.app.components.RaftSwitchButton
+import build.raft.app.components.RaftUiMenuSurface
+import build.raft.app.components.raftMenuWidth
 import build.raft.app.components.SharedHomeSearchInput
-import build.raft.app.components.RaftToolbarChip
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.components.raftCardSurface
 import build.raft.app.components.raftControlSurface
@@ -133,10 +159,12 @@ import build.raft.app.data.ForwardMessageTargetDirectoryCursor
 import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.ForwardMessageTargetRequiredAction
+import build.raft.app.data.isForwardConversationTarget
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.NetworkRaftConversationArtifactsApi
 import build.raft.app.data.WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
+import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.NetworkRaftTasksApi
@@ -156,6 +184,7 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.DataResult
+import build.raft.app.data.EmptyReason
 import build.raft.app.data.map
 import build.raft.app.data.ACTION_CARD_SPEC_FEATURE_FLAG_KEY
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
@@ -170,6 +199,8 @@ import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
 import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
+import build.raft.app.data.taskStatusChoices
+import build.raft.app.data.taskStatusPickAsksBacklogReason
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ownSentConversationIds
 import build.raft.app.data.RaftAgentsApiClient
@@ -188,6 +219,7 @@ import build.raft.app.data.SecondFactorStepUpRepository
 import build.raft.app.data.RaftIntegrationsActionsPushNetworkApi
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardMetadataItem
+import build.raft.app.data.RaftHostInUse
 import build.raft.app.data.isRaftHostVisible
 import build.raft.app.data.realtime.RealtimeRoutePolicy
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
@@ -219,6 +251,9 @@ import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.data.SharedReferenceFailure
+import build.raft.app.data.SharedReferenceResolver
+import build.raft.app.data.sharedReferenceFailure
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
@@ -242,6 +277,9 @@ import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedAdaptiveScrollAnchor
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.expiredAsOf
+import build.raft.app.data.isActionCardExpiredRefusal
+import build.raft.app.data.markedExpired
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
@@ -271,7 +309,6 @@ import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.isInstallMarketplaceAppAction
 import build.raft.app.data.InstallMarketplaceAppActionCardType
-import build.raft.app.data.PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
 import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.messageBodyFontSizeOwnerKey
@@ -287,15 +324,25 @@ import build.raft.app.model.ForwardMessageItem
 import build.raft.app.model.ForwardMessageSource
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.agentAvatarFallbackWireValue
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
+import build.raft.app.markdown.LocalRaftMarkdownTaskRefStatuses
+import build.raft.app.markdown.parseRaftMarkdownTaskRefLabel
+import build.raft.app.markdown.parseRaftMarkdownMessageRefLabel
 import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
+import build.raft.app.markdown.RaftTaskStatusPixel
+import build.raft.app.markdown.RaftTaskStatusPixelStyle
+import build.raft.app.markdown.raftTaskStatusColor
+import build.raft.app.markdown.raftTaskStatusOutline
+import build.raft.app.markdown.raftTaskStatusPixelStyle
 import build.raft.app.markdown.RaftMarkdownMentionReadStateScope
 import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
+import build.raft.app.markdown.LocalRaftUnavailableQuotedPermalink
 import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
 import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
@@ -310,10 +357,17 @@ import build.raft.app.markdown.raftTraceDiagnosticsEnabled
 import build.raft.app.markdown.RaftMarkdownRenderConfig
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
+import build.raft.app.markdown.RaftMarkdownDocumentWarmContext
+import build.raft.app.markdown.RaftMarkdownDocumentWarmRequest
 import build.raft.app.markdown.prepareRaftMarkdownFullRendererBodies
+import build.raft.app.markdown.warmRaftMarkdownRichTextDocuments
 import build.raft.app.markdown.preparedRaftMarkdownFullRendererContentOrNull
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ThreadId
+import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.ChannelSosStore
+import build.raft.app.data.RaftAgentControlsApi
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.MessageId
 import build.raft.app.model.RealtimeEvent
@@ -323,6 +377,7 @@ import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskDeleted
 import build.raft.app.model.ThreadFollowersUpdated
 import build.raft.app.model.TaskStatus
+import build.raft.app.designtokens.RaftUiPalette
 import build.raft.app.components.RaftAnchorPlacement
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
@@ -361,8 +416,11 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.State
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.setValue
@@ -375,6 +433,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -383,7 +443,6 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -394,6 +453,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -410,6 +470,7 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
+import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -428,9 +489,18 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.RectangleShape
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.raftPointerHover
+import build.raft.designsystem.components.RaftConversationKindIcon
+import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftMessageItemToolbar
+import build.raft.designsystem.components.RaftMessageItemToolbarButton
+import build.raft.designsystem.components.RaftMessageItemToolbarDefaults
+import build.raft.designsystem.components.raftMessageItemToolbarHeaderMask
+import build.raft.designsystem.components.raftPointerHoverPosition
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.components.raftStateOverlay
 import build.raft.designsystem.components.rememberRaftStateOverlay
 import androidx.compose.ui.graphics.ImageBitmap
@@ -441,7 +511,10 @@ import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.HorizontalAlignmentLine
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftMessageDelegatedAvatar
@@ -463,17 +536,26 @@ import build.raft.designsystem.components.RaftMessageImageGallery
 import build.raft.designsystem.theme.LocalRaftColors
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.app.components.RaftDesignSystemTheme
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsets
+import build.raft.app.compat.ui.LocalRaftHostImeInsets
+import build.raft.app.compat.ui.raftImeBottomPx
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -483,6 +565,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -538,6 +624,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.coroutines.resume
 import kotlin.math.roundToInt
+import kotlin.math.ceil
 import kotlin.random.Random
 import kotlin.time.TimeMark
 import kotlin.uuid.ExperimentalUuidApi
@@ -545,12 +632,15 @@ import kotlin.uuid.Uuid
 import kotlin.time.TimeSource
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.atomicfu.locks.SynchronizedObject
+import build.raft.designsystem.components.raftClickable
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
 private const val ThreadMessagesMinBeyondBoundsItemCount = 4
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
 private const val ThreadMessagesRepresentativeRowStepDp = 64f
+private const val ThreadMessagesMinMeasuredBeyondBoundsItemCount = 1
+private const val ThreadMessagesRowHeightSmoothing = 0.5f
 private const val ThreadPerformanceSlowThresholdMs = 4L
 // raft-ui located highlight (0.22.1 #719): the jumped-to row is located for LOCATED_MS.
 private const val ThreadFocusedMessageHighlightDurationMs = RaftLocatedMillis.toLong()
@@ -841,16 +931,57 @@ internal fun ThreadMessageMenuCapabilities.toThreadNewMessageMenuActionAvailabil
         createTaskFromMessage = createTaskFromMessage
     )
 
+/** raft-ui MessageItemHeader `mb-px`: the gap between the header and the body. */
+internal val ThreadMessageHeaderBodyGap = 1.dp
+
+/**
+ * A message's content column with the header first: [Arrangement.spacedBy] 4dp, except the body
+ * starts [ThreadMessageHeaderBodyGap] under the header. The column still measures every gap at
+ * 4dp, so the space the first gap gives back is left empty at its end, and
+ * [threadMessageHeaderBodyGapTrim] takes it off: every child keeps its own height (and hit area).
+ */
+internal object ThreadMessageHeaderFirstArrangement : Arrangement.Vertical {
+    override val spacing: Dp = RaftAppSpacing.Xs
+
+    override fun Density.arrange(totalSize: Int, sizes: IntArray, outPositions: IntArray) {
+        val firstGapPx = ThreadMessageHeaderBodyGap.roundToPx()
+        val gapPx = spacing.roundToPx()
+        var y = 0
+        sizes.forEachIndexed { index, size ->
+            outPositions[index] = y
+            y += size + if (index == 0) firstGapPx else gapPx
+        }
+    }
+
+    override fun toString(): String = "ThreadMessageHeaderFirstArrangement"
+}
+
+/** Takes off the empty end [ThreadMessageHeaderFirstArrangement] leaves under the last child. */
+private fun Modifier.threadMessageHeaderBodyGapTrim(): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints.copy(minHeight = 0))
+        val trim = (RaftAppSpacing.Xs - ThreadMessageHeaderBodyGap).roundToPx()
+        val height = (placeable.height - trim).coerceAtLeast(0).coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(placeable.width, height) { placeable.place(0, 0) }
+    }
+
+/** raft-ui `--spacing-timeline-row`: every message row's inset above and below its text. */
+internal val ThreadMessageTimelineRowInset = 4.dp
+
+/** raft-ui `--spacing-timeline-turn`: the transparent band above a turn's first row. */
+internal val ThreadMessageTimelineTurn = 8.dp
+
 internal fun threadMessageMetadataSlotLayout(
     showAvatar: Boolean,
     compactTimestampGutter: Boolean,
     showTimestamp: Boolean
 ): ThreadMessageMetadataSlotLayout =
     ThreadMessageMetadataSlotLayout(
-        widthDp = 36f,
+        // raft-ui MessageItem `gutter` / `avatarSlot`: w-[35px], the md avatar (35) under its mt-0.5.
+        widthDp = 35f,
         heightDp =
             when {
-                showAvatar -> 40f
+                showAvatar -> 37f
                 compactTimestampGutter -> 18f
                 else -> 0f
             },
@@ -1312,7 +1443,7 @@ internal fun raftComposerImagePickerFilesAreStrictImages(files: List<PlatformFil
                 mimeType = file.mimeType.orEmpty(),
             )
         }
-private data class ThreadMembersProjection(
+internal data class ThreadMembersProjection(
     val membersCount: Int,
     val members: List<RaftThreadMemberItem>,
     val memberCandidates: List<RaftThreadMemberItem>,
@@ -1327,6 +1458,14 @@ private data class ThreadShareCaptureRect(
     val path: String = "",
     val frame: Boolean = true
 )
+
+/**
+ * `exportThreadShareImage`'s `fragments`: each message's capture slices one path per line, a
+ * blank line between messages (Android frames each message as its own row of the share image;
+ * iOS reads the lines and skips the blanks).
+ */
+internal fun threadShareFragmentsParam(messageFragments: List<List<String>>): String =
+    messageFragments.filter { it.isNotEmpty() }.joinToString(separator = "\n\n") { it.joinToString(separator = "\n") }
 
 internal data class ThreadShareCaptureSlice(
     val y: Float,
@@ -1425,6 +1564,8 @@ internal data class ThreadSharePreviewImage(
 )
 
 internal enum class ThreadTransientBackTarget(val label: String) {
+    /** Task v2: the Tasks / Files cards covering the conversation; Back closes them all (web). */
+    SideCards("conversation_side_cards"),
     ShareSelection("thread_share_selection"),
     InlineSearch("thread_inline_search")
 }
@@ -1432,10 +1573,13 @@ internal enum class ThreadTransientBackTarget(val label: String) {
 internal fun threadTransientBackTarget(
     activeModal: String?,
     shareSelectionActive: Boolean,
-    inlineSearchVisible: Boolean
+    inlineSearchVisible: Boolean,
+    sideCardsOpen: Boolean = false,
 ): ThreadTransientBackTarget? =
     when {
         activeModal != null -> null
+        // The cards cover the conversation: what is under them (a selection) waits its turn.
+        sideCardsOpen -> ThreadTransientBackTarget.SideCards
         shareSelectionActive -> ThreadTransientBackTarget.ShareSelection
         inlineSearchVisible -> ThreadTransientBackTarget.InlineSearch
         else -> null
@@ -1482,15 +1626,25 @@ internal fun RaftThreadScreenPayload.shouldRenderThreadLoadingShell(
  * only until that bounded, offline-safe local lookup has answered (or access settled another way),
  * so timeline and composer appear in the same frame. Once revealed, a later refresh that re-runs
  * the lookup never puts the shell back over the content.
+ *
+ * [pageInMotion] ([LocalRaftStackPageInMotion]): the page is still sliding in on the Android page
+ * stack. The first content build (the message list's rows, markdown, avatars, the composer) takes
+ * 80-340 ms on a mid-range phone; landing mid slide it froze the push (nav_transition_frames: 3-19
+ * frames in 440-840 ms). The light shell slides in instead and the content is built the frame the
+ * slide settles, when the page also turns active. Only the first reveal waits: content already
+ * shown (a pop back onto the chat) is never hidden again.
  */
 internal fun threadHoldsFirstContentReveal(
     contentRevealed: Boolean,
     accessResolution: ThreadAccessResolution,
-    initialHomeAccessLookupComplete: Boolean
+    initialHomeAccessLookupComplete: Boolean,
+    pageInMotion: Boolean = false
 ): Boolean =
     !contentRevealed &&
-        accessResolution == ThreadAccessResolution.Loading &&
-        !initialHomeAccessLookupComplete
+        (
+            pageInMotion ||
+                (accessResolution == ThreadAccessResolution.Loading && !initialHomeAccessLookupComplete)
+        )
 
 internal enum class ThreadRouteMountPlan {
     LoadingShell,
@@ -1583,6 +1737,7 @@ internal fun threadEventRequiresWriteAccess(action: String): Boolean =
             "removeMember",
             "convertMessageToTask",
             "setTaskStatus",
+            "moveTaskToBacklog",
             "setTaskAssignee",
             "markTaskDone",
             "reopenTask",
@@ -1648,6 +1803,7 @@ internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
             "attachImage",
             "toggleOriginalImage",
             "attachFile",
+            ThreadComposerDropAttachmentsAction,
             "removeAttachment",
             "retryAttachments"
         )
@@ -2026,14 +2182,30 @@ internal fun threadViewportPixelProbeOwnerCurrent(
 private fun Int.asThreadProbeRangeStart(): Int =
     if (this == Int.MAX_VALUE) -1 else this
 
-private object ThreadLocalSendNextId {
+/**
+ * Mints optimistic local-send ids: `local-send-<scope>-<processNonce>-<counter>`.
+ *
+ * The counter restarts in every process, but pending sends are journaled and restored after a
+ * restart, so the counter alone would hand a new send the id of a restored row (two rows with
+ * `…-1` crashed the message list with a duplicate LazyColumn key). The per-process nonce keeps
+ * ids unique across restarts. The counter stays the last `-` segment because
+ * [RaftThreadMessageItem.localSendOrder] parses it from there; the nonce is base36 (no `-`).
+ */
+internal class ThreadLocalSendIdGenerator(
+    private val processNonce: String = newThreadLocalSendProcessNonce()
+) {
     private var counter: Int = 0
-    fun value(instanceId: String): String {
+
+    fun next(instanceId: String): String {
         counter += 1
         val scope = instanceId.takeIf { it.isNotBlank() } ?: "thread"
-        return "local-send-$scope-$counter"
+        return "$ThreadTransientLocalSendIdPrefix$scope-$processNonce-$counter"
     }
 }
+
+internal fun newThreadLocalSendProcessNonce(): String = Random.nextLong().toULong().toString(36)
+
+private val ThreadLocalSendNextId = ThreadLocalSendIdGenerator()
 
 internal fun newThreadSendRandomId(): String =
     "mobile-${Random.nextLong().toULong().toString(36)}-${Random.nextLong().toULong().toString(36)}"
@@ -2057,17 +2229,26 @@ private val ThreadComposerBottomBasePadding = 12.dp
 private val ThreadComposerBottomSafeAreaLift = 2.dp
 // raft-ui `PanelAction` on a phone (`h-11 min-w-11`, `[&>svg]:size-[22px]`, text-foreground):
 // a 44dp frameless button carrying a 22dp glyph, so the hit area is the 44dp touch target.
-private val ThreadHeaderActionSize = 44.dp
+// Under a mouse or trackpad the head's bar button: 28dp with a 16dp glyph (sizing v12, raft-ui
+// 0.65 desktop density, RaftControlMetrics.barButtonSize).
+private val ThreadHeaderActionSize: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.barButtonSize
 // raft-ui `panelHeadActions` on a phone: `gap-0.5`. The 44dp buttons carry 11dp of empty
 // inset on each side, so neighbouring glyphs still sit 24dp apart.
 private val ThreadHeaderActionGroupSpacing = 2.dp
-private val ThreadHeaderActionIconSize = 22.dp
+private val ThreadHeaderActionIconSize: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.barIconSize
 private val ThreadHeaderActionLabelMinWidth = 44.dp
 // raft `panelHeadEdges` on a phone + `panelHeadActions mr-[-3px]` / Back `-ml-[13px]`: the
 // Back button and the last trailing action both sit 3dp from the screen edge, which puts each
 // 22dp icon box 14dp in and makes the two ends mirror (foundations/alignment "Top bar icon buttons").
-// raft-ui 0.14: Back and the last trailing action keep their 22dp glyph boxes on the 16dp line.
-private val ThreadHeaderEdgeInset = RaftBackButtonDefaults.EdgeInset
+// raft-ui 0.14: Back and the last trailing action keep their 22dp glyph boxes on the 16dp line
+// (16dp glyphs in 28dp bar buttons, 10dp from the edge, under a mouse or trackpad: sizing v12).
+private val ThreadHeaderEdgeInset: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftBackButtonDefaults.EdgeInset
 
 /**
  * The side edge of a conversation shown as the detail pane of a split: web `COMPOSER_EDGE_CLASS`
@@ -2302,8 +2483,8 @@ internal data class RaftThreadScreenPayload(
     val replySummariesAuthority: build.raft.app.data.ThreadReplySummariesAuthority =
         build.raft.app.data.ThreadReplySummariesAuthority.Unavailable,
 ) {
-    /** Derived from [surfaceKind]; never stored, so no constructor can forget it. */
-    val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind)
+    /** Derived from [surfaceKind] and [channelKind]; never stored, so no constructor can forget it. */
+    val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
 }
 
 internal data class ThreadMembersPageRoute(
@@ -2631,6 +2812,38 @@ internal fun RaftThreadScreenPayload.joinChannelTargetId(): ChannelId? =
         ?: sourceThreadId?.takeIf { it.isNotBlank() }
         ?: streamChannelId?.takeIf { it.isNotBlank() })
         ?.let(::ChannelId)
+
+/**
+ * What Home hears of a join here. The row in case Home doesn't list the channel comes only from
+ * the channel's own page: a reply's title or a task sheet's other channel isn't that channel's name.
+ */
+internal fun channelJoinedHomeIntent(
+    payload: RaftThreadScreenPayload,
+    serverId: String,
+    channelId: ChannelId,
+): SharedHomeIntent.ChannelJoined =
+    SharedHomeIntent.ChannelJoined(
+        serverId = serverId,
+        channelId = channelId,
+        rowIfMissing =
+            payload.takeIf {
+                it.surfaceKind == RaftThreadSurfaceKind.Channel &&
+                    it.joinChannelTargetId() == channelId &&
+                    it.title.isNotBlank() &&
+                    // Agent Lounge v0: a Lounge is never listed, joined or not.
+                    RaftAgentLounges.lounge(serverId, channelId.value) == null
+            }?.let {
+                HomeChannelRow(
+                    threadId = ThreadId(channelId.value),
+                    channelId = channelId,
+                    channelType = it.channelKind,
+                    kind = parseConversationKindOrNull(it.channelKind) ?: ConversationKind.Channel,
+                    name = it.title.removePrefix("#"),
+                    subtitle = it.subtitle,
+                    joined = true,
+                )
+            },
+    )
 
 internal fun RaftThreadScreenPayload.threadForwardSourceChannelId(): ChannelId? =
     (sourceThreadId?.takeIf { it.isNotBlank() }
@@ -3237,7 +3450,12 @@ internal data class RaftThreadPendingSendContext(
     val parentMessageId: String? = null,
     val streamChannelId: String? = null,
     val memberScopedMentions: Boolean = false,
-    val randomId: String? = null
+    val randomId: String? = null,
+    /**
+     * Structured `mentions` picked in the composer and still visible in [body] at send time. Journaled
+     * with the send so every retry resends this exact list (never re-resolved by name).
+     */
+    val mentions: List<build.raft.app.data.ThreadSendMessageMention> = emptyList(),
 )
 
 /**
@@ -3371,6 +3589,16 @@ private fun buildThreadPendingSendMessage(
         pendingSendErrorCode = null,
         pendingSendErrorMessage = null
     )
+}
+
+/**
+ * Retry sends the message again as a new send (web: a failed send goes back to the composer and is
+ * sent anew): it takes the retry's time, so it moves to the bottom instead of staying where the
+ * failed attempt sits in the timeline.
+ */
+internal fun RaftThreadMessageItem.restampedForLocalSendRetry(timestampLabel: String): RaftThreadMessageItem {
+    val retriedAt = parseRaftTimestampEpochMillisOrNull(timestampLabel) ?: return this
+    return copy(timestampLabel = timestampLabel, createdAtEpochMillis = retriedAt)
 }
 
 private fun buildThreadPendingSendTimestampLabel(
@@ -3739,7 +3967,13 @@ internal fun List<String>.toKnownMarkdownChannelNameSet(): Set<String> =
     mapNotNull { it.trim().takeIf { name -> name.isNotBlank() }?.lowercase() }
         .toSet()
 
-internal fun RaftThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<String> =
+/**
+ * [timelineMessages]: the rows on screen. A cached timeline shows before the payload carries its
+ * messages, and their authors are known names from that first frame on.
+ */
+internal fun RaftThreadScreenPayload.toKnownMarkdownMentionNameSet(
+    timelineMessages: List<RaftThreadMessageItem> = emptyList()
+): Set<String> =
     if (knownMarkdownMentionNames.isNotEmpty()) {
         buildSet {
             knownMarkdownMentionNames.forEach { name -> addKnownThreadMentionValue(name) }
@@ -3750,6 +3984,7 @@ internal fun RaftThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<String
             memberCandidates.forEach { member -> addKnownThreadMentionValues(member) }
             originMessage?.let { message -> addKnownThreadMentionValues(message) }
             messages.forEach { message -> addKnownThreadMentionValues(message) }
+            timelineMessages.forEach { message -> addKnownThreadMentionValues(message) }
         }
     }
 
@@ -3816,9 +4051,23 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
     knownTaskNumbers: Set<Int>? = null
 ): Boolean =
     when (kind) {
+        // `#proj:#7` / `dm:@peer:#7` chip when the reader knows the conversation (Web: a channel the
+        // reader cannot resolve keeps the ref as plain text); the task itself is resolved on open.
         ThreadMarkdownTagKind.Task ->
-            knownTaskNumbers?.contains(label.removePrefix("#").toIntOrNull()) ?: true
+            when {
+                channelName != null -> channelName.trim().lowercase().let { it.isNotBlank() && it in knownChannelNames }
+                directMessagePeerName != null ->
+                    directMessagePeerName.normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames
+                else -> knownTaskNumbers?.contains(label.removePrefix("#").toIntOrNull()) ?: true
+            }
         ThreadMarkdownTagKind.UserMention -> label.normalizedThreadMentionLookupKey() in knownMentionNames
+        // A channel or DM the reader cannot resolve keeps the ref as plain text (Web MessageItem).
+        ThreadMarkdownTagKind.Message ->
+            if (directMessagePeerName != null) {
+                directMessagePeerName.normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames
+            } else {
+                channelName.orEmpty().trim().lowercase().let { it.isNotBlank() && it in knownChannelNames }
+            }
         ThreadMarkdownTagKind.DirectMessageThread ->
             directMessagePeerName.orEmpty().normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames &&
                 !threadShortId.isNullOrBlank()
@@ -3834,7 +4083,7 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
         }
     }
 
-private fun defaultThreadMarkdownTagIsValid(tag: ThreadMarkdownTag): Boolean =
+internal fun defaultThreadMarkdownTagIsValid(tag: ThreadMarkdownTag): Boolean =
     tag.kind == ThreadMarkdownTagKind.Task
 
 internal fun RaftThreadScreenPayload.resolveTaskAssigneeDisplayName(
@@ -3901,6 +4150,18 @@ internal fun ThreadTimelineRenderConfig.formatActionCardExecutedTimeLabel(
     if (context.todayEpochDay == null) return null
     return context.formatTimestampLabel(value).takeIf { it.isNotBlank() }
 }
+
+/**
+ * A row's time as its header shows it in absolute mode (the clock today, else the date and the clock,
+ * in the 12/24-hour setting), or [fallback] (the compact HH:mm) without a live time context. Never the
+ * raw wire timestamp.
+ */
+internal fun threadRowTimeAccessibilityLabel(
+    timestampLabel: String,
+    fallback: String,
+    timeContext: RaftTimeContext?,
+): String? =
+    (raftAbsoluteTimestampLabel(timestampLabel, timeContext) ?: fallback.takeIf { it.isNotBlank() })
 
 internal fun formatThreadCompactTimestampLabel(
     value: String,
@@ -4002,7 +4263,12 @@ internal suspend fun openMarkdownTaskNumberPayload(
     tasksDataStore: SharedTasksDataStore?,
     /** `task_v2_conversations_v0` for the server ([taskOpenTarget]). */
     taskV2Enabled: Boolean = false,
-    conversationIdentityProvider: SharedConversationIdentityProvider? = null
+    conversationIdentityProvider: SharedConversationIdentityProvider? = null,
+    /** `#proj:#7` / `dm:@peer:#7`: only a task of [currentTaskChannelId] matches. */
+    channelQualified: Boolean = false,
+    /** Its network lookup runs in this resolver's shared fetch phase (the chip spinner). */
+    referenceResolver: SharedReferenceResolver? = null,
+    actionId: String? = null
 ): MarkdownTaskNumberOpenResult {
     return when (
         val resolution =
@@ -4011,25 +4277,41 @@ internal suspend fun openMarkdownTaskNumberPayload(
                 taskNumber = taskNumber,
                 currentChannelId = currentTaskChannelId,
                 tasksDataSource = tasksDataSource,
-                tasksDataStore = tasksDataStore
+                tasksDataStore = tasksDataStore,
+                channelQualified = channelQualified,
+                referenceResolver = referenceResolver,
+                actionId = actionId
             )
     ) {
         is SharedTaskReferenceResolution.Found -> {
             if (resolution.task.taskOpenSurface(taskV2Enabled) != null) {
                 return MarkdownTaskNumberOpenResult.OpensInPlace(resolution.task)
             }
+            val resolveConversation: suspend () -> ChannelId? = {
+                resolveTaskOpenConversationChannelId(
+                    task = resolution.task,
+                    serverId = serverId.value,
+                    tasksDataSource = tasksDataSource,
+                    taskV2Enabled = taskV2Enabled,
+                )
+            }
+            // A joint task's local conversation is a `POST /tasks/:id/conversation`: part of the
+            // open's fetch, so the shared spinner covers it; every other target is local.
+            val resolvedConversationChannelId =
+                if (
+                    referenceResolver != null &&
+                    resolution.task.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation
+                ) {
+                    referenceResolver.fetchPhase(actionId) { resolveConversation() }
+                } else {
+                    resolveConversation()
+                }
             val payload =
                 currentPayload.taskThreadLaunchPayload(
                     task = resolution.task,
                     serverId = serverId,
                     conversationIdentityProvider = conversationIdentityProvider,
-                    resolvedConversationChannelId =
-                        resolveTaskOpenConversationChannelId(
-                            task = resolution.task,
-                            serverId = serverId.value,
-                            tasksDataSource = tasksDataSource,
-                            taskV2Enabled = taskV2Enabled,
-                        ),
+                    resolvedConversationChannelId = resolvedConversationChannelId,
                 ) ?: return MarkdownTaskNumberOpenResult.Failed
             MarkdownTaskNumberOpenResult.Found(
                 task = resolution.task,
@@ -4133,7 +4415,8 @@ internal fun shouldStartThreadTasksLoad(
     taskChannelId: ChannelId?
 ): Boolean =
     taskChannelId != null &&
-        payload.status == "content" &&
+        // A channel with no messages loads as "empty" and still has a Tasks tab to fill.
+        (payload.status == "content" || payload.status == "empty") &&
         payload.supportsChannelTasks() &&
         payload.resolvedTaskLookupChannelId()?.let { it == taskChannelId.value } == true
 
@@ -4750,8 +5033,12 @@ private fun ThreadPageScreen(
     val routerModule = remember(pager) {
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
     }
-    val unableToOpenThreadLabel = stringResource(Res.string.thread_error_open_thread)
+    val threadOpenFailureMessages = ThreadOpenFailure.entries.associateWith { stringResource(it.message) }
     val unableToOpenProfileLabel = stringResource(Res.string.thread_error_open_profile)
+    fun failThreadOpen(failure: ThreadOpenFailure, payload: RaftThreadScreenPayload) {
+        bridge.toast(threadOpenFailureMessages.getValue(failure))
+        bridge.logWarn(threadOpenFailureLog(failure, payload))
+    }
     fun openStandaloneThreadPayload(
         nextPayload: RaftThreadScreenPayload,
         serverIdOverride: String? = null,
@@ -4760,8 +5047,7 @@ private fun ThreadPageScreen(
     ) {
         val launchPayload = nextPayload.toWireThreadLaunchPayloadOrNull()
         if (launchPayload == null) {
-            bridge.toast(unableToOpenThreadLabel)
-            bridge.logWarn("thread_open_skip reason=missing_route_identity instanceId=${nextPayload.instanceId}")
+            failThreadOpen(ThreadOpenFailure.MissingIdentity, nextPayload)
             return
         }
         val targetStoreScope =
@@ -4789,18 +5075,14 @@ private fun ThreadPageScreen(
                     current.openWithinWideDetail(source, launchPayload, pane.serverId, desktopModeEnabled)
                 }
                 if (next.launchPayload != launchPayload && next.visibleSideThread()?.payload != launchPayload) {
-                    bridge.toast(unableToOpenThreadLabel)
-                    bridge.logWarn("thread_open_skip reason=stale_adaptive_source")
+                    failThreadOpen(ThreadOpenFailure.StaleSource, nextPayload)
                 }
             } else pager.openRaftPage(
                 pageName = THREAD_PAGE,
                 pageData = launchPayload.toThreadPageData().withRaftOpenAnimation(animated),
                 storeScopeOverride = targetStoreScope,
                 onMissingScope = {
-                    bridge.toast(unableToOpenThreadLabel)
-                    bridge.logWarn(
-                        "thread_open_skip reason=missing_shell_scope instanceId=${nextPayload.instanceId}"
-                    )
+                    failThreadOpen(ThreadOpenFailure.MissingScope, nextPayload)
                 }
             )
         }
@@ -4819,9 +5101,31 @@ private fun ThreadPageScreen(
         }
         openPage()
     }
+    val rootBack: () -> Unit = {
+        val closeRequest = adaptiveCloseRequest
+        if (closeRequest != null) {
+            sharedStores.eventBus.post(
+                eventName = RAFT_ADAPTIVE_DETAIL_CLOSE_EVENT,
+                eventData = closeRequest.toJson(),
+                crossProcess = true,
+                source = "adaptive_thread_root_back",
+            )
+        } else {
+            routerModule.closePage()
+        }
+    }
+    val conversationUnavailableNav =
+        ConversationUnavailableNav(
+            wide = adaptivePaneState.layout == RaftAdaptivePaneLayout.DualPane,
+            onBack = rootBack,
+        )
+    val threadOutlineApi = remember(networkClient) { build.raft.app.data.NetworkRaftThreadOutlineApi(networkClient) }
     CompositionLocalProvider(
+        LocalConversationUnavailableNav provides conversationUnavailableNav,
+        LocalThreadOutlineApi provides threadOutlineApi,
         LocalThreadAdaptiveInitiationCapture provides adaptiveInitiationCaptureHolder,
         LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
+        LocalThreadQuotedPermalinkLoader provides quotedPermalinkLoader,
     ) {
     SharedThreadRouteContent(
         initialPayload = payload,
@@ -4842,19 +5146,7 @@ private fun ThreadPageScreen(
         eventBus = sharedStores.eventBus,
         active = pageVisible,
         adaptiveCloseRequest = adaptiveCloseRequest,
-        onBack = {
-            val closeRequest = adaptiveCloseRequest
-            if (closeRequest != null) {
-                sharedStores.eventBus.post(
-                    eventName = RAFT_ADAPTIVE_DETAIL_CLOSE_EVENT,
-                    eventData = closeRequest.toJson(),
-                    crossProcess = true,
-                    source = "adaptive_thread_root_back",
-                )
-            } else {
-                routerModule.closePage()
-            }
-        },
+        onBack = rootBack,
         onOpenThreadPayload = { nextPayload -> openStandaloneThreadPayload(nextPayload) },
         onReplaceThreadPayload = {},
         onOpenThreadPayloadWithoutAnimation = { nextPayload -> openStandaloneThreadPayload(nextPayload, animated = false) },
@@ -4962,18 +5254,22 @@ private fun ThreadPageScreen(
                 )
             }
         },
-        onOpenMembersPager = { currentPayload, serverId, channelId, currentStoreScope ->
+        onOpenMembersPager = { currentPayload, serverId, channelId, currentStoreScope, openAddMember ->
             pager.openRaftPage(
                 pageName = THREAD_MEMBERS_PAGE,
-                pageData = currentPayload.toThreadMembersPageData(serverId, channelId),
+                pageData =
+                    currentPayload.toThreadMembersPageData(serverId, channelId).apply {
+                        // The settings drawer's add tile opens Add Member directly (web members strip).
+                        if (openAddMember) put(THREAD_MEMBERS_INITIAL_VIEW_KEY, "add")
+                    },
                 storeScopeOverride = currentStoreScope,
                 authenticatedRouteAuthorityRequired = true,
             )
         },
-        onOpenChannelSettings = { serverId, channelId, currentStoreScope ->
+        onOpenChannelSettings = { serverId, channelId, currentStoreScope, linkKey ->
             pager.openRaftPage(
                 pageName = CHANNEL_SETTINGS_PAGE,
-                pageData = channelSettingsPageData(serverId, channelId),
+                pageData = channelSettingsPageData(serverId, channelId, linkKey),
                 storeScopeOverride = currentStoreScope,
                 authenticatedRouteAuthorityRequired = true,
             )
@@ -5150,12 +5446,14 @@ private fun ThreadMembersPageScreen() {
     var createAgentName by remember(routeOwner) { mutableStateOf<String?>(null) }
     var createAgentMode by remember(routeOwner) { mutableStateOf(MembersCreateAgentMode.Managed) }
     var canCreateAgents by remember(routeOwner) { mutableStateOf(false) }
+    var serverPlan by remember(routeOwner) { mutableStateOf<String?>(null) }
     LaunchedEffect(liveOwner, routeOwner) {
         canCreateAgents = false
         if (liveOwner == routeOwner) {
             val session = sharedStores.authStore(storeScope).readSession()
-            canCreateAgents = session?.servers?.firstOrNull { it.id == routeOwner.serverId }
-                ?.toServerSummary()?.permissions?.canManageSettings == true
+            val server = session?.servers?.firstOrNull { it.id == routeOwner.serverId }?.toServerSummary()
+            canCreateAgents = threadAddMemberCanCreateAgents(server?.permissions)
+            serverPlan = server?.plan
         } else createAgentName = null
     }
     var addDialogVisible by remember { mutableStateOf(false) }
@@ -5432,6 +5730,7 @@ private fun ThreadMembersPageScreen() {
         createAgentName?.let { initialName ->
             ChannelMembersCreateAgentDialog(
                 owner = routeOwner, channelId = route.channelId, initialName = initialName, mode = createAgentMode,
+                channelName = channelName,
                 authority = authorityGateway, computersStore = sharedStores.computersStore(storeScope),
                 formStore = sharedStores.createAgentFormStore(storeScope), membersStore = serverMembersStore,
                 onDismiss = { createAgentName = null; refreshMembers() },
@@ -5444,6 +5743,10 @@ private fun ThreadMembersPageScreen() {
                         openMemberProfile(memberId, MemberKind.Agent)
                     }
                 },
+                onAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) },
+                serverPlan = serverPlan,
+                // Web CreateAgentDialog `seat_limit_agent_create`: Free → upgrade, Pro → add seats.
+                onUpgrade = { pager.openRaftUpgradeDialog(RaftUpgradeGate.SeatLimitAgentCreate, storeScope) },
             )
         }
         removalGate.pending?.let { confirmation ->
@@ -5570,7 +5873,8 @@ internal fun ThreadMembersPageContent(
         ) {
         LazyColumn(
             state = rosterListState,
-            modifier = Modifier.fillMaxSize(),
+            // PROTOTYPE (native nav bar): drives the host's large title.
+            modifier = Modifier.fillMaxSize().raftNativeNavBarPrimaryList(rosterListState),
             contentPadding = PaddingValues(bottom = 12.dp + if (canAddMembers && !membersLoading) 0.dp else bottomSafeArea),
         ) {
             if (membersFailed) {
@@ -5655,7 +5959,7 @@ internal fun ThreadMembersPageContent(
                         val member = filteredExternal[index]
                         // SSOT audit: the live time context (as rememberRaftAgentStatusIndicatorState
                         // reads it), so the lime/cyan boundary moves on its minute tick.
-                        val now = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis ?: defaultNowMillis()
+                        val now = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
                         val handlesLine = member.handles.joinToString(" · ") { "@${it.removePrefix("@")}" }
                         ChannelMembersRow(
                             title = member.displayName,
@@ -5690,6 +5994,17 @@ internal fun ThreadMembersPageContent(
         }
     }
     }
+}
+
+/** PROTOTYPE (native nav): the conversation's Chat / Tasks / Files strip, for the proto fixture page. */
+@Composable
+internal fun ThreadNativeNavProtoModeTabs() {
+    RaftTopTabBar(
+        items = RaftThreadTab.entries.map { it.toRaftTabSpec().toTopTabBarItem() },
+        selectedKey = RaftThreadTab.Chat.toString(),
+        onSelectedKeyChange = {},
+        itemKeyPrefix = "thread-tab"
+    )
 }
 
 @Composable
@@ -6048,18 +6363,18 @@ internal fun ThreadReactionAtlasVisualScreen() {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
                 ) {
-                    RaftToolbarChip(
-                        label = "Todo",
-                        iconName = RaftLucideIconName.CircleDashed,
-                        trailingIconName = RaftLucideIconName.ChevronDown,
-                        onClick = {}
-                    )
-                    RaftToolbarChip(
-                        label = "In progress",
-                        iconName = RaftLucideIconName.CircleCheck,
-                        trailingIconName = RaftLucideIconName.ChevronDown,
-                        onClick = {}
-                    )
+                    RaftDesignSystemTheme {
+                        RaftPickerTriggerButton(
+                            text = "Todo",
+                            onClick = {},
+                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.CircleDashed) }
+                        )
+                        RaftPickerTriggerButton(
+                            text = "In progress",
+                            onClick = {},
+                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.CircleCheck) }
+                        )
+                    }
                 }
             }
             ThreadReactionVisualSection("Fallback") {
@@ -6115,50 +6430,136 @@ private fun ThreadReactionAtlasImagePreview() {
     }
 }
 
+/**
+ * `components.channel.settings.panel` (and `.pinned-panel`): the #design settings drawer as the web
+ * capture shows it (ChatPanel settings drawer, 390x844): the members strip (one person, one
+ * working agent), Info with name and description unchanged, Preferences with #design in
+ * Channels (Pinned for [pinned]), Notifications on All new messages and Collapse long messages
+ * off, then an owner's actions: Make Private, Archive, Leave, Stop All Agents, Delete.
+ */
 @Composable
-internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false) {
+internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false, asPage: Boolean = rememberThreadSettingsOpensAsPage()) {
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         ThreadSettingsModal(
             channelName = "design",
             subtitle = stringResource(Res.string.channel_description_design),
-            actions = channelPanelVisualSettingsActions(),
-            conversationPinState =
-                ThreadConversationPinUiState(
-                    conversationId = "thread_design",
-                    pinnedKind = "channel",
-                    pinnedId = "thread_design",
-                    pinned = pinned,
-                    available = true
-                ),
+            panel = channelSettingsPanelVisualPanel(pinned),
             onDismiss = {},
-            onTogglePin = {},
-            onOpenAction = {}
+            asPage = asPage,
         )
     }
 }
 
+/** The fixture panel of [ChannelSettingsPanelVisualScreen] (also the drawer screenshot tests). */
+internal fun channelSettingsPanelVisualPanel(pinned: Boolean = false, serverId: String = "visual-server"): ThreadChannelSettingsPanel {
+    val channel =
+        HomeChannelRow(
+            threadId = ThreadId("channel-design"),
+            channelId = ChannelId("channel-design"),
+            channelType = "channel",
+            name = "design",
+            subtitle = "Product and UI decisions",
+            memberCount = 2,
+        )
+    return ThreadChannelSettingsPanel(
+        channel = channel,
+        permissions = channelSettingsPermissions(channel, canManage = true),
+        canStopAllAgents = true,
+        members =
+            SharedServerChannelMembersSlice(
+                serverId = serverId,
+                channelId = "channel-design",
+                members =
+                    listOf(
+                        MemberProfile(id = MemberId("visual-user"), displayName = "artin", handle = "artin", kind = MemberKind.Human),
+                        MemberProfile(
+                            id = MemberId("agent-cindy"),
+                            displayName = "Cindy",
+                            handle = "Cindy",
+                            kind = MemberKind.Agent,
+                            avatar = build.raft.app.model.AvatarReference.Pixel("robot"),
+                        ),
+                    ),
+                status = SharedServerMembersLoadStatus.Loaded,
+            ),
+        // The web strip carries the agent's live light: Cindy is working.
+        agentStatusResolver = { memberId ->
+            flowOf(
+                memberId?.takeIf { it == "agent-cindy" }?.let {
+                    RaftAgentStatusIndicatorState(
+                        status = AgentStatus.Working,
+                        color = RaftColor.BrandYellow,
+                        pulsing = false,
+                        label = "Working",
+                        external = false
+                    )
+                }
+            )
+        },
+        section = ChannelSectionPlacement(customSections = emptyList(), pinned = pinned, placementSectionId = null),
+        notificationLevelTarget =
+            RaftNotificationLevelTarget(
+                serverId = serverId,
+                scope = build.raft.app.data.RaftNotificationLevelScope.Channel,
+                id = "channel-design",
+                muteSupported = true,
+            ),
+        refreshNotificationLevels = false,
+        longMessageCollapse =
+            RaftLongMessageCollapseConversationSetting(
+                preference = build.raft.app.data.RaftLongMessageCollapseConversationPreference(globalEnabled = false, channelOverride = null),
+                available = true,
+                onSetEnabled = {},
+            ),
+    )
+}
+
+/**
+ * The DM settings drawer for Friday (a DM with an App bot, so it can be muted): Move to section
+ * on Pinned ([pinned]) or at home in Direct Messages, with my two sections to pick from, then
+ * Mute (on) and Collapse long messages. [mutable] false is a DM with a person, which the server
+ * does not let you mute: no Mute row (web `canToggleActivityMute`).
+ */
 @Composable
-internal fun DirectMessageSettingsPanelVisualScreen() {
+internal fun DirectMessageSettingsPanelVisualScreen(
+    pinned: Boolean = true,
+    mutable: Boolean = true,
+    // A phone shows the page, a wide window the drawer, as the conversation opens them.
+    asPage: Boolean = rememberThreadSettingsOpensAsPage(),
+) {
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-        ThreadDirectMessageSettingsModal(
+        ThreadDirectMessageSettingsDrawer(
+            name = if (mutable) "Friday" else "Alice Chen",
             activityMuteState =
                 ThreadActivityMuteUiState(
                     channelId = "dm-visual-friday",
                     muted = true,
                     supported = true,
                     muteFromSeq = 42
+                ).takeIf { mutable },
+            section =
+                ChannelSectionPlacement(
+                    customSections =
+                        listOf(
+                            build.raft.app.data.SettingsServerSidebarCustomSection(id = "section-launch", name = "Launch", emoji = "\uD83D\uDE80"),
+                            build.raft.app.data.SettingsServerSidebarCustomSection(id = "section-ops", name = "Ops"),
+                        ),
+                    pinned = pinned,
+                    placementSectionId = null,
+                    directMessage = true,
                 ),
-            conversationPinState =
-                ThreadConversationPinUiState(
-                    conversationId = "dm-visual-friday",
-                    pinnedKind = "agent",
-                    pinnedId = "agent-visual-friday",
-                    pinned = true,
-                    available = true
+            sectionEnabled = true,
+            longMessageCollapseSetting =
+                RaftLongMessageCollapseConversationSetting(
+                    preference = build.raft.app.data.RaftLongMessageCollapseConversationPreference(globalEnabled = false, channelOverride = null),
+                    available = true,
+                    onSetEnabled = {},
                 ),
             onDismiss = {},
             onToggleActivityMute = {},
-            onTogglePin = {}
+            onMoveSection = {},
+            onCreateSection = { _, _ -> },
+            asPage = asPage,
         )
     }
 }
@@ -6172,6 +6573,20 @@ internal fun DirectMessageSettingsPanelVisualScreen() {
 @Composable
 internal fun ChannelAddMemberPanelVisualScreen() {
     val candidates = remember { channelPanelVisualCandidates() }
+    // fixtureData.json: every candidate agent is `active` / `working`; freeze the pulse at its
+    // resting frame so the dot is solid, as in the web capture.
+    val workingState =
+        remember {
+            raftAgentStatusIndicatorState(
+                status = AgentStatus.Working,
+                presence = AgentStatus.Working.presence,
+                external = false,
+            ).copy(pulsing = false)
+        }
+    val agentStatusResolver: RaftAgentStatusResolver =
+        remember(workingState) {
+            { memberId -> flowOf(workingState.takeIf { memberId?.startsWith("agent-") == true }) }
+        }
     ThreadMembersPageContent(
         members = emptyList(),
         filteredMembers = emptyList(),
@@ -6195,7 +6610,7 @@ internal fun ChannelAddMemberPanelVisualScreen() {
         membersLoading = false,
         refreshing = false,
         canAddMembers = true,
-        agentStatusResolver = EmptyRaftAgentStatusResolver,
+        agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = EmptyRaftMemberAvatarResolver,
         onBack = {},
         onRefresh = {},
@@ -6209,7 +6624,7 @@ internal fun ChannelAddMemberPanelVisualScreen() {
 
 // Add-member candidates: web components.channel.members.add-panel lists the server's
 // fixtureData.json agents that are not in the #design roster (Cindy is), every one
-// wearing `pixel:robot`, and no humans.
+// wearing `pixel:robot`, then the humans not in it: artin (Owner) and Designer.
 private fun channelPanelVisualCandidates(): List<RaftThreadMemberItem> =
     listOf(
         RaftThreadMemberItem(
@@ -6281,11 +6696,26 @@ private fun channelPanelVisualCandidates(): List<RaftThreadMemberItem> =
             avatarUrl = "pixel:robot",
             avatarLabel = "NM",
             kind = "agent"
+        ),
+        RaftThreadMemberItem(
+            id = "visual-user",
+            displayName = "artin",
+            handle = "artin",
+            roleLabel = "",
+            description = "Owner",
+            avatarLabel = "AR",
+            kind = "human"
+        ),
+        RaftThreadMemberItem(
+            id = "visual-human-designer",
+            displayName = "Designer",
+            handle = "designer",
+            roleLabel = "",
+            description = "Product design",
+            avatarLabel = "DE",
+            kind = "human"
         )
     )
-
-private fun channelPanelVisualSettingsActions(): List<RaftThreadSettingsAction> =
-    defaultThreadSettingsChannelActionCapabilities()
 
 /**
  * release/1.12.0 vc 1120118 hotfix: payload classes for [SharedThreadRouteContent].
@@ -6368,8 +6798,9 @@ private class SharedThreadRouteContentCallbacks(
     val onAuthRequired: (String) -> Unit,
     val onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit,
     val onOpenMemberProfile: (RaftThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit,
-    val onOpenMembersPager: (RaftThreadScreenPayload, ServerId, ChannelId, RaftShellStoreScope) -> Unit,
-    val onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope) -> Unit,
+    val onOpenMembersPager: (RaftThreadScreenPayload, ServerId, ChannelId, RaftShellStoreScope, Boolean) -> Unit,
+    /** The last argument is the opening conversation's [ThreadSettingsPageLinks] key. */
+    val onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope, String) -> Unit,
 )
 
 @Composable
@@ -6401,8 +6832,8 @@ internal fun SharedThreadRouteContent(
     adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest? = null,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
     onOpenMemberProfile: (RaftThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit = { _, _, _ -> },
-    onOpenMembersPager: (RaftThreadScreenPayload, ServerId, ChannelId, RaftShellStoreScope) -> Unit = { _, _, _, _ -> },
-    onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope) -> Unit = { _, _, _ -> }
+    onOpenMembersPager: (RaftThreadScreenPayload, ServerId, ChannelId, RaftShellStoreScope, Boolean) -> Unit = { _, _, _, _, _ -> },
+    onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope, String) -> Unit = { _, _, _, _ -> }
 ) {
     SharedThreadRouteContentContent(
         data =
@@ -6616,6 +7047,16 @@ private fun SharedThreadRouteContentContent(
     val adaptiveKeyboardController = LocalSoftwareKeyboardController.current
     val adaptiveFocusWorkspaceStore = remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
     var adaptivePageKeyboardInsetDp by remember { mutableStateOf(0f) }
+    val threadKeyboardTapDismissal =
+        remember(adaptiveFocusManager, adaptiveKeyboardController) {
+            ThreadKeyboardTapDismissal(
+                keyboardInsetDp = { adaptivePageKeyboardInsetDp },
+                hideKeyboard = {
+                    adaptiveFocusManager.clearFocus(force = true)
+                    adaptiveKeyboardController?.hide()
+                },
+            )
+        }
     var pendingAdaptiveParentFocus by remember { mutableStateOf<AdaptiveParentFocusRequest?>(null) }
     DisposableEffect(eventBus, adaptiveCloseRequest, threadViewModel) {
         val page = adaptiveCloseRequest
@@ -6667,12 +7108,17 @@ private fun SharedThreadRouteContentContent(
     // parent row whenever it appears/changes so the store re-evaluates
     // event-driven; the store fences every hint by route, account state and
     // current authority status, so redundant dispatches are cheap no-ops.
+    // Agent Lounge v0: a Lounge is in no Home list; once it is known (opened, its DM row, or the
+    // parent detail this reply load reads by id) it is the parent row. No Join: replying before
+    // joining is allowed, as in the Lounge itself; a Lounge you may only read stays read-only.
+    val knownLounges by RaftAgentLounges.lounges.collectAsState()
     LaunchedEffect(
         payload.surfaceKind,
         payload.parentChannelId,
         payload.parentMessageId,
         payload.originParentMessageId,
         sharedHomeState,
+        knownLounges,
     ) {
         if (payload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) return@LaunchedEffect
         val parentChannelId =
@@ -6686,6 +7132,20 @@ private fun SharedThreadRouteContentContent(
         val parentRow =
             snapshot?.channels?.firstOrNull { it.channelId?.value == parentChannelId }
                 ?: snapshot?.directMessages?.firstOrNull { it.channelId?.value == parentChannelId }
+        val parentLounge = if (parentRow == null) RaftAgentLounges.loungeAnyServer(parentChannelId) else null
+        if (parentLounge != null) {
+            threadViewModel.dispatch(
+                SharedThreadIntent.ApplyParentDirectoryHint(
+                    parentChannelId = parentChannelId,
+                    parentMessageId = parentMessageId,
+                    present = true,
+                    joined = parentLounge.postable,
+                    canSend = parentLounge.postable,
+                    authoritative = true,
+                )
+            )
+            return@LaunchedEffect
+        }
         threadViewModel.dispatch(
             SharedThreadIntent.ApplyParentDirectoryHint(
                 parentChannelId = parentChannelId,
@@ -7126,14 +7586,33 @@ private fun SharedThreadRouteContentContent(
             payload.threadConversationPinTarget(stableHeaderProjection)?.toUiState(sidebarOrder)
         }
     var threadFirstContentRevealed by remember(threadInstanceKey) { mutableStateOf(false) }
+    val threadPageInMotion = LocalRaftStackPageInMotion.current
     val holdFirstContentReveal =
         threadHoldsFirstContentReveal(
             contentRevealed = threadFirstContentRevealed,
             accessResolution = renderSlice.accessResolution,
-            initialHomeAccessLookupComplete = renderSlice.initialHomeAccessLookupComplete
+            initialHomeAccessLookupComplete = renderSlice.initialHomeAccessLookupComplete,
+            pageInMotion = threadPageInMotion
         )
     if (!holdFirstContentReveal && !threadFirstContentRevealed) {
         SideEffect { threadFirstContentRevealed = true }
+    }
+    // Diagnostics: content was ready mid slide and its first reveal waits for the push to settle.
+    val revealWaitsForPush =
+        holdFirstContentReveal &&
+            !threadHoldsFirstContentReveal(
+                contentRevealed = threadFirstContentRevealed,
+                accessResolution = renderSlice.accessResolution,
+                initialHomeAccessLookupComplete = renderSlice.initialHomeAccessLookupComplete
+            ) &&
+            !payload.shouldRenderThreadLoadingShell(timelineSlice, renderSlice.accessResolution)
+    LaunchedEffect(threadInstanceKey, revealWaitsForPush) {
+        if (revealWaitsForPush) {
+            bridge.log(
+                "thread_first_reveal_waits_for_push threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
+                    "messages=${timelineSlice.messages.size}"
+            )
+        }
     }
     val routeMountPlan =
         payload.threadRouteMountPlan(
@@ -7595,8 +8074,12 @@ private fun SharedThreadRouteContentContent(
     val taskOpenSurfaceFlow = remember(threadInstanceKey) { TaskOpenSurfaceFlow() }
     val taskOpenGate = remember(threadInstanceKey) { TaskOpenGate() }
     var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
-    // Reference-chip opens are single-flight in their store: busy chip, ignored repeat taps.
-    val markdownRefOpenStore = remember(threadInstanceKey) { ThreadMarkdownRefOpenStore(coroutineScope) }
+    // Reference-chip opens are single-flight in their store (ignored repeat taps). The busy chip is
+    // the reference resolver's fetch phase: a local hit never shows it, a fetch shows it throughout.
+    val markdownRefOpenStore =
+        remember(threadInstanceKey, dataSource) {
+            ThreadMarkdownRefOpenStore(coroutineScope, fetches = dataSource.referenceResolver.inFlight)
+        }
     val markdownReferencePending by markdownRefOpenStore.state.collectAsState()
     fun beginMarkdownReferencePending(actionId: String?): ThreadMarkdownReferencePendingToken? =
         markdownRefOpenStore.begin(actionId)
@@ -7828,6 +8311,12 @@ private fun SharedThreadRouteContentContent(
         stringResource(Res.string.thread_error_open_target, ThreadLocalizedFeedbackPlaceholder)
     val unableToOpenTaskNumberTemplate =
         stringResource(Res.string.thread_error_open_task_number, ThreadLocalizedFeedbackPlaceholder)
+    val referenceNotFoundTemplate =
+        stringResource(Res.string.thread_error_ref_not_found, ThreadLocalizedFeedbackPlaceholder)
+    val referenceNoAccessTemplate =
+        stringResource(Res.string.thread_error_ref_no_access, ThreadLocalizedFeedbackPlaceholder)
+    val referenceOtherServerTemplate =
+        stringResource(Res.string.thread_error_ref_other_server, ThreadLocalizedFeedbackPlaceholder)
     val genericThreadErrorLabel = stringResource(Res.string.common_error)
     val pendingMentionActionBatchStrings =
         PendingMentionActionBatchStrings(
@@ -7933,6 +8422,8 @@ private fun SharedThreadRouteContentContent(
     val unableToSaveMessageLabel = stringResource(Res.string.thread_error_save_message)
     val unableToRemoveSavedMessageLabel = stringResource(Res.string.thread_error_remove_saved_message)
     val attachmentSkippedOneLabel = stringResource(Res.string.thread_attachment_skipped_one)
+    val dropFoldersCantUploadLabel = stringResource(Res.string.thread_composer_drop_folders_cant_upload)
+    val dropFoldersSkippedLabel = stringResource(Res.string.thread_composer_drop_folders_skipped)
     val attachmentSkippedManyTemplate =
         stringResource(Res.string.thread_attachment_skipped_many, ThreadLocalizedFeedbackPlaceholder)
     fun localizedAttachmentUploadFailedDetail(detail: String): String =
@@ -7946,6 +8437,15 @@ private fun SharedThreadRouteContentContent(
         unableToOpenTargetTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
     fun localizedUnableToOpenTaskNumber(taskNumber: Int): String =
         unableToOpenTaskNumberTemplate.replace(ThreadLocalizedFeedbackPlaceholder, taskNumber.toString())
+    /** The toast of a reference that did not open, naming why ([fallback] when no reason applies). */
+    fun localizedReferenceFailure(failure: SharedReferenceFailure, target: String, fallback: String): String =
+        when (failure) {
+            SharedReferenceFailure.NotFound -> referenceNotFoundTemplate
+            SharedReferenceFailure.NoAccess -> referenceNoAccessTemplate
+            SharedReferenceFailure.OtherServer -> referenceOtherServerTemplate
+            SharedReferenceFailure.AuthRequired,
+            SharedReferenceFailure.Unavailable -> null
+        }?.replace(ThreadLocalizedFeedbackPlaceholder, target) ?: fallback
     fun localizedForwardModeLabel(mode: String?): String =
         if (mode?.trim()?.lowercase() == ThreadForwardSelectionMode.Individual.wireValue) {
             individualForwardModeLabel
@@ -8259,27 +8759,44 @@ private fun SharedThreadRouteContentContent(
     LaunchedEffect(taskConversationDetailsViewModel, taskConversationTask, currentServerId) {
         if (currentServerId != null) taskConversationTask?.let { taskConversationDetailsViewModel?.onTask(it) }
     }
-    // `feedback:submit` cards open the Feedback WebView only where the viewing server has
-    // `product_feedback_multi_app` on; follow the flag live as its evaluation lands.
     val featureFlagSnapshotRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-    val feedbackCardEntryEnabled =
-        remember(featureFlagSnapshotRevision, currentServerId) {
-            currentServerId != null &&
-                sharedStores.serverFeatureFlags.isEnabled(
-                    ServerId(currentServerId),
-                    PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
-                )
-        }
+    // `feedback:submit` cards open the Feedback WebView only where Settings > Feedback is the web page
+    // (Compose desktop; settingsFeedbackUsesWebPage) and the viewing server is known. No server flag.
+    val feedbackCardEntryEnabled = raftFeedbackCardEntryEnabled(currentServerId)
     // Task v2 (`task_v2_conversations_v0`, as web reads it per server): every task lists under its
     // source message and the composer drops "As Task".
+    // The session is captured a few frames after the page composes; until then the shell's server
+    // decides, or the first frame laid out the old Chat / Tasks / Files tab row and the list jumped
+    // when it went away (Compose 版 open jitter).
+    val taskV2FlagServerId = threadPageServerId(currentServerId, storeScope.initialServerId)
     val taskV2Enabled =
-        remember(featureFlagSnapshotRevision, currentServerId) {
-            currentServerId != null &&
+        remember(featureFlagSnapshotRevision, taskV2FlagServerId) {
+            taskV2FlagServerId != null &&
                 sharedStores.serverFeatureFlags.isEnabled(
-                    ServerId(currentServerId),
+                    ServerId(taskV2FlagServerId),
                     TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
                 )
         }
+    // Task v2: Tasks and Files are cards opened from the header, not tabs (ConversationSideCards.kt).
+    val sideCardsEnabled =
+        conversationSideCardsEnabled(
+            taskV2Enabled = taskV2Enabled,
+            showModeTabs = payload.showModeTabs,
+            assistantPanelEmbed = LocalThreadAssistantPanelEmbed.current != null
+        )
+    val sideCardsStore = LocalConversationSideCards.current
+    val sideCardsState by sideCardsStore.state.collectAsState()
+    // The person's open cards, kept across restarts (web keeps them across reloads).
+    LaunchedEffect(sideCardsStore, messageBodyOwnerKey) { sideCardsStore.bindOwner(messageBodyOwnerKey) }
+    // An old Tasks / Files tab link (route `selectedTab`, a `selectTab` event) opens that card over
+    // the conversation; the page itself stays on Chat.
+    LaunchedEffect(sideCardsEnabled, selectedThreadTab) {
+        if (!sideCardsEnabled) return@LaunchedEffect
+        val card = selectedThreadTab.conversationSideCard() ?: return@LaunchedEffect
+        if (selectedThreadTab in availableThreadTabs) sideCardsStore.open(card)
+        selectedThreadTab = RaftThreadTab.Chat
+        threadViewModel.dispatch(SharedThreadIntent.SelectTab(RaftThreadTab.Chat.wireValue))
+    }
     // Jump pills (ThreadJumpPills.kt): the unread-thread pill follows the web, a channel only and
     // gated by `thread_unread_badge_v0`; its threads and the conversation's unread come from Home.
     val threadUnreadBadgeEnabled =
@@ -8378,7 +8895,11 @@ private fun SharedThreadRouteContentContent(
                     "${sharedStores.apiEnvironmentStore.current().apiBaseUrl.trimEnd('/')}|$userId"
                 }
         }
-    val threadMembersServerId = currentServerId?.let(::ServerId)
+    // The session is captured a few frames after the page composes. Until then the shell's server
+    // keys the member directory, so @mentions in the first content frame are already chips with
+    // their names; reading nothing there painted them as plain text and re-laid the rows out as
+    // chips a few frames later (Compose 版 open jitter, artin 11-03).
+    val threadMembersServerId = threadPageServerId(currentServerId, storeScope.initialServerId)?.let(::ServerId)
     val threadMembersChannelId = baseRenderedPayload.sourceThreadId?.trim()?.takeIf { it.isNotBlank() }?.let(::ChannelId)
     val threadServerMembersEntry by remember(serverMembersStore, threadMembersServerId) {
         if (serverMembersStore != null && threadMembersServerId != null) {
@@ -8391,10 +8912,10 @@ private fun SharedThreadRouteContentContent(
         threadMembersServerId?.let { serverId -> serverMembersStore?.currentServerMembersEntry(serverId) }
             ?: SharedServerMembersEntry(serverId = threadMembersServerId?.value.orEmpty())
     )
-    LaunchedEffect(selectedThreadTab, serverMembersStore, threadMembersServerId) {
+    LaunchedEffect(selectedThreadTab, serverMembersStore, threadMembersServerId, sideCardsEnabled && sideCardsState.tasks) {
         val store = serverMembersStore ?: return@LaunchedEffect
         val serverId = threadMembersServerId ?: return@LaunchedEffect
-        if (selectedThreadTab == RaftThreadTab.Tasks) {
+        if (selectedThreadTab == RaftThreadTab.Tasks || (sideCardsEnabled && sideCardsState.tasks)) {
             store.refreshMembers(serverId, DataRequestPriority.Visible)
         }
     }
@@ -8569,6 +9090,17 @@ private fun SharedThreadRouteContentContent(
                 loaded = threadMarkdownTaskSourceLoaded(taskProjectionSlice, serverTaskProjectionSlice)
             )
         }
+    val markdownTaskRefStatuses =
+        remember(taskProjectionSlice, serverTaskProjectionSlice, payload.dmPeerName, payload.surfaceKind, payload.channelKind) {
+            threadMarkdownTaskRefStatuses(
+                channelTasks = taskProjectionSlice.tasks,
+                serverTasks = serverTaskProjectionSlice.tasks,
+                currentDirectMessagePeerName =
+                    payload.dmPeerName.takeIf {
+                        payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage || payload.channelKind == "dm"
+                    }
+            )
+        }
     val sourceTaskListsEnabled = payload.supportsChannelTasks()
     val linkedTasksProjection =
         remember(
@@ -8601,9 +9133,17 @@ private fun SharedThreadRouteContentContent(
                 threadChannelMembersSlice.status == SharedServerMembersLoadStatus.Loaded,
             payloadMembers = threadMembersProjection.members.mapNotNull { it.toMemberProfile() }
         )
+    // Channel refs (`#name`) are chips only for channels the reader knows. The store adds those names
+    // once its Home lookup answers; the Home snapshot already in memory gives them to the first frame.
+    val firstFrameHomeSnapshot =
+        (sharedHomeState.content as? SharedHomeContentState.Content)
+            ?.snapshot
+            ?.takeIf { snapshot -> snapshot.server.id == threadMembersServerId }
     val renderedPayload =
-        remember(baseRenderedPayload, threadMembersProjection) {
-            baseRenderedPayload.withThreadMembersProjection(threadMembersProjection)
+        remember(baseRenderedPayload, threadMembersProjection, firstFrameHomeSnapshot) {
+            baseRenderedPayload
+                .withThreadMembersProjection(threadMembersProjection)
+                .withFirstFrameKnownMarkdownChannelNames(firstFrameHomeSnapshot)
         }
     val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
     val threadViewerIsGuest = currentSession.threadViewerIsGuest(headerProjectionServerId?.value)
@@ -8958,6 +9498,10 @@ private fun SharedThreadRouteContentContent(
                     bridge.log("thread_feedback_ticket_open hasTicket=${ticketId != null}")
                     pager.openSettingsFeedbackWebViewPage(storeScope, ticketId = ticketId)
                 },
+                openPlan = {
+                    bridge.log("thread_view_plan_open")
+                    pager.openSettingsBillingPage(storeScope)
+                },
             )
         }
 
@@ -9149,7 +9693,7 @@ private fun SharedThreadRouteContentContent(
             renderedThread,
             stableHeaderProjection
         ) {
-            { target: RaftMessagePermalinkTarget ->
+            { target: ParsedRaftPermalink ->
                 val currentServerId = currentSession?.currentServerId?.takeIf(String::isNotBlank)
                 val sameServer =
                     currentServerSlug?.takeIf(String::isNotBlank)?.let { slug ->
@@ -9401,6 +9945,8 @@ private fun SharedThreadRouteContentContent(
     val imageLightboxWindowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
     val imageLightboxEnabled = raftImageLightboxEnabled(raftPlatformHasFinePointer(), imageLightboxWindowWidthDp)
     var imageLightboxRequest by remember(threadInstanceKey) { mutableStateOf<RaftImageLightboxRequest?>(null) }
+    // The image being edited from the image viewer (RaftViewerImageEdit.kt); null: none.
+    var viewerImageEditAttachment by remember(threadInstanceKey) { mutableStateOf<RaftThreadAttachmentItem?>(null) }
     fun requestInlineImageFallback(attachmentId: String) {
         val (nextState, shouldRequest) = inlineImageFallbackState.beginRequest(attachmentId)
         inlineImageFallbackState = nextState
@@ -9445,6 +9991,7 @@ private fun SharedThreadRouteContentContent(
             bridge.log("thread_image_lightbox status=open count=${imageLightboxRequest?.items?.size ?: 0}")
             return
         }
+        RaftViewerImageEditOpener.threadKey = threadInstanceKey
         pager.openRaftFilePreviewPage(
             attachment.toThreadAttachmentLazyPreviewPayload(
                 kind = "image",
@@ -9626,7 +10173,8 @@ private fun SharedThreadRouteContentContent(
             },
             onDismiss = { imageLightboxRequest = null },
             onDownload = { attachment -> saveAttachmentExternally(attachment) },
-            onOpenWith = { attachment -> openAttachmentExternally(attachment) }
+            onOpenWith = { attachment -> openAttachmentExternally(attachment) },
+            onEdit = { attachment -> viewerImageEditAttachment = attachment }
         )
     }
     fun requestInlineAudioPreview(attachmentId: String, force: Boolean = false) {
@@ -9882,18 +10430,29 @@ private fun SharedThreadRouteContentContent(
                 visibleTailIndex = visibleReadTailIndex
             )
     }
-    LaunchedEffect(visibleReadMarkerKey, active, threadHostForeground, renderSlice.writeActionsEnabled) {
+    // Seen = read only while the window is in use (desktop: focused, input in the last 3 minutes).
+    // Keyed on it so coming back reads what is in front of the person then (web seenReadCatchUp).
+    val hostInUse by RaftHostInUse.inUse.collectAsState()
+    LaunchedEffect(visibleReadMarkerKey, active, threadHostForeground, hostInUse, renderSlice.writeActionsEnabled) {
         if (
             renderSlice.writeActionsEnabled &&
             shouldMarkThreadVisibleRead(
                 routeActive = active,
                 observedHostForeground = threadHostForeground,
                 currentHostVisibility = isRaftHostVisible(storeScope.shellInstanceId),
-                markerKey = visibleReadMarkerKey
+                markerKey = visibleReadMarkerKey,
+                hostInUse = hostInUse
             )
         ) {
             threadViewModel.dispatch(SharedThreadIntent.MarkVisibleRead(visibleReadTailIndex))
+        } else if (!active || !threadHostForeground || !hostInUse) {
+            // fb-4440a18c: left, covered by another page, or in the background. The store's
+            // deferred / queued reads for this page must not go out now.
+            threadViewModel.dispatch(SharedThreadIntent.VisibleReadHidden)
         }
+    }
+    DisposableEffect(threadViewModel) {
+        onDispose { threadViewModel.dispatch(SharedThreadIntent.VisibleReadHidden) }
     }
     fun sendPendingLocalMessage(
         localMessageId: String,
@@ -9993,7 +10552,8 @@ private fun SharedThreadRouteContentContent(
                                 body = context.body,
                                 asTask = context.asTask,
                                 attachmentIds = context.attachmentIds,
-                                randomId = sendAttemptState.randomId
+                                randomId = sendAttemptState.randomId,
+                                mentions = context.mentions,
                             )
                         }
                             ?: throw RaftRequestTimeoutException(
@@ -10125,6 +10685,11 @@ private fun SharedThreadRouteContentContent(
                         SharedHomeIntent.OwnMessagesSent(sendProvenance.serverId, ownSentChannelIds)
                     )
                 }
+                // Agent Lounge v0: your first post in a Lounge joins it (no Join step), so its row
+                // shows under the agent's DM right away.
+                if (sendRoute.surfaceKind == RaftThreadSurfaceKind.Channel) {
+                    RaftAgentLounges.markJoined(sendProvenance.serverId, context.channelId)
+                }
                 bridge.performanceMarker(
                     phase = "composer_send",
                     routeName = "kuikly_thread",
@@ -10194,6 +10759,11 @@ private fun SharedThreadRouteContentContent(
         ownerDraftKey: String? = null,
         expectedAdmissions: Map<String, SharedThreadComposerAttachmentAdmission> = emptyMap(),
     ) {
+        // The month's uploads are used up (`FILE_UPLOAD_QUOTA_EXCEEDED`): the upgrade dialog, as web
+        // MessageInput opens it (`upload_monthly_quota`). Nothing opens on a paid plan.
+        if (raftUpgradeGateForErrorCode(errorCode) == RaftUpgradeGate.UploadMonthlyQuota) {
+            pager.openRaftUpgradeDialog(RaftUpgradeGate.UploadMonthlyQuota, storeScope)
+        }
         val draftKey =
             normalizeThreadAttachmentUploadDraftKey(ownerDraftKey)
                 ?: normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
@@ -10259,6 +10829,10 @@ private fun SharedThreadRouteContentContent(
         if (sizeDecision.rejected.isNotEmpty()) {
             val largest = sizeDecision.largestRejectedBytes ?: 0L
             bridge.toast(localizedAttachmentTooLarge(largest, maxBytes))
+            // Free's per-file ceiling: the upgrade dialog too (web `upload_file_size`).
+            if (raftUploadSizeLimitIsFree(maxBytes)) {
+                pager.openRaftUpgradeDialog(RaftUpgradeGate.UploadFileSize, storeScope)
+            }
             bridge.log(
                 "thread_composer_attachment_size_rejected rejected=${sizeDecision.rejected.size} " +
                     "largestBytes=$largest maxBytes=$maxBytes"
@@ -11075,6 +11649,81 @@ private fun SharedThreadRouteContentContent(
         }
         return acceptedFiles.isNotEmpty() && acceptedFiles.size == files.size && launchedCount == acceptedFiles.size
     }
+    // Image viewer > Edit (artin, task #32): the edited copy goes into this conversation's
+    // composer as a new attachment, like a pasted image; the original message is untouched.
+    var viewerImageEditSequence by remember(threadInstanceKey) { mutableStateOf(0L) }
+    val viewerImageEditMessages by rememberUpdatedState(
+        listOfNotNull(renderedTimelineSlice.originMessage) + renderedTimelineSlice.messages
+    )
+    DisposableEffect(eventBus, threadInstanceKey) {
+        // The phone viewer is its own page: its ⋯ > Edit asks the conversation showing the image.
+        val subscription =
+            eventBus.observe(RAFT_VIEWER_IMAGE_EDIT_EVENT) { data ->
+                if (RaftViewerImageEditOpener.threadKey != threadInstanceKey) return@observe
+                val attachmentId = raftViewerImageEditAttachmentId(data) ?: return@observe
+                val attachment =
+                    viewerImageEditMessages
+                        .asSequence()
+                        .filterNot { it.isRetracted }
+                        .flatMap { it.attachments.asSequence() }
+                        .firstOrNull { it.id == attachmentId && it.isImageAttachment() }
+                        ?: return@observe
+                bridge.log("thread_viewer_image_edit status=open attachmentId=${attachmentId.take(8)}")
+                RaftViewerImageEditOpener.openedAttachmentId = attachmentId
+                viewerImageEditAttachment = attachment
+            }
+        onDispose { subscription.close() }
+    }
+    viewerImageEditAttachment?.let { attachment ->
+        RaftViewerImageEditor(
+            attachment = attachment,
+            desktop = imageLightboxEnabled,
+            resolveFullUrl = { attachmentId ->
+                when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
+                    is ThreadApiResult.Success -> response.data.url
+                    is ThreadApiResult.Failure -> {
+                        bridge.log("thread_viewer_image_edit status=url_failed attachmentId=${attachmentId.take(8)} code=${response.code}")
+                        null
+                    }
+                }
+            },
+            onCancel = { viewerImageEditAttachment = null },
+            onSaveFailed = { bridge.toast(genericThreadErrorLabel) },
+            onEdited = { fileRef ->
+                viewerImageEditSequence += 1
+                val edited = raftViewerEditedImageFile(fileRef, attachment.name, viewerImageEditSequence)
+                viewerImageEditAttachment = null
+                imageLightboxRequest = null
+                bridge.log("thread_viewer_image_edit status=done attachmentId=${attachment.id.take(8)}")
+                coroutineScope.launch {
+                    val prepared =
+                        threadComposerCompressPastedImages(
+                            files = listOf(edited),
+                            originalImage = composerDraftViewModel.state.value.originalImage,
+                            compress = { file ->
+                                val response =
+                                    bridge.compressThreadImage(
+                                        fileRef = file.fileRef.orEmpty(),
+                                        fileName = file.fileName,
+                                        mimeType = file.mimeType?.ifBlank { null } ?: "image/png",
+                                    )
+                                (parseRaftFilePreviewCompressedImageResult(response)
+                                    as? RaftFilePreviewCompressedImageResult.Success)?.file
+                            },
+                            retire = { refs ->
+                                bridge.retireFilePreviewTemporaryFiles(
+                                    sessionId = "thread-viewer-edit-$threadInstanceKey",
+                                    fileRefs = refs
+                                )
+                            },
+                            log = bridge::log,
+                        )
+                    uploadComposerAttachmentFiles(prepared)
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RequestFocus)
+                }
+            },
+        )
+    }
     fun performComposerSend(): Boolean {
         val currentComposer = currentComposerPayload()
         val currentDraftState = composerDraftViewModel.state.value
@@ -11151,9 +11800,11 @@ private fun SharedThreadRouteContentContent(
                 parentMessageId = composerSurface.parentMessageId,
                 streamChannelId = composerSurface.streamChannelId,
                 memberScopedMentions = payload.memberScopedMentions,
-                randomId = newThreadSendRandomId()
+                randomId = newThreadSendRandomId(),
+                // Only picks whose `@handle` is still in the text go out; the list is journaled as is.
+                mentions = currentDraftState.structuredMentions.visibleStructuredMentionsIn(draftText),
             )
-        val localMessageId = ThreadLocalSendNextId.value(composerInstanceId)
+        val localMessageId = ThreadLocalSendNextId.next(composerInstanceId)
         val localTimestampLabel = buildThreadPendingSendTimestampLabel(bridge, payload.nowEpochMillis)
         val localMessage =
             buildThreadPendingSendMessage(
@@ -11333,6 +11984,85 @@ private fun SharedThreadRouteContentContent(
                 originalImage = currentDraftState.originalImage,
             ) ?: return
         )
+    }
+    /**
+     * A host files envelope from the attach buttons' picker or a drop on the composer
+     * (`threadAttachmentDrop`): one admission path for both, so a dropped file is admitted, sized
+     * and reported exactly like a picked one.
+     */
+    suspend fun admitComposerPickedAttachments(action: String, response: JSONObject?) {
+        val files = parseSharedThreadPickedPlatformFiles(response)
+        bridge.log(
+            "thread_attachment_picker_result action=$action code=${response?.optInt("code", -1) ?: -1} " +
+                "files=${files.size} errorCode=${response?.optString("errorCode").orEmpty()} " +
+                "bodyBytes=${response?.optString("bodyText").orEmpty().encodeToByteArray().size}"
+        )
+        // Native generic pickers may finish a mixed selection with a readable
+        // subset and a compression error (code 206).  Never upload that subset:
+        // doing so would silently drop the failed image while the user believes
+        // the whole selection was admitted.  Retire every ref exposed by the
+        // envelope before returning, including refs from successful files and
+        // any future error/fileRefs compatibility fields.
+        if (threadAttachmentPickerHasCompressionFailure(response)) {
+            val cleanupRefs = threadAttachmentPickerCompressionFailureFileRefs(response)
+            if (cleanupRefs.isNotEmpty()) {
+                bridge.retireFilePreviewTemporaryFiles(
+                    sessionId = "thread-picker-compression-$threadInstanceKey",
+                    fileRefs = cleanupRefs.toList()
+                )
+            }
+            bridge.logWarn(
+                "thread_attachment_picker_rejected reason=image_compression_failed " +
+                    "cleanupRefs=${cleanupRefs.size}"
+            )
+            bridge.toast(
+                localizedAttachmentUploadFailedDetail(
+                    userFacingErrorLabels.forErrorCode(
+                        RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE
+                    ) ?: genericThreadErrorLabel
+                )
+            )
+            return
+        }
+        if (files.isEmpty()) {
+            val errorCode = response?.optString("errorCode")?.takeIf { it.isNotBlank() }
+            when {
+                errorCode != null ->
+                    bridge.toast(
+                        localizedAttachmentUploadFailedDetail(
+                            userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
+                        )
+                    )
+                response == null ->
+                    bridge.toast(attachmentPickerUnavailableLabel)
+            }
+            return
+        }
+        val skippedCount = response?.optInt("skippedCount", 0) ?: 0
+        if (skippedCount > 0) {
+            bridge.toast(
+                if (skippedCount == 1) {
+                    attachmentSkippedOneLabel
+                } else {
+                    localizedAttachmentSkippedMany(skippedCount)
+                }
+            )
+        }
+        when (
+            resolveThreadPickedAttachmentComposerAction(
+                action = action,
+                fileCount = files.size,
+                allFilesAreImages = raftComposerImagePickerFilesAreStrictImages(files),
+            )
+        ) {
+            ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->
+                // The picker-reported bytes are the source image, not the final
+                // editor output.  Defer the server-size gate until the confirmed
+                // PNG/original or compressor-produced JPEG reaches upload.
+                openComposerImageAnnotation(files)
+            ThreadPickedAttachmentComposerAction.UploadToComposer -> uploadComposerAttachmentFiles(files)
+            ThreadPickedAttachmentComposerAction.None -> Unit
+        }
     }
     DisposableEffect(eventBus, threadInstanceKey) {
         // Event-bus callbacks can be re-entrant and may be dispatched from different host turns.
@@ -11802,7 +12532,6 @@ private fun SharedThreadRouteContentContent(
                 authStore = authStore,
                 tasksDataSource = tasksDataSource,
                 tasksDataStore = tasksDataStore,
-                serverRole = currentSession?.servers?.firstOrNull { it.id == currentServerId }?.role,
                 onFailed = { code ->
                     when {
                         code.startsWith("tasks_status") && !routeAuthRequired(code) -> bridge.toast(unableToUpdateTaskLabel)
@@ -11831,6 +12560,8 @@ private fun SharedThreadRouteContentContent(
                             threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
                             currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
                                 realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
+                                sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, result.data.channelId))
+                                sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
                             }
                             realtimeEvents.joinChannel(result.data.channelId.value, currentSession?.currentServerId)
                             bridge.toast(joinedChannelLabel)
@@ -11885,12 +12616,14 @@ private fun SharedThreadRouteContentContent(
             submitting = createTaskFromMessage.submitting,
             errorText = createTaskFromMessage.errorText,
             onDismiss = { createTaskFromMessage.dismiss() },
-            onSubmit = { titles ->
+            // Task v2 Create Task's Status field (web: shown with the task v2 flag on).
+            statusField = taskV2Enabled,
+            onSubmit = { titles, status ->
                 val serverId = currentServerId?.takeIf { it.isNotBlank() }
                 if (serverId != null && !createTaskFromMessage.submitting) {
                     coroutineScope.launch {
                         val outcome =
-                            createTaskFromMessage.submit(titles, serverId, tasksDataSource, tasksDataStore, unableToCreateTaskLabel)
+                            createTaskFromMessage.submit(titles, serverId, tasksDataSource, tasksDataStore, unableToCreateTaskLabel, status)
                         bridge.log(
                             "thread_task_create_from_message result=${outcome?.let { it::class.simpleName }} " +
                                 "messageId=${source.messageId.value}"
@@ -11903,32 +12636,56 @@ private fun SharedThreadRouteContentContent(
         )
     }
 
+    // Whether this page's assistant panel is open (set from the content, where the otter lives):
+    // the page's own banner then gives way to the panel window's (threadForegroundBannerOnPage).
+    val assistantPanelOpenOnPage = remember { mutableStateOf(false) }
+    val foregroundBannerServerId = currentSession?.currentServerId?.let(::ServerId)
+    val foregroundBannerTopSafeArea = raftTopSafeAreaPadding()
+    val onForegroundBannerClick: (RaftForegroundMessageBanner) -> Unit = { target ->
+        foregroundBannerStore.dismiss(target.id)
+        val request = target.openRequest
+        val bannerPayload =
+            buildAppShellThreadPayload(
+                conversation = request.conversationIdentity,
+                timeContext = renderedPayload.toRaftTimeCapabilities().staticContext(),
+                alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
+                compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
+                anchorMessageId = request.anchorMessageId ?: target.focusedMessageId,
+                originFallback = request.originFallback,
+                onWarn = bridge::logWarn
+            )
+        if (bannerPayload == null) {
+            bridge.logWarn("foreground_banner_open_rejected reason=reply_identity_incomplete")
+        } else {
+            onOpenThreadPayload(bannerPayload)
+        }
+    }
+    val onForegroundBannerDismiss: (RaftForegroundMessageBanner) -> Unit = { target -> foregroundBannerStore.dismiss(target.id) }
+
     RaftForegroundBannerHost(
-        banner = foregroundMessageBanner,
-        topSafeArea = raftTopSafeAreaPadding(),
+        banner =
+            foregroundMessageBanner?.takeIf {
+                threadForegroundBannerOnPage(
+                    inAssistantPanel = LocalThreadAssistantPanelEmbed.current != null,
+                    assistantPanelOpen = assistantPanelOpenOnPage.value,
+                )
+            },
+        topSafeArea = foregroundBannerTopSafeArea,
         serverMembersStore = serverMembersStore,
         currentServerStore = foregroundBannerCurrentServerStore,
-        currentServerIdOverride = currentSession?.currentServerId?.let(::ServerId),
-        onBannerClick = { target ->
-            foregroundBannerStore.dismiss(target.id)
-            val request = target.openRequest
-            val bannerPayload =
-                buildAppShellThreadPayload(
-                    conversation = request.conversationIdentity,
-                    timeContext = renderedPayload.toRaftTimeCapabilities().staticContext(),
-                    alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
-                    compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
-                    anchorMessageId = request.anchorMessageId ?: target.focusedMessageId,
-                    originFallback = request.originFallback,
-                    onWarn = bridge::logWarn
-                )
-            if (bannerPayload == null) {
-                bridge.logWarn("foreground_banner_open_rejected reason=reply_identity_incomplete")
-            } else {
-                onOpenThreadPayload(bannerPayload)
-            }
-        },
-        onBannerDismiss = { target -> foregroundBannerStore.dismiss(target.id) }
+        currentServerIdOverride = foregroundBannerServerId,
+        onBannerClick = onForegroundBannerClick,
+        onBannerDismiss = onForegroundBannerDismiss,
+        handoff =
+            RaftForegroundBannerHandoff(
+                banner = foregroundMessageBanner,
+                topSafeArea = foregroundBannerTopSafeArea,
+                serverMembersStore = serverMembersStore,
+                currentServerId = foregroundBannerServerId,
+                onClick = onForegroundBannerClick,
+                onDismiss = onForegroundBannerDismiss,
+                coveredByWindow = assistantPanelOpenOnPage,
+            ),
     ) {
         // OFF-zero-work provider set (task #20 P1, reviewed round 4): with
         // diagnostics OFF the census session Local is NOT part of the vararg
@@ -11940,10 +12697,10 @@ private fun SharedThreadRouteContentContent(
             remember(newMessageMenuEnabled, bridge, copiedLabel) {
                 ThreadInPlaceTextSelectionHost(
                     enabled = newMessageMenuEnabled || raftPlatformMessageTextPointerSelectable(),
-                    copyText = { text ->
-                        bridge.copyToPasteboard(text)
-                        bridge.toast(copiedLabel)
-                    }
+                    // Web: copying a selection shows nothing (artin 2026-11-02).
+                    copyText = { text -> bridge.copyToPasteboard(text) },
+                    // artin dm:#99: a finger long press on the body opens only the Compact menu.
+                    fingerPressOpensMessageMenu = newMessageMenuEnabled,
                 )
             }
         // read_receipts_v0: other participants' read positions for this page's scope (null = no hydrate).
@@ -11957,7 +12714,8 @@ private fun SharedThreadRouteContentContent(
                 active = active,
                 serverMembersStore = serverMembersStore,
             )
-        // Agent typing line: who is about to post into this conversation (null = nobody).
+        // The line above the composer: who is about to post into this conversation and, in a
+        // channel, who of its agents is working (null = nobody). A Working now row opens the agent.
         val agentTyping =
             rememberThreadAgentTyping(
                 payload = renderedThread,
@@ -11965,6 +12723,19 @@ private fun SharedThreadRouteContentContent(
                 storeScope = storeScope,
                 serverId = currentServerId,
                 serverMembersStore = serverMembersStore,
+                agentStatusResolver = agentStatusResolver,
+                openAgent = { agentId ->
+                    memberDetailIdentity(agentId, MemberKind.Agent, currentServerId)?.let { identity ->
+                        onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity)
+                    }
+                },
+            )
+        val agentTypingInThread =
+            rememberThreadAgentTypingInThread(
+                payload = renderedThread,
+                sharedStores = sharedStores,
+                storeScope = storeScope,
+                serverId = currentServerId,
             )
         // The personal assistant's otter (web AssistantOtterAnchor): on this conversation's composer
         // when the assistant is ready with its DM, never on that DM or a thread in it.
@@ -11987,10 +12758,31 @@ private fun SharedThreadRouteContentContent(
                 replyThread = assistantOtterReplyThread,
                 pageActive = active,
             )
+        // Read through the local, not captured (this lambda is at the JVM's captured-value limit).
+        val bannerHandoff = LocalRaftForegroundBannerHandoff.current
         // A press opens the assistant over this page (web AssistantOtter's phone Drawer): its head,
         // then its DM as the conversation page itself (THREAD_PAGE embedded, without its head).
         assistantOtter?.let { otter ->
-            ThreadAssistantPanelSheet(otter) {
+            ThreadAssistantPanelSheet(
+                otter,
+                // A phone's drawer covers the page: its banner goes over the drawer instead.
+                onCoversPageChange = { covers -> bannerHandoff?.coveredByWindow?.value = covers },
+                // The page's banner goes over the panel while it is open (threadForegroundBannerOnPage);
+                // once it is closing, the page shows it again.
+                windowOverlay = {
+                    val handoff = bannerHandoff
+                    handoff?.banner?.takeIf { otter.panelOpen }?.let { banner ->
+                        RaftForegroundMessageBannerView(
+                            banner = banner,
+                            topSafeArea = handoff.topSafeArea,
+                            serverMembersStore = handoff.serverMembersStore,
+                            currentServerId = handoff.currentServerId,
+                            onClick = { handoff.onClick(banner) },
+                            onDismiss = { handoff.onDismiss(banner) },
+                        )
+                    }
+                },
+            ) {
                 val dmPageData =
                     remember(otter.serverId, otter.dmChannelId) {
                         val request = assistantOtterDmOpenRequest(otter.serverId, otter.dmChannelId, conversationIdentityProvider)
@@ -12048,7 +12840,10 @@ private fun SharedThreadRouteContentContent(
                                 appHosts = sharedStores.clientConfigStore.appHosts,
                                 featureFlags = sharedStores.serverFeatureFlags,
                                 webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
+                                screenshots = sharedStores.artifactScreenshotStore,
                             ),
+                        // interactive_link_cards: the batched link-card read (App link cards v2).
+                        featureFlags = sharedStores.serverFeatureFlags,
                     )
                 }
             }
@@ -12093,6 +12888,7 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
                 LocalThreadPeerReadReceipts provides peerReadReceipts,
                 LocalThreadAgentTyping provides agentTyping,
+                LocalThreadAgentTypingInThread provides agentTypingInThread,
                 LocalThreadAssistantOtter provides assistantOtter,
                 LocalThreadInlineVideoPreviewHost provides
                     ThreadInlineVideoPreviewHost(
@@ -12112,6 +12908,7 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadAttachmentDownloadHost provides attachmentDownloadHost,
                 LocalRaftMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
                 LocalRaftMarkdownTaskStatuses provides markdownTaskStatuses,
+                LocalRaftMarkdownTaskRefStatuses provides markdownTaskRefStatuses,
                 LocalRaftMarkdownRenderConfig provides
                     RaftMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
@@ -12121,6 +12918,7 @@ private fun SharedThreadRouteContentContent(
                 LocalRaftEmojiPickerOwnerKey provides messageBodyOwnerKey,
                 LocalThreadActionCardNames provides actionCardNames,
                 LocalThreadActionCardSpecHost provides actionCardSpecHost,
+                LocalThreadKeyboardTapDismissal provides threadKeyboardTapDismissal,
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadMessageLongPressGestureOwnerStore provides
                     threadMessageLongPressGestureOwnerStore,
@@ -12145,8 +12943,6 @@ private fun SharedThreadRouteContentContent(
                 MutableStateFlow(SharedServerChannelMembersSlice(serverId = currentServerId, channelId = taskConversationParentChannelId?.value.orEmpty()))
             }
         }.collectAsState(SharedServerChannelMembersSlice(serverId = currentServerId, channelId = taskConversationParentChannelId?.value.orEmpty()))
-        val taskConversationServerRole =
-            currentSession?.servers?.firstOrNull { it.id == currentServerId }?.role
         // Task v2: leave the task for a place in its channel (web `onLeave` + `nav.toMessage`): its
         // source / host message, the channel itself, or a pre-v2 task's earlier discussion thread.
         fun openTaskConversationTarget(request: HomeMessageOpenRequest?, action: String) {
@@ -12189,8 +12985,8 @@ private fun SharedThreadRouteContentContent(
                 action,
             )
         }
-        // Task v2 on a phone: the head scrolls with the conversation (web mobile); the top bar names
-        // the task's state while it is out of view and pulls the head down over the messages.
+        // Task v2 on a phone: the head is the conversation's first row; while that row is out of
+        // view the top bar names the task's state and pulls the head down over the messages.
         val taskHeadScrollState = remember(taskConversationId) { TaskHeadScrollState() }
         // Back (and Escape) puts the pulled-down head back up before it leaves the page.
         RaftBackHandler(enabled = taskHeadScrollState.floatOpen, label = "task_head_float") {
@@ -12216,26 +13012,37 @@ private fun SharedThreadRouteContentContent(
         // head's Source and History times fell back to the raw wire timestamp (1.17.0 build 3 smoke).
         val taskConversationTimeContext =
             timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext()
-        // The head in the conversation ([floating] false) and pulled down from the bar (true).
-        val taskConversationHeadRoute: (@Composable (floating: Boolean) -> Unit)? =
+        // The head pinned above the conversation off a phone, as its first row on a phone, and pulled
+        // down from the bar ([TaskHeadPlacement]).
+        val taskConversationHeadRoute: (@Composable (placement: TaskHeadPlacement) -> Unit)? =
             if (taskConversationTask != null && taskConversationHeaderState != null && !taskConversationHeaderState.removed) {
-                { floating ->
+                { placement ->
                     TaskConversationHeadRoute(
                         task = taskConversationTask,
                         state = taskConversationHeaderState,
                         details = taskConversationDetailsState,
-                        serverRole = taskConversationServerRole,
                         statusUpdating = taskConversationTasksState?.statusUpdatingTaskId == taskConversationTask.id.value,
                         assigneeCandidates = taskConversationMembersSlice.members,
                         timeContext = taskConversationTimeContext,
                         onUpdateStatus = { status ->
                             taskConversationTasksViewModel?.let { TaskHeadEdits(it::dispatch).updateStatus(taskConversationTask, status) }
                         },
+                        onMoveToBacklog = { reason ->
+                            taskConversationTasksViewModel?.let { TaskHeadEdits(it::dispatch).moveToBacklog(taskConversationTask, reason) }
+                        },
                         onAssign = { member ->
                             taskConversationTasksViewModel?.let { TaskHeadEdits(it::dispatch).assign(taskConversationTask, member) }
                         },
                         onOpenSource = {
                             openTaskInChannel(taskConversationTask, taskConversationTask.taskHeadSourceMessageId(), "source")
+                        },
+                        // The creator's face and name: their profile, as a message author's avatar opens it.
+                        onOpenCreator = { person ->
+                            onOpenMemberProfile(
+                                renderedThread,
+                                renderedTimelineSlice,
+                                MemberDetailIdentity(MemberId(person.id), person.kind, currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)),
+                            )
                         },
                         onOpenEarlierDiscussion = {
                             val earlier = taskConversationDetailsState.earlierDiscussion.valueOrNull
@@ -12249,22 +13056,220 @@ private fun SharedThreadRouteContentContent(
                             )
                         },
                         scrollState = taskHeadScrollState,
-                        // Typing on a phone: the head folds away so the conversation keeps its room.
+                        // Typing on a phone: the pulled-down head goes back up.
                         keyboardUp = adaptivePageKeyboardInsetDp > 0f,
                         onRetryHistory = { taskConversationDetailsViewModel?.retryHistory() },
                         // The offline stand-in refuses writes: its status and assignee are plain facts.
                         editable = taskConversationTasksState?.standIn != true,
-                        floating = floating,
+                        placement = placement,
                         serverId = currentServerId,
                     )
                 }
             } else {
                 null
             }
-        val taskConversationBar: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(false) } }
-        val taskConversationFloat: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(true) } }
+        val taskConversationBar: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(TaskHeadPlacement.Page) } }
+        val taskConversationFloat: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(TaskHeadPlacement.PullDown) } }
+        val taskConversationHeadRow =
+            rememberTaskConversationHeadRow(taskHeadScrollState) { taskConversationHeadRoute?.invoke(TaskHeadPlacement.FirstRow) }
+        // What the settings drawer (and the phone's settings page) do beyond the members strip and
+        // the preferences: Info with the Slack pick, Guest access and every action through the
+        // settings page's store, then what follows them. [onLeave] leaves the conversation after
+        // Leave, Delete, Disconnect or Archive.
+        fun completeChannelSettingsPanel(
+            panel: ThreadChannelSettingsPanel,
+            homeContent: SharedHomeContentState,
+            onLeave: () -> Unit,
+        ): ThreadChannelSettingsPanel {
+            val serverId = threadMembersServerId
+            val channelId = threadMembersChannelId
+            val homeServer = (homeContent as? SharedHomeContentState.Content)?.snapshot?.server
+            val routeOwner = sharedStores.currentAuthenticatedRouteOwner(storeScope)
+            return panel.copy(
+                // The settings page's store: Info with the Slack pick, Guest access and every action.
+                storeFactory =
+                    if (serverId != null && channelId != null && routeOwner != null && routeOwner.serverId == serverId.value) {
+                        { scope ->
+                            createChannelSettingsStore(ChannelSettingsRoute(serverId, channelId), routeOwner, sharedStores, storeScope, scope) {
+                                bridge.log("channel_settings_store drawer $it")
+                            }
+                        }
+                    } else {
+                        null
+                    },
+                canStopAllAgents = panel.channel?.let { channelSettingsCanStopAllAgents(it, homeServer?.role) } == true,
+                agentControlsApi = RaftAgentControlsApi(sharedStores.networkClient(storeScope)),
+                hideMembersStrip =
+                    channelSettingsHidesMembersStrip(panel.channel, homeServer?.role, homeServer?.hideHumansFromMembers == true),
+                onProfileSaved = { name, description ->
+                    channelId?.let { id ->
+                        threadViewModel.dispatch(SharedThreadIntent.ApplyChannelProfile(id.value, name, description))
+                        sharedHomeStore?.dispatch(SharedHomeIntent.ChannelProfileUpdated(channelId = id, name = name, description = description))
+                    }
+                },
+                onChannelChanged = { sharedHomeStore?.dispatch(SharedHomeIntent.Refresh) },
+                onChannelClosed = { action, accessLost ->
+                    if (accessLost) channelId?.let { sharedStores.publishChannelAccessLost(storeScope, it) }
+                    sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                    // Leaving, deleting or archiving takes the person out of the channel (the old drawer did too).
+                    if (accessLost || action == ChannelSettingsAction.Archive) onLeave()
+                },
+                onActionFailed = { message -> bridge.toast(message) },
+                onOpenChannel = { conversation, unarchived ->
+                    if (unarchived) sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                    val next =
+                        buildAppShellThreadPayload(
+                            conversation = conversation,
+                            timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
+                            alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
+                            compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
+                            onWarn = bridge::logWarn,
+                        )
+                    if (next != null) {
+                        onOpenThreadPayload(next)
+                    } else {
+                        bridge.logWarn("channel_settings_archived_open_rejected reason=identity_unresolved")
+                    }
+                },
+            )
+        }
+        // The settings drawer beyond the name form and actions (web ChannelOverflowMenu): the
+        // members strip, Move to section, Notifications and Collapse long messages.
+        val channelSettingsPanel =
+            rememberThreadChannelSettingsPanel(
+                homeContent = sharedHomeState.content,
+                serverId = threadMembersServerId,
+                channelId = threadMembersChannelId,
+                memberSlice = threadChannelMembersSlice,
+                pinState = conversationPinState,
+                activityMuteState = activityMuteState,
+                longMessageCollapse = longMessageCollapseConversationSetting,
+                agentStatusResolver = agentStatusResolver,
+                writeActionsEnabled = renderSlice.writeActionsEnabled,
+                onHomeIntent = { intent -> sharedHomeStore?.dispatch(intent) },
+                directMessage = renderedThread.surfaceKind == RaftThreadSurfaceKind.DirectMessage,
+            )?.let { panel -> completeChannelSettingsPanel(panel, sharedHomeState.content, onLeave = onBack) }
+        // A phone's settings page (ThreadSettingsPage.kt) reads this conversation through its link:
+        // the same stores and callbacks as the drawer above, as live sources.
+        val settingsPageLinkKey = "thread-settings:$threadInstanceKey"
+        val settingsPageLink = remember(settingsPageLinkKey) { ThreadSettingsPageLink() }
+        DisposableEffect(settingsPageLinkKey, settingsPageLink) {
+            ThreadSettingsPageLinks.register(settingsPageLinkKey, settingsPageLink)
+            onDispose { ThreadSettingsPageLinks.unregister(settingsPageLinkKey, settingsPageLink) }
+        }
+        // Leave, Delete, Disconnect or Archive on the page: the conversation goes once it is back on screen.
+        var leaveAfterSettingsPage by remember(settingsPageLinkKey) { mutableStateOf(false) }
+        LaunchedEffect(leaveAfterSettingsPage, active) {
+            if (leaveAfterSettingsPage && active) {
+                leaveAfterSettingsPage = false
+                onBack()
+            }
+        }
+        val settingsPageMembers =
+            remember(serverMembersStore, threadMembersServerId, threadMembersChannelId) {
+                if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
+                    serverMembersStore.channelMemberSliceFlow(serverId = threadMembersServerId, channelId = threadMembersChannelId)
+                } else {
+                    null
+                }
+            }
+        val settingsPageRenderSlices = remember(threadViewModel) { threadViewModel.renderSliceFlow() }
+        val settingsPageSources =
+            ThreadSettingsPageSources(
+                directMessage = renderedThread.surfaceKind == RaftThreadSurfaceKind.DirectMessage,
+                title = headerDisplayModel.title,
+                channelKind = headerDisplayModel.channelKind,
+                subtitle = headerDisplayModel.subtitle,
+                renderSlices = settingsPageRenderSlices,
+                initialRenderSlice = renderSlice,
+                homeState = sharedHomeStateFlow,
+                hasHomeStore = sharedHomeStore != null,
+                onHomeIntent = { intent -> sharedHomeStore?.dispatch(intent) },
+                projections = directoryConversationProjectionFlow,
+                initialProjections = directoryConversationProjections,
+                selectProjection = { projections ->
+                    conversationDirectoryLookupIds.firstNotNullOfOrNull { id ->
+                        projections[id]?.takeIf { projection -> headerProjectionInput.acceptsForDisplay(projection) }
+                    }
+                },
+                serverId = threadMembersServerId,
+                channelId = threadMembersChannelId,
+                members = settingsPageMembers ?: MutableStateFlow(threadChannelMembersSlice),
+                initialMembers = threadChannelMembersSlice,
+                agentStatusResolver = agentStatusResolver,
+                collapseServerId = currentSession?.currentServerId,
+                collapseConversationId = payload.longMessageCollapseConversationId(),
+                completePanel = { panel, homeContent, onLeave -> completeChannelSettingsPanel(panel, homeContent, onLeave) },
+                onOpenMembers = { add ->
+                    val serverId = threadMembersServerId
+                    val channelId = threadMembersChannelId
+                    if (serverId != null && channelId != null) onOpenMembersPager(renderedThread, serverId, channelId, storeScope, add)
+                },
+                onLeaveConversation = { leaveAfterSettingsPage = true },
+                // The standalone settings page: delete, disconnect or a private leave goes back as the
+                // drawer's Leave does; a public leave stays here with the composer's Join.
+                onChannelSettingsClosed = { landing, channelId ->
+                    if (landing != ChannelSettingsCloseLanding.StayInChannel) {
+                        currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
+                            realtimeRoomLeaseRegistry.forgetJoinedByUser(serverId, channelId.value)
+                        }
+                    }
+                    when (landing) {
+                        ChannelSettingsCloseLanding.StayInChannel -> Unit
+                        ChannelSettingsCloseLanding.StayNotJoined ->
+                            threadViewModel.dispatch(SharedThreadIntent.ApplyChannelLeft(channelId.value))
+                        ChannelSettingsCloseLanding.LeaveConversation -> leaveAfterSettingsPage = true
+                    }
+                },
+            )
+        SideEffect { settingsPageLink.sources = settingsPageSources }
+        val openSettingsPage: () -> Boolean = {
+            val serverId = threadMembersServerId
+            val channelId = threadMembersChannelId
+            serverId != null && channelId != null &&
+                pager.openRaftPage(
+                    pageName = THREAD_SETTINGS_PAGE,
+                    pageData = threadSettingsPageData(settingsPageLinkKey, serverId, channelId),
+                    storeScopeOverride = storeScope,
+                    authenticatedRouteAuthorityRequired = true,
+                    onMissingScope = { bridge.logWarn("thread_settings_page_open_skip reason=missing_scope") },
+                )
+        }
+        // Agent Lounge v0: this page as (or inside) an agent's Lounge, and an agent DM's Lounge toggle.
+        val loungeAssistantAnswers by
+            remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) }.answers.collectAsState()
+        val threadLounge =
+            rememberThreadPageLounge(
+                payload = renderedThread,
+                bridge = bridge,
+                storeScope = storeScope,
+                flags = sharedStores.serverFeatureFlags,
+                serverId = currentServerId,
+                serverRole = currentSession?.servers?.firstOrNull { it.id == currentServerId }?.role,
+                memberAvatarResolver = memberAvatarResolver,
+                personalAssistantAgentIds =
+                    remember(loungeAssistantAnswers) {
+                        loungeAssistantAnswers.values.mapNotNull { it.assistant?.agentId }.toSet()
+                    },
+                onOpenConversation = { identity ->
+                    buildAppShellThreadPayload(
+                        conversation = identity,
+                        timeContext = renderedPayload.toRaftTimeCapabilities().staticContext(),
+                        alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
+                        compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
+                        onWarn = bridge::logWarn
+                    )?.let(onOpenThreadPayload)
+                        ?: bridge.logWarn("agent_lounge_open_rejected reason=identity_unresolved")
+                },
+                onOpenAgentProfile = { agentId ->
+                    memberDetailIdentity(agentId, MemberKind.Agent, currentServerId)?.let { identity ->
+                        onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity)
+                    }
+                },
+            )
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
+                lounge = threadLounge,
                 onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
                 // task #180: forwarded from the route scope, which owns the workspace store.
                 onToggleFocusMode = threadFocusModeToggle,
@@ -12273,6 +13278,7 @@ private fun SharedThreadRouteContentContent(
             taskConversationChrome = taskConversationChrome,
             taskConversationHead = taskHeadScrollState.takeIf { taskConversationBar != null },
             taskConversationFloat = taskConversationFloat,
+            taskConversationHeadRow = taskConversationHeadRow.takeIf { taskConversationBar != null },
             agentFollowersHeader = {
                 // Task v2: a task conversation's bar carries its Agent followers too (web
                 // ThreadAgentFollowers `subject="task"` on the conversation channel).
@@ -12328,10 +13334,12 @@ private fun SharedThreadRouteContentContent(
             channelSuggestionsFlow = channelSuggestionsFlow,
             selectedTab = selectedThreadTab,
             availableTabs = availableThreadTabs,
+            sideCardsEnabled = sideCardsEnabled,
             onSelectedTabChanged = { selectedThreadTab = it },
             onSuggestionDemandChanged = { composerSuggestionDemand = it },
             activityMuteState = activityMuteState?.takeIf { renderSlice.writeActionsEnabled },
             activityMutedIndicatorVisible = activityMutedIndicatorVisible,
+            onOpenSettingsPage = openSettingsPage,
             onToggleActivityMute =
                 activityMuteState?.takeIf { renderSlice.writeActionsEnabled }?.let { muteState ->
                     {
@@ -12344,20 +13352,6 @@ private fun SharedThreadRouteContentContent(
                     }
                 },
             conversationPinState = conversationPinState,
-            onToggleConversationPin =
-                conversationPinState
-                    ?.takeIf { it.available && renderSlice.writeActionsEnabled }
-                    ?.let { pinState ->
-                    {
-                        sharedHomeStore?.dispatch(
-                            SharedHomeIntent.TogglePinned(
-                                conversationId = pinState.conversationId,
-                                pinnedKind = pinState.pinnedKind,
-                                pinnedId = pinState.pinnedId
-                            )
-                        )
-                    }
-                },
             forwardServerId = headerProjectionServerId,
             forwardTargetRepository = forwardTargetRepository,
             contentExtrasVisible = true,
@@ -12421,6 +13415,7 @@ private fun SharedThreadRouteContentContent(
             newDesignSettingsEnabled = chatLayoutPreferenceStore::readNewDesignSettingsEnabledSync,
             longMessageCollapseEnabled = longMessageCollapseEnabled,
             longMessageCollapseConversationSetting = longMessageCollapseConversationSetting,
+            channelSettingsPanel = channelSettingsPanel,
             jumpInputs = jumpInputs,
             newMessageMenuEnabled = newMessageMenuEnabled,
             currentServerSlug = currentServerSlug,
@@ -12552,6 +13547,24 @@ private fun SharedThreadRouteContentContent(
                     )
                     onOpenThreadPayload(loadingPayload)
                 }
+                if (action == ThreadOpenPlanBillingEvent) {
+                    bridge.log("thread_history_paywall_open_billing offersUpgrade=${settingsBillingOffersUpgrade()}")
+                    // Upgrade to Pro: the upgrade dialog for the 30-day window (web HistoryPaywall
+                    // `history_30d`). iOS view-only Billing: "View your plan", the view-only page.
+                    if (settingsBillingOffersUpgrade()) {
+                        pager.openRaftUpgradeDialog(RaftUpgradeGate.History30d, storeScope)
+                    } else {
+                        pager.openSettingsBillingPage(storeScope)
+                    }
+                    return@ThreadPageContent
+                }
+                if (action == ThreadOpenUpgradeEvent) {
+                    // A banner's Upgrade (web ChannelLimitBanners): [itemId] is the gate's wire name.
+                    RaftUpgradeGate.entries.firstOrNull { it.wire == itemId }?.let { gate ->
+                        pager.openRaftUpgradeDialog(gate, storeScope)
+                    }
+                    return@ThreadPageContent
+                }
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
                     return@ThreadPageContent
                 }
@@ -12637,15 +13650,24 @@ private fun SharedThreadRouteContentContent(
                             )
                         )
                     }
+                    action == ThreadOutlineJumpAction && !itemId.isNullOrBlank() -> {
+                        // The thread timeline (botiverse/slock #13534): focus the message as a search
+                        // hit does, loading around it first when it isn't loaded; top-aligned.
+                        threadViewModel.dispatch(
+                            SharedThreadIntent.JumpToMessage(
+                                messageId = itemId,
+                                switchToTab = RaftThreadTab.Chat.wireValue,
+                                unreadThreadPill = false,
+                            )
+                        )
+                    }
                     action == "openAttachmentComments" && !attachmentId.isNullOrBlank() -> {
                         openAttachmentComments(attachmentId)
                     }
                     action == "copyMessage" && !itemId.isNullOrBlank() -> {
                     val body = renderedTimelineSlice.threadMessageById(itemId)?.body.orEmpty()
-                    if (body.isNotBlank()) {
-                        bridge.copyToPasteboard(body)
-                        bridge.toast(copiedLabel)
-                    }
+                    // Web MessageItem Copy Markdown: the menu closes, no toast (artin 2026-11-02).
+                    if (body.isNotBlank()) bridge.copyToPasteboard(body)
                 }
                     action == "copyLocalSendFailureDetails" && !itemId.isNullOrBlank() -> {
                         val failedMessage = renderedTimelineSlice.threadMessageById(itemId)
@@ -12659,7 +13681,7 @@ private fun SharedThreadRouteContentContent(
                     }
                 action == "copyShareSelectionMarkdown" && !itemId.isNullOrBlank() -> {
                     bridge.copyToPasteboard(itemId)
-                    bridge.toast(copiedLabel)
+                    bridge.briefToast(copiedLabel)
                 }
                 action == "copyShareSelectionLinks" && !itemId.isNullOrBlank() -> {
                     bridge.copyToPasteboard(itemId)
@@ -12705,8 +13727,8 @@ private fun SharedThreadRouteContentContent(
                             )
                         }
                     if (permalink != null) {
+                        // Web MessageItem Copy Link: no toast.
                         bridge.copyToPasteboard(permalink)
-                        bridge.toast(copiedLabel)
                     } else {
                         bridge.toast(unableToCopyLinkLabel)
                     }
@@ -12720,7 +13742,7 @@ private fun SharedThreadRouteContentContent(
                     }
                 }
                 action == "openMessageThread" && !itemId.isNullOrBlank() -> {
-                    if (threadMessageOpenIgnoredForSurface(renderedThread.surfaceKind)) {
+                    if (threadMessageOpenIgnoredForSurface(renderedThread.surfaceKind, renderedThread.channelKind)) {
                         bridge.log(
                             "thread_reply_open result=ignored_already_in_reply_thread " +
                                 "messageId=$itemId instance=${renderedThread.instanceId}"
@@ -12916,6 +13938,8 @@ private fun SharedThreadRouteContentContent(
                             }
                         when (result) {
                             is DataResult.Content -> {
+                                // Activity's Saved filter reloads on an accepted save or unsave.
+                                sharedStores.homeSavedStateCache.recordSavedWrite()
                                 // A confirmed unsave leaves the Saved list's stored copy (a save shows up
                                 // with the list's next refresh: the row needs the server's saved entry).
                                 val savedServerId = savedOwnerSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
@@ -12952,6 +13976,9 @@ private fun SharedThreadRouteContentContent(
                     }
                     // web ActionCard: a frozen card's button is disabled; nothing runs.
                     if (actionCard.isFrozen) return@ThreadPageContent
+                    // Expired (by state, or past `expiresAt` on this clock) or withdrawn: no run, and no
+                    // create-agent / create-channel / add-members dialog (they create, then mark it executed).
+                    if (threadActionCardCommitBlockedByEnd(actionCard, defaultNowMillis())) return@ThreadPageContent
                     // A reconfirm card's button reconfirms it (back to prepared), whatever its type.
                     if (actionCard.needsReconfirmation) {
                         pendingActionCardIds = pendingActionCardIds + itemId
@@ -12960,8 +13987,14 @@ private fun SharedThreadRouteContentContent(
                                 when (val result = dataSource.commitThreadActionCard(renderedThread, itemId, actionCard)) {
                                     is DataResult.Content ->
                                         threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, result.data))
-                                    is DataResult.Empty,
-                                    is DataResult.Error -> bridge.toast(actionCardReconfirmFailedLabel)
+                                    is DataResult.Empty -> bridge.toast(actionCardReconfirmFailedLabel)
+                                    is DataResult.Error ->
+                                        if (result.error.isActionCardExpiredRefusal()) {
+                                            // The server refused it as expired (409): the card says so itself.
+                                            threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, actionCard.markedExpired()))
+                                        } else {
+                                            bridge.toast(actionCardReconfirmFailedLabel)
+                                        }
                                     is DataResult.NoPermission -> {
                                         if (routeAuthRequired(result)) return@launch
                                         bridge.toast(actionCardReconfirmFailedLabel)
@@ -12979,12 +14012,6 @@ private fun SharedThreadRouteContentContent(
                                 messageId = itemId,
                                 card = actionCard,
                                 viewingServerId = currentServerId,
-                                productFeedbackMultiAppEnabled =
-                                    currentServerId != null &&
-                                        sharedStores.serverFeatureFlags.isEnabled(
-                                            ServerId(currentServerId),
-                                            PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
-                                        )
                             )
                         if (feedbackCardEntry == null) {
                             bridge.toast(actionUnsupportedLabel)
@@ -13016,7 +14043,14 @@ private fun SharedThreadRouteContentContent(
                     pendingActionCardIds = pendingActionCardIds + itemId
                     coroutineScope.launch {
                         try {
-                            val outcome = dataSource.commitThreadActionCard(renderedThread, itemId, actionCard, actionCardStepUp)
+                            var createdChannel: HomeChannelRow? = null
+                            val outcome =
+                                dataSource.commitThreadActionCard(renderedThread, itemId, actionCard, actionCardStepUp) { channel ->
+                                    createdChannel = channel
+                                    // As submitCreateChannel: Home lists it now, whatever marking the card answers.
+                                    sharedHomeStore?.dispatch(SharedHomeIntent.ChannelCreated(channel))
+                                    sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                                }
                             // "Verify it's you" closed: the card stays as it was, nothing is shown.
                             val result = (outcome as? SecondFactorStepUpOutcome.Completed)?.result ?: return@launch
                             when (result) {
@@ -13026,13 +14060,36 @@ private fun SharedThreadRouteContentContent(
                                     )
                                     bridge.toast(actionCardSuccessLabels[actionCard.type] ?: genericActionCardSuccessLabel)
                                 }
-                                is DataResult.Empty,
-                                is DataResult.Error -> {
+                                is DataResult.Empty -> {
                                     bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
+                                }
+                                is DataResult.Error -> {
+                                    if (result.error.isActionCardExpiredRefusal()) {
+                                        // The server refused it as expired (409): the card says so itself.
+                                        threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, actionCard.markedExpired()))
+                                    } else {
+                                        bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
+                                    }
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
                                     bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
+                                }
+                            }
+                            // Web CreateChannelDialog `finish`: the new channel opens; marking the card doesn't hold it.
+                            createdChannel?.let { channel ->
+                                val next =
+                                    buildAppShellThreadPayload(
+                                        conversation = channel.toThreadLaunchConversationIdentity(),
+                                        timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
+                                        alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
+                                        compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
+                                        onWarn = bridge::logWarn,
+                                    )
+                                if (next != null) {
+                                    onOpenThreadPayload(next)
+                                } else {
+                                    bridge.logWarn("action_card_created_channel_open_rejected reason=identity_unresolved")
                                 }
                             }
                         } finally {
@@ -13185,7 +14242,9 @@ private fun SharedThreadRouteContentContent(
                 action == "openMarkdownTaskNumber" && !itemId.isNullOrBlank() -> {
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
-                    val taskNumber = itemId.removePrefix("#").trim().toIntOrNull()
+                    // `#7`, or a conversation-qualified `#proj:#7` / `dm:@peer:#7` (Web task refs).
+                    val qualifiedTaskRef = parseRaftMarkdownTaskRefLabel(itemId)?.takeIf { it.qualified }
+                    val taskNumber = qualifiedTaskRef?.taskNumber ?: itemId.removePrefix("#").trim().toIntOrNull()
                     if (taskNumber == null || currentServerId.isNullOrBlank()) {
                         finishMarkdownReferencePending(markdownPendingToken)
                         bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
@@ -13200,16 +14259,36 @@ private fun SharedThreadRouteContentContent(
                     )
                     coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
                         try {
+                            val resolveChannelId =
+                                if (qualifiedTaskRef == null) {
+                                    taskChannelId
+                                } else {
+                                    dataSource.markdownTaskRefChannelId(
+                                        actionId = markdownActionId,
+                                        currentPayload = renderedThread,
+                                        conversationLabel =
+                                            qualifiedTaskRef.channelName ?: qualifiedTaskRef.directMessagePeerName.orEmpty(),
+                                        requiredKind =
+                                            if (qualifiedTaskRef.directMessagePeerName != null) {
+                                                ConversationKind.DirectMessage
+                                            } else {
+                                                null
+                                            }
+                                    )
+                                }
                             val resolved =
                                 openMarkdownTaskNumberPayload(
                                     serverId = ServerId(currentServerId),
                                     taskNumber = taskNumber,
                                     currentPayload = renderedThread,
-                                    currentTaskChannelId = taskChannelId,
+                                    currentTaskChannelId = resolveChannelId,
                                     tasksDataSource = tasksDataSource,
                                     tasksDataStore = tasksDataStore,
                                     taskV2Enabled = taskV2Enabled,
-                                    conversationIdentityProvider = conversationIdentityProvider
+                                    conversationIdentityProvider = conversationIdentityProvider,
+                                    channelQualified = qualifiedTaskRef != null,
+                                    referenceResolver = dataSource.referenceResolver,
+                                    actionId = markdownActionId
                                 )
                             val result = markdownTaskOpenRequestGate.accept(requestGeneration, resolved)
                             if (result == null) {
@@ -13254,7 +14333,7 @@ private fun SharedThreadRouteContentContent(
                                             "generation=$requestGeneration " +
                                             "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
                                     )
-                                    bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
+                                    bridge.errorToast(localizedUnableToOpenTaskNumber(taskNumber))
                                 }
                                 MarkdownTaskNumberOpenResult.AuthRequired -> {
                                     bridge.log(
@@ -13272,7 +14351,7 @@ private fun SharedThreadRouteContentContent(
                                             "generation=$requestGeneration " +
                                             "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
                                     )
-                                    bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
+                                    bridge.errorToast(localizedUnableToOpenTaskNumber(taskNumber))
                                 }
                             }
                         } finally {
@@ -13300,11 +14379,11 @@ private fun SharedThreadRouteContentContent(
                     onOpenThreadPayload(loadingPayload)
                 }
                 action == "openMarkdownUrl" && !itemId.isNullOrBlank() -> {
-                    val target = itemId.toRaftThreadWebLinkTarget()
-                    if (target == null) {
-                        linkNavigator.open(itemId)
+                    val open = raftMarkdownUrlOpen(itemId, sharedStores.apiEnvironmentStore.current().webUrl)
+                    if (open.target == null) {
+                        linkNavigator.open(open.url)
                     } else {
-                        openThreadWebLinkTargetInApp(target)
+                        openThreadWebLinkTargetInApp(open.target)
                     }
                 }
                 // A4: a spec card's navigate to a channel, as a channel link opens it.
@@ -13377,7 +14456,7 @@ private fun SharedThreadRouteContentContent(
                                         }
                                 )
                             if (loadingPayload == null) {
-                                bridge.toast(
+                                bridge.errorToast(
                                     localizedUnableToOpenTarget(
                                         if (openDirectMessage) {
                                             "dm:@${itemId.take(28)}"
@@ -13408,35 +14487,65 @@ private fun SharedThreadRouteContentContent(
                         }
                     }
                 }
-                (action == "openMarkdownThreadRef" || action == "openMarkdownDirectMessageThreadRef") &&
+                (action == "openMarkdownThreadRef" || action == "openMarkdownDirectMessageThreadRef" || action == "openMarkdownMessageRef") &&
                     !itemId.isNullOrBlank() -> {
+                    val openMessageRef = action == "openMarkdownMessageRef"
+                    val unableToOpenRefLabel =
+                        if (openMessageRef) localizedUnableToOpenTarget(itemId.take(32)) else unableToOpenThreadRefLabel
+                    val refToastTarget =
+                        if (openMessageRef || tab.isNullOrBlank()) {
+                            itemId.take(32)
+                        } else {
+                            "#${itemId.removePrefix("#").take(31)}:${tab.take(12)}"
+                        }
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
+                    // How long the open waits for its target: a local hit opens with no spinner;
+                    // only a miss fetches messages/context, and the chip is busy for that fetch alone.
+                    val resolveStartedAt = TimeSource.Monotonic.markNow()
+                    var resolveOutcome = "cancelled"
+                    bridge.log("thread_markdown_ref_resolve result=start label=${itemId.take(32)}")
                     coroutineScope.launch {
                         try {
                             val provenance =
                                 dataSource.replyCacheProvenanceState.value
                                     .currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)
                             if (provenance == null) {
-                                bridge.toast(unableToOpenThreadRefLabel)
+                                resolveOutcome = "no_provenance"
+                                bridge.toast(unableToOpenRefLabel)
                                 return@launch
                             }
                             when (
                                 val result =
-                                    dataSource.markdownThreadRefLaunchPayload(
-                                        provenance = provenance,
-                                        currentPayload = renderedThread,
-                                        channelLabel = itemId,
-                                        threadShortId = tab,
-                                        requiredParentKind =
-                                            if (action == "openMarkdownDirectMessageThreadRef") {
-                                                ConversationKind.DirectMessage
-                                            } else {
-                                                null
+                                    if (openMessageRef) {
+                                        parseRaftMarkdownMessageRefLabel(itemId)
+                                            ?.let { ref ->
+                                                dataSource.markdownMessageRefLaunchPayload(
+                                                    provenance = provenance,
+                                                    currentPayload = renderedThread,
+                                                    ref = ref,
+                                                    actionId = markdownActionId
+                                                )
                                             }
-                                    )
+                                            ?: DataResult.Empty(EmptyReason.NoMessages)
+                                    } else {
+                                        dataSource.markdownThreadRefLaunchPayload(
+                                            provenance = provenance,
+                                            currentPayload = renderedThread,
+                                            channelLabel = itemId,
+                                            threadShortId = tab,
+                                            requiredParentKind =
+                                                if (action == "openMarkdownDirectMessageThreadRef") {
+                                                    ConversationKind.DirectMessage
+                                                } else {
+                                                    null
+                                                },
+                                            actionId = markdownActionId
+                                        )
+                                    }
                             ) {
                                 is DataResult.Content -> {
+                                    resolveOutcome = "opened"
                                     bridge.log(
                                         "thread_markdown_ref_open label=${itemId.take(32)} " +
                                             "parentChannelId=${result.data.parentChannelId.orEmpty()} " +
@@ -13450,28 +14559,53 @@ private fun SharedThreadRouteContentContent(
                                         val targetFocusedMessageId = result.data.focusedMessageId
                                         if (!targetFocusedMessageId.isNullOrBlank()) {
                                             threadViewModel.dispatch(
-                                                SharedThreadIntent.FocusMessage(
-                                                    messageId = targetFocusedMessageId,
-                                                    switchToTab = result.data.selectedTab
-                                                )
+                                                if (openMessageRef) {
+                                                    // The named message may be outside the loaded window.
+                                                    SharedThreadIntent.JumpToMessage(
+                                                        messageId = targetFocusedMessageId,
+                                                        switchToTab = result.data.selectedTab
+                                                    )
+                                                } else {
+                                                    SharedThreadIntent.FocusMessage(
+                                                        messageId = targetFocusedMessageId,
+                                                        switchToTab = result.data.selectedTab
+                                                    )
+                                                }
                                             )
                                         }
                                     } else {
                                         onOpenThreadPayload(result.data)
                                     }
                                 }
+                                // A failure never navigates: the toast names why and the page stays.
                                 is DataResult.Empty -> {
-                                    bridge.toast(unableToOpenThreadRefLabel)
+                                    val failure = result.sharedReferenceFailure()
+                                    resolveOutcome = if (failure == SharedReferenceFailure.OtherServer) "other_server" else "not_found"
+                                    bridge.errorToast(localizedReferenceFailure(failure, refToastTarget, unableToOpenRefLabel))
                                 }
                                 is DataResult.Error -> {
-                                    bridge.toast(unableToOpenThreadRefLabel)
+                                    resolveOutcome = "error"
+                                    bridge.errorToast(unableToOpenRefLabel, result.error)
                                 }
                                 is DataResult.NoPermission -> {
-                                    routeAuthRequired(result)
+                                    resolveOutcome = "no_permission"
+                                    if (!routeAuthRequired(result)) {
+                                        bridge.errorToast(
+                                            localizedReferenceFailure(
+                                                result.sharedReferenceFailure(),
+                                                refToastTarget,
+                                                unableToOpenRefLabel
+                                            )
+                                        )
+                                    }
                                 }
                             }
                         } finally {
                             finishMarkdownReferencePending(markdownPendingToken)
+                            bridge.log(
+                                "thread_markdown_ref_resolve result=$resolveOutcome label=${itemId.take(32)} " +
+                                    "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
+                            )
                         }
                     }
                 }
@@ -13668,6 +14802,16 @@ private fun SharedThreadRouteContentContent(
                     }
                     tasksViewModel.dispatch(intent)
                 }
+                // A move into Backlog with the reason asked for it (web TaskBacklogReasonPopover);
+                // tab carries the reason, "" for none.
+                action == "moveTaskToBacklog" && !itemId.isNullOrBlank() -> {
+                    val intent = linkedTasksProjection.statusUpdateIntent(itemId, TaskStatus.Backlog, tab)
+                    if (tasksViewModel == null || intent == null) {
+                        bridge.toast(unableToUpdateTaskLabel)
+                        return@ThreadPageContent
+                    }
+                    tasksViewModel.dispatch(intent)
+                }
                 // Task #258: inline task detail panel assignee row. tab carries the
                 // assignee filter id ("unassigned" sentinel or member filter id);
                 // resolve against the same current-channel options rendered by the picker.
@@ -13719,6 +14863,8 @@ private fun SharedThreadRouteContentContent(
                                     // Now a member: closing this page must not leave the room (the
                                     // conversation directory may still list the channel as not joined).
                                     realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
+                                    sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, result.data.channelId))
+                                    sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
                                 }
                                 realtimeEvents.joinChannel(
                                     result.data.channelId.value,
@@ -13749,7 +14895,7 @@ private fun SharedThreadRouteContentContent(
                         )
                         return@ThreadPageContent
                     }
-                    onOpenMembersPager(renderedThread, serverId, channelId, storeScope)
+                    onOpenMembersPager(renderedThread, serverId, channelId, storeScope, itemId == "add")
                 }
                 action == "openChannelSettings" -> {
                     val serverId = threadMembersServerId
@@ -13762,7 +14908,7 @@ private fun SharedThreadRouteContentContent(
                         )
                         return@ThreadPageContent
                     }
-                    onOpenChannelSettings(serverId, channelId, storeScope)
+                    onOpenChannelSettings(serverId, channelId, storeScope, settingsPageLinkKey)
                 }
                 action == "loadMembers" -> {
                     if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
@@ -13814,11 +14960,15 @@ private fun SharedThreadRouteContentContent(
                     val admitted =
                         threadViewModel.admitLocalSend(
                             message =
-                                message.copy(
-                                    deliveryState = ThreadMessageDeliverySending,
-                                    pendingSendErrorCode = null,
-                                    pendingSendErrorMessage = null
-                                ),
+                                message
+                                    .restampedForLocalSendRetry(
+                                        buildThreadPendingSendTimestampLabel(bridge, payload.nowEpochMillis)
+                                    )
+                                    .copy(
+                                        deliveryState = ThreadMessageDeliverySending,
+                                        pendingSendErrorCode = null,
+                                        pendingSendErrorMessage = null
+                                    ),
                             expectedProvenance = sendAuthority.provenance,
                             expectedRoute = sendAuthority.route
                         )
@@ -13846,6 +14996,35 @@ private fun SharedThreadRouteContentContent(
                     return@sendRequest ThreadComposerSendAdmission.Rejected
                 }
                 handleComposerSendRequest(request)
+            },
+            onComposerDropFiles = { drop ->
+                // Files dragged onto the composer (web MessageInput handleDrop): the web's folder
+                // notice, then the host reads them as a File pick and the picker's admission
+                // takes them (sizes, skipped files, upload), straight into the tray.
+                if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled, ThreadComposerDropAttachmentsAction)) {
+                    bridge.log("thread_composer_action_blocked action=$ThreadComposerDropAttachmentsAction reason=read_only_access_fallback")
+                    drop.release()
+                } else {
+                    coroutineScope.launch {
+                        try {
+                            bridge.log("thread_attachment_drop files=${drop.fileRefs.size} folders=${drop.folderCount}")
+                            when (drop.folderNotice()) {
+                                ThreadComposerFileDropFolderNotice.FoldersCantUpload -> bridge.toast(dropFoldersCantUploadLabel)
+                                ThreadComposerFileDropFolderNotice.FoldersSkipped -> bridge.toast(dropFoldersSkippedLabel)
+                                ThreadComposerFileDropFolderNotice.None -> Unit
+                            }
+                            if (drop.fileRefs.isEmpty()) return@launch
+                            if (composerSurface.sendChannelId == null) {
+                                bridge.toast(attachmentPickerUnavailableLabel)
+                                return@launch
+                            }
+                            val response = bridge.threadAttachmentDrop(drop.fileRefs)
+                            admitComposerPickedAttachments(ThreadComposerDropAttachmentsAction, response)
+                        } finally {
+                            drop.release()
+                        }
+                    }
+                }
             },
             onComposerEvent = { action, value, asTask, attachmentId ->
                 if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled, action)) {
@@ -13914,6 +15093,14 @@ private fun SharedThreadRouteContentContent(
                             "asTask=${nextDraftState.seedAsTask} draftKey=${nextDraftState.draftKey.orEmpty()} " +
                             "activeRecords=${composerDraftPersistSlice.activeDraftRecordsState.value.toThreadComposerDraftDiagnosticsSummary()}"
                     )
+                }
+                ThreadComposerSelectMentionEvent -> {
+                    val mention = decodeThreadComposerMentionEvent(value)
+                    bridge.log(
+                        "thread_composer_select_mention instanceId=$composerInstanceId " +
+                            "type=${mention?.type.orEmpty()} draftKey=${currentDraftState.draftKey.orEmpty()}"
+                    )
+                    mention?.let { composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.SelectMention(it)) }
                 }
                 "toggleAsTask" -> {
                     bridge.log(
@@ -14136,78 +15323,7 @@ private fun SharedThreadRouteContentContent(
                                 // and the shared size gate sees the real file.
                                 compressImages = compressPickerImages,
                             )
-                        val files = parseSharedThreadPickedPlatformFiles(response)
-                        bridge.log(
-                            "thread_attachment_picker_result action=$action code=${response?.optInt("code", -1) ?: -1} " +
-                                "files=${files.size} errorCode=${response?.optString("errorCode").orEmpty()} " +
-                                "bodyBytes=${response?.optString("bodyText").orEmpty().encodeToByteArray().size}"
-                        )
-                        // Native generic pickers may finish a mixed selection with a readable
-                        // subset and a compression error (code 206).  Never upload that subset:
-                        // doing so would silently drop the failed image while the user believes
-                        // the whole selection was admitted.  Retire every ref exposed by the
-                        // envelope before returning, including refs from successful files and
-                        // any future error/fileRefs compatibility fields.
-                        if (threadAttachmentPickerHasCompressionFailure(response)) {
-                            val cleanupRefs = threadAttachmentPickerCompressionFailureFileRefs(response)
-                            if (cleanupRefs.isNotEmpty()) {
-                                bridge.retireFilePreviewTemporaryFiles(
-                                    sessionId = "thread-picker-compression-$threadInstanceKey",
-                                    fileRefs = cleanupRefs.toList()
-                                )
-                            }
-                            bridge.logWarn(
-                                "thread_attachment_picker_rejected reason=image_compression_failed " +
-                                    "cleanupRefs=${cleanupRefs.size}"
-                            )
-                            bridge.toast(
-                                localizedAttachmentUploadFailedDetail(
-                                    userFacingErrorLabels.forErrorCode(
-                                        RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE
-                                    ) ?: genericThreadErrorLabel
-                                )
-                            )
-                            return@launch
-                        }
-                        if (files.isEmpty()) {
-                            val errorCode = response?.optString("errorCode")?.takeIf { it.isNotBlank() }
-                            when {
-                                errorCode != null ->
-                                    bridge.toast(
-                                        localizedAttachmentUploadFailedDetail(
-                                            userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
-                                        )
-                                    )
-                                response == null ->
-                                    bridge.toast(attachmentPickerUnavailableLabel)
-                            }
-                            return@launch
-                        }
-                        val skippedCount = response?.optInt("skippedCount", 0) ?: 0
-                        if (skippedCount > 0) {
-                            bridge.toast(
-                                if (skippedCount == 1) {
-                                    attachmentSkippedOneLabel
-                                } else {
-                                    localizedAttachmentSkippedMany(skippedCount)
-                                }
-                            )
-                        }
-                        when (
-                            resolveThreadPickedAttachmentComposerAction(
-                                action = action,
-                                fileCount = files.size,
-                                allFilesAreImages = raftComposerImagePickerFilesAreStrictImages(files),
-                            )
-                        ) {
-                            ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->
-                                // The picker-reported bytes are the source image, not the final
-                                // editor output.  Defer the server-size gate until the confirmed
-                                // PNG/original or compressor-produced JPEG reaches upload.
-                                openComposerImageAnnotation(files)
-                            ThreadPickedAttachmentComposerAction.UploadToComposer -> uploadComposerAttachmentFiles(files)
-                            ThreadPickedAttachmentComposerAction.None -> Unit
-                        }
+                        admitComposerPickedAttachments(action, response)
                     }
                 }
                 "removeAttachment" -> {
@@ -14329,23 +15445,36 @@ private fun SharedThreadRouteContentContent(
                 }
             )
         }
+        // Where a quote of selected text lands (Select Text > Quote, the mouse selection's Quote).
+        val selectionQuoteTarget =
+            threadSelectTextQuoteTarget(
+                surfaceKind = renderedThread.surfaceKind,
+                composerAvailable =
+                    jointBillingNotice != JointBillingNotice.Locked &&
+                        shouldShowThreadComposerForReadyContent(
+                            joined = payload.joined && renderSlice.writeActionsEnabled,
+                            showComposer = payload.showComposer && renderSlice.writeActionsEnabled,
+                            selectedTab = selectedThreadTab.wireValue
+                        )
+            )
+        // The in-place selection toolbar's Quote: the same composer append as Select Text > Quote.
+        val selectionQuoteAvailable = selectionQuoteTarget != ThreadSelectTextQuoteTarget.None
+        val inPlaceSelectionQuote: ((String) -> Unit)? =
+            remember(selectionQuoteAvailable, composerDraftViewModel) {
+                if (selectionQuoteAvailable) {
+                    { quote: String -> composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.AppendQuote(quote)) }
+                } else {
+                    null
+                }
+            }
+        SideEffect { inPlaceTextSelectionHost.quoteIntoComposer = inPlaceSelectionQuote }
         textSelectionMessage?.let { message ->
             // Select Text (web #11467): the message's Markdown in a bottom sheet; Copy / Quote take
             // the selection made there, or the whole message.
-            val quoteTarget =
-                threadSelectTextQuoteTarget(
-                    surfaceKind = renderedThread.surfaceKind,
-                    composerAvailable =
-                        jointBillingNotice != JointBillingNotice.Locked &&
-                            shouldShowThreadComposerForReadyContent(
-                                joined = payload.joined && renderSlice.writeActionsEnabled,
-                                showComposer = payload.showComposer && renderSlice.writeActionsEnabled,
-                                selectedTab = selectedThreadTab.wireValue
-                            )
-                )
+            val quoteTarget = selectionQuoteTarget
             // Same time source as the message list: the live provider when there is one, else the payload's.
             val timeContext =
-                LocalRaftTimeContextProvider.current?.current ?: payload.toRaftTimeCapabilities().staticContext()
+                currentRaftTimeContextProvider?.current ?: payload.toRaftTimeCapabilities().staticContext()
             key(message.id, message.body) {
                 ThreadMessageSelectTextSheet(
                     markdown = message.body,
@@ -14356,7 +15485,7 @@ private fun SharedThreadRouteContentContent(
                     onCopy = { text ->
                         bridge.log("thread_select_text_copy messageId=${message.id} chars=${text.length}")
                         bridge.copyToPasteboard(text)
-                        bridge.toast(copiedLabel)
+                        bridge.briefToast(copiedLabel)
                     },
                     onQuote =
                         if (quoteTarget == ThreadSelectTextQuoteTarget.None) {
@@ -14483,6 +15612,7 @@ private fun SharedThreadRouteContentContent(
                 computerServerId = createAgentComputerServerId,
                 computerServerResolved = createAgentComputerServerResolved,
                 onAuthRequired = ::routeAuthRequired,
+                onAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) },
                 onDismiss = {
                     if (!dialogState.submitting) {
                         createAgentDialogState = null
@@ -14566,8 +15696,6 @@ private fun ThreadMarkdownTaskCandidateModal(
         minWidth = 320.dp,
         maxWidth = 392.dp,
         contentPadding = 20.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
@@ -14610,8 +15738,9 @@ private fun ThreadMarkdownTaskCandidateRow(
     currentChannel: Boolean,
     onClick: () -> Unit
 ) {
-    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
-    val background = if (currentChannel) RaftColor.BrandSoft else RaftColor.Card
+    // The current channel's task is the selected row: raft-ui's selected `info-soft` fill under
+    // the same hairline as the others, no ink edge.
+    val background = if (currentChannel) RaftTheme.colors.infoSoft else RaftColor.Card
     Box(
         modifier =
             Modifier
@@ -14625,11 +15754,11 @@ private fun ThreadMarkdownTaskCandidateRow(
                     .heightIn(min = 82.dp)
                     .raftControlSurface(
                         fill = background,
-                        border = if (currentChannel) RaftColor.BorderBlack else RaftColor.BorderHairline,
+                        border = RaftColor.BorderHairline,
                         radius = RaftAppRadius.Container,
-                        borderWidth = if (currentChannel) RaftAppStroke.Control else RaftAppStroke.Thin
+                        borderWidth = RaftAppStroke.Thin
                     )
-                    .clickable(onClick = onClick)
+                    .raftClickable(onClick = onClick, shape = RoundedCornerShape(RaftAppRadius.Container), tier = RaftHoverTier.Subtle, selected = currentChannel)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -14686,15 +15815,18 @@ private fun ThreadMarkdownTaskCandidateRow(
                     onClick = null
                 )
                 if (currentChannel) {
-                    RaftAnchoredMetaChip(
-                        label = stringResource(Res.string.thread_task_candidate_current),
-                        iconName = RaftLucideIconName.Hash,
-                        iconSize = 10.dp,
-                        color = RaftColor.BrandYellow,
-                        contentColor = RaftColor.StickerInk,
-                        iconColorArgb = raftArgbHex(RaftColor.StickerInk),
+                    RaftBadge(
+                        text = stringResource(Res.string.thread_task_candidate_current),
                         modifier = Modifier.widthIn(max = 112.dp),
-                        onClick = null
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = RaftBadgeVariant.Information,
+                        icon = {
+                            RaftLucideIcon(
+                                RaftLucideIconName.Hash,
+                                modifier = Modifier.size(10.dp),
+                                color = raftArgbHex(LocalRaftContentColor.current)
+                            )
+                        }
                     )
                 }
             }
@@ -14751,6 +15883,7 @@ private fun ThreadCreateAgentActionDialogHost(
     computerServerId: String?,
     computerServerResolved: Boolean,
     onAuthRequired: (String?) -> Boolean,
+    onAddComputer: (() -> Unit)?,
     onDismiss: () -> Unit,
     onSubmit: (SharedCreateAgentDialogSubmit) -> Unit
 ) {
@@ -14819,6 +15952,7 @@ private fun ThreadCreateAgentActionDialogHost(
         },
         createAgentFormStore = createAgentFormStore,
         createAgentServerId = computerServerId,
+        onAddComputer = onAddComputer,
         onDismiss = onDismiss,
         onSubmit = onSubmit
     )
@@ -14908,8 +16042,26 @@ internal fun raftThreadAttachmentSavedMessage(
     fallbackMessage: String
 ): String = nativeMessage.trim().ifBlank { fallbackMessage }
 
-internal fun String.toRaftThreadWebLinkTarget(): RaftThreadWebLinkTarget? {
-    toRaftMessagePermalinkTarget()?.let { target ->
+/** A tapped message-body link: the [url] to open and, when it is a message link, its in-app [target]. */
+internal data class RaftMarkdownUrlOpen(
+    val url: String,
+    val target: RaftThreadWebLinkTarget?,
+)
+
+/**
+ * How a tapped message-body link opens. A Raft Desktop link (`raft:///s/…`, `raft://s/…`) is first
+ * turned into its web link on [webUrl], the Developer environment's web URL (AGENTS.md
+ * "Environment Web Link URL Rule"), and then opens exactly as that web link does: a channel/dm
+ * message link in-app, any other `/s/` page in the browser. Every other link is unchanged.
+ */
+internal fun raftMarkdownUrlOpen(rawUrl: String, webUrl: String?): RaftMarkdownUrlOpen {
+    val webLink = raftSchemeLinkToWebLink(rawUrl, webUrl)
+        ?: return RaftMarkdownUrlOpen(rawUrl, rawUrl.toRaftThreadWebLinkTarget())
+    return RaftMarkdownUrlOpen(webLink, webLink.toRaftThreadWebLinkTarget(configuredWebUrl = webUrl))
+}
+
+internal fun String.toRaftThreadWebLinkTarget(configuredWebUrl: String? = null): RaftThreadWebLinkTarget? {
+    toParsedRaftPermalink(configuredWebUrl = configuredWebUrl)?.let { target ->
         return RaftThreadWebLinkTarget(
             channelId = target.channelId.value,
             messageId = target.messageId.value,
@@ -15288,8 +16440,12 @@ internal fun RaftThreadScreenPayload.parentMessageContextLoadingPayload(
 private fun RaftThreadFilesPayload.shouldFetchInitialFiles(): Boolean =
     status == "loading" || (status == "error" && items.isEmpty())
 
+/** The task a message's task menu is moving into Backlog, while its reason is asked. */
+internal data class ThreadTaskBacklogReasonTarget(val taskId: String, val taskNumber: Int?)
+
 private fun String.toSharedThreadTaskStatus(): TaskStatus? =
     when (trim().lowercase().replace("-", "").replace("_", "").replace(" ", "")) {
+        "backlog" -> TaskStatus.Backlog
         "todo" -> TaskStatus.Todo
         "inprogress" -> TaskStatus.InProgress
         "inreview" -> TaskStatus.InReview
@@ -15462,6 +16618,7 @@ private fun RaftThreadComposerPayload.withThreadComposerDraftState(
         syncNonce = draftState.syncNonce,
         editorCommand = draftState.editorCommand,
         focusRequestNonce = draftState.focusRequestNonce,
+        focusRequestShowsKeyboard = draftState.focusRequestShowsKeyboard,
         pendingAttachments = pendingAttachmentItems,
         composerMode =
             when {
@@ -15487,7 +16644,17 @@ private class ThreadRouteScaffoldSlots(
     val rootModifier: Modifier = Modifier,
     val header: @Composable () -> Unit,
     val body: @Composable ColumnScope.() -> Unit,
-    val overlays: @Composable BoxScope.() -> Unit = {}
+    val overlays: @Composable BoxScope.() -> Unit = {},
+    /**
+     * Task v2's Tasks / Files cards ([ConversationSideCardsCover]): drawn over the body (the
+     * conversation and its composer), under the header. Null keeps the body as it always was.
+     */
+    val bodyCover: (@Composable BoxScope.() -> Unit)? = null,
+    /**
+     * Task v2's cards on a wide page ([conversationSideCardsColumn]): the pane grid's columns right
+     * of the header and the body, the page's full height. Empty: nothing beside the conversation.
+     */
+    val sideColumns: List<RaftPaneGridColumn> = emptyList(),
 )
 
 @Composable
@@ -15502,12 +16669,26 @@ private fun ThreadRouteScaffold(
                     .fillMaxSize()
                     .background(surfaceColor)
         ) {
+            RaftPaneGrid(
+                columns = slots.sideColumns,
+                modifier = Modifier.fillMaxSize(),
+                topInset = if (LocalThreadAssistantPanelEmbed.current == null && slots.sideColumns.isNotEmpty()) raftTopSafeAreaPadding() else 0.dp,
+            ) {
             Column(
                 modifier = Modifier.fillMaxSize().background(surfaceColor)
             ) {
                 // In the assistant's panel the panel's head stands for the page's (web ChatPanel `hideHeader`).
                 if (LocalThreadAssistantPanelEmbed.current == null) slots.header()
-                slots.body(this)
+                val bodyCover = slots.bodyCover
+                if (bodyCover == null) {
+                    slots.body(this)
+                } else {
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        Column(Modifier.fillMaxSize()) { slots.body(this) }
+                        bodyCover()
+                    }
+                }
+            }
             }
             slots.overlays(this)
         }
@@ -15585,15 +16766,18 @@ private class ThreadEventHandler(
  * un-minified giant composable frame on API 34/36 builds).
  */
 private data class ThreadPageContentData(
+    val lounge: ThreadPageLounge? = null,
     val agentFollowersHeader: @Composable () -> Unit,
     /** Task v2: the task conversation's status / assignee / follow bar under the header; null elsewhere. */
     val taskConversationBar: (@Composable () -> Unit)? = null,
     /** Task v2: the top bar's task title and More menu rows; null elsewhere or before the task is known. */
     val taskConversationChrome: TaskConversationHeaderChrome? = null,
-    /** Task v2 on a phone: the head moves with the conversation's scroll and is pulled down from the bar. */
+    /** Task v2 on a phone: whether the head's row is in view, and the head pulled down from the bar while it is not. */
     val taskConversationHead: TaskHeadScrollState? = null,
     /** Task v2 on a phone: the head pulled down from the bar over the messages ([TaskHeadFloat]). */
     val taskConversationFloat: (@Composable () -> Unit)? = null,
+    /** Task v2 on a phone: the head as the conversation's first row ([LocalTaskConversationHeadRow]). */
+    val taskConversationHeadRow: TaskConversationHeadRow? = null,
     val threadInstanceKey: String,
     val routeActive: Boolean,
     val hostForeground: Boolean,
@@ -15626,6 +16810,7 @@ private data class ThreadPageContentData(
     val channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
     val selectedTab: RaftThreadTab,
     val availableTabs: List<RaftThreadTab>,
+    val sideCardsEnabled: Boolean,
     val activityMuteState: ThreadActivityMuteUiState?,
     val activityMutedIndicatorVisible: Boolean,
     val conversationPinState: ThreadConversationPinUiState?,
@@ -15640,6 +16825,7 @@ private data class ThreadPageContentData(
     val composerSendKeyEnabled: Boolean,
     val longMessageCollapseEnabled: Boolean,
     val longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting?,
+    val channelSettingsPanel: ThreadChannelSettingsPanel?,
     val jumpInputs: ThreadJumpInputs,
     val newMessageMenuEnabled: Boolean,
     val currentServerSlug: String?,
@@ -15658,7 +16844,7 @@ private class ThreadPageContentCallbacks(
     val onSelectedTabChanged: (RaftThreadTab) -> Unit,
     val onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
     val onToggleActivityMute: (() -> Unit)?,
-    val onToggleConversationPin: (() -> Unit)?,
+    val onOpenSettingsPage: (() -> Boolean)?,
     val onOpenTaskSummary: (TaskSummary, String) -> Unit,
     val onTasksIntent: (SharedTasksRouteIntent) -> Unit,
     val onFilesAuthRequired: (String?) -> Unit,
@@ -15693,15 +16879,19 @@ private class ThreadPageContentCallbacks(
     val onComposerKeyboardInsetChanged: (Float) -> Unit,
     val onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     val onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    val onComposerDropFiles: (ThreadComposerFileDrop) -> Unit = { it.release() },
 )
 
 private @Composable
 fun ThreadPageContent(
+    /** Agent Lounge v0 (see [ThreadPageLounge]); null on pages that never show one. */
+    lounge: ThreadPageLounge? = null,
     agentFollowersHeader: @Composable () -> Unit = {},
     taskConversationBar: (@Composable () -> Unit)? = null,
     taskConversationChrome: TaskConversationHeaderChrome? = null,
     taskConversationHead: TaskHeadScrollState? = null,
     taskConversationFloat: (@Composable () -> Unit)? = null,
+    taskConversationHeadRow: TaskConversationHeadRow? = null,
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
     routeActive: Boolean,
@@ -15735,13 +16925,16 @@ fun ThreadPageContent(
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
     selectedTab: RaftThreadTab,
     availableTabs: List<RaftThreadTab>,
+    /** Task v2 ([conversationSideCardsEnabled]): Tasks / Files cards instead of the tab row. */
+    sideCardsEnabled: Boolean = false,
     onSelectedTabChanged: (RaftThreadTab) -> Unit,
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
     activityMuteState: ThreadActivityMuteUiState? = null,
     activityMutedIndicatorVisible: Boolean = false,
     onToggleActivityMute: (() -> Unit)? = null,
+    // A phone: opens the settings as a pushed page; false (or null) keeps the drawer.
+    onOpenSettingsPage: (() -> Boolean)? = null,
     conversationPinState: ThreadConversationPinUiState? = null,
-    onToggleConversationPin: (() -> Unit)? = null,
     forwardServerId: ServerId?,
     forwardTargetRepository: ForwardMessageTargetRepository?,
     contentExtrasVisible: Boolean,
@@ -15768,6 +16961,8 @@ fun ThreadPageContent(
     newDesignSettingsEnabled: () -> Boolean = { false },
     longMessageCollapseEnabled: Boolean = false,
     longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting? = null,
+    /** The settings drawer's members strip and preferences (null: the drawer shows the name form and actions). */
+    channelSettingsPanel: ThreadChannelSettingsPanel? = null,
     jumpInputs: ThreadJumpInputs = ThreadJumpInputs(),
     newMessageMenuEnabled: Boolean = false,
     currentServerSlug: String? = null,
@@ -15793,6 +16988,7 @@ fun ThreadPageContent(
     onThreadEvent: ThreadEventHandler,
     onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onComposerDropFiles: (ThreadComposerFileDrop) -> Unit = { it.release() },
     onToggleFocusMode: (() -> Unit)? = null,
     focusModeActive: Boolean = false,
 )
@@ -15804,11 +17000,13 @@ fun ThreadPageContent(
         focusModeActive = focusModeActive,
         data =
             ThreadPageContentData(
+                lounge = lounge,
                 agentFollowersHeader = agentFollowersHeader,
                 taskConversationBar = taskConversationBar,
                 taskConversationChrome = taskConversationChrome,
                 taskConversationHead = taskConversationHead,
                 taskConversationFloat = taskConversationFloat,
+                taskConversationHeadRow = taskConversationHeadRow,
                 threadInstanceKey = threadInstanceKey,
                 routeActive = routeActive,
                 hostForeground = hostForeground,
@@ -15841,6 +17039,7 @@ fun ThreadPageContent(
                 channelSuggestionsFlow = channelSuggestionsFlow,
                 selectedTab = selectedTab,
                 availableTabs = availableTabs,
+                sideCardsEnabled = sideCardsEnabled,
                 activityMuteState = activityMuteState,
                 activityMutedIndicatorVisible = activityMutedIndicatorVisible,
                 conversationPinState = conversationPinState,
@@ -15855,6 +17054,7 @@ fun ThreadPageContent(
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 longMessageCollapseConversationSetting = longMessageCollapseConversationSetting,
+                channelSettingsPanel = channelSettingsPanel,
                 jumpInputs = jumpInputs,
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 currentServerSlug = currentServerSlug,
@@ -15873,7 +17073,7 @@ fun ThreadPageContent(
                 onSelectedTabChanged = onSelectedTabChanged,
                 onSuggestionDemandChanged = onSuggestionDemandChanged,
                 onToggleActivityMute = onToggleActivityMute,
-                onToggleConversationPin = onToggleConversationPin,
+                onOpenSettingsPage = onOpenSettingsPage,
                 onOpenTaskSummary = onOpenTaskSummary,
                 onTasksIntent = onTasksIntent,
                 onFilesAuthRequired = onFilesAuthRequired,
@@ -15905,6 +17105,7 @@ fun ThreadPageContent(
                 onComposerKeyboardInsetChanged = onComposerKeyboardInsetChanged,
                 onComposerSendRequest = onComposerSendRequest,
                 onComposerEvent = onComposerEvent,
+                onComposerDropFiles = onComposerDropFiles,
             ),
     )
 }
@@ -15922,7 +17123,13 @@ private fun ThreadPageContentContent(
     val threadInstanceKey = data.threadInstanceKey
     val routeActive = data.routeActive
     val hostForeground = data.hostForeground
-    val payload = data.payload
+    // Agent Lounge v0: the Lounge this page is, or a reply thread is in (null elsewhere).
+    val pageLounge = data.lounge?.lounge
+    val conversationLounge = pageLounge?.takeIf { data.payload.surfaceKind == RaftThreadSurfaceKind.Channel }
+    val payload =
+        remember(data.payload, conversationLounge, data.accessResolution) {
+            data.payload.withAgentLoungeAccess(conversationLounge, data.accessResolution)
+        }
     val messageBodyTextStyle = data.messageBodyTextStyle
     val timelineSlice = data.timelineSlice
     // In the assistant's panel: a card from it still waiting here gives the otter its confirm mood.
@@ -15955,13 +17162,34 @@ private fun ThreadPageContentContent(
         rememberRaftMemberAppBot(data.headerDisplay.composerDmAgentPeerId())?.takeIf { it.removed }
     val selectedTab = data.selectedTab
     val availableTabs = data.availableTabs
+    // Task v2: the person's open Tasks / Files cards (app-level, not this conversation's).
+    val sideCardsEnabled = data.sideCardsEnabled
+    val sideCardsStore = LocalConversationSideCards.current
+    val sideCardsStoreState by sideCardsStore.state.collectAsState()
+    val sideCards =
+        if (sideCardsEnabled) sideCardsStoreState.availableIn(RaftThreadTab.Tasks in availableTabs) else ConversationSideCardsState()
+    // Task v2 on a wide page: the cards stand in a column beside the conversation instead of
+    // covering it ([conversationSideCardsBeside]). In the workspace the column joins the pane grid
+    // around the page, right of the reply thread: the room is that grid's ([raftPaneGridSpareDp]).
+    // A page on its own measures its root; until then the window's width stands in for it.
+    val sideCardsDensity = LocalDensity.current.density
+    val sideCardsWindowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
+    var sideCardsPageWidthDp by remember { mutableStateOf(sideCardsWindowWidthDp) }
+    val sideCardsGridSpareDp = raftPaneGridSpareDp()
+    val sideCardsBeside =
+        sideCardsEnabled &&
+            if (sideCardsGridSpareDp != null) {
+                conversationSideCardsBesideInGrid(sideCardsWindowWidthDp, sideCardsGridSpareDp)
+            } else {
+                conversationSideCardsBeside(sideCardsWindowWidthDp, sideCardsPageWidthDp)
+            }
     val onSelectedTabChanged = callbacks.onSelectedTabChanged
     val onSuggestionDemandChanged = callbacks.onSuggestionDemandChanged
     val activityMuteState = data.activityMuteState
     val activityMutedIndicatorVisible = data.activityMutedIndicatorVisible
     val onToggleActivityMute = callbacks.onToggleActivityMute
+    val onOpenSettingsPage = callbacks.onOpenSettingsPage
     val conversationPinState = data.conversationPinState
-    val onToggleConversationPin = callbacks.onToggleConversationPin
     val forwardServerId = data.forwardServerId
     val forwardTargetRepository = data.forwardTargetRepository
     val contentExtrasVisible = data.contentExtrasVisible
@@ -15988,6 +17216,7 @@ private fun ThreadPageContentContent(
     val newDesignSettingsEnabled = callbacks.newDesignSettingsEnabled
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
     val longMessageCollapseConversationSetting = data.longMessageCollapseConversationSetting
+    val channelSettingsPanel = data.channelSettingsPanel
     val jumpInputs = data.jumpInputs
     val newMessageMenuEnabled = data.newMessageMenuEnabled
     val currentServerSlug = data.currentServerSlug
@@ -16000,6 +17229,14 @@ private fun ThreadPageContentContent(
     val adaptiveCloseRequest = data.adaptiveCloseRequest
     val adaptiveStoreScope = data.adaptiveStoreScope
     val adaptiveEventBus = data.adaptiveEventBus
+    // Desktop / hardware keyboard: the composer takes the focus when the conversation opens; the
+    // wide detail's conversation leaves it to the reply thread shown beside it.
+    val composerAutofocusOnOpen =
+        rememberThreadComposerAutofocusOnOpen(
+            routeActive = routeActive,
+            adaptiveCloseRequest = adaptiveCloseRequest,
+            adaptiveStoreScope = adaptiveStoreScope,
+        )
     val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
     val onViewportFollowsLatestChange = callbacks.onViewportFollowsLatestChange
     val onLoadNewer = callbacks.onLoadNewer
@@ -16013,6 +17250,7 @@ private fun ThreadPageContentContent(
     val onThreadEvent = data.onThreadEvent
     val onComposerSendRequest = callbacks.onComposerSendRequest
     val onComposerEvent = callbacks.onComposerEvent
+    val onComposerDropFiles = callbacks.onComposerDropFiles
     val inlineReplyParticipantsById =
         remember(payload.members, payload.memberCandidates) {
             (payload.members + payload.memberCandidates)
@@ -16067,12 +17305,14 @@ private fun ThreadPageContentContent(
         )
     }
     var visibleTasksStartThreadId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    LaunchedEffect(selectedTab, taskChannelId?.value, payload.status, tasksViewModel) {
+    LaunchedEffect(selectedTab, sideCards.tasks, taskChannelId?.value, payload.status, tasksViewModel) {
         val resolvedTaskChannelId = taskChannelId ?: return@LaunchedEffect
         tasksViewModel ?: return@LaunchedEffect
+        // An open Tasks card loads the channel's tasks as the Tasks tab did.
+        val tasksShownTab = if (sideCards.tasks) RaftThreadTab.Tasks else selectedTab
         if (
             !shouldStartThreadTasksJoin(
-                payload = payload.copy(selectedTab = selectedTab.wireValue),
+                payload = payload.copy(selectedTab = tasksShownTab.wireValue),
                 startedThreadId = visibleTasksStartThreadId,
                 taskChannelId = resolvedTaskChannelId
             )
@@ -16086,9 +17326,12 @@ private fun ThreadPageContentContent(
         onTasksIntent(SharedTasksRouteIntent.Start)
     }
     var activeModal by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    // A phone opens the settings as a pushed page (ThreadSettingsPage.kt); a wide window as the drawer.
+    val settingsOpensAsPage = rememberThreadSettingsOpensAsPage()
     LaunchedEffect(channelProfileUpdateStatus, activeModal) {
         if (channelProfileUpdateStatus == ChannelProfileUpdateStatus.Succeeded) {
-            if (activeModal == "settings") activeModal = null
+            // web inline Save: the drawer stays open and Save reads "Changes saved" for a moment.
+            if (activeModal == "settings") delay(ThreadSettingsSavedNoticeMillis)
             onClearChannelProfileUpdateStatus()
         }
     }
@@ -16097,10 +17340,37 @@ private fun ThreadPageContentContent(
     val threadScreenPagerForForwardBundle = LocalActivity.current.getPager() as Pager
     var activeForwardSelectionMode by remember(threadInstanceKey) { mutableStateOf(ThreadForwardSelectionMode.Merged) }
     var selectedShareMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    // Select mode itself, apart from what is selected: as on the web (selectionStore `isActive`), it
+    // stays on with nothing selected (the select-all checkbox clears) until × ends it.
+    var shareSelectionMode by remember(threadInstanceKey) { mutableStateOf(false) }
     var forwardMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     val selectedShareBounds = remember(threadInstanceKey) { mutableMapOf<String, ThreadShareCaptureRect>() }
     var sharePreviewImage by remember(threadInstanceKey) { mutableStateOf<ThreadSharePreviewImage?>(null) }
     var sharePreviewLoading by remember(threadInstanceKey) { mutableStateOf(false) }
+    // Android / desktop: the share image laid out off screen at the picked width (threadShareImageRendersOffscreen).
+    var shareImageWidthChoice by remember(threadInstanceKey) { mutableStateOf(ThreadShareImageWidthChoice()) }
+    var shareImageRenderWidthDp by remember(threadInstanceKey) { mutableStateOf(ThreadShareImageDefaultWidthDp) }
+    var shareImageBitmap by remember(threadInstanceKey) { mutableStateOf<ThreadShareRenderedImage?>(null) }
+    var shareImageRendering by remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareImageSaving by remember(threadInstanceKey) { mutableStateOf(false) }
+    val sharePngWriter = rememberRaftPngFileWriter()
+    LaunchedEffect(shareImageWidthChoice) {
+        val widthDp = shareImageWidthChoice.widthDp
+        if (widthDp != shareImageRenderWidthDp) {
+            // A drag of the custom slider lays the image out again once it pauses.
+            if (shareImageWidthChoice.preset == ThreadShareImageWidth.Custom) delay(ThreadShareImageWidthDebounceMs)
+            shareImageRenderWidthDp = widthDp
+        }
+    }
+    // The share image (up to 16M px) is held only while Share preview is open: however it closes
+    // (dismiss, saved, another modal), the bitmap goes with it.
+    val sharePreviewOpen = activeModal == "sharePreview"
+    LaunchedEffect(sharePreviewOpen) {
+        if (!sharePreviewOpen) {
+            shareImageBitmap = null
+            shareImageRendering = false
+        }
+    }
     var shareCaptureMode by remember(threadInstanceKey) { mutableStateOf(false) }
     var shareCaptureTargetMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var shareCaptureAnchorBeforeTarget by remember(threadInstanceKey) { mutableStateOf(false) }
@@ -16125,11 +17395,13 @@ private fun ThreadPageContentContent(
     var forwardSuccessBanner by remember(threadInstanceKey) { mutableStateOf<ThreadForwardSuccessBanner?>(null) }
     var insertMentionRequestNonce by remember(threadInstanceKey) { mutableStateOf(0) }
     var insertMentionRequest by remember(threadInstanceKey) { mutableStateOf<ThreadComposerInsertMentionRequest?>(null) }
-    val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == RaftThreadTab.Chat
+    val shareSelectionActive = shareSelectionMode && selectedTab == RaftThreadTab.Chat
     val selectableShareMessageIds =
         remember(timelineSlice) {
             timelineSlice.threadSelectableShareMessageIds()
         }
+    // Every reply is loaded: none older, none newer (web `selectableComplete`).
+    val selectableShareComplete = !timelineSlice.canLoadMoreBefore && !timelineSlice.canLoadMoreAfter
     val selectedShareMessages =
         remember(timelineSlice, selectedShareMessageIds) {
             timelineSlice.threadSelectedShareMessages(selectedShareMessageIds)
@@ -16159,6 +17431,34 @@ private fun ThreadPageContentContent(
                 .threadForwardPickerTargets(forwardSourceServerId, forwardSourceChannelId)
                 .map { it.toRaftForwardTargetPickerItem() }
         }
+    // slock #12621 "Threads & tasks": one GET per picker open (Visible lane), never per keystroke,
+    // never retried; a failure or an empty answer is no group.
+    val forwardConversationLoader =
+        remember(threadInstanceKey, forwardTargetRepository) {
+            forwardTargetRepository?.let(::ThreadForwardConversationTargetsLoader)
+        }
+    var forwardConversationTargets by remember(threadInstanceKey) { mutableStateOf<List<ForwardMessageTarget>>(emptyList()) }
+    val forwardConversationItems =
+        remember(forwardConversationTargets, forwardSourceServerId, forwardSourceChannelId) {
+            forwardConversationTargets
+                .threadForwardConversationPickerTargets(forwardSourceServerId, forwardSourceChannelId)
+                .map { it.toRaftForwardTargetPickerItem() }
+        }
+    LaunchedEffect(forwardPickerFlow.sessionKey, forwardSourceServerId, forwardConversationLoader) {
+        val sessionKey = forwardPickerFlow.sessionKey
+        val serverId = forwardSourceServerId
+        val loader = forwardConversationLoader
+        if (sessionKey == null || serverId == null || loader == null || sessionKey.serverId != serverId.value) {
+            forwardConversationTargets = emptyList()
+            return@LaunchedEffect
+        }
+        forwardConversationTargets =
+            loader.load(
+                sessionKey = sessionKey,
+                serverId = serverId,
+                currentChannelId = payload.threadForwardConversationCurrentChannelId()
+            )
+    }
     LaunchedEffect(
         forwardPickerFlow.sessionKey,
         forwardPickerFlow.query,
@@ -16312,10 +17612,13 @@ private fun ThreadPageContentContent(
         }
     }
     val clearShareSelection = {
+        shareSelectionMode = false
         selectedShareMessageIds = emptySet()
         selectedShareBounds.clear()
         sharePreviewImage = null
         sharePreviewLoading = false
+        shareImageBitmap = null
+        shareImageRendering = false
         shareCaptureMode = false
         shareCaptureTargetMessageId = null
         shareCaptureAnchorBeforeTarget = false
@@ -16355,6 +17658,7 @@ private fun ThreadPageContentContent(
                 )
             )
         forwardTargets = emptyList()
+        forwardConversationTargets = emptyList()
         forwardDirectoryNextCursor = null
         forwardSelectedReceipts = emptyList()
         forwardNote = TextFieldValue()
@@ -16364,20 +17668,24 @@ private fun ThreadPageContentContent(
         threadTransientBackTarget(
             activeModal = activeModal,
             shareSelectionActive = shareSelectionActive,
-            inlineSearchVisible = inlineSearchVisible
+            inlineSearchVisible = inlineSearchVisible,
+            // Beside the conversation the cards cover nothing: Back is the page's (web: only a phone's Back closes them).
+            sideCardsOpen = sideCards.anyOpen && !sideCardsBeside
         )
     RaftBackHandler(
         enabled = transientBackTarget != null,
         label = transientBackTarget?.label
     ) {
         when (transientBackTarget) {
+            ThreadTransientBackTarget.SideCards -> sideCardsStore.closeAll()
             ThreadTransientBackTarget.ShareSelection -> clearShareSelection()
             ThreadTransientBackTarget.InlineSearch -> inlineSearchVisible = false
             null -> Unit
         }
     }
     suspend fun captureSelectedShareFragments(): ThreadShareCaptureRect? {
-        val fragments = mutableListOf<String>()
+        // Capture slices, per message: the share image frames each message on its own.
+        val messageFragments = mutableListOf<MutableList<String>>()
         var completedMessages = 0
         // The click set shareCaptureMode, which drops the rows' viewer-only previews
         // (LocalThreadShareCaptureActive). This screenshot is of the live list, so let that
@@ -16441,6 +17749,7 @@ private fun ThreadPageContentContent(
             var capturedHeight = 0
             var segmentHeight = 0
             var segmentCount = 0
+            val fragments = mutableListOf<String>().also { messageFragments += it }
             while (capturedHeight < initialRect.height.roundToInt() && segmentCount < ThreadShareCaptureMaxSegmentsPerMessage) {
                 val rect = selectedShareBounds[message.id] ?: break
                 val slice =
@@ -16498,22 +17807,23 @@ private fun ThreadPageContentContent(
                 completedMessages += 1
             }
         }
-        if (fragments.isEmpty() || completedMessages != selectedShareMessages.size) {
+        val fragmentCount = messageFragments.sumOf { it.size }
+        if (fragmentCount == 0 || completedMessages != selectedShareMessages.size) {
             diagnosticsLogger(
-                "thread_share_capture_incomplete fragments=${fragments.size} " +
+                "thread_share_capture_incomplete fragments=$fragmentCount " +
                     "completed=$completedMessages selected=${selectedShareMessages.size}"
             )
             return null
         }
         diagnosticsLogger(
-            "thread_share_capture_complete fragments=${fragments.size} completed=$completedMessages"
+            "thread_share_capture_complete fragments=$fragmentCount completed=$completedMessages"
         )
         return ThreadShareCaptureRect(
             x = 0f,
             y = 0f,
             width = 0f,
             height = 0f,
-            path = fragments.joinToString(separator = "\n")
+            path = threadShareFragmentsParam(messageFragments)
         )
     }
     var composerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(0f) }
@@ -16552,7 +17862,14 @@ private fun ThreadPageContentContent(
                 onThreadEvent("openMarkdownTag", tag.label, null, tag.kind.name)
             }
             ThreadMarkdownTagKind.Task -> {
-                val taskId = timelineSlice.findMarkdownTaskId(tag, linkedTasksProjection)
+                // `#proj:#7` / `dm:@peer:#7` name the task's conversation; the loaded timeline's own
+                // `#7` may be another conversation's task, so they always resolve by conversation.
+                val taskId =
+                    if (tag.channelName != null || tag.directMessagePeerName != null) {
+                        null
+                    } else {
+                        timelineSlice.findMarkdownTaskId(tag, linkedTasksProjection)
+                    }
                 if (!taskId.isNullOrBlank()) {
                     onThreadEvent("openTask", taskId, markdownActionId = actionId)
                 } else {
@@ -16572,6 +17889,14 @@ private fun ThreadPageContentContent(
                     "openMarkdownThreadRef",
                     tag.label,
                     tab = tag.threadShortId,
+                    markdownActionId = actionId
+                )
+            }
+            ThreadMarkdownTagKind.Message -> {
+                onThreadEvent(
+                    "openMarkdownMessageRef",
+                    tag.label,
+                    tab = tag.kind.name,
                     markdownActionId = actionId
                 )
             }
@@ -16601,8 +17926,15 @@ private fun ThreadPageContentContent(
             payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet()
         }
     val knownMarkdownMentionNames =
-        remember(payload.knownMarkdownMentionNames, payload.members, payload.memberCandidates, payload.originMessage, payload.messages) {
-            payload.toKnownMarkdownMentionNameSet()
+        remember(
+            payload.knownMarkdownMentionNames,
+            payload.members,
+            payload.memberCandidates,
+            payload.originMessage,
+            payload.messages,
+            timelineSlice.messages
+        ) {
+            payload.toKnownMarkdownMentionNameSet(timelineMessages = timelineSlice.messages)
         }
     val knownMarkdownDirectMessagePeerNames =
         remember(
@@ -16694,7 +18026,10 @@ private fun ThreadPageContentContent(
                 .fillMaxWidth()
                 .background(RaftColor.SurfaceWhite)
         ) {
-            if (renderAccessRetry) {
+            val unavailableNav = LocalConversationUnavailableNav.current
+            if (renderAccessRetry && unavailableNav != null && isConversationUnavailableErrorCode(payload.errorCode)) {
+                RaftConversationUnavailableState(wide = unavailableNav.wide, onBack = unavailableNav.onBack)
+            } else if (renderAccessRetry) {
                 ThreadStateActionMessage(
                     title = stringResource(Res.string.thread_error_load),
                     detail =
@@ -16809,6 +18144,7 @@ private fun ThreadPageContentContent(
                         onEnterShareSelection = { messageId ->
                             if (!payload.isRetractedMessage(messageId)) {
                                 selectedShareMessageIds = setOf(messageId)
+                                shareSelectionMode = true
                                 activeModal = null
                             }
                         },
@@ -16859,11 +18195,12 @@ private fun ThreadPageContentContent(
                         tasksViewModel = tasksViewModel,
                         channelId = taskPanelChannelId,
                         serverId = forwardServerId?.value,
-                        active = tab == selectedTab,
+                        active = tab == selectedTab || tab.conversationSideCard()?.let { sideCardShowing(sideCards, sideCardsBeside, it) } == true,
                         identityOptions = taskIdentityOptions,
                         openTaskEnabled = payload.showTaskOpenActions,
                         draftProjection = draftProjection,
                         timeContext = payload.toRaftTimeCapabilities().staticContext(),
+                        taskV2Enabled = linkedTasksProjection.taskV2Enabled,
                         onOpenTask = { task -> onOpenTaskSummary(task, "tasks_panel") },
                         onIntent = onTasksIntent
                     )
@@ -16873,7 +18210,7 @@ private fun ThreadPageContentContent(
                         basePayload = payload,
                         filesStartKey = resolvedAuxiliaryThreadId,
                         filesViewModel = filesViewModel,
-                        active = tab == selectedTab,
+                        active = tab == selectedTab || tab.conversationSideCard()?.let { sideCardShowing(sideCards, sideCardsBeside, it) } == true,
                         attachmentOpenStates = attachmentOpenStates,
                         onAuthRequired = onFilesAuthRequired,
                         onOpenAttachment = onOpenFilesAttachment,
@@ -16885,12 +18222,25 @@ private fun ThreadPageContentContent(
     }
     val composerSuggestionPortal =
         remember(threadInstanceKey) { ThreadComposerSuggestionPortalState() }
+    // The thread timeline (botiverse/slock #13534): the reply thread's outline, read on opening the
+    // thread and on coming back to it, as the rail and the ⋯ menu's Timeline both need its count.
+    val threadOutline =
+        rememberThreadOutlineState(
+            (timelineSlice.historyChannelId ?: timelineSlice.sourceThreadId).takeIf { timelineSlice.replyThreadSurface }
+        )
+    val threadOutlineActive = routeActive && hostForeground
+    LaunchedEffect(threadOutline, threadOutlineActive) {
+        if (threadOutlineActive) threadOutline?.loadNewest()
+    }
+    CompositionLocalProvider(LocalThreadOutlineState provides threadOutline) {
     scaffold(
         ThreadRouteScaffoldSlots(
             scaffoldPlan = ThreadRouteMountPlan.FeatureSurfaces.toThreadRouteScaffoldPlan(),
             rootModifier =
                 Modifier.onGloballyPositioned { coordinates ->
                     onLayoutGeneration(coordinates.size.width, coordinates.size.height)
+                    val pageWidthDp = coordinates.size.width / sideCardsDensity
+                    if (pageWidthDp != sideCardsPageWidthDp) sideCardsPageWidthDp = pageWidthDp
                 }.then(data.taskConversationHead?.let { Modifier.taskHeadFloatOutsidePress(it) } ?: Modifier),
             header = {
                 // task #180: computed once per header composition, outside the header's own scope.
@@ -16910,6 +18260,12 @@ private fun ThreadPageContentContent(
                         originReplyMetadata = originReplyMetadata
                     )
                 ThreadPageHeader(
+                    onOpenTimeline =
+                        threadOutline?.openTimelineAction(
+                            leadingMessageId = timelineSlice.parentMessageId ?: timelineSlice.originMessage?.id,
+                            origin = timelineSlice.originMessage,
+                            messages = timelineSlice.messages,
+                        ),
                     agentFollowersHeader = data.agentFollowersHeader,
                     payload = payload,
                     headerDisplay = headerDisplay,
@@ -16919,7 +18275,9 @@ private fun ThreadPageContentContent(
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
                     showBack = !threadInSplitDetailPane(),
-                    onBack = onBack,
+                    // Task v2 on a phone: the header's Back closes the cards covering the conversation
+                    // first (web `headerMobileBack`), then leaves the page.
+                    onBack = if (sideCards.anyOpen && !sideCardsBeside) sideCardsStore::closeAll else onBack,
                     onOpenInChannel = {
                         onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
                     },
@@ -16941,10 +18299,14 @@ private fun ThreadPageContentContent(
                     onShowMembers = {
                         onThreadEvent("openMembersPager", null, null, null)
                     },
+                    lounge = data.lounge,
                     onShowSettings = {
-                        if (threadSettingsUsesStandalonePage(payload.surfaceKind, newDesignSettingsEnabled())) {
+                        if (conversationLounge != null) {
+                            activeModal = "settings"
+                        } else if (threadSettingsUsesStandalonePage(payload.surfaceKind, newDesignSettingsEnabled())) {
                             onThreadEvent("openChannelSettings", null, null, null)
-                        } else {
+                        } else if (!(settingsOpensAsPage && onOpenSettingsPage?.invoke() == true)) {
+                            // A wide window, or a page that could not open: the drawer.
                             activeModal = "settings"
                         }
                     },
@@ -16991,8 +18353,67 @@ private fun ThreadPageContentContent(
                             parentIsDirectMessage = payload.parentChannelKind == "dm",
                             muted = payload.activityMuted
                         ),
+                    sideCardToggles =
+                        if (sideCardsEnabled) {
+                            ThreadHeaderSideCardToggles(
+                                tasksAvailable = RaftThreadTab.Tasks in availableTabs,
+                                cards = sideCards,
+                                onToggle = { card ->
+                                    if (!sideCards.isOpen(card)) clearShareSelection()
+                                    sideCardsStore.toggle(card)
+                                    RaftProductEvents.channelTabSelected(
+                                        card.toThreadTab().productChannelTab(),
+                                        sideCards.isOpen(card)
+                                    )
+                                }
+                            )
+                        } else {
+                            null
+                        },
                 )
             },
+            bodyCover =
+                if (sideCardsEnabled) {
+                    // Kept (empty) while the cards stand beside: the body never remounts across the breakpoint.
+                    cover@{
+                        if (sideCardsBeside) return@cover
+                        // No header Back (a split's detail pane): the card keeps its own (web).
+                        val cardBack = sideCards.shown?.takeIf { threadInSplitDetailPane() }?.let { card -> { sideCardsStore.close(card) } }
+                        ConversationSideCardsCover(
+                            cards = sideCards,
+                            onPick = sideCardsStore::focus,
+                            onBack = cardBack,
+                            // iOS back swipe: what Back does here (the card's own, else every open card).
+                            onSwipeClose = cardBack ?: sideCardsStore::closeAll,
+                            tasksContent = {
+                                renderThreadTabContent(RaftThreadTab.Tasks, Modifier.fillMaxSize(), true)
+                            },
+                            filesContent = {
+                                renderThreadTabContent(RaftThreadTab.Files, Modifier.fillMaxSize(), true)
+                            }
+                        )
+                    }
+                } else {
+                    null
+                },
+            sideColumns =
+                if (sideCardsBeside) {
+                    listOfNotNull(
+                        conversationSideCardsColumn(
+                            cards = sideCards,
+                            onPick = sideCardsStore::focus,
+                            onClose = sideCardsStore::close,
+                            tasksContent = {
+                                renderThreadTabContent(RaftThreadTab.Tasks, Modifier.fillMaxSize(), true)
+                            },
+                            filesContent = {
+                                renderThreadTabContent(RaftThreadTab.Files, Modifier.fillMaxSize(), true)
+                            }
+                        )
+                    )
+                } else {
+                    emptyList()
+                },
             body = {
             if (jointBillingNotice != JointBillingNotice.None) {
                 val deadlineLabel = jointGraceDeadlineLabel?.takeIf { it.isNotBlank() }
@@ -17013,13 +18434,37 @@ private fun ThreadPageContentContent(
                         },
                     size = RaftUiBannerSize.Medium,
                     iconName = RaftLucideIconName.TriangleAlert,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    // Web ChannelLimitBanners: Upgrade opens the upgrade dialog (read-only:
+                    // `joint_channel_read_only`, in its grace period: `joint_channel_over_limit`).
+                    // iOS view-only Billing: "View your plan" (the view-only Plan & Billing page).
+                    action =
+                        if (settingsBillingOffersUpgrade()) {
+                            val gate =
+                                if (jointBillingNotice == JointBillingNotice.Locked) RaftUpgradeGate.JointChannelReadOnly
+                                else RaftUpgradeGate.JointChannelOverLimit
+                            ({
+                                RaftButton(
+                                    text = stringResource(Res.string.raft_pro_upgrade),
+                                    onClick = { onThreadEvent(ThreadOpenUpgradeEvent, gate.wire, null, null) },
+                                    variant = RaftButtonVariant.Default,
+                                    size = RaftButtonSize.Md,
+                                )
+                            })
+                        } else {
+                            val openPlan = LocalThreadActionCardSpecHost.current.openPlan
+                            ({ build.raft.app.components.RaftViewPlanButton(onClick = openPlan) })
+                        },
                 )
+            }
+            // Agent Lounge v0: who is here, always on top of the conversation (web lounge-audience-notice).
+            if (conversationLounge != null) {
+                AgentLoungeAudienceNotice(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
             val threadTabContent: @Composable ColumnScope.() -> Unit = {
             data.taskConversationBar?.invoke()
             // In the assistant's panel only the chat shows (web AssistantDm: ChatPanel without its head or tasks).
-            if (payload.showModeTabs && LocalThreadAssistantPanelEmbed.current == null) {
+            if (payload.showModeTabs && LocalThreadAssistantPanelEmbed.current == null && !sideCardsEnabled) {
                 RaftTabbedScaffold(
                     tabs = availableTabs.map { it.toRaftTabSpec() },
                     selectedKey = selectedTab,
@@ -17033,12 +18478,18 @@ private fun ThreadPageContentContent(
                     content = renderThreadTabContent
                 )
             } else {
-                // Task v2: the list tells the head how far it may fold ([taskHeadConversationOverflow]).
-                CompositionLocalProvider(LocalTaskHeadScrollState provides data.taskConversationHead) {
+                // No tab pager around the list here: dragging it left shows message times
+                // (ThreadMessageTimeReveal.kt). Under the pager that drag pages to Tasks.
+                // Task v2 on a phone: the list draws the head as its first row.
+                CompositionLocalProvider(
+                    LocalThreadTimeRevealAvailable provides true,
+                    LocalTaskConversationHeadRow provides data.taskConversationHeadRow,
+                ) {
                     renderThreadTabContent(
-                        selectedTab,
+                        // Task v2 cards: the page under them is always the conversation.
+                        if (sideCardsEnabled) RaftThreadTab.Chat else selectedTab,
                         Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)
-                            // Task v2 on a phone: the head above moves with the conversation's scroll.
+                            // Task v2 on a phone: scrolling the messages puts the pulled-down head back up.
                             .then(data.taskConversationHead?.let { Modifier.nestedScroll(it.connection) } ?: Modifier),
                         true
                     )
@@ -17057,10 +18508,33 @@ private fun ThreadPageContentContent(
                 threadTabContent()
             }
             if (!primaryFooterReady) {
-                // Loading/permission/error owns the whole content frame. Join and
-                // composer mount only with the same resolved render-slice emission
-                // that removes the loading UI, avoiding a second LazyColumn resize.
-                Unit
+                // Join and the composer mount only with the resolved render-slice emission. A
+                // cached timeline is shown before that (access still refreshing), so while a
+                // composer is still expected its dock keeps the composer's resting height:
+                // the bottom-pinned list is laid out at its final height on the first frame
+                // instead of jumping up when the composer mounts (Compose 版 open jitter).
+                if (
+                    threadReservesPendingComposerSlot(
+                        accessResolution = accessResolution,
+                        payloadStatus = payload.status,
+                        joined = payload.joined,
+                        showComposer = payload.showComposer,
+                        selectedTab = selectedTab.wireValue,
+                        composerLocked = jointBillingNotice == JointBillingNotice.Locked
+                    )
+                ) {
+                    ThreadComposerDock(
+                        edgePadding = if (threadInSplitDetailPane()) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
+                        composerModifier =
+                            Modifier.raftThreadComposerLiveKeyboardPadding(
+                                bottomSafeArea = composerBottomSafeArea,
+                                keyboardInsetExcludesBottomSafeArea =
+                                    composerKeyboardInsetExcludesBottomSafeArea
+                            )
+                    ) {
+                        ThreadComposerRestingHeightPlaceholder(composerSurface)
+                    }
+                }
             } else if (
                 !writeActionsEnabled &&
                 payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
@@ -17095,9 +18569,18 @@ private fun ThreadPageContentContent(
                         )
                     )
                 }
+            } else if (agentLoungeFooterKind(conversationLounge, pageLounge) != null) {
+                // Agent Lounge v0: an archived Lounge says so (Unarchive only for a viewer whose server
+                // role may archive channels), and one you may only read has the read-only composer;
+                // never a Join.
+                AgentLoungeFooter(
+                    kind = agentLoungeFooterKind(conversationLounge, pageLounge),
+                    inputs = data.lounge,
+                    modifier = Modifier.padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm),
+                )
             } else if (!writeActionsEnabled) {
                 Unit
-            } else if (!payload.joined) {
+            } else if (threadFooterShowsJoin(payload.joined, conversationLounge)) {
                 ThreadJoinFooter(
                     label = localizedThreadJoinLabel(payload.joinLabel),
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
@@ -17117,11 +18600,18 @@ private fun ThreadPageContentContent(
                 ) {
                     ThreadShareSelectionToolbar(
                         selectedCount = selectedShareMessages.size,
-                        selectableCount = selectableShareMessageIds.size,
                         onCancel = clearShareSelection,
-                        onSelectAll =
+                        selectAll =
                             if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
-                                { selectedShareMessageIds = selectableShareMessageIds }
+                                ThreadShareSelectAll(
+                                    check = threadShareSelectAllCheck(selectedShareMessageIds, selectableShareMessageIds),
+                                    complete = selectableShareComplete,
+                                    enabled = selectedShareMessageIds.isNotEmpty() || selectableShareMessageIds.isNotEmpty(),
+                                    onClick = {
+                                        selectedShareMessageIds =
+                                            threadShareSelectAllNext(selectedShareMessageIds, selectableShareMessageIds)
+                                    },
+                                )
                             } else {
                                 null
                             },
@@ -17135,7 +18625,18 @@ private fun ThreadPageContentContent(
                             }
                         },
                         onExportImage = {
-                            if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
+                            if (threadShareImageRendersOffscreen && selectedShareMessages.isNotEmpty()) {
+                                // Laid out again off screen at the picked width (the renderer in `overlays`).
+                                diagnosticsLogger(
+                                    "thread_share_export_click selected=${selectedShareMessages.size} " +
+                                        "offscreen=true width=${shareImageWidthChoice.widthDp}"
+                                )
+                                sharePreviewImage = null
+                                shareImageBitmap = null
+                                shareImageRendering = true
+                                shareImageRenderWidthDp = shareImageWidthChoice.widthDp
+                                activeModal = "sharePreview"
+                            } else if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
                                 diagnosticsLogger(
                                     "thread_share_export_click selected=${selectedShareMessages.size} " +
                                         "scopeActive=${shareExportScope.coroutineContext[Job]?.isActive == true}"
@@ -17212,7 +18713,8 @@ private fun ThreadPageContentContent(
                         )
                 ) {
                     CompositionLocalProvider(
-                        LocalThreadComposerSuggestionPortal provides composerSuggestionPortal
+                        LocalThreadComposerSuggestionPortal provides composerSuggestionPortal,
+                        LocalAgentLoungeComposerName provides conversationLounge?.let { agentLoungeTitle(it.displayAgentName) },
                     ) {
                         ThreadComposerRoute(
                             baseComposerState = baseComposerState,
@@ -17226,6 +18728,7 @@ private fun ThreadPageContentContent(
                             channelSuggestionsFlow = channelSuggestionsFlow,
                             agentStatusResolver = agentStatusResolver,
                             onEvent = onComposerEvent,
+                            onDropFiles = onComposerDropFiles,
                             onSendRequest = onComposerSendRequest,
                             insertMentionRequest = insertMentionRequest,
                             onInsertMentionConsumed = { request ->
@@ -17242,7 +18745,8 @@ private fun ThreadPageContentContent(
                                 }
                             },
                             adaptiveNativeEditingStateReader =
-                                LocalThreadAdaptiveNativeEditingReader.current
+                                LocalThreadAdaptiveNativeEditingReader.current,
+                            autofocusOnOpen = composerAutofocusOnOpen,
                         )
                     }
                 }
@@ -17250,6 +18754,87 @@ private fun ThreadPageContentContent(
             },
             overlays = {
         ThreadComposerSuggestionPortalHost(composerSuggestionPortal)
+        if (threadShareImageRendersOffscreen && activeModal == "sharePreview" && selectedShareMessages.isNotEmpty()) {
+            val shareImageAuthorSuppression =
+                remember(selectedShareMessages, timelineSlice.messages, timelineSlice.compactConsecutiveMessages, timelineRenderConfig) {
+                    threadShareImageSuppressesAuthor(
+                        timeline = timelineSlice.messages,
+                        selected = selectedShareMessages,
+                        compactConsecutiveMessages = timelineSlice.compactConsecutiveMessages,
+                        localOffsetMinutes = timelineRenderConfig.timeContext.localOffsetMinutes,
+                    )
+                }
+            ThreadShareImageOffscreenRenderer(
+                cardWidthDp = shareImageRenderWidthDp,
+                rowCount = selectedShareMessages.size,
+                renderKey = selectedShareMessages,
+                background = RaftColor.Canvas,
+                onRendering = {
+                    shareImageRendering = true
+                    // Keep only the old preview on screen while the next image renders: the full
+                    // bitmap (up to 64 MB) can go before the new one is allocated. Download waits.
+                    shareImageBitmap = shareImageBitmap?.let { ThreadShareRenderedImage(image = it.preview, preview = it.preview) }
+                },
+                onRendered = { image ->
+                    shareImageBitmap = image
+                    shareImageRendering = false
+                    diagnosticsLogger(
+                        "thread_share_offscreen_rendered width=$shareImageRenderWidthDp " +
+                            "ok=${image != null} px=${image?.image?.width ?: 0}x${image?.image?.height ?: 0} " +
+                            "preview=${image?.preview?.width ?: 0}x${image?.preview?.height ?: 0}"
+                    )
+                },
+            ) { index ->
+                val message = selectedShareMessages[index]
+                val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(message)
+                val replyInThread =
+                    threadMessageIsReplyInThread(timelineSlice.replyThreadSurface, timelineSlice.originMessage?.id, message.id)
+                val sourceTasks =
+                    remember(message.id, linkedTasksProjection, replyInThread) {
+                        if (replyInThread) emptyList() else linkedTasksProjection.sourceTasksFor(message)
+                    }
+                val displayMessage =
+                    remember(message, linkedTasksProjection, sourceTasks.isEmpty()) {
+                        message.withLinkedTaskProjection(linkedTasksProjection)
+                            .let { if (sourceTasks.isEmpty()) it else it.withoutLinkedTask() }
+                    }
+                val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
+                val actionCard = if (contentExtrasVisible) remember(message.id, message.metadata) { message.threadActionCard() } else null
+                if (isSystemMessage && actionCard == null) {
+                    ThreadSystemMessageRow(message = displayMessage, timestampValue = message.timestampLabel)
+                } else {
+                    ThreadShareImageMessageRow(
+                        message = displayMessage,
+                        messageBodyTextStyle = messageBodyTextStyle,
+                        compactConsecutiveMessages = timelineSlice.compactConsecutiveMessages,
+                        suppressRepeatedAuthor = shareImageAuthorSuppression.getOrElse(index) { false },
+                        timestampLabel = message.timestampLabel,
+                        compactTimestampLabel = timelineRenderConfig.formatCompactTimestampLabel(message),
+                        replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message),
+                        sourceTasks = sourceTasks,
+                        actionCard = actionCard,
+                        actionCardExecutedTimeLabel =
+                            timelineRenderConfig.formatActionCardExecutedTimeLabel(
+                                actionCard?.executedAt,
+                                currentRaftTimeContextProvider?.todayEpochDay
+                            ),
+                        resolvedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName(),
+                        highlightedMentions = highlightedMentions,
+                        agentStatusResolver = agentStatusResolver,
+                        memberAvatarResolver = memberAvatarResolver,
+                        memberModelLabelResolver = memberModelLabelResolver,
+                        inlineReplyParticipantsById = inlineReplyParticipantsById,
+                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                        isMarkdownTagValid = isMarkdownTagValid,
+                        markdownTagContextSignature = markdownTagContextSignature,
+                        alignOwnMessageRight = timelineSlice.alignOwnMessagesRight && message.isOwn,
+                        messageAlignmentModeEnabled = timelineSlice.alignOwnMessagesRight,
+                        currentServerSlug = currentServerSlug,
+                        richContentEnabled = contentExtrasVisible,
+                    )
+                }
+            }
+        }
         val visibleForwardPickerSession = forwardPickerFlow.sessionKey
         val forwardPickerBottomSafeArea = raftBottomSafeAreaPadding()
         if ((activeModal == "forwardTargets" || activeModal == "forwardNote") && visibleForwardPickerSession != null) {
@@ -17277,7 +18862,8 @@ private fun ThreadPageContentContent(
                             appending = forwardPickerFlow.appending,
                             interactive = forwardPickerFlow.rowsInteractive,
                             dismissEnabled = forwardPickerFlow.dismissEnabled,
-                            requestGeneration = forwardPickerFlow.requestGeneration
+                            requestGeneration = forwardPickerFlow.requestGeneration,
+                            conversationItems = forwardConversationItems
                         ),
                     onIntent = { intent ->
                         when (intent) {
@@ -17433,7 +19019,8 @@ private fun ThreadPageContentContent(
                                                             ThreadForwardSuccessBanner(
                                                                 target = receipt.target,
                                                                 destination = delivery.destination,
-                                                                messageId = delivery.message.id
+                                                                messageId = delivery.message.id,
+                                                                conversationContext = delivery.message.conversationContext
                                                             )
                                                     }
                                                 }
@@ -17501,21 +19088,32 @@ private fun ThreadPageContentContent(
         }
         when (activeModal) {
             "settings" -> {
-                if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
-                    ThreadDirectMessageSettingsModal(
+                // Agent Lounge v0: a Lounge's overflow is the DM's (mute, section, collapse): no
+                // members, settings or edit (the server refuses rename, visibility and other agents).
+                if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage || conversationLounge != null) {
+                    ThreadDirectMessageSettingsDrawer(
+                        name = conversationLounge?.let { agentLoungeTitle(it.displayAgentName) } ?: headerDisplay.title,
+                        directMessageTag = conversationLounge == null,
                         activityMuteState = activityMuteState,
-                        conversationPinState = conversationPinState,
+                        section = channelSettingsPanel?.section,
+                        sectionEnabled = channelSettingsPanel?.writeActionsEnabled == true,
                         longMessageCollapseSetting = longMessageCollapseConversationSetting,
                         onDismiss = { activeModal = null },
                         onToggleActivityMute = onToggleActivityMute,
-                        onTogglePin = onToggleConversationPin
+                        onMoveSection = { moves -> channelSettingsPanel?.onMoveSection?.invoke(moves) },
+                        onCreateSection = { name, emoji -> channelSettingsPanel?.onCreateSection?.invoke(name, emoji) },
                     )
                 } else {
                     ThreadSettingsModal(
+                        channelKind = headerDisplay.channelKind,
                         channelName = headerDisplay.title,
                         subtitle = headerDisplay.subtitle,
-                        actions = payload.settingsActions,
-                        conversationPinState = conversationPinState,
+                        panel =
+                            (channelSettingsPanel ?: ThreadChannelSettingsPanel(longMessageCollapse = longMessageCollapseConversationSetting))
+                                .copy(
+                                    onOpenMembers = { onThreadEvent("openMembersPager", null, null, null) },
+                                    onAddMember = { onThreadEvent("openMembersPager", "add", null, null) },
+                                ),
                         activityMuteState = activityMuteState,
                         updateStatus = channelProfileUpdateStatus,
                         updateErrorCode = channelProfileUpdateErrorCode,
@@ -17530,13 +19128,8 @@ private fun ThreadPageContentContent(
                                 onUpdateChannelProfile(channelId, originalName, originalDescription, name, description)
                             }
                         },
-                        onTogglePin = onToggleConversationPin,
+                        onClearUpdateStatus = onClearChannelProfileUpdateStatus,
                         onToggleActivityMute = onToggleActivityMute,
-                        onOpenAction = { actionId ->
-                            activeModal = null
-                            onClearChannelProfileUpdateStatus()
-                            onThreadEvent("settingsAction", actionId, null, null)
-                        }
                     )
                 }
             }
@@ -17550,7 +19143,50 @@ private fun ThreadPageContentContent(
                             onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
                         }
                     },
+                    offscreen =
+                        if (threadShareImageRendersOffscreen) {
+                            ThreadSharePreviewOffscreen(
+                                image = shareImageBitmap,
+                                rendering = shareImageRendering || shareImageSaving,
+                                choice = shareImageWidthChoice,
+                                onChoiceChange = { shareImageWidthChoice = it },
+                            )
+                        } else {
+                            null
+                        },
                     onDownloadImage = {
+                        val offscreenImage = shareImageBitmap?.image
+                        if (threadShareImageRendersOffscreen) {
+                            if (offscreenImage != null && !shareImageSaving && !shareImageRendering) {
+                                shareImageSaving = true
+                                shareExportScope.launch {
+                                    val result =
+                                        try {
+                                            val fileRef =
+                                                withContext(Dispatchers.Default) {
+                                                    runCatching { sharePngWriter.writePng(offscreenImage, ThreadShareImageFilePrefix) }.getOrNull()
+                                                }
+                                            val path = fileRef?.let(::threadShareImageFilePath)
+                                            if (path.isNullOrBlank()) null else runCatching { onSaveShareImage(path) }.getOrNull()
+                                        } finally {
+                                            shareImageSaving = false
+                                        }
+                                    val status = result?.optString("status")
+                                    if (status == "cancelled") return@launch
+                                    val saved = status == "ok"
+                                    if (saved) {
+                                        activeModal = null
+                                    }
+                                    onThreadEvent(
+                                        if (saved) "shareSelectionImageSaved" else "shareSelectionExportFailed",
+                                        result?.optString("message")?.takeIf { it.isNotBlank() },
+                                        null,
+                                        null
+                                    )
+                                }
+                            }
+                            return@ThreadSharePreviewModal
+                        }
                         val imagePath = sharePreviewImage?.path
                         if (!imagePath.isNullOrBlank()) {
                             shareExportScope.launch {
@@ -17577,6 +19213,7 @@ private fun ThreadPageContentContent(
             }
         )
     )
+    }
 }
 
 @Composable
@@ -17618,7 +19255,20 @@ internal fun ThreadPageHeader(
      * docs/contracts/notifications.md §1.1); null leaves it out.
      */
     notificationLevelTarget: RaftNotificationLevelTarget? = null,
+    /** Task v2: the Tasks / Files card toggles between Search and Settings (null: none). */
+    sideCardToggles: ThreadHeaderSideCardToggles? = null,
+    /** The thread timeline's sheet (web ThreadOverflowMenu Timeline); null where the ⋯ doesn't offer it. */
+    onOpenTimeline: (() -> Unit)? = null,
+    /** Agent Lounge v0: the Lounge this page is (or is in), and an agent DM's Lounge toggle. */
+    lounge: ThreadPageLounge? = null,
 ) {
+    // Agent Lounge v0 (web ChatPanel `lounge-header`): a Lounge is headed "{Name}'s Lounge" with its
+    // agent's face and the Lounge mark; no # tile, no description. A thread in it names the Lounge.
+    val headerLounge = lounge?.takeIf { it.lounge != null }
+    val loungeHeader = headerLounge?.takeIf { headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel }
+    val loungeTitle = headerLounge?.let { agentLoungeTitle(it.agentName) }
+    val dmLoungeToggle = lounge?.onOpenDmAgentLounge?.takeIf { headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage }
+    val loungeLabel = stringResource(Res.string.agent_lounge_label)
     // Task v2 (web TaskConversationBar): a task conversation's search is the More menu's Search in Task.
     val taskConversation = payload.isTaskConversationSurface()
     val topSafeArea = if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp
@@ -17639,9 +19289,15 @@ internal fun ThreadPageHeader(
             originReplyCount == 1 -> stringResource(Res.string.thread_inline_reply_count_one)
             else -> stringResource(Res.string.thread_inline_reply_count_many, originReplyCount)
         }
-    val headerSubtitle = replyThreadHeaderSubtitle(headerDisplay.subtitle, replyThreadReplyCountLabel)
+    val headerSubtitle =
+        when {
+            loungeHeader != null -> null
+            headerLounge != null && headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread ->
+                replyThreadHeaderSubtitle(loungeTitle, replyThreadReplyCountLabel)
+            else -> replyThreadHeaderSubtitle(headerDisplay.subtitle, replyThreadReplyCountLabel)
+        }
     val localizedHeaderTitle =
-        replyThreadPreviewTitle ?: localizedThreadHeaderTitle(
+        loungeTitle?.takeIf { loungeHeader != null } ?: replyThreadPreviewTitle ?: localizedThreadHeaderTitle(
             title = headerDisplay.title,
             surfaceKind = headerDisplay.surfaceKind,
             localizedReplyThread = stringResource(Res.string.thread_reply_title),
@@ -17700,13 +19356,107 @@ internal fun ThreadPageHeader(
                         onToggleThreadFollow = onToggleThreadFollow,
                         onMarkThreadUnread = onMarkThreadUnread,
                         onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
+                        sideCardToggles = sideCardToggles,
+                        onOpenTimeline = onOpenTimeline,
                     )
                 } else {
                     emptyList()
                 },
         )
+    // PROTOTYPE (native nav bar): the conversation's buttons on the system bar: Members (with its
+    // count) first, then the Duo column's actions (the header's Search / Settings / Open in
+    // Channel and its ⋯ rows: Focus mode, Search in Task, View in Channel, Mark as Unread,
+    // Follow), then the ⋯'s notification level row. The bar keeps two buttons, the rest in ⋯.
+    val nativeSideActions =
+        if (showActions && LocalRaftNativeNavBarScript.current != null) {
+            threadHeaderSideColumnActions(
+                payload = payload,
+                surfaceKind = headerDisplay.surfaceKind,
+                taskConversation = taskConversation,
+                onOpenSearch = onOpenSearch,
+                onShowSettings = onShowSettings,
+                onOpenInChannel = onOpenInChannel,
+                onToggleFocusMode = onToggleFocusMode,
+                focusModeActive = focusModeActive,
+                threadFollowed = threadFollowed,
+                onToggleThreadFollow = onToggleThreadFollow,
+                onMarkThreadUnread = onMarkThreadUnread,
+                onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
+                onOpenTimeline = onOpenTimeline,
+            )
+        } else {
+            emptyList()
+        }
+    val nativeLevelTarget = notificationLevelTarget.whenLevelsSupported()
+    val nativeLevelLabel = rememberRaftNotificationLevelMenuLabel(nativeLevelTarget)
+    var nativeLevelDialogOpen by remember { mutableStateOf(false) }
+    if (nativeLevelDialogOpen && nativeLevelTarget != null) {
+        RaftNotificationLevelDialog(target = nativeLevelTarget, onDismiss = { nativeLevelDialogOpen = false })
+    }
+    val membersLabel = stringResource(Res.string.settings_members_title)
+    val nativeNavBarActions =
+        if (!showActions) {
+            emptyList()
+        } else {
+            buildList {
+                if (payload.showMembersAction && headerDisplay.surfaceKind != RaftThreadSurfaceKind.DirectMessage && loungeHeader == null) {
+                    add(
+                        RaftNativeNavBarAction(
+                            "members",
+                            membersLabel,
+                            "person.2",
+                            onShowMembers,
+                            badge = payload.membersCount.takeIf { it > 0 },
+                            priority = Int.MAX_VALUE,
+                            icon = RaftLucideIconName.Users,
+                        )
+                    )
+                }
+                if (dmLoungeToggle != null) {
+                    add(RaftNativeNavBarAction("lounge", loungeLabel, "person.2", dmLoungeToggle, icon = RaftLucideIconName.Users))
+                }
+                addAll(nativeSideActions.toRaftNativeNavBarActions())
+                if (nativeLevelTarget != null) {
+                    add(
+                        RaftNativeNavBarAction(
+                            NOTIFICATION_LEVEL_MENU_ITEM_ID,
+                            nativeLevelLabel,
+                            "bell",
+                            { nativeLevelDialogOpen = true },
+                            placement = RaftNativeNavBarPlacement.Overflow,
+                            icon = RaftLucideIconName.BellRing,
+                        )
+                    )
+                }
+            }
+        }
     RaftTopPageHeader(
         title = localizedHeaderTitle,
+        nativeSubtitle = headerSubtitle,
+        nativeActions = nativeNavBarActions,
+        // PROTOTYPE: the channel glyph / DM avatar and the refresh spinner in the host's title view.
+        nativeTitleExtras =
+            RaftNativeNavBarTitleExtras(
+                leading =
+                    when {
+                        loungeHeader != null ->
+                            RaftNativeNavBarTitleLeading.Avatar(
+                                label = loungeHeader.agentName,
+                                avatarWireValue = loungeHeader.agentAvatarWireValue,
+                                fill = raftAvatarFallbackFill(MemberKind.Agent),
+                            )
+                        headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage ->
+                            RaftNativeNavBarTitleLeading.Avatar(
+                                label = headerDisplay.title.ifBlank { headerDisplay.dmPeerAvatarLabel },
+                                avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
+                                fill = raftAvatarFallbackFill(headerDisplay.dmPeerIdentity?.kind),
+                            )
+                        payload.showModeTabs ->
+                            RaftNativeNavBarTitleLeading.Channel(headerDisplay.channelKind, headerDisplay.channelOnPublicPage)
+                        else -> null
+                    },
+                refreshing = payload.backgroundRefreshing,
+            ),
         backgroundColor = RaftColor.Canvas,
         topSafeAreaOverride = topSafeArea,
         contentStartPadding =
@@ -17725,7 +19475,25 @@ internal fun ThreadPageHeader(
             if (showsBack && !controlsInColumn) {
                 RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
             }
-            if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
+            if (loungeHeader != null) {
+                // The face is decorative for screen readers; its tap opens the agent's profile.
+                Box(
+                    modifier =
+                        Modifier
+                            .padding(end = ThreadHeaderChannelTitleGapExtra)
+                            .then(
+                                loungeHeader.onOpenAgentProfile?.let { open -> Modifier.clickable(onClick = open) } ?: Modifier
+                            )
+                ) {
+                    RaftLoungeAvatar(
+                        agentId = loungeHeader.lounge?.agentId,
+                        avatarWireValue = loungeHeader.agentAvatarWireValue,
+                        label = loungeHeader.agentName,
+                        cacheServerId = loungeHeader.cacheServerId,
+                        avatarSize = 35.dp,
+                    )
+                }
+            } else if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
                     // The peer's name (the header title): initials come from its words.
@@ -17752,37 +19520,34 @@ internal fun ThreadPageHeader(
         },
         titleContent = {
             if (taskConversationChrome != null) {
-                // Task v2 (web TaskConversationBar): the ref over "Task #7", and the task's state once
-                // the head has scrolled away.
+                // Task v2 (web TaskConversationBar): the ref over "Task #7", and on a phone the task's
+                // state with the chevron that pulls the head down.
                 TaskConversationBarTitle(taskConversationChrome, Modifier.weight(1f))
             } else
             Column(
                 modifier =
                     Modifier
                         .weight(1f)
+                        .then(if (loungeHeader != null) Modifier.testTag(AgentLoungeTestTags.Header) else Modifier)
                         // A long press copies the channel / DM name; the tap (scroll to top) stays.
                         .raftCopyable(
-                            threadHeaderCopyText(headerDisplay.title, headerDisplay.surfaceKind).takeIf { replyThreadPreviewTitle == null },
+                            (loungeTitle?.takeIf { loungeHeader != null }
+                                ?: threadHeaderCopyText(headerDisplay.title, headerDisplay.surfaceKind)).takeIf { replyThreadPreviewTitle == null },
                             onClick = onTitleClick,
                         ),
                 // raft-ui `PanelHeaderContent`: the 22dp title line sits straight on the 18dp meta line.
                 verticalArrangement = Arrangement.Top
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(ThreadHeaderDmAgentActivityLeadingGap)
-                ) {
+                ThreadHeaderNameFirstRow(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = localizedHeaderTitle,
-                        // raft-ui `PanelTitle`: text-headline (17/22 bold).
-                        style = RaftType.PageTitle.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 17.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
+                        // raft-ui `PanelTitle`: text-headline (17/22 bold; 16/24 in the wide type).
+                        style = RaftType.Headline.copy(color = RaftColor.TextBlack),
                         color = RaftColor.TextBlack,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        overflow = TextOverflow.Ellipsis
                     )
-                    if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel) {
+                    if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel && loungeHeader == null) {
                         RaftExternalBridgeBadge(headerDisplay.bridgeProvider)
                     }
                     if (activityMutedIndicatorVisible) {
@@ -17791,13 +19556,15 @@ internal fun ThreadPageHeader(
                     if (dmAppBot != null) {
                         RaftAppBotBadge(identity = dmAppBot, botName = localizedHeaderTitle)
                     } else {
-                        dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }
+                        dmAgentActivity?.let {
+                            ThreadDmAgentActivity(state = it, modifier = Modifier.layoutId(ThreadHeaderYieldingSlot))
+                        }
                     }
                 }
                 // Web #10285: a reply thread's channel name does what Open in Channel does (the
                 // parent message in its channel), under a View in Channel tooltip.
                 val channelLinkLabel =
-                    headerDisplay.subtitle?.takeIf {
+                    (loungeTitle ?: headerDisplay.subtitle)?.takeIf {
                         it.isNotBlank() &&
                             headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
                             payload.threadHeaderOpenInParentActionVisible()
@@ -17839,6 +19606,28 @@ internal fun ThreadPageHeader(
                     if (!taskConversation && !replyThreadMenu && payload.threadHeaderSearchAction() != null) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.Search, onClick = onOpenSearch)
                     }
+                    // Agent Lounge v0 (web useChannelHeadToggles): an agent DM's Lounge, between Search and Settings.
+                    if (dmLoungeToggle != null) {
+                        Box(Modifier.testTag(AgentLoungeTestTags.DmHeaderToggle)) {
+                            ConversationHeaderToggle(
+                                icon = RaftLucideIconName.Users,
+                                selected = false,
+                                label = loungeLabel,
+                                onClick = dmLoungeToggle
+                            )
+                        }
+                    }
+                    sideCardToggles?.let { toggles ->
+                        // web ChannelTasksToggle / ChannelFilesToggle: no count on either.
+                        toggles.cardsInHeader().forEach { card ->
+                            ConversationHeaderToggle(
+                                icon = card.icon,
+                                selected = toggles.cards.isOpen(card),
+                                label = conversationSideCardToggleLabel(card, toggles.cards.isOpen(card)),
+                                onClick = { toggles.onToggle(card) }
+                            )
+                        }
+                    }
                     if (threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind)) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.Settings, onClick = onShowSettings)
                     }
@@ -17851,7 +19640,7 @@ internal fun ThreadPageHeader(
                     val toggleFocus = onToggleFocusMode
                     val hasPanelMenu =
                         toggleFocus != null || onToggleThreadFollow != null || onMarkThreadUnread != null || taskConversation ||
-                            replyThreadSearch != null || replyThreadViewInChannel != null
+                            replyThreadSearch != null || replyThreadViewInChannel != null || onOpenTimeline != null
                     if (hasPanelMenu) {
                         ThreadHeaderFocusModeMenu(
                             focused = focusModeActive,
@@ -17861,6 +19650,7 @@ internal fun ThreadPageHeader(
                             onMarkUnread = onMarkThreadUnread,
                             focusEnabled = focusModeActive || toggleFocus != null,
                             onSearchInTask = onOpenSearch.takeIf { taskConversation } ?: replyThreadSearch,
+                            onTimeline = onOpenTimeline,
                             onViewInChannel = taskConversationChrome?.onViewInChannel.takeIf { taskConversation } ?: replyThreadViewInChannel,
                             taskFollowLabels = taskConversation,
                             drawLocally = toggleFocus == null,
@@ -17876,8 +19666,8 @@ internal fun ThreadPageHeader(
     )
 }
 
-/** raft-ui `PanelMeta` (md): sans text-footnote. */
-private val ThreadHeaderMetaStyle = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp)
+/** raft-ui `PanelMeta` (default size sm, as the web PanelHeader passes no size): sans text-caption 12/16 500. */
+private val ThreadHeaderMetaStyle get() = RaftType.Caption
 
 /**
  * A reply thread's header meta line with its channel name as a link (web ThreadPanel #10285): the
@@ -17932,7 +19722,10 @@ private fun threadHeaderSideColumnActions(
     onToggleThreadFollow: (() -> Unit)?,
     onMarkThreadUnread: (() -> Unit)?,
     onViewTaskInChannel: (() -> Unit)?,
+    sideCardToggles: ThreadHeaderSideCardToggles? = null,
+    onOpenTimeline: (() -> Unit)? = null,
 ): List<RaftSideAction> {
+    val timelineLabel = stringResource(Res.string.thread_outline_list_title)
     val markUnreadLabel = stringResource(Res.string.home_action_mark_as_unread)
     val searchLabel = stringResource(Res.string.thread_action_search)
     val settingsLabel = stringResource(Res.string.settings_title)
@@ -17954,6 +19747,10 @@ private fun threadHeaderSideColumnActions(
     // The iOS host's SF Symbols, on the channel page only (the 1.17.1 prototype): every other
     // surface keeps a column drawn by us.
     val systemSymbols = threadHeaderSideColumnSystemSymbols(surfaceKind)
+    val sideCardLabels =
+        ConversationSideCard.entries.associateWith { card ->
+            conversationSideCardToggleLabel(card, sideCardToggles?.cards?.isOpen(card) == true)
+        }
     return buildList {
         if (!taskConversation && payload.threadHeaderSearchAction() != null) {
             add(
@@ -17966,6 +19763,20 @@ private fun threadHeaderSideColumnActions(
                 )
             )
         }
+        sideCardToggles?.let { toggles ->
+            toggles.cardsInHeader().forEach { card ->
+                add(
+                    raftSideColumnLucideAction(
+                        "thread-side-card-${card.name.lowercase()}",
+                        sideCardLabels.getValue(card),
+                        card.icon,
+                        { toggles.onToggle(card) },
+                        systemSymbol =
+                            (if (card == ConversationSideCard.Tasks) "checklist" else "paperclip").takeIf { systemSymbols },
+                    )
+                )
+            }
+        }
         if (threadHeaderSettingsActionVisible(payload.showSettingsAction, surfaceKind)) {
             add(
                 raftSideColumnLucideAction(
@@ -17976,6 +19787,10 @@ private fun threadHeaderSideColumnActions(
                     systemSymbol = "gearshape".takeIf { systemSymbols },
                 )
             )
+        }
+        // Web ThreadOverflowMenu: Timeline after Search, before View in Channel; in the ⋯.
+        if (onOpenTimeline != null) {
+            add(raftSideColumnLucideAction(THREAD_TIMELINE_MENU_ITEM_ID, timelineLabel, RaftLucideIconName.List, onOpenTimeline, priority = -1))
         }
         if (payload.threadHeaderOpenInParentActionVisible()) {
             add(raftSideColumnLucideAction("thread-open-in-channel", viewInChannelLabel, RaftLucideIconName.MapPin, onOpenInChannel))
@@ -18017,25 +19832,20 @@ private fun threadHeaderSideColumnActions(
 
 @Composable
 private fun ThreadActivityMutedBadge() {
-    // raft-ui `PanelStatus`: a bare attribute (no edge, no fill), caption medium in
-    // source case on foreground-hint.
-    Row(
+    // Header space is tight (name, status, actions), so muted shows as the bell-off icon alone
+    // (artin, 11-08); screen readers still hear "Muted".
+    val mutedLabel = stringResource(Res.string.member_label_muted)
+    Box(
         modifier =
             Modifier
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(horizontal = 6.dp, vertical = 4.dp)
+                .clearAndSetSemantics { contentDescription = mutedLabel },
+        contentAlignment = Alignment.Center
     ) {
         RaftLucideIcon(
             RaftLucideIconName.BellOff,
-            Modifier.size(11.dp),
+            Modifier.size(14.dp),
             color = raftArgbHex(RaftColor.ForegroundHint)
-        )
-        Text(
-            text = stringResource(Res.string.member_label_muted),
-            style = RaftType.Caption.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 11.sp, lineHeight = 11.sp),
-            color = RaftColor.ForegroundHint,
-            maxLines = 1
         )
     }
 }
@@ -18079,8 +19889,57 @@ internal fun ThreadHeaderDisplayModel.dmAgentActivityMemberId(): String? =
         ?.trim()
         ?.takeIf(String::isNotBlank)
 
+private const val ThreadHeaderYieldingSlot = "yielding"
+
+/**
+ * The header's title line: the name, its badges, then the agent's activity, 8dp apart. The name is
+ * measured first (web ChatPanel: `PanelTitle` keeps its width, AgentDMStatus is `flex-1 min-w-0`),
+ * so on a crowded phone head the activity words give way down to the dot and the name stays
+ * readable (artin 2026-11-06: with task v2's three buttons the name had shrunk to "."). The badges
+ * keep their width; the [ThreadHeaderYieldingSlot] child gets what is left after them and the name,
+ * but never less than its dot.
+ */
 @Composable
-private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
+private fun ThreadHeaderNameFirstRow(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Layout(content = content, modifier = modifier) { measurables, constraints ->
+        val gap = ThreadHeaderDmAgentActivityLeadingGap.roundToPx()
+        val loose = constraints.copy(minWidth = 0)
+        val name = measurables.first()
+        val yielding = measurables.drop(1).firstOrNull { it.layoutId == ThreadHeaderYieldingSlot }
+        val fixed = measurables.drop(1).filter { it !== yielding }.map { it.measure(loose) }
+        val gaps = gap * (measurables.size - 1)
+        val yieldingMin = if (yielding == null) 0 else ThreadHeaderDmAgentActivityDotSize.roundToPx()
+        val namePlaceable =
+            if (constraints.hasBoundedWidth) {
+                val room = constraints.maxWidth - fixed.sumOf { it.width } - gaps - yieldingMin
+                name.measure(loose.copy(maxWidth = room.coerceAtLeast(0)))
+            } else {
+                name.measure(loose)
+            }
+        val yieldingPlaceable =
+            yielding?.let {
+                if (constraints.hasBoundedWidth) {
+                    val rest = constraints.maxWidth - namePlaceable.width - fixed.sumOf { p -> p.width } - gaps
+                    it.measure(loose.copy(maxWidth = rest.coerceAtLeast(0)))
+                } else {
+                    it.measure(loose)
+                }
+            }
+        val placeables = listOf(namePlaceable) + fixed + listOfNotNull(yieldingPlaceable)
+        val width = constraints.constrainWidth(placeables.sumOf { it.width } + gap * (placeables.size - 1))
+        val height = constraints.constrainHeight(placeables.maxOf { it.height })
+        layout(width, height) {
+            var x = 0
+            placeables.forEach {
+                it.placeRelative(x, (height - it.height) / 2)
+                x += it.width + gap
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState, modifier: Modifier = Modifier) {
     // Web ChatPanel AgentDMStatus (#10446): stuck on one tool call reads as that, in the
     // warning colour, not as a plain "busy". Otherwise the same localized caption as every
     // other live-status surface (SSOT audit).
@@ -18089,7 +19948,7 @@ private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
     val labelColor = if (toolStuck != null) RaftColor.WarningStrong else RaftColor.ForegroundHint
     Row(
         modifier =
-            Modifier
+            modifier
                 .widthIn(max = ThreadHeaderDmAgentActivityMaxWidth)
                 .semantics { contentDescription = label },
         verticalAlignment = Alignment.CenterVertically,
@@ -18109,7 +19968,9 @@ private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
                 ),
             color = labelColor,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            // The dot stays; the words give way (web AgentDMStatus `truncate`).
+            modifier = Modifier.weight(1f, fill = false)
         )
     }
 }
@@ -18179,6 +20040,79 @@ private fun ThreadHeaderIconButton(icon: RaftLucideIconName, onClick: () -> Unit
     ThreadHeaderCompactAction(icon = icon, onClick = onClick)
 }
 
+/** Task v2's header toggles ([ThreadPageHeader]); [cards] are the page's open cards. */
+internal class ThreadHeaderSideCardToggles(
+    val tasksAvailable: Boolean,
+    val cards: ConversationSideCardsState,
+    val onToggle: (ConversationSideCard) -> Unit,
+) {
+    /** Tasks before Files (raft-design channel.md); Tasks only where the conversation has tasks. */
+    fun cardsInHeader(): List<ConversationSideCard> =
+        ConversationSideCard.entries.filter { it != ConversationSideCard.Tasks || tasksAvailable }
+}
+
+/** web `task.sidePanel.open/close`, `message.chatPanel.filesCard.open/close`. */
+@Composable
+private fun conversationSideCardToggleLabel(card: ConversationSideCard, open: Boolean): String =
+    stringResource(
+        when (card) {
+            ConversationSideCard.Tasks ->
+                if (open) Res.string.thread_side_card_tasks_close else Res.string.thread_side_card_tasks_open
+            ConversationSideCard.Files ->
+                if (open) Res.string.thread_side_card_files_close else Res.string.thread_side_card_files_open
+        }
+    )
+
+/**
+ * A header toggle (raft-ui `PanelToggleAction`): the yellow sticker while its card is open, named
+ * "Close Tasks" then; the toggle state is announced by [RaftIconToggleButton].
+ */
+@Composable
+private fun ConversationHeaderToggle(
+    icon: RaftLucideIconName,
+    selected: Boolean,
+    label: String,
+    onClick: () -> Unit,
+) {
+    RaftIconToggleButton(
+        checked = selected,
+        onCheckedChange = { onClick() },
+        tooltip = label,
+    ) {
+        RaftContentLucideIcon(icon, size = ThreadHeaderActionIconSize)
+    }
+}
+
+/**
+ * Whether this page's composer takes the focus when it opens: the platform policy
+ * ([rememberComposerAutofocusOnOpen]), the page shown, and, in the wide detail, no reply thread
+ * beside it ([composerAutofocusYieldsToSideThread]: the thread panel gets the focus, and gives it
+ * back when it closes). Recomposes the page only when the answer changes.
+ */
+@Composable
+private fun rememberThreadComposerAutofocusOnOpen(
+    routeActive: Boolean,
+    adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest?,
+    adaptiveStoreScope: RaftShellStoreScope,
+): Boolean {
+    val policy = rememberComposerAutofocusOnOpen()
+    if (adaptiveCloseRequest == null) return policy && routeActive
+    val pager = LocalActivity.current.getPager() as Pager
+    val workspaceStore =
+        remember(pager, adaptiveStoreScope) {
+            RaftSharedStoreRegistry.get(Utils.bridgeModule(pager.pagerId)).adaptiveWorkspaceStore(adaptiveStoreScope)
+        }
+    val yieldsToSideThread by
+        remember(workspaceStore, adaptiveCloseRequest) {
+            workspaceStore.state
+                .map { it.composerAutofocusYieldsToSideThread(adaptiveCloseRequest) }
+                .distinctUntilChanged()
+        }.collectAsState(
+            initial = workspaceStore.snapshot().composerAutofocusYieldsToSideThread(adaptiveCloseRequest)
+        )
+    return policy && routeActive && !yieldsToSideThread
+}
+
 @Composable
 private fun ThreadComposerRoute(
     baseComposerState: RaftThreadComposerPayload,
@@ -18191,6 +20125,8 @@ private fun ThreadComposerRoute(
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
     agentStatusResolver: RaftAgentStatusResolver,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    /** Files dropped on the composer (its drop zone): the page reads and admits them. */
+    onDropFiles: (ThreadComposerFileDrop) -> Unit,
     onSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
@@ -18200,6 +20136,8 @@ private fun ThreadComposerRoute(
     adaptiveNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
     /** A removed App Bot's DM (or a thread in it): notice above a disabled composer. */
     removedAppBot: RaftAppBotIdentity? = null,
+    /** Focus the composer when the conversation opens (ComposerAutofocusPolicy.kt). */
+    autofocusOnOpen: Boolean = false,
 ) {
     if (removedAppBot != null) {
         // The editor never mounts, so the saved draft stays in the store untouched.
@@ -18219,7 +20157,7 @@ private fun ThreadComposerRoute(
         // Reserve the editor's resting height while it waits to mount, so the message list above
         // is laid out at its final height on the first frame. Returning nothing here made the
         // bottom-pinned list jump up ~76pt one frame later on every channel entry.
-        Spacer(Modifier.fillMaxWidth().height(ThreadComposerRestingHeight.get(restingHeightKey).dp))
+        ThreadComposerRestingHeightPlaceholder(surface)
         return
     }
     val composerState =
@@ -18234,16 +20172,20 @@ private fun ThreadComposerRoute(
     val composerAtRest = composerUiState.isThreadComposerAtRest()
     // The personal assistant's otter on this composer's frame edge, when the conversation has one.
     val assistantOtter = LocalThreadAssistantOtter.current
-    val frameEdge: (@Composable (Boolean, Boolean) -> Unit)? =
+    val frameEdge: (@Composable (Boolean, Boolean, Boolean) -> Unit)? =
         remember(assistantOtter) {
             assistantOtter?.let { otter ->
-                val edge: @Composable (Boolean, Boolean) -> Unit = { composing, focused ->
-                    ThreadAssistantOtterFrameEdge(otter, composing, focused)
+                val edge: @Composable (Boolean, Boolean, Boolean) -> Unit = { composing, focused, covered ->
+                    ThreadAssistantOtterFrameEdge(otter, composing, focused, covered)
                 }
                 edge
             }
         }
-    Box(
+    // Web MessageInput's drop zone: files dragged over the composer light it up; a drop attaches
+    // them as the attach button does.
+    ThreadComposerFileDropZone(
+        enabled = composerUiState.enabled && composerUiState.attachmentActionsEnabled && surface.sendChannelId != null,
+        onDropFiles = onDropFiles,
         modifier =
             Modifier.fillMaxWidth().onSizeChangedDp { size ->
                 if (composerAtRest) ThreadComposerRestingHeight.record(restingHeightKey, size.height)
@@ -18269,6 +20211,7 @@ private fun ThreadComposerRoute(
         contentPaddingBottom = 0.dp,
         adaptiveNativeEditingStateReader = adaptiveNativeEditingStateReader,
         frameEdge = frameEdge,
+        autofocusOnOpen = autofocusOnOpen,
     )
     }
 }
@@ -18315,6 +20258,46 @@ internal object ThreadComposerRestingHeight {
 
 internal fun ThreadComposerSurface.threadComposerRestingHeightKey(): String = "$kind|$showTaskButton"
 
+/**
+ * The server a thread page reads per-server state for (feature flags, member directory): the
+ * session's once captured, the shell's before, so the first frames already have a server.
+ */
+internal fun threadPageServerId(sessionServerId: String?, shellServerId: String?): String? =
+    sessionServerId?.trim()?.takeIf { it.isNotBlank() } ?: shellServerId?.trim()?.takeIf { it.isNotBlank() }
+
+/** The composer's slot at its resting height, before the editor itself can mount. */
+@Composable
+internal fun ThreadComposerRestingHeightPlaceholder(surface: ThreadComposerSurface) {
+    Spacer(
+        Modifier.fillMaxWidth()
+            .height(ThreadComposerRestingHeight.get(surface.threadComposerRestingHeightKey()).dp)
+            .testTag(ThreadComposerRestingHeightPlaceholderTestTag)
+    )
+}
+
+internal const val ThreadComposerRestingHeightPlaceholderTestTag = "thread-composer-resting-placeholder"
+
+/**
+ * Whether the composer's dock keeps its slot while the footer is not decided yet: the timeline can
+ * show (a cached frame while access refreshes) before the composer may mount, and an empty footer
+ * then let the bottom-pinned list jump up by the composer's height a few frames after it appeared.
+ * Only while a composer is still expected — never under an access error, a closed conversation or
+ * another tab.
+ */
+internal fun threadReservesPendingComposerSlot(
+    accessResolution: ThreadAccessResolution,
+    payloadStatus: String,
+    joined: Boolean,
+    showComposer: Boolean,
+    selectedTab: String?,
+    composerLocked: Boolean
+): Boolean =
+    accessResolution != ThreadAccessResolution.Error &&
+        accessResolution != ThreadAccessResolution.NoPermission &&
+        payloadStatus != "error" &&
+        !composerLocked &&
+        shouldShowThreadComposerForTab(joined = joined, showComposer = showComposer, selectedTab = selectedTab)
+
 internal fun ThreadComposerUiState.isThreadComposerAtRest(): Boolean =
     seedText.isBlank() &&
         pendingAttachments.isEmpty() &&
@@ -18360,7 +20343,8 @@ private fun ThreadComposerContentWithSuggestions(
     contentPaddingTop: Dp,
     contentPaddingBottom: Dp,
     adaptiveNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
-    frameEdge: (@Composable (composing: Boolean, focused: Boolean) -> Unit)? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
+    autofocusOnOpen: Boolean = false,
 ) {
     val memberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
     val channelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())
@@ -18453,6 +20437,7 @@ private fun ThreadComposerContentWithSuggestions(
         composerSendKeyEnabled = composerSendKeyEnabled,
         externalNativeEditingStateReader = adaptiveNativeEditingStateReader,
         frameEdge = frameEdge,
+        autofocusOnOpen = autofocusOnOpen,
     )
 }
 
@@ -18579,6 +20564,8 @@ private fun ThreadHeaderFocusModeMenu(
     focusEnabled: Boolean = true,
     /** Web ThreadOverflowMenu: Search in Task (a task) or Search in Thread (a reply thread), after Focus mode. */
     onSearchInTask: (() -> Unit)? = null,
+    /** Web ThreadOverflowMenu Timeline (botiverse/slock #13534): the thread timeline's sheet, after Search. */
+    onTimeline: (() -> Unit)? = null,
     /** View in Channel: a task's message in its channel, or a reply thread's parent message. */
     onViewInChannel: (() -> Unit)? = null,
     /** Task v2: the follow row reads Follow / Unfollow Task. */
@@ -18601,7 +20588,7 @@ private fun ThreadHeaderFocusModeMenu(
     val items =
         buildList {
             if (!drawLocally) add(
-                RaftBrutalDropdownMenuItem(
+                RaftUiMenuItem(
                     id = FOCUS_MODE_MENU_ITEM_ID,
                     label =
                         stringResource(
@@ -18619,7 +20606,7 @@ private fun ThreadHeaderFocusModeMenu(
             // Task v2: the web menu's next rows for a task, in its order (ThreadOverflowMenu.tsx).
             if (onSearchInTask != null) {
                 add(
-                    RaftBrutalDropdownMenuItem(
+                    RaftUiMenuItem(
                         id = SEARCH_IN_TASK_MENU_ITEM_ID,
                         label = stringResource(if (taskFollowLabels) Res.string.task_conversation_search else Res.string.thread_action_search_in_thread),
                         icon = RaftLucideIconName.Search,
@@ -18627,9 +20614,19 @@ private fun ThreadHeaderFocusModeMenu(
                     )
                 )
             }
+            if (onTimeline != null) {
+                add(
+                    RaftUiMenuItem(
+                        id = THREAD_TIMELINE_MENU_ITEM_ID,
+                        label = stringResource(Res.string.thread_outline_list_title),
+                        icon = RaftLucideIconName.List,
+                        enabled = true
+                    )
+                )
+            }
             if (onViewInChannel != null) {
                 add(
-                    RaftBrutalDropdownMenuItem(
+                    RaftUiMenuItem(
                         id = VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID,
                         label = stringResource(Res.string.task_conversation_view_in_channel),
                         icon = RaftLucideIconName.MapPin,
@@ -18639,7 +20636,7 @@ private fun ThreadHeaderFocusModeMenu(
             }
             if (onMarkUnread != null) {
                 add(
-                    RaftBrutalDropdownMenuItem(
+                    RaftUiMenuItem(
                         id = MARK_THREAD_UNREAD_MENU_ITEM_ID,
                         label = stringResource(Res.string.home_action_mark_as_unread),
                         icon = RaftLucideIconName.MessageSquareDot,
@@ -18652,7 +20649,7 @@ private fun ThreadHeaderFocusModeMenu(
             // the row is not offered at all rather than shown disabled.
             if (followed != null && onToggleFollow != null) {
                 add(
-                    RaftBrutalDropdownMenuItem(
+                    RaftUiMenuItem(
                         id = FOLLOW_THREAD_MENU_ITEM_ID,
                         label =
                             stringResource(
@@ -18671,7 +20668,7 @@ private fun ThreadHeaderFocusModeMenu(
             // Design §4.3: the thread's level (All replies = follow / Mentions / Nothing / Default).
             if (notificationLevelTarget != null) {
                 add(
-                    RaftBrutalDropdownMenuItem(
+                    RaftUiMenuItem(
                         id = NOTIFICATION_LEVEL_MENU_ITEM_ID,
                         label = notificationLevelLabel,
                         icon = RaftLucideIconName.BellRing,
@@ -18720,6 +20717,7 @@ private fun ThreadHeaderFocusModeMenu(
                     FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
                     MARK_THREAD_UNREAD_MENU_ITEM_ID -> onMarkUnread?.invoke()
                     SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
+                    THREAD_TIMELINE_MENU_ITEM_ID -> onTimeline?.invoke()
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
                     NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
                     else -> Unit // dismissed
@@ -18751,18 +20749,15 @@ private fun ThreadHeaderFocusModeMenu(
                 raftTraceToPlatformLog("SlockShellOverlay", "click_abort reason=anchor_resolve_null")
                 return@onClick
             }
-            // Already window space: the shell must not convert this again.
-            val pageRootAnchor = anchor.rootOffsetOrNull()
-            if (pageRootAnchor == null) {
+            // Already window space: the shell must not convert this again. On CMP the child page
+            // is composed inline, so its root offset includes the pane's position; adding the
+            // measured page origin (the Kuikly-era step) counted it twice.
+            val windowAnchor = raftChildPageWindowAnchor(anchor)
+            if (windowAnchor == null) {
                 raftTraceToPlatformLog("SlockShellOverlay", "click_abort reason=root_offset_null")
                 return@onClick
             }
-            // `rootOffset` is PAGE-root relative inside a Kuikly @Page. The shell draws in WINDOW
-            // space, so add this page's measured window origin (1520 for the thread column, plus the
-            // rail when nested). Without it the menu landed at the page-local 384 -- the centre
-            // pane's top-left -- instead of 1904 under the button.
             val pageOrigin = RaftChildPageOriginRegistry.stateFor(pageOriginKey).windowOrigin
-            val windowAnchor = pageRootAnchor + pageOrigin
             val requestId = "thread-panel-${anchor.hashCode()}-${items.size}"
             openRequestId = requestId
             // task #180 diagnostics (Argus): point 1 of 3 -- the page posted a request.
@@ -18792,7 +20787,8 @@ private fun ThreadHeaderFocusModeMenu(
         contentDescription = stringResource(Res.string.thread_focus_mode_menu_more)
     )
     localMenuAnchor?.let { anchor ->
-        RaftBrutalDropdownMenu(
+        RaftUiControlledMenu(
+            expanded = true,
             anchor = anchor,
             items = items,
             onSelect = { id ->
@@ -18801,11 +20797,14 @@ private fun ThreadHeaderFocusModeMenu(
                     FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
                     MARK_THREAD_UNREAD_MENU_ITEM_ID -> onMarkUnread?.invoke()
                     SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
+                    THREAD_TIMELINE_MENU_ITEM_ID -> onTimeline?.invoke()
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
                     NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
                 }
             },
             onDismiss = { localMenuAnchor = null },
+            // raft-ui DropdownMenuContent's `sideOffset` 6.
+            verticalOffset = RaftMetrics.MenuSideOffset
         )
     }
     if (notificationLevelDialogOpen && notificationLevelTarget != null) {
@@ -18824,6 +20823,7 @@ internal const val FOCUS_MODE_MENU_ITEM_ID = "thread-focus-mode"
 internal const val MARK_THREAD_UNREAD_MENU_ITEM_ID = "thread-mark-unread"
 internal const val FOLLOW_THREAD_MENU_ITEM_ID = "thread-toggle-follow"
 internal const val SEARCH_IN_TASK_MENU_ITEM_ID = "task-search"
+internal const val THREAD_TIMELINE_MENU_ITEM_ID = "thread-timeline"
 internal const val VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID = "task-view-in-channel"
 internal const val NOTIFICATION_LEVEL_MENU_ITEM_ID = "thread-notification-level"
 
@@ -18890,24 +20890,23 @@ internal fun threadHeaderVisibleActionGapDp(): Float =
 
 internal fun threadHeaderContentSpacingDp(): Float = ThreadHeaderContentSpacing.value
 
-internal fun threadHeaderActionSizeDp(): Float = ThreadHeaderActionSize.value
+// The touch head's geometry (a finger's 44dp actions), which the spacing tests pin.
+internal fun threadHeaderActionSizeDp(): Float = RaftControlMetrics.Mobile.barButtonSize.value
 
-internal fun threadHeaderActionIconSizeDp(): Float = ThreadHeaderActionIconSize.value
+internal fun threadHeaderActionIconSizeDp(): Float = RaftControlMetrics.Mobile.barIconSize.value
 
-internal fun threadHeaderEdgeInsetDp(): Float = ThreadHeaderEdgeInset.value
+internal fun threadHeaderEdgeInsetDp(): Float = RaftControlMetrics.Mobile.barEdgeInset.value
 
 internal fun threadHeaderChannelTitleGapDp(): Float =
     (ThreadHeaderContentSpacing + ThreadHeaderChannelTitleGapExtra).value
 
 @Composable
 private fun ThreadHeaderAction(label: String, onClick: () -> Unit) {
-    RaftBrutalActionButton(
-        label = label,
+    RaftButton(
+        text = label,
         onClick = onClick,
-        backgroundColor = RaftColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = 30.dp,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, color = RaftColor.TextBlack)
+        variant = RaftButtonVariant.Default,
+        size = RaftButtonSize.Md
     )
 }
 
@@ -19394,7 +21393,12 @@ private fun ThreadChatTabContent(
                 ThreadLoadingState()
             }
         "error" ->
-            ThreadStateActionMessage(
+            if (LocalConversationUnavailableNav.current != null &&
+                isConversationUnavailableErrorCode(renderConfig.errorCode)
+            ) {
+                val nav = checkNotNull(LocalConversationUnavailableNav.current)
+                RaftConversationUnavailableState(wide = nav.wide, onBack = nav.onBack)
+            } else ThreadStateActionMessage(
                 title = stringResource(Res.string.thread_error_load),
                 detail =
                     userFacingErrorLabels.forErrorCode(renderConfig.errorCode)
@@ -19499,11 +21503,22 @@ private fun ThreadChatTabContent(
                         backgroundRefreshing = renderConfig.backgroundRefreshing,
                         mainLoadFailed = timelineSlice.mainLoadFailed
                     )
+                val emptyHiddenHistory = rememberThreadHiddenHistory(timelineSlice.historyChannelId)
                 Box(modifier = Modifier.fillMaxSize()) {
-                    ThreadStateMessage(
-                        localizedThreadStateTitle(timelineSlice.emptyTitle),
-                        localizedThreadStateDetail(timelineSlice.emptyDetail)
-                    )
+                    if (emptyHiddenHistory != null) {
+                        // Every message is behind the Free plan's window: not empty, hidden.
+                        ThreadHistoryPaywallEmptyState(
+                            scope = timelineSlice.historyPaywallScope(),
+                            hidden = emptyHiddenHistory,
+                            timeContext = renderConfig.timeContext,
+                            onUpgrade = { onThreadEvent(ThreadOpenPlanBillingEvent, null, null, null) }
+                        )
+                    } else {
+                        ThreadStateMessage(
+                            localizedThreadStateTitle(timelineSlice.emptyTitle),
+                            localizedThreadStateDetail(timelineSlice.emptyDetail)
+                        )
+                    }
                     // Task #1137: the empty last-known channel carries the same offline tip as a non-empty one.
                     if (emptyOfflineChrome.tipVisible) {
                         ThreadOfflineLastKnownTip(
@@ -19595,7 +21610,10 @@ private data class ThreadMarkdownVisiblePreparsePlan(
 private data class ThreadMarkdownPreparseCandidate(
     val id: String,
     val body: String,
-    val messageId: String? = id
+    val messageId: String? = id,
+    // The scope the message row passes to RaftMarkdownBody, so the rich-text document warmed
+    // off-main has the row's exact cache key. Null = parse warm only.
+    val inlineContentScope: String? = null
 )
 
 private const val ThreadMarkdownPriorityPreparseMessageCount = 4
@@ -19784,7 +21802,8 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
                         ThreadMarkdownPreparseCandidate(
                             id = message.threadMessageRenderIdentity(),
                             body = message.body,
-                            messageId = message.id
+                            messageId = message.id,
+                            inlineContentScope = message.threadMarkdownRenderSignature().inlineContentScope
                         )
                     )
                 }
@@ -20043,7 +22062,20 @@ private fun ThreadMessagesListContent(
     val hostForeground = data.hostForeground
     val renderConfig = data.renderConfig
     val messageBodyTextStyle = data.messageBodyTextStyle
-    val timelineSlice = data.timelineSlice
+    // Duplicate item keys crash the LazyColumn; drop them here so every consumer below (keys,
+    // indexes, scroll targets) sees the same list. Logged once diagnosticsLogger is in scope.
+    val messageListKeyDedupe =
+        remember(data.timelineSlice.messages) {
+            data.timelineSlice.messages.withUniqueMessageListKeys()
+        }
+    val timelineSlice =
+        remember(data.timelineSlice, messageListKeyDedupe) {
+            if (messageListKeyDedupe.droppedKeys.isEmpty()) {
+                data.timelineSlice
+            } else {
+                data.timelineSlice.copy(messages = messageListKeyDedupe.messages)
+            }
+        }
     val replyMetadataByParentId = data.replyMetadataByParentId
     val activeReplyDraftParentMessageIds = data.activeReplyDraftParentMessageIds
     val composerKeyboardInsetDp = data.composerKeyboardInsetDp
@@ -20078,6 +22110,15 @@ private fun ThreadMessagesListContent(
     val onOpenMarkdownUrl = callbacks.onOpenMarkdownUrl
     val quotedPermalinkLoader = callbacks.quotedPermalinkLoader
     val diagnosticsLogger = callbacks.diagnosticsLogger
+    if (messageListKeyDedupe.droppedKeys.isNotEmpty()) {
+        LaunchedEffect(messageListKeyDedupe) {
+            diagnosticsLogger(
+                "thread_message_list_duplicate_keys_dropped level=warn " +
+                    "instance=$threadInstanceKey dropped=${messageListKeyDedupe.droppedKeys.size} " +
+                    "keys=${messageListKeyDedupe.droppedKeys.distinct().take(5).joinToString(",")}"
+            )
+        }
+    }
     val onComposerLayoutProbe = callbacks.onComposerLayoutProbe
     val onComposerPixelProbe = callbacks.onComposerPixelProbe
     val shareSelectionActive = data.shareSelectionActive
@@ -20174,6 +22215,10 @@ private fun ThreadMessagesListContent(
         LaunchedEffect(threadInstanceKey, timelineSlice.status) {
             onThreadContentReady()
         }
+        val emptyHiddenHistory = rememberThreadHiddenHistory(timelineSlice.historyChannelId)
+        // Task v2 on a phone: the head is the conversation's first row, so it stays above its
+        // loading or empty state (web: the parent slot over the replies' placeholder).
+        TaskConversationHeadAboveState(LocalTaskConversationHeadRow.current) {
         if (
             timelineSlice.status == "loading" ||
             threadEmptyStandInAwaitsFirstLoad(
@@ -20183,11 +22228,19 @@ private fun ThreadMessagesListContent(
             )
         ) {
             ThreadLoadingState()
+        } else if (emptyHiddenHistory != null) {
+            ThreadHistoryPaywallEmptyState(
+                scope = timelineSlice.historyPaywallScope(),
+                hidden = emptyHiddenHistory,
+                timeContext = renderConfig.timeContext,
+                onUpgrade = { onThreadEvent(ThreadOpenPlanBillingEvent, null, null, null) }
+            )
         } else {
             ThreadStateMessage(
                 localizedThreadStateTitle(timelineSlice.emptyTitle),
                 localizedThreadStateDetail(timelineSlice.emptyDetail)
             )
+        }
         }
         return
     }
@@ -20231,10 +22284,24 @@ private fun ThreadMessagesListContent(
             timelineSlice.focusedMessageTargetSignature()
         }
     val renderPayload = timelineSlice
+    // Free plan: where the shown history starts, the history paywall replaces "Beginning of conversation".
+    val listHiddenHistory = rememberThreadHiddenHistory(renderPayload.historyChannelId)
+    val historyPaywall = listHiddenHistory?.takeIf { renderPayload.threadHistoryReachesStart() }
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
     val dmReadStatusMessageId = renderPayload.dmReadStatusMessageId(peerReadReceipts)
     val agentTyping = LocalThreadAgentTyping.current
-    val assistantOtter = LocalThreadAssistantOtter.current
+    val agentTypingInThread = LocalThreadAgentTypingInThread.current
+    // agent_read_progress_v0 (web useAgentReadProgress): each agent's face on the message it read up to,
+    // and the line under the viewer's latest message when it will not reach an agent.
+    val agentReadProgress =
+        remember(peerReadReceipts, renderPayload.messages, renderPayload.canLoadMoreAfter, agentTyping, agentTypingInThread) {
+            peerReadReceipts?.threadAgentReadProgress(
+                messages = renderPayload.messages,
+                hasNewer = renderPayload.canLoadMoreAfter,
+                workingAgentIds = agentTyping?.agents?.map { it.agentId }.orEmpty(),
+                threadWorkingAgentIds = { parent -> agentTypingInThread?.agentIds(parent).orEmpty() },
+            )
+        }
     // Task #1125: offline stand-in chrome (top inset + tip overlay), see threadOfflineLastKnownChrome.
     val offlineLastKnownChrome =
         threadOfflineLastKnownChrome(
@@ -20576,10 +22643,32 @@ private fun ThreadMessagesListContent(
     }
     var measuredThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(0f) }
     val viewportMeasurementReady = threadViewportMeasurementReady(measuredThreadViewportHeightDp)
+    // Beyond-bounds budget of about one viewport, from the rows actually measured (0 = not yet).
+    // Written only when the resulting item count changes, so scrolling does not churn this scope.
+    var measuredListBeyondBoundsItems by remember(threadInstanceKey) { mutableStateOf(0) }
+    LaunchedEffect(threadInstanceKey, listState, threadDensity.density) {
+        val density = threadDensity.density
+        var smoothedRowHeightPx = 0f
+        snapshotFlow {
+            threadAverageVisibleRowHeightPx(listState.raw.layoutInfo.visibleItemsInfo) to measuredThreadViewportHeightDp
+        }
+            .distinctUntilChanged()
+            .collect { (averageRowHeightPx, viewportHeightDp) ->
+                if (averageRowHeightPx <= 0f || density <= 0f) return@collect
+                smoothedRowHeightPx = threadSmoothedRowHeightPx(smoothedRowHeightPx, averageRowHeightPx)
+                val next =
+                    threadMeasuredBeyondBoundsItemCount(
+                        viewportHeightDp = viewportHeightDp,
+                        averageRowHeightDp = smoothedRowHeightPx / density
+                    )
+                if (next != measuredListBeyondBoundsItems) measuredListBeyondBoundsItems = next
+            }
+    }
     val threadLazyWindowConsumerCounts =
         threadLazyWindowConsumerCounts(
             itemCount = lazyItemCount,
-            viewportHeightDp = measuredThreadViewportHeightDp
+            viewportHeightDp = measuredThreadViewportHeightDp,
+            measuredListBeyondBoundsItems = measuredListBeyondBoundsItems
         )
     val coroutineScope = rememberCoroutineScope()
     val imeTailPixelProbeRunner =
@@ -20617,12 +22706,12 @@ private fun ThreadMessagesListContent(
     var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf<RaftPopoverAnchor?>(null) }
     // A double tap's quick reaction bar (stdrc, 2026-10-29, #proj-raft-ui:911ccc08).
     var quickReactionBar by remember(threadInstanceKey) { mutableStateOf<ThreadQuickReactionBarRequest?>(null) }
+    // The message row whose hover toolbar shows (web MessageHoverToolbar): drawn over its neighbours.
+    var hoverToolbarMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var classicMenuOverrideMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     // Product analytics: the open menu came from a long press (not the reaction "+" chip), so its
     // chosen items are `message_action_selected` with surface long_press.
     var actionMenuFromLongPress by remember(threadInstanceKey) { mutableStateOf(false) }
-    // task #569: long-press on a reaction chip shows who reacted.
-    var reactionDetails by remember(threadInstanceKey) { mutableStateOf<ThreadReactionDetailsRequest?>(null) }
     var authorDescriptionPopover by remember(threadInstanceKey) {
         mutableStateOf<ThreadAuthorDescriptionPopoverRequest?>(null)
     }
@@ -20632,6 +22721,8 @@ private fun ThreadMessagesListContent(
         }
     }
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    // A move into Backlog picked from a message's task menu: its reason is asked first (web TaskBacklogReasonPopover).
+    var taskBacklogReasonTarget by remember(threadInstanceKey) { mutableStateOf<ThreadTaskBacklogReasonTarget?>(null) }
     // Add Reaction: the message whose full emoji picker is open (web hover-toolbar picker).
     var reactionPickerMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     // Where the message menu was, kept for the picker: on wide screens it opens there, like web's.
@@ -20975,6 +23066,17 @@ private fun ThreadMessagesListContent(
                 "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
         )
     }
+    // The tag context the message rows render with, so the documents warmed below carry the rows'
+    // exact cache keys (a context change simply misses and the row builds it, never stale).
+    val markdownDocumentWarmContext =
+        remember(highlightedMentions, isMarkdownTagValid, resolveMarkdownTagLabel) {
+            RaftMarkdownDocumentWarmContext(
+                highlightedMentions = highlightedMentions,
+                isTagValid = isMarkdownTagValid,
+                resolveTagLabel = resolveMarkdownTagLabel
+            )
+        }
+    val currentMarkdownDocumentWarmContext by rememberUpdatedState(markdownDocumentWarmContext)
     LaunchedEffect(
         threadInstanceKey,
         markdownTimelineSignature,
@@ -20985,22 +23087,31 @@ private fun ThreadMessagesListContent(
         if (!contentExtrasVisible || markdownTimelineSignature.isEmpty()) {
             return@LaunchedEffect
         }
+        // Per scroll frame only the visible index range is read and compared; the candidate
+        // list and its joined key are built only when that range changes.
         snapshotFlow {
             val visibleItems = listState.layoutInfo.visibleItemsInfo
             if (visibleItems.isEmpty()) {
-                emptyThreadMarkdownVisiblePreparsePlan()
+                null
             } else {
-                val firstVisibleItemIndex = visibleItems.minOf { item -> item.index }
-                val lastVisibleItemIndex = visibleItems.maxOf { item -> item.index }
-                renderPayload.threadVisibleMarkdownPreparsePlan(
-                    firstVisibleItemIndex = firstVisibleItemIndex,
-                    lastVisibleItemIndex = lastVisibleItemIndex,
-                    overscanItems = threadLazyWindowConsumerCounts.markdownPreparseOverscanItems,
-                    prewarmBeforeItems = lastVisibleItemIndex - firstVisibleItemIndex + 1,
-                    contentExtrasVisible = contentExtrasVisible
-                )
+                visibleItems.minOf { item -> item.index } to visibleItems.maxOf { item -> item.index }
             }
         }
+            .distinctUntilChanged()
+            .map { visibleRange ->
+                if (visibleRange == null) {
+                    emptyThreadMarkdownVisiblePreparsePlan()
+                } else {
+                    val (firstVisibleItemIndex, lastVisibleItemIndex) = visibleRange
+                    renderPayload.threadVisibleMarkdownPreparsePlan(
+                        firstVisibleItemIndex = firstVisibleItemIndex,
+                        lastVisibleItemIndex = lastVisibleItemIndex,
+                        overscanItems = threadLazyWindowConsumerCounts.markdownPreparseOverscanItems,
+                        prewarmBeforeItems = lastVisibleItemIndex - firstVisibleItemIndex + 1,
+                        contentExtrasVisible = contentExtrasVisible
+                    )
+                }
+            }
             .distinctUntilChanged()
             .collect { visiblePreparsePlan ->
                 if (visiblePreparsePlan.key.isEmpty()) {
@@ -21012,11 +23123,24 @@ private fun ThreadMessagesListContent(
                         bodies = visiblePreparsePlan.candidates.map { candidate -> candidate.body },
                         maxBodies = visiblePreparsePlan.candidates.size
                     )
+                // Off the main thread (Dispatchers.Default): build the rows' rich-text documents
+                // so a tall row entering the viewport only looks them up.
+                val documents =
+                    warmRaftMarkdownRichTextDocuments(
+                        requests =
+                            visiblePreparsePlan.candidates.mapNotNull { candidate ->
+                                candidate.inlineContentScope?.let { scope ->
+                                    RaftMarkdownDocumentWarmRequest(body = candidate.body, inlineContentScope = scope)
+                                }
+                            },
+                        context = currentMarkdownDocumentWarmContext
+                    )
                 diagnosticsLogger(
                     "thread_markdown_preparse scope=visible_overscan " +
                         "bodyCandidates=${visiblePreparsePlan.candidates.size} " +
                         "parserCandidates=${result.requestedCount} parsed=${result.parsedCount} " +
                         "scheduled=${result.scheduledCount} cacheHit=${result.cacheHitCount} " +
+                        "documentsBuilt=${documents.builtCount} documentsCached=${documents.cacheHitCount} " +
                         "messages=${renderPayload.messages.size} " +
                         "overscan=${threadLazyWindowConsumerCounts.markdownPreparseOverscanItems} " +
                         "prewarmBefore=${visiblePreparsePlan.prewarmBeforeItems} " +
@@ -21228,6 +23352,8 @@ private fun ThreadMessagesListContent(
     }
     val headerScrollToTopRequestFence =
         remember(threadInstanceKey) { AppShellScrollToTopRequestFence(headerScrollToTopRequest) }
+    var outlineOriginJumpRequest by remember(threadInstanceKey) { mutableStateOf(0) }
+    var outlineOriginJumpConsumed by remember(threadInstanceKey) { mutableStateOf(0) }
     LaunchedEffect(threadInstanceKey, headerScrollToTopRequest, lazyItemCount) {
         if (!consumeThreadHeaderScrollToTopRequest(
                 request = headerScrollToTopRequest,
@@ -21250,6 +23376,45 @@ private fun ThreadMessagesListContent(
             "thread_header_scroll_to_top request=$headerScrollToTopRequest " +
                 "firstVisible=${listState.firstVisibleItemIndex} totalItems=$lazyItemCount"
         )
+    }
+    // The thread timeline's jump to the thread's first message (web `jumpToParent`): its row is the
+    // list's first, so the thread's start is loaded first (older pages until there are none), then
+    // the list pins its top and the row is located, as a focused message is.
+    LaunchedEffect(
+        threadInstanceKey,
+        outlineOriginJumpRequest,
+        renderPayload.canLoadMoreBefore,
+        renderPayload.olderMessagesStatus,
+        renderPayload.originStatus,
+        lazyItemCount
+    ) {
+        val step =
+            threadOutlineOriginJumpStep(
+                request = outlineOriginJumpRequest,
+                consumed = outlineOriginJumpConsumed,
+                canLoadMoreBefore = renderPayload.canLoadMoreBefore,
+                olderMessagesStatus = renderPayload.olderMessagesStatus,
+                originRowShown = renderPayload.hasThreadOriginItem() && renderPayload.originMessage != null,
+            )
+        when (step) {
+            ThreadOutlineOriginJumpStep.Idle, ThreadOutlineOriginJumpStep.Wait -> Unit
+            ThreadOutlineOriginJumpStep.LoadOlder -> onThreadEvent("loadOlder", null, null, null)
+            ThreadOutlineOriginJumpStep.GiveUp -> outlineOriginJumpConsumed = outlineOriginJumpRequest
+            ThreadOutlineOriginJumpStep.Pin -> {
+                outlineOriginJumpConsumed = outlineOriginJumpRequest
+                pendingFocusedMessageAnchorIdentityState.value?.let { pendingIdentity ->
+                    scrollInterruptedFocusedMessageAnchorIdentity = pendingIdentity
+                }
+                latestLocalSendBottomAnchorActiveKey = null
+                pendingKeyboardBottomAnchor = false
+                allowBottomAutoAnchor = false
+                initialBottomAnchorReady = true
+                userScrollGeneration.value += 1
+                dispatchViewportEvent(LazyViewportEvent.PinTop)
+                activeFocusedMessageId = renderPayload.originMessage?.id
+                diagnosticsLogger("thread_outline_origin_jump request=$outlineOriginJumpRequest totalItems=$lazyItemCount")
+            }
+        }
     }
     LaunchedEffect(
         threadInstanceKey,
@@ -22280,7 +24445,18 @@ private fun ThreadMessagesListContent(
             ThreadInitialBottomAnchorStage.Settled -> Unit
         }
         if (!initialBottomAnchorReady) {
+            var initialBottomAnchorRetries = 0
             while (!initialBottomAnchorReady) {
+                // Bounded: a copy that can never anchor (a kept-alive, unplaced tab's thread) retried
+                // every 80 ms for as long as it stayed composed. Give up and accept the viewport.
+                if (++initialBottomAnchorRetries > ThreadInitialBottomAnchorMaxRetries) {
+                    diagnosticsLogger(
+                        "thread_initial_bottom_anchor result=retry_cap retries=$ThreadInitialBottomAnchorMaxRetries " +
+                            "latestItemIndex=$latestItemIndex targetItemIndex=$initialBottomAnchorTargetItemIndex"
+                    )
+                    initialBottomAnchorReady = true
+                    return@LaunchedEffect
+                }
                 if (adaptiveAnchorRestoreInFlight) {
                     // A4 restore owns the viewport (task #18): yield this frame rather than
                     // dispatching FollowLatest on top of an in-flight staged-anchor scroll.
@@ -22912,18 +25088,40 @@ private fun ThreadMessagesListContent(
                 )
             }
             val inPlaceSelectionViewportHost = LocalThreadInPlaceTextSelectionHost.current
-            val taskHeadScrollState = LocalTaskHeadScrollState.current
-            val taskHeadOverflowModifier =
-                remember(taskHeadScrollState, listState.raw) {
-                    Modifier.taskHeadConversationOverflow(taskHeadScrollState, listState.raw)
+            // Task v2 on a phone: the head is the list's first row, at the top of the history
+            // boundary row (web `mobile-modal`: the parent row over the history boundary), so it
+            // moves with the conversation; the top bar summarizes the task while it is out of view.
+            val taskHeadRow = LocalTaskConversationHeadRow.current?.takeIf { maxWidth < TaskHeadPinnedMinWidth }
+            if (taskHeadRow != null) {
+                LaunchedEffect(taskHeadRow, listState) {
+                    snapshotFlow { listState.threadTaskHeadRowInView(taskHeadRow.scrollState.rowHeadHeightPx) }
+                        .distinctUntilChanged()
+                        .collect { inView -> taskHeadRow.scrollState.updateHeadInView(inView) }
+                }
+                // No longer a row of this list: the bar does not keep a summary for it (web).
+                DisposableEffect(taskHeadRow) { onDispose { taskHeadRow.scrollState.updateHeadInView(true) } }
+            }
+            // Drag the list toward its start to see message times (ThreadMessageTimeReveal.kt): where
+            // no tab pager surrounds the list, and not while messages are being selected.
+            val timeRevealState = rememberThreadTimeRevealState(threadInstanceKey)
+            val timeReveal =
+                timeRevealState.takeIf {
+                    LocalThreadTimeRevealAvailable.current && !shareSelectionActive && !shareSelectionCaptureActive
+                }
+            val timeRevealModifier =
+                if (timeReveal != null) {
+                    Modifier.threadTimeRevealGesture(
+                        state = timeReveal,
+                        isListScrolling = { listState.isScrollInProgress },
+                        selectionShowing = { inPlaceSelectionViewportHost?.selectionShowing == true },
+                    )
+                } else {
+                    Modifier
                 }
             LazyColumn(
                 state = listState.raw,
                 reverseLayout = reverseLayout,
                 modifier = Modifier.fillMaxSize()
-                    // Task v2: a short conversation stays bottom-anchored with the head in view
-                    // instead of a gap above its oldest row once the head folds (#proj-mobile:#69).
-                    .then(taskHeadOverflowModifier)
                     .then(
                         if (inPlaceSelectionViewportHost?.enabled == true) {
                             // In-place selection bar stays inside the list's visible viewport.
@@ -22976,6 +25174,8 @@ private fun ThreadMessagesListContent(
                             }
                         }
                     )
+                    // Outside the list's scroll, so it sees every change first once it claimed.
+                    .then(timeRevealModifier)
                     .keyboardDismissModeInteractiveIOS()
                     .dismissInputFocusOnScrollableChrome()
                     .touchListenerWithConfiguration { type, position, touchSlop ->
@@ -23064,7 +25264,11 @@ private fun ThreadMessagesListContent(
                     ),
                 verticalArrangement = Arrangement.Bottom,
                 contentPadding =
-                    PaddingValues(top = if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp),
+                    PaddingValues(
+                        top = if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp,
+                        // The thread timeline's rail keeps clear of message content (web `--message-rail-inset`).
+                        end = if (LocalThreadOutlineState.current?.railShown == true) ThreadOutlineRailInset else 0.dp,
+                    ),
             ) {
             val threadListSegments = mutableListOf<LazyListScope.() -> Unit>()
             threadListSegments += {
@@ -23098,15 +25302,7 @@ private fun ThreadMessagesListContent(
                         onThreadEvent = onThreadEvent,
                         onOpenMember = onOpenMember,
                         onExternalAuthor = onExternalAuthor,
-                        onShowReactionDetails = { reaction, anchor ->
-                            reactionDetails =
-                                ThreadReactionDetailsRequest(
-                                    emoji = reaction.emoji,
-                                    names = reaction.reactorNames,
-                                    count = reaction.count,
-                                    anchor = anchor
-                                )
-                        },
+                        showReactionReactors = true,
                         onShowAuthorDescription = { description, anchor ->
                             authorDescriptionPopover =
                                 ThreadAuthorDescriptionPopoverRequest(
@@ -23150,7 +25346,30 @@ private fun ThreadMessagesListContent(
                             },
                         onToggleLongMessage = { messageId ->
                             toggleLongMessage(messageId, ThreadOriginListItemIndex)
-                        }
+                        },
+                        popupOpen =
+                            renderPayload.originMessage?.id?.let { originId ->
+                                actionMessageId == originId || quickReactionBar?.messageId == originId
+                            } == true,
+                        hoverToolbar =
+                            renderPayload.originMessage?.let { origin ->
+                                threadMessageHoverToolbarActions(
+                                    message = origin,
+                                    capabilities =
+                                        threadMessageMenuCapabilities(
+                                            message = origin,
+                                            replyMetadata = origin.toThreadReplyMetadata(),
+                                            slice = renderPayload,
+                                            writeActionsEnabled = writeActionsEnabled
+                                        ),
+                                    onShowReactions = { anchor ->
+                                        quickReactionBar =
+                                            ThreadQuickReactionBarRequest(origin.id, anchor, fromHoverToolbar = true)
+                                    },
+                                    onForward = { onForwardMessage(origin.id) },
+                                    onToggleSave = { onThreadEvent("toggleMessageSaved", origin.id, null, null) }
+                                )
+                            }
                     )
                 }
             }
@@ -23158,6 +25377,10 @@ private fun ThreadMessagesListContent(
             threadListSegments += {
             if (renderPayload.hasThreadHistoryBoundaryItem()) {
                 item(key = ThreadOlderMessagesListItemKey) {
+                    Column(Modifier.fillMaxWidth()) {
+                    // Task v2 on a phone: the head above where the conversation begins, or above the
+                    // older messages still to load (they come in under it: it stays the first row).
+                    taskHeadRow?.let { TaskConversationHeadRowContent(it) }
                     when {
                         renderPayload.canLoadMoreBefore && renderPayload.olderMessagesStatus == "error" ->
                             ThreadInlineActionRow(
@@ -23166,8 +25389,17 @@ private fun ThreadMessagesListContent(
                             )
                         renderPayload.canLoadMoreBefore ->
                             ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(renderPayload))
+                        historyPaywall != null ->
+                            ThreadHistoryPaywall(
+                                scope = renderPayload.historyPaywallScope(),
+                                hidden = historyPaywall,
+                                allHidden = false,
+                                timeContext = renderConfig.timeContext,
+                                onUpgrade = { onThreadEvent(ThreadOpenPlanBillingEvent, null, null, null) }
+                            )
                         else ->
                             ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(renderPayload))
+                    }
                     }
                 }
             }
@@ -23175,10 +25407,21 @@ private fun ThreadMessagesListContent(
             threadListSegments += {
             if (showReplyEmptyState) {
                 item(key = ThreadReplyEmptyListItemKey) {
-                    ThreadStateMessage(
-                        localizedThreadStateTitle(renderPayload.emptyTitle),
-                        localizedThreadStateDetail(renderPayload.emptyDetail)
-                    )
+                    if (listHiddenHistory != null) {
+                        // Every reply is behind the Free plan's window: not empty, hidden.
+                        ThreadHistoryPaywall(
+                            scope = renderPayload.historyPaywallScope(),
+                            hidden = listHiddenHistory,
+                            allHidden = true,
+                            timeContext = renderConfig.timeContext,
+                            onUpgrade = { onThreadEvent(ThreadOpenPlanBillingEvent, null, null, null) }
+                        )
+                    } else {
+                        ThreadStateMessage(
+                            localizedThreadStateTitle(renderPayload.emptyTitle),
+                            localizedThreadStateDetail(renderPayload.emptyDetail)
+                        )
+                    }
                 }
             }
             }
@@ -23227,6 +25470,16 @@ private fun ThreadMessagesListContent(
                                 localOffsetMinutes = renderConfig.timeContext.localOffsetMinutes
                             )
                     }
+                // Web MessageItem `showSelectedGroupedHeader`: while messages are picked for the share
+                // image, the first selected row of a run shows its author even when the timeline groups
+                // it under an unselected message, so the image (the live rows) never starts headless.
+                val rowSuppressesRepeatedAuthor =
+                    threadShareSelectionSuppressesAuthor(
+                        timelineSuppressesAuthor = suppressRepeatedAuthor,
+                        selectionActive = shareSelectionActive || shareSelectionCaptureActive,
+                        selected = message.id in selectedShareMessageIds,
+                        previousSelected = previousMessage != null && previousMessage.id in selectedShareMessageIds,
+                    )
                 val isRichContentEnabled = contentExtrasVisible
                 val actionCardSignature =
                     if (isRichContentEnabled) {
@@ -23303,7 +25556,7 @@ private fun ThreadMessagesListContent(
                 val captureShareBounds =
                     (shareSelectionActive || shareSelectionCaptureActive) &&
                         message.id in selectedShareMessageIds
-                val liveTodayEpochDay = LocalRaftTimeContextProvider.current?.todayEpochDay
+                val liveTodayEpochDay = currentRaftTimeContextProvider?.todayEpochDay
                 val dateDividerDay =
                     remember(
                         previousMessage?.timestampLabel,
@@ -23317,10 +25570,16 @@ private fun ThreadMessagesListContent(
                             timeContext = renderConfig.dateDividerTimeContext(liveTodayEpochDay)
                         )
                     }
+                // The row showing its hover toolbar draws over its neighbours: the toolbar reaches
+                // 18dp into the row above, which a reversed list draws later.
+                val raisedForHoverToolbar by remember(message.id) {
+                    derivedStateOf { hoverToolbarMessageId == message.id }
+                }
                 Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
+                            .zIndex(if (raisedForHoverToolbar) 1f else 0f)
                             .onGloballyPositioned { coordinates ->
                                 recordMessageItemHeight(message.id, coordinates.size.height)
                                 imeTailDrawProbe.recordPlaced(message.id)
@@ -23331,7 +25590,15 @@ private fun ThreadMessagesListContent(
                             }
                 ) {
                     dateDividerDay?.let { day ->
-                        ThreadDateDivider(day.localizedLabel())
+                        val dayLabel = day.localizedLabel()
+                        // Under the history paywall the first date line says the window: "Last 30 days · …".
+                        ThreadDateDivider(
+                            if (index == 0 && historyPaywall != null) {
+                                stringResource(Res.string.thread_history_paywall_recent_divider_with_date, ThreadHistoryPaywallDays, dayLabel)
+                            } else {
+                                dayLabel
+                            }
+                        )
                     }
                     Box(
                         modifier =
@@ -23381,150 +25648,190 @@ private fun ThreadMessagesListContent(
                                 } else {
                                     null
                                 }
-                            ThreadMessageCard(
-                                message = displayMessage,
-                                messageBodyTextStyle = messageBodyTextStyle,
-                                replyMetadata = replyMetadata,
-                                sourceTasks = sourceTasks,
-                                onOpenSourceTask = { onThreadEvent("openSourceTask", it, null, null) },
-                                hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id),
-                                actionCard = actionCard,
-                                messageIndex = absoluteMessageIndex,
-                                diagnosticsLogger = diagnosticsLogger,
-                                highlightedMentions = highlightedMentions,
-                                agentStatusResolver = agentStatusResolver,
-                                memberAvatarResolver = memberAvatarResolver,
-                                memberModelLabelResolver = memberModelLabelResolver,
-                                inlineReplyParticipantsById = inlineReplyParticipantsById,
-                                focused = activeFocusedMessageId == message.id,
-                                searchMatch = activeInlineSearchMessageId == message.id,
-                                popupOpen = actionMessageId == message.id || quickReactionBar?.messageId == message.id,
-                                shareSelectionActive = shareSelectionActive,
-                                selectedForShare = message.id in selectedShareMessageIds,
-                                onToggleShareSelection = { onToggleShareSelection(message.id) },
-                                showSaveAction = !captureShareBounds,
-                                // Defer this snapshot read to the avatar leaf. Reading it at the
-                                // card boundary invalidates every visible message while anchoring.
-                                isMessageListScrolling = { listState.isScrollInProgress },
-                                alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
-                                messageAlignmentModeEnabled = renderPayload.alignOwnMessagesRight,
-                                compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
-                                suppressRepeatedAuthor = suppressRepeatedAuthor,
-                                showReplyAction = renderPayload.showReplyActions,
-                                quickReactionsEnabled = threadMessageCanQuickReact(message, renderPayload, writeActionsEnabled),
-                                resolvedTaskAssigneeName = linkedTaskAssigneeName,
-                                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                                markdownTagContextSignature = markdownTagContextSignature,
-                                activeMarkdownTagKey = activeMarkdownTagKey,
-                                taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
-                                taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
-                                isMarkdownTagValid = isMarkdownTagValid,
-                                onShowActions = { anchor ->
-                                    if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
-                                        actionMenuAnchor = anchor
-                                        actionMessageId = message.id
-                                        classicMenuOverrideMessageId = null
-                                        actionMenuFromLongPress = false
-                                        diagnosticsLogger("thread_message_menu_tap messageId=${message.id}")
-                                    }
-                                },
-                                onLongPressMenuOpened = {
-                                    if (actionMessageId == message.id) {
-                                        actionMenuFromLongPress = true
-                                        RaftProductEvents.messageActionSelected(
-                                            RaftMessageAction.OpenMenu,
-                                            threadMessageIsReplyInThread(
-                                                renderPayload.replyThreadSurface,
-                                                renderPayload.originMessage?.id,
-                                                message.id
-                                            )
-                                        )
-                                    }
-                                },
-                                onOpenMember = onOpenMember,
-                                onExternalAuthor = onExternalAuthor,
-                                onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
-                                onShowQuickReactions = { anchor ->
-                                    quickReactionBar = ThreadQuickReactionBarRequest(message.id, anchor)
-                                },
-                                onOpenTask = { onThreadEvent("openTask", it, null, null) },
-                                onOpenTaskStatusMenu = { anchor ->
-                                    taskStatusMenuMessageId = message.id
-                                    taskStatusMenuAnchor = anchor
-                                },
-                                onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
-                                onShowReactionDetails = { reaction, anchor ->
-                                    reactionDetails =
-                                        ThreadReactionDetailsRequest(
-                                            emoji = reaction.emoji,
-                                            names = reaction.reactorNames,
-                                            count = reaction.count,
-                                            anchor = anchor
-                                        )
-                                },
-                                onShowAuthorDescription = { description, anchor ->
-                                    authorDescriptionPopover =
-                                        ThreadAuthorDescriptionPopoverRequest(
-                                            description = description,
-                                            anchor = anchor
-                                        )
-                                },
-                                showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
-                                onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
-                                timestampLabel = message.timestampLabel,
-                                compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message),
-                                actionCardExecutedTimeLabel =
-                                    renderConfig.formatActionCardExecutedTimeLabel(
-                                        message.threadActionCard()?.executedAt,
-                                        liveTodayEpochDay
-                                    ),
-                                onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
-                                onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
-                                onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
-                                onCopyLocalSendFailureDetails = {
-                                    onThreadEvent("copyLocalSendFailureDetails", message.id, null, null)
-                                },
-                                attachmentOpenStates = if (isRichContentEnabled) attachmentOpenStates else emptyMap(),
-                                pendingActionCardIds = if (isRichContentEnabled) pendingActionCardIds else emptySet(),
-                                writeActionsEnabled = writeActionsEnabled,
-                                onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
-                                onOpenActionCardChannel = { onThreadEvent("openActionCardChannel", it, null, null) },
-                                currentServerSlug = currentServerSlug,
-                                quotedPermalinkLoader = quotedPermalinkLoader,
-                                onOpenMarkdownTag = onOpenMarkdownTag,
-                                onOpenMarkdownUrl = onOpenMarkdownUrl,
-                                onMentionAuthor = onMentionAuthor,
-                                richContentEnabled = isRichContentEnabled,
-                                translation = translationUi,
-                                onToggleTranslationOriginal = {
-                                    translationStore?.setShowOriginal(
-                                        message.id,
-                                        !(translationUi?.showOriginal ?: false)
-                                    )
-                                },
-                                onRetryTranslation = {
-                                    translationStore?.retryTranslation(displayMessage.toTranslationCandidate())
-                                },
-                                onOpenForwardBundle = onOpenForwardBundle,
-                                longMessageCollapse =
-                                    longMessageCollapseController.takeIf {
-                                        longMessageCollapseEnabled && !shareSelectionCaptureActive
+                            ThreadTimeRevealRow(
+                                state = timeReveal,
+                                timeLabel = formatThreadTimeRevealLabel(message.timestampLabel, renderConfig.timeContext),
+                                continuation = renderPayload.compactConsecutiveMessages && rowSuppressesRepeatedAuthor,
+                            ) {
+                                ThreadMessageCard(
+                                    message = displayMessage,
+                                    messageBodyTextStyle = messageBodyTextStyle,
+                                    replyMetadata = replyMetadata,
+                                    sourceTasks = sourceTasks,
+                                    onOpenSourceTask = { onThreadEvent("openSourceTask", it, null, null) },
+                                    hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id),
+                                    actionCard = actionCard,
+                                    messageIndex = absoluteMessageIndex,
+                                    diagnosticsLogger = diagnosticsLogger,
+                                    highlightedMentions = highlightedMentions,
+                                    agentStatusResolver = agentStatusResolver,
+                                    memberAvatarResolver = memberAvatarResolver,
+                                    memberModelLabelResolver = memberModelLabelResolver,
+                                    inlineReplyParticipantsById = inlineReplyParticipantsById,
+                                    focused = activeFocusedMessageId == message.id,
+                                    searchMatch = activeInlineSearchMessageId == message.id,
+                                    popupOpen = actionMessageId == message.id || quickReactionBar?.messageId == message.id,
+                                    hoverToolbar =
+                                        threadMessageHoverToolbarActions(
+                                            message = message,
+                                            capabilities =
+                                                threadMessageMenuCapabilities(
+                                                    message = message,
+                                                    replyMetadata = replyMetadata,
+                                                    slice = renderPayload,
+                                                    writeActionsEnabled = writeActionsEnabled
+                                                ),
+                                            onShowReactions = { anchor ->
+                                                quickReactionBar =
+                                                    ThreadQuickReactionBarRequest(message.id, anchor, fromHoverToolbar = true)
+                                            },
+                                            onForward = { onForwardMessage(message.id) },
+                                            onToggleSave = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
+                                            onShownChange = { shown ->
+                                                if (shown) {
+                                                    hoverToolbarMessageId = message.id
+                                                } else if (hoverToolbarMessageId == message.id) {
+                                                    hoverToolbarMessageId = null
+                                                }
+                                            }
+                                        ),
+                                    shareSelectionActive = shareSelectionActive,
+                                    selectedForShare = message.id in selectedShareMessageIds,
+                                    onToggleShareSelection = { onToggleShareSelection(message.id) },
+                                    showSaveAction = !captureShareBounds,
+                                    // Defer this snapshot read to the avatar leaf. Reading it at the
+                                    // card boundary invalidates every visible message while anchoring.
+                                    isMessageListScrolling = { listState.isScrollInProgress },
+                                    alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
+                                    messageAlignmentModeEnabled = renderPayload.alignOwnMessagesRight,
+                                    compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
+                                    suppressRepeatedAuthor = rowSuppressesRepeatedAuthor,
+                                    showReplyAction = renderPayload.showReplyActions,
+                                    quickReactionsEnabled = threadMessageCanQuickReact(message, renderPayload, writeActionsEnabled),
+                                    resolvedTaskAssigneeName = linkedTaskAssigneeName,
+                                    resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                                    markdownTagContextSignature = markdownTagContextSignature,
+                                    activeMarkdownTagKey = activeMarkdownTagKey,
+                                    taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
+                                    taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
+                                    isMarkdownTagValid = isMarkdownTagValid,
+                                    onShowActions = { anchor ->
+                                        if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
+                                            actionMenuAnchor = anchor
+                                            actionMessageId = message.id
+                                            classicMenuOverrideMessageId = null
+                                            actionMenuFromLongPress = false
+                                            diagnosticsLogger("thread_message_menu_tap messageId=${message.id}")
+                                        }
                                     },
-                                onToggleLongMessage = {
-                                    toggleLongMessage(
-                                        message.id,
-                                        renderPayload.threadMessageListItemIndex(message.id)
-                                    )
-                                },
-                                longPressGestureInstanceKey =
-                                    message.messageListItemKey(duplicateMessageRandomIds)
-                            )
+                                    onLongPressMenuOpened = {
+                                        if (actionMessageId == message.id) {
+                                            actionMenuFromLongPress = true
+                                            RaftProductEvents.messageActionSelected(
+                                                RaftMessageAction.OpenMenu,
+                                                threadMessageIsReplyInThread(
+                                                    renderPayload.replyThreadSurface,
+                                                    renderPayload.originMessage?.id,
+                                                    message.id
+                                                )
+                                            )
+                                        }
+                                    },
+                                    onOpenMember = onOpenMember,
+                                    onExternalAuthor = onExternalAuthor,
+                                    onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
+                                    onShowQuickReactions = { anchor ->
+                                        quickReactionBar = ThreadQuickReactionBarRequest(message.id, anchor)
+                                    },
+                                    onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                                    onOpenTaskStatusMenu = { anchor ->
+                                        taskStatusMenuMessageId = message.id
+                                        taskStatusMenuAnchor = anchor
+                                    },
+                                    onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
+                                    showReactionReactors = true,
+                                    onShowAuthorDescription = { description, anchor ->
+                                        authorDescriptionPopover =
+                                            ThreadAuthorDescriptionPopoverRequest(
+                                                description = description,
+                                                anchor = anchor
+                                            )
+                                    },
+                                    showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
+                                    onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
+                                    timestampLabel = message.timestampLabel,
+                                    compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message),
+                                    actionCardExecutedTimeLabel =
+                                        renderConfig.formatActionCardExecutedTimeLabel(
+                                            message.threadActionCard()?.executedAt,
+                                            liveTodayEpochDay
+                                        ),
+                                    onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
+                                    onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
+                                    onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
+                                    onCopyLocalSendFailureDetails = {
+                                        onThreadEvent("copyLocalSendFailureDetails", message.id, null, null)
+                                    },
+                                    attachmentOpenStates = if (isRichContentEnabled) attachmentOpenStates else emptyMap(),
+                                    pendingActionCardIds = if (isRichContentEnabled) pendingActionCardIds else emptySet(),
+                                    writeActionsEnabled = writeActionsEnabled,
+                                    onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
+                                    onOpenActionCardChannel = { onThreadEvent("openActionCardChannel", it, null, null) },
+                                    currentServerSlug = currentServerSlug,
+                                    quotedPermalinkLoader = quotedPermalinkLoader,
+                                    onOpenMarkdownTag = onOpenMarkdownTag,
+                                    onOpenMarkdownUrl = onOpenMarkdownUrl,
+                                    onMentionAuthor = onMentionAuthor,
+                                    richContentEnabled = isRichContentEnabled,
+                                    translation = translationUi,
+                                    onToggleTranslationOriginal = {
+                                        translationStore?.setShowOriginal(
+                                            message.id,
+                                            !(translationUi?.showOriginal ?: false)
+                                        )
+                                    },
+                                    onRetryTranslation = {
+                                        translationStore?.retryTranslation(displayMessage.toTranslationCandidate())
+                                    },
+                                    onOpenForwardBundle = onOpenForwardBundle,
+                                    longMessageCollapse =
+                                        longMessageCollapseController.takeIf {
+                                            longMessageCollapseEnabled && !shareSelectionCaptureActive
+                                        },
+                                    onToggleLongMessage = {
+                                        toggleLongMessage(
+                                            message.id,
+                                            renderPayload.threadMessageListItemIndex(message.id)
+                                        )
+                                    },
+                                    longPressGestureInstanceKey =
+                                        message.messageListItemKey(duplicateMessageRandomIds)
+                                )
+                            }
                         }
                     }
                     // read_receipts_v0 (web option C): a DM's "Read" line under its last message.
                     if (message.id == dmReadStatusMessageId && peerReadReceipts?.showsDmReadStatus(displayMessage) == true) {
                         // The card already ends in its 8dp bottom padding, which stands in for web `mt-1`.
                         ThreadDmReadStatusRow(
+                            Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
+                        )
+                    }
+                    // agent_read_progress_v0 (web AgentReadFaces): the faces of the agents that read up to
+                    // this message, at its end. The @mention read badges stay, as on web.
+                    agentReadProgress?.facesByMessageId?.get(message.id)?.let { faces ->
+                        ThreadAgentReadFacesRow(
+                            faces = faces,
+                            serverId = agentReadProgress.serverId,
+                            modifier = Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
+                        )
+                    }
+                    // agent_read_progress_v0 (web option C, AgentReadStatusLine): under the viewer's latest
+                    // message, only when it will not reach an agent that stopped following or muted.
+                    val agentReadStatus = agentReadProgress?.status
+                    if (agentReadStatus != null && message.id == agentReadStatus.messageId) {
+                        ThreadAgentReadStatusRow(
+                            agentReadStatus,
                             Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
                         )
                     }
@@ -23544,9 +25851,8 @@ private fun ThreadMessagesListContent(
             threadListSegments += {
             item(key = ThreadBottomScrollPaddingListItemKey) {
                 Column(Modifier.fillMaxWidth()) {
-                // While the otter lies on this conversation's composer, the list ends a band as
-                // tall as the otter higher (web AssistantOtterListEnd), so it never covers a message.
-                ThreadAssistantOtterListEnd(assistantOtter)
+                // No band for the assistant's otter: it lies over the list's end, so the list
+                // never moves when it comes or goes (artin 11-03); a reader scrolls if it covers.
                 Spacer(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -23599,25 +25905,37 @@ private fun ThreadMessagesListContent(
                     .zIndex(ThreadInlineSearchBarZIndex)
             )
         }
+        // Read through a derived state: this scope is huge, and reading canScrollForward /
+        // layoutInfo here directly recomposed all of it on every scroll frame while scrolled up.
+        // It now recomposes only when one of the two booleans flips.
+        val backToBottomViewportSignals by rememberThreadBackToBottomViewportSignals(listState, latestItemIndex)
         val shouldShowBackToBottomButton =
             shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
                     initialBottomAnchorReady = initialBottomAnchorReady,
                     pendingKeyboardBottomAnchor = pendingKeyboardBottomAnchor,
                     bottomAutoAnchorOwnsViewport = allowBottomAutoAnchor,
-                    canScrollTowardBottom = listState.canScrollForward,
+                    canScrollTowardBottom = backToBottomViewportSignals.canScrollTowardBottom,
                     canonicalTailMissing = renderPayload.canLoadMoreAfter,
-                    latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex)
+                    latestItemOffBottom = backToBottomViewportSignals.latestItemOffBottom
                 )
             )
         RaftScrollFrameSignalEffect(list = "thread") { listState.isScrollInProgress }
         // One line whenever an input of the "Back to bottom" pill changes (not on every scroll frame),
         // with the raw list position at that moment: reversed lists left the pill on after a local send
         // (HuaTuo, #raft-mobile-reconcile:6dbbf8b9) and the pill's inputs were not logged anywhere.
+        val bottomJumpCount =
+            threadBottomJumpCount(
+                canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+                conversationUnreadCount = jumpInputs.conversationUnreadCount,
+                newMessagesBelow = newMessagesBelow.count,
+            )
         val backToBottomPillInputs =
-            "visible=$shouldShowBackToBottomButton reverse=${listState.reverse} allow=$allowBottomAutoAnchor " +
-                "canScrollForward=${listState.canScrollForward} " +
-                "latestItemOffBottom=${listState.shouldShowThreadBackToBottom(latestItemIndex)} " +
+            "visible=$shouldShowBackToBottomButton count=$bottomJumpCount newBelow=${newMessagesBelow.count} " +
+                "laidOut=${backToBottomViewportSignals.latestItemLaidOut} " +
+                "reverse=${listState.reverse} allow=$allowBottomAutoAnchor " +
+                "canScrollForward=${backToBottomViewportSignals.canScrollTowardBottom} " +
+                "latestItemOffBottom=${backToBottomViewportSignals.latestItemOffBottom} " +
                 "tailMissing=${renderPayload.canLoadMoreAfter} kbd=$pendingKeyboardBottomAnchor " +
                 "scrolling=${listState.isScrollInProgress}"
         LaunchedEffect(threadInstanceKey, backToBottomPillInputs) {
@@ -23704,26 +26022,20 @@ private fun ThreadMessagesListContent(
             }
         }
         // Web ChatPanel `newMessageCount`: arrivals below while the Back to Bottom pill shows.
-        val newMessagesTailSignature = renderPayload.messages.size to renderPayload.messages.lastOrNull()?.id
-        LaunchedEffect(threadInstanceKey, newMessagesTailSignature, shouldShowBackToBottomButton, renderPayload.canLoadMoreAfter) {
-            val next =
-                reduceThreadNewMessagesBelow(
-                    state = newMessagesBelow,
-                    messages =
-                        renderPayload.messages.map { message ->
-                            ThreadJumpArrival(messageId = message.id, countable = !message.hasLocalSendState())
-                        },
-                    awayFromBottom = shouldShowBackToBottomButton,
-                    canLoadMoreAfter = renderPayload.canLoadMoreAfter,
-                )
-            if (next != newMessagesBelow) newMessagesBelow = next
-        }
-        val bottomJumpCount =
-            threadBottomJumpCount(
-                canLoadMoreAfter = renderPayload.canLoadMoreAfter,
-                conversationUnreadCount = jumpInputs.conversationUnreadCount,
-                newMessagesBelow = newMessagesBelow.count,
-            )
+        ThreadNewMessagesBelowEffect(
+            instanceKey = threadInstanceKey,
+            tailSignature = renderPayload.messages.size to renderPayload.messages.lastOrNull()?.id,
+            awayFromBottom = shouldShowBackToBottomButton,
+            canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+            viewportMeasured = backToBottomViewportSignals.latestItemLaidOut,
+            current = { newMessagesBelow },
+            onChange = { newMessagesBelow = it },
+            arrivals = {
+                renderPayload.messages.map { message ->
+                    ThreadJumpArrival(messageId = message.id, countable = !message.hasLocalSendState())
+                }
+            },
+        )
         val unreadThreadJumpActive =
             jumpInputs.unreadThreadPillEnabled &&
                 routeActive &&
@@ -23785,6 +26097,57 @@ private fun ThreadMessagesListContent(
                 modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadMessageListEndFadeZIndex),
             )
         }
+        if (renderPayload.replyThreadSurface && !shareSelectionActive && !shareSelectionCaptureActive) {
+            // The thread timeline (web ConversationOutline): the rail in a wide window, the ⋯ menu's
+            // Timeline sheet elsewhere; see ThreadOutline.kt.
+            // Built on first read only: the viewport is read while the rail or the sheet shows, so a
+            // phone without the sheet open never maps its rows.
+            val outlineKeyToMessageId =
+                remember(renderPayload.messages, renderPayload.originMessage?.id, duplicateMessageRandomIds) {
+                    lazy {
+                        buildMap {
+                            renderPayload.originMessage?.id?.let { put(ThreadOriginListItemKey, it) }
+                            renderPayload.messages.forEach { put(it.messageListItemKey(duplicateMessageRandomIds), it.id) }
+                        }
+                    }
+                }
+            val outlineViewport =
+                remember(listState, reverseLayout, outlineKeyToMessageId) {
+                    {
+                        val visible = listState.raw.layoutInfo.visibleItemsInfo
+                        val topFirst = if (reverseLayout) visible.sortedByDescending { it.offset } else visible.sortedBy { it.offset }
+                        val keys = outlineKeyToMessageId.value
+                        ThreadOutlineViewport(topFirst.mapNotNull { keys[it.key] })
+                    }
+                }
+            val outlineOriginId = renderPayload.originMessage?.id
+            val outlineTimeContext =
+                currentRaftTimeContextProvider?.current?.copy(timeFormat = renderConfig.timeContext.timeFormat)
+                    ?: renderConfig.timeContext.refreshedAt(defaultNowMillis())
+            ThreadOutlineHost(
+                state = LocalThreadOutlineState.current,
+                leadingMessageId = renderPayload.parentMessageId ?: outlineOriginId,
+                origin = renderPayload.originMessage,
+                messages = renderPayload.messages,
+                viewport = outlineViewport,
+                jumpTargetId = renderPayload.focusedMessageId,
+                jumpNonce = renderPayload.focusedMessageRequestNonce,
+                listWidth = maxWidth,
+                // The payload's time context has no "today": without the page's live one every row
+                // would show the raw UTC wire timestamp. Same day source as the date dividers.
+                formatTime = { value -> outlineTimeContext.formatTimestampLabel(value) },
+                onJump = { messageId ->
+                    // The thread's first message heads the list and isn't among the replies the
+                    // page focuses: scroll to its row (web `jumpToParent`); a reply is focused.
+                    if (messageId == (renderPayload.parentMessageId ?: outlineOriginId)) {
+                        outlineOriginJumpRequest += 1
+                    } else {
+                        onThreadEvent(ThreadOutlineJumpAction, messageId, null, null)
+                    }
+                },
+                modifier = Modifier.zIndex(ThreadJumpControlsZIndex),
+            )
+        }
         if (agentTyping != null && agentTypingLineShown) {
             ThreadAgentTypingLine(
                 typing = agentTyping,
@@ -23822,12 +26185,6 @@ private fun ThreadMessagesListContent(
             ) {
                 unreadThreadPill(earliest)
             }
-        }
-        reactionDetails?.let { details ->
-            ThreadReactionDetailsTooltip(
-                details = details,
-                onDismiss = { reactionDetails = null }
-            )
         }
         authorDescriptionPopover?.let { request ->
             ThreadAuthorDescriptionPopover(
@@ -24015,6 +26372,7 @@ private fun ThreadMessagesListContent(
             val resolvedActionAnchor =
                 actionMenuAnchor?.takeIf { it.belongsTo(threadMessageMenuOwnerIdentity(messageId)) }
                     ?: return@let
+            ThreadMessageMenuKeepsComposerFocus(messageId)
             renderPayload.threadActionMessage(messageId, linkedTasksProjection)?.let { message ->
                 val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
                 val capabilities =
@@ -24237,6 +26595,7 @@ private fun ThreadMessagesListContent(
             ThreadMessageQuickReactionBar(
                 messageId = message.id,
                 anchor = request.anchor,
+                fromHoverToolbar = request.fromHoverToolbar,
                 onDismiss = closeQuickReactionBar,
                 onReact = { emoji ->
                     closeQuickReactionBar()
@@ -24291,7 +26650,15 @@ private fun ThreadMessagesListContent(
                 if (linkedTask == null || threadTaskDetailPanelUseLegacy(linkedTask)) {
                     RaftTaskStatusMenuOverlay(
                         anchor = resolvedTaskStatusAnchor,
-                        items = ThreadTaskStatusMenuItems,
+                        // A task on a message is never a legacy orphan: with task v2 on it opens as
+                        // its own conversation, so In Review is retired (web `opensAsTaskConversation`).
+                        items =
+                            threadTaskStatusMenuItems(
+                                taskStatusChoices(
+                                    selectedStatus.status,
+                                    v2Task = linkedTasksProjection.taskV2Enabled
+                                )
+                            ),
                         selectedId = selectedStatus.key,
                         onDismiss = { taskStatusMenuMessageId = null },
                         onSelect = { selectedId ->
@@ -24299,13 +26666,18 @@ private fun ThreadMessagesListContent(
                             val taskId = message.taskId?.takeIf { it.isNotBlank() }
                             val status = selectedId.toSharedThreadTaskStatus()
                             if (taskId != null && status != null && status.name != selectedStatus.key) {
-                                onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                                if (taskStatusPickAsksBacklogReason(selectedStatus.status, status)) {
+                                    taskBacklogReasonTarget = ThreadTaskBacklogReasonTarget(taskId, message.taskNumber)
+                                } else {
+                                    onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                                }
                             }
                         }
                     )
                 } else {
                     ThreadTaskDetailDialog(
                         task = linkedTask,
+                        taskV2Enabled = linkedTasksProjection.taskV2Enabled,
                         assigneeOptions = taskAssigneeOptions,
                         agentStatusResolver = agentStatusResolver,
                         onDismiss = { taskStatusMenuMessageId = null },
@@ -24314,7 +26686,11 @@ private fun ThreadMessagesListContent(
                             val taskId = linkedTask.id.value
                             val status = selectedId.toSharedThreadTaskStatus()
                             if (taskId.isNotBlank() && status != null && status.name != selectedStatus.key) {
-                                onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                                if (taskStatusPickAsksBacklogReason(linkedTask.status, status)) {
+                                    taskBacklogReasonTarget = ThreadTaskBacklogReasonTarget(taskId, linkedTask.taskNumber ?: message.taskNumber)
+                                } else {
+                                    onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                                }
                             }
                         },
                         onAssigneeSelect = { assignee ->
@@ -24333,6 +26709,17 @@ private fun ThreadMessagesListContent(
                 }
             }
         }
+        taskBacklogReasonTarget?.let { target ->
+            TaskBacklogReasonDialog(
+                taskNumber = target.taskNumber,
+                onDismiss = { taskBacklogReasonTarget = null },
+                onConfirm = { reason ->
+                    taskBacklogReasonTarget = null
+                    // The reason rides in `tab` ("" for none), as setTaskAssignee's member id does.
+                    onThreadEvent("moveTaskToBacklog", target.taskId, null, reason.orEmpty())
+                }
+            )
+        }
     }
     }
     }
@@ -24349,6 +26736,9 @@ internal fun ThreadComposerDock(
     edgePadding: Dp = RaftAppSpacing.Sm,
     composer: @Composable () -> Unit,
 ) {
+    val ime = WindowInsets.ime
+    val hostIme = LocalRaftHostImeInsets.current
+    val density = LocalDensity.current
     Column(
         modifier =
             Modifier
@@ -24367,6 +26757,11 @@ internal fun ThreadComposerDock(
                     .raftSafeAreaHorizontalPadding()
                     .padding(start = edgePadding, top = 12.dp, end = edgePadding)
                     .then(composerModifier)
+                    // raft-ui: on a conversation page the window's toasts sit just above the composer.
+                    .raftToastAvoid(
+                        enabled = LocalRaftPageActive.current,
+                        keyboardPx = { raftImeBottomPx(ime, hostIme, density).toFloat() },
+                    )
         ) { composer() }
     }
 }
@@ -24416,7 +26811,8 @@ private fun ThreadInlineSearchBar(
             ) {
                 Text(
                     text = "$normalizedCurrent/$matchCount",
-                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    // raft-ui ThreadPanelSearchCount: font-mono text-mono-meta (12/16 regular).
+                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontWeight = FontWeight.Normal),
                     color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -24564,11 +26960,55 @@ internal fun threadForwardSkippedWarning(
     }
 }
 
-private fun ThreadTimelineSlice.threadSelectableShareMessageIds(): Set<String> =
+/**
+ * What a thread's select-all checkbox selects (web `threadSelectableIds`, botiverse/slock #12681
+ * useThreadSelectionActions.ts): its parent and every loaded reply that can be forwarded (not
+ * system updates, action cards or forwarded bundles), and here also nothing retracted, which a
+ * row tap never selects either.
+ */
+internal fun ThreadTimelineSlice.threadSelectableShareMessageIds(): Set<String> =
     (listOfNotNull(originMessage) + messages)
-        .filterNot { it.isSystemMessage() }
+        .filter { it.isForwardableOrdinaryChatMessage() && !it.isRetracted }
         .map { it.id }
         .toSet()
+
+/** The thread select-all checkbox's three looks (web SelectModeToolbar). */
+internal enum class ThreadShareSelectAllCheck {
+    /** Nothing is selected. */
+    Unchecked,
+
+    /** Something else is selected: some of the selectable messages, or messages outside them. */
+    Indeterminate,
+
+    /** The selection is exactly the selectable messages, not a message more or less. */
+    Checked,
+}
+
+internal fun threadShareSelectAllCheck(selected: Set<String>, selectable: Set<String>): ThreadShareSelectAllCheck =
+    when {
+        selectable.isNotEmpty() && selected == selectable -> ThreadShareSelectAllCheck.Checked
+        selected.isNotEmpty() -> ThreadShareSelectAllCheck.Indeterminate
+        else -> ThreadShareSelectAllCheck.Unchecked
+    }
+
+/** A tap on the checkbox: [-] and [✓] clear the selection, [ ] selects every selectable message. */
+internal fun threadShareSelectAllNext(selected: Set<String>, selectable: Set<String>): Set<String> =
+    if (selected.isNotEmpty()) emptySet() else selectable
+
+/**
+ * The count says "All N selected" only when the selection is exactly the selectable messages and
+ * the whole thread is loaded ([complete]); otherwise the plain "N selected".
+ */
+internal fun threadShareSelectionSaysAll(check: ThreadShareSelectAllCheck, complete: Boolean): Boolean =
+    check == ThreadShareSelectAllCheck.Checked && complete
+
+/** The thread toolbar's select-all checkbox, before the count. */
+internal data class ThreadShareSelectAll(
+    val check: ThreadShareSelectAllCheck,
+    val complete: Boolean,
+    val enabled: Boolean,
+    val onClick: () -> Unit,
+)
 
 private fun ThreadTimelineSlice.threadSelectedShareMarkdown(selectedIds: Set<String>): String =
     threadSelectedShareMessages(selectedIds).threadShareMarkdown()
@@ -24577,6 +27017,13 @@ private fun List<RaftThreadMessageItem>.threadShareMarkdown(): String =
     joinToString("\n\n") { message ->
         "**${message.shownAuthorName().ifBlank { "Unknown" }}**: ${message.body.trim()}"
     }
+
+/**
+ * The top of the list is where the shown history starts (the "Beginning of conversation" case of
+ * [threadOlderMessagesStatusSpec]): no older page to load, and not an offline stand-in cut short.
+ */
+internal fun ThreadTimelineSlice.threadHistoryReachesStart(): Boolean =
+    !canLoadMoreBefore && !(durableLastKnown && !durableReachedOldest)
 
 internal fun threadOlderMessagesStatusSpec(payload: RaftThreadScreenPayload): ThreadHistoryStatusSpec =
     threadOlderMessagesStatusSpec(payload.toThreadTimelineSlice())
@@ -24781,23 +27228,64 @@ internal data class ThreadLazyWindowConsumerCounts(
     val diagnosticsBeyondBoundsItems: Int
 )
 
+/**
+ * [measuredListBeyondBoundsItems] (from [threadMeasuredBeyondBoundsItemCount], 0 = rows not
+ * measured yet) sizes the composed beyond-bounds window by real row heights: a fixed item count
+ * from a 64dp representative row kept 7 rows composed even when each was 1500-2260px tall, i.e.
+ * several extra screens that all recomposed on any context change. The markdown preparse keeps
+ * the representative-row count: that work runs off the main thread and only fills caches.
+ */
 internal fun threadLazyWindowConsumerCounts(
     itemCount: Int,
     viewportHeightDp: Float,
+    measuredListBeyondBoundsItems: Int = 0,
     representativeRowStepDp: Float = ThreadMessagesRepresentativeRowStepDp
 ): ThreadLazyWindowConsumerCounts {
-    val measuredCount =
+    val representativeCount =
         threadMessagesBeyondBoundsItemCount(
             itemCount = itemCount,
             viewportHeightDp = viewportHeightDp,
             representativeRowStepDp = representativeRowStepDp
         )
+    val listCount =
+        if (measuredListBeyondBoundsItems > 0 && threadViewportMeasurementReady(viewportHeightDp)) {
+            measuredListBeyondBoundsItems.coerceAtMost(itemCount.coerceAtLeast(0))
+        } else {
+            representativeCount
+        }
     return ThreadLazyWindowConsumerCounts(
-        listBeyondBoundsItems = measuredCount,
-        markdownPreparseOverscanItems = measuredCount,
-        diagnosticsBeyondBoundsItems = measuredCount
+        listBeyondBoundsItems = listCount,
+        markdownPreparseOverscanItems = representativeCount,
+        diagnosticsBeyondBoundsItems = listCount
     )
 }
+
+/**
+ * Rows to keep composed beyond the viewport: about one viewport of content at the measured
+ * average row height, clamped to [ThreadMessagesMinMeasuredBeyondBoundsItemCount]..
+ * [ThreadMessagesMaxBeyondBoundsItemCount]. Tall rows give 1-2, short rows up to the cap.
+ * 0 when either measurement is missing.
+ */
+internal fun threadMeasuredBeyondBoundsItemCount(
+    viewportHeightDp: Float,
+    averageRowHeightDp: Float
+): Int {
+    if (!threadViewportMeasurementReady(viewportHeightDp)) return 0
+    if (!averageRowHeightDp.isFinite() || averageRowHeightDp <= 0f) return 0
+    return ceil(viewportHeightDp / averageRowHeightDp).toInt()
+        .coerceIn(ThreadMessagesMinMeasuredBeyondBoundsItemCount, ThreadMessagesMaxBeyondBoundsItemCount)
+}
+
+internal fun threadAverageVisibleRowHeightPx(visibleItems: List<LazyListItemInfo>): Float {
+    if (visibleItems.isEmpty()) return 0f
+    var total = 0L
+    visibleItems.forEach { item -> total += item.size.coerceAtLeast(0) }
+    return total.toFloat() / visibleItems.size
+}
+
+/** Exponential smoothing so one odd row entering or leaving does not flip the window size. */
+internal fun threadSmoothedRowHeightPx(previousPx: Float, samplePx: Float): Float =
+    if (previousPx <= 0f) samplePx else previousPx + (samplePx - previousPx) * ThreadMessagesRowHeightSmoothing
 
 internal fun threadViewportMeasurementReady(viewportHeightDp: Float): Boolean =
     viewportHeightDp.isFinite() && viewportHeightDp > 0f
@@ -24957,6 +27445,36 @@ internal fun RaftThreadMessageItem.messageListItemKey(
             id
         }
     return "thread-page:$identity"
+}
+
+internal data class ThreadMessageListKeyDedupe(
+    val messages: List<RaftThreadMessageItem>,
+    val droppedKeys: List<String>,
+)
+
+/**
+ * Safety net for the message LazyColumn: a repeated item key throws during measure and crashes
+ * the app, so rows whose [messageListItemKey] repeats are dropped, keeping the last occurrence
+ * (the newest in timeline order). Normal data never repeats a key; [ThreadMessageListKeyDedupe.droppedKeys]
+ * is non-empty only when an upstream merge produced duplicate rows, and the caller logs it.
+ */
+internal fun List<RaftThreadMessageItem>.withUniqueMessageListKeys(): ThreadMessageListKeyDedupe {
+    var current = this
+    val dropped = mutableListOf<String>()
+    while (true) {
+        val duplicateRandomIds = current.threadDuplicateRandomIds()
+        val keys = current.map { message -> message.messageListItemKey(duplicateRandomIds) }
+        val lastIndexByKey = HashMap<String, Int>(keys.size)
+        keys.forEachIndexed { index, key -> lastIndexByKey[key] = index }
+        if (lastIndexByKey.size == keys.size) return ThreadMessageListKeyDedupe(current, dropped)
+        // Dropping a row can make a repeated randomId unique again, which changes the surviving
+        // rows' keys; loop until the keys are stable. Every pass removes at least one row.
+        val next = ArrayList<RaftThreadMessageItem>(lastIndexByKey.size)
+        keys.forEachIndexed { index, key ->
+            if (lastIndexByKey[key] == index) next += current[index] else dropped += key
+        }
+        current = next
+    }
 }
 
 internal data class ThreadMessageMarkdownRenderSignature(
@@ -25776,9 +28294,10 @@ internal fun shouldMarkThreadVisibleRead(
     routeActive: Boolean,
     observedHostForeground: Boolean,
     currentHostVisibility: Boolean,
-    markerKey: String?
+    markerKey: String?,
+    hostInUse: Boolean = true
 ): Boolean =
-    routeActive && observedHostForeground && currentHostVisibility && markerKey != null
+    routeActive && observedHostForeground && currentHostVisibility && hostInUse && markerKey != null
 
 internal fun threadLifecycleEventTargetsThread(pageName: String): Boolean =
     pageName == THREAD_PAGE || pageName == RAFT_APP_SHELL_PAGE
@@ -25885,6 +28404,19 @@ internal fun shouldRestoreThreadOlderPageAnchor(
     capturedUserScrollGeneration: Int,
     currentUserScrollGeneration: Int
 ): Boolean = capturedUserScrollGeneration == currentUserScrollGeneration
+
+/** Task v2: whether any of the head at the top of the history boundary row is on screen ([taskHeadRowInView]). */
+private fun ThreadListViewport.threadTaskHeadRowInView(headHeightPx: Int): Boolean {
+    val info = layoutInfo
+    val row = info.visibleItemsInfo.firstOrNull { it.key == ThreadOlderMessagesListItemKey }
+    return taskHeadRowInView(
+        rowOffsetPx = row?.offset,
+        rowSizePx = row?.size ?: 0,
+        headHeightPx = headHeightPx,
+        viewportStartPx = info.viewportStartOffset,
+        viewportEndPx = info.viewportEndOffset,
+    )
+}
 
 private fun ThreadListViewport.isThreadOlderAutoLoadThreshold(
     boundaryIndex: Int,
@@ -26203,6 +28735,66 @@ internal fun threadRepliesFocusedItemScrollOffset(
     return -minOf(centredTop, bottomLimitedTop)
 }
 
+internal data class ThreadBackToBottomViewportSignals(
+    val canScrollTowardBottom: Boolean,
+    val latestItemOffBottom: Boolean,
+    /**
+     * The layout has measured row `latestItemIndex`, i.e. the current list. False for the
+     * composition in which rows were appended (the layout still holds the previous list), when
+     * [latestItemOffBottom] reads false whatever the scroll position.
+     */
+    val latestItemLaidOut: Boolean = true
+)
+
+/**
+ * The scroll-position inputs of the "Back to bottom" pill as a derived state, so a caller's
+ * composition scope is invalidated only when a value flips, not on every scroll frame.
+ */
+@Composable
+internal fun rememberThreadBackToBottomViewportSignals(
+    listState: ThreadListViewport,
+    latestItemIndex: Int
+): State<ThreadBackToBottomViewportSignals> =
+    remember(listState, latestItemIndex) {
+        derivedStateOf {
+            ThreadBackToBottomViewportSignals(
+                canScrollTowardBottom = listState.canScrollForward,
+                latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex),
+                latestItemLaidOut = latestItemIndex <= 0 || listState.layoutInfo.totalItemsCount > latestItemIndex
+            )
+        }
+    }
+
+/**
+ * Web ChatPanel `newMessageCount`: reduces the arrivals below while the Back to Bottom pill shows
+ * ([reduceThreadNewMessagesBelow]), once per change of the list's tail or the pill's inputs.
+ * [arrivals] is read only when it runs, not on every composition.
+ */
+@Composable
+internal fun ThreadNewMessagesBelowEffect(
+    instanceKey: Any?,
+    tailSignature: Any?,
+    awayFromBottom: Boolean,
+    canLoadMoreAfter: Boolean,
+    viewportMeasured: Boolean,
+    current: () -> ThreadNewMessagesBelow,
+    onChange: (ThreadNewMessagesBelow) -> Unit,
+    arrivals: () -> List<ThreadJumpArrival>,
+) {
+    LaunchedEffect(instanceKey, tailSignature, awayFromBottom, canLoadMoreAfter, viewportMeasured) {
+        val state = current()
+        val next =
+            reduceThreadNewMessagesBelow(
+                state = state,
+                messages = arrivals(),
+                awayFromBottom = awayFromBottom,
+                canLoadMoreAfter = canLoadMoreAfter,
+                viewportMeasured = viewportMeasured,
+            )
+        if (next != state) onChange(next)
+    }
+}
+
 private fun ThreadListViewport.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
     if (latestItemIndex <= 0) return false
     if (!canScrollForward) return false
@@ -26263,6 +28855,9 @@ internal fun threadRenderedBottomScrollOffset(
 /** The action the unread-thread pill sends: focus that parent message. */
 internal const val ThreadJumpToUnreadThreadParentAction = "focusUnreadThreadParent"
 
+/** The thread timeline's row or tick: focus that message (ThreadOutline.kt). */
+internal const val ThreadOutlineJumpAction = "focusThreadOutlineMessage"
+
 /** The pill's thread has its parent past the history window and replies inside it: open the thread. */
 internal const val ThreadOpenUnreadThreadPastHistoryAction = "openUnreadThreadPastHistory"
 
@@ -26321,6 +28916,9 @@ internal const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
 private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
+
+/** At least 80 ms each (plus the command settlement): the initial bottom anchor gives up after ~5 s. */
+internal const val ThreadInitialBottomAnchorMaxRetries = 60
 private const val ThreadFocusedTailMeasurementRetryFrames = 2
 private const val ThreadViewportPixelProbeTimeoutMs = 2_500L
 private const val ThreadInitialBottomAnchorMinimumConsumedDeltaPx = 0.5f
@@ -26368,7 +28966,14 @@ internal fun ThreadSystemMessageRow(
             Modifier.fillMaxWidth()
                 .background(RaftColor.SurfaceWhite)
                 .clickable { expanded = !expanded }
-                .padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Xs),
+                // raft-ui SystemMessage `pt-timeline-lead pb-timeline-row`: an event line starts a
+                // turn, 16 from the text on either side (spacing.md#timeline-rhythm).
+                .padding(
+                    start = RaftAppSpacing.Md,
+                    end = RaftAppSpacing.Md,
+                    top = ThreadMessageTimelineTurn + ThreadMessageTimelineRowInset,
+                    bottom = ThreadMessageTimelineRowInset
+                ),
         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.Top
     ) {
@@ -26434,15 +29039,13 @@ private fun ThreadInlineActionRow(
     leadingIcon: RaftLucideIconName? = null,
     onClick: () -> Unit
 ) {
-    RaftBrutalActionButton(
-        label = label,
+    RaftButton(
+        text = label,
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        backgroundColor = RaftColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = 36.dp,
-        leadingIcon = leadingIcon,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, color = RaftColor.TextBlack)
+        variant = RaftButtonVariant.Default,
+        size = RaftButtonSize.Md,
+        leadingIcon = leadingIcon?.let { icon -> { RaftSlotIcon(icon) } }
     )
 }
 
@@ -26513,9 +29116,20 @@ internal fun ThreadHistoryStatusRow(
 }
 
 @Composable
-private fun ThreadDateDivider(label: String) {
+internal fun ThreadDateDivider(label: String) {
+    // raft-ui MessageListDateDivider: the rule sits a section (24) from the text on both sides
+    // (spacing.md#timeline-rhythm), taking back the row above's inset (4) and the row below's
+    // lead (12): pt = 24 - 4 - line/2, pb = 24 - 12 - line/2 on its 16dp line.
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = 8.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = RaftAppSpacing.Md,
+                    end = RaftAppSpacing.Md,
+                    top = ThreadDateDividerPaddingTop,
+                    bottom = ThreadDateDividerPaddingBottom
+                ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -26525,18 +29139,26 @@ private fun ThreadDateDivider(label: String) {
             style = threadDateDividerTextStyle(),
             color = RaftColor.TextMutedGray,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.height(ThreadDateDividerLineHeight)
         )
         Box(Modifier.weight(1f).height(RaftAppStroke.Thin).background(RaftColor.TextMutedGray.copy(alpha = 0.35f)))
     }
 }
 
+/** raft `timeline-gap-section`: a boundary's distance from the text on each side. */
+private val ThreadTimelineSection = 24.dp
+private val ThreadDateDividerLineHeight = 16.dp
+internal val ThreadDateDividerPaddingTop =
+    ThreadTimelineSection - ThreadMessageTimelineRowInset - ThreadDateDividerLineHeight / 2
+internal val ThreadDateDividerPaddingBottom =
+    ThreadTimelineSection - (ThreadMessageTimelineTurn + ThreadMessageTimelineRowInset) - ThreadDateDividerLineHeight / 2
+
+/** raft-ui `MessageListDateDivider`: `font-mono text-mono-meta` (12/16 regular), Caption's size in Space Mono Regular. */
 internal fun threadDateDividerTextStyle(): TextStyle =
     RaftType.Caption.copy(
-        fontFamily = raftMonoFamilyForWeight(FontWeight.Bold),
+        fontFamily = RaftMonoFamily,
         fontWeight = FontWeight.Normal,
-        fontSize = 11.sp,
-        lineHeight = 14.sp,
         color = RaftColor.TextMutedGray,
         letterSpacing = 0.sp
     )
@@ -26570,7 +29192,14 @@ internal data class ThreadQuotedPermalinkMessage(
     val channelArchived: Boolean = false
 )
 
-internal typealias ThreadQuotedPermalinkLoader = suspend (RaftMessagePermalinkTarget) -> ThreadQuotedPermalinkMessage?
+internal typealias ThreadQuotedPermalinkLoader = suspend (ParsedRaftPermalink) -> ThreadQuotedPermalinkMessage?
+
+/**
+ * The loader behind the quoted-permalink card. SharedThreadRouteContent is at the JVM argument
+ * limit, so it reaches [ThreadMessageCard] through this local instead of a parameter chain (the
+ * chain had silently ended in `null` defaults, so no card ever loaded).
+ */
+internal val LocalThreadQuotedPermalinkLoader = compositionLocalOf<ThreadQuotedPermalinkLoader?> { null }
 
 internal sealed interface ThreadQuotedPermalinkUiState {
     data object Loading : ThreadQuotedPermalinkUiState
@@ -26590,7 +29219,7 @@ internal sealed interface ThreadQuotedPermalinkUiState {
 @Composable
 internal fun ThreadQuotedPermalinkCard(
     state: ThreadQuotedPermalinkUiState,
-    target: RaftMessagePermalinkTarget?,
+    target: ParsedRaftPermalink?,
     memberAvatarResolver: RaftMemberAvatarResolver,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier
@@ -26601,11 +29230,9 @@ internal fun ThreadQuotedPermalinkCard(
                 label = stringResource(Res.string.thread_quoted_permalink_loading),
                 modifier = modifier
             )
-        ThreadQuotedPermalinkUiState.Unavailable ->
-            build.raft.designsystem.components.RaftMessageQuotedPreviewUnavailable(
-                text = stringResource(Res.string.thread_quoted_permalink_unavailable),
-                modifier = modifier
-            )
+        // The web renders nothing for a quote it cannot read; the row never composes this state (see
+        // threadQuotedPermalinkPreviewVisible), and the permalink chip says so instead.
+        ThreadQuotedPermalinkUiState.Unavailable -> Unit
         // Quoted as one muted line, like an unavailable quote (web QuoteCardContent).
         ThreadQuotedPermalinkUiState.Retracted ->
             build.raft.designsystem.components.RaftMessageQuotedPreviewUnavailable(
@@ -26616,8 +29243,10 @@ internal fun ThreadQuotedPermalinkCard(
             val item = state.message.item
             val direct = target?.routeKind == ConversationKind.DirectMessage
             val resolvedChannel = target?.let { LocalRaftMessagePermalinkLabelResolver.current(it) }
+            // Agent Lounge v0: a quote from a Lounge names the Lounge, without the # glyph.
+            val loungeLabel = if (direct) null else agentLoungeLabelOrNull(target?.channelId?.value)
             val channel =
-                resolvedChannel?.trim()?.removePrefix("#")?.removePrefix("@")?.takeIf { it.isNotBlank() }
+                loungeLabel ?: resolvedChannel?.trim()?.removePrefix("#")?.removePrefix("@")?.takeIf { it.isNotBlank() }
                     ?: if (direct) {
                         stringResource(Res.string.thread_quoted_permalink_direct_message)
                     } else {
@@ -26627,7 +29256,7 @@ internal fun ThreadQuotedPermalinkCard(
             val avatarWireValue =
                 resolveThreadRowAvatarWireValue(rememberRaftMemberAvatarWireValue(memberAvatarResolver, item.authorId))
                     ?: item.avatarWireValue
-            val liveTimeContext = LocalRaftTimeContextProvider.current?.current
+            val liveTimeContext = currentRaftTimeContextProvider?.current
             build.raft.designsystem.components.RaftMessageQuotedPreview(
                 authorName = item.localizedAuthorName().ifBlank { stringResource(Res.string.thread_comments_unknown_author) },
                 text = markdownToPreviewText(item.body).takeIf { it.isNotBlank() }
@@ -26636,6 +29265,7 @@ internal fun ThreadQuotedPermalinkCard(
                 // A resolved DM title names the peer; without one the fallback reads as a place.
                 channel = channel,
                 direct = direct && resolvedChannel != null,
+                channelGlyph = loungeLabel == null,
                 threadLabel =
                     if (target?.threadParentMessageId != null) {
                         stringResource(Res.string.thread_quoted_permalink_thread)
@@ -26750,6 +29380,7 @@ private data class ThreadMessageCardData(
     val longMessageCollapse: RaftLongMessageCollapseController?,
     val longPressGestureInstanceKey: Any,
     val outerPadding: androidx.compose.ui.unit.Dp,
+    val hoverToolbar: ThreadMessageHoverToolbarActions? = null,
 )
 
 /** task #346: callback payload of [ThreadMessageCard]. See ThreadMessageCardData. */
@@ -26770,7 +29401,8 @@ private class ThreadMessageCardCallbacks(
     val onOpenTask: (String) -> Unit,
     val onOpenTaskStatusMenu: (RaftPopoverAnchor) -> Unit,
     val onToggleReaction: (String) -> Unit,
-    val onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)?,
+    /** Reaction chips name who reacted (long press / hover). */
+    val showReactionReactors: Boolean,
     val onOpenCommentHost: (RaftThreadMessageCommentRef) -> Unit,
     val onOpenAttachment: (String) -> Unit,
     val onDownloadAttachment: (String) -> Unit,
@@ -26836,7 +29468,7 @@ fun ThreadMessageCard(
     onOpenTask: (String) -> Unit,
     onOpenTaskStatusMenu: (RaftPopoverAnchor) -> Unit,
     onToggleReaction: (String) -> Unit,
-    onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null,
+    showReactionReactors: Boolean = false,
     onOpenCommentHost: (RaftThreadMessageCommentRef) -> Unit = {},
     onOpenAttachment: (String) -> Unit,
     onDownloadAttachment: (String) -> Unit = {},
@@ -26872,7 +29504,9 @@ fun ThreadMessageCard(
     longPressGestureInstanceKey: Any = message.id,
     quotedPermalinkLoader: ThreadQuotedPermalinkLoader? = null,
     onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
-    outerPadding: androidx.compose.ui.unit.Dp = RaftAppSpacing.Sm
+    outerPadding: androidx.compose.ui.unit.Dp = RaftAppSpacing.Sm,
+    /** web MessageHoverToolbar: the row's hover toolbar under a mouse or trackpad; null: none. */
+    hoverToolbar: ThreadMessageHoverToolbarActions? = null
 )
  {
     // RFC 077 PR 2b (web MessageItem `retracted`): a retracted message is one non-interactive
@@ -26923,6 +29557,8 @@ fun ThreadMessageCard(
                 longMessageCollapse = longMessageCollapse,
                 longPressGestureInstanceKey = longPressGestureInstanceKey,
                 outerPadding = outerPadding,
+                // web MessageItem `actionable`: a retracted message has no toolbar.
+                hoverToolbar = if (retracted) null else hoverToolbar,
             ),
         callbacks =
             ThreadMessageCardCallbacks(
@@ -26940,7 +29576,7 @@ fun ThreadMessageCard(
                 onOpenTask = onOpenTask,
                 onOpenTaskStatusMenu = onOpenTaskStatusMenu,
                 onToggleReaction = onToggleReaction,
-                onShowReactionDetails = onShowReactionDetails,
+                showReactionReactors = showReactionReactors,
                 onOpenCommentHost = onOpenCommentHost,
                 onOpenAttachment = onOpenAttachment,
                 onDownloadAttachment = onDownloadAttachment,
@@ -27011,7 +29647,7 @@ private fun ThreadMessageCardContent(
     val onOpenTask = callbacks.onOpenTask
     val onOpenTaskStatusMenu = callbacks.onOpenTaskStatusMenu
     val onToggleReaction = callbacks.onToggleReaction
-    val onShowReactionDetails = callbacks.onShowReactionDetails
+    val showReactionReactors = callbacks.showReactionReactors
     val onOpenCommentHost = callbacks.onOpenCommentHost
     val onOpenAttachment = callbacks.onOpenAttachment
     val onDownloadAttachment = callbacks.onDownloadAttachment
@@ -27044,7 +29680,7 @@ private fun ThreadMessageCardContent(
     val onToggleLongMessage = callbacks.onToggleLongMessage
     val onLongPressInputReady = callbacks.onLongPressInputReady
     val longPressGestureInstanceKey = data.longPressGestureInstanceKey
-    val quotedPermalinkLoader = callbacks.quotedPermalinkLoader
+    val quotedPermalinkLoader = callbacks.quotedPermalinkLoader ?: LocalThreadQuotedPermalinkLoader.current
     val outerPadding = data.outerPadding
     // read_receipts_v0: @mentioned agents' read badges on the viewer's own message (web MentionLink).
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
@@ -27094,12 +29730,17 @@ private fun ThreadMessageCardContent(
         }
     val shareCaptureActive = LocalThreadShareCaptureActive.current
     val quotedPermalinkState = remember(message.id, message.body) { mutableStateOf<ThreadQuotedPermalinkUiState?>(null) }
-    var quotedPermalinkTarget by remember(message.id, message.body) { mutableStateOf<RaftMessagePermalinkTarget?>(null) }
+    var quotedPermalinkTarget by remember(message.id, message.body) { mutableStateOf<ParsedRaftPermalink?>(null) }
     LaunchedEffect(message.id, message.body, currentServerSlug, quotedPermalinkLoader) {
         quotedPermalinkState.value = null
         quotedPermalinkTarget = null
         val loader = quotedPermalinkLoader ?: return@LaunchedEffect
-        val target = message.body.extractFirstQuotedMessagePermalink(currentServerSlug)
+        val target =
+            extractFirstQuotedRaftPermalink(
+                content = message.body,
+                hostnames = raftPermalinkHostnames(RaftClientConfigAppHosts.current),
+                currentServerSlug = currentServerSlug
+            )?.parsed
         if (target == null) {
             // task #1153: quoted permalink cards used to fail silently. This
             // event only proves extraction returned null — it does not
@@ -27181,6 +29822,9 @@ private fun ThreadMessageCardContent(
     // The author's profile card under a mouse or trackpad pointer on the avatar (web MessageItem's
     // avatar hover card); View Profile is the avatar's own click.
     val memberPreviewCardSource = LocalRaftMemberPreviewCardSource.current
+    val externalAuthor = message.externalAuthor
+    val externalAuthorFallbackName = rememberExternalAuthorFallbackName()
+    val externalAuthorName = externalAuthor?.let { externalAuthorShownName(it, it.displayName, externalAuthorFallbackName) }.orEmpty()
     val authorPreviewCard: (@Composable ColumnScope.(RaftPreviewCardState) -> Unit)? =
         if (memberPreviewCardSource != null && authorProfileIdentity != null && !shareSelectionActive) {
             { state ->
@@ -27192,6 +29836,9 @@ private fun ThreadMessageCardContent(
                     onViewProfile = { openAuthorProfile("preview_card") },
                 )
             }
+        } else if (externalAuthor != null && !shareSelectionActive) {
+            // A Slack-bridged author: who they are outside Raft (web ExternalIdentityPreviewCard).
+            { _ -> RaftExternalIdentityPreviewCardContent(externalAuthor, externalAuthorName) }
         } else {
             null
         }
@@ -27214,6 +29861,15 @@ private fun ThreadMessageCardContent(
     val showTimestampInAvatarSlot =
         compactConsecutiveMessages && !showAuthorChrome && pressed && compactTimestampLabel.isNotBlank()
     val compactTimestampGutter = compactConsecutiveMessages
+    // Screen readers hear every row's time: a compact row without its header has no visible one
+    // (only while pressed), so its avatar slot carries it, as the header would show it.
+    val rowTimeContext = currentRaftTimeContextProvider?.current
+    val rowTimeAccessibilityLabel =
+        if (showTimestampInHeader) {
+            null
+        } else {
+            threadRowTimeAccessibilityLabel(timestampLabel, compactTimestampLabel, rowTimeContext)
+        }
     val messageHasAttachments = message.attachments.isNotEmpty()
     val hasThreadAttachments = richContentEnabled && messageHasAttachments
     // The body always renders in full; a long one is clipped visually by RaftLongMessageCollapsibleBody.
@@ -27244,12 +29900,20 @@ private fun ThreadMessageCardContent(
                 showReplyAction = showReplyAction,
             )
         }
+    val repliesBadge =
+        threadRepliesBadgeSpec(
+            replyMetadata = replyMetadata,
+            hasDraft = hasReplyDraft,
+            showReplyAction = showReplyAction,
+            hasInlineReplies = inlineReplyPresentation != null,
+        )
     val hasFooterMeta =
         richContentEnabled &&
             !message.hasLocalSendState() &&
             message.hasThreadFooterMeta(
                 showSavedBadge = showSavedBadge,
-                hasPendingReaction = hasPendingReaction
+                hasPendingReaction = hasPendingReaction,
+                showRepliesBadge = repliesBadge != null
             )
     val messagePerformanceKey =
         remember(message.id, messageIndex) {
@@ -27297,20 +29961,25 @@ private fun ThreadMessageCardContent(
         }
     // A tap whose gesture started while a selection was showing (here or on another row) only
     // dismisses it. The flag is captured at DOWN because the selection is already gone by onTap.
+    val keyboardTapDismissal = LocalThreadKeyboardTapDismissal.current
     val consumeSelectionDismissalTap: (() -> Boolean)? =
-        if (inPlaceSelection == null || (rowTapAction == null && rowDoubleTapAction == null)) {
+        if (rowTapAction == null && rowDoubleTapAction == null) {
             null
         } else {
             {
-                val selectionShowingAtDown = inPlaceSelection.dismissalGestureInFlight
-                inPlaceSelection.dismissalGestureInFlight = false
+                val selectionShowingAtDown = inPlaceSelection?.dismissalGestureInFlight == true
+                inPlaceSelection?.dismissalGestureInFlight = false
                 when (threadInPlaceSelectionTapDecision(selectionShowingAtDown)) {
                     ThreadInPlaceSelectionTapDecision.DismissSelectionOnly -> {
                         diagnosticsLogger("thread_in_place_selection_tap_clear messageId=${message.id}")
-                        inPlaceSelection.clear()
+                        inPlaceSelection?.clear()
                         true
                     }
-                    ThreadInPlaceSelectionTapDecision.RunRowAction -> false
+                    ThreadInPlaceSelectionTapDecision.RunRowAction -> {
+                        val keyboardClosed = keyboardTapDismissal?.dismissIfUp() == true
+                        if (keyboardClosed) diagnosticsLogger("thread_message_row_tap_keyboard_only messageId=${message.id}")
+                        keyboardClosed
+                    }
                 }
             }
         }
@@ -27354,12 +30023,21 @@ private fun ThreadMessageCardContent(
     val rowHoverEnabled =
         !(shareSelectionActive && selectedForShare) && !popupOpen && !searchMatch && locatedStrength <= 0f
     val rowHover = rememberRaftStateOverlay(rowHoverSource, RaftHoverTier.Subtle, enabled = rowHoverEnabled)
+    // web MessageHoverToolbar: none while messages are being selected (select mode).
+    val hoverToolbar = data.hoverToolbar?.takeIf { !shareSelectionActive }
+    // A mouse or trackpad over the row, open menu or not (the row's hover fill pauses under one).
+    var rowPointerOver by remember { mutableStateOf(false) }
+    // Whether the hover toolbar shows: the header fades its end under it (raft-ui MessageItemHeader).
+    var hoverToolbarShown by remember { mutableStateOf(false) }
+    val headerMaskWidth =
+        hoverToolbar?.takeIf { hoverToolbarShown }?.let { RaftMessageItemToolbarDefaults.width(it.buttonCount) }
     Box(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .background(RaftColor.Canvas)
                 .raftPointerHover(rowHoverSource)
+                .raftPointerHoverPosition(enabled = hoverToolbar != null) { rowPointerOver = it != null }
                 .then(
                     if (inPlaceSelection != null) {
                         Modifier.onGloballyPositioned { inPlaceSelection.rowCoordinates = it }
@@ -27426,9 +30104,11 @@ private fun ThreadMessageCardContent(
                                 onShowActions(anchor)
                             },
                             onInputReady = onLongPressInputReady,
+                            // Mouse, trackpad and stylus presses on the body select text in place; a
+                            // finger's is the row's (the Compact menu) when the toggle is on.
                             deferLongPressAt =
                                 inPlaceSelection?.let { selection ->
-                                    { offset -> selection.bodyContainsRowOffset(offset) }
+                                    { offset -> selection.ownsRowPressAt(offset) }
                                 },
                             onPointerDown =
                                 inPlaceSelection?.let { selection ->
@@ -27456,7 +30136,7 @@ private fun ThreadMessageCardContent(
             } else if (popupOpen) {
                 // raft-ui 0.13 MessageItem `data-popup-open:bg-fill-row-open`: the row
                 // under an open context menu keeps one step past the hover.
-                RaftTheme.colors.fillRowOpen
+                RaftTheme.colors.fillSubtle
             } else if (searchMatch) {
                 // raft-ui: the current match of a search inside a page is a selection; it
                 // stays info-soft while it is current, and doesn't fade.
@@ -27476,13 +30156,19 @@ private fun ThreadMessageCardContent(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    // raft-ui `MessageItem` root: the row wash spans the whole
-                    // row and the content sits at px-2 py-2 inside it.
+                    // raft-ui 0.61 `MessageItem` root (timeline rhythm): a turn's first row
+                    // carries `timeline-turn` (8) as a transparent top border the wash doesn't
+                    // paint (`bg-clip-padding`); a continuation row (`compact`) has none. The share
+                    // image replaces it with its own 2dp row frame (web selectScreenshot.ts sets the
+                    // clone's `border: 2px solid transparent`), so a captured row has no band.
+                    .padding(top = if (showAuthorChrome && !shareCaptureActive) ThreadMessageTimelineTurn else 0.dp)
+                    // The row wash spans the whole row; the content sits at px-2
+                    // `py-timeline-row` (4) inside it.
                     .background(rowFill)
                     .raftStateOverlay(rowHover, RectangleShape)
                     // The wash runs edge to edge; the message stays out of the safe area.
                     .raftSafeAreaHorizontalPadding()
-                    .padding(horizontal = outerPadding, vertical = RaftAppSpacing.Sm),
+                    .padding(horizontal = outerPadding, vertical = ThreadMessageTimelineRowInset),
             verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
         ) {
             Row(
@@ -27502,6 +30188,7 @@ private fun ThreadMessageCardContent(
                         interactionIdentity = authorGestureIdentity,
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
+                        timestampAccessibilityLabel = rowTimeAccessibilityLabel,
                         compactTimestampGutter = compactTimestampGutter,
                         timestampLabel = compactTimestampLabel,
                         timestampAlignment = Alignment.TopStart,
@@ -27519,12 +30206,19 @@ private fun ThreadMessageCardContent(
                             ),
                         status = agentStatus,
                         statusPulsing = { !isMessageListScrolling() },
-                        muted = authorBadgeLabel != null,
+                        // web MessageItem: only an archived agent's face is dimmed (`grayscale opacity-dimmed`);
+                        // a person who left or was removed keeps theirs.
+                        muted = message.isDeletedThreadAuthor(),
                         delegatedBy = message.delegatedBy,
                         delegatedSurface = rowSurface,
-                        onClick = { openAuthorProfile("avatar") },
-                        onLongPress = { onMentionAuthor(message) },
-                        previewCard = authorPreviewCard
+                        // Selecting messages: the avatar toggles the row like its body does, so the
+                        // strip it shares with the checkbox's touch target selects too (Lagoon,
+                        // device check of #4091); no profile, mention or hover card meanwhile.
+                        onClick = if (shareSelectionActive) onToggleShareSelection else { { openAuthorProfile("avatar") } },
+                        onLongPress = if (shareSelectionActive) ({}) else { { onMentionAuthor(message) } },
+                        previewCard = authorPreviewCard.takeUnless { shareSelectionActive },
+                        // Lagoon 11-02: a finger gets what a hover gets; the card replaces the hint toast.
+                        previewCardPinOnClick = message.externalAuthor != null && !shareSelectionActive,
                     )
                 }
                 val contentModifier =
@@ -27541,8 +30235,12 @@ private fun ThreadMessageCardContent(
                     Column(
                         modifier =
                             Modifier
+                                .then(if (showAuthorChrome) Modifier.threadMessageHeaderBodyGapTrim() else Modifier)
                                 .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
+                        // raft-ui MessageItemHeader `mb-px`: the body starts 1px under the header;
+                        // the parts after the body keep the 4dp step.
+                        verticalArrangement =
+                            if (showAuthorChrome) ThreadMessageHeaderFirstArrangement else Arrangement.spacedBy(RaftAppSpacing.Xs),
                         horizontalAlignment = contentAlignment
                     ) {
                         if (showAuthorChrome) {
@@ -27554,7 +30252,7 @@ private fun ThreadMessageCardContent(
                                         .background(Color.Transparent)
                             ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().raftMessageItemToolbarHeaderMask(headerMaskWidth),
                                     verticalAlignment = Alignment.CenterVertically,
                                     // raft-ui `MessageItemHeader`: gap-1.5.
                                     horizontalArrangement =
@@ -27564,80 +30262,113 @@ private fun ThreadMessageCardContent(
                                             Arrangement.spacedBy(6.dp)
                                         }
                                 ) {
-                                    Text(
-                                        text = localizedAuthorName,
-                                        // raft-ui `MessageItemSender`: text-subhead (15/20) bold.
-                                        style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack, fontSize = 15.sp, lineHeight = 20.sp).withRaftUserContentLocale(),
-                                        color = RaftColor.TextBlack,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier =
-                                            Modifier
-                                                // raft-ui 0.17 MessageItemHeader `items-baseline`: name, meta,
-                                                // subtitle and time share the first baseline.
-                                                .alignByBaseline()
-                                                .widthIn(max = 220.dp)
-                                                .clickable { openAuthorProfile("author_name") }
-                                    )
-                                    authorAppBot?.let { appBot ->
-                                        RaftAppBotBadge(identity = appBot, botName = localizedAuthorName)
-                                    }
-                                    // task #392 (port of Web PR #7545): agent
-                                    // model name after the name, before
-                                    // badge/subtitle; raft-ui MessageItemMeta.
-                                    authorModelLabel?.takeIf { authorAppBot == null }?.let { modelLabel ->
-                                        Text(
-                                            text = modelLabel,
-                                            style =
-                                                RaftType.Caption.copy(
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = RaftColor.ForegroundHint,
-                                                ),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.alignByBaseline(),
-                                        )
-                                    }
-                                    authorBadgeLabel?.let { label ->
-                                        ThreadMessageAuthorBadge(label)
-                                    }
-                                    message.authorDescription?.let { description ->
-                                        val subtitleAnchor =
-                                            remember(message.id) {
-                                                RaftLiveRootAnchorRef(
-                                                    identity = "thread_author_subtitle:${message.id}"
-                                                )
+                                    // Web MessageItem `MessageItemSenderGroup`: name, badges, model,
+                                    // subtitle and "sent by" share one cluster; the time sits outside it,
+                                    // so a long name can never push the time off the row. The name has no
+                                    // fixed cap (web `max-w-full`): it truncates only when it alone is
+                                    // wider than the cluster, and the subtitle gives up its room first.
+                                    Row(
+                                        // The time lines up with the name's baseline, not whichever
+                                        // badge or label in the cluster sits highest.
+                                        modifier = Modifier.weight(1f, fill = false).alignBy(ThreadSenderNameBaseline),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    ) {
+                                        // Web MessageItem: the sender's name mentions them in the composer
+                                        // (tooltip "Mention @name"); the avatar opens the profile (artin
+                                        // 2026-11-02). External, deleted and removed authors keep the profile.
+                                        val nameMentionHandle =
+                                            message.authorHandle.trim().removePrefix("@").takeIf {
+                                                it.isNotBlank() && !shareSelectionActive && message.externalAuthor == null &&
+                                                    message.threadAuthorBadgeLabel() == null
                                             }
-                                        val onShowDescription = callbacks.onShowAuthorDescription
-                                        val handleSubtitleClick: (() -> Unit)? =
-                                            if (onShowDescription != null && !shareSelectionActive && description.isNotBlank()) {
-                                                {
-                                                    tapMovementGate.rejectChildAction("author_subtitle")
-                                                    diagnosticsLogger("thread_author_subtitle_tap messageId=${message.id}")
-                                                    subtitleAnchor
-                                                        .resolve(RaftPopoverLocalPoint.BottomStart)
-                                                        ?.let { anchor ->
-                                                            onShowDescription(description, anchor)
+                                        val authorNameText: @Composable (Modifier) -> Unit = { nameModifier ->
+                                            Text(
+                                                text = localizedAuthorName,
+                                                // raft-ui `MessageItemSender`: text-subhead (15/20) bold.
+                                                style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack, fontSize = 15.sp, lineHeight = 20.sp).withRaftUserContentLocale(),
+                                                color = RaftColor.TextBlack,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier =
+                                                    nameModifier
+                                                        .threadSenderNameBaseline()
+                                                        .clickable {
+                                                            if (nameMentionHandle != null) onMentionAuthor(message) else openAuthorProfile("author_name")
                                                         }
+                                            )
+                                        }
+                                        // raft-ui 0.17 MessageItemHeader `items-baseline`: name, meta,
+                                        // subtitle and time share the first baseline.
+                                        if (nameMentionHandle != null) {
+                                            RaftTooltip(
+                                                text = stringResource(Res.string.message_mention_sender, nameMentionHandle),
+                                                modifier = Modifier.alignByBaseline(),
+                                                openOnLongPress = false,
+                                            ) { authorNameText(Modifier) }
+                                        } else {
+                                            authorNameText(Modifier.alignByBaseline())
+                                        }
+                                        authorAppBot?.let { appBot ->
+                                            RaftAppBotBadge(identity = appBot, botName = localizedAuthorName)
+                                        }
+                                        // task #392 (port of Web PR #7545): agent
+                                        // model name after the name, before
+                                        // badge/subtitle; raft-ui MessageItemMeta.
+                                        authorModelLabel?.takeIf { authorAppBot == null }?.let { modelLabel ->
+                                            Text(
+                                                text = modelLabel,
+                                                style =
+                                                    RaftType.Caption.copy(
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = RaftColor.ForegroundHint,
+                                                    ),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.alignByBaseline(),
+                                            )
+                                        }
+                                        authorBadgeLabel?.let { label ->
+                                            ThreadMessageAuthorBadge(label)
+                                        }
+                                        message.authorDescription?.let { description ->
+                                            val subtitleAnchor =
+                                                remember(message.id) {
+                                                    RaftLiveRootAnchorRef(
+                                                        identity = "thread_author_subtitle:${message.id}"
+                                                    )
                                                 }
-                                            } else {
-                                                null
-                                            }
-                                        ThreadMessageAuthorSubtitle(
-                                            description = description,
-                                            rootAnchor = subtitleAnchor,
-                                            onClick = handleSubtitleClick,
-                                            modifier = Modifier.weight(1f, fill = false).alignByBaseline()
-                                        )
-                                    }
-                                    // RFC 077: "sent by Friday" after the sender cluster, before
-                                    // the time (web MessageItem DelegatedByLabel).
-                                    message.delegatedBy?.let { delegatedBy ->
-                                        ThreadMessageDelegatedByLabel(
-                                            delegatedBy = delegatedBy,
-                                            placement = DelegatedLabelPlacement.Header,
-                                            modifier = Modifier.weight(1f, fill = false)
-                                        )
+                                            val onShowDescription = callbacks.onShowAuthorDescription
+                                            val handleSubtitleClick: (() -> Unit)? =
+                                                if (onShowDescription != null && !shareSelectionActive && description.isNotBlank()) {
+                                                    {
+                                                        tapMovementGate.rejectChildAction("author_subtitle")
+                                                        diagnosticsLogger("thread_author_subtitle_tap messageId=${message.id}")
+                                                        subtitleAnchor
+                                                            .resolve(RaftPopoverLocalPoint.BottomStart)
+                                                            ?.let { anchor ->
+                                                                onShowDescription(description, anchor)
+                                                            }
+                                                    }
+                                                } else {
+                                                    null
+                                                }
+                                            ThreadMessageAuthorSubtitle(
+                                                description = description,
+                                                rootAnchor = subtitleAnchor,
+                                                onClick = handleSubtitleClick,
+                                                modifier = Modifier.weight(1f, fill = false).alignByBaseline()
+                                            )
+                                        }
+                                        // RFC 077: "sent by Friday" after the sender cluster, before
+                                        // the time (web MessageItem DelegatedByLabel).
+                                        message.delegatedBy?.let { delegatedBy ->
+                                            ThreadMessageDelegatedByLabel(
+                                                delegatedBy = delegatedBy,
+                                                placement = DelegatedLabelPlacement.Header,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                        }
                                     }
                                     if (showTimestampInHeader) {
                                         ThreadMessageTimestampLabel(
@@ -27652,47 +30383,55 @@ private fun ThreadMessageCardContent(
                             }
                         }
                         val forwardBundle = message.forwardBundle
+                        // RFC 082: a card message's card (message_cards on), else its text below.
+                        val messageCard = if (richContentEnabled && actionCard == null) rememberThreadMessageCard(message.metadata) else null
                         if (richContentEnabled && actionCard != null) {
+                            // A prepared card past its `expiresAt` by the live clock draws as expired: no button,
+                            // no dialog (the server's 409 stays final).
+                            val actionCardNowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
+                            val shownActionCard = actionCard.expiredAsOf(actionCardNowMillis)
                             // A4: the spec card when `action_card_spec` is on for the card's
                             // server; otherwise (and for every card without a spec) the typed card.
                             val specHost = LocalThreadActionCardSpecHost.current
                             val viewerServerId = LocalThreadViewerServerId.current
-                            val specFlagServerId = actionCard.actionCardSpecFlagServerId(viewerServerId)
+                            val specFlagServerId = shownActionCard.actionCardSpecFlagServerId(viewerServerId)
                             val specEnabled = specHost.specEnabled(specFlagServerId)
                             val feedbackTicketVisible =
-                                actionCard.showsFeedbackTicket(specHost.viewerUserId, specHost.clientOs, specHost.feedbackPageAvailable)
+                                shownActionCard.showsFeedbackTicket(specHost.viewerUserId, specHost.clientOs, specHost.feedbackPageAvailable)
                             val specCard =
-                                remember(actionCard, specEnabled, specHost.capabilities, feedbackTicketVisible) {
-                                    actionCard.actionCardSpecToRender(specEnabled, specHost.capabilities, feedbackTicketVisible)
+                                remember(shownActionCard, specEnabled, specHost.capabilities, feedbackTicketVisible) {
+                                    shownActionCard.actionCardSpecToRender(specEnabled, specHost.capabilities, feedbackTicketVisible)
                                 }
-                            if (actionCard.presentationCardJson != null && specFlagServerId != null) {
+                            if (shownActionCard.presentationCardJson != null && specFlagServerId != null) {
                                 LaunchedEffect(specFlagServerId) { specHost.ensureFlags(specFlagServerId) }
                             }
                             if (specCard != null) {
                                 ThreadActionCardSpecView(
                                     messageId = message.id,
-                                    card = actionCard,
+                                    card = shownActionCard,
                                     spec = specCard,
                                     commitEnabled = writeActionsEnabled,
                                     typedPending = message.id in pendingActionCardIds,
                                     executedTimeLabel = data.actionCardExecutedTimeLabel,
                                     modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                                    askerName = localizedAuthorName,
                                     onAction = { elementId ->
-                                        when (val press = threadActionCardSpecPress(actionCard, specCard, elementId, viewerServerId)) {
+                                        when (val press = threadActionCardSpecPress(shownActionCard, specCard, elementId, viewerServerId)) {
                                             ThreadActionCardSpecPress.Ignore -> Unit
                                             ThreadActionCardSpecPress.Typed -> {
                                                 specHost.onIntent(ThreadActionCardSpecIntent.TypedPress(message.id, elementId))
                                                 onCommitActionCard(message.id)
                                             }
                                             ThreadActionCardSpecPress.Store ->
-                                                specHost.onIntent(ThreadActionCardSpecIntent.Press(message.id, elementId, actionCard, specCard))
+                                                specHost.onIntent(ThreadActionCardSpecIntent.Press(message.id, elementId, shownActionCard, specCard))
                                             ThreadActionCardSpecPress.OpenInWeb -> specHost.openInWeb(message.id)
+                                            ThreadActionCardSpecPress.ViewPlan -> specHost.openPlan()
                                             is ThreadActionCardSpecPress.OpenFeedbackTicket -> specHost.openFeedbackTicket(press.ticketId)
                                             is ThreadActionCardSpecPress.OpenUrl -> onOpenMarkdownUrl(press.url)
                                             is ThreadActionCardSpecPress.Navigate ->
                                                 openActionCardSpecTarget(
                                                     target = press.target,
-                                                    cardSourceServerId = actionCard.sourceServerId,
+                                                    cardSourceServerId = shownActionCard.sourceServerId,
                                                     viewerServerId = viewerServerId,
                                                     serverSlug = currentServerSlug,
                                                     isDirectMessageChannel = specHost.isDirectMessageChannel,
@@ -27706,7 +30445,7 @@ private fun ThreadMessageCardContent(
                                 )
                             } else {
                                 ThreadActionCardView(
-                                    card = actionCard,
+                                    card = shownActionCard,
                                     pending = message.id in pendingActionCardIds,
                                     commitEnabled = writeActionsEnabled,
                                     executedTimeLabel = data.actionCardExecutedTimeLabel,
@@ -27714,6 +30453,12 @@ private fun ThreadMessageCardContent(
                                     onCommit = { onCommitActionCard(message.id) }
                                 )
                             }
+                        } else if (messageCard != null) {
+                            RaftMessageCardView(
+                                card = messageCard,
+                                onOpenUrl = onOpenMarkdownUrl,
+                                modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                            )
                         } else if (richContentEnabled && forwardBundle != null) {
                             // Web MessageItem parity: the server stores the forward
                             // note as the message content; render it above the card
@@ -27828,9 +30573,16 @@ private fun ThreadMessageCardContent(
                                                               messageId = message.id,
                                                               body = message.body,
                                                               enabled = message.pendingSendContext == null,
+                                                              onOpenLink = onOpenMarkdownUrl,
                                                           ) {
                                                           // A tap on a code block is not the row's tap (web skips `pre, code`).
-                                                          CompositionLocalProvider(LocalRaftMarkdownCodeTapObserver provides codeBlockTapObserver) {
+                                                          CompositionLocalProvider(
+                                                            LocalRaftMarkdownCodeTapObserver provides codeBlockTapObserver,
+                                                            LocalRaftUnavailableQuotedPermalink provides
+                                                                quotedPermalinkTarget.takeIf {
+                                                                    quotedPermalinkState.value == ThreadQuotedPermalinkUiState.Unavailable
+                                                                }
+                                                          ) {
                                                             RaftMarkdownBody(
                                                                 body = bodyForRender,
                                                                 fillWidth = !alignOwnMessageRight,
@@ -27945,7 +30697,7 @@ private fun ThreadMessageCardContent(
                                 )
                             }
                         }
-                        if (actionCard == null) {
+                        if (actionCard == null && messageCard == null) {
                             translation?.indicator?.let { indicator ->
                                 Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
                                     ThreadMessageTranslationIndicator(
@@ -28001,7 +30753,13 @@ private fun ThreadMessageCardContent(
                                     }
                                 }
                                 ThreadMessageTrailingSection.MetaChips -> {
-                                    Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                                    // web MessageItemFooter `mt-1.5`: 6dp under the body (the column adds 4).
+                                    Box(
+                                        modifier =
+                                            Modifier
+                                                .threadMessageContentWidth(messageMaxWidthFraction)
+                                                .padding(top = RaftAppSpacing.Xxs)
+                                    ) {
                                         ThreadMessageFooterMeta(
                                             message = message,
                                             taskOpenEnabled = taskOpenEnabled,
@@ -28012,9 +30770,11 @@ private fun ThreadMessageCardContent(
                                             onShowActions = onShowActions,
                                             onOpenTaskStatusMenu = onOpenTaskStatusMenu,
                                             showSavedBadge = showSavedBadge,
+                                            repliesBadge = repliesBadge,
+                                            onOpenReplies = { onOpenThread(message.id) },
                                             showReactionAddAction = showReactionAddAction,
                                             onToggleReaction = onToggleReaction,
-                                            onShowReactionDetails = onShowReactionDetails,
+                                            showReactionReactors = showReactionReactors,
                                             onShowQuickReactions =
                                                 if (quickReactionsEnabled) onShowQuickReactions else null
                                         )
@@ -28051,6 +30811,7 @@ private fun ThreadMessageCardContent(
                         interactionIdentity = authorGestureIdentity,
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
+                        timestampAccessibilityLabel = rowTimeAccessibilityLabel,
                         compactTimestampGutter = compactTimestampGutter,
                         timestampLabel = compactTimestampLabel,
                         timestampAlignment = Alignment.TopEnd,
@@ -28068,7 +30829,9 @@ private fun ThreadMessageCardContent(
                             ),
                         status = agentStatus,
                         statusPulsing = { !isMessageListScrolling() },
-                        muted = authorBadgeLabel != null,
+                        // web MessageItem: only an archived agent's face is dimmed (`grayscale opacity-dimmed`);
+                        // a person who left or was removed keeps theirs.
+                        muted = message.isDeletedThreadAuthor(),
                         delegatedBy = message.delegatedBy,
                         delegatedSurface = rowSurface,
                         onClick = { openAuthorProfile("avatar") },
@@ -28088,6 +30851,44 @@ private fun ThreadMessageCardContent(
             pressed = pressed,
             origin = pressRippleOrigin
         )
+        if (hoverToolbar != null) {
+            ThreadMessageHoverToolbar(
+                messageId = message.id,
+                actions = hoverToolbar,
+                rowHovered = rowPointerOver,
+                popupOpen = popupOpen,
+                onShowActions = onShowActions,
+                onReplyInThread = { onOpenThread(message.id) },
+                onShownChange = { hoverToolbarShown = it },
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .threadMessageHoverToolbarOverlay()
+                        .offset(
+                            x = -RaftMessageItemToolbarDefaults.EndInset,
+                            // web `top-[-18px]` is measured inside the row's border, below a turn's
+                            // transparent `timeline-turn` band.
+                            y =
+                                RaftMessageItemToolbarDefaults.TopOffset +
+                                    if (showAuthorChrome) ThreadMessageTimelineTurn else 0.dp
+                        )
+            )
+        }
+    }
+}
+
+/**
+ * artin 2026-11-03: a message's menu opened with the keyboard up keeps the keyboard (WeChat,
+ * Telegram). The press that opened it started outside the composer, so the page's outside-gesture
+ * dismissal ([RaftInputFocusDismissHost]) armed on its down and would clear the composer's focus at
+ * its release; opening the menu cancels that pending dismissal. Composed in the page, where the
+ * composer's registry is, not in the menu's own window.
+ */
+@Composable
+internal fun ThreadMessageMenuKeepsComposerFocus(messageId: String) {
+    val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
+    LaunchedEffect(focusOwnerRegistry, messageId) {
+        focusOwnerRegistry?.cancelPendingFocusDismissalForExplicitInputIntent()
     }
 }
 
@@ -28139,7 +30940,8 @@ internal fun ThreadNewMessageMenu(
         horizontalOffset = -horizontalNudgePx,
         verticalOffset = anchorGapPx,
         horizontalAutoFlip = true,
-        verticalPlacement = RaftFloatingVerticalPlacement.Auto
+        verticalPlacement = RaftFloatingVerticalPlacement.Auto,
+        keepsHostKeyboard = true
     ) {
         ThreadNewMessageMenuChrome(
             availability = availability,
@@ -28318,22 +31120,24 @@ internal fun ThreadNewMessageMenuTool.compactIcon(
 ): RaftLucideIconName =
     when (this) {
         ThreadNewMessageMenuTool.Copy -> RaftLucideIconName.Copy
-        ThreadNewMessageMenuTool.Reply -> RaftLucideIconName.MessageSquare
-        ThreadNewMessageMenuTool.Forward -> RaftLucideIconName.Redo2
+        ThreadNewMessageMenuTool.Reply -> RaftLucideIconName.Thread
+        ThreadNewMessageMenuTool.Forward -> RaftLucideIconName.Forward
         ThreadNewMessageMenuTool.Save ->
             if (availability.saved) RaftLucideIconName.BookmarkMinus else RaftLucideIconName.Bookmark
         ThreadNewMessageMenuTool.Translate -> RaftLucideIconName.Languages
-        ThreadNewMessageMenuTool.Select -> RaftLucideIconName.CircleCheck
+        ThreadNewMessageMenuTool.Select -> RaftLucideIconName.ListChecks
         ThreadNewMessageMenuTool.AddReaction -> RaftLucideIconName.SmilePlus
         ThreadNewMessageMenuTool.CopyLink -> RaftLucideIconName.Link
         ThreadNewMessageMenuTool.FollowThread -> threadFollowMenuIcon(availability.threadFollowed)
-        ThreadNewMessageMenuTool.TaskStatus ->
-            if (availability.taskDone) RaftLucideIconName.RefreshCw else RaftLucideIconName.CircleCheckBig
-        ThreadNewMessageMenuTool.ConvertToTask -> RaftLucideIconName.ClipboardCheck
-        ThreadNewMessageMenuTool.SelectText -> RaftLucideIconName.FileText
-        ThreadNewMessageMenuTool.SelectAll -> RaftLucideIconName.SquareCheckBig
+        ThreadNewMessageMenuTool.TaskStatus -> threadTaskStatusMenuIcon(availability.taskDone)
+        ThreadNewMessageMenuTool.ConvertToTask -> RaftLucideIconName.Plus
+        ThreadNewMessageMenuTool.SelectText -> RaftLucideIconName.SquareDashedText
+        // Not SquareCheckBig: that is Mark as Done in the same menu (web MessageItem). Select All
+        // only shows over a partial selection, where Select Text is hidden.
+        ThreadNewMessageMenuTool.SelectAll -> RaftLucideIconName.SquareDashedText
         ThreadNewMessageMenuTool.MarkThreadUnread -> RaftLucideIconName.MessageSquareDot
-        ThreadNewMessageMenuTool.CopySelection -> RaftLucideIconName.Copy
+        // Not Copy: that is Copy Markdown beside it in the same menu (web's icon for it).
+        ThreadNewMessageMenuTool.CopySelection -> RaftLucideIconName.Type
     }
 
 @Composable
@@ -28373,7 +31177,7 @@ private fun ThreadNewMessageMenuMoreOverlay(
             Modifier
                 .fillMaxWidth()
                 .height(ThreadNewMessageMenuMoreOverlayHeight)
-                .clickable(enabled = enabled, onClick = onClick)
+                .raftClickable(onClick = onClick, enabled = enabled)
                 .semantics { contentDescription = label },
         contentAlignment = Alignment.Center
     ) {
@@ -28393,19 +31197,11 @@ private fun ThreadNewMessageMenuToolButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
     Column(
         modifier =
             modifier
                 .height(ThreadNewMessageMenuToolRowHeight)
-                .background(if (pressed && enabled) RaftColor.FillPressed else Color.Transparent, RoundedCornerShape(RaftAppRadius.Control))
-                .clickable(
-                    enabled = enabled,
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = onClick
-                )
+                .raftClickable(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(RaftAppRadius.Control))
                 .semantics { contentDescription = label }
                 .padding(horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -28471,33 +31267,12 @@ private fun ThreadMessageSelectionToggle(
     modifier: Modifier = Modifier
 ) {
     // web MessageMultiSelectCheckbox: a 20dp raft-ui Checkbox, `self-start mt-1.5`.
-    Button(
-        onClick = onClick,
-        pressFeedback = false,
-        modifier =
-            modifier
-                .size(20.dp)
-                .background(Color.Transparent)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(20.dp)
-                    // raft-ui Checkbox: sticker radius, 1.5dp ink edge; checked fills with
-                    // foreground and an inverse check.
-                    .background(if (checked) RaftColor.TextBlack else RaftColor.Card, RoundedCornerShape(RaftAppRadius.Sticker))
-                    .border(RaftAppStroke.Control, if (checked) RaftColor.TextBlack else RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Sticker)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (checked) {
-                RaftLucideIcon(
-                    RaftLucideIconName.Check,
-                    modifier = Modifier.size(14.dp),
-                    color = raftArgbHex(RaftColor.ForegroundInverse)
-                )
-            }
-        }
-    }
+    build.raft.designsystem.components.RaftCheckbox(
+        checked = checked,
+        onCheckedChange = { onClick() },
+        modifier = modifier,
+        enabled = true
+    )
 }
 
 @Composable
@@ -28564,14 +31339,14 @@ private fun ThreadMessageLocalSendStatus(
                     ),
                     style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                     color = RaftColor.TextMutedGray,
-                    modifier = Modifier.clickable { detailsExpanded = !detailsExpanded }.padding(vertical = 2.dp)
+                    modifier = Modifier.raftClickable(onClick = { detailsExpanded = !detailsExpanded }).padding(vertical = 2.dp)
                 )
                 if (detailsExpanded) {
                     Text(
                         text = stringResource(Res.string.thread_send_failure_copy_details),
                         style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                         color = RaftColor.TextMutedGray,
-                        modifier = Modifier.clickable(onClick = onCopyDetails).padding(vertical = 2.dp)
+                        modifier = Modifier.raftClickable(onClick = onCopyDetails).padding(vertical = 2.dp)
                     )
                 }
             }
@@ -28588,10 +31363,9 @@ private fun ThreadMessageLocalSendStatus(
             )
         }
         if (isFailed && retryEnabled) {
-            Button(
+            RaftPanelAction(
                 onClick = { if (message.canRetryLocalSend()) onRetry() },
                 enabled = message.canRetryLocalSend(),
-                pressFeedback = message.canRetryLocalSend(),
                 modifier =
                     Modifier.heightIn(min = 28.dp)
                         .background(LocalThreadMessageGeometryTints.current?.retryTint ?: Color.Transparent)
@@ -28674,18 +31448,21 @@ internal fun ThreadActionCardView(
     val doneLine = if (card.isExecuted) card.localizedActionCardDoneLine(executedTimeLabel).takeIf { it.isNotBlank() } else null
     // web `isActionCardReadOnlyInServer`: a card prepared on another server runs only there.
     val viewerServerId = LocalThreadViewerServerId.current
+    // Expired (wire state, or past `expiresAt` as the caller drew it) or withdrawn: ended, folded, no button.
+    val ended = card.hasEnded
+    val endedLine = card.actionCardEndedLine()
     val blockedReason =
         when {
-            card.isExecuted -> null
+            card.isExecuted || ended -> null
             card.sourceServerId != null && viewerServerId != null && card.sourceServerId != viewerServerId ->
                 card.targetServerName?.let { stringResource(Res.string.thread_action_card_blocked_target_server, it) }
                     ?: stringResource(Res.string.thread_action_card_blocked_source_workspace)
             else -> null
         }
-    val viewOnly = !card.isExecuted && (!commitEnabled || blockedReason != null)
-    // Web: a done card, and a view-only one that says why, fold by default; a frozen or
+    val viewOnly = !card.isExecuted && !ended && (!commitEnabled || blockedReason != null)
+    // Web: a done card, an ended one, and a view-only one that says why, fold by default; a frozen or
     // reconfirm card stays open (it waits on the reader). The fold then belongs to the reader.
-    val foldsByDefault = card.isExecuted || (blockedReason != null && !card.isFrozen && !card.needsReconfirmation)
+    val foldsByDefault = card.isExecuted || ended || (blockedReason != null && !card.isFrozen && !card.needsReconfirmation)
     var expanded by remember(foldsByDefault) { mutableStateOf(!foldsByDefault) }
     val feedbackEntryEnabled = LocalThreadFeedbackCardEntryEnabled.current
     RaftDesignSystemTheme {
@@ -28703,10 +31480,13 @@ internal fun ThreadActionCardView(
             },
             description =
                 doneLine?.let { line -> { RaftMessageActionCardHeaderDescription(line, check = true) } }
+                    ?: endedLine?.takeIf { ended }?.let { line -> { RaftMessageActionCardHeaderDescription(line) } }
                     ?: blockedReason?.takeIf { foldsByDefault }?.let { reason -> { RaftMessageActionCardHeaderDescription(reason) } },
             status =
                 when {
                     card.isExecuted -> stringResource(Res.string.common_done)
+                    card.isExpired -> stringResource(Res.string.thread_action_card_status_expired)
+                    card.isWithdrawn -> stringResource(Res.string.thread_action_card_status_withdrawn)
                     card.isFrozen -> stringResource(Res.string.thread_action_card_frozen)
                     card.needsReconfirmation -> stringResource(Res.string.thread_action_card_status_reconfirm)
                     viewOnly -> stringResource(Res.string.thread_action_card_view_only)
@@ -28721,7 +31501,7 @@ internal fun ThreadActionCardView(
                 },
             expanded = expanded,
             onExpandedChange =
-                if (card.isExecuted || card.isFrozen || card.needsReconfirmation || viewOnly) ({ expanded = it }) else null,
+                if (card.isExecuted || ended || card.isFrozen || card.needsReconfirmation || viewOnly) ({ expanded = it }) else null,
             toggleLabel = stringResource(Res.string.thread_action_card_toggle_details),
         ) {
             card.actionCardNotice()?.let { notice -> RaftMessageActionCardNotice(notice) }
@@ -28755,7 +31535,7 @@ internal fun ThreadActionCardView(
             }
             // Web shows the button disabled beside the reason; with no reason to give (the
             // thread is read-only here) the card shows no button.
-            if (!card.isExecuted && commitEnabled) {
+            if (!card.isExecuted && !ended && commitEnabled) {
                 RaftMessageActionCardActions(note = blockedReason?.takeUnless { foldsByDefault }) {
                     RaftButton(
                         text =
@@ -28771,7 +31551,7 @@ internal fun ThreadActionCardView(
                                 (
                                     card.needsReconfirmation ||
                                         card.isSupportedCommitAction() ||
-                                        card.opensFeedbackCardEntry(feedbackEntryEnabled)
+                                        (feedbackEntryEnabled && card.opensFeedbackCardEntry())
                                     ),
                     )
                 }
@@ -29301,11 +32081,11 @@ private fun ThreadReactionChip(
     reaction: RaftThreadReactionItem,
     interactionIdentity: Any = "reaction:${reaction.emoji}",
     onClick: (() -> Unit)? = null,
-    onLongPress: ((RaftPopoverAnchor) -> Unit)? = null
+    showReactors: Boolean = false
 ) {
     // raft-ui MessageReactionChip (gap 6): the design-system chip draws; the gestures stay here.
     val hoverInteractionSource = remember(interactionIdentity) { MutableInteractionSource() }
-    val chipContent: @Composable () -> Unit = {
+    val chipContent: @Composable (onChipClick: (() -> Unit)?) -> Unit = { onChipClick ->
         build.raft.designsystem.components.RaftMessageReaction(
             count = reaction.count,
             mine = reaction.selected,
@@ -29315,162 +32095,113 @@ private fun ThreadReactionChip(
                     modifier = Modifier.size(build.raft.designsystem.components.RaftMessageReactionGlyphSize)
                 )
             },
+            onClick = onChipClick,
             interactionSource = hoverInteractionSource
         )
     }
-    if (onLongPress != null) {
-        // task #569: tap keeps toggling the reaction; long-press surfaces the
-        // reactor tooltip. Both live on one gesture detector so the long
-        // press cannot fire a toggle. The anchor is reported in root pixels
-        // (same contract as the message long-press menu).
-        val rootAnchor =
-            remember(interactionIdentity) { RaftLiveRootAnchorRef(identity = interactionIdentity) }
+    if (showReactors) {
+        // task #569: tap keeps toggling the reaction; a long press (or a mouse hover) shows who
+        // reacted in raft-ui's reaction tooltip under the chip, as web MessageItem's hover tooltip.
+        // Both live on one gesture detector so the long press cannot fire a toggle.
+        var tooltipOpen by remember(interactionIdentity) { mutableStateOf(false) }
+        val reactors =
+            threadReactionTooltipNames(
+                reaction = reaction,
+                // The session's user id (the action-card host already carries it; no new capture).
+                viewerUserId = LocalThreadActionCardSpecHost.current.viewerUserId,
+                youLabel = stringResource(Res.string.thread_reaction_reactor_you)
+            )
         val gestureOwner =
             rememberRaftGestureOwner(
                 surface = "thread-reaction-chip",
                 semanticIdentity = interactionIdentity,
-                callbacks = ThreadReactionChipGestureCallbacks(onClick, onLongPress, rootAnchor)
+                callbacks = ThreadReactionChipGestureCallbacks(onClick) { tooltipOpen = true }
             )
-        Box(
-            modifier = Modifier
-                .raftCaptureLiveRootAnchor(rootAnchor)
-                .raftGesturePointerInput(gestureOwner, onClick != null) { owner ->
-                    var gesture: RaftGestureSession<ThreadReactionChipGestureCallbacks>? = null
-                    detectTapGestures(
-                        onPress = {
-                            gesture = owner.beginGesture()
-                            tryAwaitRelease()
-                        },
-                        onTap = {
-                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick?.invoke()
-                        },
-                        onLongPress = { localOffset ->
-                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
-                                callbacks.rootAnchor
-                                    .resolve(RaftPopoverLocalPoint.Exact(localOffset))
-                                    ?.let { anchor -> callbacks.onLongPress?.invoke(anchor) }
-                            }
-                        }
-                    )
+        build.raft.designsystem.components.RaftMessageReactionTooltip(
+            names = reactors.visibleNames,
+            moreLabel =
+                reactors.hiddenCount.takeIf { it > 0 }?.let { hidden ->
+                    stringResource(Res.string.thread_reaction_hidden_more, hidden)
                 },
-            contentAlignment = Alignment.Center
+            open = tooltipOpen,
+            onDismissRequest = { tooltipOpen = false },
+            emptyContent = {
+                // web: the bare emoji when no reactor is known.
+                ThreadQuickReactionGlyph(
+                    threadDisplayReactionEmoji(reaction.emoji),
+                    modifier = Modifier.size(build.raft.designsystem.components.RaftMessageReactionGlyphSize)
+                )
+            }
         ) {
-            chipContent()
+            Box(
+                modifier = Modifier
+                    .raftGesturePointerInput(gestureOwner, onClick != null) { owner ->
+                        var gesture: RaftGestureSession<ThreadReactionChipGestureCallbacks>? = null
+                        detectTapGestures(
+                            onPress = {
+                                gesture = owner.beginGesture()
+                                tryAwaitRelease()
+                            },
+                            onTap = {
+                                (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick?.invoke()
+                            },
+                            onLongPress = {
+                                (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onLongPress?.invoke()
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                chipContent(null)
+            }
         }
     } else if (onClick != null) {
-        Button(onClick = onClick, pressFeedback = false) {
-            chipContent()
-        }
+        // The design-system chip owns the tap (a toggle, with its hover / press overlay).
+        chipContent(onClick)
     } else {
-        chipContent()
+        chipContent(null)
     }
 }
 
 private data class ThreadReactionChipGestureCallbacks(
     val onClick: (() -> Unit)?,
-    val onLongPress: ((RaftPopoverAnchor) -> Unit)?,
-    val rootAnchor: RaftLiveRootAnchorRef
+    val onLongPress: () -> Unit
 )
 
-// task #569: everything the tooltip needs, captured at long-press time.
-internal data class ThreadReactionDetailsRequest(
-    val emoji: String,
-    val names: List<String>,
-    val count: Int,
-    val anchor: RaftPopoverAnchor
-)
-
-// Label formatting for the reactor tooltip: first N names + "+K" for the
-// rest (mobile pendant of the web hover tooltip). Falls back to a bare count
-// when the payload carries no names (older servers).
-internal fun threadReactionDetailsLabel(
-    names: List<String>,
-    count: Int,
-    maxNames: Int = ThreadReactionDetailsMaxNames
-): String {
-    val clean = names.map { it.trim() }.filter { it.isNotBlank() }.distinct()
-    if (clean.isEmpty()) {
-        return if (count == 1) "1 person" else "$count people"
-    }
-    val shown = clean.take(maxNames)
-    val hidden = maxOf(count, clean.size) - shown.size
-    val joined = shown.joinToString(", ")
-    return if (hidden > 0) "$joined +$hidden" else joined
-}
-
-internal const val ThreadReactionDetailsMaxNames = 4
-
+// raft-ui MessageReactionAddButton (gap 6): the design-system chip draws and owns the tap.
 @Composable
 private fun ThreadReactionAddChip(
     messageId: String,
     onClick: (RaftPopoverAnchor) -> Unit
 ) {
     val addReactionDescription = stringResource(Res.string.thread_action_add_reaction)
-    Button(
-        onClick2 = onClick,
-        clickIdentity = "thread_reaction_add:$messageId",
-        anchorOwnerIdentity = threadMessageMenuOwnerIdentity(messageId),
-        modifier = Modifier.background(Color.Transparent)
-    ) {
-        ThreadReactionAddChipChrome(addReactionDescription)
-    }
-}
-
-// task #569: who-reacted tooltip, long-press pendant of the web hover
-// tooltip. Reuses the anchored-popover infra (viewport clamping, outside-tap
-// dismiss with the long-press activation window, Back participation).
-@Composable
-private fun ThreadReactionDetailsTooltip(
-    details: ThreadReactionDetailsRequest,
-    onDismiss: () -> Unit
-) {
-    val density = LocalDensity.current
-    val label = threadReactionDetailsLabel(details.names, details.count)
-    val estimatedSize =
-        with(density) {
-            Size(
-                width =
-                    (ThreadReactionDetailsGlyphSize + ThreadReactionDetailsHorizontalPadding * 2 + 10.dp).toPx() +
-                        label.length * ThreadReactionDetailsLabelCharWidth.toPx(),
-                height = ThreadReactionDetailsHeight.toPx()
-            )
+    val currentOnClick by rememberUpdatedState(onClick)
+    // The picker / action menu anchors where the finger landed, owned by the message's menu
+    // identity (the same contract as the message long-press menu).
+    val anchorIdentity = threadMessageMenuOwnerIdentity(messageId)
+    val rootAnchor = remember(anchorIdentity) { RaftLiveRootAnchorRef(identity = anchorIdentity) }
+    val pressPoint = remember(anchorIdentity) { arrayOfNulls<Offset>(1) }
+    build.raft.designsystem.components.RaftMessageReactionAdd(
+        label = addReactionDescription,
+        modifier =
+            Modifier
+                .raftCaptureLiveRootAnchor(rootAnchor)
+                // Observes (never consumes) the down so the design-system chip keeps the tap.
+                .pointerInput(rootAnchor) {
+                    awaitEachGesture {
+                        pressPoint[0] =
+                            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial).position
+                    }
+                },
+        onClick = {
+            // A keyboard / accessibility click has no finger point: anchor under the chip.
+            val localPoint =
+                pressPoint[0]?.let { RaftPopoverLocalPoint.Exact(it) } ?: RaftPopoverLocalPoint.BottomStart
+            pressPoint[0] = null
+            rootAnchor.resolve(localPoint)?.let(currentOnClick)
         }
-    RaftAnchoredPopover(
-        anchor = details.anchor,
-        contentSize = estimatedSize,
-        onDismiss = onDismiss,
-        verticalPlacement = RaftFloatingVerticalPlacement.Auto
-    ) {
-        Row(
-            modifier = Modifier
-                .raftLookOverlaySurface()
-                .raftFloatingContentClickTarget()
-                .height(ThreadReactionDetailsHeight)
-                .padding(horizontal = ThreadReactionDetailsHorizontalPadding),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            ThreadQuickReactionGlyph(
-                threadDisplayReactionEmoji(details.emoji),
-                modifier = Modifier.size(ThreadReactionDetailsGlyphSize)
-            )
-            Text(
-                text = label,
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
+    )
 }
-
-private val ThreadReactionDetailsHeight = 28.dp
-private val ThreadReactionDetailsGlyphSize = 15.dp
-private val ThreadReactionDetailsHorizontalPadding = 8.dp
-// Rough per-character width at 12sp bold caption — only used to pre-size the
-// popover for viewport clamping; the row itself wraps its real content.
-private val ThreadReactionDetailsLabelCharWidth = 7.dp
 
 internal data class ThreadAuthorDescriptionPopoverRequest(
     val description: String,
@@ -29482,7 +32213,7 @@ internal const val ThreadAuthorDescriptionPopoverMinWidthDp = 120f
 internal const val ThreadAuthorDescriptionPopoverHorizontalPaddingDp = 10f
 internal const val ThreadAuthorDescriptionPopoverVerticalPaddingDp = 8f
 internal const val ThreadAuthorDescriptionPopoverApproxCharWidthDp = 7.5f
-internal const val ThreadAuthorDescriptionPopoverLineHeightDp = 16f
+internal const val ThreadAuthorDescriptionPopoverLineHeightDp = 18f // RaftType.Footnote line height
 
 internal data class ThreadAuthorDescriptionPopoverDimensions(
     val width: Dp,
@@ -29557,24 +32288,13 @@ private fun ThreadAuthorDescriptionPopover(
             ) {
                 Text(
                     text = request.description,
-                    style =
-                        RaftType.Caption.copy(
-                            fontFamily = RaftMonoFamily,
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp,
-                            color = RaftColor.TextBlack
-                        ),
+                    // Web sender subtitle Tooltip: sans text-footnote font-medium (13/18 500).
+                    style = RaftType.Footnote.withRaftFontWeight(FontWeight.Medium).copy(color = RaftColor.TextBlack),
                     color = RaftColor.TextBlack
                 )
             }
         }
     }
-}
-
-// raft-ui MessageReactionAddButton (gap 6): the design-system chip draws; the anchored tap stays on the host Button.
-@Composable
-private fun ThreadReactionAddChipChrome(label: String) {
-    build.raft.designsystem.components.RaftMessageReactionAdd(label = label)
 }
 
 private fun Modifier.threadMessageContentWidth(maxWidthFraction: Float): Modifier =
@@ -29628,6 +32348,26 @@ internal fun decideThreadMessageLongPressDispatch(
  * setting). Not inside a reply thread (no reply action there), not while sharing, not on a local
  * send that is still sending or failed.
  */
+/**
+ * artin 11-06: with the keyboard up, a tap on a message row is the reader closing the keyboard, not
+ * asking for the thread: since a single tap opens the thread (stdrc 10-29) it opened one by accident.
+ * Only the row's own whole-row actions (open thread, the double tap's reaction bar) yield; a link,
+ * mention, avatar, reaction or replies chip is something the reader aimed at and still acts.
+ */
+internal class ThreadKeyboardTapDismissal(
+    private val keyboardInsetDp: () -> Float,
+    private val hideKeyboard: () -> Unit,
+) {
+    /** True when the keyboard was up: it is closed and this tap does nothing else. */
+    fun dismissIfUp(): Boolean {
+        if (keyboardInsetDp() <= 0f) return false
+        hideKeyboard()
+        return true
+    }
+}
+
+internal val LocalThreadKeyboardTapDismissal = staticCompositionLocalOf<ThreadKeyboardTapDismissal?> { null }
+
 internal fun threadMessageTapOpensThread(
     showReplyAction: Boolean,
     shareSelectionActive: Boolean,
@@ -29642,8 +32382,8 @@ internal fun threadMessageBodyTapEligible(
 ): Boolean =
     showReplyAction && !shareSelectionActive && !hasLocalSendState
 
-internal fun threadMessageOpenIgnoredForSurface(surfaceKind: String): Boolean =
-    surfaceKind == RaftThreadSurfaceKind.ReplyThread
+internal fun threadMessageOpenIgnoredForSurface(surfaceKind: String, channelKind: String? = null): Boolean =
+    !RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
 
 /**
  * A double tap on a message row shows its quick reaction bar (stdrc, 2026-10-29,
@@ -30596,32 +33336,19 @@ private fun String.isLikelyThreadAgentId(): Boolean =
 
 @Composable
 private fun ThreadMessageAuthorBadge(label: String) {
-    Box(
-        modifier =
-            Modifier
-                .heightIn(min = 18.dp)
-                // raft muted badge: fill-muted on the chip radius, no ink edge.
-                .background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Chip))
-                .padding(horizontal = RaftAppSpacing.Xs, vertical = 2.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            style =
-                RaftType.Caption
-                    .withRaftFontWeight(FontWeight.Bold)
-                    .copy(fontSize = 10.sp, color = RaftColor.TextMuted),
-            color = RaftColor.TextMuted,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    // web MessageItem: `<Badge appearance="soft" variant="muted">` after the sender's name.
+    RaftBadge(
+        text = label,
+        appearance = RaftBadgeAppearance.Soft,
+        variant = RaftBadgeVariant.Muted,
+    )
 }
 
 internal fun RaftThreadMessageItem.threadAuthorBadgeLabel(): String? =
     when {
         isDeletedThreadAuthor() -> "DELETED"
-        isRemovedThreadHuman() -> "REMOVED"
+        // web MessageItem `getHumanDepartureLabel`: "Removed", as written (not translated).
+        isRemovedThreadHuman() -> "Removed"
         else -> null
     }
 
@@ -30747,6 +33474,21 @@ internal fun shouldSuppressCompactThreadAuthor(
 ): Boolean =
     previous?.isCompactContinuationBefore(next, localOffsetMinutes) == true
 
+/**
+ * Whether a row drops its author header (avatar, name, time, model badge) while messages are picked
+ * for the share image. Web messageGrouping.ts `shouldShowGroupedMessageHeader`: a selected
+ * continuation whose timeline predecessor is not selected cannot lean on that predecessor's header,
+ * so it shows its own; a selected continuation right after a selected row of its run stays compact.
+ * Two selected messages with an unselected one between them therefore never group. The share image
+ * captures the live rows, so this is what puts the author on the image's first message.
+ */
+internal fun threadShareSelectionSuppressesAuthor(
+    timelineSuppressesAuthor: Boolean,
+    selectionActive: Boolean,
+    selected: Boolean,
+    previousSelected: Boolean
+): Boolean = timelineSuppressesAuthor && !(selectionActive && selected && !previousSelected)
+
 /** The local day a thread date divider names; rendered from string resources by [localizedLabel]. */
 internal data class ThreadDateDividerDay(
     val epochDay: Long,
@@ -30828,7 +33570,7 @@ private fun RaftThreadMessageItem.authorIdentityKey(): String =
         ?: authorName.takeIf { it.isNotBlank() }
         ?: ""
 
-private fun threadLocalEpochDay(epochMillis: Long, localOffsetMinutes: Int): Long =
+internal fun threadLocalEpochDay(epochMillis: Long, localOffsetMinutes: Int): Long =
     threadFloorDiv(epochMillis + localOffsetMinutes.toLong() * ThreadMillisPerMinute, ThreadMillisPerDay)
 
 private fun threadFloorDiv(value: Long, divisor: Long): Long {
@@ -31044,8 +33786,12 @@ private fun ThreadInlineReplyRow(
             enabled = memberAvatarResolver.jointSurface
         )
     val resolvedAvatar =
-        rememberRaftMemberAvatarWireValue(memberAvatarResolver, reply.senderId)
-            ?: jointSender?.renderedAvatarWireValue()
+        threadInlineReplyAvatarWireValue(
+            reply = reply,
+            memberAvatarWireValue =
+                rememberRaftMemberAvatarWireValue(memberAvatarResolver, reply.senderId)
+                    ?: jointSender?.renderedAvatarWireValue(),
+        )
     val displayName =
         reply.senderDisplayName?.trim()?.takeIf { it.isNotBlank() }
             ?: participant?.displayName?.trim()?.takeIf { it.isNotBlank() }
@@ -31100,6 +33846,21 @@ private fun ThreadInlineReplyRow(
     )
 }
 
+/**
+ * A Slack-bridge reply (`external_projection`) has no member profile: its avatar is the frozen one the
+ * reply preview carries (web InlineThreadReplies uses `senderAvatarUrl` the same way). Members keep
+ * the resolver's live avatar.
+ */
+internal fun threadInlineReplyAvatarWireValue(
+    reply: build.raft.app.network.sync.ReplyPreview,
+    memberAvatarWireValue: String?,
+): String? =
+    if (reply.senderType.trim().equals("external_projection", ignoreCase = true)) {
+        reply.senderAvatarUrl?.trim()?.takeIf { it.isNotBlank() }
+    } else {
+        memberAvatarWireValue
+    }
+
 internal fun threadInlineReplyPreviewText(content: String): String = markdownToPreviewText(content)
 
 /**
@@ -31129,9 +33890,11 @@ internal fun ThreadMessageFooterMeta(
     onShowActions: (RaftPopoverAnchor) -> Unit,
     onOpenTaskStatusMenu: (RaftPopoverAnchor) -> Unit,
     showSavedBadge: Boolean = false,
+    repliesBadge: ThreadRepliesBadgeSpec? = null,
+    onOpenReplies: (() -> Unit)? = null,
     showReactionAddAction: Boolean = false,
     onToggleReaction: ((String) -> Unit)? = null,
-    onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null,
+    showReactionReactors: Boolean = false,
     /**
      * The "+" beside the reactions opens the quick reaction bar at the chip (web
      * `handleMobileReactionAddClick` opens its quick strip there); null when the message can't be
@@ -31149,16 +33912,21 @@ internal fun ThreadMessageFooterMeta(
         )
     val hasReactions = visibleReactions.isNotEmpty()
     val showReactionAddChip = showReactionAddAction && hasReactions
-    if (!hasTask && !showSavedBadge && !hasReactions && !showReactionAddChip) return
+    if (!hasTask && !showSavedBadge && repliesBadge == null && !hasReactions && !showReactionAddChip) return
 
-    Row(
+    // raft-ui MessageItemFooter `flex flex-wrap items-center gap-1.5`: what doesn't fit wraps to
+    // the next line (6dp under it) instead of squeezing the task chip.
+    @OptIn(ExperimentalLayoutApi::class)
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
+        itemVerticalAlignment = Alignment.CenterVertically,
         horizontalArrangement =
-            if (alignEnd) Arrangement.spacedBy(6.dp, Alignment.End) else Arrangement.spacedBy(6.dp)
+            if (alignEnd) Arrangement.spacedBy(6.dp, Alignment.End) else Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         if (hasTask) {
-            val label = threadMessageTaskMetaLabel(message, resolvedTaskAssigneeName) ?: "Task"
+            // raft-ui TaskChip: the number and the assignee are two labels `gap-1.5` apart.
+            val labelParts = threadMessageTaskMetaLabelParts(message, resolvedTaskAssigneeName)
             val selectedStatus = message.taskStatus.threadTaskStatusOption()
             val taskChipClick: ((RaftPopoverAnchor) -> Unit)? =
                 when {
@@ -31174,19 +33942,29 @@ internal fun ThreadMessageFooterMeta(
                     taskOpenEnabled = taskOpenEnabled
                 )
             // raft-ui `TaskChip` (default): 22dp, rounded-chip, no edge, the status
-            // soft fill with a status-strong glyph and a 12/16 label.
+            // soft fill with the status pixel (`TaskStatusIcon`) and a 12/16 label.
+            val statusPixel =
+                message.taskStatus.strictTaskStatusOrNull("thread_task_chip", diagnostics = {})?.raftTaskStatusPixelStyle(RaftAppThemeState.colors)
+            // Backlog's chip is outlined (`line-hairline`, no tint).
+            val statusOutline = selectedStatus.status.raftTaskStatusOutline(RaftAppThemeState.colors)
             RaftAnchoredMetaChip(
-                label = label,
-                iconName = selectedStatus.icon,
+                label = labelParts?.first ?: "Task",
+                secondaryLabel = labelParts?.second,
+                iconName = if (statusPixel == null) selectedStatus.icon else null,
+                leadingContent = statusPixel?.let { pixel -> { RaftTaskStatusPixel(pixel) } },
+                // `gap-1.5` between the pixel and the number.
+                contentSpacing = 6.dp,
                 iconSize = selectedStatus.iconSize,
                 color = selectedStatus.status.threadTaskChipSoftFill(),
                 iconColorArgb = raftArgbHex(selectedStatus.status.threadTaskChipStrong()),
-                borderWidth = 0.dp,
+                borderWidth = if (statusOutline != null) 1.dp else 0.dp,
+                borderColor = statusOutline,
                 minHeight = 22.dp,
                 horizontalPadding = 7.dp,
                 labelFontSize = 12.sp,
                 labelLineHeight = 16.sp,
-                modifier = Modifier.weight(1f, fill = false).widthIn(max = 260.dp),
+                // raft-ui TaskChip `max-w-full`: no fixed cap; it truncates only when it alone is
+                // wider than the footer (the FlowRow gives it at most the footer's width).
                 clickIdentity = taskClickIdentity,
                 anchorOwnerIdentity = threadMessageMenuOwnerIdentity(message.id),
                 onClick = taskChipClick
@@ -31196,9 +33974,9 @@ internal fun ThreadMessageFooterMeta(
             // raft-ui MessageItemSavedIndicator (gap 23): `fill-muted`, an ink bookmark, muted label.
             build.raft.designsystem.components.RaftMessageSavedIndicator(
                 label = stringResource(Res.string.thread_label_saved),
-                modifier = Modifier.widthIn(max = 96.dp)
             )
         }
+        repliesBadge?.let { badge -> ThreadRepliesBadge(badge, onClick = onOpenReplies) }
         if (hasReactions) {
             visibleReactions.forEach { reaction ->
                 key("reaction:${message.id}:${reaction.emoji}") {
@@ -31206,10 +33984,7 @@ internal fun ThreadMessageFooterMeta(
                         reaction = reaction,
                         interactionIdentity = "thread_reaction:${message.id}:${reaction.emoji}",
                         onClick = onToggleReaction?.let { callback -> { callback(reaction.emoji) } },
-                        onLongPress =
-                            onShowReactionDetails?.let { callback ->
-                                { anchor -> callback(reaction, anchor) }
-                            }
+                        showReactors = showReactionReactors
                     )
                 }
             }
@@ -31220,8 +33995,44 @@ internal fun ThreadMessageFooterMeta(
     }
 }
 
+/**
+ * web `ThreadRepliesBadge`: "5 replies · 2 new" (soft information while there are new replies,
+ * solid default otherwise), with the thread glyph; a draft adds "· Draft", and a draft alone shows
+ * the pencil.
+ */
+@Composable
+private fun ThreadRepliesBadge(badge: ThreadRepliesBadgeSpec, onClick: (() -> Unit)?) {
+    val parts = buildList {
+        if (badge.replyCount > 0) {
+            add(
+                if (badge.replyCount == 1) {
+                    stringResource(Res.string.thread_inline_reply_count_one)
+                } else {
+                    stringResource(Res.string.thread_inline_reply_count_many, badge.replyCount)
+                }
+            )
+        }
+        if (badge.unreadCount > 0) add(stringResource(Res.string.thread_replies_badge_new_count, badge.unreadCount))
+        if (badge.hasDraft) add(stringResource(Res.string.thread_inline_draft))
+    }
+    val hasUnread = badge.unreadCount > 0
+    RaftBadge(
+        text = parts.joinToString(" · "),
+        appearance = if (hasUnread) RaftBadgeAppearance.Soft else RaftBadgeAppearance.Solid,
+        variant = if (hasUnread) RaftBadgeVariant.Information else RaftBadgeVariant.Default,
+        icon = {
+            RaftSlotIcon(
+                if (badge.replyCount > 0) RaftLucideIconName.Thread else RaftLucideIconName.Pencil,
+                size = 12.dp,
+            )
+        },
+        onClick = onClick,
+    )
+}
+
 private fun TaskStatus.threadTaskChipSoftFill(): Color =
     when (this) {
+        TaskStatus.Backlog, TaskStatus.Unknown -> Color.Transparent
         TaskStatus.Todo -> RaftAppThemeState.colors.taskStatusTodoSoft
         TaskStatus.InProgress -> RaftAppThemeState.colors.taskStatusInProgressSoft
         TaskStatus.InReview -> RaftAppThemeState.colors.taskStatusInReviewSoft
@@ -31231,6 +34042,7 @@ private fun TaskStatus.threadTaskChipSoftFill(): Color =
 
 private fun TaskStatus.threadTaskChipStrong(): Color =
     when (this) {
+        TaskStatus.Backlog, TaskStatus.Unknown -> RaftAppThemeState.colors.foreground
         TaskStatus.Todo -> RaftAppThemeState.colors.taskStatusTodoStrong
         TaskStatus.InProgress -> RaftAppThemeState.colors.taskStatusInProgressStrong
         TaskStatus.InReview -> RaftAppThemeState.colors.taskStatusInReviewStrong
@@ -31309,12 +34121,40 @@ internal val LocalThreadPendingReactionVisuals =
 
 internal fun RaftThreadMessageItem.hasThreadFooterMeta(
     showSavedBadge: Boolean = false,
-    hasPendingReaction: Boolean = false
+    hasPendingReaction: Boolean = false,
+    showRepliesBadge: Boolean = false
 ): Boolean =
     hasThreadTaskFooterMeta() ||
         showSavedBadge ||
+        showRepliesBadge ||
         hasPendingReaction ||
         reactions.any { it.count > 0 }
+
+/**
+ * web `ThreadRepliesBadge`: the footer badge that stands for a thread when no inline reply preview
+ * does (MessageItem `shouldShowThreadRepliesBadge`): replies or a reply draft, thread actions on,
+ * and no [ThreadInlineReplyPresentation] for the message.
+ */
+internal data class ThreadRepliesBadgeSpec(
+    val replyCount: Int,
+    val unreadCount: Int,
+    val hasDraft: Boolean,
+)
+
+internal fun threadRepliesBadgeSpec(
+    replyMetadata: ThreadReplyMetadata,
+    hasDraft: Boolean,
+    showReplyAction: Boolean,
+    hasInlineReplies: Boolean,
+): ThreadRepliesBadgeSpec? {
+    val replyCount = replyMetadata.replyCount.coerceAtLeast(0)
+    if (!showReplyAction || hasInlineReplies || (replyCount == 0 && !hasDraft)) return null
+    return ThreadRepliesBadgeSpec(
+        replyCount = replyCount,
+        unreadCount = replyMetadata.unreadReplyCount.coerceAtLeast(0),
+        hasDraft = hasDraft,
+    )
+}
 
 internal enum class ThreadMessageTrailingSection {
     SourceTasks,
@@ -31346,7 +34186,16 @@ private fun RaftThreadMessageItem.hasThreadTaskFooterMeta(): Boolean =
 internal fun threadMessageTaskMetaLabel(
     message: RaftThreadMessageItem,
     resolvedTaskAssigneeName: String? = null
-): String? {
+): String? =
+    threadMessageTaskMetaLabelParts(message, resolvedTaskAssigneeName)?.let { (number, assignee) ->
+        if (assignee == null) number else "$number $assignee"
+    }
+
+/** The task chip's two labels: the number ("#10", or "Task") and the "@assignee", when shown. */
+internal fun threadMessageTaskMetaLabelParts(
+    message: RaftThreadMessageItem,
+    resolvedTaskAssigneeName: String? = null
+): Pair<String, String?>? {
     val number = message.taskNumber?.let { "#$it" }
     val assignee =
         resolvedTaskAssigneeName
@@ -31356,13 +34205,7 @@ internal fun threadMessageTaskMetaLabel(
     if (number == null && assignee == null && message.taskStatus.isNullOrBlank() && message.taskId.isNullOrBlank()) {
         return null
     }
-    return buildString {
-        append(number ?: "Task")
-        assignee?.let {
-            append(" @")
-            append(it)
-        }
-    }
+    return (number ?: "Task") to assignee?.let { "@$it" }
 }
 
 internal fun String.isDisplaySafeTaskAssigneeName(assigneeId: String? = null): Boolean {
@@ -31407,12 +34250,12 @@ internal fun RaftThreadScreenPayload.threadBeginningReplyCount(): Int? =
     originMessage?.replyCount?.coerceAtLeast(0)
 
 /** The task status choices, labelled in the app's language (`tasks_status_*`), keyed by status. */
-private val ThreadTaskStatusMenuItems: List<RaftBaseMenuItem>
-    @Composable
-    get() =
-        SharedTaskStatusChipMetas.map { option ->
-            RaftBaseMenuItem(id = option.key, label = option.status.localizedLabel())
-        }
+@Composable
+private fun threadTaskStatusMenuItems(statuses: List<TaskStatus>): List<RaftBaseMenuItem> =
+    statuses.map { status ->
+        val option = status.sharedTaskStatusChipMeta()
+        RaftBaseMenuItem(id = option.key, label = option.status.localizedLabel())
+    }
 
 internal fun threadTaskStatusChipClickIdentity(
     message: RaftThreadMessageItem,
@@ -31521,20 +34364,21 @@ internal data class ThreadMessageMenuAction(
 )
 
 // Web MessageItem context menu (raft-ui ContextMenuPopup + slock MenuItem): `min-w-60`
-// popup, 36dp `min-h-9` rows with lucide 14 icons, and a `h-9 gap-1 px-2` quick-reaction
-// row of seven 28dp (`size-7`) buttons -- 7 * 28 + 6 * 4 + 2 * 8 = 236dp, which with
-// the popup's `p-1.5` makes the menu 248dp wide whenever the reaction row shows.
+// popup, 36dp `min-h-9` rows with 16dp icons (MenuItem forces `size-4` in `foreground-muted`
+// whatever size a caller passes; raft-design iconography.md: menus are 16px), and raft-ui's
+// `MessageReactionQuickRow` (`gap-0.5 px-0.75`) of 36dp (`size-9`) buttons with 22px drawings
+// -- with Add Reaction 8 * 36 + 7 * 2 + 2 * 3 = 308dp, which sets the menu's width (web
+// `MESSAGE_CONTEXT_MENU_WIDTH`), and so how far left of the screen edge it opens.
 private val ThreadMessageMenuMinWidth = 240.dp
 private val ThreadMessageMenuRowHeight = 36.dp
-private val ThreadMessageMenuIconSize = 14.dp
 private val ThreadMessageMenuReactionRowHeight = 36.dp
-private val ThreadMessageMenuReactionButtonSize = 28.dp
-private val ThreadMessageMenuReactionGap = 4.dp
-private val ThreadMessageMenuReactionPaddingHorizontal = 8.dp
+private val ThreadMessageMenuReactionButtonSize = 36.dp
+private val ThreadMessageMenuReactionGlyphSize = 22.dp
+private val ThreadMessageMenuReactionGap = 2.dp
+private val ThreadMessageMenuReactionPaddingHorizontal = 3.dp
 // Web places a touch context menu's top-left corner at the press point
 // (`placeTouchMessageContextMenu`), clamped 8px inside the viewport.
 private val ThreadMessageMenuViewportGap = 8.dp
-private val ThreadMessageMenuShadowOffset = 4.dp
 
 /**
  * [showAddReactionAction]: the reaction row ends with Add Reaction (web `reaction-add-any`), one
@@ -31559,8 +34403,8 @@ internal fun threadMessageMenuContentHeightDp(
     // later makes an edge-adjacent menu visibly jump between placements. This
     // surface has fixed row/header/divider metrics, so compute the final height
     // up front and keep the first rendered position authoritative.
-    // raft-ui menu (RaftBrutalDropdownMenuSurface's raft path): `p-1.5` popup inset on
-    // both edges, a hairline separator with a 6dp inset either side between groups and
+    // raft-ui menu (RaftUiMenuSurface): `p-1` popup inset on
+    // both edges, a hairline separator with a `my-1` inset either side between groups and
     // under the reaction header; the seam ring is drawn over the content and the float
     // shadow takes no layout space.
     val effectiveRowCount = actionGroups.size.coerceAtLeast(1)
@@ -31644,8 +34488,16 @@ internal const val MARK_THREAD_UNREAD_ACTION = "markThreadUnread"
 internal const val FOLLOW_THREAD_ACTION = "followMessageThread"
 internal const val UNFOLLOW_THREAD_ACTION = "unfollowMessageThread"
 
+/** raft-ui `FollowThreadIcon` / `UnfollowThreadIcon`, as web MessageItem's menu draws them. */
 internal fun threadFollowMenuIcon(isFollowed: Boolean): RaftLucideIconName =
-    if (isFollowed) RaftLucideIconName.MessageCircleOff else RaftLucideIconName.MessageCirclePlus
+    if (isFollowed) RaftLucideIconName.UnfollowThread else RaftLucideIconName.FollowThread
+
+/**
+ * web MessageItem: Mark as Done is Lucide `square-check-big`, Reopen Task raft-ui `ReopenTaskIcon`
+ * (raft-design iconography.md: reopen is not restart, so not `refresh-cw`/`rotate-ccw`).
+ */
+internal fun threadTaskStatusMenuIcon(isDone: Boolean): RaftLucideIconName =
+    if (isDone) RaftLucideIconName.ReopenTask else RaftLucideIconName.SquareCheckBig
 
 /**
  * What a message's long-press menu offers, shared by the Classic and Compact menus and aligned
@@ -31805,90 +34657,17 @@ internal fun threadMessageMenuActions(
     onDownloadVideo: (() -> Unit)? = null
 ): List<ThreadMessageMenuAction> =
     // Add Reaction is not a row: it ends the reaction header ([ThreadMessageMenuChrome]).
+    // web MessageItem's sections, by what the action does: keep going on this message (thread and
+    // task), take it elsewhere (copy, forward, select), just for me (save, translate); a local
+    // send's own Delete / Cancel close the menu.
     buildList {
+        // A right-click over selected text leads with Copy for it (artin, 2026-10-29), before
+        // the sections (web: the browser's own Copy).
         if (onCopySelection != null) {
             add(ThreadMessageMenuAction(Res.string.common_copy.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopySelection))
         }
-        if (showCopyLinkAction) {
-            add(
-                ThreadMessageMenuAction(
-                    label = Res.string.thread_action_copy_link.desc(),
-                    icon = RaftLucideIconName.Link,
-                    group = "copy",
-                    onClick = onCopyLink
-                )
-            )
-        }
-        add(ThreadMessageMenuAction(Res.string.thread_action_copy_markdown.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopy))
-        add(ThreadMessageMenuAction(Res.string.thread_action_select_text.desc(), RaftLucideIconName.FileText, "copy", onClick = onSelectText))
-        if (showTranslateAction) {
-            add(
-                ThreadMessageMenuAction(
-                    label =
-                        if (translatePending) {
-                            Res.string.translation_state_in_progress.desc()
-                        } else {
-                            Res.string.thread_action_translate.desc()
-                        },
-                    icon = RaftLucideIconName.Languages,
-                    group = "copy",
-                    enabled = !translatePending,
-                    onClick = onTranslate
-                )
-            )
-        }
-        if (showShareMessagesAction) {
-            add(
-                ThreadMessageMenuAction(
-                    label = Res.string.thread_action_select_message.desc(),
-                    icon = RaftLucideIconName.CircleCheck,
-                    group = "copy",
-                    onClick = onShareMessages
-                )
-            )
-        }
         if (showReplyAction) {
-            add(ThreadMessageMenuAction(Res.string.thread_action_reply_in_thread.desc(), RaftLucideIconName.MessageSquare, "message", onClick = onReply))
-        }
-        if (showForwardAction) {
-            // Web uses the select-mode Forward glyph (lucide send) for the per-message entry.
-            add(ThreadMessageMenuAction(Res.string.thread_action_forward.desc(), RaftLucideIconName.Send, "message", onClick = onForward))
-        }
-        if (onDownloadVideo != null) {
-            // Telegram / WhatsApp / iMessage: a long press on a video message offers to save it.
-            add(
-                ThreadMessageMenuAction(
-                    label = Res.string.file_preview_action_download.desc(),
-                    icon = RaftLucideIconName.Download,
-                    group = "message",
-                    onClick = onDownloadVideo
-                )
-            )
-        }
-        if (showSaveAction) {
-            add(
-                ThreadMessageMenuAction(
-                    label =
-                        if (message.isSaved) {
-                            Res.string.thread_action_remove_from_saved.desc()
-                        } else {
-                            Res.string.thread_action_save_message.desc()
-                        },
-                    icon = if (message.isSaved) RaftLucideIconName.BookmarkMinus else RaftLucideIconName.Bookmark,
-                    group = "message",
-                    onClick = onSave
-                )
-            )
-        }
-        if (showMarkThreadUnreadAction) {
-            add(
-                ThreadMessageMenuAction(
-                    label = Res.string.thread_action_mark_thread_unread.desc(),
-                    icon = RaftLucideIconName.MessageSquareDot,
-                    group = "message",
-                    onClick = onMarkThreadUnread
-                )
-            )
+            add(ThreadMessageMenuAction(Res.string.thread_action_reply_in_thread.desc(), RaftLucideIconName.Thread, "message", onClick = onReply))
         }
         val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
         if (showFollowAction && shouldShowThreadFollowAction(message, replyMetadata)) {
@@ -31912,6 +34691,116 @@ internal fun threadMessageMenuActions(
                 )
             )
         }
+        if (showMarkThreadUnreadAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label = Res.string.thread_action_mark_thread_unread.desc(),
+                    icon = RaftLucideIconName.MessageSquareDot,
+                    group = "message",
+                    onClick = onMarkThreadUnread
+                )
+            )
+        }
+        message.taskId?.takeIf { showTaskStatusAction && it.isNotBlank() }?.let {
+            val isDone = message.isThreadTaskDone()
+            add(
+                ThreadMessageMenuAction(
+                    label =
+                        if (isDone) {
+                            Res.string.thread_action_reopen_task.desc()
+                        } else {
+                            Res.string.thread_action_mark_done.desc()
+                        },
+                    icon = threadTaskStatusMenuIcon(isDone),
+                    group = "message",
+                    onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
+                )
+            )
+        }
+        if (showConvertToTaskAction && (createTaskFromMessage || message.canConvertToTask())) {
+            add(
+                ThreadMessageMenuAction(
+                    label =
+                        if (createTaskFromMessage) {
+                            Res.string.thread_action_create_task_from_message.desc()
+                        } else {
+                            Res.string.thread_action_convert_to_task.desc()
+                        },
+                    icon = RaftLucideIconName.Plus,
+                    group = "message",
+                    onClick = onConvertToTask
+                )
+            )
+        }
+        if (showCopyLinkAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label = Res.string.thread_action_copy_link.desc(),
+                    icon = RaftLucideIconName.Link,
+                    group = "copy",
+                    onClick = onCopyLink
+                )
+            )
+        }
+        add(ThreadMessageMenuAction(Res.string.thread_action_copy_markdown.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopy))
+        add(ThreadMessageMenuAction(Res.string.thread_action_select_text.desc(), RaftLucideIconName.SquareDashedText, "copy", onClick = onSelectText))
+        if (showForwardAction) {
+            // Web uses the select-mode Forward glyph (lucide forward) for the per-message entry.
+            add(ThreadMessageMenuAction(Res.string.thread_action_forward.desc(), RaftLucideIconName.Forward, "copy", onClick = onForward))
+        }
+        if (showShareMessagesAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label = Res.string.thread_action_select_message.desc(),
+                    // web: ListChecks (SquareCheckBig is Mark as Done in the same menu).
+                    icon = RaftLucideIconName.ListChecks,
+                    group = "copy",
+                    onClick = onShareMessages
+                )
+            )
+        }
+        if (onDownloadVideo != null) {
+            // Telegram / WhatsApp / iMessage: a long press on a video message offers to save it.
+            add(
+                ThreadMessageMenuAction(
+                    label = Res.string.file_preview_action_download.desc(),
+                    icon = RaftLucideIconName.Download,
+                    group = "copy",
+                    onClick = onDownloadVideo
+                )
+            )
+        }
+        if (showSaveAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label =
+                        if (message.isSaved) {
+                            Res.string.thread_action_remove_from_saved.desc()
+                        } else {
+                            Res.string.thread_action_save_message.desc()
+                        },
+                    icon = if (message.isSaved) RaftLucideIconName.BookmarkMinus else RaftLucideIconName.Bookmark,
+                    group = "personal",
+                    onClick = onSave
+                )
+            )
+        }
+        if (showTranslateAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label =
+                        if (translatePending) {
+                            Res.string.translation_state_in_progress.desc()
+                        } else {
+                            Res.string.thread_action_translate.desc()
+                        },
+                    icon = RaftLucideIconName.Languages,
+                    group = "personal",
+                    enabled = !translatePending,
+                    onClick = onTranslate
+                )
+            )
+        }
         if (showDeleteAction) {
             add(
                 ThreadMessageMenuAction(
@@ -31929,37 +34818,6 @@ internal fun threadMessageMenuActions(
                     icon = RaftLucideIconName.X,
                     group = "destructive",
                     onClick = onCancel
-                )
-            )
-        }
-        message.taskId?.takeIf { showTaskStatusAction && it.isNotBlank() }?.let {
-            val isDone = message.isThreadTaskDone()
-            add(
-                ThreadMessageMenuAction(
-                    label =
-                        if (isDone) {
-                            Res.string.thread_action_reopen_task.desc()
-                        } else {
-                            Res.string.thread_action_mark_done.desc()
-                        },
-                    icon = if (isDone) RaftLucideIconName.RefreshCw else RaftLucideIconName.CircleCheckBig,
-                    group = "task",
-                    onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
-                )
-            )
-        }
-        if (showConvertToTaskAction && (createTaskFromMessage || message.canConvertToTask())) {
-            add(
-                ThreadMessageMenuAction(
-                    label =
-                        if (createTaskFromMessage) {
-                            Res.string.thread_action_create_task_from_message.desc()
-                        } else {
-                            Res.string.thread_action_convert_to_task.desc()
-                        },
-                    icon = RaftLucideIconName.ClipboardCheck,
-                    group = "task",
-                    onClick = onConvertToTask
                 )
             )
         }
@@ -32119,6 +34977,7 @@ private fun ThreadMessageActionMenu(
         },
         shellItems = shellItems,
         shellContentKey = showReactionActions to showAddReaction,
+        keepsHostKeyboard = true,
         shellContent = { onSelected ->
             // The shell host composes this in its own page. Decode the reaction atlas
             // there instead of capturing this page's `reactionAtlasImage`: the atlas
@@ -32195,6 +35054,8 @@ private fun ThreadShellAwareAnchoredPopover(
     shellContent: @Composable (onSelected: (String) -> Unit) -> Unit,
     onShellSelected: (String) -> Unit,
     onShellRequested: (requestId: String, pageWindowAnchor: Offset) -> Unit,
+    // A menu with no text field: the composer's keyboard stays up (RaftModalAnchoredPopover).
+    keepsHostKeyboard: Boolean = false,
     inPageContent: @Composable (inShellFallback: Boolean) -> Unit
 ) {
     // Task #185 (narrowed for 1.14.2): only an adaptive split-pane detail page clips a Modal to
@@ -32230,7 +35091,8 @@ private fun ThreadShellAwareAnchoredPopover(
             verticalOffset = 0f,
             verticalOffsetAbove = 0f,
             verticalPlacement = RaftFloatingVerticalPlacement.ContextMenu,
-            horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu
+            horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu,
+            keepsHostKeyboard = keepsHostKeyboard
         ) {
             inPageContent(false)
         }
@@ -32246,15 +35108,14 @@ private fun ThreadShellAwareAnchoredPopover(
         remember(localPager.pagerId, eventBusOverride) {
             eventBusOverride ?: RaftSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
         }
-    val pageOriginKey = raftChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params)
     val pageKey =
         LocalActivity.current.pageData.params
             .optString(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY)
             .trim()
             .ifEmpty { "thread-panel" }
     val pageRootAnchor = anchor.rootOffsetOrNull()
-    val pageWindowAnchor =
-        pageRootAnchor?.plus(RaftChildPageOriginRegistry.stateFor(pageOriginKey).windowOrigin)
+    // Already window space: the child page is composed inline (no page origin to add).
+    val pageWindowAnchor = raftChildPageWindowAnchor(anchor)
     val requestId = shellRequestId(pageRootAnchor)
     DisposableEffect(pageEventBus, requestId) {
         val subscription =
@@ -32284,7 +35145,8 @@ private fun ThreadShellAwareAnchoredPopover(
             verticalOffset = 0f,
             verticalOffsetAbove = 0f,
             verticalPlacement = RaftFloatingVerticalPlacement.ContextMenu,
-            horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu
+            horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu,
+            keepsHostKeyboard = keepsHostKeyboard
         ) {
             inPageContent(true)
         }
@@ -32364,8 +35226,194 @@ private fun ThreadMessageEmojiPickerPopover(
 /** A double tap's quick reaction bar: which message, anchored where the second tap landed. */
 internal data class ThreadQuickReactionBarRequest(
     val messageId: String,
-    val anchor: RaftPopoverAnchor
+    val anchor: RaftPopoverAnchor,
+    /** Opened by the hover toolbar's Add Reaction: under the button, its end on the button's end. */
+    val fromHoverToolbar: Boolean = false
 )
+
+/**
+ * web MessageHoverToolbar (slock packages/web/src/components/message/MessageHoverToolbar.tsx):
+ * which buttons one message's hover toolbar has, in the web's order (the message menu's: Add
+ * Reaction, Reply in Thread, Forward, Save, then More Actions, which opens that menu). Built from
+ * the message menu's capabilities ([threadMessageHoverToolbarActions]), so a button is there
+ * exactly when its menu item is.
+ */
+internal class ThreadMessageHoverToolbarActions(
+    /** Add Reaction: the quick reactions under the button (web `canReact && !isSystem`). */
+    val reaction: Boolean,
+    /** Reply in Thread: not on the rows of a thread (web `hideThreadActions`). */
+    val reply: Boolean,
+    /** Forward: where the message can be forwarded (web `canForwardThisMessage`). */
+    val forward: Boolean,
+    val save: Boolean,
+    val saved: Boolean,
+    /** More Actions: the message menu under the button (web `canOpenMenuFromToolbar`). */
+    val more: Boolean,
+    val onShowReactions: (RaftPopoverAnchor) -> Unit,
+    val onForward: () -> Unit,
+    val onToggleSave: () -> Unit,
+    /** Whether the toolbar shows: the list draws that row over its neighbours, as the toolbar reaches into the row above. */
+    val onShownChange: (Boolean) -> Unit = {},
+) {
+    val isEmpty: Boolean
+        get() = buttonCount == 0
+
+    val buttonCount: Int
+        get() = listOf(reaction, reply, forward, save, more).count { it }
+}
+
+internal fun threadMessageHoverToolbarActions(
+    message: RaftThreadMessageItem,
+    capabilities: ThreadMessageMenuCapabilities,
+    onShowReactions: (RaftPopoverAnchor) -> Unit,
+    onForward: () -> Unit,
+    onToggleSave: () -> Unit,
+    onShownChange: (Boolean) -> Unit = {},
+): ThreadMessageHoverToolbarActions? {
+    if (message.isRetracted) return null
+    val actions =
+        ThreadMessageHoverToolbarActions(
+            reaction = capabilities.quickReactions,
+            reply = capabilities.reply,
+            forward = capabilities.forward,
+            save = capabilities.save,
+            saved = message.isSaved,
+            more = !message.isSystemMessage(),
+            onShowReactions = onShowReactions,
+            onForward = onForward,
+            onToggleSave = onToggleSave,
+            onShownChange = onShownChange,
+        )
+    return actions.takeUnless { it.isEmpty }
+}
+
+/**
+ * The hover toolbar floats over its row (web `absolute`): it is drawn and takes pointer input at
+ * its full size, but tells the row's Box it has no height, so the row never grows to fit it. A
+ * one-line continuation row is 32dp (4 + 24 + 4) and the toolbar 36dp; counted in the Box, it made
+ * the hovered row 4dp taller and shifted every row above it in the bottom-anchored list.
+ */
+private fun Modifier.threadMessageHoverToolbarOverlay(): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+        layout(placeable.width, 0) { placeable.place(0, 0) }
+    }
+
+/** Between a hover toolbar button and the menu or reactions it opens (web: 4px). */
+internal val ThreadMessageHoverToolbarPopupGap = 4.dp
+
+private enum class ThreadMessageHoverToolbarOpener { Reaction, More }
+
+/**
+ * web MessageHoverToolbar on a message row: the design-system [RaftMessageItemToolbar] over the
+ * row's top right corner (the caller places it), shown only for a mouse or trackpad
+ * ([RaftPointerInput.Fine]; web returns null for `pointer: coarse`, where a press and hold opens
+ * the menu) while the pointer is over the row or over the toolbar itself (its upper half rides
+ * above the row), and while one of the row's popups is open (raft-ui `has-data-popup-open`).
+ * The button whose popup is open stays marked (`data-popup-open`). No tooltips, as on the web.
+ */
+@Composable
+private fun ThreadMessageHoverToolbar(
+    messageId: String,
+    actions: ThreadMessageHoverToolbarActions,
+    rowHovered: Boolean,
+    popupOpen: Boolean,
+    onShowActions: (RaftPopoverAnchor) -> Unit,
+    onReplyInThread: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Whether it shows, for the row (its header fades under it). */
+    onShownChange: (Boolean) -> Unit = {},
+) {
+    var toolbarHovered by remember { mutableStateOf(false) }
+    var opener by remember { mutableStateOf<ThreadMessageHoverToolbarOpener?>(null) }
+    LaunchedEffect(popupOpen) { if (!popupOpen) opener = null }
+    val shown = RaftTheme.pointerInput == RaftPointerInput.Fine && (rowHovered || toolbarHovered || popupOpen)
+    val currentOnShownChange by rememberUpdatedState(actions.onShownChange)
+    val currentOnRowShownChange by rememberUpdatedState(onShownChange)
+    DisposableEffect(shown) {
+        if (shown) {
+            currentOnShownChange(true)
+            currentOnRowShownChange(true)
+        }
+        onDispose {
+            if (shown) {
+                currentOnShownChange(false)
+                currentOnRowShownChange(false)
+            }
+        }
+    }
+    if (!shown) return
+    val density = LocalDensity.current
+    val anchorIdentity = threadMessageMenuOwnerIdentity(messageId)
+    val reactionAnchor = remember(anchorIdentity) { RaftLiveRootAnchorRef(identity = anchorIdentity) }
+    val moreAnchor = remember(anchorIdentity) { RaftLiveRootAnchorRef(identity = anchorIdentity) }
+    val buttonPx = with(density) { RaftMessageItemToolbarDefaults.ButtonSize.toPx() }
+    val gapPx = with(density) { ThreadMessageHoverToolbarPopupGap.toPx() }
+    RaftMessageItemToolbar(
+        modifier = modifier.raftPointerHoverPosition { toolbarHovered = it != null }
+    ) {
+        if (actions.reaction) {
+            RaftMessageItemToolbarButton(
+                onClick = {
+                    // web `positionReactionPickerFromRect`: the bar's end on the button's end.
+                    reactionAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { anchor ->
+                        opener = ThreadMessageHoverToolbarOpener.Reaction
+                        actions.onShowReactions(anchor)
+                    }
+                },
+                label = stringResource(Res.string.thread_action_add_reaction),
+                modifier = Modifier.raftCaptureLiveRootAnchor(reactionAnchor),
+                open = popupOpen && opener == ThreadMessageHoverToolbarOpener.Reaction,
+            ) {
+                RaftSlotIcon(RaftLucideIconName.SmilePlus)
+            }
+        }
+        if (actions.reply) {
+            RaftMessageItemToolbarButton(
+                onClick = onReplyInThread,
+                label = stringResource(Res.string.thread_action_reply_in_thread),
+            ) {
+                RaftConversationKindIcon(RaftConversationKindGlyph.Thread, size = RaftMessageItemToolbarDefaults.IconSize)
+            }
+        }
+        if (actions.forward) {
+            RaftMessageItemToolbarButton(
+                onClick = actions.onForward,
+                label = stringResource(Res.string.thread_action_forward),
+            ) {
+                RaftGlyphIcon(RaftGlyph.Forward)
+            }
+        }
+        if (actions.save) {
+            RaftMessageItemToolbarButton(
+                onClick = actions.onToggleSave,
+                label =
+                    stringResource(
+                        if (actions.saved) Res.string.thread_action_remove_from_saved else Res.string.common_save
+                    ),
+                active = actions.saved,
+            ) {
+                if (actions.saved) RaftSlotIcon(RaftLucideIconName.BookmarkMinus) else RaftGlyphIcon(RaftGlyph.Bookmark)
+            }
+        }
+        if (actions.more) {
+            RaftMessageItemToolbarButton(
+                onClick = {
+                    // web `handleOpenMenuFromToolbar`: the menu at the button's start, 4px under it.
+                    moreAnchor.resolve(RaftPopoverLocalPoint.Exact(Offset(0f, buttonPx + gapPx)))?.let { anchor ->
+                        opener = ThreadMessageHoverToolbarOpener.More
+                        onShowActions(anchor)
+                    }
+                },
+                label = stringResource(Res.string.common_more_actions),
+                modifier = Modifier.raftCaptureLiveRootAnchor(moreAnchor),
+                open = popupOpen && opener == ThreadMessageHoverToolbarOpener.More,
+            ) {
+                RaftGlyphIcon(RaftGlyph.Ellipsis)
+            }
+        }
+    }
+}
 
 /** The quick reaction bar's distance from the finger that double tapped (web: 24px). */
 internal val ThreadMessageQuickReactionBarFingerGap = 24.dp
@@ -32387,10 +35435,11 @@ private fun ThreadMessageQuickReactionBar(
     anchor: RaftPopoverAnchor,
     onDismiss: () -> Unit,
     onReact: (String) -> Unit,
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
+    fromHoverToolbar: Boolean = false
 ) {
     Modal(onWillDismiss = { onDismiss() }) {
-        ThreadMessageQuickReactionBarPopover(messageId, anchor, onDismiss, onReact, diagnosticsLogger)
+        ThreadMessageQuickReactionBarPopover(messageId, anchor, onDismiss, onReact, diagnosticsLogger, fromHoverToolbar)
     }
 }
 
@@ -32404,7 +35453,9 @@ internal fun ThreadMessageQuickReactionBarPopover(
     anchor: RaftPopoverAnchor,
     onDismiss: () -> Unit,
     onReact: (String) -> Unit,
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
+    /** [anchor] is the bottom end of the hover toolbar's Add Reaction (web `positionReactionPickerFromRect`). */
+    fromHoverToolbar: Boolean = false
 ) {
     val density = LocalDensity.current
     val barWidthDp = threadMessageMenuWidthDp(showReactionActions = true)
@@ -32417,18 +35468,23 @@ internal fun ThreadMessageQuickReactionBarPopover(
         }
     val viewportGapPx = with(density) { ThreadMessageMenuViewportGap.toPx() }
     val fingerGapPx = with(density) { ThreadMessageQuickReactionBarFingerGap.toPx() }
+    val toolbarGapPx = with(density) { ThreadMessageHoverToolbarPopupGap.toPx() }
+    val toolbarButtonPx = with(density) { RaftMessageItemToolbarDefaults.ButtonSize.toPx() }
     // Like the mobile web (slock #11851): above the second tap, 24dp clear of the finger, so it
     // covers neither the line that was tapped nor the finger; below only when there is no room
-    // above. Centred on the finger and kept on screen.
+    // above. Centred on the finger and kept on screen. From the hover toolbar, like the web's
+    // picker: 4dp under the button with its end on the button's end, above it when there is no
+    // room below.
     RaftAnchoredPopover(
         anchor = anchor,
         contentSize = contentSize,
         onDismiss = onDismiss,
         viewportGap = viewportGapPx,
-        horizontalOffset = -contentSize.width / 2f,
-        verticalOffset = fingerGapPx,
-        verticalOffsetAbove = fingerGapPx,
-        verticalPlacement = RaftFloatingVerticalPlacement.AbovePreferred,
+        horizontalOffset = if (fromHoverToolbar) -contentSize.width else -contentSize.width / 2f,
+        verticalOffset = if (fromHoverToolbar) toolbarGapPx else fingerGapPx,
+        verticalOffsetAbove = if (fromHoverToolbar) toolbarButtonPx + toolbarGapPx else fingerGapPx,
+        verticalPlacement =
+            if (fromHoverToolbar) RaftFloatingVerticalPlacement.Auto else RaftFloatingVerticalPlacement.AbovePreferred,
         horizontalPlacement = RaftFloatingHorizontalPlacement.Anchor
     ) {
         LaunchedEffect(messageId, anchor) {
@@ -32457,38 +35513,31 @@ internal fun ThreadMessageMenuChrome(
     onAddReaction: (() -> Unit)? = null
 ) {
     // task #11 (artin: 统一两套菜单): the action rows render through the shared
-    // RaftBrutalDropdownMenu surface — press wash, row metrics and icon specs
+    // design-system menu surface ([RaftUiMenuSurface]) — press wash, row metrics and icon specs
     // come from the one component instead of a hand-rolled Button stack. The
     // reaction bar rides in the surface's header slot; group boundaries map to
-    // dividerBeforeIds.
+    // dividerBefore.
     val menuItems = actions.mapIndexed { index, action ->
-        RaftBrutalDropdownMenuItem(
+        RaftUiMenuItem(
             id = index.toString(),
             label = action.label.localized(),
             icon = action.icon,
-            enabled = action.enabled
+            enabled = action.enabled,
+            dividerBefore = index > 0 && actions.getOrNull(index - 1)?.group != action.group
         )
     }
-    val groupDividerIds = actions.mapIndexedNotNull { index, action ->
-        val previousGroup = actions.getOrNull(index - 1)?.group
-        if (index > 0 && previousGroup != action.group) index.toString() else null
-    }.toSet()
-    RaftBrutalDropdownMenuSurface(
+    RaftUiMenuSurface(
         items = menuItems,
         onSelect = { id -> actions.getOrNull(id.toIntOrNull() ?: -1)?.let { if (it.enabled) it.onClick() } },
         modifier = modifier,
         width = threadMessageMenuWidthDp(showReactionActions, showAddReactionAction = onAddReaction != null).dp,
-        // web MenuItem: 36dp `min-h-9` rows, lucide 14 icons.
-        rowHeight = ThreadMessageMenuRowHeight,
-        showDividers = false,
-        dividerBeforeIds = groupDividerIds,
-        iconSize = ThreadMessageMenuIconSize,
-        headerContent =
+        header =
             if (showReactionActions) {
                 {
                     ThreadMessageReactionRow(
                         reactionAtlasImage = reactionAtlasImage,
                         onReact = onReact,
+                        glyphSize = ThreadMessageMenuReactionGlyphSize,
                         onAddReaction = onAddReaction
                     )
                 }
@@ -32516,7 +35565,7 @@ private fun ThreadMessageReactionRow(
      */
     onAddReaction: (() -> Unit)? = null
 ) {
-    // web `reaction-quick-row`: `flex h-9 items-center gap-1 px-2`.
+    // web `reaction-quick-row` (raft-ui MessageReactionQuickRow): `gap-0.5 px-0.75`, `size-9` buttons.
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -32526,10 +35575,9 @@ private fun ThreadMessageReactionRow(
         horizontalArrangement = horizontalArrangement
     ) {
         ThreadQuickReactionEmojis.forEach { reaction ->
-            Button(
+            RaftPanelAction(
                 onClick = { onReact(reaction) },
                 enabled = enabled,
-                pressFeedback = false,
                 modifier = Modifier
                     .alpha(if (enabled) 1f else 0.45f)
                     .size(buttonSize)
@@ -32543,10 +35591,9 @@ private fun ThreadMessageReactionRow(
         }
         if (onAddReaction != null) {
             val addReactionLabel = stringResource(Res.string.thread_action_add_reaction)
-            Button(
+            RaftPanelAction(
                 onClick = onAddReaction,
                 enabled = enabled,
-                pressFeedback = false,
                 modifier = Modifier
                     .alpha(if (enabled) 1f else 0.45f)
                     .size(buttonSize)
@@ -32576,7 +35623,7 @@ private fun threadDisplayReactionEmoji(emoji: String): String =
 // harden into a permanent raw-emoji fallback.
 internal val LocalThreadReactionAtlasImage = compositionLocalOf<ImageBitmap?> { null }
 
-/** Whether the viewing server lets `feedback:submit` cards open the Feedback WebView. */
+/** Whether `feedback:submit` cards open the Feedback WebView ([raftFeedbackCardEntryEnabled]). */
 internal val LocalThreadFeedbackCardEntryEnabled = compositionLocalOf { false }
 
 /**
@@ -32749,7 +35796,7 @@ private fun ThreadOriginCard(
     writeActionsEnabled: Boolean = false,
     onShowQuickReactions: (RaftThreadMessageItem, RaftPopoverAnchor) -> Unit = { _, _ -> },
     onOpenTaskStatusMenu: (RaftThreadMessageItem, RaftPopoverAnchor) -> Unit,
-    onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null,
+    showReactionReactors: Boolean = false,
     onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
     onMentionAuthor: (RaftThreadMessageItem) -> Unit,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
@@ -32761,7 +35808,11 @@ private fun ThreadOriginCard(
     selectedShareMessageIds: Set<String> = emptySet(),
     onToggleShareSelection: (String) -> Unit = {},
     longMessageCollapse: RaftLongMessageCollapseController? = null,
-    onToggleLongMessage: (String) -> Unit = {}
+    onToggleLongMessage: (String) -> Unit = {},
+    /** web MessageItem `data-popup-open`: the parent's menu or quick reactions are open. */
+    popupOpen: Boolean = false,
+    /** The parent's hover toolbar (web MessageHoverToolbar, no Reply in Thread in a thread). */
+    hoverToolbar: ThreadMessageHoverToolbarActions? = null
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     Column(
@@ -32849,6 +35900,8 @@ private fun ThreadOriginCard(
                                 isMarkdownTagValid = isMarkdownTagValid,
                                 onShowActions = { anchor -> onShowActions(origin, anchor) },
                                 onLongPressMenuOpened = { onLongPressMenuOpened(origin) },
+                                popupOpen = popupOpen,
+                                hoverToolbar = hoverToolbar,
                                 // The thread's parent takes a double tap too: its reaction bar.
                                 quickReactionsEnabled = threadMessageCanQuickReact(origin, timelineSlice, writeActionsEnabled),
                                 onShowQuickReactions = { anchor -> onShowQuickReactions(origin, anchor) },
@@ -32858,7 +35911,7 @@ private fun ThreadOriginCard(
                                 onOpenTask = { onThreadEvent("openTask", it, null, null) },
                                 onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
                                 onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
-                                onShowReactionDetails = onShowReactionDetails,
+                                showReactionReactors = showReactionReactors,
                                 onShowAuthorDescription = onShowAuthorDescription,
                                 showReactionAddAction = timelineSlice.showReactionActions && contentExtrasVisible,
                                 onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },
@@ -32986,11 +36039,41 @@ private fun ThreadMessageAvatarSlot(
     onClick: () -> Unit,
     onLongPress: () -> Unit = {},
     /** The author's profile card under a mouse or trackpad pointer resting on the avatar; null: none. */
-    previewCard: (@Composable ColumnScope.(RaftPreviewCardState) -> Unit)? = null
+    previewCard: (@Composable ColumnScope.(RaftPreviewCardState) -> Unit)? = null,
+    /**
+     * A click on the avatar, by any pointer, pins [previewCard] instead of running [onClick]
+     * (an external author: the card is all there is to show, for a finger too).
+     */
+    previewCardPinOnClick: Boolean = false,
+    /**
+     * A compact row without its header: the message's time for screen readers, whether or not
+     * [showTimestamp] shows it (it shows only while the row is pressed). Null: the header has it.
+     */
+    timestampAccessibilityLabel: String? = null,
 ) {
     val slotLayout = threadMessageMetadataSlotLayout(showAvatar, compactTimestampGutter, showTimestamp)
+    // Reduced-motion drag-to-see-times (ThreadMessageTimeReveal.kt): a continuation row's time fades in
+    // here, where the pressed (desktop hover) time sits. Only this slot reads `active`.
+    val gutterReveal = LocalThreadTimeRevealGutter.current
+    val gutterTimeShowing =
+        gutterReveal != null && gutterReveal.active && !showAvatar && compactTimestampGutter &&
+            !slotLayout.timestampVisible && timestampLabel.isNotBlank()
     Box(
-        modifier = Modifier.width(slotLayout.widthDp.dp).height(slotLayout.heightDp.dp),
+        modifier =
+            Modifier
+                .width(slotLayout.widthDp.dp)
+                .height(slotLayout.heightDp.dp)
+                .then(
+                    if (!showAvatar && timestampAccessibilityLabel != null) {
+                        Modifier.clearAndSetSemantics {
+                            contentDescription = timestampAccessibilityLabel
+                            // Tests only: the revealed time has no semantics of its own.
+                            if (gutterTimeShowing) testTag = ThreadTimeRevealLabelTestTag
+                        }
+                    } else {
+                        Modifier
+                    }
+                ),
         contentAlignment = timestampAlignment
     ) {
         when {
@@ -33020,27 +36103,44 @@ private fun ThreadMessageAvatarSlot(
                         avatar()
                     } else {
                         val previewCardState = rememberRaftPreviewCardState()
-                        RaftPreviewCard(card = { previewCard(previewCardState) }, state = previewCardState, trigger = avatar)
+                        RaftPreviewCard(
+                            card = { previewCard(previewCardState) },
+                            state = previewCardState,
+                            pinOnClick = previewCardPinOnClick,
+                            trigger = avatar,
+                        )
                     }
                 }
-            slotLayout.timestampVisible ->
+            slotLayout.timestampVisible || gutterTimeShowing ->
                 Text(
                     text = timestampLabel,
                     style =
+                        // raft-ui `continuationTime`: font-mono text-mono-meta, 12/16 regular.
                         RaftType.Caption.copy(
                             fontFamily = RaftMonoFamily,
-                            fontSize = 11.sp,
-                            lineHeight = 14.sp,
+                            fontWeight = FontWeight.Normal,
                             color = RaftColor.TextBlack.copy(alpha = 0.38f)
                         ),
                     color = RaftColor.TextBlack.copy(alpha = 0.38f),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = if (slotLayout.timestampVisible) TextOverflow.Ellipsis else TextOverflow.Visible,
+                    softWrap = slotLayout.timestampVisible,
                     textAlign = timestampTextAlign,
                     modifier =
-                        Modifier
-                            .width(slotLayout.widthDp.dp)
-                            .align(timestampAlignment)
+                        if (!slotLayout.timestampVisible && gutterReveal != null) {
+                            // The whole clock: it may run a few dp into the gap before the body, never cut.
+                            Modifier
+                                .align(timestampAlignment)
+                                .wrapContentWidth(
+                                    align = if (timestampTextAlign == TextAlign.End) Alignment.End else Alignment.Start,
+                                    unbounded = true,
+                                )
+                                .graphicsLayer { alpha = gutterReveal.fraction }
+                        } else {
+                            Modifier
+                                .width(slotLayout.widthDp.dp)
+                                .align(timestampAlignment)
+                        }
                 )
         }
     }
@@ -33076,7 +36176,7 @@ private fun ThreadMessageAvatar(
     Box(
         modifier =
             Modifier
-                .size(36.dp)
+                .size(RaftAvatarSize.Md.edge)
                 .raftGesturePointerInput(gestureOwner) { owner ->
                     var gesture: RaftGestureSession<ThreadMessageAvatarGestureCallbacks>? = null
                     detectTapGestures(
@@ -33099,7 +36199,7 @@ private fun ThreadMessageAvatar(
                 // The assistant's face takes the corner a presence light would (raft-ui
                 // MessageItemDelegatedAvatar; only on a person's avatar).
                 statusColor = if (muted || delegatedBy != null) null else status?.color,
-                avatarSize = 36.dp,
+                avatarSize = RaftAvatarSize.Md.edge,
                 statusPulsing = status?.pulsing == true && statusPulsing()
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -33111,7 +36211,7 @@ private fun ThreadMessageAvatar(
                         label = avatarLabel,
                         diagnostics = avatarDiagnostics,
                         modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
-                        avatarSize = 36.dp,
+                        avatarSize = RaftAvatarSize.Md.edge,
                         cacheSubject = cacheSubject,
                         fallbackFill = avatarFill
                     )
@@ -33168,7 +36268,7 @@ private fun ThreadExternalAuthorAvatarFallback(muted: Boolean) {
     // The same sticker frame as the member avatars (ink edge, dark-mode sticker-edge ring) on cyan.
     RaftAppAvatarFrame(
         modifier = Modifier,
-        avatarSize = 36.dp,
+        avatarSize = RaftAvatarSize.Md.edge,
         borderWidth = RaftAppStroke.Default,
         fill = RaftColor.AccentCyan
     ) {
@@ -33366,7 +36466,7 @@ private fun ThreadInlineMetaTag(label: String) {
     }
 }
 
-// Keep Anchor/Quote tag text aligned with RaftBrutalTextField's default horizontalPadding.
+// Anchor/Quote tag text inset (the retired legacy field's 10dp text inset).
 private val ThreadInlineMetaTagHorizontalPadding: Dp = 10.dp
 
 @Composable
@@ -33483,6 +36583,17 @@ private fun ThreadAttachmentOpenUiState?.threadAttachmentOpenFailed(): Boolean =
 
 // raft-ui MessageAttachmentGroup `max-w-[360px]`.
 private val ThreadAttachmentGroupMaxWidth = 360.dp
+
+/** The sender name's first baseline, carried out of the sender cluster for the header time. */
+private val ThreadSenderNameBaseline = HorizontalAlignmentLine { a, b -> minOf(a, b) }
+
+private fun Modifier.threadSenderNameBaseline(): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val baseline = placeable[FirstBaseline]
+        val lines: Map<AlignmentLine, Int> = if (baseline == AlignmentLine.Unspecified) emptyMap() else mapOf(ThreadSenderNameBaseline to baseline)
+        layout(placeable.width, placeable.height, lines) { placeable.place(0, 0) }
+    }
 
 /** UI-bound formatting: raw bytes win; sizeLabel exists only for compatibility snapshots. */
 internal fun RaftThreadAttachmentItem.displaySizeLabel(): String =
@@ -33869,31 +36980,27 @@ private fun ThreadAttachmentChip(
     // raft-ui MessageAttachmentCard: one affordance icon, Eye for a file with an in-app preview,
     // Download for one that opens its file page. Both only open the page (web AttachmentChip).
     val route = attachment.threadAttachmentOpenRoute()
-    val affordance =
+    val (affordanceIcon, affordanceLabel) =
         if (route is RaftThreadAttachmentOpenRoute.Preview) {
-            RaftAttachmentPreviewCardAction(
-                RaftLucideIconName.Eye,
-                "${stringResource(Res.string.file_preview_action_open)} ${attachment.name}",
-                onOpen
-            )
+            RaftLucideIconName.Eye to "${stringResource(Res.string.file_preview_action_open)} ${attachment.name}"
         } else {
-            RaftAttachmentPreviewCardAction(
-                RaftLucideIconName.Download,
-                "${stringResource(Res.string.file_preview_action_download)} ${attachment.name}",
-                onOpen
-            )
+            RaftLucideIconName.Download to "${stringResource(Res.string.file_preview_action_download)} ${attachment.name}"
         }
-    RaftAttachmentPreviewCard(
+    val badge = threadFileTypeBadgeLabel(attachment.name)
+    RaftMessageAttachmentCard(
         title = attachment.name,
-        typeBadge = threadFileTypeBadgeLabel(attachment.name),
+        typeBadge = if (badge != null) ({ ThreadFileTypeBadge(label = badge, inline = true) }) else null,
         meta = statusLabel ?: metaLabel,
         metaSize = attachment.displaySizeLabel().takeIf { statusLabel == null },
         commentCount = if (statusLabel == null) attachment.threadAttachmentCardCommentCount() else 0,
-        actions = listOf(affordance),
         loading = isOpening || centerEntry?.status == RaftDownloadStatus.Downloading,
         failed = centerLabel == null && openState.threadAttachmentOpenFailed(),
         onClick = if (isOpening) ({}) else onOpen
-    )
+    ) {
+        RaftMessageAttachmentAction(onClick = onOpen, contentDescription = affordanceLabel) {
+            RaftSlotIcon(affordanceIcon, size = 16.dp)
+        }
+    }
 }
 
 @Composable
@@ -33941,12 +37048,8 @@ internal fun ThreadAttachmentCommentsSheet(
                     ) {
                         Text(
                             text = stringResource(Res.string.thread_comments_title),
-                            style =
-                                RaftType.PageTitle.copy(
-                                    fontSize = 18.sp,
-                                    lineHeight = 22.sp,
-                                    color = RaftColor.TextBlack
-                                ),
+                            // Web AttachmentCommentsPanel PanelTitle: text-headline (17/22 700).
+                            style = RaftType.Headline.copy(color = RaftColor.TextBlack),
                             color = RaftColor.TextBlack,
                             modifier = Modifier.weight(1f),
                             maxLines = 1,
@@ -34008,18 +37111,15 @@ internal fun ThreadAttachmentCommentsContent(
         }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ThreadAttachmentCommentsHeader(state.attachment)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ThreadAttachmentCommentsFilterChip(
-                label = stringResource(Res.string.thread_comments_filter_all),
+        // All / Unresolved: two views of the same comments, one always picked (raft-ui SegmentedControl).
+        RaftSegmentedControl {
+            RaftSegment(
+                text = stringResource(Res.string.thread_comments_filter_all),
                 selected = state.filter != "unresolved",
                 onClick = { onFilterChange("all") }
             )
-            ThreadAttachmentCommentsFilterChip(
-                label = stringResource(Res.string.thread_comments_filter_unresolved),
+            RaftSegment(
+                text = stringResource(Res.string.thread_comments_filter_unresolved),
                 selected = state.filter == "unresolved",
                 onClick = { onFilterChange("unresolved") }
             )
@@ -34126,23 +37226,6 @@ private fun ThreadAttachmentCommentsHeader(attachment: RaftThreadAttachmentItem)
 }
 
 @Composable
-private fun ThreadAttachmentCommentsFilterChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    RaftToolbarChip(
-        label = label,
-        onClick = onClick,
-        active = selected,
-        uppercase = false,
-        activeBackgroundColor = RaftColor.BrandYellow,
-        inactiveBackgroundColor = RaftColor.SurfaceWhite,
-        borderColor = RaftColor.BorderBlack
-    )
-}
-
-@Composable
 private fun ThreadAttachmentCommentRow(
     comment: ThreadAttachmentCommentItem,
     canComment: Boolean,
@@ -34183,7 +37266,8 @@ private fun ThreadAttachmentCommentRow(
         }
         Text(
             text = comment.content,
-            style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
+            // Web AttachmentCommentsPanel: MessageItemBody text-body (16/24 400).
+            style = RaftType.Body.copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack,
             maxLines = 4,
             overflow = TextOverflow.Ellipsis
@@ -34221,15 +37305,13 @@ private fun ThreadAttachmentCommentTinyButton(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    RaftBrutalActionButton(
-        label = label,
-        leadingIcon = icon,
+    RaftButton(
+        text = label,
         onClick = onClick,
+        variant = RaftButtonVariant.Default,
+        size = RaftButtonSize.Md,
         enabled = enabled,
-        backgroundColor = RaftColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = 28.dp,
-        textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack)
+        leadingIcon = { RaftSlotIcon(icon) }
     )
 }
 
@@ -34263,16 +37345,22 @@ private fun ThreadAttachmentCommentComposer(
                 color = RaftColor.TextMutedGray
             )
         }
-        RaftBrutalTextField(
+        RaftField(
             label = stringResource(Res.string.thread_comments_label),
-            value = state.draft,
-            placeholder = stringResource(Res.string.thread_comments_placeholder),
-            enabled = enabled,
-            maxLines = if (compact) 3 else 4,
-            fieldMinHeight = if (compact) 64.dp else 82.dp,
-            onValueChange = onDraftChange,
-            password = false
-        )
+            modifier = Modifier.fillMaxWidth(),
+            enabled = enabled
+        ) {
+            // 3 (compact) / 4 lines of the 24dp field line inside the 10dp padding, then it scrolls.
+            RaftTextarea(
+                value = state.draft,
+                onValueChange = onDraftChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = stringResource(Res.string.thread_comments_placeholder),
+                minHeight = if (compact) 64.dp else 82.dp,
+                maxHeight = if (compact) 92.dp else 116.dp,
+                inputModifier = rememberRaftTextareaEditorModifier()
+            )
+        }
         RaftModalFullWidthActionButton(
             label =
                 if (state.sending) {
@@ -34442,6 +37530,7 @@ private fun ThreadTasksTab(
     openTaskEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     timeContext: RaftTimeContext? = null,
+    taskV2Enabled: Boolean = false,
     onOpenTask: (TaskSummary) -> Unit,
     onIntent: (SharedTasksRouteIntent) -> Unit
 ) {
@@ -34465,6 +37554,7 @@ private fun ThreadTasksTab(
         identityOptions = identityOptions,
         draftProjection = draftProjection,
         timeContext = timeContext,
+        taskV2Enabled = taskV2Enabled,
         onOpenTask = if (openTaskEnabled) {
             onOpenTask
         } else {
@@ -34630,7 +37720,10 @@ internal fun ThreadForwardBundleCard(
             ?: build.raft.designsystem.components.RaftMessageForwardedBundleDefaults.FallbackFoldHeight
     val source =
         bundle.visibleSource?.let { visible ->
-            if (visible.thread && !visible.label.endsWith(" · thread")) {
+            val taskTitle = visible.taskTitle
+            if (taskTitle != null) {
+                stringResource(Res.string.thread_forward_from_task, visible.label, taskTitle)
+            } else if (visible.thread && !visible.label.endsWith(" · thread")) {
                 stringResource(Res.string.thread_forward_from_thread, visible.label)
             } else {
                 stringResource(Res.string.thread_forward_from_source, visible.label)
@@ -34643,7 +37736,7 @@ internal fun ThreadForwardBundleCard(
         } else {
             null
         }
-    val liveTimeContext = LocalRaftTimeContextProvider.current?.current
+    val liveTimeContext = currentRaftTimeContextProvider?.current
     build.raft.designsystem.components.RaftMessageForwardedBundle(
         label = stringResource(Res.string.thread_forward_badge),
         countLabel =
@@ -34795,17 +37888,22 @@ internal data class ThreadForwardOutcome(
 internal data class ThreadForwardSuccessBanner(
     val target: ForwardMessageTarget,
     val destination: ForwardMessageDestination,
-    val messageId: MessageId
+    val messageId: MessageId,
+    /** The posted message's conversation as the server answered it (slock #12620): a thread's or a task's. */
+    val conversationContext: MessageConversationContext? = null
 )
 
 internal fun ForwardMessageTarget.forwardSuccessDisplayTitle(): String =
-    when (channelKind) {
-        ConversationKind.DirectMessage -> title.trim().ifBlank { "DM" }
+    when {
+        // web `forwardDeliveryLabel`: a thread / task row's own title (`#ch › first line`).
+        isForwardConversationTarget() -> title.trim()
+        channelKind == ConversationKind.DirectMessage -> title.trim().ifBlank { "DM" }
         else -> title.trim().removePrefix("#").takeIf { it.isNotBlank() }?.let { "#$it" } ?: "#channel"
     }
 
 internal fun ThreadForwardSuccessBanner.forwardSuccessConversationIdentity(): ThreadLaunchConversationIdentity? {
     val resolvedChannelId = destination.channelId.value.trim().takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
+    if (target.isForwardConversationTarget()) return forwardConversationDestinationIdentity(resolvedChannelId)
     val resolvedKind = destination.channelKind.takeUnless { it == ConversationKind.Thread } ?: ConversationKind.Channel
     if (resolvedKind == ConversationKind.DirectMessage && target.memberId == null) return null
     return buildThreadLaunchConversationIdentity(
@@ -34826,6 +37924,48 @@ internal fun ThreadForwardSuccessBanner.forwardSuccessConversationIdentity(): Th
             }
     )
 }
+
+/**
+ * web `forwardDeliveryOpener` (slock #12621 forwardViewInChat.ts @ b088f8467e): a thread / task
+ * destination is located ONLY by the conversation the server answered for the posted message
+ * (a row's own id is its conversation channel's, not a parent message's or a task's). Without that
+ * context there is no "View in chat" rather than a guessed one.
+ */
+private fun ThreadForwardSuccessBanner.forwardConversationDestinationIdentity(
+    conversationChannelId: ChannelId
+): ThreadLaunchConversationIdentity? {
+    val context = conversationContext ?: return null
+    return when (context.channelKind) {
+        ConversationKind.Task -> {
+            if (context.parentChannelId == null || context.taskId == null) return null
+            taskConversationLaunchIdentity(conversationChannelId)
+        }
+        ConversationKind.Thread -> {
+            val parentChannelId = context.parentChannelId ?: return null
+            val parentMessageId = context.parentMessageId ?: return null
+            val parentKind = context.parentChannelKind
+            buildThreadLaunchConversationIdentity(
+                kind = ConversationKind.Thread,
+                channelId = conversationChannelId,
+                threadChannelId = conversationChannelId,
+                parentChannelId = parentChannelId,
+                parentMessageId = parentMessageId,
+                parentSurfaceKind =
+                    if (parentKind == ConversationKind.DirectMessage) {
+                        RaftThreadSurfaceKind.DirectMessage
+                    } else {
+                        RaftThreadSurfaceKind.Channel
+                    },
+                parentChannelKind = parentKind?.toWireChannelKindOrNull()
+            )
+        }
+        else -> null
+    }
+}
+
+/** web: a thread / task row whose answer carried no conversation gets a toast without an action. */
+internal fun ThreadForwardSuccessBanner.forwardSuccessViewInChatAvailable(): Boolean =
+    !target.isForwardConversationTarget() || forwardSuccessConversationIdentity() != null
 
 internal data class ThreadForwardBatchOutcome(
     val failureCode: String? = null,
@@ -34892,7 +38032,11 @@ internal suspend fun executeThreadForwardBatch(
         receipt.postResolveFailureCode(destination)?.let {
             return ThreadForwardBatchOutcome(failureCode = it)
         }
-        if (destination.channelId == sourceChannelId && destination.serverId == frozenSourceServerId) {
+        if (
+            destination.channelId == sourceChannelId &&
+            destination.serverId == frozenSourceServerId &&
+            !receipt.allowsForwardIntoSource()
+        ) {
             return ThreadForwardBatchOutcome(failureCode = "forward_source_target_forbidden")
         }
         destinations += destination
@@ -34974,7 +38118,11 @@ internal suspend fun executeThreadForward(
     receipt.postResolveFailureCode(destination)?.let {
         return ThreadForwardOutcome(failureCode = it)
     }
-    if (destination.serverId == frozenSourceServerId && destination.channelId == sourceChannelId) {
+    if (
+        destination.serverId == frozenSourceServerId &&
+        destination.channelId == sourceChannelId &&
+        !receipt.allowsForwardIntoSource()
+    ) {
         return ThreadForwardOutcome(failureCode = "forward_source_target_forbidden")
     }
     val forwarded =
@@ -35031,11 +38179,14 @@ internal fun ForwardMessageTarget.toRaftForwardTargetPickerItem(): RaftForwardTa
         cacheMemberId = memberId?.value,
         cacheServerId = serverId.value,
         visualKind = forwardTargetVisualKind(),
+        current = current && isForwardConversationTarget(),
         payload = this
     )
 
 internal fun ForwardMessageTarget.forwardTargetVisualKind(): RaftForwardTargetVisualKind =
     when {
+        kind == ForwardMessageTargetKind.ConversationThread -> RaftForwardTargetVisualKind.Thread
+        kind == ForwardMessageTargetKind.ConversationTask -> RaftForwardTargetVisualKind.Task
         kind == ForwardMessageTargetKind.RecentDirectMessage ||
             kind == ForwardMessageTargetKind.HumanDirectMessageCandidate ||
             kind == ForwardMessageTargetKind.AgentDirectMessageCandidate ->
@@ -35061,6 +38212,9 @@ private fun ForwardMessageTarget.threadForwardTargetSubtitle(): String =
                     ForwardMessageTargetKind.PublicChannelUnjoined -> "Public channel"
                     ForwardMessageTargetKind.HumanDirectMessageCandidate -> "Member"
                     ForwardMessageTargetKind.AgentDirectMessageCandidate -> "Agent"
+                    // The row reads its one-line title only (web `ForwardConversationTargetTitle`).
+                    ForwardMessageTargetKind.ConversationThread,
+                    ForwardMessageTargetKind.ConversationTask -> ""
                 }
             }
     }
@@ -35310,12 +38464,11 @@ private fun ThreadForwardBundleLoadFailure(
             color = RaftColor.TextBlack
         )
         Spacer(Modifier.height(RaftAppSpacing.Md))
-        RaftBrutalActionButton(
-            label = stringResource(Res.string.common_retry),
+        RaftButton(
+            text = stringResource(Res.string.common_retry),
             onClick = onRetry,
-            backgroundColor = RaftColor.SurfaceWhite,
-            minWidth = 0.dp,
-            minHeight = 36.dp
+            variant = RaftButtonVariant.Default,
+            size = RaftButtonSize.Md
         )
     }
 }
@@ -35433,10 +38586,13 @@ internal fun <T> RaftForwardTargetPicker(
     RaftBackHandler(enabled = state.dismissEnabled, label = "thread_forward_targets") {
         onIntent(RaftForwardTargetPickerIntent.Dismiss)
     }
-    LaunchedEffect(state.sessionKey, state.canLoadMore, state.appending, state.items.size, state.interactive) {
+    // The "Threads & tasks" group (its rows plus two section titles) sits before the Recent rows.
+    val recentListOffset = state.visibleConversationItems.size.let { if (it > 0) it + 2 else 0 }
+    LaunchedEffect(state.sessionKey, state.canLoadMore, state.appending, state.items.size, state.interactive, recentListOffset) {
         snapshotFlow {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-            state.canLoadMore && state.interactive && !state.appending && lastVisible >= state.items.lastIndex - 2
+            state.canLoadMore && state.interactive && !state.appending &&
+                lastVisible >= state.items.lastIndex + recentListOffset - 2
         }.distinctUntilChanged().collect { shouldLoadMore ->
             if (shouldLoadMore) onIntent(RaftForwardTargetPickerIntent.LoadMore)
         }
@@ -35485,22 +38641,12 @@ internal fun <T> RaftForwardTargetPicker(
             )
             topContent?.invoke()
             threadForwardSkippedWarning(skippedCount, nestedForwardCount)?.let { warning ->
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, top = 12.dp, end = 16.dp)
-                            // raft-ui warning Banner chrome: warning-soft fill, hairline, container radius.
-                            .background(RaftColor.WarningSoft, RoundedCornerShape(RaftAppRadius.Container))
-                            .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Container))
-                            .padding(10.dp)
-                ) {
-                    Text(
-                        text = warning,
-                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                        color = RaftColor.TextBlack
-                    )
-                }
+                RaftBanner(
+                    description = warning,
+                    status = RaftBannerStatus.Warning,
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp),
+                    size = RaftBannerSize.Sm,
+                )
             }
             // web `InputGroup` with the inline-start Search addon, inside `main p-3`, `mb-3`.
             RaftForwardPickerSearchField(
@@ -35510,22 +38656,27 @@ internal fun <T> RaftForwardTargetPicker(
                 focusKey = state.sessionKey,
                 onQueryChange = { onIntent(RaftForwardTargetPickerIntent.QueryChanged(it)) }
             )
-            RaftForwardPickerEyebrow(
-                text =
-                    when {
-                        multiSelect && singleTapContinues && state.selectedKeys.isNotEmpty() ->
-                            stringResource(Res.string.thread_forward_selected, state.selectedKeys.size)
-                        state.query.isBlank() -> stringResource(Res.string.thread_forward_recent)
-                        else -> stringResource(Res.string.thread_forward_search_results)
-                    },
-                modifier = Modifier.padding(top = ForwardPickerBodyPadding)
-            )
+            val conversationItems = state.visibleConversationItems
+            if (state.forwardPickerTopEyebrowVisible(multiSelect && singleTapContinues)) {
+                RaftForwardPickerEyebrow(
+                    text =
+                        when {
+                            multiSelect && singleTapContinues && state.selectedKeys.isNotEmpty() ->
+                                stringResource(Res.string.thread_forward_selected, state.selectedKeys.size)
+                            state.query.isBlank() -> stringResource(Res.string.thread_forward_recent)
+                            else -> stringResource(Res.string.thread_forward_search_results)
+                        },
+                    modifier = Modifier.padding(top = ForwardPickerBodyPadding)
+                )
+            } else {
+                Spacer(modifier = Modifier.height(ForwardPickerBodyPadding))
+            }
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                if (state.items.isEmpty() && loading) {
+                if (state.items.isEmpty() && conversationItems.isEmpty() && loading) {
                     Column(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
                         repeat(4) { ThreadForwardSearchingSkeletonRow() }
                     }
-                } else if (state.items.isEmpty()) {
+                } else if (state.items.isEmpty() && conversationItems.isEmpty()) {
                     ThreadModalEmptyState(
                         title =
                             when {
@@ -35558,6 +38709,41 @@ internal fun <T> RaftForwardTargetPicker(
                         contentPadding = PaddingValues(bottom = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(ForwardPickerListRowGap)
                     ) {
+                        // slock #12621 layout A: "Threads & tasks" above "Recent", each under its own title.
+                        if (conversationItems.isNotEmpty()) {
+                            item(key = "forward-conversation-group-title") {
+                                RaftForwardPickerEyebrow(
+                                    text = stringResource(Res.string.thread_forward_conversations),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                            items(conversationItems.size, key = { "conversation:" + conversationItems[it].rowKey }) { index ->
+                                val rowTarget = conversationItems[index]
+                                val rowGeneration = state.requestGeneration
+                                RaftForwardPickerTargetRow(
+                                    // Only the group's first row can be the conversation it was opened from.
+                                    target = if (index == 0) rowTarget else rowTarget.copy(current = false),
+                                    selected = rowTarget.stableKey in state.selectedKeys,
+                                    showCheckbox = multiSelect,
+                                    interactive = state.interactive,
+                                    onClick = {
+                                        raftForwardPickerRowTap(
+                                            state = state,
+                                            rowTarget = rowTarget,
+                                            rowGeneration = rowGeneration,
+                                            multiSelect = multiSelect,
+                                            onIntent = onIntent
+                                        )
+                                    }
+                                )
+                            }
+                            item(key = "forward-recent-group-title") {
+                                RaftForwardPickerEyebrow(
+                                    text = stringResource(Res.string.thread_forward_recent),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
                         items(state.items.size, key = { state.items[it].rowKey }) { index ->
                             // task #803: freeze the row identity at RENDER time.
                             // Re-reading targets[index] inside onClick raced list
@@ -35570,33 +38756,13 @@ internal fun <T> RaftForwardTargetPicker(
                                 showCheckbox = multiSelect,
                                 interactive = state.interactive,
                                 onClick = {
-                                    if (state.interactive) {
-                                        if (multiSelect) {
-                                            onIntent(
-                                                RaftForwardTargetPickerIntent.TargetSelected(
-                                                    item = rowTarget,
-                                                    renderGeneration = rowGeneration
-                                                )
-                                            )
-                                        } else {
-                                            // One tap is one destination: drop any earlier pick
-                                            // (back from the note step), pick this, go on.
-                                            state.selectedKeys
-                                                .filter { it != rowTarget.stableKey }
-                                                .forEach { key ->
-                                                    onIntent(RaftForwardTargetPickerIntent.RemoveSelection(key))
-                                                }
-                                            if (rowTarget.stableKey !in state.selectedKeys) {
-                                                onIntent(
-                                                    RaftForwardTargetPickerIntent.TargetSelected(
-                                                        item = rowTarget,
-                                                        renderGeneration = rowGeneration
-                                                    )
-                                                )
-                                            }
-                                            onIntent(RaftForwardTargetPickerIntent.Continue)
-                                        }
-                                    }
+                                    raftForwardPickerRowTap(
+                                        state = state,
+                                        rowTarget = rowTarget,
+                                        rowGeneration = rowGeneration,
+                                        multiSelect = multiSelect,
+                                        onIntent = onIntent
+                                    )
                                 }
                             )
                         }
@@ -35652,7 +38818,8 @@ internal fun <T> RaftForwardTargetPicker(
                 ) {
                     Text(
                         text = stringResource(Res.string.thread_forward_destinations_selected, state.selectedItems.size),
-                        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        // Web ForwardComposerMobile SectionEyebrow: text-footnote font-bold (13/18 700).
+                        style = RaftType.SectionLabel,
                         color = RaftColor.TextMutedGray
                     )
                     val backSwipeRowState = rememberLazyListState()
@@ -35679,6 +38846,29 @@ internal fun <T> RaftForwardTargetPicker(
             }
         }
     }
+}
+
+/** One row tap of the forward picker (a Recent / search row or a "Threads & tasks" row). */
+private fun <T> raftForwardPickerRowTap(
+    state: RaftForwardTargetPickerUiState<T>,
+    rowTarget: RaftForwardTargetPickerItem<T>,
+    rowGeneration: Int,
+    multiSelect: Boolean,
+    onIntent: (RaftForwardTargetPickerIntent<T>) -> Unit
+) {
+    if (!state.interactive) return
+    if (multiSelect) {
+        onIntent(RaftForwardTargetPickerIntent.TargetSelected(item = rowTarget, renderGeneration = rowGeneration))
+        return
+    }
+    // One tap is one destination: drop any earlier pick (back from the note step), pick this, go on.
+    state.selectedKeys
+        .filter { it != rowTarget.stableKey }
+        .forEach { key -> onIntent(RaftForwardTargetPickerIntent.RemoveSelection(key)) }
+    if (rowTarget.stableKey !in state.selectedKeys) {
+        onIntent(RaftForwardTargetPickerIntent.TargetSelected(item = rowTarget, renderGeneration = rowGeneration))
+    }
+    onIntent(RaftForwardTargetPickerIntent.Continue)
 }
 
 @Composable
@@ -35722,20 +38912,26 @@ internal fun ThreadForwardNoteDialog(
                 )
             }
             item {
-                RaftBrutalTextField(
+                RaftField(
                     label = stringResource(Res.string.thread_state_note),
-                    value = note,
-                    placeholder =
-                        if (messageCount == 1) {
-                            stringResource(Res.string.thread_forward_placeholder_one)
-                        } else {
-                            stringResource(Res.string.thread_forward_placeholder_many, messageCount)
-                        },
-                    maxLines = 3,
-                    fieldMinHeight = 76.dp,
-                    onValueChange = onNoteChange,
-                    password = false
-                )
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Three 24dp field lines inside the 10dp padding, then it scrolls.
+                    RaftTextarea(
+                        value = note,
+                        onValueChange = onNoteChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder =
+                            if (messageCount == 1) {
+                                stringResource(Res.string.thread_forward_placeholder_one)
+                            } else {
+                                stringResource(Res.string.thread_forward_placeholder_many, messageCount)
+                            },
+                        minHeight = 76.dp,
+                        maxHeight = 92.dp,
+                        inputModifier = rememberRaftTextareaEditorModifier()
+                    )
+                }
             }
         }
         RaftDialogFooter {
@@ -35784,12 +38980,24 @@ private fun ThreadForwardSearchingSkeletonRow() {
     }
 }
 
+/**
+ * web SelectModeToolbar (packages/web/src/components/message/SelectModeToolbar.tsx, #11761 /
+ * #12152): the toolbar for selected messages floats, centred, over the bottom of the
+ * conversation in the composer's place: raft-ui MessageMultiSelectToolbar
+ * ([build.raft.designsystem.components.RaftMessageMultiSelectToolbar]), 20dp from the sides
+ * (the composer's edge) and 12dp above the bottom plus the safe area. Nothing behind it: no
+ * full-width bar, no top divider.
+ *
+ * Order: (in a thread, the select-all checkbox, botiverse/slock #12681) · "N selected" · Copy
+ * Link (icon only, as on a phone at 390dp) · Forward (the one primary) · More (Generate Image,
+ * Copy MD) · × (Cancel, last). With 0 selected the toolbar stays, every action is disabled, and
+ * only × ends the selection.
+ */
 @Composable
 internal fun ThreadShareSelectionToolbar(
     selectedCount: Int,
-    selectableCount: Int,
     onCancel: () -> Unit,
-    onSelectAll: (() -> Unit)? = null,
+    selectAll: ThreadShareSelectAll? = null,
     onForward: () -> Unit,
     forwardEnabled: Boolean = true,
     onExportImage: () -> Unit,
@@ -35802,14 +39010,14 @@ internal fun ThreadShareSelectionToolbar(
     val moreAnchor = remember { RaftLiveRootAnchorRef(identity = "thread_share_selection_more") }
     val moreItems =
         listOfNotNull(
-            RaftBrutalDropdownMenuItem(
+            RaftUiMenuItem(
                 id = "generate-image",
                 label = stringResource(Res.string.thread_share_generate_image),
                 icon = RaftLucideIconName.Image,
                 enabled = hasSelection
             ),
             onCopyMarkdown?.let {
-                RaftBrutalDropdownMenuItem(
+                RaftUiMenuItem(
                     id = "copy-md",
                     label = stringResource(Res.string.thread_share_copy_markdown),
                     icon = RaftLucideIconName.Copy,
@@ -35817,79 +39025,77 @@ internal fun ThreadShareSelectionToolbar(
                 )
             }
         )
-    Column(
+    val d = build.raft.designsystem.components.RaftMessageMultiSelectToolbarDefaults
+    Box(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(RaftColor.Canvas)
+                .raftSafeAreaHorizontalPadding()
+                .padding(start = d.EdgeInset, end = d.EdgeInset, bottom = d.BottomOffset + bottomSafeArea),
+        contentAlignment = Alignment.BottomCenter
     ) {
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .raftSafeAreaHorizontalPadding()
-                    .padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp + bottomSafeArea),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // web SelectModeToolbar: `font-mono text-mono-meta text-foreground-muted` count,
-            // then `gap-1` sm buttons — ghost Cancel, accent Forward, outline icon-sm Copy
-            // and More (14dp glyphs).
-            build.raft.designsystem.text.RaftText(
-                text = stringResource(Res.string.thread_forward_selected, selectedCount),
-                style = build.raft.designsystem.theme.RaftTheme.typography.monoMeta,
-                color = build.raft.designsystem.theme.RaftTheme.colors.foregroundMuted,
-                maxLines = 1
-            )
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (onSelectAll != null) {
-                    ThreadShareSelectionActionButton(
-                        label = stringResource(Res.string.thread_comments_filter_all),
-                        icon = RaftLucideIconName.Check,
-                        onClick = onSelectAll,
-                        enabled = hasSelection && selectedCount < selectableCount,
-                        variant = build.raft.designsystem.components.RaftButtonVariant.Default
-                    )
+        val saysAll = selectAll != null && threadShareSelectionSaysAll(selectAll.check, selectAll.complete)
+        val selectAllLabel = stringResource(Res.string.thread_share_selection_select_all_in_thread)
+        build.raft.designsystem.components.RaftMessageMultiSelectToolbar(
+            count =
+                when {
+                    !saysAll -> stringResource(Res.string.thread_forward_selected, selectedCount)
+                    selectedCount == 1 -> stringResource(Res.string.thread_share_selection_all_selected_one, selectedCount)
+                    else -> stringResource(Res.string.thread_share_selection_all_selected, selectedCount)
+                },
+            label = stringResource(Res.string.thread_share_selection_toolbar_label),
+            leading =
+                selectAll?.let { state ->
+                    {
+                        build.raft.designsystem.components.RaftCheckbox(
+                            checked = state.check == ThreadShareSelectAllCheck.Checked,
+                            indeterminate = state.check == ThreadShareSelectAllCheck.Indeterminate,
+                            onCheckedChange = { state.onClick() },
+                            enabled = state.enabled,
+                            modifier = Modifier.semantics { contentDescription = selectAllLabel }
+                        )
+                    }
                 }
-                ThreadShareSelectionActionButton(
-                    label = stringResource(Res.string.common_cancel),
-                    icon = RaftLucideIconName.X,
-                    onClick = onCancel,
-                    enabled = true,
-                    variant = build.raft.designsystem.components.RaftButtonVariant.Ghost
-                )
-                ThreadShareSelectionActionButton(
-                    label = stringResource(Res.string.thread_action_forward),
-                    icon = RaftLucideIconName.Send,
-                    onClick = onForward,
-                    enabled = hasSelection && forwardEnabled,
-                    variant = build.raft.designsystem.components.RaftButtonVariant.Primary
-                )
-                ThreadShareSelectionIconButton(
-                    icon = RaftLucideIconName.Copy,
-                    tooltip = stringResource(Res.string.thread_action_copy_link),
-                    onClick = onCopyLinks,
-                    enabled = hasSelection
-                )
-                ThreadShareSelectionIconButton(
-                    icon = RaftLucideIconName.Ellipsis,
-                    tooltip = stringResource(Res.string.thread_new_message_menu_more),
-                    onClick = {
-                        moreAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { moreMenuAnchor = it }
-                    },
-                    enabled = hasSelection,
-                    modifier = Modifier.raftCaptureLiveRootAnchor(moreAnchor)
-                )
+        ) {
+            val copyLinkLabel = stringResource(Res.string.thread_action_copy_link)
+            build.raft.designsystem.components.RaftMessageMultiSelectToolbarIconButton(
+                onClick = onCopyLinks,
+                tooltip = copyLinkLabel,
+                enabled = hasSelection
+            ) {
+                ThreadShareSelectionGlyph(RaftLucideIconName.Copy, 18.dp)
+            }
+            build.raft.designsystem.components.RaftMessageMultiSelectToolbarButton(
+                label = stringResource(Res.string.thread_action_forward),
+                onClick = onForward,
+                variant = build.raft.designsystem.components.RaftButtonVariant.Primary,
+                enabled = hasSelection && forwardEnabled,
+                icon = { ThreadShareSelectionGlyph(RaftLucideIconName.Forward, 16.dp) }
+            )
+            build.raft.designsystem.components.RaftMessageMultiSelectToolbarIconButton(
+                onClick = {
+                    moreAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { moreMenuAnchor = it }
+                },
+                tooltip = stringResource(Res.string.thread_new_message_menu_more),
+                contentDescription = stringResource(Res.string.thread_share_selection_more_actions),
+                // Everything in More acts on the selection.
+                enabled = hasSelection,
+                open = moreMenuAnchor != null,
+                modifier = Modifier.raftCaptureLiveRootAnchor(moreAnchor)
+            ) {
+                ThreadShareSelectionGlyph(RaftLucideIconName.Ellipsis, 18.dp)
+            }
+            build.raft.designsystem.components.RaftMessageMultiSelectToolbarIconButton(
+                onClick = onCancel,
+                tooltip = stringResource(Res.string.common_cancel)
+            ) {
+                ThreadShareSelectionGlyph(RaftLucideIconName.X, 18.dp)
             }
         }
     }
     moreMenuAnchor?.let { anchor ->
-        RaftBrutalDropdownMenu(
+        RaftUiControlledMenu(
+            expanded = true,
             anchor = anchor,
             items = moreItems,
             onSelect = { id ->
@@ -35900,54 +39106,32 @@ internal fun ThreadShareSelectionToolbar(
                 }
             },
             onDismiss = { moreMenuAnchor = null },
+            // web SelectModeToolbar's DropdownMenuContent `side="top" align="end" sideOffset={8}`.
+            verticalOffset = 8.dp,
             verticalPlacement = RaftFloatingVerticalPlacement.Above
         )
     }
 }
 
 @Composable
-private fun ThreadShareSelectionActionButton(
-    label: String,
-    icon: RaftLucideIconName,
-    onClick: () -> Unit,
-    enabled: Boolean,
-    variant: build.raft.designsystem.components.RaftButtonVariant
-) {
-    build.raft.designsystem.components.RaftButton(
-        text = label,
-        onClick = onClick,
-        enabled = enabled,
-        variant = variant,
-        leadingIcon = { ThreadShareSelectionGlyph(icon) }
-    )
-}
-
-@Composable
-private fun ThreadShareSelectionIconButton(
-    icon: RaftLucideIconName,
-    tooltip: String,
-    onClick: () -> Unit,
-    enabled: Boolean,
-    modifier: Modifier = Modifier
-) {
-    build.raft.designsystem.components.RaftIconButton(
-        onClick = onClick,
-        tooltip = tooltip,
-        enabled = enabled,
-        modifier = modifier,
-        variant = build.raft.designsystem.components.RaftButtonVariant.Default
-    ) {
-        ThreadShareSelectionGlyph(icon)
-    }
-}
-
-@Composable
-private fun ThreadShareSelectionGlyph(icon: RaftLucideIconName) {
+private fun ThreadShareSelectionGlyph(icon: RaftLucideIconName, size: Dp) {
     val ink =
         build.raft.designsystem.theme.LocalRaftContentColor.current.takeIf { it != Color.Unspecified }
             ?: build.raft.designsystem.theme.RaftTheme.colors.foreground
-    RaftLucideIcon(icon, modifier = Modifier.size(14.dp), color = raftArgbHex(ink))
+    RaftLucideIcon(icon, modifier = Modifier.size(size), color = raftArgbHex(ink))
 }
+
+/**
+ * Share preview's off-screen image (Android, desktop; see [ThreadShareImageOffscreenRenderer]):
+ * the image laid out at [choice]'s width ([image] null until the first one is ready, or when it
+ * failed), whether a new layout is [rendering], and the width picker's change.
+ */
+internal data class ThreadSharePreviewOffscreen(
+    val image: ThreadShareRenderedImage?,
+    val rendering: Boolean,
+    val choice: ThreadShareImageWidthChoice,
+    val onChoiceChange: (ThreadShareImageWidthChoice) -> Unit,
+)
 
 @Composable
 internal fun ThreadSharePreviewModal(
@@ -35955,7 +39139,9 @@ internal fun ThreadSharePreviewModal(
     image: ThreadSharePreviewImage?,
     onDismiss: () -> Unit,
     onCopyMarkdown: () -> Unit,
-    onDownloadImage: () -> Unit
+    onDownloadImage: () -> Unit,
+    /** Non-null: the image is laid out off screen at a width the user picks (iOS: null, the native export). */
+    offscreen: ThreadSharePreviewOffscreen? = null,
 ) {
     RaftUnifiedDialog(
         title = stringResource(Res.string.thread_share_preview_title),
@@ -35964,11 +39150,35 @@ internal fun ThreadSharePreviewModal(
         minWidth = 320.dp,
         maxWidth = 360.dp,
         contentPadding = 16.dp,
-        titleFontSize = 16,
-        titleLineHeight = 20,
         contentSpacing = 12.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (offscreen != null) {
+                ThreadShareImageWidthPicker(choice = offscreen.choice, onChoiceChange = offscreen.onChoiceChange)
+                if (offscreen.image == null && !offscreen.rendering) {
+                    ThreadModalEmptyState(
+                        title = stringResource(Res.string.thread_share_export_failed),
+                        detail = stringResource(Res.string.thread_share_export_failed_detail)
+                    )
+                } else {
+                    ThreadShareImagePreview(image = offscreen.image?.preview, rendering = offscreen.rendering)
+                }
+                RaftDialogFooter {
+                    RaftModalActionButton(
+                        label = stringResource(Res.string.thread_share_copy_markdown),
+                        icon = RaftLucideIconName.Copy,
+                        onClick = onCopyMarkdown,
+                        enabled = messages.isNotEmpty()
+                    )
+                    RaftModalActionButton(
+                        label = stringResource(Res.string.thread_share_download),
+                        icon = RaftLucideIconName.Download,
+                        onClick = onDownloadImage,
+                        enabled = offscreen.image != null && !offscreen.rendering
+                    )
+                }
+                return@Column
+            }
             if (image?.uri.isNullOrBlank()) {
                 ThreadModalEmptyState(
                     title = stringResource(Res.string.thread_share_export_failed),
@@ -36030,8 +39240,6 @@ private fun ThreadRemoveMemberConfirmationDialog(
         dismissOnOutsideTap = false,
         minWidth = 320.dp,
         maxWidth = 384.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22
     ) {
         RaftUiBanner(
             status = RaftUiBannerStatus.Destructive,
@@ -36159,7 +39367,14 @@ internal fun threadAddMemberRowInteraction(
         clickEnabled = !blocked && !alreadyJoined && !adding
     )
 
-private fun RaftThreadScreenPayload.withThreadMembersProjection(
+/** Fills the known channel names from [home] while the store has not added them yet; never overrides them. */
+internal fun RaftThreadScreenPayload.withFirstFrameKnownMarkdownChannelNames(home: HomeSnapshot?): RaftThreadScreenPayload {
+    if (home == null || knownMarkdownChannelNames.isNotEmpty()) return this
+    val names = home.knownMarkdownChannelNames()
+    return if (names.isEmpty()) this else copy(knownMarkdownChannelNames = names)
+}
+
+internal fun RaftThreadScreenPayload.withThreadMembersProjection(
     projection: ThreadMembersProjection
 ): RaftThreadScreenPayload =
     copy(
@@ -36169,7 +39384,7 @@ private fun RaftThreadScreenPayload.withThreadMembersProjection(
         canAddMembers = projection.canAddMembers
     )
 
-private fun threadMembersProjection(
+internal fun threadMembersProjection(
     basePayload: RaftThreadScreenPayload,
     channelMembersSlice: SharedServerChannelMembersSlice,
     serverMembersEntry: SharedServerMembersEntry,
@@ -36462,32 +39677,6 @@ private fun ThreadSettingsActionUi.localizedThreadSettingsAction(): ThreadSettin
     }
 
 @Composable
-internal fun ThreadSettingsChannelActionButtons(
-    actions: List<RaftThreadSettingsAction>,
-    onOpenAction: (String) -> Unit
-) {
-    val effectiveActions =
-        actions
-            .normalizedThreadSettingsChannelActions(useDefaultWhenEmpty = false)
-            .map { it.localizedThreadSettingsAction() }
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        effectiveActions.forEach { action ->
-            RaftModalFullWidthActionButton(
-                label = action.title,
-                icon = action.icon,
-                color =
-                    if (action.id == ThreadSettingsDangerAction.Delete.id) {
-                        RaftColor.AccentRed
-                    } else {
-                        RaftColor.AccentOrange
-                    },
-                onClick = { onOpenAction(action.id) }
-            )
-        }
-    }
-}
-
-@Composable
 private fun ThreadSettingsDangerAction.localizedTitle(): String =
     when (this) {
         ThreadSettingsDangerAction.Visibility -> stringResource(Res.string.thread_settings_make_private_title)
@@ -36513,305 +39702,524 @@ private fun RaftThreadSettingsAction.canonicalThreadSettingsActionId(): String? 
         else -> null
     }
 
+/**
+ * The DM settings: the channel settings drawer in its DM mode (web ChannelOverflowMenu for a DM,
+ * task #703: the same sheet as a channel). The head is the person's or agent's name with an
+ * outline "Direct message" tag at every width (web ChannelDrawerTitle); the body is the shared
+ * Preferences only: Move to section, Mute where the server lets this DM be muted (a DM with an App
+ * bot) or a mute is stored, then Collapse long messages, worded for a conversation. No members,
+ * no Info form, no actions; Close chat stays in the Home row menu as on the web sidebar.
+ */
 @Composable
-private fun ThreadDirectMessageSettingsModal(
+internal fun ThreadDirectMessageSettingsDrawer(
+    name: String,
     activityMuteState: ThreadActivityMuteUiState?,
-    conversationPinState: ThreadConversationPinUiState?,
+    section: ChannelSectionPlacement?,
+    sectionEnabled: Boolean,
     longMessageCollapseSetting: RaftLongMessageCollapseConversationSetting? = null,
     onDismiss: () -> Unit,
     onToggleActivityMute: (() -> Unit)?,
-    onTogglePin: (() -> Unit)?
+    onMoveSection: (List<ChannelSectionMove>) -> Unit,
+    onCreateSection: (name: String, emoji: String?) -> Unit,
+    // A phone: a pushed page with Back in place of the drawer's × (ThreadSettingsPage.kt).
+    asPage: Boolean = false,
+    /** False for an agent's Lounge, which uses this DM-mode drawer but is not a DM. */
+    directMessageTag: Boolean = true,
 ) {
-    RaftUnifiedDialog(
-        title = stringResource(Res.string.thread_dm_settings_title),
+    ThreadSettingsSurface(
+        asPage = asPage,
+        title = name,
+        titleTrailing = if (directMessageTag) threadSettingsDirectMessageTag() else null,
+        closeLabel = stringResource(Res.string.thread_dm_settings_close),
         onDismiss = onDismiss
     ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                // web `px-4 pb-2` under the sheet body's `py-2`, on the channel drawer's margin.
+                .padding(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 16.dp)
+        ) {
+            ThreadSettingsPreferencesSection(
+                panel =
+                    ThreadChannelSettingsPanel(
+                        section = section,
+                        longMessageCollapse = longMessageCollapseSetting,
+                        writeActionsEnabled = sectionEnabled,
+                        onMoveSection = onMoveSection,
+                        onCreateSection = onCreateSection,
+                    ),
+                activityMuteState = activityMuteState,
+                onToggleActivityMute = onToggleActivityMute,
+                separator = false,
+                directMessage = true,
+            )
+        }
+    }
+}
+
+/**
+ * The channel settings: the web's channel Settings drawer (ChannelOverflowMenu with the
+ * EditChannelDialog panel inside, raft-ui Drawer from the right), as [RaftUnifiedSideDrawer].
+ * Head: ONE line (stdrc 2026-11-03): on a phone "Settings · #name", on a wide window, where the
+ * drawer is a panel beside the page, the channel's own "#name", with × at the end.
+ *
+ * Body, in the web order: the Members strip (summary, faces, the add tile), Info (Name and
+ * Description with their own Cancel and Save; read only for people who can't edit), Preferences
+ * (Move to section, Notifications, Collapse long messages), then Actions. No footer: Info saves
+ * in place, every preference applies at once. A tap beside the drawer keeps unsaved edits; a
+ * danger action asks first in a centred confirm over the drawer (web ConfirmDialog `layer={1}`).
+ */
+/** web inline Save: how long "Changes saved" shows before the form is idle again. */
+private const val ThreadSettingsSavedNoticeMillis = 1500L
+
+/**
+ * The channel settings: the web's channel Settings drawer (ChannelOverflowMenu with the
+ * EditChannelDialog panel inside, raft-ui Drawer from the right), as [RaftUnifiedSideDrawer].
+ * Head: ONE line (stdrc 2026-11-03): on a phone "Settings · #name", on a wide window, where the
+ * drawer is a panel beside the page, the channel's own "#name", with × at the end.
+ *
+ * Body, in the web order: the Members strip (summary, faces, the add tile; hidden on #all where
+ * the server hides people from members), Info (Name, Description and the Slack pick with their
+ * own Cancel and Save; read only for people who can't edit), Guest access, Preferences (Move to
+ * section, Notifications, Collapse long messages), then Actions (Make Private / Public, Archive /
+ * Unarchive, Leave, Stop All Agents, Delete / Disconnect, each with the web's gate and confirm).
+ * Info, Guest access and the actions run through the settings page's store
+ * ([ThreadChannelSettingsPanel.storeFactory]), so the drawer and the page are one implementation.
+ */
+@Composable
+internal fun ThreadSettingsModal(
+    // The conversation's channel kind: the wide head's visibility tag (web ChannelDrawerTitle).
+    channelKind: String? = null,
+    channelName: String,
+    subtitle: String?,
+    panel: ThreadChannelSettingsPanel = ThreadChannelSettingsPanel(),
+    activityMuteState: ThreadActivityMuteUiState? = null,
+    updateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
+    updateErrorCode: String? = null,
+    onDismiss: () -> Unit,
+    onSave: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+    onClearUpdateStatus: () -> Unit = {},
+    onToggleActivityMute: (() -> Unit)? = null,
+    // A phone: a pushed page with Back in place of the drawer's × (ThreadSettingsPage.kt).
+    asPage: Boolean = false,
+) {
+    val scope = rememberCoroutineScope()
+    val store = remember(panel.storeFactory != null) { panel.storeFactory?.invoke(scope) }
+    val storeStateFlow = remember(store) { store?.state ?: MutableStateFlow<ChannelSettingsState?>(null) }
+    val storeState by storeStateFlow.collectAsState()
+    LaunchedEffect(store) { store?.dispatch(ChannelSettingsIntent.Refresh) }
+    val loaded = storeState?.channel != null
+    val row =
+        (storeState?.channel ?: panel.channel)?.copy(name = channelName, subtitle = subtitle)
+            ?: HomeChannelRow(threadId = ThreadId(channelName), channelId = ChannelId(channelName), name = channelName, subtitle = subtitle)
+    val known = loaded || panel.channel != null
+    val permissions = if (loaded) storeState!!.permissions() else panel.permissions
+    val gate = panel.copy(channel = row.takeIf { known }, permissions = permissions)
+    val writeEnabled = if (store != null) storeState?.writeActionsEnabled == true else panel.writeActionsEnabled
+    val actionInFlight = storeState?.actionInFlight
+    val profileStatus = if (store != null) storeState?.profileStatus ?: ChannelProfileUpdateStatus.Idle else updateStatus
+    val profileError = if (store != null) storeState?.profileErrorCode else updateErrorCode
+    val slackBridge =
+        (if (store != null) storeState?.slackBridge else panel.slackBridge)
+            ?.takeIf { permissions != null && channelSettingsSlackBridgeApplies(row, permissions) }
+    val showGuestAccess = if (store != null) storeState?.showsGuestAccess() == true else panel.showGuestAccess
+    val model =
+        ChannelSettingsUiModel(
+            channel = row,
+            memberSlice = panel.members ?: SharedServerChannelMembersSlice(channelId = row.channelId.value),
+            pinned = false,
+            muted = activityMuteState?.muted == true,
+            permissions = permissions ?: ChannelSettingsPermissions(),
+            writeActionsEnabled = writeEnabled,
+            canStopAllAgents = panel.canStopAllAgents && !row.archived,
+            showGuestAccess = showGuestAccess,
+            actionInFlight = actionInFlight,
+        )
+    val actionRows = if (known && permissions != null) channelSettingsActionRows(model) else emptyList()
+    var confirm by remember { mutableStateOf<ChannelSettingsConfirm?>(null) }
+    var lastAction by remember { mutableStateOf<ChannelSettingsAction?>(null) }
+    var sosStore by remember { mutableStateOf<ChannelSosStore?>(null) }
+    // The drawer only learns about unsaved edits from the form; a tap beside it keeps them.
+    var infoDirty by remember(channelName, subtitle) { mutableStateOf(false) }
+    val profileSaving = profileStatus == ChannelProfileUpdateStatus.InFlight
+    val failureLabels = channelSettingsFailureLabels()
+    val errorStrings = localizedErrorPresentationStrings()
+    LaunchedEffect(storeState?.effect) {
+        val state = storeState ?: return@LaunchedEffect
+        when (val effect = state.effect) {
+            ChannelSettingsEffect.ProfileSaved ->
+                state.channel?.let { saved -> panel.onProfileSaved(saved.name.removePrefix("#"), saved.subtitle) }
+            is ChannelSettingsEffect.Updated -> {
+                confirm = null
+                panel.onChannelChanged()
+            }
+            is ChannelSettingsEffect.Failure -> {
+                confirm = null
+                if (effect.action != ChannelSettingsAction.Profile) {
+                    panel.onActionFailed(channelSettingsFailureMessage(effect, failureLabels, errorStrings))
+                }
+            }
+            ChannelSettingsEffect.Close -> {
+                confirm = null
+                onDismiss()
+                panel.onChannelClosed(lastAction, state.closedWithAccessLost)
+            }
+            // Web ArchivedNameCollisionBanner: the drawer closes, then the archived channel opens.
+            is ChannelSettingsEffect.OpenChannel -> {
+                confirm = null
+                onDismiss()
+                panel.onOpenChannel(effect.conversation, effect.unarchived)
+            }
+            null -> Unit
+        }
+        if (state.effect != null) store?.dispatch(ChannelSettingsIntent.ConsumeEffect)
+    }
+    // web inline Save: "Changes saved" shows for a moment, then the form is idle again.
+    LaunchedEffect(profileStatus) {
+        if (store != null && profileStatus == ChannelProfileUpdateStatus.Succeeded) {
+            delay(ThreadSettingsSavedNoticeMillis)
+            store.dispatch(ChannelSettingsIntent.ClearProfileStatus)
+        }
+    }
+    val callbacks =
+        ChannelSettingsCallbacks(
+            onConfirm = { confirm = it },
+            onUnarchive = {
+                lastAction = ChannelSettingsAction.Unarchive
+                store?.dispatch(ChannelSettingsIntent.Unarchive)
+            },
+            onStopAllAgents = {
+                panel.agentControlsApi?.let { api ->
+                    sosStore = ChannelSosStore(channelId = row.channelId, channelName = channelName, dataSource = api, scope = scope)
+                }
+            },
+            onSetGuestVisible = { store?.dispatch(ChannelSettingsIntent.SetGuestVisible(it)) },
+            onSetGuestJoinable = { store?.dispatch(ChannelSettingsIntent.SetGuestJoinable(it)) },
+        )
+    // The drawer fills a phone; past its max width it is a panel beside the page.
+    val wideWindow =
+        with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() } > RaftSideDrawerDefaults.MaxWidth
+    ThreadSettingsSurface(
+        asPage = asPage,
+        title =
+            if (wideWindow) {
+                "#$channelName"
+            } else {
+                stringResource(Res.string.thread_settings_panel_title)
+            },
+        titleTrailing = if (wideWindow) threadSettingsVisibilityTag(channelKind) else { { ThreadSettingsPanelChannelRef(channelName) } },
+        closeLabel = stringResource(Res.string.thread_settings_panel_close),
+        dismissOnOutsideTap = !infoDirty && !profileSaving && actionInFlight == null,
+        onDismiss = onDismiss
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            contentPadding = PaddingValues(bottom = 16.dp)
+        ) {
+            val members = panel.members?.takeUnless { panel.hideMembersStrip }
+            members?.let { slice ->
+                item(key = "members") {
+                    ChannelMembersSection(
+                        slice = slice,
+                        fallbackCount = row.memberCount,
+                        canAdd = panel.canAddMembers && !row.archived,
+                        agentStatusResolver = panel.agentStatusResolver,
+                        onOpen = panel.onOpenMembers,
+                        onAdd = panel.onAddMember,
+                        separator = false,
+                    )
+                }
+            }
+            item(key = "panel") {
+                // web `channel-settings-panel`: `border-t px-4 pt-3` under the members strip.
+                Column(Modifier.fillMaxWidth()) {
+                    if (members != null) RaftSeparator()
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
+                        var sectionAfterFirst = false
+                        val description = row.subtitle?.trim().orEmpty()
+                        if (gate.showsInfoForm()) {
+                            RaftFormSection(
+                                title = stringResource(Res.string.channel_settings_info),
+                                description = stringResource(Res.string.channel_settings_info_detail),
+                            ) {
+                                ChannelInfoForm(
+                                    channel = row,
+                                    nameEditable = gate.nameEditable(),
+                                    enabled = writeEnabled && !row.archived,
+                                    status = profileStatus,
+                                    errorCode = profileError,
+                                    slackBridge = slackBridge,
+                                    onSave = { name, newDescription, slack ->
+                                        if (store != null) {
+                                            store.dispatch(ChannelSettingsIntent.UpdateProfile(name, newDescription, slack))
+                                        } else {
+                                            onSave(channelName, subtitle.orEmpty(), name, newDescription)
+                                        }
+                                    },
+                                    onClearStatus = {
+                                        if (store != null) store.dispatch(ChannelSettingsIntent.ClearProfileStatus) else onClearUpdateStatus()
+                                    },
+                                    onDirtyChange = { infoDirty = it },
+                                    archivedCollision = store?.let { storeState?.archivedCollisionFor(it) },
+                                    errorMessage = storeState?.profileErrorMessage,
+                                )
+                            }
+                            sectionAfterFirst = true
+                        } else if (description.isNotEmpty()) {
+                            // web `channel-settings-info-readonly`: the description as text.
+                            RaftFormSection(title = stringResource(Res.string.channel_settings_info)) {
+                                RaftText(
+                                    description,
+                                    style = RaftTheme.typography.subhead,
+                                    color = RaftTheme.colors.foreground
+                                )
+                            }
+                            sectionAfterFirst = true
+                        }
+                        if (showGuestAccess) {
+                            if (sectionAfterFirst) RaftSeparator()
+                            ChannelGuestAccessSection(
+                                channel = row,
+                                enabled = writeEnabled && actionInFlight != ChannelSettingsAction.GuestAccess,
+                                onSetVisible = callbacks.onSetGuestVisible,
+                                onSetJoinable = callbacks.onSetGuestJoinable,
+                                inset = false,
+                            )
+                            sectionAfterFirst = true
+                        }
+                        ThreadSettingsPreferencesSection(
+                            panel = panel,
+                            activityMuteState = activityMuteState,
+                            onToggleActivityMute = onToggleActivityMute,
+                            separator = sectionAfterFirst,
+                        )
+                        if (actionRows.isNotEmpty()) {
+                            RaftSeparator()
+                            ChannelActionsSection(
+                                actions = actionRows,
+                                enabled = writeEnabled,
+                                actionInFlight = actionInFlight,
+                                callbacks = callbacks,
+                                inset = false,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+    val activeConfirm = confirm
+    if (activeConfirm != null) {
+        ChannelSettingsConfirmDialog(
+            confirm = activeConfirm,
+            channelName = channelName,
+            leaveVariant = leaveChannelConfirmVariant(row, model.memberSlice),
+            busy = actionInFlight == activeConfirm.action,
+            onDismiss = { if (actionInFlight != activeConfirm.action) confirm = null },
+            onConfirm = {
+                lastAction = activeConfirm.action
+                store?.dispatch(activeConfirm.intent)
+            },
+        )
+    }
+    val activeSosStore = sosStore
+    if (activeSosStore != null) {
+        ChannelSosDialog(channelName = channelName, store = activeSosStore, onClose = { sosStore = null })
+    }
+}
+
+/**
+ * web ChannelPreferencesSection (`isPanel`): Move to section; Notifications, the channel's level
+ * and its mute as one select (a Mute switch where the server has no levels); Collapse long
+ * messages. Rows divided by hairlines, no borders.
+ */
+@Composable
+private fun ThreadSettingsPreferencesSection(
+    panel: ThreadChannelSettingsPanel,
+    activityMuteState: ThreadActivityMuteUiState?,
+    onToggleActivityMute: (() -> Unit)?,
+    separator: Boolean,
+    // A DM's rows speak of "this conversation" (web `conversationKind="dm"`).
+    directMessage: Boolean = false,
+) {
+    RaftFormSection(title = stringResource(Res.string.thread_settings_preferences), separator = separator) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            ThreadDirectMessagePreferenceRow(
-                title = stringResource(Res.string.thread_dm_settings_mute_person),
-                detail = stringResource(Res.string.thread_dm_settings_mute_person_detail),
-                checked = activityMuteState?.muted == true,
-                enabled = activityMuteState != null && onToggleActivityMute != null,
-                onClick = { onToggleActivityMute?.invoke() }
-            )
-            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
-            ThreadDirectMessagePreferenceRow(
-                title = stringResource(Res.string.thread_dm_settings_pin_person),
-                detail = stringResource(Res.string.thread_dm_settings_pin_person_detail),
-                checked = conversationPinState?.pinned == true,
-                enabled = conversationPinState?.available == true && onTogglePin != null,
-                onClick = { onTogglePin?.invoke() }
-            )
-            longMessageCollapseSetting?.takeIf { it.available }?.let { setting ->
-                Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
-                ThreadDirectMessagePreferenceRow(
+            var rowAfterFirst = false
+            panel.section?.let { section ->
+                ChannelSectionSelectRow(
+                    state = section,
+                    enabled = panel.writeActionsEnabled,
+                    onMove = panel.onMoveSection,
+                    onCreate = panel.onCreateSection,
+                )
+                rowAfterFirst = true
+            }
+            val levelTarget = panel.notificationLevelTarget
+            if (levelTarget != null) {
+                if (rowAfterFirst) RaftSeparator()
+                val title = stringResource(Res.string.notification_level_title)
+                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RaftText(
+                        title,
+                        style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.Medium),
+                        color = RaftTheme.colors.foreground
+                    )
+                    RaftNotificationLevelSelect(
+                        target = levelTarget,
+                        enabled = panel.writeActionsEnabled,
+                        refresh = panel.refreshNotificationLevels,
+                        label = title,
+                        onSetMuted =
+                            onToggleActivityMute?.let { toggle ->
+                                { next: Boolean -> if (next != levelTarget.muted) toggle() }
+                            }
+                    )
+                }
+                rowAfterFirst = true
+            } else if (activityMuteState != null && onToggleActivityMute != null) {
+                if (rowAfterFirst) RaftSeparator()
+                ThreadSettingsPreferenceRow(
+                    title = stringResource(Res.string.channel_settings_mute),
+                    detail = stringResource(Res.string.channel_settings_mute_detail),
+                    checked = activityMuteState.muted,
+                    onToggle = onToggleActivityMute
+                )
+                rowAfterFirst = true
+            }
+            panel.longMessageCollapse?.takeIf { it.available }?.let { setting ->
+                if (rowAfterFirst) RaftSeparator()
+                ThreadSettingsPreferenceRow(
                     title = stringResource(Res.string.conversation_long_message_collapse),
-                    detail = setting.preference.localizedDetail(),
+                    detail =
+                        stringResource(
+                            if (directMessage) Res.string.channel_settings_collapse_detail_dm else Res.string.channel_settings_collapse_detail
+                        ),
                     checked = setting.effective,
-                    enabled = true,
-                    onClick = { setting.onSetEnabled(!setting.effective) }
+                    onToggle = { setting.onSetEnabled(!setting.effective) }
                 )
             }
         }
     }
 }
 
+/**
+ * The phone drawer head's same-line secondary item after "Settings": a muted `·`, then the
+ * `#name` in mono, ellipsized (web DrawerDescription). Assistive tech hears "Channel #name".
+ */
 @Composable
-private fun ThreadDirectMessagePreferenceRow(
+private fun RowScope.ThreadSettingsPanelChannelRef(channelName: String) {
+    val colors = RaftTheme.colors
+    val channelLabel = stringResource(Res.string.thread_settings_panel_eyebrow)
+    RaftText(
+        "·",
+        Modifier.alignByBaseline().clearAndSetSemantics {},
+        style = RaftTheme.typography.monoMeta,
+        color = colors.foregroundHint,
+        maxLines = 1
+    )
+    RaftText(
+        "#$channelName",
+        Modifier
+            .alignByBaseline()
+            .weight(1f, fill = false)
+            .semantics { contentDescription = "$channelLabel #$channelName" },
+        style = RaftTheme.typography.monoMeta,
+        color = colors.foregroundHint,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+/**
+ * A preference row of the settings drawer (web ChannelPreferencesSection): the label in
+ * `text-subhead` medium, its consequence in `text-footnote` hint 2dp under it, and the switch at
+ * the end, which is the row's one control. `py-3`.
+ */
+@Composable
+private fun ThreadSettingsPreferenceRow(
     title: String,
     detail: String,
     checked: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit
+    onToggle: () -> Unit
 ) {
+    val colors = RaftTheme.colors
     Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(
-                text = title,
-                style = RaftType.Body.withRaftFontWeight(FontWeight.W600),
-                color = RaftColor.TextBlack
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            RaftText(
+                title,
+                style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.Medium),
+                color = colors.foreground
             )
-            Text(text = detail, style = RaftType.Caption, color = RaftColor.TextMutedGray)
+            RaftText(detail, style = RaftTheme.typography.footnote, color = colors.foregroundHint)
         }
-        RaftSwitchButton(checked = checked, enabled = enabled)
+        RaftSwitch(checked = checked, onCheckedChange = { onToggle() }, label = title)
     }
 }
 
+/**
+ * The confirm a channel action asks before it runs, centred over the settings drawer (web
+ * ConfirmDialog `layer={1}`): Make Private explains what changes, Archive and Delete warn. Back
+ * (or Cancel) returns to the drawer; the confirm runs the action.
+ */
 @Composable
-internal fun ThreadSettingsModal(
+private fun ThreadSettingsDangerConfirm(
+    action: ThreadSettingsDangerAction,
     channelName: String,
-    subtitle: String?,
-    actions: List<RaftThreadSettingsAction>,
-    initialDangerActionId: String? = null,
-    conversationPinState: ThreadConversationPinUiState? = null,
-    activityMuteState: ThreadActivityMuteUiState? = null,
-    updateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
-    updateErrorCode: String? = null,
-    onDismiss: () -> Unit,
-    onSave: (String, String, String, String) -> Unit = { _, _, _, _ -> },
-    onTogglePin: (() -> Unit)? = null,
-    onToggleActivityMute: (() -> Unit)? = null,
-    onOpenAction: (String) -> Unit
+    onBack: () -> Unit,
+    onConfirm: () -> Unit
 ) {
-    var name by remember(channelName) { mutableStateOf(channelName) }
-    val initialDescription = subtitle.orEmpty()
-    var description by remember(subtitle) {
-        mutableStateOf(
-            TextFieldValue(
-                text = initialDescription,
-                selection = TextRange(initialDescription.length)
-            )
-        )
-    }
-    var dangerAction by remember(initialDangerActionId) {
-        mutableStateOf(
-            when (initialDangerActionId) {
-                "visibility" -> ThreadSettingsDangerAction.Visibility
-                "archive" -> ThreadSettingsDangerAction.Archive
-                "delete" -> ThreadSettingsDangerAction.Delete
-                else -> null
-            }
-        )
-    }
-    val effectiveActions = actions.normalizedThreadSettingsChannelActions().map { it.localizedThreadSettingsAction() }
-    val dangerActions = effectiveActions.mapNotNull { action ->
-        when (action.id) {
-            "visibility",
-            "make-private",
-            "make_public" -> ThreadSettingsDangerAction.Visibility
-            "archive" -> ThreadSettingsDangerAction.Archive
-            "delete" -> ThreadSettingsDangerAction.Delete
-            else -> null
-        }?.let { it to action }
-    }
-    val activeDanger = dangerAction
-    val trimmedName = name.trim()
-    val trimmedDescription = description.text.trim()
-    val profileChanged = trimmedName != channelName.trim() || trimmedDescription != subtitle.orEmpty().trim()
-    val profileValid = trimmedName.isSubmittableChannelName() && trimmedDescription.length <= 500
-    val profileSaving = updateStatus == ChannelProfileUpdateStatus.InFlight
     RaftUnifiedDialog(
-        title = activeDanger?.localizedTitle() ?: stringResource(Res.string.thread_settings_edit_channel),
-        keyboardAvoidanceEnabled = true,
+        title = action.localizedTitle(),
         dismissOnOutsideTap = false,
-        onDismiss = onDismiss
+        onDismiss = onBack
     ) {
-        if (activeDanger == null) {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                item {
-                    RaftBrutalTextField(
-                        label = stringResource(Res.string.thread_settings_name),
-                        value = name,
-                        keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
-                        placeholder = stringResource(Res.string.thread_settings_name_placeholder),
-                        onValueChange = { name = it },
-                        required = true,
-                        textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack)
+        when (action) {
+            ThreadSettingsDangerAction.Visibility -> {
+                Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
+                    Text(
+                        text = stringResource(Res.string.thread_settings_visibility_question, channelName),
+                        style = RaftType.Body,
+                        color = RaftColor.TextBlack
                     )
-                }
-                item {
-                    RaftBrutalTextField(
-                        label = stringResource(Res.string.thread_settings_description),
-                        value = description,
-                        placeholder = stringResource(Res.string.thread_settings_description_placeholder),
-                        onValueChange = { description = it },
-                        optional = true,
-                        fieldMinHeight = 66.dp,
-                        maxLines = 2,
-                        password = false
-                    )
-                }
-                if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
-                    item {
-                        Text(
-                            text = stringResource(Res.string.channel_create_error_name_format),
-                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                            color = RaftColor.AccentRed
-                        )
-                    }
-                }
-                if (updateStatus == ChannelProfileUpdateStatus.Failed) {
-                    item {
-                        Text(
-                            text =
-                                if (updateErrorCode == "channel_name_invalid") {
-                                    stringResource(Res.string.channel_create_error_name_format)
-                                } else {
-                                    stringResource(Res.string.thread_settings_update_failed)
-                                },
-                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                            color = RaftColor.AccentRed
-                        )
-                    }
-                }
-                item {
-                    RaftDialogFooter {
-                        // React's Edit Channel form buttons carry no leading icons
-                        // (btn-brutal text-only Cancel / Save Changes) — task #348.
-                        RaftModalActionButton(label = stringResource(Res.string.common_cancel), onClick = onDismiss)
-                        RaftModalActionButton(
-                            label =
-                                if (profileSaving) {
-                                    stringResource(Res.string.thread_settings_saving)
-                                } else {
-                                    stringResource(Res.string.thread_action_save_changes)
-                                },
-                            color = RaftColor.AccentPink,
-                            enabled = profileValid && profileChanged,
-                            loading = profileSaving,
-                            onClick = {
-                                onSave(channelName, subtitle.orEmpty(), trimmedName, trimmedDescription)
-                            }
-                        )
-                    }
-                }
-                if (
-                    (activityMuteState != null && onToggleActivityMute != null) ||
-                        (conversationPinState != null && onTogglePin != null) ||
-                        dangerActions.isNotEmpty()
-                ) {
-                    item {
-                        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
-                    }
-                    item {
-                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            activityMuteState?.takeIf { onToggleActivityMute != null }?.let { muteState ->
-                                RaftModalFullWidthActionButton(
-                                    label =
-                                        stringResource(
-                                            if (muteState.muted) Res.string.home_action_unmute else Res.string.home_action_mute
-                                        ),
-                                    icon = if (muteState.muted) RaftLucideIconName.Bell else RaftLucideIconName.BellOff,
-                                    color = if (muteState.muted) RaftColor.AccentOrange else RaftColor.SurfaceWhite,
-                                    onClick = { onToggleActivityMute?.invoke() }
-                                )
-                            }
-                            conversationPinState?.takeIf { onTogglePin != null }?.let { pinState ->
-                                RaftModalFullWidthActionButton(
-                                    label =
-                                        stringResource(
-                                            if (pinState.pinned) Res.string.home_action_unpin else Res.string.home_action_pin
-                                        ),
-                                    icon = if (pinState.pinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin,
-                                    color = if (pinState.pinned) RaftColor.AccentPink else RaftColor.SurfaceWhite,
-                                    onClick = { onTogglePin?.invoke() }
-                                )
-                            }
-                            ThreadSettingsChannelActionButtons(
-                                actions =
-                                    dangerActions.map { (_, action) ->
-                                        RaftThreadSettingsAction(id = action.id)
-                                    },
-                                onOpenAction = { actionId ->
-                                    dangerAction = dangerActions.firstOrNull { (_, action) -> action.id == actionId }?.first
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                item {
-                    when (activeDanger) {
-                        ThreadSettingsDangerAction.Visibility -> {
-                            // A lazy item stacks its children; the Column keeps the two lines apart.
-                            Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
-                                Text(
-                                    text = stringResource(Res.string.thread_settings_visibility_question, channelName),
-                                    style = RaftType.Body,
-                                    color = RaftColor.TextBlack
-                                )
-                                Text(
-                                    text = stringResource(Res.string.thread_settings_visibility_detail),
-                                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                                    color = RaftColor.TextMutedGray
-                                )
-                            }
-                        }
-                        ThreadSettingsDangerAction.Archive,
-                        ThreadSettingsDangerAction.Delete -> ThreadChannelActionWarning(activeDanger, channelName)
-                    }
-                }
-            }
-            RaftDialogFooter {
-                    val isSingleConfirm =
-                        threadSettingsDangerConfirmationMode(activeDanger.id) ==
-                            ThreadSettingsDangerConfirmationMode.SingleConfirm
-                    RaftModalActionButton(
-                        label =
-                            if (isSingleConfirm) {
-                                stringResource(Res.string.common_cancel)
-                            } else {
-                                stringResource(Res.string.common_back)
-                            },
-                        icon = if (isSingleConfirm) RaftLucideIconName.X else RaftLucideIconName.ArrowLeft,
-                        onClick = { dangerAction = null }
-                    )
-                    RaftModalActionButton(
-                        label = activeDanger.localizedButtonLabel(),
-                        icon = activeDanger.icon,
-                        color = activeDanger.color,
-                        onClick = { onOpenAction(activeDanger.id) }
+                    Text(
+                        text = stringResource(Res.string.thread_settings_visibility_detail),
+                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                        color = RaftColor.TextMutedGray
                     )
                 }
             }
+            ThreadSettingsDangerAction.Archive,
+            ThreadSettingsDangerAction.Delete -> ThreadChannelActionWarning(action, channelName)
+        }
+        RaftDialogFooter {
+            val isSingleConfirm =
+                threadSettingsDangerConfirmationMode(action.id) ==
+                    ThreadSettingsDangerConfirmationMode.SingleConfirm
+            RaftModalActionButton(
+                label =
+                    if (isSingleConfirm) {
+                        stringResource(Res.string.common_cancel)
+                    } else {
+                        stringResource(Res.string.common_back)
+                    },
+                icon = if (isSingleConfirm) RaftLucideIconName.X else RaftLucideIconName.ArrowLeft,
+                onClick = onBack
+            )
+            RaftModalActionButton(
+                label = action.localizedButtonLabel(),
+                icon = action.icon,
+                color = action.color,
+                onClick = onConfirm
+            )
         }
     }
+}
 
 @Composable
 private fun ThreadChannelActionWarning(
@@ -36990,10 +40398,11 @@ internal fun ThreadForwardSuccessToastView(
                 .padding(start = 8.dp, top = raftTopSafeAreaPadding() + 8.dp, end = 8.dp),
         contentAlignment = Alignment.TopCenter
     ) {
+        val viewInChat = banner.forwardSuccessViewInChatAvailable()
         RaftToast(
             title = stringResource(Res.string.thread_forward_success_banner, targetLabel),
-            actionLabel = stringResource(Res.string.thread_forward_view_in_chat),
-            onAction = onViewInChat,
+            actionLabel = if (viewInChat) stringResource(Res.string.thread_forward_view_in_chat) else null,
+            onAction = if (viewInChat) onViewInChat else null,
         )
     }
 }
@@ -37041,6 +40450,7 @@ private fun ThreadStateActionMessage(
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun ThreadTaskDetailDialog(
     task: TaskSummary,
+    taskV2Enabled: Boolean,
     assigneeOptions: List<MemberProfile>,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     onDismiss: () -> Unit,
@@ -37089,8 +40499,6 @@ private fun ThreadTaskDetailDialog(
         uppercaseTitle = false,
         overline = headerOverline,
         overlineCopyText = headerOverline,
-        titleFontSize = 14,
-        titleLineHeight = 18,
         titleMaxLines = 1,
         onDismiss = onDismiss,
         contentSpacing = RaftAppSpacing.Sm
@@ -37209,7 +40617,7 @@ private fun ThreadTaskDetailDialog(
     statusMenuAnchor?.let { anchor ->
         RaftTaskStatusMenuOverlay(
             anchor = anchor,
-            items = ThreadTaskStatusMenuItems,
+            items = threadTaskStatusMenuItems(task.statusMenuChoices(taskV2Enabled)),
             selectedId = statusMeta.key,
             onDismiss = { statusMenuAnchor = null },
             onSelect = { selectedId ->

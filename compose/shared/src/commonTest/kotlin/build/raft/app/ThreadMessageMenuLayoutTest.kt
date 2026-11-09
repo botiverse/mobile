@@ -8,10 +8,10 @@ import kotlin.test.assertEquals
 class ThreadMessageMenuLayoutTest {
     @Test
     fun contentHeightIsExactBeforeFirstPlacement() {
-        // web MessageItem context menu: 8 rows x 36 + 2 group separators (my-1.5 + 1dp
-        // hairline) x 13 + reaction header (h-9 + 13) + 2 x 6 (p-1.5) inset.
+        // web MessageItem context menu: 8 rows x 36 + 2 group separators (my-1 + 1dp
+        // hairline) x 9 + reaction header (h-9 + 9) + 2 x 4 (p-1) inset.
         assertEquals(
-            375f,
+            359f,
             threadMessageMenuContentHeightDp(
                 actionGroups = listOf("copy", "copy", "copy", "message", "message", "task", "task", "task"),
                 showReactionActions = true
@@ -21,16 +21,16 @@ class ThreadMessageMenuLayoutTest {
 
     @Test
     fun contentHeightTracksRowsGroupDividersAndOptionalReactionHeader() {
-        // 3 rows x 36 + 1 group separator x 13 + 2 x 6 inset.
+        // 3 rows x 36 + 1 group separator x 9 + 2 x 4 inset.
         assertEquals(
-            133f,
+            125f,
             threadMessageMenuContentHeightDp(
                 actionGroups = listOf("copy", "copy", "message"),
                 showReactionActions = false
             )
         )
         assertEquals(
-            182f,
+            170f,
             threadMessageMenuContentHeightDp(
                 actionGroups = listOf("copy", "copy", "message"),
                 showReactionActions = true
@@ -71,8 +71,10 @@ class ThreadMessageMenuLayoutTest {
 
     @Test
     fun menuWidthIsMinW60OrTheQuickReactionRow() {
-        // 7 x 28 (size-7) + 6 x 4 (gap-1) + 2 x 8 (px-2) + 2 x 6 (p-1.5) = 248.
-        assertEquals(248f, threadMessageMenuWidthDp(showReactionActions = true))
+        // raft-ui MessageReactionQuickRow: 7 x 36 (size-9) + 6 x 2 (gap-0.5) + 2 x 3 (px-0.75)
+        // + 2 x 4 (p-1) = 278; with Add Reaction 8 x 36 + 7 x 2 + 6 + 8 = 316 (the web's).
+        assertEquals(278f, threadMessageMenuWidthDp(showReactionActions = true))
+        assertEquals(316f, threadMessageMenuWidthDp(showReactionActions = true, showAddReactionAction = true))
         assertEquals(240f, threadMessageMenuWidthDp(showReactionActions = false))
     }
 

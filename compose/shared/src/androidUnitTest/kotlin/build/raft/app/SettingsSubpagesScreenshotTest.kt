@@ -33,7 +33,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Settings sub-pages built from design-system parts (the first RaftBrutal migration batch,
+ * Settings sub-pages built from design-system parts (the first batch of the retired legacy-component migration,
  * docs/raftbrutal-migration.md), light and dark, on fixed fixture data:
  * - Language & region: the translation-language and timezone pickers (raft-ui ComboboxSelect)
  *   and the two Save buttons, one enabled;

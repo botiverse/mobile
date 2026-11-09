@@ -186,7 +186,10 @@ fun RaftRuntimeChip(
     modifier: Modifier = Modifier,
     showCpuIcon: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
+    /** A leading glyph other than the default `cpu` (web profile hero: `square-terminal`); wins over [showCpuIcon]. */
+    leadingGlyph: RaftGlyph? = null,
 ) {
+    val glyph = leadingGlyph ?: RaftGlyph.Cpu.takeIf { showCpuIcon }
     RaftBadgeFrame(
         text = text,
         // Web `RUNTIME_CHIP_CLASS` on the soft `information` Badge: Space Mono at 400.
@@ -195,8 +198,27 @@ fun RaftRuntimeChip(
                 .copy(mono = true, weight = FontWeight.Normal),
         appearance = RaftBadgeAppearance.Soft,
         modifier = modifier,
-        icon = if (showCpuIcon) ({ RaftGlyphIcon(RaftGlyph.Cpu, size = 14.dp) }) else null,
+        icon = if (glyph != null) ({ RaftGlyphIcon(glyph, size = 14.dp) }) else null,
         trailing = trailing,
+    )
+}
+
+/**
+ * A joint channel's peer server after a member's name (web `JointPeerBadge`): the soft
+ * `information` Badge in machine type (`font-mono text-mono-meta font-normal`), truncated.
+ */
+@Composable
+fun RaftJointServerBadge(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    RaftBadgeFrame(
+        text = text,
+        look =
+            raftBadgeLook(RaftBadgeAppearance.Soft, RaftBadgeVariant.Information, enabled = true, colors = RaftTheme.colors)
+                .copy(mono = true, weight = FontWeight.Normal),
+        appearance = RaftBadgeAppearance.Soft,
+        modifier = modifier,
     )
 }
 

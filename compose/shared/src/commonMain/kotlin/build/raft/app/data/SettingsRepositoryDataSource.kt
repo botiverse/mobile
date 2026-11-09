@@ -23,10 +23,12 @@ private val settingsRepositoryJson = Json {
 
 private const val PRE_JOIN_AGREEMENT_BODY_MAX_LENGTH = 5_000
 
-private suspend fun RaftNetworkClient.settingsAccount(priority: DataRequestPriority): HomeNetworkResponse =
+/** `GET /api/auth/me`: the signed-in account (settings, appearance, the rail tab order). */
+internal suspend fun RaftNetworkClient.settingsAccount(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "auth/me")
 
-private suspend fun RaftNetworkClient.updateSettingsAccount(
+/** `PATCH /api/auth/me`: a partial update, only the fields in [bodyText]. */
+internal suspend fun RaftNetworkClient.updateSettingsAccount(
     priority: DataRequestPriority,
     bodyText: String
 ): HomeNetworkResponse =
@@ -833,7 +835,8 @@ class RealSettingsRepository(
 
     override suspend fun getBilling(): DataResult<SettingsBillingSnapshot> {
         val server = selectedServer() ?: return serverRequired()
-        if (server.role != "owner") {
+        // Owners and admins can read billing (shared serverPermissions `viewBilling`); members get 403.
+        if (server.role != "owner" && server.role != "admin") {
             return DataResult.NoPermission(
                 PermissionBlocker(code = "billing_owner_required", requiredCapability = "manage_billing")
             )
@@ -867,7 +870,10 @@ class RealSettingsRepository(
                 ),
                 plans = settingsDisplayPlanConfigs.map { it.toBillingPlanSnapshot(currentPlan, trialActive, subscription) },
                 notices = billingNotices(server, currentPlan, usage, trialActive, subscription),
-                actions = billingActions(subscription)
+                actions = billingActions(subscription),
+                summary = subscription,
+                serverPlan = server.plan,
+                planDowngradedAt = server.planDowngradedAt?.takeIf { it.isNotBlank() }
             )
         )
     }
@@ -1028,7 +1034,9 @@ class RealSettingsRepository(
                     name = server.name,
                     slug = server.slug ?: server.name.toSettingsSlug(),
                     hideHumansFromMembers = server.hideHumansFromMembers,
-                    canSave = canManageServer
+                    canSave = canManageServer,
+                    serverId = server.id,
+                    avatarUrl = server.avatarUrl
                 ),
                 sections = sections,
                 admins = admins,

@@ -171,6 +171,71 @@ class MessageParserTest {
     }
 
     @Test
+    fun keepsSlackBridgeRepliesInPageEmbeddedThreadSummaries() {
+        // Task #73: slock `ThreadSummaryLatestReply.senderType` includes `external_projection` (a reply
+        // posted in a Slack thread of a bridged channel). Dropping it left the parent with no inline rows.
+        val payload =
+            parseSharedChannelMessages(
+                """
+                {
+                  "messages": [
+                    {
+                      "id": "parent-1",
+                      "seq": 10,
+                      "channelId": "channel-1",
+                      "senderType": "user",
+                      "senderId": "u-1",
+                      "senderName": "Artin",
+                      "messageType": "chat",
+                      "content": "parent",
+                      "createdAt": "2026-07-25T14:00:00.000Z"
+                    }
+                  ],
+                  "threadSummariesByParentMessageId": {
+                    "parent-1": {
+                      "threadChannelId": "thread-1",
+                      "replyCount": 2,
+                      "latestReplies": [
+                        {
+                          "messageId": "reply-1",
+                          "seq": 1,
+                          "preview": "from raft",
+                          "senderId": "u-1",
+                          "senderType": "user",
+                          "senderName": "artin",
+                          "senderDisplayName": "Artin",
+                          "senderAvatarUrl": null,
+                          "createdAt": "2026-07-25T14:01:00.000Z"
+                        },
+                        {
+                          "messageId": "reply-2",
+                          "seq": 2,
+                          "preview": "from slack",
+                          "senderId": "projection-1",
+                          "senderType": "external_projection",
+                          "senderName": "Yezi",
+                          "senderDisplayName": "Yezi",
+                          "senderAvatarUrl": "https://example.test/slack-avatar.png",
+                          "createdAt": "2026-07-25T14:02:00.000Z"
+                        }
+                      ]
+                    }
+                  },
+                  "historyLimited": false
+                }
+                """.trimIndent(),
+                fallbackThreadId = ThreadId("channel-1"),
+            )
+
+        val replies = payload.threadSummaries.threads.single().latestReplies
+        assertEquals(listOf("reply-1", "reply-2"), replies.map { it.messageId })
+        val slackReply = replies.last()
+        assertEquals("external_projection", slackReply.senderType)
+        assertEquals("Yezi", slackReply.senderDisplayName)
+        assertEquals("https://example.test/slack-avatar.png", slackReply.senderAvatarUrl)
+    }
+
+    @Test
     fun parsesContextEmbeddedThreadSummariesLikeThePageParser() {
         // Task #1142: the server embeds the same summary record on the context endpoint; an
         // anchored open (Activity row, notification, search) must get reply rows on the first

@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.links.raftAppLinkReadUrls
+import build.raft.app.links.raftMessageBareLinks
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -37,7 +39,7 @@ private const val StatusCardBody =
         """"state":{"type":"Badge","props":{"text":"Approved"}},"detail":{"type":"Text","props":{"text":"Ready for review","tone":"muted"}}}}}],""" +
         """"prompts":[],"appIcons":{"https://alpha.example.test/pr/1":null}}"""
 
-private class FakeAppLinkPreviewApi : RaftAppLinkPreviewApi {
+internal class FakeAppLinkPreviewApi : RaftAppLinkPreviewApi {
     val reads = mutableListOf<String>()
     val readResponses = ArrayDeque<HomeNetworkResponse>()
     var allowResponse = HomeNetworkResponse(200, "{}")
@@ -50,6 +52,16 @@ private class FakeAppLinkPreviewApi : RaftAppLinkPreviewApi {
         reads += messageId
         readGate?.await()
         return readResponses.removeFirstOrNull() ?: HomeNetworkResponse(200, """{"previews":[],"prompts":[]}""")
+    }
+
+    /** The batched reads' bodies, in order. */
+    val cardReads = mutableListOf<AppLinkCardReadRequestBody>()
+    val cardReadResponses = ArrayDeque<HomeNetworkResponse>()
+
+    override suspend fun readLinkCards(messageId: String, serverId: String, body: AppLinkCardReadRequestBody): HomeNetworkResponse {
+        cardReads += body
+        readGate?.await()
+        return cardReadResponses.removeFirstOrNull() ?: HomeNetworkResponse(200, """{"items":[],"prompts":[]}""")
     }
 
     override suspend fun allow(appId: String, serverId: String): HomeNetworkResponse {
@@ -129,13 +141,13 @@ class SharedAppLinkPreviewStoreTest {
             """{"previews":[],"prompts":[{"url":"$linear","app":{"id":"client-linear","name":"Linear","icon":null}}],"appIcons":{}}"""
         val api = FakeAppLinkPreviewApi().apply { readResponses += HomeNetworkResponse(200, prompt) }
         val store = SharedAppLinkPreviewStore(api = api, scope = backgroundScope, artifactHosts = { listOf("app.raft.build") })
-        assertEquals(listOf(linear), appLinkMessagePreviewUrls(content) { isArtifactIdLink(it, listOf("app.raft.build")) })
+        assertEquals(listOf(linear), raftAppLinkReadUrls(content, listOf("app.raft.build"), 3))
         store.read(Viewer, Server, MessageA, content, Conversation)
         runCurrent()
         val view = store.state.value.messageView(Viewer, MessageA, content, Conversation, listOf("app.raft.build"))
         assertTrue(view.results[linear] is AppLinkResult.Consent, "the prompt is kept: results=${view.results}")
         // Before this fix the App counted the Artifact links and dropped Linear's prompt.
-        assertTrue(appLinkMessagePreviewUrls(content).none { it == linear })
+        assertTrue(raftMessageBareLinks(content).filter { appLinkPreviewHref(it) != null }.take(3).none { it == linear })
     }
 
     @Test

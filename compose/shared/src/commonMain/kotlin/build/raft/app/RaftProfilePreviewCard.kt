@@ -69,6 +69,8 @@ internal data class RaftProfilePreviewCardModel(
     /** The runtime behind [runtimeLabel]: its lifecycle status (" (experimental)") is added when drawn. */
     val runtimeId: String? = null,
     val modelLabel: String? = null,
+    /** Where an agent runs (web Computer row, above Runtime); null leaves the row out. */
+    val computer: RaftProfilePreviewComputer? = null,
     val readReceipt: RaftProfilePreviewReadReceipt? = null,
     /** The server whose avatar cache holds the face. */
     val serverId: String? = null,
@@ -90,6 +92,17 @@ internal data class RaftProfilePreviewCardModel(
             )
         }
     }
+}
+
+/** An agent's Computer row (web `ProfilePreviewCardContent` `computerLabel`). */
+internal sealed interface RaftProfilePreviewComputer {
+    data class Named(val name: String) : RaftProfilePreviewComputer
+
+    /** An external agent runs outside Raft's Computers: "External runtime". */
+    data object External : RaftProfilePreviewComputer
+
+    /** "No computer assigned". */
+    data object Unassigned : RaftProfilePreviewComputer
 }
 
 /** The card's model for a directory [profile] (web `ProfilePreviewCardContent`'s projections). */
@@ -115,9 +128,19 @@ internal fun raftProfilePreviewCardModel(
         description = if (appBot != null) null else profile.description?.trim()?.takeIf { it.isNotBlank() },
         appBot = appBot,
         status = if (isAgent && appBot == null) status else null,
-        runtimeLabel = if (isAgent && appBot == null) runtimeId?.let { runtimeCatalogDisplayName(it, profile.serverId?.value) } else null,
+        runtimeLabel = if (isAgent && appBot == null) runtimeId?.let { runtimeIdentityDisplayName(it, profile.serverId?.value) } else null,
         runtimeId = if (isAgent && appBot == null) runtimeId else null,
         modelLabel = if (isAgent && appBot == null) profile.modelLabel() else null,
+        computer =
+            when {
+                !isAgent || appBot != null -> null
+                profile.isExternal -> RaftProfilePreviewComputer.External
+                else ->
+                    profile.permissionBadges
+                        .firstNotNullOfOrNull { badge -> badge.removePrefix("computer:").takeIf { badge.startsWith("computer:") && it.isNotBlank() } }
+                        ?.let(RaftProfilePreviewComputer::Named)
+                        ?: RaftProfilePreviewComputer.Unassigned
+            },
         readReceipt = if (isAgent && appBot == null) readReceipt else null,
         serverId = profile.serverId?.value,
     )
@@ -262,6 +285,14 @@ internal fun RaftProfilePreviewCardContent(
             RaftSeparator(Modifier.padding(top = 8.dp))
             ProfilePreviewFacts(
                 listOfNotNull(
+                    model.computer?.let { computer ->
+                        stringResource(Res.string.member_label_computer) to
+                            when (computer) {
+                                is RaftProfilePreviewComputer.Named -> computer.name
+                                RaftProfilePreviewComputer.External -> stringResource(Res.string.profile_preview_external_runtime)
+                                RaftProfilePreviewComputer.Unassigned -> stringResource(Res.string.member_machine_no_computer_assigned)
+                            }
+                    },
                     model.runtimeLabel?.let { label ->
                         stringResource(Res.string.member_label_runtime) to
                             (model.runtimeId?.let { runtimeLabelWithStatus(it, model.serverId) } ?: label)
@@ -277,9 +308,10 @@ internal fun RaftProfilePreviewCardContent(
         RaftPreviewCardDescription(description)
     }
     if (onMessage != null || onViewProfile != null) {
+        // At the card's end, as in a Popover (raft-design #939): the frameless one first, the bordered Message last.
         RaftPreviewCardActions {
-            onMessage?.let { RaftButton(text = stringResource(Res.string.member_label_message), onClick = it, variant = RaftButtonVariant.Default) }
             onViewProfile?.let { RaftButton(text = stringResource(Res.string.profile_preview_view_profile), onClick = it, variant = RaftButtonVariant.Ghost) }
+            onMessage?.let { RaftButton(text = stringResource(Res.string.member_label_message), onClick = it, variant = RaftButtonVariant.Default) }
         }
     }
 }

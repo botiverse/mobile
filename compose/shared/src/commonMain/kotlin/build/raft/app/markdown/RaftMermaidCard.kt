@@ -50,7 +50,7 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.raftBottomSafeAreaPadding
-import build.raft.app.raftTopSafeAreaPadding
+import build.raft.app.raftWindowTopSafeAreaPadding
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
@@ -222,7 +222,7 @@ private fun RaftMermaidFullscreen(
     onDismiss: () -> Unit,
     diagramContent: RaftMermaidDiagramContent
 ) {
-    val topSafeArea = raftTopSafeAreaPadding()
+    val topSafeArea = raftWindowTopSafeAreaPadding()
     val bottomSafeArea = raftBottomSafeAreaPadding()
     val zoom = remember { RaftMermaidViewportState() }
     val dragX = remember { Animatable(0f) }

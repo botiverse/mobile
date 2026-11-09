@@ -92,8 +92,12 @@ data class ActivityObjectCounts(
             InboxFilter.Mentions -> objectMentionUnreadCount
             // Every row Unread lists is unread.
             InboxFilter.Unread -> objectCount
-            // A scope lists no object rows.
+            // A conversation scope lists no object rows.
             InboxFilter.Pinned -> 0
+            InboxFilter.Saved -> 0
+            // Only Artifact rows, under the All read filter (web `objectUnreadCountForFilter("all")`):
+            // the server counts that app's rows alone.
+            InboxFilter.Artifacts -> objectUnreadCount
         }
 }
 

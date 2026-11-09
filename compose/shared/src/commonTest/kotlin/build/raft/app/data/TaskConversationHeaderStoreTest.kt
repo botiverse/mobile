@@ -28,52 +28,42 @@ import kotlin.test.assertTrue
 /**
  * Task v2 conversation bar (web `TaskConversationBar` / TaskProperties / `useTaskConversationFollow`):
  * status options and edit rights, the page's header state, follow writes and the `task:*` realtime
- * frames it reads. Fixtures follow botiverse/slock staging @ 0000139628e06ca3f10ed2cb6f44b61ba80d70a5:
- * `packages/web/src/components/task/taskStatusUi.ts` (`VALID_TRANSITIONS`, `getTaskStatusOptions`),
+ * frames it reads. Fixtures follow botiverse/slock staging @ 0000139628e06ca3f10ed2cb6f44b61ba80d70a5
+ * (status options and edit rights @ 2d1156a89: every status for everyone, no role gate):
+ * `packages/web/src/components/task/taskStatusUi.ts` (`getTaskStatusOptions`, `canEditTaskStatus`),
  * `components/task/TaskProperties.tsx` (`canEditAssignee`), `routes/channels.ts` (`/threads/follow`
  * with `threadChannelId`), `routes/tasks.ts` (`conversationFollowed`), `services/taskRealtimeEvents.ts`.
  */
 class TaskConversationHeaderStoreTest {
     @Test
-    fun statusOptionsFollowTheWebTransitionsAndAdminsMayForceAny() {
-        // (current status, member options, closed->todo reads "Reopen to Todo")
-        val memberCases =
-            listOf(
-                TaskStatus.Todo to listOf(TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.Closed),
-                TaskStatus.InProgress to listOf(TaskStatus.InProgress, TaskStatus.InReview, TaskStatus.Done, TaskStatus.Closed),
-                TaskStatus.InReview to listOf(TaskStatus.InReview, TaskStatus.Done, TaskStatus.InProgress, TaskStatus.Closed),
-                TaskStatus.Done to listOf(TaskStatus.Done, TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.InReview, TaskStatus.Closed),
-                TaskStatus.Closed to listOf(TaskStatus.Closed, TaskStatus.Todo, TaskStatus.InProgress),
-            )
-        memberCases.forEach { (current, expected) ->
-            val options = taskStatusOptions(current, canManageServer = false)
-            assertEquals(expected, options.map { it.status }, "member current=$current")
+    fun statusOptionsAreEveryStatusForEveryone() {
+        // Web getTaskStatusOptions: TASK_STATUSES from any status (the server has no transition
+        // table); closed -> todo reads "Reopen to Todo". In Review retired: TaskInReviewRetiredTest.
+        // Backlog is task v2 only (web noBacklog): not on a pre-v2 task unless it is in it; Unknown never is.
+        TaskStatus.entries.forEach { current ->
+            val options = taskStatusOptions(current, v2Task = false)
+            val expected = TaskStatus.known.filter { it != TaskStatus.Backlog || current == TaskStatus.Backlog }
+            assertEquals(expected, options.map { it.status }, "current=$current")
             assertEquals(
                 if (current == TaskStatus.Closed) listOf(TaskStatus.Todo) else emptyList(),
                 options.filter { it.reopensToTodo }.map { it.status },
                 "reopen current=$current",
             )
-            assertEquals(TaskStatus.entries.toList(), taskStatusOptions(current, canManageServer = true).map { it.status }, "admin current=$current")
         }
-        assertTrue(taskServerRoleCanManage("owner"))
-        assertTrue(taskServerRoleCanManage("admin"))
-        assertFalse(taskServerRoleCanManage("member"))
-        assertFalse(taskServerRoleCanManage(null))
     }
 
     @Test
-    fun editRightsMatchTheWebGatesForRoleReadOnlyAndDone() {
-        // (role, status, readOnlyReason, can edit status, can edit assignee)
-        data class Case(val role: String?, val status: TaskStatus, val readOnly: String?, val statusEditable: Boolean, val assigneeEditable: Boolean)
+    fun editRightsMatchTheWebGatesForReadOnlyAndDone() {
+        // (status, readOnlyReason, can edit status, can edit assignee)
+        data class Case(val status: TaskStatus, val readOnly: String?, val statusEditable: Boolean, val assigneeEditable: Boolean)
         listOf(
-            Case("member", TaskStatus.InProgress, null, true, true),
-            Case("member", TaskStatus.Done, null, true, false),
-            Case("guest", TaskStatus.InProgress, null, false, false),
-            Case("owner", TaskStatus.Todo, "historical_joint", false, false),
+            Case(TaskStatus.InProgress, null, true, true),
+            Case(TaskStatus.Done, null, true, false),
+            Case(TaskStatus.Todo, "historical_joint", false, false),
         ).forEach { case ->
             val task = task(status = case.status).copy(readOnlyReason = case.readOnly)
-            assertEquals(case.statusEditable, task.canEditStatus(case.role), "status $case")
-            assertEquals(case.assigneeEditable, task.canEditAssignee(case.role), "assignee $case")
+            assertEquals(case.statusEditable, task.canEditStatus(), "status $case")
+            assertEquals(case.assigneeEditable, task.canEditAssignee(), "assignee $case")
         }
     }
 
@@ -295,7 +285,7 @@ class TaskConversationHeaderStoreTest {
             TaskConversationHeaderState(ChannelId("conv-1"))
                 .reduce(TaskConversationHeaderIntent.RefLoaded(DataResult.Content(ref)))
                 .reduce(TaskConversationHeaderIntent.TaskSeen(projected()))
-        val model = projected().taskConversationHeaderBarModel(header, serverRole = "member", statusUpdating = false)
+        val model = projected().taskConversationHeaderBarModel(header, statusUpdating = false)
         assertEquals(true, model.followed)
         // The page's last copy keeps it too when a frame without it comes in.
         val afterFrame = header.reduce(TaskConversationHeaderIntent.TaskSeen(parsed(taskDtoJson(conversationFollowed = null)).copy(revision = 6L)))
@@ -332,7 +322,7 @@ class TaskConversationHeaderStoreTest {
         assertEquals(true, followed())
         // The bar model reads it even when the (stale) channel list copy says otherwise.
         val listed = task(TaskStatus.InProgress).copy(conversationFollowed = false)
-        assertEquals(true, listed.taskConversationHeaderBarModel(viewModel.state.value, serverRole = "member", statusUpdating = false).followed)
+        assertEquals(true, listed.taskConversationHeaderBarModel(viewModel.state.value, statusUpdating = false).followed)
 
         // And back: unfollowed elsewhere.
         serverFollowed = false

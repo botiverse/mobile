@@ -7,9 +7,10 @@ import kotlin.test.assertEquals
 
 class RaftMainTabHeaderVisualContractTest {
     @Test
-    fun topLevelTabHeadsStartOnThePhoneMarginWithTheCompactTitle() {
+    fun topLevelTabHeadsStartOnThePhoneMarginWithTheWebHeadline() {
         assertEquals(16.dp, RaftMainTabHeaderStartPadding)
-        assertEquals(16.sp, RaftMainTabHeaderTitleStyle.fontSize)
-        assertEquals(20.sp, RaftMainTabHeaderTitleStyle.lineHeight)
+        // web TabRootBar: text-headline 17/22.
+        assertEquals(17.sp, RaftMainTabHeaderTitleStyle.fontSize)
+        assertEquals(22.sp, RaftMainTabHeaderTitleStyle.lineHeight)
     }
 }

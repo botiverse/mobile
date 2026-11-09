@@ -35,6 +35,15 @@ class ThreadAssistantPanelTest {
         assertEquals(RaftOtterTuck.PanelOpen, threadAssistantOtterTuck(composing = true, panelOpen = true))
     }
 
+    /** artin 11-02: anything stacked above the composer frame (a mention's Add / Notify / Ignore card) hides the otter whole. */
+    @Test
+    fun aCardAboveTheComposerHidesTheOtter() {
+        assertEquals(RaftOtterTuck.Covered, threadAssistantOtterTuck(composing = false, panelOpen = false, covered = true))
+        assertEquals(RaftOtterTuck.Covered, threadAssistantOtterTuck(composing = true, panelOpen = false, covered = true))
+        assertEquals(RaftOtterTuck.PanelOpen, threadAssistantOtterTuck(composing = false, panelOpen = true, covered = true))
+        assertEquals(RaftOtterTuck.PanelOpen.fraction, RaftOtterTuck.Covered.fraction)
+    }
+
     @Test
     fun aCardFromTheAssistantWaitsWhilePreparedOrToReconfirm() {
         assertTrue(hasWaitingAssistantActionCard(listOf(card("m1", AGENT, "prepared")), AGENT))

@@ -83,7 +83,7 @@ fun RaftStickerTile(
             edge = RaftUiPalette.stickerInk,
             ink = RaftUiPalette.stickerInk,
             dieCut = colors.stickerEdge,
-            pressOverlay = RaftUiPalette.stickerPressed,
+            pressOverlay = RaftUiPalette.stickerMedium,
         )
     Box(
         modifier.size(size.edge).raftSticker(look, RaftRadius.Sticker, colors = colors),

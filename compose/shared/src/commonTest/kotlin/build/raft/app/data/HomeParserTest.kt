@@ -532,6 +532,110 @@ class HomeParserTest {
         assertEquals(EmptyReason.NoChannels, result.reason)
     }
 
+    // Agent Lounge v0 (botiverse/slock slock-fb 2026-11-07 packages/server/src/routes/agentLounge.api.test.ts,
+    // services/channelService.ts listDMChannels): a Lounge is a plain channel carrying `loungeAgentId`, never
+    // in a channel list, and an agent DM row carries `lounge {channelId, joined}` once it exists.
+    @Test
+    fun agentLoungeIsKeptOutOfChannelListsButItsDmRowCarriesItWithUnread() {
+        val lounge =
+            HomeChannelWireDto(id = "lounge-bugen", name = "bugen-lounge", type = "channel", joined = true, loungeAgentId = "agent-bugen")
+        val general = HomeChannelWireDto(id = "general", name = "general", type = "channel")
+        val result =
+            parseRaftHome(
+                payload =
+                    homePayload(
+                        channels = listOf(general, lounge),
+                        directMessages =
+                            listOf(
+                                HomeDirectMessageWireDto(
+                                    id = "dm-bugen", name = "bugen", type = "dm", peerType = "agent",
+                                    peerId = "agent-bugen", peerName = "bugen", peerDisplayName = "Bugen",
+                                    lounge = HomeAgentLoungeWireDto(channelId = "lounge-bugen", joined = true),
+                                ),
+                                HomeDirectMessageWireDto(
+                                    id = "dm-alice", name = "alice", type = "dm", peerType = "user",
+                                    peerId = "user-alice", peerName = "alice",
+                                    lounge = HomeAgentLoungeWireDto(channelId = "not-a-lounge"),
+                                ),
+                            ),
+                        unreadCounts = mapOf(ChannelId("lounge-bugen") to 3),
+                    ).copy(mentionedChannelIds = setOf(ChannelId("lounge-bugen"))),
+                session = sampleSession(),
+            )
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(listOf("general"), result.data.channels.map { it.channelId.value })
+        val bugen = result.data.directMessages.first { it.channelId.value == "dm-bugen" }
+        assertEquals(AgentLoungeSummary(ChannelId("lounge-bugen"), joined = true, unreadCount = 3, mentionCount = 1), bugen.lounge)
+        assertNull(result.data.directMessages.first { it.channelId.value == "dm-alice" }.lounge, "only an agent has a Lounge")
+
+        val listed =
+            parseSharedChannelSnapshot(
+                json.encodeToString(ListSerializer(HomeChannelWireDto.serializer()), listOf(general, lounge)),
+                result.data.server,
+            )
+        assertEquals(listOf("general"), listed?.channels?.map { it.channelId.value }, "forward targets and #channel read this list")
+    }
+
+    @Test
+    fun agentLoungeLoadedByIdKeepsItsAgentAndMayBePostedInBeforeJoining() {
+        val detail =
+            parseRaftChannelDetail(
+                """{"id":"lounge-bugen","name":"bugen-lounge","type":"channel","joined":false,"loungeAgentId":"agent-bugen"}"""
+            )
+        requireNotNull(detail)
+        assertEquals("agent-bugen", detail.loungeAgentId)
+        assertEquals(false, detail.joined)
+        assertTrue(detail.permissions.canSend, "no Join step: the first post joins")
+
+        val archived =
+            parseRaftChannelDetail(
+                """{"id":"lounge-bugen","name":"bugen-lounge","type":"channel","archivedAt":"2026-11-02T00:00:00.000Z","loungeAgentId":"agent-bugen"}"""
+            )
+        assertEquals(false, archived?.permissions?.canSend)
+
+        val ordinary = parseRaftChannelDetail("""{"id":"general","name":"general","type":"channel","joined":false}""")
+        assertNull(ordinary?.loungeAgentId)
+        assertEquals(false, ordinary?.permissions?.canSend)
+    }
+
+    @Test
+    fun aChannelMerelyNamedLikeALoungeStaysAnOrdinaryListedChannel() {
+        for (loungeAgentId in listOf(null, "")) {
+            val named = HomeChannelWireDto(id = "x-lounge", name = "x-lounge", type = "channel", joined = false, loungeAgentId = loungeAgentId)
+            val result = parseRaftHome(payload = homePayload(channels = listOf(named)), session = sampleSession())
+            assertTrue(result is DataResult.Content)
+            val row = result.data.channels.single()
+            assertNull(row.loungeAgentId)
+            assertEquals(false, row.permissions.canSend, "unjoined: Join, not the composer")
+        }
+        val detail = parseRaftChannelDetail("""{"id":"x-lounge","name":"x-lounge","type":"channel","joined":false,"loungeAgentId":null}""")
+        assertNull(detail?.loungeAgentId)
+        assertEquals(false, detail?.permissions?.canSend)
+    }
+
+    @Test
+    fun aMentionInALoungeKeepsItsMarkWithoutACount() {
+        val result =
+            parseRaftHome(
+                payload =
+                    homePayload(
+                        directMessages =
+                            listOf(
+                                HomeDirectMessageWireDto(
+                                    id = "dm-bugen", name = "bugen", type = "dm", peerType = "agent",
+                                    peerId = "agent-bugen", peerName = "bugen",
+                                    lounge = HomeAgentLoungeWireDto(channelId = "lounge-bugen", joined = false),
+                                )
+                            ),
+                    ).copy(mentionedChannelIds = setOf(ChannelId("lounge-bugen"))),
+                session = sampleSession(),
+            )
+        assertTrue(result is DataResult.Content)
+        assertEquals(1, result.data.directMessages.single().lounge?.mentionCount)
+        assertEquals(0, result.data.directMessages.single().lounge?.unreadCount)
+    }
+
     private fun homePayload(
         serverId: ServerId = ServerId("server-1"),
         channels: List<HomeChannelWireDto> = emptyList(),

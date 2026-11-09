@@ -17,8 +17,7 @@ import build.raft.app.data.WireExternalAuthor
 import build.raft.app.data.externalMessageAuthorOrFallback
 import build.raft.app.data.externalSenderIdOrSyntheticKey
 import build.raft.app.data.toForwardMessageBundle
-import build.raft.app.data.toMessageMetadata
-import build.raft.app.data.toThreadActionCard
+import build.raft.app.data.toMessageItemMetadata
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
@@ -133,7 +132,7 @@ fun CanonicalMessageRow.toAppMessage(
     )
 }
 
-/** Same lossy app projection as the REST/realtime `WireExternalAuthor` (workspaceName is not shown).
+/** Same lossy app projection as the REST/realtime `WireExternalAuthor`.
  *  Blank strings are fields the decoder kept as absent; `toExternalMessageAuthor` reads them as absent. */
 private fun CanonicalExternalAuthorWire.toWireExternalAuthor(): WireExternalAuthor = WireExternalAuthor(
     displayName = displayName,
@@ -150,6 +149,7 @@ private fun CanonicalExternalAuthorWire.toWireExternalAuthor(): WireExternalAuth
     appRegistrationId = appRegistrationId,
     // The server requires revision > 0; the decoder stores 0 for an absent one.
     actorProjectionRevision = actorProjectionRevision.takeIf { it > 0 },
+    workspaceName = workspaceName,
 )
 
 private fun CanonicalAttachmentWire.toAppAttachment(): Attachment = Attachment(
@@ -228,7 +228,7 @@ private fun JsonElement?.toAppActionProjection(): AppActionProjection {
         canonicalProjectionJson.decodeFromJsonElement(WireActionCardMetadata.serializer(), element)
     }.getOrNull() ?: return AppActionProjection()
     return AppActionProjection(
-        metadata = wire.toThreadActionCard()?.toMessageMetadata().orEmpty(),
+        metadata = wire.toMessageItemMetadata(),
         forwardBundle = wire.toForwardMessageBundle(),
     )
 }

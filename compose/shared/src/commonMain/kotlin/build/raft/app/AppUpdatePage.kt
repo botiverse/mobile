@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftTextLink
 import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
 import build.raft.app.transfer.RaftTransferMeter
@@ -13,7 +14,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.data.DataResult
 import build.raft.app.data.RaftAppUpdateEvents
 import build.raft.app.data.ScreenError
@@ -24,7 +24,6 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.raftSharedPreferenceStore
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,7 +48,15 @@ import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import build.raft.app.data.SharedUpdateDownloadProgress
-import build.raft.app.components.RaftProgressBar
+import build.raft.designsystem.components.RaftProgressBar
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftIconTile
+import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.components.RaftSlotIcon
+import androidx.compose.foundation.layout.widthIn
 
 const val APP_UPDATE_PAGE = "compose_app_update"
 
@@ -373,11 +380,12 @@ internal fun AppUpdateSummary(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Box(
-                modifier = Modifier.size(40.dp).background(RaftColor.BrandYellow).border(RaftAppStroke.Default, RaftColor.StickerInk),
-                contentAlignment = Alignment.Center
-            ) {
-                RaftLucideIcon(RaftLucideIconName.Download, modifier = Modifier.size(20.dp), color = raftArgbHex(RaftColor.StickerInk))
+            RaftIconTile(size = RaftIconTileSize.Md) {
+                RaftLucideIcon(
+                    RaftLucideIconName.Download,
+                    modifier = Modifier.size(RaftIconTileSize.Md.icon),
+                    color = raftArgbHex(RaftColor.TextMuted)
+                )
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
@@ -402,13 +410,14 @@ internal fun AppUpdateSummary(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftBrutalActionButton(
-                label = actionLabel,
+            RaftButton(
+                text = actionLabel,
                 onClick = if (errorMessage != null && snapshot == null) onRetry else onAction,
+                modifier = Modifier.widthIn(min = 96.dp),
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg,
                 enabled = appUpdatePrimaryActionEnabled(snapshot, loading, actionRunning, errorMessage),
-                leadingIcon = appUpdatePrimaryActionIcon(snapshot, errorMessage),
-                minWidth = 96.dp,
-                backgroundColor = RaftColor.AccentPink
+                leadingIcon = { RaftSlotIcon(appUpdatePrimaryActionIcon(snapshot, errorMessage)) }
             )
         }
         if (progress?.active == true) {
@@ -423,18 +432,19 @@ internal fun AppUpdateSummary(
             )
             // Unknown response length has no fabricated percentage/bar fill.
             if (percent != null) {
-                RaftProgressBar(value = percent, label = label, showPercent = true)
+                val shown = percent.coerceIn(0, 100)
+                RaftProgressBar(value = shown / 100f, modifier = Modifier.fillMaxWidth(), label = label, valueText = "$shown%")
             } else {
                 Text(text = label, style = RaftType.Caption, color = RaftColor.TextMutedGray)
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
+        RaftSeparator()
         if (appUpdateCanSkipVersion(snapshot)) {
-            Text(
+            RaftTextLink(
                 text = stringResource(Res.string.app_update_skip_version),
-                modifier = Modifier.align(Alignment.End).clickable(onClick = onSkipVersion).padding(vertical = 4.dp),
+                onClick = onSkipVersion,
+                modifier = Modifier.align(Alignment.End).padding(vertical = 4.dp),
                 style = RaftType.Caption,
-                color = RaftColor.TextMutedGray
             )
         }
     }

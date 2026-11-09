@@ -34,6 +34,8 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.graphics.Color
@@ -41,6 +43,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,6 +54,7 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.LocalRaftMisuse
+import build.raft.designsystem.theme.RaftControlMetrics
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.RaftTypography
 import build.raft.designsystem.tokens.RaftRadius
@@ -88,25 +93,79 @@ enum class RaftButtonSize {
     /** 32dp: actions in list rows, cards, banners, toolbars and panel headers. */
     Md,
 
-    /** 44dp: dialog and sheet footers, form submit buttons. */
+    /** `--control-height`, 44dp (34dp on a desktop): dialog and sheet footers, form submit buttons. */
     Lg,
 
-    /** 52dp: only the full-width pink button of a sign-in, sign-up or setup form. */
+    /** `--control-height-cta`, 52dp (40dp on a desktop): only the full-width pink button of a sign-in, sign-up or setup form. */
     Xl,
 }
 
 /**
  * raft-ui Button icon sizes (0.21: `icon-md` and `icon-lg`; `icon-xs` / `icon-sm` are old
- * names of `icon-md`). There is no smaller icon button: a component that needs a 28dp one
- * (the sidebar section control) sizes it itself.
+ * names of `icon-md`), plus the two inline sizes raft-ui draws inside a component rather than
+ * as a Button: [Xs] and [Sm].
  */
 enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
-    /** 32dp with an 18dp icon (36dp / 20dp on the frame). */
+    /**
+     * 24dp with a 16dp icon at `radius-chip`: an action inline in a row or a card, such as the
+     * message attachment card's action (raft-ui `size-6 rounded-chip`, `before:-inset-1`) or a
+     * banner's close. Its touch target widens to 44dp and its pointer target to 28dp, neither
+     * changing its layout; keep the space round it free.
+     */
+    Xs(24.dp, 16.dp),
+
+    /**
+     * 28dp with a 16dp icon at `radius-chip`: a corner action over content, such as a code
+     * block's Copy. Its touch target widens to 44dp without changing its layout.
+     */
+    Sm(28.dp, 16.dp),
+
+    /**
+     * 32dp with an 18dp icon (36dp / 20dp on the frame). Under a fine pointer it takes the shared
+     * row height ([RaftControlMetrics.rowHeight], 34) and, on the frame, the top bar's 32dp item
+     * (sizing v12, raft-ui 0.65 desktop density).
+     */
     Md(32.dp, 18.dp),
 
-    /** 44dp with a 22dp icon: a phone top bar, next to a 44dp input. */
+    /**
+     * `--control-height` with a `--control-icon-size` icon: 44dp / 22dp (34dp / 18dp on a
+     * mouse or trackpad, [RaftControlMetrics]); a phone top bar, next to an input. [box] and [glyph] are
+     * the mobile values; components read [boxIn] / [glyphIn].
+     */
     Lg(44.dp, 22.dp),
+    ;
+
+    /** The inline sizes ([Xs], [Sm]) round at `radius-chip`, not `radius-control`. */
+    internal val inline: Boolean get() = box < Md.box
+
+    /**
+     * The box under [controls]: [Lg] follows `--control-height`, or is the bar button in a head
+     * or a bar ([bar], [LocalRaftBarButtons]); [Md] takes the row height under a fine pointer.
+     */
+    internal fun boxIn(controls: RaftControlMetrics, bar: Boolean = false): Dp =
+        when (this) {
+            Lg -> if (bar) controls.barButtonSize else controls.height
+            Md -> controls.rowHeight ?: box
+            else -> box
+        }
+
+    /** The icon under [controls]: [Lg] follows `--control-icon-size`, or the bar button's glyph in a bar. */
+    internal fun glyphIn(controls: RaftControlMetrics, bar: Boolean = false): Dp =
+        if (this == Lg) (if (bar) controls.barIconSize else controls.iconSize) else glyph
+
+    /** The corners under [controls]: an [Lg] bar button takes [RaftControlMetrics.barButtonRadius]; null keeps the default. */
+    internal fun radiusIn(controls: RaftControlMetrics, bar: Boolean): Dp? = if (this == Lg && bar) controls.barButtonRadius else null
 }
+
+/**
+ * True inside a head or a bar (a page's top bar, a panel's head, a dialog sheet's head, a
+ * drawer's head): an `icon-lg` icon button there ([RaftIconButton], [RaftIconToggleButton]) is
+ * the bar button ([RaftControlMetrics.barButtonSize]), as [RaftBackButton] always is. With a
+ * finger that is the same 44dp `icon-lg`; under a fine pointer the 28dp, radius-6 desktop bar
+ * button (sizing v12, raft-ui 0.65 desktop density). Head components provide it; a caller that
+ * draws its own head provides it round the head's row.
+ */
+val LocalRaftBarButtons = staticCompositionLocalOf { false }
 
 /** Resolved colours of one variant x state (raft-ui button.tsx). */
 internal data class RaftButtonLook(
@@ -191,22 +250,31 @@ internal data class RaftButtonMetrics(
     val iconSize: Dp,
 )
 
-internal fun raftButtonMetrics(size: RaftButtonSize, variant: RaftButtonVariant): RaftButtonMetrics =
+internal fun raftButtonMetrics(
+    size: RaftButtonSize,
+    variant: RaftButtonVariant,
+    controls: RaftControlMetrics = RaftControlMetrics.Mobile,
+): RaftButtonMetrics =
     when {
-        // On the frame the 32dp button is the 36dp frame item: 10dp each side.
-        size == RaftButtonSize.Md && variant == RaftButtonVariant.OnFrame -> RaftButtonMetrics(36.dp, 10.dp, 10.dp, 16.dp)
-        size == RaftButtonSize.Md -> RaftButtonMetrics(32.dp, 12.dp, 10.dp, 16.dp)
-        size == RaftButtonSize.Lg -> RaftButtonMetrics(44.dp, 16.dp, 14.dp, 18.dp)
-        // xl centres its content in the full width: no tighter icon side.
-        else -> RaftButtonMetrics(52.dp, 20.dp, 20.dp, 18.dp)
+        // On the frame the 32dp button is the 36dp frame item: 10dp each side. Under a fine
+        // pointer the top bar's item is 32 (sizing v12, raft-ui 0.65 desktop density).
+        size == RaftButtonSize.Md && variant == RaftButtonVariant.OnFrame -> RaftButtonMetrics(controls.topBarItemSize, 10.dp, 10.dp, 16.dp)
+        // 32dp with a finger; the shared 34dp row height under a fine pointer (sizing v12).
+        size == RaftButtonSize.Md -> RaftButtonMetrics(controls.rowHeight ?: 32.dp, 12.dp, 10.dp, 16.dp)
+        // `h-control`: 44dp, 34dp on a desktop.
+        size == RaftButtonSize.Lg -> RaftButtonMetrics(controls.height, 16.dp, 14.dp, 18.dp)
+        // `h-control-cta`: 52dp, 40dp on a desktop. xl centres its content in the full width:
+        // no tighter icon side.
+        else -> RaftButtonMetrics(controls.ctaHeight, 20.dp, 20.dp, 18.dp)
     }
 
 internal fun raftButtonTextStyle(size: RaftButtonSize, variant: RaftButtonVariant, typography: RaftTypography): TextStyle {
-    // raft `text-footnote` (md), `text-subhead` (lg, and md on the frame), `text-body` (xl).
+    // raft `text-control` (md: footnote's 13/18 on a phone, 14/22 on a desktop), `text-subhead`
+    // (lg, and md on the frame), `text-body` (xl).
     val base =
         when {
             size == RaftButtonSize.Md && variant == RaftButtonVariant.OnFrame -> typography.subhead
-            size == RaftButtonSize.Md -> typography.footnote
+            size == RaftButtonSize.Md -> typography.control
             size == RaftButtonSize.Lg -> typography.subhead
             else -> typography.body
         }
@@ -236,6 +304,15 @@ internal fun RaftButtonBox(
     join: RaftButtonJoin = RaftButtonJoin.None,
     /** Show the press overlay while what the button opens is open (raft-ui `data-popup-open`). */
     open: Boolean = false,
+    /** Round at `radius-chip` (an inline icon button) rather than `radius-control`. */
+    chipRadius: Boolean = false,
+    /**
+     * How far the hit area reaches past each edge for every pointer, without changing the
+     * layout or the drawing ([raftHitOverhang]).
+     */
+    hitOverhang: Dp = 0.dp,
+    /** Corners in place of `radius-control` (a bar button, [RaftControlMetrics.barButtonRadius]); null keeps it. */
+    cornerRadius: Dp? = null,
     content: @Composable () -> Unit,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -267,67 +344,77 @@ internal fun RaftButtonBox(
     // `focus-visible:shadow-focus`. raft-ui keeps a loading button focusable but
     // `aria-disabled`: the clickable stays enabled (so focus stays on it when it turns busy),
     // drops the tap while busy, and semantics say disabled, so no click action is offered.
-    val isFocused = raftIsFocused(source)
+    val isFocused = raftIsFocusVisible(source)
     val focused = enabled && isFocused
-    val radius = if (LocalRaftEmbeddedControl.current) RaftRadius.Chip else RaftRadius.Control
+    val radius = if (chipRadius || LocalRaftEmbeddedControl.current) RaftRadius.Chip else cornerRadius ?: RaftRadius.Control
     val shape = join.shape(radius)
+    val drawing =
+        Modifier
+            .raftFocusRing(focused, radius, RaftTheme.colors)
+            .raftDieCutEdge(look.outerRing, radius)
+            .background(look.fill, shape)
+            .then(
+                if (join == RaftButtonJoin.None) {
+                    Modifier.raftPressOverlay(pressed, look.pressOverlay, radius)
+                } else {
+                    Modifier.background(joinedFill, shape)
+                },
+            )
+            .then(
+                if (join == RaftButtonJoin.Start) {
+                    Modifier.raftBorderWithoutStartEdge(RaftStroke.Control, look.edge, radius)
+                } else {
+                    Modifier.border(RaftStroke.Control, look.edge, shape)
+                },
+            )
+    val hit =
+        Modifier
+            .semantics { if (loading) disabled() }
+            .raftPointerHover(source)
+            .then(
+                if (widenTouchTarget) {
+                    Modifier.raftTouchTarget(
+                        enabled && !loading,
+                        source,
+                        onClick,
+                        onLongClick = onLongClick?.let { long -> { if (!loading) long() } },
+                        // A control joined on its start edge leaves that side's taps to its neighbour.
+                        expandStart = join != RaftButtonJoin.Start,
+                    )
+                } else {
+                    Modifier
+                },
+            )
+            .then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(
+                        interactionSource = source,
+                        indication = null,
+                        enabled = enabled,
+                        role = Role.Button,
+                        onLongClickLabel = onLongClickLabel,
+                        onLongClick = { if (!loading) onLongClick() },
+                        onClick = { if (!loading) onClick() },
+                    )
+                } else {
+                    Modifier.clickable(
+                        interactionSource = source,
+                        indication = null,
+                        enabled = enabled,
+                        role = Role.Button,
+                        onClick = { if (!loading) onClick() },
+                    )
+                },
+            )
     Box(
+        // With an overhang the hit modifiers sit on a node that many dp larger than the drawing,
+        // reported to the layout at the drawing's size.
         modifier =
-            modifier
-                .raftFocusRing(focused, radius, RaftTheme.colors)
-                .raftDieCutEdge(look.outerRing, radius)
-                .background(look.fill, shape)
-                .then(
-                    if (join == RaftButtonJoin.None) {
-                        Modifier.raftPressOverlay(pressed, look.pressOverlay, radius)
-                    } else {
-                        Modifier.background(joinedFill, shape)
-                    },
-                )
-                .then(
-                    if (join == RaftButtonJoin.Start) {
-                        Modifier.raftBorderWithoutStartEdge(RaftStroke.Control, look.edge, radius)
-                    } else {
-                        Modifier.border(RaftStroke.Control, look.edge, shape)
-                    },
-                )
-                .semantics { if (loading) disabled() }
-                .raftPointerHover(source)
-                .then(
-                    if (widenTouchTarget) {
-                        Modifier.raftTouchTarget(
-                            enabled && !loading,
-                            source,
-                            onClick,
-                            onLongClick = onLongClick?.let { long -> { if (!loading) long() } },
-                            // A control joined on its start edge leaves that side's taps to its neighbour.
-                            expandStart = join != RaftButtonJoin.Start,
-                        )
-                    } else {
-                        Modifier
-                    },
-                )
-                .then(
-                    if (onLongClick != null) {
-                        Modifier.combinedClickable(
-                            interactionSource = source,
-                            indication = null,
-                            enabled = enabled,
-                            role = Role.Button,
-                            onLongClickLabel = onLongClickLabel,
-                            onLongClick = { if (!loading) onLongClick() },
-                            onClick = { if (!loading) onClick() },
-                        )
-                    } else {
-                        Modifier.clickable(
-                            interactionSource = source,
-                            indication = null,
-                            enabled = enabled,
-                            role = Role.Button,
-                            onClick = { if (!loading) onClick() },
-                        )
-                    },
-                ),
+            if (hitOverhang > 0.dp) {
+                modifier.raftHitOverhang(hitOverhang).then(hit).padding(hitOverhang).then(drawing)
+            } else {
+                modifier.then(drawing).then(hit)
+            },
         contentAlignment = Alignment.Center,
     ) {
         CompositionLocalProvider(LocalRaftContentColor provides look.ink) {
@@ -337,6 +424,21 @@ internal fun RaftButtonBox(
         }
     }
 }
+
+/**
+ * Lays out what follows [overhang] larger on every side than the space it takes (raft-ui's
+ * overhanging `::before` / `::after`): the layout and the drawing (after a matching
+ * `padding(overhang)`) stay put, and the pointer modifiers between the two get the larger box,
+ * which Compose hit-tests past this node's bounds. Unlike [raftTouchTarget] it works for a mouse.
+ */
+internal fun Modifier.raftHitOverhang(overhang: Dp): Modifier =
+    layout { measurable, constraints ->
+        val o = overhang.roundToPx()
+        val placeable = measurable.measure(constraints.offset(2 * o, 2 * o))
+        layout((placeable.width - 2 * o).coerceAtLeast(0), (placeable.height - 2 * o).coerceAtLeast(0)) {
+            placeable.place(-o, -o)
+        }
+    }
 
 /**
  * The two parts of a split button ([RaftButtonJoin.End] then [RaftButtonJoin.Start]),
@@ -440,7 +542,11 @@ val LocalRaftButtonsStacked = staticCompositionLocalOf { false }
  *
  * - Box: 1.5dp border, `radius-control`, Space Grotesk bold, one line. `md` 32dp tall,
  *   12dp padding (10dp on an icon's side), 13/18 text, 16dp icons; `lg` 44dp, 16dp
- *   (14dp), 15/20, 18dp icons; `xl` 52dp, 20dp, 16/24, 18dp icons; gap 8dp.
+ *   (14dp), 15/20, 18dp icons; `xl` 52dp, 20dp, 16/24, 18dp icons; gap 8dp. Under
+ *   [build.raft.designsystem.theme.RaftScale.Wide] `md` text is 14/22 (raft-ui
+ *   `text-control`); with a mouse or trackpad in use
+ *   ([build.raft.designsystem.theme.RaftPointerInput.Fine]) `lg` is 34dp and `xl` 40dp
+ *   (`h-control`, `h-control-cta`).
  * - Stickers ([RaftButtonVariant.Primary], `Warning`, `Danger`): `sticker-ink` border and
  *   type, plus a 1.5dp `sticker-edge` ring outside (the die-cut edge in dark).
  * - Pressed, and hovered by a mouse or trackpad: one overlay over the resting fill
@@ -479,6 +585,11 @@ fun RaftButton(
     trailingIcon: (@Composable () -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
     trailingText: String? = null,
+    /**
+     * Touches up to 44dp round a button shorter than that count (raft-ui `after:` hit inset), with
+     * no change to layout: a 32dp button standing alone where a finger aims at it (a sheet's head).
+     */
+    widenTouchTarget: Boolean = false,
 ) {
     // raft-ui 0.23 (#727): stacked full width (a dialog footer that didn't fit, a sheet's
     // actions), a ghost text button takes the ink frame of `default`, so it reads as a button.
@@ -489,7 +600,7 @@ fun RaftButton(
             frameless = false,
             colors = RaftTheme.colors,
         )
-    val metrics = raftButtonMetrics(size, variant)
+    val metrics = raftButtonMetrics(size, variant, RaftTheme.controls)
     val textStyle = raftButtonTextStyle(size, variant, RaftTheme.typography)
     // CSS padding sits inside the 1.5dp border.
     val start = (if (leadingIcon != null) metrics.iconSidePaddingX else metrics.paddingX) + RaftStroke.Control
@@ -502,6 +613,7 @@ fun RaftButton(
         loading = loading,
         loadingLabel = loadingLabel,
         interactionSource = interactionSource,
+        widenTouchTarget = widenTouchTarget,
     ) {
         Row(
             modifier = Modifier.padding(start = start, end = end),
@@ -511,21 +623,43 @@ fun RaftButton(
             if (leadingIcon != null) {
                 Box(Modifier.size(metrics.iconSize), contentAlignment = Alignment.Center) { leadingIcon() }
             }
-            RaftButtonLabel(text = text, trailingText = trailingText, style = textStyle, ink = look.ink)
-            if (trailingIcon != null) {
-                Box(Modifier.size(metrics.iconSize), contentAlignment = Alignment.Center) { trailingIcon() }
+            if (trailingText != null) {
+                // Label, trailing text and icon share one layout, so the icon is always drawn.
+                RaftButtonLabel(
+                    text = text,
+                    trailingText = trailingText,
+                    style = textStyle,
+                    ink = look.ink,
+                    trailingIcon = trailingIcon?.let { icon -> { Box(Modifier.size(metrics.iconSize), contentAlignment = Alignment.Center) { icon() } } },
+                )
+            } else {
+                RaftButtonLabel(text = text, trailingText = null, style = textStyle, ink = look.ink)
+                if (trailingIcon != null) {
+                    Box(Modifier.size(metrics.iconSize), contentAlignment = Alignment.Center) { trailingIcon() }
+                }
             }
         }
     }
 }
 
+/** The narrowest a label is cut to before a [RaftButton]'s trailing text (a link's domain) is cut too. */
+private val RaftButtonLabelMinWidth = 64.dp
+
 /**
  * A button's label on one line, ending in an ellipsis when it doesn't fit, then [trailingText]
- * 6dp after it at regular weight. The trailing text is measured first and kept whole (up to
- * the whole width); the label takes what is left.
+ * 6dp after it at regular weight, then [trailingIcon] 8dp after that (web link card buttons:
+ * label `truncate`, domain, ↗). The icon is always drawn; the trailing text is kept whole while
+ * the label gives way; once the label is down to [RaftButtonLabelMinWidth] (or its own width, if
+ * shorter) the trailing text ends in an ellipsis too.
  */
 @Composable
-private fun RaftButtonLabel(text: String, trailingText: String?, style: TextStyle, ink: Color) {
+private fun RaftButtonLabel(
+    text: String,
+    trailingText: String?,
+    style: TextStyle,
+    ink: Color,
+    trailingIcon: (@Composable () -> Unit)? = null,
+) {
     if (trailingText == null) {
         RaftText(text = text, style = style, color = ink, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
         return
@@ -541,18 +675,29 @@ private fun RaftButtonLabel(text: String, trailingText: String?, style: TextStyl
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis,
             )
+            trailingIcon?.invoke()
         },
     ) { measurables, constraints ->
         val gap = 6.dp.roundToPx()
         val loose = constraints.copy(minWidth = 0)
-        val trailing = measurables[1].measure(loose)
-        val labelMax = if (constraints.hasBoundedWidth) (constraints.maxWidth - trailing.width - gap).coerceAtLeast(0) else Constraints.Infinity
+        val icon = measurables.getOrNull(2)?.measure(loose)
+        val iconSpace = icon?.let { it.width + 8.dp.roundToPx() } ?: 0
+        val trailing =
+            if (constraints.hasBoundedWidth) {
+                val labelFloor = minOf(measurables[0].maxIntrinsicWidth(constraints.maxHeight), RaftButtonLabelMinWidth.roundToPx())
+                measurables[1].measure(loose.copy(maxWidth = (constraints.maxWidth - iconSpace - gap - labelFloor).coerceAtLeast(0)))
+            } else {
+                measurables[1].measure(loose)
+            }
+        val labelMax =
+            if (constraints.hasBoundedWidth) (constraints.maxWidth - iconSpace - trailing.width - gap).coerceAtLeast(0) else Constraints.Infinity
         val label = measurables[0].measure(loose.copy(maxWidth = labelMax))
-        val width = (label.width + gap + trailing.width).coerceIn(constraints.minWidth, constraints.maxWidth)
-        val height = maxOf(label.height, trailing.height)
+        val width = (label.width + gap + trailing.width + iconSpace).coerceIn(constraints.minWidth, constraints.maxWidth)
+        val height = maxOf(label.height, trailing.height, icon?.height ?: 0)
         layout(width, height) {
             label.placeRelative(0, (height - label.height) / 2)
             trailing.placeRelative(label.width + gap, (height - trailing.height) / 2)
+            icon?.placeRelative(label.width + gap + trailing.width + iconSpace - icon.width, (height - icon.height) / 2)
         }
     }
 }
@@ -602,11 +747,14 @@ fun RaftIconButton(
     icon: @Composable () -> Unit,
 ) {
     val onFrame = variant == RaftButtonVariant.OnFrame && size == RaftIconButtonSize.Md
+    val controls = RaftTheme.controls
+    val bar = LocalRaftBarButtons.current
     RaftSizedIconButton(
         onClick = onClick,
         tooltip = tooltip,
-        box = if (onFrame) 36.dp else size.box,
-        glyph = if (onFrame) 20.dp else size.glyph,
+        // On the frame: the top bar's item, 36 (32 under a fine pointer, sizing v12).
+        box = if (onFrame) controls.topBarItemSize else size.boxIn(controls, bar),
+        glyph = if (onFrame) 20.dp else size.glyphIn(controls, bar),
         modifier = modifier,
         variant = variant,
         enabled = enabled,
@@ -616,15 +764,121 @@ fun RaftIconButton(
         contentDescription = contentDescription,
         onLongClick = onLongClick,
         longClickLabel = longClickLabel,
+        chipRadius = size.inline,
+        pointerHitSize = if (size.inline) RaftInlineIconButtonPointerHit else null,
+        cornerRadius = size.radiusIn(controls, bar),
         icon = icon,
     )
 }
 
+/** The least pointer (mouse, trackpad) target of an inline icon button ([RaftIconButtonSize.Xs]). */
+private val RaftInlineIconButtonPointerHit = 28.dp
+
+/**
+ * raft-ui `PanelToggleAction`: an icon button that switches something on and off, such as the
+ * Tasks and Files panels in a conversation's top bar (raft-design `panel.md`, `channel.md`
+ * "Tasks and files"). Off it is a ghost icon button; on ([checked]) it is a yellow sticker
+ * (`selected` fill, a 1.5dp `sticker-ink` edge and a `sticker-edge` ring) that marks the panel
+ * as open, with the sticker press overlay.
+ *
+ * [tooltip] names what a tap does now, so it changes with [checked] ("Tasks" / "Close Tasks"),
+ * and is also its screen-reader name; the on/off state is announced as a toggle. It shows no
+ * count. `Lg` (44dp) is the phone top bar size, the tap target raft-ui keeps there.
+ */
+@Composable
+fun RaftIconToggleButton(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    tooltip: String,
+    modifier: Modifier = Modifier,
+    size: RaftIconButtonSize = RaftIconButtonSize.Lg,
+    enabled: Boolean = true,
+    interactionSource: MutableInteractionSource? = null,
+    icon: @Composable () -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val controls = RaftTheme.controls
+    val bar = LocalRaftBarButtons.current
+    val look =
+        if (checked && enabled) {
+            RaftButtonLook(
+                fill = RaftUiPalette.selected,
+                ink = RaftUiPalette.stickerInk,
+                edge = RaftUiPalette.stickerInk,
+                outerRing = colors.stickerEdge,
+                pressOverlay = raftPressOverlayColor(RaftPressSurface.Sticker, colors),
+            )
+        } else {
+            raftButtonLook(RaftButtonVariant.Ghost, enabled, frameless = true, colors = colors)
+        }
+    val button: @Composable (Modifier) -> Unit = { outer ->
+        RaftButtonBox(
+            look = look,
+            onClick = { onCheckedChange(!checked) },
+            modifier =
+                outer
+                    .size(size.boxIn(controls, bar))
+                    .semantics {
+                        contentDescription = tooltip
+                        toggleableState = ToggleableState(checked)
+                    },
+            enabled = enabled,
+            loading = false,
+            loadingLabel = "",
+            interactionSource = interactionSource,
+            widenTouchTarget = size.inline || size.boxIn(controls, bar) < RaftIconButtonSize.Md.box,
+            chipRadius = size.inline,
+            cornerRadius = size.radiusIn(controls, bar),
+        ) {
+            Box(Modifier.size(size.glyphIn(controls, bar)), contentAlignment = Alignment.Center) { icon() }
+        }
+    }
+    RaftTooltip(text = tooltip, modifier = modifier) { button(Modifier) }
+}
+
+/**
+ * raft-ui `PanelAction`: a panel or top-bar head action that is not a plain icon button, such as
+ * a glyph with a count or a label beside it (the thread header's participants, its ⋯). Ghost: no
+ * edge, no shadow, transparent at rest; hover and press lay the ghost press overlay inside the
+ * control radius, like [RaftIconButton]. The caller sizes it (raft-ui `h-control min-w-control`,
+ * `px-2` with a label) and names it for screen readers when its content does not.
+ *
+ * [open] keeps the press overlay on while what it discloses is open (raft-ui
+ * `data-popup-open`), such as the notification bell's popover.
+ */
+@Composable
+fun RaftPanelAction(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    open: Boolean = false,
+    interactionSource: MutableInteractionSource? = null,
+    content: @Composable () -> Unit,
+) {
+    RaftButtonBox(
+        look = raftButtonLook(RaftButtonVariant.Ghost, enabled, frameless = true, colors = RaftTheme.colors),
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        loading = false,
+        loadingLabel = "",
+        interactionSource = interactionSource,
+        open = open,
+    ) {
+        Box(contentAlignment = Alignment.Center) { content() }
+    }
+}
+
 /**
  * A [RaftIconButton] of a size its component sets ([box], with a [glyph] icon) rather than a
- * [RaftIconButtonSize]: the sidebar section control's 28dp (raft-ui: "28px is not a Button
- * size"). A box under 32dp widens its touch target to 44dp without growing (a tap there
- * clicks; a long press needs the box); keep the space round it free.
+ * [RaftIconButtonSize]: the sidebar section control's 24dp (raft-ui 0.55, #916). A box under
+ * 32dp widens its touch target to 44dp without growing (a tap there clicks; a long press needs
+ * the box); where two widened targets overlap, the nearer one takes the tap. [open] keeps the
+ * press overlay while what the button opens is open (`data-popup-open`).
+ *
+ * [chipRadius] rounds it at `radius-chip`. [pointerHitSize] widens the hit area for every
+ * pointer, a mouse included, to that square without changing the layout (raft-ui's
+ * `before:-inset-*`); the touch target still widens to 44dp.
  */
 @Composable
 internal fun RaftSizedIconButton(
@@ -641,6 +895,10 @@ internal fun RaftSizedIconButton(
     contentDescription: String? = tooltip,
     onLongClick: (() -> Unit)? = null,
     longClickLabel: String? = null,
+    open: Boolean = false,
+    chipRadius: Boolean = false,
+    pointerHitSize: Dp? = null,
+    cornerRadius: Dp? = null,
     icon: @Composable () -> Unit,
 ) {
     val look = raftButtonLook(variant, enabled, frameless = variant == RaftButtonVariant.Ghost, colors = RaftTheme.colors)
@@ -662,6 +920,10 @@ internal fun RaftSizedIconButton(
             onLongClick = onLongClick,
             onLongClickLabel = longClickLabel,
             widenTouchTarget = box < RaftIconButtonSize.Md.box,
+            open = open,
+            chipRadius = chipRadius,
+            hitOverhang = pointerHitSize?.let { ((it - box) / 2).coerceAtLeast(0.dp) } ?: 0.dp,
+            cornerRadius = cornerRadius,
         ) {
             Box(Modifier.size(glyph), contentAlignment = Alignment.Center) { icon() }
         }

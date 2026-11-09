@@ -1,13 +1,16 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -49,15 +52,20 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftMeter
 import build.raft.designsystem.components.RaftMeterSize
+import build.raft.designsystem.components.RaftPreviewCard
+import build.raft.designsystem.components.RaftPreviewCardDefaults
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSheet
 import build.raft.designsystem.components.RaftSheetSurface
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.components.RaftStatusVariant
+import build.raft.designsystem.components.rememberRaftPreviewCardState
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -332,11 +340,9 @@ private fun ComputerRuntimeUsageChip(
         }
     DisposableEffect(controller) { onDispose { controller?.cancel() } }
     LaunchedEffect(controller) { controller?.start() }
-    var open by remember(controller) { mutableStateOf(false) }
     val load = controller?.load
     val offered = controller != null && load !is RuntimeAccountUsageLoad.Forbidden
     val health = load.computerRuntimeUsageHealth()
-    val dialogLabel = stringResource(Res.string.settings_computers_runtime_usage_dialog_label, label)
     val healthDot: (@Composable () -> Unit)? =
         if (health == null) {
             null
@@ -356,46 +362,28 @@ private fun ComputerRuntimeUsageChip(
                 )
             }
         }
-    // The tap handler is always attached and the modifier chain keeps its shape (Kuikly keeps
-    // stale native props when a modifier is removed); whether a tap opens is decided inside.
-    RaftBadge(
-        text = label,
-        // A badge button: a tap opens its usage, a long press copies the runtime name; its
-        // touch target reaches 44dp (raft-ui 0.52.2).
-        onClick = {
-            if (offered) {
-                open = true
-                controller?.onOpen()
-            }
-        },
-        onClickLabel = dialogLabel,
-        copyText = label,
-        appearance = RaftBadgeAppearance.Soft,
-        variant = RaftBadgeVariant.Information,
-        trailing = healthDot,
-    )
-    // Read before the sheet: its window may not carry the page's composition locals.
-    val timeContext = LocalRaftTimeContextProvider.current?.current
-    if (open && offered && controller != null) {
-        LaunchedEffect(controller) {
-            while (true) {
-                controller.updateCooldown()
-                delay(1_000L)
-            }
-        }
-        ComputerRuntimeUsageSheet(
+    val chip: @Composable () -> Unit = {
+        // A badge whose long press copies the runtime name; the usage card opens on hover and pins
+        // on a click (below), so the badge takes no click of its own.
+        RaftBadge(
+            text = label,
+            copyText = label,
+            appearance = RaftBadgeAppearance.Soft,
+            variant = RaftBadgeVariant.Information,
+            trailing = healthDot,
+        )
+    }
+    // Web `RuntimeUsageHoverCard` (artin 11-02): a mouse resting on the chip shows the usage card,
+    // a click (a finger's tap too) pins it.
+    if (controller == null) {
+        chip()
+    } else {
+        ComputerRuntimeUsagePreviewCard(
             runtimeLabel = label,
-            state =
-                ComputerRuntimeUsageSheetState(
-                    controller.load,
-                    controller.loading,
-                    controller.refresh,
-                    controller.cooldownLeftMillis,
-                    runtimeVersion,
-                ),
-            timeContext = timeContext,
-            onRefresh = controller::refreshNow,
-            onDismiss = { open = false },
+            controller = controller,
+            runtimeVersion = runtimeVersion,
+            enabled = offered,
+            trigger = chip,
         )
     }
 }
@@ -433,7 +421,7 @@ internal fun ComputerRuntimeUsageSheetHost(
             delay(1_000L)
         }
     }
-    val timeContext = LocalRaftTimeContextProvider.current?.current
+    val timeContext = currentRaftTimeContextProvider?.current
     ComputerRuntimeUsageSheet(
         runtimeLabel = runtimeLabel,
         state =
@@ -515,17 +503,7 @@ private fun ColumnScope.ComputerRuntimeUsageActions(
             color = colors.foregroundHint,
         )
     }
-    val status =
-        when {
-            state.refresh == ComputerRuntimeUsageRefreshStatus.Requested -> stringResource(Res.string.settings_computers_runtime_usage_refresh_requested)
-            state.refresh == ComputerRuntimeUsageRefreshStatus.Unconfirmed -> stringResource(Res.string.settings_computers_runtime_usage_refresh_unconfirmed)
-            state.refresh == ComputerRuntimeUsageRefreshStatus.Timeout -> stringResource(Res.string.settings_computers_runtime_usage_refresh_timeout)
-            state.cooldownLeftMillis > 0L ->
-                stringResource(Res.string.settings_computers_runtime_usage_refresh_cooldown_countdown, ((state.cooldownLeftMillis + 999L) / 1_000L).toInt())
-            state.refresh == ComputerRuntimeUsageRefreshStatus.ComputerOffline -> stringResource(Res.string.settings_computers_runtime_usage_computer_offline)
-            else -> stringResource(Res.string.settings_computers_runtime_usage_cache_only)
-        }
-    RaftText(status, style = RaftTheme.typography.caption, color = colors.foregroundHint)
+    RaftText(computerRuntimeUsageRefreshStatusText(state), style = RaftTheme.typography.caption, color = colors.foregroundHint)
     RaftButton(
         text = stringResource(Res.string.settings_computers_runtime_usage_refresh),
         onClick = onRefresh,
@@ -544,6 +522,19 @@ private fun ColumnScope.ComputerRuntimeUsageActions(
         size = RaftButtonSize.Lg,
     )
 }
+
+/** The refresh line under the usage (web `Surface` footer). */
+@Composable
+private fun computerRuntimeUsageRefreshStatusText(state: ComputerRuntimeUsageSheetState): String =
+    when {
+        state.refresh == ComputerRuntimeUsageRefreshStatus.Requested -> stringResource(Res.string.settings_computers_runtime_usage_refresh_requested)
+        state.refresh == ComputerRuntimeUsageRefreshStatus.Unconfirmed -> stringResource(Res.string.settings_computers_runtime_usage_refresh_unconfirmed)
+        state.refresh == ComputerRuntimeUsageRefreshStatus.Timeout -> stringResource(Res.string.settings_computers_runtime_usage_refresh_timeout)
+        state.cooldownLeftMillis > 0L ->
+            stringResource(Res.string.settings_computers_runtime_usage_refresh_cooldown_countdown, ((state.cooldownLeftMillis + 999L) / 1_000L).toInt())
+        state.refresh == ComputerRuntimeUsageRefreshStatus.ComputerOffline -> stringResource(Res.string.settings_computers_runtime_usage_computer_offline)
+        else -> stringResource(Res.string.settings_computers_runtime_usage_cache_only)
+    }
 
 @Composable
 internal fun ComputerRuntimeUsageContents(
@@ -744,3 +735,210 @@ private fun RuntimeAccountUsageHealth.label(): String =
             RuntimeAccountUsageHealth.Unknown -> Res.string.settings_computers_runtime_usage_health_unknown
         }
     )
+
+/**
+ * Web `RuntimeUsageHoverCard` (desktop): the usage card on a runtime chip under a mouse or
+ * trackpad pointer. It opens after the pointer rests on [trigger] for 200ms and closes 160ms
+ * after it leaves; a click on [trigger], by any pointer, opens it at once and pins it (it then
+ * stays until a click outside, Escape or its close button), so the pointer can reach Refresh.
+ * Opening reads through the shared 60 s cache, as the sheet does.
+ *
+ * The same for every pointer: a finger has no hover, so its tap pins the card. The click goes no
+ * further, so give [trigger] no click of its own (no sheet). [enabled] false shows [trigger] alone.
+ */
+@Composable
+internal fun ComputerRuntimeUsagePreviewCard(
+    runtimeLabel: String,
+    controller: ComputerRuntimeUsageController,
+    runtimeVersion: String?,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    trigger: @Composable () -> Unit,
+) {
+    val state = rememberRaftPreviewCardState(closeDelayMillis = ComputerRuntimeUsagePreviewCardCloseDelayMillis)
+    val timeContext = currentRaftTimeContextProvider?.current
+    if (state.isOpen) {
+        LaunchedEffect(controller) {
+            controller.onOpen()
+            while (true) {
+                controller.updateCooldown()
+                delay(1_000L)
+            }
+        }
+    }
+    RaftPreviewCard(
+        card = {
+            ComputerRuntimeUsageCard(
+                runtimeLabel = runtimeLabel,
+                state =
+                    ComputerRuntimeUsageSheetState(
+                        controller.load,
+                        controller.loading,
+                        controller.refresh,
+                        controller.cooldownLeftMillis,
+                        runtimeVersion,
+                    ),
+                timeContext = timeContext,
+                onRefresh = controller::refreshNow,
+                onClose = state::dismiss,
+            )
+        },
+        modifier = modifier,
+        state = state,
+        enabled = enabled,
+        pinOnClick = true,
+        width = RaftPreviewCardDefaults.WideWidth,
+        trigger = trigger,
+    )
+}
+
+/** Web `HOVER_CLOSE_DELAY_MS`: the usage card waits a little longer than a profile card. */
+internal const val ComputerRuntimeUsagePreviewCardCloseDelayMillis = 160L
+
+/**
+ * Web `Surface` in its desktop card: a header (title, version, who may see it, close) over a
+ * hairline, the accounts, then a footer row with the refresh state and an outline Refresh. The
+ * phone keeps the sheet ([ComputerRuntimeUsageSheet]) with the same content.
+ */
+@Composable
+internal fun ComputerRuntimeUsageCard(
+    runtimeLabel: String,
+    state: ComputerRuntimeUsageSheetState,
+    timeContext: RaftTimeContext?,
+    onRefresh: () -> Unit,
+    onClose: (() -> Unit)?,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    // `flex items-center justify-between gap-3 border-b border-line-hairline px-4 py-3`
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            RaftText(
+                stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
+                style = typography.headline,
+                color = colors.foreground,
+            )
+            val version = state.runtimeVersion?.trim()?.takeIf { it.isNotEmpty() }
+            RaftText(
+                if (version != null) {
+                    stringResource(Res.string.settings_computers_runtime_usage_version, version)
+                } else {
+                    stringResource(Res.string.settings_computers_runtime_usage_version_unavailable)
+                },
+                style = typography.monoMeta,
+                color = colors.foregroundHint,
+            )
+            RaftText(
+                stringResource(Res.string.settings_computers_runtime_usage_private),
+                style = typography.caption,
+                color = colors.foregroundHint,
+            )
+        }
+        if (onClose != null) {
+            RaftIconButton(onClick = onClose, tooltip = stringResource(Res.string.common_close), variant = RaftButtonVariant.Ghost) {
+                RaftComputersIcon(RaftLucideIconName.X)
+            }
+        }
+    }
+    RaftSeparator()
+    val load = state.load
+    when {
+        load == null && state.loading ->
+            RaftText(
+                stringResource(Res.string.settings_computers_runtime_usage_reading),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp),
+                style = typography.callout,
+                color = colors.foregroundMuted,
+            )
+        load is RuntimeAccountUsageLoad.Failed ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Box(Modifier.padding(top = 2.dp)) {
+                    CompositionLocalProvider(LocalRaftContentColor provides colors.warningStrong) {
+                        RaftComputersIcon(RaftLucideIconName.TriangleAlert)
+                    }
+                }
+                RaftText(
+                    stringResource(Res.string.settings_computers_runtime_usage_read_failed),
+                    style = typography.callout,
+                    color = colors.warningStrong,
+                )
+            }
+        load is RuntimeAccountUsageLoad.Loaded && load.read is RuntimeAccountUsageRead.Available -> {
+            val read = load.read as RuntimeAccountUsageRead.Available
+            // A stale snapshot sits on the sunken surface under an orange-soft notice.
+            Column(Modifier.fillMaxWidth().then(if (read.stale) Modifier.background(colors.fillMuted) else Modifier)) {
+                if (read.stale) {
+                    RaftText(
+                        stringResource(Res.string.settings_computers_runtime_usage_stale),
+                        modifier = Modifier.fillMaxWidth().background(colors.warningSoft).padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = typography.caption.copy(fontWeight = FontWeight.Bold),
+                        color = colors.foreground,
+                    )
+                    RaftSeparator()
+                }
+                read.snapshot.accounts.forEachIndexed { index, account ->
+                    if (index > 0) RaftSeparator()
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        ComputerRuntimeUsageAccountBlock(account, timeContext)
+                    }
+                }
+                // `px-4 py-2 text-caption text-foreground-hint`: when the snapshot was taken.
+                RaftSeparator()
+                val updated =
+                    read.snapshot.collectedAt
+                        ?.let { raftRelativeTimestampLabel(it, timeContext, clampFuture = true) }
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: stringResource(Res.string.settings_computers_runtime_usage_recently)
+                RaftText(
+                    stringResource(Res.string.settings_computers_runtime_usage_metadata, updated),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    style = typography.caption,
+                    color = colors.foregroundHint,
+                )
+            }
+        }
+        else ->
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                RaftText(
+                    stringResource(Res.string.settings_computers_runtime_usage_no_snapshot),
+                    style = typography.callout.copy(fontWeight = FontWeight.Bold),
+                    color = colors.foreground,
+                )
+                RaftText(
+                    stringResource(Res.string.settings_computers_runtime_usage_no_snapshot_description),
+                    style = typography.footnote,
+                    color = colors.foregroundMuted,
+                )
+            }
+    }
+    RaftSeparator()
+    // `flex items-center justify-between gap-3 border-t border-line-hairline px-4 py-2.5`
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RaftText(
+            computerRuntimeUsageRefreshStatusText(state),
+            modifier = Modifier.weight(1f),
+            style = typography.caption,
+            color = colors.foregroundHint,
+        )
+        RaftButton(
+            text = stringResource(Res.string.settings_computers_runtime_usage_refresh),
+            onClick = onRefresh,
+            variant = RaftButtonVariant.Default,
+            size = RaftButtonSize.Md,
+            enabled = state.cooldownLeftMillis <= 0L,
+            loading = state.refresh == ComputerRuntimeUsageRefreshStatus.Requesting,
+            leadingIcon = { RaftComputersIcon(RaftLucideIconName.RefreshCw) },
+        )
+    }
+}

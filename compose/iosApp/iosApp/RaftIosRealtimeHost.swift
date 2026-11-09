@@ -492,6 +492,10 @@ final class RaftIosRealtimeHost: NSObject {
                 guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
                 runtime.state = .disconnected
                 self.record("warn", "socket_io_error serverId=\(serverId) generation=\(generation) data=\(data)")
+                // SSO required (rfcs/083 in botiverse/slock): the token is valid, so refreshing it and
+                // reconnecting would loop. The next API call answers 403 SSO_REQUIRED and the app asks
+                // the person to sign in again (RaftSsoRequiredSignal).
+                if "\(data)".contains("SSO_REQUIRED") { return }
                 self.requestAuthRefresh(runtime: runtime, reason: "connect_error")
             }
         }
@@ -1083,12 +1087,14 @@ final class RaftIosRealtimeHost: NSObject {
         GeneratedRealtimeContract.SocketEvent.serverPlanUpdated,
         GeneratedRealtimeContract.SocketEvent.serverFeaturesChanged,
         GeneratedRealtimeContract.SocketEvent.appearanceUpdated,
+        GeneratedRealtimeContract.SocketEvent.userProfileUpdated,
         GeneratedRealtimeContract.SocketEvent.activityChanged,
         GeneratedRealtimeContract.SocketEvent.announcementNew,
         GeneratedRealtimeContract.SocketEvent.reminderFired,
         GeneratedRealtimeContract.SocketEvent.reminderScheduled,
         GeneratedRealtimeContract.SocketEvent.reminderCanceled,
         "thread:followers-updated",
+        "thread:reply_updated",
         "read_state:updated",
         "read_state:updated_bulk",
         "notification_prefs:updated",

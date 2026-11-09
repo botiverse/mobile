@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.AUTHENTICATED_ROUTE_AUTHORITY_CHANGED
+import build.raft.app.data.ArchivedNameCollision
+import build.raft.app.data.RENAME_CHANNEL_ARCHIVED_TYPES
+import build.raft.app.data.archivedNameCollisionOrNull
 import build.raft.app.data.AuthenticatedRouteAuthorityGateway
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.AuthenticatedRouteOperationRunner
@@ -42,6 +45,7 @@ import build.raft.app.data.map
 import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.toHomeChannelRow
 import build.raft.app.data.typedPinnedOrLegacy
+import build.raft.app.model.ChannelId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -75,6 +79,9 @@ internal data class ChannelSettingsSaveResult(
 
 /** Save went through for the name / description but the Slack Bridge step did not (web `channel.bridge.partialFailure`). */
 internal const val CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE = "slack_bridge_partial_failure"
+
+/** Unarchive from the archived-name warning failed (web `channel.create.failedUnarchive`, or the server's reason). */
+internal const val CHANNEL_SETTINGS_ARCHIVED_UNARCHIVE_FAILED = "archived_name_unarchive_failed"
 
 internal enum class ChannelSettingsLoadStatus {
     Loading,
@@ -111,6 +118,15 @@ internal sealed interface ChannelSettingsEffect {
     data class Updated(val action: ChannelSettingsAction) : ChannelSettingsEffect
     data object ProfileSaved : ChannelSettingsEffect
     data object Close : ChannelSettingsEffect
+
+    /**
+     * Web ArchivedNameCollisionBanner `onLeave` + `nav.toChannel`: leave settings for the archived
+     * channel holding the name (Open Channel, read-only) or for it restored (Unarchive, [unarchived]).
+     */
+    data class OpenChannel(
+        val conversation: ThreadLaunchConversationIdentity,
+        val unarchived: Boolean,
+    ) : ChannelSettingsEffect
 }
 
 internal data class ChannelSettingsSnapshot(
@@ -297,10 +313,21 @@ internal data class ChannelSettingsState(
     val pendingPinned: Boolean? = null,
     val profileStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val profileErrorCode: String? = null,
+    /** The server's reason for [profileErrorCode] where the form shows it (a failed Unarchive from the warning). */
+    val profileErrorMessage: String? = null,
+    /**
+     * Web EditChannelDialog `archivedCollision` (slock #12614): the rename was refused because an
+     * archived channel the user can see holds the name; the form names it with Unarchive / Open Channel.
+     */
+    val profileCollision: ArchivedNameCollision? = null,
+    /** Unarchive from that warning is running. */
+    val collisionUnarchiving: Boolean = false,
     val errorCode: String? = null,
     val effect: ChannelSettingsEffect? = null,
     /** The closing action took the channel away from the user (left, deleted, disconnected; an archived channel stays readable). */
     val closedWithAccessLost: Boolean = false,
+    /** The action behind [ChannelSettingsEffect.Close]: where the person lands after it ([channelSettingsCloseLanding]). */
+    val closedBy: ChannelSettingsAction? = null,
 ) {
     fun permissions(): ChannelSettingsPermissions =
         channel?.let { channelSettingsPermissions(it, canManage) } ?: ChannelSettingsPermissions()
@@ -353,6 +380,12 @@ internal sealed interface ChannelSettingsIntent {
     data object Delete : ChannelSettingsIntent
     data object Disconnect : ChannelSettingsIntent
     data object ClearProfileStatus : ChannelSettingsIntent
+    /** Web `handleNameChange` / `resetDraft`: a new name (or Cancel) drops the archived-name warning. */
+    data object ClearArchivedCollision : ChannelSettingsIntent
+    /** The warning's Open Channel: leave for the archived channel, read-only. */
+    data object OpenArchivedCollision : ChannelSettingsIntent
+    /** The warning's Unarchive (only when the server said the user may): restore it, then leave for it. */
+    data object UnarchiveArchivedCollision : ChannelSettingsIntent
     data object ConsumeEffect : ChannelSettingsIntent
 }
 
@@ -366,6 +399,8 @@ internal interface ChannelSettingsDataSource {
     suspend fun makePublic(): DataResult<Unit>
     suspend fun leave(): DataResult<Unit>
     suspend fun unarchive(): DataResult<HomeChannelRow>
+    /** `POST channels/:id/unarchive` for the archived channel holding a refused name (not this one). */
+    suspend fun unarchiveChannel(channelId: ChannelId): DataResult<HomeChannelRow>
     suspend fun updateGuestPolicy(update: ChannelGuestPolicyUpdate): DataResult<HomeChannelRow>
     suspend fun archive(): DataResult<Unit>
     suspend fun delete(): DataResult<Unit>
@@ -493,6 +528,11 @@ internal class RealChannelSettingsDataSource(
     override suspend fun unarchive(): DataResult<HomeChannelRow> =
         runner.run { _, networkClient ->
             channelRepository(networkClient).unarchiveChannel(route.channelId)
+        }
+
+    override suspend fun unarchiveChannel(channelId: ChannelId): DataResult<HomeChannelRow> =
+        runner.run { _, networkClient ->
+            channelRepository(networkClient).unarchiveChannel(channelId)
         }
 
     override suspend fun updateGuestPolicy(update: ChannelGuestPolicyUpdate): DataResult<HomeChannelRow> =
@@ -717,7 +757,23 @@ internal class ChannelSettingsStore(
                     mutableState.value.copy(
                         profileStatus = ChannelProfileUpdateStatus.Idle,
                         profileErrorCode = null,
+                        profileErrorMessage = null,
                     )
+            ChannelSettingsIntent.ClearArchivedCollision ->
+                if (mutableState.value.profileCollision != null && !mutableState.value.collisionUnarchiving) {
+                    mutableState.value = mutableState.value.copy(profileCollision = null)
+                }
+            ChannelSettingsIntent.OpenArchivedCollision -> {
+                val current = mutableState.value
+                val collision = current.profileCollision ?: return
+                if (current.collisionUnarchiving) return
+                mutableState.value =
+                    current.copy(
+                        profileCollision = null,
+                        effect = ChannelSettingsEffect.OpenChannel(collision.toThreadLaunchConversationIdentity(), unarchived = false),
+                    )
+            }
+            ChannelSettingsIntent.UnarchiveArchivedCollision -> unarchiveCollision()
             ChannelSettingsIntent.ConsumeEffect ->
                 mutableState.value = mutableState.value.copy(effect = null)
         }
@@ -909,7 +965,9 @@ internal class ChannelSettingsStore(
         if (
             mutableState.value.status != ChannelSettingsLoadStatus.Content ||
             !mutableState.value.writeActionsEnabled ||
-            mutableState.value.actionInFlight != null
+            mutableState.value.actionInFlight != null ||
+            // An Unarchive from the archived-name warning is running: it leaves settings when done.
+            mutableState.value.collisionUnarchiving
         ) {
             return
         }
@@ -918,6 +976,9 @@ internal class ChannelSettingsStore(
                 actionInFlight = ChannelSettingsAction.Profile,
                 profileStatus = ChannelProfileUpdateStatus.InFlight,
                 profileErrorCode = null,
+                profileErrorMessage = null,
+                // Web `saveChanges`: a new Save drops the last warning.
+                profileCollision = null,
                 effect = null,
             )
         val channel = mutableState.value.channel
@@ -952,6 +1013,59 @@ internal class ChannelSettingsStore(
         }
     }
 
+    /**
+     * Web ArchivedNameCollisionBanner `handleUnarchive`: restore the archived channel holding the
+     * name, then leave settings for it; a refusal shows in the form (the server's reason, or "Failed
+     * to unarchive channel") and the warning stays.
+     */
+    private fun unarchiveCollision() {
+        val current = mutableState.value
+        val collision = current.profileCollision ?: return
+        if (!collision.canUnarchive || current.collisionUnarchiving || !current.writeActionsEnabled || current.actionInFlight != null) return
+        mutableState.value =
+            current.copy(
+                collisionUnarchiving = true,
+                profileStatus = ChannelProfileUpdateStatus.Idle,
+                profileErrorCode = null,
+                profileErrorMessage = null,
+            )
+        val requestGeneration = actionGeneration
+        scope.launch {
+            val result = runDataSourceCall { dataSource.unarchiveChannel(collision.archivedChannelId) }
+            if (requestGeneration != actionGeneration) {
+                // Overtaken (another change, or the authority went): only the busy mark goes.
+                if (mutableState.value.collisionUnarchiving) {
+                    mutableState.value = mutableState.value.copy(collisionUnarchiving = false)
+                }
+                return@launch
+            }
+            val latest = mutableState.value
+            mutableState.value =
+                when (result) {
+                    is DataResult.Content ->
+                        latest.copy(
+                            collisionUnarchiving = false,
+                            profileCollision = null,
+                            effect = ChannelSettingsEffect.OpenChannel(result.data.toThreadLaunchConversationIdentity(), unarchived = true),
+                        )
+                    else -> {
+                        val reason =
+                            when (result) {
+                                is DataResult.Error -> result.error.serverMessage
+                                is DataResult.NoPermission -> result.blocker.serverMessage
+                                else -> null
+                            }
+                        latest.copy(
+                            collisionUnarchiving = false,
+                            profileStatus = ChannelProfileUpdateStatus.Failed,
+                            profileErrorCode = CHANNEL_SETTINGS_ARCHIVED_UNARCHIVE_FAILED,
+                            profileErrorMessage = reason?.takeIf(String::isNotBlank),
+                        )
+                    }
+                }
+        }
+    }
+
     /** The profile Save did write when its Slack Bridge step failed afterwards. */
     private var partialProfile: ChannelProfileUpdateResult? = null
 
@@ -963,7 +1077,9 @@ internal class ChannelSettingsStore(
         if (
             mutableState.value.status != ChannelSettingsLoadStatus.Content ||
             !mutableState.value.writeActionsEnabled ||
-            mutableState.value.actionInFlight != null
+            mutableState.value.actionInFlight != null ||
+            // An Unarchive from the archived-name warning is running: it leaves settings when done.
+            mutableState.value.collisionUnarchiving
         ) {
             return
         }
@@ -987,7 +1103,17 @@ internal class ChannelSettingsStore(
                 if (requestGeneration != actionGeneration) return@launch
                 when (result) {
                     is DataResult.Content -> applyMutationSuccess(action, result.data)
-                    is DataResult.Error -> applyMutationFailure(action, result.error.code, result.error.serverMessage)
+                    is DataResult.Error ->
+                        applyMutationFailure(
+                            action,
+                            result.error.code,
+                            result.error.serverMessage,
+                            // Web EditChannelDialog: a rename onto an archived channel's name names it.
+                            collision =
+                                result.error
+                                    .takeIf { action == ChannelSettingsAction.Profile }
+                                    ?.archivedNameCollisionOrNull(RENAME_CHANNEL_ARCHIVED_TYPES),
+                        )
                     is DataResult.NoPermission ->
                         applyMutationFailure(action, result.blocker.code, result.blocker.serverMessage)
                     is DataResult.Empty -> applyMutationFailure(action, result.reason.name)
@@ -1061,12 +1187,13 @@ internal class ChannelSettingsStore(
                     current.copy(
                         actionInFlight = null,
                         effect = ChannelSettingsEffect.Close,
-                        closedWithAccessLost = true
+                        closedWithAccessLost = true,
+                        closedBy = action,
                     )
                 // An archived channel is still readable (web keeps it), so its rows stay.
                 ChannelSettingsAction.Archive,
                 ChannelSettingsAction.Unarchive ->
-                    current.copy(actionInFlight = null, effect = ChannelSettingsEffect.Close)
+                    current.copy(actionInFlight = null, effect = ChannelSettingsEffect.Close, closedBy = action)
             }
         mutableState.value = next
         if (next.effect == ChannelSettingsEffect.Close) {
@@ -1120,7 +1247,12 @@ internal class ChannelSettingsStore(
         )
     }
 
-    private fun applyMutationFailure(action: ChannelSettingsAction, code: String, serverMessage: String? = null) {
+    private fun applyMutationFailure(
+        action: ChannelSettingsAction,
+        code: String,
+        serverMessage: String? = null,
+        collision: ArchivedNameCollision? = null,
+    ) {
         if (code == AUTHENTICATED_ROUTE_AUTHORITY_CHANGED) {
             snapshotCache.remove(owner, route)
             mutableState.value = authorityRejectedState()
@@ -1146,6 +1278,7 @@ internal class ChannelSettingsStore(
                         mutableState.value.profileStatus
                     },
                 profileErrorCode = code.takeIf { action == ChannelSettingsAction.Profile },
+                profileCollision = collision ?: mutableState.value.profileCollision,
                 effect = ChannelSettingsEffect.Failure(action, code, serverMessage),
             )
         // The profile part was confirmed (only the Slack Bridge step failed): it writes through.

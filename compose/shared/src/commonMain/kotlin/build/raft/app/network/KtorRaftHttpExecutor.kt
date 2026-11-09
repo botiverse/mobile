@@ -45,6 +45,8 @@ internal class KtorRaftHttpExecutor(
     private val engineReportsProtocol: Boolean = raftKtorEngineReportsProtocol(),
     /** Where upload progress is measured: the platform's network layer when it can, else the body writer. */
     private val uploadProgress: RaftUploadProgressTracker = platformRaftUploadProgressTracker(),
+    /** Where a failed response's `X-Trace-Id` goes, for the error the app then shows. */
+    private val failedTraceIds: RaftRecentFailedTraceId = RaftFailedRequestTraceIds,
 ) : RaftHttpExecutor {
 
     override suspend fun execute(
@@ -287,11 +289,13 @@ internal class KtorRaftHttpExecutor(
                     is RaftNetworkRequestLifetimeOutcome.Completed -> outcome.value
                     is RaftNetworkRequestLifetimeOutcome.Retired -> outcome.toKtorExecutorResponse(engineLabel)
                 }
+            failedTraceIds.recordResponse(response.code, response.responseHeaders)
             warningLogger(
                 "${spec.logPrefix}_finish $common " +
                     "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                     "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
                     "code=${response.code} clientRequestId=$clientRequestId " +
+                    "traceId=${response.responseHeaders.raftResponseTraceIdOrNull() ?: "none"} " +
                     "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
                     (response.transportDiagnostics ?: "engine=$engineLabel status=none kind=none rawCode=none detail=none")
             )
@@ -307,7 +311,7 @@ internal class KtorRaftHttpExecutor(
             throw cancellation
         } catch (error: Exception) {
             warningLogger(
-                "${spec.logPrefix}_failed $common " +
+                "${spec.logPrefix}_failed $common clientRequestId=$clientRequestId " +
                     "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} ${error.safeDiagnosticsSummary()}"
             )
             RaftHttpExecutorResponse(

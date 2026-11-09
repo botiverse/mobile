@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.components.raftUpsellCopy
+import build.raft.app.components.RaftViewPlanButton
 import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftComboboxOption
@@ -8,9 +10,30 @@ import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalIconButton
-import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.RaftDesignSystemEditor
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.app.components.rememberRaftTextareaEditorModifier
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftCombobox
+import build.raft.designsystem.components.RaftFieldState
+import build.raft.designsystem.components.LocalRaftFieldState
+import androidx.compose.runtime.CompositionLocalProvider
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextarea
+import build.raft.designsystem.components.appendRaftTextLink
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.text.AnnotatedString
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
@@ -20,6 +43,8 @@ import build.raft.app.model.validateAgentName
 import build.raft.app.data.DataResult
 import build.raft.app.data.RuntimeFormV2Availability
 import build.raft.app.data.SharedCreateAgentRuntimeCatalog
+import build.raft.app.data.CREATE_AGENT_HOSTED_PROVIDER
+import build.raft.app.data.HostedRuntimeModels
 import build.raft.app.data.BundledRuntimeCatalog
 import build.raft.app.data.createAgentRuntimeForOptions
 import build.raft.app.data.DataRequestPriority
@@ -45,7 +70,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,6 +80,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import build.raft.designsystem.tokens.RaftRadius
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -64,14 +90,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import build.raft.app.compat.pager.LocalActivity
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Pager
+import androidx.compose.foundation.layout.widthIn
+import build.raft.app.components.RaftSlotIcon
+import build.raft.designsystem.components.raftClickable
 
 // #55 visual parity: the legacy `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp`
 // cap has been removed. The dialog body now fills the viewport via
@@ -86,9 +111,44 @@ internal data class SharedCreateAgentDialogSubmit(
     val description: String?,
     val machineId: String?,
     val external: Boolean = false,
-    /** The runtime form v2 submit; null only for an external agent. */
-    val runtimeFormV2: RuntimeFormV2SubmitBody? = null
+    /** The runtime form v2 submit; null only for an external or cloud agent. */
+    val runtimeFormV2: RuntimeFormV2SubmitBody? = null,
+    /** Cloud agent ([external] too); [hostedModel] null means the provider's default. */
+    val hostedProvider: String? = null,
+    val hostedModel: String? = null
 )
+
+/** The computer list's value for a cloud agent (web `HOSTED_COMPUTER_CHOICE`). */
+internal const val CREATE_AGENT_HOSTED_CHOICE = "__hosted_runtime__"
+
+/** The models a new cloud agent can start on, as the form's Model field shows them. */
+internal sealed interface CreateAgentHostedModels {
+    data object Loading : CreateAgentHostedModels
+    /** Create still works, on the provider's default (web: "the model can change later"). */
+    data object Failed : CreateAgentHostedModels
+    data class Ready(val models: HostedRuntimeModels) : CreateAgentHostedModels
+}
+
+/** Web `isHostedMode`: picked, or the only place the agent can run (the computer list is loaded and empty). */
+internal fun createAgentHostedMode(
+    available: Boolean,
+    selected: Boolean,
+    machines: List<SharedCreateAgentMachineOption>,
+    machinesLoading: Boolean,
+    machinesErrorMessage: String?,
+): Boolean =
+    available && (selected || (machines.isEmpty() && !machinesLoading && machinesErrorMessage.isNullOrBlank()))
+
+/** Web `hostedModelPickerShown`: no field where the server may not pick; while loading it may yet. */
+internal fun createAgentHostedModelFieldShown(models: CreateAgentHostedModels): Boolean =
+    (models as? CreateAgentHostedModels.Ready)?.models?.picker != false
+
+/** The model a create names: none while the list is out, an administrator decides, or Raft does. */
+internal fun createAgentHostedModelToSend(models: CreateAgentHostedModels, pick: String?): String? {
+    val view = (models as? CreateAgentHostedModels.Ready)?.models ?: return null
+    if (view.locked || !view.picker) return null
+    return pick?.takeIf { id -> view.models.any { it.id == id } }
+}
 
 /** What the create dialog's runtime section shows (runtime form v2, the only runtime form). */
 internal sealed interface CreateAgentRuntimeSection {
@@ -140,10 +200,22 @@ internal fun createAgentDialogSubmit(
     external: Boolean,
     runtime: String,
     loaded: RuntimeFormV2Loaded?,
-    values: RuntimeFormV2Values
+    values: RuntimeFormV2Values,
+    hosted: Boolean = false,
+    hostedModel: String? = null
 ): SharedCreateAgentDialogSubmit? {
     val cleanName = name.trim().removePrefix("@")
     val cleanDescription = description.trim().takeIf { it.isNotBlank() }
+    if (hosted) {
+        return SharedCreateAgentDialogSubmit(
+            name = cleanName,
+            description = cleanDescription,
+            machineId = null,
+            external = true,
+            hostedProvider = CREATE_AGENT_HOSTED_PROVIDER,
+            hostedModel = hostedModel
+        )
+    }
     if (external) return SharedCreateAgentDialogSubmit(cleanName, cleanDescription, machineId = null, external = true)
     val form = loaded ?: return null
     return SharedCreateAgentDialogSubmit(
@@ -208,7 +280,7 @@ internal fun CreateAgentDialogVisualContent() {
 
 /**
  * After a create succeeds: remembers its Computer and runtime for the next dialog on [serverId]
- * (web writes the last config after the create). External agents have neither and are skipped.
+ * (web writes the last config after the create). External and cloud agents have neither and are skipped.
  */
 internal fun SharedCreateAgentFormStore.rememberCreatedAgent(serverId: String?, submit: SharedCreateAgentDialogSubmit) {
     if (submit.external) return
@@ -228,7 +300,9 @@ internal fun SharedCreateAgentDialogSubmit.toCreateAgentRequest(): build.raft.ap
         machineId = machineId,
         external = external,
         avatarUrl = randomCreateAgentAvatarWireValue(),
-        runtimeFormV2 = runtimeFormV2
+        runtimeFormV2 = runtimeFormV2,
+        hostedProvider = hostedProvider,
+        hostedModel = hostedModel
     )
 
 private fun randomCreateAgentAvatarWireValue(): String {
@@ -361,12 +435,50 @@ internal fun SharedCreateAgentDialog(
     maxAgents: Int = -1,
     limitPlanLabel: String? = null,
     external: Boolean = false,
+    /**
+     * The Members and Add Member flows offer a cloud agent next to the computers. Off for action
+     * cards: their confirm flow creates on a computer.
+     */
+    offersHosting: Boolean = false,
+    /**
+     * Add Member's channel: the dialog keeps the entry's promise that the new agent joins it
+     * (web `autoJoinChannelName`, `create-agent-channel-context`); null elsewhere.
+     */
+    autoJoinChannelName: String? = null,
     runtimeFormV2Override: RuntimeFormV2Access? = null,
     errorFieldKeys: Set<String> = emptySet(),
     takenAgentNames: List<String> = emptyList(),
+    /** iOS view-only Billing: "View your plan" on the agent-limit banner (and [errorMessage] when [errorOffersViewPlan]). */
+    onViewPlan: (() -> Unit)? = null,
+    errorOffersViewPlan: Boolean = false,
+    /** Where Billing offers upgrades: "Upgrade for more" in the agent-limit banner opens Billing. */
+    onUpgrade: (() -> Unit)? = null,
+    /**
+     * Opens the Add Computer flow from the no-computer dialog (web `setShowAddMachine(true)`);
+     * null where that flow is not reachable, which hides the button.
+     */
+    onAddComputer: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onSubmit: (SharedCreateAgentDialogSubmit) -> Unit
 ) {
+    val cleanCreateAgentServerId = createAgentServerId?.trim().orEmpty()
+    // A cloud agent: the flag, then the server's probe (web `useAgentRuntimeProvider`); null while it runs.
+    val hostingAsked = offersHosting && !external
+    var hostedAvailable by remember(createAgentFormStore, cleanCreateAgentServerId, hostingAsked) {
+        mutableStateOf<Boolean?>(
+            if (hostingAsked && createAgentFormStore?.hostedRuntimeFlagOn(cleanCreateAgentServerId) == true) null else false
+        )
+    }
+    LaunchedEffect(createAgentFormStore, cleanCreateAgentServerId, hostingAsked) {
+        if (hostedAvailable != null) return@LaunchedEffect
+        hostedAvailable = createAgentFormStore?.loadHostedRuntimeAvailable(cleanCreateAgentServerId) == true
+    }
+    // Web CreateAgentDialog: with no computer and no cloud there is nothing to configure, so it asks
+    // for a computer in a short centred dialog instead of the form (no limit banner, no fields).
+    if (hostedAvailable == false && createAgentNeedsComputer(external, machines, machinesLoading, machinesErrorMessage)) {
+        CreateAgentNeedsComputerDialog(onAddComputer = onAddComputer, onDismiss = onDismiss)
+        return
+    }
     val focusManager = LocalFocusManager.current
     // A fresh create starts with a suggested `adjective-noun` name instead of an empty
     // field (react CreateAgentDialog parity); the dice button beside the label rolls
@@ -389,11 +501,29 @@ internal fun SharedCreateAgentDialog(
         )
     }
     val availableSelectedMachineId = createAgentAvailableMachineId(machines, selectedMachineId)
+    var hostedSelected by remember { mutableStateOf(false) }
+    val hostedMode =
+        createAgentHostedMode(hostedAvailable == true, hostedSelected, machines, machinesLoading, machinesErrorMessage)
+    // Neither an external nor a cloud agent runs on a computer: no runtime fields (web `skipsComputer`).
+    val skipsComputer = external || hostedMode
+    var hostedModelsAttempt by remember { mutableStateOf(0) }
+    var hostedModels by remember(createAgentFormStore, cleanCreateAgentServerId, hostedModelsAttempt) {
+        mutableStateOf<CreateAgentHostedModels>(CreateAgentHostedModels.Loading)
+    }
+    var hostedModelPick by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(createAgentFormStore, cleanCreateAgentServerId, hostedMode, hostedModelsAttempt) {
+        val formStore = createAgentFormStore ?: return@LaunchedEffect
+        if (!hostedMode || hostedModels != CreateAgentHostedModels.Loading) return@LaunchedEffect
+        hostedModels =
+            when (val result = formStore.loadHostedRuntimeModels(cleanCreateAgentServerId)) {
+                is DataResult.Content -> CreateAgentHostedModels.Ready(result.data)
+                else -> CreateAgentHostedModels.Failed
+            }
+    }
     // Read here: dialog content is hosted at the page root, outside the route's usage access.
     val runtimeUsageAccess = LocalMembersRuntimeAccountUsageAccess.current
     val selectedQuotaMachine =
         machines.firstOrNull { it.id == availableSelectedMachineId }?.quotaMachine()?.copy(access = runtimeUsageAccess)
-    val cleanCreateAgentServerId = createAgentServerId?.trim().orEmpty()
     // The runtimes this server offers (GET servers/:id/runtimes): the cached answer first, then the
     // server's; the bundled table until either lands. Never blocks the dialog.
     var serverRuntimeCatalog by remember(createAgentFormStore, cleanCreateAgentServerId) {
@@ -413,13 +543,13 @@ internal fun SharedCreateAgentDialog(
     // The computer's runtime-options rows: which runtimes have a v2 form (`runtimeFormV2` marker) and
     // whether Built-in is offered. Reloaded on every computer change; a failure leaves it unknown.
     var runtimeCatalogAttempt by remember { mutableStateOf(0) }
-    var runtimeCatalog by remember(createAgentFormStore, cleanCreateAgentServerId, availableSelectedMachineId, external) {
+    var runtimeCatalog by remember(createAgentFormStore, cleanCreateAgentServerId, availableSelectedMachineId, skipsComputer) {
         mutableStateOf<SharedCreateAgentRuntimeCatalog?>(null)
     }
-    LaunchedEffect(createAgentFormStore, cleanCreateAgentServerId, availableSelectedMachineId, external, runtimeCatalogAttempt) {
+    LaunchedEffect(createAgentFormStore, cleanCreateAgentServerId, availableSelectedMachineId, skipsComputer, runtimeCatalogAttempt) {
         val formStore = createAgentFormStore ?: return@LaunchedEffect
         val machineId = availableSelectedMachineId ?: return@LaunchedEffect
-        if (external || cleanCreateAgentServerId.isBlank()) return@LaunchedEffect
+        if (skipsComputer || cleanCreateAgentServerId.isBlank()) return@LaunchedEffect
         val result = formStore.loadRuntimeCatalog(cleanCreateAgentServerId, machineId, force = true)
         runtimeCatalog = (result as? DataResult.Content)?.data
     }
@@ -428,8 +558,8 @@ internal fun SharedCreateAgentDialog(
     // catalog only names, groups and gives forms. The last create's runtime on this server wins while
     // it is still one of them (web CreateAgentDialog `pickCreateAgentRuntime`).
     val rememberedRuntime =
-        remember(createAgentFormStore, cleanCreateAgentServerId, external) {
-            if (external) null else createAgentFormStore?.rememberedCreateRuntime(cleanCreateAgentServerId)
+        remember(createAgentFormStore, cleanCreateAgentServerId, skipsComputer) {
+            if (skipsComputer) null else createAgentFormStore?.rememberedCreateRuntime(cleanCreateAgentServerId)
         }
     val runtimeFormV2 = runtimeFormV2Override ?: createAgentFormStore?.runtimeFormV2Access(cleanCreateAgentServerId)
     // No v2 access (no form store or server) means no form can load: say so instead of loading forever.
@@ -437,15 +567,15 @@ internal fun SharedCreateAgentDialog(
         if (runtimeFormV2 == null) RuntimeFormV2Availability.Unavailable else runtimeCatalog.runtimeFormV2Availability(runtime)
     val v2Candidate =
         runtimeFormV2 != null &&
-            !external &&
+            !skipsComputer &&
             availableSelectedMachineId != null &&
             runtime.isNotBlank() &&
             v2Availability != RuntimeFormV2Availability.Unavailable
-    var v2LoadAttempt by remember(runtimeFormV2, availableSelectedMachineId, runtime, external) { mutableStateOf(0) }
+    var v2LoadAttempt by remember(runtimeFormV2, availableSelectedMachineId, runtime, skipsComputer) { mutableStateOf(0) }
     // A form that went stale mid-session (`form_revision_stale`) is reloaded whole, once; after that it
     // fails like any other load (the retry banner).
-    var v2StaleReloads by remember(runtimeFormV2, availableSelectedMachineId, runtime, external) { mutableStateOf(0) }
-    var v2Load by remember(runtimeFormV2, availableSelectedMachineId, runtime, external, v2LoadAttempt) {
+    var v2StaleReloads by remember(runtimeFormV2, availableSelectedMachineId, runtime, skipsComputer) { mutableStateOf(0) }
+    var v2Load by remember(runtimeFormV2, availableSelectedMachineId, runtime, skipsComputer, v2LoadAttempt) {
         mutableStateOf<RuntimeFormV2DialogLoad>(RuntimeFormV2DialogLoad.Loading)
     }
     val runtimeSection = createAgentRuntimeSection(v2Availability, v2Load)
@@ -474,7 +604,7 @@ internal fun SharedCreateAgentDialog(
     val v2Errors = v2Form?.let { validateRuntimeFormV2(it.form, it.sources, v2Values) }.orEmpty()
 
     LaunchedEffect(machines, requiredComputer, suggestedComputer, selectedMachineId) {
-        if (external) return@LaunchedEffect
+        if (skipsComputer) return@LaunchedEffect
         if (selectedMachineId == null) {
             selectedMachineId = createAgentInitialMachineSelection(machines, requiredComputer, suggestedComputer)
         }
@@ -483,8 +613,8 @@ internal fun SharedCreateAgentDialog(
     // Keeps a choice only while this computer's runtime-options still offer it; otherwise picks the
     // default. No usable runtime leaves the field empty instead of guessing; options still loading
     // (or another computer's) change nothing.
-    LaunchedEffect(availableSelectedMachineId, runtimeCatalog, supportedRuntimeIds, rememberedRuntime, external) {
-        if (external) return@LaunchedEffect
+    LaunchedEffect(availableSelectedMachineId, runtimeCatalog, supportedRuntimeIds, rememberedRuntime, skipsComputer) {
+        if (skipsComputer) return@LaunchedEffect
         val next =
             createAgentRuntimeForOptions(
                 current = runtime,
@@ -496,7 +626,7 @@ internal fun SharedCreateAgentDialog(
         if (next != runtime) runtime = next
     }
 
-    LaunchedEffect(runtimeFormV2, availableSelectedMachineId, runtime, external, v2LoadAttempt, v2Candidate) {
+    LaunchedEffect(runtimeFormV2, availableSelectedMachineId, runtime, skipsComputer, v2LoadAttempt, v2Candidate) {
         val source = runtimeFormV2 ?: return@LaunchedEffect
         val machineId = availableSelectedMachineId ?: return@LaunchedEffect
         if (!v2Candidate) return@LaunchedEffect
@@ -512,7 +642,8 @@ internal fun SharedCreateAgentDialog(
     val inlineNameError = if (trimmedName.isNotEmpty()) validateAgentName(trimmedName) else null
     val localizedInlineNameError = inlineNameError?.let { localizedCreateAgentNameError(trimmedName, it) }
     val descriptionTooLong = description.text.length > CREATE_AGENT_DESCRIPTION_MAX_LENGTH
-    val atLimit = !external && maxAgents >= 0 && currentAgentCount >= maxAgents
+    // Web `CreateAgentDialog`: the agent limit holds for an external agent too (it takes a seat).
+    val atLimit = createAgentAtLimit(currentAgentCount, maxAgents)
     val selectedMachine = machines.firstOrNull { it.id == selectedMachineId }
     val selectedMachineRuntimeIds =
         normalizeCreateAgentRuntimeIds(
@@ -527,9 +658,9 @@ internal fun SharedCreateAgentDialog(
         createAgentRuntimeAvailabilityError(
             selectedMachineId = selectedMachine?.id,
             machineRuntimeIds = selectedMachineRuntimeIds,
-            external = external
+            external = skipsComputer
         )
-    val selectedMachineBlocked = !external &&
+    val selectedMachineBlocked = !skipsComputer &&
         (selectedMachine == null ||
             selectedMachine.status != "online" ||
             (!requiredComputer.isNullOrBlank() && selectedMachine.id != requiredComputer))
@@ -540,9 +671,31 @@ internal fun SharedCreateAgentDialog(
         !submitting &&
         !selectedMachineBlocked &&
         runtimeAvailabilityError == null &&
-        (external || runtime in supportedRuntimeIds) &&
-        (external || createAgentRuntimeFormV2SubmitReady(v2Loaded != null, v2Errors.isNotEmpty()))
+        (skipsComputer || runtime in supportedRuntimeIds) &&
+        (skipsComputer || createAgentRuntimeFormV2SubmitReady(v2Loaded != null, v2Errors.isNotEmpty())) &&
+        // An unavailable list still allows the default (no model is sent, nothing to check).
+        !(hostedMode && hostedModels == CreateAgentHostedModels.Loading)
     val showMachinePicker = !external
+    // The one commit: the footer's Create on a wide window, the phone sheet's head button.
+    val commitLabel =
+        if (submitting) {
+            stringResource(Res.string.agent_create_action_creating)
+        } else {
+            stringResource(Res.string.agent_create_submit)
+        }
+    val commit: () -> Unit = {
+        createAgentDialogSubmit(
+            name = trimmedName,
+            description = description.text,
+            machineId = requiredComputer?.takeIf { it.isNotBlank() } ?: selectedMachineId,
+            external = external,
+            runtime = runtime,
+            loaded = v2Form ?: v2Loaded,
+            values = v2Values,
+            hosted = hostedMode,
+            hostedModel = createAgentHostedModelToSend(hostedModels, hostedModelPick)
+        )?.let(onSubmit)
+    }
 
     RaftUnifiedDialog(
         title =
@@ -555,7 +708,11 @@ internal fun SharedCreateAgentDialog(
         dismissOnOutsideTap = false,
         onDismiss = onDismiss,
         keyboardAvoidanceEnabled = true,
-        hostRoute = SharedCreateAgentDialogHostRoute
+        hostRoute = SharedCreateAgentDialogHostRoute,
+        presentation = RaftDialogPresentation.Sheet,
+        commitLabel = commitLabel,
+        onCommit = commit,
+        commitEnabled = canSubmit
     ) {
         // #55 visual parity: no body height cap. The Column fills the viewport, the
         // LazyColumn takes the leftover space and Cancel/Create stay pinned at the bottom
@@ -567,21 +724,14 @@ internal fun SharedCreateAgentDialog(
             // spacing stays inside the group below.
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+                autoJoinChannelName?.takeIf { it.isNotBlank() }?.let { channel ->
+                    item(key = "auto-join-channel") {
+                        CreateAgentAutoJoinChannel(channel)
+                    }
+                }
                 draftHint?.takeIf { it.isNotBlank() }?.let { hint ->
                     item(key = "draft-hint") {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.2f))
-                                    .padding(RaftAppSpacing.Xs)
-                        ) {
-                            Text(
-                                text = hint,
-                                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
-                                color = RaftColor.TextMutedGray
-                            )
-                        }
+                        CreateAgentDraftHint(hint)
                     }
                 }
                 if (atLimit) {
@@ -589,7 +739,9 @@ internal fun SharedCreateAgentDialog(
                         PlanLimitBanner(
                             currentAgentCount = currentAgentCount,
                             maxAgents = maxAgents,
-                            planLabel = limitPlanLabel
+                            planLabel = limitPlanLabel,
+                            onViewPlan = onViewPlan,
+                            onUpgrade = onUpgrade,
                         )
                     }
                 }
@@ -598,7 +750,8 @@ internal fun SharedCreateAgentDialog(
                         RaftUiBanner(
                             status = RaftUiBannerStatus.Warning,
                             description = error,
-                            size = RaftUiBannerSize.Medium
+                            size = RaftUiBannerSize.Medium,
+                            action = onViewPlan?.takeIf { errorOffersViewPlan }?.let { open -> { RaftViewPlanButton(onClick = open) } }
                         )
                     }
                 }
@@ -606,7 +759,7 @@ internal fun SharedCreateAgentDialog(
                     item(key = "machine-picker") {
                         MachinePicker(
                             machines = machines,
-                            machinesLoading = machinesLoading,
+                            machinesLoading = machinesLoading || (hostedAvailable == null && machines.isEmpty()),
                             machinesErrorMessage = machinesErrorMessage,
                             onRetry = onMachinesRetry,
                             selectedMachineId = selectedMachineId,
@@ -615,9 +768,17 @@ internal fun SharedCreateAgentDialog(
                             enabled = !submitting,
                             runtimeId = runtime,
                             usageAccess = runtimeUsageAccess,
+                            hostedOption =
+                                if (hostedAvailable == true) stringResource(Res.string.agent_create_hosted_option) else null,
+                            hostedSelected = hostedMode,
+                            onSelectHosted = {
+                                focusManager.clearFocus(force = true)
+                                hostedSelected = true
+                            },
                             onSelect = { id ->
                                 if (requiredComputer.isNullOrBlank() || id == requiredComputer) {
                                     focusManager.clearFocus(force = true)
+                                    hostedSelected = false
                                     if (id != selectedMachineId) {
                                         selectedMachineId = id
                                         // Another computer: its own runtime-options decide (web clears it too).
@@ -629,66 +790,79 @@ internal fun SharedCreateAgentDialog(
                     }
                 }
                 item(key = "name") {
-                    RaftBrutalTextField(
+                    RaftField(
                         label = stringResource(Res.string.agent_create_label_name),
-                        required = true,
-                        value = name,
-                        keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
-                        onValueChange = { name = it },
-                        placeholder = stringResource(Res.string.agent_create_placeholder_name),
+                        modifier = Modifier.fillMaxWidth(),
+                        error = inlineNameError?.let { localizedInlineNameError ?: it },
                         enabled = !submitting,
-                        autoFocus = true,
-                        labelAccessory = {
+                        required = true,
+                        labelTrailing = {
                             CreateAgentRandomNameButton(
                                 enabled = !submitting,
                                 onClick = { name = suggestAgentName(listOf(name) + takenAgentNames) }
                             )
                         }
-                    )
-                }
-                if (inlineNameError != null) {
-                    item(key = "name-error") {
-                        Text(
-                            text = localizedInlineNameError ?: inlineNameError,
-                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                            color = RaftColor.AccentRed
+                    ) {
+                        val editor =
+                            rememberRaftDesignSystemEditor(
+                                keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
+                                keyboardActions = KeyboardActions.Default,
+                                keyboardHeightChange = {},
+                                focusRequester = remember { FocusRequester() },
+                                autoFocus = !submitting,
+                                onFocus = {},
+                                onBlur = {}
+                            )
+                        RaftTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                            placeholder = stringResource(Res.string.agent_create_placeholder_name),
+                            keyboardOptions = editor.keyboardOptions
                         )
                     }
                 }
                 item(key = "description") {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        RaftBrutalTextField(
-                            label = stringResource(Res.string.agent_create_label_description),
-                            optional = true,
+                    RaftField(
+                        label = stringResource(Res.string.agent_create_label_description),
+                        modifier = Modifier.fillMaxWidth(),
+                        error =
+                            if (descriptionTooLong) {
+                                Res.string.agent_create_error_description_length
+                                    .format(listOf(CREATE_AGENT_DESCRIPTION_MAX_LENGTH))
+                                    .localized()
+                            } else {
+                                null
+                            },
+                        enabled = !submitting,
+                        optional = true
+                    ) {
+                        // The TextareaGroup counter ("n/3000") under the box replaces the hand-drawn one.
+                        RaftTextarea(
                             value = description,
                             onValueChange = { description = it.coerceTextLength(CREATE_AGENT_DESCRIPTION_MAX_LENGTH) },
+                            modifier = Modifier.fillMaxWidth(),
                             placeholder = stringResource(Res.string.agent_create_placeholder_description),
-                            enabled = !submitting,
-                            maxLines = 3,
-                            fieldMinHeight = 82.dp
+                            limit = CREATE_AGENT_DESCRIPTION_MAX_LENGTH,
+                            minHeight = 82.dp,
+                            // Three 24dp field lines inside the textarea's 10dp vertical padding, then it scrolls.
+                            maxHeight = 92.dp,
+                            inputModifier = rememberRaftTextareaEditorModifier()
                         )
-                        if (descriptionTooLong) {
-                            Text(
-                                text =
-                                    Res.string.agent_create_error_description_length
-                                        .format(listOf(CREATE_AGENT_DESCRIPTION_MAX_LENGTH))
-                                        .localized(),
-                                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                                color = RaftColor.AccentRed
-                            )
-                        } else {
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                Spacer(Modifier.weight(1f))
-                                Text(
-                                    text = "${description.text.length}/$CREATE_AGENT_DESCRIPTION_MAX_LENGTH",
-                                    style = RaftType.Caption,
-                                    color = RaftColor.TextMutedGray
-                                )
-                            }
-                        }
                     }
                 }
-                if (!external && availableSelectedMachineId != null) {
+                if (hostedMode && createAgentHostedModelFieldShown(hostedModels)) {
+                    item(key = "hosted-model") {
+                        CreateAgentHostedModelField(
+                            models = hostedModels,
+                            pick = hostedModelPick,
+                            enabled = !submitting,
+                            onPick = { hostedModelPick = it },
+                            onReload = { hostedModelsAttempt += 1 }
+                        )
+                    }
+                }
+                if (!skipsComputer && availableSelectedMachineId != null) {
                     when (runtimeSection) {
                         is CreateAgentRuntimeSection.Failed ->
                             item(key = "runtime-form-v2-failure") {
@@ -698,17 +872,18 @@ internal fun SharedCreateAgentDialog(
                                         Res.string.runtime_form_v2_load_failed.format(listOf(runtimeSection.code)).localized(),
                                     size = RaftUiBannerSize.Medium,
                                     action = {
-                                        RaftBrutalActionButton(
-                                            label = stringResource(Res.string.common_retry),
+                                        RaftButton(
+                                            text = stringResource(Res.string.common_retry),
                                             onClick = {
                                                 v2StaleReloads = 0
                                                 v2LoadAttempt += 1
                                                 runtimeCatalogAttempt += 1
                                             },
+                                            modifier = Modifier.widthIn(min = 72.dp),
+                                            variant = RaftButtonVariant.Default,
+                                            size = RaftButtonSize.Md,
                                             enabled = !submitting,
-                                            leadingIcon = RaftLucideIconName.RefreshCw,
-                                            minWidth = 72.dp,
-                                            minHeight = 32.dp
+                                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
                                         )
                                     }
                                 )
@@ -724,7 +899,7 @@ internal fun SharedCreateAgentDialog(
                         else -> Unit
                     }
                 }
-                if (!external) {
+                if (!skipsComputer) {
                     item(key = "runtime") {
                         RuntimeFormV2RuntimeSection(
                             runtime = runtime,
@@ -773,33 +948,155 @@ internal fun SharedCreateAgentDialog(
                     variant = RaftButtonVariant.Ghost,
                     size = RaftButtonSize.Lg
                 )
-                RaftBrutalActionButton(
-                    label =
-                        if (submitting) {
-                            stringResource(Res.string.agent_create_action_creating)
-                        } else {
-                            stringResource(Res.string.agent_create_submit)
-                        },
+                RaftButton(
+                    text = commitLabel,
                     enabled = canSubmit,
-                    minWidth = 126.dp,
-                    backgroundColor = RaftColor.AccentPink,
-                    onClick = {
-                        val submit =
-                            createAgentDialogSubmit(
-                                name = trimmedName,
-                                description = description.text,
-                                machineId = requiredComputer?.takeIf { it.isNotBlank() } ?: selectedMachineId,
-                                external = external,
-                                runtime = runtime,
-                                loaded = v2Form ?: v2Loaded,
-                                values = v2Values
-                            ) ?: return@RaftBrutalActionButton
-                        onSubmit(submit)
-                    }
+                    modifier = Modifier.widthIn(min = 126.dp),
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg,
+                    onClick = commit
                 )
             }
         }
     }
+
+/**
+ * Web `HostedModelChoice`: an offered model or the provider's default, read-only while an
+ * administrator decides, and a failed list that still lets the create go on the default.
+ */
+@Composable
+private fun CreateAgentHostedModelField(
+    models: CreateAgentHostedModels,
+    pick: String?,
+    enabled: Boolean,
+    onPick: (String?) -> Unit,
+    onReload: () -> Unit,
+) {
+    val label = stringResource(Res.string.agent_create_hosted_model_label)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftFieldLabel(text = label)
+        when (models) {
+            CreateAgentHostedModels.Loading ->
+                Text(
+                    text = stringResource(Res.string.agent_create_state_computers_loading),
+                    style = RaftType.Caption,
+                    color = RaftColor.TextMutedGray
+                )
+            CreateAgentHostedModels.Failed ->
+                RaftUiBanner(
+                    status = RaftUiBannerStatus.Warning,
+                    description = stringResource(Res.string.agent_create_hosted_model_load_failed),
+                    size = RaftUiBannerSize.Medium,
+                    action = {
+                        RaftButton(
+                            text = stringResource(Res.string.common_retry),
+                            onClick = onReload,
+                            modifier = Modifier.widthIn(min = 72.dp),
+                            variant = RaftButtonVariant.Default,
+                            size = RaftButtonSize.Md,
+                            enabled = enabled,
+                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
+                        )
+                    }
+                )
+            is CreateAgentHostedModels.Ready -> {
+                val view = models.models
+                if (view.locked) {
+                    Text(
+                        text = view.defaultLabel ?: view.defaultModel.orEmpty(),
+                        style = RaftType.Body,
+                        color = RaftColor.TextBlack
+                    )
+                    Text(
+                        text = stringResource(Res.string.agent_create_hosted_model_locked),
+                        style = RaftType.Caption,
+                        color = RaftColor.TextMutedGray
+                    )
+                } else {
+                    val defaultLabel =
+                        view.defaultLabel?.let { stringResource(Res.string.agent_create_hosted_model_default, it) }
+                            ?: stringResource(Res.string.agent_create_hosted_model_default_unnamed)
+                    val noMatches = stringResource(Res.string.runtime_picker_no_matches, "\u0001")
+                    CompositionLocalProvider(LocalRaftFieldState provides RaftFieldState(enabled = enabled, label = label, inField = true)) {
+                        RaftCombobox(
+                            value = pick.orEmpty(),
+                            options = createAgentHostedModelOptions(view, defaultLabel),
+                            onValueChange = { id -> onPick(id.takeIf { it.isNotEmpty() }) },
+                            emptyText = { query -> noMatches.replace("\u0001", query) },
+                            placeholder = label,
+                            title = label,
+                            searchPlaceholder = stringResource(Res.string.runtime_picker_search),
+                            enabled = enabled,
+                            label = label
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** The provider's default first, under the empty value (web `emptyOption`); then the offered models. */
+internal fun createAgentHostedModelOptions(models: HostedRuntimeModels, defaultLabel: String): List<RaftComboboxOption<String>> =
+    listOf(RaftComboboxOption("", defaultLabel)) + models.models.map { RaftComboboxOption(it.id, it.label) }
+
+/**
+ * Web CreateAgentDialog's needs-computer gate (`!isExternalMode && machines.length === 0`): a
+ * managed agent with the computer list loaded, without error, and empty. While loading or after a
+ * failed load the form keeps its own picker states. The caller skips it where a cloud agent is offered.
+ */
+internal fun createAgentNeedsComputer(
+    external: Boolean,
+    machines: List<SharedCreateAgentMachineOption>,
+    machinesLoading: Boolean,
+    machinesErrorMessage: String?,
+): Boolean = !external && !machinesLoading && machinesErrorMessage.isNullOrBlank() && machines.isEmpty()
+
+/**
+ * Web `create-agent-needs-computer`: a plain centred DialogCard (not the phone sheet) with an
+ * info banner and Cancel + Add Computer. Add Computer closes this dialog, then opens the flow.
+ */
+@Composable
+private fun CreateAgentNeedsComputerDialog(
+    onAddComputer: (() -> Unit)?,
+    onDismiss: () -> Unit,
+) {
+    RaftUnifiedDialog(
+        title = stringResource(Res.string.agent_create_title),
+        onDismiss = onDismiss,
+        hostRoute = SharedCreateAgentDialogHostRoute,
+        presentation = RaftDialogPresentation.Centered,
+        // DialogCard's banner then `mt-5` footer.
+        contentSpacing = 20.dp,
+    ) {
+        RaftBanner(
+            title = stringResource(Res.string.agent_create_needs_computer_title),
+            description = stringResource(Res.string.agent_create_needs_computer_description),
+            status = RaftBannerStatus.Info,
+            // raft-ui Banner draws no icon unless asked; the web dialog does not ask.
+            showIcon = false,
+        )
+        RaftDialogFooter {
+            RaftButton(
+                text = stringResource(Res.string.common_cancel),
+                onClick = onDismiss,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg
+            )
+            onAddComputer?.let { addComputer ->
+                RaftButton(
+                    text = stringResource(Res.string.agent_create_action_add_computer),
+                    onClick = {
+                        onDismiss()
+                        addComputer()
+                    },
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun localizedCreateAgentNameError(name: String, fallback: String): String =
@@ -815,43 +1112,88 @@ private fun localizedCreateAgentNameError(name: String, fallback: String): Strin
     }
 
 @Composable
-private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: String?) {
-    if (planLabel.isNullOrBlank()) {
-        RaftUiBanner(
-            status = RaftUiBannerStatus.Warning,
-            description =
-                Res.string.agent_create_error_limit
+private fun PlanLimitBanner(
+    currentAgentCount: Int,
+    maxAgents: Int,
+    planLabel: String?,
+    onViewPlan: (() -> Unit)? = null,
+    onUpgrade: (() -> Unit)? = null
+) {
+    // iOS view-only Billing: the limit stated, with no "Upgrade for more" (raftUpsellCopy), and
+    // "View your plan" ([onViewPlan]) to the view-only Plan & Billing page.
+    val offersUpgrade = settingsBillingOffersUpgrade()
+    val viewPlan: (@Composable RowScope.() -> Unit)? =
+        if (onViewPlan != null && !offersUpgrade) ({ RaftViewPlanButton(onClick = onViewPlan) }) else null
+    val description =
+        if (planLabel.isNullOrBlank()) {
+            AnnotatedString(
+                raftUpsellCopy(Res.string.agent_create_error_limit, offersUpgrade)
                     .format(listOf(currentAgentCount, maxAgents))
-                    .localized(),
-            size = RaftUiBannerSize.Medium
-        )
-        return
-    }
+                    .localized()
+            )
+        } else {
+            val summary =
+                Res.string.agent_create_error_limit_plan
+                    .format(listOf(currentAgentCount, maxAgents, planLabel))
+                    .localized()
+            val upgrade = stringResource(raftUpsellCopy(Res.string.agent_create_action_upgrade_for_more, offersUpgrade))
+            // raft-ui: an action inside a Banner's text is a strong TextLink (web CreateAgentDialog
+            // `<upgrade>`); only the upgrade wording links, never the neutral iOS statement.
+            val upgradeLink = onUpgrade?.takeIf { offersUpgrade && viewPlan == null }
+            buildAnnotatedString {
+                append(summary)
+                append(" ")
+                if (upgradeLink != null) {
+                    appendRaftTextLink(upgrade, onClick = upgradeLink)
+                } else {
+                    append(upgrade)
+                }
+            }
+        }
+    RaftBanner(
+        description = description,
+        status = RaftBannerStatus.Warning,
+        action = viewPlan
+    )
+}
 
-    val summary =
-        Res.string.agent_create_error_limit_plan
-            .format(listOf(currentAgentCount, maxAgents, planLabel))
-            .localized()
-    val action = stringResource(Res.string.agent_create_action_upgrade_for_more)
-    Box(
+/**
+ * The action card's draft note above the form: web AddMembersDialog's context line (`border-l-2
+ * border-line-seam pl-2.5 text-callout text-foreground-muted`), context rather than a warning.
+ */
+/** One more agent would pass [maxAgents] (-1 is no cap): the banner shows and Create is disabled. */
+internal fun createAgentAtLimit(currentAgentCount: Int, maxAgents: Int): Boolean =
+    maxAgents >= 0 && currentAgentCount >= maxAgents
+
+/**
+ * Web `create-agent-channel-context`: a plain line on the info wash, not a banner (it is context,
+ * not a warning), saying the new agent joins the channel; it stays until the create is sent.
+ */
+@Composable
+internal fun CreateAgentAutoJoinChannel(channelName: String) {
+    val colors = RaftTheme.colors
+    RaftText(
+        text = stringResource(Res.string.agent_create_auto_join_channel, "#${channelName.removePrefix("#")}"),
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(RaftUiBannerStatus.Warning.background)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                .padding(RaftUiBannerSize.Medium.padding)
-    ) {
-        Text(
-            text =
-                buildAnnotatedString {
-                    append(summary)
-                    append(" ")
-                    pushStyle(SpanStyle(textDecoration = TextDecoration.Underline))
-                    append(action)
-                    pop()
-                },
-            style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
-            color = RaftColor.TextBlack
+                .background(colors.infoSoft, RoundedCornerShape(RaftRadius.Container))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
+        color = colors.foreground
+    )
+}
+
+@Composable
+private fun CreateAgentDraftHint(hint: String) {
+    val colors = RaftTheme.colors
+    Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        Box(modifier = Modifier.width(2.dp).fillMaxHeight().background(colors.lineSeam))
+        RaftText(
+            text = hint,
+            modifier = Modifier.padding(start = 10.dp),
+            style = RaftTheme.typography.callout,
+            color = colors.foregroundMuted
         )
     }
 }
@@ -868,6 +1210,10 @@ internal fun MachinePicker(
     enabled: Boolean,
     runtimeId: String,
     usageAccess: MembersRuntimeAccountUsageAccess?,
+    /** The cloud agent's row after the computers (web `computerOptions`); null where it isn't offered. */
+    hostedOption: String? = null,
+    hostedSelected: Boolean = false,
+    onSelectHosted: () -> Unit = {},
     onSelect: (String) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -879,43 +1225,25 @@ internal fun MachinePicker(
                 color = RaftColor.TextMutedGray
             )
             !machinesErrorMessage.isNullOrBlank() ->
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            // deliberate softened error border over flat cream (no shadow compositing risk); triaged token-audit #1063
-                            .border(RaftAppStroke.Thin, RaftColor.AccentRed.copy(alpha = 0.5f))
-                            .background(RaftColor.SurfaceCream)
-                            .padding(RaftAppSpacing.Sm),
-                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-                ) {
-                    Text(
-                        text = machinesErrorMessage,
-                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                        color = RaftColor.AccentRed
-                    )
-                    RaftBrutalActionButton(
-                        label = stringResource(Res.string.common_retry),
-                        onClick = onRetry,
-                        enabled = enabled,
-                        leadingIcon = RaftLucideIconName.RefreshCw,
-                        minWidth = 72.dp,
-                        minHeight = 32.dp
-                    )
-                }
-            machines.isEmpty() -> Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.3f))
-                    .background(RaftColor.SurfaceCream)
-                    .padding(RaftAppSpacing.Sm)
-            ) {
-                Text(
-                    text = stringResource(Res.string.agent_create_state_computers_empty),
-                    style = RaftType.Caption,
-                    color = RaftColor.TextMutedGray
+                RaftBanner(
+                    description = machinesErrorMessage,
+                    status = RaftBannerStatus.Warning,
+                    action = {
+                        RaftButton(
+                            text = stringResource(Res.string.common_retry),
+                            onClick = onRetry,
+                            variant = RaftButtonVariant.Default,
+                            size = RaftButtonSize.Md,
+                            enabled = enabled,
+                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
+                        )
+                    }
                 )
-            }
+            machines.isEmpty() && hostedOption == null ->
+                RaftBanner(
+                    description = stringResource(Res.string.agent_create_state_computers_empty),
+                    status = RaftBannerStatus.Info
+                )
             else -> {
                 val machineItems =
                     createAgentMachineDropdownItems(
@@ -923,20 +1251,36 @@ internal fun MachinePicker(
                         requiredComputer = requiredComputer,
                         offlineSuffix = stringResource(Res.string.agent_create_suffix_offline)
                     )
-                // Jasper's picker rule: radios up to 5 computers, a sheet list up to 10, then search.
-                // Each computer carries the chosen runtime's quota line there.
+                // Web CreateAgentDialog: a select at any count (artin 2026-11-02: no radios), raft-ui
+                // ComboboxSelect — the list under the trigger up to ten, a searchable sheet above.
+                // Each computer carries the chosen runtime's quota line.
                 val quotaLines = rememberCreateAgentMachineQuotaLines(usageAccess, machines, runtimeId)
-                RuntimePickerChoice(
-                    value = selectedMachineId,
-                    options = createAgentMachineChoiceOptions(machineItems, quotaLines),
-                    onValueChange = onSelect,
-                    title = stringResource(Res.string.agent_create_label_computer),
-                    placeholder = stringResource(Res.string.agent_create_placeholder_select_computer),
-                    enabled = enabled
-                )
+                val computerLabel = stringResource(Res.string.agent_create_label_computer)
+                val noMatches = stringResource(Res.string.runtime_picker_no_matches, "\u0001")
+                CompositionLocalProvider(LocalRaftFieldState provides RaftFieldState(enabled = enabled, label = computerLabel, inField = true)) {
+                    RaftCombobox(
+                        value = if (hostedSelected) CREATE_AGENT_HOSTED_CHOICE else selectedMachineId,
+                        options =
+                            createAgentMachineChoiceOptions(machineItems, quotaLines) +
+                                listOfNotNull(hostedOption?.let { RaftComboboxOption(CREATE_AGENT_HOSTED_CHOICE, it) }),
+                        onValueChange = { id -> if (id == CREATE_AGENT_HOSTED_CHOICE) onSelectHosted() else onSelect(id) },
+                        emptyText = { query -> noMatches.replace("\u0001", query) },
+                        placeholder = stringResource(Res.string.agent_create_placeholder_select_computer),
+                        title = computerLabel,
+                        searchPlaceholder = stringResource(Res.string.runtime_picker_search),
+                        enabled = enabled,
+                        label = computerLabel
+                    )
+                }
             }
         }
-        if (!requiredComputer.isNullOrBlank()) {
+        if (hostedSelected) {
+            Text(
+                text = stringResource(Res.string.agent_create_hosted_hint),
+                style = RaftType.Caption,
+                color = RaftColor.TextMutedGray
+            )
+        } else if (!requiredComputer.isNullOrBlank()) {
             Text(
                 text = Res.string.agent_create_hint_required_computer.format(listOf(requiredComputer)).localized(),
                 style = RaftType.Caption,
@@ -993,7 +1337,7 @@ internal fun CreateAgentSectionLabelWithAction(
             modifier =
                 Modifier
                     .size(22.dp)
-                    .clickable(enabled = actionEnabled) { onAction() },
+                    .raftClickable(onClick = onAction, enabled = actionEnabled, shape = RoundedCornerShape(RaftRadius.Chip)),
             contentAlignment = Alignment.Center
         ) {
             if (loading) {
@@ -1019,23 +1363,29 @@ private fun CreateAgentRandomNameButton(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    RaftBrutalIconButton(
-        iconName = RaftLucideIconName.Dices,
+    RaftIconButton(
         onClick = onClick,
-        contentDescription = stringResource(Res.string.agent_create_random_name),
-        enabled = enabled,
-        backgroundColor = Color.Transparent,
-        disabledBackgroundColor = Color.Transparent,
-        borderColor = Color.Transparent,
-        disabledBorderColor = Color.Transparent,
-        shadowColor = Color.Transparent,
-        disabledShadowColor = Color.Transparent,
-        iconColor = RaftColor.TextBlackArgb,
-        disabledIconColor = RaftColor.TextMutedGrayArgb,
-        size = 22.dp,
-        iconSize = 13.dp
-    )
+        tooltip = stringResource(Res.string.agent_create_random_name),
+        variant = RaftButtonVariant.Ghost,
+        size = RaftIconButtonSize.Md,
+        enabled = enabled
+    ) {
+        RaftSlotIcon(RaftLucideIconName.Dices)
+    }
 }
+
+/** The app editor behaviour (IME action, tap-outside dismiss) for one env-var field. */
+@Composable
+private fun rememberCreateAgentEnvVarEditor(keyboardOptions: KeyboardOptions): RaftDesignSystemEditor =
+    rememberRaftDesignSystemEditor(
+        keyboardOptions = keyboardOptions,
+        keyboardActions = KeyboardActions.Default,
+        keyboardHeightChange = {},
+        focusRequester = remember { FocusRequester() },
+        autoFocus = false,
+        onFocus = {},
+        onBlur = {}
+    )
 
 @Composable
 private fun RaftCreateAgentSpinnerIcon() {
@@ -1062,29 +1412,38 @@ internal fun EnvVarsEditor(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RaftBrutalTextField(
+                RaftField(
                     label = stringResource(Res.string.agent_create_label_key),
-                    value = key,
-                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
-                    onValueChange = { newKey ->
-                        onChange(entries.toMutableList().also { it[idx] = newKey to value })
-                    },
-                    placeholder = "FOO",
-                    enabled = enabled,
-                    fieldMinHeight = 32.dp,
-                    modifier = Modifier.weight(1f)
-                )
-                RaftBrutalTextField(
+                    modifier = Modifier.weight(1f),
+                    enabled = enabled
+                ) {
+                    val editor = rememberCreateAgentEnvVarEditor(RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions)
+                    RaftTextField(
+                        value = key,
+                        onValueChange = { newKey ->
+                            onChange(entries.toMutableList().also { it[idx] = newKey to value })
+                        },
+                        modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                        placeholder = "FOO",
+                        keyboardOptions = editor.keyboardOptions
+                    )
+                }
+                RaftField(
                     label = stringResource(Res.string.agent_create_label_value),
-                    value = value,
-                    onValueChange = { newValue ->
-                        onChange(entries.toMutableList().also { it[idx] = key to newValue })
-                    },
-                    placeholder = "bar",
-                    enabled = enabled,
-                    fieldMinHeight = 32.dp,
-                    modifier = Modifier.weight(1.5f)
-                )
+                    modifier = Modifier.weight(1.5f),
+                    enabled = enabled
+                ) {
+                    val editor = rememberCreateAgentEnvVarEditor(KeyboardOptions.Default)
+                    RaftTextField(
+                        value = value,
+                        onValueChange = { newValue ->
+                            onChange(entries.toMutableList().also { it[idx] = key to newValue })
+                        },
+                        modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                        placeholder = "bar",
+                        keyboardOptions = editor.keyboardOptions
+                    )
+                }
                 Spacer(Modifier.width(4.dp))
                 Box(
                     modifier =

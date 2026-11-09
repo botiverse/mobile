@@ -54,10 +54,22 @@ internal data class ThreadTimelineSlice(
      */
     val showForwardAction: Boolean = false,
     /** The viewer's role on this conversation's server is `guest` (web `currentUserServerRole`). */
-    val viewerIsGuest: Boolean = false
+    val viewerIsGuest: Boolean = false,
+    /** The conversation's channel kind (`task` for a task v2 conversation); see [showReplyActions]. */
+    val channelKind: String? = null,
+    /**
+     * The channel or thread id the message pages are read from: where the Free plan's history
+     * window is recorded ([build.raft.app.data.RaftHiddenHistoryStore]) for the history paywall.
+     */
+    val historyChannelId: String? = null,
+    /**
+     * A reply thread's parent message (the route's identity), known before [originMessage] loads:
+     * the thread timeline's first item (ThreadOutline.kt).
+     */
+    val parentMessageId: String? = null,
 ) {
-    /** Derived from [surfaceKind]; the menu's `reply` capability reads this single source. */
-    val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind)
+    /** Derived from [surfaceKind] and [channelKind]; the menu's `reply` capability reads this single source. */
+    val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
 
     /** The page is a reply thread (its rows other than the origin are thread replies). */
     val replyThreadSurface: Boolean get() = surfaceKind == RaftThreadSurfaceKind.ReplyThread
@@ -93,19 +105,22 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
                 emptyDetail
             },
         sourceThreadId = sourceThreadId,
+        parentMessageId = parentMessageId?.takeIf { surfaceKind == RaftThreadSurfaceKind.ReplyThread && it.isNotBlank() },
         durableLastKnown = durableLastKnown,
         mainLoadFailed = mainLoadFailed,
         durableReachedOldest = durableReachedOldest,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
         surfaceKind = surfaceKind,
+        channelKind = channelKind,
         showMessageSaveAction = showMessageSaveAction,
         showReactionActions = showReactionActions,
         showTaskOpenActions = showTaskOpenActions,
         showTaskStatusActions = showTaskStatusActions,
         canConvertMessagesToTasks = canConvertMessagesToTasks(),
         beginningReplyCountLabel = threadBeginningReplyCountLabel(),
-        beginningReplyCount = threadBeginningReplyCount()
+        beginningReplyCount = threadBeginningReplyCount(),
+        historyChannelId = (streamChannelId ?: sourceThreadId)?.trim()?.takeIf { it.isNotEmpty() }
     )
 
 internal fun RaftThreadMessageItem.toThreadReplyMetadata(): ThreadReplyMetadata =
@@ -295,10 +310,9 @@ internal fun ThreadTimelineSlice.visibleReadMarkerKey(sourceThreadId: String?): 
 
 /**
  * The message the read marker follows: the rendered tail, or the loaded tail when none is known.
- * A local-only send (sending / failed, task #78) is never a read frontier and sits last, below every
- * server message, so the marker steps back to the newest server-backed message at or before it;
- * otherwise a failed send pinned at the tail would freeze the marker key and the read state would
- * never advance past the messages that arrived above it.
+ * A local-only send (sending / failed, task #78) is never a read frontier, so the marker steps back
+ * to the newest server-backed message at or before it; otherwise a failed send at the tail would
+ * freeze the marker key and the read state would never advance past the messages around it.
  */
 private fun ThreadTimelineSlice.readMarkerMessage(visibleTailIndex: Int?): RaftThreadMessageItem? {
     val tailIndex = visibleTailIndex?.takeIf { it in messages.indices } ?: messages.lastIndex
@@ -551,10 +565,10 @@ internal fun List<RaftThreadMessageItem>.localSendIds(): Set<String> =
     filter { message -> message.hasLocalSendState() }.mapTo(mutableSetOf()) { message -> message.id }
 
 /**
- * How the list's message ids changed. Local-only sends (sending / failed, [localSendIds]) always sit
- * below every server message, so a server message that arrives above a failed send is still an
- * append at the tail, not an unrelated height change (task #78): the comparison ignores local rows
- * whenever the literal one is not a prefix / suffix match.
+ * How the list's message ids changed. Local-only sends (sending / failed, [localSendIds]) sit where
+ * they were sent ([sortedByThreadTimeline]); a server message that lands above one (a send that
+ * just started at the tail) is still an append, not an unrelated height change (task #78): the
+ * comparison ignores local rows whenever the literal one is not a prefix / suffix match.
  */
 internal fun classifyThreadViewportMutation(
     previousIds: List<String>,

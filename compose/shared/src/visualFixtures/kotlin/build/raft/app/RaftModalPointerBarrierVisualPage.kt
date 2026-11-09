@@ -5,9 +5,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import build.raft.app.components.RaftBrutalModalLayer
-import build.raft.app.components.RaftBrutalInputField
-import build.raft.app.components.RaftModalShellModel
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.designsystem.components.RaftTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
 import build.raft.app.markdown.RaftMarkdownBody
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,51 +42,59 @@ internal fun RaftModalPointerBarrierVisualScreen() {
             else -> ModalPointerBarrierIdleCream
         }
 
-    Box(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .width(312.dp)
-                .height(120.dp)
-                .background(ModalPointerBarrierUnderlayYellow)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                .padding(12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            RaftMarkdownBody(
-                body = "[UNDERLAY LINK](https://slock.test/modal-pointer-barrier)",
-                textStyle = RaftType.Body.copy(fontSize = 24.sp, lineHeight = 32.sp)
-                    .withRaftFontWeight(FontWeight.Bold),
-                onOpenUrl = { linkHit = true }
-            )
-        }
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(112.dp)
-                .background(statusColor)
-        )
-
-        RaftBrutalModalLayer(
-            model = RaftModalShellModel(title = "Pointer barrier"),
-            onDismiss = {}
-        ) {
+    val dialogHostState = rememberRaftUnifiedDialogHostState()
+    RaftUnifiedDialogHostProvider(dialogHostState) {
+        Box(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(96.dp)
-                    .background(if (modalHit) ModalPointerBarrierPassGreen else RaftColor.AccentPink)
+                    .align(Alignment.Center)
+                    .width(312.dp)
+                    .height(120.dp)
+                    .background(ModalPointerBarrierUnderlayYellow)
                     .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                    .clickable { modalHit = true },
+                    .padding(12.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "MODAL ACTION",
-                    style = RaftType.Button.withRaftFontWeight(FontWeight.Bold),
-                    color = RaftColor.TextBlack
+                RaftMarkdownBody(
+                    body = "[UNDERLAY LINK](https://slock.test/modal-pointer-barrier)",
+                    textStyle = RaftType.Body.copy(fontSize = 24.sp, lineHeight = 32.sp)
+                        .withRaftFontWeight(FontWeight.Bold),
+                    onOpenUrl = { linkHit = true }
                 )
             }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(112.dp)
+                    .background(statusColor)
+            )
+
+            RaftUnifiedDialog(
+                title = "Pointer barrier",
+                onDismiss = {},
+                hostRoute = "modal-pointer-barrier"
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(96.dp)
+                        .background(if (modalHit) ModalPointerBarrierPassGreen else RaftColor.AccentPink)
+                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                        .clickable { modalHit = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "MODAL ACTION",
+                        style = RaftType.Button.withRaftFontWeight(FontWeight.Bold),
+                        color = RaftColor.TextBlack
+                    )
+                }
+            }
+            RaftUnifiedDialogHost(
+                state = dialogHostState,
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }
@@ -126,13 +136,21 @@ internal fun RaftModalTextFieldPointerVisualScreen() {
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    RaftBrutalInputField(
+                    val editor =
+                        rememberRaftDesignSystemEditor(
+                            keyboardOptions = KeyboardOptions.Default,
+                            keyboardActions = KeyboardActions.Default,
+                            keyboardHeightChange = {},
+                            focusRequester = remember { FocusRequester() },
+                            autoFocus = false,
+                            onFocus = {},
+                            onBlur = {}
+                        )
+                    RaftTextField(
                         value = fieldValue,
                         onValueChange = { fieldValue = it },
-                        placeholder = "",
-                        autoFocus = false,
-                        containerTapRequestsFocus = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                        keyboardOptions = editor.keyboardOptions
                     )
                     Box(
                         modifier =

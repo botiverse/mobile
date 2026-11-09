@@ -40,6 +40,8 @@ internal actual fun raftPlatformLog(
     if (level == RaftLogLevel.Debug && System.getProperty("raft.desktop.debugLogs") != "true") return
     val stream = if (level == RaftLogLevel.Error || level == RaftLogLevel.Warn) System.err else System.out
     stream.println("${level.wireValue.uppercase()} $tag: $message")
+    // The packaged app's stdout goes nowhere: the log file is what a bug report can attach.
+    RaftDesktopFileLog.write(level.wireValue, tag, message)
 }
 
 internal actual suspend fun flushRaftPlatformDiagnosticsDownstream(): Boolean = true
@@ -90,11 +92,12 @@ internal actual fun rememberRaftPngFileWriter(): RaftPngFileWriter =
                     skiaImage.close()
                 }
             if (bytes == null || bytes.isEmpty()) return@RaftPngFileWriter null
-            val dir = File(RaftDesktopPaths.cacheDir, "raft_snapshots").apply { mkdirs() }
-            val file = File(dir, "$namePrefix${UUID.randomUUID()}.png")
+            val file = File(RaftDesktopPaths.snapshotsDir, "$namePrefix${UUID.randomUUID()}.png")
             file.writeBytes(bytes)
             file.toURI().toString()
         }
     }
 
 internal actual val raftWebViewNeedsHostBottomInsets: Boolean = false
+
+internal actual val raftWebViewDesktopModeViaViewportMeta: Boolean = false

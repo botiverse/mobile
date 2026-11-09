@@ -37,6 +37,8 @@ object RealtimeSocketEvents {
     const val MessageUpdated = GeneratedRealtimeContract.SocketEvent.MessageUpdated
     const val DirectMessageNew = GeneratedRealtimeContract.SocketEvent.DirectMessageNew
     const val ThreadFollowersUpdated = "thread:followers-updated"
+    /** slock `emitExternalLinkedMessageUpdateToFrontend`: an edited bridged thread reply, to the parent's room. */
+    const val ThreadReplyUpdated = "thread:reply_updated"
     const val ThreadUpdated = GeneratedRealtimeContract.SocketEvent.ThreadUpdated
     const val ChannelUpdated = GeneratedRealtimeContract.SocketEvent.ChannelUpdated
     const val ChannelMembersUpdated = GeneratedRealtimeContract.SocketEvent.ChannelMembersUpdated
@@ -93,6 +95,7 @@ object RealtimeSocketEvents {
     const val ServerPlanUpdated = GeneratedRealtimeContract.SocketEvent.ServerPlanUpdated
     const val ServerFeaturesChanged = GeneratedRealtimeContract.SocketEvent.ServerFeaturesChanged
     const val AppearanceUpdated = GeneratedRealtimeContract.SocketEvent.AppearanceUpdated
+    const val UserProfileUpdated = GeneratedRealtimeContract.SocketEvent.UserProfileUpdated
     const val ActivityChanged = GeneratedRealtimeContract.SocketEvent.ActivityChanged
     const val AnnouncementNew = GeneratedRealtimeContract.SocketEvent.AnnouncementNew
     const val ReminderFired = GeneratedRealtimeContract.SocketEvent.ReminderFired
@@ -136,6 +139,7 @@ object RealtimeSocketEvents {
     val ServerWireEvents: List<String> =
         GeneratedRealtimeContract.SocketEvent.ServerWireEvents + listOf(
             ThreadFollowersUpdated,
+            ThreadReplyUpdated,
             ReadStateUpdated,
             ReadStateUpdatedBulk,
             NotificationPrefsUpdated,

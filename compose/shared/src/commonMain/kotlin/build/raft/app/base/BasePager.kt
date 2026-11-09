@@ -1,5 +1,7 @@
 package build.raft.app.base
 
+import build.raft.app.ProvideRaftLinkOpening
+import build.raft.app.ProvideRaftPageBaseTimeContext
 import build.raft.app.RaftDatabaseLaunchGate
 import build.raft.app.RaftEnvironmentIndicatorHost
 import build.raft.app.RAFT_EMBEDDED_CHILD_PAGE_PARAM
@@ -17,6 +19,7 @@ import build.raft.app.RaftSideColumnPosture
 import build.raft.app.RaftSideColumnScaffold
 import build.raft.app.toRaftSideColumnPosture
 import build.raft.app.toRaftAdaptivePaneEventOrNull
+import build.raft.app.markdown.RaftLinkHoverStatusHost
 import build.raft.app.RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT
 import build.raft.app.data.RaftEnhancedNotifyCenter
 import build.raft.app.data.RaftProductEvents
@@ -76,7 +79,9 @@ internal abstract class BasePager : ComposeContainer() {
                         sharedStoreBuilt = RaftSharedStoreRegistry.currentOrNull() != null,
                     )
                 }
-            RaftPageLayersContent(layers = layers, content = content)
+            ProvideRaftPageBaseTimeContext(pageVisibleTick = raftPageVisibleResumeTick) {
+                RaftPageLayersContent(layers = layers, content = content)
+            }
         }
     }
 
@@ -87,7 +92,8 @@ internal abstract class BasePager : ComposeContainer() {
     ) {
         val layer = layers.firstOrNull()
         if (layer == null) {
-            content()
+            // Inside the database gate: the link setting is read through the shared preference store.
+            ProvideRaftLinkOpening(this@BasePager, content)
             return
         }
         val inner: @Composable () -> Unit = { RaftPageLayersContent(layers = layers.drop(1), content = content) }
@@ -100,6 +106,7 @@ internal abstract class BasePager : ComposeContainer() {
                 )
             RaftPageLayer.SideColumnScaffold ->
                 RaftSideColumnScaffold(posture = raftSideColumnPosture, content = inner)
+            RaftPageLayer.LinkHoverStatus -> RaftLinkHoverStatusHost(content = inner)
         }
     }
 

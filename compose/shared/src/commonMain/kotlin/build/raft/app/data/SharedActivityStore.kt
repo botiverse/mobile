@@ -5,6 +5,7 @@ import build.raft.app.withKnownLatestDelegatedLabelsFrom
 import build.raft.app.SharedThreadContentGeneration
 import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.SharedThreadSummaryFact
+import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
@@ -56,6 +57,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.Serializable
+import kotlin.concurrent.Volatile
 import kotlin.time.Clock
 import kotlin.time.TimeSource
 
@@ -168,6 +170,19 @@ class SharedActivityStore internal constructor(
     private var diagnosticsLogger: (String) -> Unit = {},
     /** Realtime-triggered refetch throttle window (leading + trailing); user loads are never throttled. */
     private val realtimeBackgroundRefreshIntervalMillis: Long = ActivityRealtimeBackgroundRefreshIntervalMillis,
+    /**
+     * The same window while the Activity surface is hidden ([SharedActivityIntent.SurfaceHidden]: another
+     * tab, a pushed conversation). Null keeps [realtimeBackgroundRefreshIntervalMillis]. The process host
+     * passes [ActivityHiddenRealtimeBackgroundRefreshIntervalMillis]: nobody sees the list then, and the
+     * entry Refresh reads it anyway (feedback fb-52cc0499: 183 of 201 background re-reads of the 141 KB
+     * first page ran while a conversation covered Activity).
+     */
+    private val hiddenRealtimeBackgroundRefreshIntervalMillis: Long? = null,
+    /**
+     * Incremental sync's reload ledger: the inbox read settles an Activity reload a sync change
+     * asked for, so a failed one is read again by the next pull (#proj-mobile:#112). Null: no sync.
+     */
+    private val syncReloads: RaftSyncReloadLedger? = null,
     /** Monotonic clock for the throttle window and the local Done/read hold; injectable for virtual time. */
     private val nowMillis: () -> Long = activityMonotonicClock(),
     /**
@@ -181,6 +196,11 @@ class SharedActivityStore internal constructor(
     staleRecoveryDelayMillis: (attempt: Int, retryAfterMillis: Long?) -> Long =
         { attempt, retryAfter -> raftStaleRecoveryDelayMillis(attempt, retryAfter) },
     localMutationHoldMillis: Long = ActivityLocalMutationHoldMillis,
+    /**
+     * The process is in the foreground ([RaftStaleReadRecoverySignals.foreground]). The realtime
+     * background reconcile never reads while it is false; it owes one read for the return.
+     */
+    private val appForeground: StateFlow<Boolean> = RaftStaleReadRecoverySignals.foreground,
     private val beforeRealtimeHighWaterFold: () -> Unit = {},
     private val onRealtimePatchOwnerEntered: () -> Unit = {},
     private val onReadReceiptPredictionOwnerEntered: () -> Unit = {}
@@ -204,6 +224,8 @@ class SharedActivityStore internal constructor(
             delayMillis = staleRecoveryDelayMillis
         )
     /** Between [SharedActivityIntent.SurfaceHidden] and the next load the surface asks for. */
+    // Written from the UI thread (dispatch), read by the reconcile loop under realtimeOwnerLock.
+    @Volatile
     private var activitySurfaceHidden = false
     private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
     private var onThreadUnfollowProjection: (SharedHomeIntent.ProjectThreadUnfollow) -> Unit = onThreadUnfollowProjection
@@ -270,6 +292,12 @@ class SharedActivityStore internal constructor(
     private val channelAccessGenerations = mutableMapOf<String, Long>()
     private var realtimeBackgroundReconcileDirty = false
     /**
+     * #13126 (observability only): the asks folded into the pending background reconcile, first
+     * trigger and count, sent with its realtime-fallback read. Set and cleared with
+     * [realtimeBackgroundReconcileDirty] (guarded by realtimeOwnerLock).
+     */
+    private var realtimeBackgroundReconcileTrigger: InboxRefreshTriggerCount? = null
+    /**
      * #triage 84d44d75: the newest patchable `message:new` (channel + seq) seen since the inbox last
      * answered at or past it (guarded by realtimeOwnerLock). One target for the whole inbox; many
      * events raise it, they never add reads (web inboxStore `inboxCatchUpTarget`, slock #11208).
@@ -291,6 +319,46 @@ class SharedActivityStore internal constructor(
     // (slock #10982) can deliver a message twice — live, then in a `sync:resume` batch — and the
     // summary path never patches rows, so the rows alone cannot tell. Seqs are server-global.
     private val realtimeCountedUnreadSeqs = linkedSetOf<Long>()
+    /** Reset loads started so far (guarded by realtimeOwnerLock). */
+    private var resetLoadsStarted = 0L
+    /** A reconcile was asked for while the app was in the background: one read is owed for the return. */
+    private var realtimeReconcileOwedOnForeground = false
+    /**
+     * After a return to the foreground: [resetLoadsStarted] then, and the earliest the owed read may
+     * run. Until it runs, every reconcile asked for folds into it, and any reset load started since
+     * the return (the page's own resume refresh) answers it: one read per return.
+     */
+    private var resumeFoldLoads: Long? = null
+    private var resumeNotBeforeMillis: Long? = null
+    /**
+     * [resetLoadsStarted] at the latest reconcile ask made while the surface was hidden; null once a
+     * visible ask came. A reset load started after it (the entry Refresh) answers those asks, the same
+     * way [resumeFoldLoads] folds the asks made in the background into the return's read.
+     */
+    private var hiddenFoldLoads: Long? = null
+
+    init {
+        scope.launch {
+            var previous = appForeground.value
+            appForeground.collect { foreground ->
+                val returned = foreground && !previous
+                previous = foreground
+                if (returned) onAppForegroundReturned()
+            }
+        }
+    }
+
+    private fun onAppForegroundReturned() {
+        val job =
+            synchronized(realtimeOwnerLock) {
+                if (!realtimeReconcileOwedOnForeground) return@synchronized null
+                realtimeReconcileOwedOnForeground = false
+                resumeFoldLoads = resetLoadsStarted
+                resumeNotBeforeMillis = nowMillis() + realtimeBackgroundRefreshIntervalMillis
+                scheduleRealtimeBackgroundReconcileLocked(trigger = null)
+            }
+        job?.start()
+    }
 
     internal fun updateRuntimeIntegrations(
         authStore: RaftAuthSessionStore = this.authStore,
@@ -362,17 +430,17 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.ServerSelected -> scope.launch { selectServer(intent) }
             SharedActivityIntent.LoadInitial -> {
                 activitySurfaceHidden = false
-                load(refresh = true, headerIndicator = true, intent = intent)
+                load(refresh = true, headerIndicator = true, intent = intent, fetchReason = InboxFetchReason.Initial)
             }
             SharedActivityIntent.Refresh -> {
                 activitySurfaceHidden = false
-                load(refresh = true, pullRefresh = false, headerIndicator = shownRowsAreOld(), intent = intent)
+                load(refresh = true, pullRefresh = false, headerIndicator = shownRowsAreOld(), intent = intent, fetchReason = InboxFetchReason.Visibility)
             }
             SharedActivityIntent.PullRefresh -> {
                 activitySurfaceHidden = false
                 // Pull-to-refresh is the user moving on: the rows read this visit leave with it.
                 releaseRetainedReadRows(intent)
-                load(refresh = true, pullRefresh = true, intent = intent)
+                load(refresh = true, pullRefresh = true, intent = intent, fetchReason = InboxFetchReason.Manual)
             }
             SharedActivityIntent.LoadMore -> load(refresh = false, intent = intent)
             SharedActivityIntent.MarkAllRead -> markAllRead()
@@ -412,6 +480,12 @@ class SharedActivityStore internal constructor(
             }
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
                 scope.launch { acceptRealtime(intent) }
+            is SharedActivityIntent.ApplyRemoteDone ->
+                if (applyRemoteDone(intent.channelId, intent.doneFrontierSeq) == ActivityRemoteDoneOutcome.CannotTell) {
+                    synchronized(realtimeOwnerLock) {
+                        scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other)
+                    }.start()
+                }
         }
     }
 
@@ -574,6 +648,10 @@ class SharedActivityStore internal constructor(
             realtimeBackgroundReconcileJob?.cancel()
             realtimeBackgroundReconcileJob = null
             realtimeBackgroundReconcileDirty = false
+            realtimeBackgroundReconcileTrigger = null
+            realtimeReconcileOwedOnForeground = false
+            resumeFoldLoads = null
+            resumeNotBeforeMillis = null
             staleRecovery.reset()
             channelAccessChecks.values.forEach(Job::cancel)
             channelAccessChecks.clear()
@@ -1048,7 +1126,7 @@ class SharedActivityStore internal constructor(
                 true
             }
         if (!changed) return
-        load(refresh = true, headerIndicator = true, intent = SharedActivityIntent.SetFilter(filter))
+        load(refresh = true, headerIndicator = true, intent = SharedActivityIntent.SetFilter(filter), fetchReason = InboxFetchReason.Manual)
     }
 
     /**
@@ -1094,7 +1172,7 @@ class SharedActivityStore internal constructor(
             "store_load domain=activity phase=server_selected serverId=$serverId " +
                 "cached=${_state.value.snapshot != null}"
         )
-        load(refresh = true, headerIndicator = true, intent = SharedActivityIntent.LoadInitial)
+        load(refresh = true, headerIndicator = true, intent = SharedActivityIntent.LoadInitial, fetchReason = InboxFetchReason.Initial)
     }
 
     private suspend fun applyRealtimeEvent(intent: SharedActivityIntent.ApplyRealtimeEvent) {
@@ -1126,9 +1204,16 @@ class SharedActivityStore internal constructor(
             // followers only).
             val threadChannelId = event.threadChannelId
             val hasRow = _state.value.items.any { it.isTaskConversation && it.threadChannelId == threadChannelId }
-            return if (hasRow) scheduleRealtimeBackgroundReconcileLocked() else null
+            return if (hasRow) scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other) else null
         }
         if (!event.refreshesActivity()) return null
+        // Web socketBridge messageNew: a message the list already shows (a repeat delivery) is an echo.
+        val trigger =
+            if (event is MessageNew && _state.value.showsMessage(event.message.id)) {
+                InboxRefreshTrigger.MessageEcho
+            } else {
+                event.inboxRefreshTrigger()
+            }
         when (event) {
             // Not past a mute (the shell's allowLocalPatch): the served row stops there.
             is MessageNew -> if (intent.allowLocalPatch) raiseRealtimeCatchUpTargetLocked(event.message)
@@ -1143,6 +1228,13 @@ class SharedActivityStore internal constructor(
                     replyThreadFreshnessLedger.invalidateServer(serverId)
                 }
             else -> Unit
+        }
+        // `activity:changed`, and incremental sync's Activity refetch (a change it could not patch):
+        // read this server's list again, like web's ACTIVITY_CHANGED_EVENT -> scheduleInboxRefresh
+        // (botiverse/slock bab9dd8c0 socketBridge.ts), through the same throttled single-flight.
+        if (event is ActivityChanged) {
+            val owner = _state.value.ownerServerId
+            return if (owner != null && owner == event.serverId.value) scheduleRealtimeBackgroundReconcileLocked(trigger) else null
         }
         // dm:new refreshes like web (channelRealtimeSync.ts dmNew -> scheduleInboxRefresh):
         // a brand-new DM row can only arrive through the canonical projection.
@@ -1164,7 +1256,7 @@ class SharedActivityStore internal constructor(
             // changes without showing foreground refresh chrome or requiring a
             // pull gesture. Read-state and broad identity-only events never use
             // this owner.
-            return scheduleRealtimeBackgroundReconcileLocked()
+            return scheduleRealtimeBackgroundReconcileLocked(trigger)
         }
         // Activity is snapshot-on-entry and patch-while-visible. Events whose
         // identity-only payload cannot safely produce a narrow row patch are
@@ -1412,8 +1504,21 @@ class SharedActivityStore internal constructor(
             )
     }
 
-    private fun scheduleRealtimeBackgroundReconcileLocked(): Job {
+    /**
+     * [trigger] names the ask for the read's `X-Raft-Fetch-Trigger` (#13126); null only for the
+     * return's own read, which is a `visibility` read and carries none.
+     */
+    private fun scheduleRealtimeBackgroundReconcileLocked(trigger: InboxRefreshTrigger?): Job {
+        if (!appForeground.value) {
+            // In the background nothing reads: the return reads once (onAppForegroundReturned).
+            realtimeReconcileOwedOnForeground = true
+            return realtimeBackgroundReconcileJob ?: Job().apply { complete() }
+        }
         realtimeBackgroundReconcileDirty = true
+        if (trigger != null) realtimeBackgroundReconcileTrigger = realtimeBackgroundReconcileTrigger.foldWith(trigger)
+        // Only with a hidden window configured: without one the store behaves exactly as before.
+        hiddenFoldLoads =
+            if (activitySurfaceHidden && hiddenRealtimeBackgroundRefreshIntervalMillis != null) resetLoadsStarted else null
         realtimeBackgroundReconcileJob?.let { return it }
         // Leading + trailing throttle (web requestInboxBackgroundRefresh): the
         // first request after a quiet window fetches immediately; requests inside
@@ -1423,10 +1528,23 @@ class SharedActivityStore internal constructor(
         val job =
             scope.launch(start = CoroutineStart.LAZY) {
                 while (true) {
-                    val waitMillis = synchronized(realtimeOwnerLock) { realtimeBackgroundRefreshWaitMillisLocked() }
-                    if (waitMillis > 0L) delay(waitMillis)
+                    // Waits in steps of the visible window, so a hidden (longer) wait ends soon after
+                    // the surface shows again.
+                    while (true) {
+                        val waitMillis =
+                            synchronized(realtimeOwnerLock) {
+                                val resumeWait = resumeNotBeforeMillis?.let { it - nowMillis() } ?: 0L
+                                maxOf(realtimeBackgroundRefreshWaitMillisLocked(), resumeWait)
+                            }
+                        if (waitMillis <= 0L) break
+                        delay(minOf(waitMillis, realtimeBackgroundRefreshIntervalMillis.coerceAtLeast(1L)))
+                    }
+                    // The asks this round answers; asks made from here on count for the next round.
+                    var roundTrigger: InboxRefreshTriggerCount? = null
                     val shouldReconcile =
                         synchronized(realtimeOwnerLock) {
+                            roundTrigger = realtimeBackgroundReconcileTrigger
+                            realtimeBackgroundReconcileTrigger = null
                             if (realtimeBackgroundReconcileDirty) {
                                 realtimeBackgroundReconcileDirty = false
                                 true
@@ -1437,22 +1555,61 @@ class SharedActivityStore internal constructor(
                         }
                     if (!shouldReconcile) return@launch
                     awaitCurrentLoadIdle()
-                    val restartedWindow =
+                    var returnRead = false
+                    val next =
                         synchronized(realtimeOwnerLock) {
-                            if (realtimeBackgroundRefreshWaitMillisLocked() > 0L) {
-                                // A load started while we waited; fetch on that window's trailing edge.
-                                realtimeBackgroundReconcileDirty = true
-                                true
-                            } else {
-                                false
+                            val foldBase = resumeFoldLoads
+                            resumeFoldLoads = null
+                            resumeNotBeforeMillis = null
+                            when {
+                                !appForeground.value -> {
+                                    // Went to the background while waiting: no read now, one on the return.
+                                    realtimeReconcileOwedOnForeground = true
+                                    realtimeBackgroundReconcileDirty = false
+                                    realtimeBackgroundReconcileTrigger = null
+                                    realtimeBackgroundReconcileJob = null
+                                    ReconcileStep.Stop
+                                }
+                                // The return's one read: a reset load started since the return (the
+                                // visible page's resume refresh) already was it; asks folded into it.
+                                foldBase != null ->
+                                    if (resetLoadsStarted > foldBase) {
+                                        realtimeBackgroundReconcileDirty = false
+                                        realtimeBackgroundReconcileTrigger = null
+                                        ReconcileStep.Again
+                                    } else {
+                                        // The one read owed for the return to the foreground.
+                                        returnRead = true
+                                        ReconcileStep.Load
+                                    }
+                                // Asked only while hidden, and the entry Refresh (a reset load) started
+                                // since: that read was it.
+                                hiddenFoldLoads?.let { fold -> resetLoadsStarted > fold } == true -> {
+                                    hiddenFoldLoads = null
+                                    realtimeBackgroundReconcileDirty = false
+                                    realtimeBackgroundReconcileTrigger = null
+                                    ReconcileStep.Again
+                                }
+                                realtimeBackgroundRefreshWaitMillisLocked() > 0L -> {
+                                    // A load started while we waited; fetch on that window's trailing edge.
+                                    realtimeBackgroundReconcileDirty = true
+                                    // Still owed: this round's asks stay first in the next one.
+                                    realtimeBackgroundReconcileTrigger = roundTrigger.foldWith(realtimeBackgroundReconcileTrigger)
+                                    ReconcileStep.Again
+                                }
+                                else -> ReconcileStep.Load
                             }
                         }
-                    if (restartedWindow) continue
+                    if (next == ReconcileStep.Stop) return@launch
+                    if (next == ReconcileStep.Again) continue
                     load(
                         refresh = true,
                         pullRefresh = false,
                         backgroundRefresh = true,
-                        intent = SharedActivityIntent.Refresh
+                        intent = SharedActivityIntent.Refresh,
+                        fetchReason =
+                            if (returnRead) InboxFetchReason.Visibility else InboxFetchReason.RealtimeFallback,
+                        fetchTrigger = roundTrigger
                     )
                     awaitCurrentLoadIdle()
                 }
@@ -1461,9 +1618,17 @@ class SharedActivityStore internal constructor(
         return job
     }
 
+    private enum class ReconcileStep { Load, Again, Stop }
+
     private fun realtimeBackgroundRefreshWaitMillisLocked(): Long {
         val lastStartedAt = lastResetLoadStartedAtMillis ?: return 0L
-        return (lastStartedAt + realtimeBackgroundRefreshIntervalMillis - nowMillis()).coerceAtLeast(0L)
+        val interval =
+            if (activitySurfaceHidden) {
+                hiddenRealtimeBackgroundRefreshIntervalMillis ?: realtimeBackgroundRefreshIntervalMillis
+            } else {
+                realtimeBackgroundRefreshIntervalMillis
+            }
+        return (lastStartedAt + interval - nowMillis()).coerceAtLeast(0L)
     }
 
     private suspend fun awaitCurrentLoadIdle() {
@@ -1627,7 +1792,7 @@ class SharedActivityStore internal constructor(
             "activity_read_state_patch scopeId=$channelId maxReadSeq=$maxReadSeq " +
                 "projected=${covered.size} reconcile=${uncovered.isNotEmpty()}"
         )
-        return if (uncovered.isNotEmpty()) scheduleRealtimeBackgroundReconcileLocked() else null
+        return if (uncovered.isNotEmpty()) scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other) else null
     }
 
     /**
@@ -1646,7 +1811,7 @@ class SharedActivityStore internal constructor(
         val matching = snapshot.items.filter { item -> item.readReceiptChannelId()?.value == channelId }
         if (matching.isEmpty()) {
             return if (markedUnread && current.selectedFilter == InboxFilter.Unread) {
-                scheduleRealtimeBackgroundReconcileLocked()
+                scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other)
             } else {
                 null
             }
@@ -1757,13 +1922,23 @@ class SharedActivityStore internal constructor(
         pullRefresh: Boolean = false,
         backgroundRefresh: Boolean = false,
         headerIndicator: Boolean = false,
-        intent: SharedActivityIntent
+        intent: SharedActivityIntent,
+        /** Why the first page is read; sent as `X-Raft-Fetch-Reason` (see [InboxFetchReason]). */
+        fetchReason: InboxFetchReason? = null,
+        /** What asked for a realtime-fallback read; sent as `X-Raft-Fetch-Trigger` (see [InboxRefreshTrigger]). */
+        fetchTrigger: InboxRefreshTriggerCount? = null
     ) {
         val job =
             synchronized(realtimeOwnerLock) {
                 val current = _state.value
                 val inFlightLoad = loadJob?.takeUnless { job -> job.isCompleted }
                 if (backgroundRefresh && inFlightLoad != null) return@synchronized null
+                if (backgroundRefresh && !appForeground.value) {
+                    // No inbox read in the background (stale recovery, reconcile): one is owed for the return.
+                    realtimeReconcileOwedOnForeground = true
+                    diagnosticsLogger("store_load domain=activity phase=deferred reason=app_background")
+                    return@synchronized null
+                }
                 if (pullRefresh && inFlightLoad != null) {
                     // Hands f6c3f3a6: a pull over a visible refresh still in flight joins it and
                     // shows the pull spinner, instead of throwing the pages it already read away.
@@ -1819,7 +1994,10 @@ class SharedActivityStore internal constructor(
                 }
                 val generation = ++loadGeneration
                 val startedAtMillis = nowMillis()
-                if (refresh) lastResetLoadStartedAtMillis = startedAtMillis
+                if (refresh) {
+                    lastResetLoadStartedAtMillis = startedAtMillis
+                    resetLoadsStarted += 1
+                }
                 foregroundResetLoadStartedAtMillis = startedAtMillis.takeIf { refresh && !backgroundRefresh }
                 loadJob?.cancel()
                 // This load owns the background flag now: a superseded background load's own
@@ -1980,7 +2158,7 @@ class SharedActivityStore internal constructor(
                         val result =
                             if (refresh) {
                                 val depth =
-                                    loadCanonicalDepth(serverId, filter, refreshLimit) { fetched ->
+                                    loadCanonicalDepth(serverId, filter, refreshLimit, fetchReason, fetchTrigger) { fetched ->
                                         publishRefreshPage(
                                             fetched = fetched,
                                             generation = generation,
@@ -2219,10 +2397,24 @@ class SharedActivityStore internal constructor(
         serverId: ServerId,
         filter: InboxFilter,
         depth: Int,
+        fetchReason: InboxFetchReason? = null,
+        fetchTrigger: InboxRefreshTriggerCount? = null,
         onPageMerged: suspend (InboxSnapshot) -> Unit = {}
     ): ActivityCanonicalDepthResult {
         val targetDepth = depth.coerceAtLeast(SharedActivityPageSize)
-        val initial = inboxRepository.loadInitial(serverId, filter, minOf(targetDepth, SharedActivityRefreshPageLimit))
+        val syncReadTicket = syncReloads?.beginListRead(serverId.value, RaftSyncListRead.Activity)
+        val initial =
+            try {
+                withInboxFetchReason(fetchReason, fetchTrigger) {
+                    inboxRepository.loadInitial(serverId, filter, minOf(targetDepth, SharedActivityRefreshPageLimit))
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                syncReadTicket?.let { syncReloads?.endListRead(serverId.value, RaftSyncListRead.Activity, it, RaftSyncSnapshotRead.Failed) }
+                throw throwable
+            }
+        syncReadTicket?.let { syncReloads?.endListRead(serverId.value, RaftSyncListRead.Activity, it, initial.syncSnapshotRead()) }
         if (initial !is DataResult.Content) return ActivityCanonicalDepthResult(initial)
 
         var combined = initial.data.copy(items = initial.data.items.dedupeActivityItems())
@@ -2503,7 +2695,11 @@ class SharedActivityStore internal constructor(
                     synchronized(realtimeOwnerLock) {
                         if (realtimeCatchUpRetryJob !== self) return@synchronized null
                         realtimeCatchUpRetryJob = null
-                        if (activitySurfaceHidden) null else scheduleRealtimeBackgroundReconcileLocked()
+                        if (activitySurfaceHidden) {
+                            null
+                        } else {
+                            scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.CatchUpRetry)
+                        }
                     }
                 reconcileJob?.start()
             }
@@ -2536,7 +2732,15 @@ class SharedActivityStore internal constructor(
             return false
         }
         // Single-flight: a background load joins nothing while another load runs (that one settles).
-        load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
+        load(
+            refresh = true,
+            pullRefresh = false,
+            backgroundRefresh = true,
+            intent = SharedActivityIntent.Refresh,
+            fetchReason = InboxFetchReason.RealtimeFallback,
+            // A stale answer's recovery, not a realtime event (no shared trigger value).
+            fetchTrigger = InboxRefreshTriggerCount(InboxRefreshTrigger.Other)
+        )
         return true
     }
 
@@ -2762,6 +2966,8 @@ class SharedActivityStore internal constructor(
                 .filter { item -> item.isChannelOrDmRow() }
                 .associateBy { item -> item.key }
         val keptChannelKeys = mutableSetOf<String>()
+        // Thread rows whose served copy lags the realtime patch (they keep the patched reply).
+        val keptThreadKeys = mutableSetOf<String>()
         val canonicalKeys = canonicalItems.mapTo(mutableSetOf()) { item -> item.key }
         var preserveTotalUnreadFloor = false
         val reconciled =
@@ -2781,17 +2987,26 @@ class SharedActivityStore internal constructor(
                 // outright, unread included: patches never invent unread, so
                 // there is no local unread to preserve (web takes the incoming
                 // row, preserveNewerThreadActivity, inboxStore.ts:813-870).
+                // A canonical row whose latest activity is strictly newer (by seq) than the shown
+                // row's also wins. A `thread:updated`-only patch (a joint channel's projected
+                // thread, whose `message:new` arrives under the origin thread id and is deduped)
+                // moves the count and time but keeps the old preview and marker, so the
+                // count/marker rule alone never let the served row back in (fb-c04c1199: the row
+                // kept a 03:44 reply with a fresh time while newer replies, the reader's own
+                // included, were served).
                 if (
                     canonical.replyCount > localVersion.replyCount ||
                     (
                         canonical.replyCount == localVersion.replyCount &&
                             canonical.latestActivityMessageId == localVersion.marker
-                        )
+                        ) ||
+                    canonical.servesNewerActivityThan(current)
                 ) {
                     realtimeHighWater.remove(canonical.key)
                     return@map canonical
                 }
                 preserveTotalUnreadFloor = true
+                keptThreadKeys += canonical.key
                 canonical.withRealtimeActivityProjection(current)
             }
         val missingCurrent =
@@ -2819,16 +3034,19 @@ class SharedActivityStore internal constructor(
             // exposes an appear→disappear flash between the two stages.
             items =
                 (missingCurrent + reconciled).dedupeActivityItems().let { items ->
-                    // A kept channel row holds the newest message, which the served order (the
-                    // view's, without it) does not know: it stays on top instead of dropping back
-                    // (web preserveNewerChannelActivity). Rows held from realtime (kept channel
-                    // rows and missing thread rows) keep the order they are shown in now, so a
-                    // stale answer never flips them.
-                    if (keptChannelKeys.isEmpty()) {
+                    // A kept row holds the newest message, which the served order (the view's,
+                    // without it) does not know: it stays on top instead of dropping back (web
+                    // preserveNewerChannelActivity / preserveNewerThreadActivity). Rows held from
+                    // realtime (kept channel rows, kept thread rows and missing thread rows) keep
+                    // the order they are shown in now, so a stale answer never flips them.
+                    // Hands 62498f69: a thread row patched to the top dropped back under the old
+                    // head on the lagging re-read and returned when the server caught up, so the
+                    // first row alternated between the two.
+                    if (keptChannelKeys.isEmpty() && keptThreadKeys.isEmpty()) {
                         items
                     } else {
                         val shownOrder = _state.value.items.withIndex().associate { (index, item) -> item.key to index }
-                        val heldKeys = keptChannelKeys + missingCurrent.map(InboxItem::key)
+                        val heldKeys = keptChannelKeys + keptThreadKeys + missingCurrent.map(InboxItem::key)
                         val held = items.filter { it.key in heldKeys }.sortedBy { shownOrder[it.key] ?: Int.MAX_VALUE }
                         held + items.filterNot { it.key in heldKeys }
                     }
@@ -2872,6 +3090,13 @@ class SharedActivityStore internal constructor(
             latestDelegatedBy = current.latestDelegatedBy,
             latestActivitySeq = current.latestActivitySeq
         )
+    }
+
+    /** Both rows carry a content frontier and this (served) one is strictly past the shown one. */
+    private fun InboxItem.servesNewerActivityThan(current: InboxItem): Boolean {
+        val served = latestActivitySeq ?: return false
+        val shown = current.latestActivitySeq ?: return false
+        return compareActivitySeq(served, shown) > 0
     }
 
     private fun InboxItem.withRealtimeActivityProjection(current: InboxItem): InboxItem =
@@ -2950,7 +3175,7 @@ class SharedActivityStore internal constructor(
                     // Web refreshes in the background after a successful read-all
                     // (slock 1bb70cbeb, inboxStore.ts:1405-1408); the read hold keeps a
                     // lagging copy from undoing the local clear.
-                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
+                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
                 } else {
                     readOverlay.forgetAll(overlayOwner, readGenerations)
                     onUnreadCountsChanged()
@@ -2984,7 +3209,7 @@ class SharedActivityStore internal constructor(
                 "activity_mark_done result=refused reason=${if (item == null) "row_not_held" else "invalid_done_frontier"} " +
                     "itemKey=${requestedItem.key}"
             )
-            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
             return
         }
         val targetChannelId = item.readReceiptChannelId()
@@ -3017,7 +3242,7 @@ class SharedActivityStore internal constructor(
                     doneOverlay.confirmAll(overlayOwner, doneGenerations)
                     onUnreadCountsChanged()
                     // Web refreshes after a confirmed Done with the hold still armed.
-                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
+                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
                 }
             }
         }
@@ -3064,7 +3289,7 @@ class SharedActivityStore internal constructor(
             val result = activityObjectsRepository?.act(serverId, ActivityObjectAction.Undone, row)
             if (result !is DataResult.Content) diagnosticsLogger("activity_object_undone result=failed key=${item.key}")
             onUnreadCountsChanged()
-            load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
+            load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
         }
     }
 
@@ -3278,7 +3503,7 @@ class SharedActivityStore internal constructor(
             if (result.isAcceptedThreadFollowMutation()) {
                 onUnreadCountsChanged()
                 if (currentItem == null) {
-                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
+                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
                 }
             } else {
                 refreshAfterFailure(previous, result.failureCodeOr("activity_follow_failed"))
@@ -3383,7 +3608,8 @@ class SharedActivityStore internal constructor(
         synchronized(realtimeOwnerLock) { retainReadRowLocked(SharedActivityIntent.MarkRead(item), item) }
         val coordinator = readReceiptCoordinator
         if (owner != null && coordinator != null) {
-            applyReadReceiptPrediction(coordinator.markReadAll(owner, targetChannelId))
+            val knownSeq = item.readStateLatestActivitySeq?.toLongOrNull()
+            applyReadReceiptPrediction(coordinator.markReadAll(owner, targetChannelId, knownSeq))
             return
         }
         val key = item.key
@@ -3503,7 +3729,7 @@ class SharedActivityStore internal constructor(
                 true
             }
         if (shouldRefresh) {
-            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
         }
     }
 
@@ -3576,13 +3802,17 @@ class SharedActivityStore internal constructor(
             )
         )
         scope.launch {
+            val readOwner =
+                readReceiptOwnerFactory?.invoke(previous.ownerServerId.orEmpty(), currentUserId().orEmpty())
+            if (readOwner != null) readReceiptCoordinator?.settleReadsBeforeUnread(readOwner, targetChannelId)
             val result = readReceiptRepository.markChannelUnread(targetChannelId)
             if (result is DataResult.Content) {
                 // The read point moved back, or stayed and the conversation was marked unread: the next
                 // open must send its read again (that is what clears it), not reuse an acknowledgement.
-                readReceiptOwnerFactory
-                    ?.invoke(previous.ownerServerId.orEmpty(), currentUserId().orEmpty())
-                    ?.let { readOwner -> readReceiptCoordinator?.forgetAcknowledged(readOwner, targetChannelId) }
+                if (readOwner != null) {
+                    readReceiptCoordinator?.forgetAcknowledged(readOwner, targetChannelId)
+                    readReceiptCoordinator?.noteUnreadAnswer(readOwner, targetChannelId, result.data)
+                }
                 applyMarkUnreadOutcome(item, optimisticUnreadCount, targetChannelId, result.data)
             }
             val owner =
@@ -3680,6 +3910,64 @@ class SharedActivityStore internal constructor(
         }
     }
 
+    /**
+     * Another device marked conversation [channelId] Done (incremental sync), exactly like web
+     * `inboxStore.applyRemoteDone` (botiverse/slock bab9dd8c0, inboxStore.ts:2592; server #11685
+     * pins `done.doneFrontierSeq` equal to the frontier a Done stores, web #11696): the
+     * conversation's rows leave when the Done covers every one of them, compared exactly as decimal
+     * seqs with the row's `latestActivitySeq` (equal = covered), and are held against a lagging
+     * list like a Done made here. A row with newer activity stays as shown. Unread and total counts
+     * move with the rows, as for a local Done.
+     *
+     * [ActivityRemoteDoneOutcome.CannotTell] (the caller reads the list again): no row of the
+     * conversation is held, no frontier, a thread row (a thread's Done comes as `follow`), or a row
+     * without `latestActivitySeq`.
+     */
+    internal fun applyRemoteDone(channelId: String, doneFrontierSeq: String?): ActivityRemoteDoneOutcome =
+        synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            val snapshot = current.snapshot ?: return@synchronized ActivityRemoteDoneOutcome.CannotTell
+            val rows =
+                snapshot.items.filter { item ->
+                    item.kind != InboxItemKind.Object && item.kind != InboxItemKind.MentionAction &&
+                        item.readReceiptChannelId()?.value == channelId
+                }
+            val outcome =
+                when {
+                    rows.isEmpty() || doneFrontierSeq == null -> ActivityRemoteDoneOutcome.CannotTell
+                    rows.any { it.kind == InboxItemKind.Thread } -> ActivityRemoteDoneOutcome.CannotTell
+                    rows.any { it.latestActivitySeq == null } -> ActivityRemoteDoneOutcome.CannotTell
+                    rows.any { compareActivitySeq(it.latestActivitySeq, doneFrontierSeq) > 0 } ->
+                        ActivityRemoteDoneOutcome.KeptNewerActivity
+                    else -> ActivityRemoteDoneOutcome.Removed
+                }
+            if (outcome == ActivityRemoteDoneOutcome.Removed) {
+                // Already on the server: the hold starts now, as for a confirmed Done made here.
+                overlayOwner(current)?.let { owner ->
+                    rows.forEach { row ->
+                        doneOverlay.remember(owner, row)?.let { generation -> doneOverlay.confirm(owner, row.key, generation) }
+                    }
+                }
+                val keys = rows.mapTo(HashSet()) { it.key }
+                reduceState(
+                    SharedActivityIntent.ApplyRemoteDone(channelId, doneFrontierSeq),
+                    current.copy(
+                        snapshot =
+                            snapshot.copy(
+                                items = snapshot.items.filterNot { it.key in keys },
+                                totalCount = maxOf(0, snapshot.totalCount - rows.size),
+                                totalUnreadCount = maxOf(0, snapshot.totalUnreadCount - rows.sumOf { it.unreadCount })
+                            ),
+                        retainedReadRowKeys = current.retainedReadRowKeys - keys
+                    )
+                )
+            }
+            diagnosticsLogger(
+                "activity_remote_done channelId=$channelId rows=${rows.size} outcome=${outcome.name}"
+            )
+            outcome
+        }
+
     private fun removeItemOptimistically(item: InboxItem) {
         val current = _state.value
         val snapshot = current.snapshot ?: return
@@ -3704,7 +3992,7 @@ class SharedActivityStore internal constructor(
         code: String
     ) {
         _state.value = previous.copy(loading = false, refreshing = false, pullRefreshing = false, loadingMore = false, errorCode = code)
-        load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+        load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
     }
 
     private fun setLoadError(code: String, append: Boolean = false) {
@@ -3735,6 +4023,7 @@ class SharedActivityStore internal constructor(
                     // The swipe's / menu's Unread (#793): an Unread page cached before it lacks the row.
                     intent is SharedActivityIntent.MarkUnread ||
                     intent is SharedActivityIntent.MarkDone ||
+                    intent is SharedActivityIntent.ApplyRemoteDone ||
                     intent is SharedActivityIntent.MarkAllRead ||
                     intent is SharedActivityIntent.ApplyReadReceiptPrediction
                 ) {
@@ -3795,7 +4084,8 @@ class SharedActivityStore internal constructor(
                     ActivityUnreadSummaryInvalidation(
                         accountId = accountId,
                         serverId = serverId,
-                        source = source
+                        source = source,
+                        trigger = intent.summaryInvalidationTrigger()
                     )
                 )
             }.onFailure { error ->
@@ -4372,6 +4662,24 @@ sealed interface SharedActivityIntent {
         val event: RealtimeEvent,
         val activeConversationId: String?
     ) : SharedActivityIntent
+
+    /**
+     * Another device marked conversation [channelId] Done, through [doneFrontierSeq] (incremental
+     * sync): [SharedActivityStore.applyRemoteDone]; a list that can't tell reads again.
+     */
+    data class ApplyRemoteDone(val channelId: String, val doneFrontierSeq: String?) : SharedActivityIntent
+}
+
+/** What [SharedActivityStore.applyRemoteDone] did with another device's Done. */
+enum class ActivityRemoteDoneOutcome {
+    /** The Done covered the conversation's rows: they left the list. */
+    Removed,
+
+    /** A row shows activity newer than the Done covered: it stays as shown. */
+    KeptNewerActivity,
+
+    /** This list can't judge it (no row, no frontier, a thread row, no `latestActivitySeq`): read again. */
+    CannotTell,
 }
 
 private fun SharedActivityIntent.activitySummarySource(): String =
@@ -4402,9 +4710,22 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.ProjectThreadUnfollow -> "project_thread_unfollow"
         is SharedActivityIntent.ApplyRealtimeEvent -> "realtime"
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
+        is SharedActivityIntent.ApplyRemoteDone -> "remote_done"
     }
 
-private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
+/** The realtime event behind a summary invalidation (#13126); null (`other`) for the person's own actions. */
+internal fun SharedActivityIntent.summaryInvalidationTrigger(): InboxRefreshTrigger? =
+    when (this) {
+        is SharedActivityIntent.ApplyRealtimeEvent -> event.inboxRefreshTrigger()
+        is SharedActivityIntent.ApplyRealtimeSummaryEvent -> event.inboxRefreshTrigger()
+        else -> null
+    }
+
+/** The list already shows [messageId] as a row's latest message (web: the message store already had it). */
+private fun SharedActivityState.showsMessage(messageId: MessageId): Boolean =
+    snapshot?.items?.any { item -> item.lastMessageId == messageId || item.latestActivityMessageId == messageId } == true
+
+internal fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
     when (this) {
         SharedActivityIntent.MarkAllRead,
         is SharedActivityIntent.MarkDone,
@@ -4412,10 +4733,10 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.FollowThread,
         is SharedActivityIntent.MarkRead,
         is SharedActivityIntent.MarkUnread,
-        is SharedActivityIntent.ApplyReadReceiptPrediction,
         is SharedActivityIntent.ApplyReadReceiptFailure,
         is SharedActivityIntent.ApplyRealtimeEvent,
         is SharedActivityIntent.UndoObjectDone,
+        is SharedActivityIntent.ApplyRemoteDone,
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> true
         is SharedActivityIntent.UnfollowObject,
         is SharedActivityIntent.ProjectThreadUnfollow,
@@ -4425,6 +4746,7 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         SharedActivityIntent.PullRefresh,
         SharedActivityIntent.LoadMore,
         is SharedActivityIntent.SetFilter,
+        is SharedActivityIntent.ApplyReadReceiptPrediction,
         is SharedActivityIntent.ApplyReadReceiptResult,
         is SharedActivityIntent.PrewarmVisibleReplyThreads,
         is SharedActivityIntent.PrewarmActivityTail,

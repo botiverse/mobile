@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.model.ConversationKind
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -118,17 +119,15 @@ internal fun WireThreadLaunchPayload.toRaftAdaptiveDetailIdentity(
 internal data class RaftAdaptiveHomeLandingCandidate(
     val threadId: String,
     val name: String,
+    val kind: ConversationKind? = null,
 )
 
 internal fun resolveRaftAdaptiveHomeLandingId(
     selectedThreadId: String?,
     candidates: List<RaftAdaptiveHomeLandingCandidate>,
 ): String? =
-    selectedThreadId
-        ?.trim()
-        ?.takeIf(String::isNotBlank)
-        ?.let { selected -> candidates.firstOrNull { it.threadId == selected }?.threadId }
-        ?: candidates.firstOrNull { it.name == "all" }?.threadId
+    (resolveRaftAdaptiveHomeLanding(selectedThreadId, remembered = null, candidates).landing as? RaftAdaptiveHomeLanding.Row)
+        ?.threadId
 
 internal fun resolveRaftHomeSelectedConversationId(
     adaptiveWorkspaceEnabled: Boolean,

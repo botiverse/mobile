@@ -45,7 +45,7 @@ import build.raft.designsystem.theme.RaftTheme
 
 // components.ui.* fixtures drawn with compose/designsystem (raft-ui 0.8.0) components, so
 // the Android capture of each case is the design-system component the pages migrate to,
-// not the RaftBrutal* / build.raft.app.components helpers (AGENTS.md, Shared UI Component
+// not the build.raft.app.components helpers (AGENTS.md, Shared UI Component
 // Discipline). Each frame is the web case's: 342dp wide, `layer-canvas`, 16dp padding.
 
 /**
@@ -246,3 +246,40 @@ internal fun UiMenuItemVisualContent() {
         }
     }
 }
+
+/**
+ * components.ui.typography.specimen (artin 11-02: the app's type reads heavier than the web's):
+ * every raft-ui text style, and the body face at 400 / 500 / 600 / 700, one line each with
+ * Latin, digits and Han, in the web case's 342dp frame. The web case renders the same lines
+ * with raft-ui's classes (`text-headline`, `text-body font-medium`, `font-mono text-mono-meta`, …),
+ * so the overlay compares the faces glyph by glyph.
+ */
+@Composable
+internal fun UiTypographySpecimenVisualContent() {
+    UiDesignSystemFrame(height = 300.dp) {
+        val type = RaftTheme.typography
+        val ink = RaftTheme.colors.foreground
+        Column {
+            for ((label, style) in raftTypographySpecimenLines(type)) {
+                RaftText("$label 排版 Aa 0123", style = style, color = ink, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** The specimen's lines, top to bottom; the web case lists the same labels in the same order. */
+internal fun raftTypographySpecimenLines(type: build.raft.designsystem.theme.RaftTypography): List<Pair<String, androidx.compose.ui.text.TextStyle>> =
+    listOf(
+        "Headline 17" to type.headline,
+        "Body 16 400" to type.body,
+        "Body 16 500" to type.body.copy(fontWeight = FontWeight.Medium),
+        "Body 16 600" to type.body.copy(fontWeight = FontWeight.SemiBold),
+        "Body 16 700" to type.body.copy(fontWeight = FontWeight.Bold),
+        "Subhead 15" to type.subhead,
+        "Callout 14" to type.callout,
+        "Footnote 13" to type.footnote,
+        "Caption 12 500" to type.caption,
+        "Label 11 600" to type.label,
+        "Mono meta 12" to type.monoMeta,
+        "Mono code 13" to type.monoCode,
+    )

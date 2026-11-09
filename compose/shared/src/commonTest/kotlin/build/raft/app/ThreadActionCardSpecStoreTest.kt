@@ -116,7 +116,7 @@ class ThreadActionCardSpecStoreTest {
         assertEquals(
             listOf(
                 "card.v1", "confirm.v1", "form.v1", "field.text_input", "field.text_area", "field.select", "field.toggle",
-                "field.member_picker", "field.channel_picker", "field.agent_picker",
+                "field.member_picker", "field.channel_picker", "field.agent_picker", "field.choice",
                 "intent.create_channel", "intent.add_members", "intent.create_agent", "intent.feedback_form",
                 "intent.feedback_ticket",
             ),
@@ -221,10 +221,10 @@ class ThreadActionCardSpecStoreTest {
     @Test
     fun openInWebOpensTheMessageLinkOnTheEnvironmentsWebUrlInTheBrowser() = runTest {
         val h = Harness(this)
-        val link = RaftMessageLink("acme", build.raft.app.model.ConversationKind.Channel, "c-1", messageId = "m-1")
+        val link = RaftMessageLink("acme", build.raft.app.model.ConversationKind.Channel, "c0c0c0c0-0000-4000-8000-000000000001", messageId = "a0a0a0a0-0000-4000-8000-000000000001")
         h.store.dispatch(ThreadActionCardSpecIntent.OpenInWeb("m-1", link))
         runCurrent()
-        assertEquals(listOf("https://staging.raft.example/s/acme/channel/c-1?msg=m-1"), h.opened)
+        assertEquals(listOf("https://staging.raft.example/s/acme/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000001"), h.opened)
         assertEquals(link, parseRaftMessageLink(h.opened.single(), "https://staging.raft.example"))
         // No link for this message (no server slug): it says so and opens nothing.
         h.store.dispatch(ThreadActionCardSpecIntent.OpenInWeb("m-2", null))
@@ -447,10 +447,10 @@ class ThreadActionCardSpecStoreTest {
     fun aMessageLinkBuildsBackToTheSameMessage() {
         val links =
             listOf(
-                RaftMessageLink("acme", build.raft.app.model.ConversationKind.Channel, "c-1", messageId = "m-1"),
-                RaftMessageLink("acme", build.raft.app.model.ConversationKind.DirectMessage, "d_2", messageId = "m-2"),
-                RaftMessageLink("acme", build.raft.app.model.ConversationKind.Channel, "c-1", messageId = "r-3", threadParentMessageId = "p-4"),
-                RaftMessageLink("acme", build.raft.app.model.ConversationKind.Channel, "c-1"),
+                RaftMessageLink("acme", build.raft.app.model.ConversationKind.Channel, "c0c0c0c0-0000-4000-8000-000000000001", messageId = "a0a0a0a0-0000-4000-8000-000000000001"),
+                RaftMessageLink("acme", build.raft.app.model.ConversationKind.DirectMessage, "d0d0d0d0-0000-4000-8000-000000000002", messageId = "a0a0a0a0-0000-4000-8000-000000000002"),
+                RaftMessageLink("acme", build.raft.app.model.ConversationKind.Channel, "c0c0c0c0-0000-4000-8000-000000000001", messageId = "a0a0a0a0-0000-4000-8000-000000000003", threadParentMessageId = "a0a0a0a0-0000-4000-8000-000000000004"),
+                RaftMessageLink("acme", build.raft.app.model.ConversationKind.Channel, "c0c0c0c0-0000-4000-8000-000000000001"),
             )
         for (webUrl in listOf(null, "https://staging.raft.example", "http://localhost:3000/")) {
             for (link in links) {
@@ -458,7 +458,7 @@ class ThreadActionCardSpecStoreTest {
                 assertEquals(link, parseRaftMessageLink(url, webUrl), url)
             }
         }
-        assertEquals("https://app.raft.build/s/acme/channel/c-1?msg=r-3&thread=c-1%3Ap-4", buildRaftMessageLink(links[2], null))
+        assertEquals("https://app.raft.build/s/acme/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000003&thread=c0c0c0c0-0000-4000-8000-000000000001%3Aa0a0a0a0-0000-4000-8000-000000000004", buildRaftMessageLink(links[2], null))
         // An id the parser would refuse builds nothing.
         assertNull(buildRaftMessageLink(links[0].copy(messageId = "m/1"), null))
     }

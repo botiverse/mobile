@@ -177,6 +177,8 @@ fun RaftWorkspaceStrip(
  * [current] puts the current mark under it: a 14x3dp `foreground` bar, its bottom 6dp under the
  * button. [attention] puts the attention dot on the avatar's top-right corner. Screen readers
  * read [name] (plus [attentionDescription] while the dot shows) and "selected" when [current].
+ * A mouse over it, or a touch long press (which then doesn't switch), shows [name] in a
+ * [RaftTooltip] (web WorkspaceStripButton's `AppTooltip`), below it inside a [RaftTopBar].
  */
 @Composable
 fun RaftWorkspaceStripItem(
@@ -193,29 +195,33 @@ fun RaftWorkspaceStripItem(
     val look = raftButtonLook(RaftButtonVariant.OnFrame, enabled = true, frameless = true, colors = colors)
     val description = if (attention && attentionDescription != null) "$name, $attentionDescription" else name
     Box(modifier) {
-        RaftButtonBox(
-            look = look,
-            onClick = onClick,
-            modifier =
-                Modifier
-                    .size(RaftWorkspaceStripDefaults.ItemSize)
-                    .clearAndSetSemantics {
-                        contentDescription = description
-                        role = Role.Button
-                        selected = current
-                        this.onClick(label = null) { onClick(); true }
-                    },
-            enabled = true,
-            loading = false,
-            loadingLabel = "",
-            interactionSource = interactionSource,
-        ) {
-            Box(Modifier.size(RaftAvatarSize.Xs.edge)) {
-                avatar()
-                if (attention) {
-                    val dot = RaftAvatarSize.Xs.badgeEdge
-                    Box(Modifier.align(Alignment.TopEnd).offset(x = dot / 2, y = -dot / 2)) {
-                        RaftAvatarAttentionLight(RaftAvatarSize.Xs, cutout = colors.layerFrame)
+        // web WorkspaceStripButton: the server's name in a tooltip, under the avatar in the top bar
+        // (RaftTopBar's placement). It adds no semantics: the button already reads [description].
+        RaftTooltip(text = name) {
+            RaftButtonBox(
+                look = look,
+                onClick = onClick,
+                modifier =
+                    Modifier
+                        .size(RaftWorkspaceStripDefaults.ItemSize)
+                        .clearAndSetSemantics {
+                            contentDescription = description
+                            role = Role.Button
+                            selected = current
+                            this.onClick(label = null) { onClick(); true }
+                        },
+                enabled = true,
+                loading = false,
+                loadingLabel = "",
+                interactionSource = interactionSource,
+            ) {
+                Box(Modifier.size(RaftAvatarSize.Xs.edge)) {
+                    avatar()
+                    if (attention) {
+                        val dot = RaftAvatarSize.Xs.badgeEdge
+                        Box(Modifier.align(Alignment.TopEnd).offset(x = dot / 2, y = -dot / 2)) {
+                            RaftAvatarAttentionLight(RaftAvatarSize.Xs, cutout = colors.layerFrame)
+                        }
                     }
                 }
             }

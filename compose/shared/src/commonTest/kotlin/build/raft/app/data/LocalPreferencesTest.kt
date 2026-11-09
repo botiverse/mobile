@@ -19,8 +19,13 @@ class LocalPreferencesTest {
             listOf(
                 AppLocale.System,
                 AppLocale.English,
+                AppLocale.Spanish,
+                AppLocale.BrazilianPortuguese,
+                AppLocale.Russian,
+                AppLocale.Korean,
+                AppLocale.Japanese,
                 AppLocale.SimplifiedChinese,
-                AppLocale.Japanese
+                AppLocale.TraditionalChinese
             ),
             snapshot.supported
         )
@@ -55,8 +60,13 @@ class LocalPreferencesTest {
             listOf(
                 AppLocale.System,
                 AppLocale.English,
+                AppLocale.Spanish,
+                AppLocale.BrazilianPortuguese,
+                AppLocale.Russian,
+                AppLocale.Korean,
+                AppLocale.Japanese,
                 AppLocale.SimplifiedChinese,
-                AppLocale.Japanese
+                AppLocale.TraditionalChinese
             )
 
         expectedLocales.forEach { expected ->
@@ -78,6 +88,14 @@ class LocalPreferencesTest {
         assertEquals(AppLocale.SimplifiedChinese, AppLocale.fromStorageKey("zh-rCN"))
         assertEquals(AppLocale.Japanese, AppLocale.fromStorageKey("ja"))
         assertEquals(AppLocale.Japanese, AppLocale.fromStorageKey("ja-JP"))
+        assertEquals(AppLocale.TraditionalChinese, AppLocale.fromStorageKey("zh-Hant"))
+        assertEquals(AppLocale.TraditionalChinese, AppLocale.fromStorageKey("zh-TW"))
+        assertEquals(AppLocale.BrazilianPortuguese, AppLocale.fromStorageKey("pt-BR"))
+        assertEquals(AppLocale.Spanish, AppLocale.fromStorageKey("es"))
+        assertEquals(AppLocale.Korean, AppLocale.fromStorageKey("ko"))
+        assertEquals(AppLocale.Russian, AppLocale.fromStorageKey("ru"))
+        assertEquals(AppLocale.Russian, AppLocale.fromStorageKey("ru-RU"))
+        assertEquals(AppLocale.Russian, AppLocale.fromStorageKey("ru_RU"))
         assertEquals(AppLocale.System, AppLocale.fromStorageKey("auto"))
         assertEquals(AppLocale.System, AppLocale.fromStorageKey("default"))
         assertEquals(AppLocale.System, AppLocale.fromStorageKey("system"))
@@ -207,10 +225,15 @@ class LocalPreferencesTest {
                 Triple(AppLocale.SimplifiedChinese, "en-US", "zh-cn"),
                 Triple(AppLocale.Japanese, "zh-Hans-CN", "ja"),
                 Triple(AppLocale.System, "ja-JP", "ja"),
-                // Traditional Chinese has no catalog: the strings, and so the UI, are English.
-                Triple(AppLocale.System, "zh_TW", "en"),
-                // No Korean / French UI catalog: the UI falls back to English.
-                Triple(AppLocale.System, "ko-KR", "en"),
+                Triple(AppLocale.System, "zh_TW", "zh-tw"),
+                Triple(AppLocale.System, "ko-KR", "ko"),
+                Triple(AppLocale.System, "es-MX", "es"),
+                Triple(AppLocale.System, "ru-RU", "ru"),
+                Triple(AppLocale.Russian, "en-US", "ru"),
+                Triple(AppLocale.System, "pt-PT", "pt-br"),
+                Triple(AppLocale.TraditionalChinese, "en-US", "zh-tw"),
+                Triple(AppLocale.BrazilianPortuguese, "en-US", "pt-br"),
+                // No French UI catalog: the UI falls back to English.
                 Triple(AppLocale.System, "fr-FR", "en"),
                 Triple(AppLocale.System, null, "en"),
             )
@@ -223,7 +246,26 @@ class LocalPreferencesTest {
         }
         // The whole preferred-language list, like the string lookup: [fr, ja] shows a Japanese UI.
         assertEquals("ja", AppLocale.System.displayLanguageTag(listOf("fr-FR", "ja-JP")))
-        assertEquals("en", AppLocale.System.displayLanguageTag(listOf("zh-Hant-TW", "fr-FR")))
+        assertEquals("zh-Hant", AppLocale.System.displayLanguageTag(listOf("zh-Hant-TW", "fr-FR")))
+        assertEquals("en", AppLocale.System.displayLanguageTag(listOf("fr-FR", "de-DE")))
+    }
+
+    /** The web stores the account's display language as these codes (botiverse/slock DISPLAY_LOCALES). */
+    @Test
+    fun everyExplicitLocaleHasTheWebDisplayLocaleCodeInTheWebPickerOrder() {
+        assertEquals(
+            listOf("en", "es", "pt-br", "ru", "ko", "ja", "zh-cn", "zh-tw"),
+            AppLocale.entries.mapNotNull { it.webDisplayLocale }
+        )
+        assertEquals(
+            listOf("English", "Español", "Português (Brasil)", "Русский", "한국어", "日本語", "简体中文", "繁體中文"),
+            AppLocale.entries.filter { it != AppLocale.System }.map { it.nativeLabel }
+        )
+        AppLocale.entries.filter { it != AppLocale.System }.forEach { locale ->
+            assertEquals(locale, AppLocale.fromWebDisplayLocale(locale.webDisplayLocale), "$locale")
+            assertEquals(locale, AppLocale.fromStorageKey(locale.webDisplayLocale), "$locale")
+            assertEquals(locale, AppLocale.fromStorageKey(locale.storageKey), "$locale")
+        }
     }
 
     @Test

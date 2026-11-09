@@ -259,7 +259,7 @@ internal fun RaftTaskStatusMenuTouchVisualScreen() {
             RaftTaskStatusMenuOverlay(
                 anchor = resolvedAnchor,
                 items =
-                    TaskStatus.entries.map { status ->
+                    build.raft.app.data.taskStatusChoices(selectedStatus, v2Task = false).map { status ->
                         RaftBaseMenuItem(id = status.name, label = status.touchFixtureLabel())
                     },
                 selectedId = selectedStatus.name,
@@ -274,11 +274,13 @@ internal fun RaftTaskStatusMenuTouchVisualScreen() {
 
 private fun TaskStatus.touchFixtureLabel(): String =
     when (this) {
+        TaskStatus.Backlog -> "Backlog"
         TaskStatus.Todo -> "Todo"
         TaskStatus.InProgress -> "In Progress"
         TaskStatus.InReview -> "In Review"
         TaskStatus.Done -> "Done"
         TaskStatus.Closed -> "Closed"
+        TaskStatus.Unknown -> "Unknown"
     }
 
 @Composable

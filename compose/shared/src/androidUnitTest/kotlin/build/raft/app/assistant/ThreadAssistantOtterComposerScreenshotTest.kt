@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.RaftAppAppearance
 import build.raft.app.RaftColor
 import build.raft.app.RaftRobolectricScreenshot
+import build.raft.app.RaftPendingMentionActionItem
 import build.raft.app.RaftThreadComposerPayload
 import build.raft.app.RaftType
 import build.raft.app.RobolectricComposeActivityRule
@@ -27,6 +28,8 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftAssistantOtterHosts
+import build.raft.designsystem.components.RaftMessageListJumpControls
+import build.raft.designsystem.components.RaftMessageListJumpPill
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -36,8 +39,7 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The personal assistant's otter on a channel's composer, as ThreadPage wires it: the otter
  * lying on the composer frame's top edge (phone scale, 52dp from the frame's end) over the dock,
- * the message list ending a band as tall as the otter higher so the last message stays clear of
- * it. Light and dark. Web: AssistantOtter.tsx on ChatPanel's MessageInput.
+ * over the message list's end (no band: the list keeps its place, artin 11-03). Light and dark. Web: AssistantOtter.tsx on ChatPanel's MessageInput.
  * Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -53,7 +55,22 @@ class ThreadAssistantOtterComposerScreenshotTest {
     @Test
     fun channelComposerDark() = capture("assistant.otter.channel-composer.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) =
+    /**
+     * artin 11-02: the "@Volta is not in #channel — Add / Notify / Ignore" card above the composer.
+     * The otter (here with a new message, so its "New message" bubble too) goes into the frame, and
+     * the card's buttons show whole; the list's jump pill sits at the list's end, above the card.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
+    fun mentionCardHidesTheOtterLight() =
+        capture("assistant.otter.mention-card", RaftAppAppearance.Light, mood = RaftOtterMood.New, mentionCard = true)
+
+    private fun capture(
+        name: String,
+        appearance: RaftAppAppearance,
+        mood: RaftOtterMood = RaftOtterMood.Idle,
+        mentionCard: Boolean = false,
+    ) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
             val otter =
@@ -61,7 +78,7 @@ class ThreadAssistantOtterComposerScreenshotTest {
                     ThreadAssistantOtter(
                         hostId = "channel",
                         hosts = RaftAssistantOtterHosts(),
-                        mood = RaftOtterMood.Idle,
+                        mood = mood,
                         scale = RaftAssistantOtterDefaults.PhoneScale,
                         endInset = RaftAssistantOtterDefaults.PhoneEndInset,
                         onOpen = {},
@@ -81,16 +98,26 @@ class ThreadAssistantOtterComposerScreenshotTest {
                                     color = RaftColor.TextBlack,
                                     modifier = Modifier.padding(bottom = 8.dp),
                                 )
+                                if (mentionCard) {
+                                    // As ThreadPage draws it: at the bottom of the list's box.
+                                    RaftMessageListJumpControls(Modifier.align(Alignment.BottomCenter)) {
+                                        RaftMessageListJumpPill(text = "1 new message", onClick = {})
+                                    }
+                                }
                             }
-                            ThreadAssistantOtterListEnd(otter)
                         }
                         ThreadComposerDock {
                             ThreadComposerContent(
-                                payload = RaftThreadComposerPayload(instanceId = "otter", placeholder = "Message #proj-mobile-release"),
+                                payload =
+                                    RaftThreadComposerPayload(
+                                        instanceId = "otter",
+                                        placeholder = "Message #proj-mobile-release",
+                                        pendingMentionActions = if (mentionCard) listOf(voltaNotInChannel) else emptyList(),
+                                    ),
                                 onEvent = { _, _, _, _ -> },
                                 attachmentPreviewEnabled = false,
-                                frameEdge = { composing, focused ->
-                                    ThreadAssistantOtterFrameEdge(otter, composing, focused, animateEntrance = false)
+                                frameEdge = { composing, focused, covered ->
+                                    ThreadAssistantOtterFrameEdge(otter, composing, focused, covered, animateEntrance = false)
                                 },
                             )
                         }
@@ -99,3 +126,12 @@ class ThreadAssistantOtterComposerScreenshotTest {
             }
         }
 }
+
+private val voltaNotInChannel =
+    RaftPendingMentionActionItem(
+        resolutionId = "res-volta",
+        channelName = "proj-security",
+        targetType = "agent",
+        targetHandle = "Volta",
+        availableActions = listOf("add", "notify_only"),
+    )

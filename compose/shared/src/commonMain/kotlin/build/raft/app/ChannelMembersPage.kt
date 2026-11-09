@@ -67,11 +67,13 @@ internal fun ChannelMembersPageHeader(
         onBack = onBack,
         backgroundColor = RaftColor.SurfaceWhite,
         refreshing = refreshing,
+        // PROTOTYPE (native nav bar): the roster count beside the host's title.
+        nativeTitleExtras = RaftNativeNavBarTitleExtras(badge = count?.toString()),
         titleContent = {
             RaftText(
                 title,
                 modifier = Modifier.weight(1f, fill = false),
-                style = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+                style = RaftType.Headline,
                 color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

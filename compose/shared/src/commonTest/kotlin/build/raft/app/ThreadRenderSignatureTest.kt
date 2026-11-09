@@ -217,7 +217,7 @@ class ThreadRenderSignatureTest {
         assertEquals("DELETED", deletedAgent.threadAuthorBadgeLabel())
         assertEquals(false, deletedAgent.canOpenThreadAuthorProfile())
         assertEquals(null, deletedAgent.resolvedThreadAvatarWireValue())
-        assertEquals("REMOVED", removedHuman.threadAuthorBadgeLabel())
+        assertEquals("Removed", removedHuman.threadAuthorBadgeLabel())
         assertEquals(false, removedHuman.canOpenThreadAuthorProfile())
     }
 

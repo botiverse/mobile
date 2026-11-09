@@ -46,6 +46,20 @@ private fun PlatformFile.toAgentAvatarMultipartFile(): MultipartFile =
         sizeBytes = sizeBytes
     )
 
+/** [RaftNetworkClient.requestBytes]'s default cap on a body kept in memory. */
+const val RAFT_NETWORK_BYTES_DEFAULT_MAX: Int = 16 * 1024 * 1024
+
+/** [RaftNetworkClient.requestBytes]'s answer: [bytes] only for a 2xx read in full. */
+class HomeNetworkBytesResponse(
+    val code: Int,
+    val bytes: ByteArray? = null,
+    /** The media type, without parameters, lower case (`image/png`); null when not sent. */
+    val contentType: String? = null,
+) {
+    val isSuccessful: Boolean
+        get() = code in 200..299 && bytes != null
+}
+
 interface RaftNetworkClient {
     suspend fun request(
         priority: DataRequestPriority,
@@ -87,6 +101,20 @@ interface RaftNetworkClient {
         bodyText: String? = null
     ): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+
+    /**
+     * An authenticated GET of a binary body (an image an API route serves, e.g. an Artifact's
+     * screenshot), authenticated and bound to the Server as [request] is. The body is kept in
+     * memory, so it is read only up to [maxBytes]: a larger one fails (code 0). Clients that cannot
+     * read binary bodies answer 501.
+     */
+    suspend fun requestBytes(
+        priority: DataRequestPriority,
+        path: String,
+        serverIdOverride: ServerId? = null,
+        maxBytes: Int = RAFT_NETWORK_BYTES_DEFAULT_MAX,
+    ): HomeNetworkBytesResponse =
+        HomeNetworkBytesResponse(code = 501)
 
     /** Server-authoritative direct attachment-session operations. */
     suspend fun createAttachmentUploadSession(
@@ -306,6 +334,24 @@ internal fun RaftNetworkClient.boundTo(expectedAuthority: RaftExpectedAuthBindin
                 bodyText = bodyText,
                 expectedAuthority = expectedAuthority
             ) ?: authorityBindingUnsupportedResponse()
+
+        // An absolute URL (a signed attachment URL) carries no session token, so there is no
+        // authority to bind. Without this the interface default answered 501 before any I/O and
+        // File Preview's raw text fallback always failed (Hands f1e17cd5, a `.tsv`).
+        override suspend fun requestRawAbsoluteUrl(
+            priority: DataRequestPriority,
+            url: String,
+            method: String,
+            headers: Map<String, String>,
+            bodyText: String?
+        ): HomeNetworkResponse =
+            this@boundTo.requestRawAbsoluteUrl(
+                priority = priority,
+                url = url,
+                method = method,
+                headers = headers,
+                bodyText = bodyText
+            )
 
         override suspend fun uploadAttachments(
             priority: DataRequestPriority,
@@ -621,7 +667,8 @@ class RealMemberRepository(
             },
             source = "agent_profile_update",
             mapper = { bodyText ->
-                parseSharedAgentProfile(bodyText)
+                // `configApply` rides along to the editor that saved (stores drop it).
+                parseSharedAgentProfile(bodyText)?.copy(configApply = parseSharedAgentConfigApply(bodyText))
                     ?: throw IllegalStateException("Agent profile update response missing agent")
             }
         )
@@ -949,6 +996,27 @@ class RealMemberRepository(
         currentContext() ?: return authRequired()
         if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
         return integrationsApiClient.agentIntegrations(agentId).map { it.toSnapshot() }
+    }
+
+    override suspend fun getAgentAppEvents(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        clientId: String?,
+        before: String?
+    ): DataResult<AgentAppEventPage> {
+        currentContext() ?: return authRequired()
+        if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        return integrationsApiClient.agentAppEvents(agentId, clientId, before)
+    }
+
+    override suspend fun getAgentAppEvent(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        eventId: String
+    ): DataResult<AgentAppEventDetail> {
+        currentContext() ?: return authRequired()
+        if (agentId.value.isBlank() || eventId.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        return integrationsApiClient.agentAppEvent(agentId, eventId)
     }
 
     override suspend fun startAgent(
@@ -1318,7 +1386,7 @@ private fun AddChannelMemberRequest.toBodyText(): String =
 private data class SharedNetworkServerContext(val session: StoredAuthSession, val server: ServerSummary)
 
 @Serializable
-private data class MemberErrorBody(val error: String? = null)
+private data class MemberErrorBody(val error: String? = null, val code: String? = null)
 
 private fun StoredAuthSession.toNetworkServerContext(serverId: ServerId): SharedNetworkServerContext? {
     val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
@@ -1337,6 +1405,13 @@ private fun authRequired(serverMessage: String?): DataResult.NoPermission =
 
 private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> {
     val serverMessage = memberServerErrorTextOrNull()
+    // botiverse/slock #13604: the agent's Computer lost its access, so its workspace cannot be
+    // read; it never comes back by itself, so it is not retryable.
+    if (code == 409 && memberServerErrorCodeOrNull() == ComputerAccessRevokedErrorCode) {
+        return DataResult.Error(
+            ScreenError(code = ComputerAccessRevokedErrorCode, retryable = false, serverMessage = serverMessage)
+        )
+    }
     return when (code) {
         401 -> authRequired(serverMessage)
         403 ->
@@ -1365,6 +1440,13 @@ private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> {
                 )
             )
     }
+}
+
+private fun HomeNetworkResponse.memberServerErrorCodeOrNull(): String? {
+    val payload = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
+    return runCatching {
+        memberRepositoryJson.decodeFromString(MemberErrorBody.serializer(), payload).code?.trim()?.takeIf { it.isNotEmpty() }
+    }.getOrNull()
 }
 
 private fun HomeNetworkResponse.memberServerErrorTextOrNull(): String? {

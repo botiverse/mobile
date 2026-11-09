@@ -31,6 +31,7 @@ import com.tencent.kuiklybase.markdown.compose.LocalMarkdownComponents
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownPadding
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
 import com.tencent.kuiklybase.markdown.compose.LocalOrderedListHandler
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownAfterListParagraph
 import com.tencent.kuiklybase.markdown.compose.handleElement
 import com.tencent.kuiklybase.markdown.utils.getUnescapedTextInNode
 import com.tencent.kuiklybase.markdown.compose.components.MarkdownComponentModel
@@ -143,6 +144,7 @@ fun MarkdownListItems(
                                             node = nestedChild,
                                             modifier = if (depth == 0) Modifier.fillMaxWidth() else Modifier,
                                         )
+                                        LocalRaftMarkdownAfterListParagraph.current?.invoke(nestedChild)
                                     }
 
                                     else -> {

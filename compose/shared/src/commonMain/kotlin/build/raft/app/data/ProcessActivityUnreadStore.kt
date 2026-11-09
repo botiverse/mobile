@@ -17,7 +17,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -86,7 +88,9 @@ internal data class ActivityUnreadSummaryFact(
 internal data class ActivityUnreadSummaryInvalidation(
     val accountId: String,
     val serverId: String,
-    val source: String
+    val source: String,
+    /** The realtime event behind it, when one is ([InboxRefreshTrigger]); null = [InboxRefreshTrigger.Other]. */
+    val trigger: InboxRefreshTrigger? = null
 )
 
 /**
@@ -105,7 +109,32 @@ internal class ProcessActivityUnreadStore(
     },
     private val projectionCache: ProcessActivityUnreadProjectionCache? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
-    private val logger: (String) -> Unit = {}
+    private val logger: (String) -> Unit = {},
+    /**
+     * Throttle window (leading + trailing), like the Activity list's realtime reconcile (web
+     * `requestInboxBackgroundRefresh`): the first read after a quiet window runs at once; reads
+     * requested inside the window collapse into ONE trailing read at its end.
+     */
+    private val throttleMillis: Long = ActivityRealtimeBackgroundRefreshIntervalMillis,
+    /**
+     * The window for a read only "ambient" realtime asked for, measured from the last read like
+     * [throttleMillis]: new / edited messages, thread and task changes, object rows
+     * ([processActivityUnreadRealtimeSink]) and Activity's own realtime patches
+     * ([submitInvalidation] with a realtime source). Any other ask in the same round keeps
+     * [throttleMillis]: the person's own actions (read, Done, Mark all read, follow), a route attach,
+     * a return, a reconnect catch-up (`sync:resume`, refresh-required) and a read or Done on another
+     * device. Null keeps [throttleMillis] for every read. The process host passes
+     * [ActivityUnreadRealtimeMinIntervalMillis] (feedback fb-52cc0499).
+     */
+    private val realtimeMinIntervalMillis: Long? = null,
+    /** Monotonic clock for the throttle window; injectable for virtual time. */
+    private val nowMillis: () -> Long = activityMonotonicClock(),
+    /**
+     * The process is in the foreground ([RaftStaleReadRecoverySignals.foreground]). No read starts
+     * while it is false (the socket keeps running for notifications, so events still arrive); the
+     * return does one read, reason `app_foreground_return` (`visibility`).
+     */
+    private val appForeground: StateFlow<Boolean> = RaftStaleReadRecoverySignals.foreground
 ) {
     private val mutex = Mutex()
     private val entries = linkedMapOf<ProcessActivityUnreadOwner, Entry>()
@@ -113,6 +142,35 @@ internal class ProcessActivityUnreadStore(
     internal val projections: StateFlow<Map<ProcessActivityUnreadOwner, ActivityUnreadSummaryProjection>> = _projections
     private var nextRevision = 0L
     private var processGeneration = 0L
+
+    /**
+     * Reads once on every background -> foreground return of [appForeground]. Started by the host
+     * (not by the constructor): the collector never completes, so a store built on a test scope
+     * would otherwise keep that scope from finishing.
+     */
+    fun followAppLifecycle(): Job =
+        scope.launch {
+            var previous = appForeground.value
+            appForeground.collect { foreground ->
+                val returned = foreground && !previous
+                previous = foreground
+                if (returned) onReturnedToForeground()
+            }
+        }
+
+    /** One read per known owner for the return; a resume read already started by the shell folds into it. */
+    private suspend fun onReturnedToForeground() {
+        val owners = mutex.withLock { entries.keys.toList() }
+        owners.forEach { owner ->
+            request(
+                serverId = ServerId(owner.serverId),
+                foregroundEpoch = null,
+                force = true,
+                reason = "app_foreground_return",
+                expectedOwner = owner
+            )
+        }
+    }
 
     fun projectionFlow(serverId: ServerId): Flow<ActivityUnreadSummaryProjection> {
         val normalizedServerId = serverId.value.trim()
@@ -171,14 +229,24 @@ internal class ProcessActivityUnreadStore(
      * pending or in-flight fetch round is coalesced; markers retire when that round's fetch
      * completes, so a later identical hint still fetches again.
      */
-    fun invalidate(owner: ProcessActivityUnreadOwner, reason: String, eventMarker: Any? = null) {
+    fun invalidate(
+        owner: ProcessActivityUnreadOwner,
+        reason: String,
+        eventMarker: Any? = null,
+        /** Only ambient realtime asked (see [realtimeMinIntervalMillis]); false reads in the short window. */
+        realtimeOnly: Boolean = false,
+        /** What the `X-Raft-Fetch-Trigger` of a realtime-fallback read names (null = [InboxRefreshTrigger.Other]). */
+        trigger: InboxRefreshTrigger? = null
+    ) {
         request(
             serverId = ServerId(owner.serverId),
             foregroundEpoch = null,
             force = true,
             reason = "invalidate:$reason",
             expectedOwner = owner,
-            eventMarker = eventMarker
+            eventMarker = eventMarker,
+            realtimeOnly = realtimeOnly,
+            trigger = trigger
         )
     }
 
@@ -272,7 +340,12 @@ internal class ProcessActivityUnreadStore(
             )
             return
         }
-        invalidate(owner, reason = "activity:${invalidation.source}")
+        invalidate(
+            owner,
+            reason = "activity:${invalidation.source}",
+            realtimeOnly = invalidation.source.isRealtimeOnlyActivitySummarySource(),
+            trigger = invalidation.trigger
+        )
     }
 
     suspend fun invalidateAll(reason: String) {
@@ -291,7 +364,9 @@ internal class ProcessActivityUnreadStore(
         force: Boolean,
         reason: String,
         expectedOwner: ProcessActivityUnreadOwner?,
-        eventMarker: Any? = null
+        eventMarker: Any? = null,
+        realtimeOnly: Boolean = false,
+        trigger: InboxRefreshTrigger? = null
     ) {
         val normalizedServerId = serverId.value.trim()
         if (normalizedServerId.isBlank()) return
@@ -308,6 +383,27 @@ internal class ProcessActivityUnreadStore(
                     return@withLock
                 }
                 val entry = entries.getOrPut(owner) { Entry(projection = initialProjection(owner)) }
+                if (!appForeground.value) {
+                    // Nothing reads in the background; the return reads once (onReturnedToForeground).
+                    logger(
+                        "process_activity_unread_request result=deferred reason=app_background " +
+                            "${owner.diagnosticsKey} source=$reason"
+                    )
+                    return@withLock
+                }
+                if (activityUnreadSummaryFetchReason(reason) == InboxFetchReason.Visibility) {
+                    // The shell's resume read and the store's own return read are one read.
+                    val now = nowMillis()
+                    val lastVisibility = entry.lastVisibilityRequestAtMillis
+                    if (lastVisibility != null && now - lastVisibility < throttleMillis) {
+                        logger(
+                            "process_activity_unread_request result=coalesced reason=visibility_window " +
+                                "${owner.diagnosticsKey} source=$reason"
+                        )
+                        return@withLock
+                    }
+                    entry.lastVisibilityRequestAtMillis = now
+                }
                 if (eventMarker != null) {
                     if (eventMarker in entry.pendingEventMarkers || eventMarker in entry.inFlightEventMarkers) {
                         logger(
@@ -341,6 +437,12 @@ internal class ProcessActivityUnreadStore(
                     return@withLock
                 }
                 entry.pendingReason = reason
+                if (!realtimeOnly) entry.pendingUrgent = true
+                // Observability only (#13126): every realtime-fallback ask folded into the round counts;
+                // the first one names it. A duplicate delivery dropped above is the same ask.
+                if (activityUnreadSummaryFetchReason(reason) == InboxFetchReason.RealtimeFallback) {
+                    entry.pendingTrigger = entry.pendingTrigger.foldWith(trigger ?: InboxRefreshTrigger.Other)
+                }
                 if (entry.active) {
                     entry.pending = true
                     entry.projection =
@@ -383,16 +485,62 @@ internal class ProcessActivityUnreadStore(
 
     private suspend fun runRefreshLoop(owner: ProcessActivityUnreadOwner) {
         while (true) {
+            // Throttle: a read starts at once after a quiet window; inside it the loop waits for the
+            // window's end, and every request made meanwhile folds into the one pending read. A round
+            // only realtime asked for waits the longer realtime window; the wait is taken in steps of
+            // the short one, so a person's ask arriving meanwhile is not held behind it.
+            while (true) {
+                val waitMillis =
+                    mutex.withLock {
+                        val entry = entries[owner]
+                        val window =
+                            if (entry?.pendingUrgent == false && realtimeMinIntervalMillis != null) {
+                                maxOf(realtimeMinIntervalMillis, throttleMillis)
+                            } else {
+                                throttleMillis
+                            }
+                        entry?.lastAttemptStartedAtMillis
+                            ?.let { startedAt -> window - (nowMillis() - startedAt) }
+                            ?.coerceAtLeast(0L)
+                            ?: 0L
+                    }
+                if (waitMillis <= 0L) break
+                delay(minOf(waitMillis, throttleMillis.coerceAtLeast(1L)))
+            }
             val attempt =
                 mutex.withLock {
                     val entry = entries[owner] ?: return
+                    if (!appForeground.value) {
+                        // Went to the background while a read was queued: stop; the return reads once.
+                        entry.active = false
+                        entry.pending = false
+                        entry.pendingUrgent = false
+                        entry.pendingEventMarkers = emptySet()
+                        entry.pendingTrigger = null
+                        entry.projection =
+                            entry.projection.copy(
+                                freshness = ActivityUnreadSummaryFreshness.Stale,
+                                revision = nextProjectionRevision()
+                            )
+                        publish(owner, entry)
+                        logger(
+                            "process_activity_unread_load result=deferred reason=app_background " +
+                                "${owner.diagnosticsKey} source=${entry.pendingReason}"
+                        )
+                        return
+                    }
+                    entry.lastAttemptStartedAtMillis = nowMillis()
                     entry.pending = false
+                    entry.pendingUrgent = false
                     entry.canonicalDirty = false
                     entry.requestGeneration += 1L
                     // This attempt covers every event admitted so far; later ones open the next round.
                     entry.inFlightEventMarkers = entry.pendingEventMarkers
                     entry.pendingEventMarkers = emptySet()
                     val reason = entry.pendingReason
+                    // This attempt answers every ask folded so far; later ones count for the next.
+                    val trigger = entry.pendingTrigger
+                    entry.pendingTrigger = null
                     entry.projection =
                         entry.projection.copy(
                             freshness = ActivityUnreadSummaryFreshness.Refreshing,
@@ -406,12 +554,15 @@ internal class ProcessActivityUnreadStore(
                         processGeneration = processGeneration,
                         generation = entry.requestGeneration,
                         factRevision = entry.factRevision,
-                        reason = reason
+                        reason = reason,
+                        trigger = trigger
                     )
                 }
             val result =
                 try {
-                    fetchSummary(owner, DataRequestPriority.Foreground)
+                    withInboxFetchReason(activityUnreadSummaryFetchReason(attempt.reason), attempt.trigger) {
+                        fetchSummary(owner, DataRequestPriority.Foreground)
+                    }
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (error: Throwable) {
@@ -438,6 +589,7 @@ internal class ProcessActivityUnreadStore(
                         entry.active = false
                         // No later attempt of this loop covers them; let a redelivery fetch again.
                         entry.pendingEventMarkers = emptySet()
+                        entry.pendingTrigger = null
                         return@withLock false
                     }
                     val factChanged = entry.factRevision != attempt.factRevision
@@ -515,6 +667,10 @@ internal class ProcessActivityUnreadStore(
                     } else if (factChanged && entry.canonicalDirty && !entry.pending) {
                         entry.pending = true
                         entry.pendingReason = "fact_reconcile"
+                        // A local fact landed mid-read: no realtime event names this read.
+                        entry.pendingTrigger = entry.pendingTrigger.foldWith(InboxRefreshTrigger.Other)
+                        // A local fact (the person's action in Activity) landed mid-read: not ambient.
+                        entry.pendingUrgent = true
                     }
                     logger(
                         "process_activity_unread_load result=${result.resultLabel()} ${owner.diagnosticsKey} " +
@@ -615,7 +771,8 @@ internal class ProcessActivityUnreadStore(
         val processGeneration: Long,
         val generation: Long,
         val factRevision: Long,
-        val reason: String
+        val reason: String,
+        val trigger: InboxRefreshTriggerCount?
     )
 
     private class Entry(
@@ -623,7 +780,13 @@ internal class ProcessActivityUnreadStore(
         var active: Boolean = false,
         var pending: Boolean = false,
         var pendingReason: String = "unspecified",
+        // The realtime-fallback asks folded into the pending round: first trigger, count (#13126).
+        var pendingTrigger: InboxRefreshTriggerCount? = null,
+        // The round holds an ask other than realtime's: it keeps the short throttle window.
+        var pendingUrgent: Boolean = false,
         var acceptedForegroundEpoch: Long = 0L,
+        var lastAttemptStartedAtMillis: Long? = null,
+        var lastVisibilityRequestAtMillis: Long? = null,
         var requestGeneration: Long = 0L,
         var factRevision: Long = 0L,
         var canonicalDirty: Boolean = false,
@@ -638,6 +801,28 @@ internal class ProcessActivityUnreadStore(
         var lastServerTotal: Int? = null
     )
 }
+
+/**
+ * Activity's summary invalidation sources (`activity:<intent>`, [SharedActivityStore]) that only
+ * ambient realtime causes. Everything else Activity reports (Done, Mark all read, read, unread,
+ * follow, undo, a remote Done) is the person's action, here or on another device.
+ */
+private val RealtimeOnlyActivitySummarySources = setOf("realtime", "realtime_summary")
+
+internal fun String.isRealtimeOnlyActivitySummarySource(): Boolean =
+    removePrefix("activity:") in RealtimeOnlyActivitySummarySources
+
+/**
+ * The realtime events the badge may read for in the long window: ambient activity. A reconnect
+ * catch-up (`sync:resume`, refresh-required) and a read on another device are read promptly.
+ */
+internal fun RealtimeEvent.isAmbientActivityUnreadEvent(): Boolean =
+    when (this) {
+        is SyncResumeResponse,
+        is RealtimeRefreshRequired,
+        is PerReceiverReadStateChanged -> false
+        else -> true
+    }
 
 private fun DataResult<ActivityUnreadSummarySnapshot>.resultLabel(): String =
     when (this) {
@@ -672,7 +857,9 @@ internal fun processActivityUnreadRealtimeSink(
             store.invalidate(
                 owner,
                 reason = "realtime:${event::class.simpleName.orEmpty()}",
-                eventMarker = event
+                eventMarker = event,
+                realtimeOnly = event.isAmbientActivityUnreadEvent(),
+                trigger = event.inboxRefreshTrigger()
             )
         }
     }

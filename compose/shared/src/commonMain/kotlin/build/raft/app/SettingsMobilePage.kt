@@ -1,8 +1,10 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
-import build.raft.app.components.RaftSwitchButton
+import build.raft.designsystem.components.RaftSwitch
+import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
@@ -24,6 +26,8 @@ import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SettingsMobileToggleSnapshot
+import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.nav.RaftIosNativeNavFlag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,13 +36,15 @@ import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -82,17 +88,21 @@ internal data class SettingsAppPreferenceVisibility(
     val multiShellHost: Boolean,
     /** Composer key copy about Enter / Shift+Enter instead of the soft keyboard's action key. */
     val hardwareKeyboardComposerCopy: Boolean,
+    /** "iOS native navigation (Beta)": only on an iPhone host ([RaftIosNativeNavFlag.hostSupported]). */
+    val iosNativeNav: Boolean = false,
 )
 
 internal fun settingsAppPreferenceVisibility(
     finePointer: Boolean = raftPlatformHasFinePointer(),
     supportsInAppBrowser: Boolean = raftPlatformSupportsInAppBrowser(),
     supportsMultiShellHost: Boolean = raftPlatformSupportsMultiShellHost(),
+    supportsIosNativeNav: Boolean = RaftIosNativeNavFlag.hostSupported,
 ): SettingsAppPreferenceVisibility =
     SettingsAppPreferenceVisibility(
         linkOpenMode = supportsInAppBrowser,
         multiShellHost = supportsMultiShellHost,
         hardwareKeyboardComposerCopy = finePointer,
+        iosNativeNav = supportsIosNativeNav,
     )
 
 /**
@@ -109,8 +119,11 @@ internal fun SettingsMobileContent(
     visibility: SettingsAppPreferenceVisibility = settingsAppPreferenceVisibility(),
 ) {
     LazyColumn(
+        state = rememberSettingsSearchListState(),
+        // The 16dp content inset stays under a mouse or trackpad; the cards move 16 apart there
+        // (12 with a finger: sizing v12, raft-ui 0.65 desktop density).
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(RaftTheme.controls.settingsCardGap)
     ) {
         settingsAppPreferenceItems(state, actionState, actions, visibility)
         item { Spacer(Modifier.height(bottomContentPadding)) }
@@ -181,6 +194,9 @@ internal fun LazyListScope.settingsAppPreferenceItems(
                 )
             }
         }
+        if (visibility.iosNativeNav) {
+            item { SettingsIosNativeNavCard() }
+        }
         item {
             SettingsActivityTaskStatusBadgesCard(
                 snapshot = snapshot,
@@ -189,12 +205,14 @@ internal fun LazyListScope.settingsAppPreferenceItems(
             )
         }
         item {
-            SettingsComposerSendKeyCard(
-                snapshot = snapshot,
-                actionState = actionState,
-                onComposerSendKeyChange = onComposerSendKeyChange,
-                hardwareKeyboard = visibility.hardwareKeyboardComposerCopy
-            )
+            Box(Modifier.fillMaxWidth().settingsSearchAnchor("send-with", SettingsSearchCardShape)) {
+                SettingsComposerSendKeyCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onComposerSendKeyChange = onComposerSendKeyChange,
+                    hardwareKeyboard = visibility.hardwareKeyboardComposerCopy
+                )
+            }
         }
         if (visibility.multiShellHost) {
             item {
@@ -247,7 +265,7 @@ private fun SettingsMultiShellHostCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onMultiShellHostChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -271,7 +289,7 @@ private fun SettingsMultiShellHostCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitch(checked = preference.enabled, onCheckedChange = null, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_MULTI_SHELL_HOST && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -302,7 +320,7 @@ private fun SettingsDesktopModeCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         diagnosticsLogger(
                             "desktop_mode_toggle_click target=${!preference.enabled} " +
                                 "available=${preference.available} busy=$busy"
@@ -327,7 +345,7 @@ private fun SettingsDesktopModeCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitch(checked = preference.enabled, onCheckedChange = null, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_DESKTOP_MODE && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -358,7 +376,7 @@ private fun SettingsServerDrawerCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         diagnosticsLogger(
                             "server_drawer_toggle_click target=${!preference.enabled} " +
                                 "available=${preference.available} busy=$busy"
@@ -386,7 +404,7 @@ private fun SettingsServerDrawerCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitch(checked = preference.enabled, onCheckedChange = null, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_SERVER_DRAWER && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -410,7 +428,7 @@ private fun SettingsHomeServerAvatarCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onHomeServerAvatarChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -431,7 +449,7 @@ private fun SettingsHomeServerAvatarCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitch(checked = preference.enabled, onCheckedChange = null, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_HOME_SERVER_AVATAR && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -456,7 +474,7 @@ private fun SettingsThreadReverseLayoutCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onThreadReverseLayoutChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -477,7 +495,7 @@ private fun SettingsThreadReverseLayoutCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitch(checked = preference.enabled, onCheckedChange = null, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_THREAD_REVERSE_LAYOUT && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -503,30 +521,22 @@ internal fun SettingsAppLanguageCard(
         iconName = RaftLucideIconName.Languages,
         title = stringResource(Res.string.settings_app_language_title)
     ) {
-        SettingsSegmentedControlField(
-            detail = stringResource(Res.string.settings_app_language_detail),
-            selectedValue = selectedLocale,
+        // The web's display-language select (botiverse/slock DISPLAY_LOCALES): every language by its
+        // own name, in the web's order, after the app-only System choice.
+        val systemLabel = stringResource(Res.string.settings_app_language_system)
+        SettingsComboboxField(
+            label = null,
+            description = stringResource(Res.string.settings_app_language_detail),
+            value = selectedLocale,
             options =
-                listOf(
-                    SegmentedControlOption(
-                        AppLocale.System.languageTag,
-                        stringResource(Res.string.settings_app_language_system)
-                    ),
-                    SegmentedControlOption(
-                        AppLocale.English.languageTag,
-                        stringResource(Res.string.settings_app_language_english)
-                    ),
-                    SegmentedControlOption(
-                        AppLocale.SimplifiedChinese.languageTag,
-                        stringResource(Res.string.settings_app_language_simplified_chinese)
-                    ),
-                    SegmentedControlOption(
-                        AppLocale.Japanese.languageTag,
-                        stringResource(Res.string.settings_app_language_japanese)
+                AppLocale.entries.map { locale ->
+                    RaftComboboxOption(
+                        locale.languageTag,
+                        if (locale == AppLocale.System) systemLabel else locale.nativeLabel
                     )
-                ),
-            onValueSelected = { selected ->
-                selected?.takeIf { it != selectedLocale }?.let {
+                },
+            onValueChange = { selected ->
+                selected.takeIf { it != selectedLocale }?.let {
                     pick = SettingsLanguageRegionPick(MOBILE_ACTION_LANGUAGE, it, actionState)
                     onLocaleChange(it)
                 }
@@ -612,7 +622,7 @@ private fun SettingsCompactMessagesCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onCompactConsecutiveMessagesChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -640,8 +650,9 @@ private fun SettingsCompactMessagesCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(
+            RaftSwitch(
                 checked = preference.enabled,
+                onCheckedChange = null,
                 enabled = preference.available && !busy
             )
         }
@@ -665,7 +676,7 @@ private fun SettingsLongMessageCollapseCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onLongMessageCollapseChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -689,8 +700,9 @@ private fun SettingsLongMessageCollapseCard(
                     color = RaftColor.TextMutedGray
                 )
             }
-            RaftSwitchButton(
+            RaftSwitch(
                 checked = preference.enabled,
+                onCheckedChange = null,
                 enabled = preference.available && !busy
             )
         }
@@ -716,7 +728,7 @@ private fun SettingsNewMessageMenuCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onNewMessageMenuChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -743,8 +755,9 @@ private fun SettingsNewMessageMenuCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(
+            RaftSwitch(
                 checked = preference.enabled,
+                onCheckedChange = null,
                 enabled = preference.available && !busy
             )
         }
@@ -781,7 +794,7 @@ private fun SettingsConversationForwardGestureCard(
                         contentDescription = accessibilityDescription
                         stateDescription = localizedStateDescription
                     }
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onConversationForwardGestureChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -804,8 +817,9 @@ private fun SettingsConversationForwardGestureCard(
                     )
                 }
             }
-            RaftSwitchButton(
+            RaftSwitch(
                 checked = preference.enabled,
+                onCheckedChange = null,
                 enabled = preference.available && !busy
             )
         }
@@ -814,6 +828,58 @@ private fun SettingsConversationForwardGestureCard(
             actionState.errorCode != null
         ) {
             SettingsFormErrorText(actionState)
+        }
+    }
+}
+
+/**
+ * iOS native navigation (Beta; artin, task #98: out of the hidden Developer page). The same stored
+ * switch as before ([RaftIosNativeNavFlag.KEY_LOCAL_OVERRIDE]), so a choice made there stays; it
+ * shows what the next start decides (the switch, else the server's last value: off by default).
+ * Read once per process, so it takes effect on the next app start (the detail says so).
+ */
+@Composable
+private fun SettingsIosNativeNavCard() {
+    val preferences = remember { raftSharedPreferenceStore() }
+    var enabled by remember { mutableStateOf(RaftIosNativeNavFlag.stored(preferences)) }
+    val status = stringResource(if (enabled) Res.string.settings_mobile_status_enabled else Res.string.settings_state_off)
+    SettingsFormSectionCard(
+        iconName = RaftLucideIconName.Smartphone,
+        title = stringResource(Res.string.settings_mobile_ios_native_nav)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(value = enabled, role = Role.Switch) { checked ->
+                        RaftIosNativeNavFlag.setLocalOverride(preferences, checked)
+                        enabled = RaftIosNativeNavFlag.stored(preferences)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SettingsConnectedAppsBadge(stringResource(Res.string.settings_badge_beta))
+                    Text(
+                        status,
+                        style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                        color = RaftColor.TextMutedGray
+                    )
+                }
+                Text(
+                    stringResource(Res.string.settings_mobile_ios_native_nav_detail),
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            RaftSwitch(checked = enabled, onCheckedChange = null)
         }
     }
 }
@@ -832,7 +898,7 @@ private fun SettingsActivityTaskStatusBadgesCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onActivityTaskStatusBadgesChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -860,8 +926,9 @@ private fun SettingsActivityTaskStatusBadgesCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(
+            RaftSwitch(
                 checked = preference.enabled,
+                onCheckedChange = null,
                 enabled = preference.available && !busy
             )
         }
@@ -886,7 +953,7 @@ private fun SettingsComposerSendKeyCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onComposerSendKeyChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -919,8 +986,9 @@ private fun SettingsComposerSendKeyCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(
+            RaftSwitch(
                 checked = preference.enabled,
+                onCheckedChange = null,
                 enabled = preference.available && !busy
             )
         }

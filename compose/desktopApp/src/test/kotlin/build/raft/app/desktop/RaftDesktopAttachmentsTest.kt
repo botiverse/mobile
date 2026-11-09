@@ -8,6 +8,7 @@ import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
@@ -15,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.int
@@ -78,6 +80,25 @@ class RaftDesktopAttachmentsTest {
         // The same files inside bodyText (Android puts them in both places).
         val body = assertNotNull(parseRaftJsonObjectOrNull(response["bodyText"]!!.jsonPrimitive.content))
         assertEquals(2, body["files"]!!.jsonArray.size)
+    }
+
+    @Test fun `dropped files answer as a pick of the same files, unreadable and empty ones skipped`() {
+        val photo = File(root, "photo.png").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        val doc = File(root, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
+        val empty = File(root, "empty.txt").apply { createNewFile() }
+        val dialogs = FakeDialogs()
+        val attachments = RaftDesktopAttachments(dialogs, CoroutineScope(Dispatchers.IO))
+        val refs = JsonArray(listOf(photo, doc, empty, File(root, "missing.bin")).map { JsonPrimitive(it.absolutePath) })
+        val response = call { attachments.threadAttachmentDrop(JsonObject(mapOf("fileRefs" to refs)), it) }
+        assertTrue(dialogs.imagesOnlyCalls.isEmpty(), "a drop must not open the panel")
+        assertEquals(206, response["code"]!!.jsonPrimitive.int)
+        assertEquals(2, response["skippedCount"]!!.jsonPrimitive.int)
+        val files = response["files"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf(photo.canonicalPath, doc.canonicalPath), files.map { it["fileRef"]!!.jsonPrimitive.content })
+        assertEquals(listOf("image/png", "application/pdf"), files.map { it["mimeType"]!!.jsonPrimitive.content })
+        assertTrue(files.all { it["source"]!!.jsonPrimitive.content == "desktop_picker" })
+        val nothing = call { attachments.threadAttachmentDrop(JsonObject(emptyMap()), it) }
+        assertEquals(204, nothing["code"]!!.jsonPrimitive.int)
     }
 
     @Test fun `the image button opens an images-only panel and a cancel answers 204`() {
@@ -155,6 +176,34 @@ class RaftDesktopAttachmentsTest {
         )!!
         assertEquals("download_failed", failed["status"]!!.jsonPrimitive.content)
         assertEquals("HTTP 403", failed["message"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun `the share image is copied where the user picks and its cache PNG deleted`() {
+        val snapshots = File(root, "raft_snapshots").apply { mkdirs() }
+        val cached = File(snapshots, "raft-message-share-a.png").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        val target = File(root, "picked.png")
+        val attachments = RaftDesktopAttachments(FakeDialogs(save = { target }), CoroutineScope(Dispatchers.IO), snapshotsDir = { snapshots })
+        val response = call { attachments.saveThreadShareImage(params("path" to cached.absolutePath), it) }
+        assertEquals("ok", response["status"]!!.jsonPrimitive.content)
+        assertTrue(target.readBytes().contentEquals(byteArrayOf(1, 2, 3)))
+        assertFalse(cached.exists(), "the cache PNG is deleted once copied")
+    }
+
+    @Test fun `a cancelled share image save deletes its cache PNG too`() {
+        val snapshots = File(root, "raft_snapshots").apply { mkdirs() }
+        val cached = File(snapshots, "raft-message-share-b.png").apply { writeBytes(byteArrayOf(1)) }
+        val attachments = RaftDesktopAttachments(FakeDialogs(save = { null }), CoroutineScope(Dispatchers.IO), snapshotsDir = { snapshots })
+        val response = call { attachments.saveThreadShareImage(params("path" to cached.absolutePath), it) }
+        assertEquals("cancelled", response["status"]!!.jsonPrimitive.content)
+        assertFalse(cached.exists(), "the cache PNG is deleted on cancel")
+    }
+
+    @Test fun `a share image outside the PNG cache is never deleted`() {
+        val snapshots = File(root, "raft_snapshots").apply { mkdirs() }
+        val elsewhere = File(root, "mine.png").apply { writeBytes(byteArrayOf(1)) }
+        val attachments = RaftDesktopAttachments(FakeDialogs(save = { null }), CoroutineScope(Dispatchers.IO), snapshotsDir = { snapshots })
+        call { attachments.saveThreadShareImage(params("path" to elsewhere.absolutePath), it) }
+        assertTrue(elsewhere.exists())
     }
 
     @Test fun `save panel names drop paths and control characters`() {

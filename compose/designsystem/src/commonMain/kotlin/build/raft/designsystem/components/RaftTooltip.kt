@@ -1,5 +1,9 @@
 package build.raft.designsystem.components
 
+import androidx.compose.animation.core.Transition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.rememberTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -10,17 +14,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.TooltipAnchorPosition
-import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.TooltipState
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,21 +38,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
+import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -66,10 +77,23 @@ internal object RaftTooltipMetrics {
     val AnchorSpacing = 8.dp
 
     /**
-     * `px-2.5`. Material's PlainTooltip already pads 8dp each side (and 4dp top and
+     * `px-2.5`. The bubble already pads [PaddingX] each side (and [PaddingY] top and
      * bottom, the `py-1`); this is the remaining 2dp.
      */
     val ExtraPaddingX = 2.dp
+
+    /** Material's PlainTooltip: its padding, minimum size and maximum width. */
+    val PaddingX = 8.dp
+    val PaddingY = 4.dp
+    val MinWidth = 40.dp
+    val MinHeight = 24.dp
+    val MaxWidth = 200.dp
+
+    /**
+     * How far past the bubble its fade layer reaches: the caret (5.25dp) and the float shadow
+     * (offset + blur + spread: 44dp at most, below it in dark) draw there.
+     */
+    val Bleed = 48.dp
 
     /** How long a long press keeps it open (Material's `BasicTooltipDefaults.TooltipDuration`). */
     const val TouchDuration = 1500L
@@ -145,10 +169,12 @@ internal val LocalRaftTooltipTouchTimer = staticCompositionLocalOf<suspend (dura
  *   tap, and screen readers get one stop, [content] itself, which must carry the label
  *   (see [RaftIconButton], which passes it as the content description).
  *
- * Material3 [TooltipBox] / [PlainTooltip] does the positioning and the popup; the gestures
- * are ours (Material's own add an unlabeled merging semantics node round [content] and
- * close a hovered tooltip after 1.5s). The bubble's width is capped at Material's 200dp
- * (raft-ui allows 320dp): keep labels short.
+ * Material3's tooltip position providers place it; the popup, the bubble (Material's
+ * PlainTooltip's metrics), its entrance and the gestures are ours: Material's gestures add an
+ * unlabeled merging semantics node round [content] and close a hovered tooltip after 1.5s, and
+ * its TooltipBox's fade cut off the caret and the shadow until it ended (see
+ * [RaftTooltipBubble]). The bubble's width is capped at Material's 200dp (raft-ui allows
+ * 320dp): keep labels short.
  *
  * [openOnLongPress] = false leaves the long press to [content] (an icon button with its own
  * long-press action): the tooltip then opens only under a mouse or trackpad pointer.
@@ -174,8 +200,8 @@ fun RaftTooltip(
     // Persistent: open until dismissed. The touch path bounds it with a timeout.
     val state = rememberTooltipState(initialIsVisible = preview, isPersistent = true)
     val scope = rememberCoroutineScope()
-    // TooltipBox puts [modifier] on an inner box, where parent-data modifiers (`align`,
-    // `weight`) would be lost: the caller's modifier goes on this outer box instead.
+    // The caller's modifier goes on this outer box, which keeps parent-data modifiers (`align`,
+    // `weight`) working.
     Box(modifier.raftTooltipGestures(state, scope, touchTimer, openOnLongPress), propagateMinConstraints = true) {
         val label: @Composable () -> Unit = {
             if (shortcut == null) {
@@ -213,63 +239,108 @@ fun RaftTooltip(
         val placed =
             when (placement) {
                 RaftTooltipPlacement.Above -> TooltipDefaults.rememberPlainTooltipPositionProvider(RaftTooltipMetrics.AnchorSpacing)
-                // Material's own Below provider: its caret follows the side it picks.
+                // Material's own Below provider (above without room): our caret follows the side it picks.
                 RaftTooltipPlacement.Below ->
                     TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below, RaftTooltipMetrics.AnchorSpacing)
             }
-        // The host's frame insets: Material's placement, then moved out of them (none: as it is).
-        val framed = remember(placed, spacing, frame) { if (frame.isZero) placed else RaftTooltipFrameProvider(placed, spacing, frame) }
-        TooltipBox(
-            positionProvider = sideProvider ?: framed,
-            tooltip = {
-                if (sideProvider == null && framed is RaftTooltipFrameProvider) {
-                    // Moved out of the frame insets: Material's caret does not see where it went, so
-                    // no caret of its own here; ours points at the anchor from the side it ended on.
-                    PlainTooltip(
-                        modifier =
-                            Modifier
-                                .raftFloatShadow(RaftTheme.isDark, RaftRadius.Chip)
-                                .raftFramedCaret(framed, colors.layerHud),
-                        shape = RoundedCornerShape(RaftRadius.Chip),
-                        contentColor = colors.foregroundOnHud,
-                        containerColor = colors.layerHud,
-                        content = label,
-                    )
-                } else if (sideProvider == null) {
-                    PlainTooltip(
-                        modifier = Modifier.raftFloatShadow(RaftTheme.isDark, RaftRadius.Chip),
-                        // Material3 1.4 (CMP 1.11+) replaced `caretSize` with a caret Shape;
-                        // TooltipDefaults.caretShape(size) draws the same triangle.
-                        caretShape = TooltipDefaults.caretShape(RaftTooltipMetrics.CaretSize),
-                        shape = RoundedCornerShape(RaftRadius.Chip),
-                        contentColor = colors.foregroundOnHud,
-                        containerColor = colors.layerHud,
-                        content = label,
-                    )
-                } else {
-                    // Material's caret only points up or down: no caret of its own here, ours
-                    // is drawn on the edge facing the anchor, on whichever side it opened.
-                    PlainTooltip(
-                        modifier =
-                            Modifier
-                                .raftFloatShadow(RaftTheme.isDark, RaftRadius.Chip)
-                                .raftSideCaret(sideProvider, colors.layerHud),
-                        shape = RoundedCornerShape(RaftRadius.Chip),
-                        contentColor = colors.foregroundOnHud,
-                        containerColor = colors.layerHud,
-                        content = label,
-                    )
+        // Material's placement, then moved out of the host's frame insets (none: as it is). It also
+        // keeps where it put the bubble, for our caret.
+        val framed = remember(placed, spacing, frame) { RaftTooltipFrameProvider(placed, spacing, frame) }
+        val caret =
+            if (sideProvider == null) {
+                Modifier.raftFramedCaret(framed, colors.layerHud)
+            } else {
+                // Material's caret only points up or down: ours is drawn on the edge facing the
+                // anchor, on whichever side it opened.
+                Modifier.raftSideCaret(sideProvider, colors.layerHud)
+            }
+        // Material's TooltipBox, less its gestures (ours, above) and with our entrance (see
+        // [RaftTooltipBubble]); the popup is anchored to this box, round [content].
+        val transition = rememberTransition(state.transition, label = "RaftTooltip")
+        Box {
+            if (state.isVisible) {
+                // A page pushed over this one takes the bubble down first.
+                RaftDismissOnPageCover { state.dismiss() }
+                Popup(
+                    popupPositionProvider = sideProvider ?: framed,
+                    onDismissRequest = { if (state.isVisible) scope.launch { state.dismiss() } },
+                    properties = PopupProperties(focusable = false, clippingEnabled = false),
+                ) {
+                    RaftTooltipBubble(transition, caret, content = label)
                 }
-            },
-            state = state,
-            focusable = false,
-            // No Material gestures, so no `semantics(mergeDescendants = true) { onLongClick }`
-            // node round [content] (a second, unlabeled screen-reader stop).
-            enableUserInput = false,
-            content = content,
-        )
+            }
+            Box { content() }
+        }
+    }
+    DisposableEffect(state) { onDispose { state.onDispose() } }
+}
+
+/**
+ * The tooltip's bubble: Material's PlainTooltip (its 40 x 24dp minimum, [RaftTooltipMetrics.MaxWidth],
+ * 8 x 4dp padding), with the float shadow and [caret], fading and growing in and out as Material's
+ * TooltipBox does.
+ *
+ * The fade draws the tooltip through an offscreen layer while it is translucent, and that layer
+ * clips to its node: Material's own, round the bubble alone, cut the caret and the shadow (both
+ * outside the bubble's bounds) until the fade ended, so they appeared after the bubble. Ours spans
+ * [RaftTooltipMetrics.Bleed] round the bubble, which still measures and places as the bubble alone.
+ */
+@Composable
+internal fun RaftTooltipBubble(
+    transition: Transition<Boolean>,
+    caret: Modifier,
+    maxWidth: Dp = RaftTooltipMetrics.MaxWidth,
+    content: @Composable () -> Unit,
+) {
+    val colors = RaftTheme.colors
+    // Material's motion scheme: fast spatial for the scale, fast effects for the opacity.
+    val scale by transition.animateFloat(
+        transitionSpec = { spring(dampingRatio = 0.9f, stiffness = 1400f) },
+        label = "RaftTooltip scale",
+    ) { if (it) 1f else 0.8f }
+    val alpha by transition.animateFloat(
+        transitionSpec = { spring(dampingRatio = 1f, stiffness = 3800f) },
+        label = "RaftTooltip alpha",
+    ) { if (it) 1f else 0f }
+    Box(
+        Modifier
+            .raftTooltipBleed(RaftTooltipMetrics.Bleed)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                this.alpha = alpha
+            }
+            .padding(RaftTooltipMetrics.Bleed),
+    ) {
+        Surface(
+            modifier = Modifier.raftFloatShadow(RaftTheme.isDark, RaftRadius.Chip).then(caret),
+            shape = RoundedCornerShape(RaftRadius.Chip),
+            color = colors.layerHud,
+            contentColor = colors.foregroundOnHud,
+        ) {
+            Box(
+                Modifier
+                    .sizeIn(
+                        minWidth = RaftTooltipMetrics.MinWidth,
+                        maxWidth = maxWidth,
+                        minHeight = RaftTooltipMetrics.MinHeight,
+                    )
+                    .padding(horizontal = RaftTooltipMetrics.PaddingX, vertical = RaftTooltipMetrics.PaddingY),
+            ) { content() }
+        }
     }
 }
+
+/**
+ * Measures with [bleed] more room on every side and reports the size less it, the content drawn
+ * [bleed] out past each edge: what draws there (shadow, caret) is inside this node's layer.
+ */
+private fun Modifier.raftTooltipBleed(bleed: Dp): Modifier =
+    layout { measurable, constraints ->
+        val px = bleed.roundToPx()
+        val placeable = measurable.measure(constraints.offset(2 * px, 2 * px))
+        layout(placeable.width - 2 * px, placeable.height - 2 * px) { placeable.place(-px, -px) }
+    }
 
 /** raft-ui `Kbd` inside a tooltip (see [RaftTooltip]'s `shortcut`), in [ink]. */
 @Composable
@@ -358,8 +429,12 @@ internal fun RaftFrameInsets.toPx(density: Density): RaftFramePx =
         }
     }
 
-/** Material's placement ([inner]), then moved out of the host's [frame] insets ([raftTooltipClearOfFrame]). */
-private class RaftTooltipFrameProvider(
+/**
+ * Material's placement ([inner]), then moved out of the host's [frame] insets
+ * ([raftTooltipClearOfFrame]). Keeps the side and the anchor's centre it ended on for
+ * [raftFramedCaret]: written while the popup is laid out, so read by the bubble's first draw.
+ */
+internal class RaftTooltipFrameProvider(
     private val inner: PopupPositionProvider,
     private val spacing: Int,
     private val frame: RaftFramePx,
@@ -396,10 +471,10 @@ private class RaftTooltipFrameProvider(
 }
 
 /**
- * The caret of a tooltip moved out of the frame insets ([RaftTooltipFrameProvider]): Material's
+ * The caret of a tooltip above or below its anchor ([RaftTooltipFrameProvider]): Material's
  * triangle, on the edge facing the anchor and under its centre, kept on the bubble's straight edge.
  */
-private fun Modifier.raftFramedCaret(provider: RaftTooltipFrameProvider, color: Color): Modifier =
+internal fun Modifier.raftFramedCaret(provider: RaftTooltipFrameProvider, color: Color): Modifier =
     drawBehind {
         val width = RaftTooltipMetrics.CaretSize.width.toPx()
         val depth = RaftTooltipMetrics.CaretSize.height.toPx()

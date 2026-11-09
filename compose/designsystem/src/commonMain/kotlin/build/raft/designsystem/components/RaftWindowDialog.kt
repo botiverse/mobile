@@ -8,8 +8,13 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import build.raft.designsystem.focus.RaftAutofocusGuard
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import build.raft.designsystem.theme.RaftTheme
 
@@ -22,6 +27,15 @@ import build.raft.designsystem.theme.RaftTheme
  * - [contentHandlesKeyboard]: the content pads for the keyboard itself, so iOS must not shrink
  *   the window for it (the app's `Modal` pages). Android always hands the keyboard to the content
  *   as `WindowInsets.ime` (the window is edge to edge).
+ * - [keepsHostKeyboard]: the window has no text field of its own and leaves the page's keyboard
+ *   up (a message's long-press menu over a focused composer, artin 2026-11-03). On Android a
+ *   focused dialog window without an editor hides the keyboard; this window does not take part
+ *   in input (`FLAG_ALT_FOCUSABLE_IM`), so it sits over the keyboard instead. iOS: a layer in the
+ *   host's window, nothing to do.
+ * - [platformTransition]: iOS and desktop keep Compose's own dialog transition (the window fading
+ *   in while it grows slightly, as raft-ui's centered dialog and Android's dialog window do).
+ *   Pass false for a window whose content moves itself (a drawer sliding up with its scrim
+ *   fading, [RaftDrawer]), so the two motions don't stack. Android: no effect.
  *
  * A tap on the scrim is the content's to handle: the content fills the window, so nothing is
  * ever "outside" it.
@@ -31,6 +45,8 @@ data class RaftWindowDialogProperties(
     val dismissOnBackPress: Boolean = true,
     val drawScrim: Boolean = true,
     val contentHandlesKeyboard: Boolean = false,
+    val keepsHostKeyboard: Boolean = false,
+    val platformTransition: Boolean = true,
 )
 
 /**
@@ -40,6 +56,7 @@ data class RaftWindowDialogProperties(
  *
  * Every window gets the same policy, so none of them can miss it:
  * - a right swipe does not pop the page underneath ([RaftBlockBackSwipe]);
+ * - a page pushed over the page underneath asks it to close first ([RaftDismissOnPageCover]);
  * - the window is edge to edge and full size: [content] fills it and pads for the system bars,
  *   the cutout and the keyboard itself (`WindowInsets.safeDrawing`);
  * - no platform dim: the window draws the one scrim, [RaftTheme.scrim];
@@ -55,13 +72,21 @@ fun RaftWindowDialog(
 ) {
     // A right swipe must not pop the page underneath an open dialog.
     RaftBlockBackSwipe()
+    // A conversation opened underneath does not take focus from the dialog.
+    RaftAutofocusGuard.HoldOpenSurface()
+    // A page pushed over this one closes the window first: the covered page stops composing.
+    RaftDismissOnPageCover(onDismissRequest)
+    RaftPrepareDialogWindow(isDark = RaftTheme.isDark)
+    // The host's window (read outside the dialog: its own layer may not have a size yet).
+    val hostWindow = LocalWindowInfo.current
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = raftWindowDialogPlatformProperties(properties),
     ) {
-        RaftDialogWindowPolicy(isDark = RaftTheme.isDark)
+        RaftDialogWindowPolicy(isDark = RaftTheme.isDark, keepsHostKeyboard = properties.keepsHostKeyboard)
         Box(
             Modifier
+                .raftBoundedWindowLayer { hostWindow.containerSize }
                 .fillMaxSize()
                 .then(if (properties.drawScrim) Modifier.background(RaftTheme.scrim) else Modifier),
         ) {
@@ -69,6 +94,45 @@ fun RaftWindowDialog(
         }
     }
 }
+
+/**
+ * The constraints a window layer's content is measured with: [constraints] where they are
+ * bounded, the host window ([window], px) on an unbounded axis, or null when neither is known yet.
+ *
+ * CMP iOS measures a dialog layer whose scene has no size yet with unbounded constraints (the
+ * scene's root gets `Constraints()`; the layer's measure policy hands them on). Full-window content
+ * then gets an infinite width or height, and a pager or lazy list in it throws ("Horizontally
+ * scrollable component was measured with an infinity maximum width constraints", the image
+ * lightbox crash on 1.20.0, Hands f36226a4).
+ */
+internal fun raftWindowLayerConstraints(constraints: Constraints, window: IntSize): Constraints? {
+    if (constraints.hasBoundedWidth && constraints.hasBoundedHeight) return constraints
+    val width = if (constraints.hasBoundedWidth) constraints.maxWidth else window.width
+    val height = if (constraints.hasBoundedHeight) constraints.maxHeight else window.height
+    if (width <= 0 || height <= 0) return null
+    return Constraints(
+        minWidth = constraints.minWidth.coerceAtMost(width),
+        maxWidth = width,
+        minHeight = constraints.minHeight.coerceAtMost(height),
+        maxHeight = height,
+    )
+}
+
+/**
+ * Measures a window layer's content within [raftWindowLayerConstraints]. Bounded constraints pass
+ * through unchanged. While neither the layer nor the host window has a size, the content is not
+ * measured for that pass (it lays out once the size arrives, the next frame).
+ */
+internal fun Modifier.raftBoundedWindowLayer(window: () -> IntSize): Modifier =
+    layout { measurable, constraints ->
+        val bounded = raftWindowLayerConstraints(constraints, window())
+        if (bounded == null) {
+            layout(constraints.minWidth, constraints.minHeight) {}
+        } else {
+            val placeable = measurable.measure(bounded)
+            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+        }
+    }
 
 /**
  * The platform [DialogProperties] for [properties]: no framework outside-click wrapper (the
@@ -81,11 +145,22 @@ internal expect fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
 /**
  * Applies the window part of [RaftWindowDialog]'s policy from inside the dialog content: on
  * Android, no window dim, transparent system bars without contrast scrims, and bar icons for
- * [isDark] ([raftSystemBarsAppearance]). iOS dialogs are layers in the host's window, which
+ * [isDark] ([raftSystemBarsAppearance]); with [keepsHostKeyboard], a window that leaves the
+ * keyboard alone (`FLAG_ALT_FOCUSABLE_IM`). iOS dialogs are layers in the host's window, which
  * already follows the theme, so there is nothing to do there.
  */
 @Composable
-internal expect fun RaftDialogWindowPolicy(isDark: Boolean)
+internal expect fun RaftDialogWindowPolicy(isDark: Boolean, keepsHostKeyboard: Boolean)
+
+/**
+ * Composed just before the platform `Dialog`: on Android the dialog builds its window while it
+ * composes and shows it right after, before its content (and so [RaftDialogWindowPolicy]) runs.
+ * The window must already ask for the host's bar icons then, or the focused dialog draws a frame
+ * of the default (white) icons, as Material3's edge-to-edge dialog sets them before `show()`.
+ * Elsewhere a dialog is a layer in the host's window: nothing to do.
+ */
+@Composable
+internal expect fun RaftPrepareDialogWindow(isDark: Boolean)
 
 /**
  * Called from inside a focusable popup's content (a [RaftDropdownMenu]): on Android a focusable

@@ -178,11 +178,15 @@ internal fun appShellRailTabs(
     labelFor: (String) -> String,
     activityUnreadCount: Int = 0,
     moreAttention: Set<RaftMoreAttention> = emptySet(),
+    /** The rail page shown inline in the content area (Computers / Apps): it is the selected entry. */
+    inlinePageRailId: String? = null,
+    /** workspace_artifacts_v0 loaded and on ([appShellArtifactsShown]): the Artifacts entry shows. */
+    artifacts: Boolean = false,
 ): List<RaftBottomTabItemPayload> =
     raftNavItems(
         presentation = RaftNavPresentation.Rail,
-        ids = AppShellRailTabKeys,
-        selectedKey = retainedAppShellSelectedTab(selectedTab),
+        ids = if (artifacts) AppShellRailTabKeys else AppShellRailTabKeys - RaftAppDestination.Artifacts.id,
+        selectedKey = inlinePageRailId ?: retainedAppShellSelectedTab(selectedTab),
         labelFor = labelFor,
         badges = RaftNavBadgeInputs(activityUnreadCount, moreAttention),
     )
@@ -218,6 +222,8 @@ internal val AppShellRailOrder: List<String> =
         "activity",
         "tasks",
         AppShellRailSearchKey,
+        // web LeftRail: Artifacts after Tasks, before Members.
+        RaftAppDestination.Artifacts.id,
         "members",
         RaftAppDestination.Computers.id,
         RaftAppDestination.Apps.id,
@@ -258,8 +264,14 @@ internal const val AppShellServerTabKey = "more"
 
 /** The server's pages in the server panel, in order; each opens the page the More row opened. */
 internal enum class RaftServerMenuEntry(val key: String) {
+    /**
+     * The Artifacts home (web MobileServerTab: first of the server's pages, behind the rail's gate,
+     * workspace_artifacts_v0; guests too). Not a shell tab: a pushed page.
+     */
+    Artifacts("artifacts"),
     Members(RaftAppDestination.Members.id),
     Computers(RaftAppDestination.Computers.id),
+    Apps(RaftAppDestination.Apps.id),
     Settings(RaftAppDestination.Settings.id),
     ;
 
@@ -311,15 +323,26 @@ internal fun raftServerMenuModel(
 
 /**
  * The server's pages in the popover's bottom row (raft-design #741, navigation.md "The server
- * in the apps' desktop mode"). The phone keeps every page: it has no rail. On a wide screen the
- * rail already has Members, Computers and Settings, so the row would only repeat them and the popover draws no row at all (artin, 10-29: "电脑端这里就不用有两个选择").
+ * in the apps' desktop mode"). The phone keeps every page: it has no rail, and its Settings has
+ * no Computers or Apps row (artin 2026-11-05, dm task #17; [settingsHomeRowKeys]). A guest has no
+ * Apps page (web MobileServerTab): their Applications row stays in Settings. On a wide screen the
+ * rail already has Members, Computers, Apps and Settings, so the row would only repeat them and
+ * the popover draws no row at all (artin, 10-29: "电脑端这里就不用有两个选择").
  */
 internal fun raftServerMenuEntriesFor(
     entries: List<RaftServerMenuEntry>,
     wide: Boolean,
     guest: Boolean,
-): List<RaftServerMenuEntry> =
-    if (!wide) entries else emptyList()
+    /** The server's workspace_artifacts_v0, already loaded and on (web `useArtifactsRailShown`). */
+    artifacts: Boolean = false,
+): List<RaftServerMenuEntry> {
+    val shown = if (artifacts) entries else entries - RaftServerMenuEntry.Artifacts
+    return when {
+        wide -> emptyList()
+        guest -> shown - RaftServerMenuEntry.Apps
+        else -> shown
+    }
+}
 
 /** The unread count a server row shows: the Home switcher's label, or null. */
 internal fun raftServerMenuUnreadLabel(server: RaftServerSwitcherItem): String? =

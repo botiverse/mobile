@@ -37,6 +37,30 @@ class RaftLinkNavigationTest {
     }
 
     @Test
+    fun raftWebPagesFollowTheModeButReachARealBrowser() {
+        // dm:@artin #97: an announcement's /settings/account#two-step, a Raft page the app has no screen for.
+        val url = "https://app.raft.build/s/hq/settings/account#two-step"
+        val opened = mutableListOf<String>()
+        fun navigator(mode: LinkOpenMode) =
+            RaftLinkNavigator(
+                modeProvider = { mode },
+                openInAppBrowser = { opened += "in_app:$it"; true },
+                openExternalBrowser = { opened += "view:$it" },
+                onRejected = { opened += "rejected:$it" },
+                openRaftWebPageInBrowser = { opened += "browser:$it" },
+            )
+
+        navigator(LinkOpenMode.SystemBrowser).open(url, RaftLinkOpenIntent.RaftWebPage)
+        navigator(LinkOpenMode.InAppBrowser).open(url, RaftLinkOpenIntent.RaftWebPage)
+        navigator(LinkOpenMode.SystemBrowser).open("https://example.test/blog")
+
+        assertEquals(
+            listOf("browser:$url", "in_app:$url", "view:https://example.test/blog"),
+            opened,
+        )
+    }
+
+    @Test
     fun mailAndTelephoneLinksAlwaysUseTheExternalHandler() {
         assertEquals(
             RaftLinkOpenTarget.ExternalBrowser,

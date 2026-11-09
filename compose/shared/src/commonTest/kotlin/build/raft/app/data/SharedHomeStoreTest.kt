@@ -1743,6 +1743,53 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun selectedConversationAccruesUnreadWhileItIsNotSeen() = runBlocking {
+        // Seen = read: the selected conversation skips unread only while it is in front of the person
+        // (shell visible and in use). Left open in a hidden or idle window it counts as the server
+        // counts it, and the page's read clears it once the person is back.
+        var seen = false
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedHomeStore(
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1"))),
+            scope = scope,
+            selectedConversationSeen = { seen }
+        )
+        store.accept(SharedHomeIntent.Start)
+        val otherMember = sampleMember().copy(
+            id = MemberId("member-2"),
+            displayName = "Cindy",
+            handle = "cindy@slock.ai"
+        )
+        fun liveMessage(id: String, seq: Long) =
+            MessageNew(
+                Message(
+                    id = MessageId(id),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    seq = seq,
+                    author = otherMember,
+                    timestampLabel = "12:01",
+                    body = id
+                )
+            )
+
+        store.accept(SharedHomeIntent.SelectConversation("channel-1"))
+        store.accept(SharedHomeIntent.ApplyRealtimeEvent(serverId = "server-1", event = liveMessage("message-2", 2)))
+        var content = store.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertEquals(1, content.snapshot.channels.single().unreadCount)
+        assertEquals(1, content.snapshot.unreadTotal)
+
+        seen = true
+        store.accept(SharedHomeIntent.ApplyRealtimeEvent(serverId = "server-1", event = liveMessage("message-3", 3)))
+        content = store.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertEquals(1, content.snapshot.channels.single().unreadCount)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageUpdateOnlyReplacesMatchingHomeRow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -5005,6 +5052,13 @@ class SharedHomeStoreTest {
         assertNull(
             (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
         )
+        // Let the Home load finish before the Pin (CI flake, PR #4427). With Unconfined, the load
+        // resumes on the coroutine timer thread when the 300ms cap expires and keeps writing state
+        // after it publishes (loadNotifications' `_state.value.copy(...)`); a Pin dispatched from
+        // this thread at the same moment could be lost to that read-modify-write. Production runs
+        // both on the serial store dispatcher. The late first-paint merge is a separate coroutine
+        // still waiting on firstPaintGate, so the case under test is unchanged.
+        startJob.join()
 
         // The Pin lands while the deferred is still in flight: ensureSidebarOrderLoaded
         // finds no cached order, fetches the empty base under sidebarOrderMutex, then
@@ -5019,7 +5073,6 @@ class SharedHomeStoreTest {
         // fetched before the mutation). It must be dropped inside sidebarOrderMutex
         // because sidebarPinChangeVersion changed — not clobber the pin.
         firstPaintGate.complete(DataResult.Content(SettingsServerSidebarOrderSnapshot(pinnedChannelIds = emptyList())))
-        startJob.join()
         awaitCondition { loadCalls >= 2 }
         // Give the spawned late-merge coroutine a beat to run under the mutex, then
         // assert the pin survived and the stale result was discarded.

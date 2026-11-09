@@ -1,14 +1,16 @@
 package build.raft.app.markdown
 
+import build.raft.app.links.ParsedRaftPermalink
+import build.raft.app.links.planRaftBlockCards
+import build.raft.app.links.toParsedRaftPermalink
+import org.jetbrains.compose.resources.stringResource
+import build.raft.designsystem.gesture.raftKeepsHorizontalDrags
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import build.raft.app.RaftTextSize
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftMessagePermalinkTarget
 import build.raft.app.RaftAppRadius
 import build.raft.app.RaftAppThemeState
 import com.tencent.kuiklybase.markdown.compose.elements.material.MarkdownBasicText
@@ -27,7 +29,6 @@ import build.raft.app.ReplyCacheProvenance
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
 import build.raft.app.network.sync.DiagnosticFeatureFlagScope
-import build.raft.app.toRaftMessagePermalinkTarget
 import build.raft.app.components.RaftCheckMarker
 import build.raft.app.components.RaftCheckMarkerTone
 import build.raft.app.raftFontFamilyForWeight
@@ -54,7 +55,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -76,12 +76,17 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.text
 import build.raft.app.compat.pager.Pager
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.lerp
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.raftPointerHoverPosition
+import build.raft.designsystem.text.forCjkLineBox
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.layout.boundsInRoot
@@ -104,6 +109,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
@@ -137,6 +143,9 @@ import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownAnnotationRevisi
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownTableCellPadding
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownTableClosedGrid
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownParagraphFillWidth
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownAfterListParagraph
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownBlockMargins
+import com.tencent.kuiklybase.markdown.compose.RaftMarkdownBlockMargin
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownRowRenderCostSink
 import com.tencent.kuiklybase.markdown.compose.RaftMarkdownNodeTrace
 import com.tencent.kuiklybase.markdown.compose.RaftMarkdownNodeTraceSink
@@ -157,7 +166,6 @@ import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeBlock
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeFence
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownHeader
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownTable
-import com.tencent.kuiklybase.markdown.compose.elements.MarkdownTableHeader
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownParagraph
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownBlockQuote
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownListIndentEm
@@ -196,10 +204,24 @@ data class ThreadMarkdownTag(
 )
 
 internal typealias RaftMessagePermalinkLabelResolver =
-    (RaftMessagePermalinkTarget) -> String?
+    (ParsedRaftPermalink) -> String?
 
 internal val LocalRaftMessagePermalinkLabelResolver =
     compositionLocalOf<RaftMessagePermalinkLabelResolver> { { null } }
+
+/**
+ * The permalink of this message whose quoted message could not be read (web `unavailableQuotedPermalinkUrl`):
+ * its chip says "Unavailable linked message" and opens nothing, and the message shows no quote card.
+ */
+internal val LocalRaftUnavailableQuotedPermalink = compositionLocalOf<ParsedRaftPermalink?> { null }
+
+/** Same message: the web compares the links' identity, not their spelling. */
+private fun ParsedRaftPermalink.sameMessageAs(other: ParsedRaftPermalink): Boolean =
+    serverSlug == other.serverSlug &&
+        routeKind == other.routeKind &&
+        channelId == other.channelId &&
+        threadParentMessageId == other.threadParentMessageId &&
+        messageId == other.messageId
 
 internal data class RaftMarkdownRenderConfig(
     val renderMessagePermalinksAsTag: Boolean = false,
@@ -218,6 +240,7 @@ enum class ThreadMarkdownTagKind {
     DirectMessage,
     Channel,
     Task,
+    Message,
     UserMention
 }
 
@@ -239,6 +262,7 @@ internal enum class MarkdownInlineTokenKind {
     DirectMessage,
     Channel,
     Task,
+    Message,
     UserMention
 }
 
@@ -494,6 +518,7 @@ private fun ThreadMarkdownTagKind.toMarkdownInlineTokenKind(): MarkdownInlineTok
         ThreadMarkdownTagKind.DirectMessage -> MarkdownInlineTokenKind.DirectMessage
         ThreadMarkdownTagKind.Channel -> MarkdownInlineTokenKind.Channel
         ThreadMarkdownTagKind.Task -> MarkdownInlineTokenKind.Task
+        ThreadMarkdownTagKind.Message -> MarkdownInlineTokenKind.Message
         ThreadMarkdownTagKind.UserMention -> MarkdownInlineTokenKind.UserMention
     }
 
@@ -708,8 +733,30 @@ private fun Set<String>.containsThreadMention(label: String): Boolean {
     return key.isNotBlank() && contains(key)
 }
 
-private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
-    when {
+private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? {
+    // `#channel msg=id` / `dm:@peer:short msg=id`: a message (Web message refs). The label is the
+    // canonical target, which is what the Web's chip shows and what opening it parses.
+    parseRaftMarkdownMessageRefLabel(this)?.let { ref ->
+        return ThreadMarkdownTag(
+            label = ref.label,
+            kind = ThreadMarkdownTagKind.Message,
+            channelName = ref.channelName,
+            threadShortId = ref.threadShortId,
+            directMessagePeerName = ref.directMessagePeerName
+        )
+    }
+    // `#channel:#7` / `dm:@peer:#7`: a task of a named conversation (Web task refs). Checked first:
+    // the channel / DM forms below would otherwise read `triage:#7` as a channel name.
+    parseRaftMarkdownTaskRefLabel(this)?.takeIf { it.qualified }?.let { ref ->
+        return ThreadMarkdownTag(
+            label = this,
+            kind = ThreadMarkdownTagKind.Task,
+            channelName = ref.channelName,
+            directMessagePeerName = ref.directMessagePeerName
+        )
+    }
+    if (contains(":#")) return null
+    return when {
         isThreadDirectMessageReference() -> {
             val peerStart = indexOf('@') + 1
             val colonIndex = indexOf(':', peerStart)
@@ -742,6 +789,7 @@ private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
         startsWith('#') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.Channel, channelName = drop(1))
         else -> null
     }
+}
 
 private fun String.isThreadDirectMessageReference(): Boolean {
     if (!startsWith("dm:@", ignoreCase = true)) return false
@@ -839,10 +887,12 @@ internal fun raftMarkdownAnnotator(
     softLineBreaksAsNewLines: Boolean = true,
     taskStatuses: () -> Map<Int, TaskStatus>? = { null },
     mentionReadStates: () -> RaftMarkdownMentionReadStates? = { null },
-    mentionReadFontSize: TextUnit = RaftTextSize.Content
+    mentionReadFontSize: TextUnit = RaftTextSize.Content,
+    taskRefStatuses: () -> Map<String, TaskStatus> = { emptyMap() }
 ): MarkdownAnnotator {
     val diagnosticsStartedAt = onDiagnostics?.let { TimeSource.Monotonic.markNow() }
-    val rendererInput = RaftRichTextRendererInput(document, capabilities, taskStatuses, mentionReadStates, mentionReadFontSize)
+    val rendererInput =
+        RaftRichTextRendererInput(document, capabilities, taskStatuses, mentionReadStates, mentionReadFontSize, taskRefStatuses)
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
             rendererInput.raftRefTokenCount,
@@ -879,6 +929,7 @@ internal fun raftMarkdownAnnotator(
                 onOpenAction = onOpenAction,
                 resolveActionLabel = resolveActionLabel,
                 allowLocalFallback = child.type != RaftMarkdownTokenTypes.REFERENCE,
+                plainText = { plain -> plain.withRaftWebTextBreaks(child) },
             )
         },
         inlineContent = {
@@ -894,7 +945,9 @@ private data class RaftRichTextRendererInput(
     val capabilities: RaftRichTextCapabilities,
     val taskStatuses: () -> Map<Int, TaskStatus>? = { null },
     val mentionReadStates: () -> RaftMarkdownMentionReadStates? = { null },
-    val mentionReadFontSize: TextUnit = RaftTextSize.Content
+    val mentionReadFontSize: TextUnit = RaftTextSize.Content,
+    /** Statuses of conversation-qualified task refs (`#proj:#7`), [raftMarkdownTaskRefStatusKey]. */
+    val taskRefStatuses: () -> Map<String, TaskStatus> = { emptyMap() }
 ) {
     val raftRefTokens: List<RaftRichTextInlineToken> =
         document.inlineTokens
@@ -1018,6 +1071,8 @@ private fun AnnotatedString.Builder.consumeRaftRichTextSplitTagSequence(
     }
     if (remaining.isNotEmpty()) return 0
 
+    // Web line breaks in the text around the ref, outside tables (withRaftWebTextBreaks(node)).
+    val plainText: (String) -> String = { plain -> plain.withRaftWebTextBreaks(child) }
     val prefixEnd = splitStart.relativeStart
     if (prefixEnd > 0) {
         appendRaftRichTextSegmentOrText(
@@ -1025,7 +1080,8 @@ private fun AnnotatedString.Builder.consumeRaftRichTextSplitTagSequence(
             documentOffset = nodeStart,
             rendererInput = rendererInput,
             onOpenAction = onOpenAction,
-            resolveActionLabel = resolveActionLabel
+            resolveActionLabel = resolveActionLabel,
+            plainText = plainText
         )
     }
     appendRaftRichTextToken(
@@ -1040,7 +1096,8 @@ private fun AnnotatedString.Builder.consumeRaftRichTextSplitTagSequence(
             documentOffset = tailDocumentOffset,
             rendererInput = rendererInput,
             onOpenAction = onOpenAction,
-            resolveActionLabel = resolveActionLabel
+            resolveActionLabel = resolveActionLabel,
+            plainText = plainText
         )
     }
     return consumedCount
@@ -1051,17 +1108,19 @@ private fun AnnotatedString.Builder.appendRaftRichTextSegmentOrText(
     documentOffset: Int,
     rendererInput: RaftRichTextRendererInput,
     onOpenAction: (RaftRichTextAction) -> Unit,
-    resolveActionLabel: ((RaftRichTextAction) -> String?)?
+    resolveActionLabel: ((RaftRichTextAction) -> String?)?,
+    plainText: (String) -> String,
 ) {
     if (!appendRaftRichTextSegment(
             text = text,
             documentOffset = documentOffset,
             rendererInput = rendererInput,
             onOpenAction = onOpenAction,
-            resolveActionLabel = resolveActionLabel
+            resolveActionLabel = resolveActionLabel,
+            plainText = plainText
         )
     ) {
-        append(text)
+        append(plainText(text))
     }
 }
 
@@ -1106,6 +1165,8 @@ private fun AnnotatedString.Builder.appendRaftRichTextSegment(
     onOpenAction: (RaftRichTextAction) -> Unit,
     resolveActionLabel: ((RaftRichTextAction) -> String?)?,
     allowLocalFallback: Boolean = true,
+    /** The text between the refs, as appended (web line breaks outside tables: [withRaftWebTextBreaks]). */
+    plainText: (String) -> String,
 ): Boolean {
     val documentTokens = rendererInput.raftRefTokensStartingInRange(documentOffset, documentOffset + text.length)
     val localTokens =
@@ -1137,7 +1198,7 @@ private fun AnnotatedString.Builder.appendRaftRichTextSegment(
                 .coerceAtMost(text.length)
         if (relativeStart < cursor || relativeStart !in text.indices) return@forEach
         if (relativeStart > cursor) {
-            append(text.substring(cursor, relativeStart))
+            append(plainText(text.substring(cursor, relativeStart)))
         }
         appendRaftRichTextToken(
             token = token,
@@ -1147,7 +1208,7 @@ private fun AnnotatedString.Builder.appendRaftRichTextSegment(
         )
         cursor = relativeEndExclusive
     }
-    if (cursor < text.length) append(text.substring(cursor))
+    if (cursor < text.length) append(plainText(text.substring(cursor)))
     return true
 }
 
@@ -1162,7 +1223,7 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
     if (action.refKind == RaftRichTextRefKind.Task) {
         val taskStatuses = rendererInput.taskStatusesOrNull()
         if (taskStatuses != null) {
-            appendRaftRichTextTaskChipToken(token, action, label, taskStatuses, onOpenAction)
+            appendRaftRichTextTaskChipToken(token, action, label, taskStatuses, rendererInput.taskRefStatuses(), onOpenAction)
             return
         }
     }
@@ -1189,7 +1250,8 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
             withRaftInlineBox(boxStyle) {
                 val fontSizeStyle = raftMarkdownRichTextTagFontSizeStyle(token.chrome)
                 val appendChipText: AnnotatedString.Builder.() -> Unit = {
-                    append(label)
+                    // One box on the web (`inline-flex … truncate`): the label never wraps inside.
+                    append(label.withRaftInlineChipGlue())
                     if (busy) {
                         // A word joiner keeps the label and the spinner on one line.
                         append(RaftMarkdownTaskChipWordJoiner)
@@ -1215,9 +1277,10 @@ private fun AnnotatedString.Builder.appendRaftRichTextTaskChipToken(
     action: RaftRichTextAction,
     label: String,
     taskStatuses: Map<Int, TaskStatus>,
+    taskRefStatuses: Map<String, TaskStatus>,
     onOpenAction: (RaftRichTextAction) -> Unit,
 ) {
-    val style = raftMarkdownTaskChipStyle(taskNumberFromRefLabel(action.label)?.let(taskStatuses::get))
+    val style = raftMarkdownTaskChipStyle(raftMarkdownTaskChipStatus(action, taskStatuses, taskRefStatuses))
     withRaftInlineChipGaps(style.box) {
         pushStringAnnotation(
             tag = RaftMarkdownTagAnnotationTag,
@@ -1260,12 +1323,24 @@ private fun RaftRichTextAction.toThreadMarkdownTag(): ThreadMarkdownTag =
                 RaftRichTextRefKind.DirectMessageThread -> ThreadMarkdownTagKind.DirectMessageThread
                 RaftRichTextRefKind.DirectMessage -> ThreadMarkdownTagKind.DirectMessage
                 RaftRichTextRefKind.Task -> ThreadMarkdownTagKind.Task
+                RaftRichTextRefKind.Message -> ThreadMarkdownTagKind.Message
                 RaftRichTextRefKind.UserMention -> ThreadMarkdownTagKind.UserMention
             },
         channelName = channelName,
         threadShortId = threadShortId,
         directMessagePeerName = directMessagePeerName
     )
+
+/**
+ * The text's accessibility text without the layout-only characters (break marks, word joiners,
+ * chip gap placeholders: [raftTextWithoutInlineGaps]), so TalkBack / VoiceOver and semantics
+ * finders read what the source says. Outermost on the text, it overrides the text node's own.
+ */
+internal fun Modifier.raftMarkdownReadableSemantics(text: AnnotatedString): Modifier {
+    val readable = text.raftTextWithoutInlineGaps()
+    if (readable == text.text) return this
+    return semantics { this.text = AnnotatedString(readable) }
+}
 
 private object RaftMarkdownTextProvider : TextProvider {
     @Composable
@@ -1288,13 +1363,32 @@ private object RaftMarkdownTextProvider : TextProvider {
         onTextLayout: ((TextLayoutResult) -> Unit)?,
         style: TextStyle
     ) {
-        val resolvedStyle = style.withResolvedRaftFontFamily()
+        // The CJK line box (RaftCjkLineHeight.kt) on the text as written: RaftText's rule, here
+        // because markdown text never goes through RaftText.
+        val resolvedStyle = style.raftMarkdownUserContentLocale().withResolvedRaftFontFamily().raftMarkdownCjkLineBox(text, fontSize, lineHeight)
         val markdownOverflow = raftMarkdownContentOverflow(overflow)
         val bodyClick = LocalRaftMarkdownBodyClick.current
+        // A drag from a link in another paragraph can extend into this one (RaftMarkdownLinkDragSelect.kt).
+        val linkDrag = rememberRaftMarkdownLinkDragText()
+        // Screen readers and node finders read the source's characters, not the layout-only ones.
+        val semanticsModifier = remember(text) { Modifier.raftMarkdownReadableSemantics(AnnotatedString(text)) }
+        val textModifier =
+            semanticsModifier.then(
+                linkDrag?.let { (selection, entry) -> modifier.raftMarkdownLinkDragSelect(selection, entry, hasLinks = false) } ?: modifier
+            )
+        val textLayout: ((TextLayoutResult) -> Unit)? =
+            if (linkDrag == null) {
+                onTextLayout
+            } else {
+                { result ->
+                    linkDrag.second.layout = result
+                    onTextLayout?.invoke(result)
+                }
+            }
         if (bodyClick == null) {
             KuiklyText(
                 text = text,
-                modifier = modifier,
+                modifier = textModifier,
                 color = color,
                 fontSize = fontSize,
                 fontStyle = fontStyle,
@@ -1308,13 +1402,13 @@ private object RaftMarkdownTextProvider : TextProvider {
                 softWrap = softWrap,
                 maxLines = maxLines,
                 minLines = minLines,
-                onTextLayout = onTextLayout,
+                onTextLayout = textLayout,
                 style = resolvedStyle
             )
         } else {
             KuiklyText(
                 text = AnnotatedString(text).withRaftMarkdownBodyClick(bodyClick),
-                modifier = modifier,
+                modifier = textModifier,
                 color = color,
                 fontSize = fontSize,
                 fontStyle = fontStyle,
@@ -1329,7 +1423,7 @@ private object RaftMarkdownTextProvider : TextProvider {
                 maxLines = maxLines,
                 minLines = minLines,
                 inlineContent = emptyMap(),
-                onTextLayout = onTextLayout ?: {},
+                onTextLayout = textLayout ?: {},
                 style = resolvedStyle
             )
         }
@@ -1356,10 +1450,12 @@ private object RaftMarkdownTextProvider : TextProvider {
         onTextLayout: (TextLayoutResult) -> Unit,
         style: TextStyle
     ) {
-        val resolvedStyle = style.withResolvedRaftFontFamily()
+        val resolvedStyle = style.raftMarkdownUserContentLocale().withResolvedRaftFontFamily()
         val markdownOverflow = raftMarkdownContentOverflow(overflow)
         val bodyClick = LocalRaftMarkdownBodyClick.current
         val permalinkLabelResolver = LocalRaftMessagePermalinkLabelResolver.current
+        val unavailableQuotedPermalink = LocalRaftUnavailableQuotedPermalink.current
+        val unavailableLinkLabel = stringResource(Res.string.thread_quoted_permalink_unavailable_link)
         val renderMessagePermalinksAsTag =
             LocalRaftMarkdownRenderConfig.current.renderMessagePermalinksAsTag
         val permalinkUriHandler = LocalUriHandler.current
@@ -1371,6 +1467,8 @@ private object RaftMarkdownTextProvider : TextProvider {
             remember(
                 text,
                 permalinkLabelResolver,
+                unavailableQuotedPermalink,
+                unavailableLinkLabel,
                 permalinkUriHandler,
                 renderMessagePermalinksAsTag,
                 permalinkThemeColors,
@@ -1381,6 +1479,8 @@ private object RaftMarkdownTextProvider : TextProvider {
                             renderMessagePermalinksAsTag = renderMessagePermalinksAsTag,
                         ),
                     resolveLabel = permalinkLabelResolver,
+                    unavailable = unavailableQuotedPermalink,
+                    unavailableLabel = unavailableLinkLabel,
                 ) { url ->
                     permalinkCoroutineScope.launch { permalinkUriHandler.openUri(url) }
                 }
@@ -1401,6 +1501,10 @@ private object RaftMarkdownTextProvider : TextProvider {
                 // A chip's painted padding taps as the chip, never as the body (task #wg-mobile:#9).
                 styledText.withRaftInlineChipGapLinks().withRaftMarkdownBodyClick(bodyClick)
             }
+        // The CJK line box (RaftCjkLineHeight.kt) on the text as laid out, chip labels included:
+        // RaftText's rule, here because markdown text never goes through RaftText. Only the layout
+        // style takes it; the span fonts above stay keyed on resolvedStyle.
+        val layoutStyle = resolvedStyle.raftMarkdownCjkLineBox(resolvedText, fontSize, lineHeight)
         val resolvedInlineContent =
             remember(resolvedText, inlineContent, permalinkContent, appLinkContent) {
                 resolvedText.filteredRaftMarkdownInlineContent(
@@ -1476,11 +1580,18 @@ private object RaftMarkdownTextProvider : TextProvider {
         val hoverInk = raftMarkdownLinkHoverInk()
         val displayText =
             remember(resolvedText, hoveredLink, hoverInk) { resolvedText.withRaftMarkdownLinkHover(hoveredLink, hoverInk) }
+        // The tint restyles the text, and Compose drops a selection in a text that changes: while
+        // the body holds a selection (a mouse drag across a link included) the tint stays as it is.
+        val bodySelection = LocalRaftMarkdownLinkDragSelection.current
+        // ...and once the selection is gone, the tint it held drops (the pointer may have left).
+        val holdsSelection = bodySelection?.holdsSelection == true
+        LaunchedEffect(holdsSelection) { if (!holdsSelection) hoveredLink = null }
         val hoverModifier =
             if (inlineDecorations.underlines.isEmpty()) {
                 Modifier
             } else {
                 Modifier.raftPointerHoverPosition { position ->
+                    if (bodySelection?.holdsSelection == true) return@raftPointerHoverPosition
                     val next = position?.let { at -> decorationLayout?.let { raftMarkdownUnderlinedLinkAt(it, inlineDecorations, at) } }
                     if (next != hoveredLink) hoveredLink = next
                 }
@@ -1488,12 +1599,28 @@ private object RaftMarkdownTextProvider : TextProvider {
         // An @mention's profile card under a mouse or trackpad pointer (web MentionLink), where the
         // page provides who mentions are (the Thread message list); otherwise the text as it was.
         val mentionCards = rememberRaftMarkdownMentionPreviewCards(resolvedText)
+        // An App link card chip's item card under a mouse or trackpad pointer (web AppLinkHoverCard).
+        val appLinkCards = rememberRaftMarkdownAppLinkHoverCards(resolvedText)
+        // The hovered link's destination in the page's link status (a browser's status bar).
+        val linkHoverStatus = rememberRaftMarkdownLinkHoverStatus(resolvedText)
+        val linkHoverStatusModifier = linkHoverStatus?.let { Modifier.raftMarkdownLinkHoverStatus(it) } ?: Modifier
+        // In a selectable message body, a mouse drag from a link selects (RaftMarkdownLinkDragSelect.kt).
+        val linkDrag = rememberRaftMarkdownLinkDragText()
+        val linkDragModifier =
+            linkDrag?.let { (selection, entry) ->
+                Modifier.raftMarkdownLinkDragSelect(selection, entry, hasLinks = resolvedText.hasLinkAnnotations(0, resolvedText.length))
+            } ?: Modifier
+        // Screen readers and node finders read the source's characters, not the layout-only ones.
+        val semanticsModifier = remember(resolvedText) { Modifier.raftMarkdownReadableSemantics(resolvedText) }
         val text: @Composable (Modifier) -> Unit = { textModifier ->
             KuiklyText(
                 text = displayText,
                 modifier =
-                    textModifier
+                    semanticsModifier
+                        .then(textModifier)
                         .then(hoverModifier)
+                        .then(linkHoverStatusModifier)
+                        .then(linkDragModifier)
                         .raftInlineDecorations(inlineDecorations, hovered = { hoveredLink?.let { it to hoverInk } }) { decorationLayout },
                 color = color,
                 fontSize = fontSize,
@@ -1512,15 +1639,26 @@ private object RaftMarkdownTextProvider : TextProvider {
                 onTextLayout = { result ->
                     if (!inlineDecorations.isEmpty) decorationLayout = result
                     mentionCards?.layout = result
+                    appLinkCards?.layout = result
+                    linkHoverStatus?.layout = result
+                    linkDrag?.second?.layout = result
                     resolvedOnTextLayout(result)
                 },
-                style = resolvedStyle
+                style = layoutStyle
             )
         }
-        if (mentionCards == null) {
-            text(modifier)
-        } else {
-            RaftMarkdownMentionPreviewCardHost(mentionCards, resolvedText, modifier, text)
+        val appLinkHost = LocalRaftAppLinkChips.current
+        when {
+            appLinkCards != null && appLinkHost != null ->
+                // The cards' popups sit in a box round the text, so their anchors (the chip's words,
+                // from the text's layout) are in the popup's own coordinates.
+                Box(modifier, propagateMinConstraints = true) {
+                    val withAppLinks: @Composable (Modifier) -> Unit = { textModifier -> text(textModifier.raftMarkdownAppLinkHover(appLinkCards)) }
+                    if (mentionCards == null) withAppLinks(Modifier) else RaftMarkdownMentionPreviewCardHost(mentionCards, resolvedText, Modifier, withAppLinks)
+                    appLinkCards.Popups(appLinkHost)
+                }
+            mentionCards == null -> text(modifier)
+            else -> RaftMarkdownMentionPreviewCardHost(mentionCards, resolvedText, modifier, text)
         }
     }
 }
@@ -1566,6 +1704,44 @@ internal fun AnnotatedString.withRaftMarkdownBodyClick(onClick: (() -> Unit)?): 
 
 internal fun raftMarkdownContentOverflow(overflow: TextOverflow): TextOverflow =
     if (overflow == TextOverflow.Ellipsis) TextOverflow.Clip else overflow
+
+/**
+ * The size and line height a provider text is laid out with: `Text` lays [fontSize] and
+ * [lineHeight] over the style where they are specified. The vendor's MarkdownBasicText merges both
+ * into the style and passes them Unspecified (this style as it is), but the CJK rule must see the
+ * final values whoever calls.
+ */
+internal fun TextStyle.withRaftMarkdownLineMetrics(fontSize: TextUnit, lineHeight: TextUnit): TextStyle =
+    if (!fontSize.isSpecified && !lineHeight.isSpecified) {
+        this
+    } else {
+        copy(
+            fontSize = if (fontSize.isSpecified) fontSize else this.fontSize,
+            lineHeight = if (lineHeight.isSpecified) lineHeight else this.lineHeight,
+        )
+    }
+
+/**
+ * This style with the CJK line box ([forCjkLineBox]) where [text] needs it: on Android, a line
+ * holding Han, kana or Hangul under a line height below the fallback font's (a heading's
+ * leading-tight, a 13/18 comment) would otherwise grow past the Web's line box. The style's
+ * line box is [build.raft.designsystem.theme.RaftTypography.CssLineHeightStyle]: the vendor's
+ * merge drops `lineHeightStyle`, and withResolvedRaftFontFamily puts the CSS one back.
+ */
+@Composable
+private fun TextStyle.raftMarkdownCjkLineBox(text: CharSequence, fontSize: TextUnit, lineHeight: TextUnit): TextStyle {
+    val lineBox = withRaftMarkdownLineMetrics(fontSize, lineHeight).forCjkLineBox(text).lineHeightStyle
+    return if (lineBox == lineHeightStyle) this else copy(lineHeightStyle = lineBox)
+}
+
+/**
+ * Markdown is user content ([raftMarkdownTypography] marks every style zh-Hans), but the vendor's
+ * `TextStyle.merge` drops `localeList` on the way to this provider, and [withResolvedRaftFontFamily]
+ * then filled in the UI's locale: with a Japanese UI, Han in a message took Japanese forms. A style
+ * that reaches the provider with no locale gets the user-content one back; one set on purpose stays.
+ */
+internal fun TextStyle.raftMarkdownUserContentLocale(): TextStyle =
+    if (localeList == null) withRaftUserContentLocale() else this
 
 private data class RaftMarkdownTextLayoutSignature(
     val size: IntSize,
@@ -1701,10 +1877,12 @@ internal data class RaftMessagePermalinkChipContent(
 internal fun AnnotatedString.withRaftMessagePermalinkRenderConfig(
     config: RaftMarkdownRenderConfig = RaftMarkdownRenderConfig(),
     resolveLabel: RaftMessagePermalinkLabelResolver = { null },
+    unavailable: ParsedRaftPermalink? = null,
+    unavailableLabel: String = "",
     openUri: (String) -> Unit = {},
 ): RaftMessagePermalinkChipContent =
     if (config.renderMessagePermalinksAsTag) {
-        withRaftMessagePermalinkChipContent(resolveLabel, openUri)
+        withRaftMessagePermalinkChipContent(resolveLabel, unavailable, unavailableLabel, openUri)
     } else {
         RaftMessagePermalinkChipContent(
             text = withoutLinksInsideRaftInlineCode(),
@@ -1714,6 +1892,8 @@ internal fun AnnotatedString.withRaftMessagePermalinkRenderConfig(
 
 private fun AnnotatedString.withRaftMessagePermalinkChipContent(
     resolveLabel: RaftMessagePermalinkLabelResolver = { null },
+    unavailable: ParsedRaftPermalink? = null,
+    unavailableLabel: String = "",
     openUri: (String) -> Unit = {},
 ): RaftMessagePermalinkChipContent {
     val source = withoutLinksInsideRaftInlineCode()
@@ -1721,7 +1901,7 @@ private fun AnnotatedString.withRaftMessagePermalinkChipContent(
         source.getLinkAnnotations(0, source.length)
             .mapNotNull { range ->
                 val link = range.item as? LinkAnnotation.Url ?: return@mapNotNull null
-                val target = link.url.toRaftMessagePermalinkTarget() ?: return@mapNotNull null
+                val target = link.url.toParsedRaftPermalink() ?: return@mapNotNull null
                 Triple(range, link, target)
             }
             .sortedBy { (range, _, _) -> range.start }
@@ -1735,7 +1915,10 @@ private fun AnnotatedString.withRaftMessagePermalinkChipContent(
     permalinkLinks.forEach { (range, link, target) ->
         if (range.start < cursor || range.end <= range.start) return@forEach
         builder.append(source, cursor, range.start)
-        val targetLabel = target.raftMessagePermalinkChipTargetLabel(resolveLabel(target))
+        // web PermalinkReferenceChip: a quote that could not be read is a plain span (no link, no "msg").
+        val unavailableChip = unavailable != null && target.sameMessageAs(unavailable)
+        val targetLabel =
+            if (unavailableChip) unavailableLabel else target.raftMessagePermalinkChipTargetLabel(resolveLabel(target))
         val kindLabel = target.raftMessagePermalinkChipKindLabel()
         val inlinePrefix = "slock-message-permalink-${range.start}-${range.end}"
         val iconId = "$inlinePrefix-icon"
@@ -1744,37 +1927,45 @@ private fun AnnotatedString.withRaftMessagePermalinkChipContent(
         val chipBox = raftMessagePermalinkChipBoxStyle()
         builder.withRaftInlineChipGaps(chipBox) {
         withRaftInlineBox(chipBox) {
-          withLink(
-            LinkAnnotation.Url(
-                url = link.url,
-                styles = raftMessagePermalinkChipLinkStyles(),
-                linkInteractionListener = LinkInteractionListener { clickedLink: LinkAnnotation ->
-                    val clickedUrl = clickedLink as? LinkAnnotation.Url ?: return@LinkInteractionListener
-                    link.linkInteractionListener?.onClick(clickedUrl) ?: openUri(clickedUrl.url)
-                }
-            )
-        ) {
-            // web PermalinkReferenceChip: MessageReferenceChip variant="link" — a 0.875em inline
-            // chip with the Link icon, the label and a mono "msg" note, each 4px apart.
+          // web PermalinkReferenceChip: MessageReferenceChip variant="link" — a 0.875em inline
+          // chip with the Link icon, the label and a mono "msg" note, each 4px apart.
+          val chipContent: AnnotatedString.Builder.() -> Unit = {
             withStyle(SpanStyle(fontSize = RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM.em)) {
                 appendInlineContent(iconId, "\uFFFC")
                 appendInlineContent(iconGapId, "\uFFFC")
                 withStyle(raftSpanStyleForWeight(FontWeight.SemiBold).copy(color = RaftColor.TextBlack)) {
                     append(targetLabel)
                 }
-                appendInlineContent(suffixGapId, " ")
-                withStyle(
-                    SpanStyle(
-                        color = RaftColor.ForegroundHint,
-                        // raft-ui `font-mono text-label font-normal`.
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Normal,
-                        fontFamily = raftMonoFamilyForWeight(FontWeight.Normal),
-                    )
-                ) {
-                    append(kindLabel)
+                if (!unavailableChip) {
+                    appendInlineContent(suffixGapId, " ")
+                    withStyle(
+                        SpanStyle(
+                            color = RaftColor.ForegroundHint,
+                            // raft-ui `font-mono text-label font-normal`.
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Normal,
+                            fontFamily = raftMonoFamilyForWeight(FontWeight.Normal),
+                        )
+                    ) {
+                        append(kindLabel)
+                    }
                 }
             }
+          }
+          if (unavailableChip) {
+              chipContent()
+          } else {
+              withLink(
+                  LinkAnnotation.Url(
+                      url = link.url,
+                      styles = raftMessagePermalinkChipLinkStyles(),
+                      linkInteractionListener = LinkInteractionListener { clickedLink: LinkAnnotation ->
+                          val clickedUrl = clickedLink as? LinkAnnotation.Url ?: return@LinkInteractionListener
+                          link.linkInteractionListener?.onClick(clickedUrl) ?: openUri(clickedUrl.url)
+                      }
+                  ),
+                  chipContent,
+              )
           }
         }
         }
@@ -1814,9 +2005,11 @@ private fun raftMessagePermalinkSpacerInlineContent(width: TextUnit): InlineText
         placeholder = Placeholder(width = width, height = 1.sp, placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter),
     ) {}
 
-private fun RaftMessagePermalinkTarget.raftMessagePermalinkChipTargetLabel(
+private fun ParsedRaftPermalink.raftMessagePermalinkChipTargetLabel(
     resolvedLabel: String?
 ): String {
+    // Agent Lounge v0: a link into a Lounge is named after the Lounge, never `#<agent>-lounge`.
+    build.raft.app.agentLoungeLabelOrNull(channelId.value)?.let { return it }
     val prefix = if (routeKind == build.raft.app.model.ConversationKind.DirectMessage) "@" else "#"
     val name =
         resolvedLabel
@@ -1828,7 +2021,7 @@ private fun RaftMessagePermalinkTarget.raftMessagePermalinkChipTargetLabel(
     return "$prefix$name"
 }
 
-private fun RaftMessagePermalinkTarget.raftMessagePermalinkChipKindLabel(): String =
+private fun ParsedRaftPermalink.raftMessagePermalinkChipKindLabel(): String =
     if (threadParentMessageId == null) "msg" else "thread"
 
 /** Markdown parsers may retain autolink annotations inside code spans. */
@@ -1894,7 +2087,7 @@ private fun raftMessagePermalinkChipLinkStyles(): TextLinkStyles {
         )
     // raft-ui `active:overlay-medium`; link styles cannot reach the box annotation, so a span wash
     // over the chip's text stands in for the overlay.
-    return raftChipLinkStyles(base, pressed = base.copy(background = RaftAppThemeState.colors.fillPressed))
+    return raftChipLinkStyles(base, pressed = base.copy(background = RaftAppThemeState.colors.fillMedium))
 }
 
 private object RaftMarkdownPreparedBodyCache {
@@ -2020,13 +2213,16 @@ internal suspend fun prepareRaftMarkdownFullRendererBodies(
 }
 
 internal fun String.preparedRaftMarkdownFullRendererContentOrNull(): MarkdownParserContent? {
-    val (content, _) =
-        RaftMarkdownPreparedBodyCache.getOrPut(this) {
-            normalizeThreadMarkdownBody()
-        }
+    val content = raftMarkdownPreparedBody(this)
     if (content.isBlank()) return null
-    return MarkdownParserContent.from(content)
+    return RaftMarkdownRenderInputCache.parserContent(content)
 }
+
+/** [body] normalised for rendering, through the same cache [RaftMarkdownBody] uses. */
+internal fun raftMarkdownPreparedBody(body: String): String =
+    RaftMarkdownPreparedBodyCache.getOrPut(body) {
+        body.normalizeThreadMarkdownBody()
+    }.first
 
 private const val RaftMarkdownDefaultPreparseLimit = 20
 
@@ -2034,6 +2230,8 @@ private val RaftMarkdownBodyFontSize get() = RaftTextSize.Content
 // `text-body` 16/24, the Web's message text.
 private val RaftMarkdownBodyLineHeight get() = RaftTextSize.ContentLineHeight
 internal val RaftMarkdownTaskCheckboxSize = 14.dp
+/** web `li mb-0.5`. */
+private val RaftMarkdownListItemBottom = 2.dp
 internal val RaftMarkdownTaskCheckboxFirstLineOffset =
     ((RaftTextSize.ContentLineHeight.value.dp - RaftMarkdownTaskCheckboxSize) / 2).coerceAtLeast(0.dp)
 internal const val RaftMarkdownPendingActionIndicator = " …"
@@ -2340,6 +2538,8 @@ fun RaftMarkdownBody(
     val currentResolveTagLabel by rememberUpdatedState(resolveTagLabel)
     val taskStatuses = LocalRaftMarkdownTaskStatuses.current
     val currentTaskStatuses by rememberUpdatedState(taskStatuses)
+    val taskRefStatuses = LocalRaftMarkdownTaskRefStatuses.current
+    val currentTaskRefStatuses by rememberUpdatedState(taskRefStatuses)
     val mentionReadStates = LocalRaftMarkdownMentionReadStates.current
     val currentMentionReadStates by rememberUpdatedState(mentionReadStates)
     val colors = RaftMarkdownColorsDefault
@@ -2350,8 +2550,11 @@ fun RaftMarkdownBody(
     val typography = remember(markdownTextStyle, markdownThemeColors, minInlineLineHeight) {
         raftMarkdownTypography(markdownTextStyle, minInlineLineHeight)
     }
+    // The pure per-body builds below go through process-wide caches (RaftMarkdownDocumentCache.kt):
+    // `remember` dies with the lazy row, so a tall row scrolled back into view used to rebuild them
+    // on the main thread; the Thread page also warms them off-main for rows about to appear.
     val markdownParserContent = remember(content) {
-        MarkdownParserContent.from(content)
+        RaftMarkdownRenderInputCache.parserContent(content)
     }
     val parserContent = markdownParserContent.parserContent
     // #367 light path (override-gated, default OFF): gate-first — with the
@@ -2398,7 +2601,7 @@ fun RaftMarkdownBody(
         }
     val richTextDocument: RaftRichTextDocument =
         remember(body, parserContent, tokenPlan, bodyActiveTagKey, bodyActiveActionId, activeActionIndicator) {
-        buildRaftRichTextDocumentFromMarkdownPlan(
+        RaftMarkdownRenderInputCache.document(
             source = body,
             content = parserContent,
             tokenPlan = tokenPlan,
@@ -2459,7 +2662,8 @@ fun RaftMarkdownBody(
             taskStatuses = { currentTaskStatuses },
             mentionReadStates = { currentMentionReadStates },
             // A read mark follows someone else's @mention, which is set at the sentence's size.
-            mentionReadFontSize = mentionReadFontSize
+            mentionReadFontSize = mentionReadFontSize,
+            taskRefStatuses = { currentTaskRefStatuses }
         )
     }
     if (DEBUG_RAFT_MARKDOWN_PERF_LOG && performanceKey != null) {
@@ -2495,7 +2699,7 @@ fun RaftMarkdownBody(
             }
             // Task chips read the status map and the theme at annotation time.
             if (taskStatuses != null) {
-                addAll(raftMarkdownTaskChipRevision(richTextDocument.actions, taskStatuses, markdownDark))
+                addAll(raftMarkdownTaskChipRevision(richTextDocument.actions, taskStatuses, markdownDark, taskRefStatuses))
             }
             // read_receipts_v0 mention badges read the provided states at annotation time.
             if (mentionReadStates != null) {
@@ -2509,7 +2713,7 @@ fun RaftMarkdownBody(
             codeBlock = PaddingValues(RaftAppSpacing.Sm),
             // web `li mb-0.5`. The marker slot carries the whole `pl-5` indent
             // (MarkdownListIndentEm), so the list adds none of its own.
-            listItemBottom = 2.dp,
+            listItemBottom = RaftMarkdownListItemBottom,
             listIndent = 0.dp,
             // Blockquote rail must span EXACTLY the quoted content's height
             // (task #62): web renders border-l-2 with no vertical padding — the
@@ -2522,6 +2726,7 @@ fun RaftMarkdownBody(
             blockQuoteBar = PaddingValues.Absolute(left = 0.dp, top = 4.dp, right = 0.dp, bottom = 4.dp)
         )
     }
+    val blockMargins = remember(sectionHeadingTopPadding) { raftMarkdownBlockMargins(sectionHeadingTopPadding) }
     val components = remember(sectionHeadingTopPadding, onSectionHeadingPositioned) {
         val sectionHeadingModifier =
             Modifier
@@ -2560,6 +2765,12 @@ fun RaftMarkdownBody(
             horizontalRule = {
                 RaftMarkdownHorizontalRule()
             },
+            // An App link's block card follows the paragraph its link is in, in a list item inside
+            // the item (raft-design #1010); the plan says which paragraphs, so most draw nothing more.
+            paragraph = { model ->
+                MarkdownParagraph(model.content, model.node, style = model.typography.paragraph)
+                RaftMarkdownBlockCardsAfter(model.node.startOffset)
+            },
             // web blockquote: `border-l-2 border-line-seam`, text `text-foreground-muted`.
             blockQuote = { model ->
                 MarkdownBlockQuote(
@@ -2594,15 +2805,7 @@ fun RaftMarkdownBody(
                         model.content,
                         model.node,
                         style = model.typography.table,
-                        headerBlock = { content, header, style, columnWidths, rowWidths ->
-                            MarkdownTableHeader(
-                                content = content,
-                                header = header,
-                                style = style.withRaftFontWeight(FontWeight.Bold),
-                                columnWidths = columnWidths,
-                                rowWidths = rowWidths
-                            )
-                        }
+                        headerStyle = model.typography.table.withRaftFontWeight(FontWeight.Bold),
                     )
                 }
             },
@@ -2637,7 +2840,18 @@ fun RaftMarkdownBody(
                 }
             }
         }
-    if (lightParagraphNode != null) {
+    // The App link block cards this message draws, by the paragraph each follows. A message that has
+    // one takes the full path (the light path draws the paragraph alone).
+    val blockCardHost = LocalRaftMarkdownBlockCardHost.current
+    val blockCards =
+        remember(parserContent, blockCardHost) {
+            blockCardHost?.let { host ->
+                planRaftBlockCards(parserContent, host.results).takeIf { it.isNotEmpty() }?.let { RaftMarkdownBlockCards(it, host.draw) }
+            }
+        }
+    val listParagraphCards: (@Composable (ASTNode) -> Unit)? =
+        remember(blockCards) { blockCards?.afterListParagraph() }
+    if (lightParagraphNode != null && blockCards == null) {
         // #367 light path: render the single eligible paragraph directly. The
         // same LAYOUT / LAYOUT_BLOCK trace sections wrap the render so phase
         // attribution stays comparable with the full path during A/B.
@@ -2670,7 +2884,10 @@ fun RaftMarkdownBody(
                 LocalRaftMarkdownAnnotationRevision provides annotationRevision,
                 // task #800: top-level paragraphs wrap when the body opts out of
                 // fill (right-aligned bubbles); list/quote paragraphs pin fill.
-                LocalRaftMarkdownParagraphFillWidth provides fillWidth
+                LocalRaftMarkdownParagraphFillWidth provides fillWidth,
+                LocalRaftMarkdownBlockMargins provides blockMargins,
+                LocalRaftMarkdownBlockCards provides blockCards,
+                LocalRaftMarkdownAfterListParagraph provides listParagraphCards
             ),
             LocalRaftMarkdownRowRenderCostSink,
             rowCensusToken
@@ -2827,6 +3044,56 @@ private fun RaftMarkdownSingleParagraphLightBody(
 // web MarkdownLink: `text-foreground-link` (light #1447E6 / dark #8EC5FF).
 private val RaftMarkdownLinkBlue: Color get() = RaftAppThemeState.colors.foregroundLink
 
+/**
+ * Web `MarkdownContent` compact density margins, collapsed between sibling blocks as CSS does:
+ * `p` / `ul` / `ol` `mb-1`, `h1` `mt-3 mb-1`, `h2`/`h3` `mt-2 mb-1`, `h4`–`h6` `mt-1 mb-0.5`,
+ * blockquote `my-1`, code block and `hr` `my-2`. Quote, code and rule already paint their margin
+ * as their own inset, and a list's last item its `li mb-0.5`; [sectionHeadingTopPadding] is the
+ * h2/h3 inset document surfaces add. Tables, formulas, images and HTML keep their spacing.
+ */
+internal fun raftMarkdownBlockMargins(sectionHeadingTopPadding: Dp = 0.dp): (IElementType) -> RaftMarkdownBlockMargin? {
+    val paragraph = RaftMarkdownBlockMargin(bottom = 4.dp)
+    val list = RaftMarkdownBlockMargin(bottom = 4.dp, paintedBottom = RaftMarkdownListItemBottom)
+    val h1 = RaftMarkdownBlockMargin(top = 12.dp, bottom = 4.dp)
+    val h2 = RaftMarkdownBlockMargin(top = 8.dp, bottom = 4.dp, paintedTop = sectionHeadingTopPadding)
+    val h3 = h2
+    val minorHeading = RaftMarkdownBlockMargin(top = 4.dp, bottom = 2.dp)
+    val quote = RaftMarkdownBlockMargin(top = 4.dp, bottom = 4.dp, paintedTop = 4.dp, paintedBottom = 4.dp)
+    val code =
+        RaftMarkdownBlockMargin(
+            top = 8.dp,
+            bottom = 8.dp,
+            paintedTop = RaftMarkdownCodeSurfaceVerticalInset,
+            paintedBottom = RaftMarkdownCodeSurfaceVerticalInset
+        )
+    val rule =
+        RaftMarkdownBlockMargin(
+            top = 8.dp,
+            bottom = 8.dp,
+            paintedTop = RaftMarkdownDividerVerticalPadding,
+            paintedBottom = RaftMarkdownDividerVerticalPadding
+        )
+    return { type ->
+        when (type) {
+            MarkdownElementTypes.PARAGRAPH -> paragraph
+            MarkdownElementTypes.ORDERED_LIST, MarkdownElementTypes.UNORDERED_LIST -> list
+            MarkdownElementTypes.ATX_1, MarkdownElementTypes.SETEXT_1 -> h1
+            MarkdownElementTypes.ATX_2, MarkdownElementTypes.SETEXT_2 -> h2
+            MarkdownElementTypes.ATX_3 -> h3
+            MarkdownElementTypes.ATX_4, MarkdownElementTypes.ATX_5, MarkdownElementTypes.ATX_6 -> minorHeading
+            MarkdownElementTypes.BLOCK_QUOTE -> quote
+            MarkdownElementTypes.CODE_FENCE, MarkdownElementTypes.CODE_BLOCK -> code
+            MarkdownTokenTypes.HORIZONTAL_RULE -> rule
+            GFMElementTypes.TABLE,
+            GFMElementTypes.BLOCK_MATH,
+            MarkdownElementTypes.IMAGE,
+            MarkdownElementTypes.HTML_BLOCK -> RaftMarkdownBlockMargin.Barrier
+            // EOL, whitespace, link definitions and `>` / list markers render nothing.
+            else -> null
+        }
+    }
+}
+
 // File-level singleton for the same #192 stable-reference reason as the colors
 // above (`markdownDimens(...)` is @Composable and would allocate a fresh
 // instance every recomposition). Values mirror the library defaults except the
@@ -2837,7 +3104,8 @@ private object RaftMarkdownDimens : MarkdownDimens {
     override val codeBackgroundCornerSize: Dp = 8.dp
     override val blockQuoteThickness: Dp = 2.dp
     override val tableMaxWidth: Dp = Dp.Unspecified
-    override val tableCellWidth: Dp = 160.dp
+    // Unused: Raft tables size columns to their content (MarkdownTable, artin 11-03).
+    override val tableCellWidth: Dp = Dp.Unspecified
     override val tableSeparatorThickness: Dp = 1.dp
     // Legacy uniform inset; Raft tables use RaftMarkdownTableCellPadding (web px-2 py-1).
     override val tableCellPadding: Dp = 6.dp
@@ -2904,24 +3172,22 @@ private fun RaftMarkdownCodeBlockContent(
     }
     Box(modifier = Modifier.fillMaxWidth()) {
         RaftMarkdownCodeSurface(code = code, language = language, style = style)
-        val pressSource = remember { MutableInteractionSource() }
-        val pressed by pressSource.collectIsPressedAsState()
-        Box(
-            // raft-ui 0.20 CodeBlock: the copy action is a 28dp ghost button 6dp from the block's
-            // corner at radius-chip, in a column of its own (the code keeps its end padding), and
-            // presses with the medium tier.
+        // raft-ui 0.20 CodeBlock: the copy action is a 28dp ghost button 6dp from the block's
+        // corner at radius-chip, in a column of its own (the code keeps its end padding), and
+        // presses with the medium tier. No tooltip: a long press belongs to the message row.
+        RaftIconButton(
+            onClick = {
+                bridge.copyToPasteboard(code)
+                copied = true
+            },
+            tooltip = null,
+            contentDescription = stringResource(if (copied) Res.string.common_copied else Res.string.common_copy),
             modifier =
                 Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = RaftMarkdownCodeSurfaceVerticalInset + RaftMarkdownCodeActionInset, end = RaftMarkdownCodeActionInset)
-                    .size(RaftMarkdownCodeActionSize)
-                    .clip(RoundedCornerShape(RaftMarkdownCodeActionRadius))
-                    .background(if (pressed) RaftAppThemeState.colors.fillPressed else Color.Transparent)
-                    .clickable(interactionSource = pressSource, indication = null) {
-                        bridge.copyToPasteboard(code)
-                        copied = true
-                    },
-            contentAlignment = Alignment.Center,
+                    .padding(top = RaftMarkdownCodeSurfaceVerticalInset + RaftMarkdownCodeActionInset, end = RaftMarkdownCodeActionInset),
+            variant = RaftButtonVariant.Ghost,
+            size = RaftIconButtonSize.Sm,
         ) {
             RaftLucideIcon(
                 name = if (copied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
@@ -2935,8 +3201,6 @@ private fun RaftMarkdownCodeBlockContent(
 
 private val RaftMarkdownCodeSurfaceVerticalInset = 8.dp
 private val RaftMarkdownCodeActionInset = 6.dp
-private val RaftMarkdownCodeActionSize = 28.dp
-private val RaftMarkdownCodeActionRadius = 6.dp
 
 /**
  * Told when a tap lands on a code block, so a message row's own tap can leave it alone: the web's
@@ -2972,6 +3236,8 @@ private fun RaftMarkdownCodeSurface(code: String, language: String?, style: Text
             Modifier
                 .fillMaxWidth()
                 .padding(vertical = RaftMarkdownCodeSurfaceVerticalInset)
+                // Horizontal drags that start on code are never the thread list's time reveal.
+                .raftKeepsHorizontalDrags()
                 .clip(shape)
                 .raftMarkdownObserveCodeTap()
                 .background(RaftMarkdownCodeBlockBackground)
@@ -3189,8 +3455,11 @@ internal fun raftMarkdownTypography(
 ): DefaultMarkdownTypography {
     // Markdown is user content: every style derives from this base, so Han characters render in
     // Simplified Chinese forms throughout.
-    val resolvedBase =
+    val tableBase =
         raftMarkdownTextStyleWithInlineLineHeight(base, minInlineLineHeight).withRaftUserContentLocale()
+    // CSS fills each line greedily; Compose's default paragraph strategy re-balances the lines
+    // (a word or a code run moves down early). `LineBreak.Simple` is the greedy preset.
+    val resolvedBase = tableBase.copy(lineBreak = LineBreak.Simple)
     // web pre: `font-mono [font-size:inherit]` — Space Mono at the body size.
     val codeBlock =
         resolvedBase.copy(
@@ -3219,7 +3488,7 @@ internal fun raftMarkdownTypography(
         list = resolvedBase,
         link = resolvedBase.copy(color = RaftMarkdownLinkBlue),
         textLink = TextLinkStyles(style = raftMarkdownLinkSpanStyle(resolvedBase)),
-        table = resolvedBase
+        table = tableBase
     )
 }
 
@@ -3265,7 +3534,8 @@ private fun String.raftInlineChipWidthSafetySp(kind: ThreadMarkdownTagKind?): Fl
         kind == ThreadMarkdownTagKind.Channel ||
             kind == ThreadMarkdownTagKind.ChannelThread ||
             kind == ThreadMarkdownTagKind.DirectMessageThread ||
-            kind == ThreadMarkdownTagKind.DirectMessage -> 16f
+            kind == ThreadMarkdownTagKind.DirectMessage ||
+            kind == ThreadMarkdownTagKind.Message -> 16f
         startsWith("#") && drop(1).any { !it.isDigit() } -> 16f
         else -> 0f
     }
@@ -3355,10 +3625,11 @@ internal fun threadMarkdownTagActivationKey(tag: ThreadMarkdownTag): String =
     }
 
 // Reference styling mirrors raft-ui (message-reference.recipe.ts, lib/inline-chip.ts):
-// - a #channel / DM ref is a solid `attention-soft` chip, a thread / message ref an `info-soft`
-//   one: 0.875em semibold ink, 6px at each end, `rounded-sticker`, no underline;
-// - the reader's own @mention is the yellow `bg-brand` sticker with a 1.5px `sticker-ink` inset
-//   ring in the same box;
+// - a #channel / DM ref is a solid `attention-soft` chip, a thread ref and a message ref
+//   (`#channel msg=id`) an `info-soft` one: 0.875em semibold ink, 6px at each end,
+//   `rounded-sticker`, no underline;
+// - the reader's own @mention is the yellow sticker (MessageReferenceText variant="primary") with
+//   a 1.5px `sticker-ink` inset ring in the same box; yellow means only "@you";
 // - anyone else's @mention is bold ink at the sentence's size, underlined only while pressed.
 // The chip box is a RaftInlineBoxStyle annotation; the 0.875em size is a span inside it
 // ([raftMarkdownRichTextTagFontSizeStyle]) so the box painter measures the chip's own text.
@@ -3424,6 +3695,8 @@ private fun raftRichTextChromeKind(
     when {
         active && (kind == ThreadMarkdownTagKind.ChannelThread || kind == ThreadMarkdownTagKind.DirectMessageThread) ->
             RaftRichTextChromeKind.Thread
+        // A pending message ref keeps its cyan chip (yellow is only "@you").
+        active && kind == ThreadMarkdownTagKind.Message -> RaftRichTextChromeKind.Message
         active -> RaftRichTextChromeKind.Active
         kind == ThreadMarkdownTagKind.UserMention && highlighted -> RaftRichTextChromeKind.SelfMention
         kind == ThreadMarkdownTagKind.UserMention -> RaftRichTextChromeKind.OrdinaryMention
@@ -3432,6 +3705,7 @@ private fun raftRichTextChromeKind(
         kind == ThreadMarkdownTagKind.ChannelThread -> RaftRichTextChromeKind.Thread
         kind == ThreadMarkdownTagKind.Channel -> RaftRichTextChromeKind.Channel
         kind == ThreadMarkdownTagKind.Task -> RaftRichTextChromeKind.Task
+        kind == ThreadMarkdownTagKind.Message -> RaftRichTextChromeKind.Message
         else -> RaftRichTextChromeKind.OrdinaryMention
     }
 
@@ -3465,7 +3739,7 @@ private fun RaftRichTextChromeStyleToken.toPressedTagSpanStyle(): SpanStyle =
             when {
                 chipFill == null -> Color.Unspecified
                 inkEdge -> RaftColor.StickerPressed
-                else -> RaftAppThemeState.colors.fillPressed
+                else -> RaftAppThemeState.colors.fillMedium
             },
     )
 

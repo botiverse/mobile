@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.resources.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlin.test.Test
@@ -133,6 +134,92 @@ class ThreadInPlaceTextSelectionTest {
             ThreadMessageLongPressRoute.MessageMenu,
             threadMessageLongPressRoute(inPlaceSelectionEnabled = true, pressOnSelectableBody = false)
         )
+    }
+
+    // artin dm:#99 (iOS): with the New Message Menu on, a finger long press on the body showed the
+    // selection's menu first and the Compact menu then opened over it. A finger press is the row's.
+    @Test
+    fun aFingerPressOnTheBodyIsTheRowsWhenTheNewMenuIsOn() {
+        assertTrue(threadInPlaceSelectionYieldsPressToRow(fingerPressOpensMessageMenu = true, PointerType.Touch))
+        assertTrue(
+            threadInPlaceSelectionYieldsPressToRow(fingerPressOpensMessageMenu = true, PointerType.Unknown),
+            "a down without a tool type counts as a finger, as the row's taps do"
+        )
+        assertFalse(threadInPlaceSelectionYieldsPressToRow(fingerPressOpensMessageMenu = true, PointerType.Mouse))
+        assertFalse(threadInPlaceSelectionYieldsPressToRow(fingerPressOpensMessageMenu = true, PointerType.Stylus))
+        // Desktop's always-on pointer selection with the toggle off: a touchscreen finger still selects.
+        assertFalse(threadInPlaceSelectionYieldsPressToRow(fingerPressOpensMessageMenu = false, PointerType.Touch))
+    }
+
+    @Test
+    fun aYieldedFingerLongPressOnTheBodyRoutesToTheMessageMenu() {
+        val pressOnSelectableBody =
+            threadInPlaceSelectionOwnsRowPress(pressOnBody = true, pressYieldedToRow = true)
+        assertFalse(pressOnSelectableBody)
+        assertEquals(
+            ThreadMessageLongPressRoute.MessageMenu,
+            threadMessageLongPressRoute(inPlaceSelectionEnabled = true, pressOnSelectableBody = pressOnSelectableBody)
+        )
+        // A mouse or stylus long press on the body is still the selection's.
+        assertEquals(
+            ThreadMessageLongPressRoute.InPlaceSelection,
+            threadMessageLongPressRoute(
+                inPlaceSelectionEnabled = true,
+                pressOnSelectableBody = threadInPlaceSelectionOwnsRowPress(pressOnBody = true, pressYieldedToRow = false)
+            )
+        )
+        assertFalse(threadInPlaceSelectionOwnsRowPress(pressOnBody = false, pressYieldedToRow = false))
+    }
+
+    @Test
+    fun theSelectionNeverReachesItsLongPressTimeoutForAYieldedPress() {
+        assertEquals(500L, threadInPlaceSelectionLongPressTimeoutMillis(500L, pressYieldedToRow = false))
+        assertEquals(
+            ThreadInPlaceSelectionYieldedLongPressTimeoutMillis,
+            threadInPlaceSelectionLongPressTimeoutMillis(500L, pressYieldedToRow = true)
+        )
+        assertTrue(ThreadInPlaceSelectionYieldedLongPressTimeoutMillis >= 60L * 60L * 1000L)
+    }
+
+    @Test
+    fun aSelectionAYieldedFingerPressStillStartedIsCleared() {
+        // iOS selects a word on a finger double tap without waiting for a long press.
+        assertEquals(
+            ThreadInPlaceSelectionAppearedAction.Clear,
+            threadInPlaceSelectionAppearedAction(pressYieldedToRow = true, startedByTouch = true, coversAll = false)
+        )
+        assertEquals(
+            ThreadInPlaceSelectionAppearedAction.Clear,
+            threadInPlaceSelectionAppearedAction(pressYieldedToRow = true, startedByTouch = true, coversAll = true)
+        )
+        assertEquals(
+            ThreadInPlaceSelectionAppearedAction.WidenToWholeMessage,
+            threadInPlaceSelectionAppearedAction(pressYieldedToRow = false, startedByTouch = true, coversAll = false)
+        )
+        assertEquals(
+            ThreadInPlaceSelectionAppearedAction.Keep,
+            threadInPlaceSelectionAppearedAction(pressYieldedToRow = false, startedByTouch = false, coversAll = false)
+        )
+    }
+
+    @Test
+    fun theControllerRecordsWhetherEachBodyPressIsYieldedAndThenOpensNoSelectionMenu() {
+        val host = ThreadInPlaceTextSelectionHost(enabled = true, copyText = {}, fingerPressOpensMessageMenu = true)
+        val controller = ThreadInPlaceSelectionController("m1", host)
+        assertFalse(controller.bodyPressYieldedToRow, "no press yet")
+        controller.onBodyPointerPress(PointerType.Touch)
+        assertTrue(controller.bodyPressYieldedToRow)
+        // No layout here, so the legacy toolbar path would fail anyway; a yielded press refuses first.
+        assertFalse(controller.showMenuAtRootRect(Rect(0f, 0f, 10f, 10f)))
+        assertFalse(controller.menuRequested, "no selection menu under the message menu")
+        controller.onBodyPointerPress(PointerType.Mouse)
+        assertFalse(controller.bodyPressYieldedToRow, "the next mouse press selects again")
+        controller.onBodyPointerPress(PointerType.Stylus)
+        assertFalse(controller.bodyPressYieldedToRow)
+
+        val toggleOff = ThreadInPlaceSelectionController("m2", ThreadInPlaceTextSelectionHost(enabled = true, copyText = {}))
+        toggleOff.onBodyPointerPress(PointerType.Touch)
+        assertFalse(toggleOff.bodyPressYieldedToRow, "without the toggle a finger keeps selecting (desktop)")
     }
 
     @Test
@@ -462,5 +549,61 @@ class ThreadInPlaceTextSelectionTest {
 
         // …but what rows and the popup hold is the same reference, so rows are not invalidated.
         assertTrue(before === host.selectionMenu.menu)
+    }
+    @Test
+    fun aMouseSelectionGetsTheSelectionToolbarAndAFingerSelectionTheFullMenu() {
+        // Mouse: Compose never asks for its toolbar; the release shows Quote | Copy.
+        assertEquals(
+            ThreadInPlaceSelectionToolbarKind.SelectionToolbar,
+            threadInPlaceSelectionToolbarKind(
+                pageActive = true,
+                hasSelection = true,
+                mouseSelectionEnded = true,
+                platformToolbarRequested = false
+            )
+        )
+        // Finger (long press): Compose's toolbar request keeps the full Compact menu.
+        assertEquals(
+            ThreadInPlaceSelectionToolbarKind.MessageMenu,
+            threadInPlaceSelectionToolbarKind(
+                pageActive = true,
+                hasSelection = true,
+                mouseSelectionEnded = false,
+                platformToolbarRequested = true
+            )
+        )
+        // Mid-drag (button still down), no selection, or an inactive page: nothing.
+        assertEquals(
+            ThreadInPlaceSelectionToolbarKind.None,
+            threadInPlaceSelectionToolbarKind(pageActive = true, hasSelection = true, mouseSelectionEnded = false, platformToolbarRequested = false)
+        )
+        assertEquals(
+            ThreadInPlaceSelectionToolbarKind.None,
+            threadInPlaceSelectionToolbarKind(pageActive = true, hasSelection = false, mouseSelectionEnded = true, platformToolbarRequested = true)
+        )
+        assertEquals(
+            ThreadInPlaceSelectionToolbarKind.None,
+            threadInPlaceSelectionToolbarKind(pageActive = false, hasSelection = true, mouseSelectionEnded = true, platformToolbarRequested = false)
+        )
+    }
+
+    @Test
+    fun onlyAPrimaryMousePressCanEndAMouseSelection() {
+        assertTrue(threadInPlaceSelectionPressIsPrimaryMouse(listOf(PointerType.Mouse), primaryPressed = true))
+        // A right-click opens the message menu, not the selection toolbar.
+        assertFalse(threadInPlaceSelectionPressIsPrimaryMouse(listOf(PointerType.Mouse), primaryPressed = false))
+        assertFalse(threadInPlaceSelectionPressIsPrimaryMouse(listOf(PointerType.Touch), primaryPressed = true))
+        assertFalse(threadInPlaceSelectionPressIsPrimaryMouse(listOf(PointerType.Stylus), primaryPressed = true))
+        assertFalse(threadInPlaceSelectionPressIsPrimaryMouse(emptyList(), primaryPressed = true))
+    }
+
+    @Test
+    fun theMouseToolbarAnchorsOnTheReleaseLineInsideTheBody() {
+        val bodySize = IntSize(300, 100)
+        assertEquals(Rect(120f, 39f, 121f, 61f), threadInPlaceSelectionMouseAnchorInBody(Offset(120f, 50f), bodySize, 22f))
+        // A drag that ended below and right of the body anchors on its last line, at its edge.
+        assertEquals(Rect(299f, 89f, 300f, 100f), threadInPlaceSelectionMouseAnchorInBody(Offset(400f, 180f), bodySize, 22f))
+        // Above the body: its first line.
+        assertEquals(Rect(0f, 0f, 1f, 11f), threadInPlaceSelectionMouseAnchorInBody(Offset(-5f, -40f), bodySize, 22f))
     }
 }

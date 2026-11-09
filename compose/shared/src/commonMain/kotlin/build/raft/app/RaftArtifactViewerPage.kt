@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -21,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
@@ -31,6 +34,7 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.data.ArtifactViewerDesktopModePreferenceRepository
 import build.raft.app.data.ARTIFACT_CONTENT_DOMAIN
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.artifactIdOrNull
@@ -88,13 +92,15 @@ internal fun raftArtifactViewerWebViewConfig(
     url: String,
     scope: RaftArtifactViewerScope,
     injectedJavaScript: String,
+    /** Desktop Mode: the page laid out at a desktop width and fitted ([raftArtifactViewerInjectedScript]). */
+    desktopMode: Boolean = false,
 ): RaftWebViewConfig =
     RaftWebViewConfig(
         url = url,
         allowScripts = true,
         allowNavigation = true,
         domStorageEnabled = true,
-        useWideViewPort = false,
+        useWideViewPort = desktopMode,
         cacheEnabled = true,
         ephemeral = false,
         injectedJavaScript = injectedJavaScript,
@@ -120,6 +126,8 @@ private class RaftArtifactViewerHost(
     val bridge: BridgeModule,
     val sharedStores: RaftSharedStoreProvider,
     val storeScope: RaftShellStoreScope,
+    /** [LocalRaftArtifactOpenStoreScope]: the scope the viewer page is opened with, if given. */
+    val openStoreScope: RaftShellStoreScope? = null,
 ) {
     val webBaseUrl: String get() = build.raft.app.sharedSettingsResolvedWebBaseUrl(standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore))
 
@@ -127,18 +135,38 @@ private class RaftArtifactViewerHost(
         RaftArtifactViewerScope.of(webBaseUrl, sharedStores.currentAuthenticatedRouteOwner(storeScope))
 }
 
+/**
+ * The shell scope an opener here opens the viewer with, for a surface whose page data carries none.
+ * An app-shell tab (Activity) is composed in a child page whose data is only its tab, and the
+ * Compose 版 shell page has none either: [openRaftPage] rejected the viewer there
+ * (`missing_source_scope`) and the Artifact opened in the browser instead.
+ */
+internal val LocalRaftArtifactOpenStoreScope = compositionLocalOf<RaftShellStoreScope?> { null }
+
+/**
+ * Opens the viewer page for [target] from [this] page, with [storeScope] when given (else the
+ * page's own scope). False when no page can be opened from here (no scope): the caller falls back.
+ */
+internal fun Pager.openRaftArtifactViewerPage(target: ArtifactLinkTarget, storeScope: RaftShellStoreScope?): Boolean =
+    openRaftPage(
+        pageName = RAFT_ARTIFACT_VIEWER_PAGE,
+        pageData = raftArtifactViewerPageData(target),
+        storeScopeOverride = storeScope,
+    )
+
 @Composable
-private fun rememberRaftArtifactViewerHost(): RaftArtifactViewerHost? {
+private fun rememberRaftArtifactViewerHost(openStoreScope: RaftShellStoreScope? = null): RaftArtifactViewerHost? {
     val pager = LocalActivity.current.getPager() as? Pager ?: return null
     // Null where there is no live page (fixtures, screenshots): no viewer, no prewarm.
-    return remember(pager.pagerId, pager.pageData.params.toString()) {
+    return remember(pager.pagerId, pager.pageData.params.toString(), openStoreScope) {
         runCatching {
             val bridge = Utils.bridgeModule(pager.pagerId)
             RaftArtifactViewerHost(
                 pager = pager,
                 bridge = bridge,
                 sharedStores = RaftSharedStoreRegistry.get(bridge),
-                storeScope = pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId),
+                storeScope = openStoreScope ?: pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId),
+                openStoreScope = openStoreScope,
             )
         }.getOrNull()
     }
@@ -157,13 +185,14 @@ internal class RaftArtifactOpener(
  */
 @Composable
 internal fun rememberRaftArtifactOpener(fallback: (ArtifactLinkTarget) -> Unit): RaftArtifactOpener {
-    val host = rememberRaftArtifactViewerHost()
+    val host = rememberRaftArtifactViewerHost(LocalRaftArtifactOpenStoreScope.current)
     val coroutineScope = rememberCoroutineScope()
     val currentFallback by rememberUpdatedState(fallback)
     return remember(host, coroutineScope) {
         RaftArtifactOpener { target, header, source ->
             RaftArtifactOpenTrace.tap(source, target.id)
             if (host == null) {
+                RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_host")
                 currentFallback(target)
                 return@RaftArtifactOpener
             }
@@ -189,12 +218,11 @@ internal fun rememberRaftArtifactOpener(fallback: (ArtifactLinkTarget) -> Unit):
                     }
                 }
             }
-            val opened =
-                host.pager.openRaftPage(
-                    pageName = RAFT_ARTIFACT_VIEWER_PAGE,
-                    pageData = raftArtifactViewerPageData(target),
-                )
-            if (!opened) currentFallback(target)
+            val opened = host.pager.openRaftArtifactViewerPage(target, host.openStoreScope)
+            if (!opened) {
+                RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_page_scope")
+                currentFallback(target)
+            }
         }
     }
 }
@@ -207,7 +235,7 @@ internal fun rememberRaftArtifactOpener(fallback: (ArtifactLinkTarget) -> Unit):
 @Composable
 internal fun RaftArtifactViewerPrewarm(enabled: Boolean) {
     if (!enabled) return
-    val host = rememberRaftArtifactViewerHost() ?: return
+    val host = rememberRaftArtifactViewerHost(LocalRaftArtifactOpenStoreScope.current) ?: return
     val authStore = remember(host) { host.sharedStores.authStore(host.storeScope) }
     val snapshot = rememberSettingsWebViewAuthSnapshot(authStore, host.sharedStores.authStore)
     val controller = rememberRaftWebViewController()
@@ -218,8 +246,10 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean) {
         settled = true
     }
     val scope = host.scope()
+    // Booted as the viewer will show it, so the kept document is not reloaded when it opens.
+    val desktopMode = raftArtifactViewerOffersDesktopModeHere() && remember { raftArtifactViewerDesktopModePreference()?.read() == true }
     val config =
-        remember(settled, scope, snapshot.session?.accessToken, binding?.webViewGeneration) {
+        remember(settled, scope, snapshot.session?.accessToken, binding?.webViewGeneration, desktopMode) {
             val session = snapshot.session
             if (!settled || scope == null || session == null || session.user.id.trim() != scope.accountId) {
                 null
@@ -230,7 +260,9 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean) {
                 raftArtifactViewerWebViewConfig(
                     url = raftArtifactViewerWarmUrl(host.webBaseUrl),
                     scope = scope,
-                    injectedJavaScript = raftArtifactViewerSessionScript(scope, session, binding),
+                    injectedJavaScript =
+                        raftArtifactViewerInjectedScript(scope.webOrigin, raftArtifactViewerSessionScript(scope, session, binding), desktopMode),
+                    desktopMode = desktopMode,
                 )
             }
         }
@@ -238,6 +270,36 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean) {
 }
 
 private const val RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS = 1_200L
+
+/** After this long without the document shown, the viewer logs where its load stands. */
+internal const val RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS = 10_000L
+
+/** The viewer's open line: the Artifact id (as the link wrote it), its pinned version, the web host only. */
+internal fun raftArtifactViewerOpenLogLine(target: ArtifactLinkTarget, scopeKnown: Boolean, webBaseUrl: String): String {
+    val id = target.id.filter { it.isLetterOrDigit() || it == '_' || it == '-' }.take(48)
+    val host = raftWebOriginOf(webBaseUrl)?.substringAfter("://") ?: "<none>"
+    return "artifact_viewer_open artifact=$id version=${target.version ?: "latest"} scope=${if (scopeKnown) "known" else "unknown"} webHost=$host"
+}
+
+internal fun raftArtifactViewerSummaryLogToken(answer: ArtifactSummaryAnswer?): String =
+    when (answer) {
+        is ArtifactSummaryAnswer.Ok -> "ok"
+        ArtifactSummaryAnswer.Unavailable -> "unavailable"
+        is ArtifactSummaryAnswer.Deleted -> "deleted"
+        ArtifactSummaryAnswer.Failed -> "failed"
+        null -> "none"
+    }
+
+/** The device's Desktop Mode choice; null where no app-scope store is installed (fixtures). */
+private fun raftArtifactViewerDesktopModePreference(): ArtifactViewerDesktopModePreferenceRepository? =
+    runCatching { ArtifactViewerDesktopModePreferenceRepository(build.raft.app.data.raftSharedPreferenceStore()) }.getOrNull()
+
+/** [raftArtifactViewerOffersDesktopMode] for this window (touch, narrower than a desktop). */
+@Composable
+private fun raftArtifactViewerOffersDesktopModeHere(): Boolean {
+    val windowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
+    return raftArtifactViewerOffersDesktopMode(raftPlatformHasFinePointer(), windowWidthDp)
+}
 
 private sealed interface RaftArtifactViewerBodyState {
     data object Viewing : RaftArtifactViewerBodyState
@@ -263,6 +325,11 @@ private fun RaftArtifactViewerScreen() {
     LaunchedEffect(Unit) { RaftArtifactOpenTrace.mark("page_shown") }
     fun closePage() = pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     RaftBackHandler(enabled = true, label = "artifact_viewer", blocksBackSwipe = false, onBack = ::closePage)
+    // Desktop Mode: this device's choice, offered on a touch screen narrower than a desktop.
+    val desktopModePreference = remember { raftArtifactViewerDesktopModePreference() }
+    var desktopModeChosen by remember { mutableStateOf(desktopModePreference?.read() == true) }
+    val desktopModeOffered = desktopModePreference != null && raftArtifactViewerOffersDesktopModeHere()
+    val desktopMode = desktopModeOffered && desktopModeChosen
     if (target == null) {
         RaftArtifactViewerFrame(title = stringResource(Res.string.artifacts_app_name), onBack = ::closePage) {
             RaftArtifactViewerUnavailable(onClose = ::closePage)
@@ -271,6 +338,12 @@ private fun RaftArtifactViewerScreen() {
     }
     val scope = remember(params.toString()) { host.scope() }
     val webBaseUrl = remember(params.toString()) { host.webBaseUrl }
+    LaunchedEffect(Unit) {
+        raftLogInfo(
+            RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG,
+            raftArtifactViewerOpenLogLine(target, scopeKnown = scope != null, webBaseUrl = webBaseUrl),
+        )
+    }
     // Open in browser: the page as the web shows it. The WebView: the same page under this title bar.
     val pageUrl = remember(webBaseUrl, target) { raftArtifactViewerPageUrl(webBaseUrl, target) }
     val embeddedPageUrl = remember(webBaseUrl, target) { raftArtifactViewerEmbeddedPageUrl(webBaseUrl, target) }
@@ -305,6 +378,7 @@ private fun RaftArtifactViewerScreen() {
             ArtifactSummaryAnswer.Unavailable, is ArtifactSummaryAnswer.Deleted -> bodyState = RaftArtifactViewerBodyState.Unavailable
             ArtifactSummaryAnswer.Failed, null -> Unit
         }
+        raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_summary result=${raftArtifactViewerSummaryLogToken(answer)}")
     }
     LaunchedEffect(bodyState) {
         // After the WebView left the screen (and was parked), so the eviction destroys it too.
@@ -371,6 +445,7 @@ private fun RaftArtifactViewerScreen() {
                 commentCount = details?.summary?.commentCount,
                 commentsOpen = barState.panel == ArtifactViewerPanel.Comments,
                 following = barState.following,
+                desktopMode = desktopMode.takeIf { desktopModeOffered && bodyState == RaftArtifactViewerBodyState.Viewing },
             ),
         actions =
             RaftArtifactViewerBarActions(
@@ -395,6 +470,11 @@ private fun RaftArtifactViewerScreen() {
                     host.bridge.toast(linkCopied)
                 },
                 onToggleFollow = barStore?.let { store -> { store.dispatch(ArtifactViewerBarIntent.ToggleFollow) } },
+                onToggleDesktopMode = {
+                    desktopModeChosen = !desktopModeChosen
+                    desktopModePreference?.write(desktopModeChosen)
+                    host.bridge.log("artifact_viewer_desktop_mode on=$desktopModeChosen")
+                },
                 onOpenInBrowser = { host.bridge.openUrl(shownUrl, inBrowser = true) },
             ),
     ) {
@@ -405,6 +485,7 @@ private fun RaftArtifactViewerScreen() {
                 if (scope == null) {
                     // An unknown subject reuses nothing and keeps nothing: the page in the browser, as before.
                     LaunchedEffect(Unit) {
+                        raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_browser_fallback reason=no_scope")
                         host.bridge.openUrl(pageUrl, inBrowser = true)
                         closePage()
                     }
@@ -415,6 +496,7 @@ private fun RaftArtifactViewerScreen() {
                         target = target,
                         pageUrl = embeddedPageUrl,
                         controller = controller,
+                        desktopMode = desktopMode,
                         onStay = { next ->
                             if (raftArtifactViewerRereadsLatest(addressed, next)) latestReads += 1
                             addressed = next
@@ -435,6 +517,7 @@ private fun RaftArtifactViewerWebBody(
     target: ArtifactLinkTarget,
     pageUrl: String,
     controller: RaftWebViewController,
+    desktopMode: Boolean,
     onStay: (RaftArtifactViewerNavigation.Stay) -> Unit,
     onPanel: (ArtifactViewerPanel) -> Unit,
     onLeave: (RaftArtifactViewerNavigation) -> Unit,
@@ -449,6 +532,17 @@ private fun RaftArtifactViewerWebBody(
     // A new document needs the session before it loads; a kept one already has it, so it is
     // attached in the first frame and gets the session's script once the session is read.
     if (kept == null && session == null) {
+        // Nothing loads until the session is read: say so when it takes long (or never comes, e.g.
+        // a session of another account than the viewer's scope).
+        val readSession by rememberUpdatedState(snapshot.session)
+        LaunchedEffect(Unit) {
+            kotlinx.coroutines.delay(RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS)
+            // sessionRead=true here means a session of another account than the viewer's scope.
+            raftLogWarn(
+                RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG,
+                "artifact_viewer_waiting_session elapsedMs=$RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS sessionRead=${readSession != null}",
+            )
+        }
         RaftCenteredLoading(stringResource(Res.string.common_loading))
         return
     }
@@ -488,8 +582,8 @@ private fun RaftArtifactViewerWebBody(
         if (kept == null) RaftArtifactViewerMemory.cache.rememberKeptDocument(scope, target, pageUrl)
     }
     val injected =
-        remember(scope, session?.accessToken, binding?.webViewGeneration) {
-            session?.let { raftArtifactViewerSessionScript(scope, it, binding) }.orEmpty()
+        remember(scope, session?.accessToken, binding?.webViewGeneration, desktopMode) {
+            raftArtifactViewerInjectedScript(scope.webOrigin, session?.let { raftArtifactViewerSessionScript(scope, it, binding) }.orEmpty(), desktopMode)
         }
     LaunchedEffect(documentReady, navigated, session != null) {
         if (!documentReady || navigated || session == null) return@LaunchedEffect
@@ -501,6 +595,20 @@ private fun RaftArtifactViewerWebBody(
         }
     }
     LaunchedEffect(navigated) { if (navigated && kept != null) visible = true }
+    // Diagnostics: a load still covered after a while, and what the page reached when it closes.
+    val latestState by rememberUpdatedState(
+        "kept=${kept != null} showsTarget=$showsTarget visible=$visible documentReady=$documentReady " +
+            "navigated=$navigated session=${session != null}"
+    )
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS)
+        if (!visible || !documentReady) {
+            raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_load_slow elapsedMs=$RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS $latestState")
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_closed $latestState") }
+    }
     val density = LocalDensity.current
     val bottomInsetPx =
         raftArtifactViewerWebBottomInsetPx(
@@ -521,6 +629,9 @@ private fun RaftArtifactViewerWebBody(
             allowScripts = true,
             allowNavigation = true,
             domStorageEnabled = true,
+            // Desktop Mode: Android reloads the document at its current address with the desktop
+            // viewport (the version shown stays); iOS re-zooms the page in place.
+            useWideViewPort = desktopMode,
             cacheEnabled = true,
             ephemeral = false,
             injectedJavaScript = injected,

@@ -16,6 +16,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -65,6 +66,20 @@ internal interface RaftThreadApi {
         attachmentIds: List<String> = emptyList(),
         randomId: String? = null
     ): ThreadApiResult<ThreadMessagesPage>
+
+    /**
+     * [sendMessage] carrying structured `mentions` (Slack-bridge `external` picks). Only the network
+     * implementation sends them; a fake without an override sends the plain message.
+     */
+    suspend fun sendMessageWithMentions(
+        channelId: String,
+        body: String,
+        asTask: Boolean,
+        attachmentIds: List<String>,
+        randomId: String?,
+        mentions: List<ThreadSendMessageMention>,
+    ): ThreadApiResult<ThreadMessagesPage> =
+        sendMessage(channelId = channelId, body = body, asTask = asTask, attachmentIds = attachmentIds, randomId = randomId)
     suspend fun executePendingMentionActions(
         action: String,
         resolutionIds: List<String>
@@ -105,18 +120,25 @@ internal class RaftThreadApiClient(
         afterSeq: Long?
     ): ThreadApiResult<ThreadMessagesPage> =
         transport.channelMessages(threadId = threadId, limit = limit, beforeSeq = beforeSeq, afterSeq = afterSeq)
-            .toChannelMessagesPage()
+            // An `after` page never computes `historyLimited` (the server answers false): it says
+            // nothing about the window's start.
+            .toChannelMessagesPage(hiddenHistoryChannelId = threadId.takeIf { afterSeq == null })
 
     override suspend fun gapCatchUpChannelMessages(threadId: String, limit: Int): ThreadApiResult<ThreadMessagesPage> =
-        transport.gapCatchUpChannelMessages(threadId = threadId, limit = limit).toChannelMessagesPage()
+        transport.gapCatchUpChannelMessages(threadId = threadId, limit = limit)
+            .toChannelMessagesPage(hiddenHistoryChannelId = threadId)
 
-    private suspend fun HomeNetworkResponse.toChannelMessagesPage(): ThreadApiResult<ThreadMessagesPage> =
+    /** [hiddenHistoryChannelId]: record the page's history window there ([RaftHiddenHistoryStore]). */
+    private suspend fun HomeNetworkResponse.toChannelMessagesPage(hiddenHistoryChannelId: String?): ThreadApiResult<ThreadMessagesPage> =
         mapThreadBody(
                 contractCode = "thread_messages_contract_mismatch",
                 serializer = ChannelMessagesResponseDto.serializer(),
                 diagnosticsLogger = diagnosticsLogger,
                 parseDispatcher = parseDispatcher
             ) { wire ->
+                hiddenHistoryChannelId?.let { channelId ->
+                    RaftHiddenHistoryStore.record(channelId, wire.historyLimited == true, parseHiddenHistory(wire.hiddenHistory))
+                }
                 ThreadMessagesPage(
                     messages = wire.messages,
                     canLoadMoreBefore = wire.historyLimited,
@@ -175,6 +197,27 @@ internal class RaftThreadApiClient(
             asTask = asTask,
             attachmentIds = attachmentIds,
             randomId = randomId
+        ).mapThreadSendBody(
+            contractCode = "thread_send_contract_mismatch",
+            diagnosticsLogger = diagnosticsLogger,
+            parseDispatcher = parseDispatcher
+        )
+
+    override suspend fun sendMessageWithMentions(
+        channelId: String,
+        body: String,
+        asTask: Boolean,
+        attachmentIds: List<String>,
+        randomId: String?,
+        mentions: List<ThreadSendMessageMention>,
+    ): ThreadApiResult<ThreadMessagesPage> =
+        transport.sendMessageWithMentions(
+            channelId = channelId,
+            body = body,
+            asTask = asTask,
+            attachmentIds = attachmentIds,
+            randomId = randomId,
+            mentions = mentions,
         ).mapThreadSendBody(
             contractCode = "thread_send_contract_mismatch",
             diagnosticsLogger = diagnosticsLogger,
@@ -349,6 +392,31 @@ internal class NetworkRaftThreadApi(
                     attachmentIds = attachmentIds,
                     asTask = asTask,
                     randomId = randomId
+                )
+        )
+
+    override suspend fun sendMessageWithMentions(
+        channelId: String,
+        body: String,
+        asTask: Boolean,
+        attachmentIds: List<String>,
+        randomId: String?,
+        mentions: List<ThreadSendMessageMention>,
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "messages",
+            method = "POST",
+            bodyText =
+                buildSharedThreadSendMessageBody(
+                    ThreadSendMessageRequestBody(
+                        channelId = channelId,
+                        content = body,
+                        attachmentIds = attachmentIds,
+                        asTask = asTask,
+                        randomId = randomId?.takeIf { it.isNotBlank() },
+                        mentions = mentions,
+                    )
                 )
         )
 
@@ -726,6 +794,8 @@ private fun HomeNetworkResponse.mapThreadUnit(): ThreadApiResult<Unit> =
 private data class ChannelMessagesResponseDto(
     val messages: List<WireMessage>,
     val historyLimited: Boolean? = null,
+    /** Free plan: what the 30-day window hides, on a page that reached its start ([parseHiddenHistory]). */
+    val hiddenHistory: JsonElement? = null,
 )
 
 @Serializable
@@ -909,13 +979,27 @@ private fun AttachmentCommentAnchorDto.toAnchorLabel(): String? {
     return label?.takeIf { it.isNotBlank() }?.take(80)
 }
 
+/**
+ * One structured mention of `POST /messages` `mentions[]` (botiverse/slock `routes/messages.ts`
+ * `parseStructuredMentions` / `messageService.StructuredMentionInput`): `type` user | agent | external,
+ * `id` the actor's UUID (`external`: the `external_actor_projections.id` of a Slack participant), `name`
+ * the handle as typed after `@`. Web sends the same `{ type, id, name }` (`MessageInput.tsx`).
+ */
+@Serializable
+data class ThreadSendMessageMention(
+    val type: String,
+    val id: String,
+    val name: String,
+)
+
 @Serializable
 data class ThreadSendMessageRequestBody(
     val channelId: String,
     val content: String,
     val attachmentIds: List<String> = emptyList(),
     val asTask: Boolean = false,
-    val randomId: String? = null
+    val randomId: String? = null,
+    val mentions: List<ThreadSendMessageMention> = emptyList(),
 )
 
 @Serializable
@@ -933,6 +1017,30 @@ private data class ThreadSendMessageRequestBodyWithRandomId(
     val attachmentIds: List<String> = emptyList(),
     val asTask: Boolean = false,
     val randomId: String
+)
+
+/**
+ * A send with structured mentions; the body without them stays byte-identical to before. Two shapes,
+ * as for the plain send: slock `parseRandomId` accepts `randomId` missing or a non-empty string only,
+ * and [threadApiJson] would write a null as `"randomId": null` (a 400 for the whole message).
+ */
+@Serializable
+private data class ThreadSendMessageRequestBodyWithMentions(
+    val channelId: String,
+    val content: String,
+    val attachmentIds: List<String> = emptyList(),
+    val asTask: Boolean = false,
+    val randomId: String,
+    val mentions: List<ThreadSendMessageMention>,
+)
+
+@Serializable
+private data class ThreadSendMessageRequestBodyWithMentionsWithoutRandomId(
+    val channelId: String,
+    val content: String,
+    val attachmentIds: List<String> = emptyList(),
+    val asTask: Boolean = false,
+    val mentions: List<ThreadSendMessageMention>,
 )
 
 @Serializable
@@ -960,6 +1068,30 @@ internal fun buildSharedThreadSendMessageBody(
 
 fun buildSharedThreadSendMessageBody(request: ThreadSendMessageRequestBody): String {
     val randomId = request.randomId?.takeIf { it.isNotBlank() }
+    if (request.mentions.isNotEmpty()) {
+        return if (randomId == null) {
+            threadApiJson.encodeToString(
+                ThreadSendMessageRequestBodyWithMentionsWithoutRandomId(
+                    channelId = request.channelId,
+                    content = request.content,
+                    attachmentIds = request.attachmentIds,
+                    asTask = request.asTask,
+                    mentions = request.mentions,
+                )
+            )
+        } else {
+            threadApiJson.encodeToString(
+                ThreadSendMessageRequestBodyWithMentions(
+                    channelId = request.channelId,
+                    content = request.content,
+                    attachmentIds = request.attachmentIds,
+                    asTask = request.asTask,
+                    randomId = randomId,
+                    mentions = request.mentions,
+                )
+            )
+        }
+    }
     return if (randomId == null) {
         threadApiJson.encodeToString(
             ThreadSendMessageRequestBodyWithoutRandomId(

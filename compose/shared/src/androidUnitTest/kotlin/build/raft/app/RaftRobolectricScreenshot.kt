@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.ViewRootForTest
 import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import build.raft.designsystem.components.applyRaftSystemBarsAppearance
@@ -95,6 +96,23 @@ internal object RaftRobolectricScreenshot {
         interact: ((View) -> Unit)? = null,
         content: @Composable (ComponentActivity) -> Unit,
     ) {
+        render(appearance, activities, root, interact, content) { _, bitmap ->
+            verifyOrRecord(name, bitmap, File(reportDir))
+        }
+    }
+
+    /**
+     * Renders [content] as [capture] does and hands the activity and the drawn root to [use]
+     * (still under [appearance]), for a test that makes its golden from the rendered pixels.
+     */
+    fun <T> render(
+        appearance: RaftAppAppearance,
+        activities: RobolectricComposeActivityRule,
+        root: (ComponentActivity) -> View? = { it.window.decorView },
+        interact: ((View) -> Unit)? = null,
+        content: @Composable (ComponentActivity) -> Unit,
+        use: (ComponentActivity, Bitmap) -> T,
+    ): T {
         val previousAppearance = RaftAppThemeState.appearance
         try {
             RaftAppThemeState.apply(appearance)
@@ -105,7 +123,16 @@ internal object RaftRobolectricScreenshot {
             // Moko string resources read the app context through the shared SQLDelight holder.
             build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
             // Spinners hold still on their first step: a capture is one deterministic frame.
-            activity.setContent { CompositionLocalProvider(LocalRaftSpinnerStillStep provides 0) { content(activity) } }
+            // Every page has a base time context (BasePager); a capture gets a fixed one, so a time
+            // with no page context reads the same on every run and host zone.
+            activity.setContent {
+                CompositionLocalProvider(
+                    LocalRaftSpinnerStillStep provides 0,
+                    LocalRaftPageBaseTimeContextProvider provides remember { RaftTimeContextProvider(ScreenshotTimeContext) },
+                ) {
+                    content(activity)
+                }
+            }
             settle()
             val composeView = root(activity)?.let(::findComposeRoot)
             assertNotNull(composeView, "no compose root")
@@ -115,7 +142,7 @@ internal object RaftRobolectricScreenshot {
             }
             val bitmap = Bitmap.createBitmap(composeView.width, composeView.height, Bitmap.Config.ARGB_8888)
             composeView.draw(android.graphics.Canvas(bitmap))
-            verifyOrRecord(name, bitmap, File(reportDir))
+            return use(activity, bitmap)
         } finally {
             RaftAppThemeState.apply(previousAppearance)
         }
@@ -241,3 +268,7 @@ internal object RaftRobolectricScreenshot {
         private fun within(a: Float, b: Float) = abs((a * 255f).roundToInt() - (b * 255f).roundToInt()) <= CHANNEL_DELTA
     }
 }
+
+/** 2026-10-30 10:00 at UTC+8 (02:00Z), 24 h, after the fixtures' times: the fixed base time context of every capture. */
+private val ScreenshotTimeContext =
+    build.raft.app.model.RaftTimeContext(localOffsetMinutes = 8 * 60).refreshedAt(1_793_325_600_000L)

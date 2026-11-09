@@ -138,7 +138,7 @@ fun RaftTabStrip(
                         // The canvas and seam run edge to edge; the tabs start past the
                         // horizontal safe area (and scroll under it, like any content).
                         .raftSafeAreaHorizontalPadding()
-                        .padding(horizontal = 16.dp, vertical = if (variant == RaftTabsVariant.Default) 8.dp else 0.dp),
+                        .padding(horizontal = RaftTabStripInset, vertical = if (variant == RaftTabsVariant.Default) 8.dp else 0.dp),
                     variant = variant,
                     content = content,
                 )
@@ -148,6 +148,9 @@ fun RaftTabStrip(
         Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam.compositeOver(colors.layerCanvas)))
     }
 }
+
+/** A [RaftTabStrip]'s side padding (raft-ui ConversationPanelTabs `px-4`), also its reveal inset. */
+private val RaftTabStripInset = 16.dp
 
 /** How far a scrolling tab strip fades at an edge with more tabs past it. */
 private val RaftEdgeFadeWidth = RaftFade.Edge
@@ -236,7 +239,9 @@ fun RaftTab(
     val select = Modifier.selectable(selected, source, indication = null, enabled = enabled, role = Role.Tab, onClick = onClick)
     val target = if (variant == RaftTabsVariant.Default) Modifier.raftTouchTarget(enabled, source, onClick) else Modifier
     val strip = LocalRaftTabStripScroll.current
-    val reveal = if (strip != null) Modifier.raftRevealInStripWhen(selected, strip) else Modifier
+    // raft-ui useTabsRowOverflow: the selected tab is revealed with the row's own padding round
+    // it, so the last tab lands at the strip's end (no fade left over it), not 8dp short.
+    val reveal = if (strip != null) Modifier.raftRevealInStripWhen(selected, strip, room = RaftTabStripInset) else Modifier
     when (variant) {
         RaftTabsVariant.Default -> RaftStickerItem(text, selected, enabled, source, modifier.then(reveal).then(target).then(select), icon = icon)
         RaftTabsVariant.Underline -> RaftUnderlineTab(text, selected, enabled, source, modifier.then(reveal).then(select), icon)
@@ -330,7 +335,9 @@ private fun RaftUnderlineTab(
     Row(
         modifier
             .raftPointerHover(source)
-            .heightIn(min = 44.dp)
+            // 44 with a finger; the shared 34dp row height under a fine pointer (sizing v12,
+            // raft-ui 0.65 desktop density).
+            .heightIn(min = RaftTheme.controls.rowHeight ?: 44.dp)
             .raftFocusRing(focused, 0.dp, colors)
             .drawWithContent {
                 drawContent()
@@ -352,7 +359,8 @@ private fun RaftUnderlineTab(
 
 /**
  * The item of default [RaftTabs], [RaftSegmentedControl] and [RaftToggleGroup] (their
- * recipes are the same): 32dp, control radius, 12dp padding inside a 1.5dp edge that is
+ * recipes are the same): 32dp (the shared 34dp row height under a fine pointer, sizing v12,
+ * raft-ui 0.65 desktop density), control radius, 12dp padding inside a 1.5dp edge that is
  * transparent at rest, 6dp gap, a `text-callout` semibold `foreground-muted` label; when
  * [active], the yellow sticker with a bold `sticker-ink` label. A [count] follows in
  * Space Mono `text-mono-meta`, regular weight.
@@ -383,13 +391,14 @@ internal fun RaftStickerItem(
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
     val typography = RaftTheme.typography
+    val height = RaftTheme.controls.rowHeight ?: 32.dp
     if (iconsOnly && icon != null) {
         // raft-ui `data-icons-only`: a 32dp square with only its icon; the label (and count)
         // stays the accessible name, given by the caller's semantics.
         Box(
             modifier
                 .raftPointerHover(source)
-                .size(32.dp)
+                .size(height)
                 .raftSticker(look, RaftRadius.Control, focused = focused, colors = colors, overlay = overlay),
             contentAlignment = Alignment.Center,
         ) {
@@ -403,7 +412,7 @@ internal fun RaftStickerItem(
         modifier
             .raftPointerHover(source)
             // A minimum: a large font scale grows the item instead of clipping its label.
-            .heightIn(min = 32.dp)
+            .heightIn(min = height)
             .raftSticker(look, RaftRadius.Control, focused = focused, colors = colors, overlay = overlay)
             .padding(horizontal = 12.dp + RaftStroke.Control, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
@@ -478,8 +487,18 @@ fun RaftSegmentedControl(
      * when every [RaftSegment] has an `icon` or `iconsOnlyIcon`: one without keeps its label.
      */
     iconsOnlyWhenLabelsDontFit: Boolean = false,
+    /**
+     * raft-ui `iconsOnlyBelow="md"` below that width: every segment shows only its icon,
+     * whatever room it has (a phone's toolbar or head, web Artifacts home's grid/list). The same
+     * rule as [iconsOnlyWhenLabelsDontFit] for which segments may: one without an icon keeps its label.
+     */
+    iconsOnly: Boolean = false,
     content: @Composable RowScope.() -> Unit,
 ) {
+    if (iconsOnly) {
+        RaftSegmentedTrack(modifier, iconsOnly = true, content)
+        return
+    }
     if (!iconsOnlyWhenLabelsDontFit) {
         RaftSegmentedTrack(modifier, iconsOnly = false, content)
         return

@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.data.AgentActivitySubscriptions
+import build.raft.app.data.AgentBlockedState
 import build.raft.app.data.LikelyOnlineAgentStatusLabel
 import build.raft.app.data.NeutralAgentStatusLabel
 import build.raft.app.data.SharedServerMemberStatus
@@ -48,7 +49,13 @@ internal data class RaftAgentStatusIndicatorState(
      * [build.raft.app.data.likelyOnlineMemberStatusOrNull]). Green, labelled "Likely online";
      * [status] stays null so nothing reads it as a server-sent Online.
      */
-    val likelyOnline: Boolean = false
+    val likelyOnline: Boolean = false,
+    /**
+     * The server runs this agent nowhere (web `AgentDisplayState.blocked`, botiverse/slock #13575):
+     * [status] is Error and [label] the English words; [localizedMemberStatusLabel] says why in
+     * this locale on every surface, whatever the agent last did.
+     */
+    val blocked: AgentBlockedState? = null
 )
 
 /** React parity: external agents caption as "External" (agentStore.ts resolveAgentDisplayState). */
@@ -142,7 +149,7 @@ internal fun rememberRaftAgentStatusIndicatorState(
     // fact. Re-resolve it whenever the live time context ticks (minute
     // boundary) or the underlying state changes, so "online" does not outlive
     // the 120s window without a new agent:seen.
-    val liveNow = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis
+    val liveNow = currentRaftTimeContextProvider?.current?.nowEpochMillis
     val base = status
     return if (base?.external == true && base.lastSeenAt != null) {
         val now = liveNow ?: defaultNowMillis()
@@ -158,7 +165,8 @@ internal fun rememberRaftAgentStatusIndicatorState(
  */
 internal fun RaftAgentStatusIndicatorState.withoutActivityDetail(): RaftAgentStatusIndicatorState =
     copy(
-        label = if (external || likelyOnline) label else status?.label ?: label,
+        // A held agent's words are its status, not an activity detail (web lists show them too).
+        label = if (external || likelyOnline || blocked != null) label else status?.label ?: label,
         detailKind = null,
         activityToolName = null,
         wakeCrashLoop = null,
@@ -178,7 +186,8 @@ internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(): RaftAge
         runtime = runtime,
         wakeCrashLoop = wakeCrashLoop,
         toolStuck = toolStuck,
-        likelyOnline = likelyOnline
+        likelyOnline = likelyOnline,
+        blocked = blocked
     )
 
 /**
@@ -449,6 +458,8 @@ internal fun RaftAgentActivityDetailText.localizedText(): String =
 /** Translate transport labels, retaining activity details supplied by the store. */
 @Composable
 internal fun RaftAgentStatusIndicatorState.localizedMemberStatusLabel(): String {
+    // Web formatAgentDisplayStateText: a held agent reads why before anything else.
+    blocked?.let { return it.localizedStatusLabel() }
     // Server-kind and client-built details localize the same way the Home DM row does.
     workingActivityDetailText()
         ?.takeIf { it !is RaftAgentActivityDetailText.Raw }
@@ -468,3 +479,10 @@ internal fun RaftAgentStatusIndicatorState.localizedMemberStatusLabel(): String 
         else -> label
     }
 }
+
+/** Web `formatAgentBlockedText`: the held state's status words in this locale. */
+@Composable
+internal fun AgentBlockedState.localizedStatusLabel(): String =
+    when (this) {
+        AgentBlockedState.ComputerAccessRevoked -> stringResource(Res.string.agent_status_computer_access_revoked)
+    }

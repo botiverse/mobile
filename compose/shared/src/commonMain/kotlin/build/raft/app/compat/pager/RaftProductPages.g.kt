@@ -5,8 +5,10 @@ package build.raft.app.compat.pager
 internal val raftProductPageFactories: Map<String, () -> Pager> =
     mapOf(
         "compose_app_shell_child_tab" to { build.raft.app.ComposeRaftAppShellChildTabPage() },
+        "compose_app_shell_server_page" to { build.raft.app.ComposeAppShellServerStackPage() },
         "compose_app_update" to { build.raft.app.ComposeAppUpdatePage() },
         "compose_artifact_viewer" to { build.raft.app.ComposeRaftArtifactViewerPage() },
+        "compose_artifacts_home" to { build.raft.app.ComposeArtifactsHomePage() },
         "compose_auth_choose_server" to { build.raft.app.ComposeAuthChooseServerPage() },
         "compose_auth_developer" to { build.raft.app.ComposeAuthAboutPage() },
         "compose_auth_profile_setup" to { build.raft.app.ComposeAuthProfileSetupPage() },
@@ -48,6 +50,7 @@ internal val raftProductPageFactories: Map<String, () -> Pager> =
         "compose_thread" to { build.raft.app.ComposeThreadPage() },
         "compose_thread_forward_bundle_page" to { build.raft.app.ComposeThreadForwardBundlePage() },
         "compose_thread_members" to { build.raft.app.ComposeThreadMembersPage() },
+        "compose_thread_settings" to { build.raft.app.ComposeThreadSettingsPage() },
         "compose_typography_probe" to { build.raft.app.RaftTypographyProbePage() },
         "router" to { build.raft.app.ComposeRoutePager() },
     )

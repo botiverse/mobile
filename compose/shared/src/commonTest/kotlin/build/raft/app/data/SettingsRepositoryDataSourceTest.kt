@@ -306,7 +306,7 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(true, languageRegion.data.autoTranslation.available)
         assertEquals("en", languageRegion.data.browserLanguage.selectedKey)
         assertEquals(
-            listOf("browser", "en", "zh-cn", "zh-tw", "ja", "ko", "es", "fr", "de", "pt-br", "it"),
+            listOf("browser", "en", "zh-cn", "zh-tw", "ja", "ko", "es", "fr", "de", "pt-br", "it", "ru"),
             languageRegion.data.browserLanguage.options.map { it.key }
         )
         assertEquals("Asia/Shanghai", languageRegion.data.timezone.selectedKey)
@@ -480,7 +480,7 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
-    fun billingMapsReadablePlanStateAndRequiresOwnerPermission() = runBlocking {
+    fun billingMapsReadablePlanStateAndRequiresOwnerOrAdminPermission() = runBlocking {
         val billing =
             RealSettingsRepository(
                 sampleStore(),
@@ -493,7 +493,7 @@ class SettingsRepositoryDataSourceTest {
             RealSettingsRepository(
                 sampleStore(
                     sampleSession().copy(
-                        servers = sampleSession().servers.map { it.copy(role = "admin") }
+                        servers = sampleSession().servers.map { it.copy(role = "member") }
                     )
                 ),
                 FakeSettingsNetworkClient()
@@ -518,6 +518,46 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(billingSnapshot.plans.any { it.comingSoon })
         assertTrue(denied is DataResult.NoPermission)
         assertEquals("billing_owner_required", denied.blocker.code)
+    }
+
+    @Test
+    fun billingSummaryKeepsTheWebPlanUsageAndSeatFields() = runBlocking {
+        // botiverse/slock v1.21.44 billingService.getBillingSummary (the fields the web Plan & Billing page reads).
+        val admin =
+            RealSettingsRepository(
+                sampleStore(
+                    sampleSession().copy(
+                        servers = sampleSession().servers.map { it.copy(role = "admin", plan = "pro", planDowngradedAt = null) }
+                    )
+                ),
+                FakeSettingsNetworkClient(
+                    usageJson = """{"machines":1,"agents":12,"channels":3}""",
+                    billingSubscriptionJson =
+                        """{"plan":"pro","displayName":"Pro","serverPlan":"pro","source":"subscription","sourceConflict":null,""" +
+                            """"appsumoBillingReserved":false,"appsumo":null,"capacity":{"maxHumans":4,"maxAgents":40,"maxUniversalSeats":5},""" +
+                            """"usage":{"humans":3,"agents":12,"universalSeats":4.2},""" +
+                            """"provisioned":{"humans":4,"agents":10,"proPackQuantity":5,"trialFreePackQuantity":0,"firstPackTrialEndsAt":null},""" +
+                            """"fileUploadQuota":{"month":"2026-11","plan":"pro","limited":false,"enforced":false,"limitBytes":-1,"usedBytes":0,"reservedBytes":0,"remainingBytes":-1},""" +
+                            """"price":{"billingInterval":"annual","monthlyUsd":100,"annualUsd":1000},""" +
+                            """"subscription":{"status":"active","billingInterval":"annual","currentPeriodEnd":"2026-12-01T00:00:00.000Z","cancelAtPeriodEnd":false},""" +
+                            """"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":false}}"""
+                )
+            ).getBilling()
+
+        assertTrue(admin is DataResult.Content)
+        val summary = requireNotNull(admin.data.summary)
+        assertEquals("pro", summary.effectivePlan)
+        assertEquals("subscription", summary.source)
+        assertEquals(5.0, summary.maxUniversalSeats)
+        assertEquals(SettingsBillingSeatUsageSnapshot(humans = 3, agents = 12, universalSeats = 4.2), summary.usage)
+        assertEquals(5, summary.proPackQuantity)
+        assertEquals(4, summary.provisionedHumans)
+        assertEquals(SettingsBillingFileUploadQuotaSnapshot(month = "2026-11", limited = false, limitBytes = -1, remainingBytes = -1), summary.fileUploadQuota)
+        assertEquals("annual", summary.billingInterval)
+        assertEquals("annual", summary.priceBillingInterval)
+        assertEquals("2026-12-01T00:00:00.000Z", summary.currentPeriodEnd)
+        assertFalse(summary.canManageBilling)
+        assertEquals("pro", admin.data.serverPlan)
     }
 
     @Test

@@ -2,6 +2,10 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.data.StoredAuthSession
+import build.raft.designsystem.components.RaftBackButtonDefaults
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
+import build.raft.designsystem.components.RaftStatusDot
+import build.raft.designsystem.components.RaftStatusVariant
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -12,11 +16,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -41,53 +48,26 @@ internal data class SettingsHomePageLinkPayload(
     val section: String? = null,
     /** Attention dot on the row (the More tab's signals on the phone Settings root). */
     val attentionDot: Boolean = false,
+    /** The row leaves Raft for another app: a trailing ↗ (raft-ui 0.26 #758). */
+    val opensExternally: Boolean = false,
 )
 
-/** Row key of the Members entry at the top of the More (Settings) page. */
-internal const val SettingsMoreMembersRowKey = "members"
-
 /**
- * The Settings page as the phone More tab's root (stdrc / Jasper 2026-10-21): titled like the
- * tab ([title], 更多 / More / その他), Members and Computers lead as the first group, then the
- * Settings sections with their own headings; the rows named in [attentionRowKeys] wear the
- * attention dot the More tab shows ([RaftMoreAttention.settingsRowKey]).
+ * The Settings page as the phone's pushed server page (raft-design #712, opened from the server
+ * panel; app-shell tab key "more"): titled [title], the rows named in [attentionRowKeys] wear the
+ * attention dot ([RaftMoreAttention.settingsRowKey]). The wide rail's Settings page has none.
  */
 internal data class SettingsMoreRoot(
     val title: String,
-    val membersTitle: String,
     val attentionRowKeys: Set<String> = emptySet(),
-    /** False since D1a (raft-design #712): Members and Computers are on the server panel. */
-    val leadsWithMembersAndComputers: Boolean = true,
 )
 
-/**
- * The Settings home rows for [moreRoot]: Members and Computers move to a first group (no section
- * heading) ahead of the existing sections, and attention rows get their dot. Without a More root
- * (the wide rail) the rows are unchanged.
- */
+/** The Settings home rows for [moreRoot]: attention rows get their dot; without one (the wide rail) unchanged. */
 internal fun settingsHomeItemsForMoreRoot(
     items: List<SettingsHomePageLinkPayload>,
     moreRoot: SettingsMoreRoot?,
-    membersSubtitle: String = "",
-): List<SettingsHomePageLinkPayload> {
-    if (moreRoot == null) return items
-    if (!moreRoot.leadsWithMembersAndComputers) {
-        return items.map { it.copy(attentionDot = it.key in moreRoot.attentionRowKeys) }
-    }
-    val computers = items.firstOrNull { it.key == SettingsDestinationComputers }
-    val firstGroup =
-        listOfNotNull(
-            SettingsHomePageLinkPayload(
-                key = SettingsMoreMembersRowKey,
-                title = moreRoot.membersTitle,
-                subtitle = membersSubtitle,
-                iconName = RaftLucideIconName.Users,
-            ),
-            computers?.copy(section = null),
-        )
-    return (firstGroup + items.filter { it.key != SettingsDestinationComputers })
-        .map { it.copy(attentionDot = it.key in moreRoot.attentionRowKeys) }
-}
+): List<SettingsHomePageLinkPayload> =
+    moreRoot?.let { root -> items.map { it.copy(attentionDot = it.key in root.attentionRowKeys) } } ?: items
 
 @Composable
 internal fun SettingsAppShellHomeContent(
@@ -100,29 +80,39 @@ internal fun SettingsAppShellHomeContent(
     onBack: (() -> Unit)? = null,
     /** The server's `slack_bridge_v0` flag: the IM Bridges row. */
     imBridgesEnabled: Boolean = false,
+    /** Search settings on top of the list; null: no field. */
+    search: SettingsSearchHost? = null,
 ) {
-    val payload = appShellSettingsHomePayload(session, imBridgesEnabled = imBridgesEnabled)
-    val membersSubtitle = stringResource(Res.string.more_hub_members_subtitle)
+    // The phone's Settings: Computers and Apps are on the server panel that opened it.
+    val payload = appShellSettingsHomePayload(session, imBridgesEnabled = imBridgesEnabled, serverPanelPages = true)
     SettingsHomeContent(
         payload =
             payload.copy(
                 title = moreRoot?.title ?: payload.title,
-                items = settingsHomeItemsForMoreRoot(payload.items, moreRoot, membersSubtitle),
+                items = settingsHomeItemsForMoreRoot(payload.items, moreRoot),
             ),
         bottomContentPadding = bottomContentPadding,
         onHeaderClick = onSettingsHeaderClick,
         onBack = onBack,
         onSelect = onSelect,
         scrollToTopRequest = scrollToTopRequest,
+        search = search,
     )
 }
 
 /**
  * The Settings home rows top to bottom, the web's settings groups (botiverse/slock
  * packages/web/src/components/layout/Sidebar.tsx:2257-2328, settingsNavigation.ts:29-45):
- * Personal; "On {server}", the member's own settings in the current server, with Theme (the web
- * then has the server's Notifications; the app keeps that mute on Notifications); Workspace;
- * Resources. Theme is there only with a current server ([hasThemeServer]), as is the web's group.
+ * Personal; "On {server}", the member's own settings in the current server: Theme and the server's
+ * Notifications (its level alone; the personal Notifications page shows it too); Workspace;
+ * Resources, with Documentation leaving Raft for the docs site. The "On {server}" group is there
+ * only with a current server ([hasThemeServer]), as is the web's. The app's own rows stay: Mobile
+ * and Storage (this device's settings, which the web has not).
+ * On the phone ([serverPanelPages]) the list is the web phone's (artin 2026-11-05, dm task #17):
+ * Computers is not a row, it is a page on the server panel (web MobileServerTab), and Applications
+ * is a row only for a guest ([guest]; web useSidebarRoute `currentRole === "guest"`): a guest has
+ * no Apps page, and their Applications holds only their own link previews; everyone else opens
+ * Apps from the server panel. The wide list keeps both rows, next to the rail's Computers and Apps.
  * Mobile is a phone page: with [appPreferencesUnderAppearance] (the desktop app) its cards are part
  * of Appearance, the web's home for them, and there is no Mobile row. IM Bridges follows
  * Administration, as on the web (settingsNavigation.ts, Sidebar.tsx), only with [imBridges]: the
@@ -132,6 +122,9 @@ internal fun settingsHomeRowKeys(
     hasThemeServer: Boolean,
     appPreferencesUnderAppearance: Boolean = settingsAppPreferencesUnderAppearance(),
     imBridges: Boolean = false,
+    releaseNotes: Boolean = settingsReleaseNotesAvailable(),
+    serverPanelPages: Boolean = false,
+    guest: Boolean = false,
 ): List<String> =
     listOfNotNull(
         SettingsDestinationAccount,
@@ -141,16 +134,24 @@ internal fun settingsHomeRowKeys(
         SettingsNativeDetailPage.Mobile.key.takeUnless { appPreferencesUnderAppearance },
         SettingsDestinationStorage,
         SettingsNativeDetailPage.Theme.key.takeIf { hasThemeServer },
+        SettingsNativeDetailPage.ServerNotifications.key.takeIf { hasThemeServer },
         SettingsNativeDetailPage.Server.key,
         SettingsDestinationBilling,
         SettingsDestinationAdministration,
         SettingsDestinationImBridges.takeIf { imBridges },
-        SettingsDestinationConnectedApps,
-        SettingsDestinationComputers,
+        SettingsDestinationConnectedApps.takeIf { !serverPanelPages || guest },
+        SettingsDestinationComputers.takeUnless { serverPanelPages },
         SettingsNativeDetailPage.About.key,
+        SettingsDestinationDocumentation,
         SettingsDestinationHandsFeedback,
-        SettingsDestinationReleaseNotes,
+        SettingsDestinationReleaseNotes.takeIf { releaseNotes },
     )
+
+/**
+ * Release Notes is the platform's Hands release history, so the row shows only where the platform
+ * has a Hands app ([raftReleaseNotesAppSlug] not blank). The Compose desktop app has none yet.
+ */
+internal fun settingsReleaseNotesAvailable(appSlug: String = raftReleaseNotesAppSlug()): Boolean = appSlug.isNotBlank()
 
 /**
  * Whether the app preferences (message alignment, compact messages, composer key, ...) sit under
@@ -165,12 +166,17 @@ internal fun appShellSettingsHomePayload(
     appPreferencesUnderAppearance: Boolean = settingsAppPreferencesUnderAppearance(),
     /** The server's `slack_bridge_v0` flag: the IM Bridges row ([settingsHomeRowKeys]). */
     imBridgesEnabled: Boolean = false,
+    /** iOS: Billing opens the system browser ([settingsBillingLeavesRaft]), its row a trailing ↗. */
+    billingOpensExternally: Boolean = settingsBillingLeavesRaft(),
+    /** The phone: Computers and Apps are on the server panel ([settingsHomeRowKeys]). */
+    serverPanelPages: Boolean = false,
 ): RaftSettingsHomePayload {
     val personalSection = stringResource(Res.string.settings_navigation_section_personal)
     val workspaceSection = stringResource(Res.string.settings_navigation_section_workspace)
     val aboutSection = stringResource(Res.string.settings_navigation_section_about)
     val themeServer = session?.settingsThemeServer()
     val themeServerName = themeServer?.name.orEmpty()
+    val onServerSection = stringResource(Res.string.settings_navigation_section_on_server, themeServerName)
     val rows =
         listOf(
             SettingsHomePageLinkPayload(
@@ -221,7 +227,14 @@ internal fun appShellSettingsHomePayload(
                 title = stringResource(Res.string.settings_theme_title),
                 subtitle = stringResource(Res.string.settings_server_theme_description, themeServerName),
                 iconName = RaftLucideIconName.Palette,
-                section = stringResource(Res.string.settings_navigation_section_on_server, themeServerName)
+                section = onServerSection
+            ),
+            SettingsHomePageLinkPayload(
+                key = SettingsNativeDetailPage.ServerNotifications.key,
+                title = stringResource(Res.string.settings_notifications_title),
+                subtitle = stringResource(Res.string.settings_server_notifications_subtitle, themeServerName),
+                iconName = RaftLucideIconName.BellDot,
+                section = onServerSection
             ),
             SettingsHomePageLinkPayload(
                 key = SettingsNativeDetailPage.Server.key,
@@ -237,7 +250,8 @@ internal fun appShellSettingsHomePayload(
                 subtitle = stringResource(Res.string.settings_billing_subtitle),
                 iconName = RaftLucideIconName.CreditCard,
                 value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
-                section = workspaceSection
+                section = workspaceSection,
+                opensExternally = billingOpensExternally,
             ),
             SettingsHomePageLinkPayload(
                 key = SettingsDestinationAdministration,
@@ -275,6 +289,14 @@ internal fun appShellSettingsHomePayload(
                 section = aboutSection
             ),
             SettingsHomePageLinkPayload(
+                key = SettingsDestinationDocumentation,
+                title = stringResource(Res.string.settings_documentation_title),
+                subtitle = RaftDocumentationUrl,
+                iconName = RaftLucideIconName.BookOpenText,
+                section = aboutSection,
+                opensExternally = true,
+            ),
+            SettingsHomePageLinkPayload(
                 key = SettingsDestinationHandsFeedback,
                 title = stringResource(Res.string.settings_feedback_title),
                 subtitle = stringResource(Res.string.settings_feedback_subtitle),
@@ -297,6 +319,8 @@ internal fun appShellSettingsHomePayload(
                 hasThemeServer = themeServer != null,
                 appPreferencesUnderAppearance = appPreferencesUnderAppearance,
                 imBridges = imBridgesEnabled,
+                serverPanelPages = serverPanelPages,
+                guest = session?.currentServerSummary()?.role.equals("guest", ignoreCase = true),
             ).mapNotNull(rows::get),
     )
 }
@@ -323,9 +347,13 @@ internal fun SettingsHomeContent(
     onHeaderClick: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     scrollToTopRequest: Int = 0,
+    /** Search settings above the groups (raft-design settings.md#searching-settings); null: none. */
+    search: SettingsSearchHost? = null,
     onSelect: (String) -> Unit
 ) {
     val listState = rememberLazyListState()
+    val searchResults = search?.let { rememberSettingsSearchResults(it, payload) }
+    val searching = search?.state?.searching == true
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
     LaunchedEffect(scrollToTopRequest) {
         if (scrollToTopRequestFence.consume(scrollToTopRequest)) listState.animateScrollToTopExpressive()
@@ -338,13 +366,39 @@ internal fun SettingsHomeContent(
         }
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         // Under the wide top bar the Settings tab has no head (web Sidebar `hideTitle`, artin task #8).
+        // The web's phone Settings is a pushed server page (useSidebarHomeEntries
+        // `isServerPushedPage`) headed by its PanelHeader: the canvas, white in light and the dark
+        // canvas in dark, with the seam under it, not a tab root's frame. Every Settings sub-page
+        // head (SettingsDetailShell) is the same, and the status bar icons follow the canvas.
         if (!raftUnderAppShellTopBar() || onBack != null) {
-            RaftMainTabPageHeader(
+            RaftTopPageHeader(
                 title = payload.title,
                 subtitle = null,
                 modifier = headerModifier,
+                backgroundColor = SettingsHomeHeaderBackground,
                 applyTopSafeArea = applyTopSafeArea,
-                onBack = onBack
+                onBack = onBack,
+                // The web page is a list column (raft-ui `listColumnMargin`, 20px at every width),
+                // so its head's margin is 20: Back's arrow box lands on it (the button 9dp in),
+                // the title follows the phone head's 8dp gap; with no Back the title starts on it.
+                contentStartPadding =
+                    if (onBack != null) {
+                        SettingsHomeHeaderMargin - (RaftBackButtonDefaults.Size - RaftBackButtonDefaults.IconSize) / 2
+                    } else {
+                        SettingsHomeHeaderMargin
+                    },
+                contentSpacing = SettingsHomeHeaderGap,
+                titleStyle = RaftMainTabHeaderTitleStyle,
+                nativeOnTitleClick = onHeaderClick,
+            )
+        }
+        if (search != null) {
+            // Pinned above the list as it scrolls (web `sticky top-0 px-2 pt-2 pb-1`), 8dp from the
+            // screen edges like the rows.
+            SettingsSearchField(
+                host = search,
+                results = searchResults.orEmpty(),
+                modifier = Modifier.raftSafeAreaHorizontalPadding().padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 4.dp),
             )
         }
         LazyColumn(
@@ -352,21 +406,16 @@ internal fun SettingsHomeContent(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            item {
-                Spacer(Modifier.height(RaftAppSpacing.Md))
-            }
-            item {
-                RaftVerticalTabBar(
-                    items = payload.items.map(SettingsHomePageLinkPayload::toTabItemPayload),
-                    showSelection = false,
-                    onSelect = onSelect,
-                    modifier = Modifier.padding(start = RaftAppSpacing.Md),
-                    sectionStartPadding = 0.dp,
-                    itemStartPadding = 0.dp
-                )
-            }
-            item {
-                Spacer(Modifier.height(RaftAppSpacing.Md))
+            if (search != null && searching) {
+                // The results take the groups' place while there is text.
+                settingsSearchResultItems(search, searchResults.orEmpty(), Modifier.padding(horizontal = 8.dp))
+            } else {
+                item {
+                    SettingsHubSidebarList(
+                        items = payload.items.map(SettingsHomePageLinkPayload::toTabItemPayload),
+                        onSelect = onSelect,
+                    )
+                }
             }
             item {
                 Spacer(Modifier.height(bottomContentPadding))
@@ -374,6 +423,16 @@ internal fun SettingsHomeContent(
         }
     }
 }
+
+/** The Settings home head's fill: the canvas, like every Settings page head (web PanelHeader). */
+internal val SettingsHomeHeaderBackground: Color
+    get() = RaftColor.Canvas
+
+/** The web Settings list column's margin (raft-ui `listColumnMargin`), its head's too. */
+private val SettingsHomeHeaderMargin = 20.dp
+
+/** raft-ui panel head on a phone: `max-md:gap-2`. */
+private val SettingsHomeHeaderGap = 8.dp
 
 private fun SettingsHomePageLinkPayload.toTabItemPayload(): RaftTabItemPayload =
     RaftTabItemPayload(
@@ -384,4 +443,80 @@ private fun SettingsHomePageLinkPayload.toTabItemPayload(): RaftTabItemPayload =
         value = value,
         section = section,
         attentionDot = attentionDot,
+        opensExternally = opensExternally,
     )
+
+/**
+ * web `SettingsSidebarList` on a phone: each group under a raft-ui SidebarGroupLabel, its rows a
+ * list of raft-ui SidebarItems (`flex-col gap-0.5 py-2`): 44dp touch rows, the glyph in its icon
+ * box, the label in body semibold, a ↗ on a row that leaves Raft and the attention pixel on one
+ * with something new. 8dp from the screen edges, as the Home list.
+ */
+@Composable
+private fun SettingsHubSidebarList(
+    items: List<RaftTabItemPayload>,
+    onSelect: (String) -> Unit,
+) {
+    val groups = remember(items) {
+        val out = mutableListOf<Pair<String?, MutableList<RaftTabItemPayload>>>()
+        items.forEach { item ->
+            if (out.isEmpty() || out.last().first != item.section) out += item.section to mutableListOf()
+            out.last().second += item
+        }
+        out
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+        groups.forEach { (section, rows) ->
+            if (section != null) build.raft.designsystem.components.RaftSidebarGroupLabel(section)
+            // `gap-0.5 py-2`: each row keeps 1dp above and below (RaftSidebarItem), so the
+            // column adds 7dp at its ends and nothing between the rows.
+            Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
+                rows.forEach { item ->
+                    build.raft.designsystem.components.RaftSidebarItem(
+                        title = item.title,
+                        onClick = if (item.enabled) ({ onSelect(item.key) }) else null,
+                        leading = { SettingsRowIcon(item.key, item.iconName) },
+                        trailing =
+                            if (item.attentionDot || item.opensExternally) {
+                                {
+                                    if (item.attentionDot) RaftStatusDot(variant = RaftStatusVariant.Accent)
+                                    if (item.opensExternally) {
+                                        RaftLucideIcon(
+                                            RaftLucideIconName.ArrowUpRight,
+                                            Modifier.size(14.dp),
+                                            color = raftArgbHex(RaftColor.ForegroundHint),
+                                        )
+                                    }
+                                }
+                            } else {
+                                null
+                            },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A Settings list row's glyph in a raft-ui SidebarItem's icon box. Feedback is raft-ui
+ * `FeedbackIcon` (the web settings list, useSidebarRoute.tsx), drawn at the box's stroke-2 in its
+ * 18-unit viewBox; every other row is its Lucide [iconName].
+ */
+@Composable
+internal fun SettingsRowIcon(key: String, iconName: RaftLucideIconName) {
+    val size = build.raft.designsystem.components.raftSidebarItemIconSize()
+    if (key == SettingsDestinationHandsFeedback) {
+        build.raft.designsystem.components.RaftConversationKindIcon(
+            build.raft.designsystem.components.RaftConversationKindGlyph.Feedback,
+            size = size,
+            strokeWidth = 2f,
+        )
+    } else {
+        RaftLucideIcon(
+            iconName,
+            Modifier.size(size),
+            color = raftArgbHex(build.raft.designsystem.theme.LocalRaftContentColor.current),
+        )
+    }
+}

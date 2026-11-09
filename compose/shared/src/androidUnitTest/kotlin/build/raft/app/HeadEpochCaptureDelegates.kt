@@ -90,9 +90,14 @@ internal class HeadEpochRecordingExtender(
         requestedLimit: Int,
         replyParent: ThreadDurableReplyParent?,
         requestHeadEpoch: Long?,
+        messageWindow: ChannelMessageWindow?,
+        historyLimited: Boolean,
+        revAtRequest: Long?,
+        replyCountByParentId: Map<String, Int>?,
         stillCurrent: () -> Boolean,
     ) = delegate.extendWithAdjacentPage(
-        partition, channelId, direction, anchorSeq, rawMessages, requestedLimit, replyParent, requestHeadEpoch, stillCurrent,
+        partition, channelId, direction, anchorSeq, rawMessages, requestedLimit, replyParent, requestHeadEpoch, messageWindow,
+        historyLimited, revAtRequest, replyCountByParentId, stillCurrent,
     )
 
     override suspend fun applyLatestPage(
@@ -150,11 +155,17 @@ internal class HeadEpochRecordingExtender(
         hasNewer: Boolean,
         replyParent: ThreadDurableReplyParent?,
         requestHeadEpoch: Long?,
+        historyLimited: Boolean,
+        revAtRequest: Long?,
+        replyCountByParentId: Map<String, Int>?,
+        userDriven: Boolean,
+        channelType: String?,
         stillCurrent: () -> Boolean,
     ) {
         contextRequestEpochs += requestHeadEpoch
         delegate.persistContextPage(
-            partition, channelId, anchorMessageId, rawMessages, hasOlder, hasNewer, replyParent, requestHeadEpoch, stillCurrent,
+            partition, channelId, anchorMessageId, rawMessages, hasOlder, hasNewer, replyParent, requestHeadEpoch,
+            historyLimited, revAtRequest, replyCountByParentId, userDriven, channelType, stillCurrent,
         )
     }
 }

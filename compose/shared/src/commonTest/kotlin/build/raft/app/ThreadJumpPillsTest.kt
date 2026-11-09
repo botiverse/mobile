@@ -281,6 +281,39 @@ class ThreadJumpPillsTest {
     }
 
     @Test
+    fun newMessagesHoldWhileTheLayoutHasNotMeasuredTheArrival() {
+        // Scrolled up, two messages loaded, one counted already.
+        val start = ThreadNewMessagesBelow(count = 1, lastMessageId = "b")
+
+        // The composition where "c" arrives: the layout still holds the old list, so the pill
+        // reads hidden. Nothing may change, neither the count nor the frontier.
+        val staleFrame = reduceThreadNewMessagesBelow(start, arrivals("a", "b", "c"), awayFromBottom = false, canLoadMoreAfter = false, viewportMeasured = false)
+        assertEquals(start, staleFrame)
+        // A stale frame that still reads "away" holds too (no early count either).
+        assertEquals(start, reduceThreadNewMessagesBelow(start, arrivals("a", "b", "c"), awayFromBottom = true, canLoadMoreAfter = false, viewportMeasured = false))
+
+        // Next frame the layout has caught up and the reader is still scrolled up: "c" counts.
+        val measured = reduceThreadNewMessagesBelow(staleFrame, arrivals("a", "b", "c"), awayFromBottom = true, canLoadMoreAfter = false, viewportMeasured = true)
+        assertEquals(ThreadNewMessagesBelow(count = 2, lastMessageId = "c"), measured)
+
+        // Reaching the bottom (measured) still clears it.
+        assertEquals(
+            ThreadNewMessagesBelow(count = 0, lastMessageId = "c"),
+            reduceThreadNewMessagesBelow(measured, arrivals("a", "b", "c"), awayFromBottom = false, canLoadMoreAfter = false, viewportMeasured = true),
+        )
+    }
+
+    @Test
+    fun newMessagesStaleFrameUsedToLoseTheArrival() {
+        // The old wiring treated the stale frame as measured: it cleared the count and moved the
+        // frontier past "c", so the next measured frame had nothing to count.
+        val start = ThreadNewMessagesBelow(count = 1, lastMessageId = "b")
+        val stale = reduceThreadNewMessagesBelow(start, arrivals("a", "b", "c"), awayFromBottom = false, canLoadMoreAfter = false)
+        val after = reduceThreadNewMessagesBelow(stale, arrivals("a", "b", "c"), awayFromBottom = true, canLoadMoreAfter = false)
+        assertEquals(ThreadNewMessagesBelow(count = 0, lastMessageId = "c"), after)
+    }
+
+    @Test
     fun bottomCountUsesTheConversationUnreadWhileNewerMessagesAreNotLoaded() {
         assertEquals(7, threadBottomJumpCount(canLoadMoreAfter = true, conversationUnreadCount = 7, newMessagesBelow = 2))
         assertEquals(2, threadBottomJumpCount(canLoadMoreAfter = false, conversationUnreadCount = 7, newMessagesBelow = 2))

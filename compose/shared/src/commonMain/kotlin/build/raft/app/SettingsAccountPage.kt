@@ -1,5 +1,14 @@
 package build.raft.app
 
+import build.raft.app.components.RaftDesignSystemEditor
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftFieldLabelSize
+import build.raft.designsystem.components.RaftTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftSpinnerSize
@@ -23,25 +32,22 @@ import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftSwitch
-import build.raft.designsystem.components.RaftTextLink
-import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.components.appendRaftTextLink
+import androidx.compose.ui.text.buildAnnotatedString
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftIsDark
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.app.RaftCachedImage
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftBrutalCard
-import build.raft.app.components.RaftBrutalReadOnlyField
 import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.app.components.RaftBrutalTextField
-import build.raft.app.components.RaftFormFieldSize
 import build.raft.app.data.AccountPasswordChangeRequest
 import build.raft.app.data.AccountProfileUpdateRequest
 import build.raft.app.data.AccountProviderLinkStartRequest
 import build.raft.app.data.AccountSettingsSnapshot
+import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SecondFactorStepUpDialogState
@@ -83,15 +89,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
@@ -99,18 +102,10 @@ import build.raft.app.compat.pager.raftPlatformName
 import kotlin.time.Clock
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 const val SETTINGS_ACCOUNT_PAGE = "compose_settings_account"
-
-internal fun settingsAccountInputTextStyle(
-    color: Color = RaftColor.TextBlack
-): TextStyle =
-    RaftType.Input.copy(
-        fontFamily = RaftMonoFamily,
-        fontSize = 14.sp,
-        lineHeight = 18.sp,
-        color = color
-    )
 
 @Page(SETTINGS_ACCOUNT_PAGE, supportInLocal = true)
 internal class ComposeSettingsAccountPage : AuthenticatedProductPager(AuthenticatedProductRoute.SettingsAccount) {
@@ -126,14 +121,14 @@ internal data class RaftSettingsAccountPayload(
     val profile: RaftSettingsAccountProfile = RaftSettingsAccountProfile(),
     val connectedAccounts: List<RaftSettingsConnectedAccount> = emptyList(),
     val profileSectionTitle: String = "Profile",
-    val displayNameLabel: String = "Display Name",
+    val displayNameLabel: String = "Display name",
     val displayNamePlaceholder: String = "Your public name",
     val handleLabel: String = "Handle",
     val handlePlaceholder: String = "@handle",
     val emailLabel: String = "Email",
     val emailPlaceholder: String = "you@example.com",
     val verifiedLabel: String = "Verified",
-    val saveChangesLabel: String = "Save Profile",
+    val saveChangesLabel: String = "Save profile",
     val cancelLabel: String = "Cancel",
     val connectedAccountsTitle: String = "Connected accounts",
     val connectedLabel: String = "Connected",
@@ -148,9 +143,9 @@ internal data class RaftSettingsAccountPayload(
     // "on this device" copy (SettingsStoragePage / AuthDataSource). Do NOT
     // align this to react's "browser" (intentional platform copy divergence).
     val logoutDetail: String = "Sign out on this device. Your account and data stay; you can sign back in any time.",
-    val logoutLabel: String = "Sign Out",
+    val logoutLabel: String = "Sign out",
     val logoutConfirmMessage: String = "Sign out on this device? Your account and data are kept; you can sign back in any time.",
-    val logoutConfirmLabel: String = "Sign Out",
+    val logoutConfirmLabel: String = "Sign out",
     val logoutCancelLabel: String = "Cancel",
     val changePasswordTitle: String = "Change password",
     val changePasswordSubtitle: String = "Requires current password before saving a new one",
@@ -295,6 +290,19 @@ private fun SettingsAccountScreen() {
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     val accountDeletionStore = rememberAccountDeletionRequestStore(environment)
     val accountDeletionState by accountDeletionStore.state.collectAsState()
+    // account_deletion_v0 for the current server, live (off until it resolves on).
+    val serverFeatureFlags = remember(bridge) { RaftSharedStoreRegistry.get(bridge).serverFeatureFlags }
+    val featureFlagRevision by serverFeatureFlags.snapshotRevision.collectAsState()
+    val accountDeletionServerId = session.value?.currentServerId
+    val accountDeletionEntry =
+        remember(accountDeletionServerId, featureFlagRevision) {
+            settingsAccountDeletionEntry(
+                deletionFlagOn = settingsAccountDeletionFlagOn(serverFeatureFlags, accountDeletionServerId),
+                ticketSupported = raftPlatformSupportsHandsFeedbackSubmit(),
+            )
+        }
+    // A Settings search result opened this page at a setting: its row is brought into view and located.
+    ProvideSettingsSearchLocator(pager.pageData.params) {
     SettingsDetailShell(
         title = stringResource(Res.string.settings_account_title),
         subtitle = "",
@@ -317,17 +325,25 @@ private fun SettingsAccountScreen() {
             // logout confirmation row can end under three-button navigation.
             bottomContentPadding =
                 settingsAccountStandaloneBottomContentPadding(raftBottomSafeAreaPadding()),
-            // Hidden where the host can't send the ticket (the Compose desktop app).
+            // Flag on: the web deletion page (every platform). Off: the ticket, hidden where the
+            // host can't send it (the Compose desktop app).
             accountDeletion =
-                if (raftPlatformSupportsHandsFeedbackSubmit()) {
-                    SettingsAccountDeletionUi(
-                        state = accountDeletionState,
-                        onOpen = accountDeletionStore::open,
-                        onConfirm = { accountDeletionStore.request() },
-                        onDismiss = accountDeletionStore::dismiss
-                    )
-                } else {
-                    null
+                when (accountDeletionEntry) {
+                    SettingsAccountDeletionEntry.WebPage ->
+                        SettingsAccountDeletionUi(
+                            state = RaftAccountDeletionRequestState.Idle,
+                            onOpen = { pager.openSettingsAccountDeletionPage(environment.storeScope) },
+                            onConfirm = {},
+                            onDismiss = {}
+                        )
+                    SettingsAccountDeletionEntry.Ticket ->
+                        SettingsAccountDeletionUi(
+                            state = accountDeletionState,
+                            onOpen = accountDeletionStore::open,
+                            onConfirm = { accountDeletionStore.request() },
+                            onDismiss = accountDeletionStore::dismiss
+                        )
+                    SettingsAccountDeletionEntry.Hidden -> null
                 },
             onPasswordChange = { currentPassword, newPassword ->
                 settingsViewModel.dispatch(
@@ -357,6 +373,7 @@ private fun SettingsAccountScreen() {
                 )
             }
         )
+    }
     }
 }
 
@@ -481,6 +498,7 @@ internal fun SettingsAccountContent(
     val disconnectSubmitted = remember { mutableStateOf(false) }
     RaftDesignSystemTheme {
         LazyColumn(
+            state = rememberSettingsSearchListState(),
             modifier =
                 Modifier
                     .fillMaxSize()
@@ -489,21 +507,29 @@ internal fun SettingsAccountContent(
                     .padding(top = topSafeArea)
                     .raftSafeAreaHorizontalPadding()
                     .padding(horizontal = 20.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            // Web: each section is `mb-6`, 24dp apart.
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            item { SettingsAccountSectionHeader(localizedPayload.profileSectionTitle) }
             item {
-                SettingsAccountProfileCard(
-                    localizedPayload,
-                    visibleConnectedAccounts,
-                    avatarCacheIdentity,
-                    onEvent,
-                    onPasswordChange,
-                    onRequestDisconnect = { providerId ->
-                        disconnectSubmitted.value = false
-                        pendingDisconnect.value = providerId
-                    }
-                )
+                SettingsFormSection(iconName = RaftLucideIconName.User, title = localizedPayload.profileSectionTitle) {
+                    SettingsAccountProfileCard(
+                        localizedPayload,
+                        visibleConnectedAccounts,
+                        avatarCacheIdentity,
+                        onEvent,
+                        onPasswordChange,
+                        onRequestDisconnect = { providerId ->
+                            disconnectSubmitted.value = false
+                            pendingDisconnect.value = providerId
+                        }
+                    )
+                }
+            }
+            // Web order: the Account card, Session (Sign out), then Share usage data.
+            item {
+                Box(Modifier.fillMaxWidth().settingsSearchAnchor("sign-out", SettingsSearchCardShape)) {
+                    SettingsLogoutAction(localizedPayload) { onEvent("logout", null) }
+                }
             }
             if (localizedPayload.usageDataVisible) {
                 item {
@@ -514,7 +540,6 @@ internal fun SettingsAccountContent(
                     )
                 }
             }
-            item { SettingsLogoutAction(localizedPayload) { onEvent("logout", null) } }
             if (accountDeletion != null) {
                 item { SettingsDeleteAccountRow(onClick = accountDeletion.onOpen) }
             }
@@ -578,7 +603,7 @@ internal class SettingsAccountDeletionUi(
 @Composable
 private fun SettingsDeleteAccountRow(onClick: () -> Unit) {
     val title = stringResource(Res.string.settings_account_delete)
-    RaftListRowGroup(Modifier.fillMaxWidth()) {
+    RaftListRowGroup(Modifier.fillMaxWidth().settingsSearchAnchor("delete-account", SettingsSearchCardShape)) {
         RaftListRow(
             title = title,
             variant = RaftListRowVariant.Plain,
@@ -665,11 +690,22 @@ private fun SettingsAccountUsageDataRow(
     onEvent: (String, String?) -> Unit
 ) {
     val title = stringResource(Res.string.settings_usage_data_title)
+    val description = stringResource(Res.string.settings_usage_data_description)
+    val learnMore = stringResource(Res.string.settings_usage_data_learn_more)
+    // Web: the description ends in the strong "Learn more" TextLink, inside the same wrapping line.
+    val richDescription =
+        remember(description, learnMore, onEvent) {
+            buildAnnotatedString {
+                append(description)
+                append(' ')
+                appendRaftTextLink(learnMore, onClick = { onEvent(SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY, null) })
+            }
+        }
     RaftListRowGroup(Modifier.fillMaxWidth()) {
         RaftListRow(
             title = title,
             variant = RaftListRowVariant.Plain,
-            description = stringResource(Res.string.settings_usage_data_description),
+            richDescription = richDescription,
             wrapDescription = true,
             trailing = {
                 RaftSwitch(
@@ -681,32 +717,6 @@ private fun SettingsAccountUsageDataRow(
                     label = title
                 )
             }
-        )
-        Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
-            RaftTextLink(
-                text = stringResource(Res.string.settings_usage_data_learn_more),
-                onClick = { onEvent(SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY, null) },
-                variant = RaftTextLinkVariant.Strong,
-                style = RaftTheme.typography.callout
-            )
-        }
-    }
-}
-
-@Composable
-private fun SettingsAccountSectionHeader(title: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 2.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        RaftLucideIcon(RaftLucideIconName.User, color = RaftColor.TextMutedGrayArgb, modifier = Modifier.size(14.dp))
-        Text(
-            title,
-            style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -730,73 +740,79 @@ private fun SettingsAccountProfileCard(
     val passwordMinimumError = stringResource(Res.string.settings_account_password_too_short)
     val passwordMismatchError = stringResource(Res.string.settings_account_password_mismatch)
     val displayName = displayNameState.value
-    SettingsAccountHardShadowCard {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            SettingsProfileAvatar(profile, payload, avatarCacheIdentity, onEvent)
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    profile.displayName.ifBlank { stringResource(Res.string.settings_account_title) },
-                    modifier = Modifier.raftCopyable(profile.displayName),
-                    style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 15.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+    // Web SettingsProfileCard: the avatar beside the name over "@username", then Display Name,
+    // the read-only "@" Username, Email, the form's error and Save Profile.
+    SettingsProfileIdentityCard(
+        title = profile.displayName.ifBlank { stringResource(Res.string.settings_account_title) },
+        subtitle = settingsAccountHeaderHandleLabel(profile.handle).orEmpty(),
+        avatar = { SettingsProfileAvatar(profile, payload, avatarCacheIdentity, onEvent) }
+    ) {
+        RaftField(
+            label = payload.displayNameLabel,
+            modifier = Modifier.fillMaxWidth().settingsSearchAnchor("display-name"),
+            enabled = payload.canEditProfile && !payload.saveInProgress,
+            labelSize = RaftFieldLabelSize.Sm
+        ) {
+            val editor =
+                rememberRaftDesignSystemEditor(
+                    keyboardOptions = KeyboardOptions.Default,
+                    keyboardActions = KeyboardActions.Default,
+                    keyboardHeightChange = {},
+                    focusRequester = remember { FocusRequester() },
+                    autoFocus = false,
+                    onFocus = {},
+                    onBlur = {}
                 )
-                settingsAccountHeaderHandleLabel(profile.handle)?.let {
-                    Text(
-                        it,
-                        // The handle copies with its "@", as shown.
-                        modifier = Modifier.raftCopyable(it),
-                        style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                        color = RaftColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+            RaftTextField(
+                value = displayName,
+                onValueChange = { displayNameState.value = it },
+                modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                placeholder = payload.displayNamePlaceholder.ifEmpty { null },
+                keyboardOptions = editor.keyboardOptions
+            )
         }
+        RaftField(
+            label = payload.handleLabel.takeIf { it.isNotBlank() },
+            modifier = Modifier.fillMaxWidth().settingsSearchAnchor("username"),
+            labelSize = RaftFieldLabelSize.Sm
+        ) {
+            SettingsReadOnlyPrefixedField(
+                prefix = "@",
+                text = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") },
+                // Copies the handle as shown here (no "@"); nothing for the placeholder.
+                copyText = profile.handle.removePrefix("@").ifBlank { null }
+            )
+        }
+        Box(Modifier.fillMaxWidth().settingsSearchAnchor("email")) {
+            SettingsEmailField(payload.emailLabel, profile.email, payload.emailPlaceholder, profile.verified, payload.verifiedLabel)
+        }
+        // Web: the form's one error banner, between Email and Save Profile.
         payload.avatarErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
             SettingsAccountWarning(stringResource(Res.string.settings_account_avatar_upload_failed, code))
         }
-        RaftBrutalReadOnlyField(
-            label = payload.handleLabel,
-            value = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") },
-            // Copies the handle as shown here (no "@"); nothing for the placeholder.
-            copyText = profile.handle.removePrefix("@").ifBlank { null },
-            textStyle = settingsAccountInputTextStyle(RaftColor.TextMutedGray),
-            textColor = RaftColor.TextMutedGray
-        )
-        RaftBrutalTextField(
-            label = payload.displayNameLabel,
-            labelSize = RaftFormFieldSize.Compact,
-            value = displayName,
-            placeholder = payload.displayNamePlaceholder,
-            onValueChange = { displayNameState.value = it },
-            enabled = payload.canEditProfile && !payload.saveInProgress,
-            textStyle = settingsAccountInputTextStyle()
-        )
-        SettingsEmailField(payload.emailLabel, profile.email, payload.emailPlaceholder, profile.verified, payload.verifiedLabel)
+        payload.saveErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
+            SettingsAccountWarning(stringResource(Res.string.settings_account_profile_save_failed, code))
+        }
         SettingsProfileSaveButton(
             text = payload.profileSaveButtonLabel(),
             // Web `disabled={!profileDirty || saving}`.
             enabled = payload.canEditProfile && !payload.saveInProgress && displayName.trim() != profile.displayName,
             onClick = { onEvent("saveProfile", displayName.trim()) }
         )
-        payload.saveErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
-            SettingsAccountWarning(stringResource(Res.string.settings_account_profile_save_failed, code))
-        }
         RaftSeparator()
         if (connectedAccounts.isNotEmpty()) {
             SettingsConnectedAccounts(payload, connectedAccounts, onEvent, onRequestDisconnect)
             RaftSeparator()
         }
-        SettingsPasswordDisclosure(
-            title = payload.changePasswordTitle,
-            expanded = passwordExpandedState.value,
-            enabled = payload.canChangePassword && !payload.passwordInProgress
-        ) {
-            passwordExpandedState.value = !passwordExpandedState.value
-            passwordDraftError.value = null
+        Box(Modifier.fillMaxWidth().settingsSearchAnchor("password")) {
+            SettingsPasswordDisclosure(
+                title = payload.changePasswordTitle,
+                expanded = passwordExpandedState.value,
+                enabled = payload.canChangePassword && !payload.passwordInProgress
+            ) {
+                passwordExpandedState.value = !passwordExpandedState.value
+                passwordDraftError.value = null
+            }
         }
         if (passwordExpandedState.value) {
             SettingsPasswordForm(
@@ -857,14 +873,15 @@ private fun SettingsProfileAvatar(
     Box(
         modifier =
             Modifier
-                .size(56.dp)
+                // raft-ui Avatar lg (web AvatarSlot "profile-tile"): 51dp.
+                .size(51.dp)
                 .clickable(enabled = payload.canUploadAvatar && !payload.avatarInProgress) { onEvent("uploadAvatar", null) },
         contentAlignment = Alignment.Center
     ) {
         RaftAppAvatar(
             avatarWireValue = profile.avatarUrl,
             label = profile.avatarLabel,
-            avatarSize = 56.dp,
+            avatarSize = 51.dp,
             cacheSubject = avatarCacheIdentity?.subject,
             cacheServerId = avatarCacheIdentity?.serverId
         )
@@ -892,12 +909,14 @@ private fun SettingsEmailField(
     verifiedLabel: String
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, style = RaftType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
+        // Web FormField compact → FieldLabel sm: text-caption font-semibold (12/16 600).
+        Text(label, style = RaftType.Caption.withRaftFontWeight(FontWeight.SemiBold).copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 value.ifBlank { placeholder },
                 modifier = Modifier.raftCopyable(value),
-                style = settingsAccountInputTextStyle().copy(fontSize = 15.sp),
+                // Web AccountSection: font-mono text-mono-code (13/20).
+                style = RaftTheme.typography.monoCode,
                 color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -949,11 +968,9 @@ private fun RaftSettingsAccountPayload.profileSaveButtonLabel(): String =
 
 @Composable
 private fun SettingsAccountHardShadowCard(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
-    RaftBrutalCard(
-        contentPadding = 16.dp,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        content = content
-    )
+    RaftCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+    }
 }
 
 @Composable
@@ -964,7 +981,7 @@ private fun SettingsPasswordDisclosure(
     onClick: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(32.dp).clickable(enabled = enabled, onClick = onClick),
+        modifier = Modifier.fillMaxWidth().height(32.dp).raftClickable(onClick = onClick, enabled = enabled, tier = RaftHoverTier.Subtle),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -998,36 +1015,54 @@ private fun SettingsPasswordForm(
     onSubmit: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        RaftBrutalTextField(
+        RaftField(
             label = payload.currentPasswordLabel,
-            labelSize = RaftFormFieldSize.Compact,
-            value = currentPassword,
-            placeholder = "",
-            onValueChange = onCurrentPasswordChange,
+            modifier = Modifier.fillMaxWidth(),
             enabled = !payload.passwordInProgress,
-            textStyle = settingsAccountInputTextStyle(),
-            password = true
-        )
-        RaftBrutalTextField(
+            labelSize = RaftFieldLabelSize.Sm
+        ) {
+            val editor = rememberSettingsAccountPasswordEditor()
+            RaftTextField(
+                value = currentPassword,
+                onValueChange = onCurrentPasswordChange,
+                modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                placeholder = null,
+                keyboardOptions = editor.keyboardOptions,
+                visualTransformation = PasswordVisualTransformation()
+            )
+        }
+        RaftField(
             label = payload.newPasswordLabel,
-            labelSize = RaftFormFieldSize.Compact,
-            value = newPassword,
-            placeholder = payload.newPasswordPlaceholder,
-            onValueChange = onNewPasswordChange,
+            modifier = Modifier.fillMaxWidth(),
             enabled = !payload.passwordInProgress,
-            textStyle = settingsAccountInputTextStyle(),
-            password = true
-        )
-        RaftBrutalTextField(
+            labelSize = RaftFieldLabelSize.Sm
+        ) {
+            val editor = rememberSettingsAccountPasswordEditor()
+            RaftTextField(
+                value = newPassword,
+                onValueChange = onNewPasswordChange,
+                modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                placeholder = payload.newPasswordPlaceholder.ifEmpty { null },
+                keyboardOptions = editor.keyboardOptions,
+                visualTransformation = PasswordVisualTransformation()
+            )
+        }
+        RaftField(
             label = payload.confirmPasswordLabel,
-            labelSize = RaftFormFieldSize.Compact,
-            value = confirmPassword,
-            placeholder = "",
-            onValueChange = onConfirmPasswordChange,
+            modifier = Modifier.fillMaxWidth(),
             enabled = !payload.passwordInProgress,
-            textStyle = settingsAccountInputTextStyle(),
-            password = true
-        )
+            labelSize = RaftFieldLabelSize.Sm
+        ) {
+            val editor = rememberSettingsAccountPasswordEditor()
+            RaftTextField(
+                value = confirmPassword,
+                onValueChange = onConfirmPasswordChange,
+                modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                placeholder = null,
+                keyboardOptions = editor.keyboardOptions,
+                visualTransformation = PasswordVisualTransformation()
+            )
+        }
         draftError?.let { SettingsAccountWarning(it) }
         payload.passwordErrorCode?.takeIf { it.isNotBlank() }?.let {
             SettingsAccountWarning(stringResource(Res.string.settings_account_password_update_failed, it))
@@ -1212,20 +1247,39 @@ private fun SettingsDisconnectProviderDialog(
     }
 }
 
+/**
+ * Web `AccountSignOutSection`: the Session header over a card whose row is the title (subhead
+ * semibold) over the description (footnote, muted) beside the orange Sign Out button. The
+ * confirmation opens under the row.
+ */
 @Composable
 private fun SettingsLogoutAction(payload: RaftSettingsAccountPayload, onConfirmLogout: () -> Unit) {
     val confirming = remember { mutableStateOf(false) }
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsAccountSectionTitle(stringResource(Res.string.settings_account_session), RaftLucideIconName.LogOut)
+    SettingsFormSection(iconName = RaftLucideIconName.LogOut, title = stringResource(Res.string.settings_account_session)) {
         SettingsAccountHardShadowCard {
-            Text(
-                payload.logoutTitle,
-                style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(payload.logoutDetail, style = RaftType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    RaftText(
+                        payload.logoutTitle,
+                        style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                        color = RaftTheme.colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    RaftText(payload.logoutDetail, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
+                }
+                RaftButton(
+                    text = payload.logoutLabel,
+                    onClick = { confirming.value = true },
+                    enabled = !confirming.value,
+                    variant = RaftButtonVariant.Warning,
+                    size = RaftButtonSize.Md
+                )
+            }
             if (confirming.value) {
                 SettingsAccountWarning(payload.logoutConfirmMessage)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1244,30 +1298,8 @@ private fun SettingsLogoutAction(payload: RaftSettingsAccountPayload, onConfirmL
                         size = RaftButtonSize.Lg
                     )
                 }
-            } else {
-                RaftButton(
-                    text = payload.logoutLabel,
-                    onClick = { confirming.value = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    variant = RaftButtonVariant.Danger,
-                    size = RaftButtonSize.Lg
-                )
             }
         }
-    }
-}
-
-@Composable
-private fun SettingsAccountSectionTitle(text: String, iconName: RaftLucideIconName? = null) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 2.dp, bottom = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        if (iconName != null) {
-            RaftLucideIcon(iconName, color = RaftColor.TextMutedGrayArgb, modifier = Modifier.size(14.dp))
-        }
-        Text(text, style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
     }
 }
 
@@ -1326,3 +1358,16 @@ private fun connectedAccountStatusDetail(account: RaftSettingsConnectedAccount, 
     } else {
         stringResource(Res.string.settings_account_not_connected)
     }
+
+/** The app editor behaviour for a masked password field (password keyboard, tap-outside dismiss). */
+@Composable
+private fun rememberSettingsAccountPasswordEditor(): RaftDesignSystemEditor =
+    rememberRaftDesignSystemEditor(
+        keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Password),
+        keyboardActions = KeyboardActions.Default,
+        keyboardHeightChange = {},
+        focusRequester = remember { FocusRequester() },
+        autoFocus = false,
+        onFocus = {},
+        onBlur = {}
+    )

@@ -140,35 +140,6 @@ private fun String.artifactPercentDecoded(): String? {
 const val OBJECT_SUMMARIES_MAX_REFS: Int = 50
 
 /**
- * At most this many Artifact references a message reads, duplicates dropped, in message order (web
- * `useMessageLinkCards.ts` `MESSAGE_OBJECT_LINK_LIMIT`, as the App link read takes); links past it
- * stay the author's links.
- */
-const val MESSAGE_OBJECT_LINK_LIMIT: Int = 10
-
-/**
- * Whether [link] is an Artifact's by id (shared `parseArtifactRef(...).kind === "id"`): the links the
- * server's App link read leaves out before it takes its first three (`appLinkReadUrls`), whatever
- * the Artifacts flag says.
- */
-fun isArtifactIdLink(link: String, appHosts: Collection<String>): Boolean = parseArtifactLinkTarget(link, appHosts) != null
-
-/**
- * The Artifacts a message's bare links name, in message order, each reference once, at most
- * [MESSAGE_OBJECT_LINK_LIMIT]: links whose text is their own address (an autolink, `<url>`, or
- * `[url](url)`), not links in code.
- */
-fun artifactMessageLinkTargets(content: String, appHosts: Collection<String>): List<ArtifactLinkTarget> {
-    if ("://" !in content) return emptyList()
-    return appLinkMessageBareLinks(content, limit = Int.MAX_VALUE) { raw ->
-        raw.takeIf { parseArtifactLinkTarget(it, appHosts) != null }
-    }
-        .mapNotNull { parseArtifactLinkTarget(it, appHosts) }
-        .distinctBy { it.key }
-        .take(MESSAGE_OBJECT_LINK_LIMIT)
-}
-
-/**
  * The Artifact's page in Raft on this environment's web origin ([webBaseUrl], AGENTS.md
  * "Environment Web Link URL Rule"): `<web>/artifacts/<id>`, with `/v/<n>` when pinned.
  */

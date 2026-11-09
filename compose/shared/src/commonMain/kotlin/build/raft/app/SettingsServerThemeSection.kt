@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftProBadge
 import build.raft.app.components.RaftProUpgradeDialog
+import build.raft.app.components.raftProThemeGateDescription
 import build.raft.app.data.RaftAuthSessionEventSource
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.ServerAppearanceRepository
@@ -79,6 +80,7 @@ internal fun rememberSettingsServerThemeBinding(
     val saveFailed = stringResource(Res.string.settings_server_theme_save_failed)
     val currentToast by rememberUpdatedState(onToast)
     val currentSaveFailed by rememberUpdatedState(saveFailed)
+    val currentOpenBilling by rememberUpdatedState(onOpenBilling)
     var upgradeOpen by remember { mutableStateOf(false) }
     val store =
         remember(repository, authStore, scope) {
@@ -87,10 +89,10 @@ internal fun rememberSettingsServerThemeBinding(
                 sessionStore = authStore,
                 scope = scope,
                 onSaveFailed = { currentToast(currentSaveFailed) },
-                // TODO(upgrade dialog): the app has no unified upgrade dialog yet. When it lands,
-                //  open it here with the web's `pro_theme` gate (UpgradeDialog.tsx) in place of
-                //  the RaftProUpgradeDialog this flag shows.
-                onUpgradeRequired = { upgradeOpen = true },
+                // Where the app offers upgrades: the upgrade dialog with the web's `pro_theme` gate
+                // (UpgradeDialog.tsx; [onOpenBilling] opens it). iOS: the plain prompt this flag
+                // shows, with "View your plan".
+                onUpgradeRequired = { if (settingsBillingOffersUpgrade()) currentOpenBilling() else upgradeOpen = true },
             )
         }
     LaunchedEffect(store, authStore) {
@@ -161,7 +163,7 @@ internal fun SettingsServerThemePickerCard(
         RaftDesignSystemTheme {
             RaftProUpgradeDialog(
                 title = stringResource(Res.string.settings_server_theme_pro_title),
-                description = stringResource(Res.string.settings_server_theme_pro_description, state.serverName),
+                description = stringResource(raftProThemeGateDescription(), state.serverName),
                 onUpgrade = binding.onOpenBilling,
                 onDismiss = binding.onDismissUpgrade,
             )
@@ -236,7 +238,7 @@ private fun SettingsServerThemeSwatch(
             modifier
                 .clip(shape)
                 .background(colors.layerCard)
-                .border(if (selected) 1.5.dp else 1.dp, if (selected) colors.lineStrong else colors.line, shape)
+                .border(if (selected) 1.5.dp else 1.dp, if (selected) colors.lineStrong else colors.lineSeam, shape)
                 .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
                 .semantics { contentDescription = description }
                 .padding(8.dp),

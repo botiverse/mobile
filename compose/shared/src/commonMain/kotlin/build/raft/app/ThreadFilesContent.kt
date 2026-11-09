@@ -21,7 +21,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,6 +61,8 @@ import org.jetbrains.compose.resources.StringResource
 import androidx.compose.ui.unit.sp
 import kotlinx.serialization.Serializable
 import kotlinx.coroutines.flow.distinctUntilChanged
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 // The web fixture's SVG art (yellow ground, pink sun, black mountain), base64-encoded: Coil's
 // data-URI fetcher only reads base64 payloads, so the url-encoded `;utf8,` form drew nothing.
@@ -428,7 +429,7 @@ private fun ThreadFileRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(
-            modifier = Modifier.weight(1f).clickable(onClick = openIfIdle),
+            modifier = Modifier.weight(1f).raftClickable(onClick = openIfIdle, tier = RaftHoverTier.Subtle),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -808,7 +809,8 @@ private fun ThreadFilesError(errorCode: String, onRetry: () -> Unit) {
     ) {
         Text(
             text = stringResource(Res.string.thread_files_error_load),
-            style = RaftType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
+            // Web ChannelFilesPanel: text-callout font-semibold (14/20 600).
+            style = RaftType.Callout.withRaftFontWeight(FontWeight.SemiBold).copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
         Text(
@@ -829,7 +831,8 @@ private fun ThreadFilesStateMessage(title: String, detail: String?) {
     ) {
         Text(
             text = title,
-            style = RaftType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
+            // Web EmptyStateTitle: text-headline font-bold (17/22 700).
+            style = RaftType.Headline.copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
         detail?.takeIf { it.isNotBlank() }?.let {

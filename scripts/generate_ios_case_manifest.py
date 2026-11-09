@@ -103,7 +103,6 @@ HELPER_TEMPLATES = {
 
 # Helpers we recognise but deliberately leave pending, with the reason.
 PENDING_HELPERS = {
-    "captureKmpFullHeightSettingsCase": "full-height (display-grow) has no iOS equivalent yet",
     "captureMembersAgentDetailScreen": "complex helper pageData (memberDetailVisualPageData); needs harness-emitted manifest",
     "captureKmpHomeCase": "home-case helper with builder pageData; needs harness-emitted manifest",
 }

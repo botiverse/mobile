@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.resolveInboxAnchorMessageId
 import build.raft.app.toConversationOpenSourceMessageIdentity
 import build.raft.app.model.ChannelId
+import build.raft.app.model.TaskStatus
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
@@ -240,6 +241,107 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertTrue(first is DataResult.Content)
         assertEquals("thread-unfollowed", first.data.items.single().threadChannelId?.value)
         assertEquals(3, first.data.totalCount)
+    }
+
+    @Test
+    fun savedFilterAsksForTheAllFilterScopedToSavedOnEveryPage() = runBlocking {
+        // web Saved: a scope over All listing the threads followed through a save,
+        // `filter=all&scope=saved`, on the first page and on every page after it.
+        val network =
+            FakeInboxNetworkClient(
+                inboxJson =
+                    """
+                    {
+                      "items": [
+                        {
+                          "kind": "thread",
+                          "threadChannelId": "thread-saved",
+                          "parentMessageId": "parent-1",
+                          "parentChannelId": "channel-general",
+                          "parentChannelName": "general",
+                          "parentChannelType": "channel",
+                          "replyCount": 1,
+                          "unreadCount": 0,
+                          "isFollowing": true
+                        }
+                      ],
+                      "hasMore": true,
+                      "totalCount": 2,
+                      "totalUnreadCount": 0
+                    }
+                    """.trimIndent()
+            )
+        val repository = RealInboxRepository(sampleStore(), network)
+
+        val first = repository.loadInitial(ServerId("server-1"), InboxFilter.Saved)
+        repository.loadMore(ServerId("server-1"), InboxFilter.Saved, offset = 30)
+
+        assertEquals(
+            listOf(
+                InboxCall(filter = "all", limit = 30, offset = 0, scope = "saved"),
+                InboxCall(filter = "all", limit = 30, offset = 30, scope = "saved"),
+            ),
+            network.inboxCalls
+        )
+        assertTrue(first is DataResult.Content)
+        assertEquals("thread-saved", first.data.items.single().threadChannelId?.value)
+        assertEquals(2, first.data.totalCount)
+    }
+
+    @Test
+    fun artifactsFilterAsksForTheAllFilterScopedToArtifactsOnEveryPage() = runBlocking {
+        // web Artifacts: a scope over All listing only Artifact rows (object rows, no conversations),
+        // `filter=all&scope=artifacts`, on the first page and on every page after it. The server's
+        // conversation totals are 0; the rows count under `objectCount`.
+        val network =
+            FakeInboxNetworkClient(
+                inboxJson =
+                    """
+                    {
+                      "items": [
+                        {
+                          "kind": "object",
+                          "objectKind": "artifact",
+                          "objectId": "pt_artifact-1",
+                          "home": { "kind": "channel", "label": "general", "channelId": "channel-general" },
+                          "latestEvent": {
+                            "eventKind": "comment",
+                            "reason": "following",
+                            "actor": { "type": "user", "id": "user-2", "name": "kirby" },
+                            "at": "2026-10-26T10:00:00.000Z"
+                          },
+                          "unreadCount": 1,
+                          "hasMention": false,
+                          "isFollowing": true,
+                          "lastActivityAt": "2026-10-26T10:00:00.000Z",
+                          "doneFrontierSeq": "12"
+                        }
+                      ],
+                      "hasMore": true,
+                      "totalCount": 0,
+                      "totalUnreadCount": 0,
+                      "objectUnreadCount": 1,
+                      "objectMentionUnreadCount": 0,
+                      "objectCount": 2
+                    }
+                    """.trimIndent()
+            )
+        val repository = RealInboxRepository(sampleStore(), network)
+
+        val first = repository.loadInitial(ServerId("server-1"), InboxFilter.Artifacts)
+        repository.loadMore(ServerId("server-1"), InboxFilter.Artifacts, offset = 30)
+
+        assertEquals(
+            listOf(
+                InboxCall(filter = "all", limit = 30, offset = 0, scope = "artifacts"),
+                InboxCall(filter = "all", limit = 30, offset = 30, scope = "artifacts"),
+            ),
+            network.inboxCalls
+        )
+        assertTrue(first is DataResult.Content)
+        assertEquals("object:artifact:pt_artifact-1", first.data.items.single().key)
+        assertEquals(ActivityObjectCounts(objectUnreadCount = 1, objectMentionUnreadCount = 0, objectCount = 2), first.data.objectCounts)
+        assertEquals(1, first.data.objectCounts?.unreadFor(InboxFilter.Artifacts))
     }
 
     @Test
@@ -531,7 +633,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
-    fun inboxAcceptsSystemFactsButRejectsCrossDialectHumanAndUnknownTaskStatus() {
+    fun inboxAcceptsSystemFactsRejectsCrossDialectHumanAndKeepsUnknownTaskStatus() {
         val diagnostics = mutableListOf<String>()
         val snapshot =
             parseSharedInboxSnapshot(
@@ -557,12 +659,12 @@ class InboxSavedSearchRepositoryDataSourceTest {
         val item = assertNotNull(snapshot).items.single()
         assertEquals(MemberKind.System, item.parentMessageSenderKind)
         assertNull(item.latestActivitySenderKind)
-        assertNull(item.taskStatus)
+        assertEquals(TaskStatus.Unknown, item.taskStatus)
         assertEquals(
             listOf(
                 "projection_value_rejected source=inbox_latest_activity_sender " +
                     "field=member_kind value=human",
-                "projection_value_rejected source=inbox_task field=task_status value=future-status",
+                "projection_value_unknown source=inbox_task field=task_status value=future-status",
             ),
             diagnostics,
         )

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.components.raftUpsellCopy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,12 +22,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.components.raftBillingLeavesRaftTrailingIcon
+import build.raft.app.components.RaftViewPlanButton
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
 import build.raft.app.data.JointChannelAccepted
 import build.raft.app.data.JointSameAdminContext
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.errorPresentationOrNull
 import build.raft.app.data.jointRetryAfterSeconds
+import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.designsystem.components.RaftTextFieldDefaults
@@ -67,7 +71,10 @@ internal fun CreateJointChannelDialogHost(
     sameAdminContext: JointSameAdminContext? = null,
     onDismiss: () -> Unit,
     onOpenChannel: (JointChannelAccepted) -> Unit,
-    onOpenBilling: () -> Unit,
+    /** Open Channel on a name collision: the archived joint channel, read-only. */
+    onOpenArchivedChannel: (ChannelId) -> Unit,
+    /** The plan limit the server answered with ([CreateJointChannelState.billingGate]); web `paywallUpgrade(billingError)`. */
+    onOpenBilling: (RaftUpgradeGate) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val store =
@@ -78,9 +85,11 @@ internal fun CreateJointChannelDialogHost(
     LaunchedEffect(store, sameAdminContext) { store.dispatch(CreateJointChannelIntent.SetSameAdminContext(sameAdminContext)) }
     val state by store.state.collectAsState()
     val latestOpen by rememberUpdatedState(onOpenChannel)
+    val latestOpenArchived by rememberUpdatedState(onOpenArchivedChannel)
     LaunchedEffect(state.effect) {
         when (val effect = state.effect) {
             is CreateJointChannelEffect.Open -> latestOpen(effect.channel)
+            is CreateJointChannelEffect.OpenArchived -> latestOpenArchived(effect.channelId)
             null -> Unit
         }
         if (state.effect != null) store.dispatch(CreateJointChannelIntent.ConsumeEffect)
@@ -94,7 +103,7 @@ internal fun CreateJointChannelDialogHost(
         agentStatusResolver = agentStatusResolver,
         onIntent = store::dispatch,
         onDismiss = { if (!state.submitting) onDismiss() },
-        onOpenBilling = onOpenBilling,
+        onOpenBilling = { onOpenBilling(state.billingGate ?: RaftUpgradeGate.JointChannelHostLimit) },
     )
 }
 
@@ -156,11 +165,17 @@ internal fun CreateJointChannelDialog(
                     action =
                         if (state.showsBillingLink) {
                             {
-                                RaftButton(
-                                    text = stringResource(Res.string.joint_create_view_billing),
-                                    onClick = onOpenBilling,
-                                    variant = RaftButtonVariant.Default,
-                                )
+                                if (settingsBillingOffersUpgrade()) {
+                                    RaftButton(
+                                        text = stringResource(Res.string.joint_create_view_billing),
+                                        onClick = onOpenBilling,
+                                        variant = RaftButtonVariant.Default,
+                                        trailingIcon = raftBillingLeavesRaftTrailingIcon(),
+                                    )
+                                } else {
+                                    // iOS view-only Billing (App Store 3.1.1): the plan, not a purchase.
+                                    RaftViewPlanButton(onClick = onOpenBilling)
+                                }
                             }
                         } else {
                             null
@@ -168,24 +183,15 @@ internal fun CreateJointChannelDialog(
                 )
             }
             state.collision?.let { collision ->
-                RaftBanner(
-                    description = stringResource(Res.string.joint_create_archived_name_held, collision.archivedChannelName),
-                    status = RaftBannerStatus.Warning,
-                    size = RaftBannerSize.Sm,
-                    action = {
-                        if (collision.canUnarchive) {
-                            RaftButton(
-                                text = stringResource(Res.string.joint_create_unarchive),
-                                onClick = { onIntent(CreateJointChannelIntent.UnarchiveCollision) },
-                                enabled = !state.submitting,
-                            )
-                        }
-                        RaftButton(
-                            text = stringResource(Res.string.joint_create_change_name),
-                            onClick = { onIntent(CreateJointChannelIntent.ChangeCollidingName) },
-                            variant = RaftButtonVariant.Ghost,
-                        )
-                    },
+                ArchivedNameCollisionBanner(
+                    archivedChannelName = collision.archivedChannelName,
+                    canUnarchive = collision.canUnarchive,
+                    unarchiving = state.submitting,
+                    onUnarchive = { onIntent(CreateJointChannelIntent.UnarchiveCollision) },
+                    onOpen = { onIntent(CreateJointChannelIntent.OpenCollision) },
+                    onChangeName = { onIntent(CreateJointChannelIntent.ChangeCollidingName) },
+                    // Web CreateJointChannelDialog: `showHint={false}`.
+                    showHint = false,
                 )
             }
             RaftField(label = stringResource(Res.string.joint_create_name_label), required = true, enabled = !state.submitting) {
@@ -329,7 +335,7 @@ private fun createJointChannelErrorMessage(error: CreateJointChannelError, curre
     val invitee = details?.invitee.orEmpty()
     val server = details?.targetServerSlug.orEmpty()
     val blocking = details?.blockingChannelName.orEmpty()
-    val freeHost = stringResource(Res.string.joint_create_free_host_limit, blocking)
+    val freeHost = stringResource(raftUpsellCopy(Res.string.joint_create_free_host_limit), blocking)
     val notFound = stringResource(Res.string.joint_invite_error_invitee_not_found, invitee, server)
     val notAdmin = stringResource(Res.string.joint_invite_error_invitee_not_admin, invitee, server)
     val serverNotFound = stringResource(Res.string.joint_invite_error_server_not_found, server)
@@ -340,10 +346,10 @@ private fun createJointChannelErrorMessage(error: CreateJointChannelError, curre
             slugRequired = stringResource(Res.string.joint_connections_slug_required),
             peopleRequired = stringResource(Res.string.joint_connections_people_required),
             sameAdminConfirmRequired = stringResource(Res.string.joint_same_admin_confirm_required),
-            freeServerLimit = stringResource(Res.string.joint_limit_free_servers),
+            freeServerLimit = stringResource(raftUpsellCopy(Res.string.joint_limit_free_servers)),
             serverLimit = stringResource(Res.string.joint_limit_servers, JOINT_CHANNEL_MAX_SERVERS),
             freeHostLimit = { freeHost },
-            freeHostLimitUnnamed = stringResource(Res.string.joint_create_free_host_limit_unnamed),
+            freeHostLimitUnnamed = stringResource(raftUpsellCopy(Res.string.joint_create_free_host_limit_unnamed)),
             inviteeNotFound = { _, _ -> notFound },
             inviteeNotAdmin = { _, _ -> notAdmin },
             serverNotFound = { serverNotFound },

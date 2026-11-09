@@ -1,8 +1,8 @@
 PODS:
   - Hands (0.2.2)
-  - MMKV (2.4.0):
-    - MMKVCore (~> 2.4.0)
-  - MMKVCore (2.4.0)
+  - MMKV (2.4.3):
+    - MMKVCore (~> 2.4.3)
+  - MMKVCore (2.4.3)
   - SDWebImage (5.21.7):
     - SDWebImage/Core (= 5.21.7)
   - SDWebImage/Core (5.21.7)
@@ -15,7 +15,7 @@ PODS:
 
 DEPENDENCIES:
   - Hands (from `https://github.com/oranix-io/hands.git`, tag `ios-v0.2.2`)
-  - MMKV (~> 2.4.0)
+  - MMKV (~> 2.4.3)
   - SDWebImage
   - SDWebImageSVGCoder
   - shared (from `../shared`)

@@ -165,7 +165,10 @@ class RaftWidgetServerConfigureActivity : Activity() {
         TextView(this).apply {
             this.text = text
             textSize = sizeSp
-            setTextColor(getColor(android.R.color.black))
+            // The window follows the app's light/dark choice: the theme's primary text, not black.
+            val attrs = obtainStyledAttributes(intArrayOf(android.R.attr.textColorPrimary))
+            setTextColor(attrs.getColorStateList(0))
+            attrs.recycle()
             if (bold) {
                 typeface = Typeface.DEFAULT_BOLD
             }

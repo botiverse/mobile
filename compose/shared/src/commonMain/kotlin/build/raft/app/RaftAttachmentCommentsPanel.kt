@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +49,8 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
+import build.raft.designsystem.components.raftClickable
+import androidx.compose.foundation.shape.CircleShape
 
 // web AttachmentCommentsPanel (packages/web/src/components/message/AttachmentCommentsPanel.tsx):
 // a `min-h-10 px-3 py-1.5` header over a `line-seam`, the comment cards in a `px-3 py-2`
@@ -279,7 +279,7 @@ private fun AttachmentCommentCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            val time = formatRaftTimestampLabel(comment.createdAt, LocalRaftTimeContextProvider.current?.current)
+            val time = formatRaftTimestampLabel(comment.createdAt, currentRaftTimeContextProvider?.current)
             if (time.isNotBlank()) {
                 RaftText(
                     text = time,
@@ -298,14 +298,10 @@ private fun AttachmentCommentCard(
         )
         RaftMarkdownBody(
             body = comment.content,
-            textStyle =
-                RaftType.Body.copy(
-                    fontSize = RaftTheme.typography.footnote.fontSize,
-                    lineHeight = RaftTheme.typography.footnote.lineHeight,
-                    color = colors.foreground
-                ),
+            // Web AttachmentCommentsPanel: MessageItemBody text-body + MarkdownContent (16/24 400).
+            textStyle = RaftType.Body.copy(color = colors.foreground),
             modifier = Modifier.padding(top = CommentChipLineBoxDescent),
-            minInlineLineHeight = RaftTheme.typography.footnote.lineHeight
+            minInlineLineHeight = RaftTheme.typography.body.lineHeight
         )
     }
 }
@@ -325,14 +321,14 @@ private fun AttachmentCommentChip(
         modifier =
             Modifier
                 .clip(shape)
+                .background(colors.fillMuted, shape)
                 .then(
                     if (onClick != null) {
-                        Modifier.clickable(onClickLabel = onClickLabel, role = Role.Button, onClick = onClick)
+                        Modifier.raftClickable(onClick = onClick, onClickLabel = onClickLabel, shape = shape)
                     } else {
                         Modifier
                     }
                 )
-                .background(colors.fillMuted, shape)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -353,7 +349,7 @@ private fun AttachmentCommentChip(
                     Modifier
                         .size(CommentChipIconSize)
                         .semantics { contentDescription = removeLabel }
-                        .clickable(onClick = onRemove)
+                        .raftClickable(onClick = onRemove, shape = CircleShape)
             ) {
                 RaftLucideIcon(
                     RaftLucideIconName.X,

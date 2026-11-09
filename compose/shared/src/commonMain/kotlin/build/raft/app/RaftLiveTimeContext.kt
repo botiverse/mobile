@@ -29,6 +29,34 @@ import kotlinx.coroutines.launch
 
 internal val LocalRaftTimeContextProvider = compositionLocalOf<RaftTimeContextProvider?> { null }
 
+/**
+ * Every page's base live time context (device zone, 24 h), provided once by
+ * [build.raft.app.base.BasePager], so a relative time ("resets tomorrow", "updated 1 minute ago")
+ * on a page that provides no [LocalRaftTimeContextProvider] of its own, in a sheet or a card too,
+ * resolves instead of reading "unknown time" (artin 11-05: fix it once, not page by page). Kept
+ * apart from [LocalRaftTimeContextProvider] so a page's "inherited ?: own" check still sees only a
+ * real host context. Read through [currentRaftTimeContextProvider].
+ */
+internal val LocalRaftPageBaseTimeContextProvider = compositionLocalOf<RaftTimeContextProvider?> { null }
+
+/** The page's own time context when it has one, else the page base one. */
+internal val currentRaftTimeContextProvider: RaftTimeContextProvider?
+    @Composable get() = LocalRaftTimeContextProvider.current ?: LocalRaftPageBaseTimeContextProvider.current
+
+/** [LocalRaftPageBaseTimeContextProvider] for one page; called by BasePager only. */
+@Composable
+internal fun ProvideRaftPageBaseTimeContext(pageVisibleTick: Int, content: @Composable () -> Unit) {
+    val capabilities =
+        remember {
+            RaftTimeCapabilities(
+                localOffsetMinutes = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(RaftSystemTimeClock.nowEpochMillis(), 0),
+                timeFormat = RaftTimeFormat24Hour,
+            )
+        }
+    val provider = rememberLiveRaftTimeContext(capabilities = capabilities, pageVisibleTick = pageVisibleTick, active = true)
+    CompositionLocalProvider(LocalRaftPageBaseTimeContextProvider provides provider, content = content)
+}
+
 @Stable
 internal class RaftTimeContextProvider(initial: RaftTimeContext?) {
     var current by mutableStateOf(initial)

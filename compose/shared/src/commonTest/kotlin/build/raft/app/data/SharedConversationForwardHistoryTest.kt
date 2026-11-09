@@ -297,6 +297,81 @@ class SharedConversationForwardHistoryTest {
         assertNull(history.requestForward(ready("server-a", projection("server-a", "channel-a"))))
     }
 
+    @Test
+    fun gestureIsArmedOnlyOnLoadedVisibleHomeWithSomethingToReopen() {
+        fun armed(
+            preferenceEnabled: Boolean = true,
+            authoritativeHomeStartAllowed: Boolean = true,
+            homeSurfaceVisible: Boolean = true,
+            homeContentReady: Boolean = true,
+            canForward: Boolean = true,
+        ) =
+            appShellConversationForwardGestureArmed(
+                preferenceEnabled = preferenceEnabled,
+                authoritativeHomeStartAllowed = authoritativeHomeStartAllowed,
+                homeSurfaceVisible = homeSurfaceVisible,
+                homeContentReady = homeContentReady,
+                canForward = canForward,
+            )
+
+        assertTrue(armed())
+        assertFalse(armed(preferenceEnabled = false))
+        assertFalse(armed(authoritativeHomeStartAllowed = false))
+        // Off Home (another tab, a Home destination, the shell covered): never armed. The old
+        // "home not ready" re-arm path left the recognizer live wherever the shell was.
+        assertFalse(armed(homeSurfaceVisible = false))
+        assertFalse(armed(homeContentReady = false))
+        assertFalse(armed(canForward = false))
+    }
+
+    @Test
+    fun backFromAConversationArmsTheGestureOnceHomeHasLoaded() {
+        // #proj-mobile #111: the Beta setting on, a DM opened from Home, Back to Home.
+        val history = SharedConversationForwardHistory()
+        var nativeDisarms = 0
+        ConversationForwardGestureRuntimeAuthority(supported = true) { enabled ->
+            reconcileConversationForwardGesturePreference(enabled, history) { nativeDisarms += 1 }
+        }.seedFromRepository(enabled = true)
+        assertEquals(0, nativeDisarms)
+
+        history.recordNewOpen(entry("server-a", "dm-a", ConversationKind.DirectMessage))
+        // Covered by the conversation: nothing to reopen yet, and the shell is not Home.
+        assertFalse(history.canForward)
+        assertTrue(history.recordHomeVisible())
+
+        fun armed(homeContentReady: Boolean) =
+            appShellConversationForwardGestureArmed(
+                preferenceEnabled = true,
+                authoritativeHomeStartAllowed = true,
+                homeSurfaceVisible = true,
+                homeContentReady = homeContentReady,
+                canForward = history.canForward,
+            )
+        // Home's list still loading when the shell reappears: not yet, but the candidate stays.
+        assertFalse(armed(homeContentReady = false))
+        assertTrue(history.canForward)
+        // The list lands: the same rule now arms the recognizer.
+        assertTrue(armed(homeContentReady = true))
+
+        val action =
+            assertIs<ConversationForwardAction.Open>(
+                history.requestForward(
+                    ready(
+                        "server-a",
+                        projection(
+                            "server-a",
+                            "dm-a",
+                            kind = ConversationKind.DirectMessage,
+                            surfaceKind = RaftThreadSurfaceKind.DirectMessage
+                        )
+                    )
+                )
+            )
+        assertEquals("server-a", action.entry.serverId)
+        // Reopened: nothing left to reopen until the next Back.
+        assertFalse(armed(homeContentReady = true))
+    }
+
     private fun enabledHistory(): SharedConversationForwardHistory =
         SharedConversationForwardHistory().also { it.setEnabled(true) }
 

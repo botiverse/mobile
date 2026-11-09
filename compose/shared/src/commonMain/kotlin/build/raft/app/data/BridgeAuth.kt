@@ -993,6 +993,17 @@ internal interface SharedThreadNetworkApi {
         attachmentIds: List<String> = emptyList(),
         randomId: String? = null
     ): HomeNetworkResponse
+
+    /** `POST /messages` with structured `mentions` ([ThreadSendMessageMention]); fakes may keep the plain send. */
+    suspend fun sendMessageWithMentions(
+        channelId: String,
+        body: String,
+        asTask: Boolean,
+        attachmentIds: List<String>,
+        randomId: String?,
+        mentions: List<ThreadSendMessageMention>,
+    ): HomeNetworkResponse =
+        sendMessage(channelId = channelId, body = body, asTask = asTask, attachmentIds = attachmentIds, randomId = randomId)
     suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): HomeNetworkResponse
     suspend fun attachmentUrl(
         priority: DataRequestPriority,

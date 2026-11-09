@@ -1,7 +1,6 @@
 package build.raft.app.components
 
 import build.raft.app.resources.*
-import build.raft.app.raftMenuWidth
 import build.raft.app.RaftColor
 import build.raft.app.RaftFloatingDefaultViewportGap
 import build.raft.app.RaftFloatingVerticalPlacement
@@ -24,7 +23,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +43,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
+import androidx.compose.ui.semantics.Role
 
 internal data class RaftSelectionPopoverOption(
     val id: String,
@@ -208,7 +209,7 @@ private fun RaftSelectionOptionRow(
             Modifier
                 .fillMaxWidth()
                 .height(RaftMetrics.MenuRowHeight)
-                .clickable(enabled = rowEnabled) { onSelect(option) }
+                .raftClickable(onClick = { onSelect(option) }, enabled = rowEnabled, tier = RaftHoverTier.Highlight)
                 .padding(horizontal = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -246,7 +247,7 @@ private fun RaftSelectionOptionRow(
     }
 }
 
-/** raft-ui `Separator` (1dp `--line-hairline`). [inset] mirrors a menu's `-mx-1.5 my-1.5`. */
+/** raft-ui `Separator` (1dp `--line-hairline`). [verticalSpacing] mirrors a menu's `my-1`. */
 @Composable
 internal fun RaftLookSeparator(modifier: Modifier = Modifier, verticalSpacing: Dp = 0.dp) {
     Box(
@@ -352,7 +353,7 @@ internal fun RaftLookSelectTrigger(
                 .height(height)
                 .background(if (enabled) RaftColor.Card else RaftColor.FillMuted, shape)
                 .border(RaftAppStroke.Control, if (enabled) RaftColor.LineField else RaftColor.BorderHairline, shape)
-                .clickable(enabled = enabled) { onClick() }
+                .raftClickable(onClick = onClick, enabled = enabled, role = Role.DropdownList, shape = shape)
                 .padding(start = 14.dp, end = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -510,6 +511,10 @@ internal fun RaftUiControlledSelect(
     )
 }
 
+/** raft-ui menu popup width: the caller's width, never under `min-w-60`. */
+internal fun raftMenuWidth(width: Dp): Dp =
+    if (width < RaftMetrics.MenuMinWidth) RaftMetrics.MenuMinWidth else width
+
 @Composable
 internal fun RaftUiControlledMenu(
     expanded: Boolean,
@@ -530,7 +535,7 @@ internal fun RaftUiControlledMenu(
     if (!expanded) return
     val density = LocalDensity.current
     val effectiveRowCount = items.size.coerceAtLeast(1)
-    // raft overlays float on a shadow that takes no layout space; the list sits in a p-1.5 popup.
+    // raft overlays float on a shadow that takes no layout space; the list sits in a p-1 popup.
     val chromeHeight = RaftMetrics.PopupPadding * 2
     // raft: the surface turns the legacy 40dp row into `min-h-9` and widens to `min-w-60`.
     val measuredRowHeight = if (rowHeight == 40.dp) RaftMetrics.MenuRowHeight else rowHeight

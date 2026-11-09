@@ -93,14 +93,14 @@ class ThreadFollowerLiveStatusTest {
     }
 
     @Test
-    fun peerServerFollowerShowsNoStatusAndCurrentServerTwinDoes() = runBlocking {
+    fun aPeerServerFollowerShowsItsLiveStatusLikeItsMessageAvatar() = runBlocking {
+        // artin 11-02: in a joint channel the web shows a peer agent's activity; the live source
+        // the message avatars read carries it (the channel's members), so the row reads it too.
         val store = store()
-        store.seedAgent("lagoon")
-        store.pushStatus("lagoon", AgentStatus.Working, seq = 10L)
+        store.seedAgent("hanxin")
+        store.pushStatus("hanxin", AgentStatus.Working, seq = 10L)
 
-        assertNull(rowIndicator(store, follower("lagoon", currentServer = false)).first())
-        assertNull(threadFollowerStatusIndicator(follower("lagoon", currentServer = false), rowIndicator(store, follower("lagoon")).first()))
-        assertEquals(AgentStatus.Working, rowIndicator(store, follower("lagoon")).first()?.status)
+        assertEquals(AgentStatus.Working, rowIndicator(store, follower("hanxin", currentServer = false)).first()?.status)
     }
 
     @Test

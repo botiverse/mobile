@@ -9,21 +9,24 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The three string catalogs (composeResources/values, values-ja, values-zh-rCN) must stay in
- * lockstep: the same keys, and per key the same format placeholders. Compose resources only
- * substitutes positional `%N$s` / `%N$d` placeholders and does not decode Android-only escapes
- * (`\'`, `\"`, `\@`, `\?`), so neither may appear.
+ * The string catalogs. values (en), values-ja and values-zh-rCN stay in lockstep: the same keys.
+ * The later catalogs (values-es, values-pt-rBR, values-ko, values-zh-rTW, values-ru; the web's es,
+ * pt-br, ko, zh-tw and ru) may lag behind, as the web's `Partial` catalogs do: a key one lacks shows
+ * the English (RaftNewLocaleCatalogTest), so a new string does not need eight translations in the same PR.
+ * None may hold a key English lacks. In every catalog a key has the same format placeholders as in
+ * English. Compose resources only substitutes positional `%N$s` / `%N$d` placeholders and does not
+ * decode Android-only escapes (`\'`, `\"`, `\@`, `\?`), so neither may appear.
  */
 class ComposeResourcesCatalogParityTest {
     private val catalogs: Map<String, Map<String, String>> =
-        listOf("values", "values-ja", "values-zh-rCN").associateWith { dir -> parse(resourcesRoot().resolve(dir).resolve("strings.xml")) }
+        (COMPLETE_DIRS + PARTIAL_DIRS).associateWith { dir -> parse(resourcesRoot().resolve(dir).resolve("strings.xml")) }
 
     @Test
     fun everyCatalogHasTheSameKeys() {
         val base = catalogs.getValue("values").keys
         assertTrue(base.isNotEmpty(), "values/strings.xml has no strings")
         catalogs.forEach { (dir, strings) ->
-            assertEquals(emptySet(), base - strings.keys, "keys missing from $dir")
+            if (dir in COMPLETE_DIRS) assertEquals(emptySet(), base - strings.keys, "keys missing from $dir")
             assertEquals(emptySet(), strings.keys - base, "keys only in $dir")
         }
     }
@@ -34,7 +37,8 @@ class ComposeResourcesCatalogParityTest {
             catalogs.getValue("values").flatMap { (key, baseText) ->
                 val expected = placeholders(baseText)
                 catalogs.filterKeys { it != "values" }.mapNotNull { (dir, strings) ->
-                    val actual = placeholders(strings.getValue(key))
+                    val text = strings[key] ?: return@mapNotNull null
+                    val actual = placeholders(text)
                     if (actual == expected) null else "$dir/$key: expected $expected, found $actual"
                 }
             }
@@ -84,7 +88,9 @@ class ComposeResourcesCatalogParityTest {
         ).firstOrNull(Files::isDirectory) ?: error("Unable to locate shared composeResources from $workingDirectory")
     }
 
-    private companion object {
+    internal companion object {
+        val COMPLETE_DIRS = listOf("values", "values-ja", "values-zh-rCN")
+        val PARTIAL_DIRS = listOf("values-es", "values-pt-rBR", "values-ko", "values-zh-rTW", "values-ru")
         val POSITIONAL = Regex("%\\d+\\$[sd]")
         val ANDROID_ONLY_ESCAPE = Regex("""\\['"@?]""")
     }

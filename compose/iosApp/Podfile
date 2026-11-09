@@ -15,7 +15,7 @@ target 'iosApp' do
   # Raft Coil loader (coil-svg for SVG).
   pod 'SDWebImageSVGCoder'
   pod 'Socket.IO-Client-Swift', '~> 16.1'
-  pod 'MMKV', '~> 2.4.0'
+  pod 'MMKV', '~> 2.4.3'
 
   # Hosted tests resolve production symbols through TEST_HOST. Inherit the
   # same pod search paths for compile-time signatures, but do not link the

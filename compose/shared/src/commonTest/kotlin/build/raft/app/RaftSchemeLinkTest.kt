@@ -94,4 +94,39 @@ class RaftSchemeLinkTest {
             assertNull(RaftMessageLinkInbox.Process.pending.value, url)
         }
     }
+
+    @Test
+    fun tappedChatRaftLinkOpensAsItsEnvironmentWebLink() {
+        val thread = raftMarkdownUrlOpen("raft:///s/$slug/dm/$cid?msg=$mid&thread=$cid:$pid", staging)
+        assertEquals("$staging/s/$slug/dm/$cid?msg=$mid&thread=$cid:$pid", thread.url)
+        assertEquals(
+            RaftThreadWebLinkTarget(
+                channelId = cid,
+                messageId = mid,
+                routeKind = RaftThreadSurfaceKind.DirectMessage,
+                threadParentMessageId = pid,
+            ),
+            thread.target,
+        )
+
+        val channel = raftMarkdownUrlOpen("raft://s/$slug/channel/$cid?msg=$mid", webUrl = null)
+        assertEquals("https://app.raft.build/s/$slug/channel/$cid?msg=$mid", channel.url)
+        assertEquals(RaftThreadWebLinkTarget(channelId = cid, messageId = mid), channel.target)
+        // The in-app target is the one the same https link opens.
+        assertEquals("https://app.raft.build/s/$slug/channel/$cid?msg=$mid".toRaftThreadWebLinkTarget(), channel.target)
+    }
+
+    @Test
+    fun tappedChatRaftLinkWithoutAMessageRouteOpensItsWebLinkLikeHttps() {
+        // An /s/ page the app has no route for opens as its web link (link navigator, as https does).
+        val tasks = raftMarkdownUrlOpen("raft:///s/$slug/tasks", staging)
+        assertEquals(RaftMarkdownUrlOpen("$staging/s/$slug/tasks", target = null), tasks)
+        // Non-Raft-Desktop links pass through untouched.
+        for (url in listOf("https://example.com/a", "raft://login/callback?code=x", "mailto:a@b.c")) {
+            assertEquals(RaftMarkdownUrlOpen(url, target = null), raftMarkdownUrlOpen(url, staging), url)
+        }
+        val https = "https://app.raft.build/s/$slug/channel/$cid?msg=$mid"
+        assertEquals(https, raftMarkdownUrlOpen(https, staging).url)
+        assertEquals(https.toRaftThreadWebLinkTarget(), raftMarkdownUrlOpen(https, staging).target)
+    }
 }

@@ -37,10 +37,21 @@ import kotlinx.serialization.json.Json
 const val SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY: String = "sync_core_notification_prefs_v0"
 const val SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY: String = "sync_core_read_state_v1"
 const val READ_RECEIPTS_FEATURE_FLAG_KEY: String = "read_receipts_v0"
+/**
+ * Agent read progress (botiverse/slock `packages/shared/src/featureFlags.ts`
+ * `AGENT_READ_PROGRESS_FEATURE_FLAG_KEY`, default off). With [READ_RECEIPTS_FEATURE_FLAG_KEY] on, a channel or
+ * reply thread shows each agent's face on the message it read up to, and, only when the viewer's latest
+ * message will not reach an agent that stopped following or muted, the line under it (ThreadAgentReadStatus.kt).
+ */
+const val AGENT_READ_PROGRESS_FEATURE_FLAG_KEY: String = "agent_read_progress_v0"
 const val MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY: String = "mobile_thread_page_size_v0"
 const val MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY: String = "mobile_activity_stable_order_v1"
-const val WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY: String = "enable_webview_onboarding_v0"
-const val PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY: String = "product_feedback_multi_app"
+/**
+ * App switch for the server setup (onboarding) WebView. On: setup shows when the server's
+ * setup-projection says blocksChat. Off / unresolved: no setup check (see serverSetupGateEnabled).
+ * New key, so builds that read the old `enable_webview_onboarding_v0` are unaffected.
+ */
+const val MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY: String = "mobile_server_setup_v1"
 /**
  * #367 Thread first-frame render: single-paragraph light markdown path.
  * Default OFF everywhere (server-unresolved evaluates false); local A/B goes
@@ -62,6 +73,9 @@ const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread
 // cleaned up: android_reused_h2_recovery_v0 (NetworkKMM reused-HTTP/2 watchdog), mobile_doh_fallback_v0
 // (curl DNS-over-HTTPS fallback), mobile_curl_socketio_v0 (realtime over curl Socket.IO).
 // sync_core_messages_v1 is no longer read either (2026-10-30): the sync-core message line is always on.
+// product_feedback_multi_app is no longer read from 1.22 (artin): Settings > Feedback and feedback cards
+// follow the platform (settingsFeedbackUsesWebPage): the native submit form on Android / iOS, the
+// ticket web page on Compose desktop.
 // Gogo removes the server flag row after old clients are checked.
 
 /**
@@ -104,11 +118,14 @@ const val THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY: String = "thread_unread_badge_v0
  */
 const val SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY: String = "sidebar_mark_all_read_v0"
 
-/** Agent migration UI (slock `AGENT_MIGRATION_FEATURE_FLAG_KEY`); off hides the section. */
-const val AGENT_MIGRATION_FEATURE_FLAG_KEY: String = "agent_migration_v0"
+// agent_migration_v0 is no longer read (2026-11-05): agent migration is always shown, as on web
+// (slock #13059). The server flag row can go once app versions that still read it are gone.
 
 /** Moving an agent to the cloud (slock `AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY`). */
 const val AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY: String = "agent_migration_hosted_v0"
+
+/** Cloud agents in the create dialog (slock `ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY`). */
+const val ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY: String = "antiproton_hosted_runtime"
 
 /**
  * First-party action cards rendered from their spec (`presentation.card`, `action-card.v1`). The same
@@ -157,30 +174,106 @@ const val PERSONAL_ASSISTANT_FEATURE_FLAG_KEY: String = "personal_assistant"
  */
 const val DRAFTS_SECTION_FEATURE_FLAG_KEY: String = "drafts_section_v0"
 
+/**
+ * Navigation 3 page stack on Android (plan step 1): the app shell window draws the shared page stack
+ * and opens the allowlisted pages on it instead of in Activities of their own. Mobile-only key,
+ * default OFF (server-unresolved evaluates false). Unlike the other flags it is not read per
+ * server at use: the last evaluation is kept on the device ([build.raft.app.nav.RaftNav3StackFlag])
+ * and the app reads it once at launch, so a change takes effect on the next app start. Local test
+ * switch: Settings > Developer > "Navigation 3 page stack".
+ */
+const val MOBILE_NAV3_STACK_FEATURE_FLAG_KEY: String = "mobile_nav3_stack_v1"
+
+/**
+ * iOS native navigation (iPhone only): the opted-in pages' heads on the real UINavigationBar and the
+ * system swipe-back instead of the Compose heads and the full-page pan. Mobile-only key, default
+ * OFF (server-unresolved evaluates false). Read like [MOBILE_NAV3_STACK_FEATURE_FLAG_KEY]: the last
+ * evaluation is kept on the device ([build.raft.app.nav.RaftIosNativeNavFlag]) and the app reads it
+ * once at launch, so a change takes effect on the next app start. Local test switch: Settings >
+ * Developer > "iOS native navigation" (iPhone only).
+ */
+const val MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY: String = "mobile_ios_native_nav_v1"
+
+/**
+ * Interactive link cards (slock `packages/shared/src/featureFlags.ts` `INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY`,
+ * web `serverFeatureFlags.ts` `interactiveLinkCards`): per server, default off. On, a message's App links
+ * are read with the batched link-card read (`POST messages/:id/link-cards/read`, App link cards v2);
+ * off (or unresolved), with the GET, as before.
+ */
+const val INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY: String = "interactive_link_cards"
+
+/**
+ * Card messages (RFC 082; botiverse/slock `packages/shared/src/featureFlags.ts`
+ * `MESSAGE_CARDS_FEATURE_FLAG_KEY`): per server, default off. On, a message with
+ * `actionMetadata.kind == "message-card"` draws its card in the message body; off (or unresolved),
+ * its text (the card's fallback), as before.
+ */
+const val MESSAGE_CARDS_FEATURE_FLAG_KEY: String = "message_cards"
+
+/**
+ * Self-service account deletion (botiverse/slock `ACCOUNT_DELETION_FEATURE_FLAG_KEY` in
+ * `packages/server/src/services/featureFlagService.ts`, default off; its routes answer 404 while off).
+ * On, Settings > Account > Delete account opens the web deletion page in the Settings WebView on every
+ * platform. Off (or unresolved), the row keeps the Hands feedback ticket (not on desktop).
+ */
+const val ACCOUNT_DELETION_FEATURE_FLAG_KEY: String = "account_deletion_v0"
+
+/**
+ * Agent Lounge v0 (botiverse/slock `packages/shared/src/featureFlags.ts` `AGENT_LOUNGE_FEATURE_FLAG_KEY`, web
+ * `AGENT_LOUNGE_FLAG_KEY`): per server, default off. On, and not a Guest ([agentLoungeEnabled]), an agent's
+ * profile and DM header open its Lounge, and a Lounge you joined or were mentioned in has a row under the
+ * agent's DM. Off (or unresolved), no Lounge is offered; `POST /agents/:id/lounge` answers 404.
+ */
+const val AGENT_LOUNGE_FEATURE_FLAG_KEY: String = "agent_lounge_v0"
+
+/**
+ * Public servers (botiverse/slock `packages/shared/src/featureFlags.ts` `PUBLIC_SERVER_FEATURE_FLAG_KEY`):
+ * per server, default off. Read by Settings search, which finds Server > Public access only for the
+ * owner while it is on (the section itself shows once `GET /servers/:id/public-visibility` answers).
+ */
+const val PUBLIC_SERVER_FEATURE_FLAG_KEY: String = "public_server_v0"
+
+/**
+ * Server SSO v1 (botiverse/slock `packages/server/src/services/featureFlagService.ts`
+ * `SERVER_SSO_FEATURE_FLAG_KEY`, rfcs/083-server-sso.md §8): per server, default off. Read by
+ * Settings search, which finds Administration > Single sign-on for an admin only while it is on
+ * (web `useServerSsoShown`: `GET /servers/:id/sso` answers 404 while off).
+ */
+const val SERVER_SSO_FEATURE_FLAG_KEY: String = "server_sso_v1"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
     SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY,
     READ_RECEIPTS_FEATURE_FLAG_KEY,
+    AGENT_READ_PROGRESS_FEATURE_FLAG_KEY,
     MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY,
     MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
-    WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY,
-    PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY,
+    MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
     MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
     ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
     THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
     SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
-    AGENT_MIGRATION_FEATURE_FLAG_KEY,
     AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY,
+    ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY,
     ACTION_CARD_SPEC_FEATURE_FLAG_KEY,
     WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
     MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY,
     TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY,
     PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
     DRAFTS_SECTION_FEATURE_FLAG_KEY,
+    MOBILE_NAV3_STACK_FEATURE_FLAG_KEY,
+    MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY,
+    INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY,
+    MESSAGE_CARDS_FEATURE_FLAG_KEY,
     // Slack Bridge (slock `SLACK_BRIDGE_FEATURE_FLAG_KEYS.master`): the Settings IM Bridges row.
     SLACK_BRIDGE_FEATURE_FLAG_KEY,
+    ACCOUNT_DELETION_FEATURE_FLAG_KEY,
+    AGENT_LOUNGE_FEATURE_FLAG_KEY,
+    // Settings search: who finds Public access and Single sign-on.
+    PUBLIC_SERVER_FEATURE_FLAG_KEY,
+    SERVER_SSO_FEATURE_FLAG_KEY,
 )
 
 /**

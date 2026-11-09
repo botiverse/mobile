@@ -42,10 +42,21 @@ class RaftReleaseNotesSectionGapConnectedTest {
                 "Release Notes must also stay free of legacy yellow inline-code paint: $releaseNotesGap",
                 releaseNotesGap.yellowPixelsInsideHeading <= MaximumClearedPixels
             )
+            // Headings carry the web's collapsed h2 top margin (mt-2), so the inline code's
+            // chrome is cleared with or without a document section gap; a section gap only
+            // folds into that margin and must never pull the heading up.
             assertTrue(
-                "The Release Notes heading must move below the zero-gap position: " +
+                "The section gap must not move the Release Notes heading up: " +
                     "noGap=$noGap releaseNotes=$releaseNotesGap",
-                releaseNotesGap.headingTopPx > noGap.headingTopPx
+                releaseNotesGap.headingTopPx >= noGap.headingTopPx
+            )
+            assertTrue(
+                "The paragraph's inline code must end above the heading with clear space between: $noGap",
+                noGap.clearRowsAboveHeading >= MinimumClearRowsAboveHeading
+            )
+            assertTrue(
+                "The paragraph's inline code must end above the heading with clear space between: $releaseNotesGap",
+                releaseNotesGap.clearRowsAboveHeading >= MinimumClearRowsAboveHeading
             )
         } finally {
             instrumentation.setFontScale(originalFontScale)
@@ -81,7 +92,8 @@ class RaftReleaseNotesSectionGapConnectedTest {
                 SectionGapCapture(
                     headingTopPx = headingBounds.top,
                     headingBottomPx = headingBounds.bottom,
-                    yellowPixelsInsideHeading = screenshot.yellowInlineCodePixels(headingBounds)
+                    yellowPixelsInsideHeading = screenshot.yellowInlineCodePixels(headingBounds),
+                    clearRowsAboveHeading = screenshot.clearRowsAbove(headingBounds)
                 )
             } finally {
                 screenshot.recycle()
@@ -137,6 +149,29 @@ class RaftReleaseNotesSectionGapConnectedTest {
         return count
     }
 
+    /**
+     * Rows of plain page background directly above the heading, across the heading's width. The
+     * paragraph above ends in inline code, so its fill (or any glyph) reaching into the heading
+     * leaves no clear row. Returns -1 when no paragraph ink is found at all (fixture not drawn).
+     */
+    private fun Bitmap.clearRowsAbove(bounds: Rect): Int {
+        val background = getPixel(BackgroundSampleOffsetPx, BackgroundSampleOffsetPx)
+        val left = bounds.left.coerceIn(0, width)
+        val right = bounds.right.coerceIn(0, width)
+        var clearRows = 0
+        for (y in (bounds.top.coerceIn(0, height) - 1) downTo 0) {
+            val rowHasInk = (left until right).any { x -> !getPixel(x, y).isNear(background) }
+            if (rowHasInk) return clearRows
+            clearRows++
+        }
+        return -1
+    }
+
+    private fun Int.isNear(other: Int): Boolean =
+        kotlin.math.abs(Color.red(this) - Color.red(other)) <= BackgroundTolerance &&
+            kotlin.math.abs(Color.green(this) - Color.green(other)) <= BackgroundTolerance &&
+            kotlin.math.abs(Color.blue(this) - Color.blue(other)) <= BackgroundTolerance
+
     private fun Instrumentation.setFontScale(value: String) {
         shell("settings put system font_scale $value")
         shell("am broadcast -a android.intent.action.CONFIGURATION_CHANGED")
@@ -165,7 +200,8 @@ class RaftReleaseNotesSectionGapConnectedTest {
     private data class SectionGapCapture(
         val headingTopPx: Int,
         val headingBottomPx: Int,
-        val yellowPixelsInsideHeading: Int
+        val yellowPixelsInsideHeading: Int,
+        val clearRowsAboveHeading: Int
     )
 
     private companion object {
@@ -177,6 +213,9 @@ class RaftReleaseNotesSectionGapConnectedTest {
         private const val HeadingPollAttempts = 20
         private const val HeadingPollIntervalMs = 250L
         private const val MaximumClearedPixels = 2
+        private const val MinimumClearRowsAboveHeading = 1
+        private const val BackgroundSampleOffsetPx = 2
+        private const val BackgroundTolerance = 6
         private const val YellowRedMin = 245
         private val YellowGreenRange = 205..245
         private const val YellowBlueMax = 220

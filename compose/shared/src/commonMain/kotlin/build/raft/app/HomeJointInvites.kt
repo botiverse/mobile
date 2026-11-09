@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.components.raftUpsellCopy
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -61,7 +62,7 @@ internal fun rememberHomeJointInvites(
     val rateLimitedLater = jointInviteRateLimitedMessage(null)
     val failureCopy =
         JointFailureCopy(
-            freeServerLimit = stringResource(Res.string.joint_limit_free_servers),
+            freeServerLimit = stringResource(raftUpsellCopy(Res.string.joint_limit_free_servers)),
             serverLimit = stringResource(Res.string.joint_limit_servers, JOINT_CHANNEL_MAX_SERVERS),
             hostFreeLimit = stringResource(Res.string.joint_limit_host_free),
             fallback = stringResource(Res.string.joint_invite_accept_failed),

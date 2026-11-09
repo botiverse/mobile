@@ -31,32 +31,31 @@ class TaskPendingPageTest {
     @Test
     fun `a member gets the conversation head editors on a task without a conversation`() {
         val pending = pendingTask()
-        val model = pending.taskConversationHeadModel(pending.taskPendingHeaderState(), TaskConversationDetailsState(), "member", false, members, null)
+        val model = pending.taskConversationHeadModel(pending.taskPendingHeaderState(), TaskConversationDetailsState(), false, members, null)
         assertTrue(model.bar.statusEditable)
         assertTrue(model.bar.assigneeEditable)
+        // Web: every status, from any status, for everyone (the server has no transition table),
+        // but In Review, retired for a task with its own conversation (web slock #12884); Backlog
+        // first, as a v2 task offers it (web slock #12963).
         assertEquals(
-            listOf(TaskStatus.InProgress, TaskStatus.InReview, TaskStatus.Done, TaskStatus.Closed),
+            listOf(TaskStatus.Backlog, TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.Done, TaskStatus.Closed),
             model.bar.statusOptions.map(TaskStatusOption::status),
         )
         // The same bar the conversation page shows for this task once its conversation exists.
         val conversation = pending.copy(conversationChannelId = ChannelId("conv-1"), conversationAnchored = true)
         val conversationBar =
-            conversation.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), TaskConversationDetailsState(), "member", false, members, null).bar
+            conversation.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), TaskConversationDetailsState(), false, members, null).bar
         assertEquals(conversationBar, model.bar)
-        // An owner may force any status, as there.
-        val owner = pending.taskConversationHeadModel(pending.taskPendingHeaderState(), TaskConversationDetailsState(), "owner", false, members, null)
-        assertEquals(TaskStatus.entries.toList(), owner.bar.statusOptions.map(TaskStatusOption::status))
     }
 
     @Test
-    fun `a guest a read-only task and the offline stand-in read as plain facts`() {
+    fun `a read-only task and the offline stand-in read as plain facts`() {
         val pending = pendingTask()
-        fun bar(task: TaskSummary, role: String?, editable: Boolean = true) =
-            task.taskConversationHeadModel(task.taskPendingHeaderState(), TaskConversationDetailsState(), role, false, members, null, editable).bar
+        fun bar(task: TaskSummary, editable: Boolean = true) =
+            task.taskConversationHeadModel(task.taskPendingHeaderState(), TaskConversationDetailsState(), false, members, null, editable).bar
         listOf(
-            "guest" to bar(pending, "guest"),
-            "read-only task" to bar(pending.copy(readOnlyReason = "historical_joint"), "member"),
-            "offline stand-in" to bar(pending, "member", editable = false),
+            "read-only task" to bar(pending.copy(readOnlyReason = "historical_joint")),
+            "offline stand-in" to bar(pending, editable = false),
         ).forEach { (case, model) ->
             assertFalse(model.statusEditable, case)
             assertEquals(emptyList(), model.statusOptions, case)
@@ -65,7 +64,7 @@ class TaskPendingPageTest {
             assertEquals("Lagoon", model.assigneeName, case)
         }
         // Done freezes the assignee (the server's rule) but its status can still move.
-        val done = bar(pending.copy(status = TaskStatus.Done), "member")
+        val done = bar(pending.copy(status = TaskStatus.Done))
         assertTrue(done.statusEditable)
         assertFalse(done.assigneeEditable)
     }

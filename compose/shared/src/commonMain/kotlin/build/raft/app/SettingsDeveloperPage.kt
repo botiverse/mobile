@@ -3,10 +3,12 @@ package build.raft.app
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftCardVariant
+import build.raft.designsystem.components.RaftRadio
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
-import build.raft.app.components.raftControlSurface
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsAboutSnapshot
@@ -18,14 +20,13 @@ import build.raft.app.data.SharedSettingsDiagnosticsEntry
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE
+import build.raft.app.nav.RaftNav3StackFlag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -41,7 +42,6 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,13 +58,18 @@ internal fun SharedSettingsDeveloperContent(
     onOpenRouter: () -> Unit
 ) {
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
+    val preferences = remember { build.raft.app.data.raftSharedPreferenceStore() }
+    var nav3StackLocalEnabled by remember { mutableStateOf(RaftNav3StackFlag.localOverride(preferences)) }
+    var verboseDiagnosticsEnabled by remember { mutableStateOf(RaftVerboseDiagnostics.enabled) }
     val payload =
         snapshot.toDeveloperPayload(
             state = state,
             actionState = actionState,
             errorStrings = localizedErrorPresentationStrings(),
             copy = settingsDeveloperPayloadCopy(),
-            textInputTraceEnabled = RaftTextInputDiagnostics.enabled
+            textInputTraceEnabled = RaftTextInputDiagnostics.enabled,
+            verboseDiagnosticsEnabled = verboseDiagnosticsEnabled,
+            nav3StackLocalEnabled = nav3StackLocalEnabled
         )
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
         when (action) {
@@ -72,6 +77,15 @@ internal fun SharedSettingsDeveloperContent(
             "diagnostics" -> onOpenDiagnostics()
             "router" -> onOpenRouter()
             DEVELOPER_ACTION_TEXT_INPUT_TRACE -> RaftTextInputDiagnostics.setEnabled(value == "true")
+            DEVELOPER_ACTION_VERBOSE_DIAGNOSTICS -> {
+                RaftVerboseDiagnostics.setEnabled(value == "true")
+                verboseDiagnosticsEnabled = RaftVerboseDiagnostics.enabled
+            }
+            DEVELOPER_ACTION_NAV3_STACK -> {
+                // Read once at app launch: the switch takes effect on the next start.
+                RaftNav3StackFlag.setLocalOverride(preferences, value == "true")
+                nav3StackLocalEnabled = RaftNav3StackFlag.localOverride(preferences)
+            }
         }
     }
 }
@@ -227,44 +241,24 @@ private fun SettingsApiEnvironmentPresetRow(
     enabled: Boolean,
     onSelect: () -> Unit
 ) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .raftControlSurface(
-                    fill = if (selected) RaftColor.BrandSoft else RaftColor.Card,
-                    border = if (selected) RaftColor.BorderBlack else RaftColor.BorderHairline,
-                    radius = RaftAppRadius.Container,
-                    borderWidth = if (selected) RaftAppStroke.Control else RaftAppStroke.Thin
-                )
-                .clickable(enabled = enabled, role = Role.Button, onClick = onSelect)
-                .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftLucideIcon(
-            name = if (selected) RaftLucideIconName.CircleCheckBig else RaftLucideIconName.Server,
-            modifier = Modifier.size(18.dp),
-            color = RaftColor.TextBlackArgb
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    // The design-system option card: the radio shows the pick, the whole card is the target.
+    RaftCard(
+        modifier = Modifier.fillMaxWidth(),
+        variant = RaftCardVariant.Option,
+        title = option.label,
+        description = listOf(option.apiBaseUrl, option.socketBaseUrl).filter { it.isNotBlank() }.joinToString(" | "),
+        leading = { RaftRadio(selected = selected, onClick = null) },
+        trailing = {
             Text(
-                text = option.label,
-                style = RaftType.Button.copy(fontSize = 13.sp, lineHeight = 16.sp),
-                color = RaftColor.TextBlack
-            )
-            Text(
-                text = listOf(option.apiBaseUrl, option.socketBaseUrl).filter { it.isNotBlank() }.joinToString(" | "),
+                text = if (selected) stringResource(Res.string.settings_developer_state_current) else stringResource(Res.string.settings_developer_state_preset),
                 style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                 color = RaftColor.TextMutedGray
             )
-        }
-        Text(
-            text = if (selected) stringResource(Res.string.settings_developer_state_current) else stringResource(Res.string.settings_developer_state_preset),
-            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray
-        )
-    }
+        },
+        onClick = onSelect,
+        selected = selected,
+        enabled = enabled
+    )
 }
 
 @Composable
@@ -347,6 +341,8 @@ internal fun SharedSettingsLocalFeatureOverrideDetailContent(
 }
 
 internal const val DEVELOPER_ACTION_TEXT_INPUT_TRACE = "textInputTrace"
+internal const val DEVELOPER_ACTION_VERBOSE_DIAGNOSTICS = "verboseDiagnostics"
+internal const val DEVELOPER_ACTION_NAV3_STACK = "nav3Stack"
 private const val LOCAL_FEATURE_OVERRIDES_OPEN_ACTION = "openLocalFeatureOverrides"
 private const val LOCAL_FEATURE_OVERRIDE_OPEN_ACTION_PREFIX = "openLocalFeatureOverride|"
 private const val LOCAL_FEATURE_OVERRIDE_EXPORT_ACTION = "exportLocalFeatureOverrideEvidence"
@@ -413,6 +409,10 @@ internal data class SettingsDeveloperPayloadCopy(
     val routeLauncherDetail: String = "Open Kuikly route launcher and icon compare.",
     val textInputTrace: String = "Text input trace",
     val textInputTraceDetail: String = "Log every keyboard edit and text sync in text fields to the app logs.",
+    val verboseDiagnostics: String = "Verbose diagnostics",
+    val verboseDiagnosticsDetail: String = "Also write duplicate realtime events, avatar, markdown and scroll details, and every successful request to the app logs. Feedback reports get larger. Turns off when the app restarts.",
+    val nav3Stack: String = "Navigation 3 page stack",
+    val nav3StackDetail: String = "Open the pages moved so far inside the app window (Android). Takes effect on the next app start.",
     val on: String = "On",
     val off: String = "Off"
 )
@@ -440,6 +440,10 @@ private fun settingsDeveloperPayloadCopy(): SettingsDeveloperPayloadCopy =
         routeLauncherDetail = stringResource(Res.string.settings_developer_route_launcher_detail),
         textInputTrace = stringResource(Res.string.settings_developer_text_input_trace),
         textInputTraceDetail = stringResource(Res.string.settings_developer_text_input_trace_detail),
+        verboseDiagnostics = stringResource(Res.string.settings_developer_verbose_diagnostics),
+        verboseDiagnosticsDetail = stringResource(Res.string.settings_developer_verbose_diagnostics_detail),
+        nav3Stack = stringResource(Res.string.settings_developer_nav3_stack),
+        nav3StackDetail = stringResource(Res.string.settings_developer_nav3_stack_detail),
         on = stringResource(Res.string.settings_state_on),
         off = stringResource(Res.string.settings_state_off)
     )
@@ -537,7 +541,9 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
     actionState: SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings,
     copy: SettingsDeveloperPayloadCopy = SettingsDeveloperPayloadCopy(),
-    textInputTraceEnabled: Boolean = false
+    textInputTraceEnabled: Boolean = false,
+    verboseDiagnosticsEnabled: Boolean = false,
+    nav3StackLocalEnabled: Boolean = false
 ): RaftSharedSettingsPayload {
     val environmentDetail =
         when (state) {
@@ -607,6 +613,26 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                                 status = if (textInputTraceEnabled) copy.on else copy.off,
                                 enabled = true,
                                 toggleValue = textInputTraceEnabled
+                            ),
+                            RaftSharedSettingsRow(
+                                key = DEVELOPER_ACTION_VERBOSE_DIAGNOSTICS,
+                                iconName = RaftLucideIconName.ClipboardList,
+                                title = copy.verboseDiagnostics,
+                                detail = copy.verboseDiagnosticsDetail,
+                                value = (!verboseDiagnosticsEnabled).toString(),
+                                status = if (verboseDiagnosticsEnabled) copy.on else copy.off,
+                                enabled = true,
+                                toggleValue = verboseDiagnosticsEnabled
+                            ),
+                            RaftSharedSettingsRow(
+                                key = DEVELOPER_ACTION_NAV3_STACK,
+                                iconName = RaftLucideIconName.Route,
+                                title = copy.nav3Stack,
+                                detail = copy.nav3StackDetail,
+                                value = (!nav3StackLocalEnabled).toString(),
+                                status = if (nav3StackLocalEnabled) copy.on else copy.off,
+                                enabled = true,
+                                toggleValue = nav3StackLocalEnabled
                             )
                         )
                 )

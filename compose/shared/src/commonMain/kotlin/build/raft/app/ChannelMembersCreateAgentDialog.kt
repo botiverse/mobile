@@ -8,7 +8,6 @@ import androidx.compose.runtime.*
 import build.raft.app.data.*
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
-import build.raft.app.components.RaftBrutalActionButton
 import androidx.compose.material3.Text
 import kotlinx.coroutines.launch
 
@@ -19,6 +18,8 @@ internal fun ChannelMembersCreateAgentDialog(
     channelId: ChannelId,
     initialName: String,
     mode: MembersCreateAgentMode = MembersCreateAgentMode.Managed,
+    /** The channel the new agent joins, said in the dialog (web `autoJoinChannelName`). */
+    channelName: String? = null,
     authority: AuthenticatedRouteAuthorityGateway,
     computersStore: SharedComputersStore,
     formStore: SharedCreateAgentFormStore,
@@ -31,6 +32,12 @@ internal fun ChannelMembersCreateAgentDialog(
      * agents keep the previous behaviour of just closing and refreshing.
      */
     onCreated: (MemberId) -> Unit = {},
+    /** The no-computer dialog's "Add Computer"; null hides it. */
+    onAddComputer: (() -> Unit)? = null,
+    /** The server's plan from the session, for the agent limit when billing can't be read. */
+    serverPlan: String? = null,
+    /** "Upgrade for more" in the agent-limit banner; null leaves it as text. */
+    onUpgrade: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val picker by remember(computersStore, owner) {
@@ -41,6 +48,20 @@ internal fun ChannelMembersCreateAgentDialog(
     val serverMembers by remember(membersStore, owner) {
         membersStore.serverMembersEntryFlow(owner)
     }.collectAsState(remember(membersStore, owner) { membersStore.currentServerMembersEntry(owner) })
+    // The plan's agent limit (web CreateAgentDialog `loadBilling`): at the limit the dialog says so
+    // and Create stays disabled. Unread billing (a 403, offline) falls back to the plan's limits.
+    var billing by remember(owner) { mutableStateOf<CreateAgentBilling?>(null) }
+    LaunchedEffect(owner) {
+        val receipt = authority.capture(owner) ?: return@LaunchedEffect
+        val loaded = loadCreateAgentBilling(authority.networkClient(receipt))
+        if (authority.isCurrent(receipt)) billing = loaded
+    }
+    val agentLimit =
+        createAgentLimit(
+            billing = billing,
+            serverPlan = serverPlan,
+            serverAgentCount = serverMembers.members.count { it.kind == build.raft.app.model.MemberKind.Agent },
+        )
     var submitting by remember(owner) { mutableStateOf(false) }
     var error by remember(owner) { mutableStateOf<String?>(null) }
     var createdId by remember(owner) { mutableStateOf<String?>(null) }
@@ -69,13 +90,16 @@ internal fun ChannelMembersCreateAgentDialog(
                     )
                     val result = coordinator.createAgent(request.toCreateAgentRequest())
                     if (!authority.isCurrent(receipt)) return@launch
-                    if (result !is DataResult.Content) { error = failedLabel; return@launch }
+                    if (result !is DataResult.Content) {
+                        // The server's words when it gave a reason (a model no longer offered, one set by an admin).
+                        error = (result as? DataResult.Error)?.error?.let { createAgentFallbackErrorText(it, failedLabel) } ?: failedLabel
+                        return@launch
+                    }
                     formStore.rememberCreatedAgent(owner.serverId, request)
                     agentId = result.data.id
                     createdId = agentId
                 }
-                val joined = membersStore.addChannelMembersBatch(owner,
-                    AddChannelMembersBatchRequest(channelId, emptyList(), listOf(MemberId(agentId))))
+                val joined = membersStore.addChannelMembersBatch(owner, createdAgentJoinRequest(channelId, agentId))
                 if (!authority.isCurrent(receipt)) return@launch
                 if (joined is DataResult.Content) {
                     // task #5 (Hands 906abab9): ordering is the contract — see
@@ -112,6 +136,8 @@ internal fun ChannelMembersCreateAgentDialog(
     } else {
         SharedCreateAgentDialog(
             external = mode == MembersCreateAgentMode.External,
+            offersHosting = true,
+            autoJoinChannelName = channelName,
             submitting = submitting, errorMessage = error, initialName = initialName,
             machines = if (mode.requiresComputerSelection()) picker.machines else emptyList(),
             machinesLoading = mode.requiresComputerSelection() && picker.initialLoadInFlight,
@@ -119,10 +145,22 @@ internal fun ChannelMembersCreateAgentDialog(
             onMachinesRetry = { computersStore.dispatch(SharedComputersIntent.RefreshComputerPicker(owner.serverId, DataRequestPriority.Visible)) },
             createAgentFormStore = formStore, createAgentServerId = owner.serverId,
             takenAgentNames = serverMembers.members.takenAgentNames(),
+            currentAgentCount = agentLimit.usage,
+            maxAgents = agentLimit.limit,
+            limitPlanLabel = agentLimit.planLabel,
+            onUpgrade = onUpgrade,
+            onAddComputer = onAddComputer,
             onDismiss = { if (!submitting) onDismiss() }, onSubmit = { submit(it) },
         )
     }
 }
+
+/**
+ * The created agent's join (web `joinCreatedAgent`): the same one-call batch as "Add Selected",
+ * `{ userIds: [], agentIds: [id] }`, so a failed join is retried the same way.
+ */
+internal fun createdAgentJoinRequest(channelId: ChannelId, agentId: String): AddChannelMembersBatchRequest =
+    AddChannelMembersBatchRequest(channelId, emptyList(), listOf(MemberId(agentId)))
 
 /**
  * Ordered steps to perform once the created agent has been joined into the channel.

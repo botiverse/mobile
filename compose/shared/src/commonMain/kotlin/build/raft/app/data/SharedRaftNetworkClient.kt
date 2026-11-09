@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.network.raftResponseTraceIdOrNull
 import build.raft.app.data.realtime.RealtimeBaselineHistoryRequests
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
@@ -21,6 +22,10 @@ import build.raft.app.network.createPlatformRaftHttpExecutor
 import build.raft.app.network.toSafeDiagnosticsToken
 import build.raft.app.network.redactPresignedUrlText
 import build.raft.app.network.RaftByteStream
+import build.raft.app.network.RAFT_KTOR_CONNECT_TIMEOUT_MILLIS
+import build.raft.app.network.combineDownloadedChunks
+import build.raft.app.network.raftStreamingGet
+import kotlinx.coroutines.CancellationException
 import kotlin.time.TimeSource
 
 internal const val RAFT_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS = 15_000L
@@ -55,6 +60,11 @@ internal class SharedRaftNetworkClient(
     // Sync horizon (slock #10982): a starting horizon is usable only if no baseline history read of its
     // server was sent before its ack arrived. Recorded here, right before the request leaves.
     private val onBaselineHistoryRequestSent: (serverId: String) -> Unit = RealtimeBaselineHistoryRequests::recordSent,
+    // A 403 `account_deletion_pending` on any request opens the web deletion page once (app shell).
+    private val accountDeletionPendingSignal: RaftAccountDeletionPendingSignal = RaftAccountDeletionPendingSignal.Process,
+    private val ssoRequiredSignal: RaftSsoRequiredSignal = RaftSsoRequiredSignal.Process,
+    // Identical GETs started together share one request (fb-52cc0499); shared like the reachability gates.
+    private val inFlightGets: RaftInFlightGetDedupe = RaftInFlightGetDedupe(),
 ) : RaftNetworkClient, AuthorityBoundRaftNetworkClient, ProgressiveAttachmentNetworkClient {
     private fun authMiddleware(authBaseUrl: String = currentBaseUrl()): RaftNetworkAuthMiddleware =
         RaftNetworkAuthMiddleware(
@@ -155,6 +165,44 @@ internal class SharedRaftNetworkClient(
         expectedAuthority: RaftExpectedAuthBinding?,
         extraHeaders: Map<String, String> = emptyMap()
     ): HomeNetworkResponse {
+        val send: suspend () -> HomeNetworkResponse = {
+            sendRequest(priority, path, method, query, serverIdOverride, bodyText, expectedAuthority, extraHeaders)
+        }
+        val session = sessionStore.readSession()
+        val baseUrl = expectedAuthority?.environmentId?.normalizedEnvironmentId() ?: currentBaseUrl()
+        if (!method.equals("GET", ignoreCase = true) || bodyText != null) {
+            // A write closes this account's GETs already in flight to later joiners (read-after-write).
+            return inFlightGets.write(RaftInFlightGetDedupe.WriteScope(baseUrl, session?.user?.id), send)
+        }
+        val key =
+            RaftInFlightGetDedupe.Key(
+                baseUrl = baseUrl,
+                path = path,
+                query = query,
+                serverIdOverride = serverIdOverride?.value,
+                // A read's trigger label never splits a shared request (observability only).
+                headers =
+                    extraHeaders.entries
+                        .filter { it.key !in RaftFetchObservabilityHeaders }
+                        .map { it.key to it.value }
+                        .sortedBy { it.first },
+                authority = expectedAuthority,
+                sessionUserId = session?.user?.id,
+                sessionServerId = session?.currentServerId,
+            )
+        return inFlightGets.run(key, send)
+    }
+
+    private suspend fun sendRequest(
+        priority: DataRequestPriority,
+        path: String,
+        method: String,
+        query: List<Pair<String, String>>,
+        serverIdOverride: ServerId?,
+        bodyText: String?,
+        expectedAuthority: RaftExpectedAuthBinding?,
+        extraHeaders: Map<String, String>
+    ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val category = path.networkDiagnosticsCategory()
         val normalizedPath = path.networkDiagnosticsPath()
@@ -240,6 +288,12 @@ internal class SharedRaftNetworkClient(
                 } else {
                     warningLogger(endpointDiagnostic)
                 }
+                if (accountDeletionPendingSignal.observe(response.code, response.errorBodyText)) {
+                    criticalWarningLogger("account_deletion_pending path=$normalizedPath action=open_deletion_page")
+                }
+                if (ssoRequiredSignal.observe(response.code, response.errorBodyText, response.responseHeaders.raftResponseTraceIdOrNull())) {
+                    criticalWarningLogger("sso_required path=$normalizedPath action=sign_in_again")
+                }
                 gate.record(response, probe)
                 recorded = true
                 response
@@ -304,6 +358,91 @@ internal class SharedRaftNetworkClient(
                 warningLogger = warningLogger
             )
         }
+    }
+
+    override suspend fun requestBytes(
+        priority: DataRequestPriority,
+        path: String,
+        serverIdOverride: ServerId?,
+        maxBytes: Int,
+    ): HomeNetworkBytesResponse {
+        val startedAt = TimeSource.Monotonic.markNow()
+        val normalizedPath = path.networkDiagnosticsPath()
+        val requestBaseUrl = currentBaseUrl()
+        var body: ByteArray? = null
+        var contentType: String? = null
+        var failure: String? = null
+        val response =
+            try {
+                requestScheduler.run(
+                    priority = priority.toNetworkPriority(),
+                    key = path,
+                    reason = "GET_BYTES"
+                ) {
+                    authMiddleware(requestBaseUrl).request(
+                        serverIdOverride = serverIdOverride,
+                        caller = "shared_network_bytes:$normalizedPath"
+                    ) { auth ->
+                        // A retry after a refresh starts over.
+                        body = null
+                        contentType = null
+                        val chunks = mutableListOf<ByteArray>()
+                        var received = 0
+                        val answer =
+                            raftStreamingGet(
+                                url = absoluteUrl(requestBaseUrl, path),
+                                requestHeaders =
+                                    mapOf(
+                                        "Accept" to "*/*",
+                                        HEADER_AUTHORIZATION to auth.authorization,
+                                        HEADER_SERVER_ID to auth.serverId,
+                                    ),
+                                priority = priority.toNetworkPriority(),
+                                connectTimeoutMillis = RAFT_KTOR_CONNECT_TIMEOUT_MILLIS,
+                                socketTimeoutMillis = null,
+                                totalTimeoutMillis = RAFT_NETWORK_BYTES_TIMEOUT_MILLIS,
+                                onResponseStart = { status, length, _ ->
+                                    if (length != null && length > maxBytes) throw RaftNetworkBytesTooLarge()
+                                    status in 200..299
+                                },
+                                onChunk = { chunk ->
+                                    received += chunk.size
+                                    if (received > maxBytes) throw RaftNetworkBytesTooLarge()
+                                    chunks += chunk
+                                },
+                            )
+                        if (answer.statusCode in 200..299) {
+                            body = combineDownloadedChunks(chunks, received)
+                            contentType =
+                                answer.headers.entries
+                                    .firstOrNull { (name, _) -> name.equals("Content-Type", ignoreCase = true) }
+                                    ?.value?.firstOrNull()
+                                    ?.substringBefore(';')?.trim()?.lowercase()?.takeIf(String::isNotBlank)
+                        }
+                        HomeNetworkResponse(code = answer.statusCode, bodyText = null, responseHeaders = answer.headers)
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (tooLarge: RaftNetworkBytesTooLarge) {
+                failure = "too_large"
+                HomeNetworkResponse(code = 0, bodyText = null)
+            } catch (error: Throwable) {
+                failure = error::class.simpleName?.toSafeDiagnosticsToken() ?: "transport"
+                HomeNetworkResponse(code = 0, bodyText = null)
+            }
+        warningLogger(
+            "endpoint category=${path.networkDiagnosticsCategory()} path=$normalizedPath method=GET_BYTES " +
+                "responseBytes=${body?.size ?: 0} code=${response.code} " +
+                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                "result=${failure ?: response.networkDiagnosticsResult()}" +
+                response.requestIdLogSuffix()
+        )
+        return HomeNetworkBytesResponse(
+            code = response.code,
+            bytes = body.takeIf { response.isSuccessful },
+            contentType = contentType.takeIf { response.isSuccessful },
+        )
     }
 
     override suspend fun createAttachmentUploadSession(
@@ -1248,6 +1387,17 @@ class SharedRaftAuthTransport internal constructor(
                 (response.transportDiagnostics ?: "engine=unknown status=none kind=none rawCode=none detail=none") +
                 response.requestIdLogSuffix()
         )
+        // Authenticated auth routes (`auth/me`, `servers`) answer the same 403 while a deletion is pending.
+        if (authorization != null && RaftAccountDeletionPendingSignal.Process.observe(response.code, response.errorBodyText)) {
+            warningLogger("account_deletion_pending path=$path action=open_deletion_page")
+        }
+        // And a 403 `SSO_REQUIRED` while an organization requires single sign-on.
+        if (
+            authorization != null &&
+            RaftSsoRequiredSignal.Process.observe(response.code, response.errorBodyText, response.responseHeaders.raftResponseTraceIdOrNull())
+        ) {
+            warningLogger("sso_required path=$path action=sign_in_again")
+        }
         if (response.code == 0) {
             warningLogger(
                 "slock_auth_transport_failed path=$path method=$normalizedMethod " +
@@ -1553,3 +1703,9 @@ private fun String.percentEncode(): String {
     }
     return builder.toString()
 }
+
+/** [SharedRaftNetworkClient.requestBytes]: a body is read within a minute, as other downloads are. */
+private const val RAFT_NETWORK_BYTES_TIMEOUT_MILLIS = 60_000L
+
+/** A binary body past its cap: the read stops there. */
+private class RaftNetworkBytesTooLarge : IllegalStateException("binary body over its cap")

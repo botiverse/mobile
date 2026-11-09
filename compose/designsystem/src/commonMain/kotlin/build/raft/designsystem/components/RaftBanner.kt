@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -153,6 +154,7 @@ fun RaftBanner(
     action: (@Composable RowScope.() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
     pending: Boolean = false,
+    content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -202,6 +204,17 @@ fun RaftBanner(
             textStyle = text,
             action = actionContent,
             modifier = Modifier.weight(1f),
+            content =
+                content?.let { block ->
+                    {
+                        CompositionLocalProvider(
+                            LocalRaftContentColor provides colors.foreground,
+                            LocalRaftSurfaceColor provides raftBannerFill(status, colors).compositeOver(RaftTheme.surfaceColor),
+                        ) {
+                            Column(Modifier.fillMaxWidth(), content = block)
+                        }
+                    }
+                },
         )
         // raft-ui 0.19 BannerClose: a banner with no button may close with a frameless × at the
         // end of the first line (an action and a close never share a banner).
@@ -243,6 +256,7 @@ private fun RaftBannerBody(
     textStyle: TextStyle,
     action: (@Composable () -> Unit)?,
     modifier: Modifier,
+    content: (@Composable () -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     SubcomposeLayout(modifier) { constraints ->
@@ -284,7 +298,12 @@ private fun RaftBannerBody(
                 inline -> maxOf(textHeight, titleHeight + lastLineCenter.toInt() + actionPlaceable.height / 2)
                 else -> textHeight + actionTop + actionPlaceable.height
             }
-        layout(width, height) {
+        // A [content] block (a confirmation field) sits under everything, full width, `stack-y-4`.
+        val contentPlaceable = content?.let { subcompose("content", it).first().measure(loose) }
+        val contentGap = 16.dp.roundToPx()
+        val totalHeight = height + (contentPlaceable?.let { contentGap + it.height } ?: 0)
+        layout(width, totalHeight) {
+            contentPlaceable?.place(0, height + contentGap)
             titlePlaceable?.place(0, 0)
             descriptionPlaceable.place(0, titleHeight)
             if (actionPlaceable != null) {
@@ -318,6 +337,14 @@ private val RaftBannerInlineActionMinWidth = 452.dp
  * resolves by itself, such as data that refreshes once the server recovers, the 12dp spinner
  * takes the icon's place, centred in the 16dp icon column on the first line. It is decorative;
  * the message says what waits. Use it with [RaftBannerStatus.Info]: waiting is not a problem.
+ *
+ * [messageTooltip] puts the whole message in a [RaftTooltip] on it (a pointer over it, or a long
+ * press), for a message clamped to [maxLines] (slock's agent error notice: `line-clamp-2` inside a
+ * Tooltip with the same text).
+ *
+ * [details] are further lines under the message, unclamped, in regular `text-callout` and
+ * `foreground-muted` (slock's billing notice: a title, then `font-normal text-foreground-muted`
+ * lines in the same PanelNoticeContent).
  */
 @Composable
 fun RaftPanelNotice(
@@ -327,10 +354,45 @@ fun RaftPanelNotice(
     maxLines: Int = 2,
     stackActions: Boolean = false,
     pending: Boolean = false,
+    messageTooltip: Boolean = false,
+    details: List<String> = emptyList(),
     actions: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val seam = colors.lineSeam
+    val messageText: @Composable (Modifier) -> Unit = { textModifier ->
+        val text: @Composable (Modifier) -> Unit = { modifier ->
+            RaftText(
+                message,
+                modifier = modifier,
+                style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.foreground,
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        val headline: @Composable (Modifier) -> Unit = { headlineModifier ->
+            if (messageTooltip) {
+                RaftTooltip(text = message, modifier = headlineModifier) { text(Modifier) }
+            } else {
+                text(headlineModifier)
+            }
+        }
+        if (details.isEmpty()) {
+            headline(textModifier)
+        } else {
+            Column(textModifier) {
+                headline(Modifier)
+                details.forEach { line ->
+                    RaftText(
+                        line,
+                        style = RaftTheme.typography.callout,
+                        color = colors.foregroundMuted,
+                    )
+                }
+            }
+        }
+    }
     Row(
         modifier
             .fillMaxWidth()
@@ -360,13 +422,7 @@ fun RaftPanelNotice(
         }
         if (stackActions && actions != null) {
             Column(Modifier.weight(1f)) {
-                RaftText(
-                    message,
-                    style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.foreground,
-                    maxLines = maxLines,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                messageText(Modifier)
                 CompositionLocalProvider(LocalRaftSurfaceColor provides raftBannerFill(status, colors).compositeOver(RaftTheme.surfaceColor)) {
                     Row(
                         Modifier.padding(top = 4.dp),
@@ -377,14 +433,7 @@ fun RaftPanelNotice(
             }
             return@Row
         }
-        RaftText(
-            message,
-            modifier = Modifier.weight(1f),
-            style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.foreground,
-            maxLines = maxLines,
-            overflow = TextOverflow.Ellipsis,
-        )
+        messageText(Modifier.weight(1f))
         if (actions != null) {
             // `-my-1.5`: a 32dp button doesn't make the strip taller; it centres on the first line.
             Box(Modifier.height(20.dp), contentAlignment = Alignment.Center) {

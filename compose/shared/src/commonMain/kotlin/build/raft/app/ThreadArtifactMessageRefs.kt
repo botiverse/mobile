@@ -1,34 +1,53 @@
 package build.raft.app
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ArtifactDeletedShown
 import build.raft.app.data.ArtifactHome
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.data.ArtifactScreenshotReader
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
+import build.raft.app.data.artifactScreenshotFile
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftAppLinkCardDefaults
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -39,6 +58,7 @@ import build.raft.designsystem.components.RaftFilePreview
 import build.raft.designsystem.components.RaftFilePreviewKind
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftMessageEmbed
+import build.raft.designsystem.components.RaftMessageEmbedContent
 import build.raft.designsystem.components.RaftMessageEmbedFooter
 import build.raft.designsystem.components.RaftMessageEmbedHeader
 import build.raft.designsystem.components.RaftSkeleton
@@ -47,6 +67,11 @@ import build.raft.designsystem.components.raftGrayscale
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftOpacity
+import build.raft.designsystem.tokens.RaftStroke
+import coil3.compose.LocalPlatformContext
+import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
+import kotlin.math.roundToInt
 
 // web `ArtifactMessageRefs.tsx` / `ArtifactMessageCard.tsx` (botiverse/slock staging 84e41d9be):
 // the cards under a message for the Artifacts its text links to, mounted by `MessageItem.tsx`
@@ -223,16 +248,19 @@ internal fun ThreadArtifactMessageRefs(
     val webBaseUrl = artifacts.webBaseUrl
     // A plain tap opens it in place (the in-app viewer); the browser only when no page can open.
     val opener = rememberRaftArtifactOpener { uriHandler.openUri(artifactWebUrl(webBaseUrl, it)) }
+    val screenshots = remember(artifacts.screenshots, host.serverId) { artifacts.screenshots?.reader(host.serverId) }
     RaftDesignSystemTheme {
-        ThreadArtifactMessageRefsContent(
-            view = view,
-            onOpen = { summary ->
-                val target = summary.openTarget()
-                opener.open(target, RaftArtifactViewerHeader.of(summary, target), "message_card")
-            },
-            onOpenInNewPage = { summary -> uriHandler.openUri(artifactWebUrl(webBaseUrl, summary.openTarget())) },
-            modifier = modifier,
-        )
+        CompositionLocalProvider(LocalArtifactScreenshotReader provides screenshots) {
+            ThreadArtifactMessageRefsContent(
+                view = view,
+                onOpen = { summary ->
+                    val target = summary.openTarget()
+                    opener.open(target, RaftArtifactViewerHeader.of(summary, target), "message_card")
+                },
+                onOpenInNewPage = { summary -> uriHandler.openUri(artifactWebUrl(webBaseUrl, summary.openTarget())) },
+                modifier = modifier,
+            )
+        }
     }
 }
 
@@ -263,6 +291,101 @@ internal fun ThreadArtifactMessageRefsContent(
     }
 }
 
+/**
+ * Where a card's screenshot is read (the Server on screen's reader of
+ * [build.raft.app.data.SharedArtifactScreenshotStore]); null where none is read (fixtures without
+ * one): the card then shows without it.
+ */
+internal val LocalArtifactScreenshotReader = staticCompositionLocalOf<ArtifactScreenshotReader?> { null }
+
+/** web `PHONE_QUERY` `(max-width: 767px)`: a phone-width layout shows a card's phone screenshot. */
+internal fun artifactScreenshotPhoneLayout(windowWidth: Dp): Boolean = windowWidth < RaftAppLinkCardDefaults.PhoneBelow
+
+/** web `ArtifactCardPicture` for a screenshot: none, its place kept while it is read, or shown. */
+@Immutable
+internal sealed interface ArtifactCardScreenshotView {
+    /** No screenshot, or it can't be read (no spinner, no error). */
+    data object None : ArtifactCardScreenshotView
+
+    /** Being read: the card keeps its place, so the conversation doesn't move when it comes. */
+    data object Pending : ArtifactCardScreenshotView
+
+    /** Read: [bytes] of file [fileId] of card [cardId], drawn by the image loader. */
+    class Shown(val cardId: String, val fileId: String, val bytes: ByteArray) : ArtifactCardScreenshotView
+}
+
+/**
+ * web `useArtifactScreenshotSrc`: the card's screenshot for this window's width (the phone shot in
+ * a phone-width layout when there is one), read once the card is composed (a lazy list composes
+ * only the rows on screen and just past it); one kept already is shown at once.
+ */
+@Composable
+internal fun rememberArtifactCardScreenshot(summary: ArtifactSummary): ArtifactCardScreenshotView {
+    val reader = LocalArtifactScreenshotReader.current ?: return ArtifactCardScreenshotView.None
+    val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
+    val fileId = artifactScreenshotFile(summary.screenshot, artifactScreenshotPhoneLayout(windowWidth)) ?: return ArtifactCardScreenshotView.None
+    val cardId = summary.id
+    var bytes by remember(reader, cardId, fileId) { mutableStateOf(reader.kept(cardId, fileId)) }
+    var failed by remember(reader, cardId, fileId) { mutableStateOf(false) }
+    LaunchedEffect(reader, cardId, fileId) {
+        if (bytes != null) return@LaunchedEffect
+        val read = reader.read(cardId, fileId)
+        if (read != null) bytes = read else failed = true
+    }
+    val shown = bytes
+    return when {
+        shown != null -> ArtifactCardScreenshotView.Shown(cardId, fileId, shown)
+        failed -> ArtifactCardScreenshotView.None
+        else -> ArtifactCardScreenshotView.Pending
+    }
+}
+
+/** web `max-h-48`: a card's picture is at most 192dp tall. */
+internal val ArtifactCardScreenshotMaxHeight: Dp = 192.dp
+
+/** web `aspect-[16/10] max-h-48 w-full`: the card's width, 16:10, at most [ArtifactCardScreenshotMaxHeight] tall. */
+internal fun artifactCardScreenshotHeightPx(widthPx: Int, maxHeightPx: Int): Int = minOf((widthPx * 10f / 16f).roundToInt(), maxHeightPx)
+
+/**
+ * web `ArtifactMessageCard`'s cover: edge to edge above the header, `object-cover object-top` (cut
+ * from the bottom: the page's top and first screen), a `line-hairline` rule under it; while it is
+ * read, the same box empty on `fill-muted`.
+ */
+@Composable
+internal fun ArtifactCardScreenshot(view: ArtifactCardScreenshotView) {
+    val colors = RaftTheme.colors
+    RaftMessageEmbedContent {
+        Box(Modifier.artifactCardScreenshotSize().background(colors.fillMuted)) {
+            if (view is ArtifactCardScreenshotView.Shown) {
+                val context = LocalPlatformContext.current
+                val request =
+                    remember(view.cardId, view.fileId, view.bytes, context) {
+                        ImageRequest.Builder(context)
+                            .data(view.bytes)
+                            .memoryCacheKey("artifact-screenshot|${view.cardId}|${view.fileId}")
+                            .build()
+                    }
+                Image(
+                    painter = rememberAsyncImagePainter(request),
+                    contentDescription = null,
+                    modifier = Modifier.matchParentSize(),
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.TopCenter,
+                )
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineHairline))
+    }
+}
+
+private fun Modifier.artifactCardScreenshotSize(): Modifier =
+    layout { measurable, constraints ->
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else 440.dp.roundToPx()
+        val height = artifactCardScreenshotHeightPx(width, ArtifactCardScreenshotMaxHeight.roundToPx())
+        val placeable = measurable.measure(Constraints.fixed(width, height))
+        layout(width, height) { placeable.place(0, 0) }
+    }
+
 /** web `KindGlyph`: HTML's page is code, an image or video's a blank media page, any other a document. */
 private fun ArtifactKind.filePreviewKind(): RaftFilePreviewKind =
     when (this) {
@@ -276,7 +399,10 @@ private fun ArtifactKind.filePreviewKind(): RaftFilePreviewKind =
  * place). Header: the kind's glyph and badge; the title (`subhead` bold, 2 lines) with its version
  * Badge; the fact line (`footnote` muted, 1 line); the description (`callout` muted, 1 line under
  * a fact line, else 2) or the start of its text (2 lines); ↗ opens its own page. Footer: where it
- * lives, who updated it when (Space Mono hint), and its comment count. No publisher cover yet.
+ * lives, who updated it when (Space Mono hint), and its comment count. Above them, the publish
+ * check's screenshot when the card has one ([ArtifactCardScreenshot]), else a Markdown version's
+ * excerpt ([ArtifactCardExcerpt], web #13445 / #13472), which then is not repeated as the
+ * description; no publisher cover yet.
  */
 @Composable
 internal fun ArtifactMessageCard(
@@ -295,7 +421,16 @@ internal fun ArtifactMessageCard(
             time != null -> stringResource(Res.string.artifacts_card_updated_by, summary.authorName, time)
             else -> summary.authorName.takeIf { it.isNotBlank() }
         }
+    val screenshot = rememberArtifactCardScreenshot(summary)
+    // web `useArtifactCardPicture`: a screenshot, else a Markdown version's excerpt (one kind at a
+    // time from the server, so an excerpt never waits for or replaces a picture).
+    val excerpt = summary.excerpt.takeIf { screenshot == ArtifactCardScreenshotView.None }
     RaftMessageEmbed(modifier = modifier, onClick = onOpen, onClickLabel = summary.title) {
+        if (screenshot != ArtifactCardScreenshotView.None) {
+            ArtifactCardScreenshot(screenshot)
+        } else if (excerpt != null) {
+            RaftMessageEmbedContent { ArtifactCardExcerpt(excerpt) }
+        }
         RaftMessageEmbedHeader {
             RaftFilePreview(summary.kind.filePreviewKind(), badge = summary.kind.badge)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -318,7 +453,8 @@ internal fun ArtifactMessageCard(
                 facts?.let {
                     RaftText(it, style = typography.footnote, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                summary.description?.let {
+                // The card's own description only once its excerpt is drawn above (web: `card.description`).
+                summary.description?.takeUnless { excerpt != null && summary.descriptionIsExcerpt }?.let {
                     RaftText(
                         it,
                         style = typography.callout,

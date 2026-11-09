@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.serialization.Serializable
@@ -107,6 +108,43 @@ internal data class ThreadActionCard(
      * card may hold `unsupported` markers, which the contract refuses as input.
      */
     val presentationCardJson: String? = null,
+    /**
+     * The card's deadline (wire top-level `expiresAt`, RFC 3339 UTC, served only, never stored;
+     * slock #13254): on every `prepared` card, prepared + 30 days or the type's own deadline (a
+     * question card, a seat request, a human-started plan upgrade); absent without one. A 30-day
+     * card past it is served `expired` and still carries it: it dates the "Expired on" line. Past
+     * it on the client clock the App draws the card expired too ([expiredAsOf]); the server's 409
+     * is final.
+     */
+    val expiresAt: String? = null,
+    /**
+     * Who asked for the card (wire `requesterUserId`): a person's request (a seat or Pro request,
+     * web person card), whose expired line is "No owner answered within 7 days".
+     */
+    val requesterUserId: String? = null,
+    /**
+     * `question:ask`: the person it asks (wire `action.addressee`, `{kind:"user", userId, handle}`,
+     * set by the server at prepare). Null with [questionAsksAnyone] false: the server sent no
+     * addressee (an older card), so the App treats every viewer as asked and lets the server decide.
+     */
+    val questionAddresseeUserId: String? = null,
+    /** The asked person's handle as the server stored it: a name of last resort, never preferred to the member's display name. */
+    val questionAddresseeHandle: String? = null,
+    /** `question:ask` asked of anyone in the channel (wire `action.addressee.kind == "anyone"`). */
+    val questionAsksAnyone: Boolean = false,
+    /**
+     * `question:ask`: each question's kind (`single`, `multiple`, `text`) and option count (wire
+     * `action.questions`). An answered card's spec keeps no form, so this is all that says it asked one
+     * short single choice ([questionCardLayout]).
+     */
+    val questions: List<ThreadActionCardQuestion> = emptyList(),
+    /**
+     * `question:ask`: how long the card waited for its answer (wire `action.expiresInMinutes`); the
+     * expired line says it ("didn't answer within 3 days"). Null on a card that has none.
+     */
+    val questionExpiresInMinutes: Int? = null,
+    /** `question:ask`: the agent paged its questions (wire `action.pages` present); the server never places such a card inline. */
+    val questionHasPages: Boolean = false,
 ) {
     /**
      * The card described as data ([parseActionCardSpec]), or null: no `presentation.card`, or one
@@ -126,7 +164,111 @@ internal data class ThreadActionCard(
     /** Wire `reconfirm_required`: something changed since it was prepared; it waits on Reconfirm. */
     val needsReconfirmation: Boolean
         get() = state.equals("reconfirm_required", ignoreCase = true)
+
+    /** Wire `expired`: past its deadline without running (a 30-day card, a question, a seat request). */
+    val isExpired: Boolean
+        get() = state.equals("expired", ignoreCase = true)
+
+    /** Wire `withdrawn`, a state only question cards reach (web `ActionCardSpecCard`): its agent took it back. */
+    val isWithdrawn: Boolean
+        get() = state.equals("withdrawn", ignoreCase = true) && type.equals(QuestionAskActionCardType, ignoreCase = true)
+
+    /** Ended without running ([isExpired], [isWithdrawn]): folded, no button changes it any more. */
+    val hasEnded: Boolean
+        get() = isExpired || isWithdrawn
 }
+
+internal const val QuestionAskActionCardType = "question:ask"
+
+/** A seat request (web person card `seats:add`): no owner answered within its 7 days once expired. */
+internal const val SeatsAddActionCardType = "seats:add"
+
+/** [ThreadActionCard.expiresAt] as epoch millis; null when absent or unreadable. */
+internal fun ThreadActionCard.expiresAtEpochMillis(): Long? = parseRaftTimestampEpochMillisOrNull(expiresAt)
+
+/**
+ * Whether the client clock ([nowMillis]) is past a `prepared` card's [ThreadActionCard.expiresAt]
+ * (web `isActionCardShownExpired`). The client clock decides only whether buttons show and dialogs
+ * open; the server's 409 is final.
+ */
+internal fun ThreadActionCard.isPastExpiry(nowMillis: Long): Boolean {
+    if (!state.equals("prepared", ignoreCase = true)) return false
+    val deadline = expiresAtEpochMillis() ?: return false
+    return nowMillis > deadline
+}
+
+/** [this] as it is drawn at [nowMillis]: `expired` once past [ThreadActionCard.expiresAt], else unchanged. */
+internal fun ThreadActionCard.expiredAsOf(nowMillis: Long): ThreadActionCard =
+    if (isPastExpiry(nowMillis)) copy(state = "expired") else this
+
+/**
+ * [this] after the server refused it as expired (409 `ACTION_CARD_EXPIRED`, whose body has no
+ * date): `expired`, dated by its own [ThreadActionCard.expiresAt] when it has one, else undated.
+ * A done or ended card stays as it is.
+ */
+internal fun ThreadActionCard.markedExpired(): ThreadActionCard =
+    if (isExecuted || hasEnded) this else copy(state = "expired")
+
+/**
+ * The server's 409 codes for a card refused because it expired (`{ error, errorCode }`): the
+ * 30-day rule's (slock #13254, shared `ACTION_CARD_EXPIRED_ERROR_CODE`) and a question card's.
+ */
+internal val ActionCardExpiredErrorCodes: Set<String> = setOf("ACTION_CARD_EXPIRED", "QUESTION_EXPIRED")
+
+/** Whether a refusal says the card expired ([ActionCardExpiredErrorCodes]). */
+internal fun ScreenError.isActionCardExpiredRefusal(): Boolean =
+    serverCode?.trim()?.uppercase()?.let { it in ActionCardExpiredErrorCodes } == true
+
+/**
+ * One question of a `question:ask` card as the layout needs it: its kind, how many options it
+ * offers (Other not counted) and the width of its widest option label in columns, a CJK or
+ * fullwidth character counting 2 (shared `questionAskPlacement`, web `searchSnippetCharWidth`).
+ */
+@Serializable
+internal data class ThreadActionCardQuestion(
+    val kind: String,
+    val options: Int = 0,
+    val widestOptionColumns: Int = 0,
+)
+
+/** [text]'s width in columns as the server's `questionAskPlacement` counts it: East Asian wide / fullwidth characters 2, others 1. */
+internal fun questionLabelColumns(text: String): Int {
+    var columns = 0
+    var index = 0
+    while (index < text.length) {
+        val high = text[index]
+        val codePoint =
+            if (high.isHighSurrogate() && index + 1 < text.length && text[index + 1].isLowSurrogate()) {
+                index++
+                (high.code - 0xD800 shl 10) + (text[index].code - 0xDC00) + 0x10000
+            } else {
+                high.code
+            }
+        columns += build.raft.app.raftSearchSnippetCharWidth(codePoint)
+        index++
+    }
+    return columns
+}
+
+/** Wire `action.addressee` of a `question:ask` card: (userId, handle, anyone). */
+private fun JsonObject.questionAddressee(): Triple<String?, String?, Boolean> {
+    val addressee = this["addressee"] as? JsonObject ?: return Triple(null, null, false)
+    return when (addressee.actionCardStringOrNull("kind")) {
+        "user" -> Triple(addressee.actionCardStringOrNull("userId"), addressee.actionCardStringOrNull("handle"), false)
+        "anyone" -> Triple(null, null, true)
+        else -> Triple(null, null, false)
+    }
+}
+
+/** Wire `action.questions` of a `question:ask` card, cut to what [ThreadActionCardQuestion] keeps. */
+private fun JsonObject.questionShapes(): List<ThreadActionCardQuestion> =
+    (this["questions"] as? JsonArray).orEmpty().mapNotNull { element ->
+        val question = element as? JsonObject ?: return@mapNotNull null
+        val kind = question.actionCardStringOrNull("kind") ?: return@mapNotNull null
+        val options = (question["options"] as? JsonArray).orEmpty()
+        val widest = options.maxOfOrNull { option -> (option as? JsonObject)?.actionCardStringOrNull("label")?.let(::questionLabelColumns) ?: 0 } ?: 0
+        ThreadActionCardQuestion(kind, options.size, widest)
+    }
 
 /** Wire `installText`: the three fields an app adds to agent prompts. Raw publisher text. */
 @Serializable
@@ -176,6 +318,16 @@ internal data class WireActionCardMetadata(
     val executedByUserId: String? = null,
     val result: WireActionCardResult? = null,
     val presentation: WireActionCardPresentation? = null,
+    /** RFC 082 card message (`kind: "message-card"`): the card, untrusted until [parseRaftMessageCard] reads it. */
+    val card: JsonElement? = null,
+    /** RFC 082: the card's revision, 1 when posted. */
+    val revision: Int? = null,
+    /** RFC 082: when the card was posted or last replaced (ISO UTC). */
+    val updatedAt: String? = null,
+    /** The card's deadline (served only, absent without one): [ThreadActionCard.expiresAt]. */
+    val expiresAt: String? = null,
+    /** A person's request: [ThreadActionCard.requesterUserId]. */
+    val requesterUserId: String? = null,
 )
 
 @Serializable
@@ -282,8 +434,21 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         targetServerName = meta.targetServerName?.takeIf { it.isNotBlank() },
         confirmationVersion = meta.confirmationVersion,
         presentationCardJson = meta.presentation?.card?.takeIf { parseActionCardSpec(it) != null }?.toString(),
+        // Top level beside `state`; else the action's own deadline (a question card from an older
+        // server, a card stored expired that keeps it there: web useExpiredCardLine).
+        expiresAt = meta.expiresAt?.takeIf { it.isNotBlank() } ?: actionObject.actionCardStringOrNull("expiresAt"),
+        requesterUserId = meta.requesterUserId?.takeIf { it.isNotBlank() },
+        questionAddresseeUserId = actionObject.questionAddressee().first,
+        questionAddresseeHandle = actionObject.questionAddressee().second,
+        questionAsksAnyone = actionObject.questionAddressee().third,
+        questions = actionObject.questionShapes(),
+        questionHasPages = actionObject["pages"].let { it != null && it !is JsonNull },
+        questionExpiresInMinutes = (actionObject["expiresInMinutes"] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 },
     )
 }
+
+private fun JsonObject.actionCardStringOrNull(key: String): String? =
+    (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
 
 private const val ACTION_CARD_SPEC_CACHE_SIZE = 64
 
@@ -360,6 +525,16 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("targetServerName", targetServerName)
         putString("confirmationVersion", confirmationVersion?.toString())
         putString("presentationCard", presentationCardJson)
+        putString("expiresAt", expiresAt)
+        putString("requesterUserId", requesterUserId)
+        putString("questionAddresseeUserId", questionAddresseeUserId)
+        putString("questionAddresseeHandle", questionAddresseeHandle)
+        putString("questionExpiresInMinutes", questionExpiresInMinutes?.toString())
+        if (questionHasPages) putBoolean("questionHasPages", true)
+        if (questionAsksAnyone) putBoolean("questionAsksAnyone", true)
+        if (questions.isNotEmpty()) {
+            put("${ActionCardMetadataPrefix}questions", threadActionCardJson.encodeToString(ListSerializer(ThreadActionCardQuestion.serializer()), questions))
+        }
     }
 
 /** True when the projected message metadata carries an action card (any type). */
@@ -419,6 +594,17 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         targetServerName = metadata["${ActionCardMetadataPrefix}targetServerName"]?.takeIf { it.isNotBlank() },
         confirmationVersion = metadata["${ActionCardMetadataPrefix}confirmationVersion"]?.toIntOrNull(),
         presentationCardJson = metadata["${ActionCardMetadataPrefix}presentationCard"]?.takeIf { it.isNotBlank() },
+        expiresAt = metadata["${ActionCardMetadataPrefix}expiresAt"]?.takeIf { it.isNotBlank() },
+        requesterUserId = metadata["${ActionCardMetadataPrefix}requesterUserId"]?.takeIf { it.isNotBlank() },
+        questionAddresseeUserId = metadata["${ActionCardMetadataPrefix}questionAddresseeUserId"]?.takeIf { it.isNotBlank() },
+        questionAddresseeHandle = metadata["${ActionCardMetadataPrefix}questionAddresseeHandle"]?.takeIf { it.isNotBlank() },
+        questionExpiresInMinutes = metadata["${ActionCardMetadataPrefix}questionExpiresInMinutes"]?.toIntOrNull(),
+        questionHasPages = metadata["${ActionCardMetadataPrefix}questionHasPages"]?.equals("true", ignoreCase = true) == true,
+        questionAsksAnyone = metadata["${ActionCardMetadataPrefix}questionAsksAnyone"]?.equals("true", ignoreCase = true) == true,
+        questions =
+            metadata["${ActionCardMetadataPrefix}questions"]?.let { raw ->
+                runCatching { threadActionCardJson.decodeFromString(ListSerializer(ThreadActionCardQuestion.serializer()), raw) }.getOrNull()
+            }.orEmpty(),
     )
 }
 

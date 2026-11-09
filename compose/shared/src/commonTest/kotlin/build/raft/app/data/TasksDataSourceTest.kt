@@ -295,7 +295,7 @@ class TasksDataSourceTest {
     }
 
     @Test
-    fun taskListDropsUnknownStatusAndDoesNotInventUnknownAssigneeKind() = runBlocking {
+    fun taskListKeepsUnknownStatusAsUnknownAndDoesNotInventUnknownAssigneeKind() = runBlocking {
         val logs = mutableListOf<String>()
         val client =
             RaftTasksApiClient(
@@ -357,15 +357,17 @@ class TasksDataSourceTest {
             ).data
 
         assertEquals(
-            listOf("task-invalid-assignee", "task-valid", "task-cross-dialect"),
+            listOf("task-invalid-status", "task-invalid-assignee", "task-valid", "task-cross-dialect"),
             snapshot.tasks.map { it.id.value },
         )
-        assertEquals(TaskStatus.InReview, snapshot.tasks.first().status)
-        assertNull(snapshot.tasks.first().assignee)
-        assertEquals(MemberKind.Agent, snapshot.tasks[1].assignee?.kind)
+        // A status a newer server added: the task stays, as Unknown (never Todo).
+        assertEquals(TaskStatus.Unknown, snapshot.tasks[0].status)
+        assertEquals(TaskStatus.InReview, snapshot.tasks[1].status)
+        assertNull(snapshot.tasks[1].assignee)
+        assertEquals(MemberKind.Agent, snapshot.tasks[2].assignee?.kind)
         assertNull(snapshot.tasks.last().creator)
         assertNull(snapshot.tasks.last().assignee)
-        assertTrue(logs.any { it == "projection_value_rejected source=task_wire field=task_status value=future-status" })
+        assertTrue(logs.any { it == "projection_value_unknown source=task_wire field=task_status value=future-status" })
         assertTrue(logs.any { it == "projection_value_rejected source=task_assignee field=member_kind value=future-member" })
         assertTrue(logs.any { it == "projection_value_rejected source=task_creator field=member_kind value=human" })
         assertTrue(logs.any { it == "projection_value_rejected source=task_assignee field=member_kind value=system" })
@@ -373,7 +375,7 @@ class TasksDataSourceTest {
     }
 
     @Test
-    fun taskActionWithUnknownStatusReturnsContractMismatch() = runBlocking {
+    fun taskActionWithUnknownStatusKeepsTheTaskAsUnknown() = runBlocking {
         val logs = mutableListOf<String>()
         val client =
             RaftTasksApiClient(
@@ -395,14 +397,14 @@ class TasksDataSourceTest {
                 diagnosticsLogger = logs::add,
             )
 
-        val error =
-            assertIs<DataResult.Error>(
+        val task =
+            assertIs<DataResult.Content<TaskActionResult>>(
                 client.taskByNumber(ChannelId("channel-1"), 1, DataRequestPriority.Visible),
-            )
+            ).data.task
 
-        assertEquals("tasks_by_number_contract_mismatch", error.error.code)
+        assertEquals(TaskStatus.Unknown, task.status)
         assertEquals(
-            listOf("projection_value_rejected source=task_wire field=task_status value=future-status"),
+            listOf("projection_value_unknown source=task_wire field=task_status value=future-status"),
             logs,
         )
     }

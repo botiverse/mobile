@@ -71,6 +71,9 @@ data class RaftSideColumnKeepOut(val top: Dp, val bottom: Dp)
  * - [systemSymbol] names the SF Symbol ("chevron.backward") a host draws for it when the host
  *   draws the column with its own system bar buttons ([RaftSideActionHost]); null keeps the
  *   column drawing [icon]. Ignored without such a host.
+ * - [iconName] names the design-system glyph [icon] draws (the Lucide wire name, "search"), so a
+ *   host that draws the action with its own bar button (the iOS native navigation bar) shows the
+ *   same glyph from its asset catalog; null when [icon] is not a named design-system glyph.
  */
 @Immutable
 data class RaftSideAction(
@@ -83,6 +86,7 @@ data class RaftSideAction(
     val keepVisible: Boolean = false,
     val priority: Int = 0,
     val systemSymbol: String? = null,
+    val iconName: String? = null,
     val icon: @Composable (size: Dp) -> Unit,
 )
 
@@ -288,11 +292,14 @@ private fun RaftSideButton(
     icon: @Composable () -> Unit,
 ) {
     Box(modifier, contentAlignment = Alignment.TopCenter) {
-        RaftIconButton(
+        // Fixed at 44dp / 22dp, not `--control-height`: the column's slots are [ItemSize] at
+        // every scale.
+        RaftSizedIconButton(
             onClick = onClick,
             tooltip = label,
+            box = RaftSideActionColumnDefaults.ItemSize,
+            glyph = RaftSideActionColumnDefaults.IconSize,
             variant = RaftButtonVariant.Ghost,
-            size = RaftIconButtonSize.Lg,
             enabled = enabled,
             contentDescription = if (attention && attentionDescription != null) "$label, $attentionDescription" else label,
         ) {
@@ -324,11 +331,12 @@ private fun RaftSideActionOverflow(actions: List<RaftSideAction>, label: String,
     val attention = actions.firstOrNull { it.attention }
     Box(modifier, contentAlignment = Alignment.TopCenter) {
         Box {
-            RaftIconButton(
+            RaftSizedIconButton(
                 onClick = { open = true },
                 tooltip = label,
+                box = RaftSideActionColumnDefaults.ItemSize,
+                glyph = RaftSideActionColumnDefaults.IconSize,
                 variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Lg,
                 contentDescription = attention?.attentionDescription?.let { "$label, $it" } ?: label,
             ) {
                 RaftSideActionIcon(RaftSideActionColumnDefaults.IconSize, attention != null) {

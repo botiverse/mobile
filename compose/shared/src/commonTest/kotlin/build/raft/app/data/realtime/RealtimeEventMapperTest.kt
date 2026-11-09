@@ -4,6 +4,7 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.TaskWireDto
 import build.raft.app.data.toTaskSummary
 import build.raft.app.model.AgentActivitySubscribed
+import build.raft.app.model.TaskStatus
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.ConversationKind
@@ -24,12 +25,14 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskUpdated
+import build.raft.app.model.ThreadReplyUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.isAgentProfileUpdate
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -373,7 +376,7 @@ class RealtimeEventMapperTest {
     }
 
     @Test
-    fun taskCreatedDropsUnknownStatusAndKeepsValidSibling() {
+    fun taskCreatedKeepsUnknownStatusTaskAsUnknownBesideValidSibling() {
         val logs = mutableListOf<String>()
         val event =
             RealtimeEventMapper(diagnosticsLogger = logs::add).map(
@@ -400,10 +403,11 @@ class RealtimeEventMapperTest {
             )
 
         val created = assertIs<TaskCreated>(event)
-        assertEquals(listOf("task-valid"), created.tasks.map { it.id.value })
+        assertEquals(listOf("task-invalid", "task-valid"), created.tasks.map { it.id.value })
+        assertEquals(listOf(TaskStatus.Unknown, TaskStatus.InReview), created.tasks.map { it.status })
         assertEquals(
-            "projection_value_rejected source=realtime_task field=task_status value=future-status",
-            logs.first { it.startsWith("projection_value_rejected") },
+            "projection_value_unknown source=realtime_task field=task_status value=future-status",
+            logs.first { it.startsWith("projection_value_") },
         )
     }
 
@@ -627,6 +631,87 @@ class RealtimeEventMapperTest {
         assertEquals("dm-reply-1", updated.latestReply?.messageId)
         assertEquals("MingQi", updated.latestReply?.senderName)
         assertEquals("明启", updated.latestReply?.senderDisplayName)
+    }
+
+    @Test
+    fun threadUpdatedKeepsSlackBridgeLatestReply() {
+        // Task #73: slock `projectThreadLatestReplyPayload` sends a Slack thread reply as the enriched
+        // message (`senderType: external_projection`, avatar from `externalAuthor`). A null latestReply
+        // made the replies host reject the frame, so the reply never reached the inline rows.
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ThreadUpdated,
+                """
+                {
+                  "parentMessageId": "parent-1",
+                  "threadChannelId": "thread-1",
+                  "replyCount": 1,
+                  "latestReply": {
+                    "id": "reply-1",
+                    "seq": 3,
+                    "content": "from slack",
+                    "senderId": "projection-1",
+                    "senderType": "external_projection",
+                    "senderName": "Yezi",
+                    "senderDisplayName": "Yezi",
+                    "senderAvatarUrl": "https://example.test/slack-avatar.png",
+                    "messageType": "chat",
+                    "createdAt": "2026-07-24T08:00:00Z"
+                  }
+                }
+                """.trimIndent()
+            )
+
+        val reply = assertNotNull(assertIs<ThreadUpdated>(event).latestReply)
+        assertEquals("reply-1", reply.messageId)
+        assertEquals("external_projection", reply.senderType)
+        assertEquals("Yezi", reply.senderDisplayName)
+        assertEquals("https://example.test/slack-avatar.png", reply.senderAvatarUrl)
+    }
+
+    @Test
+    fun threadReplyUpdatedMapsTheEditedReplyAndItsParent() {
+        // slock `emitExternalLinkedMessageUpdateToFrontend`: the enriched reply + `conversationContext`.
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ThreadReplyUpdated,
+                """
+                {
+                  "id": "reply-1",
+                  "channelId": "thread-1",
+                  "seq": 7,
+                  "senderType": "external_projection",
+                  "senderId": "projection-1",
+                  "senderName": "Yezi",
+                  "content": "edited in Slack",
+                  "createdAt": "2026-10-21T09:00:00.000Z",
+                  "updatedAt": "2026-10-21T09:05:00.000Z",
+                  "conversationContext": {
+                    "channelType": "thread",
+                    "parentMessageId": "parent-1",
+                    "parentChannelId": "channel-1",
+                    "parentChannelType": "channel"
+                  }
+                }
+                """.trimIndent()
+            )
+
+        val updated = assertIs<ThreadReplyUpdated>(event)
+        assertEquals("parent-1", updated.parentMessageId.value)
+        assertEquals("channel-1", updated.parentChannelId.value)
+        assertEquals("channel", updated.parentChannelType)
+        assertEquals("thread-1", updated.threadChannelId.value)
+        assertEquals("reply-1", updated.messageId.value)
+        assertEquals(7L, updated.seq)
+        assertEquals("edited in Slack", updated.content)
+        assertEquals("2026-10-21T09:05:00.000Z", updated.updatedAt)
+        assertNull(
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ThreadReplyUpdated,
+                """{"id":"m-1","channelId":"c-1","seq":1,"content":"x","updatedAt":"2026-10-21T09:05:00.000Z","conversationContext":{"channelType":"channel"}}""",
+            ),
+            "a top-level message is never a thread reply update",
+        )
     }
 
     @Test

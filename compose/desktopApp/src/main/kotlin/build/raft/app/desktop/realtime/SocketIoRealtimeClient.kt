@@ -1,5 +1,6 @@
 package build.raft.app.desktop.realtime
 
+import build.raft.app.data.isSsoRequiredSocketError
 import build.raft.app.desktop.RaftDesktopLog
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.RAFT_SOCKET_BASE_URL
@@ -372,7 +373,9 @@ class SocketIoRealtimeClient(
                     serverId = capturedContext.serverId,
             )
             logger("client_connect_error serverId=${capturedContext.serverId.value} reason=${payload?.javaClass?.simpleName.orEmpty()}")
-            if (payload.isAuthFailurePayload()) {
+            // SSO required: the token is valid, so no refresh; the next API call's 403 `SSO_REQUIRED`
+            // asks the person to sign in again (RaftSsoRequiredSignal).
+            if (payload.isAuthFailurePayload() && !isSsoRequiredSocketError(payload?.toString())) {
                 refreshTransportAuth(
                     reason = "connect_error",
                     capturedContext = capturedContext,
@@ -899,6 +902,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is MessageUpdated -> "message_updated"
     is DirectMessageCreated -> "direct_message_created"
     is ThreadFollowersUpdated -> "thread_followers_updated"
+    is build.raft.app.model.ThreadReplyUpdated -> "thread_reply_updated"
     is ScopeReadUpdated -> "scope_read_updated"
     is AgentTypingUpdated -> "agent_typing"
         is ThreadUpdated -> "thread_updated"
@@ -914,6 +918,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is ServerFeaturesChanged -> "server_features_changed"
     is ActivityChanged -> "activity_changed"
     is ServerAppearanceUpdated -> "appearance_updated"
+    is build.raft.app.model.UserProfileUpdated -> "user_profile_updated"
     is ComputerRestartDone -> "computer_restart_done"
     is ServerNotificationPreferencesChanged -> "server_notification_prefs_updated"
     is AgentCreated -> "agent_created"

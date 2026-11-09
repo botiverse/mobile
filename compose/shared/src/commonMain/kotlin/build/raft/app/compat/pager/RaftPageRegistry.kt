@@ -20,8 +20,12 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import build.raft.app.compat.ui.ProvideRaftPlatformImeInsets
 import build.raft.app.compat.ui.RaftProvidePageActive
 import build.raft.app.RaftProvideTextRendering
+import build.raft.app.RaftUpgradeDialogHost
+import build.raft.app.RaftUpgradeDialogState
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftProvideDesignSystemMisuse
 import build.raft.app.components.RaftProvideDesignSystemCopy
 import build.raft.app.components.RaftProvideDesignSystemStrings
@@ -39,6 +43,10 @@ import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.LocalRaftPageArgs
 import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.LocalRaftNativeTabBarBridge
+import build.raft.app.LocalRaftNativeNavBar
+import build.raft.app.LocalRaftNativeNavBarScript
+import build.raft.app.RaftNativeNavBarHostIdPageDataKey
+import build.raft.app.RaftNativeNavBarRegistry
 import build.raft.app.RaftNativeTabBarHostIdPageDataKey
 import build.raft.app.RaftNativeTabBarRegistry
 import build.raft.app.RaftSideActionHostIdPageDataKey
@@ -79,7 +87,7 @@ object RaftPageRegistry {
         val factory = factories[pageName] ?: return null
         // Hosts load the stored theme at startup; this covers a host that did not (idempotent).
         RaftAppAppearanceRuntime.ensureLoaded()
-        return { RaftPagerHost(factory) }
+        return { ProvideRaftPlatformImeInsets { RaftPagerHost(factory) } }
     }
 
     /** Hosts call this once at startup (Android: `RaftApplication.onCreate`). */
@@ -208,6 +216,14 @@ fun RaftPagerHost(
                 RaftSideActionHostRegistry.bridgeFor(pager.pageData.params.optString(RaftSideActionHostIdPageDataKey))
             }
         )
+    // PROTOTYPE: the host-drawn UINavigationBar registered for this page (iOS), if any. A child
+    // page (an app-shell tab) has none of its own and publishes into its host page's bar.
+    val ownNativeNavBar =
+        remember(pager) {
+            RaftNativeNavBarRegistry.bridgeFor(pager.pageData.params.optString(RaftNativeNavBarHostIdPageDataKey))
+        }
+    val inheritedNativeNavBar = LocalRaftNativeNavBar.current
+    val inheritedNativeNavBarScript = LocalRaftNativeNavBarScript.current
     CompositionLocalProvider(
         LocalViewModelStoreOwner provides viewModelStoreOwner,
         LocalActivity provides remember(pager) { RaftPageActivity(pager) },
@@ -218,6 +234,9 @@ fun RaftPagerHost(
                 RaftNativeTabBarRegistry.bridgeFor(pager.pageData.params.optString(RaftNativeTabBarHostIdPageDataKey))
             },
         LocalRaftSideActionHost provides sideActionHost,
+        // PROTOTYPE: the host-drawn UINavigationBar registered for this page (iOS), if any.
+        LocalRaftNativeNavBar provides (ownNativeNavBar?.takeIf { it.hostDrawsBar } ?: inheritedNativeNavBar.takeIf { ownNativeNavBar == null }),
+        LocalRaftNativeNavBarScript provides (ownNativeNavBar ?: inheritedNativeNavBarScript),
     ) {
         // Back handlers of an inactive (kept-alive, hidden) page must not fire.
         RaftProvidePageActive(active) {
@@ -233,6 +252,10 @@ fun RaftPagerHost(
                             // a side status bar): content and controls never run under it.
                             RaftPageHorizontalSafeAreaShell {
                                 (pager as? ComposeContainer)?.composedContent?.invoke()
+                                // The upgrade dialog this page opened (RaftUpgradeDialog.kt), if any.
+                                if (RaftUpgradeDialogState.request?.pagerId == pager.pagerId) {
+                                    RaftDesignSystemTheme { RaftUpgradeDialogHost(pager) }
+                                }
                             }
                         }
                     }

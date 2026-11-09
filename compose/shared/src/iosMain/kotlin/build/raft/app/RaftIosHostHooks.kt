@@ -6,6 +6,7 @@ import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.image.RaftImageHost
 import build.raft.app.image.RaftManagedImageRead
 import build.raft.app.image.RaftManagedImageReader
+import build.raft.designsystem.theme.RaftPointerInputState
 import kotlin.experimental.ExperimentalNativeApi
 import kotlin.native.ReportUnhandledExceptionHook
 import kotlin.native.setUnhandledExceptionHook
@@ -92,6 +93,10 @@ object RaftIosHostHooks {
         installRaftIosProductEventsLifecycle()
         // iPhone vs iPad in the User-Agent: the server's product-event `$device_type` comes from it.
         installIosRaftUserAgentDevice()
+        // The iPad app on a Mac has no touch screen: desktop control metrics from the first page.
+        if (raftPlatformIsiOSAppOnMac()) RaftPointerInputState.assumeNoTouchScreen()
+        // An attached hardware keyboard (iPad): the "Enter sends" default and the keyboard inset follow it.
+        RaftIosHardwareKeyboardState.install()
         // Settings > Appearance > Theme: the app-scope stores are installed (RaftIosAppScopeMMKV)
         // before these hooks, so the stored choice applies before the first page composes.
         RaftAppAppearanceRuntime.onSystemDarkChanged(
@@ -131,9 +136,9 @@ private fun installUnhandledExceptionHook(sink: RaftIosUnhandledExceptionSink) {
     previous =
         setUnhandledExceptionHook { throwable ->
             try {
-                val reason = throwable::class.qualifiedName.orEmpty().ifEmpty { "Throwable" } +
-                    (throwable.message?.let { ": $it" } ?: "")
-                sink.recordUnhandledException(reason = reason, stack = throwable.stackTraceToString())
+                // Clipped reason + compacted frames: the record is one 2048-character line.
+                val record = raftUnhandledExceptionRecord(throwable, throwable::class.qualifiedName.orEmpty())
+                sink.recordUnhandledException(reason = record.reason, stack = record.stack)
             } catch (_: Throwable) {
                 // Recording is best effort; never mask the original exception.
             }

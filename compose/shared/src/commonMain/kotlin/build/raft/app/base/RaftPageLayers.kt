@@ -6,6 +6,9 @@ internal enum class RaftPageLayer {
     DatabaseLaunchGate,
     EnvironmentIndicator,
     SideColumnScaffold,
+
+    /** The hovered link's destination at the page's bottom-left (RaftLinkHoverStatusHost). */
+    LinkHoverStatus,
 }
 
 /**
@@ -15,7 +18,7 @@ internal enum class RaftPageLayer {
  * It applies to the app shell, and to any non-embedded page that is the first in the process to
  * need the shared store (an Android process-death restore straight to a child page, an iOS login
  * callback opening the choose-server page). Once the store is built, later pages skip it. Embedded
- * child pages sit inside a host page that already passed it.
+ * child pages sit inside a host page that already passed it, and show their links in its status.
  */
 internal fun raftPageLayers(
     ownsDatabaseLaunch: Boolean,
@@ -26,4 +29,5 @@ internal fun raftPageLayers(
         if (ownsDatabaseLaunch || (!embedded && !sharedStoreBuilt)) add(RaftPageLayer.DatabaseLaunchGate)
         add(RaftPageLayer.EnvironmentIndicator)
         if (!embedded) add(RaftPageLayer.SideColumnScaffold)
+        if (!embedded) add(RaftPageLayer.LinkHoverStatus)
     }

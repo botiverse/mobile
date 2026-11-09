@@ -38,6 +38,9 @@ enum class RaftGlyph(internal vararg val paths: String) {
 
     /** Lucide `arrow-up`: the jump pill that goes up the list. */
     ArrowUp("m5 12 7-7 7 7", "M12 19V5"),
+
+    /** Lucide `arrow-up-right`: the leaving mark (↗) after a link that leaves Raft (an item card's link button or menu item). */
+    ArrowUpRight("M7 7h10v10", "M7 17 17 7"),
     ChevronRight("m9 18 6-6-6-6"),
     ChevronDown("m6 9 6 6 6-6"),
     Check("M20 6 9 17l-5-5"),
@@ -45,7 +48,13 @@ enum class RaftGlyph(internal vararg val paths: String) {
     X("M18 6 6 18", "m6 6 12 12"),
     Search("m21 21-4.34-4.34", circle(11f, 11f, 8f)),
 
-    /** Lucide `ellipsis`: a "More Actions" overflow ([RaftSideActionColumn]). */
+    /** Lucide `corner-down-left`: the Return key in a [RaftKbd] ([RaftKeyGlyph.Return]). */
+    CornerDownLeft("M20 4v7a4 4 0 0 1-4 4H4", "m9 10-5 5 5 5"),
+
+    /** Lucide `clock`: the search panel's Recent conversations heading. */
+    Clock(circle(12f, 12f, 10f), "M12 6v6l4 2"),
+
+    /** Lucide `ellipsis`: a "More Actions" overflow ([RaftSideActionColumn], an item card's More menu). */
     Ellipsis(circle(12f, 12f, 1f), circle(19f, 12f, 1f), circle(5f, 12f, 1f)),
     Info(circle(12f, 12f, 10f), "M12 16v-4", "M12 8h.01"),
     TriangleAlert(
@@ -98,13 +107,28 @@ enum class RaftGlyph(internal vararg val paths: String) {
     /** Lucide `forward`: a forwarded bundle's header label (raft-ui MessageForwardedBundleHeaderLabel). */
     Forward("m15 17 5-5-5-5", "M4 18v-2a4 4 0 0 1 4-4h12"),
 
-    /** Lucide `message-square`: the thread marker of a quoted message (raft-ui MessageQuotedPreviewThread). */
+    /** Lucide `message-square`: the comment count of a task row (raft-ui TaskCompactList). */
     MessageSquare(
         "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16" +
             "a2 2 0 0 1 2 2z",
     ),
 
+    /**
+     * raft-ui `ThreadIcon` (two overlapping bubbles, the thread marker of a quoted message): its 18 x 18 art
+     * (1.5 stroke) scaled to this 24 grid (2 stroke).
+     */
+    Thread(
+        "M4.6667 15.3333L2.3333 17.6667V5.6667A2.6667 2.6667 0 0 1 5 3H15",
+        "M11 6.6667H19.3333C20.8 6.6667 22 7.8667 22 9.3333V15.6667C22 17.1333 20.8 18.3333 19.3333 18.3333H17.3333V21.6667L13 18.3333H11C9.5333 18.3333 8.3333 17.1333 8.3333 15.6667V9.3333C8.3333 7.8667 9.5333 6.6667 11 6.6667Z",
+    ),
+
     /** Lucide `cpu`: the agent profile's runtime chip ([RaftRuntimeChip]). */
+    /** Lucide `square-terminal`: the agent profile hero's runtime chip (web `agent-profile-runtime-chip`). */
+    SquareTerminal(
+        "m7 11 2-2-2-2",
+        "M11 13h4",
+        "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+    ),
     Cpu(
         "M12 20v2", "M12 2v2", "M17 20v2", "M17 2v2", "M2 12h2", "M2 17h2", "M2 7h2",
         "M20 12h2", "M20 17h2", "M20 7h2", "M7 20v2", "M7 2v2",

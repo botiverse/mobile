@@ -130,6 +130,8 @@ internal fun ChannelSettingsVisualContent() {
                                 ),
                             pairedSlackChannelId = "C1",
                         ),
+                    // Move to section (web parity): #triage is pinned.
+                    section = ChannelSectionPlacement(customSections = emptyList(), pinned = true, placementSectionId = null),
                 ),
             longMessageCollapseSetting =
                 RaftLongMessageCollapseConversationSetting(

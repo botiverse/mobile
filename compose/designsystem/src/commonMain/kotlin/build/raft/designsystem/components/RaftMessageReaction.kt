@@ -211,9 +211,10 @@ fun RaftMessageReactionAdd(
 }
 
 /**
- * raft-ui `MessageItemSavedIndicator`: the footer's mark of a message you saved. 22dp,
- * `rounded-chip`, 5.5dp before and 6.5dp after, `fill-muted`, a filled 14dp bookmark in
- * ink 4dp before [label] ("Saved") in `caption` semibold `foreground-muted`. With
+ * raft-ui `MessageItemSavedIndicator`: the footer's mark of a message you saved. 24dp (the
+ * reactions' height), `rounded-chip`, 5.5dp before and 6.5dp after, `fill-muted`, a filled
+ * 14dp bookmark in ink 4dp before [label] ("Saved") in `footnote` bold `foreground-muted`
+ * (raft-design #923, 0.56: it was 22dp in caption semibold and read as a fainter grey). With
  * [onClick] (unsave, or open Saved) a press or hover lays `overlay-medium` over it.
  */
 @Composable
@@ -233,7 +234,7 @@ fun RaftMessageSavedIndicator(
         modifier =
             modifier
                 .raftFocusRing(focused, RaftRadius.Chip, colors)
-                .height(22.dp)
+                .height(RaftMessageReactionHeight)
                 .background(colors.fillMuted, shape)
                 .raftPressOverlay(onClick != null && (pressed || hovered), colors.fillMedium, RaftRadius.Chip)
                 .raftPointerHover(source)
@@ -251,7 +252,7 @@ fun RaftMessageSavedIndicator(
         RaftFilledGlyph(RaftGlyph.Bookmark, colors.foreground)
         RaftText(
             text = label,
-            style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold),
+            style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold),
             color = colors.foregroundMuted,
             maxLines = 1,
             softWrap = false,

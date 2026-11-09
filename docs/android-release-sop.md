@@ -202,7 +202,8 @@ added, and performance was not specially benchmarked for this release.
 Expected workflow output:
 
 - signed, aligned APK with a verified SHA-256;
-- workflow APK and R8 mapping artifacts;
+- workflow APK and R8 mapping artifacts (the mapping and native symbols are also
+  attached to every Hands build the run creates);
 - the signed AAB with its verification receipt and `build-identity.json`
   (`<artifact_name>-aab`, kept 90 days for every non-debug build);
 - a Hands **draft** release and optional temporary share page;
@@ -234,7 +235,11 @@ For each release, dispatch the Android Release workflow from the clean remote
 `upload_android_artifacts=true` and its own versionCode. CI builds, signs and
 verifies the AAB (and the matching Play APK), keeps them as workflow artifacts
 and uploads both to Hands as a sealed build; `create_hands_draft` stays `false`
-for this carrier. The job summary prints the next command. As a signed-in Hands
+for this carrier. The same job attaches that run's R8 mapping and native symbols
+to the Hands build, so crash and ANR reports from the Play build decode on Hands;
+no manual `hands builds attach-symbols` is needed. Google Play receives the R8
+mapping inside the AAB (`BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map`);
+the AAB carries no native debug symbols. The job summary prints the next command. As a signed-in Hands
 publisher, run:
 
 ```bash
@@ -542,9 +547,14 @@ After activation and public endpoint verification:
    and intentional newer product work. Never resolve by replacing `main` with
    the older release tree.
 4. Run the normal required hosted gates on the merge PR. Merge only after the
-   PR is reviewed, green, and cleanly mergeable.
-5. Verify the released source commit is an ancestor of `origin/main`, then
-   close release-only tasks and Hands feedback using the shipped evidence.
+   PR is reviewed, green, and cleanly mergeable. The repository allows only
+   squash and rebase merges, so squash-merge it: the shipped commit itself does
+   not become an ancestor of `main`; the `vX.Y.Z` tag stays the record of
+   exactly what shipped (artin, 2026-11-07).
+5. Verify the release branch's content is in `main`: comparing `vX.Y.Z` with
+   `origin/main` shows no file the release changed that `main` lacks (only
+   newer `main` work). Then close release-only tasks and Hands feedback using
+   the shipped evidence.
 6. Delete `release-X.Y.Z` only after the merge-back is verified and no release
    audit or rollback operation still needs the branch.
 

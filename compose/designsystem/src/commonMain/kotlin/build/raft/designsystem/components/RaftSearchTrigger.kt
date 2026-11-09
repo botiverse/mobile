@@ -31,6 +31,11 @@ import build.raft.designsystem.tokens.RaftStroke
 
 /** Metrics of [RaftSearchTrigger] (raft-ui `SearchTrigger`). */
 object RaftSearchTriggerDefaults {
+    /**
+     * The trigger with a finger: the top bar's 36dp item. Under a fine pointer it is the bar's
+     * 32dp item (sizing v12, raft-ui 0.65 desktop density): the trigger reads
+     * [RaftTopBarDefaults.itemSize].
+     */
     val Height: Dp = 36.dp
 
     /** `w-[clamp(360px,32vw,520px)]`. */
@@ -73,7 +78,7 @@ fun RaftSearchTrigger(
     Box(
         modifier
             .width(RaftSearchTriggerDefaults.width(windowWidth))
-            .height(RaftSearchTriggerDefaults.Height)
+            .height(RaftTopBarDefaults.itemSize)
             .raftFocusRing(focused, RaftRadius.Control, colors)
             .background(colors.layerCard, shape)
             .raftPressOverlay(pressed, raftPressOverlayColor(RaftPressSurface.Paper, colors), RaftRadius.Control)
@@ -111,7 +116,9 @@ fun RaftSearchTrigger(
 
 /**
  * raft-ui `Kbd`: a keyboard shortcut, `text-mono-meta` in `foreground-hint` inside a 1dp
- * `line-hairline` ring on a 3dp radius, at least 16dp wide, 4dp each side.
+ * `line-hairline` ring on a 3dp radius, at least 16dp wide, 4dp each side. The Return key
+ * ([RaftKeyGlyph.Return], ↵) is drawn as the 12dp corner-down-left glyph (Kbd's `size-3` svg):
+ * the mono face has no ↵, and the fallback font's drew a clipped mark on Android.
  */
 @Composable
 fun RaftKbd(text: String, modifier: Modifier = Modifier) {
@@ -124,6 +131,12 @@ fun RaftKbd(text: String, modifier: Modifier = Modifier) {
             .padding(horizontal = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
-        RaftText(text = text, style = RaftTheme.typography.monoMeta, color = colors.foregroundHint, maxLines = 1, softWrap = false)
+        if (text == RaftKeyGlyph.Return) {
+            // A blank line of the key's type keeps its height; the glyph sits on it.
+            RaftText(text = " ", style = RaftTheme.typography.monoMeta, color = colors.foregroundHint, maxLines = 1, softWrap = false)
+            RaftGlyphIcon(RaftGlyph.CornerDownLeft, size = 12.dp, color = colors.foregroundHint)
+        } else {
+            RaftText(text = text, style = RaftTheme.typography.monoMeta, color = colors.foregroundHint, maxLines = 1, softWrap = false)
+        }
     }
 }

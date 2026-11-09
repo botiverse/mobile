@@ -1,11 +1,13 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -23,9 +25,14 @@ internal fun SettingsDetailShell(
     subtitle: String,
     iconName: RaftLucideIconName? = null,
     applyTopSafeArea: Boolean = true,
-    headerHeight: Dp = RaftAppSize.PageHeaderHeight,
+    // 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+    headerHeight: Dp = RaftTheme.controls.headHeight,
     onBack: () -> Unit,
     trailingContent: (@Composable () -> Unit)? = null,
+    /** In place of the title (and subtitle) column, e.g. a title with its counts beside it. */
+    titleContent: (@Composable RowScope.() -> Unit)? = null,
+    // PROTOTYPE (native nav bar): [trailingContent] as bar buttons.
+    nativeActions: List<RaftNativeNavBarAction> = emptyList(),
     content: @Composable () -> Unit
 ) {
     // The wide Settings detail pane (SettingsWideListDetail): the list beside it is the way back,
@@ -40,11 +47,13 @@ internal fun SettingsDetailShell(
             applyTopSafeArea = applyTopSafeArea && !wideDetail,
             headerHeight = headerHeight,
             onBack = settingsDetailHeaderBack(onBack, wideDetail),
+            titleContent = titleContent,
             trailingContent = if (trailingContent != null) {
                 { trailingContent() }
             } else {
                 null
-            }
+            },
+            nativeActions = nativeActions,
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             content()

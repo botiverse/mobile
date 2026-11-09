@@ -13,6 +13,7 @@ internal class ComposeRaftAppShellPage : build.raft.app.base.BasePager() {
     private var conversationForwardRequestTick by mutableStateOf(0)
     private var wideHistoryRequest by mutableStateOf<RaftWideNavRequest?>(null)
     private var searchHandoff by mutableStateOf<RaftSearchTabQueryRequest?>(null)
+    private var searchShortcutTick by mutableStateOf(0)
 
     override val raftSearchTabHandoffRole: RaftSearchTabHandoffRole
         get() = RaftSearchTabHandoffRole.Shell
@@ -37,7 +38,8 @@ internal class ComposeRaftAppShellPage : build.raft.app.base.BasePager() {
                     conversationForwardRequestTick = conversationForwardRequestTick,
                     wideHistoryRequest = wideHistoryRequest,
                     searchHandoff = searchHandoff,
-                    onSearchHandoffApplied = { searchHandoff = null }
+                    onSearchHandoffApplied = { searchHandoff = null },
+                    searchShortcutTick = searchShortcutTick,
                 )
             }
         }
@@ -58,6 +60,9 @@ internal class ComposeRaftAppShellPage : build.raft.app.base.BasePager() {
         super.onReceivePagerEvent(pagerEvent, eventData)
         if (pagerEvent == RAFT_CONVERSATION_FORWARD_PAGER_EVENT) {
             conversationForwardRequestTick += 1
+        }
+        if (pagerEvent == RAFT_SEARCH_SHORTCUT_EVENT) {
+            searchShortcutTick += 1
         }
         if (pagerEvent == RAFT_WIDE_HISTORY_NAVIGATE_EVENT) {
             val direction = RaftWideNavDirection.fromWireName(eventData.optString(RAFT_WIDE_HISTORY_DIRECTION)) ?: return

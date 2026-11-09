@@ -23,8 +23,6 @@ import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.components.RaftStatusVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
@@ -38,6 +36,7 @@ import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.tokens.RaftUiPalette
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,6 +68,7 @@ import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import build.raft.app.base.Utils
@@ -154,6 +155,8 @@ import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.launch
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 const val SETTINGS_COMPUTERS_PAGE = "compose_settings_computers"
 
@@ -184,16 +187,23 @@ internal fun RaftSettingsComputersRoute(pageVisibleResumeTick: Int = 0, pageVisi
                 )
             }
         }
-    // A standalone page: without its own time context the usage sheet's "resets …" / "updated …"
-    // (and every other relative time here) read "unknown time" (xxchan, iOS).
-    ProvideStandaloneRaftTimeContext(pageVisibleTick = pageVisibleResumeTick) {
-        if (target == null) {
-            RaftSettingsComputersScreen(pager, pageVisibleResumeTick, pageVisible)
-        } else {
-            RaftSettingsComputerDetailScreen(pager, target, pageVisible)
-        }
+    if (target == null) {
+        RaftSettingsComputersScreen(pager, pageVisibleResumeTick, pageVisible)
+    } else {
+        RaftSettingsComputerDetailScreen(pager, target, pageVisible)
     }
 }
+
+/**
+ * The pending "open Add Computer" request against the page's load: null while it is still loading
+ * (wait), true once its snapshot is in (open), false when the load ended without one (drop).
+ */
+internal fun raftComputersOpenAddOnLoad(state: ScreenLoadState<*>): Boolean? =
+    when (state) {
+        ScreenLoadState.Loading -> null
+        is ScreenLoadState.Content -> true
+        else -> false
+    }
 
 internal data class RaftComputerPageTarget(val machineId: String, val serverId: String?)
 
@@ -323,6 +333,16 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
         val serverId = environment.authStore.readSession()?.currentServerId
         settingsComputerRouteIdentity(serverId, effect.machineId)?.let { pager.openSettingsComputerPage(environment.storeScope, it) }
     }
+    // Create Agent's "Add Computer" lands here with [SETTINGS_COMPUTERS_OPEN_ADD]: open the dialog
+    // once, on the page's own loaded snapshot (it carries the add permission); a failed load just
+    // shows the page.
+    var openAddComputerPending by remember { mutableStateOf(pager.pageData.params.optBoolean(SETTINGS_COMPUTERS_OPEN_ADD)) }
+    LaunchedEffect(openAddComputerPending, settingsState.computers) {
+        if (!openAddComputerPending) return@LaunchedEffect
+        val open = raftComputersOpenAddOnLoad(settingsState.computers) ?: return@LaunchedEffect
+        openAddComputerPending = false
+        if (open) settingsViewModel.dispatch(SharedSettingsIntent.ShowAddComputerDialog)
+    }
     val computersLoadState =
         raftComputersFirstFrameState(settingsState.computers, cachedComputers?.takeIf { firstFrame.serverId == currentServerId })
     val model = raftComputersListModel(computersLoadState)
@@ -394,21 +414,93 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
     // List / Cards, kept on this device (web `computersRackViewPreference`); the cards by default.
     val rackViewRepository = remember { KeyValueComputersRackViewPreferenceRepository(raftSharedPreferenceStore()) }
     var rackView by remember(rackViewRepository) { mutableStateOf(rackViewRepository.getComputersRackViewSync()) }
+    // Wide (the shell's content area / the wide Settings pane): the web's desktop head, the counts
+    // beside the title and Add Computer beside the toggle; the phone keeps them on the first row.
+    val wideHead = LocalRaftSettingsWideDetail.current
+    val computersTitle = stringResource(Res.string.settings_computers_title)
     SettingsDetailShell(
-        title = stringResource(Res.string.settings_computers_title),
+        title = computersTitle,
         subtitle = "",
         onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
+        titleContent =
+            if (wideHead && model is RaftComputersListModel.Content) {
+                {
+                    RaftComputersWideTitle(computersTitle, raftComputersCountsLine(raftComputersCounts(model.rows, agentsByMachine)))
+                }
+            } else {
+                null
+            },
         // Web: the toggle sits in the page header while there are computers to lay out.
         trailingContent =
             if (model is RaftComputersListModel.Content) {
-                { RaftComputersRackViewToggle(rackView) { rackView = rackViewRepository.selectComputersRackViewSync(it) } }
+                {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RaftComputersRackViewToggle(rackView) { rackView = rackViewRepository.selectComputersRackViewSync(it) }
+                        if (wideHead && model.canAddComputer) {
+                            RaftComputersAddButton { settingsViewModel.dispatch(SharedSettingsIntent.ShowAddComputerDialog) }
+                        }
+                    }
+                }
             } else {
                 null
+            },
+        // PROTOTYPE (native nav bar): the List / Cards toggle as a bar button with a checked menu.
+        nativeActions =
+            if (model is RaftComputersListModel.Content) {
+                val choose: (ComputersRackView) -> Unit = { rackView = rackViewRepository.selectComputersRackViewSync(it) }
+                listOf(
+                    RaftNativeNavBarAction(
+                        id = "computers-rack-view",
+                        label = stringResource(Res.string.settings_computers_rack_view_label),
+                        systemSymbol = if (rackView == ComputersRackView.List) "list.bullet" else "square.grid.2x2",
+                        onClick = {},
+                        icon = if (rackView == ComputersRackView.List) RaftLucideIconName.LayoutList else RaftLucideIconName.LayoutGrid,
+                        children =
+                            listOf(
+                                RaftNativeNavBarAction(
+                                    "computers-rack-view-list",
+                                    stringResource(Res.string.settings_computers_rack_view_list),
+                                    "list.bullet",
+                                    { choose(ComputersRackView.List) },
+                                    checked = rackView == ComputersRackView.List,
+                                    icon = RaftLucideIconName.LayoutList,
+                                ),
+                                RaftNativeNavBarAction(
+                                    "computers-rack-view-cards",
+                                    stringResource(Res.string.settings_computers_rack_view_cards),
+                                    "square.grid.2x2",
+                                    { choose(ComputersRackView.Cards) },
+                                    checked = rackView == ComputersRackView.Cards,
+                                    icon = RaftLucideIconName.LayoutGrid,
+                                ),
+                            ),
+                    )
+                )
+            } else {
+                emptyList()
             },
     ) {
         // Mobile refreshes by pull only (no header refresh button): same store refresh as Retry.
         RaftStorePullToRefreshBox(refreshing = refreshing, onRefresh = ::refresh, modifier = Modifier.fillMaxSize()) {
+        // A usage line's card on hover (web rack `UsageCardTrigger` → RuntimeUsageHoverCard).
+        val usageCard: RaftRackUsageCard? =
+            usageAccess.owner?.let { owner ->
+                usageServerId?.let { serverId ->
+                    RaftRackUsageCard { machineId: String, column: RaftRackUsageColumn, label: String, trigger: @Composable () -> Unit ->
+                        val key = remember(owner, serverId, machineId, column.provider) {
+                            RuntimeAccountUsageKey(owner, serverId, machineId, column.provider)
+                        }
+                        val runtimeVersion =
+                            (settingsState.computers as? ScreenLoadState.Content)?.data?.computers
+                                ?.firstOrNull { it.id == machineId }
+                                ?.runtimeVersions
+                                ?.get(column.runtimeId)
+                        RaftRackUsagePreviewCard(label, key, usageAccess, runtimeVersion, trigger)
+                    }
+                }
+            }
         RaftComputersTheme {
+          CompositionLocalProvider(LocalRaftRackUsageCard provides usageCard) {
             RaftSettingsComputersContent(
                 model = model,
                 refreshErrorCode = refreshErrorCode,
@@ -426,6 +518,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                     }
                 },
                 rackView = rackView,
+                summaryInHeader = wideHead,
                 computerControl = settingsState.computerControl,
                 onUpgradeComputer = { machineId, version -> settingsViewModel.dispatch(SharedSettingsIntent.UpgradeComputer(machineId, version)) },
                 onCopyCommand = { command -> settingsViewModel.dispatch(SharedSettingsIntent.CopyComputerCommand(command)) },
@@ -463,6 +556,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                     }
                 },
             )
+          }
         }
         }
     }
@@ -507,13 +601,15 @@ internal fun RaftSettingsComputersContent(
     onOpenUsage: (machineId: String, column: RaftRackUsageColumn, runtimeLabel: String) -> Unit = { _, _, _ -> },
     /** Cards (each with its next step) or List rows; the header's toggle picks it. */
     rackView: ComputersRackView = ComputersRackView.Default,
+    /** The counts and Add Computer are in the page head (wide): no first row for them. */
+    summaryInHeader: Boolean = false,
     /** Restart / upgrade progress (the settings store's `computerControl`), for the cards' next step. */
     computerControl: SettingsComputerControlState = SettingsComputerControlState(),
     onUpgradeComputer: (machineId: String, version: String) -> Unit = { _, _ -> },
     onCopyCommand: (String) -> Unit = {},
 ) {
     // The upgrade's in-flight window (web `computerUpgradeInFlight`) reads the clock.
-    val nowMillis = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis ?: defaultNowMillis()
+    val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
             RaftComputersListModel.Loading ->
@@ -548,9 +644,15 @@ internal fun RaftSettingsComputersContent(
                     onAction = onAddComputer,
                 )
             is RaftComputersListModel.Content ->
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                val cardColumns = raftComputerCardColumns(maxWidth)
+                // Web ComputersRack desktop: `p-5` around the grid; the phone's single column keeps 16dp.
+                val cardEdge = if (cardColumns > 1) RaftComputerCardGridEdge else 16.dp
                 LazyColumn(Modifier.fillMaxSize()) {
                     refreshErrorCode?.let { code -> item(key = "refresh-error") { RaftComputersRefreshErrorBanner(code) } }
-                    item(key = "summary") {
+                    if (summaryInHeader) {
+                        item(key = "summary-gap") { Spacer(Modifier.height(if (cardColumns > 1) RaftComputerCardGridEdge else 16.dp)) }
+                    } else item(key = "summary") {
                         Row(
                             Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -590,8 +692,10 @@ internal fun RaftSettingsComputersContent(
                         }
                     } else {
                         val computersById = model.computers.associateBy { it.id }
-                        // Web ComputersRack cards, one column on a phone.
-                        model.rows.forEachIndexed { index, row ->
+                        // Web ComputersRack cards: one column on a phone, a grid of cards at least
+                        // 250dp wide on a wide window (`repeat(auto-fill,minmax(250px,1fr))`, gap 12).
+                        @Composable
+                        fun card(row: RaftComputerRowModel, modifier: Modifier) {
                             val action =
                                 computersById[row.id]?.let { computer ->
                                     raftComputerRackAction(
@@ -601,7 +705,6 @@ internal fun RaftSettingsComputersContent(
                                         commandContext = model.commandContext,
                                     )
                                 }
-                            item(key = "computer-${row.id}") {
                                 RaftComputerRackCard(
                                     row = row,
                                     agents = agentsByMachine[row.id].orEmpty(),
@@ -614,19 +717,72 @@ internal fun RaftSettingsComputersContent(
                                     action = action,
                                     onUpgrade = { version -> onUpgradeComputer(row.id, version) },
                                     onCopyCommand = onCopyCommand,
-                                    modifier =
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 16.dp)
-                                            .padding(top = if (index > 0) 12.dp else 0.dp),
+                                    modifier = modifier,
                                 )
+                        }
+                        model.rows.chunked(cardColumns).forEachIndexed { rowIndex, rowCards ->
+                            item(key = "computers-${rowCards.first().id}") {
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = cardEdge)
+                                        .padding(top = if (rowIndex > 0) RaftComputerCardGridGap else 0.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(RaftComputerCardGridGap),
+                                ) {
+                                    rowCards.forEach { row -> card(row, Modifier.weight(1f)) }
+                                    // A short last row keeps the grid's card width.
+                                    repeat(cardColumns - rowCards.size) { Spacer(Modifier.weight(1f)) }
+                                }
                             }
                         }
                     }
                     item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
                 }
+                }
         }
     }
+}
+
+/** Web ComputersRack desktop grid: cards at least 250 wide, 12 apart, 20 from the edges. */
+internal val RaftComputerCardMinWidth = 250.dp
+internal val RaftComputerCardGridGap = 12.dp
+internal val RaftComputerCardGridEdge = 20.dp
+
+/** How many card columns fit [width] (CSS `repeat(auto-fill, minmax(250px, 1fr))` in a `p-5` box); at least one. */
+internal fun raftComputerCardColumns(width: Dp): Int {
+    val inner = width - RaftComputerCardGridEdge * 2
+    return ((inner + RaftComputerCardGridGap) / (RaftComputerCardMinWidth + RaftComputerCardGridGap)).toInt().coerceAtLeast(1)
+}
+
+/** The wide head's title: "Computers" with the counts beside it (web `ComputersRackHeader`). */
+@Composable
+internal fun RowScope.RaftComputersWideTitle(title: String, counts: String) {
+    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        RaftText(
+            title,
+            style = RaftType.Headline,
+            color = RaftTheme.colors.foreground,
+            maxLines = 1,
+        )
+        RaftText(
+            counts,
+            modifier = Modifier.weight(1f, fill = false),
+            style = RaftTheme.typography.monoMeta,
+            color = RaftTheme.colors.foregroundHint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+internal fun RaftComputersAddButton(onClick: () -> Unit) {
+    RaftButton(
+        text = stringResource(Res.string.settings_computers_add_computer),
+        onClick = onClick,
+        variant = RaftButtonVariant.Primary,
+        leadingIcon = { RaftComputersIcon(RaftLucideIconName.Plus) },
+    )
 }
 
 /**
@@ -635,7 +791,7 @@ internal fun RaftSettingsComputersContent(
  * before its "·"), so a line only breaks after a "·", and no count is cut off.
  */
 @Composable
-private fun raftComputersCountsLine(counts: RaftComputersCounts): String =
+internal fun raftComputersCountsLine(counts: RaftComputersCounts): String =
     listOf(
         if (counts.computers == 1) {
             stringResource(Res.string.settings_computers_rack_computer_count_one, counts.computers)
@@ -862,6 +1018,8 @@ private class RaftRackLine(
     val dimmed: Boolean = false,
     val semantics: String,
     val onClick: (() -> Unit)? = null,
+    /** A usage line wears its usage card (hover, a click pins); its click is then the card's. */
+    val usageCard: (@Composable (trigger: @Composable () -> Unit) -> Unit)? = null,
 )
 
 /**
@@ -880,7 +1038,7 @@ private fun RaftComputerRackMeters(
     val diskLabel = stringResource(Res.string.agent_migration_target_disk)
     val memoryLabel = stringResource(Res.string.agent_migration_target_memory)
     val resources = listOf(raftRackResourceLine(diskLabel, row.disk), raftRackResourceLine(memoryLabel, row.memory))
-    val usage = columns.usage.map { column -> raftRackUsageLine(raftRackUsageCell(column, usageLoads[column.provider]), runtimeCatalog, row.canViewRuntimeUsage, onOpenUsage) }
+    val usage = columns.usage.map { column -> raftRackUsageLine(raftRackUsageCell(column, usageLoads[column.provider]), runtimeCatalog, row.canViewRuntimeUsage, onOpenUsage, row.id) }
     val style = RaftTheme.typography.monoMeta
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
@@ -902,12 +1060,21 @@ private fun RaftComputerRackMeters(
 
 @Composable
 private fun RaftRackLineRow(line: RaftRackLine, valueWidth: Dp) {
-    val click = line.onClick
+    val card = line.usageCard
+    if (card != null) {
+        card { RaftRackLineRowContent(line, valueWidth, click = null) }
+    } else {
+        RaftRackLineRowContent(line, valueWidth, click = line.onClick)
+    }
+}
+
+@Composable
+private fun RaftRackLineRowContent(line: RaftRackLine, valueWidth: Dp, click: (() -> Unit)?) {
     Row(
         Modifier
             .fillMaxWidth()
             .then(if (line.dimmed) Modifier.alpha(0.6f) else Modifier)
-            .then(if (click != null) Modifier.clickable(role = Role.Button, onClickLabel = line.semantics, onClick = click) else Modifier)
+            .then(if (click != null) Modifier.raftClickable(onClick = click, onClickLabel = line.semantics, tier = RaftHoverTier.Subtle) else Modifier)
             .clearAndSetSemantics { contentDescription = line.semantics },
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -971,6 +1138,7 @@ private fun raftRackUsageLine(
     runtimeCatalog: ServerRuntimeCatalog,
     canView: Boolean,
     onOpenUsage: (RaftRackUsageColumn, String) -> Unit,
+    machineId: String,
 ): RaftRackLine {
     val runtimeId = cell.column.runtimeId
     val name = runtimeCatalog.entry(runtimeId)?.displayName ?: raftAgentRuntimeDisplayName(runtimeId)
@@ -983,6 +1151,13 @@ private fun raftRackUsageLine(
         }
     }
     val onClick = if (canView) ({ onOpenUsage(cell.column, name) }) else null
+    val cardHost = LocalRaftRackUsageCard.current
+    val usageCard: (@Composable (@Composable () -> Unit) -> Unit)? =
+        if (canView && cardHost != null) {
+            { trigger -> cardHost.card(machineId, cell.column, name, trigger) }
+        } else {
+            null
+        }
     return when (cell) {
         is RaftRackUsageCell.Unavailable ->
             RaftRackLine(
@@ -993,6 +1168,7 @@ private fun raftRackUsageLine(
                 attention = cell.attention,
                 semantics = stringResource(Res.string.settings_computers_rack_usage_unavailable, name),
                 onClick = onClick,
+                usageCard = usageCard,
             )
         is RaftRackUsageCell.Value -> {
             val value =
@@ -1023,6 +1199,7 @@ private fun raftRackUsageLine(
                         value,
                     ),
                 onClick = onClick,
+                usageCard = usageCard,
             )
         }
     }
@@ -1458,7 +1635,7 @@ private fun RaftComputerDetailBody(
     val canRemove = model.canRemove
     val currentAction = actionState?.takeIf { it.itemId == machineId }
     var confirmDelete by remember(machineId) { mutableStateOf(false) }
-    val nowMillis = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis ?: defaultNowMillis()
+    val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
     val upgrade = raftComputerUpgradeModel(snapshot.computer, computerControl, nowMillis)
     val controls =
         RaftComputerControlsContext(
@@ -1687,16 +1864,13 @@ private fun RaftComputerRuntimeBadge(chip: RaftComputerRuntimeChip) {
  */
 @Composable
 private fun RaftComputerCreatorLink(creator: RaftComputerCreatorModel, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     val shape = RoundedCornerShape(RaftRadius.Chip)
     Row(
         modifier =
             Modifier
                 .offset(x = (-6).dp)
                 .clip(shape)
-                .background(if (pressed) RaftTheme.colors.fillMedium else Color.Transparent, shape)
-                .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
+                .raftClickable(onClick = onClick, shape = shape, tier = RaftHoverTier.None)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1751,7 +1925,7 @@ private fun RaftComputerCreatorAvatar(creator: RaftComputerCreatorModel) {
 private fun raftComputerCreatedDate(createdAt: String?): String? {
     val value = createdAt?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val context =
-        LocalRaftTimeContextProvider.current?.current
+        currentRaftTimeContextProvider?.current
             ?: RaftTimeContext(localOffsetMinutes = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(defaultNowMillis(), 0))
     return value.membersLocalizedCreatedDateOrNull(context)
 }
@@ -2337,3 +2511,32 @@ private fun raftComputerActionErrorTitle(action: SharedSettingsActionState): Str
     }
 
 // endregion
+
+/** Draws a rack usage line's usage card round [trigger] (the page knows the viewer and server). */
+internal class RaftRackUsageCard(
+    val card: @Composable (machineId: String, column: RaftRackUsageColumn, label: String, trigger: @Composable () -> Unit) -> Unit,
+)
+
+internal val LocalRaftRackUsageCard = staticCompositionLocalOf<RaftRackUsageCard?> { null }
+
+/**
+ * A Computers card's usage line with its usage card (web rack `UsageCardTrigger`): it opens on
+ * hover and pins on a click. The controller reads only when the card opens (the page already
+ * read every line for the meters), so a page of Computers asks for nothing more at rest.
+ */
+@Composable
+private fun RaftRackUsagePreviewCard(
+    label: String,
+    key: RuntimeAccountUsageKey,
+    access: MembersRuntimeAccountUsageAccess,
+    runtimeVersion: String?,
+    trigger: @Composable () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val controller =
+        remember(key, access.store) {
+            ComputerRuntimeUsageController(key = key, store = access.store, scope = scope, log = access.log, onIdentityChanged = access.onIdentityChanged)
+        }
+    DisposableEffect(controller) { onDispose { controller.cancel() } }
+    ComputerRuntimeUsagePreviewCard(runtimeLabel = label, controller = controller, runtimeVersion = runtimeVersion, trigger = trigger)
+}

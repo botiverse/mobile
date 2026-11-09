@@ -1,11 +1,12 @@
 package build.raft.designsystem.screenshot
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -14,7 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -22,24 +22,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.InputModeManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInputModeManager
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftFocusedPreview
 import build.raft.designsystem.components.LocalRaftPressedPreview
+import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarAttentionLight
 import build.raft.designsystem.components.RaftAvatarBadgeBox
-import build.raft.designsystem.components.RaftWorkspaceButton
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftBanner
@@ -53,21 +53,22 @@ import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftCheckboxShape
 import build.raft.designsystem.components.RaftDialogHeader
-import build.raft.designsystem.components.RaftDialogSize
-import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import build.raft.designsystem.components.RaftDialogSheetCenteredSurface
-import build.raft.designsystem.components.RaftDrawerSurface
-import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.components.RaftDialogSheetSurface
+import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftDialogSurface
+import build.raft.designsystem.components.RaftDrawerSurface
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftFieldItem
 import build.raft.designsystem.components.RaftFieldLabelSize
+import build.raft.designsystem.components.RaftFilterChip
 import build.raft.designsystem.components.RaftFormSection
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftIconToggleButton
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowVariant
@@ -76,7 +77,6 @@ import build.raft.designsystem.components.RaftMenuLabel
 import build.raft.designsystem.components.RaftMenuSearchField
 import build.raft.designsystem.components.RaftMenuSeparator
 import build.raft.designsystem.components.RaftMenuSurface
-import build.raft.designsystem.components.RaftFilterChip
 import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.components.RaftRadio
@@ -94,18 +94,20 @@ import build.raft.designsystem.components.RaftTabsVariant
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextFieldAction
 import build.raft.designsystem.components.RaftTextFieldClearAction
-import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
-import build.raft.designsystem.components.appendRaftTextLink
+import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.RaftToast
 import build.raft.designsystem.components.RaftToastIntent
 import build.raft.designsystem.components.RaftToastSurface
 import build.raft.designsystem.components.RaftToggleGroup
 import build.raft.designsystem.components.RaftToggleGroupItem
+import build.raft.designsystem.components.RaftWorkspaceButton
+import build.raft.designsystem.components.appendRaftTextLink
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftStroke
 import kotlin.test.Test
 
 /**
@@ -472,6 +474,39 @@ class InteractiveComponentScreenshotTest {
                     RaftFieldItem("Send as a task") { RaftSwitch(true, {}) }
                     RaftFieldItem("Send as a task", size = RaftFieldLabelSize.Sm) { RaftSwitch(false, {}) }
                     RaftFieldItem("Send as a task", description = "Leaving this off posts an ordinary message.") { RaftSwitch(false, {}) }
+                }
+            }
+        }
+
+    /** raft-ui `PanelToggleAction` (raft-design panel.md): off is a ghost icon button, on a yellow sticker. */
+    @Test
+    fun iconToggleButton() =
+        capture("icon-toggle-button") {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Caption("Off, on x rest, pressed, focused, disabled (lg 44dp)")
+                listOf(false, true).forEach { on ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        val tooltip = if (on) "Close Files" else "Files"
+                        RaftIconToggleButton(on, {}, tooltip) { RaftGlyphIcon(RaftGlyph.File, size = 22.dp) }
+                        StateCell(pressed = true) { RaftIconToggleButton(on, {}, tooltip) { RaftGlyphIcon(RaftGlyph.File, size = 22.dp) } }
+                        StateCell(focused = true) { RaftIconToggleButton(on, {}, tooltip) { RaftGlyphIcon(RaftGlyph.File, size = 22.dp) } }
+                        RaftIconToggleButton(on, {}, tooltip, enabled = false) { RaftGlyphIcon(RaftGlyph.File, size = 22.dp) }
+                    }
+                }
+                Caption("A top bar: Search, Tasks (on), Files, Settings")
+                Row(
+                    Modifier.width(360.dp).height(56.dp).background(RaftTheme.colors.layerCanvas).padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RaftIconButton(onClick = {}, tooltip = "Search", variant = RaftButtonVariant.Ghost, size = RaftIconButtonSize.Lg) {
+                        RaftGlyphIcon(RaftGlyph.Search, size = 22.dp)
+                    }
+                    RaftIconToggleButton(true, {}, "Close Tasks") { RaftGlyphIcon(RaftGlyph.Check, size = 22.dp) }
+                    RaftIconToggleButton(false, {}, "Files") { RaftGlyphIcon(RaftGlyph.File, size = 22.dp) }
+                    RaftIconButton(onClick = {}, tooltip = "Settings", variant = RaftButtonVariant.Ghost, size = RaftIconButtonSize.Lg) {
+                        RaftGlyphIcon(RaftGlyph.Ellipsis, size = 22.dp)
+                    }
                 }
             }
         }

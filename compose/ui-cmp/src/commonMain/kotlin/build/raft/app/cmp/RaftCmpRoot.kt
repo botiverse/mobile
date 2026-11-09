@@ -20,11 +20,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import kotlinx.serialization.json.JsonObject
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.LocalRaftPageArgs
 import build.raft.app.cmp.host.RaftCmpHost
+import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.cmp.host.RaftCmpPageArgs
+import build.raft.designsystem.components.LocalRaftPageCoverSignal
 import build.raft.designsystem.components.LocalRaftStatusBarBackdrop
+import build.raft.designsystem.components.RaftDismissOnPageCover
+import build.raft.designsystem.components.RaftPageCoverSignal
 import build.raft.designsystem.components.RaftStatusBarBackdrop
 import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.designsystem.components.RaftSystemBarsAppearance
@@ -49,6 +54,10 @@ import build.raft.designsystem.tokens.RaftSpacing
  * a host can give its native container the same colour (whatever Compose does not draw, e.g. the
  * area a keyboard offset uncovers, then shows the app surface instead of a platform default).
  * [backSwipeRegions] is the host's full-page back swipe probe (iOS); null on hosts without one.
+ * [coverSignal] is the page's [RaftPageCoverSignal] (see [ProvideRaftPageCover]); pass one when the
+ * host fires it too (iOS: the page container as it disappears), else the root makes its own.
+ * The page draws under the window's toast host ([RaftCmpToastLayer]): one per window, this
+ * root's own unless the host wrapped its roots in one.
  */
 @Composable
 fun RaftCmpRoot(
@@ -57,13 +66,71 @@ fun RaftCmpRoot(
     onSystemBarsResolved: ((RaftSystemBarsAppearance) -> Unit)? = null,
     onCanvasColorResolved: ((Color) -> Unit)? = null,
     backSwipeRegions: RaftBackSwipeRegions? = null,
+    coverSignal: RaftPageCoverSignal? = null,
 ) {
     if (backSwipeRegions != null) {
         val density = LocalDensity.current.density
         SideEffect { backSwipeRegions.density = density }
     }
+    val pageCoverSignal = coverSignal ?: remember { RaftPageCoverSignal() }
+    ProvideRaftPageCover(host, pageCoverSignal) {
+        RaftCmpPage(args, onSystemBarsResolved, onCanvasColorResolved, backSwipeRegions)
+    }
+}
+
+/**
+ * Gives [content] the page's [coverSignal] ([LocalRaftPageCoverSignal]) and [host] with a
+ * navigator that fires it, synchronously, before every `openPage` ([LocalRaftHost]): every page
+ * opened from Kotlin (`RouterModule.openPage`, the pane navigator, a page's own navigator call)
+ * goes through it. The page's dialogs, menus and popovers ([RaftDismissOnPageCover]) close while
+ * the page still composes: once the pushed page covers it, it may compose no more (iOS), and an
+ * overlay closed only on `pageActive` stayed over the new page, a window layer taking its taps.
+ */
+@Composable
+fun ProvideRaftPageCover(
+    host: RaftCmpHost,
+    coverSignal: RaftPageCoverSignal,
+    content: @Composable () -> Unit,
+) {
+    val pageHost = remember(host, coverSignal) { host.firingPageCover(coverSignal) }
     CompositionLocalProvider(
-        LocalRaftHost provides host,
+        LocalRaftHost provides pageHost,
+        LocalRaftPageCoverSignal provides coverSignal,
+        content = content,
+    )
+}
+
+/** [this] host with a navigator that fires [signal] before it opens a page; the rest unchanged. */
+internal fun RaftCmpHost.firingPageCover(signal: RaftPageCoverSignal): RaftCmpHost =
+    RaftCmpHost(
+        capabilities = capabilities,
+        navigator = RaftPageCoverNavigator(navigator, signal),
+        bridgeTransport = bridgeTransport,
+        events = events,
+        childPageLoads = childPageLoads,
+    )
+
+private class RaftPageCoverNavigator(
+    private val platform: RaftCmpNavigator,
+    private val signal: RaftPageCoverSignal,
+) : RaftCmpNavigator {
+    override fun openPage(pageName: String, pageData: JsonObject) {
+        signal.fire()
+        platform.openPage(pageName, pageData)
+    }
+
+    override fun closePage() = platform.closePage()
+}
+
+@Composable
+private fun RaftCmpPage(
+    args: RaftCmpPageArgs,
+    onSystemBarsResolved: ((RaftSystemBarsAppearance) -> Unit)?,
+    onCanvasColorResolved: ((Color) -> Unit)?,
+    backSwipeRegions: RaftBackSwipeRegions?,
+) {
+    val host = LocalRaftHost.current
+    CompositionLocalProvider(
         LocalRaftPageArgs provides args,
         LocalRaftBackSwipeRegions provides backSwipeRegions,
     ) {
@@ -76,15 +143,19 @@ fun RaftCmpRoot(
             if (onCanvasColorResolved != null) {
                 LaunchedEffect(canvas) { onCanvasColorResolved(canvas) }
             }
-            val pressWash = RaftTheme.colors.fillPressed
+            val pressWash = RaftTheme.colors.fillMedium
             val indication = remember(pressWash) { RaftPressIndication(pressWash) }
             CompositionLocalProvider(
                 LocalIndication provides indication,
                 LocalRaftStatusBarBackdrop provides statusBarBackdrop,
             ) {
-                Box(Modifier.fillMaxSize().background(canvas)) {
-                    val content = RaftCmpRouter.content(args.pageName)
-                    if (content != null) content() else UnknownCmpPage(args.pageName)
+                // The window's one toast host, over the page (unless a host already put one
+                // round this root: Android's and the desktop's page stacks).
+                RaftCmpToastLayer(origin = host.capabilities) {
+                    Box(Modifier.fillMaxSize().background(canvas)) {
+                        val content = RaftCmpRouter.content(args.pageName)
+                        if (content != null) content() else UnknownCmpPage(args.pageName)
+                    }
                 }
             }
         }

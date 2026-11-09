@@ -63,6 +63,8 @@ internal data class RaftArtifactViewerBarContent(
     val commentsOpen: Boolean = false,
     /** Null: no Follow item (not read yet, or the read failed). */
     val following: Boolean? = null,
+    /** Desktop Mode, on or off; null where it is not offered (no ⋮ item). */
+    val desktopMode: Boolean? = null,
 )
 
 /** The bar's actions; a null one is not offered. */
@@ -71,6 +73,7 @@ internal class RaftArtifactViewerBarActions(
     val onPickVersion: ((Int) -> Unit)? = null,
     val onCopyLink: (() -> Unit)? = null,
     val onToggleFollow: (() -> Unit)? = null,
+    val onToggleDesktopMode: (() -> Unit)? = null,
     val onOpenInBrowser: (() -> Unit)? = null,
 )
 
@@ -89,7 +92,7 @@ internal fun raftArtifactViewerHomeLabel(home: ArtifactHome): String? =
 
 /**
  * The viewer's page: the one 56dp bar (Back; the title over "#channel · vN ▾ · N read"; Comments
- * with its count; ⋮ with Copy Link, Follow / Unfollow, Open in Browser) over [content]. [menuOpen]
+ * with its count; ⋮ with Copy Link, Follow / Unfollow, Desktop Mode, Open in Browser) over [content]. [menuOpen]
  * and [versionsOpen] are for screenshots only (the popups are windows there: see
  * [RaftArtifactViewerMenuItems], [raftArtifactViewerVersionOptions]).
  */
@@ -127,7 +130,7 @@ internal fun RaftArtifactViewerFrame(
                 RaftDesignSystemTheme {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         actions.onToggleComments?.let { toggle -> RaftArtifactViewerCommentsButton(bar.commentCount, onClick = toggle) }
-                        if (actions.onCopyLink != null || actions.onToggleFollow != null || actions.onOpenInBrowser != null) {
+                        if (actions.onCopyLink != null || actions.onToggleFollow != null || actions.onOpenInBrowser != null || (bar.desktopMode != null && actions.onToggleDesktopMode != null)) {
                             Box {
                                 RaftIconButton(
                                     onClick = { menuOpen = true },
@@ -138,7 +141,7 @@ internal fun RaftArtifactViewerFrame(
                                     RaftSlotIcon(RaftLucideIconName.EllipsisVertical)
                                 }
                                 RaftDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }, minWidth = 220.dp) {
-                                    RaftArtifactViewerMenuItems(following = bar.following, actions = actions, onDone = { menuOpen = false })
+                                    RaftArtifactViewerMenuItems(following = bar.following, desktopMode = bar.desktopMode, actions = actions, onDone = { menuOpen = false })
                                 }
                             }
                         }
@@ -252,9 +255,17 @@ private fun RaftArtifactViewerCommentsButton(count: Int?, onClick: () -> Unit) {
     )
 }
 
-/** The ⋮ menu's items: Copy Link, Follow / Unfollow (once known), then Open in Browser. */
+/**
+ * The ⋮ menu's items: Copy Link, Follow / Unfollow (once known), then Desktop Mode (where offered:
+ * a check mark while on, the label constant as in the HTML attachment preview) and Open in Browser.
+ */
 @Composable
-internal fun ColumnScope.RaftArtifactViewerMenuItems(following: Boolean?, actions: RaftArtifactViewerBarActions, onDone: () -> Unit) {
+internal fun ColumnScope.RaftArtifactViewerMenuItems(
+    following: Boolean?,
+    actions: RaftArtifactViewerBarActions,
+    onDone: () -> Unit,
+    desktopMode: Boolean? = null,
+) {
     actions.onCopyLink?.let { copy ->
         RaftMenuItem(
             text = stringResource(Res.string.artifacts_viewer_copy_link),
@@ -276,8 +287,22 @@ internal fun ColumnScope.RaftArtifactViewerMenuItems(following: Boolean?, action
             },
         )
     }
+    val firstGroup = actions.onCopyLink != null || (toggleFollow != null && following != null)
+    val toggleDesktopMode = actions.onToggleDesktopMode
+    val desktopModeItem = toggleDesktopMode != null && desktopMode != null
+    if (firstGroup && (desktopModeItem || actions.onOpenInBrowser != null)) RaftMenuSeparator()
+    if (toggleDesktopMode != null && desktopMode != null) {
+        RaftMenuItem(
+            text = stringResource(Res.string.file_preview_desktop_mode_off),
+            leadingIcon = { RaftSlotIcon(RaftLucideIconName.Monitor) },
+            checked = desktopMode,
+            onClick = {
+                onDone()
+                toggleDesktopMode()
+            },
+        )
+    }
     actions.onOpenInBrowser?.let { open ->
-        if (actions.onCopyLink != null || (toggleFollow != null && following != null)) RaftMenuSeparator()
         RaftMenuItem(
             text = stringResource(Res.string.artifacts_viewer_open_in_browser),
             leadingIcon = { RaftSlotIcon(RaftLucideIconName.ArrowUpRight) },

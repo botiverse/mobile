@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.model.isExternalAgentRuntime
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -210,13 +211,20 @@ internal fun runtimePickerOptions(
     }
 
 /**
+ * Web shared `getRuntimeDisplayName`: the external sentinel (external and cloud agents alike) reads
+ * "External agent", never the raw id "external"; any other id its catalog name.
+ */
+internal fun runtimeIdentityDisplayName(runtimeId: String, serverId: String? = null): String =
+    if (isExternalAgentRuntime(runtimeId)) ExternalAgentRuntimeDisplayName else runtimeCatalogDisplayName(runtimeId, serverId)
+
+/**
  * A runtime named as an identity (a subtitle, a chip, a profile card), web
  * `formatRuntimeLabelWithStatus`: the name plus " (deprecated)" or " (experimental)". Prose
  * (a runtime inside a sentence) uses the bare [runtimeCatalogDisplayName].
  */
 @Composable
 internal fun runtimeLabelWithStatus(runtimeId: String, serverId: String? = null): String {
-    val name = runtimeCatalogDisplayName(runtimeId, serverId)
+    val name = runtimeIdentityDisplayName(runtimeId, serverId)
     return when {
         runtimeCatalogIsDeprecated(runtimeId, serverId) -> name + stringResource(Res.string.runtime_suffix_deprecated)
         runtimeCatalogIsExperimental(runtimeId, serverId) -> name + stringResource(Res.string.runtime_suffix_experimental)

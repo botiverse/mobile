@@ -9,6 +9,8 @@ import build.raft.app.model.Message
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.messageStreamChannelId
+import build.raft.app.data.realtime.ConversationContextWireDto
+import build.raft.app.data.realtime.toDomain
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
@@ -45,7 +47,14 @@ enum class ForwardMessageTargetKind {
     RecentDirectMessage,
     PublicChannelUnjoined,
     HumanDirectMessageCandidate,
-    AgentDirectMessageCandidate
+    AgentDirectMessageCandidate,
+    /**
+     * slock #12620: a thread the person follows, forwarded into like a reply. Only from the
+     * server (`/forward/targets/conversations` and search rows); never persisted for external share.
+     */
+    ConversationThread,
+    /** slock #12620: a task discussion the person follows (`channels.type = 'task'`). */
+    ConversationTask
 }
 
 @Serializable
@@ -77,8 +86,22 @@ data class ForwardMessageTarget(
     val joined: Boolean? = null,
     val dmExists: Boolean? = null,
     val canForwardNow: Boolean = channelId != null,
-    val requiredAction: ForwardMessageTargetRequiredAction = ForwardMessageTargetRequiredAction.None
+    val requiredAction: ForwardMessageTargetRequiredAction = ForwardMessageTargetRequiredAction.None,
+    /** Thread / task rows (slock `ForwardConversationTarget`): the channel holding the conversation. */
+    val parentChannelId: ChannelId? = null,
+    val parentChannelName: String? = null,
+    /** `channel` / `private` / `joint` / `dm`, as the server sends it. */
+    val parentChannelType: String? = null,
+    val taskNumber: Int? = null,
+    val taskTitle: String? = null,
+    val parentMessagePreview: String? = null,
+    /** The thread / task the picker was opened from (only the group's first row can carry it). */
+    val current: Boolean = false
 )
+
+/** A thread or a task discussion (slock web `isConversationTarget`). */
+fun ForwardMessageTarget.isForwardConversationTarget(): Boolean =
+    kind == ForwardMessageTargetKind.ConversationThread || kind == ForwardMessageTargetKind.ConversationTask
 
 data class ForwardMessageTargetDirectoryCursor(
     val snapshotId: String? = null,
@@ -250,6 +273,17 @@ interface ForwardMessageTargetRepository {
             interim.cancel()
             send(ForwardTargetSearchUpdate.Final(result))
         }
+    /**
+     * The message Forward picker's "Threads & tasks" group (slock #12621
+     * `useForwardConversationTargets`): one `GET messages/forward/targets/conversations?limit=4`
+     * per picker open, with [currentChannelId] when the picker was opened from a thread or task
+     * conversation. Thread/task rows only, the `current` one first, at most 4. A failure is no
+     * group: an empty list, never retried.
+     */
+    suspend fun conversationTargets(
+        serverId: ServerId,
+        currentChannelId: ChannelId?
+    ): List<ForwardMessageTarget> = emptyList()
     suspend fun resolveTargetChannel(
         sourceServerId: ServerId,
         target: ForwardMessageTarget,
@@ -276,6 +310,12 @@ internal const val ForwardTargetServerSearchDebounceMillis = 200L
 internal const val ForwardTargetServerSearchLimit = 20
 
 internal const val ForwardTargetSearchPath = "messages/forward/targets/search"
+
+/** slock #12620 `GET /api/messages/forward/targets/conversations`. */
+internal const val ForwardConversationTargetsPath = "messages/forward/targets/conversations"
+
+/** slock web `FORWARD_CONVERSATION_TARGET_LIMIT` / server `MAX_FORWARD_CONVERSATIONS_LIMIT`. */
+internal const val ForwardConversationTargetLimit = 4
 
 class RealForwardMessageTargetRepository(
     private val sessionStore: RaftAuthSessionStore,
@@ -521,6 +561,53 @@ class RealForwardMessageTargetRepository(
             ForwardMessageTargetSearchIndex.build(serverId, targets, revision)
         }
 
+    override suspend fun conversationTargets(
+        serverId: ServerId,
+        currentChannelId: ChannelId?
+    ): List<ForwardMessageTarget> {
+        currentSession() ?: return emptyList()
+        val startedAt = nowMillis()
+        val current = currentChannelId?.value?.trim()?.takeIf { it.isNotBlank() }
+        var statusCode: Int? = null
+        val failureCode =
+            try {
+                val response =
+                    networkClient.request(
+                        // A section of an open dialog, not the critical path (Recent renders without it).
+                        priority = DataRequestPriority.Visible,
+                        path = ForwardConversationTargetsPath,
+                        query =
+                            listOfNotNull(
+                                "limit" to ForwardConversationTargetLimit.toString(),
+                                current?.let { "currentChannelId" to it }
+                            ),
+                        serverIdOverride = serverId
+                    )
+                statusCode = response.code
+                if (response.isSuccessful) {
+                    val targets =
+                        parseForwardMessageTargetSearchResults(response.bodyText.orEmpty(), fallbackServerId = serverId)
+                            .orderForwardConversationTargets()
+                    warningLogger(
+                        "forward_conversation_targets result=ok results=${targets.size} " +
+                            "current=${targets.firstOrNull()?.current == true} durationMs=${nowMillis() - startedAt}"
+                    )
+                    return targets
+                }
+                "http_${response.code}"
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (exception: Exception) {
+                if (statusCode == null) "network_unavailable" else "network_parse_failed"
+            }
+        // No group, no retry: the picker looks as it did before (web: a failed answer is no group).
+        warningLogger(
+            "forward_conversation_targets result=error code=$failureCode status=${statusCode ?: "none"} " +
+                "durationMs=${nowMillis() - startedAt}"
+        )
+        return emptyList()
+    }
+
     override suspend fun resolveTargetChannel(
         sourceServerId: ServerId,
         target: ForwardMessageTarget,
@@ -612,7 +699,7 @@ class RealForwardMessageTargetRepository(
                     bodyText = bodyText,
                     fallbackThreadId = ThreadId(request.destination.channelId.value),
                     diagnostics = warningLogger
-                ) ?: error("forward response missing canonical message")
+                )?.withForwardConversationContext(bodyText) ?: error("forward response missing canonical message")
                 ForwardMessageSendResult(message = message)
             }
         )
@@ -675,12 +762,16 @@ class RealForwardMessageTargetRepository(
                         else -> error("forward batch response contains an unknown status")
                     }
                     val message = result.message?.let {
+                        val messageText = it.toString()
                         parseSharedSentMessage(
-                            bodyText = it.toString(),
+                            bodyText = messageText,
                             fallbackThreadId = ThreadId(destination.channelId.value),
                             diagnostics = warningLogger
-                        )
+                        )?.withForwardConversationContext(messageText)
                     }
+                    // A thread / task destination answers with its own (local) channel id, a joint
+                    // thread's local face included (slock messageService `buildPersistedMessageFrontendPayload`
+                    // projects `jointThreadProjection.localThreadChannelId`), so the check holds for them too.
                     if (message == null || message.channelId != destination.channelId) {
                         failures += ForwardMessageBatchFailure(destination, "forward_response_invalid")
                     } else {
@@ -1075,7 +1166,16 @@ internal data class ForwardTargetSearchItemDto(
     val joined: Boolean? = null,
     val dmExists: Boolean? = null,
     val canForwardNow: Boolean = false,
-    val requiredAction: String? = null
+    val requiredAction: String? = null,
+    // slock #12620 `ForwardConversationTarget` (packages/server/src/services/forwardConversationTargets.ts
+    // @ b088f8467e): thread / task rows of `/forward/targets/conversations` and of search.
+    val parentChannelId: String? = null,
+    val parentChannelName: String? = null,
+    val parentChannelType: String? = null,
+    val taskNumber: Int? = null,
+    val taskTitle: String? = null,
+    val parentMessagePreview: String? = null,
+    val current: Boolean? = null
 )
 
 internal fun parseForwardTargetSearchItems(bodyText: String): List<ForwardTargetSearchItemDto> {
@@ -1113,6 +1213,7 @@ internal fun parseForwardTargetSearchItems(bodyText: String): List<ForwardTarget
 private fun ForwardTargetSearchItemDto.toForwardMessageTarget(fallbackServerId: ServerId): ForwardMessageTarget? {
     val cleanId = id.trim().takeIf { it.isNotBlank() } ?: return null
     val cleanType = type.trim().lowercase()
+    if (cleanType in ForwardTargetConversationTypes) return toForwardConversationTarget(cleanType, fallbackServerId)
     val cleanTitle =
         title.trim()
             .let { if (cleanType in ForwardTargetSearchPersonTypes) it.removePrefix("@").trim() else it }
@@ -1189,6 +1290,75 @@ private fun ForwardTargetSearchItemDto.toForwardMessageTarget(fallbackServerId: 
 }
 
 private val ForwardTargetSearchPersonTypes = setOf("dm", "human", "agent")
+
+private val ForwardTargetConversationTypes = setOf("thread", "task")
+
+/**
+ * A thread / task row: `id == channelId` is the conversation's own channel (not its parent message
+ * or its task), the id a forward posts to. A row without one is dropped (web
+ * `orderConversationTargets`). The title is the server's (`#ch › first line`, `#ch:#7 title`).
+ */
+private fun ForwardTargetSearchItemDto.toForwardConversationTarget(
+    cleanType: String,
+    fallbackServerId: ServerId
+): ForwardMessageTarget? {
+    val conversationChannelId = channelId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val task = cleanType == "task"
+    val cleanTitle =
+        title.trim().takeIf { it.isNotBlank() }
+            ?: (if (task) taskTitle else parentMessagePreview)?.trim()?.takeIf { it.isNotBlank() }
+            ?: return null
+    return ForwardMessageTarget(
+        serverId = serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: fallbackServerId,
+        kind = if (task) ForwardMessageTargetKind.ConversationTask else ForwardMessageTargetKind.ConversationThread,
+        id = conversationChannelId,
+        title = cleanTitle,
+        subtitle = subtitle?.trim().orEmpty(),
+        avatarLabel = cleanTitle.toRaftAvatarLabel(),
+        channelId = ChannelId(conversationChannelId),
+        channelKind = if (task) ConversationKind.Task else ConversationKind.Thread,
+        channelType = cleanType,
+        joined = true,
+        canForwardNow = true,
+        requiredAction = ForwardMessageTargetRequiredAction.None,
+        parentChannelId = parentChannelId?.trim()?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        parentChannelName = parentChannelName?.trim()?.takeIf { it.isNotBlank() },
+        parentChannelType = parentChannelType?.trim()?.lowercase()?.takeIf { it.isNotBlank() },
+        taskNumber = taskNumber.takeIf { task },
+        taskTitle = taskTitle?.takeIf { task && it.isNotBlank() },
+        parentMessagePreview = parentMessagePreview?.takeIf { !task && it.isNotBlank() },
+        current = current == true
+    )
+}
+
+/**
+ * slock web `orderConversationTargets` (useForwardConversationTargets.ts @ b088f8467e): only
+ * thread / task rows, at most one `current` and it first, at most [ForwardConversationTargetLimit].
+ */
+internal fun List<ForwardMessageTarget>.orderForwardConversationTargets(): List<ForwardMessageTarget> {
+    val usable = filter { it.isForwardConversationTarget() && it.channelId != null }
+    val current = usable.firstOrNull { it.current }
+    val rest = usable.filter { it !== current }.map { if (it.current) it.copy(current = false) else it }
+    return (listOfNotNull(current) + rest).take(ForwardConversationTargetLimit)
+}
+
+/**
+ * The posted message's `conversationContext` (slock #12620: a thread / task destination's answer
+ * carries `FrontendConversationContext`, the `message:new` shape), which "View in chat" opens.
+ * The REST message parser does not read it, so the forward answer adds it here.
+ */
+@Serializable
+private data class ForwardPostedMessageContextBody(
+    val conversationContext: ConversationContextWireDto? = null
+)
+
+private fun Message.withForwardConversationContext(messageText: String): Message {
+    val context =
+        runCatching {
+            forwardTargetJson.decodeFromString(ForwardPostedMessageContextBody.serializer(), messageText)
+        }.getOrNull()?.conversationContext?.toDomain() ?: return this
+    return copy(conversationContext = context)
+}
 
 private fun String?.toForwardRequiredAction(): ForwardMessageTargetRequiredAction =
     when (this?.trim()?.lowercase()) {

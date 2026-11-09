@@ -38,9 +38,8 @@ Discipline".
   `tokens/RaftDimensions.kt`, not page literals. raft-ui controls cast no
   shadow (stickers keep the hard offset).
 - Back/close controls: `RaftBackButton`.
-- Do NOT add new usages of `RaftBrutal*` (`RaftBrutalActionButton`,
-  `RaftBrutalIconButton`, `RaftBrutalTextField`, `RaftBrutalSearchField`, ...)
-  or helpers under `compose/shared/src/commonMain/kotlin/build/raft/app/components/`.
+- The `RaftBrutal*` layer is removed; do not recreate it. Do NOT add new usages
+  of helpers under `compose/shared/src/commonMain/kotlin/build/raft/app/components/`.
   When you touch UI that uses them, replace them with the design-system
   component.
 - New page class? Annotate it with `@Page("name")` and regenerate the

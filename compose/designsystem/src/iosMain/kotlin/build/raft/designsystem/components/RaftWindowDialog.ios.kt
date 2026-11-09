@@ -16,6 +16,9 @@ internal actual fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
         useSoftwareKeyboardInset = !properties.contentHandlesKeyboard,
         // RaftWindowDialog draws RaftTheme.scrim.
         scrimColor = Color.Transparent,
+        // Compose's own transition (fade in while growing from 95%), unless the content moves
+        // itself (RaftDrawer's slide).
+        animateTransition = properties.platformTransition,
     )
 
 /**
@@ -24,7 +27,10 @@ internal actual fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
  * (RaftIosSceneDelegate; the status bar style through RaftCmpRoot's onSystemBarsResolved).
  */
 @Composable
-internal actual fun RaftDialogWindowPolicy(isDark: Boolean) = Unit
+internal actual fun RaftDialogWindowPolicy(isDark: Boolean, keepsHostKeyboard: Boolean) = Unit
+
+@Composable
+internal actual fun RaftPrepareDialogWindow(isDark: Boolean) = Unit
 
 @Composable
 internal actual fun RaftPopupWindowPolicy(onReady: () -> Unit) = Unit

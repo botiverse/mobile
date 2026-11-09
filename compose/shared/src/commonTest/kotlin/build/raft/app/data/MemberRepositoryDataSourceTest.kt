@@ -112,11 +112,17 @@ class MemberRepositoryDataSourceTest {
         assertEquals("agent-1", detail.data.summary?.id)
         assertEquals("codex", detail.data.summary?.runtime)
         assertEquals("gpt-5", detail.data.summary?.model)
-        assertEquals("medium", detail.data.summary?.reasoning)
+        // No saved `reasoningEffort`: the profile shows Default like web, not the running
+        // `runtimeProfile.current` effort ("medium").
+        assertEquals(null, detail.data.summary?.reasoning)
         assertEquals("local", detail.data.summary?.executionMode)
         assertEquals("machine-1", detail.data.summary?.machineId)
         assertEquals("Mac Studio", detail.data.summary?.machineName)
         assertEquals("0.57.1", detail.data.summary?.daemonVersion)
+        assertEquals("/Users/noel/agents/noel/", detail.data.summary?.workspacePath)
+        // What the running process reports (web `runtimeProfile.current`, botiverse/slock #13372).
+        assertEquals("codex", detail.data.summary?.runningRuntime)
+        assertEquals("gpt-5", detail.data.summary?.runningModel)
         assertEquals("user-1", detail.data.summary?.creatorId)
         assertEquals("human", detail.data.summary?.creatorType)
         assertEquals("Artin", detail.data.summary?.creator?.displayName)
@@ -508,6 +514,7 @@ class MemberRepositoryDataSourceTest {
         var channelMembersResponse: HomeNetworkResponse? = null
         var channelDetailResponse: HomeNetworkResponse = HomeNetworkResponse(403, "{}")
         var startBlocker: CompletableDeferred<Unit>? = null
+        var patchConfigApply: String? = null
 
         override suspend fun request(
             priority: DataRequestPriority,
@@ -558,7 +565,7 @@ class MemberRepositoryDataSourceTest {
                           "daemonVersion":"0.57.1",
                           "envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},
                           "createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],
-                          "runtimeProfile":{"current":{"machineId":"machine-1","machineName":"Mac Studio","runtime":"codex","model":"gpt-5","reasoningEffort":"medium","executionMode":"local"}}
+                          "runtimeProfile":{"current":{"machineId":"machine-1","machineName":"Mac Studio","runtime":"codex","model":"gpt-5","reasoningEffort":"medium","executionMode":"local","workspacePathRef":{"label":"Workspace","path":" /Users/noel/agents/noel/ "}}}
                         }
                         """.trimIndent()
                     )
@@ -640,6 +647,12 @@ class MemberRepositoryDataSourceTest {
                     calls += "POST agents/agent-1/assign-machine body=${bodyText.orEmpty()}"
                     ok("""{"ok":true}""")
                 }
+                normalized == "agents/agent-1" && method == "PATCH" -> {
+                    calls += "PATCH agents/agent-1 body=${bodyText.orEmpty()}"
+                    // slock routes/agents.ts PATCH answer: the agent plus `configApply` (#13372).
+                    val apply = patchConfigApply?.let { ""","configApply":"$it"""" }.orEmpty()
+                    ok("""{"id":"agent-1","name":"noel","displayName":"Noel Bot","status":"active","runtime":"codex","model":"gpt-5"$apply}""")
+                }
                 normalized == "agents/agent-1" && method == "DELETE" -> {
                     calls += "DELETE agents/agent-1 body=${bodyText.orEmpty()}"
                     ok("""{"ok":true}""")
@@ -653,6 +666,20 @@ class MemberRepositoryDataSourceTest {
 
         private fun ok(body: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = body)
+    }
+
+    @Test
+    fun agentProfileUpdateCarriesTheServersConfigApply() = runBlocking {
+        val network = FakeMemberNetworkClient()
+        val repository = RealMemberRepository(sampleStore(), network)
+        val request = AgentProfileUpdateRequest(agentId = MemberId("agent-1"), displayName = "Noel Bot", description = null)
+        for ((wire, expected) in listOf("when_idle" to AgentConfigApply.WhenIdle, "saved" to AgentConfigApply.Saved, "restarted" to AgentConfigApply.Restarted, null to null)) {
+            network.patchConfigApply = wire
+            val result = repository.updateAgentProfile(DataRequestPriority.Foreground, request)
+            assertTrue(result is DataResult.Content, "wire=$wire")
+            assertEquals(expected, result.data.configApply, "wire=$wire")
+            assertEquals(null, result.data.withoutConfigApply().configApply)
+        }
     }
 
     private fun sampleStore(session: StoredAuthSession = sampleSession()): RaftAuthSessionStore =

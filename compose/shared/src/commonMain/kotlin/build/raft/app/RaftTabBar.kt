@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.TextStyle
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
@@ -44,6 +45,9 @@ import androidx.compose.ui.zIndex
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.designsystem.components.RaftUnreadCount
+import build.raft.designsystem.components.RaftToastAvoidBottom
+import build.raft.designsystem.components.raftToastAvoid
+import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.designsystem.components.RaftMobileNavDefaults
 import build.raft.designsystem.components.RaftMobileNavItem
 import build.raft.designsystem.components.RaftAppRailDefaults
@@ -60,7 +64,11 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import build.raft.designsystem.components.raftUnreadCountDescription
 import build.raft.designsystem.components.raftUnreadCountText
 import kotlinx.serialization.Serializable
-import build.raft.app.components.RaftAttentionDot
+import build.raft.designsystem.components.RaftStatusDot
+import build.raft.designsystem.components.RaftStatusVariant
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftPressSurface
+import androidx.compose.ui.semantics.Role
 
 @Serializable
 internal data class RaftTabItemPayload(
@@ -73,7 +81,9 @@ internal data class RaftTabItemPayload(
     val enabled: Boolean = true,
     val section: String? = null,
     /** Attention dot after the title (something new behind this row). */
-    val attentionDot: Boolean = false
+    val attentionDot: Boolean = false,
+    /** The row leaves Raft for another app: a trailing ↗ (raft-ui 0.26 #758). */
+    val opensExternally: Boolean = false
 )
 
 @Serializable
@@ -276,6 +286,7 @@ internal fun RaftBottomTabBar(
                 .fillMaxWidth()
                 .fillMaxHeight()
                 .padding(top = RaftAppStroke.Thin + RaftBottomTabBarSpec.TopPadding)
+                .padding(horizontal = RaftMobileNavDefaults.SidePadding)
         ) {
             items.forEach { item ->
                 if (serverTab != null && item.key == AppShellServerTabKey) {
@@ -321,9 +332,10 @@ internal object RaftBottomTabBarSpec {
     val LabelLineHeight = RaftMobileNavDefaults.LabelLineHeight
     val LabelWeight = FontWeight.SemiBold
     val SelectedLabelWeight = FontWeight.Bold
-    // Count badge, positioned from the pill slot's outer top-left corner.
+    // Count badge, positioned from the pill slot's outer top-left corner; on the 30dp pill it
+    // straddles the top edge 4dp up, its lower half clear of the 22dp icon.
     val BadgeOffsetX = 35.dp
-    val BadgeOffsetY = (-3).dp
+    val BadgeOffsetY = (-4).dp
     val BadgeHeight = 18.dp
     val BadgeMinWidth = 20.dp
     val BadgeHorizontalPadding = 5.dp
@@ -336,21 +348,6 @@ internal object RaftBottomTabBarSpec {
     val DotOffsetY = RaftMobileNavDefaults.DotOffsetY
 }
 
-/**
- * Optical size of a tab glyph relative to [RaftBottomTabBarSpec.IconSize] (stdrc 2026-10-21:
- * the Activity icon "floats"). Lucide `activity` is the only tab glyph whose ink spans the
- * whole 2..22 live area of the 24-unit viewBox (its pulse peaks touch y=2.2 and y=21.8, the
- * line runs x=2..22), while house, square-check-big, search and ellipsis keep to the 3..21
- * box, with their bottom edges on y=21. Drawn at the same size it reads ~11% larger and its
- * thin lower peak hangs below the others' baseline, so the mass of the glyph (the mid line)
- * looks lifted. Scaling it by 18/20 maps its ink onto the same 3..21 box: same size, same
- * top and bottom edges as the other tabs.
- */
-internal fun raftBottomTabIconScale(icon: RaftLucideIconName): Float =
-    if (icon == RaftLucideIconName.Activity) RaftBottomTabActivityIconScale else 1f
-
-internal const val RaftBottomTabActivityIconScale = 18f / 20f
-
 internal fun raftBottomTabLabelWeight(selected: Boolean): FontWeight =
     if (selected) RaftBottomTabBarSpec.SelectedLabelWeight else RaftBottomTabBarSpec.LabelWeight
 
@@ -360,10 +357,10 @@ private fun RaftBottomTabItem(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // The design system's raft-ui MobileNavItem, as the server tab next to it: the 56x32 pill
+    // The design system's raft-ui MobileNavItem, as the server tab next to it: the 56x30 pill
     // slot (brand sticker when selected, the press wash on the pill, never over the whole
-    // cell), the label 4dp under it, the attention pixel on the slot's top-right corner. The
-    // app adds its glyph (the Activity one optically scaled) and its unread count.
+    // cell), the label 3dp under it, the attention pixel on the slot's top-right corner. The
+    // app adds its glyph, every one at 22dp as the web draws them, and its unread count.
     val attentionDescription =
         if (item.key == "more" || item.key == "settings") stringResource(Res.string.tab_more_attention_dot) else stringResource(Res.string.tab_activity_unread_dot)
     RaftDesignSystemTheme {
@@ -376,7 +373,7 @@ private fun RaftBottomTabItem(
                     name = item.iconName,
                     color = raftArgbHex(ink),
                     strokeWidth = RaftBottomTabBarSpec.IconStroke,
-                    modifier = Modifier.size(RaftBottomTabBarSpec.IconSize * raftBottomTabIconScale(item.iconName))
+                    modifier = Modifier.size(RaftBottomTabBarSpec.IconSize)
                 )
             },
             modifier = modifier,
@@ -443,15 +440,29 @@ internal fun RaftAppBottomTabBarHost(
         // The host draws the system tab bar; Compose only publishes the tabs. Leaving
         // composition (the shell hides its bar) hides the native bar too.
         RaftNativeTabBarPublisher(bridge = nativeTabBar, items = items, onSelect = onSelect)
+        RaftNativeTabBarToastAvoidance(nativeTabBar)
         return
     }
     if (raftAppTabBarRenderer() == RaftAppTabBarRenderer.NativeHost) return
     RaftSharedBottomTabBarBand(
         items = items,
         onSelect = onSelect,
-        modifier = hostModifier,
+        // raft-ui: on a top-level page the window's toasts sit just above the tab bar.
+        modifier = hostModifier.raftToastAvoid(enabled = LocalRaftPageActive.current),
         bottomSafeArea = bottomSafeArea,
         serverTab = serverTab,
+    )
+}
+
+/** raft-ui: the window's toasts sit just above a host-drawn bar on the bottom edge while it shows. */
+@Composable
+private fun RaftNativeTabBarToastAvoidance(bridge: RaftNativeTabBarBridge) {
+    val band by bridge.band.collectAsState()
+    val state by bridge.state.collectAsState()
+    val bottomBand = band?.takeIf { it.edge == RaftNativeTabBarEdge.Bottom && state.visible }
+    RaftToastAvoidBottom(
+        height = (bottomBand?.points ?: 0.0).toFloat().dp,
+        enabled = bottomBand != null && LocalRaftPageActive.current,
     )
 }
 
@@ -516,6 +527,9 @@ internal fun resolveRaftAppTabBarRenderer(
  * ([RaftAppShellTopBar], artin task #8), so the rail has no header. Without the top bar (iPhone
  * Duo's inner screen, raft-design #859) the rail takes the server tile in its [header] and the
  * bell in [footerTools], before [bottomItems] (raft-ui AppRail without the top bar).
+ * [sidebarToggle], where a list column sits beside the main area, heads the footer (web
+ * SidebarToggleRailItem). With [reorder] the destinations can be dragged into the person's own
+ * order (web SortableRailTabs, [RaftRailReorderableTabs]); [items] come in that order.
  */
 @Composable
 internal fun RaftNavigationRailTabBar(
@@ -528,23 +542,27 @@ internal fun RaftNavigationRailTabBar(
     bottomSafeArea: Dp = 0.dp,
     header: (@Composable () -> Unit)? = null,
     footerTools: (@Composable () -> Unit)? = null,
+    sidebarToggle: RaftRailSidebarToggle? = null,
+    reorder: RaftRailTabReorder? = null,
 ) {
     // The design system's raft-ui AppRail: 56dp plus the seam, 40dp items 6dp apart and 8dp from
-    // both ends (48dp / 36dp in a short window), the selected sticker on the frame. The footer's
-    // destinations (Help, Settings) are its footer `Action`s, after [footerTools] (the bell). No
-    // collapse `Toggle`: the app's wide layout has no collapsible sidebar (web
-    // SidebarToggleRailItem), so it is left out.
+    // both ends (48dp / 36dp in a short window), the selected sticker on the frame. The footer in
+    // web LeftRail's order: the collapse `Toggle` ([sidebarToggle]), [footerTools] (the bell),
+    // then the destinations (Help, Settings) as `Action`s.
     val select = onBottomItemSelect ?: onSelect
     val attentionDescriptions = raftNavRailAttentionDescriptions()
+    val toggleItem = sidebarToggle?.let { raftRailSidebarToggleItem(it) }
     RaftDesignSystemTheme {
         RaftAppRail(
             modifier = modifier,
             topInset = topSafeArea,
             bottomInset = bottomSafeArea,
             header = header,
-            footer = if (footerTools != null) { { footerTools() } } else null,
             footerItems =
-                bottomItems.map { item ->
+                listOfNotNull(
+                    toggleItem,
+                    footerTools?.let { tools -> RaftAppRailFooterItem.Custom(key = "rail-footer-tools", content = tools) },
+                ) + bottomItems.map { item ->
                     val glyph = raftNavGlyph(RaftNavPresentation.Rail, item.key)
                     RaftAppRailFooterItem.Action(
                         key = item.key,
@@ -560,12 +578,48 @@ internal fun RaftNavigationRailTabBar(
                     )
                 },
         ) {
-            items.forEach { item ->
-                RaftNavigationRailTabItem(item = item, onSelect = onSelect)
+            if (reorder != null) {
+                RaftRailReorderableTabs(items = items, onSelect = onSelect, reorder = reorder)
+            } else {
+                items.forEach { item ->
+                    RaftNavigationRailTabItem(item = item, onSelect = onSelect)
+                }
             }
         }
     }
 }
+
+/**
+ * The rail's Collapse / Expand Sidebar toggle: [hidden] is the column's remembered state,
+ * [onHiddenChange] hides or shows it. [shortcutLabel] (⌘\ / Ctrl+\) follows the name in the tooltip.
+ */
+@Immutable
+internal data class RaftRailSidebarToggle(
+    val hidden: Boolean,
+    val onHiddenChange: (Boolean) -> Unit,
+    val shortcutLabel: String? = null,
+)
+
+/**
+ * web SidebarToggleRailItem: the name follows the state (Collapse Sidebar while the column
+ * shows, Expand Sidebar while it is hidden), as does the icon (PanelLeftClose / PanelLeftOpen).
+ */
+@Composable
+private fun raftRailSidebarToggleItem(toggle: RaftRailSidebarToggle): RaftAppRailFooterItem.Toggle =
+    RaftAppRailFooterItem.Toggle(
+        key = "rail-sidebar-toggle",
+        label = stringResource(if (toggle.hidden) Res.string.rail_expand_sidebar else Res.string.rail_collapse_sidebar),
+        checked = !toggle.hidden,
+        onCheckedChange = { shown -> toggle.onHiddenChange(!shown) },
+        icon = { ink, shown ->
+            RaftLucideIcon(
+                name = if (shown) RaftLucideIconName.PanelLeftClose else RaftLucideIconName.PanelLeftOpen,
+                color = raftArgbHex(ink),
+                modifier = Modifier.size(RaftAppRailDefaults.IconSize),
+            )
+        },
+        shortcutLabel = toggle.shortcutLabel,
+    )
 
 /** The screen-reader words for a rail item's dot, by its destination's badge source. */
 @Composable
@@ -597,9 +651,10 @@ private fun RaftNavigationRailIcon(item: RaftBottomTabItemPayload, glyph: RaftCo
 }
 
 @Composable
-private fun RaftNavigationRailTabItem(
+internal fun RaftNavigationRailTabItem(
     item: RaftBottomTabItemPayload,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     // raft-ui AppRail: a rail icon shows only the attention pixel, never a count (Badge rules),
     // so an unread count reads as the dot here.
@@ -610,6 +665,7 @@ private fun RaftNavigationRailTabItem(
         selected = item.selected,
         onClick = { onSelect(item.key) },
         icon = { ink -> RaftNavigationRailIcon(item, glyph, ink) },
+        modifier = modifier,
         enabled = item.enabled,
         attention = item.attentionDot || item.badgeCount > 0,
         attentionDescription = attentionDescription,
@@ -646,7 +702,7 @@ private fun RaftVerticalTabItem(
                 .background(if (selected) RaftColor.AccentPink else Color.Transparent)
                 // Same as the rail item: a removed border modifier does not clear the native border.
                 .border(RaftAppStroke.Default, if (selected) RaftColor.StickerInk else Color.Transparent)
-                .clickable(enabled = item.enabled) { onSelect(item.key) }
+                .raftClickable(onClick = { onSelect(item.key) }, enabled = item.enabled, role = Role.Tab, surface = if (selected) RaftPressSurface.Sticker else RaftPressSurface.Paper, selected = selected)
                 .padding(start = itemStartPadding, end = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -666,7 +722,14 @@ private fun RaftVerticalTabItem(
             )
             if (item.attentionDot) {
                 val description = stringResource(Res.string.more_row_attention_dot)
-                RaftAttentionDot(modifier = Modifier.semantics { contentDescription = description })
+                RaftStatusDot(variant = RaftStatusVariant.Accent, contentDescription = description)
+            }
+            if (item.opensExternally) {
+                RaftLucideIcon(
+                    name = RaftLucideIconName.ArrowUpRight,
+                    color = if (item.enabled) raftLegacyIconInk(onSticker = selected) else RaftColor.TextMutedGrayArgb,
+                    modifier = Modifier.size(14.dp)
+                )
             }
         }
     }

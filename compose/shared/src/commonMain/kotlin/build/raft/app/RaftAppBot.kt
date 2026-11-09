@@ -25,9 +25,10 @@ import kotlinx.coroutines.flow.map
 /**
  * An App Bot: an agent an installed App created (`managedByAppInstallId`, botiverse/slock
  * app-bot identity service). Web parity:
- *  - #11273 `AppBotBadge`: "Bot" beside its name, "Bot · <App>" when the name shown is not the
- *    App's, "Created by the <App> app" on hover (here: the badge's accessibility label and the
- *    profile hero's "From <App>" line). Bots run no model and have no presence.
+ *  - #11273 `AppBotBadge`, renamed `AppBadge` in #11845 (an App is labelled App, never Bot):
+ *    "App" beside its name, "App · <App>" when the name shown is not the App's, "Created by
+ *    the <App> app" on hover (here: the badge's accessibility label and the profile hero's
+ *    "From <App>" line). Bots run no model and have no presence.
  *  - #11295 / #11303 / #11321: `inMemberLists: false` while the Bot is removed from the server;
  *    member lists leave it out, and its DM and that DM's threads are read-only under a notice.
  */
@@ -57,7 +58,7 @@ internal fun MemberProfile.appBotIdentityOrNull(): RaftAppBotIdentity? {
  */
 internal fun MemberProfile.isListedInMembers(): Boolean = inMemberLists != false
 
-/** What the Bot badge says, before localization. */
+/** What the App badge says, before localization. */
 internal sealed interface RaftAppBotBadgeLabel {
     data object Bot : RaftAppBotBadgeLabel
 
@@ -65,8 +66,8 @@ internal sealed interface RaftAppBotBadgeLabel {
 }
 
 /**
- * Web `AppBotBadge`: "Bot · <App>" when the name rendered beside the badge ([botName]) is not
- * the App's name, plain "Bot" when it is, or when the App is not known.
+ * Web `AppBadge` (#11845, was `AppBotBadge`): "App · <App>" when the name rendered beside the
+ * badge ([botName]) is not the App's name, plain "App" when it is, or when the App is not known.
  */
 internal fun raftAppBotBadgeLabel(appName: String?, botName: String?): RaftAppBotBadgeLabel {
     val app = appName?.trim()?.takeIf { it.isNotBlank() } ?: return RaftAppBotBadgeLabel.Bot
@@ -75,12 +76,12 @@ internal fun raftAppBotBadgeLabel(appName: String?, botName: String?): RaftAppBo
 }
 
 /**
- * The Bot badge after an App Bot's name: raft-ui `Badge appearance="soft" variant="muted"`, as
- * web `AppBotBadge` draws it. Screen readers also hear "Created by the <App> app" (the web
+ * The App badge after an App Bot's name: raft-ui `Badge appearance="soft" variant="muted"`, as
+ * web `AppBadge` draws it. Screen readers also hear "Created by the <App> app" (the web
  * tooltip; a phone has no hover).
  *
- * [appearance] [RaftBadgeAppearance.Outline] is web `AppBotBadge appearance="outline"`: for a
- * row that tags each result's kind with an outline badge (search results), so the Bot tag
+ * [appearance] [RaftBadgeAppearance.Outline] is web `AppBadge appearance="outline"`: for a
+ * row that tags each result's kind with an outline badge (search results), so the App tag
  * reads as one of them (outline, default variant).
  */
 @Composable
@@ -92,10 +93,10 @@ internal fun RaftAppBotBadge(
 ) {
     val text =
         when (val label = raftAppBotBadgeLabel(identity.appName, botName)) {
-            RaftAppBotBadgeLabel.Bot -> stringResource(Res.string.member_label_bot)
-            is RaftAppBotBadgeLabel.BotWithApp -> stringResource(Res.string.member_label_bot_with_app, label.appName)
+            RaftAppBotBadgeLabel.Bot -> stringResource(Res.string.member_label_app)
+            is RaftAppBotBadgeLabel.BotWithApp -> stringResource(Res.string.member_label_app_with_app, label.appName)
         }
-    val createdBy = identity.appName?.let { stringResource(Res.string.member_label_bot_created_by_app, it) }
+    val createdBy = identity.appName?.let { stringResource(Res.string.member_label_app_tooltip, it) }
     val description = listOfNotNull(text, createdBy).joinToString(", ")
     RaftBadge(
         text = text,

@@ -630,9 +630,9 @@ class ThreadComposerLayoutTest {
 
     @Test
     fun suggestionPanelContentHeightReservesRoomForMultipleRows() {
-        // p-1.5 inset (2 x 6) + 28dp group label + 3 x 38.
+        // p-1 inset (2 x 4) + 28dp group label + 3 x 38.
         assertEquals(
-            154.dp,
+            150.dp,
             composerSuggestionPanelContentHeight(
                 itemCount = 3,
                 rowMinHeight = 38.dp
@@ -664,9 +664,9 @@ class ThreadComposerLayoutTest {
 
     @Test
     fun suggestionPanelHeightCanOmitMemberHeaderForDirectMessages() {
-        // p-1.5 inset (2 x 6) + 3 x 36 (min-h-9).
+        // p-1 inset (2 x 4) + 3 x 36 (min-h-9).
         assertEquals(
-            120.dp,
+            116.dp,
             composerSuggestionPanelHeight(
                 panelState = ThreadComposerSuggestionPanelState.MemberItems,
                 memberCount = 3,
@@ -691,7 +691,7 @@ class ThreadComposerLayoutTest {
     @Test
     fun suggestionPanelHeightIncludesMemberSectionHeaders() {
         assertEquals(
-            220.dp,
+            216.dp,
             composerSuggestionPanelHeight(
                 panelState = ThreadComposerSuggestionPanelState.MemberItems,
                 memberCount = 3,
@@ -705,7 +705,7 @@ class ThreadComposerLayoutTest {
     @Test
     fun suggestionPanelContentHeightCanOmitHeaderForChannelRows() {
         assertEquals(
-            114.dp,
+            110.dp,
             composerSuggestionPanelContentHeight(
                 itemCount = 3,
                 rowMinHeight = 34.dp,
@@ -1151,42 +1151,6 @@ class ThreadComposerLayoutTest {
                 isImeComposing = threadComposerEnterDeferredByComposition(false, TextRange(0, 5)),
             )
         )
-    }
-
-    @Test
-    fun composerAttachmentRowsUseReactImageAndFileWidths() {
-        val rows =
-            composerAttachmentRows(
-                listOf(
-                    RaftPendingAttachmentItem(
-                        id = "image",
-                        fileName = "composer-preview.png",
-                        mimeType = "image/png",
-                        previewUri = "data:image/png;base64,"
-                    ),
-                    RaftPendingAttachmentItem(
-                        id = "report",
-                        fileName = "release-notes.pdf",
-                        mimeType = "application/pdf"
-                    ),
-                    RaftPendingAttachmentItem(
-                        id = "logs",
-                        fileName = "android-smoke-log.zip",
-                        mimeType = "application/zip"
-                    ),
-                    RaftPendingAttachmentItem(
-                        id = "trace",
-                        fileName = "oversized-trace.jsonl",
-                        mimeType = "application/json"
-                    )
-                )
-            )
-
-        // raft-ui ComposerAttachment: 64dp image tiles, 176dp file tiles, 8dp apart, in the
-        // composer's 315dp tray; two file tiles (360dp) never share a row.
-        assertEquals(listOf(listOf("image", "report"), listOf("logs"), listOf("trace")), rows.map { row -> row.map { it.id } })
-        assertEquals(64, rows.first().first().composerAttachmentPreviewWidthDp())
-        assertEquals(176, rows.first()[1].composerAttachmentPreviewWidthDp())
     }
 
     @Test

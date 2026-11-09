@@ -42,6 +42,33 @@ on:
           - xcode-27
           - xcode-27-xlarge
           - macos-latest
+      # Signed-in home screenshot (release check: the native tab bar per iOS version). Off by
+      # default; workflow_call never sets it, so github-release.yml is unchanged.
+      home_screenshot:
+        description: "Also boot a phone simulator, sign the QA account in (no typing: the app's own sign-in request is approved through the API) and save a screenshot of home with its tab bar"
+        required: false
+        type: boolean
+        default: false
+      sim_device:
+        description: "home_screenshot: simulator device type (a normal phone, not iPhone Duo)"
+        required: false
+        type: string
+        default: "iPhone 17 Pro"
+      sim_runtime:
+        description: "home_screenshot: iOS runtime version prefix, e.g. 26 or 27.0. Empty = newest runtime not newer than the SDK that offers sim_device"
+        required: false
+        type: string
+        default: ""
+      sim_runtime_download:
+        description: "home_screenshot: if no runtime matches sim_runtime, download this iOS version first (xcodebuild -downloadPlatform iOS -buildVersion), e.g. 26.5"
+        required: false
+        type: string
+        default: ""
+      native_nav:
+        description: "home_screenshot: iOS native navigation for the launch (Debug launch environment RAFT_NATIVE_NAV). Empty = the app's own decision (server flag mobile_ios_native_nav_v1, default off); 1 = on; 0 = off"
+        required: false
+        type: string
+        default: ""
   # github-release.yml builds the Simulator app of a release tag through this. Inside a call,
   # github.run_id / github.sha / github.ref are the CALLER's: the artifact is
   # ios-simulator-app-<caller run id>, the CI tools come from the caller's commit.
@@ -81,7 +108,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ios-simulator-app-${{ github.ref }}${{ inputs.concurrency_scope && format('-{0}', inputs.concurrency_scope) || '' }}
+  group: ios-simulator-app-${{ github.ref }}${{ inputs.concurrency_scope && format('-{0}', inputs.concurrency_scope) || '' }}${{ inputs.home_screenshot && format('-home-shot-{0}-{1}-{2}', inputs.sim_device, inputs.sim_runtime, inputs.native_nav) || '' }}
   cancel-in-progress: false
 
 jobs:
@@ -89,7 +116,8 @@ jobs:
     name: Build installable Simulator app
     # push has no inputs: xcode-27 + the pinned Xcode 27.1. workflow_call passes the same inputs.
     runs-on: ${{ inputs.macos_runner || 'xcode-27' }}
-    timeout-minutes: 60
+    # The home screenshot adds a simulator boot (plus a runtime download for iOS 26 on xcode-27) and a UI test.
+    timeout-minutes: ${{ inputs.home_screenshot && 110 || 60 }}
     steps:
       # Xcode 27 is only on the xcode-27 images, which carry no Xcode 26.x; the 26.6 fallback
       # needs macos-latest.
@@ -123,8 +151,24 @@ jobs:
           path: .workflow-ci-tools
           # Read-only copy of one script; nothing here talks to the remote again.
           persist-credentials: false
-          sparse-checkout: scripts/ci/stamp_ios_xcode_lane.py
+          sparse-checkout: |
+            scripts/ci/stamp_ios_xcode_lane.py
+            scripts/ci/ios_home_shot_host.mjs
+            scripts/qa/visible_servers_probe.mjs
+            compose/iosApp/iosAppUITests/QaAcceptanceLoopTests.swift
           sparse-checkout-cone-mode: false
+
+      # The home screenshot's device half (SignedInHomeShotTests) lives in the UI test file, so
+      # an older source_sha (e.g. a release branch) gets this workflow's copy. Test runner only:
+      # the app product is still built from source_sha.
+      - name: Use this workflow's UI test harness (home screenshot)
+        if: ${{ inputs.home_screenshot }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .workflow-ci-tools/compose/iosApp/iosAppUITests/QaAcceptanceLoopTests.swift \
+            compose/iosApp/iosAppUITests/QaAcceptanceLoopTests.swift
+          git status --short compose/iosApp/iosAppUITests
 
       - name: Pin Xcode
         # Build with a chosen Xcode, not the runner image's default: the SDK decides how iOS
@@ -356,4 +400,123 @@ jobs:
           name: ios-simulator-app-${{ github.run_id }}
           path: ${{ env.STAGING }}
           if-no-files-found: error
+          retention-days: 14
+
+      # ---- Signed-in home screenshot (home_screenshot=true) ----
+      - name: Boot simulator for the home screenshot
+        if: ${{ inputs.home_screenshot }}
+        shell: bash
+        env:
+          SIM_DEVICE: ${{ inputs.sim_device || 'iPhone 17 Pro' }}
+          SIM_RUNTIME: ${{ inputs.sim_runtime }}
+          SIM_RUNTIME_DOWNLOAD: ${{ inputs.sim_runtime_download }}
+        run: |
+          set -euo pipefail
+          SIM_SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)"; export SIM_SDK
+          pick() {
+            xcrun simctl list runtimes -j | python3 -c "
+          import json, os, sys
+          v = lambda s: tuple(int(p) for p in s.split('.') if p.isdigit())
+          want, dev = os.environ['SIM_RUNTIME'].strip(), os.environ['SIM_DEVICE']
+          rs = [r for r in json.load(sys.stdin)['runtimes'] if r['isAvailable'] and r['platform'] == 'iOS']
+          rs = [r for r in rs if any(t['name'] == dev for t in r.get('supportedDeviceTypes', []))]
+          if want:
+              rs = [r for r in rs if r['version'] == want or r['version'].startswith(want + '.')]
+          else:
+              rs = [r for r in rs if v(r['version']) <= v(os.environ['SIM_SDK'])]
+          rs.sort(key=lambda r: v(r['version']))
+          print(rs[-1]['identifier'] if rs else '')"
+          }
+          echo "Available iOS runtimes:"; xcrun simctl list runtimes | grep -i '^iOS' || true
+          runtime="$(pick)"
+          if [ -z "$runtime" ] && [ -n "$SIM_RUNTIME_DOWNLOAD" ]; then
+            echo "No ${SIM_RUNTIME:-matching} runtime with ${SIM_DEVICE}; downloading iOS ${SIM_RUNTIME_DOWNLOAD}"
+            xcodebuild -downloadPlatform iOS -buildVersion "$SIM_RUNTIME_DOWNLOAD"
+            runtime="$(pick)"
+          fi
+          if [ -z "$runtime" ]; then
+            echo "::error::No iOS runtime matching '${SIM_RUNTIME}' offers ${SIM_DEVICE} on this runner (set sim_runtime_download, or use macos_runner=macos-latest for iOS 26)."
+            exit 1
+          fi
+          devtype=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys,os; print(next(d['identifier'] for d in json.load(sys.stdin)['devicetypes'] if d['name']==os.environ['SIM_DEVICE']))")
+          udid=$(xcrun simctl create "home-shot" "$devtype" "$runtime")
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl status_bar "$udid" override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
+          # Warm up: a freshly downloaded runtime keeps SpringBoard busy for minutes after boot
+          # ("Waiting on System App"). Install and launch the app once here, retrying, so the
+          # UI test starts on a settled simulator.
+          app=$(find compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' ! -name '*Runner*' | head -1)
+          bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
+          xcrun simctl install "$udid" "$app"
+          for i in $(seq 1 20); do
+            if xcrun simctl launch "$udid" "$bundle_id" >/dev/null 2>&1; then echo "warm-up launch ok (try $i)"; break; fi
+            sleep 15
+          done
+          sleep 20
+          xcrun simctl terminate "$udid" "$bundle_id" || true
+          xcrun simctl listapps "$udid" | grep -c "$bundle_id" || true
+          echo "SHOT_UDID=$udid" >> "$GITHUB_ENV"
+          echo "SHOT_RUNTIME=$runtime" >> "$GITHUB_ENV"
+          echo "home screenshot: ${SIM_DEVICE} on ${runtime} (SDK ${SIM_SDK}) udid ${udid}"
+
+      - name: Sign in and screenshot home
+        if: ${{ inputs.home_screenshot }}
+        shell: bash
+        env:
+          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
+          SIM_DEVICE: ${{ inputs.sim_device || 'iPhone 17 Pro' }}
+          NATIVE_NAV: ${{ inputs.native_nav }}
+        run: |
+          set -uo pipefail
+          products=compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator
+          app=$(find "$products" -maxdepth 1 -name '*.app' ! -name '*Runner*' | head -1)
+          bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
+          out="$GITHUB_WORKSPACE/home-shot"; io="$RUNNER_TEMP/home-shot-io"
+          mkdir -p "$out" "$io"
+          ( cd compose/iosApp && \
+            TEST_RUNNER_HOME_SHOT_IO_DIR="$io" TEST_RUNNER_HOME_SHOT_BUNDLE="$bundle_id" \
+            TEST_RUNNER_HOME_SHOT_NATIVE_NAV="$NATIVE_NAV" \
+            xcodebuild -workspace iosApp.xcworkspace -scheme iosAppUITests -configuration Debug \
+              -destination "platform=iOS Simulator,id=${SHOT_UDID}" \
+              -derivedDataPath build/DerivedData \
+              -only-testing:iosAppUITests/SignedInHomeShotTests \
+              -resultBundlePath "$RUNNER_TEMP/home-shot.xcresult" \
+              CODE_SIGNING_ALLOWED=NO \
+              test-without-building > "$out/xcodebuild-test.log" 2>&1 ) &
+          test_pid=$!
+          node .workflow-ci-tools/scripts/ci/ios_home_shot_host.mjs \
+            --udid "$SHOT_UDID" --bundle "$bundle_id" --io "$io" --out "$out" && host_rc=0 || host_rc=$?
+          # The step shell runs with -e: keep going to collect the test log and provenance.
+          wait "$test_pid" && test_rc=0 || test_rc=$?
+          tail -40 "$out/xcodebuild-test.log"
+          (cd "$RUNNER_TEMP" && zip -qr "$out/home-shot.xcresult.zip" home-shot.xcresult) || true
+          {
+            echo "source_commit=$RAFT_GIT_COMMIT"
+            echo "workflow_commit=$GITHUB_SHA"
+            echo "xcode=$(xcodebuild -version | head -1)"
+            echo "iphonesimulator_sdk=$(xcrun --sdk iphonesimulator --show-sdk-version)"
+            echo "device=$SIM_DEVICE"
+            echo "runtime=$SHOT_RUNTIME"
+            echo "native_nav=${NATIVE_NAV:-app decision}"
+            echo "bundle_id=$bundle_id"
+            echo "sign_in=app's own app-login request approved via API with the QA account (CI secrets); no web typing"
+            echo "host_rc=$host_rc test_rc=$test_rc"
+          } | tee "$out/PROVENANCE.txt"
+          if [ -f "$out/home-ready.json" ]; then
+            {
+              echo "## Signed-in home: ${SIM_DEVICE}, ${SHOT_RUNTIME}"
+              echo '```json'; cat "$out/home-ready.json"; echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          [ "$host_rc" = 0 ] && [ -f "$out/home.png" ]
+
+      - name: Upload home screenshot
+        if: ${{ always() && inputs.home_screenshot }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-home-shot-${{ github.run_id }}
+          path: home-shot
+          if-no-files-found: warn
           retention-days: 14

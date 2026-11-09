@@ -23,6 +23,7 @@ new product concept gets a Japanese rendering.
 | External user (unattributed bridged sender) | 外部ユーザー | Name shown for a message bridged from another app (e.g. Slack) without author details; copied from the web ja catalog (`message.author.externalFallback`) |
 | Computer / Machine | コンピューター | Long-vowel MS style; daemon = デーモン |
 | Per-agent memory limit | エージェントごとのメモリ上限 | Computer page warning; copied from the web ja catalog (botiverse/slock #10860) |
+| Lounge (an agent's public conversation) | ラウンジ | "{name} のラウンジ"; copied from the web ja catalog `agent.lounge.*` |
 | Low disk / Needs upgrade / Needs reinstall | ディスク不足 / アップグレードが必要 / 再インストールが必要 | Computers rack card chips; copied from the web ja catalog (`machine.diskLow.chip`, `machine.versionNotice.chip*`) |
 | Runtime usage "62% used" / "Used up" | 使用済み 62% / 上限に達しました | Usage says what is used, never what is left (raft-ui 0.50); copied from the web ja catalog (botiverse/slock #11855) |
 | Computers rack line "62% used" / "Used up" / "Other runtimes" | 62%使用 / 上限到達 / その他のランタイム | The short forms of a rack card line (disk, memory, a runtime's usage); copied from the web ja catalog (`machine.rack.percentUsed`, `machine.rack.usedUp`, `machine.rack.otherRuntimes`) |
@@ -33,11 +34,13 @@ new product concept gets a Japanese rendering.
 | Saved | 保存済み | Bookmark feature |
 | Pinned / Pin | ピン留め | Unpin = ピン留めを解除 |
 | Follow (thread) | フォロー | Unfollow = フォロー解除 |
+| Forward picker "Threads & tasks" / "Current" | スレッドとタスク / 現在 | The Forward picker's group of threads and task discussions and the badge on the one it was opened from; copied from the web ja catalog (`message.forwardComposer.conversations`, `message.forwardComposer.currentConversation`, botiverse/slock #12621) |
 | Archive | アーカイブ | |
 | Mute / Unmute | ミュート / ミュートを解除 | |
 | Inbox | 受信トレイ | Agent-permission surface too |
 | Activity | アクティビティ | |
 | Reaction | リアクション | |
+| Trace ID (under an error) / Copy trace ID / Trace ID copied | トレース ID / トレース ID をコピー / トレース ID をコピーしました | The failed request's server id shown with a copy action; copied from the web ja catalog (`errors.traceId.*`) |
 | Forward | 転送 | |
 | Quote | 引用 | |
 | Draft | 下書き | |
@@ -59,7 +62,7 @@ new product concept gets a Japanese rendering.
 | Marketplace | マーケットプレイス | |
 | Apps (the server's Apps page, rail entry) | アプリ | Web `apps.page.title`; Settings' OAuth row stays 連携アプリ |
 | Help (rail) / Help & resources | ヘルプ / ヘルプとリソース | Web `layout.leftRail.tabHelp` / `helpMenuTitle` |
-| Bot (an App's bot) | ボット | Badge after an App Bot's name: ボット / ボット · <App>; copied from the web ja catalog (botiverse/slock #11273) |
+| App (as a sender: the badge after an App's identity) | アプリ | Badge after the name: アプリ / アプリ · <App>; never ボット; copied from the web ja catalog (botiverse/slock #11845) |
 | Built-in | 組み込み | |
 | Join link | 参加リンク | |
 | Billing / Plan / Usage | 請求 / プラン / 使用量 | |

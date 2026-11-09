@@ -1,5 +1,6 @@
 package build.raft.app.desktop
 
+import build.raft.app.data.RaftDesktopPaths
 import build.raft.app.data.RaftDesktopPickedAttachments
 import build.raft.app.data.RaftDesktopThreadImageCompressor
 import build.raft.app.network.AttachmentDownloadCoordinator
@@ -15,7 +16,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -23,6 +27,8 @@ import kotlinx.serialization.json.put
  * Desktop attachment bridge methods, on the Android host's wire contract:
  * - `threadAttachmentUpload`: the system open panel (several files; images only for the image
  *   button). There is no camera on desktop: `capture` answers "picker unavailable".
+ * - `threadAttachmentDrop`: files dragged onto the composer (their paths), answered as the open
+ *   panel's pick of the same files.
  * - `compressThreadImage` / `cancelCompressThreadImage`: the Skia compressor.
  * - `saveAttachment` / `cancelAttachmentExport`: the system save panel, then the shared download
  *   coordinator writes the file where the user chose (atomically: nothing appears until it is
@@ -31,6 +37,8 @@ import kotlinx.serialization.json.put
 class RaftDesktopAttachments(
     private val dialogs: RaftDesktopFileDialogs = RaftFileKitDialogs,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    /** The page's PNG cache (`rememberRaftPngFileWriter`); a share image from there is deleted once handled. */
+    private val snapshotsDir: () -> File = { RaftDesktopPaths.snapshotsDir },
     private val startDownload: (downloadId: String, target: File, url: String, observer: AttachmentDownloadObserver) -> Unit =
         { downloadId, target, url, observer ->
             AttachmentDownloadCoordinator.start(
@@ -71,6 +79,15 @@ class RaftDesktopAttachments(
         }
     }
 
+    fun threadAttachmentDrop(params: JsonObject, callback: ((String?) -> Unit)?) {
+        val files =
+            (params["fileRefs"] as? JsonArray)
+                ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf(String::isNotEmpty) }
+                ?.map(::File)
+                .orEmpty()
+        scope.launch { callback?.invoke(RaftDesktopPickedAttachments.response(files).toRaftJsonString()) }
+    }
+
     fun compressThreadImage(params: JsonObject, callback: ((String?) -> Unit)?) {
         if (callback == null) return
         val request =
@@ -91,6 +108,47 @@ class RaftDesktopAttachments(
     }
 
     fun cancelCompressThreadImage(params: JsonObject) = RaftDesktopThreadImageCompressor.cancel(params.string("requestId"))
+
+    /**
+     * `saveThreadShareImage`: the share image (a PNG the page wrote to the app cache, `path`) copied
+     * where the user picks in the system save panel. Answers `ok`, `cancelled` (panel closed) or
+     * `failed`, as the Android host does. The cache PNG is deleted once the panel is done with it
+     * (copied, cancelled or failed: the page writes a new one for the next Download), when it is
+     * one of the page's own ([snapshotsDir]); any other path is left alone.
+     */
+    fun saveThreadShareImage(params: JsonObject, callback: ((String?) -> Unit)?) {
+        val source = File(params.string("path"))
+        if (!source.isFile || source.length() <= 0L) {
+            callback?.invoke(status("failed", "Image file unavailable"))
+            return
+        }
+        scope.launch {
+            val answer =
+                try {
+                    val target = dialogs.saveFile("raft-message-share-${System.currentTimeMillis()}.png")
+                    if (target == null) {
+                        status("cancelled")
+                    } else {
+                        source.copyTo(target, overwrite = true)
+                        status("ok", "Image saved")
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    log("share image save failed: ${error::class.simpleName}")
+                    status("failed", "Unable to save image")
+                } finally {
+                    deleteShareImageCache(source)
+                }
+            callback?.invoke(answer)
+        }
+    }
+
+    private fun deleteShareImageCache(file: File) {
+        val inCache =
+            runCatching { file.canonicalFile.parentFile == snapshotsDir().canonicalFile }.getOrDefault(false)
+        if (inCache && !file.delete() && file.exists()) log("share image cache not deleted")
+    }
 
     fun saveAttachment(params: JsonObject, callback: ((String?) -> Unit)?) {
         val url = params.string("url")

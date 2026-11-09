@@ -7,7 +7,6 @@ import build.raft.app.data.TaskConversationHeaderState
 import build.raft.app.data.TaskStatusOption
 import build.raft.app.data.canEditAssignee
 import build.raft.app.data.canEditStatus
-import build.raft.app.data.taskServerRoleCanManage
 import build.raft.app.data.taskStatusOptions
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -18,9 +17,10 @@ import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftComboboxSheet
 import build.raft.designsystem.components.RaftTaskStatus
 
-/** The app's task status as the design system's (same five, same order). */
+/** The app's task status as the design system's (same order). An Unknown status is drawn neutral, as Backlog (no hue). */
 internal fun TaskStatus.raftTaskStatus(): RaftTaskStatus =
     when (this) {
+        TaskStatus.Backlog, TaskStatus.Unknown -> RaftTaskStatus.Backlog
         TaskStatus.Todo -> RaftTaskStatus.Todo
         TaskStatus.InProgress -> RaftTaskStatus.InProgress
         TaskStatus.InReview -> RaftTaskStatus.InReview
@@ -28,11 +28,11 @@ internal fun TaskStatus.raftTaskStatus(): RaftTaskStatus =
         TaskStatus.Closed -> RaftTaskStatus.Closed
     }
 
-/** What the task conversation's bar shows, derived purely from the task, the page state and the reader's role. */
+/** What the task conversation's bar shows, derived purely from the task and the page state (web keys no edit on the role). */
 @Immutable
 internal data class TaskConversationHeaderBarModel(
     val status: TaskStatus,
-    /** Empty: the status cannot be changed here (read-only task, guest). */
+    /** Empty: the status cannot be changed here (read-only task, or no store to write to). */
     val statusOptions: List<TaskStatusOption>,
     val statusUpdating: Boolean,
     /** The assignee's display name; null = unassigned. */
@@ -48,16 +48,17 @@ internal data class TaskConversationHeaderBarModel(
 
 internal fun TaskSummary.taskConversationHeaderBarModel(
     state: TaskConversationHeaderState,
-    serverRole: String?,
     statusUpdating: Boolean,
 ): TaskConversationHeaderBarModel =
     TaskConversationHeaderBarModel(
         status = status,
         statusOptions =
-            if (canEditStatus(serverRole)) taskStatusOptions(status, taskServerRoleCanManage(serverRole)) else emptyList(),
+            // This page is the task's own conversation, so In Review is retired here as on web
+            // (`opensAsTaskConversation`): only a legacy orphan, which has no conversation, keeps it.
+            if (canEditStatus()) taskStatusOptions(status, v2Task = opensAsTaskConversation(taskV2Enabled = true)) else emptyList(),
         statusUpdating = statusUpdating,
         assigneeName = assignee?.displayName?.trim()?.takeIf { it.isNotBlank() },
-        assigneeEditable = canEditAssignee(serverRole),
+        assigneeEditable = canEditAssignee(),
         followed = state.followed(conversationFollowed),
         followPending = state.followPending,
     )

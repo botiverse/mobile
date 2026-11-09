@@ -231,8 +231,8 @@ class SharedThreadComposerDraftStoreTest {
         scheduler.runPending()
 
         assertEquals("abc", persistence.read(draftKey)?.text)
-        // One save: text, asTask, attachments, sources, editedAt and the active index.
-        assertEquals(6, storage.writeCount)
+        // One save: text, asTask, attachments, sources, mentions, editedAt and the active index.
+        assertEquals(7, storage.writeCount)
         assertEquals(1, scheduler.executedTaskCount)
     }
 
@@ -255,12 +255,12 @@ class SharedThreadComposerDraftStoreTest {
         store.dispatch(SharedThreadComposerDraftIntent.Flush)
 
         assertEquals("persist on blur", persistence.read(draftKey)?.text)
-        // One save: text, asTask, attachments, sources, editedAt and the active index.
-        assertEquals(6, storage.writeCount)
+        // One save: text, asTask, attachments, sources, mentions, editedAt and the active index.
+        assertEquals(7, storage.writeCount)
 
         scheduler.runPending()
 
-        assertEquals(6, storage.writeCount)
+        assertEquals(7, storage.writeCount)
         assertEquals(0, scheduler.executedTaskCount)
     }
 
@@ -507,6 +507,12 @@ class SharedThreadComposerDraftStoreTest {
         assertEquals("earlier draft\n\n> picked line\n\n", store.state.value.editorCommand?.text)
         // The composer takes focus so the reader types under the quote.
         assertEquals(focusBefore + 1, store.state.value.focusRequestNonce)
+        assertTrue(store.state.value.focusRequestShowsKeyboard)
+
+        // Send keeps the editor as it was: a focus request that never raises a put-away keyboard.
+        store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        assertEquals(focusBefore + 2, store.state.value.focusRequestNonce)
+        assertFalse(store.state.value.focusRequestShowsKeyboard)
 
         val nextStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         nextStore.dispatch(

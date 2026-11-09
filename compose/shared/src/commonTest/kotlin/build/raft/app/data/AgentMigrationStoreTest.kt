@@ -160,6 +160,36 @@ class AgentMigrationStoreTest {
     }
 
     @Test
+    fun anAgentPlacedWithoutItsSourceMovedAtOnce() = runTest {
+        // botiverse/slock #13575 routes/agents.ts placeAgentWithoutSourceOnTarget: its Computer's
+        // access was revoked, so nothing is brought over and there is no migration to follow.
+        val placed =
+            """{"outcome":"placed_without_source","migrationRef":null,"state":"completed","sourceMachineId":"m-source","targetMachineId":"m-target"}"""
+        assertEquals(AgentMigrationStartResult(migrationRef = null, placedWithoutSource = true), parseSharedAgentMigrationStart(placed))
+        assertEquals(
+            AgentMigrationStartResult(migrationRef = migrateRef),
+            parseSharedAgentMigrationStart("""{"migrationRef":"$migrateRef","state":"provisioning"}""")
+        )
+        assertNull(parseSharedAgentMigrationStart("""{"migrationRef":null,"state":"provisioning"}"""))
+
+        val network = ScriptedAgentControlsNetworkClient()
+        network.respond("GET", statusPath, 200, """{"migration":null}""")
+        network.respond("GET", "billing/subscription", 200, """{"plan":"free","subscription":null,"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}""")
+        network.respond("POST", "agents/${agentId.value}/migrate", 200, placed)
+        network.respond("GET", statusPath, 200, """{"migration":null}""")
+        val store = AgentMigrationStore(RaftAgentControlsApi(network), backgroundScope)
+        store.dispatch(AgentMigrationIntent.Watch(agentId))
+        runCurrent()
+
+        store.dispatch(AgentMigrationIntent.Start(AgentMigrationTarget.Computer("m-target")))
+        runCurrent()
+        assertNull(store.state.value.startError, "a placement is not a contract mismatch")
+        assertFalse(store.state.value.starting)
+        // The agent's computer changed: the page reloads it (web `loadAgents()`).
+        assertEquals(AgentMigrationEffect.AgentPlacementChanged, store.state.value.effect)
+    }
+
+    @Test
     fun proPlanRefusalOpensTheUpgradePromptInsteadOfAnError() = runTest {
         val network = ScriptedAgentControlsNetworkClient()
         network.respond("GET", statusPath, 200, """{"migration":null}""")

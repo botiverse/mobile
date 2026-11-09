@@ -140,6 +140,42 @@ class RaftDisplaySemanticsTest {
             onNodeWithText("Channels").assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Expand))
         }
 
+    /**
+     * The whole header is the disclosure's target, as its press fill is: a tap at its end, by
+     * the attention pixel, toggles it; a tap on a control runs the control only.
+     */
+    @Test
+    fun aSidebarHeaderTogglesFromItsEndButNotFromItsControls() =
+        runComposeUiTest {
+            var expanded by mutableStateOf(false)
+            var creates = 0
+            setContent(
+                themed {
+                    Column(Modifier.width(320.dp)) {
+                        RaftSidebarSectionHeader(
+                            "Direct Messages",
+                            expanded = expanded,
+                            onExpandedChange = { expanded = it },
+                            modifier = Modifier.testTag("header"),
+                            count = 12,
+                            attention = true,
+                            actions = { RaftSidebarSectionAction(RaftGlyph.Plus, "New Message", { creates++ }) },
+                        )
+                    }
+                },
+            )
+            onNodeWithContentDescription("New Message").performClick()
+            // In the control's widened touch ring, 1dp before its box.
+            onNodeWithContentDescription("New Message").performTouchInput { click(Offset(-1.dp.toPx(), centerY)) }
+            assertEquals(2, creates)
+            assertFalse(expanded, "a tap on a control or its touch ring does not toggle the section")
+            // Between the title's box and the attention pixel (8dp gap, 271-279dp of 320):
+            // outside the old disclosure, inside the header.
+            onNodeWithTag("header").performTouchInput { click(Offset(width - 45.dp.toPx(), height - 15.dp.toPx())) }
+            assertTrue(expanded, "a tap at the header's end toggles it")
+            assertEquals(2, creates)
+        }
+
     /** Press and hold opens the row's menu (raft-design ContextMenu) and does not also open the row. */
     @Test
     fun aLongPressOnASidebarRowOpensItsMenuWithoutClicking() =
@@ -263,30 +299,89 @@ class RaftDisplaySemanticsTest {
         onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
 
     /**
-     * Rows 44dp tall and 1dp apart (the web's collapsed `my-px`), at a phone's 2x density: at
-     * 1x each 0.5dp margin rounds to a whole pixel.
+     * Rows 44dp tall and 2dp apart: raft-ui 0.49 list cells (botiverse/raft-design#815,
+     * lib/list-cell.ts), whose lists space their rows with `gap-0.5`; the web phone's pitch is 46.
      */
     @Test
-    fun sidebarRowsStand1dpApart() =
+    fun sidebarRowsStand2dpApart() =
         runComposeUiTest {
             setSidebarWebMetricsContent(screenDensity = 2f)
-            assertEquals(45f, (textBounds("random").top - textBounds("general").top) / 2f, 0.5f)
+            assertEquals(46f, (textBounds("random").top - textBounds("general").top) / 2f, 0.5f)
         }
 
-    /** A group header's title sits `px-2` + the 14dp chevron + `gap-1.5` from its edge. */
+    /**
+     * A group header's title sits 12dp (with the page's 8dp, raft-ui 0.49's `px-5`,
+     * sidebar-section.recipe.ts) + the 14dp chevron + `gap-1.5` from its edge.
+     */
     @Test
-    fun aSidebarHeaderTitleSits28dpIn() =
+    fun aSidebarHeaderTitleSits32dpIn() =
         runComposeUiTest {
             setSidebarWebMetricsContent()
-            assertEquals(28f, (textBounds("Channels").left - boundsOf("header").left) / density.density, 0.5f)
+            assertEquals(32f, (textBounds("Channels").left - boundsOf("header").left) / density.density, 0.5f)
         }
 
-    /** A group header's controls are 28dp (`h-7 min-w-7`)... */
+    /**
+     * A group header stays 40dp (`pt-4`, its 18dp line, `pb-1.5`), so sections stand as far
+     * apart as before, and its line sits 16dp from its top: the press fill paints from 10dp
+     * down, 6dp above and below the line, so the words sit in the middle of it.
+     */
     @Test
-    fun sidebarHeaderControlsAre28dp() =
+    fun aSidebarHeaderIs40dpWithItsLine16dpDown() =
         runComposeUiTest {
             setSidebarWebMetricsContent()
-            assertEquals(28f, boundsOf("sort").height / density.density, 0.5f)
+            val header = boundsOf("header")
+            assertEquals(40f, header.height / density.density, 0.5f)
+            val title = textBounds("Channels")
+            assertEquals(25f, ((title.top + title.bottom) / 2f - header.top) / density.density, 0.75f)
+        }
+
+    /** A group header's controls are 24dp (`h-6 min-w-6`, raft-ui 0.55 #916)... */
+    @Test
+    fun sidebarHeaderControlsAre24dp() =
+        runComposeUiTest {
+            setSidebarWebMetricsContent()
+            assertEquals(24f, boundsOf("sort").height / density.density, 0.5f)
+            assertEquals(24f, boundsOf("sort").width / density.density, 0.5f)
+        }
+
+    /**
+     * ...4dp apart, and the last one's 14dp icon box, not its button, ends on the header's
+     * 12dp line (`px-5` less the page's 8dp, raft-ui 0.49 #815): the button hangs its 5dp of
+     * empty space past it (`-mr-icon-inset`, 0.56 #922).
+     */
+    @Test
+    fun theLastSidebarHeaderControlsIconEndsOnTheHeadersLine() =
+        runComposeUiTest {
+            setSidebarWebMetricsContent()
+            assertEquals(4f, (boundsOf("create").left - boundsOf("sort").right) / density.density, 0.5f)
+            assertEquals(7f, (boundsOf("header").right - boundsOf("create").right) / density.density, 0.5f)
+        }
+
+    /** A tap in the 4dp gap between two controls goes to the nearer one (raft-ui 0.57 #935). */
+    @Test
+    fun aTapBetweenTwoSidebarHeaderControlsGoesToTheNearerOne() =
+        runComposeUiTest {
+            var sorts = 0
+            var creates = 0
+            setContent(
+                themed {
+                    Column(Modifier.width(393.dp)) {
+                        RaftSidebarSectionHeader(
+                            "Channels",
+                            expanded = true,
+                            onExpandedChange = {},
+                            actions = {
+                                RaftSidebarSectionAction(RaftGlyph.ArrowUpDown, "Sort Channels", { sorts++ })
+                                RaftSidebarSectionAction(RaftGlyph.Plus, "Create Channel", { creates++ })
+                            },
+                        )
+                    }
+                },
+            )
+            onNodeWithContentDescription("Sort Channels").performTouchInput { click(Offset(width + 1.dp.toPx(), centerY)) }
+            onNodeWithContentDescription("Create Channel").performTouchInput { click(Offset(-1.dp.toPx(), centerY)) }
+            assertEquals(1, sorts, "1dp past Sort's end is Sort's")
+            assertEquals(1, creates, "1dp before Create's start is Create's")
         }
 
     /** ...and 4dp apart (`gap-1`). */
@@ -611,7 +706,7 @@ class RaftDisplaySemanticsTest {
             assertEquals(listOf("RaftIconButton needs a name: pass tooltip or contentDescription"), reports.distinct())
         }
 
-    /** The sidebar section control's 28dp button takes a tap 6dp above its box (inside the 44dp target). */
+    /** The sidebar section control's 24dp button takes a tap 6dp above its box (inside the 44dp target). */
     @Test
     fun aSmallIconButtonTakesTapsInItsWidenedTarget() =
         runComposeUiTest {

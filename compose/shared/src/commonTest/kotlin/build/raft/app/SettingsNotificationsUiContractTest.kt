@@ -109,4 +109,45 @@ class SettingsNotificationsUiContractTest {
             settingsMobileDelayPatch(unknown, RaftNotificationMobileDelay.Inactive)
         )
     }
+
+    @Test
+    fun serversCardListsTheCurrentServerFirstThenTheRestInOrder() {
+        val session =
+            build.raft.app.data.StoredAuthSession(
+                user = build.raft.app.data.StoredAuthUser(id = "u1", email = "u1@example.com"),
+                accessToken = "a",
+                refreshToken = "r",
+                selectedServerId = "s2",
+                servers =
+                    listOf(
+                        build.raft.app.data.StoredAuthServer(id = "s1", name = "Alpha"),
+                        build.raft.app.data.StoredAuthServer(id = "s2", name = "Botiverse"),
+                        build.raft.app.data.StoredAuthServer(id = "s3", name = "Gamma"),
+                        build.raft.app.data.StoredAuthServer(id = "s1", name = "Alpha again")
+                    )
+            )
+        assertEquals(
+            listOf(
+                SettingsNotificationServer("s2", "Botiverse", current = true),
+                SettingsNotificationServer("s1", "Alpha", current = false),
+                SettingsNotificationServer("s3", "Gamma", current = false)
+            ),
+            settingsNotificationServers(session)
+        )
+        assertEquals(emptyList<SettingsNotificationServer>(), settingsNotificationServers(null))
+    }
+
+    @Test
+    fun pauseChoicesAreTheWebPresetsThenCustom() {
+        assertEquals(
+            listOf(
+                build.raft.app.data.RaftNotificationPauseOption.Minutes30,
+                build.raft.app.data.RaftNotificationPauseOption.Hour1,
+                build.raft.app.data.RaftNotificationPauseOption.Hours2,
+                build.raft.app.data.RaftNotificationPauseOption.TomorrowMorning,
+                null
+            ),
+            SettingsNotificationPauseChoice.entries.map { it.preset }
+        )
+    }
 }

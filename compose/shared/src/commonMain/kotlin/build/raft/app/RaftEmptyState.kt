@@ -3,7 +3,6 @@ package build.raft.app
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
-import build.raft.app.components.RaftBrutalActionButton
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +22,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 
+/**
+ * The app's page-filling empty state: [RaftColor.SurfaceWhite] edge to edge, the message centred
+ * in the safe area. Its type and spacing predate the design system's
+ * [build.raft.designsystem.components.RaftEmptyState] (raft-ui EmptyState: 8dp gaps,
+ * `foreground-muted` title, `foreground-hint` description); new screens use that one.
+ */
 @Composable
 internal fun RaftEmptyState(
     title: String,
@@ -55,7 +60,8 @@ internal fun RaftEmptyState(
             )
             Text(
                 text = title,
-                style = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+                // Web EmptyState: title `text-headline` 17/22 700, detail `text-callout` 14/20.
+                style = RaftType.Headline,
                 color = RaftColor.TextMutedGray,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
@@ -64,7 +70,7 @@ internal fun RaftEmptyState(
             detail?.takeIf { it.isNotBlank() }?.let { value ->
                 Text(
                     text = value,
-                    style = RaftType.Caption,
+                    style = RaftType.Callout,
                     color = RaftColor.TextMutedGray,
                     textAlign = TextAlign.Center,
                     maxLines = 3,

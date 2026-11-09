@@ -70,7 +70,9 @@ internal data class SharedConversationDirectoryProjection(
     // task #396: external bridge provider ("slack") carried from `channel.bridge.provider`.
     val bridgeProvider: String? = null,
     /** Channel `guestVisible` from the Home channel row; threads/DMs/inbox projections never carry it. */
-    val guestVisible: Boolean = false
+    val guestVisible: Boolean = false,
+    /** Agent Lounge v0: the agent this channel is the Lounge of (from its canonical row). */
+    val loungeAgentId: String? = null
 ) {
     val activityMuted: Boolean
         get() = activityNotificationPreference.activityMuted
@@ -635,7 +637,8 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         jointBillingLocked = jointBillingLocked,
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         bridgeProvider = if (kind == ConversationKind.Thread) null else bridgeProvider,
-        guestVisible = kind != ConversationKind.Thread && guestVisible
+        guestVisible = kind != ConversationKind.Thread && guestVisible,
+        loungeAgentId = if (kind == ConversationKind.Channel) loungeAgentId?.takeIf { it.isNotBlank() } else null
     )
 }
 

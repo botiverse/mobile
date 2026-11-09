@@ -205,7 +205,7 @@ internal class RaftAgentControlsApi(
             parse = ::parseSharedAgentMigrationStatus
         )
 
-    override suspend fun startMigration(agentId: MemberId, target: AgentMigrationTarget): DataResult<String> =
+    override suspend fun startMigration(agentId: MemberId, target: AgentMigrationTarget): DataResult<AgentMigrationStartResult> =
         send(
             priority = DataRequestPriority.Foreground,
             path = "agents/${agentId.value}/migrate",

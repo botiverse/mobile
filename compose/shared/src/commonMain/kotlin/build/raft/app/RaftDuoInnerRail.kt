@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftAppRailMetricsFor
 import build.raft.app.resources.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -17,7 +18,6 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftAppRailDefaults
 import build.raft.designsystem.components.RaftAppRailMetrics
 import build.raft.designsystem.components.raftAppRailCompact
-import build.raft.designsystem.components.raftAppRailMetrics
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
@@ -27,6 +27,7 @@ import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.RaftPressSurface
+import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.components.raftPointerHover
 import build.raft.designsystem.components.raftStateOverlay
 import build.raft.designsystem.components.rememberRaftStateOverlay
@@ -57,13 +58,16 @@ internal fun raftAppRailWithoutTopBar(navRailActive: Boolean): Boolean =
  * ([appShellServerTabShowsAttention]). The tile is an ink sticker: while the panel is [open], under
  * a press, and under a mouse or trackpad (never a finger), it lays `sticker-ink-medium` (6% paper)
  * over its whole face, image avatars too (raft-design #875, States "Medium on an ink sticker";
- * Kirby 10-28).
+ * Kirby 10-28). A mouse over it, or a touch long press, shows the server's name in a tooltip
+ * beside the rail ([tooltip] = false leaves it out: Robolectric captures, whose paused looper
+ * never settles a tooltip popup opened by their mouse hover).
  */
 @Composable
 internal fun RaftAppRailServerTile(
     model: RaftServerMenuModel,
     open: Boolean,
     onClick: () -> Unit,
+    tooltip: Boolean = true,
 ) {
     val source = remember { MutableInteractionSource() }
     // `sticker-ink-medium` under a mouse or trackpad (never a finger), a press, or while open.
@@ -75,32 +79,37 @@ internal fun RaftAppRailServerTile(
     val otherUnreadDescription = stringResource(Res.string.home_server_switcher_other_unread)
     // The rail's item square: 40dp, 36dp in a compact (short-window) rail.
     val itemSize = RaftAppRailDefaults.metrics.itemSize
-    RaftAvatarBadgeBox(
-        size = RaftAvatarSize.Md,
-        modifier =
-            Modifier
-                .size(itemSize)
-                .raftPointerHover(source)
-                .clickable(
-                    interactionSource = source,
-                    indication = null,
-                    role = Role.Button,
-                    onClickLabel = actionLabel,
-                    onClick = onClick,
-                )
-                .semantics {
-                    contentDescription = label
-                    if (attention) stateDescription = otherUnreadDescription
-                },
-        badge = {
-            if (attention) {
-                RaftAvatarAttentionLight(RaftAvatarSize.Md, cutout = RaftTheme.colors.layerFrame)
-            }
-        },
-    ) {
-        ServerSwitcherAvatarTile(server, size = itemSize)
-        Box(Modifier.matchParentSize().raftStateOverlay(overlay, RaftRadius.Sticker))
+    // The server's name beside the rail under a mouse, or on a touch long press (which then doesn't
+    // open the panel), as the web strip's avatars name theirs (WorkspaceStripButton).
+    val tile: @Composable () -> Unit = {
+        RaftAvatarBadgeBox(
+            size = RaftAvatarSize.Md,
+            modifier =
+                Modifier
+                    .size(itemSize)
+                    .raftPointerHover(source)
+                    .clickable(
+                        interactionSource = source,
+                        indication = null,
+                        role = Role.Button,
+                        onClickLabel = actionLabel,
+                        onClick = onClick,
+                    )
+                    .semantics {
+                        contentDescription = label
+                        if (attention) stateDescription = otherUnreadDescription
+                    },
+            badge = {
+                if (attention) {
+                    RaftAvatarAttentionLight(RaftAvatarSize.Md, cutout = RaftTheme.colors.layerFrame)
+                }
+            },
+        ) {
+            ServerSwitcherAvatarTile(server, size = itemSize)
+            Box(Modifier.matchParentSize().raftStateOverlay(overlay, RaftRadius.Sticker))
+        }
     }
+    if (tooltip) RaftTooltip(text = server.name) { tile() } else tile()
 }
 
 /**
@@ -150,14 +159,14 @@ internal val RaftAppRailOuterWidth: Dp
     @Composable get() = raftAppRailWindowMetrics().width + RaftStroke.Hairline
 
 /**
- * The rail's metrics for this window, by the rail's own rule ([raftAppRailCompact] on the window
- * height): for what sits beside the rail outside its composition (its popovers), where
+ * The rail's metrics for this window, by the rail's own rule ([raftAppRailMetricsFor]: compact
+ * under a fine pointer, else by [raftAppRailCompact] on the window height): for what sits beside the rail outside its composition (its popovers), where
  * [RaftAppRailDefaults.metrics] would read the regular size.
  */
 @Composable
 internal fun raftAppRailWindowMetrics(): RaftAppRailMetrics {
     val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
-    return raftAppRailMetrics(raftAppRailCompact(windowHeight))
+    return raftAppRailMetricsFor(windowHeight)
 }
 
 /** A popover's gap from the rail's seam and from the window's edge (raft-ui `sideOffset` 8). */

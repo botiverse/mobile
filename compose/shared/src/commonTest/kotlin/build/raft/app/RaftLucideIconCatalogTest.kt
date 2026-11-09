@@ -17,22 +17,35 @@ class RaftLucideIconCatalogTest {
     }
 
     @Test
-    fun membersAppsIconUsesGeneratedLink2Icon() {
-        assertEquals(RaftLucideIconName.Link2, MembersAgentDetailTab.Apps.iconName)
-        assertTrue(RaftLucideIcons.Names.contains(RaftLucideIconName.Link2.wireName))
+    fun membersAppsIconUsesTheWebAppWindowIcon() {
+        // Web AgentDetailPanel AGENT_PANEL_TABS: the Apps tab is lucide AppWindow.
+        assertEquals(RaftLucideIconName.AppWindow, MembersAgentDetailTab.Apps.iconName)
+        assertTrue(RaftLucideIcons.Names.contains(RaftLucideIconName.AppWindow.wireName))
     }
 
     @Test
-    fun threadConvertToTaskIconUsesGeneratedClipboardCheckIcon() {
-        assertTrue(RaftLucideIcons.Names.contains(RaftLucideIconName.ClipboardCheck.wireName))
+    fun threadMessageMenuUsesWebMessageItemIcons() {
+        // web MessageItem's context menu: Lucide forward / list-checks / square-dashed-text /
+        // square-check-big / plus, and raft-ui's own ThreadIcon and ReopenTaskIcon.
+        listOf(
+            RaftLucideIconName.Thread,
+            RaftLucideIconName.Forward,
+            RaftLucideIconName.ListChecks,
+            RaftLucideIconName.SquareDashedText,
+            RaftLucideIconName.SquareCheckBig,
+            RaftLucideIconName.ReopenTask,
+            RaftLucideIconName.Plus
+        ).forEach { assertTrue(RaftLucideIcons.Names.contains(it.wireName), it.wireName) }
+        assertEquals(RaftLucideIconName.SquareCheckBig, threadTaskStatusMenuIcon(isDone = false))
+        assertEquals(RaftLucideIconName.ReopenTask, threadTaskStatusMenuIcon(isDone = true))
     }
 
     @Test
-    fun threadFollowActionsUseDistinctGeneratedMessageCircleIcons() {
-        assertEquals(RaftLucideIconName.MessageCirclePlus, threadFollowMenuIcon(isFollowed = false))
-        assertEquals(RaftLucideIconName.MessageCircleOff, threadFollowMenuIcon(isFollowed = true))
-        assertTrue(RaftLucideIcons.Names.contains(RaftLucideIconName.MessageCirclePlus.wireName))
-        assertTrue(RaftLucideIcons.Names.contains(RaftLucideIconName.MessageCircleOff.wireName))
+    fun threadFollowActionsUseRaftUiFollowThreadIcons() {
+        assertEquals(RaftLucideIconName.FollowThread, threadFollowMenuIcon(isFollowed = false))
+        assertEquals(RaftLucideIconName.UnfollowThread, threadFollowMenuIcon(isFollowed = true))
+        assertTrue(RaftLucideIcons.Names.contains(RaftLucideIconName.FollowThread.wireName))
+        assertTrue(RaftLucideIcons.Names.contains(RaftLucideIconName.UnfollowThread.wireName))
 
         val message =
             threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, "follow-menu-test")
@@ -48,8 +61,8 @@ class RaftLucideIconCatalogTest {
                 onFollow = { followed = true },
                 onUnfollow = { unfollowedThreadId = it }
             )
-        assertTrue(followActions.any { it.icon == RaftLucideIconName.MessageSquare })
-        followActions.single { it.icon == RaftLucideIconName.MessageCirclePlus }.onClick()
+        assertTrue(followActions.any { it.icon == RaftLucideIconName.Thread })
+        followActions.single { it.icon == RaftLucideIconName.FollowThread }.onClick()
         assertTrue(followed)
         assertEquals(null, unfollowedThreadId)
 
@@ -61,8 +74,8 @@ class RaftLucideIconCatalogTest {
                 onFollow = { followed = true },
                 onUnfollow = { unfollowedThreadId = it }
             )
-        assertTrue(unfollowActions.any { it.icon == RaftLucideIconName.MessageSquare })
-        unfollowActions.single { it.icon == RaftLucideIconName.MessageCircleOff }.onClick()
+        assertTrue(unfollowActions.any { it.icon == RaftLucideIconName.Thread })
+        unfollowActions.single { it.icon == RaftLucideIconName.UnfollowThread }.onClick()
         assertFalse(followed)
         assertEquals("thread-follow-menu", unfollowedThreadId)
     }

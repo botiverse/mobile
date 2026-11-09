@@ -2,6 +2,8 @@
 
 package build.raft.app
 
+import androidx.compose.runtime.staticCompositionLocalOf
+import build.raft.designsystem.focus.RaftAutofocusGuard
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipeRegion
@@ -43,7 +45,6 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.fillMaxSize
@@ -1397,27 +1398,11 @@ internal class RaftTouchSequenceTracker<T : Any> {
     }
 }
 
-private object RaftPressTokens {
-    val ButtonOffset = 2.dp
-}
-
-private fun Modifier.raftPressedOffset(
-    pressed: Boolean,
-    pressOffset: Dp
-): Modifier {
-    return if (pressed && pressOffset > 0.dp) {
-        this.offset(x = pressOffset, y = pressOffset)
-    } else {
-        this
-    }
-}
-
 /**
- * Makes Slock's pointer-input button a distinct node in Kuikly's merged semantics tree.
+ * Makes a custom pointer-input button a distinct node in the merged semantics tree.
  *
- * The custom button intentionally keeps its existing pointer gesture implementation for pressed
- * offset feedback and coordinate-aware callbacks. Without an explicit merging semantics boundary,
- * however, dialog-level click barriers absorb the button's descendant text into one giant native
+ * Without an explicit merging semantics boundary, dialog-level click barriers absorb the
+ * button's descendant text into one giant native
  * accessibility element. iOS/XCUITest and screen readers then see the whole dialog as a single
  * button instead of independently focusable actions.
  */
@@ -1466,6 +1451,8 @@ fun Modal(
     modifier: Modifier = Modifier,
     /* 物理键触发时调用该事件（当前 Android/iOS 均未触发） */
     onWillDismiss: ((Any?) -> Unit)? = null,
+    /** A menu with no text field over a focused composer: the keyboard stays up (RaftWindowDialogProperties). */
+    keepsHostKeyboard: Boolean = false,
     content: (@Composable () -> Unit)
 ) {
     // The page window's horizontal safe area (what the page shells around this call know), read
@@ -1480,11 +1467,18 @@ fun Modal(
     // RaftModalDismissBarrier and pad for keyboardHeightChange themselves.
     RaftWindowDialog(
         onDismissRequest = { onWillDismiss?.invoke("") },
-        properties = RaftModalWindowDialogProperties
+        properties =
+            if (keepsHostKeyboard) {
+                RaftModalWindowDialogProperties.copy(keepsHostKeyboard = true)
+            } else {
+                RaftModalWindowDialogProperties
+            }
     ) {
         // The dialog is its own window with its own keyboard animation; the host's IME report
         // describes the activity window underneath (RaftHostImeInsets).
-        CompositionLocalProvider(LocalRaftHostImeInsets provides null) {
+        // A full-window layer again: its content keeps the window's top safe area even when the
+        // page that opened it sits under the wide top bar.
+        CompositionLocalProvider(LocalRaftHostImeInsets provides null, LocalRaftTopSafeAreaConsumed provides false) {
             RaftInputFocusDismissHost { focusDismissModifier ->
                 Box(modifier = modifier.then(focusDismissModifier).fillMaxSize()) {
                     RaftHorizontalSafeAreaShell(required = horizontalSafeArea, windowRoot = true) {
@@ -1506,152 +1500,6 @@ internal val RaftModalWindowDialogProperties =
 /** Kuikly native drag toggle; nothing to configure on CMP. */
 @Composable
 fun Modifier.dragEnable(enable: Boolean): Modifier = this
-
-@Composable
-internal fun Button(
-    onClick: () -> Unit = {},
-    onLongClick: (() -> Unit)? = null,
-    longClickLabel: String? = null,
-    onClick2: ((RaftPopoverAnchor) -> Unit)? = null,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    pressFeedback: Boolean = true,
-    pressOffset: Dp = RaftPressTokens.ButtonOffset,
-    clickIdentity: Any? = null,
-    anchorOwnerIdentity: Any? = null,
-    // Observes the press (raft-ui lays a pressed wash over the control instead of
-    // offsetting it); only reported while [pressFeedback] is on.
-    onPressedChange: ((Boolean) -> Unit)? = null,
-    content: (@Composable () -> Unit) = {}
-) {
-    val resolvedAnchorOwnerIdentity = anchorOwnerIdentity ?: clickIdentity ?: "button"
-    val rootAnchor =
-        remember(resolvedAnchorOwnerIdentity) { RaftLiveRootAnchorRef(identity = resolvedAnchorOwnerIdentity) }
-    var pressed by remember(resolvedAnchorOwnerIdentity) { mutableStateOf(false) }
-    val currentOnClick by rememberUpdatedState(onClick)
-    val currentOnLongClick by rememberUpdatedState(onLongClick)
-    val currentEnabled by rememberUpdatedState(enabled)
-    val hasLongClick = onLongClick != null
-    val gestureOwner =
-        rememberRaftGestureOwner(
-            surface = "button",
-            semanticIdentity = resolvedAnchorOwnerIdentity,
-            callbacks =
-                RaftButtonGestureCallbacks(
-                    enabled = enabled,
-                    pressFeedback = pressFeedback,
-                    onClick = onClick,
-                    onLongClick = onLongClick,
-                    onClick2 = onClick2,
-                    onPressedChange = {
-                        pressed = it
-                        onPressedChange?.invoke(it)
-                    },
-                    rootAnchor = rootAnchor
-                )
-        )
-    Box(
-        modifier = Modifier
-            .raftButtonAccessibility(
-                enabled = enabled,
-                performClick = { if (currentEnabled) currentOnClick() },
-                longClickLabel = longClickLabel,
-                performLongClick = currentOnLongClick?.let {
-                    { if (currentEnabled) currentOnLongClick?.invoke() }
-                },
-            )
-            .then(
-                if (onClick2 != null) {
-                    Modifier.raftCaptureLiveRootAnchor(rootAnchor)
-                } else {
-                    Modifier
-                }
-            )
-            // `enabled` is read through the gesture owner's current slot. Keeping it
-            // out of the pointer-input keys prevents Kuikly from tearing down
-            // the tap handler when a dynamically-enabled button (for example
-            // Undo/Clear after the first edit) transitions from false to true.
-            .raftGesturePointerInput(gestureOwner, pressFeedback, hasLongClick) { owner ->
-                var gesture: RaftGestureSession<RaftButtonGestureCallbacks>? = null
-                var arbiter = RaftButtonGestureArbiter(hasLongClick)
-                detectTapGestures(
-                    onPress = {
-                        arbiter = RaftButtonGestureArbiter(hasLongClick)
-                        val session = owner.beginGesture()
-                        gesture = session
-                        val callbacks = session.currentCallbacksOrNull()
-                        if (callbacks != null && callbacks.enabled && callbacks.pressFeedback) {
-                            callbacks.onPressedChange(true)
-                            try {
-                                tryAwaitRelease()
-                            } finally {
-                                session.currentCallbacksOrNull()?.onPressedChange(false)
-                            }
-                        }
-                    },
-                    onTap = { offset ->
-                        val callbacks =
-                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()
-                                ?: return@detectTapGestures
-                        if (callbacks.enabled) {
-                            arbiter.dispatchTap {
-                                callbacks.onClick()
-                                callbacks.rootAnchor.resolve(RaftPopoverLocalPoint.Exact(offset))?.let { anchor ->
-                                    callbacks.onClick2?.invoke(anchor)
-                                }
-                            }
-                        }
-                    },
-                    onLongPress =
-                        if (hasLongClick) {
-                            {
-                                val callbacks =
-                                    (gesture ?: owner.beginGesture()).currentCallbacksOrNull()
-                                        ?: return@detectTapGestures
-                                if (callbacks.enabled) {
-                                    arbiter.dispatchLongClick(callbacks.onLongClick)
-                                }
-                            }
-                        } else {
-                            null
-                        }
-                )
-            }
-            .raftPressedOffset(pressed = pressed && enabled, pressOffset = pressOffset)
-            .then(modifier),
-        contentAlignment = Alignment.Center
-    ) {
-        content()
-    }
-}
-
-/** Owns the one-gesture tap/long-press decision used by the production pointer callbacks. */
-internal class RaftButtonGestureArbiter(private val hasLongClick: Boolean) {
-    private var longClickCommitted = false
-
-    fun dispatchTap(action: () -> Unit): Boolean {
-        if (longClickCommitted) return false
-        action()
-        return true
-    }
-
-    fun dispatchLongClick(action: (() -> Unit)?): Boolean {
-        if (!hasLongClick || action == null || longClickCommitted) return false
-        longClickCommitted = true
-        action()
-        return true
-    }
-}
-
-private data class RaftButtonGestureCallbacks(
-    val enabled: Boolean,
-    val pressFeedback: Boolean,
-    val onClick: () -> Unit,
-    val onLongClick: (() -> Unit)?,
-    val onClick2: ((RaftPopoverAnchor) -> Unit)?,
-    val onPressedChange: (Boolean) -> Unit,
-    val rootAnchor: RaftLiveRootAnchorRef
-)
 
 internal class Border(
     val lineWidth: Dp,
@@ -1898,6 +1746,12 @@ internal class RaftTextFieldNativeEditingStateReader {
  * contract is the editor-level `keyboardHeightChange` event. The default is deliberately a no-op
  * so ordinary page editors retain their existing layout behavior.
  */
+/**
+ * True around a conversation composer's editor: the field that takes focus when its conversation
+ * opens (ComposerAutofocusPolicy.kt), so its own focus never counts as another field's.
+ */
+internal val LocalRaftEditorIsConversationComposer = staticCompositionLocalOf { false }
+
 internal val LocalRaftDialogKeyboardHeightChange =
     compositionLocalOf<(KeyboardParams) -> Unit> { {} }
 
@@ -1906,7 +1760,7 @@ internal val LocalRaftDialogKeyboardHeightChange =
  * (systemNewlineAction / imeActionRequested were native-editor props; see [raftImeEnterAction] /
  * [raftResolvedKeyboardOptions]), dialog keyboard-height events, [focusRequester], focus / blur
  * callbacks and the global tap-outside focus-dismiss registry. [TextField] and the
- * design-system `RaftTextField` adapters (`RaftBrutalInputField`, `RaftBrutalSearchField`) share
+ * design-system fields (`RaftTextField` / `RaftTextarea` through `rememberRaftDesignSystemEditor` / `rememberRaftTextareaEditorModifier`) share
  * it, so a field keeps the same behaviour whichever editor draws it.
  */
 @Composable
@@ -1935,6 +1789,12 @@ internal fun Modifier.raftAppEditorBehavior(
             }
         }
     }
+    // A conversation composer is what an automatic focus request is for; every other field
+    // (search, a rename dialog) keeps its focus from one (RaftAutofocusGuard).
+    val blocksComposerAutofocus = !LocalRaftEditorIsConversationComposer.current
+    DisposableEffect(focusOwner) {
+        onDispose { RaftAutofocusGuard.setFieldFocused(focusOwner, false) }
+    }
     return this
         .raftImeEnterAction(
             singleLine = singleLine,
@@ -1948,6 +1808,7 @@ internal fun Modifier.raftAppEditorBehavior(
         .focusRequester(focusRequester)
         .onGloballyPositioned(focusOwnerAnchor::update)
         .onFocusChanged {
+            if (blocksComposerAutofocus) RaftAutofocusGuard.setFieldFocused(focusOwner, it.isFocused)
             if (it.isFocused) {
                 if (!lastFocus) {
                     if (participatesInGlobalFocusDismiss) {
