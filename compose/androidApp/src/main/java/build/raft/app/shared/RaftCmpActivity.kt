@@ -23,6 +23,7 @@ import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import androidx.compose.ui.graphics.toArgb
 import build.raft.app.data.RaftAppAppearanceRuntime
+import build.raft.app.RaftDatabaseLaunchReadiness
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.Typeface
@@ -218,6 +219,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -817,6 +819,7 @@ internal open class RaftCmpActivity :
     private var imeTraceProgressFrames = 0
     private var imeTraceMaxProgressImePx = 0
     private var cmpFirstFrameListener: ViewTreeObserver.OnDrawListener? = null
+    private var databaseLaunchDrawListener: ViewTreeObserver.OnDrawListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private var pendingThreadCameraCapture: PendingThreadCameraCapture? = null
     private var pendingAttachmentSaveAs: PendingAndroidAttachmentSaveAs? = null
@@ -1248,13 +1251,58 @@ internal open class RaftCmpActivity :
                 publishWindowInsets(insets)
             }
         }
-        if (homeColdStartSplashGate?.release() == true) {
-            removeHomeColdStartNativeHold(reason = "cmp_first_frame")
-            RaftAppLog.d("SlockBoot", "home_content_splash_released source=cmp_first_frame page=$pageName")
-        }
+        releaseHomeColdStartSplashAfterDatabaseLaunch()
         // task #6: warm the WebView provider once the first page has drawn, at the next main
         // idle slot (single shot per process, failure-silent; nothing waits for it).
         RaftAndroidWebViewWarmup.schedule(applicationContext)
+    }
+
+    /**
+     * #113: the shell's database launch gate builds the shared store off the main thread and shows
+     * the launch surface meanwhile, so the first frame may be that surface. Keep the home splash
+     * over it until the gate has the app (or the database recovery page) to show and that frame has
+     * drawn: the launch goes from the splash straight to the app. The splash timeouts still bound it.
+     */
+    private fun releaseHomeColdStartSplashAfterDatabaseLaunch() {
+        if (homeColdStartSplashGate == null) return
+        if (RaftDatabaseLaunchReadiness.settled.value) {
+            releaseHomeColdStartSplash(source = "cmp_first_frame")
+            return
+        }
+        RaftAppLog.d("SlockBoot", "home_content_splash_waiting reason=database_launch page=$pageName")
+        lifecycleScope.launch {
+            RaftDatabaseLaunchReadiness.settled.first { it }
+            val container = findViewById<View>(R.id.raft_container) ?: return@launch
+            var drawObserved = false
+            val listener =
+                ViewTreeObserver.OnDrawListener {
+                    if (drawObserved) return@OnDrawListener
+                    drawObserved = true
+                    container.post {
+                        removeDatabaseLaunchDrawListener(container)
+                        releaseHomeColdStartSplash(source = "database_launch")
+                    }
+                }
+            databaseLaunchDrawListener = listener
+            container.viewTreeObserver.addOnDrawListener(listener)
+            // The gate's result composes in the next frame; make sure that frame draws.
+            container.invalidate()
+        }
+    }
+
+    private fun removeDatabaseLaunchDrawListener(view: View? = findViewById(R.id.raft_container)) {
+        val listener = databaseLaunchDrawListener ?: return
+        databaseLaunchDrawListener = null
+        val observer = view?.viewTreeObserver ?: return
+        if (observer.isAlive) observer.removeOnDrawListener(listener)
+    }
+
+    private fun releaseHomeColdStartSplash(source: String) {
+        if (isFinishing || isDestroyed) return
+        if (homeColdStartSplashGate?.release() == true) {
+            removeHomeColdStartNativeHold(reason = source)
+            RaftAppLog.d("SlockBoot", "home_content_splash_released source=$source page=$pageName")
+        }
     }
 
     private fun androidSystemDark(): Boolean = isAndroidSystemDark(resources.configuration.uiMode)
@@ -1457,6 +1505,7 @@ internal open class RaftCmpActivity :
         removeHomeColdStartFirstDrawListener()
         removeHomeColdStartNativeHold(reason = "destroy")
         removeCmpFirstFrameListener()
+        removeDatabaseLaunchDrawListener()
         if (adaptivePaneHostDelegate.isInitialized()) {
             adaptivePaneHost.stop()
         }
