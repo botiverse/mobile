@@ -6,6 +6,48 @@ import build.raft.app.model.ChannelExternalMemberProfile
 /** `mentions[].type` of a Slack participant (slock `StructuredMentionInput`). */
 internal const val ComposerStructuredMentionExternalType = "external"
 
+/** `mentions[].type` of a picked person (web `MentionCandidate.type`). */
+internal const val ComposerStructuredMentionUserType = "user"
+
+/** `mentions[].type` of a picked agent (web `MentionCandidate.type`). */
+internal const val ComposerStructuredMentionAgentType = "agent"
+
+/**
+ * The structured mention a picked person or agent adds, as web `MessageInput.tsx` `doInsertMention`
+ * records it: `{ type: "user" | "agent", id, name }`. [id] is the user id (server member `userId`,
+ * channel human `id`) or the agent id; [handle] is their `name`, the token after `@`. No offsets:
+ * the pick lives while that `@handle` is in the text ([visibleStructuredMentionsIn]).
+ *
+ * Null, so the token stays name-resolved, for any other kind and for an id that is not a UUID: slock
+ * `parseStructuredMentions` answers a non-UUID id with a 400 for the whole message.
+ */
+internal fun composerPersonOrAgentStructuredMention(
+    kind: build.raft.app.model.MemberKind,
+    id: String?,
+    handle: String,
+): ThreadSendMessageMention? {
+    val type =
+        when (kind) {
+            build.raft.app.model.MemberKind.Human -> ComposerStructuredMentionUserType
+            build.raft.app.model.MemberKind.Agent -> ComposerStructuredMentionAgentType
+            else -> return null
+        }
+    val cleanId = id?.trim()?.takeIf { it.isStructuredMentionUuid() } ?: return null
+    val name = handle.trim().removePrefix("@").takeIf { it.isNotEmpty() && it.length <= 128 } ?: return null
+    return ThreadSendMessageMention(type = type, id = cleanId, name = name)
+}
+
+/** slock `UUID_RE` (`/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i`). */
+private fun String.isStructuredMentionUuid(): Boolean =
+    length == 36 &&
+        withIndex().all { (index, char) ->
+            if (index == 8 || index == 13 || index == 18 || index == 23) {
+                char == '-'
+            } else {
+                char in '0'..'9' || char in 'a'..'f' || char in 'A'..'F'
+            }
+        }
+
 /**
  * The `@` token a Slack participant is mentioned by, exactly as web `MessageInput.tsx` builds it: the
  * first non-blank Slack handle (else the display name without spaces), every character outside

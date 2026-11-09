@@ -63,8 +63,9 @@ internal data class SharedThreadComposerDraftState(
     val attachmentAdmissionsByLocalId: Map<String, SharedThreadComposerAttachmentAdmission> = emptyMap(),
     val externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList(),
     /**
-     * Structured `mentions` picked from the @ suggestions (Slack participants, `type: external`),
-     * kept only while their `@handle` is still in [seedText]; sent and journaled as recorded.
+     * Structured `mentions` picked from the @ suggestions or added by "Mention" on a message
+     * (`type: user | agent | external`, with the actor's id), kept only while their `@handle` is
+     * still in [seedText]; sent and journaled as recorded.
      */
     val structuredMentions: List<ThreadSendMessageMention> = emptyList(),
     val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
@@ -1449,7 +1450,7 @@ internal class SharedThreadComposerDraftPersistence(
         const val AsTaskSuffix = ":asTask"
         const val AttachmentsSuffix = ":attachments"
         const val SourcesSuffix = ":externalShareSources"
-        /** Structured @ mentions picked in this draft (Slack participants), as sent on `POST /messages`. */
+        /** Structured @ mentions picked in this draft (people, agents, Slack participants), as sent on `POST /v2/messages`. */
         const val MentionsSuffix = ":mentions"
         /** Epoch millis of the text's last edit (Drafts); absent on drafts saved before it existed. */
         const val EditedAtSuffix = ":editedAt"
@@ -2451,7 +2452,7 @@ internal sealed interface SharedThreadComposerDraftIntent {
     data class Change(val seedText: String? = null, val seedAsTask: Boolean? = null) : SharedThreadComposerDraftIntent
     data class SetOriginalImage(val enabled: Boolean) : SharedThreadComposerDraftIntent
     data class InsertMention(val handle: String) : SharedThreadComposerDraftIntent
-    /** A Slack participant picked from the @ suggestions; its `@handle` is already in the text. */
+    /** A person, agent or Slack participant picked for an `@handle` that is already in the text. */
     data class SelectMention(val mention: ThreadSendMessageMention) : SharedThreadComposerDraftIntent
     /** Appends a Markdown quote after the current draft (Reply on a partial text selection). */
     data class AppendQuote(val quote: String) : SharedThreadComposerDraftIntent
@@ -2673,7 +2674,12 @@ internal class SharedThreadComposerDraftStore(
                 ) {
                     current
                 } else {
-                    current.copy(structuredMentions = current.structuredMentions + intent.mention)
+                    // web `setSelectedMentions(prev => [...prev.filter(m => m.name !== picked.name), picked])`:
+                    // the latest pick for a handle wins (a person, then the same-named agent).
+                    current.copy(
+                        structuredMentions =
+                            current.structuredMentions.filterNot { it.name == intent.mention.name } + intent.mention
+                    )
                 }
             is SharedThreadComposerDraftIntent.InsertMention ->
                 current.copy(

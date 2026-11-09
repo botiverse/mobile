@@ -990,7 +990,12 @@ internal class ThreadComposerSubmittedEchoFence {
 
 internal data class ThreadComposerInsertMentionRequest(
     val nonce: Int,
-    val handle: String
+    val handle: String,
+    /**
+     * The author's structured mention (web `senderMentionInsert` carries `{ type, id, name }`), picked
+     * like a suggestion once the `@handle` is in the text. Null: the token stays name-resolved.
+     */
+    val mention: build.raft.app.data.ThreadSendMessageMention? = null
 )
 
 internal enum class ThreadComposerSuggestionPanelState {
@@ -2725,6 +2730,10 @@ internal fun ThreadComposerContentLeaf(
         )
         if (composing) snapshotFlow { latestFieldValue.composition }.first { it == null }
         if (latestInsertMentionAtCursor(request.handle)) {
+            // After the text, as a picked suggestion: the draft keeps it while `@handle` is there.
+            request.mention?.let { mention ->
+                onEvent(ThreadComposerSelectMentionEvent, encodeThreadComposerMentionEvent(mention), null, null)
+            }
             // The avatar long-press starts outside the composer, so the shared root may already
             // have armed an outside-focus dismissal for this pointer sequence. Mention insertion
             // is a newer explicit editing intent; invalidate that old token before refocusing so
@@ -5322,7 +5331,7 @@ private fun ComposerTextChip(
 internal data class RaftComposerSuggestionEdit(
     val text: String,
     val cursor: Int,
-    /** The structured mention a picked Slack participant adds (`POST /messages` `mentions[]`). */
+    /** The structured mention a picked suggestion adds (`POST /v2/messages` `mentions[]`). */
     val mention: build.raft.app.data.ThreadSendMessageMention? = null,
 )
 
@@ -5342,12 +5351,14 @@ internal fun decodeThreadComposerMentionEvent(value: String?): build.raft.app.da
     }
 
 /**
- * Only a Slack participant (`MemberKind.External`) becomes a structured mention, as web sends it
- * (`{ type: "external", id: <projection id>, name: <handle> }`). People and agents keep the
- * server's name resolution (this PR does not change how their mentions are sent).
+ * The structured mention a picked suggestion adds, as web `MessageInput.tsx` `doInsertMention` sends
+ * it: a Slack participant `{ type: "external", id: <projection id>, name: <handle> }`, a person
+ * `{ type: "user", id: <user id>, name }`, an agent `{ type: "agent", id: <agent id>, name }`. With the
+ * id, `POST /v2/messages` notifies exactly the picked actor even when a person and an agent share
+ * the name (slock `messageService.resolveMentionTargets`: an ambiguous raw `@name` reaches nobody).
  */
 internal fun RaftComposerMemberItem.composerStructuredMentionOrNull(): build.raft.app.data.ThreadSendMessageMention? {
-    if (kind != MemberKind.External) return null
+    if (kind != MemberKind.External) return composerPersonOrAgentStructuredMention(kind, memberId, handle)
     val id = memberId?.trim()?.takeIf { it.isNotBlank() } ?: return null
     return build.raft.app.data.ThreadSendMessageMention(type = ComposerStructuredMentionExternalType, id = id, name = handle)
 }

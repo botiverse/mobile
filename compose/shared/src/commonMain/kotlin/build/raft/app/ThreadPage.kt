@@ -18117,7 +18117,8 @@ private fun ThreadPageContentContent(
                                 insertMentionRequest =
                                     ThreadComposerInsertMentionRequest(
                                         nonce = insertMentionRequestNonce,
-                                        handle = handle
+                                        handle = handle,
+                                        mention = message.threadAuthorStructuredMention(handle)
                                     )
                             } else if (handle == null) {
                                 diagnosticsLogger(
@@ -33400,6 +33401,22 @@ internal fun RaftThreadMessageItem.threadMentionHandle(
             ?.let { member -> member.handle.canonicalServerMembersMentionHandle(member.id.value) }
     return threadMentionHandleFromCanonicalStore(rosterHandle)
 }
+
+/**
+ * "Mention" on a message by a person or agent: the author's `{ type: user | agent, id, name }`, as web
+ * `senderMentionInsert` hands the composer. Null for any other author (system, Slack, unknown kind).
+ */
+internal fun RaftThreadMessageItem.threadAuthorStructuredMention(handle: String): build.raft.app.data.ThreadSendMessageMention? =
+    composerPersonOrAgentStructuredMention(
+        kind =
+            when (authorKind.trim().lowercase()) {
+                "human", "user" -> MemberKind.Human
+                "agent" -> MemberKind.Agent
+                else -> return null
+            },
+        id = authorId,
+        handle = handle,
+    )
 
 internal fun RaftThreadMessageItem.threadMentionHandle(canonicalMemberHandle: String?): String? =
     if (threadAuthorBadgeLabel() != null) {

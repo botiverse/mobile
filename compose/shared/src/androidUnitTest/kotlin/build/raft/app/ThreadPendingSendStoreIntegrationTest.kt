@@ -417,7 +417,8 @@ class ThreadPendingSendStoreIntegrationTest {
 
     /**
      * Task #73 (Tenny's rule 3): a journaled send keeps its structured `mentions` and every resend
-     * carries that exact list — the Slack participant picked in the composer, never re-resolved by name.
+     * carries that exact list — the person, agent and Slack participant picked in the composer (#77:
+     * ids included), never re-resolved by name.
      */
     @Test
     fun aResentJournaledSendCarriesItsOwnMentionList() = runTest {
@@ -430,7 +431,17 @@ class ThreadPendingSendStoreIntegrationTest {
                         type = "external",
                         id = "7f8e2a3b-0c1d-4e5f-8a9b-0c1d2e3f4a5b",
                         name = "yezi",
-                    )
+                    ),
+                    build.raft.app.data.ThreadSendMessageMention(
+                        type = "user",
+                        id = "1b2c3d4e-5f60-4718-8293-a4b5c6d7e8f9",
+                        name = "ada",
+                    ),
+                    build.raft.app.data.ThreadSendMessageMention(
+                        type = "agent",
+                        id = "9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d",
+                        name = "skyzh",
+                    ),
                 )
             val orphan = pendingMessage("local-send-mention", "random-mention", createdAt = 10L, mentions = mentions)
 

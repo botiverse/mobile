@@ -62,9 +62,10 @@ class ComposerStructuredMentionsTest {
     }
 
     @Test
-    fun onlyAPickedSlackParticipantAddsAStructuredMention() {
+    fun aPickedSlackParticipantAddsItsStructuredMention() {
         val slack = RaftComposerMemberItem(displayName = "Ye Zi", handle = "yezi", kind = MemberKind.External, memberId = "projection-1")
         assertEquals(yezi, slack.composerStructuredMentionOrNull())
+        // A person's id must be a UUID (slock rejects the whole message otherwise): none is sent.
         assertNull(slack.copy(kind = MemberKind.Human).composerStructuredMentionOrNull())
         assertNull(slack.copy(memberId = null).composerStructuredMentionOrNull())
         assertEquals(yezi, decodeThreadComposerMentionEvent(encodeThreadComposerMentionEvent(yezi)))
