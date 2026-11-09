@@ -66,4 +66,56 @@ internal object ActionCardSpecFixtures {
   "createChannel":{"type":"Button","props":{"label":{"key":"actionCard.verb.createChannel","text":{"en":"Create channel"}},"emphasis":"primary","action":{"kind":"open","intent":"create_channel"}}}
  }}}
 """
+
+    /** Maya, the person the redesign's question cards ask, and Fixer, the agent that asks. */
+    const val QUESTION_MAYA_ID: String = "0f1e2d3c-4b5a-4968-8776-655443322110"
+    const val QUESTION_FIXER_ID: String = "7b2e8f3a-0c5d-4e4f-9a3b-2c3d4e5f6071"
+
+    private fun raw(text: String) = """{"key":"actionCard.text.raw","text":{"en":"{t}"},"params":{"t":"$text"}}"""
+
+    /**
+     * A question card as the server builds it for one single-choice question asked of Maya (the
+     * mockup's "How should I go about them?"): [options] labels, `placement: "inline"` when [inline].
+     * Unanswered: For, the question row, the button opening the form.
+     */
+    fun questionCardJson(
+        options: List<String> = listOf("Fix all 4 on a branch", "One at a time, ask me each", "Just list them for me"),
+        inline: Boolean = true,
+        multiple: Boolean = false,
+        question: String = "How should I go about them?",
+    ): String {
+        val opts = options.mapIndexed { index, label -> """{"value":"o$index","label":${raw(label)}}""" }.joinToString(",")
+        return """
+{"catalog":"action-card.v1","icon":"message",
+ "title":{"key":"actionCard.question.title.one","text":{"en":"Answer Question"},"params":{"count":1}},
+ "spec":{"root":"root","elements":{
+  "root":{"type":"Stack","props":{},"children":["properties","actions"]},
+  "properties":{"type":"Stack","props":{},"children":["for","q_how"]},
+  "for":{"type":"Field","props":{"label":{"key":"actionCard.question.for","text":{"en":"For"}},"value":[{"kind":"user","id":"$QUESTION_MAYA_ID","fallback":"maya"}]}},
+  "q_how":{"type":"Field","props":{"label":{"key":"actionCard.question.question","text":{"en":"Question"}},"value":"$question"}},
+  "actions":{"type":"Stack","props":{"direction":"row","wrap":true,"role":"actions"},"children":["answer"]},
+  "answer":{"type":"Button","props":{"label":{"key":"actionCard.question.answer.one","text":{"en":"Answer Question"},"params":{"count":1}},"emphasis":"primary","action":{"kind":"open_form","form":"answers"}}}}},
+ "forms":{"answers":{"title":{"key":"actionCard.question.form.title.one","text":{"en":"Answer Question"},"params":{"count":1}},
+  "submitLabel":{"key":"actionCard.question.form.submit","text":{"en":"Answer"}},
+  "description":{"key":"actionCard.question.form.visibility","text":{"en":"{agent} and everyone who can read this conversation will see your answers."},"params":{"agent":{"kind":"agent","id":"$QUESTION_FIXER_ID","fallback":"fixer"}}},
+  ${if (inline) "\"placement\":\"inline\"," else ""}
+  "fields":[{"type":"Choice","name":"how","label":${raw(question)},"required":true,"multiple":$multiple,"options":[$opts],
+    "other":{"label":{"key":"actionCard.question.other","text":{"en":"Other…"}},"maxLength":500}}]}}}
+"""
+    }
+
+    /** [questionCardJson] once Maya answered [answer]: no form any more (the server drops it), the record pairs the question with the answer. */
+    fun questionCardAnsweredJson(answer: String = "Fix all 4 on a branch", question: String = "How should I go about them?"): String =
+        """
+{"catalog":"action-card.v1","icon":"message",
+ "title":{"key":"actionCard.question.title.one","text":{"en":"Answer Question"},"params":{"count":1}},
+ "spec":{"root":"root","elements":{
+  "root":{"type":"Stack","props":{},"children":["properties"]},
+  "properties":{"type":"Stack","props":{},"children":["for"]},
+  "for":{"type":"Field","props":{"label":{"key":"actionCard.question.for","text":{"en":"For"}},"value":[{"kind":"user","id":"$QUESTION_MAYA_ID","fallback":"maya"}]}}}},
+ "result":{"root":"root","elements":{
+  "root":{"type":"Stack","props":{},"children":["q_how","a_how"]},
+  "q_how":{"type":"Field","props":{"label":{"key":"actionCard.question.question","text":{"en":"Question"}},"value":"$question"}},
+  "a_how":{"type":"Field","props":{"label":{"key":"actionCard.question.answerLabel","text":{"en":"Answer"}},"value":"$answer"}}}}}
+"""
 }

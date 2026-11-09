@@ -16,6 +16,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.ThreadActionCardQuestion
 import build.raft.app.data.expiredAsOf
 import build.raft.app.data.parseActionCardSpec
 import build.raft.app.data.stripActionCardSpec
@@ -55,6 +56,24 @@ class ThreadActionCardScreenshotTest {
 
     @Test
     fun threadActionCardsExpiredDark() = capture("thread.action-cards.expired.dark", RaftAppAppearance.Dark) { ThreadActionCardsExpiredVisualContent() }
+
+    /**
+     * The redesigned question cards waiting (2026-11): C, a button row, for Maya (enabled, "Fixer is
+     * waiting for your answer · 7 days left") and for Ada (disabled, "Waiting for Maya to answer");
+     * B, a slim card, with five options in it, then one answered in the sheet for someone else.
+     */
+    @Test
+    fun questionCardsLight() = capture("thread.action-cards.question", RaftAppAppearance.Light) { ThreadQuestionCardsVisualContent(answered = false) }
+
+    @Test
+    fun questionCardsDark() = capture("thread.action-cards.question.dark", RaftAppAppearance.Dark) { ThreadQuestionCardsVisualContent(answered = false) }
+
+    /** The same cards answered: C's "✓ Maya answered …" line, B's "Maya: …" with a green Answered. */
+    @Test
+    fun questionCardsAnsweredLight() = capture("thread.action-cards.question.answered", RaftAppAppearance.Light) { ThreadQuestionCardsVisualContent(answered = true) }
+
+    @Test
+    fun questionCardsAnsweredDark() = capture("thread.action-cards.question.answered.dark", RaftAppAppearance.Dark) { ThreadQuestionCardsVisualContent(answered = true) }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit = { ThreadActionCardsVisualContent() }) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -216,6 +235,62 @@ private fun ThreadActionCardsExpiredVisualContent() {
                 pending = false,
                 onCommit = {},
             )
+        }
+    }
+}
+
+/** Who the question cards ask and who looks: Maya is asked; Ada only reads. */
+@Composable
+private fun ThreadQuestionCardsVisualContent(answered: Boolean) {
+    // 2026-11-09 10:03 UTC; the cards expire 7 days later.
+    val timeContext = RaftTimeContext(localOffsetMinutes = 0, todayEpochDay = raftEpochDayForDate(2026, 11, 9), nowEpochMillis = 1_794_218_580_000L)
+    val names = ThreadActionCardNameLookup { kind, id -> if (kind == ThreadActionCardEntityKind.Human && id == "u-maya") "Maya" else null }
+    val fiveOptions = listOf("Fix all 4 on a branch", "One at a time, ask me each", "Just list them for me", "Skip them for now", "Ask Ada first")
+    fun card(json: String, options: Int) =
+        ThreadActionCard(
+            type = "question:ask",
+            state = if (answered) "executed" else "prepared",
+            presentationCardJson = if (answered) ActionCardSpecFixtures.questionCardAnsweredJson() else json,
+            expiresAt = "2026-11-16T10:03:00.000Z",
+            questionAddresseeUserId = "u-maya",
+            questionAddresseeHandle = "maya",
+            questions = listOf(ThreadActionCardQuestion("single", options)),
+            executedByUserName = if (answered) "Maya" else null,
+        )
+
+    @Composable
+    fun Show(card: ThreadActionCard, viewer: String) {
+        val spec = requireNotNull(card.actionCardSpecToRender(specEnabled = true, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
+        CompositionLocalProvider(LocalThreadActionCardSpecHost provides ThreadActionCardSpecHost(viewerUserId = viewer)) {
+            ThreadActionCardSpecView(
+                messageId = "m-${card.hashCode()}-$viewer",
+                card = card,
+                spec = spec,
+                commitEnabled = true,
+                typedPending = false,
+                executedTimeLabel = null,
+                askerName = "Fixer",
+                onAction = {},
+            )
+        }
+    }
+    CompositionLocalProvider(
+        LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext),
+        LocalThreadActionCardNames provides names,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            Show(card(ActionCardSpecFixtures.questionCardJson(), 3), viewer = "u-maya")
+            Show(card(ActionCardSpecFixtures.questionCardJson(), 3), viewer = "u-ada")
+            Show(card(ActionCardSpecFixtures.questionCardJson(options = fiveOptions), 5), viewer = "u-maya")
+            Show(card(ActionCardSpecFixtures.questionCardJson(inline = false), 3).copy(questions = listOf(ThreadActionCardQuestion("single", 6))), viewer = "u-ada")
+            // Several questions (the vector's sheet card): "Fixer has 3 questions".
+            if (!answered) {
+                val several = Json.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), ActionCardSpecFixtures.rawCard("question_card"))
+                Show(
+                    card(several, 3).copy(questions = listOf(ThreadActionCardQuestion("single", 3), ThreadActionCardQuestion("multiple", 3), ThreadActionCardQuestion("text"))),
+                    viewer = "u-maya",
+                )
+            }
         }
     }
 }

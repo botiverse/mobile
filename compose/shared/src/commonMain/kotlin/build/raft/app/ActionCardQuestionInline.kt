@@ -30,6 +30,7 @@ import build.raft.app.data.ActionCardSpecForm
 import build.raft.app.data.ActionCardSpecFormPlacement
 import build.raft.app.data.ActionCardSpecMsg
 import build.raft.app.data.ActionCardSpecTree
+import build.raft.app.data.ActionCardSpecElement
 import build.raft.app.data.CardStack
 import build.raft.app.data.QuestionAskActionCardType
 import build.raft.app.data.ThreadActionCard
@@ -110,10 +111,14 @@ internal fun ThreadActionCard.inlineQuestionForm(spec: ActionCardSpecCard): Acti
  */
 internal fun ActionCardSpecTree.withoutInlineQuestions(inline: ActionCardInlineQuestionForm): ActionCardSpecTree {
     val rows = inline.fields.mapTo(HashSet()) { "q_${it.name}" }
-    val removed =
-        elements.filter { (id, node) ->
-            (node is ActionCardSpecButton && id == inline.buttonId) || (node is ActionCardSpecDisplayElement.Field && id in rows)
-        }.keys.toMutableSet()
+    return withoutElements { id, node ->
+        (node is ActionCardSpecButton && id == inline.buttonId) || (node is ActionCardSpecDisplayElement.Field && id in rows)
+    }
+}
+
+/** The tree without the elements [drop] picks (never the root), and without the Stacks that leaves empty. */
+internal fun ActionCardSpecTree.withoutElements(drop: (id: String, node: ActionCardSpecElement) -> Boolean): ActionCardSpecTree {
+    val removed = elements.filter { (id, node) -> id != root && drop(id, node) }.keys.toMutableSet()
     if (removed.isEmpty()) return this
     // Stacks emptied by the removal, innermost first.
     var changed = true
@@ -195,6 +200,30 @@ internal class QuestionUndoableSubmit<T : Any>(
 }
 
 /**
+ * [QuestionUndoableSubmit] for one form, sent at once when the card leaves (another page, scrolled
+ * away) or the app goes to the background.
+ */
+@Composable
+internal fun rememberQuestionUndoableSubmit(
+    formId: String,
+    onSend: (Map<String, ActionCardFormValue>) -> Unit,
+): QuestionUndoableSubmit<Map<String, ActionCardFormValue>> {
+    val scope = rememberCoroutineScope()
+    val currentSend by rememberUpdatedState(onSend)
+    val undoable = remember(formId) { QuestionUndoableSubmit<Map<String, ActionCardFormValue>>(scope) { currentSend(it) } }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(undoable, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) undoable.flush() }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            undoable.flush()
+        }
+    }
+    return undoable
+}
+
+/**
  * A question card answered in its body (web `QuestionInlineForm`): each question numbered when
  * there are several, over its options ([ActionCardChoiceField]: radios or checkboxes, Other… last
  * with its one-line input), then the card's one button labelled as the button that would open the
@@ -221,18 +250,8 @@ internal fun ActionCardQuestionInlineForm(
     onSend: (Map<String, ActionCardFormValue>) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val currentSend by rememberUpdatedState(onSend)
-    val undoable = remember(inline.formId) { QuestionUndoableSubmit<Map<String, ActionCardFormValue>>(scope) { currentSend(it) } }
     // Leaving (the card scrolled away, another page) or the app going to the background sends at once.
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(undoable, lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) undoable.flush() }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            undoable.flush()
-        }
-    }
+    val undoable = rememberQuestionUndoableSubmit(inline.formId, onSend)
     var clientIssues by remember(inline.formId) { mutableStateOf(emptyList<ActionCardFormIssue>()) }
     val latestValues by rememberUpdatedState(values)
     val waiting = undoable.waiting
@@ -288,6 +307,8 @@ internal fun ActionCardQuestionInlineForm(
                 number = if (inline.fields.size > 1) index + 1 else null,
                 onPicked = if (canSubmit) ({ picked(field.name) }) else null,
                 showPending = pendingShown,
+                // One question: the slim card's title is the question, so no label (and no asterisk) repeats it.
+                showLabel = inline.fields.size > 1,
             )
         }
         when {

@@ -72,6 +72,20 @@ internal data class RaftActionCardFrameState(
 )
 
 /**
+ * A question card's slim frame (B, question-card redesign 2026-11): no icon tile and no "Answer
+ * question(s)" title. [title] replaces the card's (a single question's text; null: no title line),
+ * [description] is the line under it while the card waits ("Fixer is asking you · 7 days left",
+ * "Waiting for Maya"); once answered the header is the one [answeredLine] ("Maya: Postgres") with a
+ * green "Answered", folded over the record. A view-only reader gets no "View only" word: the
+ * description already says who answers.
+ */
+internal data class RaftActionCardSlim(
+    val title: String?,
+    val description: String?,
+    val answeredLine: String?,
+)
+
+/**
  * Whether the frame shows, enables or busies a card Button (web `ActionCardSpecButton`). Links
  * (navigate, a URL, "Open in web", which strip makes of any button this App can't run) never
  * change the card, so they stay usable on a frozen, view-only or busy card and run nothing: a tap
@@ -148,6 +162,8 @@ internal fun RaftActionCardView(
     fitLabels: Boolean = false,
     /** Drawn under the body, before the error: a question card's inline answer ([ActionCardQuestionInlineForm]). */
     footer: (@Composable () -> Unit)? = null,
+    /** A question card's slim frame ([RaftActionCardSlim]); null: the generic frame. */
+    slim: RaftActionCardSlim? = null,
 ) {
     val executed = state.status == RaftActionCardStatus.Executed
     val ended = state.status.ended
@@ -164,30 +180,48 @@ internal fun RaftActionCardView(
             fitLabels = fitLabels,
         )
     val context = context(inSpecOfExecutedCard = executed)
-    val title = actionCardMsgPlainMentions(card.title, context)
+    val cardTitle = actionCardMsgPlainMentions(card.title, context)
+    val answeredLine = slim?.answeredLine?.takeIf { executed && it.isNotBlank() }
+    val slimDescription = slim?.description?.takeIf { !executed && !ended && it.isNotBlank() }
+    val title =
+        when {
+            slim == null -> cardTitle
+            answeredLine != null -> answeredLine
+            slim.title != null -> slim.title
+            // Several questions: no title line while a description leads; otherwise the card's own.
+            slimDescription != null && state.blockedReason == null -> ""
+            else -> cardTitle
+        }
     RaftDesignSystemTheme {
         val iconColor = raftArgbHex(RaftTheme.colors.foregroundMuted)
         RaftMessageActionCard(
             title = title,
             modifier = modifier,
+            showIcon = slim == null,
+            statusColor = if (answeredLine != null) RaftTheme.colors.successStrong else null,
             icon =
                 actionCardIconName(card.icon)?.let { name ->
                     { RaftLucideIcon(name = name, color = iconColor, modifier = Modifier.size(RaftMessageActionCardDefaults.HeaderGlyphSize)) }
                 },
             description =
                 when {
+                    // The answered slim card says it all in its one line.
+                    answeredLine != null -> null
                     executed -> state.record?.takeIf { it.isNotBlank() }?.let { line -> { RaftMessageActionCardHeaderDescription(line, check = true) } }
                     ended -> state.endedLine?.takeIf { it.isNotBlank() }?.let { line -> { RaftMessageActionCardHeaderDescription(line) } }
-                    else -> state.blockedReason?.takeIf { foldsByDefault }?.let { reason -> { RaftMessageActionCardHeaderDescription(reason) } }
+                    else ->
+                        state.blockedReason?.takeIf { foldsByDefault }?.let { reason -> { RaftMessageActionCardHeaderDescription(reason) } }
+                            ?: slimDescription?.let { line -> { RaftMessageActionCardHeaderDescription(line) } }
                 },
             status =
                 when {
+                    answeredLine != null -> stringResource(Res.string.action_card_question_answered)
                     executed -> stringResource(Res.string.common_done)
                     state.status == RaftActionCardStatus.Expired -> stringResource(Res.string.thread_action_card_status_expired)
                     state.status == RaftActionCardStatus.Withdrawn -> stringResource(Res.string.thread_action_card_status_withdrawn)
                     state.status == RaftActionCardStatus.Frozen -> stringResource(Res.string.thread_action_card_frozen)
                     state.status == RaftActionCardStatus.ReconfirmRequired -> stringResource(Res.string.thread_action_card_status_reconfirm)
-                    viewOnly -> stringResource(Res.string.thread_action_card_view_only)
+                    viewOnly && (slim == null || state.blockedReason != null) -> stringResource(Res.string.thread_action_card_view_only)
                     else -> null
                 },
             statusTone =

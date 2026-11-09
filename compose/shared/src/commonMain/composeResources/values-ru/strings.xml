@@ -4095,4 +4095,20 @@
     <string name="artifacts_dashboard_count_filtered_many">%1$d из %2$d Artifact</string>
     <string name="artifacts_dashboard_new_comments_one">%1$d новый комментарий</string>
     <string name="artifacts_dashboard_new_comments_many">%1$d новых комментариев</string>
+    <string name="action_card_question_other">Другое</string>
+    <string name="action_card_question_days_left_one">Остался %1$d день</string>
+    <string name="action_card_question_days_left_other">Осталось дней: %1$d</string>
+    <string name="action_card_question_hours_left_one">Остался %1$d час</string>
+    <string name="action_card_question_hours_left_other">Осталось часов: %1$d</string>
+    <string name="action_card_question_under_an_hour">Осталось меньше часа</string>
+    <string name="action_card_question_asking_you">%1$s спрашивает вас</string>
+    <string name="action_card_question_waiting_for">Ждём ответа: %1$s</string>
+    <string name="action_card_question_waiting_for_your_answer">%1$s ждёт вашего ответа</string>
+    <string name="action_card_question_waiting_for_answer">Ждём ответа: %1$s</string>
+    <string name="action_card_question_answered_by">Ответ (%1$s): %2$s</string>
+    <string name="action_card_question_answer_line">%1$s: %2$s</string>
+    <string name="action_card_question_answered">Отвечено</string>
+    <string name="action_card_question_someone">Кто-то</string>
+    <string name="action_card_question_asker_has_questions_one">%1$s: %2$d вопрос</string>
+    <string name="action_card_question_asker_has_questions_other">%1$s: вопросов — %2$d</string>
 </resources>

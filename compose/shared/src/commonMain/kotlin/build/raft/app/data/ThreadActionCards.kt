@@ -122,6 +122,22 @@ internal data class ThreadActionCard(
      * web person card), whose expired line is "No owner answered within 7 days".
      */
     val requesterUserId: String? = null,
+    /**
+     * `question:ask`: the person it asks (wire `action.addressee`, `{kind:"user", userId, handle}`,
+     * set by the server at prepare). Null with [questionAsksAnyone] false: the server sent no
+     * addressee (an older card), so the App treats every viewer as asked and lets the server decide.
+     */
+    val questionAddresseeUserId: String? = null,
+    /** The asked person's handle as the server stored it: a name of last resort, never preferred to the member's display name. */
+    val questionAddresseeHandle: String? = null,
+    /** `question:ask` asked of anyone in the channel (wire `action.addressee.kind == "anyone"`). */
+    val questionAsksAnyone: Boolean = false,
+    /**
+     * `question:ask`: each question's kind (`single`, `multiple`, `text`) and option count (wire
+     * `action.questions`). An answered card's spec keeps no form, so this is all that says it asked one
+     * short single choice ([questionCardLayout]).
+     */
+    val questions: List<ThreadActionCardQuestion> = emptyList(),
 ) {
     /**
      * The card described as data ([parseActionCardSpec]), or null: no `presentation.card`, or one
@@ -195,6 +211,37 @@ internal val ActionCardExpiredErrorCodes: Set<String> = setOf("ACTION_CARD_EXPIR
 /** Whether a refusal says the card expired ([ActionCardExpiredErrorCodes]). */
 internal fun ScreenError.isActionCardExpiredRefusal(): Boolean =
     serverCode?.trim()?.uppercase()?.let { it in ActionCardExpiredErrorCodes } == true
+
+/**
+ * One question of a `question:ask` card as the layout needs it: its kind, how many options it
+ * offers (Other not counted) and the code points of its longest option label.
+ */
+@Serializable
+internal data class ThreadActionCardQuestion(
+    val kind: String,
+    val options: Int = 0,
+    val longestOption: Int = 0,
+)
+
+/** Wire `action.addressee` of a `question:ask` card: (userId, handle, anyone). */
+private fun JsonObject.questionAddressee(): Triple<String?, String?, Boolean> {
+    val addressee = this["addressee"] as? JsonObject ?: return Triple(null, null, false)
+    return when (addressee.actionCardStringOrNull("kind")) {
+        "user" -> Triple(addressee.actionCardStringOrNull("userId"), addressee.actionCardStringOrNull("handle"), false)
+        "anyone" -> Triple(null, null, true)
+        else -> Triple(null, null, false)
+    }
+}
+
+/** Wire `action.questions` of a `question:ask` card, cut to what [ThreadActionCardQuestion] keeps. */
+private fun JsonObject.questionShapes(): List<ThreadActionCardQuestion> =
+    (this["questions"] as? JsonArray).orEmpty().mapNotNull { element ->
+        val question = element as? JsonObject ?: return@mapNotNull null
+        val kind = question.actionCardStringOrNull("kind") ?: return@mapNotNull null
+        val options = (question["options"] as? JsonArray).orEmpty()
+        val longest = options.maxOfOrNull { option -> (option as? JsonObject)?.actionCardStringOrNull("label")?.let(::codePointLength) ?: 0 } ?: 0
+        ThreadActionCardQuestion(kind, options.size, longest)
+    }
 
 /** Wire `installText`: the three fields an app adds to agent prompts. Raw publisher text. */
 @Serializable
@@ -364,6 +411,10 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         // server, a card stored expired that keeps it there: web useExpiredCardLine).
         expiresAt = meta.expiresAt?.takeIf { it.isNotBlank() } ?: actionObject.actionCardStringOrNull("expiresAt"),
         requesterUserId = meta.requesterUserId?.takeIf { it.isNotBlank() },
+        questionAddresseeUserId = actionObject.questionAddressee().first,
+        questionAddresseeHandle = actionObject.questionAddressee().second,
+        questionAsksAnyone = actionObject.questionAddressee().third,
+        questions = actionObject.questionShapes(),
     )
 }
 
@@ -447,6 +498,12 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("presentationCard", presentationCardJson)
         putString("expiresAt", expiresAt)
         putString("requesterUserId", requesterUserId)
+        putString("questionAddresseeUserId", questionAddresseeUserId)
+        putString("questionAddresseeHandle", questionAddresseeHandle)
+        if (questionAsksAnyone) putBoolean("questionAsksAnyone", true)
+        if (questions.isNotEmpty()) {
+            put("${ActionCardMetadataPrefix}questions", threadActionCardJson.encodeToString(ListSerializer(ThreadActionCardQuestion.serializer()), questions))
+        }
     }
 
 /** True when the projected message metadata carries an action card (any type). */
@@ -508,6 +565,13 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         presentationCardJson = metadata["${ActionCardMetadataPrefix}presentationCard"]?.takeIf { it.isNotBlank() },
         expiresAt = metadata["${ActionCardMetadataPrefix}expiresAt"]?.takeIf { it.isNotBlank() },
         requesterUserId = metadata["${ActionCardMetadataPrefix}requesterUserId"]?.takeIf { it.isNotBlank() },
+        questionAddresseeUserId = metadata["${ActionCardMetadataPrefix}questionAddresseeUserId"]?.takeIf { it.isNotBlank() },
+        questionAddresseeHandle = metadata["${ActionCardMetadataPrefix}questionAddresseeHandle"]?.takeIf { it.isNotBlank() },
+        questionAsksAnyone = metadata["${ActionCardMetadataPrefix}questionAsksAnyone"]?.equals("true", ignoreCase = true) == true,
+        questions =
+            metadata["${ActionCardMetadataPrefix}questions"]?.let { raw ->
+                runCatching { threadActionCardJson.decodeFromString(ListSerializer(ThreadActionCardQuestion.serializer()), raw) }.getOrNull()
+            }.orEmpty(),
     )
 }
 
@@ -721,3 +785,6 @@ private fun String.isSensitiveActionCardField(): Boolean {
 
 private fun firstNonBlank(vararg values: String?): String? =
     values.firstOrNull { !it.isNullOrBlank() }?.trim()
+
+/** Characters as a person counts them: code points, a surrogate pair being one. */
+internal fun codePointLength(text: String): Int = text.length - text.count { it.isLowSurrogate() }

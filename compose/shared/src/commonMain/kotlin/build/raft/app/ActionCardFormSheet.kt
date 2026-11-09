@@ -483,6 +483,8 @@ private fun ActionCardFormField(
  * On a question card answered inline ([ActionCardQuestionInlineForm]): [number] goes before the
  * question's text when the card asks several ("2. …", web `ChoiceFieldControl` `number`), and
  * [onPicked] hears a single option tapped (not Other…), which moves the form on (spec §5.10).
+ * [showLabel] false draws no label (nor its asterisk): a slim card whose title is its one question.
+ * Other reads the app's "Other" when the server sent its known key ([questionOtherLabel]).
  */
 @Composable
 internal fun ActionCardChoiceField(
@@ -496,8 +498,10 @@ internal fun ActionCardChoiceField(
     number: Int? = null,
     onPicked: (() -> Unit)? = null,
     showPending: Boolean = false,
+    showLabel: Boolean = true,
 ) {
     val other = field.other
+    val otherLabel = other?.let { questionOtherLabel(it.label, locale) }
     val otherChosen = other != null && value.other != null
     // What a deselected Other had: choosing it again brings the text back.
     var otherDraft by remember { mutableStateOf(value.other.orEmpty()) }
@@ -507,12 +511,12 @@ internal fun ActionCardChoiceField(
     val pending = if (field.required == true && enabled && showPending && error == null) actionCardChoicePending(value) else null
     val label = field.label.render(locale)
     RaftField(
-        label = if (number != null) "$number. $label" else label,
+        label = if (!showLabel) null else if (number != null) "$number. $label" else label,
         description = field.description?.render(locale),
         error = error,
         enabled = enabled,
-        required = field.required == true,
-        optional = field.required != true,
+        required = showLabel && field.required == true,
+        optional = showLabel && field.required != true,
     ) {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (field.multiple) {
@@ -531,7 +535,7 @@ internal fun ActionCardChoiceField(
                 }
                 if (other != null) {
                     RaftCheckboxRow(
-                        label = other.label.render(locale),
+                        label = otherLabel.orEmpty(),
                         checked = otherChosen,
                         onCheckedChange = { checked ->
                             if (checked) focusOther = true
@@ -557,7 +561,7 @@ internal fun ActionCardChoiceField(
                     }
                     if (other != null) {
                         RaftRadioRow(
-                            label = other.label.render(locale),
+                            label = otherLabel.orEmpty(),
                             selected = otherChosen,
                             onClick = {
                                 if (!otherChosen) {
@@ -603,7 +607,7 @@ internal fun ActionCardChoiceField(
  * points, Done = the commit ([onEnter]) unless an IME composition is open ([actionCardOtherEnterConfirms]).
  */
 @Composable
-private fun ActionCardChoiceOtherInput(
+internal fun ActionCardChoiceOtherInput(
     text: String,
     onTextChange: (String) -> Unit,
     maxLength: Int,

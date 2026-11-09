@@ -4,7 +4,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import build.raft.app.data.ActionCardExecuteOutcome
@@ -13,6 +15,9 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.ExecuteActionFormBody
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.ThreadActionCardQuestion
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.raftEpochDayForDate
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
@@ -27,9 +32,11 @@ import org.robolectric.annotation.Config
 
 /**
  * A question card the server placed on the card (`placement: "inline"`, question-card spec §5.9)
- * answered in the thread (web QuestionInlineForm): its options are in the card, a tap on a single
- * choice says "Submitted · Undo" for 1.5 s (§5.10) and sends nothing; Undo keeps the choice and
- * sends nothing; another tap is sent once, with the form, when the wait is over.
+ * answered in the thread. One short single choice is the redesign's C, a row of buttons: a tap
+ * says "Submitted · Undo" for 1.5 s (§5.10) and sends nothing; Undo sends nothing; another tap is
+ * sent once, with the form, when the wait is over. A viewer who isn't asked sees the buttons
+ * disabled and who answers. Every other question card is B, a slim card without icon or
+ * "Answer Question" title: the question is the title, "For" is the line under it.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -115,7 +122,8 @@ class ThreadActionCardQuestionInlineUiTest {
         onNodeWithText("Undo").performClick()
         advance(100)
         onNodeWithText("Undo").assertDoesNotExist()
-        onNodeWithText("Postgres").assertIsSelected()
+        onNodeWithText("Postgres").assertIsEnabled()
+        onNodeWithText("SQLite").assertIsEnabled()
         advance(UNDO_MS * 3)
         assertEquals(emptyList(), sent, "an undone answer is never sent")
 
@@ -130,5 +138,164 @@ class ThreadActionCardQuestionInlineUiTest {
         advance(UNDO_MS * 3)
         assertEquals(1, sent.size, "sent once")
         assertEquals(emptyList(), pressed, "no button went to the sheet")
+    }
+
+    // 2026-11-09 10:03 UTC; the cards expire 7 days later.
+    private val nowMillis = 1_794_218_580_000L
+    private val expiresAt = "2026-11-16T10:03:00.000Z"
+    private val names = ThreadActionCardNameLookup { kind, id -> if (kind == ThreadActionCardEntityKind.Human && id == "u-maya") "Maya" else null }
+
+    private fun ComposeUiTest.showCard(card: ThreadActionCard, viewer: String, store: ThreadActionCardSpecStore? = null, sender: String = "Fixer") {
+        val spec = assertNotNull(card.actionCardSpecToRender(specEnabled = true, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
+        val timeContext = RaftTimeContext(localOffsetMinutes = 0, todayEpochDay = raftEpochDayForDate(2026, 11, 9), nowEpochMillis = nowMillis)
+        setContent {
+            RaftTheme(appearance = RaftAppearance.Light) {
+                CompositionLocalProvider(
+                    LocalThreadActionCardSpecHost provides
+                        ThreadActionCardSpecHost(
+                            state = store?.state ?: kotlinx.coroutines.flow.MutableStateFlow(ThreadActionCardSpecState()),
+                            onIntent = store?.let { it::dispatch } ?: {},
+                            viewerUserId = viewer,
+                        ),
+                    LocalThreadActionCardNames provides names,
+                    LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext),
+                ) {
+                    ThreadActionCardSpecView(
+                        messageId = "m-q",
+                        card = card,
+                        spec = spec,
+                        commitEnabled = true,
+                        typedPending = false,
+                        executedTimeLabel = null,
+                        askerName = sender,
+                        onAction = {},
+                    )
+                }
+            }
+        }
+    }
+
+    private fun mayaCard(json: String = ActionCardSpecFixtures.questionCardJson(), state: String = "prepared", executedBy: String? = null) =
+        ThreadActionCard(
+            type = "question:ask",
+            state = state,
+            confirmationVersion = 3,
+            presentationCardJson = json,
+            expiresAt = expiresAt,
+            questionAddresseeUserId = "u-maya",
+            questionAddresseeHandle = "maya",
+            questions = listOf(ThreadActionCardQuestion("single", 3)),
+            executedByUserName = executedBy,
+        )
+
+    @Test
+    fun theAskedPersonTapsAButtonAndItIsSentAfterTheUndoWindow() = runRobolectricComposeUiTest {
+        val sent = mutableListOf<ExecuteActionFormBody?>()
+        val store =
+            ThreadActionCardSpecStore(
+                scope = CoroutineScope(Dispatchers.Unconfined),
+                execute = { _, _, form ->
+                    sent += form
+                    DataResult.Content(ActionCardExecuteOutcome.Executed(null))
+                },
+                applyCard = { _, _ -> },
+            )
+        mainClock.autoAdvance = false
+        showCard(mayaCard(), viewer = "u-maya", store = store)
+        advance(100)
+
+        // C: the question, a button per option and Other (no "…"), the hint; no card title or "For".
+        onNodeWithText("How should I go about them?").assertExists()
+        onNodeWithText("Answer Question").assertDoesNotExist()
+        onNodeWithText("For").assertDoesNotExist()
+        onNodeWithText("Other").assertIsEnabled()
+        onNodeWithText("Other…").assertDoesNotExist()
+        onNodeWithText("Fixer is waiting for your answer · 7 days left").assertExists()
+
+        onNodeWithText("One at a time, ask me each").assertIsEnabled().performClick()
+        advance(PICK_MS + 50)
+        onNodeWithText("Undo").assertExists()
+        assertEquals(emptyList(), sent, "nothing is sent while Undo shows")
+        advance(UNDO_MS + 100)
+        assertEquals(listOf<ExecuteActionFormBody?>(ExecuteActionFormBody("answers", mapOf("how" to ActionCardFormValue.Choice(listOf("o1"))))), sent)
+    }
+
+    @Test
+    fun theAskedPersonTapsOtherAndWritesTheirOwnAnswer() = runRobolectricComposeUiTest {
+        val store =
+            ThreadActionCardSpecStore(
+                scope = CoroutineScope(Dispatchers.Unconfined),
+                execute = { _, _, _ -> DataResult.Content(ActionCardExecuteOutcome.Executed(null)) },
+                applyCard = { _, _ -> },
+            )
+        showCard(mayaCard(), viewer = "u-maya", store = store)
+        onNodeWithText("Answer").assertDoesNotExist()
+        onNodeWithText("Other").performClick()
+        waitForIdle()
+        // The one-line input for their own answer, and its own button to send it.
+        onNode(hasSetTextAction()).assertExists()
+        onNodeWithText("Answer").assertIsEnabled()
+    }
+
+    @Test
+    fun anyoneElseSeesTheButtonsDisabledAndWhoIsAsked() = runRobolectricComposeUiTest {
+        showCard(mayaCard(), viewer = "u-ada")
+        onNodeWithText("Fix all 4 on a branch").assertIsNotEnabled()
+        onNodeWithText("Just list them for me").assertIsNotEnabled()
+        onNodeWithText("Other").assertIsNotEnabled()
+        onNodeWithText("Waiting for Maya to answer").assertExists()
+        onNodeWithText("Fixer is waiting for your answer", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun anAnsweredButtonRowIsOneLine() = runRobolectricComposeUiTest {
+        showCard(mayaCard(ActionCardSpecFixtures.questionCardAnsweredJson(), state = "executed", executedBy = "Maya"), viewer = "u-ada")
+        onNodeWithText("How should I go about them?").assertExists()
+        onNodeWithText("Maya answered Fix all 4 on a branch").assertExists()
+        onNodeWithText("Other").assertDoesNotExist()
+    }
+
+    @Test
+    fun theSlimCardHasNoHeaderTitleTheQuestionIsTheTitle() = runRobolectricComposeUiTest {
+        // Five options: B, the options in the card.
+        val json = ActionCardSpecFixtures.questionCardJson(options = listOf("Fix all 4 on a branch", "One at a time, ask me each", "Just list them for me", "Skip them", "Ask Ada"))
+        showCard(mayaCard(json), viewer = "u-maya")
+        onNodeWithText("Answer Question").assertDoesNotExist()
+        onNodeWithText("For").assertDoesNotExist()
+        onNodeWithText("How should I go about them?").assertExists()
+        onNodeWithText("Fixer is asking you · 7 days left").assertExists()
+        onNodeWithText("Skip them").assertIsEnabled()
+        onNodeWithText("Other").assertExists()
+        // One question: no required asterisk, no label repeating the title.
+        onNodeWithText("How should I go about them? *").assertDoesNotExist()
+        onNodeWithText("Choose an option first.").assertDoesNotExist()
+    }
+
+    @Test
+    fun aSlimCardWithSeveralQuestionsIsTitledByTheAskerAndTheCount() = runRobolectricComposeUiTest {
+        val json = kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), ActionCardSpecFixtures.rawCard("question_card"))
+        val card = mayaCard(json).copy(questions = listOf(ThreadActionCardQuestion("single", 3), ThreadActionCardQuestion("multiple", 3), ThreadActionCardQuestion("text")))
+        showCard(card, viewer = "u-maya")
+        onNodeWithText("Fixer has 3 questions").assertExists()
+        onNodeWithText("Answer Questions").assertExists() // the sheet's button, not the title
+        onNodeWithText("For").assertDoesNotExist()
+        onNodeWithText("Fixer is asking you · 7 days left").assertExists()
+    }
+
+    @Test
+    fun theSlimCardForSomeoneElseSaysWhoItWaitsFor() = runRobolectricComposeUiTest {
+        showCard(mayaCard(ActionCardSpecFixtures.questionCardJson(inline = false)), viewer = "u-ada")
+        onNodeWithText("Waiting for Maya").assertExists()
+        onNodeWithText("Answer Question").assertDoesNotExist()
+        onNodeWithText("View only").assertDoesNotExist()
+    }
+
+    @Test
+    fun anAnsweredSlimCardIsOneLineWithAnswered() = runRobolectricComposeUiTest {
+        val card = mayaCard(ActionCardSpecFixtures.questionCardAnsweredJson(), state = "executed", executedBy = "Maya").copy(questions = listOf(ThreadActionCardQuestion("single", 6)))
+        showCard(card, viewer = "u-maya")
+        onNodeWithText("Maya: Fix all 4 on a branch").assertExists()
+        onNodeWithText("Answered").assertExists()
+        onNodeWithText("Answer Question").assertDoesNotExist()
     }
 }
