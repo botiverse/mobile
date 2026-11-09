@@ -101,6 +101,7 @@ import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
 import build.raft.app.network.sync.PartitionDenialReason
+import kotlin.concurrent.Volatile
 import kotlin.random.Random
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
@@ -341,9 +342,15 @@ internal class RaftSharedStoreRegistryState<T : Any, A>(
     private val lock = SynchronizedObject()
     private val ownerToken = Any()
     private var boundFactory: BoundFactory<A, T>? = null
+
+    /**
+     * Written only under [lock]; read without it by [currentOrNull], so a UI thread asking whether
+     * the store exists never waits behind a creation running on another thread (#113).
+     */
+    @Volatile
     private var instance: T? = null
 
-    fun currentOrNull(): T? = synchronized(lock) { instance }
+    fun currentOrNull(): T? = instance
 
     fun bindFactoryBeforeFirstGet(factory: (A) -> T): RaftSharedStoreFactoryBindingHandle =
         synchronized(lock) {
@@ -368,10 +375,22 @@ internal class RaftSharedStoreRegistryState<T : Any, A>(
                 updateExisting(current, arguments)
                 return@synchronized current
             }
-            val created = (boundFactory?.factory ?: defaultFactory)(arguments)
-            instance = created
-            created
+            create(arguments)
         }
+
+    /**
+     * The instance, created here when there is none, without [updateExisting]: for a creator off
+     * the UI thread (the database launch gate), which leaves the per-caller update to its UI
+     * thread's own [get] (#113).
+     */
+    fun getOrCreateWithoutUpdate(arguments: A): T =
+        synchronized(lock) { instance ?: create(arguments) }
+
+    private fun create(arguments: A): T {
+        val created = (boundFactory?.factory ?: defaultFactory)(arguments)
+        instance = created
+        return created
+    }
 
     /** Tests that build the provider (a page rendered whole) drop it again, so later tests start without one. */
     fun clearForTests() {
@@ -397,6 +416,8 @@ internal class RaftSharedStoreRegistryAccess<T : Any, A>(
         state.unbindFactoryBeforeFirstGet(handle)
 
     fun get(arguments: A): T = state.get(arguments)
+
+    fun getOrCreateWithoutUpdate(arguments: A): T = state.getOrCreateWithoutUpdate(arguments)
 
     fun clearForTests() = state.clearForTests()
 }
@@ -4886,10 +4907,7 @@ internal object RaftSharedStoreRegistry {
      * The process-wide store provider for any host. The first caller's [host] backs the provider's
      * native calls; Kuikly pages pass their bridge through `get(bridge: BridgeModule)`.
      */
-    fun get(host: HostCapabilities): RaftSharedStoreProvider {
-        val eventBus = RaftEventBuses.appScope()
-        return get(eventBus, "shared-store-provider", host)
-    }
+    fun get(host: HostCapabilities): RaftSharedStoreProvider = access.get(processRequest(host))
 
     fun get(eventBus: RaftEventBus, source: String, host: HostCapabilities): RaftSharedStoreProvider =
         access.get(
@@ -4898,6 +4916,24 @@ internal object RaftSharedStoreRegistry {
                 source = source,
                 host = host,
             ),
+        )
+
+    /**
+     * [get]'s first creation for [host], for the database launch gate's off-main build (#113): the
+     * same request, but an instance another caller already created is returned without
+     * `updateEventBus`, which stays on the UI thread (the gate's [get] once the build is back).
+     */
+    fun getOrCreateWithoutUpdate(host: HostCapabilities): RaftSharedStoreProvider =
+        access.getOrCreateWithoutUpdate(processRequest(host))
+
+    // Also reached from the launch gate's off-main build (getOrCreateWithoutUpdate on
+    // Dispatchers.Default): RaftEventBuses.appScope() is a default (SYNCHRONIZED) `by lazy`, so a
+    // concurrent first call from the UI thread still yields one bus (#4485 review, #proj-mobile:#113).
+    private fun processRequest(host: HostCapabilities): RaftSharedStoreProviderRequest =
+        RaftSharedStoreProviderRequest(
+            eventBus = RaftEventBuses.appScope(),
+            source = "shared-store-provider",
+            host = host,
         )
 }
 

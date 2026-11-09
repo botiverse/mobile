@@ -1,13 +1,16 @@
 package build.raft.app.data
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -141,5 +144,54 @@ class RaftSharedStoreRegistryHostBindingTest {
             updateExisting = { _, _ -> },
         )
 
+    @Test
+    fun offMainCreationNeverRunsTheUpdateAndAnExistingInstanceIsReturnedAsIs() {
+        var creates = 0
+        val updates = mutableListOf<String>()
+        val access =
+            RaftSharedStoreRegistryAccess<RegistrySentinel, String>(
+                defaultFactory = { RegistrySentinel("default-${++creates}") },
+                updateExisting = { _, argument -> updates += argument },
+            )
+
+        val built = access.getOrCreateWithoutUpdate("gate-build")
+        val again = access.getOrCreateWithoutUpdate("second-window-build")
+        val adopted = access.get("gate-adopt")
+
+        assertEquals(1, creates)
+        assertSame(built, again)
+        assertSame(built, adopted)
+        assertEquals(listOf("gate-adopt"), updates, "only the UI-thread get updates the provider")
+    }
+
+    @Test
+    fun currentOrNullDoesNotWaitForACreationInProgress() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val state =
+            RaftSharedStoreRegistryState<RegistrySentinel, Int>(
+                defaultFactory = {
+                    entered.complete(Unit)
+                    runBlocking { release.await() }
+                    RegistrySentinel("slow")
+                },
+                updateExisting = { _, _ -> },
+            )
+
+        val creation = async(Dispatchers.Default) { state.getOrCreateWithoutUpdate(1) }
+        entered.await()
+        // A UI thread's "is the store built?" (BasePager's layers, the push bridge) answers at once.
+        val read = async(Dispatchers.Default) { Answer(state.currentOrNull()) }
+        val answer = withTimeoutOrNull(5_000) { read.await() }
+        release.complete(Unit)
+        assertNotNull(answer, "currentOrNull waited for the creation")
+        assertNull(answer.value)
+
+        val created = creation.await()
+        assertSame(created, state.currentOrNull())
+    }
+
     private class RegistrySentinel(val label: String)
+
+    private class Answer(val value: RegistrySentinel?)
 }
