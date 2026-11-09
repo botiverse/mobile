@@ -798,6 +798,9 @@ internal open class RaftCmpActivity :
     // Instance-owned: onNewIntent may replace the Intent before this instance is destroyed.
     private var loginTransitionToken: String? = null
     private var homeColdStartSplashGate: HomeColdStartSplashGate? = null
+    /** The canvas last painted behind the page, and the one last given to the recents task. */
+    private var hostCanvasArgb: Int? = null
+    private var recentsTaskColorArgb: Int? = null
     private var homeColdStartSplashTimeoutLogged = false
     private var homeColdStartUsesNativeHold = false
     private var homeColdStartHoldView: View? = null
@@ -1318,6 +1321,11 @@ internal open class RaftCmpActivity :
     private fun applyHostCanvasColor(argb: Int) {
         window?.setBackgroundDrawable(ColorDrawable(argb))
         findViewById<View?>(R.id.raft_root)?.setBackgroundColor(argb)
+        hostCanvasArgb = argb
+        // The recents card when the system has no snapshot: the canvas, not the theme's white.
+        if (recentsTaskColorArgb != argb && RaftRecentsTaskColor.apply(this, argb)) {
+            recentsTaskColorArgb = argb
+        }
     }
 
     /**
@@ -1554,6 +1562,7 @@ internal open class RaftCmpActivity :
     }
 
     override fun onStop() {
+        RaftRecentsTaskColor.recordStop(this, pageName, hostCanvasArgb, recentsTaskColorArgb)
         screenshotFeedbackListeningGate.stop()
         screenCaptureObserver?.stop()
         hideScreenshotFeedbackAction()

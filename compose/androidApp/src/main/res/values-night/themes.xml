@@ -11,5 +11,8 @@
              RaftDialogWindowPolicy and the page's onSystemBarsResolved still refine them. -->
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
+        <!-- The mode's canvas (#FFFAEF / #1B1B19), not the platform's near-white or grey: the
+             task description takes it as the recents card's colour when there is no snapshot. -->
+        <item name="android:colorBackground">@color/raft_window_background</item>
     </style>
 </resources>
