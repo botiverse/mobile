@@ -155,7 +155,8 @@ fun RaftField(
 /**
  * raft-ui `FieldLabel` on its own (for custom field layouts). See [RaftField]. The
  * required asterisk and the "(optional)" suffix ([RaftStrings.optional], from
- * [LocalRaftStrings]) follow the text after a space (`ml-1`).
+ * [LocalRaftStrings]) follow the text after a space (`ml-1`); a marker that opens with a
+ * full-width bracket, such as （可选）, follows it straight away ([raftOpensFullWidth]).
  * It takes the full line height of its style (raft-ui 0.8.0 dropped `leading-none`), so
  * a control beside it can centre on that line ([RaftFieldItem]). [maxLines] cuts a long
  * label with an ellipsis (a label beside a [RaftField] `labelTrailing` slot takes one line).
@@ -180,11 +181,22 @@ fun RaftFieldLabel(
             if (required) {
                 withStyle(SpanStyle(color = markInk)) { append(" *") }
             } else if (optional) {
-                withStyle(SpanStyle(color = markInk, fontWeight = FontWeight.Normal)) { append(" " + optionalText) }
+                val gap = if (raftOpensFullWidth(optionalText)) "" else " "
+                withStyle(SpanStyle(color = markInk, fontWeight = FontWeight.Normal)) { append(gap + optionalText) }
             }
         }
     RaftText(annotated, modifier, style = raftFieldLabelStyle(size), color = ink, maxLines = maxLines, overflow = if (maxLines == Int.MAX_VALUE) TextOverflow.Clip else TextOverflow.Ellipsis)
 }
+
+/**
+ * Whether [marker] opens with a full-width bracket (（【「『〔〖〈《), as the Chinese and Japanese
+ * "optional" markers do (（可选）, （選填）, （任意）). Such a bracket is a full em wide with its
+ * space built in, so the marker follows the label with no space before it (raft-ui 0.71 FieldLabel
+ * `opensFullWidth`); a Latin "(optional)" keeps its space.
+ */
+fun raftOpensFullWidth(marker: String): Boolean = marker.isNotEmpty() && marker[0] in RaftFullWidthOpening
+
+private const val RaftFullWidthOpening = "\uFF08\u3010\u300C\u300E\u3014\u3016\u3008\u300A"
 
 /**
  * raft-ui 0.8.0 FieldItem: a checkbox, radio or switch beside its [RaftFieldLabel] (and an
