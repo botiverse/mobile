@@ -13,8 +13,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.currentCompositionLocalContext
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -752,10 +752,15 @@ internal fun ThreadInPlaceSelectableBody(
     // recomposes in that frame throws: the list's own composition updates the detached node, and
     // foundation's SelectableTextAnnotatedStringNode.update then reads a CompositionLocal on re-attach,
     // before the node counts as attached (Compose 1.12.1, 1.13.0-rc01). Plain text reads none. A selection
-    // keeps its container until the effect below has cleared it, since clearing goes through the container.
-    // The body itself is movable so that it keeps its state across the switch.
+    // keeps its selection registrar until the effect below has cleared it, since clearing goes through it.
+    //
+    // The switch never moves the body: the container stays in the tree and an inactive page gives the
+    // body the locals from outside it (no selection registrar, so its text is plain). Moving the body
+    // between the container and its parent (movable content) in the frame Navigation 3 moves the page
+    // left the body's layout node in the list's measure pass without an owner: "LayoutNode should be
+    // attached to an owner" (Hands c561c66a, b40c0cf8: a selection dropped as a reply thread opened, and
+    // a channel page settling after its push).
     val selectable = pageActive || controller.hasSelection
-    val movableBody = remember { movableContentOf<@Composable () -> Unit> { body -> body() } }
     CompositionLocalProvider(
         LocalTextToolbar provides textToolbar,
         LocalTextContextMenuToolbarProvider provides contextMenuProvider,
@@ -764,22 +769,24 @@ internal fun ThreadInPlaceSelectableBody(
     ) {
         // Ctrl/Cmd+C and the system text menu copy through the clipboard, not copySelection: clean them too.
         RaftCleanCopyClipboardScope {
-            if (selectable) {
-                // The text nodes' selection gestures read the long-press timeout from here; it only
-                // differs for a finger press the body yields to the row (nothing in a body but the
-                // selection waits on a long press: the row's detector lives outside).
-                CompositionLocalProvider(LocalViewConfiguration provides selectionViewConfiguration) {
-                    SelectionContainer(
-                        controller.selectionState,
-                        Modifier
-                            .onGloballyPositioned(controller::onBodyPositioned)
-                            .threadInPlaceMouseSelectionEnd(controller),
-                    ) {
-                        movableBody(content)
-                    }
+            val plainBodyLocals = currentCompositionLocalContext
+            // The text nodes' selection gestures read the long-press timeout from here; it only
+            // differs for a finger press the body yields to the row (nothing in a body but the
+            // selection waits on a long press: the row's detector lives outside).
+            CompositionLocalProvider(LocalViewConfiguration provides selectionViewConfiguration) {
+                SelectionContainer(
+                    controller.selectionState,
+                    Modifier
+                        .onGloballyPositioned(controller::onBodyPositioned)
+                        .threadInPlaceMouseSelectionEnd(controller),
+                ) {
+                    val selectableBodyLocals = currentCompositionLocalContext
+                    // One call site in both states, so the body keeps its nodes and state.
+                    CompositionLocalProvider(
+                        context = if (selectable) selectableBodyLocals else plainBodyLocals,
+                        content = content,
+                    )
                 }
-            } else {
-                movableBody(content)
             }
         }
     }
