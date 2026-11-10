@@ -377,13 +377,13 @@ private fun readLinkCardReadItem(raw: JsonElement): LinkCardReadItem? {
 /**
  * `app` of an item (strict `{ id, name, icon }` plus an optional `reviewed`, `LinkCardReadApp`).
  * `reviewed` never drops the card (the web's strict `app` once dropped every unreviewed card, slock
- * #13956): only the JSON boolean `false` marks the App unreviewed (RFC 076 section 17); any other
- * value, or none, reads as reviewed.
+ * #13956). Raft sends it only as `false` (RFC 076 section 17); fail-safe, any value present reads as
+ * unreviewed (`reviewed = false`: Raft's confirmation first), and only its absence as reviewed.
  */
 private fun readLinkCardReadApp(raw: JsonElement?): AppLinkApp? {
     val obj = raw as? JsonObject ?: return null
     if (obj.keys != setOf("id", "name", "icon") && obj.keys != setOf("id", "name", "icon", "reviewed")) return null
-    val reviewed = if (obj["reviewed"].cardBoolean() == false) false else null
+    val reviewed = if ("reviewed" in obj) false else null
     if (obj["id"].cardString()?.length !in 1..200) return null
     val name = obj["name"].cardString()?.takeIf { it.length <= 300 } ?: return null
     val icon =

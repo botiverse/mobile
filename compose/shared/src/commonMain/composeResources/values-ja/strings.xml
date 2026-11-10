@@ -3824,8 +3824,7 @@
     <string name="thread_link_preview_action_failed">この操作を実行できませんでした。もう一度お試しください。</string>
     <string name="thread_link_preview_refresh_failed">このカードを更新できませんでした。もう一度お試しください。</string>
     <string name="thread_link_preview_unreviewed_run_title">「%1$s」を実行しますか？</string>
-    <string name="thread_link_preview_unreviewed_run">実行</string>
-    <string name="thread_link_preview_unreviewed_run_by">%1$s が実行</string>
+    <string name="thread_link_preview_unreviewed_run_by">%1$s が実行します</string>
     <string name="thread_link_preview_unreviewed_note">%1$s はこのサーバーで作成されたアプリで、Raft の審査を受けていません。あなたの名前を受け取り、自身の権限で実行します。</string>
     <string name="thread_link_preview_connect_action">アカウントを接続</string>
     <string name="thread_action_card_scope_group_server">サーバー · 読み取り</string>

@@ -69,8 +69,8 @@ internal fun rememberThreadAppLinkCardPress(card: AppLinkResult.Card, actions: T
  * An App the read marks `app.reviewed: false` (RFC 076 section 17, `unreviewed_app.v1`: Raft has not
  * reviewed it, it acts on its own Server's confirmation) confirms EVERY execute button first, in
  * Raft's dialog naming it as not reviewed: a `confirm: "prepare"` button keeps the App's prepared
- * words; an undo-window button asks Run "label"? and, once confirmed, runs at once (the dialog is
- * the chance to stop it: no Undo window after it).
+ * words; an undo-window button asks Run "label"? and, once confirmed, starts its Undo window as
+ * any App's does (web `pressLinkCardButton`, botiverse/slock #13956).
  * Then the card is read again, again a little later while the App may not have finished. One press
  * at a time per card; a refusal is the server's own words in a toast, and a stale card or
  * confirmation (410) is read again.
@@ -106,6 +106,7 @@ internal class ThreadAppLinkCardPress(
         val requestId: String,
         val label: String,
         val unreviewed: Boolean,
+        val undoWindowMs: Long? = null,
     )
 
     /** The confirmation waiting on the person, or null. */
@@ -116,12 +117,30 @@ internal class ThreadAppLinkCardPress(
         confirming = null
     }
 
-    /** Confirm: the action runs now, with the App's prepared description if it had one. */
+    /**
+     * Confirm: a prepared action runs now; an unreviewed App's undo-window button starts its Undo
+     * window, as it would have without the dialog.
+     */
     internal fun confirm() {
         val pending = confirming ?: return
         val host = actions ?: return
         confirming = null
-        scope.launch { run(host, pending.actionId, pending.handle, pending.prepared, pending.requestId) }
+        if (pending.prepared == null) {
+            startUndoWindow(host, pending.actionId, pending.handle, pending.undoWindowMs, pending.requestId)
+        } else {
+            scope.launch { run(host, pending.actionId, pending.handle, pending.prepared, pending.requestId) }
+        }
+    }
+
+    private fun startUndoWindow(host: ThreadAppLinkCardActionHost, id: String, handle: String, windowMs: Long?, requestId: String) {
+        undoing = id
+        undoJob =
+            scope.launch {
+                delay(windowMs ?: DefaultUndoWindowMs)
+                undoing = null
+                undoJob = null
+                run(host, id, handle, null, requestId)
+            }
     }
 
     /** The button for [button], or null where it cannot be pressed (no handle, none of Raft's sending: not drawn). */
@@ -199,17 +218,10 @@ internal class ThreadAppLinkCardPress(
                 }
             }
         } else if (unreviewed) {
-            // RFC 076 section 17: an unreviewed App's undo-window button confirms first, then runs.
-            confirming = PendingConfirmation(id, handle, null, requestId, label, unreviewed = true)
+            // RFC 076 section 17: an unreviewed App's undo-window button confirms first, then counts down.
+            confirming = PendingConfirmation(id, handle, null, requestId, label, unreviewed = true, undoWindowMs = action.undoWindowMs)
         } else {
-            undoing = id
-            undoJob =
-                scope.launch {
-                    delay(action.undoWindowMs ?: DefaultUndoWindowMs)
-                    undoing = null
-                    undoJob = null
-                    run(host, id, handle, null, requestId)
-                }
+            startUndoWindow(host, id, handle, action.undoWindowMs, requestId)
         }
     }
 
@@ -248,7 +260,7 @@ internal class ThreadAppLinkCardPress(
      * Raft's confirmation: a prepared action shows the App's description in Raft's dialog; an
      * unreviewed App (Kirby's v3 design) adds "Run by {App}" with its icon under the title and, last,
      * that this Server made it and Raft has not reviewed it. Its undo-window button is asked about by
-     * its label (Run "label"?), with Raft's Run and Cancel.
+     * its label (Run "label"?), confirmed with the button's own label, or Cancel (as the web).
      */
     @Composable
     fun Confirmation() {
@@ -266,7 +278,7 @@ internal class ThreadAppLinkCardPress(
                     onClick = ::dismissConfirmation,
                     variant = RaftButtonVariant.Ghost,
                 )
-                RaftButton(text = description?.confirmLabel ?: stringResource(Res.string.thread_link_preview_unreviewed_run), onClick = ::confirm)
+                RaftButton(text = description?.confirmLabel ?: pending.label, onClick = ::confirm)
             },
             content = {
                 if (pending.unreviewed) {

@@ -80,7 +80,7 @@ class ThreadAppLinkCardPressUnreviewedTest {
     private fun ThreadAppLinkCardPress.click(element: RaftLinkCardV2Element.Button) = assertNotNull(button(element, element.action as RaftLinkCardButtonAction.Execute)).onClick()
 
     @Test
-    fun unreviewedUndoWindowButtonConfirmsFirstThenRunsWithoutAnUndoWindow() = runTest {
+    fun unreviewedUndoWindowButtonConfirmsFirstThenStartsItsUndoWindow() = runTest {
         val recorder = Recorder()
         val press = press(reviewed = false, scope = this, recorder = recorder)
         press.click(ship)
@@ -96,7 +96,27 @@ class ThreadAppLinkCardPressUnreviewedTest {
         press.confirm()
         runCurrent()
         assertNull(press.confirmation)
-        assertEquals(listOf<Pair<String, AppLinkPrepared?>>("h-ship" to null), recorder.executes, "confirmed: runs at once")
+        assertEquals("Undo", press.button(ship, ship.action as RaftLinkCardButtonAction.Execute)!!.label, "confirmed: the undo window starts")
+        advanceTimeBy(2_999)
+        runCurrent()
+        assertTrue(recorder.executes.isEmpty(), "still within the undo window")
+        advanceTimeBy(2)
+        runCurrent()
+        assertEquals(listOf<Pair<String, AppLinkPrepared?>>("h-ship" to null), recorder.executes)
+    }
+
+    @Test
+    fun unreviewedUndoAfterConfirmingSendsNothing() = runTest {
+        val recorder = Recorder()
+        val press = press(reviewed = false, scope = this, recorder = recorder)
+        press.click(ship)
+        runCurrent()
+        press.confirm()
+        runCurrent()
+        press.click(ship) // now Undo
+        advanceUntilIdle()
+        assertTrue(recorder.executes.isEmpty())
+        assertEquals("Ship", press.button(ship, ship.action as RaftLinkCardButtonAction.Execute)!!.label)
     }
 
     @Test

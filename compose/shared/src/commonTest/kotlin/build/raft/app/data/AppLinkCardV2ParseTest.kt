@@ -108,8 +108,8 @@ class AppLinkCardV2ParseTest {
 
     /**
      * `app.reviewed` (botiverse/slock #13945 `LinkCardReadApp`, `linkCardRead.api.test.ts`): `false`
-     * for an own-Server App read with `unreviewed_app.v1`, absent for an official App. Any other value
-     * keeps the card and reads as reviewed: `reviewed` never drops a card (slock #13956).
+     * for an own-Server App read with `unreviewed_app.v1`, absent for an official App. `reviewed` never
+     * drops a card (slock #13956); any value present reads as unreviewed (fail-safe), only absent as reviewed.
      */
     @Test
     fun appReviewedFalseReadsAndIsAbsentForOfficialApps() {
@@ -129,8 +129,8 @@ class AppLinkCardV2ParseTest {
         assertFalse(official.unreviewed)
         for (n in 3..6) {
             val other = (read.results[urlOf(n)] as AppLinkResult.Card).app
-            assertNull(other.reviewed, "only the boolean false is unreviewed (item $n)")
-            assertFalse(other.unreviewed)
+            assertEquals(false, other.reviewed, "any value present is unreviewed (item $n)")
+            assertTrue(other.unreviewed)
         }
     }
 

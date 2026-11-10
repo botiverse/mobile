@@ -63,7 +63,6 @@ new product concept gets a Japanese rendering.
 | Apps (the server's Apps page, rail entry) | アプリ | Web `apps.page.title`; Settings' OAuth row stays 連携アプリ |
 | Help (rail) / Help & resources | ヘルプ / ヘルプとリソース | Web `layout.leftRail.tabHelp` / `helpMenuTitle` |
 | App (as a sender: the badge after an App's identity) | アプリ | Badge after the name: アプリ / アプリ · <App>; never ボット; copied from the web ja catalog (botiverse/slock #11845) |
-| Not reviewed by Raft (an own-Server App's link-card action) / Run "label"? / Run by <App> | Raft の審査を受けていません / 「label」を実行しますか？ / <App> が実行 | RFC 076 §17 confirmation; 審査 (not レビュー, which is a code review); mobile-first, replace with the web ja catalog wording once it ships |
 | Built-in | 組み込み | |
 | Join link | 参加リンク | |
 | Billing / Plan / Usage | 請求 / プラン / 使用量 | |
