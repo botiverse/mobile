@@ -9,6 +9,7 @@ import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.objcPtr
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSError
+import platform.Foundation.NSHTTPURLResponse
 import platform.Foundation.NSTimer
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLErrorCancelled
@@ -25,6 +26,8 @@ import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationAction
 import platform.WebKit.WKNavigationActionPolicy
 import platform.WebKit.WKNavigationDelegateProtocol
+import platform.WebKit.WKNavigationResponse
+import platform.WebKit.WKNavigationResponsePolicy
 import platform.WebKit.WKScriptMessage
 import platform.WebKit.WKScriptMessageHandlerProtocol
 import platform.WebKit.WKUIDelegateProtocol
@@ -128,6 +131,8 @@ internal class RaftIosSandboxWebView(
     private var lastNavigationStateKey = ""
     private var lastSuccessfulURL = ""
     private var lastLoadFailureKey = ""
+    /** A download was cancelled by policy: its "Frame load interrupted" is no load failure. */
+    private var downloadCancelled = false
     private var stateTimer: NSTimer? = null
     private var disposed = false
     private var configured = false
@@ -415,8 +420,32 @@ internal class RaftIosSandboxWebView(
 
     // ---- delegate callbacks ----------------------------------------------------------------
 
-    internal fun decidePolicy(source: WKWebView, action: WKNavigationAction): Boolean =
-        decideNavigationPolicy(source, action.request.URL, isMainFrame = action.targetFrame?.mainFrame ?: true)
+    internal fun decidePolicy(source: WKWebView, action: WKNavigationAction): Boolean {
+        // A download link (`<a download>`, e.g. a `blob:` save): WKWebView has no download here, so a
+        // host that asked takes it ([RaftWebViewEvents.onDownloadRequested]).
+        val download = events.onDownloadRequested
+        if (download != null && action.shouldPerformDownload && raftIsSameObjCObject(source, webView)) {
+            downloadCancelled = true
+            download(action.request.URL?.absoluteString ?: "")
+            return false
+        }
+        return decideNavigationPolicy(source, action.request.URL, isMainFrame = action.targetFrame?.mainFrame ?: true)
+    }
+
+    /**
+     * A response WKWebView would not show (an attachment, a type it can't display): a host that
+     * asked takes it as a download; any other host loads as before.
+     */
+    internal fun decideResponsePolicy(source: WKWebView, response: WKNavigationResponse): Boolean {
+        val download = events.onDownloadRequested ?: return true
+        if (!raftIsSameObjCObject(source, webView)) return true
+        val disposition = (response.response as? NSHTTPURLResponse)?.valueForHTTPHeaderField("Content-Disposition")
+        val attachment = disposition?.trim()?.lowercase()?.startsWith("attachment") == true
+        if (!attachment && response.canShowMIMEType) return true
+        downloadCancelled = true
+        download(response.response.URL?.absoluteString ?: "")
+        return false
+    }
 
     /**
      * The navigation fence. Split from [decidePolicy] because Kotlin/Native imports the
@@ -475,6 +504,11 @@ internal class RaftIosSandboxWebView(
 
     internal fun didFail(source: WKWebView, error: NSError) {
         if (!raftIsSameObjCObject(source, webView) || (error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled)) return
+        // WebKitErrorFrameLoadInterruptedByPolicyChange after a download this host took.
+        if (downloadCancelled && error.domain == "WebKitErrorDomain" && error.code == 102L) {
+            downloadCancelled = false
+            return
+        }
         currentURL = source.URL?.absoluteString ?: currentURL
         currentLoading = false
         notifyNavigationState(force = false)
@@ -615,6 +649,18 @@ private class RaftIosWebViewDelegate(
         decisionHandler(
             if (allow) WKNavigationActionPolicy.WKNavigationActionPolicyAllow
             else WKNavigationActionPolicy.WKNavigationActionPolicyCancel
+        )
+    }
+
+    override fun webView(
+        webView: WKWebView,
+        decidePolicyForNavigationResponse: WKNavigationResponse,
+        decisionHandler: (WKNavigationResponsePolicy) -> Unit
+    ) {
+        val allow = owner.decideResponsePolicy(webView, decidePolicyForNavigationResponse)
+        decisionHandler(
+            if (allow) WKNavigationResponsePolicy.WKNavigationResponsePolicyAllow
+            else WKNavigationResponsePolicy.WKNavigationResponsePolicyCancel
         )
     }
 

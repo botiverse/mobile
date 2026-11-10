@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.selection.LocalTextClassifierCoroutineContext
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -32,16 +34,18 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * artin dm:#99 (iOS, New Message Menu on): a finger long press on a message body first showed the
- * in-place selection's own menu ("Select All | Copy selection | Reply") and then the Compact menu
- * opened over it. Now a finger press on the body is the row's: its long press opens only the
- * message menu and no text selection starts; a mouse still selects in place. Drives the production
+ * Owner, 1.23 release blocker: with the New Message Menu on, a finger long press on a message's text
+ * selects it in place again (1.15 "long-press a message's text to select and copy it in place"):
+ * the selection widens to the whole message and shows the Compact message menu in place of the
+ * platform's text toolbar; the row's own long-press menu stays out of it. 1.23 (#4460) had made a
+ * finger press on the body the row's, so no text could be selected. Drives the production
  * [ThreadInPlaceSelectableBody] inside a row whose long-press detector routes like the thread
- * row's ([threadMessageLongPressRoute] with [ThreadInPlaceSelectionController.ownsRowPressAt]).
+ * row's ([threadMessageLongPressRoute] with [ThreadInPlaceSelectionController.bodyContainsRowOffset]).
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+// A finger selection shows its handles' magnifier, which Robolectric cannot dismiss.
+@Config(sdk = [34], shadows = [RaftFloatingToolbarAnchorGuardUiTest.NoSurfaceMagnifier::class])
 class ThreadInPlaceFingerLongPressUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
@@ -52,10 +56,17 @@ class ThreadInPlaceFingerLongPressUiTest {
     private fun ComposeUiTest.showRow() {
         // Compose string resources read the app context through the shared SQLDelight holder.
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
-        val host = ThreadInPlaceTextSelectionHost(enabled = true, copyText = {}, fingerPressOpensMessageMenu = true)
+        val host = ThreadInPlaceTextSelectionHost(enabled = true, copyText = {})
         host.selectionMenu.publish { _ -> Box(Modifier.size(40.dp).testTag(SELECTION_MENU)) }
         setContent {
-            CompositionLocalProvider(LocalThreadInPlaceTextSelectionHost provides host) {
+            CompositionLocalProvider(
+                LocalThreadInPlaceTextSelectionHost provides host,
+                // Before a touch selection's toolbar request, Compose runs smart-selection text
+                // classification on this context (Dispatchers.IO by default): a real thread the
+                // virtual clock and waitForIdle do not wait for, so on a busy test JVM the menu
+                // check ran before the request. In place on the test's own dispatcher instead.
+                LocalTextClassifierCoroutineContext provides EmptyCoroutineContext,
+            ) {
                 val inPlace = rememberThreadInPlaceSelectionController(messageId = "m1", enabled = true)
                 controller = inPlace
                 Box(
@@ -68,7 +79,7 @@ class ThreadInPlaceFingerLongPressUiTest {
                                     val route =
                                         threadMessageLongPressRoute(
                                             inPlaceSelectionEnabled = inPlace != null,
-                                            pressOnSelectableBody = inPlace?.ownsRowPressAt(offset) == true
+                                            pressOnSelectableBody = inPlace?.bodyContainsRowOffset(offset) == true
                                         )
                                     if (route == ThreadMessageLongPressRoute.MessageMenu) messageMenuOpens++
                                 }
@@ -98,20 +109,23 @@ class ThreadInPlaceFingerLongPressUiTest {
         onAllNodes(hasTestTag(ThreadInPlaceSelectionToolbarTag), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
 
     @Test
-    fun aFingerLongPressOnTheBodyOpensOnlyTheMessageMenu() =
+    fun aFingerLongPressOnTheBodySelectsTheMessageInPlaceUnderTheMessageMenu() =
         runRobolectricComposeUiTest {
             showRow()
             onNodeWithTag(BODY_TAG).performTouchInput { longClick(Offset(width * 0.3f, centerY)) }
             waitForIdle()
-            assertEquals(1, messageMenuOpens, "the row's long press opens the message menu")
-            assertTrue(controller!!.bodyPressYieldedToRow)
-            assertFalse(controller!!.hasSelection, "no text selection starts under the message menu")
-            assertFalse(selectionMenuShown(), "no selection menu under the message menu")
-            assertFalse(mouseToolbarShown())
+            assertTrue(controller!!.hasSelection, "a finger long press selects the message's text in place")
+            assertTrue(
+                threadInPlaceSelectionCoversAll(controller!!.selectedTexts(), controller!!.selectableTexts()),
+                "a finger's selection widens to the whole message"
+            )
+            assertTrue(selectionMenuShown(), "the Compact message menu shows for the selection")
+            assertFalse(mouseToolbarShown(), "not the mouse's Quote | Copy toolbar")
+            assertEquals(0, messageMenuOpens, "the row's long-press menu leaves the body to the selection")
         }
 
     @Test
-    fun aMouseStillSelectsInPlaceAndOpensNoMessageMenu() =
+    fun aMouseSelectsInPlaceAndOpensNoMessageMenu() =
         runRobolectricComposeUiTest {
             showRow()
             onNodeWithTag(BODY_TAG).performMouseInput {
@@ -122,7 +136,6 @@ class ThreadInPlaceFingerLongPressUiTest {
                 release()
             }
             waitForIdle()
-            assertFalse(controller!!.bodyPressYieldedToRow)
             assertTrue(controller!!.hasSelection, "a mouse drag on the body still selects text")
             assertTrue(mouseToolbarShown(), "with its Quote | Copy toolbar")
             assertEquals(0, messageMenuOpens)

@@ -8,11 +8,11 @@
 
 🔧 Improved
 - Agents' question cards have a new, slimmer look matching the web: a single short question shows as option buttons right under the message, and answered, expired or withdrawn cards say what happened in one line. The "Choose an option first." hint only appears if you try to continue without answering
-- Feedback in Settings lists the feedback you've sent, with status filters: open one to see the conversation, reply, or close it. New Feedback uses the same form as the web (pick Idea or Bug), new feedback is sent under your account, and attached diagnostics are smaller
+- Feedback in Settings lists the feedback you've sent, with status filters: open one to see the conversation, reply, or close it. New Feedback uses the same form as the web (pick Idea or Bug), new feedback is sent under your account and shows in your list right away, and attached diagnostics are smaller
 - Changing a running agent's settings no longer restarts it right away: the change applies when it's next idle, and "Restart now" applies it at once
-- Artifacts open with a single bar: Back, the title, a version picker, Comments and a ⋮ menu. Artifact links from the web open in the app's viewer at the linked version, and the Artifact icon matches the one on message cards
+- Artifacts open with the web page's own toolbar and full ⋯ menu, as on the web; Download opens the Artifact in your browser for now. Artifact links from the web open in the app's viewer at the linked version, and the Artifact icon matches the one on message cards
 - Tapping the server name on Home opens the same server switcher as the web, with avatars, unread counts, and options to join the community, switch or create a server, invite humans and reorder servers. The server popover's pages wrap into rows so long names show in full
-- The line above the message box in a channel shows which agents are working, not only who is typing; tap it to see them in Working now
+- The line above the message box in a channel's own timeline shows which agents are working, not only who is typing (task conversations and threads still show only who is typing); tap it to see them in Working now
 - A Lounge gets its own row under Direct Messages in the sidebar, with unread count, pin, mute and close (rolling out gradually)
 - The app starts faster and is less likely to freeze while opening
 - iOS native navigation (Beta) now uses the app's own icons, avatars and fonts, and its switch moved to Settings › Mobile
@@ -24,10 +24,11 @@
 - Switching servers no longer does nothing with "Multiple app windows" on; the setting isn't offered on iOS for now, and servers always switch in the current window
 - Fixed a crash on iPad when a message contained a math formula with an emoji
 - With "Conversation forward gesture (Beta)" on, swiping left from the right edge after going back to Home reopens the chat
-- With "New message menu (Beta)" on, holding a message opens only the new menu, without the system text-selection menu underneath
+- With "New message menu (Beta)" on, holding a message's text selects it in place with the message menu beside it, without the system text-selection menu; drag the handles to adjust before copying
 - The first row of Activity no longer jumps back and forth after a new reply
 - Typing in Members, Settings or Artifacts search beside a conversation is no longer pulled into the message box, including when a hardware keyboard reconnects
 - App link cards, such as Stamp's approval requests, now have the Refresh button, as on the web
 - Announcement links to web-only Settings pages open in the browser instead of showing an error
 - Home, Activity or a channel's member list that failed to load after an update loads again on the next sync
+- Opening a task that has no conversation yet covers the whole screen, so the tab bar no longer shows through
 - Smaller fixes: easier-to-tap segmented controls, the Activity filter chip's × no longer clears the filter by mistake, top bar items match field height with a trackpad or mouse, and the optional marker on form labels no longer has an extra space in Chinese and Japanese

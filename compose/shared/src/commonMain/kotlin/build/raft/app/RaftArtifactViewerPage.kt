@@ -12,7 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -40,11 +39,6 @@ import build.raft.app.data.ARTIFACT_CONTENT_DOMAIN
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.artifactIdOrNull
 import build.raft.app.data.ArtifactSummaryAnswer
-import build.raft.app.data.ArtifactViewerBarIntent
-import build.raft.app.data.ArtifactViewerBarState
-import build.raft.app.data.ArtifactViewerPanel
-import build.raft.app.data.SharedArtifactViewerBarStore
-import build.raft.app.data.artifactViewerPanelOf
 import build.raft.app.data.answersFor
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftSharedStoreRegistry
@@ -313,6 +307,7 @@ private sealed interface RaftArtifactViewerBodyState {
 private fun RaftArtifactViewerNavigation.logToken(): String =
     when (this) {
         is RaftArtifactViewerNavigation.OpenMessage -> "open_message"
+        is RaftArtifactViewerNavigation.OpenArtifact -> "open_artifact"
         else -> "close"
     }
 
@@ -354,9 +349,8 @@ private fun RaftArtifactViewerScreen() {
     LaunchedEffect(Unit) { if (header != null) RaftArtifactOpenTrace.mark("header_painted", "from=card_or_cache") }
     var bodyState by remember(params.toString()) { mutableStateOf<RaftArtifactViewerBodyState>(RaftArtifactViewerBodyState.Viewing) }
     // The version the page shows, from its address (a version picked in the page's ⋯, Back to
-    // Latest): the page draws no version of its own under the embed contract, this header does.
+    // Latest): Open in Browser opens that one.
     var addressed by remember(params.toString()) { mutableStateOf<RaftArtifactViewerNavigation.Stay?>(null) }
-    var latestVersion by remember(params.toString()) { mutableStateOf<Int?>(null) }
     // Moves when the page goes from a pinned version to the latest (View latest, Back to Latest):
     // the latest may be newer than the one read on open, so it is read again.
     var latestReads by remember(params.toString()) { mutableStateOf(0) }
@@ -372,7 +366,6 @@ private fun RaftArtifactViewerScreen() {
             is ArtifactSummaryAnswer.Ok -> {
                 val fresh = RaftArtifactViewerHeader.of(answer.summary, target)
                 header = fresh
-                latestVersion = answer.summary.latestVersion.takeIf { it > 0 }
                 RaftArtifactViewerMemory.cache.remember(scope, fresh)
             }
             // A deleted Artifact opens nothing (web: its card has no viewer): the one "can't open" state.
@@ -397,80 +390,28 @@ private fun RaftArtifactViewerScreen() {
         closePage()
         when (val navigation = leaving.navigation) {
             is RaftArtifactViewerNavigation.OpenMessage -> RaftMessageLinkIngress.accept(navigation.url, "artifact_viewer", webBaseUrl)
+            // Another Artifact (a link in the page): the app shell opens it in the viewer.
+            is RaftArtifactViewerNavigation.OpenArtifact -> RaftArtifactLinkInbox.Process.submit(navigation.target, "artifact_viewer")
             else -> Unit
         }
     }
 
-    // The one bar's counts, versions and following (`GET /api/artifacts/:id/details` and `/presence`): read
-    // on open, when the latest is read again and when the comments list closes; never polled. A
-    // failed read only hides what it would show.
-    val coroutineScope = rememberCoroutineScope()
-    val barStore =
-        remember(params.toString(), scope?.serverId) {
-            scope?.let {
-                SharedArtifactViewerBarStore(
-                    repository = host.sharedStores.artifactViewerRepository,
-                    scope = coroutineScope,
-                    serverId = it.serverId,
-                    artifactId = target.canonicalId,
-                    logger = host.bridge::log,
-                )
-            }
-        }
-    val barState = barStore?.state?.collectAsState()?.value ?: ArtifactViewerBarState()
-    LaunchedEffect(barStore, latestReads) {
-        barStore?.dispatch(ArtifactViewerBarIntent.Load(if (addressed != null) addressed?.version else target.version))
-    }
-    // The page's address drives it: its list (`#panel=`) and the version it shows.
     val controller = rememberRaftWebViewController()
 
     val untitled = stringResource(Res.string.artifacts_activity_untitled)
-    val shownVersion = raftArtifactViewerShownVersion(addressed, latestVersion, header?.version)
     // The link of what is shown (web `useCopyArtifactLink`: this deployment's origin, `/v/<n>` only
-    // when pinned), copied and opened in the browser alike.
+    // when pinned), opened in the browser.
     val shownLink = ArtifactLinkTarget(target.id, if (addressed != null) addressed?.version else target.version)
     val shownUrl = remember(webBaseUrl, shownLink) { raftArtifactViewerPageUrl(webBaseUrl, shownLink) }
-    val linkCopied = stringResource(Res.string.artifacts_viewer_link_copied)
-    val details = barState.details
-    val viewing = bodyState == RaftArtifactViewerBodyState.Viewing && scope != null
+    val downloadInBrowser = stringResource(Res.string.artifacts_viewer_download_in_browser)
+    // Two bars (owner decision 2026-11-10): this one has Back, the title and a ⋮ with only what the
+    // page's own toolbar and ⋯ (under it) cannot offer; nothing shows twice.
     RaftArtifactViewerFrame(
         title = header?.title?.ifBlank { untitled } ?: untitled,
         onBack = ::closePage,
-        bar =
-            RaftArtifactViewerBarContent(
-                home = details?.summary?.home?.let { raftArtifactViewerHomeLabel(it) },
-                version = shownVersion,
-                versions = details?.versions,
-                latestVersion = details?.summary?.latestVersion?.takeIf { it > 0 } ?: latestVersion,
-                readCount = barState.readCount?.takeIf { it > 0 },
-                commentCount = details?.summary?.commentCount,
-                commentsOpen = barState.panel == ArtifactViewerPanel.Comments,
-                following = barState.following,
-                desktopMode = desktopMode.takeIf { desktopModeOffered && bodyState == RaftArtifactViewerBodyState.Viewing },
-            ),
+        desktopMode = desktopMode.takeIf { desktopModeOffered && bodyState == RaftArtifactViewerBodyState.Viewing },
         actions =
             RaftArtifactViewerBarActions(
-                onToggleComments =
-                    scope?.takeIf { viewing }?.let { viewerScope ->
-                        {
-                            val next = if (barState.panel == ArtifactViewerPanel.Comments) ArtifactViewerPanel.None else ArtifactViewerPanel.Comments
-                            controller.evaluateJavaScript(raftArtifactViewerPanelScript(viewerScope.webOrigin, next))
-                        }
-                    },
-                onPickVersion =
-                    scope?.takeIf { viewing }?.let { viewerScope ->
-                        { picked: Int ->
-                            // As a version picked in the page: its address (`/v/<n>`, the latest's own), which the bar follows.
-                            val latest = details?.summary?.latestVersion?.takeIf { it > 0 }
-                            val next = ArtifactLinkTarget(target.id, picked.takeIf { it != latest })
-                            controller.evaluateJavaScript(raftArtifactViewerNavigateScript(viewerScope.webOrigin, "", next))
-                        }
-                    },
-                onCopyLink = {
-                    host.bridge.copyToPasteboard(shownUrl)
-                    host.bridge.toast(linkCopied)
-                },
-                onToggleFollow = barStore?.let { store -> { store.dispatch(ArtifactViewerBarIntent.ToggleFollow) } },
                 onToggleDesktopMode = {
                     desktopModeChosen = !desktopModeChosen
                     desktopModePreference?.write(desktopModeChosen)
@@ -506,9 +447,14 @@ private fun RaftArtifactViewerScreen() {
                             onStay = { next ->
                                 if (raftArtifactViewerRereadsLatest(addressed, next)) latestReads += 1
                                 addressed = next
-                                barStore?.dispatch(ArtifactViewerBarIntent.VersionShown(next.version))
                             },
-                            onPanel = { panel -> barStore?.dispatch(ArtifactViewerBarIntent.PanelObserved(panel)) },
+                            onDownload = {
+                                // The WebView cannot save the page's files (they are `blob:` links): the
+                                // browser can, so the Artifact opens there, said first.
+                                host.bridge.log("artifact_viewer_download action=open_in_browser")
+                                host.bridge.toast(downloadInBrowser)
+                                host.bridge.openUrl(shownUrl, inBrowser = true)
+                            },
                             onLeave = { bodyState = RaftArtifactViewerBodyState.Left(it) },
                         )
                     }
@@ -528,7 +474,7 @@ private fun RaftArtifactViewerWebBody(
     retry: Int,
     onRetry: () -> Unit,
     onStay: (RaftArtifactViewerNavigation.Stay) -> Unit,
-    onPanel: (ArtifactViewerPanel) -> Unit,
+    onDownload: () -> Unit,
     onLeave: (RaftArtifactViewerNavigation) -> Unit,
 ) {
     val authStore = remember(host) { host.sharedStores.authStore(host.storeScope) }
@@ -574,7 +520,7 @@ private fun RaftArtifactViewerWebBody(
     var armed by remember { mutableStateOf(false) }
     var left by remember { mutableStateOf(false) }
     val currentOnStay by rememberUpdatedState(onStay)
-    val currentOnPanel by rememberUpdatedState(onPanel)
+    val currentOnDownload by rememberUpdatedState(onDownload)
     val currentOnLeave by rememberUpdatedState(onLeave)
     fun onAddress(url: String) {
         if (left) return
@@ -582,8 +528,6 @@ private fun RaftArtifactViewerWebBody(
             is RaftArtifactViewerNavigation.Stay -> {
                 armed = true
                 currentOnStay(navigation)
-                // The list the page has open (`#panel=`, written back by the page; slock #12364).
-                artifactViewerPanelOf(url)?.let(currentOnPanel)
             }
             // Off the web origin never loads here: the origin lock blocks it (onNavigationBlocked).
             RaftArtifactViewerNavigation.Ignore, is RaftArtifactViewerNavigation.SystemBrowser -> Unit
@@ -677,11 +621,18 @@ private fun RaftArtifactViewerWebBody(
                 if (state.url.isNotBlank()) onAddress(state.url)
             },
             onNavigationBlocked = { blocked ->
-                // Rule 2: off the web origin never loads here; an http(s) page opens in the browser.
-                if (raftArtifactViewerBlockedNavigationTarget(blocked, scope.webOrigin) == RaftArtifactViewerBlockedTarget.SystemBrowser) {
-                    host.bridge.openUrl(blocked, inBrowser = true)
+                // Rule 2: off the web origin never loads here; a new window the page asked for is
+                // routed as a link ([raftArtifactViewerBlockedNavigationTarget]).
+                when (val routed = raftArtifactViewerBlockedNavigationTarget(blocked, scope.webOrigin, target.id)) {
+                    is RaftArtifactViewerBlockedTarget.SystemBrowser -> host.bridge.openUrl(routed.url, inBrowser = true)
+                    RaftArtifactViewerBlockedTarget.Download -> currentOnDownload()
+                    is RaftArtifactViewerBlockedTarget.OpenMessage -> RaftMessageLinkIngress.accept(routed.url, "artifact_viewer", scope.webOrigin)
+                    is RaftArtifactViewerBlockedTarget.OpenArtifact -> RaftArtifactLinkInbox.Process.submit(routed.target, "artifact_viewer")
+                    RaftArtifactViewerBlockedTarget.Ignore -> Unit
                 }
             },
+            // A file the page saves (Android DownloadListener, an iOS attachment response): the browser can.
+            onDownloadRequested = { currentOnDownload() },
         )
         SettingsWebViewAccessTokenSyncEffect(
             snapshot = snapshot,

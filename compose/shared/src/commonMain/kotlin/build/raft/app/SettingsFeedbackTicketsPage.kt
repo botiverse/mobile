@@ -175,16 +175,12 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
         }
     val initialTicketId = remember(pager.pageData.params) { feedbackTicketIdOrNull(pager.pageData.params.optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID)) }
     LaunchedEffect(store) { store.start(initialTicketId) }
-    // Back from the submit form (or the app) reads the list again, and opens a ticket just filed.
+    // Back from the app reads the list again.
     LaunchedEffect(store, resumeTick) {
-        if (resumeTick > 0) {
-            store.refresh()
-            SettingsFeedbackFiledTicketHandoff.take()?.let { ticketId ->
-                bridge.log("settings_feedback_tickets_open_filed ticket=${ticketId.take(8)}")
-                store.openTicket(ticketId)
-            }
-        }
+        if (resumeTick > 0) store.refresh()
     }
+    // A ticket just filed from the submit form: read in and opened as it is filed.
+    LaunchedEffect(store) { store.followSettingsFeedbackFiledTickets(bridge::log) }
     val state by store.state.collectAsState()
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
     LaunchedEffect(state.notSupported) {
@@ -229,6 +225,22 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
             ),
         bottomContentPadding = raftBottomSafeAreaPadding(),
     )
+}
+
+/**
+ * Each ticket the submit form files ([SettingsFeedbackFiledTicketHandoff]): the list is read again
+ * and the ticket opens, as soon as it is filed. Not when the page shows again: on iOS the list,
+ * covered by the form's push, does not compose, so its reappear tick never came back from the form
+ * and the new ticket was missing until a manual refresh (1.23, Hands 464d47ae). Runs until cancelled.
+ */
+internal suspend fun SettingsFeedbackTicketsStore.followSettingsFeedbackFiledTickets(log: (String) -> Unit = {}) {
+    SettingsFeedbackFiledTicketHandoff.offered.collect { offered ->
+        if (offered == null) return@collect
+        val ticketId = SettingsFeedbackFiledTicketHandoff.take() ?: return@collect
+        log("settings_feedback_tickets_open_filed ticket=${ticketId.take(8)}")
+        refresh()
+        openTicket(ticketId)
+    }
 }
 
 /** What the page's controls do. */

@@ -3915,6 +3915,7 @@
     <string name="artifacts_viewer_open_in_browser">Open in Browser</string>
     <string name="artifacts_viewer_copy_link">Copy Link</string>
     <string name="artifacts_viewer_link_copied">Link copied.</string>
+    <string name="artifacts_viewer_download_in_browser">Files can't be saved in the app yet. Opening this Artifact in your browser to download it.</string>
     <string name="artifacts_viewer_follow">Follow</string>
     <string name="artifacts_viewer_unfollow">Unfollow</string>
     <string name="artifacts_viewer_version_history">Version History</string>

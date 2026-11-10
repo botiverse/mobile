@@ -14,7 +14,10 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SettingsFeedbackProxySubmitter
 import build.raft.app.network.RaftAppIdentityRegistry
 import build.raft.app.resources.raftCurrentUiLocaleTag
-import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.getAndUpdate
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
@@ -51,17 +54,21 @@ internal fun settingsHandsFeedbackPageData(storeScope: RaftShellStoreScope, retu
     }
 
 /**
- * The ticket just filed from the form the ticket list opened: the list takes it when it shows
- * again and opens it, as the web workspace opens the ticket it created. Identity only.
+ * The ticket just filed from the form the ticket list opened: the list takes it as it is offered
+ * ([offered], [followSettingsFeedbackFiledTickets]) and opens it, as the web workspace opens the
+ * ticket it created. Identity only.
  */
 internal object SettingsFeedbackFiledTicketHandoff {
-    private val pending = atomic<String?>(null)
+    private val pending = MutableStateFlow<String?>(null)
+
+    /** The ticket waiting for the list, or null once taken. */
+    val offered: StateFlow<String?> = pending.asStateFlow()
 
     fun offer(ticketId: String) {
         pending.value = ticketId
     }
 
-    fun take(): String? = pending.getAndSet(null)
+    fun take(): String? = pending.getAndUpdate { null }
 }
 
 @Composable
