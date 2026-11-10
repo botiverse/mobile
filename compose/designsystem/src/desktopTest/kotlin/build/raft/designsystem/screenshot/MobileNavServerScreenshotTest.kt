@@ -61,9 +61,9 @@ import kotlin.test.Test
 class MobileNavServerScreenshotTest {
     private val appearances = listOf(RaftAppearance.Light, RaftAppearance.Dark)
 
-    private fun capture(name: String, content: @Composable () -> Unit) =
+    private fun capture(name: String, settleFrames: Int = 0, content: @Composable () -> Unit) =
         appearances.forEach { appearance ->
-            RaftScreenshot.capture("${name}_${appearance.name.lowercase()}", appearance, content = content)
+            RaftScreenshot.capture("${name}_${appearance.name.lowercase()}", appearance, settleFrames = settleFrames, content = content)
         }
 
     @Test
@@ -164,14 +164,15 @@ class MobileNavServerScreenshotTest {
 
     /**
      * Mobile #4500 (Lagoon): on a short phone the server list keeps at least one whole server
-     * row, the current one scrolled into view, and the footer and pages give way (the popover
-     * scrolls). 360dp wide, 5 pages in Spanish, 14 servers with the tenth one current ("Server
+     * row and opens scrolled to the current one; for that row the popover goes past 60% up to
+     * the room there is, and past that the footer and pages give way (the popover scrolls). 360dp wide, 5 pages in Spanish, 14 servers with the tenth one current ("Server
      * 9", far below the list's first rows: it opens scrolled to it), on a 360dp and a 300dp tall
      * screen.
      */
     @Test
     fun mobileNavServerPopoverShort() =
-        capture("mobile_nav_server_popover_short") {
+        // A frame for the list to open scrolled to the current server.
+        capture("mobile_nav_server_popover_short", settleFrames = 2) {
             val es = listOf("Artifacts", "Miembros", "Computadoras", "Apps", "Configuración")
             val esFooter = listOf("Unirse a la comunidad", "Cambiar o crear servidor", "Invitar a una persona")
             Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {

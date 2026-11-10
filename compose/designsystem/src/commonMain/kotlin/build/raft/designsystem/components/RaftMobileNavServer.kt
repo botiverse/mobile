@@ -53,9 +53,8 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.foundation.relocation.bringIntoViewRequester
-import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.ScrollState
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
@@ -482,7 +481,8 @@ private fun RaftMobileNavServerAvatar(
  * above the bar. While [state] is open it fills its parent and stands [content] (a
  * [RaftMobileNavServerPopoverContent]) 8dp from each side and 8dp above its bottom edge (the
  * bar's top, plus [bottomInset] when a host bar floats over that area). It is at most 60% of
- * [screenHeight] tall and stops below [topInset] (the top safe area). Dismissing on a tap
+ * [screenHeight] tall (past it only as far as one whole server row in the list needs; see
+ * [RaftMobileNavServerPopoverContent]) and stops below [topInset] (the top safe area). Dismissing on a tap
  * outside and on Back is the host's (the app's overlay).
  */
 @Composable
@@ -505,10 +505,56 @@ fun RaftMobileNavServerPopover(
             Modifier.fillMaxSize().padding(start = gap, end = gap, top = topInset + gap, bottom = bottomInset + gap),
             contentAlignment = alignment,
         ) {
-            Box(Modifier.heightIn(max = cap.coerceAtLeast(0.dp)), content = content)
+            // 60% is the height it keeps to; RaftMobileNavServerPopoverContent goes past it, up to the
+            // room there is, only as far as one whole server row needs.
+            CompositionLocalProvider(LocalRaftMobileNavServerPopoverCap provides cap.coerceAtLeast(0.dp)) {
+                Box(Modifier.heightIn(max = available.coerceAtLeast(0.dp)), content = content)
+            }
         }
     }
 }
+
+/** The 60% height [RaftMobileNavServerPopover] keeps its content to (null: only the room there is). */
+private val LocalRaftMobileNavServerPopoverCap = staticCompositionLocalOf<Dp?> { null }
+
+/**
+ * Opens the server list on the current server: once both are placed, scrolls the list at once
+ * (no animation) just far enough that the current server's row is whole in view.
+ */
+private class RaftMobileNavServerListReveal(private val scroll: ScrollState, private val inset: Int) {
+    private var viewport: LayoutCoordinates? = null
+    private var row: LayoutCoordinates? = null
+    private var done = false
+
+    fun viewport(coordinates: LayoutCoordinates) {
+        viewport = coordinates
+        reveal()
+    }
+
+    fun current(coordinates: LayoutCoordinates) {
+        row = coordinates
+        reveal()
+    }
+
+    private fun reveal() {
+        if (done) return
+        val viewport = viewport?.takeIf { it.isAttached && it.size.height > 0 } ?: return
+        val row = row?.takeIf { it.isAttached } ?: return
+        done = true
+        val top = viewport.localPositionOf(row, Offset.Zero).y
+        val bottom = top + row.size.height
+        val limit = (viewport.size.height - inset).toFloat()
+        val delta =
+            when {
+                bottom > limit -> bottom - limit
+                top < inset -> top - inset
+                else -> 0f
+            }
+        if (delta != 0f) scroll.dispatchRawDelta(delta)
+    }
+}
+
+private val LocalRaftMobileNavServerListReveal = staticCompositionLocalOf<RaftMobileNavServerListReveal?> { null }
 
 /** Receiver of [RaftMobileNavServerPopoverContent]'s parts, top to bottom. */
 @Stable
@@ -528,8 +574,8 @@ private object RaftMobileNavServerPopoverListId
  * The list never gets less than one whole server row (two lines, the name over the
  * `/slug`): raft-ui's list is `min-h-0 flex-1` and can be squeezed to a sliver under the
  * footer and five pages on a short phone, which hid the current server (Lagoon, mobile
- * #4500). When even that does not fit, the parts after the list give way: the whole popover
- * scrolls.
+ * #4500). For that row the popover goes past its 60% up to the room there is; when even that
+ * does not fit, the parts after the list give way: the whole popover scrolls.
  */
 @Composable
 fun RaftMobileNavServerPopoverContent(
@@ -543,6 +589,7 @@ fun RaftMobileNavServerPopoverContent(
     // One two-line row (RaftMobileNavServerPopoverRow with a description) plus the list's 4dp padding.
     val rowWithSlug = raftOptionInset(name) * 2 + with(density) { name.lineHeight.toDp() + slug.lineHeight.toDp() }
     val listMin = maxOf(RaftOptionHeight, rowWithSlug) + 8.dp
+    val preferred = LocalRaftMobileNavServerPopoverCap.current
     RaftPopoverSurface(
         modifier =
             modifier
@@ -552,7 +599,8 @@ fun RaftMobileNavServerPopoverContent(
         contentPadding = PaddingValues(0.dp),
     ) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val cap = constraints.maxHeight
+            // The 60% the popover keeps to, else the room there is (Infinity: no limit).
+            val cap = preferred?.let { minOf(it.roundToPx(), constraints.maxHeight) } ?: constraints.maxHeight
             val scroll = rememberScrollState()
             Layout(
                 content = { RaftMobileNavServerPopoverContentScope.content() },
@@ -589,7 +637,7 @@ fun RaftMobileNavServerPopoverContent(
 /**
  * raft-ui `MobileNavServerPopoverList`: the server list; takes the room left and scrolls (4dp
  * padding), never less than one whole server row ([RaftMobileNavServerPopoverContent]). The
- * current server's row scrolls into view when the list opens. With a [reorderState] its rows
+ * list opens on the current server: scrolled at once just far enough that its row is whole. With a [reorderState] its rows
  * can be held and dragged into a new order (give each server row [raftReorderableItem]); a
  * lifted row near the list's edge scrolls it. While [enabled] is false (a server switch is
  * pending; web ServerSwitcherMenu `hostedSwitchPending`) the list sits at 60% — pass
@@ -603,16 +651,21 @@ fun RaftMobileNavServerPopoverContentScope.RaftMobileNavServerPopoverList(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scroll = rememberScrollState()
-    Column(
-        modifier
-            .layoutId(RaftMobileNavServerPopoverListId)
-            .fillMaxWidth()
-            .alpha(if (enabled) 1f else RaftMobileNavDefaults.ServerPopoverPendingAlpha)
-            .then(if (reorderState != null) Modifier.raftReorderableViewport(reorderState, scroll) else Modifier)
-            .verticalScroll(scroll)
-            .padding(4.dp),
-        content = content,
-    )
+    val inset = with(LocalDensity.current) { 4.dp.roundToPx() }
+    val reveal = remember(scroll, inset) { RaftMobileNavServerListReveal(scroll, inset) }
+    CompositionLocalProvider(LocalRaftMobileNavServerListReveal provides reveal) {
+        Column(
+            modifier
+                .layoutId(RaftMobileNavServerPopoverListId)
+                .fillMaxWidth()
+                .alpha(if (enabled) 1f else RaftMobileNavDefaults.ServerPopoverPendingAlpha)
+                .onGloballyPositioned(reveal::viewport)
+                .then(if (reorderState != null) Modifier.raftReorderableViewport(reorderState, scroll) else Modifier)
+                .verticalScroll(scroll)
+                .padding(4.dp),
+            content = content,
+        )
+    }
 }
 
 /** raft-ui `MobileNavServerPopoverGroup`: rows that always stay in view (the footer), 4dp padding. */
@@ -655,12 +708,11 @@ fun RaftMobileNavServerPopoverRow(
     // `hover:bg-brand-soft`, and while pressed or held over.
     val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Highlight, enabled = enabled, highlighted = held)
     val style = RaftTheme.typography.callout.copy(fontWeight = if (current) FontWeight.Bold else FontWeight.Medium)
-    // The current server scrolls into view when the list opens (the list keeps one whole row).
-    val reveal = remember { BringIntoViewRequester() }
-    if (current) LaunchedEffect(Unit) { reveal.bringIntoView() }
+    // In the server list, the current server's row is the one the list opens on.
+    val reveal = if (current) LocalRaftMobileNavServerListReveal.current else null
     Row(
         modifier
-            .bringIntoViewRequester(reveal)
+            .then(if (reveal != null) Modifier.onGloballyPositioned(reveal::current) else Modifier)
             .fillMaxWidth()
             .heightIn(min = RaftOptionHeight)
             .then(if (state != null && key != null) Modifier.raftMobileNavServerPopoverTarget(state, key) else Modifier)
