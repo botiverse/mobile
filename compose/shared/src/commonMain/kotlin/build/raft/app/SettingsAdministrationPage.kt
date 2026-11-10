@@ -40,10 +40,3 @@ internal fun settingsAdministrationWebViewUrl(
         extraQueryParameters = listOf("lang" to localeTag)
     )
 }
-
-internal fun settingsAdministrationWebViewInjectedJavaScript(
-    session: StoredAuthSession?,
-    hostBinding: SettingsWebViewHostAuthBinding? = null,
-): String {
-    return standaloneSettingsWebViewInjectedJavaScript(session, hostBinding, SettingsWebViewSurface.Administration)
-}

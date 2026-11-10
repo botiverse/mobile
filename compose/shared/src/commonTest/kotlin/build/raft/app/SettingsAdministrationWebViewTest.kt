@@ -38,7 +38,7 @@ class SettingsAdministrationWebViewTest {
     @Test
     fun administrationBootstrapClearsRefreshOwnerAndProvidesAccessAndServer() {
         val session = administrationSession()
-        val script = settingsAdministrationWebViewInjectedJavaScript(session)
+        val script = standaloneSettingsWebViewInjectedJavaScript(session, null, SettingsWebViewSurface.Administration)
 
         assertContains(script, "slock_access_token")
         assertContains(script, "slock_refresh_token")

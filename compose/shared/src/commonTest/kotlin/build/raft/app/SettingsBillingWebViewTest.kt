@@ -39,7 +39,7 @@ class SettingsBillingWebViewTest {
     @Test
     fun billingBootstrapClearsRefreshOwnerAndProvidesAccessAndServer() {
         val session = billingSession()
-        val script = settingsBillingWebViewInjectedJavaScript(session)
+        val script = standaloneSettingsWebViewInjectedJavaScript(session, null, SettingsWebViewSurface.Billing)
 
         assertContains(script, "slock_access_token")
         assertContains(script, "slock_refresh_token")

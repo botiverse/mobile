@@ -25,10 +25,3 @@ internal fun settingsMarketplaceWebViewUrl(
             ?: "settings/integrations"
     return sharedSettingsHostShellWebUrl(webBaseUrl, path)
 }
-
-internal fun settingsMarketplaceWebViewInjectedJavaScript(
-    session: StoredAuthSession?,
-    hostBinding: SettingsWebViewHostAuthBinding? = null,
-): String {
-    return standaloneSettingsWebViewInjectedJavaScript(session, hostBinding, SettingsWebViewSurface.Marketplace)
-}

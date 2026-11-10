@@ -1,8 +1,7 @@
 package build.raft.app.data
 
-import build.raft.app.settingsAdministrationWebViewInjectedJavaScript
-import build.raft.app.settingsBillingWebViewInjectedJavaScript
-import build.raft.app.settingsMarketplaceWebViewInjectedJavaScript
+import build.raft.app.SettingsWebViewSurface
+import build.raft.app.standaloneSettingsWebViewInjectedJavaScript
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -292,9 +291,9 @@ class SharedAuthTokenProviderTest {
         val store = InMemoryRaftAuthSessionStore(original)
         val scripts =
             listOf(
-                settingsBillingWebViewInjectedJavaScript(original),
-                settingsMarketplaceWebViewInjectedJavaScript(original),
-                settingsAdministrationWebViewInjectedJavaScript(original),
+                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Billing),
+                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Marketplace),
+                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Administration),
             )
         scripts.forEach { script ->
             assertContains(script, "removeItem(\"slock_refresh_token\")")

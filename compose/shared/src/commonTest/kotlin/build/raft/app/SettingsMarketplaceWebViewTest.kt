@@ -30,7 +30,7 @@ class SettingsMarketplaceWebViewTest {
     @Test
     fun marketplaceBootstrapClearsRefreshOwnerAndProvidesAccessAndServer() {
         val session = marketplaceSession()
-        val script = settingsMarketplaceWebViewInjectedJavaScript(session)
+        val script = standaloneSettingsWebViewInjectedJavaScript(session, null, SettingsWebViewSurface.Marketplace)
 
         assertContains(script, "slock_access_token")
         assertContains(script, "slock_refresh_token")
