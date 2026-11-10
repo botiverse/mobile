@@ -355,10 +355,3 @@ internal fun SettingsBillingExternalPane(onOpenInBrowser: () -> Unit, modifier: 
     }
 }
 
-internal fun settingsBillingWebViewInjectedJavaScript(
-    session: StoredAuthSession?,
-    hostBinding: SettingsWebViewHostAuthBinding? = null,
-): String {
-    return standaloneSettingsWebViewInjectedJavaScript(session, hostBinding, SettingsWebViewSurface.Billing)
-}
-

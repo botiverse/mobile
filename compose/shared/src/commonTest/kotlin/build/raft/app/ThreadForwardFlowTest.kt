@@ -61,23 +61,24 @@ class ThreadForwardFlowTest {
         val repository = RecordingForwardRepository()
 
         val outcome =
-            executeThreadForward(
+            executeThreadForwardBatch(
                 repository = repository,
                 liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source"),
-                receipt = selected.receiptAt(generation = 7),
+                receipts = listOf(selected.receiptAt(generation = 7)),
                 currentDirectoryGeneration = 7,
                 messageIds = listOf("message-1", "message-2"),
                 mode = ForwardMessageSendMode.Merged,
-                note = "Selected note"
+                note = "Selected note",
+                requestId = "11111111-2222-4333-8444-555555555555"
             )
 
         assertEquals(null, outcome.failureCode)
-        assertEquals(1, repository.requests.size)
-        val request = repository.requests.single()
+        assertEquals(1, repository.batchRequests.size)
+        val request = repository.batchRequests.single()
         assertEquals(sourceServerId, request.sourceServerId)
-        assertEquals(sourceServerId, request.destination.serverId)
-        assertEquals(ChannelId("channel-selected"), request.targetChannelId)
+        assertEquals(sourceServerId, request.destinations.single().serverId)
+        assertEquals(ChannelId("channel-selected"), request.destinations.single().channelId)
         assertEquals(listOf("message-1", "message-2"), request.messageIds)
         assertEquals(ForwardMessageSendMode.Merged, request.mode)
         assertEquals("Selected note", request.note)
@@ -235,34 +236,6 @@ class ThreadForwardFlowTest {
     }
 
     @Test
-    fun singleTargetForwardReportsFailureWithoutRetrying() = runBlocking {
-        val selected = target("selected", ForwardMessageTargetKind.RecentDirectMessage, ChannelId("channel-selected"))
-        val repository =
-            RecordingForwardRepository(
-                forwardResults =
-                    mapOf(
-                        ChannelId("channel-selected") to
-                            DataResult.Error(ScreenError(code = "selected_failed", retryable = true))
-                    )
-            )
-
-        val outcome =
-            executeThreadForward(
-                repository = repository,
-                liveSourceServerId = sourceServerId,
-                sourceChannelId = ChannelId("source"),
-                receipt = selected.receiptAt(generation = 7),
-                currentDirectoryGeneration = 7,
-                messageIds = listOf("message-1"),
-                mode = ForwardMessageSendMode.Merged,
-                note = ""
-            )
-
-        assertEquals("selected_failed", outcome.failureCode)
-        assertEquals(listOf(ChannelId("channel-selected")), repository.requests.map { it.targetChannelId })
-    }
-
-    @Test
     fun candidateResolvingToSourceConversationIsRejectedWithoutForwardRequest() = runBlocking {
         val candidate =
             ForwardMessageTarget(
@@ -279,19 +252,20 @@ class ThreadForwardFlowTest {
             )
 
         val outcome =
-            executeThreadForward(
+            executeThreadForwardBatch(
                 repository = repository,
                 liveSourceServerId = sourceServerId,
                 sourceChannelId = sourceChannelId,
-                receipt = candidate.receiptAt(generation = 3),
+                receipts = listOf(candidate.receiptAt(generation = 3)),
                 currentDirectoryGeneration = 3,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
-                note = ""
+                note = "",
+                requestId = "11111111-2222-4333-8444-555555555555"
             )
 
         assertEquals("forward_source_target_forbidden", outcome.failureCode)
-        assertEquals(emptyList(), repository.requests)
+        assertEquals(emptyList(), repository.batchRequests)
     }
 
     @Test
@@ -311,19 +285,20 @@ class ThreadForwardFlowTest {
             )
 
         val outcome =
-            executeThreadForward(
+            executeThreadForwardBatch(
                 repository = repository,
                 liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("dm-source"),
-                receipt = candidate.receiptAt(generation = 3),
+                receipts = listOf(candidate.receiptAt(generation = 3)),
                 currentDirectoryGeneration = 3,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
-                note = "Review this"
+                note = "Review this",
+                requestId = "11111111-2222-4333-8444-555555555555"
             )
 
         assertEquals(null, outcome.failureCode)
-        assertEquals(listOf(resolvedChannelId), repository.requests.map { it.targetChannelId })
+        assertEquals(listOf(resolvedChannelId), repository.batchRequests.single().destinations.map { it.channelId })
     }
 
     @Test
@@ -348,19 +323,20 @@ class ThreadForwardFlowTest {
         val repository = RecordingForwardRepository(resolvedDestinations = mapOf(selected.id to resolved))
 
         val outcome =
-            executeThreadForward(
+            executeThreadForwardBatch(
                 repository = repository,
                 liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source-channel"),
-                receipt = selected.receiptAt(generation = 1),
+                receipts = listOf(selected.receiptAt(generation = 1)),
                 currentDirectoryGeneration = 1,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Individual,
-                note = ""
+                note = "",
+                requestId = "11111111-2222-4333-8444-555555555555"
             )
 
         assertEquals(null, outcome.failureCode)
-        assertEquals(resolved, repository.requests.single().destination)
+        assertEquals(resolved, repository.batchRequests.single().destinations.single())
     }
 
     // task #803 drift teeth: every drift class fails typed with ZERO forward
@@ -372,20 +348,21 @@ class ThreadForwardFlowTest {
         val repository = RecordingForwardRepository()
 
         val outcome =
-            executeThreadForward(
+            executeThreadForwardBatch(
                 repository = repository,
                 liveSourceServerId = ServerId("server-switched"),
                 sourceChannelId = ChannelId("source"),
-                receipt = selected.receiptAt(generation = 7),
+                receipts = listOf(selected.receiptAt(generation = 7)),
                 currentDirectoryGeneration = 7,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
-                note = ""
+                note = "",
+                requestId = "11111111-2222-4333-8444-555555555555"
             )
 
         assertEquals("forward_source_server_changed", outcome.failureCode)
         assertEquals(0, repository.resolveCalls)
-        assertEquals(emptyList(), repository.requests)
+        assertEquals(emptyList(), repository.batchRequests)
     }
 
     @Test
@@ -394,20 +371,21 @@ class ThreadForwardFlowTest {
         val repository = RecordingForwardRepository()
 
         val outcome =
-            executeThreadForward(
+            executeThreadForwardBatch(
                 repository = repository,
                 liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source"),
-                receipt = selected.receiptAt(generation = 7),
+                receipts = listOf(selected.receiptAt(generation = 7)),
                 currentDirectoryGeneration = 8,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
-                note = ""
+                note = "",
+                requestId = "11111111-2222-4333-8444-555555555555"
             )
 
         assertEquals("forward_directory_refreshed", outcome.failureCode)
         assertEquals(0, repository.resolveCalls)
-        assertEquals(emptyList(), repository.requests)
+        assertEquals(emptyList(), repository.batchRequests)
     }
 
     @Test
@@ -427,20 +405,21 @@ class ThreadForwardFlowTest {
             )
 
         val outcome =
-            executeThreadForward(
+            executeThreadForwardBatch(
                 repository = repository,
                 liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source"),
-                receipt = selected.receiptAt(generation = 2),
+                receipts = listOf(selected.receiptAt(generation = 2)),
                 currentDirectoryGeneration = 2,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
-                note = ""
+                note = "",
+                requestId = "11111111-2222-4333-8444-555555555555"
             )
 
         assertEquals("forward_destination_identity_mismatch", outcome.failureCode)
         assertEquals(1, repository.resolveCalls)
-        assertEquals(emptyList(), repository.requests)
+        assertEquals(emptyList(), repository.batchRequests)
     }
 
     @Test
@@ -467,19 +446,20 @@ class ThreadForwardFlowTest {
             )
 
         val outcome =
-            executeThreadForward(
+            executeThreadForwardBatch(
                 repository = repository,
                 liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source"),
-                receipt = candidate.receiptAt(generation = 4),
+                receipts = listOf(candidate.receiptAt(generation = 4)),
                 currentDirectoryGeneration = 4,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
-                note = ""
+                note = "",
+                requestId = "11111111-2222-4333-8444-555555555555"
             )
 
         assertEquals("forward_destination_identity_mismatch", outcome.failureCode)
-        assertEquals(emptyList(), repository.requests)
+        assertEquals(emptyList(), repository.batchRequests)
     }
 
     @Test
@@ -488,21 +468,22 @@ class ThreadForwardFlowTest {
         val repository = RecordingForwardRepository()
 
         val outcome =
-            executeThreadForward(
+            executeThreadForwardBatch(
                 repository = repository,
                 liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source"),
-                receipt = selected.receiptAt(generation = 5)
-                    .copy(target = target("someone-else", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-x"))),
+                receipts = listOf(selected.receiptAt(generation = 5)
+                    .copy(target = target("someone-else", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-x")))),
                 currentDirectoryGeneration = 5,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
-                note = ""
+                note = "",
+                requestId = "11111111-2222-4333-8444-555555555555"
             )
 
         assertEquals("forward_destination_identity_mismatch", outcome.failureCode)
         assertEquals(0, repository.resolveCalls)
-        assertEquals(emptyList(), repository.requests)
+        assertEquals(emptyList(), repository.batchRequests)
     }
 
     @Test
@@ -518,19 +499,20 @@ class ThreadForwardFlowTest {
         val repository = RecordingForwardRepository()
 
         val outcome =
-            executeThreadForward(
+            executeThreadForwardBatch(
                 repository = repository,
                 liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source"),
-                receipt = tappedB.receiptAt(generation = 6),
+                receipts = listOf(tappedB.receiptAt(generation = 6)),
                 currentDirectoryGeneration = 6,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
-                note = ""
+                note = "",
+                requestId = "11111111-2222-4333-8444-555555555555"
             )
 
         assertEquals(null, outcome.failureCode)
-        assertEquals(listOf(ChannelId("channel-b")), repository.requests.map { it.targetChannelId })
+        assertEquals(listOf(ChannelId("channel-b")), repository.batchRequests.single().destinations.map { it.channelId })
     }
 
     @Test
@@ -550,19 +532,20 @@ class ThreadForwardFlowTest {
         for (variant in tampered) {
             val repository = RecordingForwardRepository()
             val outcome =
-                executeThreadForward(
+                executeThreadForwardBatch(
                     repository = repository,
                     liveSourceServerId = sourceServerId,
                     sourceChannelId = ChannelId("source"),
-                    receipt = receipt.copy(target = variant),
+                    receipts = listOf(receipt.copy(target = variant)),
                     currentDirectoryGeneration = 5,
                     messageIds = listOf("message-1"),
                     mode = ForwardMessageSendMode.Merged,
-                    note = ""
+                    note = "",
+                    requestId = "11111111-2222-4333-8444-555555555555"
                 )
             assertEquals("forward_destination_identity_mismatch", outcome.failureCode)
             assertEquals(0, repository.resolveCalls)
-            assertEquals(emptyList(), repository.requests)
+            assertEquals(emptyList(), repository.batchRequests)
         }
     }
 
@@ -582,19 +565,20 @@ class ThreadForwardFlowTest {
                     )
             )
         val outcome =
-            executeThreadForward(
+            executeThreadForwardBatch(
                 repository = repository,
                 liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source"),
-                receipt = selected.receiptAt(generation = 2),
+                receipts = listOf(selected.receiptAt(generation = 2)),
                 currentDirectoryGeneration = 2,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
-                note = ""
+                note = "",
+                requestId = "11111111-2222-4333-8444-555555555555"
             )
         assertEquals("forward_destination_identity_mismatch", outcome.failureCode)
         assertEquals(1, repository.resolveCalls)
-        assertEquals(emptyList(), repository.requests)
+        assertEquals(emptyList(), repository.batchRequests)
     }
 
     @Test
@@ -621,19 +605,20 @@ class ThreadForwardFlowTest {
                     )
             )
         val outcome =
-            executeThreadForward(
+            executeThreadForwardBatch(
                 repository = repository,
                 liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source"),
-                receipt = candidate.receiptAt(generation = 3),
+                receipts = listOf(candidate.receiptAt(generation = 3)),
                 currentDirectoryGeneration = 3,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
-                note = ""
+                note = "",
+                requestId = "11111111-2222-4333-8444-555555555555"
             )
         assertEquals("forward_destination_identity_mismatch", outcome.failureCode)
         assertEquals(1, repository.resolveCalls)
-        assertEquals(emptyList(), repository.requests)
+        assertEquals(emptyList(), repository.batchRequests)
     }
 
     @Test
@@ -659,18 +644,19 @@ class ThreadForwardFlowTest {
                     )
             )
         val outcome =
-            executeThreadForward(
+            executeThreadForwardBatch(
                 repository = repository,
                 liveSourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source"),
-                receipt = candidate.receiptAt(generation = 3),
+                receipts = listOf(candidate.receiptAt(generation = 3)),
                 currentDirectoryGeneration = 3,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
-                note = ""
+                note = "",
+                requestId = "11111111-2222-4333-8444-555555555555"
             )
         assertEquals("forward_destination_identity_mismatch", outcome.failureCode)
-        assertEquals(emptyList(), repository.requests)
+        assertEquals(emptyList(), repository.batchRequests)
     }
 
     private fun ForwardMessageTarget.receiptAt(generation: Int): ThreadForwardDestinationReceipt =
@@ -697,8 +683,7 @@ class ThreadForwardFlowTest {
 
 private class RecordingForwardRepository(
     private val resolvedChannels: Map<String, ChannelId> = emptyMap(),
-    private val resolvedDestinations: Map<String, ForwardMessageDestination> = emptyMap(),
-    private val forwardResults: Map<ChannelId, DataResult<ForwardMessageSendResult>> = emptyMap()
+    private val resolvedDestinations: Map<String, ForwardMessageDestination> = emptyMap()
 ) : ForwardMessageTargetRepository {
     val requests = mutableListOf<ForwardMessageExecuteRequest>()
     val batchRequests = mutableListOf<ForwardMessageBatchExecuteRequest>()
@@ -748,7 +733,7 @@ private class RecordingForwardRepository(
 
     override suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<ForwardMessageSendResult> {
         requests += request
-        return forwardResults[request.targetChannelId] ?: DataResult.Content(ForwardMessageSendResult(message = null))
+        return DataResult.Content(ForwardMessageSendResult(message = null))
     }
 
     override suspend fun forwardMessagesBatch(request: ForwardMessageBatchExecuteRequest): DataResult<ForwardMessageBatchResult> {

@@ -151,7 +151,7 @@ internal fun rememberLiveRaftTimeContext(
                     ) {
                         bridge.log(
                             "live_time_context_offset_changed pagerId=${pager.pagerId} " +
-                                "foundation=${if (foundationOwner.usesKuiklyBase) "kuiklybase" else "legacy"} " +
+                                "foundation=kuiklybase " +
                                 "previousOffsetMinutes=$previousOffsetMinutes " +
                                 "refreshedOffsetMinutes=$refreshedOffsetMinutes " +
                                 "nowEpochMillis=${refreshed.nowEpochMillis}"

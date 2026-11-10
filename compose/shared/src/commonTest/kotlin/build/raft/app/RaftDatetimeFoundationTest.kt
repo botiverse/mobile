@@ -5,33 +5,10 @@ import kotlin.test.assertEquals
 
 class RaftDatetimeFoundationTest {
     @Test
-    fun buildOwnerSelectsNewOrLegacyClockWithoutRemovingEitherPath() {
-        val enabled =
-            raftTestDatetimeFoundationOwner(
-                kuiklyBaseEnabled = true,
-                kuiklyBaseNowMillis = { 1_234L },
-                legacyNowMillis = { 1_230L },
-            )
-        val disabled =
-            raftTestDatetimeFoundationOwner(
-                kuiklyBaseEnabled = false,
-                kuiklyBaseNowMillis = { 1_234L },
-                legacyNowMillis = { 1_230L },
-            )
-
-        assertEquals(1_234L, enabled.nowEpochMillis())
-        assertEquals(1_230L, disabled.nowEpochMillis())
-        assertEquals(4L, enabled.compareClocks().absoluteDriftMillis)
-        assertEquals(1_234L, enabled.compareClocks().selectedEpochMillis)
-        assertEquals(1_230L, disabled.compareClocks().selectedEpochMillis)
-    }
-
-    @Test
     fun newZoneOwnerUsesFreshWholeMinutesAndFallsBackExplicitly() {
         var offset: Int? = -300
         val owner =
             raftTestDatetimeFoundationOwner(
-                kuiklyBaseEnabled = true,
                 localOffsetMinutesAt = { offset },
             )
 
@@ -43,22 +20,6 @@ class RaftDatetimeFoundationTest {
     }
 
     @Test
-    fun rollbackOwnerNeverConsultsNewZoneSource() {
-        var newReads = 0
-        val owner =
-            raftTestDatetimeFoundationOwner(
-                kuiklyBaseEnabled = false,
-                localOffsetMinutesAt = {
-                    newReads += 1
-                    -300
-                },
-            )
-
-        assertEquals(480, owner.localOffsetMinutesAt(epochMillis = 0L, legacyOffsetMinutes = 480))
-        assertEquals(0, newReads)
-    }
-
-    @Test
     fun knownDstBoundaryIsEvaluatedAtEachInstantInsteadOfCachingAnOffset() {
         // America/New_York switches from UTC-05:00 to UTC-04:00 at
         // 2026-03-08T07:00:00Z. The fake owns only the rules; the Mobile owner
@@ -67,7 +28,6 @@ class RaftDatetimeFoundationTest {
         val afterDst = 1_772_953_201_000L
         val owner =
             raftTestDatetimeFoundationOwner(
-                kuiklyBaseEnabled = true,
                 localOffsetMinutesAt = { epochMillis ->
                     if (epochMillis < afterDst) -300 else -240
                 },

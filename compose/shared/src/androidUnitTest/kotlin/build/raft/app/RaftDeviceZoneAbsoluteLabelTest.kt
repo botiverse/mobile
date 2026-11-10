@@ -13,9 +13,7 @@ class RaftDeviceZoneAbsoluteLabelTest {
     private val now = 1_792_635_000_000L
     private val zone =
         RaftDatetimeFoundationOwner(
-            usesKuiklyBase = true,
             kuiklyBaseClock = RaftEpochMillisSource { now },
-            legacyClock = RaftEpochMillisSource { now },
             kuiklyBaseOffset = RaftLocalOffsetMinutesSource { 8 * 60 },
         )
 

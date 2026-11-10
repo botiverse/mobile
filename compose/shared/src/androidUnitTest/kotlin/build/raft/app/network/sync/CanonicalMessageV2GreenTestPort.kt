@@ -29,7 +29,6 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
             invocation.requirementId.startsWith("R5") -> golden(invocation.input)
             invocation.requirementId == "R6" -> forbiddenSharedKeys(invocation.input, setOf("reactorIds", "reactorNames"), "no-rosters")
             invocation.requirementId == "R7" -> reactionBounds(invocation.input.jsonObject)
-            invocation.requirementId == "R8" -> sharedRoomOverlay(invocation.input.jsonObject)
             invocation.requirementId == "R9" -> forbiddenSharedKeys(
                 invocation.input,
                 setOf("reactedByMe", "viewerVersion", "sourceMessageId", "provenanceState"),
@@ -46,13 +45,7 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
             invocation.requirementId.startsWith("R14") -> partitionMismatch(invocation.input.jsonObject)
             invocation.requirementId == "R15" -> targetedReadCacheInvalidation()
             invocation.requirementId == "R16" -> childPageCannotRewriteParentAggregate(invocation.input.jsonObject)
-            invocation.requirementId == "R17" -> oneOverlayGate(invocation.input.jsonObject)
-            invocation.requirementId in setOf("R18", "R19", "R20") -> overlayVersion(invocation.input.jsonObject)
-            invocation.requirementId == "R23" -> overlaySqlTransaction(invocation.input.jsonObject)
-            invocation.requirementId == "R21" -> missingOverlay()
-            invocation.requirementId == "R22" -> overlayKeyIsolation()
             invocation.requirementId == "R24" -> overlayLongBoundary(invocation.input.jsonObject)
-            invocation.requirementId == "R25" -> sharedRoomReactionFrame(invocation.input.jsonObject)
             invocation.requirementId == "R26" -> actionKind(invocation.input)
             invocation.requirementId == "R27" -> forwardedProvenance(invocation.input.jsonObject)
             invocation.requirementId == "R28" -> v2NeverReadsV1(invocation.input.jsonObject)
@@ -87,10 +80,8 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
         val scope = v2Scope()
         val cursor = PersistedCursor(1, 1, 1, epoch = "ownership")
         val sharedStore = SqlDelightCanonicalMessageV2Store(database, now = { 1L })
-        val overlayStore = SqlDelightViewerOverlayStore(database)
         runBlocking {
             sharedStore.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, listOf(envelope), cursor))
-            overlayStore.compareAndWrite(overlayKey(), overlay(1, "heart"))
         }
         val sharedBytes = database.queries.selectServerBackedMessagesForChannel(
             environmentId = scope.environmentId,
@@ -100,22 +91,10 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
             scopeKind = scope.scopeKind,
             channelId = scope.scopeId,
         ).executeAsList().singleOrNull()?.canonicalFactJson.orEmpty()
-        val overlayRows = database.queries.selectMessageViewerOverlay(
-            environmentId = overlayKey().partition.environmentId,
-            serverId = overlayKey().partition.serverId,
-            principalId = overlayKey().partition.principalId,
-            consumerId = overlayKey().partition.consumerId,
-            scopeKind = overlayKey().scopeKind,
-            scopeId = overlayKey().scopeId,
-            subjectKind = overlayKey().subjectKind,
-            subjectId = overlayKey().subjectId,
-            overlayKind = overlayKey().overlayKind,
-        ).executeAsOneOrNull()
         if (
             sharedBytes.isNotBlank() &&
             !sharedBytes.contains("reactedByMe") &&
-            !sharedBytes.contains("viewerVersion") &&
-            overlayRows != null
+            !sharedBytes.contains("viewerVersion")
         ) CanonicalV2RedResult.State("single-owner") else CanonicalV2RedResult.GreenPending
     }
 
@@ -137,16 +116,6 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
             input.long("previewCount") > CANONICAL_REACTION_PREVIEW_LIMIT
         ) CanonicalV2RedResult.Rejected(CANONICAL_MESSAGE_V2_REACTION_BOUND_EXCEEDED)
         else CanonicalV2RedResult.State("within-bounds")
-
-    private fun sharedRoomOverlay(input: JsonObject): CanonicalV2RedResult = runBlocking {
-        val store = RecordingViewerOverlayStore()
-        ViewerOverlayIngressGate(store).apply(
-            source = ViewerOverlayIngressSource.SharedRoom,
-            key = overlayKey(),
-            overlay = overlay(input.long("viewerVersion"), "room"),
-        )
-        CanonicalV2RedResult.State("shared-only", overlayWriteCount = store.writeCount)
-    }
 
     private fun restoredMembership(input: JsonObject): CanonicalV2RedResult {
         val decoded = decodeContextFragment(input) as? CanonicalMessageV2DecodeResult.Accepted
@@ -229,100 +198,11 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
         ) CanonicalV2RedResult.State("replyCount=$serverReplyCount") else CanonicalV2RedResult.GreenPending
     }
 
-    private fun oneOverlayGate(input: JsonObject): CanonicalV2RedResult = runBlocking {
-        val expected = setOf("hydrate", "ack", "user-room")
-        val actual = input.getValue("sources").jsonArray.map { it.jsonPrimitive.content }.toSet()
-        val store = RecordingViewerOverlayStore()
-        val gate = ViewerOverlayIngressGate(store)
-        listOf(
-            ViewerOverlayIngressSource.Hydrate,
-            ViewerOverlayIngressSource.MutationAck,
-            ViewerOverlayIngressSource.UserRoom,
-        ).forEachIndexed { index, source -> gate.apply(source, overlayKey(), overlay(index.toLong() + 1L, "e$index")) }
-        if (actual == expected && store.transactionCount == 3) CanonicalV2RedResult.State("one-version-gate")
-        else CanonicalV2RedResult.GreenPending
-    }
-
-    private fun overlayVersion(input: JsonObject): CanonicalV2RedResult = runBlocking {
-        val storedVersion = input.long("storedVersion")
-        val incomingVersion = input.long("incomingVersion")
-        val incomingPayload = input.string("payload")
-        val store = RecordingViewerOverlayStore(mapOf(overlayKey() to overlay(storedVersion, "stored")))
-        try {
-            when (val result = store.compareAndWrite(overlayKey(), overlay(incomingVersion, incomingPayload))) {
-                is ViewerOverlayWriteResult.Applied -> {
-                    val stored = store.read(overlayKey())!!
-                    if (invocationStateIsCommitted(input)) {
-                        CanonicalV2RedResult.State("committed", store.transactionCount, store.writeCount)
-                    } else {
-                        CanonicalV2RedResult.State(
-                            "version=${stored.version},payload=${stored.reactionPayload()}",
-                            store.transactionCount,
-                            store.writeCount,
-                        )
-                    }
-                }
-                ViewerOverlayWriteResult.Idempotent -> CanonicalV2RedResult.State("idempotent", store.transactionCount, store.writeCount)
-                is ViewerOverlayWriteResult.VersionRegressionNoOp ->
-                    CanonicalV2RedResult.NoOp(VIEWER_OVERLAY_VERSION_REGRESSION_DIAGNOSTIC)
-            }
-        } catch (_: ViewerOverlayVersionConflict) {
-            CanonicalV2RedResult.Rejected(VIEWER_OVERLAY_VERSION_CONFLICT_DIAGNOSTIC)
-        }
-    }
-
-    private fun overlaySqlTransaction(input: JsonObject): CanonicalV2RedResult = withFreshDatabase { database ->
-        val key = overlayKey()
-        val recording = RecordingOverlayStore(SqlDelightViewerOverlayStore(database))
-        runBlocking {
-            recording.compareAndWrite(key, overlay(input.long("storedVersion"), "stored"))
-            recording.resetCounts()
-            recording.compareAndWrite(key, overlay(input.long("incomingVersion"), input.string("payload")))
-        }
-        val stored = runBlocking { recording.read(key) }
-        if (
-            stored?.version == input.long("incomingVersion") &&
-            recording.transactionCount == 1 &&
-            recording.writeCount == 1
-        ) CanonicalV2RedResult.State("committed", transactionCount = 1, overlayWriteCount = 1)
-        else CanonicalV2RedResult.GreenPending
-    }
-
-    private fun invocationStateIsCommitted(input: JsonObject): Boolean = input.string("payload") == "+1"
-
-    private fun missingOverlay(): CanonicalV2RedResult = runBlocking {
-        if (RecordingViewerOverlayStore().read(overlayKey()) == null) CanonicalV2RedResult.Unknown
-        else CanonicalV2RedResult.GreenPending
-    }
-
-    private fun overlayKeyIsolation(): CanonicalV2RedResult = runBlocking {
-        val keyA = overlayKey()
-        val keyPrincipalB = keyA.copy(partition = DurablePartitionKey("server-a", "principal-b", keyA.partition.consumerId, "env-test"))
-        val keyConsumerV1 = keyA.copy(partition = DurablePartitionKey("server-a", "principal-a", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test"))
-        val keyOtherKind = keyA.copy(overlayKind = "other")
-        val store = RecordingViewerOverlayStore()
-        store.compareAndWrite(keyA, overlay(1, "a"))
-        if (
-            store.read(keyA) != null && store.read(keyPrincipalB) == null &&
-            store.read(keyConsumerV1) == null && store.read(keyOtherKind) == null
-        ) CanonicalV2RedResult.State("isolated") else CanonicalV2RedResult.GreenPending
-    }
-
     private fun overlayLongBoundary(input: JsonObject): CanonicalV2RedResult {
         val incoming = input.getValue("incoming").jsonPrimitive.content.toLongOrNull()
         return if (input.long("stored") == Long.MAX_VALUE && incoming == null) {
             CanonicalV2RedResult.Rejected(VIEWER_OVERLAY_VERSION_OUT_OF_RANGE)
         } else CanonicalV2RedResult.GreenPending
-    }
-
-    private fun sharedRoomReactionFrame(input: JsonObject): CanonicalV2RedResult = runBlocking {
-        val store = RecordingViewerOverlayStore()
-        ViewerOverlayIngressGate(store).apply(
-            ViewerOverlayIngressSource.SharedRoom,
-            overlayKey(),
-            overlay(1, input.getValue("reactedEmojis").jsonArray.first().jsonPrimitive.content),
-        )
-        CanonicalV2RedResult.State("shared-updated", overlayWriteCount = store.writeCount)
     }
 
     private fun actionKind(input: JsonElement): CanonicalV2RedResult =
@@ -566,13 +446,6 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
 
     private fun v2Partition() = DurablePartitionKey("server-a", "principal-a", SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID, "env-test")
     private fun v2Scope() = SyncScopeKey(v2Partition(), "channel-a", "channel")
-    private fun overlayKey() = ViewerOverlayKey(v2Partition(), "channel", "channel-a", "message", "message-a", "reactions")
-    private fun overlay(version: Long, emoji: String) = VersionedViewerOverlayV1(
-        version,
-        OverlayCompleteness.Complete,
-        ViewerOverlayPayloadV1.Reactions(listOf(emoji)),
-    )
-
     private fun acceptedEnvelope(input: JsonElement): CanonicalMessageEnvelopeV2? =
         (decodeCanonicalMessageV2(input, "server-a") as? CanonicalMessageV2DecodeResult.Accepted)?.envelope
 
@@ -615,60 +488,6 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
         }
     }
 
-    private class RecordingOverlayStore(
-        private val delegate: ViewerOverlayStore,
-    ) : ViewerOverlayStore {
-        var transactionCount: Int = 0
-            private set
-        var writeCount: Int = 0
-            private set
-
-        override suspend fun read(key: ViewerOverlayKey): VersionedViewerOverlayV1? = delegate.read(key)
-
-        override suspend fun compareAndWrite(
-            key: ViewerOverlayKey,
-            overlay: VersionedViewerOverlayV1,
-        ): ViewerOverlayWriteResult {
-            transactionCount += 1
-            return delegate.compareAndWrite(key, overlay).also { result ->
-                if (result is ViewerOverlayWriteResult.Applied) writeCount += 1
-            }
-        }
-
-        fun resetCounts() {
-            transactionCount = 0
-            writeCount = 0
-        }
-    }
-
-    private class RecordingViewerOverlayStore(
-        initial: Map<ViewerOverlayKey, VersionedViewerOverlayV1> = emptyMap(),
-    ) : ViewerOverlayStore {
-        private val values = initial.toMutableMap()
-        var transactionCount: Int = 0
-            private set
-        var writeCount: Int = 0
-            private set
-
-        override suspend fun read(key: ViewerOverlayKey): VersionedViewerOverlayV1? = values[key]
-
-        override suspend fun compareAndWrite(
-            key: ViewerOverlayKey,
-            overlay: VersionedViewerOverlayV1,
-        ): ViewerOverlayWriteResult {
-            transactionCount += 1
-            return when (val decision = decideViewerOverlayWrite(values[key], overlay)) {
-                is ViewerOverlayWriteDecision.Apply -> {
-                    values[key] = overlay
-                    writeCount += 1
-                    ViewerOverlayWriteResult.Applied(decision.previousVersion)
-                }
-                ViewerOverlayWriteDecision.Idempotent -> ViewerOverlayWriteResult.Idempotent
-                is ViewerOverlayWriteDecision.Regression -> ViewerOverlayWriteResult.VersionRegressionNoOp(decision.storedVersion)
-                ViewerOverlayWriteDecision.Conflict -> throw ViewerOverlayVersionConflict(key, overlay.version)
-            }
-        }
-    }
 }
 
 private fun JsonObject.string(key: String): String = getValue(key).jsonPrimitive.content
@@ -681,9 +500,6 @@ private fun JsonElement.containsAnyKey(keys: Set<String>): Boolean =
         is JsonArray -> any { it.containsAnyKey(keys) }
         else -> false
     }
-
-private fun VersionedViewerOverlayV1.reactionPayload(): String =
-    (payload as ViewerOverlayPayloadV1.Reactions).reactedEmojis.single()
 
 private val TopLevelScopeRefV2.kindName: String
     get() = when (this) {

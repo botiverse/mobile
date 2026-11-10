@@ -10,7 +10,9 @@ import build.raft.app.model.MessageUpdated
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_SNAPSHOT_BUFFER_CAP
+import build.raft.app.network.sync.CanonicalMessageFoldInput
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
+import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
 import build.raft.app.network.sync.CanonicalMessageV2CommitResult
 import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
@@ -1469,7 +1471,19 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             logger = { logs += it },
             isKnownNonMember = { _, channelId -> channelId in nonMembers },
         )
-        private val gateway = ProviderBackedCanonicalMessageV2OwnerGateway(canary)
+        /** Hands every realtime frame straight to the canary with the connection that delivered it. */
+        private val gateway = object : CanonicalMessageV2OwnerGateway {
+            override suspend fun accept(
+                grant: RealtimeGrantRecord,
+                foldInput: CanonicalMessageFoldInput,
+                transportEpoch: Long?,
+            ): CanonicalMessageV2CanaryOutcome =
+                canary.accept(grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID), foldInput, transportEpoch)
+
+            override suspend fun noteTransportEpoch(grant: RealtimeGrantRecord, transportEpoch: Long) {
+                canary.noteTransportEpoch(grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID), transportEpoch)
+            }
+        }
         val projected: MutableList<RealtimeEvent> = java.util.Collections.synchronizedList(mutableListOf())
         private val displayingOwner = owner().also { owner ->
             owner.registerGuardedSinks(RealtimeGuardedDomainEventSinks(applyHomeShell = { _, event -> projected += event }))

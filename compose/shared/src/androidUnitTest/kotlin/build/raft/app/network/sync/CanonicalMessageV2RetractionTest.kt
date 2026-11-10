@@ -134,10 +134,7 @@ class CanonicalMessageV2RetractionTest {
         assertNull(assertNotNull(decodeCanonicalMessageWire(wire(deletedAt = JsonPrimitive("")), ProductionFace.MessageNew)).row.deletedAt)
         assertNull(assertNotNull(decodeCanonicalMessageWire(wire(deletedAt = null), ProductionFace.TaskStatusUpdated)).row.deletedAt)
 
-        // V1 fold merge: a later null / absent never clears it.
         val live = carry.row.copy(deletedAt = null)
-        assertEquals(retractedAt, mergeCanonicalRow(carry.row, live, MessageDomainEvent.PRESENT_ENRICHED_UPDATED).deletedAt)
-        assertEquals(retractedAt, mergeCanonicalRow(live, carry.row, MessageDomainEvent.PRESENT_TASK_STATUS_UPDATED).deletedAt)
 
         // V1 persisted BLOB round-trips it, and a live BLOB stays without the key.
         assertEquals(carry.row, decodeCanonicalFact(encodeCanonicalFact(carry.row)))

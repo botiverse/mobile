@@ -5,17 +5,14 @@ import build.raft.app.data.RaftEpochMillisSource
 import build.raft.app.data.RaftLocalOffsetMinutesSource
 
 internal fun raftTestDatetimeFoundationOwner(
-    kuiklyBaseEnabled: Boolean = false,
-    kuiklyBaseNowMillis: () -> Long = { 0L },
-    legacyNowMillis: () -> Long = { 0L },
+    nowMillis: () -> Long = { 0L },
     localOffsetMinutesAt: (Long) -> Int? = { null },
 ): RaftDatetimeFoundationOwner =
     RaftDatetimeFoundationOwner(
-        usesKuiklyBase = kuiklyBaseEnabled,
-        kuiklyBaseClock = RaftEpochMillisSource(kuiklyBaseNowMillis),
-        legacyClock = RaftEpochMillisSource(legacyNowMillis),
+        kuiklyBaseClock = RaftEpochMillisSource(nowMillis),
         kuiklyBaseOffset = RaftLocalOffsetMinutesSource(localOffsetMinutesAt),
     )
 
+/** No system zone reading: every offset falls back to the legacy payload's minutes. */
 internal val RaftLegacyTestDatetimeFoundationOwner =
     raftTestDatetimeFoundationOwner()

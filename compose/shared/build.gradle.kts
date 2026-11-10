@@ -13,35 +13,6 @@ plugins {
     id("io.github.takahirom.roborazzi")
 }
 
-val generatedRaftDatetimeConfigDir = layout.buildDirectory.dir("generated/slock-datetime/commonMain/kotlin")
-val raftKuiklyBaseDatetimeEnabled =
-    providers.gradleProperty("slock.kuiklyBaseDatetime.enabled")
-        .orElse(providers.environmentVariable("SLOCK_KUIKLYBASE_DATETIME_ENABLED"))
-        .map { value ->
-            value.trim().lowercase() !in setOf("0", "false", "no", "off")
-        }
-        .orElse(true)
-val generateRaftDatetimeBuildConfig by tasks.registering {
-    val outputFile =
-        generatedRaftDatetimeConfigDir.map {
-            it.file("build/raft/app/data/RaftDatetimeBuildConfig.kt")
-        }
-    inputs.property("kuiklyBaseDatetimeEnabled", raftKuiklyBaseDatetimeEnabled)
-    outputs.file(outputFile)
-    doLast {
-        val enabled = raftKuiklyBaseDatetimeEnabled.get()
-        outputFile.get().asFile.apply {
-            parentFile.mkdirs()
-            writeText(
-                """
-                package build.raft.app.data
-
-                internal const val RaftKuiklyBaseDatetimeEnabledByBuild: Boolean = $enabled
-                """.trimIndent() + "\n"
-            )
-        }
-    }
-}
 val raftVisualFixturesEnabled =
     providers.gradleProperty("slockVisualFixtures")
         .orElse(providers.environmentVariable("SLOCK_VISUAL_FIXTURES"))
@@ -109,7 +80,6 @@ kotlin {
         val commonMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/commonMain/kotlin"))
-            kotlin.srcDir(generatedRaftDatetimeConfigDir)
             if (raftVisualFixturesEnabled) {
                 kotlin.srcDir("src/visualFixtures/kotlin")
                 // Visual fixture DATA follows the gated host into commonMain, so the visual
@@ -347,10 +317,6 @@ if (raftVisualFixturesEnabled) {
 
 tasks.matching { it.name.startsWith("kspKotlinIos") }.configureEach {
     dependsOn("generateCommonMainRaftDatabaseInterface")
-}
-
-tasks.matching { it.name.startsWith("compile") || it.name.startsWith("ksp") }.configureEach {
-    dependsOn(generateRaftDatetimeBuildConfig)
 }
 
 // Xcode can run Gradle more than once per iOS build: the CocoaPods "Build shared" phase

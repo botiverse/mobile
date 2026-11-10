@@ -6,7 +6,9 @@ import build.raft.app.data.RaftSqlDatabase
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class CanonicalMessageV2DurableOwnerTest {
     @Test
@@ -34,26 +36,23 @@ class CanonicalMessageV2DurableOwnerTest {
         val sibling = scope(production, "channel-b")
         val stagingTwin = scope(staging, "channel-a")
         val store = SqlDelightCanonicalMessageV2Store(database, now = { 100L })
-        val overlays = SqlDelightViewerOverlayStore(database)
 
         runBlocking {
             store.applySnapshot(snapshot(channel, envelope(production, "channel-a", "message-a", 1)))
             store.applySnapshot(snapshot(sibling, envelope(production, "channel-b", "message-b", 1)))
             store.applySnapshot(snapshot(stagingTwin, envelope(staging, "channel-a", "stage-message", 1)))
-            val channelOverlay = overlayKey(channel, "message-a")
-            val siblingOverlay = overlayKey(sibling, "message-b")
-            overlays.compareAndWrite(channelOverlay, overlay())
-            overlays.compareAndWrite(siblingOverlay, overlay())
+            database.insertOverlayRow(channel, "message-a")
+            database.insertOverlayRow(sibling, "message-b")
 
             store.clearScope(channel)
             assertEquals(RestoredCanonicalMessageV2Scope(emptyList(), null), store.restore(channel))
-            assertNull(overlays.read(channelOverlay))
+            assertFalse(database.hasOverlayRow(channel, "message-a"))
             assertEquals(listOf("message-b"), store.restore(sibling).envelopes.map { it.fact.id })
-            assertEquals(overlay(), overlays.read(siblingOverlay))
+            assertTrue(database.hasOverlayRow(sibling, "message-b"))
 
             store.clearPartition(production)
             assertEquals(RestoredCanonicalMessageV2Scope(emptyList(), null), store.restore(sibling))
-            assertNull(overlays.read(siblingOverlay))
+            assertFalse(database.hasOverlayRow(sibling, "message-b"))
             assertEquals(listOf("stage-message"), store.restore(stagingTwin).envelopes.map { it.fact.id })
         }
     }
@@ -381,20 +380,35 @@ class CanonicalMessageV2DurableOwnerTest {
     private fun scope(partition: DurablePartitionKey, id: String) =
         SyncScopeKey(partition, id, "channel")
 
-    private fun overlayKey(scope: SyncScopeKey, messageId: String) = ViewerOverlayKey(
-        partition = scope.partition,
-        scopeKind = scope.scopeKind,
-        scopeId = scope.scopeId,
-        subjectKind = "message",
-        subjectId = messageId,
-        overlayKind = "reactions",
-    )
+    /** A receiver-private overlay row as an earlier build may have left it; the V2 clear paths must drop it. */
+    private fun RaftSqlDatabase.insertOverlayRow(scope: SyncScopeKey, messageId: String) =
+        queries.insertMessageViewerOverlay(
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            scopeId = scope.scopeId,
+            subjectKind = "message",
+            subjectId = messageId,
+            overlayKind = "reactions",
+            overlayVersion = 1,
+            completeness = "complete",
+            payloadJson = "{\"kind\":\"reactions\",\"reactedEmojis\":[\"heart\"]}",
+        )
 
-    private fun overlay() = VersionedViewerOverlayV1(
-        version = 1,
-        completeness = OverlayCompleteness.Complete,
-        payload = ViewerOverlayPayloadV1.Reactions(listOf("heart")),
-    )
+    private fun RaftSqlDatabase.hasOverlayRow(scope: SyncScopeKey, messageId: String): Boolean =
+        queries.selectMessageViewerOverlay(
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            scopeId = scope.scopeId,
+            subjectKind = "message",
+            subjectId = messageId,
+            overlayKind = "reactions",
+        ).executeAsOneOrNull() != null
 
     private fun withFreshDatabase(block: (RaftSqlDatabase) -> Unit) {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
