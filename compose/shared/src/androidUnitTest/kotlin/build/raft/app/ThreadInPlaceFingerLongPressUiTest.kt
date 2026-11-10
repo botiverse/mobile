@@ -105,6 +105,10 @@ class ThreadInPlaceFingerLongPressUiTest {
             showRow()
             onNodeWithTag(BODY_TAG).performTouchInput { longClick(Offset(width * 0.3f, centerY)) }
             waitForIdle()
+            // The platform asks for the text toolbar a moment after the press (virtual clock; as
+            // RaftFloatingToolbarAnchorGuardUiTest): without this the menu check raced it.
+            mainClock.advanceTimeBy(500)
+            waitForIdle()
             assertTrue(controller!!.hasSelection, "a finger long press selects the message's text in place")
             assertTrue(
                 threadInPlaceSelectionCoversAll(controller!!.selectedTexts(), controller!!.selectableTexts()),
