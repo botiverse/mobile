@@ -61,9 +61,9 @@ import kotlin.test.Test
 class MobileNavServerScreenshotTest {
     private val appearances = listOf(RaftAppearance.Light, RaftAppearance.Dark)
 
-    private fun capture(name: String, content: @Composable () -> Unit) =
+    private fun capture(name: String, settleFrames: Int = 0, content: @Composable () -> Unit) =
         appearances.forEach { appearance ->
-            RaftScreenshot.capture("${name}_${appearance.name.lowercase()}", appearance, content = content)
+            RaftScreenshot.capture("${name}_${appearance.name.lowercase()}", appearance, settleFrames = settleFrames, content = content)
         }
 
     @Test
@@ -129,17 +129,90 @@ class MobileNavServerScreenshotTest {
             }
         }
 
+    /**
+     * raft-design #1037: up to 4 pages keep one row; more than 4 take 3 columns, the last row
+     * from the start edge. At 360dp, in English and in Spanish, whose labels are the longest
+     * ("Computadoras", "Configuración"): 4 pages (no Artifacts) and all 5.
+     */
+    @Test
+    fun mobileNavServerPopoverPages() =
+        capture("mobile_nav_server_popover_pages") {
+            val en = listOf("Artifacts", "Members", "Computers", "Apps", "Settings")
+            // The app's values-es strings (Artifacts and Apps stay in English there).
+            val es = listOf("Artifacts", "Miembros", "Computadoras", "Apps", "Configuración")
+            val esFooter = listOf("Unirse a la comunidad", "Cambiar o crear servidor", "Invitar a una persona")
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                listOf(Triple("en", en, null), Triple("es", es, esFooter)).forEach { (language, labels, footer) ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
+                        listOf(false, true).forEach { artifacts ->
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Caption("$language, ${if (artifacts) 5 else 4} pages (360dp phone)")
+                                Phone(
+                                    menuState(open = true),
+                                    servers = 2,
+                                    width = 360.dp,
+                                    height = 420.dp,
+                                    pages = pages(labels, artifacts),
+                                    footer = footer ?: listOf("Join Community", "Switch or Create Server", "Invite Human"),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    /**
+     * Mobile #4500 (Lagoon): on a short phone the server list keeps at least one whole server
+     * row and opens scrolled to the current one; for that row the popover goes past 60% up to
+     * the room there is, and past that the footer and pages give way (the popover scrolls). 360dp wide, 5 pages in Spanish, 14 servers with the tenth one current ("Server
+     * 9", far below the list's first rows: it opens scrolled to it), on a 360dp and a 300dp tall
+     * screen.
+     */
+    @Test
+    fun mobileNavServerPopoverShort() =
+        // A frame for the list to open scrolled to the current server.
+        capture("mobile_nav_server_popover_short", settleFrames = 2) {
+            val es = listOf("Artifacts", "Miembros", "Computadoras", "Apps", "Configuración")
+            val esFooter = listOf("Unirse a la comunidad", "Cambiar o crear servidor", "Invitar a una persona")
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
+                listOf(360.dp, 300.dp).forEach { height ->
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Caption("es, 5 pages, 360 x ${height.value.toInt()}dp")
+                        Phone(
+                            menuState(open = true),
+                            servers = 14,
+                            width = 360.dp,
+                            height = height,
+                            pages = pages(es),
+                            footer = esFooter,
+                            currentId = "s9",
+                        )
+                    }
+                }
+            }
+        }
+
     private fun menuState(open: Boolean) = RaftMobileNavServerPopoverState().apply { if (open) show() }
 
     @Composable
-    private fun Phone(state: RaftMobileNavServerPopoverState, servers: Int, reorder: RaftReorderState? = null) {
-        Column(Modifier.width(375.dp)) {
-            Box(Modifier.width(375.dp).height(640.dp).background(RaftTheme.colors.layerCanvas)) {
-                RaftMobileNavServerPopover(state, screenHeight = 640.dp + RaftMobileNavDefaults.BarHeight) {
+    private fun Phone(
+        state: RaftMobileNavServerPopoverState,
+        servers: Int,
+        reorder: RaftReorderState? = null,
+        width: Dp = 375.dp,
+        height: Dp = 640.dp,
+        pages: List<Triple<String, AppIcon, Boolean>> = threePages,
+        footer: List<String> = listOf("Join Community", "Switch or Create Server", "Invite Human"),
+        currentId: String = "botiverse",
+    ) {
+        Column(Modifier.width(width)) {
+            Box(Modifier.width(width).height(height).background(RaftTheme.colors.layerCanvas)) {
+                RaftMobileNavServerPopover(state, screenHeight = height + RaftMobileNavDefaults.BarHeight) {
                     RaftMobileNavServerPopoverContent(paneTitle = "Server panel") {
                         RaftMobileNavServerPopoverList(reorderState = reorder) {
                             sampleServers(servers).forEach { (id, name, unread) ->
-                                val current = id == "botiverse"
+                                val current = id == currentId
                                 RaftMobileNavServerPopoverRow(
                                     modifier =
                                         if (reorder != null) Modifier.raftReorderableItem(reorder, id, onOrderChange = {}) else Modifier,
@@ -161,21 +234,13 @@ class MobileNavServerScreenshotTest {
                         }
                         RaftMobileNavServerPopoverSeparator()
                         RaftMobileNavServerPopoverGroup {
-                            listOf(
-                                "Join Community" to AppIcon.Globe,
-                                "Switch or Create Server" to AppIcon.Plus,
-                                "Invite Human" to AppIcon.UserPlus,
-                            ).forEach { (label, icon) ->
+                            footer.zip(listOf(AppIcon.Globe, AppIcon.Plus, AppIcon.UserPlus)).forEach { (label, icon) ->
                                 RaftMobileNavServerPopoverRow(label = label, onClick = {}, leading = { AppIconImage(icon, 16.dp, RaftTheme.colors.foreground) })
                             }
                         }
                         RaftMobileNavServerPopoverSeparator()
                         RaftMobileNavServerPopoverDestinations {
-                            listOf(
-                                Triple("Members", AppIcon.Users, false),
-                                Triple("Computers", AppIcon.Monitor, true),
-                                Triple("Settings", AppIcon.Settings, false),
-                            ).forEach { (label, glyph, attention) ->
+                            pages.forEach { (label, glyph, attention) ->
                                 RaftMobileNavServerPopoverDestination(
                                     label = label,
                                     onClick = {},
@@ -189,9 +254,23 @@ class MobileNavServerScreenshotTest {
                     }
                 }
             }
-            Bar(serverName = "Botiverse", open = state.open)
+            Bar(serverName = "Botiverse", open = state.open, width = width)
         }
     }
+
+    private val threePages =
+        listOf(
+            Triple("Members", AppIcon.Users, false),
+            Triple("Computers", AppIcon.Monitor, true),
+            Triple("Settings", AppIcon.Settings, false),
+        )
+
+    /** The app's five pages (`RaftServerMenuEntry`), without Artifacts when [artifacts] is off. */
+    private fun pages(labels: List<String>, artifacts: Boolean = true): List<Triple<String, AppIcon, Boolean>> =
+        labels
+            .zip(listOf(AppIcon.FileCode, AppIcon.Users, AppIcon.Monitor, AppIcon.Blocks, AppIcon.Settings))
+            .map { (label, icon) -> Triple(label, icon, icon == AppIcon.Monitor) }
+            .drop(if (artifacts) 0 else 1)
 
     private fun sampleServers(count: Int): List<Triple<String, String, Int>> {
         val base =
@@ -205,8 +284,14 @@ class MobileNavServerScreenshotTest {
     }
 
     @Composable
-    private fun Bar(serverName: String, attention: Boolean = false, open: Boolean = false, pressedServerOnly: Boolean = false) {
-        Box(Modifier.width(375.dp).height(RaftMobileNavDefaults.BarHeight).background(RaftTheme.colors.layerCard)) {
+    private fun Bar(
+        serverName: String,
+        attention: Boolean = false,
+        open: Boolean = false,
+        pressedServerOnly: Boolean = false,
+        width: Dp = 375.dp,
+    ) {
+        Box(Modifier.width(width).height(RaftMobileNavDefaults.BarHeight).background(RaftTheme.colors.layerCard)) {
             Row(Modifier.fillMaxWidth().fillMaxHeight().padding(top = RaftStroke.Hairline + RaftMobileNavDefaults.TopPadding)) {
                 CompositionLocalProvider(LocalRaftPressedPreview provides false) {
                     listOf(
