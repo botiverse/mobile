@@ -224,14 +224,39 @@ private fun List<RaftLexerSegment>.withResolvedAutolinkBoundaries(
 
     val validByStart = validAutolinks.associateBy { it.first }
 
+    val segments = this
     return buildList {
-        for (segment in this@withResolvedAutolinkBoundaries) {
+        var index = 0
+        while (index < segments.size) {
+            val segment = segments[index++]
             if (segment.type != GFMTokenTypes.GFM_AUTOLINK) {
                 add(segment)
                 continue
             }
 
             val validRange = validByStart[segment.start]
+            if (validRange != null && validRange.second > segment.endExclusive) {
+                // The lexer pushes back a trailing `_`/`~` run that the scanner keeps
+                // (web parity, see scanAutolinkEnd): take the following tokens into
+                // the link when they end exactly where the scanner's URL ends.
+                var absorbedEnd = segment.endExclusive
+                var next = index
+                while (
+                    next < segments.size &&
+                    segments[next].start == absorbedEnd &&
+                    segments[next].endExclusive <= validRange.second
+                ) {
+                    absorbedEnd = segments[next].endExclusive
+                    next++
+                }
+                if (absorbedEnd == validRange.second) {
+                    add(RaftLexerSegment(segment.start, absorbedEnd, GFMTokenTypes.GFM_AUTOLINK))
+                    index = next
+                } else {
+                    add(segment)
+                }
+                continue
+            }
             if (validRange == null || validRange.second >= segment.endExclusive) {
                 add(segment)
                 continue
@@ -421,8 +446,17 @@ private class RaftRecursiveDescentInlineScanner(
             cursor++
         }
 
+        val scanEnd = cursor
         while (cursor > startPath && (content[cursor - 1] in ".,:;!?\"'*_~]" || content[cursor - 1] in CJK_URL_BOUNDARY_PUNCTUATION)) {
             cursor--
+        }
+        // Web parity (slock packages/web/src/utils/markdownAutolink.ts
+        // `restoreTrailingUrlMarks`): GFM drops a trailing `_`/`~` run, and the web
+        // puts the run right after the link back into the URL when it closed no
+        // emphasis (tokens such as `share/…h5_` end in `_`). A run that closes an
+        // open `_`/`__`/`~~` scope already stopped the scan above, so it stays out.
+        while (cursor < scanEnd && content[cursor] in "_~") {
+            cursor++
         }
         return cursor
     }
