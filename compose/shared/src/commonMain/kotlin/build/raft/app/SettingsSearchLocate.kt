@@ -20,9 +20,23 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import build.raft.app.compat.json.JSONObject
 import build.raft.designsystem.components.RaftLocatedState
 import build.raft.designsystem.motion.rememberRaftReducedMotion
@@ -100,17 +114,55 @@ internal val SettingsSearchRowShape: Shape = RoundedCornerShape(RaftRadius.Contr
 internal val SettingsSearchCardShape: Shape = RoundedCornerShape(RaftRadius.Container)
 
 /**
+ * How far the highlight reaches outside a section that starts with its own header (an icon and a
+ * title over its card: [SettingsFormSection], [SettingsFormSectionCard]). Laid over the block's
+ * bounds, the tint ran flush against the header's icon and title (artin, Hands raft-android
+ * eaeefff5: "这个框没有padding"); 8dp out, as far as a list cell's located shape stands in from its
+ * row (states.md#located), gives the header room. Pages keep their 16dp side inset in a padding
+ * the list's cross-axis clip reaches past, and their top and bottom inset in `contentPadding`, so a
+ * section first on its page is not cut at the top. The web lays its fill on the section's own box
+ * (raft-ui styles.css `[data-located]`), which has the same flush look.
+ */
+internal val SettingsSearchSectionOutset: Dp = 8.dp
+
+/**
+ * On a section with its own header: the card's corner, grown by [SettingsSearchSectionOutset] so it
+ * stays concentric with the card inside, [SettingsSearchSectionOutset] outside the bounds.
+ */
+internal val SettingsSearchSectionShape: Shape =
+    SettingsSearchOutsetShape(radius = RaftRadius.Container + SettingsSearchSectionOutset, outset = SettingsSearchSectionOutset)
+
+/** A rounded rectangle [outset] outside the bounds it is laid on, corners of [radius]. */
+internal data class SettingsSearchOutsetShape(val radius: Dp, val outset: Dp) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val bounds = settingsSearchOutsetBounds(size, with(density) { outset.toPx() })
+        val corner = with(density) { radius.toPx() }
+        return Outline.Rounded(RoundRect(bounds, CornerRadius(corner)))
+    }
+}
+
+/** [size]'s bounds grown by [outset] on every side (pure: the highlight's geometry). */
+// `0f - outset`, not `-outset`: a zero outset stays +0f (Rect equality tells -0f apart).
+internal fun settingsSearchOutsetBounds(size: Size, outset: Float): Rect =
+    Rect(left = 0f - outset, top = 0f - outset, right = size.width + outset, bottom = size.height + outset)
+
+/**
  * Marks the setting [id] on its page: when the page was opened at it, the row is brought into view
  * once it is laid out, then shows the located highlight in [shape]. The highlight is laid over the
- * row and multiplied in where `info-soft` is opaque (light), so it tints the card's own fill and
- * leaves the text as it is, also on a card that paints its own background; in dark `info-soft` is
- * already translucent. Draw-phase only: the fade never recomposes.
+ * row (around it, in [SettingsSearchSectionShape]) and multiplied in where `info-soft` is opaque
+ * (light), so it tints the card's own fill and leaves the text as it is, also on a card that paints
+ * its own background; in dark `info-soft` is already translucent. Draw-phase only: the fade never
+ * recomposes.
  */
 @Composable
 internal fun Modifier.settingsSearchAnchor(id: String, shape: Shape = SettingsSearchRowShape): Modifier {
     val locator = LocalSettingsSearchLocator.current
     if (locator == null || locator.targetId != id) return this
     val requester = remember { BringIntoViewRequester() }
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    // Read in the effect only, so a size change doesn't recompose.
+    val laidOutSize = remember { arrayOf(Size.Unspecified) }
     DisposableEffect(locator) {
         locator.anchorComposed = true
         onDispose { locator.anchorComposed = false }
@@ -119,13 +171,15 @@ internal fun Modifier.settingsSearchAnchor(id: String, shape: Shape = SettingsSe
         if (locator.settled) return@LaunchedEffect
         // After the row's first layout, so its bounds are known.
         withFrameNanos {}
-        requester.bringIntoView()
+        // The whole highlight, also where it reaches outside the row ([SettingsSearchSectionShape]).
+        val size = laidOutSize[0]
+        requester.bringIntoView(if (size.isSpecified) shape.createOutline(size, layoutDirection, density).bounds else null)
         locator.settled = true
         locator.located.locate(id)
     }
     val fill = RaftTheme.colors.infoSoft
     val blend = if (fill.alpha >= 0.99f) BlendMode.Multiply else BlendMode.SrcOver
-    return bringIntoViewRequester(requester).drawWithContent {
+    return onSizeChanged { laidOutSize[0] = it.toSize() }.bringIntoViewRequester(requester).drawWithContent {
         drawContent()
         val strength = locator.located.strengthFor(id)
         if (strength > 0f) drawOutline(shape.createOutline(size, layoutDirection, this), fill, alpha = strength, blendMode = blend)

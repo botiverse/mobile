@@ -174,7 +174,7 @@ internal fun SharedSettingsServerContent(
         // Web ServerTabContent order: Profile, then Public access.
         if (publicAccess != null && publicAccess.state.sectionVisible) {
             item {
-                Box(Modifier.fillMaxWidth().settingsSearchAnchor("public-access", SettingsSearchCardShape)) {
+                Box(Modifier.fillMaxWidth().settingsSearchAnchor("public-access", SettingsSearchSectionShape)) {
                     SettingsServerPublicAccessCard(
                         state = publicAccess.state,
                         webBaseUrl = publicAccess.webBaseUrl,

@@ -32,6 +32,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -59,7 +60,10 @@ internal fun SettingsLanguageRegionContent(
         state = rememberSettingsSearchListState(),
         // The 16dp content inset stays under a mouse or trackpad; the cards move 16 apart there
         // (12 with a finger: sizing v12, raft-ui 0.65 desktop density).
-        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(horizontal = 16.dp),
+        // The top and bottom inset inside the list, so a located section first on the page has room
+        // for its highlight (SettingsSearchSectionShape) instead of being cut where the list starts.
+        contentPadding = PaddingValues(vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(RaftTheme.controls.settingsCardGap)
     ) {
         when (state) {
@@ -111,7 +115,7 @@ internal fun SettingsLanguageRegionContent(
                 val busy = settingsLanguageRegionBusy(actionState, pick)
                 (mobileState as? ScreenLoadState.Content)?.data?.let { mobileSnapshot ->
                     item {
-                        Box(Modifier.fillMaxWidth().settingsSearchAnchor("display-language", SettingsSearchCardShape)) {
+                        Box(Modifier.fillMaxWidth().settingsSearchAnchor("display-language", SettingsSearchSectionShape)) {
                             SettingsAppLanguageCard(
                                 snapshot = mobileSnapshot,
                                 actionState = actionState,
