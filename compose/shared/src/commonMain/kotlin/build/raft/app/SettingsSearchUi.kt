@@ -277,6 +277,13 @@ internal fun rememberSettingsSearchResults(host: SettingsSearchHost, payload: Ra
     return remember(settings, query) { searchSettings(settings, query) }
 }
 
+/** Back clears a non-empty query before it leaves the page. */
+@Composable
+internal fun SettingsSearchBackHandler(host: SettingsSearchHost) {
+    val state = host.state
+    RaftBackHandler(enabled = host.active && state.query.isNotEmpty(), label = "settings_search") { state.query = "" }
+}
+
 /**
  * The field on top of a Settings list (web `role="search"` InputGroup): the search icon, Search
  * settings, and once there is text a clear button. Enter (the keyboard's Search) opens the first
@@ -287,12 +294,15 @@ internal fun SettingsSearchField(
     host: SettingsSearchHost,
     results: List<RaftSettingsSearchResult>,
     modifier: Modifier = Modifier,
+    // False when the field is a lazy list row that can scroll out of composition: the caller then
+    // registers [SettingsSearchBackHandler] outside the list so Back still clears the query.
+    ownsBackHandler: Boolean = true,
 ) {
     val state = host.state
     val placeholder = stringResource(Res.string.settings_search_placeholder)
     val focusManager = LocalFocusManager.current
     val focusRequester = remember { FocusRequester() }
-    RaftBackHandler(enabled = host.active && state.query.isNotEmpty(), label = "settings_search") { state.query = "" }
+    if (ownsBackHandler) SettingsSearchBackHandler(host)
     Box(modifier.fillMaxWidth().semantics { isTraversalGroup = true }) {
         RaftTextField(
             value = state.query,
