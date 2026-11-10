@@ -98,7 +98,7 @@ class SettingsFeedbackComposeScreenshotTest {
     /** The page as SettingsHandsFeedbackScreen draws it, with the fixture's state. */
     @Composable
     private fun NewFeedbackPage(fixture: FormFixture) {
-        val copy = settingsHandsFeedbackCopy(RaftFormat.byteLimit(raftFeedbackAttachmentMaxBytes()))
+        val copy = settingsHandsFeedbackCopy(RaftFormat.byteLimit(settingsFeedbackImageMaxBytes()))
         val value = TextFieldValue(fixture.message, selection = TextRange(fixture.message.length))
         SettingsDetailShell(title = settingsHandsFeedbackTitle(), subtitle = settingsHandsFeedbackSubtitle(), onBack = {}) {
             SettingsHandsFeedbackForm(

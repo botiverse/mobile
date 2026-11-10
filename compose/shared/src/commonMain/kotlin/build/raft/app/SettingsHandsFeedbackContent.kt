@@ -95,7 +95,7 @@ internal fun SharedHandsFeedbackContent(
 ) {
     // The Raft proxy takes images up to 10 MB each (server PRODUCT_FEEDBACK_MAX_ATTACHMENT_BYTES; web
     // NewFeedbackForm says the same); the diagnostics zip goes through its own presigned upload.
-    val attachmentMaxBytes = minOf(raftFeedbackAttachmentMaxBytes(), SETTINGS_FEEDBACK_IMAGE_MAX_BYTES)
+    val attachmentMaxBytes = settingsFeedbackImageMaxBytes()
     val attachmentMaxLabel = RaftFormat.byteLimit(attachmentMaxBytes)
     val copy = settingsHandsFeedbackCopy(attachmentMaxLabel)
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
@@ -1429,3 +1429,6 @@ internal fun SettingsHandsFeedbackComposer(
 
 /** Per-image cap of `POST /api/product-feedback` (10 MB). */
 internal const val SETTINGS_FEEDBACK_IMAGE_MAX_BYTES: Long = 10L * 1024L * 1024L
+
+/** The cap the form enforces and shows: the platform's, at most the proxy's 10 MB. */
+internal fun settingsFeedbackImageMaxBytes(): Long = minOf(raftFeedbackAttachmentMaxBytes(), SETTINGS_FEEDBACK_IMAGE_MAX_BYTES)
