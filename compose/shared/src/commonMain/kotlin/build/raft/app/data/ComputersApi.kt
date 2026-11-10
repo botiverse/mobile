@@ -608,6 +608,8 @@ internal data class ComputerSummary(
     val createdAt: String?,
     /** Server `osRelease`: the reported OS name and version ("Ubuntu 24.04"), Linux only; null otherwise. */
     val osRelease: String? = null,
+    /** Server `hostProvider`: a shared `HOST_PROVIDER_LABELS` id ("hetzner"); null when not recognized or an older server. */
+    val hostProvider: String? = null,
     /** Server `runtimeVersions`: runtime id -> the CLI version the Computer detected ("2.1.59 (Claude Code)"). */
     val runtimeVersions: Map<String, String> = emptyMap(),
     /** `machines.userId`: the user who registered the machine (server's "machine creator" authority). */
@@ -814,6 +816,10 @@ private data class ComputerDto(
     // services/machineReadModel.ts `osRelease: normalizeOsRelease(machine.osRelease)` (shared
     // OS_RELEASE_MAX_LENGTH): the OS name and version the Computer read from os-release.
     val osRelease: String? = null,
+    // services/machineReadModel.ts `hostProvider: isHostProvider(machine.hostProvider) ? machine.hostProvider : null`
+    // (packages/shared/src/index.ts HOST_PROVIDER_LABELS ids, db/schema.ts `host_provider`): the cloud / VM
+    // platform the Computer recognized; null when none and from older servers (absent).
+    val hostProvider: String? = null,
     // services/machineReadModel.ts `runtimeVersions: Record<string, string>` (runtime id -> the version
     // string the Computer's `ready` reported, e.g. "2.1.59 (Claude Code)"); the usage sheet's version line.
     val runtimeVersions: Map<String, String> = emptyMap(),
@@ -1070,6 +1076,7 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         lastHeartbeat = lastHeartbeat,
         createdAt = createdAt,
         osRelease = osRelease?.trim()?.takeIf { it.isNotBlank() },
+        hostProvider = hostProvider?.trim()?.takeIf { it.isNotBlank() },
         runtimeVersions =
             runtimeVersions.mapNotNull { (runtime, version) ->
                 version.trim().takeIf { runtime.isNotBlank() && it.isNotEmpty() }?.let { runtime to it }

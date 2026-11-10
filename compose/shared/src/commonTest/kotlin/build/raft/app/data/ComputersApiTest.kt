@@ -217,6 +217,31 @@ class ComputersApiTest {
     }
 
     @Test
+    fun hostProviderMapsFromTheMachineReadModelAndIsNullWhenAbsent() = runPortableCoroutineTest {
+        // botiverse/slock packages/server/src/services/machineReadModel.ts:
+        // `hostProvider: isHostProvider(machine.hostProvider) ? machine.hostProvider : null`
+        // (packages/shared/src/index.ts HOST_PROVIDER_LABELS); an older server leaves it out.
+        val body =
+            """
+            {"machines":[
+              {"id":"c-1","name":"hetzner-ax42-1","status":"online","isComputer":true,"hostProvider":"hetzner"},
+              {"id":"c-2","name":"mac-studio","status":"online","isComputer":true,"hostProvider":null},
+              {"id":"c-3","name":"old-server","status":"offline","isComputer":true},
+              {"id":"c-4","name":"blank","status":"online","isComputer":true,"hostProvider":"  "}
+            ]}
+            """.trimIndent()
+        val machines =
+            assertIs<DataResult.Content<ComputerListSummary>>(
+                RaftComputersApiClient(RecordingComputersApi(machinesBody = body)).machines(ServerId("server-1"), DataRequestPriority.Visible)
+            ).data.machines.associateBy { it.id }
+        val expected = mapOf("c-1" to "hetzner", "c-2" to null, "c-3" to null, "c-4" to null)
+        expected.forEach { (id, provider) ->
+            assertEquals(provider, machines.getValue(id).hostProvider, id)
+            assertEquals(provider, machines.getValue(id).toSettingsComputerSnapshot().hostProvider, id)
+        }
+    }
+
+    @Test
     fun typedComputersApiAcceptsRawRowShapeForRename() = runPortableCoroutineTest {
         // Server returns the raw machines DB row for PATCH (no status / statusVersion
         // enrichment). The typed API must accept this shape, NOT flag it as contract
