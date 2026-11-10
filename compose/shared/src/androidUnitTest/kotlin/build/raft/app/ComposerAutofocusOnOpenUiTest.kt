@@ -59,7 +59,7 @@ class ComposerAutofocusOnOpenUiTest {
         val requester = remember { FocusRequester() }
         CompositionLocalProvider(LocalRaftEditorIsConversationComposer provides true) {
             TextField(
-                modifier = Modifier.testTag(tag),
+                modifier = Modifier.testTag(tag).composerReportsFocus(focus),
                 value = "",
                 autoFocus = false,
                 onValueChange = {},
@@ -326,20 +326,17 @@ class ComposerAutofocusOnOpenUiTest {
         }
 
     // Rule 4: closing the reply thread gives the focus back to the channel's composer only when the
-    // focus was lost (it was in the thread, which is gone); anywhere else, it stays.
+    // focus was in the thread's composer and went with it; moved anywhere else, it stays.
     @Test
     fun sideThreadCloseRestoresOnlyWhenFocusLost() =
         runRobolectricComposeUiTest {
             var panelOpen by mutableStateOf(false)
             val control = FocusRequester()
             setContent {
-                // The page root reports whether anything in it holds focus, as in production.
-                RaftInputFocusDismissHost { root ->
-                    Column(root) {
-                        FocusableControl(CONTROL, control)
-                        Composer(CHANNEL, conversation = "ch-1", focus = pageFocus(yieldsToSideThread = panelOpen))
-                        if (panelOpen) Composer(THREAD, conversation = "th-1", focus = pageFocus())
-                    }
+                Column {
+                    FocusableControl(CONTROL, control)
+                    Composer(CHANNEL, conversation = "ch-1", focus = pageFocus(yieldsToSideThread = panelOpen))
+                    if (panelOpen) Composer(THREAD, conversation = "th-1", focus = pageFocus())
                 }
             }
             waitForIdle()

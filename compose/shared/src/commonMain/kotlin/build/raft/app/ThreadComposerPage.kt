@@ -3249,6 +3249,8 @@ internal fun ThreadComposerContentLeaf(
                             // React mobile uses a one-line textarea; keep the toolbar as the touch target.
                             focusRequester = composerFocusRequester,
                             modifier = Modifier
+                                // Where the focus is when a side thread closes (ComposerAutofocusPolicy.kt).
+                                .composerReportsFocus(autofocusOnOpen)
                                 .fillMaxWidth()
                                 .padding(horizontal = ThreadComposerInputPaddingHorizontal)
                                 .heightIn(

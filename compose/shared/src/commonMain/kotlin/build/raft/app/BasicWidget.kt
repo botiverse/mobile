@@ -4,7 +4,6 @@ package build.raft.app
 
 import build.raft.designsystem.focus.LocalRaftAutofocusTargetField
 import build.raft.designsystem.focus.RaftAutofocusGuard
-import build.raft.designsystem.focus.raftReportsFocusPresence
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipeRegion
@@ -1298,8 +1297,7 @@ internal fun Modifier.dismissInputFocusOnScrollableChrome(): Modifier {
 /**
  * Installs the shared outside-gesture focus-dismiss boundary for an app, page, or modal root.
  * Inputs register themselves through [TextField], so adding a standard input never requires a
- * business-page tap handler or allowlist entry. The root also reports whether anything in it holds
- * focus ([raftReportsFocusPresence]), which a focus restore checks first (ComposerAutofocusPolicy.kt).
+ * business-page tap handler or allowlist entry.
  */
 @Composable
 internal fun RaftInputFocusDismissHost(
@@ -1308,7 +1306,7 @@ internal fun RaftInputFocusDismissHost(
     val registry = remember { RaftInputFocusOwnerRegistry() }
     CompositionLocalProvider(LocalRaftInputFocusOwnerRegistry provides registry) {
         content(
-            Modifier.raftReportsFocusPresence().dismissInputFocusOnOutsidePointerDown(
+            Modifier.dismissInputFocusOnOutsidePointerDown(
                 registry = registry,
                 enabled = registry.hasActiveOwner
             )

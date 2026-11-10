@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
@@ -11,10 +12,13 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import build.raft.app.data.SharedAdaptiveWorkspaceSession
 import build.raft.app.data.visibleSideThread
 import build.raft.designsystem.focus.RaftAutofocusGuard
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 
 /*
@@ -52,7 +56,8 @@ internal fun rememberComposerAutofocusOnOpen(): Boolean =
  * wide detail's main conversation while a side thread is shown for it. The side thread's own page
  * (its close request is the side thread's) and pages outside the wide detail (null) never yield.
  * When the side thread closes this turns false and the conversation takes the focus back only if
- * the focus was lost ([ComposerFocusOnOpen.restoreGeneration]; raft-design "Moving focus" rule 4).
+ * the focus was in the thread and left with it ([ComposerFocusOnOpen.restoreGeneration];
+ * raft-design "Moving focus" rule 4).
  */
 internal fun SharedAdaptiveWorkspaceSession.composerAutofocusYieldsToSideThread(
     page: RaftAdaptiveDetailCloseRequest?,
@@ -70,7 +75,11 @@ internal fun SharedAdaptiveWorkspaceSession.composerAutofocusYieldsToSideThread(
  */
 internal const val ComposerAutofocusSettleFrames = 6
 
-/** Frames a restore waits for the closed side thread to leave the composition and drop its focus. */
+/**
+ * Frames a restore waits for the closed side thread to leave the composition and drop its focus;
+ * also how long the focus leaving the thread's composer waits before it counts as the user moving
+ * on (the composer leaving with its closing thread blurs it too).
+ */
 internal const val ComposerFocusRestoreSettleFrames = 2
 
 internal enum class ComposerAutofocusOutcome { Focused, Blocked, Disabled }
@@ -86,8 +95,9 @@ internal enum class ComposerAutofocusOutcome { Focused, Blocked, Disabled }
  *   (a hardware keyboard connected again, the window widened, a side thread closed) or of [shown]
  *   (a page over this one popped) never runs it again: only a person opening the conversation does.
  * - [restoreGeneration] counts the side threads beside this conversation that closed; each one
- *   puts the focus back in the composer only when it was lost (nothing holds focus, or what held
- *   it left with the side thread).
+ *   puts the focus back in the composer only when the focus was in the side thread's composer at
+ *   the close ([sideThreadHeldFocus]) and went with it. Focus the user moved elsewhere while the
+ *   thread was open (Members search, a row, a button) stays there.
  *
  * Main thread only.
  */
@@ -106,16 +116,50 @@ internal class ComposerFocusOnOpen(
     /** +1 each time the reply thread beside this conversation closes. */
     var restoreGeneration: Int by mutableStateOf(0)
 
+    /** A reply thread beside this conversation takes the focus. */
+    var yieldsToSideThread: Boolean by mutableStateOf(yieldsToSideThread)
+        private set
+
+    /**
+     * While a side thread was shown: whether its composer held the focus last. Recorded while the
+     * thread is open, so it says where the focus was when the thread closed.
+     */
+    internal var sideThreadHeldFocus: Boolean = false
+
     internal var openedConversation: Any? = null
-    private var yieldedToSideThread: Boolean = yieldsToSideThread
 
     /** The page's current answers; a side thread that stops being shown beside it asks for a restore. */
     internal fun update(enabled: Boolean, shown: Boolean, yieldsToSideThread: Boolean) {
         if (this.enabled != enabled) this.enabled = enabled
         if (this.shown != shown) this.shown = shown
-        if (yieldedToSideThread && !yieldsToSideThread) restoreGeneration += 1
-        yieldedToSideThread = yieldsToSideThread
+        if (this.yieldsToSideThread && !yieldsToSideThread) restoreGeneration += 1
+        if (this.yieldsToSideThread != yieldsToSideThread) this.yieldsToSideThread = yieldsToSideThread
     }
+}
+
+/**
+ * The conversation composers that hold the focus now, by their page's [ComposerFocusOnOpen]
+ * ([composerReportsFocus]). Kept apart from [RaftAutofocusGuard], where a composer never reports.
+ * Main thread only.
+ */
+internal object ComposerFocusHolders {
+    var holders: Set<ComposerFocusOnOpen> by mutableStateOf(emptySet())
+        private set
+
+    fun set(page: ComposerFocusOnOpen, focused: Boolean) {
+        val next = if (focused) holders + page else holders - page
+        if (next != holders) holders = next
+    }
+}
+
+/** Reports the composer editor's focus to [ComposerFocusHolders] for its page [focus]. */
+@Composable
+internal fun Modifier.composerReportsFocus(focus: ComposerFocusOnOpen?): Modifier {
+    if (focus == null) return this
+    DisposableEffect(focus) {
+        onDispose { ComposerFocusHolders.set(focus, false) }
+    }
+    return onFocusChanged { ComposerFocusHolders.set(focus, it.isFocused) }
 }
 
 /**
@@ -144,7 +188,8 @@ internal fun rememberComposerFocusOnOpen(
  * The composer side of [focus]: focuses [focusRequester] once per [conversation] (the
  * conversation's identity: its surface kind and thread / channel, never the composer instance)
  * unless [blocked] stays true for [ComposerAutofocusSettleFrames] frames, and focuses it again
- * after a side thread closes only while [focusLost]. Focus only: on Android and iOS the soft
+ * after a side thread closes only when the thread's composer had the focus and took it along.
+ * The editor carries [composerReportsFocus] for the same [focus]. Focus only: on Android and iOS the soft
  * keyboard stays down while a hardware keyboard is connected, and desktop has none.
  */
 @Composable
@@ -153,7 +198,6 @@ internal fun ComposerAutofocusOnOpenEffect(
     focus: ComposerFocusOnOpen?,
     focusRequester: FocusRequester,
     blocked: () -> Boolean = { RaftAutofocusGuard.blocksAutofocus },
-    focusLost: () -> Boolean = { !RaftAutofocusGuard.focusHeld },
     onOutcome: (ComposerAutofocusOutcome) -> Unit = {},
 ) {
     if (focus == null || conversation == null) return
@@ -180,6 +224,22 @@ internal fun ComposerAutofocusOnOpenEffect(
         currentOnOutcome(outcome)
     }
     LaunchedEffect(focus) {
+        // Where the focus is while a side thread is open: in another composer (the thread's), or
+        // moved elsewhere by the user. The thread's composer leaving with the closing thread blurs
+        // it as well; the close (yieldsToSideThread false) arrives within the settle frames and
+        // cancels that wait, so the record keeps "the thread had it".
+        snapshotFlow { focus.yieldsToSideThread to ComposerFocusHolders.holders.any { it !== focus } }
+            .collectLatest { (yielding, threadHasFocus) ->
+                if (!yielding) return@collectLatest
+                if (threadHasFocus) {
+                    focus.sideThreadHeldFocus = true
+                } else {
+                    repeat(ComposerFocusRestoreSettleFrames) { withFrameNanos { } }
+                    if (focus.yieldsToSideThread) focus.sideThreadHeldFocus = false
+                }
+            }
+    }
+    LaunchedEffect(focus) {
         // Only side threads that close from now on: one that closed while this composer was not
         // mounted is history, not a request.
         var handled = focus.restoreGeneration
@@ -188,7 +248,10 @@ internal fun ComposerAutofocusOnOpenEffect(
             handled = generation
             // Let the closed side thread leave the composition and its focused element drop the focus.
             repeat(ComposerFocusRestoreSettleFrames) { withFrameNanos { } }
-            if (focus.enabled && focus.shown && focusLost() && !blocked()) {
+            val threadHadFocus = focus.sideThreadHeldFocus
+            focus.sideThreadHeldFocus = false
+            // Rule 4: back only if the focus went with the thread (no composer has it now).
+            if (threadHadFocus && focus.enabled && focus.shown && ComposerFocusHolders.holders.isEmpty() && !blocked()) {
                 currentRequester.tryRequestFocus()
             }
         }
