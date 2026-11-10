@@ -128,9 +128,61 @@ class SharedMyAssistantStore(
         }
     }
 
+    /**
+     * Saves the owner's extra instructions (web `saveAssistantOwnerNotes`): [notes] trimmed, empty
+     * clears them. Not optimistic: the cached answer takes the server's view once it says yes, its
+     * saved notes or else the trimmed text. A 403 / 404 reads the assistant again, as web refetches.
+     */
+    suspend fun saveOwnerNotes(key: MyAssistantKey, notes: String): MyAssistantOwnerNotesSaveOutcome {
+        val trimmed = notes.trim()
+        return when (val result = api.updateOwnerNotes(ServerId(key.serverId), trimmed)) {
+            is MyAssistantOwnerNotesSaveResult.Saved -> {
+                applySavedOwnerNotes(key, result.answer, trimmed)
+                MyAssistantOwnerNotesSaveOutcome.Saved
+            }
+            MyAssistantOwnerNotesSaveResult.TooLong -> MyAssistantOwnerNotesSaveOutcome.TooLong
+            MyAssistantOwnerNotesSaveResult.NotAvailable -> {
+                scope.launch { load(key, keepOnError = true) }
+                MyAssistantOwnerNotesSaveOutcome.Failed
+            }
+            is MyAssistantOwnerNotesSaveResult.Failed -> {
+                logger("my_assistant owner_notes_save_failed server=${key.serverId} code=${result.code ?: "transport"}")
+                MyAssistantOwnerNotesSaveOutcome.Failed
+            }
+        }
+    }
+
+    private fun applySavedOwnerNotes(key: MyAssistantKey, reply: MyAssistantAnswer?, trimmed: String) {
+        answersState.update { current ->
+            val cached = current[key]?.takeIf { it.enabled } ?: return@update current
+            val mine = cached.assistant ?: return@update current
+            val replied = reply?.assistant?.takeIf { reply.enabled && it.agentId == mine.agentId }
+            val next =
+                if (replied != null) {
+                    // The reply is the whole view: take it, keeping the notes just saved if it left them out.
+                    cached.copy(assistant = replied.copy(ownerNotes = replied.ownerNotes ?: trimmed))
+                } else {
+                    cached.copy(assistant = mine.copy(ownerNotes = trimmed))
+                }
+            if (next == cached) current else current + (key to next)
+        }
+    }
+
     private fun store(key: MyAssistantKey, answer: MyAssistantAnswer) {
         answersState.update { current -> if (current[key] == answer) current else current + (key to answer) }
     }
+}
+
+/** What saving the owner's notes means for the editor (web AssistantInstructionsDialog `SaveError`). */
+enum class MyAssistantOwnerNotesSaveOutcome {
+    /** Saved: the editor closes. */
+    Saved,
+
+    /** Over the limit: the editor says so. */
+    TooLong,
+
+    /** Not saved for any other reason; the draft stays. */
+    Failed,
 }
 
 private fun MyAssistantAnswer?.awaitsDm(): Boolean =

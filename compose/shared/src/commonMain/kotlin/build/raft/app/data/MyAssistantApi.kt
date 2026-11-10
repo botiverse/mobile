@@ -4,6 +4,12 @@ import build.raft.app.model.ServerId
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 
 /**
  * "My assistant" (RFC 075 v4): the signed-in person's own personal assistant in one server.
@@ -17,14 +23,19 @@ import kotlinx.serialization.json.Json
  *  - `enabled` is false when the server's `personal_assistant` flag is off or the hosted runtime
  *    is unavailable. `dmChannelId` is null until the owner's DM with the assistant exists.
  *  - 403 `assistant_not_enabled`, or 404 from a server that predates the route: not available.
+ *  - `PATCH servers/:id/assistant` `{ ownerNotes: string | null }` (RFC 077, #10762): the owner's
+ *    extra instructions; the server trims them, empty or null clears them, and longer than
+ *    [ASSISTANT_OWNER_NOTES_MAX_LENGTH] after trimming is 400 `invalid_owner_notes`. It answers
+ *    with the same view as the `GET`.
  *
  * Web reads it in `packages/web/src/assistant/assistantClient.ts` (`useMyAssistant`): only while
  * the `personal_assistant` flag is on, never for a guest; any failure of the first read fails
  * closed (not enabled); a refetch keeps what it had on a transient failure (not 403 / 404).
  *
- * Only the fields the app uses are modelled: of the owner's switches, `readsDms` (the otter panel's
- * meta line, web AssistantOtterPanel `metaId`); `sendAsOwner` and `ownerNotes` are ignored until a
- * screen needs them. Field names are exact camelCase.
+ * The owner's settings are modelled as web `AssistantOwnerSettings` reads them: `readsDms` (the
+ * otter panel's meta line, web AssistantOtterPanel `metaId`), `sendAsOwner`, and `ownerNotes` (the
+ * owner's section of the assistant's profile, web AssistantOwnerSection). Field names are exact
+ * camelCase.
  */
 private val myAssistantJson = Json {
     ignoreUnknownKeys = true
@@ -38,6 +49,9 @@ private data class WireMyAssistantRecord(
     val dmChannelId: String? = null,
     /** Absent from a server that predates RFC 077: null, as web's `readsDms: boolean | null`. */
     val readsDms: Boolean? = null,
+    val sendAsOwner: Boolean? = null,
+    /** Null both when cleared and when absent; [parseSharedMyAssistantResponse] tells them apart. */
+    val ownerNotes: String? = null,
 )
 
 @Serializable
@@ -60,6 +74,13 @@ data class MyAssistantRecord(
      * not say (web `AssistantOwnerSettings.readsDms`).
      */
     val readsDms: Boolean? = null,
+    /** Whether it may send messages as its owner (RFC 077 `sendAsOwner`); null when not reported. */
+    val sendAsOwner: Boolean? = null,
+    /**
+     * The owner's extra instructions as saved, `""` for none; null when the server does not report
+     * them, and then the owner's section offers no editor (web `ownerNotesOf`).
+     */
+    val ownerNotes: String? = null,
 )
 
 /** One answer of `GET servers/:id/assistant` (web `MyAssistantResponse`, without the settings). */
@@ -88,6 +109,11 @@ fun parseSharedMyAssistantResponse(body: String): MyAssistantAnswer? {
         }
     val record = wire.assistant
     if (record != null && (record.id.isBlank() || record.agentId.isBlank())) return null
+    // Web `ownerNotesOf`: a missing field hides the editor, a null one is no notes.
+    val reportsOwnerNotes =
+        record != null &&
+            runCatching { myAssistantJson.parseToJsonElement(body).jsonObject["assistant"]?.jsonObject?.containsKey("ownerNotes") }
+                .getOrNull() == true
     return MyAssistantAnswer(
         enabled = wire.enabled,
         assistant =
@@ -98,9 +124,36 @@ fun parseSharedMyAssistantResponse(body: String): MyAssistantAnswer? {
                     agentId = it.agentId,
                     dmChannelId = it.dmChannelId?.takeIf(String::isNotBlank),
                     readsDms = it.readsDms,
+                    sendAsOwner = it.sendAsOwner,
+                    ownerNotes = if (reportsOwnerNotes) it.ownerNotes.orEmpty() else null,
                 )
             },
     )
+}
+
+/**
+ * The longest owner's notes Raft keeps, in UTF-16 code units after trimming (botiverse/slock
+ * `packages/shared/src/assistantOwnerNotes.ts` `ASSISTANT_OWNER_NOTES_MAX_LENGTH`).
+ */
+const val ASSISTANT_OWNER_NOTES_MAX_LENGTH: Int = 4000
+
+/** Web AssistantInstructionsDialog `COUNTER_FROM`: the counter shows from 90% of the limit on. */
+const val ASSISTANT_OWNER_NOTES_COUNTER_FROM: Int = ASSISTANT_OWNER_NOTES_MAX_LENGTH * 9 / 10
+
+/** The draft is over the limit once trimmed (web `tooLong`). */
+fun assistantOwnerNotesTooLong(draft: String): Boolean = draft.trim().length > ASSISTANT_OWNER_NOTES_MAX_LENGTH
+
+/** The counter under the field shows (web `showCounter`). */
+fun assistantOwnerNotesShowsCounter(draft: String): Boolean = draft.trim().length >= ASSISTANT_OWNER_NOTES_COUNTER_FROM
+
+/** Save is enabled: the trimmed draft differs from the saved notes and fits (web `dirty && !tooLong`). */
+fun assistantOwnerNotesCanSave(draft: String, savedNotes: String): Boolean =
+    draft.trim() != savedNotes.trim() && !assistantOwnerNotesTooLong(draft)
+
+/** The `PATCH` body: the trimmed notes, null to clear them (web `{ ownerNotes: trimmed || null }`). */
+fun encodeAssistantOwnerNotesPatchBody(notes: String): String {
+    val trimmed = notes.trim()
+    return buildJsonObject { put("ownerNotes", if (trimmed.isEmpty()) JsonNull else JsonPrimitive(trimmed)) }.toString()
 }
 
 /** What one read of the route gave. */
@@ -114,8 +167,26 @@ sealed interface MyAssistantFetchResult {
     data class Failed(val code: Int?) : MyAssistantFetchResult
 }
 
+/** What one save of the owner's notes gave. */
+sealed interface MyAssistantOwnerNotesSaveResult {
+    /** Saved; [answer] is the server's view after the save, null when it could not be read. */
+    data class Saved(val answer: MyAssistantAnswer?) : MyAssistantOwnerNotesSaveResult
+
+    /** 400 `invalid_owner_notes`: longer than the limit. */
+    data object TooLong : MyAssistantOwnerNotesSaveResult
+
+    /** 403 / 404: the assistant is gone or no longer available here. */
+    data object NotAvailable : MyAssistantOwnerNotesSaveResult
+
+    /** Anything else; nothing changed. [code] is the HTTP status, null for transport. */
+    data class Failed(val code: Int?) : MyAssistantOwnerNotesSaveResult
+}
+
 interface RaftMyAssistantApi {
     suspend fun fetch(serverId: ServerId): MyAssistantFetchResult
+
+    /** `PATCH servers/:id/assistant` `{ ownerNotes }` with [notes] trimmed, empty clears them. */
+    suspend fun updateOwnerNotes(serverId: ServerId, notes: String): MyAssistantOwnerNotesSaveResult
 }
 
 internal class RaftMyAssistantNetworkApi(
@@ -133,6 +204,38 @@ internal class RaftMyAssistantNetworkApi(
             }.getOrElse { return MyAssistantFetchResult.Failed(code = null) }
         return myAssistantFetchResultOf(response.code, response.bodyText)
     }
+
+    override suspend fun updateOwnerNotes(serverId: ServerId, notes: String): MyAssistantOwnerNotesSaveResult {
+        val response =
+            runCatchingPreservingCancellation {
+                networkClient.request(
+                    priority = DataRequestPriority.Foreground,
+                    path = "servers/${serverId.value}/assistant",
+                    method = "PATCH",
+                    serverIdOverride = serverId,
+                    bodyText = encodeAssistantOwnerNotesPatchBody(notes),
+                )
+            }.getOrElse { return MyAssistantOwnerNotesSaveResult.Failed(code = null) }
+        return myAssistantOwnerNotesSaveResultOf(response.code, response.bodyText ?: response.errorBodyText)
+    }
+}
+
+internal fun myAssistantOwnerNotesSaveResultOf(code: Int, bodyText: String?): MyAssistantOwnerNotesSaveResult =
+    when {
+        code in 200..299 -> MyAssistantOwnerNotesSaveResult.Saved(bodyText?.let(::parseSharedMyAssistantResponse))
+        code == 400 && myAssistantErrorCode(bodyText) == "invalid_owner_notes" -> MyAssistantOwnerNotesSaveResult.TooLong
+        code == 403 || code == 404 -> MyAssistantOwnerNotesSaveResult.NotAvailable
+        else -> MyAssistantOwnerNotesSaveResult.Failed(code)
+    }
+
+/** The error body's `code`, else its `error` (web assistantClient `errorOf`). */
+private fun myAssistantErrorCode(bodyText: String?): String? {
+    val body =
+        bodyText?.takeIf(String::isNotBlank)?.let { text ->
+            runCatching { myAssistantJson.parseToJsonElement(text) as? JsonObject }.getOrNull()
+        } ?: return null
+    fun field(name: String): String? = (body[name] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.trim()?.takeIf(String::isNotEmpty)
+    return field("code") ?: field("error")
 }
 
 internal fun myAssistantFetchResultOf(code: Int, bodyText: String?): MyAssistantFetchResult =

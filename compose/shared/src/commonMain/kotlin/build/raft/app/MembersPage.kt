@@ -7,6 +7,10 @@ import build.raft.app.data.isFor
 import build.raft.app.data.AgentBlockedState
 import build.raft.app.data.agentBlockedState
 import build.raft.app.data.ComputerAccessRevokedErrorCode
+import build.raft.app.assistant.AssistantOwnerPausedNotice
+import build.raft.app.assistant.AssistantOwnerScope
+import build.raft.app.assistant.AssistantOwnerSection
+import build.raft.app.assistant.LocalAssistantOwnerScope
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.compat.ui.raftColorFromArgbHex
@@ -4564,7 +4568,33 @@ internal fun MemberDetailPageContent(
                 )
             }
         }
-    CompositionLocalProvider(LocalMembersRuntimeAccountUsageAccess provides runtimeAccountUsageAccess) {
+    // The viewer's own personal assistant, for its owner's section of the agent profile.
+    val assistantRoute = routeState as? MemberDetailRouteState.Agent
+    val assistantOwnerScope: AssistantOwnerScope? =
+        remember(
+            bridge,
+            provider,
+            assistantRoute?.server?.id,
+            assistantRoute?.server?.role,
+            assistantRoute?.currentUserId
+        ) {
+            val route = assistantRoute ?: return@remember null
+            val userId = route.currentUserId?.trim()?.takeIf { it.isNotBlank() } ?: return@remember null
+            val flags = provider.serverFeatureFlags ?: return@remember null
+            AssistantOwnerScope(
+                store = build.raft.app.data.RaftSharedStoreRegistry.get(bridge).myAssistantStore(provider.storeScope),
+                featureFlags = flags,
+                serverMembersStore = provider.serverMembersStore,
+                agentsApiClient = provider.agentsApiClient,
+                serverId = route.server.id.value,
+                userId = userId,
+                viewerIsGuest = route.server.role?.trim()?.equals("guest", ignoreCase = true) == true
+            )
+        }
+    CompositionLocalProvider(
+        LocalMembersRuntimeAccountUsageAccess provides runtimeAccountUsageAccess,
+        LocalAssistantOwnerScope provides assistantOwnerScope
+    ) {
         when (val current = routeState) {
             MemberDetailRouteState.Loading ->
                 MemberDetailLoadingPageShell(onBack = { closeDetail() })
@@ -11686,6 +11716,10 @@ private fun MembersAgentProfileTab(
             onChangeAvatar = onChangeAvatar,
             lifecycle = lifecycle
         )
+        if (!remoteProfile && !deleted) {
+            // Web AgentDetailPanel: under the hero, the owner's paused notice with Start.
+            AssistantOwnerPausedNotice(agentId = member.id.value, fallbackPausedAt = member.assistantPausedAt)
+        }
         if (!remoteProfile) {
             MembersAgentInfoSection(
                 member = member,
@@ -11741,7 +11775,24 @@ private fun MembersAgentProfileTab(
             // then Agent migration and Actions (both their own items of the detail list, see
             // MembersDetailContent). It has no "Created agents" section (that list lives on a
             // person's profile, HumanDetailPanel), so the agent profile does not render one either.
+            // The owner's assistant settings come before Skills (web `AssistantOwnerSection`).
+            if (!deleted) MembersAgentAssistantOwnerSection(member.id)
             MembersAgentSkillsSection(detail)
+        }
+    }
+}
+
+/**
+ * The owner's 「Assistant」 section (web AgentDetailPanel `AssistantOwnerSection`), framed as the
+ * profile's other sections: a full-bleed separator, then the section's own padding. Nothing for
+ * another agent or another viewer.
+ */
+@Composable
+private fun MembersAgentAssistantOwnerSection(agentId: MemberId) {
+    AssistantOwnerSection(agentId = agentId.value) { content ->
+        Column(modifier = Modifier.fillMaxWidth()) {
+            MembersProfileFullBleedDivider()
+            Column(modifier = Modifier.fillMaxWidth().padding(top = MembersProfileSectionPaddingY), content = content)
         }
     }
 }

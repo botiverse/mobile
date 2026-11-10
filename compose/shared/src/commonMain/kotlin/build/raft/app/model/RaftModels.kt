@@ -463,6 +463,11 @@ data class MemberProfile(
      */
     val assistantPausedAt: String? = null,
     /**
+     * Who paused it (`assistantPausedBy.name`), for the viewers the server tells; null otherwise.
+     * The owner's paused notice names them (web `useAssistantPausedLine`).
+     */
+    val assistantPausedByName: String? = null,
+    /**
      * App-managed bot (botiverse/slock `agents.managed_by_app_install_id`, sent as
      * `managedByAppInstallId` on `GET /agents` and `GET /agents/:id` for non-guests). Web hides
      * the read_receipts_v0 mention badge for these (`MentionLink.tsx` `isManagedBot`).
