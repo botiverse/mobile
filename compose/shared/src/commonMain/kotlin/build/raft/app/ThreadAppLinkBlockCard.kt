@@ -98,7 +98,7 @@ internal fun ThreadAppLinkBlockCard(
 
 /** The App's registered icon at 16dp with 2dp corners, or the generic App mark when it has none or fails. */
 @Composable
-private fun ThreadAppLinkCardHeaderIcon(icon: String?) {
+internal fun ThreadAppLinkCardHeaderIcon(icon: String?) {
     var broken by remember(icon) { mutableStateOf(false) }
     if (icon != null && !broken) {
         Box(Modifier.size(16.dp).clip(RoundedCornerShape(2.dp)), contentAlignment = Alignment.Center) {

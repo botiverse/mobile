@@ -4047,6 +4047,9 @@
     <string name="thread_link_preview_connect_title">Подключите аккаунт %1$s</string>
     <string name="thread_link_preview_connect_body">%1$s покажет, что скрывается за этой ссылкой, когда вы подключите там свой аккаунт.</string>
     <string name="thread_link_preview_refresh_failed">Не удалось обновить карточку. Попробуйте ещё раз.</string>
+    <string name="thread_link_preview_unreviewed_run_title">Выполнить «%1$s»?</string>
+    <string name="thread_link_preview_unreviewed_run_by">Выполняет %1$s</string>
+    <string name="thread_link_preview_unreviewed_note">Приложение %1$s создано на этом сервере и не проверено Raft. Оно получает ваше имя и действует со своими правами.</string>
     <string name="thread_link_preview_connect_action">Подключить аккаунт</string>
     <string name="member_app_grant_source_person">Доступ предоставлен человеком</string>
     <string name="member_app_grant_source_agent_login">Доступ предоставлен при входе агента</string>

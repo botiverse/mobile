@@ -3994,6 +3994,9 @@
     <string name="thread_link_preview_connect_title">Conecta tu cuenta de %1$s</string>
     <string name="thread_link_preview_connect_body">Cuando conectes tu cuenta en %1$s, verás aquí de qué trata este enlace.</string>
     <string name="thread_link_preview_refresh_failed">No se pudo actualizar esta tarjeta. Inténtalo de nuevo.</string>
+    <string name="thread_link_preview_unreviewed_run_title">¿Ejecutar “%1$s”?</string>
+    <string name="thread_link_preview_unreviewed_run_by">Lo ejecuta %1$s</string>
+    <string name="thread_link_preview_unreviewed_note">La app %1$s se creó en este servidor y Raft no la ha revisado. Recibe tu nombre y actúa con sus propios permisos.</string>
     <string name="thread_link_preview_connect_action">Conectar cuenta</string>
     <string name="member_app_grant_source_person">Concedido por una persona</string>
     <string name="member_app_grant_source_agent_login">Concedido cuando el agente inició sesión</string>
