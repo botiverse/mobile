@@ -74,6 +74,13 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @property (nonatomic, copy, nullable) void (^raftPageWillBeCoveredHook)(void);
 
+/**
+ * Host -> page: draw a new frame even though nothing changed (Kotlin `RaftIosPage.requestRedraw`).
+ * The scene delegate calls it for every page of a window whose scene comes back to the foreground
+ * (#4484: a reused window came back blank). Set by `RaftPageControllerFactory`.
+ */
+@property (nonatomic, copy, nullable) void (^raftRedrawHook)(void);
+
 /** Full-page back swipe probe: [locationInView] is in this controller's view. */
 - (BOOL)raftContentConsumesBackSwipeAtPoint:(CGPoint)locationInView;
 

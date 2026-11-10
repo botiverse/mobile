@@ -141,14 +141,82 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         )
     }
 
+    /// #4484: set while this scene is in the background, so its return redraws once.
+    private var wasBackgrounded = false
+
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        wasBackgrounded = true
+        let shell = shellInstanceId(for: scene)
+        RaftIosShellWindowLog("info", "scene_did_enter_background shell=\(shell)")
+        // Another window took this one's place while the app stays active: no app-level
+        // notification hides this window's shell, so hide it here.
+        RaftIosRealtimeHost.shared.setSceneShellVisible(
+            shellInstanceId: shell,
+            visible: false,
+            source: "scene_did_enter_background"
+        )
+    }
+
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        RaftIosShellWindowLog(
+            "info",
+            "scene_will_enter_foreground shell=\(shellInstanceId(for: scene)) wasBackgrounded=\(wasBackgrounded)"
+        )
+        redrawPages(reason: "scene_will_enter_foreground")
+    }
+
     func sceneDidBecomeActive(_ scene: UIScene) {
         // #4484: an existing document window brought back by a server switch.
-        RaftIosShellWindowLog("info", "scene_did_become_active shell=\(shellInstanceId(for: scene))")
+        let shell = shellInstanceId(for: scene)
+        RaftIosShellWindowLog(
+            "info",
+            "scene_did_become_active shell=\(shell) wasBackgrounded=\(wasBackgrounded)"
+        )
+        // A window brought back (reused by a server switch, or the user's own window switch)
+        // came back blank: its Compose content draws again only when something invalidates it,
+        // and its shell had been hidden. Redraw every page of this window and show its shell.
+        // Also on a plain inactive -> active return (no background): one extra frame is cheap.
+        redrawPages(reason: "scene_did_become_active")
+        if wasBackgrounded {
+            wasBackgrounded = false
+            RaftIosRealtimeHost.shared.setSceneShellVisible(
+                shellInstanceId: shell,
+                visible: true,
+                source: "scene_did_become_active"
+            )
+        }
         RaftIosShellWindowContract.noteShellScene(
             session: scene.session,
             shellInstanceId: shellInstanceId(for: scene),
             connected: false
         )
+    }
+
+    /// #4484: asks every Compose page of this window (pushed, presented and the root) to draw a
+    /// new frame (RaftPageViewController.raftRedrawHook -> RaftIosPage.requestRedraw).
+    private func redrawPages(reason: String) {
+        guard let root = window?.rootViewController else {
+            RaftIosShellWindowLog("warn", "scene_redraw_skipped reason=\(reason) cause=no_window")
+            return
+        }
+        var pages: [RaftPageViewController] = []
+        var stack: [UIViewController] = [root]
+        var seen = Set<ObjectIdentifier>()
+        while let controller = stack.popLast() {
+            guard seen.insert(ObjectIdentifier(controller)).inserted else { continue }
+            if let page = controller as? RaftPageViewController {
+                pages.append(page)
+            }
+            stack.append(contentsOf: controller.children)
+            if let presented = controller.presentedViewController {
+                stack.append(presented)
+            }
+        }
+        for page in pages {
+            page.raftRedrawHook?()
+            page.view.setNeedsLayout()
+        }
+        RaftIosShellWindowLog("info", "scene_redraw_requested reason=\(reason) pages=\(pages.count)")
     }
 
     /// #4484: what the system saves to restore this window later. A document window restores to

@@ -109,6 +109,10 @@ import shared
         container.raftPageWillBeCoveredHook = {
             page.pageWillBeCovered()
         }
+        // Window scene back in the foreground (RaftIosSceneDelegate): redraw the Compose content.
+        container.raftRedrawHook = {
+            page.requestRedraw()
+        }
         return container
     }
 
