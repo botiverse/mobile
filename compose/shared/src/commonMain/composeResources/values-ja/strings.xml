@@ -3918,6 +3918,7 @@
     <string name="artifacts_viewer_open_in_browser">ブラウザで開く</string>
     <string name="artifacts_viewer_copy_link">リンクをコピー</string>
     <string name="artifacts_viewer_link_copied">リンクをコピーしました。</string>
+    <string name="artifacts_viewer_download_in_browser">アプリ内ではまだファイルを保存できません。ダウンロードするため、この Artifact をブラウザで開きます。</string>
     <string name="artifacts_viewer_follow">フォロー</string>
     <string name="artifacts_viewer_unfollow">フォロー解除</string>
     <string name="artifacts_viewer_version_history">バージョン履歴</string>

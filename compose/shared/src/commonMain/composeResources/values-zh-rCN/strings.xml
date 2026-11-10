@@ -3918,6 +3918,7 @@
     <string name="artifacts_viewer_open_in_browser">在浏览器中打开</string>
     <string name="artifacts_viewer_copy_link">复制链接</string>
     <string name="artifacts_viewer_link_copied">链接已复制。</string>
+    <string name="artifacts_viewer_download_in_browser">应用内暂时无法保存文件，正在浏览器中打开这个 Artifact 以便下载。</string>
     <string name="artifacts_viewer_follow">关注</string>
     <string name="artifacts_viewer_unfollow">取消关注</string>
     <string name="artifacts_viewer_version_history">版本历史</string>

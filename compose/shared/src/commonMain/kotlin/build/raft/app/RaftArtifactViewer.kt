@@ -16,8 +16,9 @@ import kotlinx.serialization.json.Json
  * once, over the web viewer's own page (`<web>/artifacts/<id>[/v/<n>]`, the canonical link's page
  * "phones open in a web view") in a signed-in WebView. The web page keeps every check it has (the
  * frame ticket from its viewer answer, Porthole's sandbox, the content-domain pin). It is opened
- * with the embed contract ([raftArtifactViewerEmbeddedUrl]), so the page draws no header under the
- * native one, and an address that leaves the Artifact closes the viewer
+ * with the embed contract ([raftArtifactViewerEmbeddedUrl]), so the page draws no title bar of its own
+ * under the native one (Back and the title) but keeps its toolbar and full ⋯ menu, and an address
+ * that leaves the Artifact closes the viewer
  * ([raftArtifactViewerNavigation]): its original message opens natively.
  *
  * Tenny's WebView rules, all enforced here and in the platform hosts:
@@ -218,17 +219,18 @@ internal fun raftArtifactViewerPagePath(target: ArtifactLinkTarget): String =
 
 /**
  * The embed contract's query (`embed=raft-settings-v1&shell=host`, slock `packages/web/src/embed.ts`,
- * honoured by the Artifact page since slock #11691) with `chrome=none` (slock #12362): the App draws
- * the one bar (Back, the title, where it lives, the version, who read it, Comments, ⋮), so the page
- * draws only its content. The web reads it once, from the document's entry URL, and keeps it for
- * the session.
+ * honoured by the Artifact page since slock #11691): the App draws the title bar (Back, the title),
+ * and the page draws no second one but keeps its own toolbar under it (where it lives, its original
+ * message, presence, Comments, Find, ⋯ with every action the web has). No `chrome=none` (slock
+ * #12362, owner decision 2026-11-10): that drops the toolbar and with it most of the web's actions.
+ * The web reads it once, from the document's entry URL, and keeps it for the session.
  */
-internal val RaftArtifactViewerEmbedQuery: String = "embed=$SharedSettingsEmbedContract&shell=$SharedSettingsEmbedHostShell&chrome=none"
+internal val RaftArtifactViewerEmbedQuery: String = "embed=$SharedSettingsEmbedContract&shell=$SharedSettingsEmbedHostShell"
 
 private val RaftArtifactViewerEmbedKeys = setOf("embed", "shell", "chrome")
 
 /**
- * [url] with the embed contract in its query: any `embed`/`shell`/`chrome` already there is replaced, every
+ * [url] with the embed contract in its query: any `embed`/`shell` already there is replaced and a `chrome` dropped, every
  * other parameter, the path (a pinned `/v/<n>` too) and the fragment stay as they are.
  */
 internal fun raftArtifactViewerEmbeddedUrl(url: String): String {
@@ -321,13 +323,16 @@ internal fun raftArtifactViewerPanelScript(webOrigin: String, panel: ArtifactVie
     )
 }
 
-internal enum class RaftArtifactViewerBlockedTarget { SystemBrowser, Ignore }
+internal enum class RaftArtifactViewerBlockedTarget { SystemBrowser, Download, Ignore }
 
 /**
  * A top-level navigation the origin lock refused: an http(s) page opens in the system browser
- * (never in the signed-in WebView); anything else (blank, other schemes) is dropped.
+ * (never in the signed-in WebView); a `blob:` address is a file the page saves (the web's Download /
+ * Download all and the Files panel's rows save through a `blob:` link), which the WebView cannot
+ * save; anything else (blank, other schemes) is dropped.
  */
 internal fun raftArtifactViewerBlockedNavigationTarget(url: String, webOrigin: String): RaftArtifactViewerBlockedTarget {
+    if (url.trim().startsWith("blob:", ignoreCase = true)) return RaftArtifactViewerBlockedTarget.Download
     val origin = raftWebOriginOf(url) ?: return RaftArtifactViewerBlockedTarget.Ignore
     if (origin == raftWebOriginOf(webOrigin)) return RaftArtifactViewerBlockedTarget.Ignore
     return RaftArtifactViewerBlockedTarget.SystemBrowser

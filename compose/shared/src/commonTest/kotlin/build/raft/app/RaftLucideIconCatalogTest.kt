@@ -25,9 +25,7 @@ class RaftLucideIconCatalogTest {
     }
 
     @Test
-    fun artifactViewerFollowUsesRaftUiFollowArtifactIcons() {
-        assertEquals(RaftLucideIconName.FollowArtifact, artifactViewerFollowMenuIcon(following = false))
-        assertEquals(RaftLucideIconName.UnfollowArtifact, artifactViewerFollowMenuIcon(following = true))
+    fun followArtifactIconsAreRaftUiIcons() {
         assertTrue(RaftLucideIcons.Names.contains(RaftLucideIconName.FollowArtifact.wireName))
         assertTrue(RaftLucideIcons.Names.contains(RaftLucideIconName.UnfollowArtifact.wireName))
     }
