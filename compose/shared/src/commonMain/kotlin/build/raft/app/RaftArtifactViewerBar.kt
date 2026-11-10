@@ -280,7 +280,7 @@ internal fun ColumnScope.RaftArtifactViewerMenuItems(
     if (toggleFollow != null && following != null) {
         RaftMenuItem(
             text = stringResource(if (following) Res.string.artifacts_viewer_unfollow else Res.string.artifacts_viewer_follow),
-            leadingIcon = { RaftSlotIcon(if (following) RaftLucideIconName.BellOff else RaftLucideIconName.Bell) },
+            leadingIcon = { RaftSlotIcon(artifactViewerFollowMenuIcon(following)) },
             onClick = {
                 onDone()
                 toggleFollow()
@@ -335,3 +335,7 @@ internal fun raftArtifactViewerVersionOptions(versions: List<ArtifactViewerVersi
         )
     }
 }
+
+/** raft-ui FollowArtifactIcon / UnfollowArtifactIcon (raft-design #1052): ArtifactIcon's page with a + / - in the corner. */
+internal fun artifactViewerFollowMenuIcon(following: Boolean): RaftLucideIconName =
+    if (following) RaftLucideIconName.UnfollowArtifact else RaftLucideIconName.FollowArtifact
