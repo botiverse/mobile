@@ -3448,7 +3448,7 @@ internal fun composerSuggestionPanelContentHeight(
 }
 
 @Composable
-private fun ComposerSuggestionPanelContent(
+internal fun ComposerSuggestionPanelContent(
     panelState: ThreadComposerSuggestionPanelState,
     surface: ThreadComposerSurface,
     memberSuggestions: List<RaftComposerMemberItem>,

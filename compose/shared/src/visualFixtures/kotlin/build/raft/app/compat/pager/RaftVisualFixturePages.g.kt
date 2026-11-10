@@ -98,6 +98,7 @@ internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
         "compose_settings_page_visual" to { build.raft.app.ComposeSettingsPageVisualPage() },
         "compose_settings_route_visual" to { build.raft.app.ComposeSettingsRouteVisualPage() },
         "compose_settings_row_visual" to { build.raft.app.ComposeSettingsRowVisualPage() },
+        "compose_store_ipad_visual" to { build.raft.app.StoreIpadVisualPage() },
         "compose_task797_thread_header_visual" to { build.raft.app.ComposeTask797ThreadHeaderVisualPage() },
         "compose_tasks_panel_visual" to { build.raft.app.ComposeTasksPanelVisualPage() },
         "compose_tasks_status_menu_visual" to { build.raft.app.ComposeTasksStatusMenuVisualPage() },

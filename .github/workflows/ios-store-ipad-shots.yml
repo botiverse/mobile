@@ -1,0 +1,190 @@
+# App Store iPad 13" screenshots (1.23): the `compose_store_ipad_visual` fixture page captured on
+# the iPad Pro 13" simulator in en / zh-Hans / ja, then framed by
+# scripts/store-screenshots/frames.py --set ipad8. Branch-only tooling (agent/lagoon/ipad-store-shots):
+# a push to that branch runs it.
+name: iPad store screenshots
+
+on:
+  push:
+    branches: [agent/lagoon/ipad-store-shots]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-store-ipad-shots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-check:
+    name: Compile shared with the fixture (Android, fast fail)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: ./.github/actions/gradle-cache-policy
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+          gradle-home-cache-excludes: |
+            caches/jars-*
+            caches/transforms-*
+            caches/*/transforms
+      - name: Gradle memory budget
+        run: |
+          GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"; mkdir -p "$GUH"
+          printf '%s\n' "org.gradle.jvmargs=-Xmx9g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+            'kotlin.compiler.execution.strategy=in-process' >> "$GUH/gradle.properties"
+      - name: Compile
+        working-directory: compose
+        run: ./gradlew :shared:compileDebugKotlinAndroid -PslockVisualFixtures=true --no-daemon --console=plain
+
+  capture:
+    name: Capture on iPad Pro 13"
+    needs: compile-check
+    runs-on: blacksmith-12vcpu-macos-latest
+    timeout-minutes: 90
+    env:
+      SLOCK_VISUAL_FIXTURES: "true"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select full Xcode for this job
+        run: bash scripts/ci/select_ios_xcode.sh
+      - name: Prepare isolated iOS capture environment
+        run: bash scripts/ci/ios_visual_runner.sh prepare
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: ./.github/actions/gradle-cache-policy
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: ./.github/actions/ios-kn-gradle
+      - name: Generate shared framework placeholder
+        working-directory: compose
+        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain -PslockVisualFixtures=true
+      - name: Pod install
+        working-directory: compose/iosApp
+        run: pod install
+      - name: Compile shared iOS simulator target
+        working-directory: compose
+        run: ./gradlew :shared:compileKotlinIosSimulatorArm64 -PslockVisualFixtures=true --no-daemon --console=plain
+      - name: Sync shared framework (simulator arm64)
+        working-directory: compose
+        run: |
+          ./gradlew :shared:syncFramework \
+            -Pkotlin.native.cocoapods.platform=iphonesimulator \
+            -Pkotlin.native.cocoapods.archs=arm64 \
+            -Pkotlin.native.cocoapods.configuration=Debug \
+            -PslockVisualFixtures=true --no-daemon --console=plain
+      - name: Build iOS app for simulator
+        working-directory: compose/iosApp
+        run: |
+          log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
+          udid=$(bash "$GITHUB_WORKSPACE/scripts/ci/ios_build_sim_udid.sh")
+          set +e
+          xcodebuild -workspace iosApp.xcworkspace -scheme iosApp -configuration Debug \
+            -destination "platform=iOS Simulator,id=$udid" \
+            -derivedDataPath "$IOS_CAPTURE_TEMP/DerivedData" \
+            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
+            RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES build > "$log" 2>&1
+          status=$?
+          tail -80 "$log"
+          [ "$status" -eq 0 ] || grep -nE "e: |: error:|BUILD FAILED" "$log" | tail -60
+          exit "$status"
+      - name: Pick the iPad Pro 13-inch simulator
+        run: |
+          xcrun simctl list devicetypes | grep -i ipad || true
+          name=$(xcrun simctl list devicetypes -j | python3 -c '
+          import json, sys
+          names = [d["name"] for d in json.load(sys.stdin)["devicetypes"] if d["name"].startswith("iPad Pro 13-inch")]
+          if not names: sys.exit("no iPad Pro 13-inch device type")
+          print(sorted(names)[-1])
+          ')
+          echo "SIM_DEVICE=$name" | tee -a "$GITHUB_ENV"
+      - name: Boot simulator
+        run: bash scripts/ci/ios_visual_runner.sh boot --shards 1
+      - name: Capture 8 scenes x 3 languages
+        run: |
+          set -u
+          udid=$(head -1 "$IOS_CAPTURE_TEMP/simulator-udids")
+          app=$(find "$IOS_CAPTURE_TEMP/DerivedData/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)
+          bundle=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
+          xcrun simctl install "$udid" "$app"
+          out=ipad-raw; mkdir -p "$out" diag
+          page=compose_store_ipad_visual
+          failed=0
+          for lang in en zh-Hans ja; do
+            mkdir -p "$out/$lang"
+            for scene in 01-chat 02-mention 03-thread 04-tasks 05-agent 06-activity 07-computers 08-home; do
+              xcrun simctl terminate "$udid" "$bundle" 2>/dev/null || true
+              log="diag/$lang-$scene.log"
+              SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE="$page" \
+              SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE_DATA="{\"pageName\":\"$page\",\"scene\":\"$scene\",\"lang\":\"$lang\",\"slockVisualZeroSafeArea\":true}" \
+                xcrun simctl launch --console-pty "$udid" "$bundle" > "$log" 2>&1 &
+              pid=$!
+              ready=0
+              for _ in $(seq 1 60); do
+                if grep -q "SLOCK_VISUAL_FIXTURE_READY page=$page" "$log"; then ready=1; break; fi
+                sleep 1
+              done
+              sleep 4
+              xcrun simctl io "$udid" screenshot "$out/$lang/$scene.png"
+              kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
+              if [ "$ready" != 1 ] || grep -qi 'kuikly error\|\[Kuikly Exception\]' "$log"; then
+                echo "::warning::$lang/$scene: ready=$ready (see diag/$lang-$scene.log)"
+                failed=$((failed+1))
+              fi
+              echo "$lang/$scene ready=$ready"
+            done
+          done
+          python3 -c "
+          import struct, glob
+          for p in sorted(glob.glob('ipad-raw/*/*.png')):
+              w, h = struct.unpack('>II', open(p, 'rb').read()[16:24]); print(p, w, h)
+          "
+          echo "failed=$failed"
+      - name: Clean up simulator
+        if: always()
+        run: bash scripts/ci/ios_visual_runner.sh cleanup
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ipad-raw
+          path: |
+            ipad-raw/
+            diag/
+            xcodebuild-ios.log
+          if-no-files-found: warn
+
+  frame:
+    name: Frame (frames.py --set ipad8)
+    needs: capture
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: ipad-raw
+          path: dl
+      - name: Tools
+        run: |
+          python3 -m pip install --quiet pillow
+          npm install --silent --prefix "$RUNNER_TEMP/store-fonts" @fontsource/noto-sans-sc @fontsource/noto-sans-jp
+          mkdir -p "$RUNNER_TEMP/bin"
+          chrome=$(command -v chromium || command -v google-chrome || command -v chromium-browser)
+          ln -sf "$chrome" "$RUNNER_TEMP/bin/chromium"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Frame
+        run: |
+          python3 scripts/store-screenshots/frames.py --set ipad8 --raw dl/ipad-raw --out ipad-final \
+            --fonts "$RUNNER_TEMP/store-fonts/node_modules/@fontsource" --jobs 3
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ipad-final
+          path: ipad-final/
