@@ -505,6 +505,30 @@ internal fun raftComputerRackAction(
     }
 }
 
+/**
+ * A Computer card's ⋯ menu (web `RackRowMenu`), top to bottom: Create agent (this computer
+ * preselected), then Restart while it can take one. Null, and no ⋯, for a viewer who may not manage
+ * the computer (web `canManageMachine`) or when neither applies. Create agent is online only: the
+ * dialog can't start on an offline computer and would switch to another, which reads wrong from
+ * this computer's own card. [createAgentAvailable] is false while the page has no signed-in owner
+ * for the computer's server to create with.
+ */
+internal data class RaftComputerCardMenu(val createAgent: Boolean, val restart: Boolean) {
+    val isEmpty: Boolean get() = !createAgent && !restart
+}
+
+internal fun raftComputerCardMenu(
+    computer: SettingsComputerSnapshot,
+    upgrade: RaftComputerUpgradeModel,
+    restart: SettingsComputerRestartProgress?,
+    createAgentAvailable: Boolean,
+): RaftComputerCardMenu? {
+    if (!computer.canManage) return null
+    val restarting = restart?.takeIf { it.machineId == computer.id }?.done == false
+    val canRestart = computer.isComputer && computer.online && upgrade.card !is RaftComputerCardState.Upgrading && !restarting
+    return RaftComputerCardMenu(createAgent = createAgentAvailable && computer.online, restart = canRestart).takeUnless { it.isEmpty }
+}
+
 /** One agent on a computer card: its avatar opens its profile. */
 internal data class RaftComputerCardAgent(
     val id: String,
