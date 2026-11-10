@@ -17,6 +17,22 @@ class RaftLucideIconCatalogTest {
     }
 
     @Test
+    fun artifactIconIsLucideFileCode() {
+        // raft-ui ArtifactIcon is Lucide file-code, unchanged (raft-design #1052, pinned by #1054):
+        // the rail, the server popover, the inbox filter and the Artifacts home show the chip's icon.
+        val paths = { name: RaftLucideIconName -> RaftLucideIconPaths.spec(name).paths.map { it.pathData } }
+        assertEquals(paths(RaftLucideIconName.FileCode), paths(RaftLucideIconName.Artifact))
+    }
+
+    @Test
+    fun artifactViewerFollowUsesRaftUiFollowArtifactIcons() {
+        assertEquals(RaftLucideIconName.FollowArtifact, artifactViewerFollowMenuIcon(following = false))
+        assertEquals(RaftLucideIconName.UnfollowArtifact, artifactViewerFollowMenuIcon(following = true))
+        assertTrue(RaftLucideIcons.Names.contains(RaftLucideIconName.FollowArtifact.wireName))
+        assertTrue(RaftLucideIcons.Names.contains(RaftLucideIconName.UnfollowArtifact.wireName))
+    }
+
+    @Test
     fun membersAppsIconUsesTheWebAppWindowIcon() {
         // Web AgentDetailPanel AGENT_PANEL_TABS: the Apps tab is lucide AppWindow.
         assertEquals(RaftLucideIconName.AppWindow, MembersAgentDetailTab.Apps.iconName)

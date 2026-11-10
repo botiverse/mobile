@@ -182,6 +182,7 @@ LUCIDE_ICONS = [
     "folder-input",
     "folder-open",
     "folder-plus",
+    "follow-artifact",
     "follow-thread",
     "forward",
     "funnel",
@@ -287,6 +288,7 @@ LUCIDE_ICONS = [
     "trash-2",
     "type",
     "undo-2",
+    "unfollow-artifact",
     "unfollow-thread",
     "unlink",
     "upload",
@@ -308,8 +310,9 @@ LUCIDE_ICONS = [
 RAFT_UI_ICON_SOURCE_DIR = os.path.join(SCRIPT_DIR, "assets", "raft-ui")
 
 # Icons drawn by raft-ui where Lucide has none (raft-design packages/ui/src/components/icons:
-# conversation-icons.tsx ThreadIcon, action-icons.tsx Follow/UnfollowThreadIcon, ReopenTaskIcon,
-# object-icons.tsx ArtifactIcon, conversation-icons.tsx MessageIcon / DirectMessageIcon),
+# conversation-icons.tsx ThreadIcon, action-icons.tsx Follow/UnfollowThreadIcon,
+# Follow/UnfollowArtifactIcon, ReopenTaskIcon, object-icons.tsx ArtifactIcon (Lucide file-code
+# since raft-design #1052), conversation-icons.tsx MessageIcon / DirectMessageIcon),
 # copied path for path so the app's menus draw what the web's do.
 CUSTOM_ICONS = {
     "mosaic": os.path.join(BRAND_ASSET_SOURCE_DIR, "mosaic.svg"),
@@ -318,6 +321,9 @@ CUSTOM_ICONS = {
     "unfollow-thread": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "unfollow-thread.svg"),
     "reopen-task": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "reopen-task.svg"),
     "artifact": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "artifact.svg"),
+    "follow-artifact": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "follow-artifact.svg"),
+    # The app's only use is a 16dp menu icon: raft-ui's small mark (stroke 3), drawn at 16px and under.
+    "unfollow-artifact": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "unfollow-artifact.svg"),
     "message": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "message.svg"),
     "direct-message": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "direct-message.svg"),
 }
