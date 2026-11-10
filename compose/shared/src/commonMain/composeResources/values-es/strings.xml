@@ -310,6 +310,7 @@
     <string name="settings_feedback_submission_rate_limited_body">Se enviaron demasiadas solicitudes de comentarios. Espera un momento e inténtalo de nuevo.</string>
     <string name="settings_feedback_submission_attachment_read_body">No se pudo leer un archivo adjunto. Quítalo y vuelve a adjuntar el archivo.</string>
     <string name="settings_feedback_submission_attachment_too_large_body">Un archivo adjunto supera el límite de %1$s. Quítalo o elige un archivo más pequeño.</string>
+    <string name="settings_feedback_submission_attachment_type_body">Las capturas deben ser imágenes PNG, JPEG, GIF o WebP.</string>
     <string name="settings_feedback_submission_auth_body">Falló la autenticación de comentarios. Actualiza la app o contacta al soporte.</string>
     <string name="settings_feedback_submission_permission_title">Se necesita permiso</string>
     <string name="settings_feedback_submission_permission_body">No tienes permiso para enviar comentarios.</string>

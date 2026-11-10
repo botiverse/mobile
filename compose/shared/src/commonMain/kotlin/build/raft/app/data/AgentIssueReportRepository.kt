@@ -430,16 +430,23 @@ internal fun AgentIssueTicketRequest.toWire(clientKind: String = "", clientVersi
     AgentIssueTicketWireRequest(
         message = message,
         submissionId = submissionId,
-        metadata =
-            agentIssueRequestJson.encodeToString(
-                AgentIssueTicketMetadata(
-                    clientKind = clientKind.ifEmpty { null },
-                    platform = clientKind.ifEmpty { null },
-                    clientVersion = clientVersion.takeIf { clientKind.isNotEmpty() && it.isNotEmpty() },
-                    locale = locale
-                )
-            ),
+        metadata = productFeedbackMetadataJson(clientKind, clientVersion, locale),
         feedbackReportId = feedbackReportId
+    )
+
+/**
+ * The `POST /api/product-feedback` form's `metadata` field, JSON-encoded (web
+ * `form.set("metadata", JSON.stringify(...))`): every App submission (an agent issue ticket,
+ * Settings › Feedback) sends the same client facts.
+ */
+internal fun productFeedbackMetadataJson(clientKind: String, clientVersion: String, locale: String): String =
+    agentIssueRequestJson.encodeToString(
+        AgentIssueTicketMetadata(
+            clientKind = clientKind.ifEmpty { null },
+            platform = clientKind.ifEmpty { null },
+            clientVersion = clientVersion.takeIf { clientKind.isNotEmpty() && it.isNotEmpty() },
+            locale = locale
+        )
     )
 
 /** `ProductFeedbackReceipt` (server services/productFeedbackService.ts). */

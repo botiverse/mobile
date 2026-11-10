@@ -312,6 +312,7 @@
     <string name="settings_feedback_submission_rate_limited_body">フィードバックのリクエストが多すぎます。しばらく待ってから、もう一度お試しください。</string>
     <string name="settings_feedback_submission_attachment_read_body">添付ファイルを読み取れませんでした。削除してから、もう一度添付してください。</string>
     <string name="settings_feedback_submission_attachment_too_large_body">添付ファイルが %1$s の上限を超えています。削除するか、より小さいファイルを選択してください。</string>
+    <string name="settings_feedback_submission_attachment_type_body">スクリーンショットには PNG、JPEG、GIF、WebP 形式の画像を使用してください。</string>
     <string name="settings_feedback_submission_auth_body">フィードバックの認証に失敗しました。アプリを更新するか、サポートにお問い合わせください。</string>
     <string name="settings_feedback_submission_permission_title">権限が必要です</string>
     <string name="settings_feedback_submission_permission_body">フィードバックを送信する権限がありません。</string>

@@ -310,6 +310,7 @@
     <string name="settings_feedback_submission_rate_limited_body">意見回饋請求過於頻繁，請稍後再試。</string>
     <string name="settings_feedback_submission_attachment_read_body">無法讀取附件，請移除後重新附加檔案。</string>
     <string name="settings_feedback_submission_attachment_too_large_body">附件超過 %1$s 上限，請移除或選擇較小的檔案。</string>
+    <string name="settings_feedback_submission_attachment_type_body">截圖必須是 PNG、JPEG、GIF 或 WebP 圖片。</string>
     <string name="settings_feedback_submission_auth_body">意見回饋服務驗證失敗，請更新 App 或聯絡支援人員。</string>
     <string name="settings_feedback_submission_permission_title">需要權限</string>
     <string name="settings_feedback_submission_permission_body">你沒有傳送意見回饋的權限。</string>

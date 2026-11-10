@@ -187,6 +187,22 @@ interface RaftNetworkClient {
     ): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
 
+    /**
+     * A multipart `POST` of [path] (an API route that takes a form, e.g. `product-feedback`): the
+     * form [fields] in order, then [files]. A file given as a [MultipartFile.fileRef] is streamed
+     * from the platform file resolver. [headers] are extra request headers (the feedback route's
+     * `X-Raft-Client-Kind`); auth and server-binding headers still come from the client and win
+     * over a same-named extra header. Clients that cannot send multipart bodies answer 501.
+     */
+    suspend fun requestMultipartWithHeaders(
+        priority: DataRequestPriority,
+        path: String,
+        headers: Map<String, String>,
+        fields: Map<String, String>,
+        files: List<MultipartFile>,
+    ): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+
     suspend fun uploadAccountAvatar(
         priority: DataRequestPriority,
         file: MultipartFile

@@ -102,7 +102,8 @@ import kotlin.io.encoding.ExperimentalEncodingApi
  * Settings › Feedback on Android and iOS (1.23, task #90): the person's own feedback tickets,
  * natively, in place of the web page's Hands FeedbackWorkspace (`<web>/feedback/`). Same reads and
  * rules (SettingsFeedbackTicketsStore), the same words (the Hands SDK's en / zh-CN copy). New
- * feedback opens the native submit form (SettingsHandsFeedbackPage). Compose desktop keeps the web
+ * feedback opens the native submit form (SettingsHandsFeedbackPage), which files through the Raft
+ * server and comes back to the new ticket. Compose desktop keeps the web
  * page ([settingsFeedbackUsesWebPage]). A server without the ticket routes hands over to the web
  * page ([SettingsFeedbackTicketsState.notSupported]).
  */
@@ -174,8 +175,16 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
         }
     val initialTicketId = remember(pager.pageData.params) { feedbackTicketIdOrNull(pager.pageData.params.optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID)) }
     LaunchedEffect(store) { store.start(initialTicketId) }
-    // Back from the submit form (or the app) reads the list again.
-    LaunchedEffect(store, resumeTick) { if (resumeTick > 0) store.refresh() }
+    // Back from the submit form (or the app) reads the list again, and opens a ticket just filed.
+    LaunchedEffect(store, resumeTick) {
+        if (resumeTick > 0) {
+            store.refresh()
+            SettingsFeedbackFiledTicketHandoff.take()?.let { ticketId ->
+                bridge.log("settings_feedback_tickets_open_filed ticket=${ticketId.take(8)}")
+                store.openTicket(ticketId)
+            }
+        }
+    }
     val state by store.state.collectAsState()
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
     LaunchedEffect(state.notSupported) {
@@ -201,7 +210,7 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
                 onBack = { if (store.state.value.detail != null) store.closeTicketView() else router.closePage() },
                 onNewFeedback = {
                     bridge.log("settings_feedback_tickets_new_feedback")
-                    pager.openSettingsHandsFeedbackPage(storeScope)
+                    pager.openSettingsHandsFeedbackPage(storeScope, returnToTickets = true)
                 },
                 onRefresh = store::refresh,
                 onRetryList = store::retryList,

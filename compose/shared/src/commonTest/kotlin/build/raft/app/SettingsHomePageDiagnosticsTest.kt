@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID
 import build.raft.app.format.RaftFormat
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ScreenLoadState
@@ -612,6 +613,11 @@ class SettingsHomePageDiagnosticsTest {
         val attachmentFailure = copy.submissionFailure("settings_feedback_attachment_too_large")
         assertEquals("附件超过 50 MB 上限，请移除或选择更小的文件。", attachmentFailure.body)
         assertFalse(attachmentFailure.retryable)
+
+        // The Raft server takes only images; removing the file is the fix, not a retry.
+        val typeFailure = copy.submissionFailure(SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID)
+        assertEquals(copy.submissionAttachmentTypeBody, typeFailure.body)
+        assertFalse(typeFailure.retryable)
 
         val permissionFailure = copy.submissionPermissionFailure()
         assertEquals("需要权限", permissionFailure.title)

@@ -13,6 +13,11 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.DataResult
 import build.raft.app.data.PlatformFile
+import build.raft.app.data.ScreenError
+import build.raft.app.data.SettingsFeedbackProxyAttempt
+import build.raft.app.data.SettingsFeedbackProxyOutcome
+import build.raft.app.data.SettingsFeedbackProxySubmitter
+import build.raft.app.data.SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID
 import build.raft.app.data.SettingsHandsFeedbackSubmission
 import build.raft.app.data.SettingsHandsFeedbackDraftSnapshot
 import build.raft.app.data.SettingsHandsFeedbackDraftStore
@@ -81,7 +86,15 @@ internal fun SharedHandsFeedbackContent(
     sourceStoreScope: RaftShellStoreScope,
     accountId: String,
     visualFixture: SettingsHandsFeedbackVisualFixture? = null,
-    bottomContentPadding: Dp = RaftAppSpacing.Lg
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
+    /**
+     * Signed in: files through the Raft server (`POST /api/product-feedback`), so the ticket is
+     * this person's and shows in their ticket list. Null keeps the native Hands form (visual
+     * fixtures); the submitter itself hands over to it when the server cannot file.
+     */
+    proxySubmitter: SettingsFeedbackProxySubmitter? = null,
+    /** A ticket filed through [proxySubmitter], after the draft is cleared (the page shows it). */
+    onTicketFiled: ((ticketId: String) -> Unit)? = null
 ) {
     val attachmentMaxBytes = raftFeedbackAttachmentMaxBytes()
     val attachmentMaxLabel = RaftFormat.byteLimit(attachmentMaxBytes)
@@ -750,10 +763,18 @@ internal fun SharedHandsFeedbackContent(
                                 ?.joinToString { it.fileName.ifBlank { copy.attachment } }
                     )
         }
-        val submittedRequest = SettingsHandsFeedbackRetryRequest(submittedMessage, submittedAttachments)
+        // A retry of the same feedback keeps its submission id and uploaded diagnostics.
+        val proxyAttempt =
+            proxySubmitter?.let { submitter ->
+                retryRequest?.proxyAttempt ?: submitter.newAttempt(submittedMessage, submittedAttachments)
+            }
+        val submittedRequest = SettingsHandsFeedbackRetryRequest(submittedMessage, submittedAttachments, proxyAttempt)
 
-        fun appendFailure(failure: SettingsHandsFeedbackFailurePresentation) {
-            val nextRetryRequest = submittedRequest.takeIf { failure.retryable }
+        fun appendFailure(
+            failure: SettingsHandsFeedbackFailurePresentation,
+            nextProxyAttempt: SettingsFeedbackProxyAttempt? = proxyAttempt
+        ) {
+            val nextRetryRequest = submittedRequest.copy(proxyAttempt = nextProxyAttempt).takeIf { failure.retryable }
             pendingRetryRequest = nextRetryRequest
             messageFieldValue = TextFieldValue(submittedMessage, selection = TextRange(submittedMessage.length))
             draftTextForPersistence = submittedMessage
@@ -771,8 +792,29 @@ internal fun SharedHandsFeedbackContent(
         }
 
         scope.launch {
+            var filedTicketId: String? = null
+            var nextProxyAttempt = proxyAttempt
             try {
-                when (val result = settingsCapabilities.submitHandsFeedback(submittedMessage, submittedAttachments)) {
+                val result: DataResult<SettingsHandsFeedbackSubmission> =
+                    if (proxySubmitter != null && proxyAttempt != null) {
+                        when (val outcome = proxySubmitter.submit(proxyAttempt)) {
+                            is SettingsFeedbackProxyOutcome.Filed -> {
+                                filedTicketId = outcome.ticketId
+                                DataResult.Content(SettingsHandsFeedbackSubmission(ticketId = outcome.ticketId, shareText = ""))
+                            }
+                            is SettingsFeedbackProxyOutcome.Failed -> {
+                                nextProxyAttempt = outcome.retry
+                                DataResult.Error(ScreenError(outcome.code, retryable = outcome.retryable))
+                            }
+                            SettingsFeedbackProxyOutcome.UseNativeForm -> {
+                                settingsCapabilities.log("settings_hands_feedback_submit_native_fallback")
+                                settingsCapabilities.submitHandsFeedback(submittedMessage, submittedAttachments)
+                            }
+                        }
+                    } else {
+                        settingsCapabilities.submitHandsFeedback(submittedMessage, submittedAttachments)
+                    }
+                when (result) {
                     is DataResult.Content -> {
                         settingsCapabilities.log(
                             "settings_hands_feedback_submit_result status=ok ticket=${result.data.ticketId.take(8)}"
@@ -823,6 +865,7 @@ internal fun SharedHandsFeedbackContent(
                                 )
                             }
                         }
+                        filedTicketId?.let { ticketId -> onTicketFiled?.invoke(ticketId) }
                     }
                     is DataResult.Empty -> {
                         settingsCapabilities.log("settings_hands_feedback_submit_result status=empty")
@@ -832,7 +875,7 @@ internal fun SharedHandsFeedbackContent(
                         settingsCapabilities.log(
                             "settings_hands_feedback_submit_result status=error code=${result.error.code}"
                         )
-                        appendFailure(copy.submissionFailure(result.error.code, result.error.retryable))
+                        appendFailure(copy.submissionFailure(result.error.code, result.error.retryable), nextProxyAttempt)
                     }
                     is DataResult.NoPermission -> {
                         settingsCapabilities.log(
@@ -1128,6 +1171,7 @@ internal data class SettingsHandsFeedbackCopy(
     val submissionRateLimitedBody: String = "Too many feedback requests were sent. Wait a moment and try again.",
     val submissionAttachmentReadBody: String = "An attachment could not be read. Remove it and attach the file again.",
     val submissionAttachmentTooLargeBody: String = "An attachment is too large. Remove it or choose a smaller file.",
+    val submissionAttachmentTypeBody: String = "Screenshots must be PNG, JPEG, GIF, or WebP images.",
     val submissionAuthBody: String = "Feedback authentication failed. Update the app or contact support.",
     val submissionPermissionTitle: String = "Permission needed",
     val submissionPermissionBody: String = "You do not have permission to send feedback.",
@@ -1157,6 +1201,7 @@ internal fun SettingsHandsFeedbackCopy.submissionFailure(
             "settings_feedback_rate_limited" -> submissionRateLimitedBody
             "settings_feedback_attachment_read_failed" -> submissionAttachmentReadBody
             "settings_feedback_attachment_too_large" -> submissionAttachmentTooLargeBody
+            SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID -> submissionAttachmentTypeBody
             "settings_feedback_auth_failed" -> submissionAuthBody
             else -> submissionFailedBody
         }
@@ -1166,6 +1211,7 @@ internal fun SettingsHandsFeedbackCopy.submissionFailure(
                 setOf(
                     "settings_feedback_attachment_read_failed",
                     "settings_feedback_attachment_too_large",
+                    SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID,
                     "settings_feedback_auth_failed"
                 )
     return SettingsHandsFeedbackFailurePresentation(
@@ -1218,6 +1264,7 @@ private fun settingsHandsFeedbackCopy(attachmentMaxLabel: String): SettingsHands
         submissionAttachmentTooLargeBody =
             stringResource(Res.string.settings_feedback_submission_attachment_too_large_body)
                 .replaceLocalizedFormatArgs(attachmentMaxLabel),
+        submissionAttachmentTypeBody = stringResource(Res.string.settings_feedback_submission_attachment_type_body),
         submissionAuthBody = stringResource(Res.string.settings_feedback_submission_auth_body),
         submissionPermissionTitle = stringResource(Res.string.settings_feedback_submission_permission_title),
         submissionPermissionBody = stringResource(Res.string.settings_feedback_submission_permission_body),
@@ -1232,7 +1279,9 @@ private fun settingsHandsFeedbackCopy(attachmentMaxLabel: String): SettingsHands
 
 internal data class SettingsHandsFeedbackRetryRequest(
     val message: String,
-    val attachments: List<PlatformFile>
+    val attachments: List<PlatformFile>,
+    /** The server submission being retried (same id, same diagnostics); null on the native form. */
+    val proxyAttempt: SettingsFeedbackProxyAttempt? = null
 )
 
 internal fun SettingsHandsFeedbackRetryRequest.matches(

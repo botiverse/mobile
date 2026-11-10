@@ -310,6 +310,7 @@
     <string name="settings_feedback_submission_rate_limited_body">Muitas solicitações de feedback foram enviadas. Aguarde um momento e tente novamente.</string>
     <string name="settings_feedback_submission_attachment_read_body">Não foi possível ler um anexo. Remova-o e anexe o arquivo novamente.</string>
     <string name="settings_feedback_submission_attachment_too_large_body">Um anexo excede o limite de %1$s. Remova-o ou escolha um arquivo menor.</string>
+    <string name="settings_feedback_submission_attachment_type_body">As capturas de tela devem ser imagens PNG, JPEG, GIF ou WebP.</string>
     <string name="settings_feedback_submission_auth_body">A autenticação do feedback falhou. Atualize o app ou entre em contato com o suporte.</string>
     <string name="settings_feedback_submission_permission_title">Permissão necessária</string>
     <string name="settings_feedback_submission_permission_body">Você não tem permissão para enviar feedback.</string>
