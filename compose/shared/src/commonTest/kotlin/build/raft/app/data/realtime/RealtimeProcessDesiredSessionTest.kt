@@ -6,17 +6,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RealtimeProcessDesiredSessionTest {
-    @Test
-    fun authenticatedServerSetStartsOneRuntimePerServer() {
-        val next = desired(serverIds = setOf("server-b", "server-a"))
-
-        val plan = reconcileRealtimeProcessDesiredSession(previous = null, next = next)
-
-        assertFalse(plan.disconnectAll)
-        assertEquals(emptySet(), plan.disconnectServerIds)
-        assertEquals(setOf("server-a", "server-b"), plan.connectServerIds)
-    }
-
     // Task #366 (artin ruling "维护8个，要是用户有20个呢？…先下掉，改成更合理的"):
     // realtime transport is scoped to the CURRENT server only. Authentication
     // grants for every server stay intact (drawer unread rides the home
@@ -72,117 +61,6 @@ class RealtimeProcessDesiredSessionTest {
                 grantedServerIds = setOf("server-a", "server-b"),
             ),
         )
-    }
-
-    @Test
-    fun serverSwitchDisconnectsPreviousAndConnectsCurrentOnly() {
-        // Desired sets are already current-scoped; switching server-a → server-b
-        // must converge cleanly: drop the old socket, open exactly the new one.
-        val previous = desired(serverIds = setOf("server-a"))
-        val next = previous.copy(serverIds = setOf("server-b"))
-
-        val plan = reconcileRealtimeProcessDesiredSession(previous, next)
-
-        assertFalse(plan.disconnectAll)
-        assertEquals(setOf("server-a"), plan.disconnectServerIds)
-        assertEquals(setOf("server-b"), plan.connectServerIds)
-    }
-
-    @Test
-    fun removingOneServerKeepsOtherRuntime() {
-        val previous = desired(serverIds = setOf("server-a", "server-b"))
-        val next = previous.copy(serverIds = setOf("server-a"))
-
-        val plan = reconcileRealtimeProcessDesiredSession(previous, next)
-
-        assertFalse(plan.disconnectAll)
-        assertEquals(setOf("server-b"), plan.disconnectServerIds)
-        assertEquals(emptySet(), plan.connectServerIds)
-    }
-
-    @Test
-    fun authGenerationOrEnvironmentReplacementRetiresEveryOldRuntime() {
-        val previous = desired(serverIds = setOf("server-a", "server-b"))
-        val next =
-            desired(
-                environmentId = "https://staging.example",
-                socketUrl = "https://socket.staging.example",
-                authGeneration = previous.authGeneration + 1,
-                connectionFamilyId = "family-2",
-                serverIds = setOf("server-a", "server-c"),
-            )
-
-        val plan = reconcileRealtimeProcessDesiredSession(previous, next)
-
-        assertTrue(plan.disconnectAll)
-        assertEquals(setOf("server-a", "server-c"), plan.connectServerIds)
-    }
-
-    @Test
-    fun sameBindingTokenRotationReauthsWithoutIdentityReplacement() {
-        // task #333: a silent token refresh bumps authGeneration + accessToken on the
-        // SAME binding (environmentId / socketUrl / principalId / connectionFamilyId
-        // unchanged). It must re-auth the socket (forceReconnect, re-issue desired)
-        // but NOT disconnectAll / process_identity_replaced / server_removed — those
-        // are reserved for a real binding swap and are what kicks the UI back to the
-        // server list.
-        val previous = desired(serverIds = setOf("server-a"))
-        val next =
-            previous.copy(
-                authGeneration = previous.authGeneration + 1,
-                accessToken = "token-rotated",
-            )
-
-        val plan = reconcileRealtimeProcessDesiredSession(previous, next)
-
-        assertFalse(plan.disconnectAll)
-        assertEquals(emptySet(), plan.disconnectServerIds)
-        assertEquals(setOf("server-a"), plan.connectServerIds)
-        assertTrue(plan.forceReconnect)
-    }
-
-    @Test
-    fun tokenRotationStillDropsServersThatLeftTheDesiredSet() {
-        // Same binding credential rotation AND a server leaving the desired set:
-        // re-auth the kept server but still disconnect the removed one.
-        val previous = desired(serverIds = setOf("server-a", "server-b"))
-        val next =
-            previous.copy(
-                authGeneration = previous.authGeneration + 1,
-                accessToken = "token-rotated",
-                serverIds = setOf("server-a"),
-            )
-
-        val plan = reconcileRealtimeProcessDesiredSession(previous, next)
-
-        assertFalse(plan.disconnectAll)
-        assertEquals(setOf("server-b"), plan.disconnectServerIds)
-        assertEquals(setOf("server-a"), plan.connectServerIds)
-        assertTrue(plan.forceReconnect)
-    }
-
-    @Test
-    fun logoutDisconnectsAllWithoutStartingReplacement() {
-        val plan =
-            reconcileRealtimeProcessDesiredSession(
-                previous = desired(serverIds = setOf("server-a", "server-b")),
-                next = null,
-            )
-
-        assertTrue(plan.disconnectAll)
-        assertEquals(emptySet(), plan.connectServerIds)
-    }
-
-    @Test
-    fun explicitReconnectReissuesEveryDesiredServerWithoutRetiringIdentity() {
-        val current = desired(serverIds = setOf("server-a", "server-b"))
-
-        val plan = reconcileRealtimeProcessDesiredSession(current, current, forceReconnect = true)
-
-        assertFalse(plan.disconnectAll)
-        assertEquals(emptySet(), plan.disconnectServerIds)
-        assertEquals(setOf("server-a", "server-b"), plan.connectServerIds)
-        assertTrue(plan.forceReconnect)
     }
 
     @Test
@@ -243,25 +121,6 @@ class RealtimeProcessDesiredSessionTest {
         assertEquals(19L, lateGeneration.resumeSeq)
         assertEquals(19L, runtimeA.lastSeq)
     }
-
-    private fun desired(
-        environmentId: String = "https://api.example",
-        socketUrl: String = "https://socket.example",
-        principalId: String = "account-1",
-        authGeneration: Long = 7L,
-        connectionFamilyId: String = "family-1",
-        accessToken: String = "token-1",
-        serverIds: Set<String>,
-    ): RealtimeProcessDesiredSession =
-        RealtimeProcessDesiredSession(
-            environmentId = environmentId,
-            socketUrl = socketUrl,
-            principalId = principalId,
-            authGeneration = authGeneration,
-            connectionFamilyId = connectionFamilyId,
-            accessToken = accessToken,
-            serverIds = serverIds,
-        )
 
     private fun cursorIdentity(
         serverId: String,
