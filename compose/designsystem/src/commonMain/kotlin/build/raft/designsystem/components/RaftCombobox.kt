@@ -891,7 +891,7 @@ internal fun RaftComboboxChipRemove(
         Box(
             Modifier
                 .size(size)
-                .then(if (touchReach != null) Modifier.raftTouchTarget(true, source, onClick, touchReach) else Modifier)
+                .then(if (touchReach != null) Modifier.raftTouchReachArea(touchReach, true, source, onClick) else Modifier)
                 .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Sticker)
                 .raftInsetFocusOutline(focused, colors.foreground, RaftRadius.Sticker)
                 .raftPointerHover(source)

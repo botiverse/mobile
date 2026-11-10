@@ -62,6 +62,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.offset
 
 // Shared state primitives (raft-design Foundations > States, Elevation > Focus ring,
 // Dark mode > The die-cut edge, Color > Stickers / Pressed overlays). Every component
@@ -552,36 +560,81 @@ fun Modifier.raftTouchTarget(
 ): Modifier = this then RaftTouchTargetElement(minSize, enabled, interactionSource, onClick, onLongClick, expandStart, reach = null)
 
 /**
- * How far a [raftTouchTarget] reaches past each edge of the control's box, as raft-ui's
- * `::after` insets do where a square would reach a neighbour: a segment's 6 up and down only,
+ * How far a control takes a finger's taps past each edge of its box, as raft-ui's `::after`
+ * insets do where an even 44dp square would reach a neighbour: a segment's 6 up and down only,
  * the filter chip ×'s 6 toward its label and 14 toward the chip's end.
  */
 @Immutable
 internal data class RaftTouchReach(val start: Dp = 0.dp, val top: Dp = 0.dp, val end: Dp = 0.dp, val bottom: Dp = 0.dp)
 
 /**
- * Composes [content] without Compose's own touch near-hit: by default a finger that lands within
- * [ViewConfiguration.minimumTouchTargetSize] (48dp) of a smaller control, on nothing else that
- * takes touches, presses it. Inside, a control takes taps only in its box and the reach its
- * [raftTouchTarget] gives it, so a tap area that must stop short on one side (the filter chip ×
- * toward its label, a segment toward its neighbours) does.
+ * Composes [content] with Compose's touch near-hit set to [minimumTouchTarget]. A finger that
+ * lands outside a control smaller than [ViewConfiguration.minimumTouchTargetSize] (48dp by
+ * default), but within that size round it and on nothing else that takes touches, presses it:
+ * that is how a [raftTouchTarget] reaches a finger. [DpSize.Zero] takes it away, so a control
+ * takes a finger only in its box ([raftTouchReachArea] gives the reach); `DpSize(0.dp, 44.dp)`
+ * reaches a 32dp control 6dp up and down and not sideways (a segment).
  */
 @Composable
-internal fun RaftExactTouchBounds(content: @Composable () -> Unit) {
+internal fun RaftExactTouchBounds(minimumTouchTarget: DpSize = DpSize.Zero, content: @Composable () -> Unit) {
     val base = LocalViewConfiguration.current
     val exact =
-        remember(base) {
+        remember(base, minimumTouchTarget) {
             object : ViewConfiguration by base {
-                override val minimumTouchTargetSize: DpSize get() = DpSize.Zero
+                override val minimumTouchTargetSize: DpSize get() = minimumTouchTarget
             }
         }
     CompositionLocalProvider(LocalViewConfiguration provides exact, content = content)
 }
 
 /**
- * [raftTouchTarget] reaching past the box by [reach] on each side (start and end follow the
- * layout direction), whatever the box's size, in place of out to a square. Compose the control
- * in [RaftExactTouchBounds] so Compose's own 48dp near-hit doesn't reach further.
+ * A finger's tap area [reach] past the control on each side (start and end follow the layout
+ * direction), for a reach that isn't the same all round, which Compose's own near-hit can't give.
+ * Put it first in the control's chain, after its size and before its own clickable and drawing:
+ * the area is laid out round the control (which keeps its size for its parent) and a finger's tap
+ * there, outside the control, calls [onClick] and presses [interactionSource]. Inside the control
+ * its own clickable takes the touch first. A mouse or trackpad takes nothing past the control.
+ * Compose the control in [RaftExactTouchBounds] so Compose's near-hit doesn't add to the reach.
+ */
+internal fun Modifier.raftTouchReachArea(
+    reach: RaftTouchReach,
+    enabled: Boolean,
+    interactionSource: MutableInteractionSource,
+    onClick: () -> Unit,
+): Modifier =
+    this
+        .layout { measurable, constraints ->
+            val start = reach.start.roundToPx()
+            val top = reach.top.roundToPx()
+            val end = reach.end.roundToPx()
+            val bottom = reach.bottom.roundToPx()
+            val placeable = measurable.measure(constraints.offset(horizontal = start + end, vertical = top + bottom))
+            layout(placeable.width - start - end, placeable.height - top - bottom) { placeable.placeRelative(-start, -top) }
+        }
+        .pointerInput(enabled, interactionSource, onClick) {
+            awaitEachGesture {
+                // Inside the control its own clickable has taken the touch (and any mouse press).
+                val down = awaitFirstDown(requireUnconsumed = true)
+                if (!enabled || down.type == PointerType.Mouse) return@awaitEachGesture
+                down.consume()
+                val press = PressInteraction.Press(down.position)
+                interactionSource.tryEmit(press)
+                val up = waitForUpOrCancellation()
+                if (up != null) {
+                    up.consume()
+                    interactionSource.tryEmit(PressInteraction.Release(press))
+                    onClick()
+                } else {
+                    interactionSource.tryEmit(PressInteraction.Cancel(press))
+                }
+            }
+        }
+        .padding(start = reach.start, top = reach.top, end = reach.end, bottom = reach.bottom)
+
+/**
+ * [raftTouchTarget] whose stylus area reaches past the box by [reach] on each side in place of
+ * out to a square. A finger's reach is Compose's near-hit: compose the control in
+ * [RaftExactTouchBounds] with the matching minimum size.
  */
 internal fun Modifier.raftTouchTarget(
     enabled: Boolean,
