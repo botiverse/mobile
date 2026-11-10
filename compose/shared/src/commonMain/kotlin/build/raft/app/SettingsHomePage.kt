@@ -18654,7 +18654,7 @@ private fun SettingsDedicatedPagerVisualFixtureContent(
 ) {
     SettingsDetailShell(
         title = settingsDedicatedPagerVisualFixtureTitle(route.destination),
-        subtitle = "",
+        subtitle = if (route.destination == SettingsDestinationHandsFeedback) settingsHandsFeedbackSubtitle() else "",
         iconName = settingsDedicatedPagerVisualFixtureIcon(route.destination),
         onBack = onBack,
         trailingContent = null,
@@ -18717,7 +18717,7 @@ private fun settingsDedicatedPagerVisualFixtureTitle(destination: String): Strin
         SettingsDestinationBilling -> stringResource(Res.string.settings_billing_title)
         SettingsDestinationStorage -> stringResource(Res.string.settings_storage_title)
         SettingsDestinationReleaseNotes -> stringResource(Res.string.settings_release_notes_title)
-        SettingsDestinationHandsFeedback -> stringResource(Res.string.settings_feedback_title)
+        SettingsDestinationHandsFeedback -> settingsHandsFeedbackTitle()
         else -> stringResource(Res.string.settings_title)
     }
 

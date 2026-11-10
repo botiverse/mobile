@@ -918,6 +918,27 @@ internal class SharedRaftNetworkClient(
         ) && session.servers.any { server -> server.id.trim() == expected.serverId.trim() }
     }
 
+    override suspend fun requestMultipartWithHeaders(
+        priority: DataRequestPriority,
+        path: String,
+        headers: Map<String, String>,
+        fields: Map<String, String>,
+        files: List<MultipartFile>,
+    ): HomeNetworkResponse {
+        val resolvedFiles = files.preparePlatformFileStreams().getOrElse { return it }
+        return uploadMultipart(
+            priority = priority,
+            path = path,
+            category = "multipart_request",
+            diagnosticPath = path,
+            fields = fields,
+            files = resolvedFiles,
+            requestBytes = resolvedFiles.uploadByteEstimate(),
+            key = path,
+            extraHeaders = headers
+        )
+    }
+
     override suspend fun uploadAccountAvatar(
         priority: DataRequestPriority,
         file: MultipartFile
@@ -1083,7 +1104,8 @@ internal class SharedRaftNetworkClient(
         requestBytes: Long,
         key: String,
         expectedAuthority: RaftExpectedAuthBinding? = null,
-        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
+        extraHeaders: Map<String, String> = emptyMap()
     ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val requestBaseUrl = expectedAuthority?.environmentId?.normalizedEnvironmentId() ?: currentBaseUrl()
@@ -1121,11 +1143,16 @@ internal class SharedRaftNetworkClient(
                                 url = absoluteUrl(requestBaseUrl, path),
                                 fields = fields,
                                 files = files,
+                                // Auth and server binding win over a same-named extra header.
                                 headers =
-                                    mapOf(
-                                        HEADER_AUTHORIZATION to auth.authorization,
-                                        HEADER_SERVER_ID to auth.serverId
-                                    ),
+                                    extraHeaders.filterKeys { name ->
+                                        !name.equals(HEADER_AUTHORIZATION, ignoreCase = true) &&
+                                            !name.equals(HEADER_SERVER_ID, ignoreCase = true)
+                                    } +
+                                        mapOf(
+                                            HEADER_AUTHORIZATION to auth.authorization,
+                                            HEADER_SERVER_ID to auth.serverId
+                                        ),
                                 onUploadProgress = onUploadProgress
                             ).toHomeNetworkResponse()
                         if (expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {

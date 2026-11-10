@@ -507,6 +507,20 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     /**
+     * The diagnostics archive for Settings feedback filed through the Raft server
+     * ([SettingsFeedbackProxySubmitter]): the platform logs are flushed first, then the host
+     * writes, presigns and uploads the ZIP. A failed flush still uploads what is on disk.
+     */
+    fun feedbackDiagnosticsUploader(): SettingsFeedbackDiagnosticsUploader {
+        val uploader = HostSettingsFeedbackDiagnosticsUploader(host, ::logBridge)
+        return SettingsFeedbackDiagnosticsUploader { accountId ->
+            flushRaftPlatformLogs()
+            if (!diagnosticsFlush()) logBridge("settings_feedback_diagnostics_flush_failed")
+            onBridgeCallContext { uploader.upload(accountId) }
+        }
+    }
+
+    /**
      * [flushDiagnostics] false (the account deletion request) sends the message without first
      * flushing the platform logs, so a flush failure can't block it. The host still decides
      * whether it attaches its diagnostics export; no bridge parameter turns that off.

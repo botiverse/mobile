@@ -169,6 +169,8 @@ data class FeedbackFailure(
     /** The server's `code` (`feedback_integration_unavailable`), or a local one; for logs. */
     val code: String,
     val httpStatus: Int = 0,
+    /** A 429's `Retry-After` (delta-seconds), when it named one. */
+    val retryAfterSeconds: Long? = null,
 )
 
 sealed interface FeedbackResult<out T> {
