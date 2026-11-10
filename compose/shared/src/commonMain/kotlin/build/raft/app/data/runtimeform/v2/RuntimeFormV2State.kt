@@ -237,8 +237,11 @@ private fun defaultFor(
             JsonPrimitive(source?.defaultValue ?: source?.options?.firstOrNull()?.value ?: "")
         RuntimeFormV2FieldKind.DependentSelect -> {
             val parent = values.text(field.dependsOn)
+            // A custom-allowed parent with a list (OpenRouter) keeps the server's default; a gateway
+            // with no list has none and starts empty.
+            val options = source?.optionsByValue?.get(parent).orEmpty()
             JsonPrimitive(
-                if (source?.customValueAllowedByValue?.get(parent) == true) ""
+                if (source?.customValueAllowedByValue?.get(parent) == true && options.isEmpty()) ""
                 else source?.defaultValueByValue?.get(parent) ?: ""
             )
         }
