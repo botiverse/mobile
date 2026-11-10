@@ -856,7 +856,9 @@ internal fun SharedHandsFeedbackContent(
                 submitFeedback()
             }
             "attachImage" -> pickAttachment(imageOnly = true)
-            "attachFile" -> pickAttachment(imageOnly = false)
+            // The Raft server takes only PNG/JPEG/GIF/WebP images, so signed in the paperclip
+            // picks images too; any other file would only block the send.
+            "attachFile" -> pickAttachment(imageOnly = proxySubmitter != null)
             "removeAttachment" ->
                 attachmentId?.let { id ->
                     val removed =
