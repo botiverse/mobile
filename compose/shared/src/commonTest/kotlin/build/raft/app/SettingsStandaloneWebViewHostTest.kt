@@ -170,19 +170,30 @@ class SettingsStandaloneWebViewHostTest {
     }
 
     @Test
-    fun opaqueCoverRemainsUntilContentCommitAndFailureUsesErrorState() {
-        assertEquals(
-            SettingsWebViewPresentation.LoadingCover,
-            settingsWebViewPresentation(contentVisible = false, hasLoadError = false),
-        )
-        assertEquals(
-            SettingsWebViewPresentation.Error,
-            settingsWebViewPresentation(contentVisible = false, hasLoadError = true),
-        )
-        assertEquals(
-            SettingsWebViewPresentation.Content,
-            settingsWebViewPresentation(contentVisible = true, hasLoadError = false),
-        )
+    fun loadingShowsTheWebViewWithProgressAndOnlyAFailureReplacesIt() {
+        // (committed, isLoading, hasLoadError) -> presentation. No cover state exists: before the
+        // commit and while loading the WebView is shown under the progress bar.
+        val cases =
+            listOf(
+                Triple(false, true, false) to SettingsWebViewPresentation.Loading,
+                Triple(true, true, false) to SettingsWebViewPresentation.Loading,
+                Triple(false, false, false) to SettingsWebViewPresentation.Loading,
+                Triple(true, false, false) to SettingsWebViewPresentation.Content,
+                Triple(false, true, true) to SettingsWebViewPresentation.Error,
+                Triple(true, false, true) to SettingsWebViewPresentation.Error,
+            )
+        for ((input, expected) in cases) {
+            val (committed, isLoading, hasLoadError) = input
+            assertEquals(expected, settingsWebViewPresentation(committed, isLoading, hasLoadError), "for $input")
+        }
+    }
+
+    @Test
+    fun loadingBarIsIndeterminateUntilProgressAndNeverReachesComplete() {
+        assertEquals(null, raftWebPageLoadingBarValue(0))
+        assertEquals(0.4f, raftWebPageLoadingBarValue(40))
+        assertEquals(0.95f, raftWebPageLoadingBarValue(100))
+        assertEquals(0.95f, raftWebPageLoadingBarValue(140))
     }
 
     @Test

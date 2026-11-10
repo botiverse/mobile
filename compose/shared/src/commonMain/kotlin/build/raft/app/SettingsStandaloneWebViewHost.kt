@@ -17,6 +17,8 @@ import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftProgressBar
+import build.raft.designsystem.components.RaftProgressBarSize
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftStickerTile
 import build.raft.app.components.RaftSlotIcon
@@ -38,7 +40,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.Alignment
@@ -136,20 +138,28 @@ internal fun performSettingsWebViewBack(
         }
     }
 
+/**
+ * What a Settings web page shows over its WebView. There is no cover: the WebView is shown as soon
+ * as it is attached (it paints the page as it arrives, like the system browser), with a thin
+ * progress bar on top while the document is loading. Only a failed, stalled or crashed load
+ * replaces it, with the error state.
+ */
 internal enum class SettingsWebViewPresentation {
-    LoadingCover,
+    /** The WebView, with the top progress bar. */
+    Loading,
     Error,
     Content,
 }
 
 internal fun settingsWebViewPresentation(
-    contentVisible: Boolean,
+    committed: Boolean,
+    isLoading: Boolean,
     hasLoadError: Boolean,
 ): SettingsWebViewPresentation =
     when {
         hasLoadError -> SettingsWebViewPresentation.Error
-        contentVisible -> SettingsWebViewPresentation.Content
-        else -> SettingsWebViewPresentation.LoadingCover
+        !committed || isLoading -> SettingsWebViewPresentation.Loading
+        else -> SettingsWebViewPresentation.Content
     }
 
 @Composable
@@ -404,7 +414,7 @@ internal fun SettingsWebViewPageScaffold(
                     }
                 }
             } else {
-                SettingsWebViewLoadingCover()
+                SettingsWebViewLoadingPlaceholder()
             }
         }
     }
@@ -561,8 +571,10 @@ internal fun StandaloneSettingsWebViewContent(
         }
     var documentReady by remember(webUrl, hostAuthBinding?.webViewGeneration) { mutableStateOf(false) }
 
+    // The page's session goes in at document start (injectedJavaScript), so it cannot load before
+    // the session is known (it would open signed out). The load starts as soon as it is.
     if (session == null) {
-        SettingsWebViewLoadingCover()
+        SettingsWebViewLoadingPlaceholder()
         return
     }
 
@@ -605,9 +617,12 @@ internal fun StandaloneSettingsWebViewContent(
 /**
  * The only production WebView renderer used by standalone Settings surfaces.
  *
- * It owns the measured native-view attach gate, opaque cream cover, commit-ready transition,
- * failure/retry state, and navigation callbacks. Surface pages may provide identity/configuration,
- * but cannot change this first-frame sequence.
+ * It owns the measured native-view attach gate, the top progress bar, the commit-ready
+ * transition, failure/retry state, and navigation callbacks. Surface pages may provide
+ * identity/configuration, but cannot change this first-frame sequence.
+ *
+ * The WebView is shown as soon as it is attached (no cover until the page commits): a page paints
+ * progressively, as in the system browser, under a progress bar while it loads.
  *
  * Every attempt is guarded by a [RaftWebViewLoadWatchdog] (dm #102): a page that is not ready
  * [stallTimeoutMs] after it started, or whose web content process died before it was, is replaced
@@ -639,30 +654,25 @@ internal fun SettingsWebViewContent(
     onDocumentReadyChange: (Boolean) -> Unit = {},
 ) {
     var reloadKey by remember(url, generationKey) { mutableStateOf(0) }
-    var contentVisible by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
+    /** The document committed (first content on its way); gates [documentReady], not visibility. */
+    var committed by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
     var loadError by remember(url, generationKey, reloadKey) { mutableStateOf<String?>(null) }
     var navigationState by
         remember(url, generationKey, reloadKey) {
             mutableStateOf(RaftWebViewNavigationState(url = url, isLoading = true))
         }
-    var bodyFrameReady by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
+    // The WebView attaches once this frame has been measured at a real place: a native view
+    // attached before layout would draw over the page header for a frame (task #227). That
+    // measurement is already one rendered frame after the body entered; no further frame delay.
     var webViewAttachReady by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
     val navigationAuthority = remember { SettingsWebViewNavigationAuthority() }
     val loadWatchdog =
         remember(url, generationKey, reloadKey) {
             RaftWebViewLoadWatchdog(page = diagnosticsName, url = url, retry = reloadKey, stallTimeoutMs = stallTimeoutMs)
         }
-    val documentReady = contentVisible && !navigationState.isLoading && navigationState.progress >= 100
+    val documentReady = committed && !navigationState.isLoading && navigationState.progress >= 100
 
     LaunchedEffect(documentReady) { onDocumentReadyChange(documentReady) }
-    LaunchedEffect(bodyFrameReady, url, generationKey, reloadKey) {
-        if (!bodyFrameReady) {
-            webViewAttachReady = false
-            return@LaunchedEffect
-        }
-        repeat(SETTINGS_WEB_VIEW_ATTACH_DELAY_FRAMES) { withFrameNanos { } }
-        webViewAttachReady = true
-    }
 
     BoxWithConstraints(
         modifier =
@@ -670,12 +680,16 @@ internal fun SettingsWebViewContent(
                 .fillMaxSize()
                 .background(RaftTheme.colors.layerCanvas)
                 .onGloballyPositioned { coordinates ->
-                    bodyFrameReady =
+                    // Once attached, the WebView stays (a later re-layout must not drop it).
+                    if (!webViewAttachReady &&
                         settingsWebViewFrameIsReady(
                             positionY = coordinates.positionInRoot().y,
                             width = coordinates.size.width,
                             height = coordinates.size.height,
                         )
+                    ) {
+                        webViewAttachReady = true
+                    }
                 },
     ) {
         // Native WebViews apply their own bottom safe-area inset. Extend the shared frame so that
@@ -698,8 +712,7 @@ internal fun SettingsWebViewContent(
                             .fillMaxWidth()
                             .height(webViewHeight)
                             .background(RaftTheme.colors.layerCanvas)
-                            .padding(bottom = bottomContentPadding)
-                            .alpha(if (contentVisible) 1f else 0f),
+                            .padding(bottom = bottomContentPadding),
                     allowNavigation = allowNavigation,
                     allowedNavigationSchemes = allowedNavigationSchemes,
                     domStorageEnabled = true,
@@ -711,12 +724,12 @@ internal fun SettingsWebViewContent(
                     loadWatchdog = loadWatchdog,
                     onLoadCommit = {
                         loadError = null
-                        contentVisible = true
+                        committed = true
                         onLoadCommit()
                     },
                     onLoadSuccess = {
                         loadError = null
-                        contentVisible = true
+                        committed = true
                         onLoadSuccess()
                     },
                     onUrlChange = { changedUrl ->
@@ -724,7 +737,7 @@ internal fun SettingsWebViewContent(
                     },
                     onLoadFailure = { reason ->
                         if (navigationAuthority.accepts(navigationOwner)) {
-                            contentVisible = false
+                            committed = false
                             loadError = reason
                             onWebViewInvalidated()
                             onLoadFailure(reason)
@@ -753,7 +766,13 @@ internal fun SettingsWebViewContent(
                 )
             }
         }
-        when (settingsWebViewPresentation(contentVisible, loadError != null || loadWatchdog.showsError)) {
+        when (
+            settingsWebViewPresentation(
+                committed = committed,
+                isLoading = navigationState.isLoading,
+                hasLoadError = loadError != null || loadWatchdog.showsError,
+            )
+        ) {
             SettingsWebViewPresentation.Error ->
                 SettingsWebViewErrorContent(
                     actionLabel = stringResource(Res.string.common_retry),
@@ -761,16 +780,47 @@ internal fun SettingsWebViewContent(
                     body = settingsWebViewErrorBody(loadWatchdog.state.phase),
                     onAction = { reloadKey += 1 },
                 )
-            SettingsWebViewPresentation.LoadingCover -> SettingsWebViewLoadingCover()
+            SettingsWebViewPresentation.Loading -> RaftWebPageLoadingBar(navigationState.progress)
             SettingsWebViewPresentation.Content -> Unit
         }
     }
 }
 
+/** A plain canvas, for a non-web wait (server setup admission). Web pages use [SettingsWebViewLoadingPlaceholder]. */
 @Composable
 internal fun SettingsWebViewLoadingCover() {
     Box(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas))
 }
+
+/** A web page that cannot start its load yet (its session or URL is not known): canvas and the progress bar. */
+@Composable
+internal fun SettingsWebViewLoadingPlaceholder() {
+    Box(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+        RaftWebPageLoadingBar(progress = 0)
+    }
+}
+
+/**
+ * The thin progress bar on top of a loading in-app web page (raft-ui Progress, small): the
+ * page's load progress, or the indeterminate sweep before the engine reports any. It stays short
+ * of full so it never turns the "complete" colour; it goes away when the load ends.
+ */
+@Composable
+internal fun RaftWebPageLoadingBar(progress: Int, modifier: Modifier = Modifier) {
+    RaftProgressBar(
+        value = raftWebPageLoadingBarValue(progress),
+        modifier = modifier.fillMaxWidth().testTag(RAFT_WEB_PAGE_LOADING_BAR_TAG),
+        size = RaftProgressBarSize.Sm,
+        contentDescription = stringResource(Res.string.common_loading),
+    )
+}
+
+/** The bar's fraction for an engine [progress] (0..100): null (indeterminate) until it moves. */
+internal fun raftWebPageLoadingBarValue(progress: Int): Float? =
+    progress.takeIf { it > 0 }?.let { (it.coerceAtMost(100) / 100f).coerceAtMost(RAFT_WEB_PAGE_LOADING_BAR_MAX) }
+
+internal const val RAFT_WEB_PAGE_LOADING_BAR_TAG = "raft_web_page_loading_bar"
+private const val RAFT_WEB_PAGE_LOADING_BAR_MAX = 0.95f
 
 @Composable
 internal fun SettingsWebViewErrorContent(
@@ -993,7 +1043,6 @@ private fun feedbackWebViewDiagnosticsEventJavaScript(event: JSONObject): String
 private const val SETTINGS_WEB_VIEW_HEADER_SETTLE_FRAMES = 1
 internal const val SETTINGS_WEB_VIEW_HEADER_Z_INDEX = 1f
 internal const val SETTINGS_WEB_VIEW_BODY_Z_INDEX = 0f
-private const val SETTINGS_WEB_VIEW_ATTACH_DELAY_FRAMES = 2
 
 @Composable
 private fun rememberStandaloneSettingsLocaleTag(enabled: Boolean): String =
