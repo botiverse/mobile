@@ -55,6 +55,22 @@ class RaftWebViewSpareSlotTest {
     }
 
     @Test
+    fun firstPaintThemeScriptPaintsTheCanvasAtLowestPriorityUntilTheLoadEnds() {
+        for ((dark, scheme) in listOf(true to "dark", false to "light")) {
+            val script = raftWebViewFirstPaintThemeScript(0xFF1C1B1A.toInt(), dark)
+            // The canvas colour (alpha dropped) and the app's scheme ...
+            assertTrue("background-color:rgb(28,27,26)" in script, script)
+            assertTrue("color-scheme:$scheme" in script, script)
+            // ... in a zero-specificity rule, so the page's own background and scheme win ...
+            assertTrue(":where(html){" in script, script)
+            // ... top-level document only, and gone once the page loaded.
+            assertTrue("window.top!==window" in script, script)
+            assertTrue("addEventListener('load'" in script, script)
+            assertTrue("removeProperty('background-color')" in script, script)
+        }
+    }
+
+    @Test
     fun onlyTheSparesBlankDocumentIsIgnored() {
         val page = "https://app.raft.build/changelog"
         // (usingSpare, navigationUrl, src) -> ignored

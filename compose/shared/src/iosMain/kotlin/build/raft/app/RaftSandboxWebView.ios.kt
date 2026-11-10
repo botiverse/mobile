@@ -136,6 +136,10 @@ internal class RaftIosSandboxWebView(
     private var boundController: RaftWebViewController? = null
     /** When the current main-frame load started ([loadClock]), for the `elapsedMs` of the load lines; null before one. */
     private var loadStartedAt: TimeSource.Monotonic.ValueTimeMark? = null
+    /** When this page asked its WKWebView for the document (`load_src`): `sinceRequestMs` of the load lines. */
+    private var requestedAt: TimeSource.Monotonic.ValueTimeMark? = null
+    /** When this host was made (the page attached its WebView): `sinceAttachMs` of `load_src`. */
+    private val attachedAt = TimeSource.Monotonic.markNow()
     /** Whether the current WKWebView is the app's spare ([RaftIosWebViewSpare]) rather than a new one. */
     private var usingSpare = false
     /** [RaftWebViewConfig.backgroundArgb]: the colour before the first paint (0: white). */
@@ -250,6 +254,17 @@ internal class RaftIosSandboxWebView(
             userContentController.addUserScript(
                 WKUserScript(
                     source = RaftIosHostBridgeScript,
+                    injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
+                    forMainFrameOnly = true
+                )
+            )
+        }
+        if (allowScripts && placeholderBackground != 0) {
+            // The page's own first paint is the engine's white canvas until its stylesheet and
+            // theme script apply: the canvas colour and scheme until it loaded (dark mode, no flash).
+            userContentController.addUserScript(
+                WKUserScript(
+                    source = raftWebViewFirstPaintThemeScript(placeholderBackground, RaftAppThemeState.isDark),
                     injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
                     forMainFrameOnly = true
                 )
@@ -441,7 +456,11 @@ internal class RaftIosSandboxWebView(
         }
         currentLoading = true
         notifyNavigationState(force = false)
-        diagnosticsInfo("load_src spare=$usingSpare url=${raftWebViewUrlForLog(src)}")
+        requestedAt = TimeSource.Monotonic.markNow()
+        diagnosticsInfo(
+            "load_src spare=$usingSpare sinceAttachMs=${attachedAt.elapsedNow().inWholeMilliseconds} " +
+                "url=${raftWebViewUrlForLog(src)}"
+        )
         val cachePolicy = if (cacheEnabled) NSURLRequestUseProtocolCachePolicy else NSURLRequestReloadIgnoringLocalCacheData
         view.loadRequest(NSURLRequest.requestWithURL(url, cachePolicy = cachePolicy, timeoutInterval = 60.0))
     }
@@ -476,7 +495,7 @@ internal class RaftIosSandboxWebView(
         if (!raftIsSameObjCObject(source, webView)) return
         currentURL = source.URL?.absoluteString ?: currentURL
         loadStartedAt = TimeSource.Monotonic.markNow()
-        diagnosticsInfo("page_started url=${raftWebViewUrlForLog(currentURL)}")
+        diagnosticsInfo("page_started url=${raftWebViewUrlForLog(currentURL)} ${loadElapsedField()}")
         currentTitle = ""
         currentProgress = (source.estimatedProgress * 100.0 + 0.5).toInt().coerceIn(0, 100)
         currentLoading = true
@@ -634,7 +653,8 @@ internal class RaftIosSandboxWebView(
     }
 
     private fun loadElapsedField(): String =
-        "elapsedMs=${loadStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L}"
+        "elapsedMs=${loadStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L} " +
+            "sinceRequestMs=${requestedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L} spare=$usingSpare"
 
     /**
      * Back is possible, not counting the spare's own blank document ([RaftIosWebViewSpare] loads

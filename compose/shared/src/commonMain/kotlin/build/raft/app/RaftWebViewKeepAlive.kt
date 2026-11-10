@@ -107,3 +107,28 @@ internal fun raftWebViewIgnoresSpareBlankNavigation(usingSpare: Boolean, navigat
         src.isNotEmpty() && src != RAFT_WEB_VIEW_SPARE_BLANK_URL
 
 internal const val RAFT_WEB_VIEW_SPARE_BLANK_URL = "about:blank"
+
+/**
+ * Document-start script for a page shown before its first paint: until the page's own load
+ * ends, its root gets the app's canvas colour and colour scheme, so the engine's default white
+ * canvas does not flash in dark mode before the page's stylesheet and theme script apply.
+ *
+ * - The rule is `:where(html)` (zero specificity) in a constructed, adopted stylesheet: any
+ *   background or `color-scheme` of the page's own wins, and CSSOM sheets are not inline styles
+ *   for a CSP. Without constructable sheets: the root's inline style (CSSOM, not CSP-blocked).
+ * - Removed two frames after `load`: from then on the page is what it paints itself (a page that
+ *   paints no background is white, as in a browser).
+ * - Top-level document only; it reads and sends nothing.
+ */
+internal fun raftWebViewFirstPaintThemeScript(canvasArgb: Int, dark: Boolean): String {
+    val rgb = "rgb(${(canvasArgb ushr 16) and 0xFF},${(canvasArgb ushr 8) and 0xFF},${canvasArgb and 0xFF})"
+    val scheme = if (dark) "dark" else "light"
+    return "(function(){try{if(window.top!==window)return;var d=document,s=null,inl=false;" +
+        "try{s=new CSSStyleSheet();s.replaceSync(':where(html){background-color:$rgb;color-scheme:$scheme}');" +
+        "d.adoptedStyleSheets=d.adoptedStyleSheets.concat([s]);}catch(e){s=null;var r=d.documentElement;" +
+        "if(r){r.style.setProperty('background-color','$rgb');r.style.setProperty('color-scheme','$scheme');inl=true;}}" +
+        "function off(){try{if(s){d.adoptedStyleSheets=d.adoptedStyleSheets.filter(function(x){return x!==s;});}" +
+        "else if(inl){var r=d.documentElement;r.style.removeProperty('background-color');r.style.removeProperty('color-scheme');}}catch(e){}}" +
+        "window.addEventListener('load',function(){requestAnimationFrame(function(){requestAnimationFrame(off);});},{once:true});" +
+        "}catch(e){}})();"
+}
