@@ -40,6 +40,7 @@ import build.raft.app.data.ComputersRackView
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxTaskConversation
+import build.raft.app.data.RaftListPaneKind
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
