@@ -445,6 +445,9 @@ enum class RaftPickerTriggerSize(
     ),
 }
 
+/** raft-ui FilterChipRemove `pointer-coarse:after:-inset-y-2.5 -left-1.5 -right-3.5`. */
+internal val RaftFilterChipRemoveReach = RaftTouchReach(start = 6.dp, top = 10.dp, end = 14.dp, bottom = 10.dp)
+
 /**
  * The filter in effect beside a filter's [RaftPickerTriggerButton], with an × that clears
  * it (slock ThreadsInbox `ActiveFilterChip`, raft-design mockup s1-option-a). raft-ui has
@@ -452,7 +455,11 @@ enum class RaftPickerTriggerSize(
  * (PickerTriggerButton with a value: `info-soft`, no ring, 32dp, control radius,
  * `foreground` footnote semibold) with the combobox chip's remove button at 24dp: 10dp
  * in at the start, 4dp at the end, 6dp gaps, a 14dp [leadingIcon]. The label truncates
- * before the ×. The × is [removeLabel] to assistive tech and takes touches 44dp square.
+ * before the ×. The × is [removeLabel] to assistive tech. By touch it takes taps 44dp tall
+ * and wide, but not centred (raft-ui 0.73 FilterChipRemove): 10dp above and below it, only
+ * the 6dp gap toward the label, so a tap on the label's end isn't a tap on ×, and 14dp toward
+ * the end, 10dp past the chip. Keep the next control at least 16dp after the chip, or end the
+ * row with it.
  */
 @Composable
 fun RaftFilterChip(
@@ -484,6 +491,6 @@ fun RaftFilterChip(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        RaftComboboxChipRemove(removeLabel, onRemove, size = 24.dp, widenTouchTarget = true)
+        RaftComboboxChipRemove(removeLabel, onRemove, size = 24.dp, touchReach = RaftFilterChipRemoveReach)
     }
 }

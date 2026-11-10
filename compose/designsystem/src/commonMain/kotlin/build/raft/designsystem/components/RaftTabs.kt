@@ -50,6 +50,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -539,6 +540,20 @@ private fun RaftSegmentedTrack(modifier: Modifier, iconsOnly: Boolean, content: 
     val track = remember(scroll) { RaftTabStripScroll(scroll) }
     SideEffect { track.composed = true }
     val trackShape = RoundedCornerShape(11.dp)
+    // No near-hit for the track itself: while it scrolls (clipped), a finger past its edge
+    // reaches no segment through it. Each segment sets its own 44dp-tall reach.
+    RaftExactTouchBounds { RaftSegmentedTrackRow(modifier, trackShape, scroll, track, iconsOnly, content) }
+}
+
+@Composable
+private fun RaftSegmentedTrackRow(
+    modifier: Modifier,
+    trackShape: RoundedCornerShape,
+    scroll: androidx.compose.foundation.ScrollState,
+    track: RaftTabStripScroll,
+    iconsOnly: Boolean,
+    content: @Composable RowScope.() -> Unit,
+) {
     Row(
         modifier
             .raftBoundedTrack()
@@ -607,6 +622,9 @@ private fun Modifier.raftWeightsKeepTheirWidth(): Modifier =
  * `hidden in-data-icons-only:block`); without it, [icon] shows alone. Shown alone, the
  * segment is a 32dp square whose label (and count) stay its accessible name, and the label
  * shows in a tooltip.
+ *
+ * By touch a segment takes taps 6dp past it above and below (44dp at 32), never sideways;
+ * while the track scrolls, only inside the track.
  */
 @Composable
 fun RaftSegment(
@@ -628,34 +646,52 @@ fun RaftSegment(
     val aloneIcon = iconsOnlyIcon ?: icon
     // Read unconditionally: a composable read inside `&&` gets no group of its own (#3356).
     val trackIconsOnly = LocalRaftSegmentIconsOnly.current
-    val select = Modifier.selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+    // raft-ui 0.70 SegmentedControlItem: by touch a 32dp segment takes taps 44dp tall, 6dp past
+    // it up and down (3dp past the track) but not sideways, where its neighbours sit 3dp away:
+    // Compose's near-hit at 0 x 44 ([RaftExactTouchBounds]), which [raftTouchTarget] answers. A
+    // track that scrolls clips them at its edge (its layer clip). Touch only: a mouse or
+    // trackpad takes no taps past the box.
+    val select =
+        Modifier
+            .raftTouchTarget(enabled, source, onClick, RaftSegmentTouchReach)
+            .selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick)
     if (aloneIcon != null && trackIconsOnly) {
         val name = if (count != null) "$text $count" else text
         // The caller's modifier goes on the tooltip's outer box, where parent data (`weight`) holds.
         RaftTooltip(text, modifier) {
-            RaftStickerItem(
-                text,
-                selected,
-                enabled,
-                source,
-                reveal.then(select).semantics { contentDescription = name },
-                icon = aloneIcon,
-                count = count,
-                iconsOnly = true,
-            )
+            RaftExactTouchBounds(RaftSegmentTouchTarget) {
+                RaftStickerItem(
+                    text,
+                    selected,
+                    enabled,
+                    source,
+                    reveal.then(select).semantics { contentDescription = name },
+                    icon = aloneIcon,
+                    count = count,
+                    iconsOnly = true,
+                )
+            }
         }
         return
     }
-    RaftStickerItem(
-        text,
-        selected,
-        enabled,
-        source,
-        modifier.then(reveal).then(select),
-        icon = icon,
-        count = count,
-    )
+    RaftExactTouchBounds(RaftSegmentTouchTarget) {
+        RaftStickerItem(
+            text,
+            selected,
+            enabled,
+            source,
+            modifier.then(reveal).then(select),
+            icon = icon,
+            count = count,
+        )
+    }
 }
+
+/** raft-ui SegmentedControlItem `after:-inset-y-[calc(--spacing(1.5)+1.5px)]` from inside its 1.5dp border. */
+private val RaftSegmentTouchReach = RaftTouchReach(top = 6.dp, bottom = 6.dp)
+
+/** A finger's reach: 44dp tall (6dp up and down at 32), nothing sideways. */
+private val RaftSegmentTouchTarget = DpSize(0.dp, RaftTouchTargetSize)
 
 /**
  * raft-ui 0.8.0 ToggleGroup: buttons that each switch something on or off (any number
