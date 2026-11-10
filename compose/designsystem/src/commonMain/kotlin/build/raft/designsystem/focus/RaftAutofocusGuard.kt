@@ -1,5 +1,6 @@
 package build.raft.designsystem.focus
 
+import androidx.compose.foundation.focusGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -91,7 +92,13 @@ fun Modifier.raftReportsFocusToAutofocusGuard(): Modifier {
 
 /**
  * Reports whether anything inside this page root holds focus ([RaftAutofocusGuard.focusHeld]).
- * Observes only; it changes neither layout nor focus.
+ *
+ * The root is a [focusGroup] (a focus target that never takes focus itself), and the report reads
+ * that target's own state. Without one, the report was derived from the descendants and stayed
+ * "focused" after the focused one left the composition (a closed side thread's composer; seen in
+ * ComposerAutofocusOnOpenUiTest): Compose clears the focus through the targets on the active path,
+ * and a root with none of its own was apparently never told. Layout is untouched; the group only
+ * keeps keyboard traversal inside the root before leaving it.
  */
 @Composable
 fun Modifier.raftReportsFocusPresence(): Modifier {
@@ -99,5 +106,5 @@ fun Modifier.raftReportsFocusPresence(): Modifier {
     DisposableEffect(owner) {
         onDispose { RaftAutofocusGuard.setRootHasFocus(owner, false) }
     }
-    return onFocusChanged { RaftAutofocusGuard.setRootHasFocus(owner, it.hasFocus) }
+    return onFocusChanged { RaftAutofocusGuard.setRootHasFocus(owner, it.hasFocus) }.focusGroup()
 }
