@@ -84,7 +84,7 @@ class RaftMarkdownTaskRefChipTest {
     fun taskChipsKeepAGapFromCjkPunctuationAndEachOther() {
         val body = "（#92）和 #209 #7"
         val statuses = mapOf(92 to TaskStatus.InReview, 209 to TaskStatus.Done)
-        val annotated = paragraph(body, raftMarkdownAnnotator(content = body, taskStatuses = statuses))
+        val annotated = paragraph(body, raftMarkdownAnnotator(content = body, isTagValid = knownTaskRefs, taskStatuses = statuses))
         val boxes = annotated.raftInlineBoxRanges()
         assertEquals(3, boxes.size)
         val gap = "\uFFFC\u2060"
@@ -144,7 +144,7 @@ class RaftMarkdownTaskRefChipTest {
     fun paragraphTaskRefsRenderStatusChipsWithPaintedPixels() {
         val body = "Ready: #92 and #209, unknown #7"
         val statuses = mapOf(92 to TaskStatus.InReview, 209 to TaskStatus.Done)
-        val annotator = raftMarkdownAnnotator(content = body, taskStatuses = statuses)
+        val annotator = raftMarkdownAnnotator(content = body, isTagValid = knownTaskRefs, taskStatuses = statuses)
         val annotated = paragraph(body, annotator)
 
         assertEquals(3, annotated.getStringAnnotations(RaftMarkdownTagAnnotationTag, 0, annotated.length).size)
@@ -186,7 +186,7 @@ class RaftMarkdownTaskRefChipTest {
     fun taskRefsInListItemsAlsoGetStatusChips() {
         val body = "- #224 iOS thread\n- #145 onboarding"
         val statuses = mapOf(224 to TaskStatus.InReview, 145 to TaskStatus.Done)
-        val items = listItemParagraphs(body, raftMarkdownAnnotator(content = body, taskStatuses = statuses))
+        val items = listItemParagraphs(body, raftMarkdownAnnotator(content = body, isTagValid = knownTaskRefs, taskStatuses = statuses))
         assertEquals(2, items.size)
         assertEquals(
             raftMarkdownTaskChipStyle(TaskStatus.InReview).box.backgroundColor,
@@ -201,7 +201,7 @@ class RaftMarkdownTaskRefChipTest {
     @Test
     fun surfacesWithoutATaskSourceKeepTheLegacyTaskChip() {
         val body = "See #92"
-        val annotator = raftMarkdownAnnotator(content = body)
+        val annotator = raftMarkdownAnnotator(content = body, isTagValid = knownTaskRefs)
         val annotated = paragraph(body, annotator)
 
         assertEquals("See #92", annotated.raftTextWithoutInlineGaps())
@@ -240,6 +240,9 @@ class RaftMarkdownTaskRefChipTest {
         assertEquals(inReview, unrelated)
         assertTrue(raftMarkdownTaskChipRevision(actions.drop(1), mapOf(92 to TaskStatus.Done), dark = true).isEmpty())
     }
+
+    /** The refs here are known tasks of the conversation (no tag context knows none). */
+    private val knownTaskRefs: (ThreadMarkdownTag) -> Boolean = { tag -> tag.kind == ThreadMarkdownTagKind.Task }
 
     private fun paragraph(content: String, annotator: MarkdownAnnotator): AnnotatedString {
         val parserContent = MarkdownParserContent.from(content).parserContent
