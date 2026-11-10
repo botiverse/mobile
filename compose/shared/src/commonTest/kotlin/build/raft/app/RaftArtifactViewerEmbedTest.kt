@@ -57,16 +57,16 @@ class RaftArtifactViewerEmbedTest {
                 // `shown=<n>` (the latest read again in place, slock #12043) is still this Artifact: never leaving.
                 "$web/artifacts/$id?$embed&shown=4" to RaftArtifactViewerNavigation.Stay(null, 4),
                 "$web/s/acme/artifacts/$id?shown=x&$embed" to RaftArtifactViewerNavigation.Stay(null),
-                // On another page `shown` keeps nothing open.
-                "$web/artifacts/pt_other?$embed&shown=4" to RaftArtifactViewerNavigation.Close,
+                // Another Artifact (a link in the page) opens in its own viewer; on another page `shown` keeps nothing open.
+                "$web/artifacts/pt_other?$embed&shown=4" to RaftArtifactViewerNavigation.OpenArtifact(ArtifactLinkTarget("pt_other")),
                 "$web/s/acme?shown=4" to RaftArtifactViewerNavigation.Close,
                 // Its original message (the toolbar's link): open it natively.
                 "$web/s/acme/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000009&$embed" to RaftArtifactViewerNavigation.OpenMessage("$web/s/acme/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000009&$embed"),
                 "$web/s/acme/dm/d0d0d0d0-0000-4000-8000-000000000002?msg=a0a0a0a0-0000-4000-8000-000000000003&thread=d0d0d0d0-0000-4000-8000-000000000002%3Aa0a0a0a0-0000-4000-8000-000000000001" to RaftArtifactViewerNavigation.OpenMessage("$web/s/acme/dm/d0d0d0d0-0000-4000-8000-000000000002?msg=a0a0a0a0-0000-4000-8000-000000000003&thread=d0d0d0d0-0000-4000-8000-000000000002%3Aa0a0a0a0-0000-4000-8000-000000000001"),
-                // Anywhere else in the web app (the server after a Delete, another Artifact, a bad version): close.
+                // Anywhere else in the web app (the server after a Delete, a bad version): close.
                 "$web/s/acme?$embed" to RaftArtifactViewerNavigation.Close,
                 "$web/" to RaftArtifactViewerNavigation.Close,
-                "$web/artifacts/pt_other" to RaftArtifactViewerNavigation.Close,
+                "$web/artifacts/pt_other" to RaftArtifactViewerNavigation.OpenArtifact(ArtifactLinkTarget("pt_other")),
                 "$web/artifacts/$id/v/0" to RaftArtifactViewerNavigation.Close,
                 "$web/artifacts/$RAFT_ARTIFACT_VIEWER_WARM_SEGMENT?$embed" to RaftArtifactViewerNavigation.Close,
                 // A message link on another host is not this web app's page: the system browser.
@@ -89,11 +89,14 @@ class RaftArtifactViewerEmbedTest {
         assertEquals("$web/artifacts/$short/v/3?$embed", raftArtifactViewerEmbeddedPageUrl(web, target))
         assertTrue("\"/artifacts/$short/v/3?$embed\"" in raftArtifactViewerNavigateScript(web, "", target))
         // Either form of the same Artifact in the address keeps the viewer (the web writes the short
-        // id when a version is picked); another Artifact closes it.
+        // id when a version is picked); another Artifact opens in its own viewer.
         assertEquals(RaftArtifactViewerNavigation.Stay(4), raftArtifactViewerNavigation("$web/artifacts/$short/v/4?$embed", web, short))
         assertEquals(RaftArtifactViewerNavigation.Stay(4), raftArtifactViewerNavigation("$web/artifacts/$short/v/4?$embed", web, pt))
         assertEquals(RaftArtifactViewerNavigation.Stay(null), raftArtifactViewerNavigation("$web/artifacts/$pt", web, short))
-        assertEquals(RaftArtifactViewerNavigation.Close, raftArtifactViewerNavigation("$web/artifacts/ScAiFjjtiUvoyEYA6Ry12u", web, short))
+        assertEquals(
+            RaftArtifactViewerNavigation.OpenArtifact(ArtifactLinkTarget(id, 2)),
+            raftArtifactViewerNavigation("$web/artifacts/$id/v/2", web, short),
+        )
     }
 
     @Test

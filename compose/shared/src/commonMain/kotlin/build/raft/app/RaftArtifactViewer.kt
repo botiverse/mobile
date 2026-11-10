@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.artifactCanonicalId
+import build.raft.app.data.artifactIdOrNull
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactViewerPanel
 import build.raft.app.data.AuthenticatedRouteOwner
@@ -323,19 +324,44 @@ internal fun raftArtifactViewerPanelScript(webOrigin: String, panel: ArtifactVie
     )
 }
 
-internal enum class RaftArtifactViewerBlockedTarget { SystemBrowser, Download, Ignore }
+internal sealed interface RaftArtifactViewerBlockedTarget {
+    /** Off the web origin, or a web page that is not an Artifact or a message: the system browser. */
+    data class SystemBrowser(val url: String) : RaftArtifactViewerBlockedTarget
+
+    /** A file the page saves, which the WebView cannot save. */
+    data object Download : RaftArtifactViewerBlockedTarget
+
+    /** A Raft message: opened natively. */
+    data class OpenMessage(val url: String) : RaftArtifactViewerBlockedTarget
+
+    /** Another Artifact's page: opened in the in-app viewer. */
+    data class OpenArtifact(val target: ArtifactLinkTarget) : RaftArtifactViewerBlockedTarget
+
+    data object Ignore : RaftArtifactViewerBlockedTarget
+}
 
 /**
- * A top-level navigation the origin lock refused: an http(s) page opens in the system browser
- * (never in the signed-in WebView); a `blob:` address is a file the page saves (the web's Download /
- * Download all and the Files panel's rows save through a `blob:` link), which the WebView cannot
- * save; anything else (blank, other schemes) is dropped.
+ * Where an address the WebView did not load goes: a top-level navigation the origin lock refused,
+ * or a new window the page asked for (`target=_blank`, `window.open`: Open in new page, Ask AI's
+ * links). Routed like any link: off the web origin, the system browser (never the signed-in
+ * WebView); on it, this Artifact stays as it is, another Artifact opens in the in-app viewer, a
+ * message natively, any other page in the browser. A `blob:` address, or one of the web's API
+ * (`/api/…`), is a file the page saves (the web's Download / Download all and the Files panel's rows
+ * save through a `blob:` link), which the WebView cannot save. Anything else (blank, other schemes)
+ * is dropped.
  */
-internal fun raftArtifactViewerBlockedNavigationTarget(url: String, webOrigin: String): RaftArtifactViewerBlockedTarget {
+internal fun raftArtifactViewerBlockedNavigationTarget(url: String, webOrigin: String, artifactId: String): RaftArtifactViewerBlockedTarget {
     if (url.trim().startsWith("blob:", ignoreCase = true)) return RaftArtifactViewerBlockedTarget.Download
     val origin = raftWebOriginOf(url) ?: return RaftArtifactViewerBlockedTarget.Ignore
-    if (origin == raftWebOriginOf(webOrigin)) return RaftArtifactViewerBlockedTarget.Ignore
-    return RaftArtifactViewerBlockedTarget.SystemBrowser
+    if (origin != raftWebOriginOf(webOrigin)) return RaftArtifactViewerBlockedTarget.SystemBrowser(url)
+    val path = url.substringAfter("://").let { rest -> rest.indexOf('/').let { if (it < 0) "/" else rest.substring(it) } }
+    if (path.startsWith("/api/")) return RaftArtifactViewerBlockedTarget.Download
+    return when (val navigation = raftArtifactViewerNavigation(url, webOrigin, artifactId)) {
+        is RaftArtifactViewerNavigation.Stay -> RaftArtifactViewerBlockedTarget.Ignore
+        is RaftArtifactViewerNavigation.OpenMessage -> RaftArtifactViewerBlockedTarget.OpenMessage(navigation.url)
+        is RaftArtifactViewerNavigation.OpenArtifact -> RaftArtifactViewerBlockedTarget.OpenArtifact(navigation.target)
+        else -> RaftArtifactViewerBlockedTarget.SystemBrowser(url)
+    }
 }
 
 /**
@@ -357,6 +383,9 @@ internal sealed interface RaftArtifactViewerNavigation {
 
     /** Off the web origin: the system browser (never in the signed-in WebView). */
     data class SystemBrowser(val url: String) : RaftArtifactViewerNavigation
+
+    /** Another Artifact's page: close the viewer, open that one in the in-app viewer. */
+    data class OpenArtifact(val target: ArtifactLinkTarget) : RaftArtifactViewerNavigation
 
     /** Anywhere else in the web app: close the viewer. */
     data object Close : RaftArtifactViewerNavigation
@@ -388,6 +417,13 @@ internal fun raftArtifactViewerNavigation(url: String, webOrigin: String, artifa
         when (artifact.size) {
             2 -> return RaftArtifactViewerNavigation.Stay(null, shownParam)
             4 -> if (artifact[2] == "v") artifact[3].toIntOrNull()?.takeIf { it > 0 }?.let { return RaftArtifactViewerNavigation.Stay(it, shownParam) }
+        }
+    }
+    val otherId = artifact.getOrNull(1)?.takeIf { artifact.firstOrNull() == "artifacts" && it != artifactId }?.let(::artifactIdOrNull)
+    if (otherId != null && artifactCanonicalId(otherId) != artifactCanonicalId(artifactId)) {
+        when (artifact.size) {
+            2 -> return RaftArtifactViewerNavigation.OpenArtifact(ArtifactLinkTarget(otherId))
+            4 -> if (artifact[2] == "v") artifact[3].toIntOrNull()?.takeIf { it > 0 }?.let { return RaftArtifactViewerNavigation.OpenArtifact(ArtifactLinkTarget(otherId, it)) }
         }
     }
     if (parseRaftMessageLink(url, configuredWebUrl = webOrigin) != null) return RaftArtifactViewerNavigation.OpenMessage(url)

@@ -54,6 +54,12 @@ internal class RaftWebViewEvents {
     var onLoadSuccess: () -> Unit = {}
     var onLoadFailure: (String) -> Unit = {}
     var onNavigationBlocked: (String) -> Unit = {}
+    /**
+     * A file the page saves, which the WebView cannot (Android `DownloadListener`, an iOS
+     * attachment or undisplayable response, an iOS download link). Null: the host did not ask, and
+     * Android hands the address to [onNavigationBlocked] as before while iOS loads as before.
+     */
+    var onDownloadRequested: ((String) -> Unit)? = null
     var onUrlChange: (String) -> Unit = {}
     var onNavigationStateChange: (RaftWebViewNavigationState) -> Unit = {}
     var onHostMessage: (String, JSONObject) -> Unit = { _, _ -> }

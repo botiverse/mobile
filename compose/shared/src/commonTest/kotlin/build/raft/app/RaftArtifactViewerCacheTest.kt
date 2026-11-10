@@ -146,21 +146,30 @@ class RaftArtifactViewerCacheTest {
     }
 
     @Test
-    fun blockedTopLevelNavigationGoesToTheBrowserOnlyForWebPages() {
-        assertEquals(RaftArtifactViewerBlockedTarget.SystemBrowser, raftArtifactViewerBlockedNavigationTarget("https://example.com/notes", web))
-        assertEquals(
-            RaftArtifactViewerBlockedTarget.SystemBrowser,
-            raftArtifactViewerBlockedNavigationTarget("https://w-x.w-staging.raftusercontent.com/page", web),
-        )
-        assertEquals(RaftArtifactViewerBlockedTarget.Ignore, raftArtifactViewerBlockedNavigationTarget("", web))
-        assertEquals(RaftArtifactViewerBlockedTarget.Ignore, raftArtifactViewerBlockedNavigationTarget("javascript:alert(1)", web))
-        assertEquals(RaftArtifactViewerBlockedTarget.Ignore, raftArtifactViewerBlockedNavigationTarget("intent://x#Intent;end", web))
-        // A file the page saves (Download, Download all, a Files row): a `blob:` link the WebView can't save.
-        assertEquals(RaftArtifactViewerBlockedTarget.Download, raftArtifactViewerBlockedNavigationTarget("blob:$web/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0", web))
-        assertEquals(
-            RaftArtifactViewerBlockedTarget.Download,
-            raftArtifactViewerBlockedNavigationTarget("blob:https://w-x.w-staging.raftusercontent.com/0f1e2d3c", web),
-        )
+    fun blockedAddressesAndNewWindowsAreRoutedAsLinks() {
+        val other = "pt_0b6f1c2e-5d4a-4c3b-9a8e-7f6d5c4b3a21"
+        val cases =
+            listOf(
+                // Off the web origin (Ask AI's links, the content domain): the system browser.
+                "https://example.com/notes" to RaftArtifactViewerBlockedTarget.SystemBrowser("https://example.com/notes"),
+                "https://w-x.w-staging.raftusercontent.com/page" to
+                    RaftArtifactViewerBlockedTarget.SystemBrowser("https://w-x.w-staging.raftusercontent.com/page"),
+                // On it (Open in new page, a link in a comment): this Artifact stays, another opens in the viewer,
+                // any other page goes to the browser.
+                "$web/artifacts/${target.id}" to RaftArtifactViewerBlockedTarget.Ignore,
+                "$web/artifacts/$other/v/2" to RaftArtifactViewerBlockedTarget.OpenArtifact(ArtifactLinkTarget(other, 2)),
+                "$web/s/acme/artifacts/$other" to RaftArtifactViewerBlockedTarget.OpenArtifact(ArtifactLinkTarget(other)),
+                "$web/s/acme" to RaftArtifactViewerBlockedTarget.SystemBrowser("$web/s/acme"),
+                // A file the page saves (Download, Download all, a Files row): the WebView can't save it.
+                "blob:$web/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0" to RaftArtifactViewerBlockedTarget.Download,
+                "blob:https://w-x.w-staging.raftusercontent.com/0f1e2d3c" to RaftArtifactViewerBlockedTarget.Download,
+                "$web/api/artifacts/${target.id}/versions/3/zip" to RaftArtifactViewerBlockedTarget.Download,
+                // Not a page.
+                "" to RaftArtifactViewerBlockedTarget.Ignore,
+                "javascript:alert(1)" to RaftArtifactViewerBlockedTarget.Ignore,
+                "intent://x#Intent;end" to RaftArtifactViewerBlockedTarget.Ignore,
+            )
+        for ((url, expected) in cases) assertEquals(expected, raftArtifactViewerBlockedNavigationTarget(url, web, target.id), url)
     }
 
     @Test

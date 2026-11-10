@@ -307,6 +307,7 @@ private sealed interface RaftArtifactViewerBodyState {
 private fun RaftArtifactViewerNavigation.logToken(): String =
     when (this) {
         is RaftArtifactViewerNavigation.OpenMessage -> "open_message"
+        is RaftArtifactViewerNavigation.OpenArtifact -> "open_artifact"
         else -> "close"
     }
 
@@ -389,6 +390,8 @@ private fun RaftArtifactViewerScreen() {
         closePage()
         when (val navigation = leaving.navigation) {
             is RaftArtifactViewerNavigation.OpenMessage -> RaftMessageLinkIngress.accept(navigation.url, "artifact_viewer", webBaseUrl)
+            // Another Artifact (a link in the page): the app shell opens it in the viewer.
+            is RaftArtifactViewerNavigation.OpenArtifact -> RaftArtifactLinkInbox.Process.submit(navigation.target, "artifact_viewer")
             else -> Unit
         }
     }
@@ -618,13 +621,18 @@ private fun RaftArtifactViewerWebBody(
                 if (state.url.isNotBlank()) onAddress(state.url)
             },
             onNavigationBlocked = { blocked ->
-                // Rule 2: off the web origin never loads here; an http(s) page opens in the browser.
-                when (raftArtifactViewerBlockedNavigationTarget(blocked, scope.webOrigin)) {
-                    RaftArtifactViewerBlockedTarget.SystemBrowser -> host.bridge.openUrl(blocked, inBrowser = true)
+                // Rule 2: off the web origin never loads here; a new window the page asked for is
+                // routed as a link ([raftArtifactViewerBlockedNavigationTarget]).
+                when (val routed = raftArtifactViewerBlockedNavigationTarget(blocked, scope.webOrigin, target.id)) {
+                    is RaftArtifactViewerBlockedTarget.SystemBrowser -> host.bridge.openUrl(routed.url, inBrowser = true)
                     RaftArtifactViewerBlockedTarget.Download -> currentOnDownload()
+                    is RaftArtifactViewerBlockedTarget.OpenMessage -> RaftMessageLinkIngress.accept(routed.url, "artifact_viewer", scope.webOrigin)
+                    is RaftArtifactViewerBlockedTarget.OpenArtifact -> RaftArtifactLinkInbox.Process.submit(routed.target, "artifact_viewer")
                     RaftArtifactViewerBlockedTarget.Ignore -> Unit
                 }
             },
+            // A file the page saves (Android DownloadListener, an iOS attachment response): the browser can.
+            onDownloadRequested = { currentOnDownload() },
         )
         SettingsWebViewAccessTokenSyncEffect(
             snapshot = snapshot,
