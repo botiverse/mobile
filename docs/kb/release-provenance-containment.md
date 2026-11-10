@@ -6,7 +6,7 @@ Answering "is fix X in the build the user has?" has one reliable method: resolve
 
 ## Why the version string is not enough
 
-A release branch is a stabilization boundary, not a snapshot that follows `main` (see `docs/android-release-sop.md` and `docs/mobile-paired-release-sop.md`). Product work keeps landing on `main`; only explicitly selected blocker fixes are merged into `release-*`. So:
+A release branch is a stabilization boundary, not a snapshot that follows `main` (see `docs/mobile-release-sop.md`). Product work keeps landing on `main`; only explicitly selected blocker fixes are merged into `release-*`. So:
 
 - A fix merged to `main` is **not** in a release build unless it was brought into that release branch.
 - A build made *later* than the fix can still lack it.

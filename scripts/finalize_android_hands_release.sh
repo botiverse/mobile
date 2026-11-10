@@ -35,7 +35,7 @@ Usage: scripts/finalize_android_hands_release.sh [options]
 Writes the reviewed zh-CN, English, and Japanese notes to an existing Hands
 Android draft, then
 activates it only when --confirm-publish is supplied. This is the final owner-
-approved step of docs/android-release-sop.md; it never builds an APK.
+approved step of docs/mobile-release-sop.md; it never builds an APK.
 
 Required:
   --release <id>          Hands draft release id.

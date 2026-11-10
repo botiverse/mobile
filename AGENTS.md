@@ -37,6 +37,9 @@ summarizes.
   go on the release branch, who approves.
 - `raft-android-release` — Android release train on Hands (draft-first).
 - `raft-ios-release` — iOS release build, TestFlight, iOS audit tag.
+  The four release skills point into `docs/mobile-release-sop.md`, the one
+  release procedure; each release is tracked in one GitHub issue
+  (`Release X.Y.Z`, template `mobile-release`).
 - `blacksmith-testbox` / `blacksmith-visual-testbox` — warm CI VM for focused
   Gradle work or single visual cases.
 - `mobile-use`, `slock-android-adb-audit` — driving devices/emulators from
@@ -941,9 +944,9 @@ Pipeline contracts:
 
 Raft mobile ships and reports through Hands. Two reference docs:
 
-- `docs/android-hands-release-practices-2026-07-02.md` — release lane:
-  versioning rule (`versionCode` must strictly increase), draft-first flow,
-  and the release-notes (changelog) format.
+- `docs/mobile-release-sop.md` — the one release procedure (Android, Google
+  Play, iOS/TestFlight, App Store): release issue, versioning, branch, notes,
+  drafts, smoke, owner-approved steps, closeout.
 - `docs/quiver-feedback-diagnostics-zip.md` — how to open and read a Quiver
   feedback diagnostics attachment (`slock-feedback-*.zip`: summary +
   `app_logs/*.jsonl`), the app-owned log format, and triage tips. Quiver
@@ -951,43 +954,13 @@ Raft mobile ships and reports through Hands. Two reference docs:
 
 ## Versioned Mobile Changesets
 
-Raft Mobile release notes use version-scoped feature changesets under
-`change-logs/<version>/changesets/`. When a task, owner decision, or acceptance
-contract explicitly targets a release such as `1.6.0`, the implementation is
-not complete without its own changeset in that version directory.
-
-The release lane aggregates those changesets separately for each shipped
-platform under `change-logs/<version>/<platform>/{zh-CN,en}.md`, where
-`<platform>` is `android` or `ios` (historical versions up to 1.14.x may also
-carry a legacy `ohos` directory). A platform aggregate contains only
-behavior shipped on that platform and does not repeat the platform name in
-each bullet. Historical root-level `change-logs/<version>/{zh-CN,en}.md` files
-remain supported as workflow fallbacks, but new versions must use the
-platform directories.
-
-- Add one kebab-case Markdown file per user-facing feature, improvement, or
-  fix. Use
-  `change-logs/1.6.0/changesets/app-shell-idle-prewarm.md` as the
-  current structure reference.
-- Ship the changeset in the same PR as the product change whenever possible.
-  If the target version is assigned only after the product PR merged, create a
-  follow-up changeset PR immediately and reference the original product PR.
-- Preserve the frontmatter contract: `type`, `area`, `platforms`,
-  `pull_request`, and `rollout`. The `pull_request` value must identify the
-  product PR and must not remain a placeholder when the changeset merges.
-- Include both `## zh-CN` and `## en`. Write user-visible behavior and impact,
-  not implementation details, test inventories, commit hashes, or internal
-  architecture narration.
-- Do not guess a target version. If no version was explicitly assigned, do
-  not place the change in a version directory merely because that is the next
-  planned release; wait for owner/release-lane classification.
-- Do not edit consolidated
-  `change-logs/<version>/<platform>/{zh-CN,en}.md` as the per-feature delivery
-  path. The release lane owns platform aggregation and review using the
-  accepted version changesets.
-- Before moving a version-targeted task to In Review, verify the changeset is
-  present, the bilingual copy matches the shipped scope, and the product PR
-  number/rollout metadata are accurate.
+When a task, owner decision, or acceptance contract explicitly targets a
+release such as `1.6.0`, the implementation is not complete without its own
+changeset in `change-logs/<version>/changesets/`. Rules (front matter, wording,
+never guessing a version, never editing the platform aggregates) are in
+`docs/mobile-release-sop.md` §1; skill `raft-release-changeset`. Before moving
+a version-targeted task to In Review, verify the changeset is present, the
+copy matches the shipped scope, and the PR number and rollout are accurate.
 
 ## Adding a RealtimeEvent subtype — checklist
 

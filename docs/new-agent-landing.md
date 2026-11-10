@@ -150,7 +150,7 @@ Useful docs:
 - Android emulator setup: `docs/android-emulator-setup.md`
 - Mobile device automation: `docs/mobile-device-automation.md`
 - Visual testing provider: `docs/visual-testing-android-provider.md`
-- Release lane notes: `docs/android-release-lane-pi-perfprofiler.md`
+- Release procedure: `docs/mobile-release-sop.md`
 
 ## Collaboration Rules
 
