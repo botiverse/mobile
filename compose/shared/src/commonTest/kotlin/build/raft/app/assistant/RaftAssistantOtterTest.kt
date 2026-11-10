@@ -145,6 +145,24 @@ class RaftAssistantOtterTest {
     }
 
     @Test
+    fun itsSleepLoopStopsWhileThePanelHidesIt() {
+        fun runs(
+            asleep: Boolean = true,
+            foreground: Boolean = true,
+            reducedMotion: Boolean = false,
+            heldStill: Boolean = false,
+            tuck: RaftOtterTuck = RaftOtterTuck.None,
+        ) = raftOtterLoopRuns(asleep, foreground, reducedMotion, heldStill, tuck)
+        assertTrue(runs())
+        assertTrue(runs(tuck = RaftOtterTuck.Composing), "tucked for composing, its head still shows")
+        assertFalse(runs(tuck = RaftOtterTuck.PanelOpen), "hidden behind the open panel: no frame clock")
+        assertFalse(runs(asleep = false))
+        assertFalse(runs(foreground = false))
+        assertFalse(runs(reducedMotion = true))
+        assertFalse(runs(heldStill = true))
+    }
+
+    @Test
     fun tuckSharesMatchTheWeb() {
         assertEquals(0f, RaftOtterTuck.None.fraction)
         assertEquals(0.58f, RaftOtterTuck.Composing.fraction)

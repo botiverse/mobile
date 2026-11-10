@@ -180,6 +180,19 @@ fun raftOtterPaws(mood: RaftOtterMood, entering: Boolean = false): List<Dp> =
 fun raftOtterAsleep(mood: RaftOtterMood, entering: Boolean = false): Boolean =
     !entering && (mood == RaftOtterMood.Idle || mood == RaftOtterMood.Away)
 
+/**
+ * Whether its sleep loop (breath and z's) ticks every frame: asleep, the app in the foreground,
+ * no reduced motion, not held still for a screenshot, and not hidden in the frame behind an open
+ * assistant panel ([RaftOtterTuck.PanelOpen]; tucked for composing its head still shows).
+ */
+internal fun raftOtterLoopRuns(
+    asleep: Boolean,
+    foreground: Boolean,
+    reducedMotion: Boolean,
+    heldStill: Boolean,
+    tuck: RaftOtterTuck,
+): Boolean = asleep && foreground && !reducedMotion && !heldStill && tuck != RaftOtterTuck.PanelOpen
+
 /** Whether it is awake for something (web `awake`: `new` / `confirm`, once it has popped in): it wakes once per waking. */
 fun raftOtterAwake(mood: RaftOtterMood, entering: Boolean = false): Boolean =
     !entering && (mood == RaftOtterMood.New || mood == RaftOtterMood.Confirm)
@@ -330,9 +343,19 @@ fun RaftAssistantOtter(
     }
     val asleep = raftOtterAsleep(mood, entering)
     // Asleep it breathes and z's float up: only while the app is in the foreground (web: paused
-    // while the page is hidden), and never with reduced motion.
+    // while the page is hidden) and the otter can be seen, and never with reduced motion.
     val foreground = rememberRaftAppInForeground()
-    val loopClock = rememberRaftOtterLoopClock(running = asleep && foreground && !reducedMotion && stillAt == null)
+    val loopClock =
+        rememberRaftOtterLoopClock(
+            running =
+                raftOtterLoopRuns(
+                    asleep = asleep,
+                    foreground = foreground,
+                    reducedMotion = reducedMotion,
+                    heldStill = stillAt != null,
+                    tuck = tuck,
+                ),
+        )
     val looping by remember { derivedStateOf { loopClock.value != null } }
     val loopMillis: (() -> Long)? =
         when {
