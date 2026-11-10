@@ -121,6 +121,11 @@ internal object RaftMathFormulas {
 
     private fun check(source: String): Boolean {
         if (source.length > MAX_SOURCE_LENGTH) return false
+        // latex-renderer measures text width through Skia with raw UTF-16; a surrogate (an emoji
+        // or other non-BMP character, or half of one) makes Skia's glyph count negative and it
+        // aborts (iPad SIGABRT 01d87c01: SkTypeface_Mac::onCharsToGlyphs <- Font.measureTextWidth
+        // <- raftInlineMathTextContent). Such a formula shows as its source instead.
+        if (source.any { it.isSurrogate() }) return false
         if (!passesCommandScan(source)) return false
         val result =
             try {
