@@ -46,7 +46,7 @@ class RuntimeFormV2Test {
             sourceId = "provider",
             kind = RuntimeFormV2SourceKind.Select,
             pointer = "/providerId",
-            options = listOf(choice("deepseek", "DeepSeek"), choice("openai-compatible", "OpenAI compatible")),
+            options = listOf(choice("deepseek", "DeepSeek"), choice("openai-compatible", "OpenAI compatible"), choice("openrouter", "OpenRouter")),
             defaultValue = "deepseek"
         ),
         "model" to RuntimeFormV2Source(
@@ -56,10 +56,11 @@ class RuntimeFormV2Test {
             dependsOn = "/providerId",
             optionsByValue = mapOf(
                 "deepseek" to listOf(choice("deepseek/v4", "V4"), choice("deepseek/flash", "Flash")),
-                "openai-compatible" to emptyList()
+                "openai-compatible" to emptyList(),
+                "openrouter" to listOf(choice("openrouter/auto", "Auto"))
             ),
-            defaultValueByValue = mapOf("deepseek" to "deepseek/v4"),
-            customValueAllowedByValue = mapOf("deepseek" to false, "openai-compatible" to true)
+            defaultValueByValue = mapOf("deepseek" to "deepseek/v4", "openrouter" to "openrouter/auto"),
+            customValueAllowedByValue = mapOf("deepseek" to false, "openai-compatible" to true, "openrouter" to true)
         )
     )
     private val kimiSources: RuntimeFormV2Sources = mapOf(
@@ -270,6 +271,12 @@ class RuntimeFormV2Test {
         assertEquals("", values.text("model"), "a gateway starts with an empty custom model")
         assertTrue(isRuntimeFormV2FieldVisible(pi.field("baseUrl"), values))
         assertEquals(RuntimeFormV2Choices.FreeText, runtimeFormV2Choices(pi.field("model"), piSources, values))
+        // A listed provider that also takes a typed model (slock #13950: OpenRouter) is a combobox that keeps its default.
+        values = applyRuntimeFormV2Change(pi, piSources, values, "providerId", JsonPrimitive("openrouter"))
+        assertEquals("openrouter/auto", values.text("model"))
+        val openRouter = runtimeFormV2Choices(pi.field("model"), piSources, values) as RuntimeFormV2Choices.Select
+        assertTrue(openRouter.allowCustom, "OpenRouter's model list also takes a typed id")
+        assertEquals(listOf("openrouter/auto"), openRouter.options.map { it.value })
 
         var kimiValues = initialRuntimeFormV2Values(kimi, kimiSources)
         kimiValues = applyRuntimeFormV2Change(kimi, kimiSources, kimiValues, "model", JsonPrimitive("k1"))
