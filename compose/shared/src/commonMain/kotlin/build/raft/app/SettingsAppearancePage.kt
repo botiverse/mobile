@@ -19,6 +19,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -108,11 +109,14 @@ internal fun SettingsAppearanceContent(
 ) {
     LazyColumn(
         state = rememberSettingsSearchListState(),
-        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(horizontal = 16.dp),
+        // The top and bottom inset inside the list, so a located section first on the page has room
+        // for its highlight (SettingsSearchSectionShape) instead of being cut where the list starts.
+        contentPadding = PaddingValues(vertical = 16.dp),
     ) {
         if (showModeCard) {
             item {
-                Box(Modifier.fillMaxWidth().settingsSearchAnchor("theme", SettingsSearchCardShape)) {
+                Box(Modifier.fillMaxWidth().settingsSearchAnchor("theme", SettingsSearchSectionShape)) {
                     SettingsAppearanceThemeCard(title = stringResource(Res.string.settings_appearance_theme_title))
                 }
                 Spacer(Modifier.height(24.dp))
@@ -170,7 +174,7 @@ internal fun SettingsAppearanceContent(
                 }
             is ScreenLoadState.Content ->
                 item {
-                    Box(Modifier.fillMaxWidth().settingsSearchAnchor("message-font-size", SettingsSearchCardShape)) {
+                    Box(Modifier.fillMaxWidth().settingsSearchAnchor("message-font-size", SettingsSearchSectionShape)) {
                         SettingsAppearanceFontSizeCard(
                             snapshot = state.data,
                             fontSizeDraft = fontSizeDraft,

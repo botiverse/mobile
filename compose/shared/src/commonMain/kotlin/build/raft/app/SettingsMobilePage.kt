@@ -205,7 +205,7 @@ internal fun LazyListScope.settingsAppPreferenceItems(
             )
         }
         item {
-            Box(Modifier.fillMaxWidth().settingsSearchAnchor("send-with", SettingsSearchCardShape)) {
+            Box(Modifier.fillMaxWidth().settingsSearchAnchor("send-with", SettingsSearchSectionShape)) {
                 SettingsComposerSendKeyCard(
                     snapshot = snapshot,
                     actionState = actionState,

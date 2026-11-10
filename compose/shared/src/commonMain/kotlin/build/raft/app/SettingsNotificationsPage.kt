@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -124,7 +125,10 @@ internal fun SettingsNotificationsContent(
     val zone = timeZoneId ?: raftCurrentTimeZoneId()
     LazyColumn(
         state = rememberSettingsSearchListState(),
-        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(horizontal = 16.dp),
+        // The top and bottom inset inside the list, so a located section first on the page has room
+        // for its highlight (SettingsSearchSectionShape) instead of being cut where the list starts.
+        contentPadding = PaddingValues(vertical = 16.dp),
         // Web `stack-y-6` between the sections.
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
@@ -179,8 +183,11 @@ internal fun SettingsNotificationsContent(
                     item {
                         // The web's CurrentServerNotificationsCard; an older server without the
                         // unified settings keeps the previous workspace card.
-                        Box(Modifier.fillMaxWidth().settingsSearchAnchor("mute-server", SettingsSearchCardShape)) {
-                            if (accountSettings != null && currentServer != null) {
+                        val currentServerCard = accountSettings != null && currentServer != null
+                        // The previous card starts with its section's label: the highlight reaches around it.
+                        val shape = if (currentServerCard) SettingsSearchCardShape else SettingsSearchSectionShape
+                        Box(Modifier.fillMaxWidth().settingsSearchAnchor("mute-server", shape)) {
+                            if (currentServerCard && currentServer != null) {
                                 SettingsNotificationCurrentServerCard(currentServer)
                             } else {
                                 SettingsServerNotificationModeCard(

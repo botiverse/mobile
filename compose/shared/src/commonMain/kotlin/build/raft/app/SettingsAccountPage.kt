@@ -527,7 +527,7 @@ internal fun SettingsAccountContent(
             }
             // Web order: the Account card, Session (Sign out), then Share usage data.
             item {
-                Box(Modifier.fillMaxWidth().settingsSearchAnchor("sign-out", SettingsSearchCardShape)) {
+                Box(Modifier.fillMaxWidth().settingsSearchAnchor("sign-out", SettingsSearchSectionShape)) {
                     SettingsLogoutAction(localizedPayload) { onEvent("logout", null) }
                 }
             }

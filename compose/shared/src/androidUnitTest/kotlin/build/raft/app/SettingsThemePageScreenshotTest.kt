@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MonotonicFrameClock
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
@@ -10,6 +11,12 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.designsystem.tokens.RaftThemeId
 import kotlin.test.Test
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -19,7 +26,9 @@ import org.robolectric.annotation.GraphicsMode
  * Settings › Theme (web ServerThemeSection after botiverse/slock#11355), light and dark: the
  * description, "Light and dark" first, then a Free server wearing Space, so the swatch grid shows
  * the selected card, Raft Yellow's "Default", the Pro tag on Boring Gray and the decorations
- * switch on. Reports land in `build/reports/home-screenshots/`; verify / record as
+ * switch on. And light with "Light and dark" located, as a Settings search result opens it, held at
+ * full `info-soft`: the highlight reaches [SettingsSearchSectionOutset] around the section, so its
+ * header's icon and title have room (artin, Hands raft-android eaeefff5). Reports land in `build/reports/home-screenshots/`; verify / record as
  * [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -35,13 +44,32 @@ class SettingsThemePageScreenshotTest {
     @Test
     fun dark() = capture("settings.theme.page.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) =
+    @Test
+    fun lightLocatedSection() {
+        // Already settled, so the anchor neither scrolls nor starts its own run; the run here sets
+        // full strength and then waits on a frame clock that never ticks, so the capture's settle
+        // (2s of looper time) doesn't fade it.
+        val locator = SettingsSearchLocator("theme").apply { settled = true }
+        val stillClock =
+            object : MonotonicFrameClock {
+                override suspend fun <R> withFrameNanos(onFrame: (frameTimeNanos: Long) -> R): R = awaitCancellation()
+            }
+        val held = CoroutineScope(Dispatchers.Unconfined + stillClock)
+        held.launch(start = CoroutineStart.UNDISPATCHED) { locator.located.locate("theme") }
+        try {
+            capture("settings.theme.page.located", RaftAppAppearance.Light, locator)
+        } finally {
+            held.cancel()
+        }
+    }
+
+    private fun capture(name: String, appearance: RaftAppAppearance, locator: SettingsSearchLocator? = null) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
                 remember {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                 }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalSettingsSearchLocator provides locator) {
                 build.raft.app.components.RaftDesignSystemTheme {
                     SettingsThemeContent(
                         serverTheme =
