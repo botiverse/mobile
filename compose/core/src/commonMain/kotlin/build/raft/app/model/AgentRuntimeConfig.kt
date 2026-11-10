@@ -164,16 +164,28 @@ data class RuntimeModelPresentation(
     val defaultModel: String?
 )
 
+private val CLAUDE_REASONING_EFFORTS = listOf("low", "medium", "high", "xhigh", "max")
+
 val RUNTIME_MODELS: Map<String, List<RuntimeModelInfo>> = mapOf(
+    // Same rows and order as slock packages/shared RUNTIME_MODELS.claude (the fallback when the
+    // Computer's own catalog is unavailable).
     "claude" to listOf(
-        RuntimeModelInfo("opus", "Claude Opus"),
-        RuntimeModelInfo("claude-opus-4-8", "Claude Opus 4.8"),
-        RuntimeModelInfo("claude-opus-4-7", "Claude Opus 4.7"),
-        RuntimeModelInfo("claude-opus-4-6", "Claude Opus 4.6"),
-        RuntimeModelInfo("fable", "Claude Fable"),
-        RuntimeModelInfo("sonnet", "Claude Sonnet"),
-        RuntimeModelInfo("claude-sonnet-4-6", "Claude Sonnet 4.6"),
+        RuntimeModelInfo("opus", "Claude Opus", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
+        RuntimeModelInfo("fable", "Claude Fable", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
+        RuntimeModelInfo("sonnet", "Claude Sonnet", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
         RuntimeModelInfo("haiku", "Claude Haiku"),
+        RuntimeModelInfo("claude-opus-5-5", "Claude Opus 5.5", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
+        RuntimeModelInfo("claude-opus-5", "Claude Opus 5", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
+        RuntimeModelInfo("claude-opus-4-8", "Claude Opus 4.8", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
+        RuntimeModelInfo("claude-opus-4-7", "Claude Opus 4.7", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
+        RuntimeModelInfo("claude-opus-4-6", "Claude Opus 4.6", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
+        RuntimeModelInfo("claude-fable-5-2", "Claude Fable 5.2", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
+        RuntimeModelInfo("claude-fable-5-1", "Claude Fable 5.1", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
+        RuntimeModelInfo("claude-fable-5", "Claude Fable 5", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
+        RuntimeModelInfo("claude-sonnet-5-5", "Claude Sonnet 5.5", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
+        RuntimeModelInfo("claude-sonnet-5", "Claude Sonnet 5", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
+        RuntimeModelInfo("claude-sonnet-4-6", "Claude Sonnet 4.6", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
+        RuntimeModelInfo("claude-haiku-5-5", "Claude Haiku 5.5", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
         RuntimeModelInfo("claude-haiku-4-5", "Claude Haiku 4.5")
     ),
     "codex" to listOf(
