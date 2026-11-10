@@ -166,7 +166,7 @@ class SettingsFeedbackSubmitApiTest {
         val network = FakeNetwork(getAnswer = { HomeNetworkResponse(code = 200, bodyText = body) }) { error("no send") }
 
         assertEquals(card, repository(network).loadCardDraft(cardMessageId, viewingServerId))
-        assertEquals(listOf("product-feedback/action-card/$cardMessageId" to viewingServerId), network.reads)
+        assertEquals(listOf<Pair<String, String?>>("product-feedback/action-card/$cardMessageId" to viewingServerId), network.reads)
     }
 
     @Test
