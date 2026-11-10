@@ -306,7 +306,7 @@
     <string name="host_feedback_error_unknown">不明なエラー</string>
     <string name="settings_feedback_submission_failed_title">フィードバックの送信に失敗しました</string>
     <string name="settings_feedback_submission_failed_body">フィードバックを送信できませんでした。もう一度お試しください。</string>
-    <string name="settings_feedback_submission_network_body">Hands に接続できませんでした。接続を確認して、もう一度お試しください。</string>
+    <string name="settings_feedback_submission_network_body">フィードバックを送信できませんでした。接続を確認して、もう一度お試しください。</string>
     <string name="settings_feedback_submission_rate_limited_body">フィードバックのリクエストが多すぎます。しばらく待ってから、もう一度お試しください。</string>
     <string name="settings_feedback_submission_attachment_read_body">添付ファイルを読み取れませんでした。削除してから、もう一度添付してください。</string>
     <string name="settings_feedback_submission_attachment_too_large_body">添付ファイルが %1$s の上限を超えています。削除するか、より小さいファイルを選択してください。</string>

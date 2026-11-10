@@ -304,7 +304,7 @@
     <string name="host_feedback_error_unknown">Неизвестная ошибка</string>
     <string name="settings_feedback_submission_failed_title">Не удалось отправить отзыв</string>
     <string name="settings_feedback_submission_failed_body">Мы не смогли отправить ваш отзыв. Попробуйте ещё раз.</string>
-    <string name="settings_feedback_submission_network_body">Не удалось связаться с Hands. Проверьте подключение и попробуйте ещё раз.</string>
+    <string name="settings_feedback_submission_network_body">Не удалось отправить отзыв. Проверьте подключение и попробуйте ещё раз.</string>
     <string name="settings_feedback_submission_rate_limited_body">Слишком много запросов на отправку отзывов. Подождите немного и попробуйте ещё раз.</string>
     <string name="settings_feedback_submission_attachment_read_body">Не удалось прочитать вложение. Удалите его и прикрепите файл снова.</string>
     <string name="settings_feedback_submission_attachment_too_large_body">Вложение превышает лимит в %1$s. Удалите его или выберите файл поменьше.</string>

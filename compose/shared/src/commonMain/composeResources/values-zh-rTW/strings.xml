@@ -304,7 +304,7 @@
     <string name="host_feedback_error_unknown">未知錯誤</string>
     <string name="settings_feedback_submission_failed_title">意見回饋送出失敗</string>
     <string name="settings_feedback_submission_failed_body">無法送出你的意見回饋，請再試一次。</string>
-    <string name="settings_feedback_submission_network_body">無法連線到 Hands，請檢查網路連線後再試一次。</string>
+    <string name="settings_feedback_submission_network_body">意見回饋沒有送出，請檢查網路連線後再試一次。</string>
     <string name="settings_feedback_submission_rate_limited_body">意見回饋請求過於頻繁，請稍後再試。</string>
     <string name="settings_feedback_submission_attachment_read_body">無法讀取附件，請移除後重新附加檔案。</string>
     <string name="settings_feedback_submission_attachment_too_large_body">附件超過 %1$s 上限，請移除或選擇較小的檔案。</string>

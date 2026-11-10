@@ -304,7 +304,7 @@
     <string name="host_feedback_error_unknown">Error desconocido</string>
     <string name="settings_feedback_submission_failed_title">No se pudieron enviar los comentarios</string>
     <string name="settings_feedback_submission_failed_body">No pudimos enviar tus comentarios. Inténtalo de nuevo.</string>
-    <string name="settings_feedback_submission_network_body">No se pudo conectar con Hands. Revisa tu conexión e inténtalo de nuevo.</string>
+    <string name="settings_feedback_submission_network_body">No se pudo enviar tus comentarios. Revisa tu conexión e inténtalo de nuevo.</string>
     <string name="settings_feedback_submission_rate_limited_body">Se enviaron demasiadas solicitudes de comentarios. Espera un momento e inténtalo de nuevo.</string>
     <string name="settings_feedback_submission_attachment_read_body">No se pudo leer un archivo adjunto. Quítalo y vuelve a adjuntar el archivo.</string>
     <string name="settings_feedback_submission_attachment_too_large_body">Un archivo adjunto supera el límite de %1$s. Quítalo o elige un archivo más pequeño.</string>
