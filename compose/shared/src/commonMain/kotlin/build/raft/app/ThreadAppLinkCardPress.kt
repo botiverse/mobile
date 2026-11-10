@@ -42,7 +42,8 @@ import kotlin.uuid.Uuid
 internal class ThreadAppLinkCardActionHost(
     val prepare: suspend (handle: String, businessRevision: String) -> AppLinkActionResult<AppLinkPrepared>,
     val execute: suspend (handle: String, clientRequestId: String, prepared: AppLinkPrepared?) -> AppLinkActionResult<AppLinkExecuted>,
-    val reread: suspend (url: String) -> Unit,
+    /** False: the read failed or was rate limited, the card stays as it was. */
+    val reread: suspend (url: String) -> Boolean,
     val toast: (String) -> Unit,
 )
 
@@ -51,7 +52,8 @@ internal fun rememberThreadAppLinkCardPress(card: AppLinkResult.Card, actions: T
     val scope = rememberCoroutineScope()
     val failed = stringResource(Res.string.thread_link_preview_action_failed)
     val undo = stringResource(Res.string.common_undo)
-    val press = remember(card.url, actions) { ThreadAppLinkCardPress(card, actions, scope, failed, undo) }
+    val refreshFailed = stringResource(Res.string.thread_link_preview_refresh_failed)
+    val press = remember(card.url, actions) { ThreadAppLinkCardPress(card, actions, scope, failed, undo, refreshFailed) }
     // The card is read again after a press: its handles and revision are the latest one's.
     press.card = card
     return press
@@ -66,6 +68,10 @@ internal fun rememberThreadAppLinkCardPress(card: AppLinkResult.Card, actions: T
  * Then the card is read again, again a little later while the App may not have finished. One press
  * at a time per card; a refusal is the server's own words in a toast, and a stale card or
  * confirmation (410) is read again.
+ *
+ * A `read` button (Refresh) reads the card again (web `pressLinkCardButton`): while it reads it
+ * shows its spinner and the card's other buttons wait; a read that fails, or that Raft rate
+ * limits, says so in a toast and the card stays as it was.
  */
 internal class ThreadAppLinkCardPress(
     var card: AppLinkResult.Card,
@@ -73,6 +79,7 @@ internal class ThreadAppLinkCardPress(
     private val scope: CoroutineScope,
     private val failedText: String,
     private val undoLabel: String,
+    private val refreshFailedText: String,
 ) {
     /** The action whose prepare or execute is on its way. */
     private var running by mutableStateOf<String?>(null)
@@ -103,6 +110,35 @@ internal class ThreadAppLinkCardPress(
             enabled = counting || (running == null && undoing == null),
             loading = running == id,
         )
+    }
+
+    /** The `read` button [button] (Refresh), or null where the card can't be read again (not drawn). */
+    fun readButton(button: RaftLinkCardV2Element.Button): RaftPreviewCardButton? {
+        if (actions == null) return null
+        return RaftPreviewCardButton(
+            label = button.label,
+            kind = RaftPreviewCardButtonKind.Read,
+            onClick = { refresh() },
+            frameless = button.variant == RaftLinkCardButtonVariant.Ghost,
+            disabledReason = button.disabledReason,
+            enabled = running == null && undoing == null,
+            loading = running == ReadBusyKey,
+        )
+    }
+
+    private fun refresh() {
+        val host = actions ?: return
+        if (running != null || undoing != null) return
+        running = ReadBusyKey
+        scope.launch {
+            val read =
+                try {
+                    host.reread(card.url)
+                } finally {
+                    running = null
+                }
+            if (!read) host.toast(refreshFailedText)
+        }
     }
 
     private fun cancelUndo() {
@@ -208,6 +244,9 @@ internal class ThreadAppLinkCardPress(
     private companion object {
         /** `undoWindowMs` is always present on an undo button; this only guards a card that lacks it. */
         const val DefaultUndoWindowMs = 5000L
+
+        /** What [running] holds while a `read` button reads: no action_id has a ":" (web `READ_BUSY_KEY`). */
+        const val ReadBusyKey = ":read"
         val RereadWaitsMs = listOf(2000L, 5000L, 15000L)
     }
 }

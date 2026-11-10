@@ -411,17 +411,28 @@ class SharedAppLinkPreviewStore internal constructor(
      * Reads one link of a message again (after a button was pressed, or its card went stale): the
      * batched read of [batch]'s view for [url] alone, which sends back the view's ticket. Its answer
      * replaces that link's result; a link that is no longer previewed keeps what is shown.
+     *
+     * False when the read failed or Raft answered the link `rate_limited` (the card stays as it
+     * was): a Refresh says so (web `LinkCardReread` `failed`). A read superseded by a later one
+     * of the view is not a failure.
      */
-    suspend fun rereadLink(viewerKey: String, serverId: String, messageId: String, content: String, batch: AppLinkBatchRead, url: String) {
+    suspend fun rereadLink(viewerKey: String, serverId: String, messageId: String, content: String, batch: AppLinkBatchRead, url: String): Boolean {
         val readScope = appLinkReadScope(viewerKey, messageId, content, batch.mode)
         val askedGeneration = _state.value.generation
-        val fetched = fetch(messageId, serverId, batch, listOf(url)) as? AppLinkFetch.Answer ?: return
-        val fresh = fetched.results[url]?.takeIf { it is AppLinkResult.Card } ?: return
+        val fetched =
+            when (val read = fetch(messageId, serverId, batch, listOf(url))) {
+                is AppLinkFetch.Answer -> read
+                AppLinkFetch.Failed -> return false
+                AppLinkFetch.Stale -> return true
+            }
+        if (url in fetched.limited) return false
+        val fresh = fetched.results[url]?.takeIf { it is AppLinkResult.Card } ?: return true
         _state.update { state ->
             if (state.generation != askedGeneration) return@update state
             val entry = state.entries[readScope]?.takeIf { it.viewId == batch.view.id } ?: return@update state
             state.copy(entries = state.entries + (readScope to entry.copy(results = entry.results + (url to fresh))))
         }
+        return true
     }
 
     /** Allows the App's previews here; the messages that asked read again. */

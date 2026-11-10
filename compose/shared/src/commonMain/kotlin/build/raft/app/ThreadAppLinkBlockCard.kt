@@ -49,9 +49,10 @@ import coil3.compose.AsyncImagePainter
  * link's paragraph ([build.raft.app.markdown.RaftMarkdownBlockCardHost]). Raft's header names the
  * App from what Raft stores (its icon and name, the link's host), then the App's title (it opens
  * the item), the card's elements as the hover card draws them, and the buttons: the App's
- * buttons in its order: at most two of its actions on the row (pressed by touch, with Raft's
- * confirmation or an Undo window: [ThreadAppLinkCardPress]) and the rest, its navigate buttons and
- * Raft's Open Link in the More menu (the title opens the item). On a phone
+ * buttons in its order, its first two on the row whatever they do (an action pressed by touch,
+ * with Raft's confirmation or an Undo window, or Refresh: [ThreadAppLinkCardPress]) and the rest
+ * in the More menu, where a link to the item and Raft's Open Link always go (the title opens the
+ * item; web `linkCardRowLayout`). On a phone
  * it takes the message's width; a wide window caps it at 400dp, as the web does.
  */
 @Composable
@@ -67,7 +68,13 @@ internal fun ThreadAppLinkBlockCard(
     val host = remember(card.url) { appLinkDomain(card.url)?.let(::raftAppLinkAsciiHost).orEmpty() }
     val openLink = raftAppLinkOpenLinkButton { openUri(card.url) }
     val press = rememberThreadAppLinkCardPress(card, actions)
-    val buttons = block.card.blockCardButtons(card.url, openUri, openLink) { button, action -> press.button(button, action) }
+    val buttons =
+        block.card.blockCardButtons(
+            card.url,
+            openUri,
+            openLink,
+            read = press::readButton,
+        ) { button, action -> press.button(button, action) }
     RaftDesignSystemTheme {
         // Between the paragraph and what follows: the gap a table or an image keeps in the text.
         Box(modifier.padding(top = 8.dp, bottom = 4.dp)) {
@@ -114,20 +121,23 @@ private fun ThreadAppLinkCardHeaderIcon(icon: String?) {
 }
 
 /**
- * The buttons of a block card, in order: the App's `navigate` buttons as the card lists them and its
- * `execute` buttons as [execute] makes them (null: not drawn, such as one with no handle; a `read`
- * button is not drawn), then Raft's
- * [openLink] unless an App button already goes to [url].
+ * The buttons of a block card, in order: the App's `navigate` buttons as the card lists them (one to
+ * [url] marked [RaftPreviewCardButton.opensItem]), its `read` buttons (Refresh) as [read] makes them
+ * and its `execute` buttons as [execute] makes them (null: not drawn, such as one with no handle or
+ * no way to read the card again), then Raft's [openLink] (a link to the item) unless an App button
+ * already goes to [url].
  */
 internal fun RaftAppLinkCardV2.blockCardButtons(
     url: String,
     openUri: (String) -> Unit,
     openLink: RaftPreviewCardButton,
+    read: (RaftLinkCardV2Element.Button) -> RaftPreviewCardButton? = { null },
     execute: (RaftLinkCardV2Element.Button, RaftLinkCardButtonAction.Execute) -> RaftPreviewCardButton? = { _, _ -> null },
 ): List<RaftPreviewCardButton> {
     val app =
         buttonsInOrder().mapNotNull { button ->
             (button.action as? RaftLinkCardButtonAction.Execute)?.let { return@mapNotNull execute(button, it) }
+            if (button.action == RaftLinkCardButtonAction.Read) return@mapNotNull read(button)
             val action = button.action as? RaftLinkCardButtonAction.Navigate ?: return@mapNotNull null
             RaftPreviewCardButton(
                 label = button.label,
@@ -135,10 +145,11 @@ internal fun RaftAppLinkCardV2.blockCardButtons(
                 onClick = { openUri(action.url) },
                 frameless = button.variant == RaftLinkCardButtonVariant.Ghost,
                 disabledReason = button.disabledReason,
+                opensItem = action.url == url,
             )
         }
     val goesToTheLink = buttonsInOrder().any { (it.action as? RaftLinkCardButtonAction.Navigate)?.url == url }
-    return if (goesToTheLink) app else app + openLink
+    return if (goesToTheLink) app else app + openLink.copy(opensItem = true)
 }
 
 /** The card's Buttons in the App's order: depth first from the root, a Stack's children as listed. */
