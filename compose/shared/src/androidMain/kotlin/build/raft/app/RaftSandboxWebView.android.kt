@@ -138,6 +138,10 @@ internal class RaftAndroidSandboxWebView(
      * RaftAndroidNightMode); keep-alive does not hand a view of the other mode to a page.
      */
     internal var builtDark: Boolean = RaftAppThemeState.isDark
+    /** [RaftWebViewConfig.backgroundArgb]: the colour before the first paint (0: white). */
+    private var placeholderBackground: Int = 0
+    /** The current WebView painted a page; from then on its background is the default white. */
+    private var pagePainted: Boolean = false
         private set
     internal val isDestroyed: Boolean get() = destroyed
     private var currentUrl: String = ""
@@ -176,7 +180,24 @@ internal class RaftAndroidSandboxWebView(
         updateHostEventsEnabled(config.hostEventsEnabled)
         mainFrameOrigin = config.mainFrameOrigin?.let(::raftDocumentStartScriptOriginRule)
         keepAliveKey = config.keepAliveKey
+        updatePlaceholderBackground(config.backgroundArgb)
         updateSrc(config.url)
+    }
+
+    /**
+     * Until its first page paints, the WebView shows the app's canvas colour instead of its default
+     * white: the page is visible from attach (no cover), and a white rectangle would flash in dark
+     * mode. Afterwards white, as a browser, under pages that paint no background of their own.
+     */
+    private fun updatePlaceholderBackground(argb: Int) {
+        placeholderBackground = argb
+        if (!pagePainted) webView.setBackgroundColor(raftWebViewBackgroundArgb(argb, painted = false))
+    }
+
+    private fun onPagePainted() {
+        if (pagePainted) return
+        pagePainted = true
+        webView.setBackgroundColor(raftWebViewBackgroundArgb(placeholderBackground, painted = true))
     }
 
     /** The kept document (keep-alive), as [RaftWebViewKeptDocument]. */
@@ -257,6 +278,8 @@ internal class RaftAndroidSandboxWebView(
         pendingRuntimeJavaScript = ""
         webView = WebView(context)
         builtDark = RaftAppThemeState.isDark
+        pagePainted = false
+        webView.setBackgroundColor(raftWebViewBackgroundArgb(placeholderBackground, painted = false))
         removeAllViews()
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         configureWebView()
@@ -431,6 +454,7 @@ internal class RaftAndroidSandboxWebView(
                         currentIsLoading = false
                         evaluateInjectedJavaScript()
                         if (bootstrapNavigationFence.mayUncover(url)) {
+                            onPagePainted()
                             notifyLoadSuccess(url, "finished", beforeCallback = ::flushPendingRuntimeJavaScript)
                         }
                         notifyUrlChange(target)
@@ -448,7 +472,10 @@ internal class RaftAndroidSandboxWebView(
                         currentTitle = view?.title.orEmpty().ifBlank { currentTitle }
                         notifyUrlChange(target)
                         notifyNavigationState()
-                        if (bootstrapNavigationFence.mayUncover(url)) notifyLoadSuccess(url, "commit_visible")
+                        if (bootstrapNavigationFence.mayUncover(url)) {
+                            onPagePainted()
+                            notifyLoadSuccess(url, "commit_visible")
+                        }
                     }
                 }
 

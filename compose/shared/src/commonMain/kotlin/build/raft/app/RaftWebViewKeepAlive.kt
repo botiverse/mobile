@@ -38,3 +38,72 @@ internal expect fun raftWebViewKeepAliveClear()
  */
 @Composable
 internal expect fun RaftWebViewPrewarmEffect(config: RaftWebViewConfig?)
+
+/** The engine's default page background (opaque white). */
+internal const val RAFT_WEB_VIEW_DEFAULT_BACKGROUND_ARGB: Int = -0x1
+
+/**
+ * The background a native WebView shows ([RaftWebViewConfig.backgroundArgb]): the app's canvas
+ * colour until its first page painted, then the engine's default white (pages without a background
+ * of their own read as in a browser). [placeholderArgb] 0: white throughout.
+ */
+internal fun raftWebViewBackgroundArgb(placeholderArgb: Int, painted: Boolean): Int =
+    if (painted || placeholderArgb == 0) RAFT_WEB_VIEW_DEFAULT_BACKGROUND_ARGB else placeholderArgb
+
+/**
+ * The one spare WebView a platform keeps for the next page (iOS `RaftIosWebViewSpare`). A spare is
+ * handed out only once its own warm-up load has ended ([markReady] with the generation [put]
+ * returned): before that its navigation callbacks could still reach the page that took it and
+ * look like the page's own load. Main thread only.
+ */
+internal class RaftWebViewSpareSlot<T : Any>(private val release: (T) -> Unit = {}) {
+    private var view: T? = null
+    private var ready = false
+    private var generation = 0
+
+    val isEmpty: Boolean get() = view == null
+
+    /** Holds [next] (releasing any spare held); returns its generation for [markReady]. */
+    fun put(next: T): Int {
+        view?.let(release)
+        view = next
+        ready = false
+        generation += 1
+        return generation
+    }
+
+    /** The warm-up load of the spare of [generation] ended (finished or failed). */
+    fun markReady(generation: Int) {
+        if (generation == this.generation && view != null) ready = true
+    }
+
+    /** The ready spare (now the caller's), or null: none, or still warming up (it stays). */
+    fun take(): T? {
+        if (!ready) return null
+        val taken = view ?: return null
+        view = null
+        ready = false
+        return taken
+    }
+
+    /** Releases the spare, ready or not; whether there was one. */
+    fun drop(): Boolean {
+        val dropped = view ?: return false
+        view = null
+        ready = false
+        generation += 1
+        release(dropped)
+        return true
+    }
+}
+
+/**
+ * Whether a page's WebView must ignore a navigation callback for [navigationUrl]: on a spare
+ * WebView ([usingSpare]) the spare's own blank warm-up document is not the page's load, unless the
+ * page's source is itself blank.
+ */
+internal fun raftWebViewIgnoresSpareBlankNavigation(usingSpare: Boolean, navigationUrl: String?, src: String): Boolean =
+    usingSpare && navigationUrl == RAFT_WEB_VIEW_SPARE_BLANK_URL &&
+        src.isNotEmpty() && src != RAFT_WEB_VIEW_SPARE_BLANK_URL
+
+internal const val RAFT_WEB_VIEW_SPARE_BLANK_URL = "about:blank"

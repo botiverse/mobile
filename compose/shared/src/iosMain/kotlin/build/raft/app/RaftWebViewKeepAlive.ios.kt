@@ -1,4 +1,4 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
 
 package build.raft.app
 
@@ -12,7 +12,12 @@ import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationDidReceiveMemoryWarningNotification
 import platform.UIKit.UIApplicationState
+import kotlinx.cinterop.ObjCSignatureOverride
+import platform.Foundation.NSError
+import platform.WebKit.WKNavigation
+import platform.WebKit.WKNavigationDelegateProtocol
 import platform.WebKit.WKWebView
+import platform.darwin.NSObject
 
 // No document keep-alive here yet (the Artifact viewer's parked WebView is Android only): every
 // page creates and destroys its own WebView, taking the spare one (RaftIosWebViewSpare) when it can.
@@ -36,16 +41,20 @@ internal actual fun RaftWebViewPrewarmEffect(config: RaftWebViewConfig?) = Unit
  *
  * At most one spare exists. It is made once the app is active and settled ([schedule], after
  * [WARM_DELAY_SECONDS]), made again a while after a page takes it ([REFILL_DELAY_SECONDS]), and
- * dropped on a memory warning (made again on the next take). Main thread only.
+ * dropped on a memory warning (made again on the next activation). It is handed out only after its
+ * blank document finished loading ([RaftWebViewSpareSlot]), with its warm-up delegate detached:
+ * none of that load's callbacks can reach the page. Main thread only.
  */
 internal object RaftIosWebViewSpare {
     /** The spare's own document (an empty one: it only starts WebKit). */
-    const val BLANK_URL = "about:blank"
+    const val BLANK_URL = RAFT_WEB_VIEW_SPARE_BLANK_URL
     private const val WARM_DELAY_SECONDS = 2.0
     private const val REFILL_DELAY_SECONDS = 5.0
     private const val LOG_TAG = "SlockWebViewWarmup"
 
-    private var spare: WKWebView? = null
+    private val slot = RaftWebViewSpareSlot<WKWebView> { view -> retire(view) }
+    /** Retained while a spare warms up (WKWebView holds its navigation delegate weakly). */
+    private var warmupDelegate: RaftIosWebViewSpareWarmupDelegate? = null
     private var timer: NSTimer? = null
     private var installed = false
 
@@ -63,17 +72,22 @@ internal object RaftIosWebViewSpare {
         refillLater(WARM_DELAY_SECONDS)
     }
 
-    /** The spare (now the caller's), or null; a new one is made a while later. */
+    /** The ready spare (now the caller's), or null (none, or still warming up); a new one is made later. */
     fun take(): WKWebView? {
-        val view = spare ?: return null
-        spare = null
+        val view = slot.take()
+        if (view == null) {
+            if (!slot.isEmpty) raftLogInfo(LOG_TAG, "webview_spare result=not_ready")
+            return null
+        }
+        view.navigationDelegate = null
+        warmupDelegate = null
         raftLogInfo(LOG_TAG, "webview_spare result=taken")
         if (installed) refillLater(REFILL_DELAY_SECONDS)
         return view
     }
 
     private fun refillLater(delaySeconds: Double) {
-        if (spare != null || timer != null) return
+        if (!slot.isEmpty || timer != null) return
         timer =
             NSTimer.scheduledTimerWithTimeInterval(delaySeconds, repeats = false) { _ ->
                 timer = null
@@ -82,7 +96,7 @@ internal object RaftIosWebViewSpare {
     }
 
     private fun fill() {
-        if (spare != null) return
+        if (!slot.isEmpty) return
         // A background launch (a push, a background fetch) makes nothing; the next activation does.
         if (UIApplication.sharedApplication.applicationState != UIApplicationState.UIApplicationStateActive) return
         val started = TimeSource.Monotonic.markNow()
@@ -92,10 +106,16 @@ internal object RaftIosWebViewSpare {
                     frame = CGRectMake(0.0, 0.0, 0.0, 0.0),
                     configuration = raftIosWebViewConfiguration(ephemeral = false, allowScripts = true),
                 )
+            val generation = slot.put(view)
+            val delegate = RaftIosWebViewSpareWarmupDelegate { ended ->
+                slot.markReady(generation)
+                raftLogInfo(LOG_TAG, "webview_spare result=ready load=$ended elapsedMs=${started.elapsedNow().inWholeMilliseconds}")
+            }
+            warmupDelegate = delegate
+            view.navigationDelegate = delegate
             // An empty document starts the web content process; the page's load replaces it, and
             // the host does not count it as history (RaftIosSandboxWebView.canGoBack).
             view.loadHTMLString("", baseURL = null)
-            spare = view
         }.onSuccess {
             raftLogInfo(LOG_TAG, "webview_spare result=created elapsedMs=${started.elapsedNow().inWholeMilliseconds}")
         }.onFailure { error ->
@@ -106,9 +126,34 @@ internal object RaftIosWebViewSpare {
     private fun drop(reason: String) {
         timer?.invalidate()
         timer = null
-        val view = spare ?: return
-        spare = null
-        view.stopLoading()
-        raftLogInfo(LOG_TAG, "webview_spare result=dropped reason=$reason")
+        if (slot.drop()) raftLogInfo(LOG_TAG, "webview_spare result=dropped reason=$reason")
     }
+
+    private fun retire(view: WKWebView) {
+        view.navigationDelegate = null
+        view.stopLoading()
+        warmupDelegate = null
+    }
+}
+
+/** Hears the end of the spare's blank warm-up load ([onEnded] once: `finished` / `failed`). */
+private class RaftIosWebViewSpareWarmupDelegate(
+    private val onEnded: (String) -> Unit,
+) : NSObject(), WKNavigationDelegateProtocol {
+    private var ended = false
+
+    private fun end(how: String) {
+        if (ended) return
+        ended = true
+        onEnded(how)
+    }
+
+    @ObjCSignatureOverride
+    override fun webView(webView: WKWebView, didFinishNavigation: WKNavigation?) = end("finished")
+
+    @ObjCSignatureOverride
+    override fun webView(webView: WKWebView, didFailNavigation: WKNavigation?, withError: NSError) = end("failed")
+
+    @ObjCSignatureOverride
+    override fun webView(webView: WKWebView, didFailProvisionalNavigation: WKNavigation?, withError: NSError) = end("failed")
 }

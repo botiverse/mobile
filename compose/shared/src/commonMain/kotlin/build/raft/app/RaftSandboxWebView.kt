@@ -43,6 +43,13 @@ internal data class RaftWebViewConfig(
      * destroyed with the composable, as before.
      */
     val keepAliveKey: String? = null,
+    /**
+     * ARGB the native view shows until its first page has painted (the app's canvas colour, so a
+     * page shown before its first paint is no white rectangle in dark mode); after that the
+     * engine's default white, as in a browser, for pages that paint no background. 0: white from
+     * the start.
+     */
+    val backgroundArgb: Int = 0,
 )
 
 /**

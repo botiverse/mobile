@@ -138,12 +138,32 @@ internal class RaftIosSandboxWebView(
     private var loadStartedAt: TimeSource.Monotonic.ValueTimeMark? = null
     /** Whether the current WKWebView is the app's spare ([RaftIosWebViewSpare]) rather than a new one. */
     private var usingSpare = false
+    /** [RaftWebViewConfig.backgroundArgb]: the colour before the first paint (0: white). */
+    private var placeholderBackground = 0
+    /** The current WKWebView finished a page; from then on it is opaque white, as Safari. */
+    private var pagePainted = false
 
     private val delegate = RaftIosWebViewDelegate(this)
     private val scriptMessageHandler = RaftIosWebViewScriptMessageHandler(this)
 
     init {
         container.backgroundColor = UIColor.whiteColor
+    }
+
+    /**
+     * The page is visible from attach (no cover), so until its first page finished the WKWebView is
+     * transparent over the app's canvas colour: no white rectangle in dark mode. Then opaque white,
+     * as Safari, under pages that paint no background of their own.
+     */
+    private fun applyBackground() {
+        val view = webView
+        val painted = pagePainted && view != null
+        val color = raftIosColor(raftWebViewBackgroundArgb(placeholderBackground, painted))
+        container.backgroundColor = color
+        if (view == null) return
+        view.opaque = painted || placeholderBackground == 0
+        view.backgroundColor = if (view.opaque) color else UIColor.clearColor
+        view.scrollView.backgroundColor = view.backgroundColor
     }
 
     /**
@@ -172,6 +192,10 @@ internal class RaftIosSandboxWebView(
         hostEventsEnabled = config.hostEventsEnabled
         mainFrameOrigin = config.mainFrameOrigin?.let(::raftWebOriginOf)
         configured = true
+        if (placeholderBackground != config.backgroundArgb) {
+            placeholderBackground = config.backgroundArgb
+            applyBackground()
+        }
         val srcChanged = updateSrcState(config.url.trim())
         if (rebuild) {
             rebuildWebView()
@@ -252,11 +276,11 @@ internal class RaftIosSandboxWebView(
         usingSpare = spare != null
         next.navigationDelegate = delegate
         next.UIDelegate = delegate
-        next.backgroundColor = UIColor.whiteColor
-        next.opaque = true
         next.allowsBackForwardNavigationGestures = false
         next.autoresizingMask = UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
         webView = next
+        pagePainted = false
+        applyBackground()
         container.addSubview(next)
         startObserving(next)
         currentProgress = 0
@@ -463,6 +487,7 @@ internal class RaftIosSandboxWebView(
 
     internal fun didCommit(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
+        if (raftWebViewIgnoresSpareBlankNavigation(usingSpare, source.URL?.absoluteString, src)) return
         currentURL = source.URL?.absoluteString ?: currentURL
         currentTitle = source.title ?: currentTitle
         currentLoading = source.loading
@@ -477,6 +502,11 @@ internal class RaftIosSandboxWebView(
 
     internal fun didFinish(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
+        if (raftWebViewIgnoresSpareBlankNavigation(usingSpare, source.URL?.absoluteString, src)) return
+        if (!pagePainted) {
+            pagePainted = true
+            applyBackground()
+        }
         currentURL = source.URL?.absoluteString ?: currentURL
         currentTitle = source.title ?: ""
         currentProgress = 100
@@ -712,6 +742,15 @@ private class RaftIosWebViewScriptMessageHandler(
         owner.didReceiveScriptMessage(userContentController, didReceiveScriptMessage)
     }
 }
+
+/** [argb] (0xAARRGGBB) as a UIColor. */
+private fun raftIosColor(argb: Int): UIColor =
+    UIColor.colorWithRed(
+        red = ((argb ushr 16) and 0xFF) / 255.0,
+        green = ((argb ushr 8) and 0xFF) / 255.0,
+        blue = (argb and 0xFF) / 255.0,
+        alpha = ((argb ushr 24) and 0xFF) / 255.0,
+    )
 
 /** Android's `RAFT_WEBVIEW_DIAGNOSTICS_TAG`: the same tag for the same load lines. */
 private const val RaftIosWebViewDiagnosticsTag = "SlockWebView"
