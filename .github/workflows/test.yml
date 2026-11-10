@@ -296,6 +296,15 @@ jobs:
           scripts/check_commonmain_map_compat.sh --self-test
           scripts/check_commonmain_map_compat.sh
 
+      # Hand-rolled taps in compose/shared commonMain go through the design system's
+      # Modifier.raftClickable; the raw sites left are counted per file in
+      # scripts/check_commonmain_raw_clickable.baseline and only an increase fails.
+      - name: Guard raw clickable in commonMain (use raftClickable)
+        shell: bash
+        run: |
+          scripts/check_commonmain_raw_clickable.sh --self-test
+          scripts/check_commonmain_raw_clickable.sh
+
       - name: Guard atomic auth-session writes (#466 no-bypass)
         shell: bash
         run: |

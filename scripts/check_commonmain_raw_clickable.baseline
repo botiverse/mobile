@@ -1,0 +1,35 @@
+# Raw .clickable(/.combinedClickable( calls per file in compose/shared/src/commonMain/kotlin (count path).
+# Regenerate: scripts/check_commonmain_raw_clickable.sh --print-baseline > scripts/check_commonmain_raw_clickable.baseline
+1 build/raft/app/ActivityConversationSwipe.kt
+1 build/raft/app/AuthComponents.kt
+2 build/raft/app/AuthPages.kt
+1 build/raft/app/ConversationUnavailable.kt
+1 build/raft/app/MembersAgentAvatarDialog.kt
+3 build/raft/app/MembersPage.kt
+1 build/raft/app/RaftDuoInnerRail.kt
+2 build/raft/app/RaftFilterPopover.kt
+1 build/raft/app/RaftFloatingOverlay.kt
+4 build/raft/app/RaftHomeComponents.kt
+1 build/raft/app/RaftMenu.kt
+1 build/raft/app/RaftMessageLinkNotFound.kt
+1 build/raft/app/RaftMoveableDrawer.kt
+2 build/raft/app/RaftSectionHeader.kt
+1 build/raft/app/RaftSettingsComputersPage.kt
+1 build/raft/app/RaftTabBar.kt
+1 build/raft/app/RaftTabPagerProbePage.kt
+1 build/raft/app/RaftTasksDetailOverlay.kt
+2 build/raft/app/RaftWorkingNowSummary.kt
+1 build/raft/app/SettingsAccountPage.kt
+1 build/raft/app/SettingsFormParts.kt
+5 build/raft/app/SettingsHomePage.kt
+1 build/raft/app/SettingsHubPage.kt
+3 build/raft/app/SharedCreateAgentDialog.kt
+4 build/raft/app/TaskConversationHead.kt
+2 build/raft/app/ThreadAgentFollowers.kt
+1 build/raft/app/ThreadAgentReadStatus.kt
+5 build/raft/app/ThreadComposerPage.kt
+1 build/raft/app/ThreadInlineVideoPreview.kt
+3 build/raft/app/ThreadOutline.kt
+7 build/raft/app/ThreadPage.kt
+1 build/raft/app/assistant/RaftAssistantOtter.kt
+1 build/raft/app/components/RaftAppControls.kt
