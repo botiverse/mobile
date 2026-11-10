@@ -53,6 +53,7 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.formatAgentTypingSentence
 import build.raft.app.data.typingAgentIds
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
@@ -155,10 +156,15 @@ internal fun List<RaftLiveAgentActivityItem>.workingAmong(agentIds: Set<String>)
 
 /**
  * Whether the page is a channel whose line says who works there (web ChatPanel `workingAgentIdKey`:
- * not a DM, a thread or a Lounge).
+ * not a DM, a thread or a Lounge). A task conversation renders on the channel surface but is a
+ * sub-conversation the web shows in its ThreadPanel, which never says who works there: only who types.
  */
 internal fun RaftThreadScreenPayload.showsChannelWorkingLine(isLounge: Boolean): Boolean =
-    surfaceKind == RaftThreadSurfaceKind.Channel && !isLounge
+    surfaceKind == RaftThreadSurfaceKind.Channel && !isLounge &&
+        parseConversationKindOrNull(channelKind) !in NoChannelWorkingLineKinds
+
+private val NoChannelWorkingLineKinds =
+    setOf(ConversationKind.Task, ConversationKind.Thread, ConversationKind.DirectMessage)
 
 internal val LocalThreadAgentTyping = compositionLocalOf<ThreadAgentTypingUi?> { null }
 

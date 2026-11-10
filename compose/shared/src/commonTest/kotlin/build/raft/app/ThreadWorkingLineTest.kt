@@ -86,4 +86,17 @@ class ThreadWorkingLineTest {
         assertFalse(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.DirectMessage).showsChannelWorkingLine(isLounge = false))
         assertFalse(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.ReplyThread).showsChannelWorkingLine(isLounge = false))
     }
+
+    // Web renders the working line only in ChatPanel's channel timeline; a task conversation (#proj-mobile:#89:
+    // "7 agents working here" counted the whole channel) and a thread opened on the channel surface say only who types.
+    @Test fun aTaskConversationOrAThreadOnTheChannelSurfaceSaysOnlyWhoTypes() {
+        assertTrue(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, channelKind = "public").showsChannelWorkingLine(isLounge = false))
+        assertTrue(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, channelKind = "joint").showsChannelWorkingLine(isLounge = false))
+        for (kind in listOf(RaftTaskConversationChannelKind, "Task", RaftThreadSurfaceKind.ReplyThread, RaftThreadSurfaceKind.DirectMessage)) {
+            assertFalse(
+                RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, channelKind = kind).showsChannelWorkingLine(isLounge = false),
+                "channelKind=$kind",
+            )
+        }
+    }
 }
