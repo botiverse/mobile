@@ -68,14 +68,19 @@ object RaftTopBarDefaults {
 
     /**
      * An item on the bar (the workspace button, the search trigger, an on-frame `md` button): 36
-     * with a finger, 32 under a fine pointer (sizing v12).
+     * with a finger, 34 (the control height) under a fine pointer, as raft-ui `--frame-item-height`.
      */
     val itemSize: Dp
         @Composable @ReadOnlyComposable
         get() = RaftTheme.controls.topBarItemSize
 
-    /** From the bar's top and bottom edges to its frame items ([itemSize]): 6 at either size. */
-    val ItemInset: Dp = 6.dp
+    /**
+     * From the bar's top and bottom edges to its frame items ([itemSize]): what [height] leaves
+     * around [itemSize], 6 with a finger and 5 under a fine pointer (44 − 34, halved).
+     */
+    val ItemInset: Dp
+        @Composable @ReadOnlyComposable
+        get() = (height - itemSize) / 2
 
     /** The leading region's padding: 9dp on the outside (so the workspace avatar sits 20dp
      *  from the edge, inside the button's border and padding), 8dp before the centre. */

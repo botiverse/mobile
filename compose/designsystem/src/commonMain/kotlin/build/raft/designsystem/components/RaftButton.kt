@@ -752,7 +752,7 @@ fun RaftIconButton(
     RaftSizedIconButton(
         onClick = onClick,
         tooltip = tooltip,
-        // On the frame: the top bar's item, 36 (32 under a fine pointer, sizing v12).
+        // On the frame: the top bar's item, 36 (34 under a fine pointer).
         box = if (onFrame) controls.topBarItemSize else size.boxIn(controls, bar),
         glyph = if (onFrame) 20.dp else size.glyphIn(controls, bar),
         modifier = modifier,

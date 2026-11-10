@@ -127,7 +127,8 @@ data class RaftControlMetrics(
     val topBarHeight: Dp,
     /**
      * An item on the top bar (the workspace button, the search trigger, an on-frame `md` button):
-     * 36 with a finger, 32 under a fine pointer, so each keeps 6 from the bar's edges.
+     * raft-ui `--frame-item-height`, 36 with a finger and the 34 control height under a fine
+     * pointer, so the bar is the item with the header air above and below (34 + 2 x 5 = 44).
      */
     val topBarItemSize: Dp,
     /**
@@ -193,7 +194,7 @@ data class RaftControlMetrics(
                 barButtonRadius = 6.dp,
                 barEdgeInset = 10.dp,
                 topBarHeight = 44.dp,
-                topBarItemSize = 32.dp,
+                topBarItemSize = 34.dp,
                 railCompact = true,
                 switchWidth = 38.dp,
                 switchHeight = 22.dp,
