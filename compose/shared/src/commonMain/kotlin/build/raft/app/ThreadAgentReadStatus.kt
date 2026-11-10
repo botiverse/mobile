@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.resources.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -44,6 +45,9 @@ import build.raft.app.model.ReadReceiptPeerKind
 import build.raft.designsystem.components.RaftAvatarGroup
 import build.raft.designsystem.components.RaftAvatarGroupCount
 import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.tokens.RaftRadius
 
 /**
  * Agent read progress (`agent_read_progress_v0` with `read_receipts_v0`) as the web draws it
@@ -578,6 +582,9 @@ internal fun ThreadAgentReadStatusRow(status: ThreadAgentReadStatusUi, modifier:
             .fillMaxWidth()
             .heightIn(min = 20.dp)
             .testTag(ThreadAgentReadStatusTestTag)
+            // Raw clickable on purpose: a caption, not a control. Its tap stands in for the web's
+            // hover tooltip and shows no press; the box is the full width (the text sits at its
+            // end), so raftClickable's wash would light a band across the timeline.
             .clickable(interactionSource = interaction, indication = null) { expanded = !expanded }
             // One sentence for a screen reader, read once: the visible parts are not read on their own.
             .clearAndSetSemantics {
@@ -696,7 +703,6 @@ internal fun ThreadAgentReadFacesRow(
     val names = faces.map { it.name.ifBlank { fallbackName } }
     val label = remember(names, strings, groupLabelTemplate) { groupLabelTemplate.fillThreadAgentRead(strings.formatList(names)) }
     var expanded by rememberSaveable(faces.map { it.agentId }) { mutableStateOf(false) }
-    val interaction = remember { MutableInteractionSource() }
     // Web `NARROW_QUERY` is the viewport's width, not the row's.
     val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
     Box(modifier.fillMaxWidth()) {
@@ -709,7 +715,13 @@ internal fun ThreadAgentReadFacesRow(
                     Modifier
                         .heightIn(min = 20.dp)
                         .testTag(ThreadAgentReadFacesTestTag)
-                        .clickable(interactionSource = interaction, indication = null) { expanded = !expanded }
+                        // Semantics come from clearAndSetSemantics below (role = null keeps them as they are).
+                        .raftClickable(
+                            onClick = { expanded = !expanded },
+                            role = null,
+                            shape = RoundedCornerShape(RaftRadius.Sticker),
+                            tier = RaftHoverTier.Subtle,
+                        )
                         .clearAndSetSemantics {
                             contentDescription = label
                             role = Role.Button

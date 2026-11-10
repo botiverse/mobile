@@ -19491,6 +19491,8 @@ internal fun ThreadPageHeader(
             }
             if (loungeHeader != null) {
                 // The face is decorative for screen readers; its tap opens the agent's profile.
+                // Raw clickable on purpose, as on the DM peer's face below: the app's press wash
+                // draws over the face, where raftClickable's would sit behind the opaque avatar.
                 Box(
                     modifier =
                         Modifier

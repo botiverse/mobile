@@ -635,6 +635,9 @@ private fun ThreadOutlineTicks(
                     .height(ThreadOutlineTickRow)
                     .then(
                         if (finePointer) {
+                            // Raw clickable on purpose: web OutlineTick shows hover and the current
+                            // place by the tick itself (it grows), with no fill; raftClickable would
+                            // wash the whole row of the narrow rail.
                             Modifier.hoverable(interaction).clickable(interactionSource = interaction, indication = null) {
                                 onTickClick(item.id)
                             }
@@ -757,6 +760,8 @@ private fun ThreadOutlineCardRow(
                     RoundedCornerShape(RaftRadius.Control)
                 )
                 .hoverable(interaction)
+                // Raw clickable on purpose: the row draws its own hover and press state, web
+                // OutlineCard's `brand-soft` fill (above); raftClickable would lay fill-medium over it.
                 .clickable(interactionSource = interaction, indication = null, onClick = onClick)
                 .testTag(threadOutlineRowTestTag(item.id))
                 .semantics {
@@ -858,6 +863,8 @@ private fun ThreadOutlineSheetRow(
             .fillMaxWidth()
             .heightIn(min = 44.dp)
             .background(if (pressed) colors.brandSoft else colors.layerPopover, RoundedCornerShape(RaftRadius.Control))
+            // Raw clickable on purpose: the press state is the `brand-soft` fill above, as on the
+            // card's rows; raftClickable would lay fill-medium over it.
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .testTag(threadOutlineSheetRowTestTag(item.id))
             .semantics(mergeDescendants = true) {

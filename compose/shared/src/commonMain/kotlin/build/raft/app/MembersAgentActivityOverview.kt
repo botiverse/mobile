@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.resources.*
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +53,8 @@ import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampEpochMillis
 import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftButton
@@ -589,7 +590,7 @@ private fun MembersAgentActivityTurnOutput(text: String) {
         modifier = Modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) { contentDescription = "$label: $text" }
-            .then(if (cut && !expanded) Modifier.clickable { expanded = true } else Modifier),
+            .then(if (cut && !expanded) Modifier.raftClickable(onClick = { expanded = true }, role = null, tier = RaftHoverTier.Subtle) else Modifier),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         RaftLucideIcon(

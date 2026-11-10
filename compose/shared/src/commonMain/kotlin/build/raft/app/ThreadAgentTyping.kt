@@ -1,9 +1,10 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -473,8 +474,9 @@ private fun ChannelWorkingLineContent(typing: ThreadAgentTypingUi, typingSentenc
                     .offset(x = (-4).dp)
                     .raftCaptureLiveRootAnchor(anchorRef)
                     .clip(RoundedCornerShape(6.dp))
+                    // Hover is the sentence's underline (below), so no hover fill; a press shows the wash.
                     .hoverable(interaction)
-                    .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = toggle)
+                    .raftClickable(onClick = toggle, shape = RoundedCornerShape(6.dp), tier = RaftHoverTier.None, interactionSource = interaction)
                     .clearAndSetSemantics {
                         contentDescription = sentence
                         role = Role.Button
