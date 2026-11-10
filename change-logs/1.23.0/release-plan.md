@@ -66,7 +66,7 @@ All changesets below are already on `main`. Owner = PR author.
 
 | Item | PR | State | Notes |
 |---|---|---|---|
-| Feedback goes through the Raft server; new feedback form | #4496 | accepted once merged (merging now) | Changeset required before acceptance (§2). |
+| Feedback goes through the Raft server; new feedback form | #4496 | accepted once merged (merging now) | Changesets in the PR: `feedback-files-under-your-account`, `new-feedback-form-matches-web` (pull_request 4496). Verified by artin on Alpha 2a1c5116. |
 | iOS multi-window, or the #4505 stop-gap | #4508 / #4505 | proposed | Decision pending Jony's iPad re-verify. Exception owner: @artin. |
 
 ## Exceptions
