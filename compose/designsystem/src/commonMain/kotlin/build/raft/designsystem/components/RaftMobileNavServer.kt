@@ -600,7 +600,7 @@ fun RaftMobileNavServerPopoverContent(
     ) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             // The 60% the popover keeps to, else the room there is (Infinity: no limit).
-            val cap = preferred?.let { minOf(it.roundToPx(), constraints.maxHeight) } ?: constraints.maxHeight
+            val cap = preferred?.let { minOf(with(density) { it.roundToPx() }, constraints.maxHeight) } ?: constraints.maxHeight
             val scroll = rememberScrollState()
             Layout(
                 content = { RaftMobileNavServerPopoverContentScope.content() },
