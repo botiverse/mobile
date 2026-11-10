@@ -12,6 +12,7 @@ import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationDidReceiveMemoryWarningNotification
 import platform.UIKit.UIApplicationState
+import platform.UIKit.UIColor
 import kotlinx.cinterop.ObjCSignatureOverride
 import platform.Foundation.NSError
 import platform.WebKit.WKNavigation
@@ -109,6 +110,11 @@ internal object RaftIosWebViewSpare {
                     frame = CGRectMake(0.0, 0.0, 0.0, 0.0),
                     configuration = raftIosWebViewConfiguration(ephemeral = false, allowScripts = true),
                 )
+            // Transparent before its blank document paints, as a page's own new WKWebView is
+            // (RaftIosSandboxWebView.applyBackground): no white layer left over for the page.
+            view.opaque = false
+            view.backgroundColor = UIColor.clearColor
+            view.scrollView.backgroundColor = UIColor.clearColor
             val generation = slot.put(view)
             val delegate = RaftIosWebViewSpareWarmupDelegate { ended ->
                 slot.markReady(generation)

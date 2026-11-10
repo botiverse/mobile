@@ -138,11 +138,11 @@ internal class RaftAndroidSandboxWebView(
      * RaftAndroidNightMode); keep-alive does not hand a view of the other mode to a page.
      */
     internal var builtDark: Boolean = RaftAppThemeState.isDark
+        private set
     /** [RaftWebViewConfig.backgroundArgb]: the colour before the first paint (0: white). */
     private var placeholderBackground: Int = 0
     /** The current WebView painted a page; from then on its background is the default white. */
     private var pagePainted: Boolean = false
-        private set
     internal val isDestroyed: Boolean get() = destroyed
     private var currentUrl: String = ""
     private var currentTitle: String = ""

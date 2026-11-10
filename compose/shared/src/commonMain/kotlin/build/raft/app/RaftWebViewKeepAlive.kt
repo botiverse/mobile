@@ -121,7 +121,7 @@ internal const val RAFT_WEB_VIEW_SPARE_BLANK_URL = "about:blank"
  * - Top-level document only; it reads and sends nothing.
  */
 internal fun raftWebViewFirstPaintThemeScript(canvasArgb: Int, dark: Boolean): String {
-    val rgb = "rgb(${(canvasArgb ushr 16) and 0xFF},${(canvasArgb ushr 8) and 0xFF},${canvasArgb and 0xFF})"
+    val rgb = raftWebViewCssRgb(canvasArgb)
     val scheme = if (dark) "dark" else "light"
     return "(function(){try{if(window.top!==window)return;var d=document,s=null,inl=false;" +
         "try{s=new CSSStyleSheet();s.replaceSync(':where(html){background-color:$rgb;color-scheme:$scheme}');" +
@@ -132,3 +132,21 @@ internal fun raftWebViewFirstPaintThemeScript(canvasArgb: Int, dark: Boolean): S
         "window.addEventListener('load',function(){requestAnimationFrame(function(){requestAnimationFrame(off);});},{once:true});" +
         "}catch(e){}})();"
 }
+
+/**
+ * Paints the document a spare WebView already shows (its blank warm-up document, [RAFT_WEB_VIEW_SPARE_BLANK_URL])
+ * in the app's canvas colour and scheme. The taking page's request does not replace it until the
+ * new document commits (the whole server round trip, ~1 s on a cold start); that blank document
+ * was laid out while the spare was opaque, so it showed as a white page in dark mode. Run on the
+ * blank document right before the page's own load; the document is discarded with it.
+ */
+internal fun raftWebViewSpareBlankCanvasScript(canvasArgb: Int, dark: Boolean): String {
+    val rgb = raftWebViewCssRgb(canvasArgb)
+    val scheme = if (dark) "dark" else "light"
+    return "(function(){try{var r=document.documentElement;if(!r)return;" +
+        "r.style.setProperty('background-color','$rgb');r.style.setProperty('color-scheme','$scheme');}catch(e){}})();"
+}
+
+/** `rgb(r,g,b)` of [argb] (alpha dropped). */
+private fun raftWebViewCssRgb(argb: Int): String =
+    "rgb(${(argb ushr 16) and 0xFF},${(argb ushr 8) and 0xFF},${argb and 0xFF})"

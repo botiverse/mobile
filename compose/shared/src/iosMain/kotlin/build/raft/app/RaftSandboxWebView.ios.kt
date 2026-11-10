@@ -302,6 +302,14 @@ internal class RaftIosSandboxWebView(
         currentLoading = false
         currentTitle = ""
         lastNavigationStateKey = ""
+        if (spare != null && placeholderBackground != 0) {
+            // Until this page's document commits, the spare keeps showing its blank warm-up
+            // document, which it laid out white (opaque, light): give it the canvas colour first.
+            next.evaluateJavaScript(
+                raftWebViewSpareBlankCanvasScript(placeholderBackground, RaftAppThemeState.isDark),
+                completionHandler = null
+            )
+        }
         loadCurrentSrc()
     }
 

@@ -71,6 +71,15 @@ class RaftWebViewSpareSlotTest {
     }
 
     @Test
+    fun spareBlankCanvasScriptPaintsTheBlankDocumentInTheCanvasAndScheme() {
+        for ((dark, scheme) in listOf(true to "dark", false to "light")) {
+            val script = raftWebViewSpareBlankCanvasScript(0xFF1C1B1A.toInt(), dark)
+            assertTrue("setProperty('background-color','rgb(28,27,26)')" in script, script)
+            assertTrue("setProperty('color-scheme','$scheme')" in script, script)
+        }
+    }
+
+    @Test
     fun onlyTheSparesBlankDocumentIsIgnored() {
         val page = "https://app.raft.build/changelog"
         // (usingSpare, navigationUrl, src) -> ignored
