@@ -392,6 +392,8 @@ internal fun SettingsHomeContent(
                 nativeOnTitleClick = onHeaderClick,
             )
         }
+        // The field below can scroll out of composition; Back must still clear the query.
+        if (search != null) SettingsSearchBackHandler(search)
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -406,6 +408,7 @@ internal fun SettingsHomeContent(
                         host = search,
                         results = searchResults.orEmpty(),
                         modifier = Modifier.raftSafeAreaHorizontalPadding().padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 4.dp),
+                        ownsBackHandler = false,
                     )
                 }
             }
