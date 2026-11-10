@@ -91,8 +91,10 @@ internal val RaftValueColumnMin: Dp = 160.dp
  * widest chip of a chip row, the longest word): the labels also go above when one is wider
  * than the value column but fits the list, so a chip is never cut beside its label when it
  * would show in full on a line of its own. A piece wider than the whole list doesn't decide.
- * This min-content rule is raft-ui's next `labelsGoAbove` (pending raft-design PR by Kirby,
- * number to follow); 0.78 checks the one-line width only (`lib/label-value-fit.ts:71-73`).
+ * This min-content rule is raft-ui's next `labelsGoAbove` (botiverse/raft-design #1116,
+ * `lib/label-value-fit.ts` `minContentWidths`, pending); 0.78 checks the one-line width only
+ * (`lib/label-value-fit.ts:71-73`). A badge's min-content width is its whole width, as the web's
+ * `whitespace-nowrap` badge ([RaftBadge]).
  */
 internal fun raftLabelsGoAbove(
     width: Int,
