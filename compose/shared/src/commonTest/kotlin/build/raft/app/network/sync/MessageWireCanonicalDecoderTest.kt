@@ -71,9 +71,9 @@ class MessageWireCanonicalDecoderTest {
             ProductionFace.TaskStatusUpdated,
         )
 
-        assertEquals(MessageDomainEvent.PRESENT_MESSAGE_NEW, assertNotNull(messageNew).presentAggregates)
-        assertEquals(MessageDomainEvent.PRESENT_ENRICHED_UPDATED, assertNotNull(enriched).presentAggregates)
-        assertEquals(MessageDomainEvent.PRESENT_TASK_STATUS_UPDATED, assertNotNull(task).presentAggregates)
+        assertEquals(MessageAggregateField.entries.toSet(), assertNotNull(messageNew).presentAggregates)
+        assertEquals(MessageAggregateField.entries.toSet() - MessageAggregateField.ConversationContext, assertNotNull(enriched).presentAggregates)
+        assertEquals(setOf(MessageAggregateField.SenderName, MessageAggregateField.ActionMetadata), assertNotNull(task).presentAggregates)
     }
 
     @Test
@@ -246,7 +246,7 @@ class MessageWireCanonicalDecoderTest {
             ),
             assertNotNull(decoded).taskFields,
         )
-        assertEquals(MessageDomainEvent.PRESENT_TASK_STATUS_UPDATED, decoded.presentAggregates)
+        assertEquals(setOf(MessageAggregateField.SenderName, MessageAggregateField.ActionMetadata), decoded.presentAggregates)
         assertEquals("task body", decoded.row.content)
     }
 
