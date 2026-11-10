@@ -25,7 +25,10 @@ import androidx.compose.runtime.staticCompositionLocalOf
  */
 @Immutable
 data class RaftStrings(
-    /** The marker after an optional field's label (raft-ui `LabelOptional`), drawn after a space. */
+    /**
+     * The marker after an optional field's label (raft-ui `LabelOptional`), drawn after a space,
+     * or straight after the label when it opens with a full-width bracket, as （可选） does.
+     */
     val optional: String = "(optional)",
     /** The dialog's and popover's × button (raft-ui `DialogClose` `aria-label`). */
     val close: String = "Close",

@@ -73,6 +73,7 @@ import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.raftOpensFullWidth
 
 internal enum class AuthButtonTone {
     Pink,
@@ -501,8 +502,11 @@ internal fun AuthFieldLabel(label: String, required: Boolean = false, optional: 
                 color = RaftColor.AccentPink
             )
         } else if (optional) {
+            val marker = stringResource(Res.string.common_optional_suffix)
             Text(
-                text = stringResource(Res.string.common_optional_suffix),
+                // A full-width （可选） carries its own space (raft-ui FieldLabel): no gap before it.
+                text = marker,
+                modifier = if (raftOpensFullWidth(marker)) Modifier.offset(x = (-3).dp) else Modifier,
                 style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                 color = RaftColor.TextMutedGray
             )

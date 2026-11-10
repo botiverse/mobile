@@ -263,6 +263,20 @@ class RaftInteractiveSemanticsTest {
             onNodeWithContentDescription("Chargement").assertExists()
         }
 
+    /** A marker that opens with a full-width bracket follows the label with no space (raft-ui 0.71 FieldLabel). */
+    @Test
+    fun aFullWidthOptionalMarkerTakesNoSpace() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    CompositionLocalProvider(LocalRaftStrings provides RaftStrings(optional = "（可选）")) {
+                        RaftFieldLabel("描述", optional = true)
+                    }
+                },
+            )
+            onNodeWithText("描述（可选）").assertIsDisplayed()
+        }
+
     /** On a TextFieldValue the textarea types at the caller's caret, counts the text and focuses its editor. */
     @Test
     fun aTextareaOnATextFieldValueTypesAtTheCallersCaret() =
