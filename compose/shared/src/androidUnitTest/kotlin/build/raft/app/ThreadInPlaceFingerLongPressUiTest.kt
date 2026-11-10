@@ -42,7 +42,8 @@ import org.robolectric.annotation.Config
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+// A finger selection shows its handles' magnifier, which Robolectric cannot dismiss.
+@Config(sdk = [34], shadows = [RaftFloatingToolbarAnchorGuardUiTest.NoSurfaceMagnifier::class])
 class ThreadInPlaceFingerLongPressUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
