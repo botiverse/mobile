@@ -197,6 +197,9 @@ class ThreadAssistantOtterUiTest {
             show { Conversation(CHANNEL, otter(hosts, CHANNEL), pendingMentionActions = actions, onStackedAbove = { stackedAbove = it }) }
             runOnIdle { assertTrue(assertNotNull(stackedAbove) > 0.dp) }
             val lifted = otterButton(CHANNEL).fetchSemanticsNode().boundsInRoot
+            // Above the composer's bottom: the page lays out from the top, so the composer itself
+            // moves when the card goes; the otter's height over its bottom is what the card changes.
+            val liftedOver = onNode(hasTestTag(CHANNEL)).fetchSemanticsNode().boundsInRoot.bottom - lifted.top
             // Every button outside the otter (the card's, the composer's) starts below the otter's edge.
             val buttons =
                 onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag(CHANNEL)) and !hasAnyAncestor(hasTestTag(ThreadAssistantOtterTestTag)))
@@ -210,7 +213,9 @@ class ThreadAssistantOtterUiTest {
             runOnIdle { actions = emptyList() }
             runOnIdle { assertEquals(0.dp, stackedAbove) }
             val down = otterButton(CHANNEL).fetchSemanticsNode().boundsInRoot
-            assertTrue(down.top > lifted.top, "back on the frame's edge: $down vs $lifted")
+            val downOver = onNode(hasTestTag(CHANNEL)).fetchSemanticsNode().boundsInRoot.bottom - down.top
+            // Lower by the card and its gap: at least the card's 40dp or so.
+            assertTrue(liftedOver - downOver > with(density) { 24.dp.toPx() }, "back on the frame's edge: $downOver vs $liftedOver over the composer's bottom")
         }
 
     /**
