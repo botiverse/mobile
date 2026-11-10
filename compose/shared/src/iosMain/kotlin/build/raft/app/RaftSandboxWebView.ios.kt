@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.objcPtr
+import platform.CoreGraphics.CGColorGetAlpha
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSError
 import platform.Foundation.NSHTTPURLResponse
@@ -22,6 +23,7 @@ import platform.UIKit.UIView
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
 import platform.UIKit.UIViewAutoresizingFlexibleWidth
 import platform.WebKit.WKAudiovisualMediaTypeAll
+import platform.WebKit.WKBackForwardListItem
 import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationAction
 import platform.WebKit.WKNavigationActionPolicy
@@ -40,6 +42,7 @@ import platform.WebKit.WKWebpagePreferences
 import platform.WebKit.WKWebsiteDataStore
 import platform.WebKit.WKWindowFeatures
 import platform.darwin.NSObject
+import kotlin.time.TimeSource
 
 @Composable
 internal actual fun RaftSandboxWebViewHost(
@@ -49,7 +52,7 @@ internal actual fun RaftSandboxWebViewHost(
     modifier: Modifier,
 ) {
     UIKitView(
-        factory = { RaftIosSandboxWebViewContainer(events) },
+        factory = { RaftIosSandboxWebViewContainer(events).also { it.webViewHost.applyInitialBackground(config.backgroundArgb) } },
         modifier = modifier,
         update = { view ->
             view.webViewHost.events = events
@@ -75,6 +78,9 @@ internal class RaftIosSandboxWebViewContainer(events: RaftWebViewEvents) : UIVie
         webViewHost.onWindowAttachmentChanged(attached = window != null)
     }
 }
+
+/** A committed page is shown at the latest this long after its commit ([RaftIosSandboxWebView.reveal]). */
+private const val RevealCapSeconds = 1.5
 
 /** Poll interval standing in for the `.m` KVO on estimatedProgress/title/canGoBack/canGoForward/loading/URL. */
 private const val RaftIosNavigationStatePollSeconds = 0.25
@@ -137,12 +143,55 @@ internal class RaftIosSandboxWebView(
     private var disposed = false
     private var configured = false
     private var boundController: RaftWebViewController? = null
+    /** When the current main-frame load started ([loadClock]), for the `elapsedMs` of the load lines; null before one. */
+    private var loadStartedAt: TimeSource.Monotonic.ValueTimeMark? = null
+    /** When this page asked its WKWebView for the document (`load_src`): `sinceRequestMs` of the load lines. */
+    private var requestedAt: TimeSource.Monotonic.ValueTimeMark? = null
+    /** When this host was made (the page attached its WebView): `sinceAttachMs` of `load_src`. */
+    private val attachedAt = TimeSource.Monotonic.markNow()
+    /** Whether the current WKWebView is the app's spare ([RaftIosWebViewSpare]) rather than a new one. */
+    private var usingSpare = false
+    /** [RaftWebViewConfig.backgroundArgb]: the colour before the first paint (0: white). */
+    private var placeholderBackground = 0
+    /** The current WKWebView finished a page; from then on it is opaque white, as Safari. */
+    private var pagePainted = false
+    /** The current WKWebView is shown ([reveal]): its page finished and painted its scheme, or [RevealCapSeconds] after the commit. */
+    private var pageRevealed = false
+    /** The current WKWebView's first page finished (its background was probed once). */
+    private var pageFinished = false
+    /** Reveals the page [RevealCapSeconds] after its commit if it has not been yet. */
+    private var revealTimer: NSTimer? = null
 
     private val delegate = RaftIosWebViewDelegate(this)
     private val scriptMessageHandler = RaftIosWebViewScriptMessageHandler(this)
 
     init {
         container.backgroundColor = UIColor.whiteColor
+    }
+
+    /** Before the first config: the canvas colour from the start (UIKitView may show the container before `update`). */
+    fun applyInitialBackground(argb: Int) {
+        if (argb != 0 && !configured) container.backgroundColor = raftIosColor(argb)
+    }
+
+    /**
+     * The page is visible from attach (no cover): with a canvas colour set, the WKWebView is not
+     * shown ([pageRevealed]) and is transparent over the canvas-coloured container, so no white
+     * rectangle in dark mode. Opaque white, as Safari, only once its first page finished without a
+     * background of its own ([pagePainted]); a page with its own background stays over the canvas.
+     */
+    private fun applyBackground() {
+        val view = webView
+        val painted = pagePainted && view != null
+        val color = raftIosColor(raftWebViewBackgroundArgb(placeholderBackground, painted))
+        container.backgroundColor = color
+        if (view == null) return
+        // Before the page's document commits the WKWebView shows whatever it had (a spare's blank
+        // warm-up document, layers not yet redrawn): not shown, the canvas container is.
+        view.alpha = if (raftWebViewShownBeforeCommit(placeholderBackground, pageRevealed)) 1.0 else 0.0
+        view.opaque = painted || placeholderBackground == 0
+        view.backgroundColor = if (view.opaque) color else UIColor.clearColor
+        view.scrollView.backgroundColor = view.backgroundColor
     }
 
     /**
@@ -171,6 +220,10 @@ internal class RaftIosSandboxWebView(
         hostEventsEnabled = config.hostEventsEnabled
         mainFrameOrigin = config.mainFrameOrigin?.let(::raftWebOriginOf)
         configured = true
+        if (placeholderBackground != config.backgroundArgb) {
+            placeholderBackground = config.backgroundArgb
+            applyBackground()
+        }
         val srcChanged = updateSrcState(config.url.trim())
         if (rebuild) {
             rebuildWebView()
@@ -201,6 +254,8 @@ internal class RaftIosSandboxWebView(
     }
 
     private fun tearDownWebView() {
+        revealTimer?.invalidate()
+        revealTimer = null
         val previous = webView ?: return
         stopObserving(previous)
         previous.navigationDelegate = null
@@ -213,15 +268,29 @@ internal class RaftIosSandboxWebView(
 
     private fun rebuildWebView() {
         tearDownWebView()
-        val configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore =
-            if (ephemeral) WKWebsiteDataStore.nonPersistentDataStore() else WKWebsiteDataStore.defaultDataStore()
-        val userContentController = WKUserContentController()
+        // The app's spare WKWebView (created after launch, RaftIosWebViewSpare) when this page's
+        // configuration is the one it was built with: persistent store, scripts on. It saves the
+        // WebKit start-up (web content / networking processes, the data store) on the first load.
+        // Not after a crash (contentProcessDidTerminate rebuilds while a WebView already existed).
+        val spare = if (!ephemeral && allowScripts && webView == null) RaftIosWebViewSpare.take() else null
+        val userContentController =
+            spare?.configuration?.userContentController?.also { it.removeAllUserScripts() } ?: WKUserContentController()
         if (hostEventsEnabled) {
             userContentController.addScriptMessageHandler(scriptMessageHandler, name = RaftWebViewHostPortName)
             userContentController.addUserScript(
                 WKUserScript(
                     source = RaftIosHostBridgeScript,
+                    injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
+                    forMainFrameOnly = true
+                )
+            )
+        }
+        if (allowScripts && placeholderBackground != 0) {
+            // The page's own first paint is the engine's white canvas until its stylesheet and
+            // theme script apply: the canvas colour and scheme until it loaded (dark mode, no flash).
+            userContentController.addUserScript(
+                WKUserScript(
+                    source = raftWebViewFirstPaintThemeScript(placeholderBackground, RaftAppThemeState.isDark),
                     injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
                     forMainFrameOnly = true
                 )
@@ -238,28 +307,44 @@ internal class RaftIosSandboxWebView(
                 )
             )
         }
-        configuration.userContentController = userContentController
-        configuration.allowsInlineMediaPlayback = true
-        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-        configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeAll
-        val pagePreferences = WKWebpagePreferences()
-        pagePreferences.allowsContentJavaScript = allowScripts
-        configuration.defaultWebpagePreferences = pagePreferences
-
-        val next = WKWebView(frame = container.bounds, configuration = configuration)
+        val next =
+            spare?.also { it.setFrame(container.bounds) }
+                ?: run {
+                    val configuration = raftIosWebViewConfiguration(ephemeral = ephemeral, allowScripts = allowScripts)
+                    configuration.userContentController = userContentController
+                    WKWebView(frame = container.bounds, configuration = configuration)
+                }
+        usingSpare = spare != null
+        if (spare != null) {
+            diagnosticsInfo(
+                "spare_state opaque=${spare.opaque} bgAlpha=${raftIosColorAlpha(spare.backgroundColor)} " +
+                    "scrollBgAlpha=${raftIosColorAlpha(spare.scrollView.backgroundColor)} " +
+                    "style=${spare.traitCollection.userInterfaceStyle} inWindow=${container.window != null}"
+            )
+        }
         next.navigationDelegate = delegate
         next.UIDelegate = delegate
-        next.backgroundColor = UIColor.whiteColor
-        next.opaque = true
         next.allowsBackForwardNavigationGestures = false
         next.autoresizingMask = UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
         webView = next
+        pagePainted = false
+        pageRevealed = false
+        pageFinished = false
+        applyBackground()
         container.addSubview(next)
         startObserving(next)
         currentProgress = 0
         currentLoading = false
         currentTitle = ""
         lastNavigationStateKey = ""
+        if (spare != null && placeholderBackground != 0) {
+            // Until this page's document commits, the spare keeps showing its blank warm-up
+            // document, which it laid out white (opaque, light): give it the canvas colour first.
+            next.evaluateJavaScript(
+                raftWebViewSpareBlankCanvasScript(placeholderBackground, RaftAppThemeState.isDark),
+                completionHandler = null
+            )
+        }
         loadCurrentSrc()
     }
 
@@ -341,7 +426,7 @@ internal class RaftIosSandboxWebView(
             return
         }
         when (command) {
-            RaftWebViewController.COMMAND_GO_BACK -> if (view.canGoBack) view.goBack()
+            RaftWebViewController.COMMAND_GO_BACK -> if (canGoBack(view)) view.goBack()
             RaftWebViewController.COMMAND_GO_FORWARD -> if (view.canGoForward) view.goForward()
             RaftWebViewController.COMMAND_RELOAD -> {
                 lastSuccessfulURL = ""
@@ -414,6 +499,11 @@ internal class RaftIosSandboxWebView(
         }
         currentLoading = true
         notifyNavigationState(force = false)
+        requestedAt = TimeSource.Monotonic.markNow()
+        diagnosticsInfo(
+            "load_src spare=$usingSpare sinceAttachMs=${attachedAt.elapsedNow().inWholeMilliseconds} " +
+                "url=${raftWebViewUrlForLog(src)}"
+        )
         val cachePolicy = if (cacheEnabled) NSURLRequestUseProtocolCachePolicy else NSURLRequestReloadIgnoringLocalCacheData
         view.loadRequest(NSURLRequest.requestWithURL(url, cachePolicy = cachePolicy, timeoutInterval = 60.0))
     }
@@ -471,6 +561,8 @@ internal class RaftIosSandboxWebView(
     internal fun didStartProvisional(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
         currentURL = source.URL?.absoluteString ?: currentURL
+        loadStartedAt = TimeSource.Monotonic.markNow()
+        diagnosticsInfo("page_started url=${raftWebViewUrlForLog(currentURL)} ${loadElapsedField()}")
         currentTitle = ""
         currentProgress = (source.estimatedProgress * 100.0 + 0.5).toInt().coerceIn(0, 100)
         currentLoading = true
@@ -481,9 +573,20 @@ internal class RaftIosSandboxWebView(
 
     internal fun didCommit(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
+        if (raftWebViewIgnoresSpareBlankNavigation(usingSpare, source.URL?.absoluteString, src)) return
         currentURL = source.URL?.absoluteString ?: currentURL
         currentTitle = source.title ?: currentTitle
         currentLoading = source.loading
+        // Android's name for the first paint of the new document; WebKit's nearest is the commit.
+        diagnosticsInfo("page_commit_visible url=${raftWebViewUrlForLog(currentURL)} ${loadElapsedField()}")
+        if (!pageRevealed && revealTimer == null) {
+            // Not shown yet: what the page paints right after its commit may not be its theme yet.
+            revealTimer = NSTimer.scheduledTimerWithTimeInterval(RevealCapSeconds, repeats = false) { _ ->
+                revealTimer = null
+                reveal(source, "cap")
+            }
+            probePageTheme(source, "commit")
+        }
         events.onUrlChange(currentURL)
         notifyNavigationState(force = false)
         // SlockSandboxWebViewPublishNavigationCommit: only the active WebView publishes commits
@@ -493,13 +596,56 @@ internal class RaftIosSandboxWebView(
 
     internal fun didFinish(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
+        if (raftWebViewIgnoresSpareBlankNavigation(usingSpare, source.URL?.absoluteString, src)) return
+        if (!pageFinished) {
+            pageFinished = true
+            if (!allowScripts || placeholderBackground == 0) {
+                pagePainted = true
+                reveal(source, "finished")
+            } else {
+                probePageTheme(source, "finished")
+            }
+        }
         currentURL = source.URL?.absoluteString ?: currentURL
         currentTitle = source.title ?: ""
         currentProgress = 100
         currentLoading = false
+        diagnosticsInfo("page_finished url=${raftWebViewUrlForLog(currentURL)} ${loadElapsedField()}")
         events.onUrlChange(currentURL)
         notifyNavigationState(force = false)
         notifyLoadSuccess(currentURL)
+    }
+
+    /**
+     * Reads the page's scheme and root/body background ([RaftWebViewPageThemeProbeScript]) and
+     * logs it with the view's and host's trait style. After `finished`: white behind the page only
+     * if it paints no background of its own; shown once its scheme is the app's (else at the cap).
+     */
+    private fun probePageTheme(view: WKWebView, phase: String) {
+        view.evaluateJavaScript(RaftWebViewPageThemeProbeScript) { result, _ ->
+            if (disposed || !raftIsSameObjCObject(view, webView)) return@evaluateJavaScript
+            val theme = raftWebViewDecodePageTheme(result as? String)
+            val appDark = RaftAppThemeState.isDark
+            diagnosticsInfo(
+                "page_theme phase=$phase ${theme?.logFields() ?: "probe=none"} appDark=$appDark " +
+                    "viewStyle=${view.traitCollection.userInterfaceStyle} hostStyle=${container.traitCollection.userInterfaceStyle}"
+            )
+            if (phase != "finished") return@evaluateJavaScript
+            if (theme == null || !raftWebViewPageHasOwnBackground(theme, placeholderBackground)) {
+                pagePainted = true
+                applyBackground()
+            }
+            if (theme == null || theme.prefersDark == appDark) reveal(view, "finished")
+        }
+    }
+
+    private fun reveal(view: WKWebView, reason: String) {
+        if (pageRevealed || disposed || !raftIsSameObjCObject(view, webView)) return
+        pageRevealed = true
+        revealTimer?.invalidate()
+        revealTimer = null
+        diagnosticsInfo("page_reveal reason=$reason ${loadElapsedField()}")
+        applyBackground()
     }
 
     internal fun didFail(source: WKWebView, error: NSError) {
@@ -511,6 +657,7 @@ internal class RaftIosSandboxWebView(
         }
         currentURL = source.URL?.absoluteString ?: currentURL
         currentLoading = false
+        diagnosticsWarn("page_error code=${error.code} url=${raftWebViewUrlForLog(currentURL)} ${loadElapsedField()}")
         notifyNavigationState(force = false)
         notifyLoadFailure(error.localizedDescription)
     }
@@ -579,7 +726,7 @@ internal class RaftIosSandboxWebView(
             RaftWebViewNavigationState(
                 url = currentURL,
                 title = currentTitle,
-                canGoBack = view?.canGoBack ?: false,
+                canGoBack = view?.let(::canGoBack) ?: false,
                 canGoForward = view?.canGoForward ?: false,
                 isLoading = currentLoading,
                 progress = currentProgress.coerceIn(0, 100)
@@ -594,6 +741,7 @@ internal class RaftIosSandboxWebView(
         if (lastSuccessfulURL == url) return
         lastSuccessfulURL = url
         lastLoadFailureKey = ""
+        diagnosticsInfo("page_success phase=finished url=${raftWebViewUrlForLog(url)} ${loadElapsedField()}")
         events.onLoadSuccess()
     }
 
@@ -606,6 +754,35 @@ internal class RaftIosSandboxWebView(
 
     private fun notifyNavigationBlocked(url: String) {
         events.onNavigationBlocked(url)
+    }
+
+    /**
+     * Load-path lines, with the field names of Android's `SlockWebView` lines (page_started,
+     * page_commit_visible, page_finished, page_success, `elapsedMs`), to the app's diagnostics log.
+     * URLs without query or fragment ([raftWebViewUrlForLog]): a Settings URL can carry tokens.
+     */
+    private fun diagnosticsInfo(message: String) {
+        raftLogInfo(RaftIosWebViewDiagnosticsTag, message)
+    }
+
+    private fun diagnosticsWarn(message: String) {
+        raftLogWarn(RaftIosWebViewDiagnosticsTag, message)
+    }
+
+    private fun loadElapsedField(): String =
+        "elapsedMs=${loadStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L} " +
+            "sinceRequestMs=${requestedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L} spare=$usingSpare"
+
+    /**
+     * Back is possible, not counting the spare's own blank document ([RaftIosWebViewSpare] loads
+     * one to start WebKit): Back from the page's first document closes the page, as in a new WebView.
+     */
+    private fun canGoBack(view: WKWebView): Boolean {
+        if (!view.canGoBack) return false
+        if (!usingSpare) return true
+        val backList = view.backForwardList.backList
+        val first = backList.firstOrNull() as? WKBackForwardListItem
+        return !(backList.size == 1 && first?.URL?.absoluteString == RaftIosWebViewSpare.BLANK_URL)
     }
 
     private fun isAllowedMainDocumentURL(targetURL: NSURL): Boolean {
@@ -713,6 +890,39 @@ private class RaftIosWebViewScriptMessageHandler(
     ) {
         owner.didReceiveScriptMessage(userContentController, didReceiveScriptMessage)
     }
+}
+
+/** [argb] (0xAARRGGBB) as a UIColor. */
+private fun raftIosColor(argb: Int): UIColor =
+    UIColor.colorWithRed(
+        red = ((argb ushr 16) and 0xFF) / 255.0,
+        green = ((argb ushr 8) and 0xFF) / 255.0,
+        blue = (argb and 0xFF) / 255.0,
+        alpha = ((argb ushr 24) and 0xFF) / 255.0,
+    )
+
+/** [color]'s alpha (diagnostics); -1 without a colour. */
+private fun raftIosColorAlpha(color: UIColor?): Double = color?.CGColor?.let { CGColorGetAlpha(it) } ?: -1.0
+
+/** Android's `RAFT_WEBVIEW_DIAGNOSTICS_TAG`: the same tag for the same load lines. */
+private const val RaftIosWebViewDiagnosticsTag = "SlockWebView"
+
+/**
+ * The configuration every page's WKWebView is built with (the spare too, so a page can take it):
+ * [ephemeral] picks the non-persistent store, otherwise the app's default one. The user content
+ * controller (scripts, host bridge) is per page and set by the caller.
+ */
+internal fun raftIosWebViewConfiguration(ephemeral: Boolean, allowScripts: Boolean): WKWebViewConfiguration {
+    val configuration = WKWebViewConfiguration()
+    configuration.websiteDataStore =
+        if (ephemeral) WKWebsiteDataStore.nonPersistentDataStore() else WKWebsiteDataStore.defaultDataStore()
+    configuration.allowsInlineMediaPlayback = true
+    configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+    configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeAll
+    val pagePreferences = WKWebpagePreferences()
+    pagePreferences.allowsContentJavaScript = allowScripts
+    configuration.defaultWebpagePreferences = pagePreferences
+    return configuration
 }
 
 /** WKWebView applies the safe area and the keyboard itself. */

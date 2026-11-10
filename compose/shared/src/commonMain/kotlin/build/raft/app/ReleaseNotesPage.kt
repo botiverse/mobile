@@ -335,7 +335,7 @@ internal fun ReleaseNotesWebViewBody(
 
 @Composable
 internal fun ReleaseNotesLoadingCover() {
-    Box(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas))
+    SettingsWebViewLoadingPlaceholder()
 }
 
 @Composable

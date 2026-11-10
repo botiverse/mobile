@@ -91,6 +91,8 @@ object RaftIosHostHooks {
         if (unhandledExceptions != null) installUnhandledExceptionHook(unhandledExceptions)
         RaftPageRegistry.install()
         installRaftIosProductEventsLifecycle()
+        // One spare WKWebView a moment after launch, for the first in-app web page (nothing waits for it).
+        RaftIosWebViewSpare.schedule()
         // iPhone vs iPad in the User-Agent: the server's product-event `$device_type` comes from it.
         installIosRaftUserAgentDevice()
         // The iPad app on a Mac has no touch screen: desktop control metrics from the first page.

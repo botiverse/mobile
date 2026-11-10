@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import build.raft.app.compat.json.JSONObject
@@ -72,6 +73,7 @@ class SettingsWebViewStallRetryUiTest {
             assertEquals(1, webViews().size, "the page's WebView is attached")
             val first = webViews().single()
             onNodeWithText("Could not load this page").assertDoesNotExist()
+            onNodeWithTag(RAFT_WEB_PAGE_LOADING_BAR_TAG).assertExists()
 
             mainClock.advanceTimeBy(RAFT_WEB_VIEW_LOAD_STALL_TIMEOUT_MS - 1_000)
             waitForIdle()
@@ -82,6 +84,7 @@ class SettingsWebViewStallRetryUiTest {
             onNodeWithText("Could not load this page").assertIsDisplayed()
             onNodeWithText("Check your connection and try again.").assertIsDisplayed()
             assertEquals(0, webViews().size, "the stalled WebView is dropped")
+            onNodeWithTag(RAFT_WEB_PAGE_LOADING_BAR_TAG).assertDoesNotExist()
 
             onNodeWithText("Retry").assertIsDisplayed().performClick()
             waitForIdle()
@@ -94,6 +97,45 @@ class SettingsWebViewStallRetryUiTest {
             waitForIdle()
             onNodeWithText("Could not load this page").assertIsDisplayed()
             assertEquals(0, webViews().size)
+        }
+
+    /**
+     * No cover: the WebView is attached and shown (not hidden behind anything) from before its
+     * first commit, under the progress bar; the bar goes once the load finished.
+     */
+    @Test
+    fun theWebViewShowsUnderTheProgressBarUntilTheLoadFinishes() =
+        runRobolectricComposeUiTest {
+            val presentations = mutableListOf<RaftWebViewNavigationState>()
+            setContent {
+                Host {
+                    SettingsWebViewContent(
+                        url = url,
+                        diagnosticsName = "settings_billing",
+                        onNavigationStateChange = { presentations += it.state },
+                    )
+                }
+            }
+            waitForIdle()
+            val webView = webViews().single()
+            assertEquals(View.VISIBLE, webView.visibility)
+            onNodeWithTag(RAFT_WEB_PAGE_LOADING_BAR_TAG).assertExists()
+
+            runOnUiThread {
+                val client = shadowOf(webView).webViewClient
+                client.onPageStarted(webView, url, null)
+                client.onPageCommitVisible(webView, url)
+            }
+            waitForIdle()
+            // Committed but still loading: the page shows, the bar stays.
+            onNodeWithTag(RAFT_WEB_PAGE_LOADING_BAR_TAG).assertExists()
+            onNodeWithText("Could not load this page").assertDoesNotExist()
+
+            runOnUiThread { shadowOf(webView).webViewClient.onPageFinished(webView, url) }
+            waitForIdle()
+            onNodeWithTag(RAFT_WEB_PAGE_LOADING_BAR_TAG).assertDoesNotExist()
+            assertEquals(false, presentations.last().isLoading, "the finish reached the host: ${presentations.last()}")
+            assertEquals(webView, webViews().single(), "the same WebView keeps showing the page")
         }
 
     @Test

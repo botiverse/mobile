@@ -20,9 +20,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,7 +72,9 @@ private fun RaftInAppBrowserScreen() {
     var webViewAttachReady by remember(launchUrl) { mutableStateOf(false) }
     LaunchedEffect(launchUrl) {
         if (launchUrl == null) return@LaunchedEffect
-        repeat(2) { withFrameNanos { } }
+        // One rendered frame first: a native view attached in the page's first frame draws over the
+        // header until layout settles (task #227, as SettingsWebViewPageScaffold). The load starts then.
+        withFrameNanos { }
         webViewAttachReady = true
     }
 
@@ -149,9 +149,6 @@ private fun RaftInAppBrowserScreen() {
                 }
             },
         )
-        if (navigationState.isLoading) {
-            RaftInAppBrowserProgress(navigationState.progress)
-        }
         Box(modifier = Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) {
             when {
                 launchUrl == null -> {
@@ -199,35 +196,13 @@ private fun RaftInAppBrowserScreen() {
                         )
                     }
                 }
-                else -> {
-                    RaftCenteredLoading(stringResource(Res.string.common_loading))
-                }
+                // The frame before the WebView attaches: the progress bar below already shows.
+                else -> Unit
             }
-        }
-    }
-}
-
-@Composable
-private fun RaftInAppBrowserProgress(progress: Int) {
-    val percent = progress.coerceIn(0, 100)
-    if (percent <= 0) {
-        LinearProgressIndicator(
-            modifier = Modifier.fillMaxWidth().height(4.dp),
-            color = RaftColor.AccentCyan,
-            trackColor = RaftColor.SurfaceCream,
-        )
-        return
-    }
-    Row(modifier = Modifier.fillMaxWidth().height(4.dp).background(RaftColor.SurfaceCream)) {
-        Box(
-            modifier =
-                Modifier
-                    .weight(percent.toFloat())
-                    .fillMaxSize()
-                    .background(RaftColor.AccentCyan)
-        )
-        if (percent < 100) {
-            Box(modifier = Modifier.weight((100 - percent).toFloat()).fillMaxSize())
+            // Over the page (not above it), so the page does not jump when the load ends.
+            if (launchUrl != null && loadError == null && navigationState.isLoading) {
+                RaftWebPageLoadingBar(navigationState.progress)
+            }
         }
     }
 }

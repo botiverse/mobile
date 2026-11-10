@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.compat.json.JSONObject
 
 internal data class RaftWebViewNavigationState(
@@ -163,6 +165,7 @@ internal fun RaftSandboxWebView(
     events.onContentProbe = { hasContent -> loadWatchdog?.onContentProbe(hasContent) }
     events.onContentProcessGone = { reason -> loadWatchdog?.onProcessGone(reason) }
     if (loadWatchdog != null) RaftWebViewLoadWatchdogEffect(loadWatchdog, controller)
+    val backgroundArgb = RaftTheme.colors.layerCanvas.toArgb()
     val allowedNavigationSchemesValue = allowedNavigationSchemes.toRaftWebViewAllowedNavigationSchemesValue()
     val config =
         remember(
@@ -178,7 +181,8 @@ internal fun RaftSandboxWebView(
             hostEventsEnabled,
             mainFrameOrigin,
             frameHosts,
-            keepAliveKey
+            keepAliveKey,
+            backgroundArgb
         ) {
             RaftWebViewConfig(
                 url = url,
@@ -194,7 +198,8 @@ internal fun RaftSandboxWebView(
                 hostEventsEnabled = hostEventsEnabled,
                 mainFrameOrigin = mainFrameOrigin,
                 frameHosts = frameHosts,
-                keepAliveKey = keepAliveKey
+                keepAliveKey = keepAliveKey,
+                backgroundArgb = backgroundArgb
             )
         }
     RaftSandboxWebViewHost(config = config, events = events, controller = controller, modifier = modifier)
