@@ -169,6 +169,16 @@ class SettingsFeedbackProxySubmitterTest {
     }
 
     @Test
+    fun aRefusalCarriesTheResponsesTraceIdToTheForm() = runTest {
+        val traceId = "4bf92f3577b34da6a3ce929d0e0e4736"
+        val answer = FeedbackResult.Failed(FeedbackFailure(FeedbackErrorKind.Unavailable, "CONFIRMATION_VERSION_MISMATCH", 409, traceId = traceId))
+        val submitter = submitter(FakeRepository(mutableListOf(answer)), mutableListOf())
+        val outcome = assertIs<SettingsFeedbackProxyOutcome.Failed>(submitter.submit(submitter.newAttempt("x", emptyList(), card = card)))
+        assertEquals(SETTINGS_FEEDBACK_CARD_CHANGED, outcome.code)
+        assertEquals(traceId, outcome.traceId)
+    }
+
+    @Test
     fun aCardsSendNeverHandsOverToTheAnonymousNativeForm() = runTest {
         // The native Hands form cannot complete the card: the server is unavailable, retry later.
         listOf(

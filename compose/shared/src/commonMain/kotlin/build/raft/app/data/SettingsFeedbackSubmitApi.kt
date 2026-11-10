@@ -144,7 +144,9 @@ class NetworkSettingsFeedbackSubmitRepository(
                 "diagnostics=${request.diagnostics != null} card=${request.card != null}"
         )
         if (!response.isSuccessful) {
-            val failure = feedbackFailureOf(response.code, response.errorBodyText ?: response.bodyText)
+            val failure =
+                feedbackFailureOf(response.code, response.errorBodyText ?: response.bodyText)
+                    .let { it.copy(traceId = response.traceId ?: it.traceId) }
             return FeedbackResult.Failed(
                 if (response.code == 429) failure.copy(retryAfterSeconds = response.retryAfterHeaderSeconds()) else failure
             )
@@ -177,11 +179,23 @@ class NetworkSettingsFeedbackSubmitRepository(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
-                logger("settings_feedback_card_draft_exception type=${error::class.simpleName}")
+                logger("settings_feedback_card_draft_unreadable reason=transport type=${error::class.simpleName}")
                 return null
             }
         val draft = if (response.isSuccessful) parseProductFeedbackCardDraft(response.bodyText, id, server) else null
-        logger("settings_feedback_card_draft code=${response.code} readable=${draft != null}")
+        val reason =
+            when {
+                draft != null -> null
+                response.code == 0 -> "transport"
+                response.code == 404 -> "card_unavailable"
+                !response.isSuccessful -> "http_${response.code}"
+                else -> "contract_mismatch"
+            }
+        // The page then opens the ticket list (web's ordinary page); the reason code says why.
+        logger(
+            if (reason == null) "settings_feedback_card_draft_ready code=${response.code}"
+            else "settings_feedback_card_draft_unreadable reason=$reason code=${response.code} traceId=${response.traceId.orEmpty()}"
+        )
         return draft
     }
 }
@@ -306,6 +320,8 @@ sealed interface SettingsFeedbackProxyOutcome {
         val retryable: Boolean,
         val retryAfterSeconds: Long? = null,
         val retry: SettingsFeedbackProxyAttempt? = null,
+        /** The refusing response's server trace id, shown under the error (AGENTS.md "Errors carry the trace ID"). */
+        val traceId: String? = null,
     ) : SettingsFeedbackProxyOutcome
 }
 
@@ -417,6 +433,7 @@ class SettingsFeedbackProxySubmitter(
                 retryable = retry != null,
                 retryAfterSeconds = failure.retryAfterSeconds,
                 retry = retry,
+                traceId = failure.traceId,
             )
         if (sent.card != null) {
             FeedbackCardRefusals[failure.code]?.let { code -> return failed(code, null) }

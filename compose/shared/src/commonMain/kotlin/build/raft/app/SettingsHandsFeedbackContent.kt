@@ -188,6 +188,8 @@ internal fun SharedHandsFeedbackContent(
     var pendingRetryRequest by remember { mutableStateOf<SettingsHandsFeedbackRetryRequest?>(null) }
     // The banner text of the last failed send: Retry shows while that failure is the one shown.
     var failedSubmitError by remember { mutableStateOf<String?>(null) }
+    // That failure's server trace id, shown under it while it is the one shown.
+    var failedSubmitTraceId by remember { mutableStateOf<String?>(null) }
     // A ticket the native form filed (no ticket page to open): said in the banner, with its reference.
     var filedSubmission by remember(accountId) { mutableStateOf<SettingsHandsFeedbackSubmission?>(null) }
     // Web NewFeedbackForm: Idea first and picked, then Bug.
@@ -727,8 +729,10 @@ internal fun SharedHandsFeedbackContent(
 
         fun appendFailure(
             failure: SettingsHandsFeedbackFailurePresentation,
-            nextProxyAttempt: SettingsFeedbackProxyAttempt? = proxyAttempt
+            nextProxyAttempt: SettingsFeedbackProxyAttempt? = proxyAttempt,
+            traceId: String? = null,
         ) {
+            failedSubmitTraceId = traceId
             val nextRetryRequest = submittedRequest.copy(proxyAttempt = nextProxyAttempt).takeIf { failure.retryable }
             pendingRetryRequest = nextRetryRequest
             messageFieldValue = TextFieldValue(submittedMessage, selection = TextRange(submittedMessage.length))
@@ -751,7 +755,7 @@ internal fun SharedHandsFeedbackContent(
                             }
                             is SettingsFeedbackProxyOutcome.Failed -> {
                                 nextProxyAttempt = outcome.retry
-                                DataResult.Error(ScreenError(outcome.code, retryable = outcome.retryable))
+                                DataResult.Error(ScreenError(outcome.code, retryable = outcome.retryable, traceId = outcome.traceId))
                             }
                             SettingsFeedbackProxyOutcome.UseNativeForm -> {
                                 settingsCapabilities.log("settings_hands_feedback_submit_native_fallback")
@@ -823,7 +827,7 @@ internal fun SharedHandsFeedbackContent(
                         if (alreadySent != null) {
                             alreadySent()
                         } else {
-                            appendFailure(copy.submissionFailure(result.error.code, result.error.retryable), nextProxyAttempt)
+                            appendFailure(copy.submissionFailure(result.error.code, result.error.retryable), nextProxyAttempt, result.error.traceId)
                         }
                     }
                     is DataResult.NoPermission -> {
@@ -946,7 +950,8 @@ internal fun SharedHandsFeedbackContent(
                     // type still picked.
                     retryable =
                         !busy && error == failedSubmitError &&
-                            pendingRetryRequest?.type == feedbackType
+                            pendingRetryRequest?.type == feedbackType,
+                    traceId = failedSubmitTraceId.takeIf { error == failedSubmitError },
                 )
             else -> filedSubmission?.toSettingsHandsFeedbackFiledNotice(copy)
         }
@@ -1238,7 +1243,7 @@ internal fun PlatformFile.toSettingsHandsFeedbackAttachmentPreviewPayload(
 /** What the banner over the composer says: what went wrong, or that the native form filed it. */
 internal sealed interface SettingsHandsFeedbackNotice {
     /** A send or an attachment that failed; [retryable] shows Retry (it resends the same feedback). */
-    data class Problem(val message: String, val retryable: Boolean) : SettingsHandsFeedbackNotice
+    data class Problem(val message: String, val retryable: Boolean, val traceId: String? = null) : SettingsHandsFeedbackNotice
 
     /** Filed through the native form, which has no ticket page; [shareText] is its reference to copy. */
     data class Filed(val message: String, val shareText: String?) : SettingsHandsFeedbackNotice
@@ -1351,24 +1356,27 @@ private fun SettingsHandsFeedbackNoticeBanner(
 ) {
     when (notice) {
         is SettingsHandsFeedbackNotice.Problem ->
-            RaftBanner(
-                description = notice.message,
-                status = RaftBannerStatus.Warning,
-                size = RaftBannerSize.Sm,
-                modifier = Modifier.testTag(SettingsHandsFeedbackNoticeTag),
-                action =
-                    if (notice.retryable) {
-                        {
-                            RaftButton(
-                                text = copy.retry,
-                                onClick = onRetry,
-                                size = RaftButtonSize.Md,
-                            )
-                        }
-                    } else {
-                        null
-                    },
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                RaftBanner(
+                    description = notice.message,
+                    status = RaftBannerStatus.Warning,
+                    size = RaftBannerSize.Sm,
+                    modifier = Modifier.testTag(SettingsHandsFeedbackNoticeTag),
+                    action =
+                        if (notice.retryable) {
+                            {
+                                RaftButton(
+                                    text = copy.retry,
+                                    onClick = onRetry,
+                                    size = RaftButtonSize.Md,
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                )
+                RaftTraceIdNote(notice.traceId)
+            }
         is SettingsHandsFeedbackNotice.Filed -> {
             val shareText = notice.shareText
             RaftBanner(

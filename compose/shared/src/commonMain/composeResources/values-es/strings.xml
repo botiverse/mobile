@@ -4160,6 +4160,7 @@
     <string name="settings_feedback_tickets_error_invalid">Revisa los detalles del comentario e inténtalo de nuevo.</string>
     <string name="settings_feedback_tickets_error_not_found">Este ticket de comentarios ya no está disponible.</string>
     <string name="settings_feedback_card_not_waiting">Estos comentarios ya se enviaron. Puedes encontrarlos en Configuración.</string>
+    <string name="settings_feedback_card_changed">Esta tarjeta cambió después de que la abriste. Vuelve atrás y ábrela de nuevo.</string>
     <string name="settings_feedback_card_unavailable">Las tarjetas de comentarios ya no están disponibles aquí.</string>
     <string name="settings_feedback_card_not_allowed">No puedes enviar esta tarjeta.</string>
     <string name="settings_feedback_tickets_error_rate_limited">Demasiadas solicitudes. Inténtalo más tarde.</string>

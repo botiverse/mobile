@@ -4237,6 +4237,7 @@
     <string name="settings_feedback_tickets_error_invalid">Проверьте отзыв и попробуйте ещё раз.</string>
     <string name="settings_feedback_tickets_error_not_found">Этот отзыв больше недоступен.</string>
     <string name="settings_feedback_card_not_waiting">Этот отзыв уже отправлен. Его можно найти в настройках.</string>
+    <string name="settings_feedback_card_changed">Карточка изменилась после того, как вы её открыли. Вернитесь назад и откройте её снова.</string>
     <string name="settings_feedback_card_unavailable">Карточки отзывов здесь больше недоступны.</string>
     <string name="settings_feedback_card_not_allowed">Вы не можете отправить эту карточку.</string>
     <string name="settings_feedback_tickets_error_rate_limited">Слишком много запросов. Попробуйте позже.</string>
