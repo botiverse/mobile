@@ -482,8 +482,13 @@ private suspend fun RaftNetworkClient.settingsAgents(
 private suspend fun RaftNetworkClient.settingsMachines(priority: DataRequestPriority, serverId: ServerId): HomeNetworkResponse =
     request(priority, "servers/${serverId.value}/machines", serverIdOverride = serverId)
 
-private suspend fun RaftNetworkClient.updateAgent(priority: DataRequestPriority, agentId: MemberId, bodyText: String): HomeNetworkResponse =
-    request(priority, "agents/${agentId.value}", method = "PATCH", bodyText = bodyText)
+private suspend fun RaftNetworkClient.updateAgent(
+    priority: DataRequestPriority,
+    agentId: MemberId,
+    bodyText: String,
+    query: List<Pair<String, String>> = emptyList()
+): HomeNetworkResponse =
+    request(priority, "agents/${agentId.value}", method = "PATCH", bodyText = bodyText, query = query)
 
 private suspend fun RaftNetworkClient.memberProfile(
     priority: DataRequestPriority,
@@ -693,7 +698,9 @@ class RealMemberRepository(
                     request.agentId,
                     buildSharedAgentProfileUpdateBody(
                         request.copy(displayName = displayName, description = description)
-                    )
+                    ),
+                    // A runtime form v2 edit advertises the client capabilities like the form it came from.
+                    query = if (request.runtimeFormV2 != null) runtimeFormV2ClientCapabilityQuery() else emptyList()
                 )
             },
             source = "agent_profile_update",
