@@ -196,12 +196,14 @@ From accepted changesets only, write per shipped platform:
 ```text
 change-logs/X.Y.Z/android/{zh-CN,en,ja}.md
 change-logs/X.Y.Z/ios/{zh-CN,en,ja}.md
+change-logs/X.Y.Z/play/{zh-CN,en,ja}.md
 ```
 
-- Sections in this order, empty ones omitted:
-  `✨ **新功能** / ✨ **New** / ✨ **新機能**`,
-  `🔧 **改进** / 🔧 **Improved** / 🔧 **改善**`,
-  `🐛 **修复** / 🐛 **Fixed** / 🐛 **修正**`.
+- Sections in this order, empty ones omitted, as plain headings (no bold,
+  as shipped in 1.22.0):
+  `✨ 新功能 / ✨ New / ✨ 新機能`,
+  `🔧 改进 / 🔧 Improved / 🔧 改善`,
+  `🐛 修复 / 🐛 Fixed / 🐛 修正`.
 - Only behaviour shipped on that platform; bullets don't repeat the platform
   name; fold small related fixes into one line; soften partial capabilities.
 - Same claims and section counts in all three locales.
@@ -209,7 +211,10 @@ change-logs/X.Y.Z/ios/{zh-CN,en,ja}.md
   `packages/web/src/i18n/messages/` and
   `compose/shared/src/commonMain/composeResources/values-<locale>/strings.xml`;
   Japanese also `docs/i18n-ja-glossary.md`. Record the catalog exacts checked.
-- Google Play: ≤500 characters per language.
+- Hands Android notes are the full notes (`change-logs/X.Y.Z/android/`).
+  Google Play gets a separate ≤500-character version per language in
+  `change-logs/X.Y.Z/play/{zh-CN,en,ja}.md`, used as the `--note` at
+  `play-promote` (owner decision 2026-11-10).
 - No PR numbers, implementation detail, CI history or unshipped work.
 
 The workflows fail closed on an incomplete reviewed set. artin approves the
