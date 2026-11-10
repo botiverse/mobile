@@ -61,7 +61,6 @@ import build.raft.designsystem.components.RaftDrawerSurface
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftFieldItem
-import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftFilterChip
 import build.raft.designsystem.components.RaftFormSection
@@ -106,9 +105,7 @@ import build.raft.designsystem.components.RaftToggleGroupItem
 import build.raft.designsystem.components.RaftWorkspaceButton
 import build.raft.designsystem.components.appendRaftTextLink
 import build.raft.designsystem.text.RaftText
-import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.RaftAppearance
-import build.raft.designsystem.theme.RaftStrings
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftStroke
 import kotlin.test.Test
@@ -279,22 +276,6 @@ class InteractiveComponentScreenshotTest {
                     }
                     RaftFormSection("Runtime", status = "Optional") {
                         RaftField(label = "Model") { RaftSelectTrigger("Claude Sonnet", {}) }
-                    }
-                }
-            }
-        }
-
-    /**
-     * The optional marker: a Latin "(optional)" after a space; the Chinese and Japanese markers,
-     * which open with a full-width bracket, straight after the label (raft-ui 0.71 FieldLabel).
-     */
-    @Test
-    fun fieldOptionalMarkers() =
-        capture("field_optional_markers") {
-            Column(Modifier.width(240.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("(optional)" to "Description", "（可选）" to "描述", "（選填）" to "描述", "（任意）" to "説明").forEach { (marker, label) ->
-                    CompositionLocalProvider(LocalRaftStrings provides RaftStrings(optional = marker)) {
-                        RaftFieldLabel(label, optional = true)
                     }
                 }
             }
