@@ -2,7 +2,7 @@
 
 package build.raft.app
 
-import androidx.compose.runtime.staticCompositionLocalOf
+import build.raft.designsystem.focus.LocalRaftAutofocusTargetField
 import build.raft.designsystem.focus.RaftAutofocusGuard
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
@@ -1748,9 +1748,10 @@ internal class RaftTextFieldNativeEditingStateReader {
  */
 /**
  * True around a conversation composer's editor: the field that takes focus when its conversation
- * opens (ComposerAutofocusPolicy.kt), so its own focus never counts as another field's.
+ * opens (ComposerAutofocusPolicy.kt), so its own focus never counts as another field's. The
+ * design-system's own local, so a `RaftTextField` / `RaftTextarea` inside opts out as well.
  */
-internal val LocalRaftEditorIsConversationComposer = staticCompositionLocalOf { false }
+internal val LocalRaftEditorIsConversationComposer = LocalRaftAutofocusTargetField
 
 internal val LocalRaftDialogKeyboardHeightChange =
     compositionLocalOf<(KeyboardParams) -> Unit> { {} }

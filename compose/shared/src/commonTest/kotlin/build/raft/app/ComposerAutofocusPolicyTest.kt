@@ -61,6 +61,23 @@ class ComposerAutofocusPolicyTest {
         )
     }
 
+    @Test
+    fun onlyASideThreadClosingAsksForARestore() {
+        val focus = ComposerFocusOnOpen(enabled = true, shown = true, yieldsToSideThread = false)
+        // A keyboard reconnected, the page shown again: no restore, and no new open either.
+        focus.update(enabled = false, shown = true, yieldsToSideThread = false)
+        focus.update(enabled = true, shown = false, yieldsToSideThread = false)
+        focus.update(enabled = true, shown = true, yieldsToSideThread = false)
+        assertEquals(0, focus.restoreGeneration)
+
+        focus.update(enabled = false, shown = true, yieldsToSideThread = true)
+        assertEquals(0, focus.restoreGeneration, "the thread opening asks for nothing")
+        focus.update(enabled = true, shown = true, yieldsToSideThread = false)
+        assertEquals(1, focus.restoreGeneration, "the thread closing asks for one restore")
+        focus.update(enabled = true, shown = true, yieldsToSideThread = false)
+        assertEquals(1, focus.restoreGeneration)
+    }
+
     private val channel =
         RaftAdaptiveDetailSelection(
             identity = RaftAdaptiveDetailIdentity(serverId = "srv-1", threadId = "ch-1", surfaceKind = "channel", channelId = "ch-1"),

@@ -556,6 +556,10 @@ internal data class ThreadComposerSurface(
 internal fun ThreadComposerSurface.withTaskV2(taskV2Enabled: Boolean): ThreadComposerSurface =
     if (taskV2Enabled) copy(showTaskButton = false, sendsAsTask = false) else this
 
+/** The conversation a composer belongs to, for its open focus request: null until its send target is known. */
+internal fun ThreadComposerSurface.composerAutofocusConversationKey(): String? =
+    threadComposerDraftKey()?.let { "$kind|$it" }
+
 internal fun ThreadComposerSurface.threadComposerDraftKey(): String? {
     val sendTarget = sendChannelId?.takeIf { it.isNotBlank() } ?: return null
     return listOf(
@@ -2291,7 +2295,7 @@ internal fun ThreadComposerContent(
      */
     frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
     /** Take the focus when this conversation opens (ComposerAutofocusPolicy.kt); focus only, no soft keyboard. */
-    autofocusOnOpen: Boolean = false,
+    autofocusOnOpen: ComposerFocusOnOpen? = null,
 ) {
     val editorOwner = remember(state.instanceId) {
         ThreadComposerControlledEditorOwner(state.seedText, state.seedAsTask)
@@ -2366,7 +2370,7 @@ internal fun ThreadComposerContentLeaf(
     initialMentionActionDetailsVisible: Boolean = false,
     externalNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
     frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
-    autofocusOnOpen: Boolean = false,
+    autofocusOnOpen: ComposerFocusOnOpen? = null,
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
@@ -2466,9 +2470,11 @@ internal fun ThreadComposerContentLeaf(
     }
     // Desktop / hardware keyboard: opening the conversation puts the focus here (web MessageInput
     // autoFocus). Focus only: no softwareKeyboardController.show(), unlike the explicit requests above.
+    // Once per conversation (its surface and thread / channel), never per composer instance: the
+    // instance id swaps when the conversation finishes loading, and that is not an open.
     ComposerAutofocusOnOpenEffect(
-        key = state.instanceId,
-        enabled = autofocusOnOpen,
+        conversation = surface.composerAutofocusConversationKey(),
+        focus = autofocusOnOpen,
         focusRequester = composerFocusRequester,
     )
     val selectionStart = minOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
@@ -3243,6 +3249,8 @@ internal fun ThreadComposerContentLeaf(
                             // React mobile uses a one-line textarea; keep the toolbar as the touch target.
                             focusRequester = composerFocusRequester,
                             modifier = Modifier
+                                // Where the focus is when a side thread closes (ComposerAutofocusPolicy.kt).
+                                .composerReportsFocus(autofocusOnOpen)
                                 .fillMaxWidth()
                                 .padding(horizontal = ThreadComposerInputPaddingHorizontal)
                                 .heightIn(

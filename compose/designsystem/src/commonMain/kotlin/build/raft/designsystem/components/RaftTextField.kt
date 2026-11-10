@@ -1,5 +1,6 @@
 package build.raft.designsystem.components
 
+import build.raft.designsystem.focus.raftReportsFocusToAutofocusGuard
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -185,7 +186,9 @@ internal fun raftFieldBoxLook(enabled: Boolean, invalid: Boolean, colors: RaftUi
  * - [placeholder]: an example value ("Wug") in `foreground-hint`, never the label. Put
  *   the field in a [RaftField] for its label and help text.
  * - Focus: the focus ring (2dp gap, 2dp `line-strong`) outside the border, on any focus,
- *   a tap included (`focus:shadow-focus`, not `focus-visible`). The border stays.
+ *   a tap included (`focus:shadow-focus`, not `focus-visible`). The border stays. Its focus
+ *   is reported to [build.raft.designsystem.focus.RaftAutofocusGuard], so an automatic focus
+ *   request (the composer when a conversation opens) never takes it.
  * - [invalid]: a `danger-strong` border (`data-invalid`), no ring of its own. Inside a
  *   [RaftField] with an error it defaults to true.
  * - [enabled] = false: `fill-muted`, `line-hairline` border, `foreground-disabled` text
@@ -334,7 +337,12 @@ fun RaftTextField(
     BasicTextField(
         state = state,
         // Focused: cursor and selection drags (and single-line scrolling) keep the drag.
-        modifier = modifier.raftKeepsBackSwipe(focused).raftFieldSemantics(field.label, invalid, enabled, field.error),
+        // Its focus keeps an automatic focus request (the composer on open) away (RaftAutofocusGuard).
+        modifier =
+            modifier
+                .raftKeepsBackSwipe(focused)
+                .raftFieldSemantics(field.label, invalid, enabled, field.error)
+                .raftReportsFocusToAutofocusGuard(),
         enabled = enabled,
         readOnly = readOnly,
         inputTransformation = rememberRaftTextInputTraceTransformation("RaftTextField"),
@@ -466,7 +474,8 @@ fun RaftTextarea(
                     .heightIn(min = minHeight, max = maxHeight)
                     // Focused: cursor and selection drags keep the drag from the host back swipe.
                     .raftKeepsBackSwipe(focused)
-                    .raftFieldSemantics(field.label, invalid, enabled, field.error),
+                    .raftFieldSemantics(field.label, invalid, enabled, field.error)
+                    .raftReportsFocusToAutofocusGuard(),
             enabled = enabled,
             readOnly = readOnly,
             inputTransformation = rememberRaftTextInputTraceTransformation("RaftTextarea"),
