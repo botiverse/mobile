@@ -9481,7 +9481,7 @@ private fun SharedThreadRouteContentContent(
     val latestActionCardDirectMessageIds by rememberUpdatedState(actionCardDirectMessageIds)
     // Keyed on flags only: each card selects its own slice of the store's state.
     val actionCardSpecHost =
-        remember(featureFlagSnapshotRevision, feedbackCardEntryEnabled, feedbackTicketPageAvailable, actionCardSpecStore, currentSession?.user?.id) {
+        remember(featureFlagSnapshotRevision, feedbackCardEntryEnabled, actionCardSpecStore, currentSession?.user?.id) {
             ThreadActionCardSpecHost(
                 specEnabled = { serverId ->
                     serverId != null && sharedStores.serverFeatureFlags.isEnabled(ServerId(serverId), ACTION_CARD_SPEC_FEATURE_FLAG_KEY)
