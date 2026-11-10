@@ -151,20 +151,6 @@ class ThreadForwardConversationTargetsTest {
         assertNull(outcome.failureCode)
         assertEquals(listOf(sourceThread), repository.batchRequests.single().destinations.map { it.channelId })
         assertEquals(ConversationKind.Thread, repository.batchRequests.single().destinations.single().channelKind)
-
-        val single =
-            executeThreadForward(
-                repository = repository,
-                liveSourceServerId = serverId,
-                sourceChannelId = sourceThread,
-                receipt = current.receiptAt(2),
-                currentDirectoryGeneration = 2,
-                messageIds = listOf("message-1"),
-                mode = ForwardMessageSendMode.Merged,
-                note = ""
-            )
-        assertNull(single.failureCode)
-        assertEquals(listOf(sourceThread), repository.requests.map { it.targetChannelId })
     }
 
     @Test
@@ -193,15 +179,16 @@ class ThreadForwardConversationTargetsTest {
             assertEquals("forward_source_target_forbidden", outcome.failureCode)
         }
         val tamperedOutcome =
-            executeThreadForward(
+            executeThreadForwardBatch(
                 repository = repository,
                 liveSourceServerId = serverId,
                 sourceChannelId = sourceThread,
-                receipt = tampered,
+                receipts = listOf(tampered),
                 currentDirectoryGeneration = 2,
                 messageIds = listOf("message-1"),
                 mode = ForwardMessageSendMode.Merged,
-                note = ""
+                note = "",
+                requestId = "11111111-2222-4333-8444-555555555555"
             )
         assertEquals("forward_destination_identity_mismatch", tamperedOutcome.failureCode)
         assertEquals(emptyList(), repository.batchRequests)

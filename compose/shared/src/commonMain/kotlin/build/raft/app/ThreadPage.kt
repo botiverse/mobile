@@ -153,7 +153,6 @@ import build.raft.app.data.AuthLossSignal
 import build.raft.app.data.ForwardMessageBatchExecuteRequest
 import build.raft.app.data.ForwardMessageBatchResult
 import build.raft.app.data.ForwardMessageDestination
-import build.raft.app.data.ForwardMessageExecuteRequest
 import build.raft.app.data.ForwardMessageSendMode
 import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.ForwardMessageTargetDirectoryCursor
@@ -37950,10 +37949,6 @@ private fun ThreadForwardSelectionMode.toForwardMessageSendMode(): ForwardMessag
         ThreadForwardSelectionMode.Individual -> ForwardMessageSendMode.Individual
     }
 
-internal data class ThreadForwardOutcome(
-    val failureCode: String? = null
-)
-
 internal data class ThreadForwardSuccessBanner(
     val target: ForwardMessageTarget,
     val destination: ForwardMessageDestination,
@@ -38152,65 +38147,6 @@ internal fun List<ForwardMessageTarget>.threadForwardPickerTargets(
             target.serverId == sourceServerId &&
             target.channelId == sourceChannelId
     }
-
-internal suspend fun executeThreadForward(
-    repository: ForwardMessageTargetRepository,
-    liveSourceServerId: ServerId?,
-    sourceChannelId: ChannelId,
-    receipt: ThreadForwardDestinationReceipt,
-    currentDirectoryGeneration: Int,
-    messageIds: List<String>,
-    mode: ForwardMessageSendMode,
-    note: String
-): ThreadForwardOutcome {
-    // task #803: the send consumes ONLY the tap-time frozen receipt. The gate
-    // compares the frozen source against the LIVE server authority read at
-    // confirm time (never the frozen picker-open value — LiBai's blocker 1);
-    // resolve and the wire request then run against the FROZEN source. Any
-    // drift (server switch, directory refresh, identity tamper) fails typed
-    // with ZERO forward API traffic — never forward elsewhere.
-    receipt.preResolveFailureCode(
-        liveSourceServerId = liveSourceServerId,
-        currentDirectoryGeneration = currentDirectoryGeneration
-    )?.let { return ThreadForwardOutcome(failureCode = it) }
-    val frozenSourceServerId = receipt.sourceServerId
-    val target = receipt.target
-    val resolved = repository.resolveTargetChannel(frozenSourceServerId, target)
-    val destination =
-        when (resolved) {
-            is DataResult.Content -> resolved.data
-            else ->
-                return ThreadForwardOutcome(
-                    failureCode = resolved.threadForwardFailureCode("forward_target_unavailable")
-                )
-        }
-    receipt.postResolveFailureCode(destination)?.let {
-        return ThreadForwardOutcome(failureCode = it)
-    }
-    if (
-        destination.serverId == frozenSourceServerId &&
-        destination.channelId == sourceChannelId &&
-        !receipt.allowsForwardIntoSource()
-    ) {
-        return ThreadForwardOutcome(failureCode = "forward_source_target_forbidden")
-    }
-    val forwarded =
-        repository.forwardMessages(
-            ForwardMessageExecuteRequest(
-                sourceServerId = frozenSourceServerId,
-                sourceChannelId = sourceChannelId,
-                destination = destination,
-                messageIds = messageIds,
-                mode = mode,
-                note = note
-            )
-        )
-    return if (forwarded is DataResult.Content) {
-        ThreadForwardOutcome()
-    } else {
-        ThreadForwardOutcome(failureCode = forwarded.threadForwardFailureCode("forward_failed"))
-    }
-}
 
 private fun DataResult<*>.threadForwardFailureCode(fallback: String): String =
     when (this) {
