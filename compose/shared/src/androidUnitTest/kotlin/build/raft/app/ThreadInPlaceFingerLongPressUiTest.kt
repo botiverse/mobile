@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.selection.LocalTextClassifierCoroutineContext
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -57,7 +59,14 @@ class ThreadInPlaceFingerLongPressUiTest {
         val host = ThreadInPlaceTextSelectionHost(enabled = true, copyText = {})
         host.selectionMenu.publish { _ -> Box(Modifier.size(40.dp).testTag(SELECTION_MENU)) }
         setContent {
-            CompositionLocalProvider(LocalThreadInPlaceTextSelectionHost provides host) {
+            CompositionLocalProvider(
+                LocalThreadInPlaceTextSelectionHost provides host,
+                // Before a touch selection's toolbar request, Compose runs smart-selection text
+                // classification on this context (Dispatchers.IO by default): a real thread the
+                // virtual clock and waitForIdle do not wait for, so on a busy test JVM the menu
+                // check ran before the request. In place on the test's own dispatcher instead.
+                LocalTextClassifierCoroutineContext provides EmptyCoroutineContext,
+            ) {
                 val inPlace = rememberThreadInPlaceSelectionController(messageId = "m1", enabled = true)
                 controller = inPlace
                 Box(
@@ -104,10 +113,6 @@ class ThreadInPlaceFingerLongPressUiTest {
         runRobolectricComposeUiTest {
             showRow()
             onNodeWithTag(BODY_TAG).performTouchInput { longClick(Offset(width * 0.3f, centerY)) }
-            waitForIdle()
-            // The platform asks for the text toolbar a moment after the press (virtual clock; as
-            // RaftFloatingToolbarAnchorGuardUiTest): without this the menu check raced it.
-            mainClock.advanceTimeBy(500)
             waitForIdle()
             assertTrue(controller!!.hasSelection, "a finger long press selects the message's text in place")
             assertTrue(
