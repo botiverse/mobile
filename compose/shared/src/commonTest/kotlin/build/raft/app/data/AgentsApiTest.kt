@@ -604,6 +604,21 @@ class AgentsApiTest {
     }
 
     @Test
+    fun aRefusedStartKeepsTheServersCode() = runPortableCoroutineTest {
+        // slock routes/agents.ts `POST /:id/start`: an assistant with no Computer, or one whose
+        // Computer's key was revoked, is refused with 409 and a machine `code`.
+        listOf("machine_unassigned", "computer_access_revoked").forEach { code ->
+            val client = RaftAgentsApiClient(
+                RecordingAgentsApi(startCode = 409, startErrorBody = """{"error":"Cannot start","code":"$code"}""")
+            )
+            val error = assertIs<DataResult.Error>(client.startAgent(MemberId("agent-1"))).error
+            assertEquals("http_409", error.code)
+            assertEquals(code, error.serverCode)
+            assertEquals("Cannot start", error.serverMessage)
+        }
+    }
+
+    @Test
     fun deleteAgentArchiveWorkspaceSurfacesServerRefusalCode() = runPortableCoroutineTest {
         val client = RaftAgentsApiClient(
             RecordingAgentsApi(
@@ -644,7 +659,9 @@ class AgentsApiTest {
         private val archiveBody: String = """{"archive":{"agentId":"agent-1","archivedAt":"2026-10-18T12:00:00.000Z","archivedByUserId":"user-9","machineId":"machine-1","machineName":"Mini M4","workspaceState":"on_computer","pendingOp":null,"waitingForComputer":false,"lastErrorCode":null,"lastErrorAt":null}}""",
         private val archiveDeleteBody: String = """{"archive":{"agentId":"agent-1","archivedAt":"2026-10-18T12:00:00.000Z","archivedByUserId":"user-9","machineId":"machine-1","machineName":"Mini M4","workspaceState":"on_computer","pendingOp":"delete","waitingForComputer":true,"lastErrorCode":null,"lastErrorAt":null}}""",
         private val archiveDeleteCode: Int = 200,
-        private val archiveDeleteErrorBody: String? = null
+        private val archiveDeleteErrorBody: String? = null,
+        private val startCode: Int = 200,
+        private val startErrorBody: String? = null
     ) : RaftAgentsApi {
         val calls = mutableListOf<String>()
 
@@ -674,6 +691,7 @@ class AgentsApiTest {
 
         override suspend fun startAgent(agentId: MemberId): HomeNetworkResponse {
             calls += "POST agents/${agentId.value}/start"
+            if (startErrorBody != null) return HomeNetworkResponse(code = startCode, bodyText = null, errorBodyText = startErrorBody)
             return ok(commandBody)
         }
 

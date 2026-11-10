@@ -52,6 +52,9 @@ class MyAssistantApiTest {
                         agentId = "6f1c2a4e-0d7b-4c55-9a51-1f2e3d4c5b6a",
                         dmChannelId = "0b9e8d7c-6f5a-4b3c-8d2e-1a0f9e8d7c6b",
                         readsDms = true,
+                        sendAsOwner = true,
+                        // `ownerNotes: null` is reported, as none.
+                        ownerNotes = "",
                     ),
             ),
             answer,

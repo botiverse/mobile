@@ -156,15 +156,27 @@ private data class WireAgent(
      * Personal assistants only (botiverse/slock #10654): when a server owner or admin paused it, as
      * an ISO-8601 string; `null` while not paused, absent for other agents. `GET /agents` and
      * `GET /agents/:id` send it to everyone who sees the agent (`services/assistantLifecycleService.ts`
-     * `projectAssistantPause`); who paused it (`assistantPausedBy`) is not read here.
+     * `projectAssistantPause`).
      */
     val assistantPausedAt: String? = null,
+    /**
+     * Who paused it, `{ id, name }`: sent with [assistantPausedAt] to the viewers allowed to know
+     * (web `AssistantPaused` `PausedBy`); absent or null otherwise.
+     */
+    val assistantPausedBy: WireAssistantPausedBy? = null,
     /**
      * `GET /agents` only (botiverse/slock #13575 `agentBlockedReason`): why the server runs the agent
      * nowhere: `computer_access_revoked` (its Computer's key was revoked) or
      * `computer_version_unsupported`; null otherwise. Additive: an unknown value is kept raw.
      */
     val blockedReason: String? = null,
+)
+
+/** slock `projectAssistantPause` `assistantPausedBy`: `{ id, name }`. */
+@Serializable
+private data class WireAssistantPausedBy(
+    val id: String? = null,
+    val name: String? = null,
 )
 
 /** slock `routes/agents.ts` `managedByApp`: `{ clientId, name, logoUrl, description, botStatusText }`. */
@@ -920,6 +932,8 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
         assistantPausedAt = assistantPausedAt?.takeIf { it.isNotBlank() },
+        assistantPausedByName =
+            assistantPausedBy?.name?.trim()?.takeIf { it.isNotEmpty() && !assistantPausedAt.isNullOrBlank() },
         managedByAppInstallId = managedByAppInstallId?.takeIf { it.isNotBlank() },
         managedByAppName = managedByApp?.name?.takeIf { it.isNotBlank() },
         inMemberLists = inMemberLists,

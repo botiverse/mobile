@@ -3,7 +3,15 @@ package build.raft.app.data
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -22,14 +30,23 @@ class SharedMyAssistantStoreTest {
         runCurrent()
     }
 
-    /** Answers in order; the last one repeats. */
-    private class ScriptedApi(vararg results: MyAssistantFetchResult) : RaftMyAssistantApi {
+    /** Answers in order; the last one repeats. A save answers [saveResult] and records the notes. */
+    private class ScriptedApi(
+        vararg results: MyAssistantFetchResult,
+        val saveResult: MyAssistantOwnerNotesSaveResult = MyAssistantOwnerNotesSaveResult.Failed(500),
+    ) : RaftMyAssistantApi {
         private val script = results.toList()
         val asked = mutableListOf<String>()
+        val saved = mutableListOf<String>()
 
         override suspend fun fetch(serverId: ServerId): MyAssistantFetchResult {
             asked += serverId.value
             return script[minOf(asked.size - 1, script.lastIndex)]
+        }
+
+        override suspend fun updateOwnerNotes(serverId: ServerId, notes: String): MyAssistantOwnerNotesSaveResult {
+            saved += notes
+            return saveResult
         }
     }
 
@@ -128,4 +145,141 @@ class SharedMyAssistantStoreTest {
         hosts.unregister("thread")
         assertEquals(null, hosts.order.value.activeAssistantOtterHost())
     }
+
+    // ---- Extra instructions (web assistantClient.ts `saveAssistantOwnerNotes`, RFC 077 #10762) ----
+
+    private val withNotes = MyAssistantAnswer(true, MyAssistantRecord("a1", "Ada", "a1", "dm1", readsDms = true, sendAsOwner = false, ownerNotes = "Be brief."))
+
+    @Test
+    fun ownerNotesAreTextNoneOrNotReported() {
+        fun notesOf(assistant: String) =
+            parseSharedMyAssistantResponse("""{"enabled":true,"assistant":{"id":"a1","name":"Ada","agentId":"a1","dmChannelId":"dm1"$assistant}}""")
+                ?.assistant
+        // Web `ownerNotesOf`: the text as saved; null from the server is none ("").
+        assertEquals("Reply in English.", notesOf(""","ownerNotes":"Reply in English."""")?.ownerNotes)
+        assertEquals("", notesOf(""","ownerNotes":null""")?.ownerNotes)
+        // A server without the field: not reported, the editor stays hidden.
+        assertNull(notesOf("")?.ownerNotes)
+        assertEquals(true, notesOf(""","sendAsOwner":true""")?.sendAsOwner)
+        assertNull(notesOf("")?.sendAsOwner)
+    }
+
+    @Test
+    fun theEditorChecksTheLimitOnTheTrimmedText() {
+        val atLimit = "x".repeat(ASSISTANT_OWNER_NOTES_MAX_LENGTH)
+        assertFalse(assistantOwnerNotesTooLong("  $atLimit\n"), "surrounding whitespace does not count")
+        assertTrue(assistantOwnerNotesTooLong(atLimit + "x"))
+        // The counter shows from 90% of the limit on (3600 of 4000).
+        assertFalse(assistantOwnerNotesShowsCounter("x".repeat(3599)))
+        assertTrue(assistantOwnerNotesShowsCounter("x".repeat(3600)))
+        // Save needs a change once trimmed, within the limit.
+        assertFalse(assistantOwnerNotesCanSave("Be brief.  ", savedNotes = "Be brief."))
+        assertTrue(assistantOwnerNotesCanSave("Be briefer.", savedNotes = "Be brief."))
+        assertTrue(assistantOwnerNotesCanSave("   ", savedNotes = "Be brief."), "clearing them is a change")
+        assertFalse(assistantOwnerNotesCanSave(atLimit + "x", savedNotes = ""))
+    }
+
+    @Test
+    fun thePatchSendsTheTrimmedNotesOrNull() {
+        fun ownerNotesOf(body: String) = Json.parseToJsonElement(body).jsonObject.getValue("ownerNotes")
+        assertEquals(JsonPrimitive("Be brief."), ownerNotesOf(encodeAssistantOwnerNotesPatchBody("  Be brief.\n")))
+        assertEquals(JsonNull, ownerNotesOf(encodeAssistantOwnerNotesPatchBody("  \n ")))
+    }
+
+    @Test
+    fun aPatchAnswerIsSavedTooLongGoneOrFailed() {
+        val saved =
+            myAssistantOwnerNotesSaveResultOf(
+                200,
+                """{"enabled":true,"assistant":{"id":"a1","name":"Ada","agentId":"a1","dmChannelId":"dm1","readsDms":true,"sendAsOwner":false,"ownerNotes":"Be brief."}}""",
+            )
+        assertEquals(MyAssistantOwnerNotesSaveResult.Saved(withNotes), saved)
+        assertEquals(
+            MyAssistantOwnerNotesSaveResult.TooLong(),
+            myAssistantOwnerNotesSaveResultOf(400, """{"error":"invalid_owner_notes"}"""),
+        )
+        assertEquals(
+            MyAssistantOwnerNotesSaveResult.TooLong(),
+            myAssistantOwnerNotesSaveResultOf(400, """{"error":"Notes are too long","code":"invalid_owner_notes"}"""),
+        )
+        assertEquals(MyAssistantOwnerNotesSaveResult.Failed(400), myAssistantOwnerNotesSaveResultOf(400, """{"error":"bad_request"}"""))
+        assertEquals(MyAssistantOwnerNotesSaveResult.NotAvailable(403), myAssistantOwnerNotesSaveResultOf(403, """{"code":"assistant_not_enabled"}"""))
+        assertEquals(MyAssistantOwnerNotesSaveResult.NotAvailable(404), myAssistantOwnerNotesSaveResultOf(404, null))
+        assertEquals(MyAssistantOwnerNotesSaveResult.Failed(500), myAssistantOwnerNotesSaveResultOf(500, null))
+        // Every refusal keeps the response's trace ID (AGENTS.md "Errors carry the trace ID").
+        assertEquals(MyAssistantOwnerNotesSaveResult.Failed(500, TRACE_ID), myAssistantOwnerNotesSaveResultOf(500, null, TRACE_ID))
+        assertEquals(
+            MyAssistantOwnerNotesSaveResult.TooLong(TRACE_ID),
+            myAssistantOwnerNotesSaveResultOf(400, """{"code":"invalid_owner_notes"}""", TRACE_ID),
+        )
+        assertEquals(MyAssistantOwnerNotesSaveResult.NotAvailable(404, TRACE_ID), myAssistantOwnerNotesSaveResultOf(404, null, TRACE_ID))
+    }
+
+    @Test
+    fun aSaveTakesTheServersViewOfTheAssistant() =
+        runTest {
+            val reply = MyAssistantAnswer(true, withNotes.assistant?.copy(ownerNotes = "Reply in English."))
+            val api = ScriptedApi(MyAssistantFetchResult.Answer(withNotes), saveResult = MyAssistantOwnerNotesSaveResult.Saved(reply))
+            val store = SharedMyAssistantStore(api, scope = backgroundScope)
+            store.ensureLoaded(key)
+            settle()
+            assertEquals(MyAssistantOwnerNotesSaveOutcome.Saved, store.saveOwnerNotes(key, "  Reply in English.  "))
+            assertEquals(listOf("Reply in English."), api.saved, "the notes go trimmed")
+            assertEquals(reply, store.answerFor(key))
+        }
+
+    @Test
+    fun aSaveWithoutAReadableReplyKeepsTheTrimmedNotes() =
+        runTest {
+            val api = ScriptedApi(MyAssistantFetchResult.Answer(withNotes), saveResult = MyAssistantOwnerNotesSaveResult.Saved(null))
+            val store = SharedMyAssistantStore(api, scope = backgroundScope)
+            store.ensureLoaded(key)
+            settle()
+            assertEquals(MyAssistantOwnerNotesSaveOutcome.Saved, store.saveOwnerNotes(key, "   "))
+            assertEquals("", store.answerFor(key)?.assistant?.ownerNotes, "cleared")
+            assertEquals("Ada", store.answerFor(key)?.assistant?.name)
+        }
+
+    @Test
+    fun aRefusedSaveChangesNothing() =
+        runTest {
+            val tooLong = ScriptedApi(MyAssistantFetchResult.Answer(withNotes), saveResult = MyAssistantOwnerNotesSaveResult.TooLong(TRACE_ID))
+            val store = SharedMyAssistantStore(tooLong, scope = backgroundScope)
+            store.ensureLoaded(key)
+            settle()
+            val refused = assertIs<MyAssistantOwnerNotesSaveOutcome.TooLong>(store.saveOwnerNotes(key, "x".repeat(4001)))
+            assertEquals(TRACE_ID, refused.error.traceId)
+            assertEquals(withNotes, store.answerFor(key))
+
+            val failed = ScriptedApi(MyAssistantFetchResult.Answer(withNotes), saveResult = MyAssistantOwnerNotesSaveResult.Failed(500, TRACE_ID))
+            val other = SharedMyAssistantStore(failed, scope = backgroundScope)
+            other.ensureLoaded(key)
+            settle()
+            val failure = assertIs<MyAssistantOwnerNotesSaveOutcome.Failed>(other.saveOwnerNotes(key, "Be briefer."))
+            assertEquals(TRACE_ID, failure.error.traceId, "the editor shows the failed request's trace ID")
+            assertEquals("http_500", failure.error.code)
+            assertEquals(withNotes, other.answerFor(key))
+            assertEquals(1, failed.asked.size, "a transient failure reads nothing again")
+        }
+
+    @Test
+    fun aSaveTheServerNoLongerAllowsReadsTheAssistantAgain() =
+        runTest {
+            val api =
+                ScriptedApi(
+                    MyAssistantFetchResult.Answer(withNotes),
+                    MyAssistantFetchResult.NotAvailable,
+                    saveResult = MyAssistantOwnerNotesSaveResult.NotAvailable(403, TRACE_ID),
+                )
+            val store = SharedMyAssistantStore(api, scope = backgroundScope)
+            store.ensureLoaded(key)
+            settle()
+            val outcome = store.saveOwnerNotes(key, "Be briefer.")
+            settle()
+            assertEquals(TRACE_ID, assertIs<MyAssistantOwnerNotesSaveOutcome.Failed>(outcome).error.traceId)
+            assertEquals(2, api.asked.size)
+            assertEquals(MyAssistantAnswer.NotEnabled, store.answerFor(key))
+        }
 }
+
+private const val TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"

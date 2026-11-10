@@ -631,6 +631,9 @@ class MemberAgentParserTest {
         assertEquals("2026-10-30T09:12:44.512Z", byId.getValue("asst-paused").assistantPausedAt)
         assertNull(byId.getValue("asst-running").assistantPausedAt)
         assertNull(byId.getValue("agent-plain").assistantPausedAt)
+        // Who paused it, for the owner's notice ("Paused by Admin · …").
+        assertEquals("Admin", byId.getValue("asst-paused").assistantPausedByName)
+        assertNull(byId.getValue("asst-running").assistantPausedByName)
 
         // A member's view of GET /agents/:id: the pause without who paused it.
         val memberView =
@@ -638,6 +641,7 @@ class MemberAgentParserTest {
                 """{"id":"asst-paused","name":"ada-assistant","status":"active","assistantOwnerUserId":"user-owner","assistantPausedAt":"2026-10-30T09:12:44.512Z"}"""
             )
         assertEquals("2026-10-30T09:12:44.512Z", memberView?.assistantPausedAt)
+        assertNull(memberView?.assistantPausedByName)
         // No guessed spellings.
         val snake = parseSharedAgentProfile("""{"id":"a1","name":"x","assistant_paused_at":"2026-10-30T09:12:44.512Z","pausedAt":"2026-10-30T09:12:44.512Z"}""")
         assertNull(snake?.assistantPausedAt)

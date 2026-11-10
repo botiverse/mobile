@@ -7,6 +7,10 @@ import build.raft.app.data.isFor
 import build.raft.app.data.AgentBlockedState
 import build.raft.app.data.agentBlockedState
 import build.raft.app.data.ComputerAccessRevokedErrorCode
+import build.raft.app.assistant.AssistantOwnerPausedNotice
+import build.raft.app.assistant.AssistantOwnerScope
+import build.raft.app.assistant.AssistantOwnerSection
+import build.raft.app.assistant.LocalAssistantOwnerScope
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.compat.ui.raftColorFromArgbHex
@@ -4564,7 +4568,37 @@ internal fun MemberDetailPageContent(
                 )
             }
         }
-    CompositionLocalProvider(LocalMembersRuntimeAccountUsageAccess provides runtimeAccountUsageAccess) {
+    // The viewer's own personal assistant, for its owner's section of the agent profile.
+    val assistantRoute = routeState as? MemberDetailRouteState.Agent
+    val assistantOwnerScope: AssistantOwnerScope? =
+        remember(
+            bridge,
+            provider,
+            assistantRoute?.server?.id,
+            assistantRoute?.server?.role,
+            assistantRoute?.currentUserId
+        ) {
+            val route = assistantRoute ?: return@remember null
+            val userId = route.currentUserId?.trim()?.takeIf { it.isNotBlank() } ?: return@remember null
+            val flags = provider.serverFeatureFlags ?: return@remember null
+            AssistantOwnerScope(
+                store = build.raft.app.data.RaftSharedStoreRegistry.get(bridge).myAssistantStore(provider.storeScope),
+                featureFlags = flags,
+                serverMembersStore = provider.serverMembersStore,
+                // The profile's own lifecycle Start (MemberRepository.startAgent), single-flight per agent.
+                startAgent = { agentId ->
+                    provider.runLifecycleAction(route.server.id, agentId, MembersAgentLifecycleAction.Start)
+                },
+                onErrorToast = { message, error -> bridge.errorToast(message, error) },
+                serverId = route.server.id.value,
+                userId = userId,
+                viewerIsGuest = route.server.role?.trim()?.equals("guest", ignoreCase = true) == true
+            )
+        }
+    CompositionLocalProvider(
+        LocalMembersRuntimeAccountUsageAccess provides runtimeAccountUsageAccess,
+        LocalAssistantOwnerScope provides assistantOwnerScope
+    ) {
         when (val current = routeState) {
             MemberDetailRouteState.Loading ->
                 MemberDetailLoadingPageShell(onBack = { closeDetail() })
@@ -11746,6 +11780,21 @@ private fun MembersAgentProfileTab(
     }
 }
 
+/**
+ * The owner's 「Assistant」 section (web AgentDetailPanel `AssistantOwnerSection`), framed as the
+ * profile's other sections: a full-bleed separator, then the section's own padding. Nothing for
+ * another agent or another viewer.
+ */
+@Composable
+private fun MembersAgentAssistantOwnerSection(agentId: MemberId) {
+    AssistantOwnerSection(agentId = agentId.value) { content ->
+        Column(modifier = Modifier.fillMaxWidth()) {
+            MembersProfileFullBleedDivider()
+            Column(modifier = Modifier.fillMaxWidth().padding(top = MembersProfileSectionPaddingY), content = content)
+        }
+    }
+}
+
 /** The profile hero plus the description, sharing the display-name editor's state. */
 @Composable
 private fun MembersAgentProfileIdentity(
@@ -11795,6 +11844,12 @@ private fun MembersAgentProfileIdentity(
             )
         }
     )
+    // Web AgentDetailPanel: under the hero, the owner's paused notice with Start. Here, not in
+    // [MembersAgentProfileTab], whose body is shape-sensitive (see MembersAgentRuntimeModelInputs).
+    // Only the viewer's own assistant of this server shows it, never a remote agent's profile.
+    if (summary?.deletedAt.isNullOrBlank()) {
+        AssistantOwnerPausedNotice(agentId = member.id.value, fallbackPausedAt = member.assistantPausedAt)
+    }
 }
 
 @Composable
@@ -12556,6 +12611,9 @@ private fun List<Pair<String, String>>.toMembersRuntimeEnvVars(): Map<String, St
  */
 @Composable
 private fun MembersAgentSkillsSection(detail: AgentDetailSnapshot?) {
+    // The owner's assistant settings come before Skills (web `AssistantOwnerSection`), emitted here
+    // rather than in [MembersAgentProfileTab], whose body is shape-sensitive.
+    if (detail != null && detail.summary?.deletedAt.isNullOrBlank()) MembersAgentAssistantOwnerSection(detail.agentId)
     val groups = detail?.skills?.groups.orEmpty()
     val totalSkills = groups.sumOf { group -> group.paths.sumOf { path -> path.skills.size } }
     Column(modifier = Modifier.fillMaxWidth()) {
