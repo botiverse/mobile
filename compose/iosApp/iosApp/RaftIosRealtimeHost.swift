@@ -910,10 +910,35 @@ final class RaftIosRealtimeHost: NSObject {
         if visible {
             NSLog("thread_lifecycle_host_show epoch=\\(self.foregroundEpoch) runtimes=\\(self.runtimes.count)")
         }
-        sendAppLifecycle(event: visible ? "show" : "hide")
+        // #4484: one event per live shell, each naming its shell. An event without a shell id
+        // only reaches the legacy shell (appLifecycleEventTargetsShell), so document windows
+        // dropped every show/hide (thread_lifecycle_drop reason=shell_target).
+        for shellId in shellIds.isEmpty
+            ? [RaftIosShellWindowContract.legacyShellInstanceId] : shellIds {
+            sendAppLifecycle(event: visible ? "show" : "hide", shellInstanceId: shellId)
+        }
     }
 
-    private func sendAppLifecycle(event: String) {
+    /// #4484: one window scene left or came back to the foreground while the app stayed active
+    /// (another window took its place, a server switch brought it back). App-level notifications
+    /// do not fire for that, so the scene delegate reports it for the scene's own shell.
+    func setSceneShellVisible(shellInstanceId: String, visible: Bool, source: String) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            if visible {
+                self.foregroundEpoch += 1
+            }
+            RaftHostVisibilityKt.updateRaftHostVisibility(shellInstanceId: shellInstanceId, visible: visible)
+            RaftIosShellWindowLog(
+                "info",
+                "scene_shell_visibility visible=\(visible) shell=\(shellInstanceId) " +
+                    "epoch=\(self.foregroundEpoch) source=\(source)"
+            )
+            self.sendAppLifecycle(event: visible ? "show" : "hide", shellInstanceId: shellInstanceId)
+        }
+    }
+
+    private func sendAppLifecycle(event: String, shellInstanceId: String) {
         NotificationCenter.default.post(
             name: Notification.Name(GeneratedRealtimeContract.Notify.eventName),
             object: nil,
@@ -922,6 +947,8 @@ final class RaftIosRealtimeHost: NSObject {
                 "event": event,
                 "foregroundEpoch": foregroundEpoch,
                 "pageName": "compose_slock_app_shell",
+                // RaftRealtimeNotifyContract.KeyShellInstanceId
+                "shellInstanceId": shellInstanceId,
             ]
         )
     }

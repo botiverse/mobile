@@ -63,11 +63,15 @@
             <string>space_mono_regular.ttf</string>
             <string>space_mono_bold.ttf</string>
         </array>
+        <key>NSUserActivityTypes</key>
+        <array>
+            <string>build.raft.app.shell.window</string>
+        </array>
         <key>UIApplicationSceneManifest</key>
         <dict>
             <key>UIApplicationSupportsMultipleScenes</key>
             <true />
-            <key>UIApplicationSceneConfigurations</key>
+            <key>UISceneConfigurations</key>
             <dict>
                 <key>UIWindowSceneSessionRoleApplication</key>
                 <array>

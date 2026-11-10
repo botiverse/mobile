@@ -5,10 +5,15 @@ import shared
 
 struct ContentView: View {
     @SwiftUI.StateObject private var oauthRouteStore = RaftIosOAuthRouteStore.shared
-    // task #471: shell identity of the UIWindowScene hosting this view. Starts
-    // at the legacy id; ShellContextResolver replaces it once the scene's
-    // RaftIosSceneDelegate context is known.
-    @SwiftUI.State private var shellContext = RaftIosShellContext()
+    // task #471: shell identity of the UIWindowScene hosting this view. The
+    // scene delegate passes its context in (#4484: a document window builds its
+    // own shell from the first frame); without one it starts at the legacy id and
+    // ShellContextResolver replaces it once the scene's context is known.
+    @SwiftUI.State private var shellContext: RaftIosShellContext
+
+    init(initialShellContext: RaftIosShellContext = RaftIosShellContext()) {
+        _shellContext = SwiftUI.State(initialValue: initialShellContext)
+    }
 
     var body: some View {
         // task #419: the visual-testing capture harness launches the app with a
@@ -64,9 +69,22 @@ struct ContentView: View {
             data["slockRouteEnvironmentId"] = owner.environmentId
             data["slockRouteAccountId"] = owner.accountId
             data["slockRouteServerId"] = owner.serverId
+            // #4484: a window owned by a route owner is a document shell, as on Android
+            // (withAndroidShellLaunchTarget): its own server switches and chooser read it.
+            data["slockDocumentShell"] = true
         }
         if destination.pageName == "compose_slock_app_shell" {
             data["slockNativeTabBarRenderer"] = appTabBarRenderer()
+            // #4484 launch intent of a window opened by a server switch: the tab the switch kept
+            // and no restored landing (the page data Android's document task gets).
+            if shellContext.routeOwner != nil {
+                if let tab = shellContext.launchInitialTab {
+                    data["slockInitialTab"] = tab
+                }
+                if shellContext.launchSuppressRestoreLanding {
+                    data["slockSuppressRestoreLanding"] = true
+                }
+            }
         }
         return data
     }

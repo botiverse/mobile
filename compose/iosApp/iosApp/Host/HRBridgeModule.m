@@ -3577,6 +3577,41 @@ NSString *const RaftBridgeCallbackKey = @"callback";
     });
 }
 
+// #4484: "Open workspaces in separate app windows". The shared server switch asks for a window
+// (UIScene) hosting the picked server's route owner, with launch intent only (initial tab, no
+// restored landing). The callback answers once: opened / reused (a window shows the server, this
+// one keeps its own) or refused (shared switches this window in place).
+- (void)requestShellWindow:(NSDictionary *)args {
+    NSDictionary *params = RaftBridgeParams(args);
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
+    // Console too (NSLog): the verification log must show the call reached the host.
+    NSString *entryLine = [NSString stringWithFormat:@"bridge_method_entry method=requestShellWindow server=%@ callback=%d",
+                                                     RaftBridgeString(params[@"slockRouteServerId"]), callback != nil];
+    NSLog(@"[RaftIosShellWindow][info] %@", entryLine);
+    RaftIosDiagnosticsRecord(@"info", @"RaftIosShellWindow", entryLine);
+    RaftBridgeRunOnMain(^{
+        UIWindowScene *requestingScene = self.raftHostController.viewIfLoaded.window.windowScene;
+        NSString *initialTab = RaftBridgeString(params[@"slockInitialTab"]);
+        NSString *source = RaftBridgeString(params[@"source"]);
+        [RaftIosShellWindowBridge
+            requestShellWindowWithEnvironmentId:RaftBridgeString(params[@"slockRouteEnvironmentId"])
+                                      accountId:RaftBridgeString(params[@"slockRouteAccountId"])
+                                       serverId:RaftBridgeString(params[@"slockRouteServerId"])
+                                     initialTab:(initialTab.length > 0 ? initialTab : nil)
+                         suppressRestoreLanding:RaftBridgeBool(params[@"slockSuppressRestoreLanding"])
+                                         source:(source.length > 0 ? source : @"unknown")
+                                requestingScene:requestingScene
+                                     completion:^(NSString *status, NSString *reason) {
+            NSString *answerLine = [NSString stringWithFormat:@"bridge_method_answer status=%@ reason=%@", status, reason];
+            NSLog(@"[RaftIosShellWindow][info] %@", answerLine);
+            RaftIosDiagnosticsRecord(@"info", @"RaftIosShellWindow", answerLine);
+            if (callback) {
+                callback(@{ @"status" : status ?: @"refused", @"reason" : reason ?: @"" });
+            }
+        }];
+    });
+}
+
 - (void)adaptiveNavigation:(NSDictionary *)args {
     NSDictionary *params = RaftBridgeParams(args);
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];

@@ -1,6 +1,11 @@
 package build.raft.app.cmp.ios
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.uikit.LocalUIViewController
@@ -103,6 +108,9 @@ class RaftIosPage internal constructor(
 ) {
     private val sticky = LinkedHashMap<String, JsonObject>()
 
+    /** Read in the root's draw phase: bumping it makes Compose draw a new frame ([requestRedraw]). */
+    internal val redrawTick = mutableIntStateOf(0)
+
     val viewController: UIViewController = content(this)
 
     /**
@@ -134,6 +142,21 @@ class RaftIosPage internal constructor(
             coverSignal.fire()
         } else {
             dispatch_async(dispatch_get_main_queue()) { coverSignal.fire() }
+        }
+    }
+
+    /**
+     * Draws a new frame of the page even when nothing in it changed. The host calls it when the
+     * page's window scene comes back to the foreground (#4484): a scene UIKit backgrounded (another
+     * window took its place, a reused window brought back) can come back with its Metal layer's
+     * contents discarded, and Compose only draws again when something invalidates, so the window
+     * stayed blank (canvas white) until the next state change. Safe from any thread.
+     */
+    fun requestRedraw() {
+        if (NSThread.isMainThread) {
+            redrawTick.intValue += 1
+        } else {
+            dispatch_async(dispatch_get_main_queue()) { redrawTick.intValue += 1 }
         }
     }
 
@@ -237,17 +260,28 @@ object RaftCmpIos {
                 // Read from composition, not captured in this lambda: a Kotlin closure holding the
                 // controller that holds this content would be an ObjC/Kotlin retain cycle.
                 val controller = LocalUIViewController.current
-                // Text fields hide their edit menu through the guard, so an empty caret menu
-                // cannot come back as a lone "Select All" once text arrives (RaftTextToolbarGuard).
-                ProvideRaftTextToolbarGuard {
-                    RaftCmpRoot(
-                        args = args,
-                        host = host,
-                        onSystemBarsResolved = onSystemBarsResolved,
-                        onCanvasColorResolved = { color -> controller.raftPaintHostCanvas(color) },
-                        backSwipeRegions = backSwipeRegions,
-                        coverSignal = coverSignal,
-                    )
+                // The redraw tick is read in the draw phase only (requestRedraw): no recomposition,
+                // no layout change. propagateMinConstraints keeps the root's exact window constraints.
+                Box(
+                    modifier =
+                        Modifier.fillMaxSize().drawWithContent {
+                            page.redrawTick.intValue
+                            drawContent()
+                        },
+                    propagateMinConstraints = true,
+                ) {
+                    // Text fields hide their edit menu through the guard, so an empty caret menu
+                    // cannot come back as a lone "Select All" once text arrives (RaftTextToolbarGuard).
+                    ProvideRaftTextToolbarGuard {
+                        RaftCmpRoot(
+                            args = args,
+                            host = host,
+                            onSystemBarsResolved = onSystemBarsResolved,
+                            onCanvasColorResolved = { color -> controller.raftPaintHostCanvas(color) },
+                            backSwipeRegions = backSwipeRegions,
+                            coverSignal = coverSignal,
+                        )
+                    }
                 }
                 // Runs after the first composition is applied, i.e. after RaftPagerHost subscribed.
                 LaunchedEffect(Unit) { page.replayStickyEvents() }

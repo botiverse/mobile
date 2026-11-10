@@ -28,24 +28,63 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         willConnectTo session: UISceneSession,
         options connectionOptions: UIScene.ConnectionOptions
     ) {
+        RaftIosShellWindowLog(
+            "info",
+            "scene_connect_entry session=\(session.persistentIdentifier) " +
+                "activities=\(connectionOptions.userActivities.map(\.activityType).sorted().joined(separator: ",")) " +
+                "restoration=\(session.stateRestorationActivity?.activityType ?? "none") " +
+                "sessionUserInfo=\(session.userInfo?.isEmpty == false)"
+        )
         if let activity = connectionOptions.userActivities.first(where: {
             $0.activityType == RaftIosShellWindowContract.shellUserActivityType
         }), let context = RaftIosShellWindowContract.context(from: activity) {
+            // A window requested by a server switch (#4484): identity + launch intent.
             shellContext.apply(context)
-            RaftIosDiagnosticsRecord(
+            RaftIosShellWindowLog(
                 "info",
-                "RaftIosShellWindow",
                 "scene_identity_resolved source=user_activity shell=\(context.shellInstanceId)"
             )
+        } else if let context = session.stateRestorationActivity.flatMap({
+            RaftIosShellWindowContract.context(from: $0, includeLaunchIntent: false)
+        }) ?? RaftIosShellWindowContract.context(fromSessionUserInfo: session.userInfo) {
+            // A document window the system restores or reconnects (relaunch, a backgrounded
+            // window brought back): it keeps the server it showed, as an Android document task does.
+            shellContext.apply(context)
+            RaftIosShellWindowLog(
+                "info",
+                "scene_identity_resolved source=session_restoration shell=\(context.shellInstanceId)"
+            )
+        } else if connectionOptions.urlContexts.isEmpty,
+                  connectionOptions.notificationResponse == nil,
+                  connectionOptions.shortcutItem == nil,
+                  !connectionOptions.userActivities.contains(where: { $0.activityType == NSUserActivityTypeBrowsingWeb }),
+                  let context = RaftIosShellWindowContract.pendingContextForIdentitylessScene() {
+            // #4484: a brand-new scene with no identity while a server switch waits for its
+            // window: the scene UIKit connected for that request, its activity lost on the way.
+            shellContext.apply(context)
+            RaftIosShellWindowLog(
+                "warn",
+                "scene_identity_resolved source=pending_request shell=\(context.shellInstanceId)"
+            )
+        } else {
+            RaftIosShellWindowLog("info", "scene_identity_resolved source=none shell=legacy")
         }
+        session.userInfo = RaftIosShellWindowContract.sessionUserInfo(for: shellContext)
         RaftIosShellWindowRegistry.register(session: session, context: shellContext)
         RaftIosTopBandDiagnostics.install()
 
         // With a custom scene delegate the App's WindowGroup is inert; the
         // delegate owns window creation.
         if let windowScene = scene as? UIWindowScene {
+            if shellContext.routeOwner != nil {
+                // #4484: an activation targeting this owner (its canonical URI) prefers this window.
+                windowScene.activationConditions.prefersToActivateForTargetContentIdentifierPredicate =
+                    NSPredicate(format: "self == %@", shellContext.shellInstanceId)
+            }
             let window = UIWindow(windowScene: windowScene)
-            window.rootViewController = UIHostingController(rootView: ContentView())
+            // The scene's shell identity from the first frame: a document window never builds a
+            // legacy-shell page first (the resolver would only rebuild it a frame later).
+            window.rootViewController = UIHostingController(rootView: ContentView(initialShellContext: shellContext))
             // Settings > Appearance > Theme: an explicit Light/Dark choice overrides the OS
             // style for the whole window (keyboards, system menus, the native tab bar);
             // System leaves it unspecified. The dark canvas behind the first frame avoids a
@@ -93,6 +132,101 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
                 source: "scene_connect"
             )
         }
+        // #4484: answers the server switch that requested this window (the source window keeps
+        // its server), or closes a window that arrived after that request had timed out.
+        RaftIosShellWindowContract.noteShellScene(
+            session: session,
+            shellInstanceId: shellContext.shellInstanceId,
+            connected: true
+        )
+    }
+
+    /// #4484: set while this scene is in the background, so its return redraws once.
+    private var wasBackgrounded = false
+
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        wasBackgrounded = true
+        let shell = shellInstanceId(for: scene)
+        RaftIosShellWindowLog("info", "scene_did_enter_background shell=\(shell)")
+        // Another window took this one's place while the app stays active: no app-level
+        // notification hides this window's shell, so hide it here.
+        RaftIosRealtimeHost.shared.setSceneShellVisible(
+            shellInstanceId: shell,
+            visible: false,
+            source: "scene_did_enter_background"
+        )
+    }
+
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        RaftIosShellWindowLog(
+            "info",
+            "scene_will_enter_foreground shell=\(shellInstanceId(for: scene)) wasBackgrounded=\(wasBackgrounded)"
+        )
+        redrawPages(reason: "scene_will_enter_foreground")
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        // #4484: an existing document window brought back by a server switch.
+        let shell = shellInstanceId(for: scene)
+        RaftIosShellWindowLog(
+            "info",
+            "scene_did_become_active shell=\(shell) wasBackgrounded=\(wasBackgrounded)"
+        )
+        // A window brought back (reused by a server switch, or the user's own window switch)
+        // came back blank: its Compose content draws again only when something invalidates it,
+        // and its shell had been hidden. Redraw every page of this window and show its shell.
+        // Also on a plain inactive -> active return (no background): one extra frame is cheap.
+        redrawPages(reason: "scene_did_become_active")
+        if wasBackgrounded {
+            wasBackgrounded = false
+            RaftIosRealtimeHost.shared.setSceneShellVisible(
+                shellInstanceId: shell,
+                visible: true,
+                source: "scene_did_become_active"
+            )
+        }
+        RaftIosShellWindowContract.noteShellScene(
+            session: scene.session,
+            shellInstanceId: shellInstanceId(for: scene),
+            connected: false
+        )
+    }
+
+    /// #4484: asks every Compose page of this window (pushed, presented and the root) to draw a
+    /// new frame (RaftPageViewController.raftRedrawHook -> RaftIosPage.requestRedraw).
+    private func redrawPages(reason: String) {
+        guard let root = window?.rootViewController else {
+            RaftIosShellWindowLog("warn", "scene_redraw_skipped reason=\(reason) cause=no_window")
+            return
+        }
+        var pages: [RaftPageViewController] = []
+        var stack: [UIViewController] = [root]
+        var seen = Set<ObjectIdentifier>()
+        while let controller = stack.popLast() {
+            guard seen.insert(ObjectIdentifier(controller)).inserted else { continue }
+            if let page = controller as? RaftPageViewController {
+                pages.append(page)
+            }
+            stack.append(contentsOf: controller.children)
+            if let presented = controller.presentedViewController {
+                stack.append(presented)
+            }
+        }
+        for page in pages {
+            page.raftRedrawHook?()
+            page.view.setNeedsLayout()
+        }
+        RaftIosShellWindowLog("info", "scene_redraw_requested reason=\(reason) pages=\(pages.count)")
+    }
+
+    /// #4484: what the system saves to restore this window later. A document window restores to
+    /// its server (identity only: no launch tab); the legacy window restores as before.
+    func stateRestorationActivity(for scene: UIScene) -> NSUserActivity? {
+        guard let owner = RaftIosShellWindowRegistry.context(forSessionId: scene.session.persistentIdentifier)?
+            .routeOwner ?? shellContext.routeOwner else {
+            return nil
+        }
+        return RaftIosShellWindowContract.shellUserActivity(owner: owner)
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
@@ -113,10 +247,27 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let context = RaftIosShellWindowContract.context(from: userActivity) else {
             return
         }
-        shellContext.apply(context)
-        RaftIosDiagnosticsRecord(
+        RaftIosShellWindowLog(
             "info",
-            "RaftIosShellWindow",
+            "scene_continue_entry shell=\(context.shellInstanceId) current=\(shellContext.shellInstanceId)"
+        )
+        if context.shellInstanceId != shellContext.shellInstanceId,
+           RaftIosShellWindowContract.hasPendingRequest(shellInstanceId: context.shellInstanceId) {
+            // #4484: a new-window request UIKit handed to this existing window. Retargeting it
+            // would move this window off its server; the request times out and the source window
+            // switches in place instead.
+            RaftIosShellWindowLog(
+                "warn",
+                "scene_continue_ignored reason=pending_new_window shell=\(context.shellInstanceId)"
+            )
+            return
+        }
+        shellContext.apply(context)
+        scene.session.userInfo = RaftIosShellWindowContract.sessionUserInfo(for: shellContext)
+        // Re-register: the registry's shell-id -> session index follows the new identity.
+        RaftIosShellWindowRegistry.register(session: scene.session, context: shellContext)
+        RaftIosShellWindowLog(
+            "info",
             "scene_identity_updated source=continue_activity shell=\(context.shellInstanceId)"
         )
     }
@@ -196,9 +347,8 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
             shellInstanceId: shellInstanceId,
             serverId: context?.serverId
         )
-        RaftIosDiagnosticsRecord(
+        RaftIosShellWindowLog(
             "info",
-            "RaftIosShellWindow",
             "scene_released shell=\(shellInstanceId)"
         )
     }

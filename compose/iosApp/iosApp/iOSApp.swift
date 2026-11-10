@@ -601,7 +601,13 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         configurationForConnecting connectingSceneSession: UISceneSession,
         options: UIScene.ConnectionOptions
     ) -> UISceneConfiguration {
-        UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+        // #4484: name the delegate here too. Info.plist's manifest used the key
+        // UIApplicationSceneConfigurations (UIKit reads UISceneConfigurations), so UIKit logged
+        // "no UIScene configuration dictionary" and every scene after the first connected without
+        // RaftIosSceneDelegate (no identity, no answer to the window request).
+        let configuration = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+        configuration.delegateClass = RaftIosSceneDelegate.self
+        return configuration
     }
 
     func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {
@@ -617,9 +623,8 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
                 shellInstanceId: shellInstanceId,
                 serverId: context?.serverId
             )
-            RaftIosDiagnosticsRecord(
+            RaftIosShellWindowLog(
                 "info",
-                "RaftIosShellWindow",
                 "discarded_session_released shell=\(shellInstanceId)"
             )
         }

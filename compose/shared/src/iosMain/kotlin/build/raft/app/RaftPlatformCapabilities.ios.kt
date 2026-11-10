@@ -38,10 +38,17 @@ internal actual fun raftPlatformThreadImeProgrammaticViewportPolicy():
 internal actual fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode =
     AppShellChildPagePrewarmMode.Canary
 
-// Multiple windows exist only where iOS supports multiple scenes (iPad); an iPhone has one window,
-// so the "Multiple app windows" setting and "open in new window" are not offered there.
+// Multiple windows exist only where iOS supports multiple scenes (iPad; iPhone Duo, a scene per
+// display); an iPhone has one window, so the "Multiple app windows" setting and "open in new
+// window" are not offered there. Where it is offered, a scene the system will not show (a folded
+// Duo, an activation error) answers the request as refused and the switch happens in place
+// (AppShellShellWindowRequest.kt, RaftIosShellWindowContract.activateShell).
 internal actual fun raftPlatformSupportsMultiShellHost(): Boolean =
     UIApplication.sharedApplication.supportsMultipleScenes
+
+// Another window is a UIScene the host requests (RaftIosShellWindowContract); the page router only
+// pushes into the current window.
+internal actual fun raftPlatformRequestsShellWindowScene(): Boolean = true
 
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = true
 

@@ -95,6 +95,32 @@ internal class BridgeModule : Module() {
         )
     }
 
+    /**
+     * iOS (#4484): asks the host for a window (UIScene) showing the route owner in [params]
+     * (AppShellShellWindowRequest.toBridgeParams: identity + intent only). [onResult] runs exactly
+     * once on the main thread with the host's answer (`status` opened / reused / refused, `reason`),
+     * or with null right away when the host cannot be reached; callers treat anything but opened /
+     * reused as refused (appShellShellWindowOutcome).
+     */
+    fun requestShellWindow(params: JSONObject, onResult: (JSONObject?) -> Unit) {
+        var delivered = false
+        val deliver: (JSONObject?) -> Unit = { payload ->
+            if (!delivered) {
+                delivered = true
+                onResult(payload)
+            }
+        }
+        val result =
+            toNative(
+                keepCallbackAlive = false,
+                methodName = REQUEST_SHELL_WINDOW,
+                param = params.toString(),
+                callback = { payload -> deliver(payload) },
+                syncCall = false
+            )
+        if (result.callbackRef == null) deliver(null)
+    }
+
     fun log(content: String) {
         log(BridgeLogLevel.Info, content)
     }
@@ -1546,6 +1572,7 @@ internal class BridgeModule : Module() {
         const val OPEN_PAGE = "openPage"
         const val CLOSE_PAGE = "closePage"
         const val CONVERSATION_FORWARD_GESTURE = "conversationForwardGesture"
+        const val REQUEST_SHELL_WINDOW = "requestShellWindow"
         const val PERFORMANCE_MARKER = "performanceMarker"
         const val OPEN_ATTACHMENT = "openAttachment"
         const val SAVE_ATTACHMENT = "saveAttachment"

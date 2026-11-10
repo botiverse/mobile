@@ -147,25 +147,49 @@ private fun AuthChooseServerPageContent() {
                             selectedServerId = readySession.selectedServerId,
                             multiShellHostEnabled = multiShellHostEnabled
                         )
-                    if (!opensDocumentShell) {
+                    val routeOwner =
+                        AuthenticatedRouteOwner(
+                            environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                            accountId = readySession.user.id,
+                            serverId = readySession.selectedServerId.orEmpty()
+                        ).normalizedOrNull()
+                    fun shellPageData(multiShell: Boolean) =
+                        appShellPageDataForServerSelection(
+                            sourceStoreScope = sourceStoreScope,
+                            sourceDocumentShell = sourceDocumentShell,
+                            selectedServerId = readySession.selectedServerId,
+                            multiShellHostEnabled = multiShell,
+                            suppressRestoreLanding = true,
+                            routeOwner = routeOwner
+                        )
+                    // The setting-off path: this window's shell switches to the picked server
+                    // (the page data a non-window selection always produced).
+                    fun openInPlace() {
                         bridge.realtimeDisconnect("server_changed")
+                        pager.openAppShellReplacingCurrentPage(
+                            pageData =
+                                shellPageData(multiShell = false)
+                                    .put(RAFT_DOCUMENT_SHELL, sourceDocumentShell && multiShellHostEnabled)
+                        )
                     }
-                    pager.openAppShellReplacingCurrentPage(
-                        pageData =
-                            appShellPageDataForServerSelection(
-                                sourceStoreScope = sourceStoreScope,
-                                sourceDocumentShell = sourceDocumentShell,
-                                selectedServerId = readySession.selectedServerId,
-                                multiShellHostEnabled = multiShellHostEnabled,
-                                suppressRestoreLanding = true,
-                                routeOwner = AuthenticatedRouteOwner(
-                                    environmentId =
-                                        sharedStores.apiEnvironmentStore.current().apiBaseUrl,
-                                    accountId = readySession.user.id,
-                                    serverId = readySession.selectedServerId.orEmpty()
-                                ).normalizedOrNull()
-                            )
-                    )
+                    // iOS asks for a scene only when a source shell window stays behind the chooser
+                    // (opened from a shell); a chooser that is the window's root page (sign-in) has
+                    // nothing to keep, so its window becomes the shell, as Android's does.
+                    val requestsSceneWindow = raftPlatformRequestsShellWindowScene()
+                    if (!opensDocumentShell || (requestsSceneWindow && !fromShell)) {
+                        openInPlace()
+                    } else {
+                        // Its own window (Android document task, iOS scene, #4484). A refused iOS
+                        // scene request falls back to the in-place switch; once a scene shows the
+                        // server the chooser closes, as Android's replacement finishes it.
+                        pager.openAppShellInOwnWindow(
+                            bridge = bridge,
+                            pageData = shellPageData(multiShell = multiShellHostEnabled),
+                            source = "choose_server",
+                            onShownInWindow = { if (requestsSceneWindow) closeChooser() },
+                            onSwitchInPlace = { openInPlace() }
+                        )
+                    }
                 },
                 onSignOut = {
                     bridge.realtimeDisconnect("logout")

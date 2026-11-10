@@ -40,6 +40,13 @@ internal expect fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPag
 
 internal expect fun raftPlatformSupportsMultiShellHost(): Boolean
 
+/**
+ * True where another shell window is a window-system scene the host has to request (iOS
+ * `requestSceneSessionActivation`) instead of a page its router opens (Android document task).
+ * See AppShellShellWindowPath.
+ */
+internal expect fun raftPlatformRequestsShellWindowScene(): Boolean
+
 /** iOS is currently the only host with a native right-edge Forward recognizer. */
 internal expect fun raftPlatformSupportsConversationForwardGesture(): Boolean
 
