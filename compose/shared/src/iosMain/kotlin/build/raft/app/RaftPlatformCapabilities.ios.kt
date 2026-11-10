@@ -10,7 +10,6 @@ import platform.CoreFoundation.kCFStringEncodingUTF8
 import platform.Foundation.NSNumber
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.valueForKey
-import platform.UIKit.UIApplication
 import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
@@ -38,10 +37,13 @@ internal actual fun raftPlatformThreadImeProgrammaticViewportPolicy():
 internal actual fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode =
     AppShellChildPagePrewarmMode.Canary
 
-// Multiple windows exist only where iOS supports multiple scenes (iPad); an iPhone has one window,
-// so the "Multiple app windows" setting and "open in new window" are not offered there.
-internal actual fun raftPlatformSupportsMultiShellHost(): Boolean =
-    UIApplication.sharedApplication.supportsMultipleScenes
+// Not offered on iOS yet. The Compose host opens a "new window" shell in the same window
+// (RaftPageStack.open); nothing asks UIKit for a scene (RaftIosShellWindowBridge.activateShell is
+// only reached from the retired bridge-module path). With the setting on, a server switch rebuilt
+// the shell on the server it was already showing (issue #4484: iPhone Duo reports
+// supportsMultipleScenes, iPad takes the same path). Off here, a stored "on" is ignored and every
+// switch happens in place. Return to supportsMultipleScenes once the host activates a scene.
+internal actual fun raftPlatformSupportsMultiShellHost(): Boolean = false
 
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = true
 
