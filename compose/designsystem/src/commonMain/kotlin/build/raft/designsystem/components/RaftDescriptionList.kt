@@ -86,11 +86,26 @@ internal val RaftValueColumnMin: Dp = 160.dp
  * labels but would on a line of its own. A value too long for a line of its own (a paragraph)
  * wraps either way and doesn't decide. It depends only on the width and the content, so it
  * can't flap at the boundary; the whole list goes at once, so labels never alternate.
+ *
+ * [valueMinWidths] are the values' min-content widths, their widest unbreakable piece (the
+ * widest chip of a chip row, the longest word): the labels also go above when one is wider
+ * than the value column but fits the list, so a chip is never cut beside its label when it
+ * would show in full on a line of its own. A piece wider than the whole list doesn't decide.
+ * This min-content rule is raft-ui's next `labelsGoAbove` (pending raft-design PR by Kirby,
+ * number to follow); 0.78 checks the one-line width only (`lib/label-value-fit.ts:71-73`).
  */
-internal fun raftLabelsGoAbove(width: Int, labelColumn: Int, gap: Int, minValueColumn: Int, valueWidths: List<Int>): Boolean {
+internal fun raftLabelsGoAbove(
+    width: Int,
+    labelColumn: Int,
+    gap: Int,
+    minValueColumn: Int,
+    valueWidths: List<Int>,
+    valueMinWidths: List<Int> = emptyList(),
+): Boolean {
     val valueColumn = width - labelColumn - gap
     if (valueColumn < minValueColumn) return true
-    return valueWidths.any { it > valueColumn && it <= width }
+    fun decides(it: Int) = it > valueColumn && it <= width
+    return valueWidths.any(::decides) || valueMinWidths.any(::decides)
 }
 
 /** Builds the facts of a [RaftDescriptionList]. */
@@ -174,6 +189,7 @@ fun RaftDescriptionList(
                             gap = gapX,
                             minValueColumn = RaftValueColumnMin.roundToPx(),
                             valueWidths = items.map { runCatching { it.maxIntrinsicWidth(Constraints.Infinity) }.getOrDefault(0) },
+                            valueMinWidths = items.map { runCatching { it.minIntrinsicWidth(Constraints.Infinity) }.getOrDefault(0) },
                         )
                 // Stacked, a value is 10dp above the next label: the 2dp row gap plus `mt-2`.
                 val gapY = (if (stacked) 10.dp else 2.dp).roundToPx()
@@ -502,8 +518,8 @@ private object HorizontalScope : RaftDescriptionListScope {
 
 /**
  * Lays out a horizontal fact. Its constraints carry the list's layout: a minimum width is the
- * label column the value sits beside; none, the fact stacks. Its max intrinsic width is its
- * value's one-line width, for [raftLabelsGoAbove].
+ * label column the value sits beside; none, the fact stacks. Its max and min intrinsic widths
+ * are its value's one-line and min-content widths, for [raftLabelsGoAbove].
  */
 private class HorizontalFactPolicy(private val lines: HorizontalFactLines, private val termLineHeight: TextUnit) : MeasurePolicy {
     override fun IntrinsicMeasureScope.maxIntrinsicWidth(measurables: List<IntrinsicMeasurable>, height: Int): Int =
