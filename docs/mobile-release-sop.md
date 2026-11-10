@@ -255,6 +255,7 @@ From accepted changesets only, write per shipped platform:
 ```text
 change-logs/X.Y.Z/android/{zh-CN,en,ja}.md
 change-logs/X.Y.Z/ios/{zh-CN,en,ja}.md
+change-logs/X.Y.Z/play/{zh-CN,en,ja}.md
 ```
 
 - Sections in this order, empty ones omitted:
@@ -268,7 +269,10 @@ change-logs/X.Y.Z/ios/{zh-CN,en,ja}.md
   `packages/web/src/i18n/messages/` and
   `compose/shared/src/commonMain/composeResources/values-<locale>/strings.xml`;
   Japanese also `docs/i18n-ja-glossary.md`. Record the catalog exacts checked.
-- Google Play: ≤500 characters per language.
+- Hands Android notes are the full notes (`change-logs/X.Y.Z/android/`).
+  Google Play gets a separate ≤500-character version per language in
+  `change-logs/X.Y.Z/play/{zh-CN,en,ja}.md`, used as the `--note` at
+  `play-promote` (owner decision 2026-11-10).
 - No PR numbers, implementation detail, CI history or unshipped work.
 
 The workflows fail closed on an incomplete reviewed set. The mobile DRI
