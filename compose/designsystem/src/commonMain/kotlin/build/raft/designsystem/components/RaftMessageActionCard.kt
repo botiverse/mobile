@@ -378,6 +378,7 @@ fun RaftMessageActionCardProperties(
                         gap = gap,
                         minValueColumn = RaftValueColumnMin.roundToPx(),
                         valueWidths = values.map { it.maxIntrinsicWidth(Constraints.Infinity) },
+                        valueMinWidths = values.map { it.minIntrinsicWidth(Constraints.Infinity) },
                     )
             )
         val rowGap = 2.dp.roundToPx()

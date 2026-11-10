@@ -34,6 +34,13 @@ import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
 import build.raft.designsystem.tokens.RaftUiThemeColors
+import androidx.compose.ui.layout.IntrinsicMeasurable
+import androidx.compose.ui.layout.IntrinsicMeasureScope
+import androidx.compose.ui.layout.LayoutModifier
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.unit.Constraints
 
 /** raft-ui Badge `appearance`. */
 enum class RaftBadgeAppearance {
@@ -266,6 +273,7 @@ internal fun RaftBadgeFrame(
     Row(
         modifier =
             modifier
+                .then(RaftBadgeNoWrap)
                 .then(button?.outer ?: Modifier)
                 .raftDieCutEdge(look.outerRing, look.radius)
                 .height(look.height)
@@ -300,6 +308,27 @@ internal fun RaftBadgeFrame(
             }
         }
     }
+}
+
+/**
+ * A badge is one line (web `whitespace-nowrap`): its min-content width is its whole width, not
+ * its longest word, so a list that asks for its values' min-content widths
+ * ([raftLabelsGoAbove]) sees the widest chip. Layout is unchanged: a badge given less room still
+ * ends in an ellipsis.
+ */
+private object RaftBadgeNoWrap : LayoutModifier {
+    override fun MeasureScope.measure(measurable: Measurable, constraints: Constraints): MeasureResult {
+        val placeable = measurable.measure(constraints)
+        return layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+
+    override fun IntrinsicMeasureScope.minIntrinsicWidth(measurable: IntrinsicMeasurable, height: Int): Int = measurable.maxIntrinsicWidth(height)
+
+    override fun IntrinsicMeasureScope.maxIntrinsicWidth(measurable: IntrinsicMeasurable, height: Int): Int = measurable.maxIntrinsicWidth(height)
+
+    override fun IntrinsicMeasureScope.minIntrinsicHeight(measurable: IntrinsicMeasurable, width: Int): Int = measurable.minIntrinsicHeight(width)
+
+    override fun IntrinsicMeasureScope.maxIntrinsicHeight(measurable: IntrinsicMeasurable, width: Int): Int = measurable.maxIntrinsicHeight(width)
 }
 
 /** The parts a badge button adds round [RaftBadgeFrame]'s chrome, outermost first. */

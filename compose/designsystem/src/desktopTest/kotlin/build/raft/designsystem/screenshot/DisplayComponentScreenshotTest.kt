@@ -1261,6 +1261,15 @@ class DisplayComponentScreenshotTest {
                         Item("Joined", "Oct 12, 2026")
                         Item("About", "Keeps the release notes, the changelog and the docs site in step with every merge to main.")
                     }
+                    Caption("Horizontal, 300dp, a chip row whose widest chip fits only a line of its own: every label above")
+                    RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
+                        Item("Joined", "Oct 12, 2026")
+                        Item("Runtimes") {
+                            RaftBadge("Claude Code", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information)
+                            RaftBadge("Pi", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information)
+                            RaftBadge("Qwen Code (experimental) (not installed)", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Muted)
+                        }
+                    }
                 }
                 Column(Modifier.width(400.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Caption("Horizontal with no width limit (in a horizontal scroll)")

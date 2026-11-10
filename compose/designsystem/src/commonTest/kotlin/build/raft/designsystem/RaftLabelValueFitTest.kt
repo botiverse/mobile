@@ -34,4 +34,20 @@ class RaftLabelValueFitTest {
         assertFalse(goAbove(40, width = 336, labelColumn = 160))
         assertTrue(goAbove(40, width = 335, labelColumn = 160))
     }
+
+    // A chip row: far too long for one line (doesn't decide), but its widest chip only fits a line of its own.
+    private fun chipsGoAbove(widestChip: Int) =
+        raftLabelsGoAbove(width = 358, labelColumn = 88, gap = 16, minValueColumn = 160, valueWidths = listOf(90, 900), valueMinWidths = listOf(90, widestChip))
+
+    @Test
+    fun aChipWiderThanTheValueColumnStacksTheList() {
+        assertFalse(chipsGoAbove(254), "every chip fits beside its label")
+        assertTrue(chipsGoAbove(255), "the widest chip only fits a line of its own")
+        assertTrue(chipsGoAbove(358))
+    }
+
+    @Test
+    fun aPieceWiderThanTheWholeListDoesNotDecide() {
+        assertFalse(chipsGoAbove(359))
+    }
 }
