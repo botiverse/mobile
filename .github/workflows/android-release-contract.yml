@@ -30,7 +30,7 @@ on:
       - "scripts/verify_android_elf_alignment.py"
       - "scripts/test_verify_android_elf_alignment.py"
       - "docs/android-hands-release-*"
-      - "docs/android-release-sop.md"
+      - "docs/mobile-release-sop.md"
       - "docs/qa-acceptance/android-app-update/**"
   push:
     branches:
@@ -63,7 +63,7 @@ on:
       - "scripts/verify_android_elf_alignment.py"
       - "scripts/test_verify_android_elf_alignment.py"
       - "docs/android-hands-release-*"
-      - "docs/android-release-sop.md"
+      - "docs/mobile-release-sop.md"
       - "docs/qa-acceptance/android-app-update/**"
   workflow_dispatch:
 
