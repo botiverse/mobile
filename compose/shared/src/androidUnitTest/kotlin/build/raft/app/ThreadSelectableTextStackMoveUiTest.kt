@@ -297,7 +297,87 @@ class ThreadSelectableTextStackMoveUiTest {
             pushWithRowChange(stack)
         }
 
+    /**
+     * Hands c561c66a / b40c0cf8 ("LayoutNode should be attached to an owner" in the list's measure
+     * pass): a body moved into its selection container in the frame its page turned active, the
+     * frame NavDisplay moves the settled page's entries out of the transition's scene. It goes in
+     * only some frames later; out of it (plain text, #4390) still in the frame the page goes inactive.
+     */
+    @Test
+    fun aBodyGoesSelectableOnlyFramesAfterItsPageBecameActiveAndPlainAtOnce() =
+        runRobolectricComposeUiTest {
+            var pageActive by mutableStateOf(true)
+            // Every composition's (page active, body selectable): the rule is per composition, so it
+            // holds whatever frame the test clock lands the recomposition on.
+            val compositions = mutableListOf<Pair<Boolean, Boolean>>()
+            setContent { compositions += pageActive to rememberThreadInPlaceBodySelectable(pageActive, hasSelection = false) }
+            waitForIdle()
+            assertEquals(true to true, compositions.last(), "first composed on an active page: selectable at once")
+
+            val beforeDeactivation = compositions.size
+            runOnIdle { pageActive = false }
+            waitForIdle()
+            val inactive = compositions.drop(beforeDeactivation)
+            assertTrue(inactive.isNotEmpty() && inactive.all { (active, _) -> !active }, "recomposed inactive: $compositions")
+            assertTrue(inactive.none { (_, selectable) -> selectable }, "plain in the composition the page goes inactive: $compositions")
+
+            val beforeActivation = compositions.size
+            runOnIdle { pageActive = true }
+            waitForIdle()
+            val active = compositions.drop(beforeActivation)
+            assertEquals(true to false, active.first(), "still plain in the composition the page becomes active: $compositions")
+            assertEquals(true to true, active.last(), "selectable once the page has been active for a few frames: $compositions")
+        }
+
+    /**
+     * The production order of c561c66a: a long, collapsible Markdown row in the list, selected
+     * whole, and a reply thread pushed over the page while rows change on every frame.
+     */
+    @Test
+    fun aSelectedCollapsibleMarkdownRowDuringThePushAndPopDoesNotCrash() =
+        runRobolectricComposeUiTest {
+            var controller: ThreadInPlaceSelectionController? = null
+            val collapse = RaftLongMessageCollapseController()
+            val stack = showChat {
+                LazyColumn(Modifier.fillMaxSize().raftLongMessageCollapseViewport(collapse, verticalContentPaddingPx = 0)) {
+                    item {
+                        val rowTick = tick
+                        RaftLongMessageCollapsibleBody(
+                            controller = collapse,
+                            messageId = "m1",
+                            contentKey = "m1:${LONG_BODY.length}",
+                            alignEnd = false,
+                            onToggle = {},
+                        ) {
+                            val inPlace = rememberThreadInPlaceSelectionController(messageId = "m1", enabled = true)
+                            controller = inPlace
+                            ThreadInPlaceSelectableBody(
+                                controller = inPlace,
+                                fullMessageText = LONG_BODY,
+                                wholeMessageText = LONG_BODY,
+                                messageMenuOpen = false,
+                                diagnosticsLogger = {},
+                            ) {
+                                RaftMarkdownBody(body = LONG_BODY, onOpenUrl = { check(rowTick >= 0) })
+                            }
+                        }
+                    }
+                }
+            }
+            runOnIdle { controller!!.selectAll() }
+            waitForIdle()
+            assertTrue(controller!!.hasSelection, "selects on the active page")
+
+            pushWithRowChange(stack)
+            assertFalse(controller!!.hasSelection, "covering the page drops the selection")
+            popWithRowChange(stack)
+            runOnIdle { controller!!.selectAll() }
+            waitForIdle()
+            assertTrue(controller!!.hasSelection, "selects again after the pop")
+        }
+
     private companion object {
+        val LONG_BODY = (1..40).joinToString("\n\n") { "Paragraph $it of a long message, with [a link](https://raft.build/docs)." }
         const val FRAMES_BEFORE = 3
         const val FRAMES_AFTER = 40
         const val CHAT = "compose_thread"
