@@ -16,8 +16,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.text.TextStyle
@@ -26,7 +24,6 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
-import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftAndroidSqlDatabaseContext
 import build.raft.app.markdown.RaftMarkdownBody
@@ -302,60 +299,31 @@ class ThreadSelectableTextStackMoveUiTest {
 
     /**
      * Hands c561c66a / b40c0cf8 ("LayoutNode should be attached to an owner" in the list's measure
-     * pass): switching a body between selectable and plain must not move it to another parent. It
-     * used to move (movable content) between the selection container and its parent, in the frame
-     * a selection dropped as a reply thread opened, or a page settled after its push.
+     * pass): a body moved into its selection container in the frame its page turned active, the
+     * frame NavDisplay moves the settled page's entries out of the transition's scene. It goes in
+     * only some frames later; out of it (plain text, #4390) still in the frame the page goes inactive.
      */
     @Test
-    fun aPageActivitySwitchKeepsTheBodyInItsParentWithItsState() =
+    fun aBodyGoesSelectableOnlyFramesAfterItsPageBecameActiveAndPlainAtOnce() =
         runRobolectricComposeUiTest {
-            RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
-            val host = ThreadInPlaceTextSelectionHost(enabled = true, copyText = {})
             var pageActive by mutableStateOf(true)
-            var controller: ThreadInPlaceSelectionController? = null
-            val bodyParents = mutableListOf<LayoutCoordinates?>()
-            val bodyStates = mutableListOf<Any>()
-            setContent {
-                CompositionLocalProvider(
-                    LocalThreadInPlaceTextSelectionHost provides host,
-                    LocalRaftPageActive provides pageActive,
-                ) {
-                    val inPlace = rememberThreadInPlaceSelectionController(messageId = "m1", enabled = true)
-                    controller = inPlace
-                    ThreadInPlaceSelectableBody(
-                        controller = inPlace,
-                        fullMessageText = BODY,
-                        wholeMessageText = BODY,
-                        messageMenuOpen = false,
-                        diagnosticsLogger = {},
-                    ) {
-                        val state = remember { Any() }
-                        if (bodyStates.none { it === state }) bodyStates += state
-                        Column(Modifier.onGloballyPositioned { bodyParents += it.parentLayoutCoordinates }) {
-                            BasicText(BODY)
-                        }
-                    }
-                }
-            }
-            runOnIdle { controller!!.selectAll() }
+            val selectable = mutableListOf<Boolean>()
+            setContent { selectable += rememberThreadInPlaceBodySelectable(pageActive, hasSelection = false) }
             waitForIdle()
-            assertTrue(controller!!.hasSelection, "selects on the active page")
+            assertTrue(selectable.last(), "first composed on an active page: selectable at once")
 
-            // Covered: the selection is dropped in the frame the page goes inactive (RaftDismissOnPageCover).
-            runOnIdle {
-                pageActive = false
-                controller!!.clear()
-            }
-            waitForIdle()
+            mainClock.autoAdvance = false
+            runOnIdle { pageActive = false }
+            mainClock.advanceTimeByFrame()
+            assertFalse(selectable.last(), "plain in the frame the page goes inactive")
+
             runOnIdle { pageActive = true }
-            waitForIdle()
-            runOnIdle { controller!!.selectAll() }
-            waitForIdle()
-            assertTrue(controller!!.hasSelection, "selects again once active")
+            mainClock.advanceTimeByFrame()
+            assertFalse(selectable.last(), "still plain in the frame the page becomes active")
 
-            assertEquals(1, bodyStates.size, "the body keeps its state")
-            assertTrue(bodyParents.isNotEmpty(), "the body was placed")
-            assertTrue(bodyParents.all { it === bodyParents.first() }, "the body never changes parent: $bodyParents")
+            repeat(ThreadInPlaceSelectableActivationFrames + 1) { mainClock.advanceTimeByFrame() }
+            assertTrue(selectable.last(), "selectable once the page has been active for a few frames")
+            mainClock.autoAdvance = true
         }
 
     /**

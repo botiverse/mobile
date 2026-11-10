@@ -13,12 +13,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.currentCompositionLocalContext
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -711,6 +712,30 @@ internal fun rememberThreadInPlaceSelectionController(
     return controller
 }
 
+/** Frames a page stays active before its message bodies go into their selection container. */
+internal const val ThreadInPlaceSelectableActivationFrames = 2
+
+/**
+ * Whether a message body sits in its selection container: while it has a selection, and on an
+ * active page from [ThreadInPlaceSelectableActivationFrames] frames after the page became active
+ * (never in the frame it did: see [ThreadInPlaceSelectableBody]); not on an inactive page, at once.
+ * A body first composed on a page that is already active is selectable from the start.
+ */
+@Composable
+internal fun rememberThreadInPlaceBodySelectable(pageActive: Boolean, hasSelection: Boolean): Boolean {
+    var activeSettled by remember { mutableStateOf(pageActive) }
+    LaunchedEffect(pageActive) {
+        if (!pageActive) {
+            activeSettled = false
+            return@LaunchedEffect
+        }
+        if (activeSettled) return@LaunchedEffect
+        repeat(ThreadInPlaceSelectableActivationFrames) { withFrameNanos {} }
+        activeSettled = true
+    }
+    return (pageActive && activeSettled) || hasSelection
+}
+
 /** Wraps a message body so it can be selected in place; renders [content] untouched when [controller] is null. */
 @Composable
 internal fun ThreadInPlaceSelectableBody(
@@ -752,15 +777,18 @@ internal fun ThreadInPlaceSelectableBody(
     // recomposes in that frame throws: the list's own composition updates the detached node, and
     // foundation's SelectableTextAnnotatedStringNode.update then reads a CompositionLocal on re-attach,
     // before the node counts as attached (Compose 1.12.1, 1.13.0-rc01). Plain text reads none. A selection
-    // keeps its selection registrar until the effect below has cleared it, since clearing goes through it.
+    // keeps its container until the effect below has cleared it, since clearing goes through the container.
+    // The body itself is movable so that it keeps its state across the switch.
     //
-    // The switch never moves the body: the container stays in the tree and an inactive page gives the
-    // body the locals from outside it (no selection registrar, so its text is plain). Moving the body
-    // between the container and its parent (movable content) in the frame Navigation 3 moves the page
-    // left the body's layout node in the list's measure pass without an owner: "LayoutNode should be
-    // attached to an owner" (Hands c561c66a, b40c0cf8: a selection dropped as a reply thread opened, and
-    // a channel page settling after its push).
-    val selectable = pageActive || controller.hasSelection
+    // Into the container only a few frames after the page became active ([rememberThreadInPlaceBodySelectable]):
+    // a page turns active in the frame its push / pop settles, the frame NavDisplay moves its entries out of
+    // the transition's scene, and moving the body into the container in that same frame left its layout node
+    // in the list's measure pass without an owner: "LayoutNode should be attached to an owner" (Hands
+    // c561c66a: the reply thread's parent message as the thread opened; b40c0cf8: a channel settling after
+    // its push). Out of it at once: the cover signal has already dropped a selection, and the page's
+    // scene moves only a frame or more after the stack changes.
+    val selectable = rememberThreadInPlaceBodySelectable(pageActive, controller.hasSelection)
+    val movableBody = remember { movableContentOf<@Composable () -> Unit> { body -> body() } }
     CompositionLocalProvider(
         LocalTextToolbar provides textToolbar,
         LocalTextContextMenuToolbarProvider provides contextMenuProvider,
@@ -769,24 +797,22 @@ internal fun ThreadInPlaceSelectableBody(
     ) {
         // Ctrl/Cmd+C and the system text menu copy through the clipboard, not copySelection: clean them too.
         RaftCleanCopyClipboardScope {
-            val plainBodyLocals = currentCompositionLocalContext
-            // The text nodes' selection gestures read the long-press timeout from here; it only
-            // differs for a finger press the body yields to the row (nothing in a body but the
-            // selection waits on a long press: the row's detector lives outside).
-            CompositionLocalProvider(LocalViewConfiguration provides selectionViewConfiguration) {
-                SelectionContainer(
-                    controller.selectionState,
-                    Modifier
-                        .onGloballyPositioned(controller::onBodyPositioned)
-                        .threadInPlaceMouseSelectionEnd(controller),
-                ) {
-                    val selectableBodyLocals = currentCompositionLocalContext
-                    // One call site in both states, so the body keeps its nodes and state.
-                    CompositionLocalProvider(
-                        context = if (selectable) selectableBodyLocals else plainBodyLocals,
-                        content = content,
-                    )
+            if (selectable) {
+                // The text nodes' selection gestures read the long-press timeout from here; it only
+                // differs for a finger press the body yields to the row (nothing in a body but the
+                // selection waits on a long press: the row's detector lives outside).
+                CompositionLocalProvider(LocalViewConfiguration provides selectionViewConfiguration) {
+                    SelectionContainer(
+                        controller.selectionState,
+                        Modifier
+                            .onGloballyPositioned(controller::onBodyPositioned)
+                            .threadInPlaceMouseSelectionEnd(controller),
+                    ) {
+                        movableBody(content)
+                    }
                 }
+            } else {
+                movableBody(content)
             }
         }
     }
