@@ -12,7 +12,7 @@ Visual claims fail in two directions: a fixture screenshot presented as "verifie
 | Fixture screenshot | Android connected-test build with `-PslockVisualFixtures=true`, driven to a named visual page | the real production component tree renders with fixed inputs, in the theme/state the fixture sets | live data, permissions, server contracts, other themes, other platforms |
 | Authenticated build on a device/emulator | the shipped or candidate package, logged in, real data | the user-visible behaviour against real state | other platforms, other accounts, scale/theme variants you did not exercise |
 
-Fixture pages are compiled from `compose/shared/src/visualFixtures/kotlin`; they are not production route registrations (`docs/raft-ui-kmp-component-library-audit-2026-07-03.md`). A screenshot from one is evidence about the component, not about the product loop.
+Fixture pages are compiled from `compose/shared/src/visualFixtures/kotlin`; they are not production route registrations. A screenshot from one is evidence about the component, not about the product loop.
 
 Concrete example: a followers-popover fixture rendered under the Brutal theme. The screenshot supported "the popover chrome matches the reference in Brutal"; it could not support an Elegant-theme claim, and it did not exercise the real remove/restore API — the report had to say the interaction wiring was verified with injected callbacks only.
 
@@ -20,7 +20,7 @@ Concrete example: a followers-popover fixture rendered under the Brutal theme. T
 
 1. Match the artifact to a commit first: versionCode and workflow run, using `release-provenance-containment.md`. An unlabelled screenshot is not evidence.
 2. Install the connected-test pair (`build.raft.app.connectedtest` and its test package) from the same run. If a different build with the same applicationId is installed, `adb install` fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`; uninstall the old package first instead of debugging the fixture.
-3. Launch the page by its app-owned entry point, not by tap-driving menus. The diagnostics deep-link alias targets the Kuikly host, which accepts a `pageName` extra (`compose/androidApp/src/main/AndroidManifest.xml`; `docs/diagnostics-deep-link-intent-spec-2026-06-26.md`); `scripts/slock_android_adb.py open-page` is the maintained driver (`.agents/skills/slock-android-adb-audit/SKILL.md`).
+3. Launch the page by its app-owned entry point, not by tap-driving menus. The diagnostics deep-link alias accepts a `pageName` extra (`compose/androidApp/src/main/AndroidManifest.xml`); `scripts/slock_android_adb.py open-page` is the maintained driver (`.agents/skills/slock-android-adb-audit/SKILL.md`).
 4. Capture and keep the PNG (`adb exec-out screencap -p > shot.png`), and record device/AVD name, build versionCode, theme, and display density next to it.
 
 ## Real difference or rendering jitter?

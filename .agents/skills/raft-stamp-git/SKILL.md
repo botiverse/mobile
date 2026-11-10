@@ -8,8 +8,7 @@ description: Use whenever an agent pushes a branch, opens a PR, reviews/approves
 `main` is protected and PR-only. Push, PR, approval and merge go through Stamp
 (https://stamp.build/llms.txt). Detail: AGENTS.md "Agent Git identity comes
 from Stamp" and "Protected `main`: PR-only integration";
-`docs/kb/exact-head-merge-verification.md`. `docs/commit-signoff-policy.md` and
-the git sections of `docs/new-agent-landing.md` are superseded.
+`docs/kb/exact-head-merge-verification.md`.
 
 ## 1. One-time setup
 

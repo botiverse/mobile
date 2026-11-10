@@ -2,7 +2,7 @@
 
 Owner: Lagoon (Mobile DRI) · Status: current snapshot · Procedure: [`docs/kb/web-capability-port-criteria.md`](kb/web-capability-port-criteria.md)
 
-This document lists what the web client can do that the mobile apps (Android / iOS) cannot yet, rates each gap, and names the server work it depends on. It supersedes the area-by-area tables in `react-kmp-feature-map-2026-06-26.md` for planning purposes; that file stays as history.
+This document lists what the web client can do that the mobile apps (Android / iOS) cannot yet, rates each gap, and names the server work it depends on.
 
 ## Base commits
 
