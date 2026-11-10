@@ -39,7 +39,7 @@ private val appLinkPreviewsJson = Json {
  * outside the read-only catalog ([RaftAppLinkCard]), makes it unreadable, like the web. One
  * result per link, one prompt per App. Where the Server's `interactive_link_cards` flag is on,
  * this client reads with the batched link-card read instead ([AppLinkCardV2.kt]), declaring
- * [APP_LINK_CARD_READ_CAPABILITIES] (`card.v2`, `inline.v1`, `inline.tone.v2`, `button.v1`, `confirm.v1`, `undo.v1`, `block.v1`, `preview.v3`).
+ * [APP_LINK_CARD_READ_CAPABILITIES] (`card.v2`, `inline.v1`, `inline.tone.v2`, `button.v1`, `confirm.v1`, `undo.v1`, `block.v1`, `preview.v3`, `unreviewed_app.v1`).
  *
  * Field names are exact camelCase. No snake_case fallbacks.
  */
@@ -68,8 +68,18 @@ private data class WireAppLinkPreviewList(
     val appIcons: Map<String, String?>? = null,
 )
 
-/** The App as Raft stores it: its name and its uploaded icon (never an image from the preview). */
-data class AppLinkApp(val name: String, val icon: String?)
+/**
+ * The App as Raft stores it: its name and its uploaded icon (never an image from the preview).
+ * [reviewed] is the batched read item's `app.reviewed` (RFC 076 section 17, botiverse/slock #13945
+ * `LinkCardReadApp`): `false` for an App acting under its own Server's confirmation, which Raft has
+ * not reviewed (only sent to a client that declares `unreviewed_app.v1`); absent (null) otherwise,
+ * official Apps included. Every `execute` button of an App with `reviewed == false` goes through
+ * Raft's confirmation first ([build.raft.app.ThreadAppLinkCardPress]).
+ */
+data class AppLinkApp(val name: String, val icon: String?, val reviewed: Boolean? = null) {
+    /** `app.reviewed: false`: the App's acting buttons confirm first, undo-window ones too. */
+    val unreviewed: Boolean get() = reviewed == false
+}
 
 /** An App the viewer hasn't answered yet on this Server. */
 data class AppLinkPromptApp(val id: String, val name: String, val icon: String?)

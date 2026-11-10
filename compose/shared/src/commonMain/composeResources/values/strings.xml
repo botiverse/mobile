@@ -3823,6 +3823,10 @@
     <string name="thread_link_preview_connect_body">%1$s shows what this link is once you connect your account there.</string>
     <string name="thread_link_preview_action_failed">Couldn’t run this action. Try again.</string>
     <string name="thread_link_preview_refresh_failed">Couldn’t refresh this card. Try again.</string>
+    <string name="thread_link_preview_unreviewed_run_title">Run “%1$s”?</string>
+    <string name="thread_link_preview_unreviewed_run">Run</string>
+    <string name="thread_link_preview_unreviewed_run_by">Run by %1$s</string>
+    <string name="thread_link_preview_unreviewed_note">%1$s was created by this server and hasn’t been reviewed by Raft. It will receive your name and act with its own permissions.</string>
     <string name="thread_link_preview_connect_action">Connect account</string>
     <string name="thread_action_card_scope_group_server">Server · read</string>
     <string name="thread_action_card_scope_group_agent">Agent · read</string>

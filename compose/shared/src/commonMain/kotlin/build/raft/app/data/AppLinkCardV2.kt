@@ -34,9 +34,19 @@ import kotlinx.serialization.json.JsonObject
  * and, as AppFather decided for touch clients (#proj-raft-ui), the full list `button.v1`,
  * `confirm.v1` and `undo.v1`: a block card's buttons work by touch, with Raft's confirmation and a
  * plain Undo button (the hover card and the popover stay read-only). `block.v1`, as the web declares
- * it (it changes nothing in a version 3 answer). The same list and order as the web's desktop one.
+ * it (it changes nothing in a version 3 answer). The same list and order as the web's desktop one,
+ * then `unreviewed_app.v1` (below).
  */
-internal val APP_LINK_CARD_READ_CAPABILITIES: List<String> = listOf("card.v2", "inline.v1", "inline.tone.v2", "button.v1", "confirm.v1", "undo.v1", "block.v1", "preview.v3")
+internal val APP_LINK_CARD_READ_CAPABILITIES: List<String> = listOf("card.v2", "inline.v1", "inline.tone.v2", "button.v1", "confirm.v1", "undo.v1", "block.v1", "preview.v3", APP_LINK_UNREVIEWED_APP_CAPABILITY)
+
+/**
+ * `unreviewed_app.v1` (RFC 076 section 17; botiverse/slock #13945 `UNREVIEWED_APP_CAPABILITY`): this
+ * client shows Raft's confirmation, naming the App as not reviewed by Raft, before every acting
+ * button of an App whose read item says `app.reviewed: false`, undo-window buttons included
+ * ([build.raft.app.ThreadAppLinkCardPress]). Without it Raft draws such an App's buttons as navigate
+ * only; a handle read without it is refused (410) at prepare and execute.
+ */
+internal const val APP_LINK_UNREVIEWED_APP_CAPABILITY = "unreviewed_app.v1"
 
 /** The batched read's links per message with the flag on (`LINK_CARD_READ_MAX_URLS`). */
 internal const val APP_LINK_CARD_READ_MAX_URLS = 10
@@ -364,10 +374,20 @@ private fun readLinkCardReadItem(raw: JsonElement): LinkCardReadItem? {
     }
 }
 
-/** `app` of an item (strict `{ id, name, icon }`). */
+/**
+ * `app` of an item (strict `{ id, name, icon, reviewed? }`, `LinkCardReadApp`): `reviewed` is only
+ * ever `false` (RFC 076 section 17); any other value refuses the item, as a strict schema would.
+ */
 private fun readLinkCardReadApp(raw: JsonElement?): AppLinkApp? {
     val obj = raw as? JsonObject ?: return null
-    if (obj.keys != setOf("id", "name", "icon")) return null
+    if (obj.keys != setOf("id", "name", "icon") && obj.keys != setOf("id", "name", "icon", "reviewed")) return null
+    val reviewed =
+        if ("reviewed" in obj) {
+            if (obj["reviewed"].cardBoolean() != false) return null
+            false
+        } else {
+            null
+        }
     if (obj["id"].cardString()?.length !in 1..200) return null
     val name = obj["name"].cardString()?.takeIf { it.length <= 300 } ?: return null
     val icon =
@@ -375,7 +395,7 @@ private fun readLinkCardReadApp(raw: JsonElement?): AppLinkApp? {
             is JsonNull -> null
             else -> value.cardString()?.takeIf { it.length <= APP_LINK_PREVIEW_URL_MAX_LENGTH } ?: return null
         }
-    return AppLinkApp(name = name, icon = icon)
+    return AppLinkApp(name = name, icon = icon, reviewed = reviewed)
 }
 
 /** `linkCardInlineSchema`; a badge tone this client does not know reads neutral. */

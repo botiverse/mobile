@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -105,6 +106,27 @@ class AppLinkCardV2ParseTest {
         assertTrue(parseAppLinkCardReadAnswer("""{"prompts":[]}""")!!.results.isEmpty())
     }
 
+    /**
+     * `app.reviewed` (botiverse/slock #13945 `LinkCardReadApp`, `linkCardRead.api.test.ts`): `false`
+     * for an own-Server App read with `unreviewed_app.v1`, absent for an official App; anything else
+     * refuses the item.
+     */
+    @Test
+    fun appReviewedFalseReadsAndIsAbsentForOfficialApps() {
+        val unreviewedApp = """{"id":"app-stamp","name":"Stamp","icon":"/api/integration-logos/app-stamp/logo.webp","reviewed":false}"""
+        val unreviewed = v2Item(1).replace("\"app\":$stamp", "\"app\":$unreviewedApp")
+        val reviewedTrue = v2Item(3).replace("\"app\":$stamp", "\"app\":${unreviewedApp.replace("false", "true")}")
+        val reviewedString = v2Item(4).replace("\"app\":$stamp", "\"app\":${unreviewedApp.replace("false", "\"false\"")}")
+        val read = parseAppLinkCardReadAnswer(answer(unreviewed, v2Item(2), reviewedTrue, reviewedString))!!
+        assertEquals(setOf(urlOf(1), urlOf(2)), read.results.keys)
+        val app = (read.results[urlOf(1)] as AppLinkResult.Card).app
+        assertEquals(false, app.reviewed)
+        assertTrue(app.unreviewed)
+        val official = (read.results[urlOf(2)] as AppLinkResult.Card).app
+        assertNull(official.reviewed)
+        assertFalse(official.unreviewed)
+    }
+
     @Test
     fun badgeTonesThisClientDoesNotKnowReadNeutral() {
         val card = prCard().replace("\"tone\":\"review\"", "\"tone\":\"sparkly\"")
@@ -161,7 +183,7 @@ class AppLinkCardV2ParseTest {
                 AppLinkCardReadRequestBody("6f1c1f86-5a83-4b1e-9b1a-0d2f0e0c0a01", APP_LINK_CARD_READ_CAPABILITIES, "zh-CN").toJson(),
             ) as kotlinx.serialization.json.JsonObject
         assertEquals(setOf("view_instance_id", "capabilities", "locale"), body.keys)
-        assertEquals(listOf("card.v2", "inline.v1", "inline.tone.v2", "button.v1", "confirm.v1", "undo.v1", "block.v1", "preview.v3"), APP_LINK_CARD_READ_CAPABILITIES)
+        assertEquals(listOf("card.v2", "inline.v1", "inline.tone.v2", "button.v1", "confirm.v1", "undo.v1", "block.v1", "preview.v3", "unreviewed_app.v1"), APP_LINK_CARD_READ_CAPABILITIES)
         assertEquals("zh-CN", appLinkCardReadLocale("zh_CN"))
         assertEquals("en", appLinkCardReadLocale(null))
         assertEquals("en", appLinkCardReadLocale("not a tag"))
