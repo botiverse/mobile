@@ -1,13 +1,13 @@
 ---
 name: slock-android-adb-audit
-description: Use when auditing or debugging Slock Android/KMP/Kuikly surfaces from adb, especially when an agent needs repeatable internal intent navigation, Kuikly page launch, diagnostics deep links, click, press-key, scroll, screenshot, UI XML, or logcat collection.
+description: Use when auditing or debugging Raft Android/KMP surfaces from adb, especially when an agent needs repeatable internal intent navigation, shared page launch, diagnostics deep links, click, press-key, scroll, screenshot, UI XML, or logcat collection.
 ---
 
 # Slock Android ADB Audit
 
 Use `scripts/slock_android_adb.py` as the standard Android device driver for
-repeatable Kuikly surface audits. Prefer app-owned debug intents,
-Kuikly page launches, and diagnostics hooks over fragile visual-only navigation.
+repeatable surface audits. Prefer app-owned debug intents,
+shared page launches, and diagnostics hooks over fragile visual-only navigation.
 The CLI prints JSON for every command, and `get-app-state` returns both a
 screenshot path and a UI XML path so the captured state is reusable evidence.
 
@@ -20,9 +20,9 @@ python3 scripts/slock_android_adb.py devices
 ```
 
 If more than one device is attached, pass `--device <serial>` to every command.
-The default package is `ai.slock.android`, the default launcher component is
-`ai.slock.android/.MainActivity`, and the Kuikly host component is
-`ai.slock.android/.shared.RaftLegacyHostActivity`.
+The default package is `build.raft.app`, the default launcher component is
+`build.raft.app/.MainActivity`, and the legacy page host component is
+`build.raft.app/.shared.RaftLegacyHostActivity`.
 
 ## Core Commands
 
@@ -74,13 +74,13 @@ string, boolean, int, and long extras:
 
 ```bash
 python3 scripts/slock_android_adb.py --device emulator-5560 start-intent \
-  --action ai.slock.android.diagnostics.OPEN \
-  --component ai.slock.android/.core.diagnostics.DiagnosticsDeepLinkActivity \
+  --action build.raft.app.diagnostics.OPEN \
+  --component build.raft.app/.core.diagnostics.DiagnosticsDeepLinkActivity \
   --long-extra auto_close_ms=15000
 ```
 
-Use `open-page` to start a Kuikly page with `pageName` and JSON `pageData`
-when the target build allows shell/debug launches of the Kuikly activity:
+Use `open-page` to start a shared page with `pageName` and JSON `pageData`
+when the target build allows shell/debug launches of the page host activity:
 
 ```bash
 python3 scripts/slock_android_adb.py --device emulator-5560 open-page router
@@ -108,8 +108,8 @@ This helper emits:
 
 ```bash
 adb shell am start -W \
-  -a ai.slock.android.diagnostics.OPEN \
-  -n ai.slock.android/.core.diagnostics.DiagnosticsDeepLinkActivity \
+  -a build.raft.app.diagnostics.OPEN \
+  -n build.raft.app/.core.diagnostics.DiagnosticsDeepLinkActivity \
   --el auto_close_ms 15000
 ```
 

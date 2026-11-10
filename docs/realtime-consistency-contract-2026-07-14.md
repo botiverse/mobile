@@ -2,7 +2,7 @@
 
 - Status: **standard / frozen contract**
 - Contract versions: **Thread gap recovery v1** and **realtime foundation v1.2**
-- Scope: shared KMP realtime state, Android/OHOS hosts, SQLite persistence,
+- Scope: shared KMP realtime state, Android/iOS hosts, SQLite persistence,
   projection sinks, and any future platform binding of the same contracts.
 - Change control: a semantic change requires a version bump, a new adversarial
   test/mutation, and renewed contract review. A production patch or passing
@@ -25,16 +25,11 @@ The shared principle is:
 
 ## 1. Relationship to older documents
 
-This contract supersedes the ownership model in
-`realtime-session-owner-boundary-spec.md`. That document remains useful as
-migration history and transport-lifecycle motivation, but its process/session
-owner sketch is not the current grant or scope model.
-
-This contract also supersedes the visible-stream recovery algorithm in
-`mobile-message-seq-gap-sync-spec-2026-06-25.md`. That document's distinction
-between a server-global resume cursor and a visible-stream cursor remains valid.
-The cursor/target, sparse-sequence, coalescing, and terminal rules in this
-document are authoritative.
+This contract replaces the earlier realtime session-owner boundary spec and
+the visible-stream recovery algorithm of the 2026-06-25 seq-gap sync spec
+(both deleted). The distinction between a server-global resume cursor and a
+visible-stream cursor still holds; the cursor/target, sparse-sequence,
+coalescing, and terminal rules in this document are authoritative.
 
 ## 2. Common terminology
 

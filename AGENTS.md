@@ -44,7 +44,6 @@ summarizes.
   Gradle work or single visual cases.
 - `mobile-use`, `slock-android-adb-audit` — driving devices/emulators from
   the command line.
-- `slock-android-packaging` — local signed APK artifact for `#artifacts`.
 - `slock-launch-contract` — route/launch/pageData and store-boundary audits.
 
 ## Code Naming: Raft, not Slock
@@ -191,7 +190,7 @@ botiverse/slock #12392 / #proj-o11y:#18).
 ## Route / PageData MVI Contract Rule
 
 - Iron rule: do not pass product content/state through route, launch, or
-  Kuikly `pageData` payloads. Pass only identity and intent, then let the
+  `pageData` payloads. Pass only identity and intent, then let the
   destination MVI store/repository load canonical state.
 - Visual, smoke, and test data must enter through fixtures/providers or direct
   typed construction, not through production route parsers.
@@ -209,9 +208,9 @@ botiverse/slock #12392 / #proj-o11y:#18).
   production parser rejection/ignore behavior, and narrow static checks on
   known route/pageData entry points. Do not use broad word-grep as a hard gate.
 
-## Kuikly Overlay Coordinate Rule
+## Overlay Coordinate Rule
 
-- For Slock Kuikly Compose floating overlays, dropdowns, context menus, and
+- For shared Compose floating overlays, dropdowns, context menus, and
   anchored popovers, keep anchor and overlay geometry in pixels. Do not convert
   `positionInRoot()` or `coords.size` through `LocalDensity`, `toDp()`, `.dp`,
   or `toSlockDpOffset()` before passing an anchor to `RaftAnchoredPopover`.
@@ -221,14 +220,14 @@ botiverse/slock #12392 / #proj-o11y:#18).
   `RaftAnchoredPopover`, `RaftFloatingOverlayLayout`, or trigger components
   such as `RaftAnchoredPickerTrigger`.
 
-## Kuikly Back Handling Rule
+## Back Handling Rule
 
-- Any cancelable transient UI state in shared Kuikly Compose must register
+- Any cancelable transient UI state in shared Compose must register
   `RaftBackHandler(enabled = stateIsActive, label = "...")` while active.
   Examples include non-modal selection modes, inline search bars, full-screen
   previews, custom panels, and popovers that are not already wrapped by the
   shared overlay/dialog primitives.
-- Rely on Kuikly `BackHandler` stack semantics: the most recently composed
+- Rely on `BackHandler` stack semantics: the most recently composed
   enabled handler owns system Back first, and disposal automatically removes it
   from the stack. Do not hand-roll per-page native back dispatch or platform
   key-event interception for ordinary cancelable UI states.
@@ -364,21 +363,6 @@ Robolectric native-graphics captures of shared UI, compared with the goldens in
   them into `compose/shared/src/androidUnitTest/screenshots/` and commit. The same
   run records the design system's goldens (`designsystem-screenshots-recorded`).
 
-## Kuikly Text Decoration Rule
-
-- In shared Kuikly Compose, do not put visual container modifiers such as
-  `padding`, `border`, or `background` directly on `Text`. Kuikly text nodes do
-  not consume those modifiers reliably across renderers, so padding may not
-  affect drawing or measurement and bordered/background text can visually press
-  against its frame.
-- Put those modifiers on a wrapper container instead:
-  `Box(Modifier.border(...).background(...).padding(...)) { Text(...) }`.
-  Keep text-only concerns such as `style`, `color`, `maxLines`, `overflow`, and
-  `textAlign` on the `Text` itself.
-- The same wrapper rule applies when `padding` is meant to expand a clickable
-  text tap target: put `clickable` and `padding` on the wrapper, then render a
-  bare `Text` inside.
-
 ## Task / Commit / Thread Discipline
 
 Workflow rules for how every agent (human-supervised or autonomous) should move
@@ -386,9 +370,9 @@ work through Slock task threads, commits, and pushes. These rules apply on top
 of the API contract and MVI rules above; they exist so other agents and humans
 can verify any task in this repo from its thread alone, without reading code.
 
-### Prefer hosted CI on Jiacheng's Mac (2026-07-13)
+### Prefer hosted CI (2026-07-13)
 
-Agents running on Jiacheng's Mac should send Gradle, Kotlin/Native/Konan, APK,
+Agents on shared machines should send Gradle, Kotlin/Native/Konan, APK,
 and other resource-heavy builds/tests to hosted CI whenever the repository has
 an applicable workflow. Concurrent local Gradle/Konan jobs compete for limited
 CPU and memory and can slow down the owner's active work and other agents.
@@ -493,9 +477,6 @@ does not identify the agent: a Stamp squash lands on `main` authored by
 `repo use` sets identity per repository, so every worktree of that clone
 shares it; in a checkout shared between agents, pass `-c user.name=...
 -c user.email=...` per commit instead.
-
-`docs/commit-signoff-policy.md` (the old `@mail.build` sign-off rule) is
-superseded by this section.
 
 ### One thread, one topic
 
@@ -684,31 +665,15 @@ or helper scripts as a workaround for branch protection.
   widths use `compose/designsystem` tokens. raft-ui controls cast no shadow;
   only stickers keep the hard offset.
 
-## Kuikly Status
+## Platforms and removed stacks
 
-- The mobile UI runs on JetBrains Compose Multiplatform; Kuikly UI was removed
-  (see `compose/designsystem` for the design-system module). The vendored
-  Kuikly AI skills, rules and the KuiklyUI reference tree were removed too; do
-  not re-add them. New UI is Compose Multiplatform.
-- `.agents/skills/slock-*` contains Slock-specific workflow guidance
-  (currently `slock-android-adb-audit`, `slock-android-packaging`,
-  `slock-launch-contract`).
-
-## KuiklyUI Release (retired)
-
-- Since the Compose Multiplatform switch neither the Gradle build nor the iOS
-  Podfile consumes Kuikly UI (`com.tencent.kuikly-open` / OpenKuiklyIOSRender).
-  The immutable release closure, manifest gate and artifact fetcher were
-  removed, as was the static no-Kuikly-consumer CI check. KuiklyBase libraries that are not Kuikly UI
-  (`resource-core`) stay. NetworkKMM was removed with the Ktor 3 switch (2026-10-23).
-
-## HarmonyOS
-
-- This repository targets Android and iOS only; it has no HarmonyOS (OHOS)
-  app, target, build, CI lane, device tooling, or release step. Do not add
-  them. HarmonyOS is planned as a separate ArkTS rewrite outside this repo
-  (see `README.md`). The legacy Kuikly OHOS app (last release 1.14.x) lives
-  only on the `release/1.14.*` branches.
+- The app targets Android, iOS and desktop with JetBrains Compose
+  Multiplatform. Kuikly UI, its vendored skills/rules/reference tree and its
+  release closure were removed; do not re-add them. KuiklyBase libraries that
+  are not Kuikly UI (`resource-core`) stay.
+- There is no HarmonyOS (OHOS) app, target, CI lane or release step here; do
+  not add them. HarmonyOS is a separate ArkTS rewrite outside this repo
+  (see `README.md`); the legacy OHOS app lives only on `release/1.14.*`.
 
 ## Local Preferences
 
@@ -716,19 +681,15 @@ or helper scripts as a workaround for branch protection.
   `SharedPreferenceStore` in `compose/shared`. Business code must not create
   platform `SharedPreferences` instances, choose file names, or hand-roll
   preference keys in feature pages.
-- In shared code, `KuiklySharedPreferencesKeyValueStore` namespaces are only
-  key prefixes such as `tasks:viewMode`; do not reinterpret those namespaces as
-  platform preference file names.
-- Platform hosts only adapt the bottom store: Android provides
-  `AndroidSharedPreferencesKeyValueStore` using the shared
-  `RaftLocalPreferenceStore.AndroidPreferencesName`; Kuikly hosts provide
-  `KuiklySharedPreferencesKeyValueStore` through `kuiklySharedPreferenceStore(...)`.
+- Namespaces such as `tasks:viewMode` are key prefixes, not platform
+  preference file names. Get the store from `raftSharedPreferenceStore()`;
+  platform code only adapts the bottom key-value store.
   Business repositories for locale, chat layout, notifications, tasks view mode,
   and future local settings stay in shared.
 
 ## Compose Shared Workflow
 
-- The Android app lives at `compose/androidApp` and consumes Kuikly Compose shared code
+- The Android app lives at `compose/androidApp` and consumes the shared Compose code
   through `implementation(project(":shared"))` in the same compose Gradle project.
 - When changing code under package `build.raft.app.*`, make the source change in
   `compose/shared/src/commonMain/kotlin/...`, not in `compose/androidApp/src/main/java/...`.
@@ -736,14 +697,14 @@ or helper scripts as a workaround for branch protection.
   compose Gradle root:
 
 ```bash
-cd /Users/artin/AndroidStudioProjects/Slock/compose
+cd compose
 ./gradlew :shared:compileDebugKotlinAndroid :androidApp:compileDebugKotlin
 ```
 
 - Then package the Android app from the same Gradle root, for example:
 
 ```bash
-cd /Users/artin/AndroidStudioProjects/Slock/compose
+cd compose
 ./gradlew :androidApp:assembleDebug
 ```
 
@@ -763,8 +724,6 @@ cd /Users/artin/AndroidStudioProjects/Slock/compose
 
 ## Network Priority Workflow
 
-- Every Android request that reaches `build.raft.app.network.SlockApiClient`
-  must run inside `withRaftRequestPriority(...)`; missing priority is a bug.
 - New product API routes live in `compose/shared` behind shared
   `@Serializable` request/response DTOs and `RaftNetworkClient`. Do not add
   parallel Android endpoint facades, app-local JSON parsers, `mapOf` request
@@ -833,7 +792,7 @@ This rule prevents a real production crash (white screen on launch).
 - **Never** access `viewModelScope`, `pagerId`, `Utils.bridgeModule(pagerId)`, or
   any Pager/runtime-context-dependent object inside a ViewModel constructor,
   property initializer, or `init {}` block.
-- Kuikly may not have finished Pager initialization when the ViewModel is
+- The Pager may not have finished initialization when the ViewModel is
   constructed. Premature access triggers `lateinit property pagerId has not been
   initialized` and blocks the first frame.
 - **Correct pattern**: save pure dependencies (repository, auth store, data source,
@@ -868,35 +827,26 @@ class SharedExampleViewModel(
 }
 ```
 
-## Kuikly Compose API Quick Reference
-
-Do not duplicate the Compose API mapping here. The canonical source is
-`.agents/rules/kuiklyComposeDSL.mdc`; read it before touching Kuikly Compose
-code, especially for package imports, unsupported APIs/modifiers, TextField,
-nested scroll, pull-to-refresh, animation, and lazy list/grid differences.
-
 ## Multi-Platform Build Validation
 
 After any shared-layer change, validate all target platforms before handoff:
 
 ```bash
 # 1. Shared Android compile
-cd /Users/artin/AndroidStudioProjects/Slock/compose
+cd compose
 ./gradlew :shared:compileDebugKotlinAndroid
 
 # 2. Shared iOS compile (Kotlin/Native cross-check; macOS host)
-cd /Users/artin/AndroidStudioProjects/Slock/compose
+cd compose
 ./gradlew :shared:compileKotlinIosSimulatorArm64
 
 # 3. Android app compile + assemble
-cd /Users/artin/AndroidStudioProjects/Slock/compose
+cd compose
 ./gradlew :androidApp:compileDebugKotlin :androidApp:assembleDebug
 
-# 4. Focused unit tests
-cd /Users/artin/AndroidStudioProjects/Slock/compose
-./gradlew :androidApp:testDebugUnitTest \
-  --tests "build.raft.app.core.data.quality.NetworkPriorityCallSiteTest*" \
-  --tests "build.raft.app.core.data.mock.MockRepositoryTest*"
+# 4. Focused unit tests for what you touched
+cd compose
+./gradlew :shared:testDebugUnitTest --tests 'build.raft.app.SomeTest'
 ```
 
 Key invariants:
@@ -980,7 +930,7 @@ edited (it bit #360 and #387 on the same day):
 
 ## Peer Review Convention (互审公约)
 
-Approved by @artin 2026-07-18. Rationale: review rounds ballooned to 30+ on a
+Approved by artin 2026-07-18. Rationale: review rounds ballooned to 30+ on a
 PR whose product code had passed source review early — the remaining rounds
 were spent proving the test harness itself. Keep the rigor, but gate by risk
 and cap the rounds.
@@ -990,10 +940,10 @@ and cap the rounds.
    connected-test teeth, exact-SHA binding) are reserved for
    architecture/contract/cross-platform changes.
 2. **Round cap = 3.** If a review has not converged within 3 rounds, escalate
-   to @artin, or merge the source-PASSED portion and open a follow-up task
+   to artin, or merge the source-PASSED portion and open a follow-up task
    for the remainder. Do not spin exact SHAs indefinitely.
 3. **Harness issues are separate tasks.** Defects in test fixtures or CI
-   itself belong to the harness domain (@XiShi / stamp) and get their own
+   itself belong to the harness domain (XiShi / stamp) and get their own
    task; they must not block a product PR. The product PR's test bar is:
    does not break existing tests + passes source review.
 4. **HOLD requires a behavior.** A HOLD verdict must name the concrete

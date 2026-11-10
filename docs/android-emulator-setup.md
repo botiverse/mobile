@@ -111,14 +111,14 @@ $ avdmanager create avd \
 $ avdmanager list avd | grep Pixel_9a_3
     Name: Pixel_9a_3
     Device: pixel_9 (Google)
-    Path: /Users/artin/.android/avd/Pixel_9a_3.avd
+    Path: ~/.android/avd/Pixel_9a_3.avd
     Target: Google APIs (Google Inc.)
     Based on: Android 14 (API level 34)
     Tag/ABI: google_apis/arm64-v8a
 
 # 5. (Optional) Set boot animation off + speed up AVD config
 $ sed -i '' 's/hw.gpu.enabled=yes/hw.gpu.enabled=yes/' \
-    /Users/artin/.android/avd/Pixel_9a_3.avd/config.ini
+    ~/.android/avd/Pixel_9a_3.avd/config.ini
 # Add: hw.ramSize=4096, vm.heapSize=512, disk.dataPartition.size=4G for faster boot
 ```
 
@@ -248,10 +248,10 @@ $ adb -s emulator-5560 emu avd snapshot load "before-#{task-id}"
 ### Disk cleanup
 
 ```bash
-# AVD caches grow fast; check /Users/artin/.android/avd/ for >2GB AVDs
-$ du -sh /Users/artin/.android/avd/*/snapshots/
+# AVD caches grow fast; check ~/.android/avd/ for >2GB AVDs
+$ du -sh ~/.android/avd/*/snapshots/
 # Delete old snapshots
-$ rm -rf /Users/artin/.android/avd/Pixel_9a/snapshots/old-snapshot-*
+$ rm -rf ~/.android/avd/Pixel_9a/snapshots/old-snapshot-*
 ```
 
 ---
