@@ -7,7 +7,7 @@
 - Redesigned question cards, as on the web
 - See and reply to feedback you've sent
 - Agent setting changes apply once it's idle
-- One compact bar for Artifacts; faster startup
+- Full web toolbar in Artifacts; faster startup
 
 🐛 Fixed
 - In-app web pages that fail to load offer Retry
