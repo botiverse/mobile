@@ -152,6 +152,8 @@ internal class RaftAndroidSandboxWebView(
     private var lastLoadFailureReason: String = ""
     private var hostMessageListener: WebViewCompat.WebMessageListener? = null
     private var documentStartScriptHandler: ScriptHandler? = null
+    /** [raftWebViewFirstPaintThemeScript] at document start; separate from the auth/bridge script. */
+    private var firstPaintScriptHandler: ScriptHandler? = null
     private val bootstrapNavigationFence = RaftWebViewBootstrapNavigationFence()
     private var boundController: RaftWebViewController? = null
     /** Diagnostics: when the current main-frame load started (0: none), and the progress milestones logged. */
@@ -999,6 +1001,7 @@ internal class RaftAndroidSandboxWebView(
 
     private fun installDocumentStartScript(targetUrl: String): Boolean {
         removeDocumentStartScript()
+        installFirstPaintScript(targetUrl)
         val authScript = injectedJavaScript.takeIf { allowScripts && domStorageEnabled && it.isNotBlank() } ?: ""
         val bridge =
             HOST_BRIDGE_SCRIPT.takeIf {
@@ -1022,6 +1025,32 @@ internal class RaftAndroidSandboxWebView(
     private fun removeDocumentStartScript() {
         runCatching { documentStartScriptHandler?.remove() }
         documentStartScriptHandler = null
+        runCatching { firstPaintScriptHandler?.remove() }
+        firstPaintScriptHandler = null
+    }
+
+    /**
+     * The page's own first paint is the engine's white canvas until its stylesheet and theme
+     * script apply: give its root the app's canvas colour and scheme until it loaded (lowest
+     * priority, removed after `load`; as iOS). Only on [targetUrl]'s origin, like the auth script.
+     * Without document-start scripts the WebView's own canvas background (until the first
+     * commit) is all there is.
+     */
+    private fun installFirstPaintScript(targetUrl: String) {
+        if (!allowScripts || placeholderBackground == 0) return
+        val originRule = raftDocumentStartScriptOriginRule(targetUrl) ?: return
+        if (mainFrameOrigin != null && originRule != mainFrameOrigin) return
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
+        runCatching {
+            firstPaintScriptHandler =
+                WebViewCompat.addDocumentStartJavaScript(
+                    webView,
+                    raftWebViewFirstPaintThemeScript(placeholderBackground, RaftAppThemeState.isDark),
+                    setOf(originRule),
+                )
+        }.onFailure { error ->
+            diagnosticsWarn("first_paint_script unavailable errorType=${error::class.simpleName}")
+        }
     }
 
     /**
