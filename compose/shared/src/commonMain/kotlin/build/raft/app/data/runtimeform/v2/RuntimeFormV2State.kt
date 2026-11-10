@@ -166,13 +166,14 @@ internal fun runtimeFormV2Choices(
             )
         RuntimeFormV2FieldKind.DependentSelect -> {
             val parent = values.text(field.dependsOn)
-            if (source?.customValueAllowedByValue?.get(parent) == true) {
+            val options = source?.optionsByValue?.get(parent).orEmpty().map { it.labelledFor(field) }
+            val allowCustom = source?.customValueAllowedByValue?.get(parent) == true
+            // A list that also accepts a typed value (e.g. Built-in Pi + OpenRouter, slock #13950) is a
+            // searchable combobox; only a custom-only parent with no list is a plain text input.
+            if (allowCustom && options.isEmpty()) {
                 RuntimeFormV2Choices.FreeText
             } else {
-                RuntimeFormV2Choices.Select(
-                    source?.optionsByValue?.get(parent).orEmpty().map { it.labelledFor(field) },
-                    allowEmpty = false
-                )
+                RuntimeFormV2Choices.Select(options, allowEmpty = false, allowCustom = allowCustom)
             }
         }
         RuntimeFormV2FieldKind.DerivedSelect -> {
