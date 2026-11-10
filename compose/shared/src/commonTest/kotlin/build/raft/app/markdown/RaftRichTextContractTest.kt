@@ -16,7 +16,8 @@ class RaftRichTextContractTest {
                 RaftRichTextContext(
                     knownChannels = setOf("markdown专修"),
                     knownMentions = setOf("artin"),
-                    viewerUserId = "artin"
+                    viewerUserId = "artin",
+                    knownTaskNumbers = setOf(42)
                 )
             )
 
@@ -179,7 +180,8 @@ class RaftRichTextContractTest {
             buildRaftRichTextDocument(
                 body,
                 RaftRichTextContext(
-                    knownMentions = setOf("KMP-专家")
+                    knownMentions = setOf("KMP-专家"),
+                    knownTaskNumbers = setOf(520)
                 )
             )
 

@@ -21,6 +21,8 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.markdown.ThreadMarkdownTag
+import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.model.TaskStatus
 import kotlin.test.Test
 import org.junit.runner.RunWith
@@ -65,6 +67,9 @@ private val bodies =
         "Ping the team today @alice please",
     )
 
+// The fixture's task refs are known tasks of the conversation (no tag context knows none).
+private fun isFixtureTaskRef(tag: ThreadMarkdownTag): Boolean = tag.kind == ThreadMarkdownTagKind.Task
+
 private val widths = listOf(listOf(92, 98, 104), listOf(110, 116, 122))
 
 @Composable
@@ -76,7 +81,7 @@ private fun ChipWrapLadder() {
         bodies.forEach { body ->
             widths.forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top) {
-                    row.forEach { width -> RaftMarkdownBody(body = body, modifier = Modifier.width(width.dp)) }
+                    row.forEach { width -> RaftMarkdownBody(body = body, modifier = Modifier.width(width.dp), isTagValid = ::isFixtureTaskRef) }
                 }
             }
         }

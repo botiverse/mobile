@@ -745,10 +745,16 @@ class RaftMarkdownTest {
     @Test
     fun unknownUserMentionsAndChannelsDoNotRenderAsClickableTags() {
         val body = "Ping @not-a-member in #not-a-channel for #15"
-        val annotated = buildRaftMarkdownParagraphAnnotatedString(body)
+        val annotated =
+            buildRaftMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator = raftMarkdownAnnotator(content = body, isTagValid = validThreadMarkdownTags(knownTaskNumbers = setOf(15)))
+            )
 
         assertEquals("Ping @not-a-member in #not-a-channel for #15", annotated.raftTextWithoutInlineGaps())
         assertEquals(setOf("slock:41"), annotated.raftMarkdownClickableTags())
+        // No tag context knows no task either: the bare `#15` is plain too (Web MessageItem).
+        assertTrue(buildRaftMarkdownParagraphAnnotatedString(body).raftMarkdownClickableTags().isEmpty())
     }
 
     @Test
@@ -1038,7 +1044,8 @@ class RaftMarkdownTest {
                 RaftRichTextContext(
                     knownChannels = setOf("visual-testing"),
                     knownMentions = setOf("artin"),
-                    highlightedMentions = setOf("artin")
+                    highlightedMentions = setOf("artin"),
+                    knownTaskNumbers = setOf(438)
                 )
             )
         var openedAction: RaftRichTextAction? = null
@@ -2001,7 +2008,11 @@ class RaftMarkdownTest {
         val body =
             "[#1487 feat(search): pin entities](https://github.com/botiverse/mobile/pull/1487) " +
                 "then task #1487"
-        val annotated = buildRaftMarkdownParagraphAnnotatedString(body)
+        val annotated =
+            buildRaftMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator = raftMarkdownAnnotator(content = body, isTagValid = validThreadMarkdownTags(knownTaskNumbers = setOf(1487)))
+            )
         val links = annotated.getLinkAnnotations(0, annotated.length)
         // The task chip starts after its reserved leading gap (placeholder + word joiner).
         assertEquals(

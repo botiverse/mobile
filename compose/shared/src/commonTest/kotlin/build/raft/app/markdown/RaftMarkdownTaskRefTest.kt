@@ -181,4 +181,42 @@ class RaftMarkdownTaskRefTest {
         assertEquals(listOf("#7", "#triage:#169"), document.actions.map { it.label })
         assertTrue(document.actions.none { it.label.contains("4442") }, "an unresolvable ref has no tap action")
     }
+
+    /**
+     * Web MessageItem `taskByChannelNumber` holds the message's own `linkedTask`: a message's `#12`
+     * naming its own task chips even before the conversation's task list knows #12. Another
+     * message's `#12`, a qualified `#other:#12` and a different number are unaffected.
+     */
+    @Test
+    fun ownLinkedTaskChipsInItsOwnBody() {
+        val conversation: (ThreadMarkdownTag) -> Boolean = { tag ->
+            tag.isKnownThreadMarkdownTag(emptySet(), emptySet(), emptySet(), knownTaskNumbers = setOf(7))
+        }
+        val ownBody = conversation.withRaftMarkdownOwnTaskNumber(12)
+        val body = "this is #12, see #7, not #13 or #other:#12"
+        val plan = RaftMarkdownInlineTokenPlanner().plan(content = body, isTagValid = ownBody)
+        assertEquals(listOf("#12", "#7"), plan.tagTokens().map { it.label })
+        assertEquals(
+            listOf("#7"),
+            RaftMarkdownInlineTokenPlanner().plan(content = body, isTagValid = conversation).tagTokens().map { it.label }
+        )
+        // No own task: the conversation's validity itself.
+        assertTrue(conversation.withRaftMarkdownOwnTaskNumber(null) === conversation)
+        assertTrue(conversation.withRaftMarkdownOwnTaskNumber(0) === conversation)
+    }
+
+    /** A surface with no tag context chips no bare `#N` (it used to chip every number). */
+    @Test
+    fun noTagContextKnowsNoTask() {
+        val tag = "#7".threadInlineTagMatches().single().tag
+        assertFalse(defaultRaftMarkdownTagValidity(tag))
+        assertFalse(build.raft.app.defaultThreadMarkdownTagIsValid(tag))
+        assertTrue(RaftMarkdownInlineTokenPlanner().plan(content = "see #7").tagTokens().isEmpty())
+        assertTrue(buildRaftRichTextDocument("see #7").actions.isEmpty())
+        // A rich-text context that knows the task still chips it.
+        assertEquals(
+            listOf("#7"),
+            buildRaftRichTextDocument("see #7", RaftRichTextContext(knownTaskNumbers = setOf(7))).actions.map { it.label }
+        )
+    }
 }

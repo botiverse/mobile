@@ -15,6 +15,7 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.model.TaskStatus
 import kotlin.test.Test
 import org.junit.runner.RunWith
@@ -53,6 +54,8 @@ class ThreadMessageRefPillPaddingScreenshotTest {
                     RaftMarkdownBody(
                         body = refPillBody,
                         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).padding(12.dp),
+                        // The fixture's task refs are known tasks (no tag context knows none).
+                        isTagValid = { tag -> tag.kind == ThreadMarkdownTagKind.Task },
                     )
                 }
             }

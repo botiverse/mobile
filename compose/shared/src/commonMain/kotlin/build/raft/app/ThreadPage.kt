@@ -335,6 +335,7 @@ import build.raft.app.markdown.LocalRaftMarkdownTaskRefStatuses
 import build.raft.app.markdown.parseRaftMarkdownTaskRefLabel
 import build.raft.app.markdown.parseRaftMarkdownMessageRefLabel
 import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
+import build.raft.app.markdown.defaultRaftMarkdownTagValidity
 import build.raft.app.markdown.RaftTaskStatusPixel
 import build.raft.app.markdown.RaftTaskStatusPixelStyle
 import build.raft.app.markdown.raftTaskStatusColor
@@ -4081,8 +4082,8 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
         }
     }
 
-internal fun defaultThreadMarkdownTagIsValid(tag: ThreadMarkdownTag): Boolean =
-    tag.kind == ThreadMarkdownTagKind.Task
+/** No tag context: no tag is known, so a bare `#N` is plain text ([defaultRaftMarkdownTagValidity]). */
+internal fun defaultThreadMarkdownTagIsValid(tag: ThreadMarkdownTag): Boolean = defaultRaftMarkdownTagValidity(tag)
 
 internal fun RaftThreadScreenPayload.resolveTaskAssigneeDisplayName(
     value: String?,
@@ -4427,6 +4428,38 @@ internal fun RaftThreadScreenPayload.resolvedTaskLookupChannelId(
     if (!isReplyThreadWithExplicitParentPair()) return timelineChannelId
     return parentChannelId.nonBlank() ?: timelineChannelId
 }
+
+/**
+ * The channel whose tasks a bare `#N` in this conversation names, for rendering the chip and opening
+ * it (Web MessageItem `taskContextChannelId = parentChannelId || message.channelId`). A task
+ * conversation's parent is its task's host channel (Web TaskConversationDialog
+ * `parentChannelId: task.channelId`), resolved by the conversation header as
+ * [taskConversationHostChannelId]; until it resolves there is no context, never the conversation's
+ * own channel. Not gated on write access: a read-only reader, or one whose access is still
+ * resolving, sees and opens task refs like any reader.
+ */
+internal fun RaftThreadScreenPayload.markdownTaskContextChannelId(
+    taskConversationHostChannelId: String?
+): String? =
+    if (channelKind == RaftTaskConversationChannelKind) {
+        taskConversationHostChannelId.nonBlank()
+    } else {
+        resolvedTaskLookupChannelId()
+    }
+
+/**
+ * Load [contextChannelId]'s tasks for this conversation's task refs only when nothing else does: the
+ * write-gated [taskChannelId] load covers the same channel, and a task conversation's host channel
+ * is loaded by its header's tasks store.
+ */
+internal fun shouldLoadMarkdownTaskContextTasks(
+    payload: RaftThreadScreenPayload,
+    contextChannelId: ChannelId,
+    taskChannelId: ChannelId?
+): Boolean =
+    (payload.status == "content" || payload.status == "empty") &&
+        payload.channelKind != RaftTaskConversationChannelKind &&
+        contextChannelId != taskChannelId
 
 internal fun RaftThreadScreenPayload.replyParentChannelIdForNestedOpen(): String? =
     if (isReplyThreadWithExplicitParentPair()) {
@@ -8679,6 +8712,10 @@ private fun SharedThreadRouteContentContent(
     val taskConversationTasksViewModel: SharedTasksViewModel? =
         rememberTaskChannelTasksViewModel(taskConversationParentChannelId, authStore, tasksDataSource, tasksDataStore) { bridge.log(it) }
     val taskConversationTasksState = taskConversationTasksViewModel?.state?.collectAsState()?.value
+    // The channel a bare `#N` chips and opens against (Web `taskContextChannelId`): the task's host
+    // channel in a task conversation, and never gated on write access (unlike [taskChannelId]).
+    val markdownTaskContextChannelId =
+        payload.markdownTaskContextChannelId(taskConversationParentChannelId?.value)?.let(::ChannelId)
     val taskConversationListedTask =
         taskConversationHeaderState?.ref?.taskId?.let { taskId ->
             (taskConversationTasksState?.loadState as? ScreenLoadState.Content)
@@ -9075,13 +9112,65 @@ private fun SharedThreadRouteContentContent(
                 )
         }
     }
+    // The task context channel's tasks (Web `taskByChannelNumber` for `taskContextChannelId`). In a
+    // task conversation that is the host channel, whose tasks [taskConversationTasksViewModel] loads.
+    val markdownTaskContextChannelName =
+        baseRenderedPayload.title.takeUnless { payload.channelKind == RaftTaskConversationChannelKind }
+    val markdownTaskContextProjectionSlice by remember(
+        tasksDataStore,
+        currentServerId,
+        markdownTaskContextChannelId?.value,
+        markdownTaskContextChannelName
+    ) {
+        markdownTaskContextChannelId?.let { channelId ->
+            tasksDataStore
+                ?.channelProjectionFlow(
+                    serverId = currentServerId,
+                    channelId = channelId.value,
+                    channelName = markdownTaskContextChannelName
+                )
+                ?.distinctUntilChanged()
+        } ?: MutableStateFlow(SharedTasksProjectionSlice())
+    }.collectAsState(SharedTasksProjectionSlice())
+    // A reader without write access (or whose access is still resolving) has no [taskChannelId], so
+    // nothing above loads the context channel's tasks; load them for its task refs.
+    LaunchedEffect(currentServerId, markdownTaskContextChannelId?.value, taskChannelId?.value, payload.status) {
+        val serverId = currentServerId ?: return@LaunchedEffect
+        val contextChannelId = markdownTaskContextChannelId ?: return@LaunchedEffect
+        val sharedStore = tasksDataStore ?: return@LaunchedEffect
+        if (
+            !shouldLoadMarkdownTaskContextTasks(
+                payload = payload,
+                contextChannelId = contextChannelId,
+                taskChannelId = taskChannelId
+            )
+        ) {
+            return@LaunchedEffect
+        }
+        val result =
+            sharedStore.loadSnapshot(
+                serverId = serverId,
+                scope = SharedTasksScope.Channel(contextChannelId),
+                forceRefresh = false
+            ) {
+                tasksDataSource.loadChannelTasks(
+                    serverId = ServerId(serverId),
+                    channelId = contextChannelId,
+                    priority = DataRequestPriority.Background
+                )
+            }
+        bridge.log(
+            "thread_markdown_task_context_load channelId=${contextChannelId.value} " +
+                "result=${result::class.simpleName}"
+        )
+    }
     val markdownTaskStatuses =
-        remember(taskProjectionSlice, serverTaskProjectionSlice, taskChannelId) {
+        remember(markdownTaskContextProjectionSlice, serverTaskProjectionSlice, markdownTaskContextChannelId) {
             threadMarkdownTaskStatusesByNumber(
-                channelTasks = taskProjectionSlice.tasks,
+                channelTasks = markdownTaskContextProjectionSlice.tasks,
                 serverTasks = serverTaskProjectionSlice.tasks,
-                currentChannelId = taskChannelId?.value,
-                loaded = threadMarkdownTaskSourceLoaded(taskProjectionSlice, serverTaskProjectionSlice)
+                currentChannelId = markdownTaskContextChannelId?.value,
+                loaded = threadMarkdownTaskSourceLoaded(markdownTaskContextProjectionSlice, serverTaskProjectionSlice)
             )
         }
     val markdownTaskRefStatuses =
@@ -14266,7 +14355,7 @@ private fun SharedThreadRouteContentContent(
                         try {
                             val resolveChannelId =
                                 if (qualifiedTaskRef == null) {
-                                    taskChannelId
+                                    markdownTaskContextChannelId
                                 } else {
                                     dataSource.markdownTaskRefChannelId(
                                         actionId = markdownActionId,
@@ -30268,6 +30357,14 @@ private fun ThreadMessageCardContent(
                                     RaftMarkdownBody(
                                         body = forwardNoteBody,
                                         textStyle = messageBodyTextStyle,
+                                        // The note is this message's own text: its refs read the
+                                        // conversation's tag context like the body (Web MessageItem).
+                                        isTagValid = isMarkdownTagValid,
+                                        resolveTagLabel = resolveMarkdownTagLabel,
+                                        onOpenTagAction = { tag, actionId ->
+                                            tapMovementGate.rejectChildAction("markdown_tag")
+                                            onOpenMarkdownTag(tag, actionId)
+                                        },
                                         onOpenUrl = onOpenMarkdownUrl,
                                         modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
                                     )
@@ -30364,7 +30461,8 @@ private fun ThreadMessageCardContent(
                                                         RaftMarkdownOwnTaskStatusScope(
                                                             taskNumber = message.taskNumber,
                                                             taskStatus = message.taskStatus,
-                                                        ) {
+                                                            isTagValid = isMarkdownTagValid,
+                                                        ) { ownTaskTagValid ->
                                                           RaftMarkdownMentionReadStateScope(mentionReadStates) {
                                                           // artin #20 lane L: App links as chips, read
                                                           // for a sent message only (web MessageItem).
@@ -30387,7 +30485,7 @@ private fun ThreadMessageCardContent(
                                                                 fillWidth = !alignOwnMessageRight,
                                                                 textStyle = messageBodyTextStyle,
                                                                 highlightedMentions = highlightedMentions,
-                                                                isTagValid = isMarkdownTagValid,
+                                                                isTagValid = ownTaskTagValid,
                                                                 resolveTagLabel = resolveMarkdownTagLabel,
                                                                 inlineContentScope = markdownRenderSignature.inlineContentScope,
                                                                 activeTagKey = activeMarkdownTagKey,

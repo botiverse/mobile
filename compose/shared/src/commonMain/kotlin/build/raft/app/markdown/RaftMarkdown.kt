@@ -508,8 +508,13 @@ internal object RaftMarkdownInlineTokenRegistry {
         )
 }
 
-fun defaultRaftMarkdownTagValidity(tag: ThreadMarkdownTag): Boolean =
-    tag.kind == ThreadMarkdownTagKind.Task
+/**
+ * A surface that passes no tag context knows no channel, member or task, so every tag stays plain
+ * text (Web: a ref is a chip only when it resolves; a bare `#N` only for a known task of the
+ * conversation, MessageItem).
+ */
+@Suppress("UNUSED_PARAMETER")
+fun defaultRaftMarkdownTagValidity(tag: ThreadMarkdownTag): Boolean = false
 
 private fun ThreadMarkdownTagKind.toMarkdownInlineTokenKind(): MarkdownInlineTokenKind =
     when (this) {

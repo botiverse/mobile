@@ -66,22 +66,48 @@ internal fun Map<Int, TaskStatus>?.withRaftMarkdownOwnTaskStatus(
     return base + (number to status)
 }
 
-/** Overrides [LocalRaftMarkdownTaskStatuses] with the message's own linked task for [content]. */
+/**
+ * [isTagValid] that also knows the message's own linked task [taskNumber] (web MessageItem
+ * `taskByChannelNumber` holds the message's `linkedTask`), so a bare `#N` naming it chips even when
+ * the conversation's task list has not loaded it. No own task: [isTagValid] itself.
+ */
+internal fun ((ThreadMarkdownTag) -> Boolean).withRaftMarkdownOwnTaskNumber(
+    taskNumber: Int?,
+): (ThreadMarkdownTag) -> Boolean {
+    val number = taskNumber?.takeIf { it > 0 } ?: return this
+    val base = this
+    return { tag ->
+        tag.isBareRaftMarkdownTaskRef(number) || base(tag)
+    }
+}
+
+private fun ThreadMarkdownTag.isBareRaftMarkdownTaskRef(taskNumber: Int): Boolean =
+    kind == ThreadMarkdownTagKind.Task &&
+        channelName == null &&
+        directMessagePeerName == null &&
+        label.removePrefix("#").trim().toIntOrNull() == taskNumber
+
+/**
+ * Overrides [LocalRaftMarkdownTaskStatuses] with the message's own linked task for [content], and
+ * hands [content] the tag validity that knows that task ([withRaftMarkdownOwnTaskNumber]).
+ */
 @Composable
 internal fun RaftMarkdownOwnTaskStatusScope(
     taskNumber: Int?,
     taskStatus: String?,
-    content: @Composable () -> Unit,
+    isTagValid: (ThreadMarkdownTag) -> Boolean,
+    content: @Composable (isTagValid: (ThreadMarkdownTag) -> Boolean) -> Unit,
 ) {
     val base = LocalRaftMarkdownTaskStatuses.current
     val statuses =
         remember(base, taskNumber, taskStatus) {
             base.withRaftMarkdownOwnTaskStatus(taskNumber, taskStatus.strictTaskStatusOrNull("markdown_own_task", diagnostics = {}))
         }
+    val ownTaskTagValid = remember(isTagValid, taskNumber) { isTagValid.withRaftMarkdownOwnTaskNumber(taskNumber) }
     if (statuses === base) {
-        content()
+        content(ownTaskTagValid)
     } else {
-        CompositionLocalProvider(LocalRaftMarkdownTaskStatuses provides statuses, content = content)
+        CompositionLocalProvider(LocalRaftMarkdownTaskStatuses provides statuses) { content(ownTaskTagValid) }
     }
 }
 

@@ -95,8 +95,18 @@ private suspend fun fetchSharedTaskReference(
         }
         is DataResult.NoPermission -> SharedTaskReferenceResolution.AuthRequired
         is DataResult.Empty -> SharedTaskReferenceResolution.NotFound
-        is DataResult.Error -> SharedTaskReferenceResolution.Failed
+        // A 404 is the channel saying it has no such task (Web `openTaskByChannelNumber` only
+        // logs it); any other failure (network, 5xx) is a real failure to open.
+        is DataResult.Error ->
+            if (channelResult.error.code == TaskByNumberNotFoundErrorCode) {
+                SharedTaskReferenceResolution.NotFound
+            } else {
+                SharedTaskReferenceResolution.Failed
+            }
     }
+
+/** [toTaskActionResult]'s code for a 404 from `GET /tasks/channel/:channelId/number/:n`. */
+internal const val TaskByNumberNotFoundErrorCode = "tasks_404"
 
 /** The channel's task [taskNumber] from a loaded channel list, else from the loaded server list. */
 private fun SharedTasksDataStore.loadedTaskReference(
