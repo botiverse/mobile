@@ -142,8 +142,9 @@ internal data class SettingsSearchOutsetShape(val radius: Dp, val outset: Dp) : 
 }
 
 /** [size]'s bounds grown by [outset] on every side (pure: the highlight's geometry). */
+// `0f - outset`, not `-outset`: a zero outset stays +0f (Rect equality tells -0f apart).
 internal fun settingsSearchOutsetBounds(size: Size, outset: Float): Rect =
-    Rect(left = -outset, top = -outset, right = size.width + outset, bottom = size.height + outset)
+    Rect(left = 0f - outset, top = 0f - outset, right = size.width + outset, bottom = size.height + outset)
 
 /**
  * Marks the setting [id] on its page: when the page was opened at it, the row is brought into view
