@@ -51,6 +51,15 @@ internal fun raftWebViewBackgroundArgb(placeholderArgb: Int, painted: Boolean): 
     if (painted || placeholderArgb == 0) RAFT_WEB_VIEW_DEFAULT_BACKGROUND_ARGB else placeholderArgb
 
 /**
+ * Whether a native WebView is shown before its page's document committed (iOS): not while a
+ * canvas colour is set ([placeholderArgb] not 0), since until the commit it still shows what it
+ * had (the spare's blank warm-up document, white in dark mode) and the canvas container shows
+ * through instead; always once [committed].
+ */
+internal fun raftWebViewShownBeforeCommit(placeholderArgb: Int, committed: Boolean): Boolean =
+    committed || placeholderArgb == 0
+
+/**
  * The one spare WebView a platform keeps for the next page (iOS `RaftIosWebViewSpare`). A spare is
  * handed out only once its own warm-up load has ended ([markReady] with the generation [put]
  * returned): before that its navigation callbacks could still reach the page that took it and

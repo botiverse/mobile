@@ -80,6 +80,14 @@ class RaftWebViewSpareSlotTest {
     }
 
     @Test
+    fun theWebViewIsHiddenUntilItsDocumentCommitsWhenACanvasIsSet() {
+        val canvas = 0xFF1C1B1A.toInt()
+        assertFalse(raftWebViewShownBeforeCommit(canvas, committed = false))
+        assertTrue(raftWebViewShownBeforeCommit(canvas, committed = true))
+        assertTrue(raftWebViewShownBeforeCommit(0, committed = false))
+    }
+
+    @Test
     fun onlyTheSparesBlankDocumentIsIgnored() {
         val page = "https://app.raft.build/changelog"
         // (usingSpare, navigationUrl, src) -> ignored

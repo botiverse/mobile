@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.objcPtr
+import platform.CoreGraphics.CGColorGetAlpha
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSError
 import platform.Foundation.NSTimer
@@ -146,6 +147,8 @@ internal class RaftIosSandboxWebView(
     private var placeholderBackground = 0
     /** The current WKWebView finished a page; from then on it is opaque white, as Safari. */
     private var pagePainted = false
+    /** The current WKWebView committed this page's document; until then it is not shown ([applyBackground]). */
+    private var pageCommitted = false
 
     private val delegate = RaftIosWebViewDelegate(this)
     private val scriptMessageHandler = RaftIosWebViewScriptMessageHandler(this)
@@ -165,6 +168,9 @@ internal class RaftIosSandboxWebView(
         val color = raftIosColor(raftWebViewBackgroundArgb(placeholderBackground, painted))
         container.backgroundColor = color
         if (view == null) return
+        // Before the page's document commits the WKWebView shows whatever it had (a spare's blank
+        // warm-up document, layers not yet redrawn): not shown, the canvas container is.
+        view.alpha = if (raftWebViewShownBeforeCommit(placeholderBackground, pageCommitted)) 1.0 else 0.0
         view.opaque = painted || placeholderBackground == 0
         view.backgroundColor = if (view.opaque) color else UIColor.clearColor
         view.scrollView.backgroundColor = view.backgroundColor
@@ -289,12 +295,20 @@ internal class RaftIosSandboxWebView(
                     WKWebView(frame = container.bounds, configuration = configuration)
                 }
         usingSpare = spare != null
+        if (spare != null) {
+            diagnosticsInfo(
+                "spare_state opaque=${spare.opaque} bgAlpha=${raftIosColorAlpha(spare.backgroundColor)} " +
+                    "scrollBgAlpha=${raftIosColorAlpha(spare.scrollView.backgroundColor)} " +
+                    "style=${spare.traitCollection.userInterfaceStyle} inWindow=${container.window != null}"
+            )
+        }
         next.navigationDelegate = delegate
         next.UIDelegate = delegate
         next.allowsBackForwardNavigationGestures = false
         next.autoresizingMask = UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
         webView = next
         pagePainted = false
+        pageCommitted = false
         applyBackground()
         container.addSubview(next)
         startObserving(next)
@@ -515,6 +529,10 @@ internal class RaftIosSandboxWebView(
     internal fun didCommit(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
         if (raftWebViewIgnoresSpareBlankNavigation(usingSpare, source.URL?.absoluteString, src)) return
+        if (!pageCommitted) {
+            pageCommitted = true
+            applyBackground()
+        }
         currentURL = source.URL?.absoluteString ?: currentURL
         currentTitle = source.title ?: currentTitle
         currentLoading = source.loading
@@ -532,6 +550,7 @@ internal class RaftIosSandboxWebView(
         if (raftWebViewIgnoresSpareBlankNavigation(usingSpare, source.URL?.absoluteString, src)) return
         if (!pagePainted) {
             pagePainted = true
+            pageCommitted = true
             applyBackground()
         }
         currentURL = source.URL?.absoluteString ?: currentURL
@@ -779,6 +798,9 @@ private fun raftIosColor(argb: Int): UIColor =
         blue = (argb and 0xFF) / 255.0,
         alpha = ((argb ushr 24) and 0xFF) / 255.0,
     )
+
+/** [color]'s alpha (diagnostics); -1 without a colour. */
+private fun raftIosColorAlpha(color: UIColor?): Double = color?.CGColor?.let { CGColorGetAlpha(it) } ?: -1.0
 
 /** Android's `RAFT_WEBVIEW_DIAGNOSTICS_TAG`: the same tag for the same load lines. */
 private const val RaftIosWebViewDiagnosticsTag = "SlockWebView"
