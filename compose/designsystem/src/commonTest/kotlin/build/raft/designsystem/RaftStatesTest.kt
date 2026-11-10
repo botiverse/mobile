@@ -148,12 +148,12 @@ class RaftButtonLookTest {
         assertEquals(52.dp, raftButtonMetrics(RaftButtonSize.Xl, RaftButtonVariant.Primary).height)
     }
 
-    /** Sizing v12 (raft-ui 0.65 desktop density): under a fine pointer md and lg share 34, the frame item is 32. */
+    /** Sizing v12 (raft-ui 0.65 desktop density): under a fine pointer md, lg and the frame item share 34. */
     @Test
     fun pointerSizesShareTheControlHeight() {
         val desktop = RaftControlMetrics.Desktop
         assertEquals(34.dp, raftButtonMetrics(RaftButtonSize.Md, RaftButtonVariant.Default, desktop).height)
-        assertEquals(32.dp, raftButtonMetrics(RaftButtonSize.Md, RaftButtonVariant.OnFrame, desktop).height)
+        assertEquals(34.dp, raftButtonMetrics(RaftButtonSize.Md, RaftButtonVariant.OnFrame, desktop).height)
         assertEquals(34.dp, raftButtonMetrics(RaftButtonSize.Lg, RaftButtonVariant.Default, desktop).height)
         assertEquals(40.dp, raftButtonMetrics(RaftButtonSize.Xl, RaftButtonVariant.Primary, desktop).height)
         // A finger keeps every size it had.
