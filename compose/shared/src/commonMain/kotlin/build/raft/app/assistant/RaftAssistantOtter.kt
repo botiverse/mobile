@@ -313,8 +313,9 @@ fun RaftAssistantOtter(
     /** Where the otter rests (its pose's box, in window coordinates, before any tuck or pop). */
     onRestBounds: ((Rect) -> Unit)? = null,
 ) {
-    val reducedMotion = rememberRaftReducedMotion()
     val stillAt = LocalRaftAssistantOtterStillAt.current
+    // Held still (a screenshot, a preview) unless the test opts in to a moment of its motion.
+    val reducedMotion = rememberRaftReducedMotion() || (stillAt == null && raftOtterHeldStill())
     // First appearance on this composer: it runs in and pops up, then settles.
     var entering by remember { mutableStateOf(animateEntrance && !reducedMotion) }
     // The pop's translation in dp, from 105% of the running pose's height under its rest.

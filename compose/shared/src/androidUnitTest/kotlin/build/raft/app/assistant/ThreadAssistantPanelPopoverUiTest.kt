@@ -33,6 +33,7 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftAssistantOtterHosts
 import build.raft.app.runRobolectricComposeUiTest
+import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import build.raft.designsystem.text.RaftText
 import kotlin.math.abs
 import kotlin.test.Test
@@ -104,7 +105,8 @@ class ThreadAssistantPanelPopoverUiTest {
         setContent {
             pageDensity = LocalDensity.current
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            // The otter holds still: one deterministic frame, its loops scheduling none.
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftSpinnerStillStep provides 0) {
                 RaftDesignSystemTheme { content() }
             }
         }

@@ -35,6 +35,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftAssistantOtterHosts
+import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import build.raft.app.runRobolectricComposeUiTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -107,7 +108,8 @@ class ThreadAssistantOtterUiTest {
     private fun ComposeUiTest.show(content: @Composable () -> Unit) =
         setContent {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            // The otter holds still: one deterministic frame, its loops scheduling none.
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftSpinnerStillStep provides 0) {
                 RaftDesignSystemTheme { Column(Modifier.fillMaxSize()) { content() } }
             }
         }

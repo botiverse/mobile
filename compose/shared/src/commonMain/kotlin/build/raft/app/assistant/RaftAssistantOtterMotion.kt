@@ -9,6 +9,8 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalInspectionMode
+import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 
 // The otter's loops and its waking (web index.css `assistant-otter-breathe`, `assistant-otter-zzz`,
 // `assistant-otter-wake`; Artea #proj-assistant:#24): asleep (nothing new) it breathes, its belly
@@ -38,10 +40,22 @@ private val CssEaseInOut: Easing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
 private val CssEaseIn: Easing = CubicBezierEasing(0.42f, 0f, 1f, 1f)
 
 /**
- * Screenshots: every otter's loops and waking held this many ms in, so a capture is one
- * deterministic frame (as `LocalRaftSpinnerStillStep` holds spinners). Null: they run.
+ * A test opting in to motion: every otter's loops and waking held this many ms in, so a capture
+ * is one deterministic frame showing them. Null: they run, unless the subtree holds still
+ * ([raftOtterHeldStill]).
  */
 internal val LocalRaftAssistantOtterStillAt = staticCompositionLocalOf<Long?> { null }
+
+/**
+ * Whether the otter holds still here, as with reduced motion (no loops, no waking, one still z, and
+ * its loop clock schedules no frames): wherever spinners are held still for one deterministic frame
+ * (`LocalRaftSpinnerStillStep`, which every Robolectric screenshot capture provides) and in
+ * inspection mode (previews, capture fixtures). A test that wants the motion provides
+ * [LocalRaftAssistantOtterStillAt].
+ */
+@Composable
+internal fun raftOtterHeldStill(): Boolean =
+    LocalRaftSpinnerStillStep.current != null || LocalInspectionMode.current
 
 /** The pose's scale while it breathes, about its bottom middle (web `transform-origin: 50% 100%`). */
 internal class RaftOtterBreath(val scaleX: Float, val scaleY: Float)
