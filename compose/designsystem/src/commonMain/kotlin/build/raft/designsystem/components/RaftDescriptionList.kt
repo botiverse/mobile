@@ -40,10 +40,11 @@ enum class RaftDescriptionListDirection {
     Vertical,
 
     /**
-     * Two columns, the label on the left, when the list is 384dp wide or wider. Narrower
-     * than that it stacks into one column on its own, as raft-ui does below 24rem of the
-     * list's own width (`@max-sm/description-list`, raft-design #721): on a phone (about
-     * 358dp of list) each value sits 2dp under its label and 10dp above the next label.
+     * Two columns, the label on the left, while every value fits beside its label. Once one
+     * doesn't, the whole list stacks into one column on its own (raft-ui 0.75
+     * `useLabelValueFit`): each value 2dp under its label and 10dp above the next label. See
+     * [raftLabelsGoAbove] for the rule; it reads the list's own width and its content, not
+     * the window's, so short facts stay beside their labels on a phone.
      */
     Horizontal,
 
@@ -56,11 +57,34 @@ enum class RaftDescriptionListDirection {
     Inline,
 }
 
+/** The narrowest a two-column label/value list's label column gets: `minmax(88px, max-content)`. */
+internal val RaftLabelColumnMin: Dp = 88.dp
+
+/** The widest a label gets beside its value (`max-w-40`). */
+internal val RaftLabelColumnMax: Dp = 160.dp
+
 /**
- * The list's own width below which [RaftDescriptionListDirection.Horizontal] stacks
- * (raft-ui 0.23 `@container` `sm`, 24rem; not the window's).
+ * The narrowest the value column may be beside its labels: as wide as a label may grow. A value
+ * column narrower than its label column reads as the label's footnote, not its answer.
  */
-val RaftDescriptionListStackBelow: Dp = 384.dp
+internal val RaftValueColumnMin: Dp = 160.dp
+
+/**
+ * raft-ui 0.75 `labelsGoAbove`: whether a two-column label/value list ([RaftDescriptionList]
+ * `Horizontal`, [RaftMessageActionCardProperties]) [width] wide puts its labels above their
+ * values. [labelColumn] is the label column (the widest label, each at most
+ * [RaftLabelColumnMax], at least [RaftLabelColumnMin]) and [gap] the space after it;
+ * [valueWidths] are the values' one-line widths. The labels go above when the value column
+ * would be under [minValueColumn], or when some value doesn't fit on one line beside the
+ * labels but would on a line of its own. A value too long for a line of its own (a paragraph)
+ * wraps either way and doesn't decide. It depends only on the width and the content, so it
+ * can't flap at the boundary; the whole list goes at once, so labels never alternate.
+ */
+internal fun raftLabelsGoAbove(width: Int, labelColumn: Int, gap: Int, minValueColumn: Int, valueWidths: List<Int>): Boolean {
+    val valueColumn = width - labelColumn - gap
+    if (valueColumn < minValueColumn) return true
+    return valueWidths.any { it > valueColumn && it <= width }
+}
 
 /** Builds the facts of a [RaftDescriptionList]. */
 interface RaftDescriptionListScope {
@@ -91,14 +115,14 @@ interface RaftDescriptionListScope {
 /**
  * raft-ui 0.8.0 DescriptionList: a few facts about one item, each a label and a value.
  * Labels are `text-footnote` medium `foreground-hint`. [RaftDescriptionListDirection.Vertical]
- * puts 8dp between facts and gives each value at least 28dp; `Horizontal`, from 384dp of
- * its own width, puts a label column `minmax(88, max-content)` capped at 160dp 16dp before
- * the values (each at least 32dp, 2dp between rows), label and value on one baseline, and
- * below that stacks each value 2dp under its label with no minimum height, 10dp from the
- * next label. With no width
- * limit (in a horizontal scroll) `Horizontal` keeps two columns and sizes the values to
- * their content. A horizontal list measures its labels in a subcomposition first, so it
- * has no intrinsic size: don't put it under `IntrinsicSize`.
+ * puts 8dp between facts and gives each value at least 28dp; `Horizontal`, while every value
+ * fits beside its label ([raftLabelsGoAbove]), puts a label column `minmax(88, max-content)`
+ * capped at 160dp 16dp before the values (each at least 32dp, 2dp between rows), label and
+ * value on one baseline, and once one doesn't, stacks each value 2dp under its label with no
+ * minimum height, 10dp from the next label. With no width limit (in a horizontal scroll)
+ * `Horizontal` keeps two columns and sizes the values to their content. A horizontal list
+ * measures its labels and values in subcompositions first, so it has no intrinsic size:
+ * don't put it under `IntrinsicSize`.
  *
  * A value that can be changed is a frameless trigger opening a picker; a fact that can't
  * be changed must not look clickable.
@@ -123,20 +147,28 @@ fun RaftDescriptionList(
             val slots = remember(content) { HorizontalSlots(content) }
             SubcomposeLayout(modifier) { constraints ->
                 val bounded = constraints.hasBoundedWidth
-                val stacked = bounded && constraints.maxWidth < RaftDescriptionListStackBelow.roundToPx()
-                // Stacked, a value is 10dp above the next label: the 2dp row gap plus `mt-2`.
-                val gapY = (if (stacked) 10.dp else 2.dp).roundToPx()
                 // The label column is as wide as the widest label (88..160dp): measure the
                 // labels alone first, then lay out each fact (one node, for screen readers) on it.
-                val column =
-                    if (stacked) {
-                        0
-                    } else {
-                        val cap = 160.dp.roundToPx()
-                        subcompose(HorizontalSlot.Terms, slots.terms)
-                            .maxOfOrNull { it.measure(Constraints(maxWidth = cap)).width }
-                            .let { (it ?: 0).coerceIn(88.dp.roundToPx(), cap) }
-                    }
+                val cap = RaftLabelColumnMax.roundToPx()
+                val labelColumn =
+                    subcompose(HorizontalSlot.Terms, slots.terms)
+                        .maxOfOrNull { it.measure(Constraints(maxWidth = cap)).width }
+                        .let { (it ?: 0).coerceIn(RaftLabelColumnMin.roundToPx(), cap) }
+                val gapX = RaftDescriptionColumnGap.roundToPx()
+                // The labels go above their values once a value doesn't fit beside them: each
+                // value measured on one line, never placed.
+                val stacked =
+                    bounded &&
+                        raftLabelsGoAbove(
+                            width = constraints.maxWidth,
+                            labelColumn = labelColumn,
+                            gap = gapX,
+                            minValueColumn = RaftValueColumnMin.roundToPx(),
+                            valueWidths = subcompose(HorizontalSlot.Values, slots.values).map { it.measure(Constraints()).width },
+                        )
+                // Stacked, a value is 10dp above the next label: the 2dp row gap plus `mt-2`.
+                val gapY = (if (stacked) 10.dp else 2.dp).roundToPx()
+                val column = if (stacked) 0 else labelColumn
                 val itemConstraints = Constraints(maxWidth = if (bounded) constraints.maxWidth else Constraints.Infinity)
                 val items =
                     subcompose(HorizontalSlot.Items, slots.items(stacked, column))
@@ -156,7 +188,10 @@ fun RaftDescriptionList(
     }
 }
 
-private enum class HorizontalSlot { Terms, Items }
+private enum class HorizontalSlot { Terms, Values, Items }
+
+/** Between the label column and the values (`gap-x-4`). */
+private val RaftDescriptionColumnGap = 16.dp
 
 /**
  * The two subcompositions of a horizontal list, kept as the same lambdas while the
@@ -164,6 +199,7 @@ private enum class HorizontalSlot { Terms, Items }
  */
 private class HorizontalSlots(private val content: @Composable RaftDescriptionListScope.() -> Unit) {
     val terms: @Composable () -> Unit = { TermsScope.content() }
+    val values: @Composable () -> Unit = { ValuesScope.content() }
     private var key: Pair<Boolean, Int>? = null
     private var itemsContent: @Composable () -> Unit = {}
 
@@ -405,6 +441,18 @@ private object TermsScope : RaftDescriptionListScope {
 }
 
 /**
+ * Measures the values on one line for [raftLabelsGoAbove] (a value's items in a row, 6dp apart,
+ * as [DescriptionDetails] lays them out with nothing wrapping); never placed, hidden from
+ * accessibility.
+ */
+private object ValuesScope : RaftDescriptionListScope {
+    @Composable
+    override fun Item(term: String, termAccessory: (@Composable () -> Unit)?, details: @Composable RowScope.() -> Unit) {
+        Row(Modifier.clearAndSetSemantics { }, horizontalArrangement = Arrangement.spacedBy(6.dp)) { details() }
+    }
+}
+
+/**
  * One fact of a horizontal list, label and value in one node. Side by side on [column]
  * (label on the value's first baseline, `items-baseline`), or [stacked] 2dp apart with no
  * minimum value height.
@@ -457,8 +505,8 @@ private class HorizontalScope(private val stacked: Boolean, private val column: 
                     v.place(0, t.height + gapY)
                 }
             } else {
-                val gapX = 16.dp.roundToPx()
-                val t = termMeasurable.measure(Constraints(maxWidth = 160.dp.roundToPx()))
+                val gapX = RaftDescriptionColumnGap.roundToPx()
+                val t = termMeasurable.measure(Constraints(maxWidth = RaftLabelColumnMax.roundToPx()))
                 val valueMax = if (bounded) (constraints.maxWidth - column - gapX).coerceAtLeast(0) else Constraints.Infinity
                 val v = detailsMeasurable.measure(Constraints(maxWidth = valueMax))
                 // The label's first baseline: its text is centred in its row (beside a help button).

@@ -1244,11 +1244,22 @@ class DisplayComponentScreenshotTest {
                             RaftText("Ada Lovelace of the Analytical Engine Society")
                         }
                     }
-                    Caption("Horizontal under 384dp (a phone): one column, 10dp between facts")
+                    Caption("Horizontal, 300dp, short values: beside their labels")
                     RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
                         Item("Runtime") { RaftBadge("Claude Code", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information) }
                         Item("Agent ID", "agt_7f3k29xq", mono = true)
                         Item("Joined", "Oct 12, 2026")
+                    }
+                    Caption("Horizontal, 300dp, a value that fits only a line of its own: every label above, 10dp between facts")
+                    RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
+                        Item("Runtime") { RaftBadge("Claude Code", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information) }
+                        Item("Owner", "Ada Lovelace, Analytical Engine")
+                        Item("Joined", "Oct 12, 2026")
+                    }
+                    Caption("Horizontal, 300dp, a paragraph: wraps beside its label")
+                    RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
+                        Item("Joined", "Oct 12, 2026")
+                        Item("About", "Keeps the release notes, the changelog and the docs site in step with every merge to main.")
                     }
                 }
                 Column(Modifier.width(400.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1259,7 +1270,7 @@ class DisplayComponentScreenshotTest {
                             Item("Workspace path", "/home/wug/work/raft-mobile", mono = true)
                         }
                     }
-                    Caption("Horizontal at 384dp of its own width and wider: two columns")
+                    Caption("Horizontal, 400dp: two columns")
                     RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
                         Item("Runtime") { RaftBadge("Claude Code", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information) }
                         Item("Agent ID", "agt_7f3k29xq", mono = true)
