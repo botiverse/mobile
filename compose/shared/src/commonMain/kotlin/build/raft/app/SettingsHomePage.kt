@@ -11827,19 +11827,25 @@ private fun SharedHomeScreen(
                 remember(agentLoungeItems, serverKnownAgentLounges) {
                     agentLoungeItems.map { it.id }.filter { id -> serverKnownAgentLounges[id]?.loaded != true }
                 }
+            // Each load runs in the page's scope, not the effect's: one Lounge finishing changes
+            // [unloadedAgentLoungeIds] and restarts the effect, which must not cancel another
+            // Lounge's request still in flight (it would stay unloaded with no Mute).
+            val agentLoungeLoadScope = rememberCoroutineScope()
             LaunchedEffect(snapshot.server.id, unloadedAgentLoungeIds, agentLoungeNetworkClient) {
                 val client = agentLoungeNetworkClient ?: return@LaunchedEffect
                 val serverId = snapshot.server.id
                 val api = build.raft.app.data.AgentLoungeApi(client)
                 for (loungeId in unloadedAgentLoungeIds) {
                     if (!RaftAgentLounges.beginLoad(serverId.value, loungeId)) continue
-                    try {
-                        val result = api.loadLounge(serverId, ChannelId(loungeId))
-                        if (result !is DataResult.Content) {
-                            bridge.log("agent_lounge_row_load_failed serverId=${serverId.value} lounge=${loungeId.take(8)}")
+                    agentLoungeLoadScope.launch {
+                        try {
+                            val result = api.loadLounge(serverId, ChannelId(loungeId))
+                            if (result !is DataResult.Content) {
+                                bridge.log("agent_lounge_row_load_failed serverId=${serverId.value} lounge=${loungeId.take(8)}")
+                            }
+                        } finally {
+                            RaftAgentLounges.endLoad(serverId.value, loungeId)
                         }
-                    } finally {
-                        RaftAgentLounges.endLoad(serverId.value, loungeId)
                     }
                 }
             }
