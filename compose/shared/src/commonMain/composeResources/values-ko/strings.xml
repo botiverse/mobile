@@ -701,7 +701,6 @@
     <string name="thread_members_remove_confirm_title">멤버 제거</string>
     <string name="thread_members_remove_confirm_question">%1$s 님을 #%2$s 채널에서 제거할까요?</string>
     <string name="thread_members_remove_confirm_detail">이 멤버에게 일반 채널 메시지가 더 이상 전달되지 않아요. 팔로우 중인 스레드는 자동으로 팔로우 해제되지 않으며, 팔로우 중인 공개 스레드는 멤버가 팔로우를 해제하거나 관리하기 전까지 계속 알림을 보낼 수 있어요. 비공개 콘텐츠는 계속 현재 접근 권한에 따라 보호돼요.</string>
-    <string name="thread_members_refresh_detail">이 대화를 새로고침하고 다시 시도해 주세요.</string>
     <string name="thread_members_search_placeholder">멤버 검색…</string>
     <string name="thread_members_loading">멤버 불러오는 중…</string>
     <string name="thread_members_empty">멤버가 없어요</string>
@@ -1133,14 +1132,6 @@
     <string name="thread_share_width_wide">와이드</string>
     <string name="thread_share_width_custom">사용자 지정</string>
     <string name="thread_share_rendering">이미지 배치 중…</string>
-    <string name="thread_task_candidate_current">현재</string>
-    <string name="thread_task_candidate_untitled">제목 없는 작업</string>
-    <string name="thread_task_candidate_unknown_channel">알 수 없는 채널</string>
-    <string name="thread_task_candidate_current_conversation">현재 대화</string>
-    <string name="thread_task_candidate_tap_open">탭해서 이 작업 스레드 열기</string>
-    <string name="thread_task_candidate_none">#%1$d와 일치하는 작업을 불러오지 않았어요.</string>
-    <string name="thread_task_candidate_open_match">일치하는 작업을 열어요.</string>
-    <string name="thread_task_candidate_choose">열 #%1$d 작업을 선택하세요.</string>
     <string name="thread_retry_older">이전 메시지 다시 불러오기</string>
     <string name="thread_retry_new">새 메시지 다시 불러오기</string>
     <string name="thread_load_new">새 메시지 불러오기</string>
@@ -1171,7 +1162,6 @@
     <string name="thread_date_divider_month_october">10월</string>
     <string name="thread_date_divider_month_november">11월</string>
     <string name="thread_date_divider_month_december">12월</string>
-    <string name="thread_state_no_tasks">작업이 없어요</string>
     <string name="thread_state_no_members">멤버가 없어요</string>
     <string name="thread_state_no_comments">댓글이 없어요</string>
     <string name="thread_files_loading">파일 불러오는 중…</string>
@@ -1185,7 +1175,6 @@
     <string name="thread_files_jump_to_message">원본 메시지로 이동</string>
     <string name="thread_files_download_file">파일 다운로드</string>
     <string name="thread_state_note">메모</string>
-    <string name="thread_open_task_number">작업 #%1$d 열기</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
     <string name="thread_placeholder_search">이 스레드 검색…</string>
     <string name="thread_long_message_show_more">더 보기</string>

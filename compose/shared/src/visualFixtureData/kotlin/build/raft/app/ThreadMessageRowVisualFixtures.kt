@@ -482,7 +482,8 @@ internal fun threadMessageVisualWidth(visualFixture: String): Dp =
  * `knownMarkdownTaskNumbers` for a row whose React twin knows no task of its conversation:
  * MessageItem chips `#N` only for a task in the message's channel (its linked task, or a
  * channel/server task with that channelId), and VisualTestingCases primes #31/#521/#606/#607
- * with no channel. An empty list would mean "every ref is a task", so name a number no body uses.
+ * with no channel. An empty list falls back to the fixture's task statuses, so name a number no
+ * body uses.
  */
 internal val ThreadVisualNoKnownTaskNumbers: List<Int> = listOf(Int.MAX_VALUE)
 

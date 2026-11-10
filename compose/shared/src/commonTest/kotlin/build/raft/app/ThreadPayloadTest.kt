@@ -7403,7 +7403,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun markdownTaskNumberOpenUsesCurrentChannelNumberEndpointBeforeServerFallback() = runBlocking {
+    fun markdownTaskNumberOpenUsesCurrentChannelNumberEndpoint() = runBlocking {
         val api =
             FakeMarkdownTaskNumberApi(
                 channelTaskBody =
@@ -7542,7 +7542,7 @@ class ThreadPayloadTest {
                         sourceThreadId = "current-channel",
                         streamChannelId = "current-channel"
                     ),
-                currentTaskChannelId = ChannelId("current-channel"),
+                currentTaskChannelId = ChannelId("target-channel"),
                 tasksDataSource = SharedTasksDataSource(api),
                 tasksDataStore = store,
                 conversationIdentityProvider = conversationIdentityProvider
@@ -7585,8 +7585,7 @@ class ThreadPayloadTest {
                         taskNumber = 16,
                         currentChannelId = channel,
                         tasksDataSource = source,
-                        tasksDataStore = store,
-                        channelQualified = true
+                        tasksDataStore = store
                     )
                 assertEquals("From the server", assertIs<SharedTaskReferenceResolution.Found>(resolution).task.title)
             }
@@ -7652,8 +7651,9 @@ class ThreadPayloadTest {
         assertEquals(emptyList(), api.calls)
     }
 
+    /** Removed mobile-only guess: the server task list used to stand in for the conversation. */
     @Test
-    fun markdownTaskNumberOpenShowsLoadedAmbiguousStoreWithoutNetwork() = runBlocking {
+    fun markdownTaskNumberOpenNeverOpensAnotherChannelsTaskOfThatNumber() = runBlocking {
         val store = SharedTasksDataStore()
         store.publishSnapshot(
             serverId = "server-1",
@@ -7686,7 +7686,7 @@ class ThreadPayloadTest {
         )
         val api =
             FakeMarkdownTaskNumberApi(
-                channelTaskBody = """{"task":{"id":"network-task"}}""",
+                channelTaskBody = """{}""",
                 serverTasksBody = """{"tasks":[]}"""
             )
 
@@ -7707,10 +7707,13 @@ class ThreadPayloadTest {
                 tasksDataStore = store
             )
 
-        val ambiguous = assertIs<MarkdownTaskNumberOpenResult.Ambiguous>(result)
-        assertEquals(listOf("task-a-343", "task-b-343"), ambiguous.candidates.map { it.id.value })
-        assertEquals(SharedTaskReferenceResolutionSource.LoadedServer, ambiguous.source)
-        assertEquals(emptyList(), api.calls)
+        // Web `openTaskByChannelNumber`: `#343` is task 343 of the conversation being read and
+        // nothing else. Two other channels' #343 are not offered, and no server-wide search runs.
+        assertTrue(
+            result == MarkdownTaskNumberOpenResult.NotFound || result == MarkdownTaskNumberOpenResult.Failed,
+            "got $result"
+        )
+        assertEquals(listOf("taskByNumber:server-1:current-channel:343"), api.calls)
     }
 
     @Test

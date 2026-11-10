@@ -156,4 +156,29 @@ class RaftMarkdownTaskRefTest {
         assertNull(statuses[raftMarkdownTaskRefStatusKey(7, channelName = "dm-abc")])
         assertEquals(2, statuses.size)
     }
+    /**
+     * #proj-mobile:#107, Web MessageItem `createRaftBareTaskRefRegex`: a bare `#4442` that is no
+     * known task of the conversation being read is plain text, with nothing to tap (so no "can't
+     * open" toast). A known `#7` and a qualified `#triage:#169` keep their chips.
+     */
+    @Test
+    fun unresolvableBareTaskRefIsPlainTextLikeTheWeb() {
+        val bare = "#4442".threadInlineTagMatches().single().tag
+        assertEquals(ThreadMarkdownTagKind.Task, bare.kind)
+        assertFalse(bare.isKnownThreadMarkdownTag(emptySet(), emptySet(), emptySet(), knownTaskNumbers = setOf(7)))
+        // No task list is no known task, not "every number is a task".
+        assertFalse(bare.isKnownThreadMarkdownTag(emptySet(), emptySet(), emptySet(), knownTaskNumbers = null))
+        assertFalse(bare.isKnownThreadMarkdownTag(emptySet(), emptySet(), emptySet(), knownTaskNumbers = emptySet()))
+
+        val isTagValid: (ThreadMarkdownTag) -> Boolean = { tag ->
+            tag.isKnownThreadMarkdownTag(setOf("triage"), emptySet(), emptySet(), knownTaskNumbers = setOf(7))
+        }
+        val body = "fixed in #4442, see #7 and #triage:#169"
+        val plan = RaftMarkdownInlineTokenPlanner().plan(content = body, isTagValid = isTagValid)
+        assertEquals(listOf("#7", "#triage:#169"), plan.tagTokens().map { it.label })
+        val document =
+            buildRaftRichTextDocumentFromMarkdownPlan(source = body, content = body, tokenPlan = plan)
+        assertEquals(listOf("#7", "#triage:#169"), document.actions.map { it.label })
+        assertTrue(document.actions.none { it.label.contains("4442") }, "an unresolvable ref has no tap action")
+    }
 }

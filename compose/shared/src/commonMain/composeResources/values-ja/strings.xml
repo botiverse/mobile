@@ -707,7 +707,6 @@
     <string name="thread_members_remove_confirm_title">メンバーを削除</string>
     <string name="thread_members_remove_confirm_question">%1$s を #%2$s から削除しますか？</string>
     <string name="thread_members_remove_confirm_detail">このメンバーへの通常のチャンネル配信は停止します。フォロー中のスレッドは自動的には解除されず、フォロー中の公開スレッドからは本人が解除または整理するまで通知が届く場合があります。非公開コンテンツは引き続き現在のアクセス権で保護されます。</string>
-    <string name="thread_members_refresh_detail">この会話を更新して、もう一度お試しください。</string>
     <string name="thread_members_search_placeholder">メンバーを検索…</string>
     <string name="thread_members_loading">メンバーを読み込み中…</string>
     <string name="thread_members_empty">メンバーはいません</string>
@@ -1142,14 +1141,6 @@
     <string name="thread_share_width_wide">ワイド</string>
     <string name="thread_share_width_custom">カスタム</string>
     <string name="thread_share_rendering">画像をレイアウト中…</string>
-    <string name="thread_task_candidate_current">現在</string>
-    <string name="thread_task_candidate_untitled">無題のタスク</string>
-    <string name="thread_task_candidate_unknown_channel">不明なチャンネル</string>
-    <string name="thread_task_candidate_current_conversation">現在の会話</string>
-    <string name="thread_task_candidate_tap_open">タップしてこのタスクのスレッドを開く</string>
-    <string name="thread_task_candidate_none">#%1$d に一致するタスクは読み込まれていません。</string>
-    <string name="thread_task_candidate_open_match">一致するタスクを開きます。</string>
-    <string name="thread_task_candidate_choose">開く #%1$d のタスクを選択してください。</string>
     <string name="thread_retry_older">以前のメッセージを再試行</string>
     <string name="thread_retry_new">新しいメッセージを再試行</string>
     <string name="thread_load_new">新しいメッセージを読み込む</string>
@@ -1180,7 +1171,6 @@
     <string name="thread_date_divider_month_october">10月</string>
     <string name="thread_date_divider_month_november">11月</string>
     <string name="thread_date_divider_month_december">12月</string>
-    <string name="thread_state_no_tasks">タスクはありません</string>
     <string name="thread_state_no_members">メンバーはいません</string>
     <string name="thread_state_no_comments">コメントはありません</string>
     <string name="thread_files_loading">ファイルを読み込み中…</string>
@@ -1194,7 +1184,6 @@
     <string name="thread_files_jump_to_message">元のメッセージに移動</string>
     <string name="thread_files_download_file">ファイルをダウンロード</string>
     <string name="thread_state_note">メモ</string>
-    <string name="thread_open_task_number">タスク #%1$d を開く</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
     <string name="thread_placeholder_search">このスレッド内を検索…</string>
     <string name="thread_long_message_show_more">全文を表示</string>

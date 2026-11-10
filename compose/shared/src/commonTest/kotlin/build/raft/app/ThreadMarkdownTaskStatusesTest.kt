@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.markdown.withRaftMarkdownOwnTaskStatus
+import build.raft.app.model.ChannelId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
@@ -14,8 +15,15 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ThreadMarkdownTaskStatusesTest {
-    private fun task(number: Int, status: TaskStatus) =
-        TaskSummary(id = TaskId("task-$number-$status"), title = "t", status = status, taskNumber = number, updatedAtLabel = "now")
+    private fun task(number: Int, status: TaskStatus, channelId: String = "ch-here") =
+        TaskSummary(
+            id = TaskId("task-$number-$status-$channelId"),
+            title = "t",
+            status = status,
+            taskNumber = number,
+            updatedAtLabel = "now",
+            channelId = ChannelId(channelId),
+        )
 
     @Test
     fun channelBeatsServer() {
@@ -24,8 +32,32 @@ class ThreadMarkdownTaskStatusesTest {
                 channelTasks = listOf(task(1, TaskStatus.Done)),
                 serverTasks = listOf(task(1, TaskStatus.Todo), task(2, TaskStatus.InReview)),
                 loaded = true,
+                currentChannelId = "ch-here",
             )
         assertEquals(mapOf(1 to TaskStatus.Done, 2 to TaskStatus.InReview), statuses)
+    }
+
+    @Test
+    fun anotherChannelsTaskIsNotThisConversationsTask() {
+        // Web `taskByChannelNumber`: a number is unique only inside its channel, so the server's
+        // #4442 of another channel neither colours nor makes a chip of this conversation's `#4442`.
+        val statuses =
+            threadMarkdownTaskStatusesByNumber(
+                channelTasks = emptyList(),
+                serverTasks = listOf(task(4442, TaskStatus.Todo, channelId = "ch-other"), task(2, TaskStatus.Done)),
+                loaded = true,
+                currentChannelId = "ch-here",
+            )
+        assertEquals(mapOf(2 to TaskStatus.Done), statuses)
+        assertEquals(
+            emptyMap(),
+            threadMarkdownTaskStatusesByNumber(
+                channelTasks = emptyList(),
+                serverTasks = listOf(task(2, TaskStatus.Done)),
+                loaded = true,
+                currentChannelId = null,
+            )
+        )
     }
 
     @Test

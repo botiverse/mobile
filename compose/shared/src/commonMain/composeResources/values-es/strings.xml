@@ -701,7 +701,6 @@
     <string name="thread_members_remove_confirm_title">Quitar miembro</string>
     <string name="thread_members_remove_confirm_question">¿Quitar a %1$s de #%2$s?</string>
     <string name="thread_members_remove_confirm_detail">Ya no recibirá los mensajes normales del canal. Los hilos que sigue no se dejan de seguir automáticamente; los hilos públicos que sigue pueden seguir enviándole notificaciones hasta que deje de seguirlos o los gestione. El contenido privado sigue protegido por el acceso actual.</string>
-    <string name="thread_members_refresh_detail">Actualiza esta conversación e inténtalo de nuevo.</string>
     <string name="thread_members_search_placeholder">Buscar miembros…</string>
     <string name="thread_members_loading">Cargando miembros…</string>
     <string name="thread_members_empty">Sin miembros</string>
@@ -1133,14 +1132,6 @@
     <string name="thread_share_width_wide">Ancho</string>
     <string name="thread_share_width_custom">Personalizado</string>
     <string name="thread_share_rendering">Componiendo la imagen…</string>
-    <string name="thread_task_candidate_current">Actual</string>
-    <string name="thread_task_candidate_untitled">Tarea sin título</string>
-    <string name="thread_task_candidate_unknown_channel">Canal desconocido</string>
-    <string name="thread_task_candidate_current_conversation">Conversación actual</string>
-    <string name="thread_task_candidate_tap_open">Toca para abrir el hilo de esta tarea</string>
-    <string name="thread_task_candidate_none">No se cargó ninguna tarea que coincida con #%1$d.</string>
-    <string name="thread_task_candidate_open_match">Abre la tarea que coincide.</string>
-    <string name="thread_task_candidate_choose">Elige qué tarea #%1$d abrir.</string>
     <string name="thread_retry_older">Reintentar mensajes anteriores</string>
     <string name="thread_retry_new">Reintentar mensajes nuevos</string>
     <string name="thread_load_new">Cargar mensajes nuevos</string>
@@ -1171,7 +1162,6 @@
     <string name="thread_date_divider_month_october">OCTUBRE</string>
     <string name="thread_date_divider_month_november">NOVIEMBRE</string>
     <string name="thread_date_divider_month_december">DICIEMBRE</string>
-    <string name="thread_state_no_tasks">NO HAY TAREAS</string>
     <string name="thread_state_no_members">NO HAY MIEMBROS</string>
     <string name="thread_state_no_comments">NO HAY COMENTARIOS</string>
     <string name="thread_files_loading">Cargando archivos…</string>
@@ -1185,7 +1175,6 @@
     <string name="thread_files_jump_to_message">Ir al mensaje original</string>
     <string name="thread_files_download_file">Descargar archivo</string>
     <string name="thread_state_note">NOTA</string>
-    <string name="thread_open_task_number">ABRIR TAREA #%1$d</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
     <string name="thread_placeholder_search">Buscar en este hilo…</string>
     <string name="thread_long_message_show_more">Mostrar más</string>

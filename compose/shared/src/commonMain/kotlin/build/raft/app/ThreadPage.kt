@@ -3751,11 +3751,6 @@ internal fun ThreadCreateAgentActionDialogState.failedWith(
 ): ThreadCreateAgentActionDialogState =
     copy(submitting = false, errorCode = errorCode, errorServerMessage = errorServerMessage)
 
-private data class ThreadMarkdownTaskCandidateModalState(
-    val taskNumber: Int,
-    val candidates: List<TaskSummary>
-)
-
 private data class ThreadMarkdownMentionOpenTarget(
     val identity: MemberDetailIdentity
 )
@@ -4053,12 +4048,15 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
     when (kind) {
         // `#proj:#7` / `dm:@peer:#7` chip when the reader knows the conversation (Web: a channel the
         // reader cannot resolve keeps the ref as plain text); the task itself is resolved on open.
+        // A bare `#7` chips only when it is a known task of the conversation being read (Web
+        // MessageItem `createRaftBareTaskRefRegex`); any other `#4442` is plain text. No task list
+        // ([knownTaskNumbers] null) knows no task.
         ThreadMarkdownTagKind.Task ->
             when {
                 channelName != null -> channelName.trim().lowercase().let { it.isNotBlank() && it in knownChannelNames }
                 directMessagePeerName != null ->
                     directMessagePeerName.normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames
-                else -> knownTaskNumbers?.contains(label.removePrefix("#").toIntOrNull()) ?: true
+                else -> label.removePrefix("#").toIntOrNull()?.let { knownTaskNumbers?.contains(it) } == true
             }
         ThreadMarkdownTagKind.UserMention -> label.normalizedThreadMentionLookupKey() in knownMentionNames
         // A channel or DM the reader cannot resolve keeps the ref as plain text (Web MessageItem).
@@ -4228,12 +4226,6 @@ internal sealed interface MarkdownTaskNumberOpenResult {
         val source: SharedTaskReferenceResolutionSource
     ) : MarkdownTaskNumberOpenResult
 
-    data class Ambiguous(
-        val taskNumber: Int,
-        val candidates: List<TaskSummary>,
-        val source: SharedTaskReferenceResolutionSource
-    ) : MarkdownTaskNumberOpenResult
-
     /** The task opens without a page of its own: its empty conversation or its legacy panel. */
     data class OpensInPlace(val task: TaskSummary) : MarkdownTaskNumberOpenResult
 
@@ -4264,8 +4256,6 @@ internal suspend fun openMarkdownTaskNumberPayload(
     /** `task_v2_conversations_v0` for the server ([taskOpenTarget]). */
     taskV2Enabled: Boolean = false,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null,
-    /** `#proj:#7` / `dm:@peer:#7`: only a task of [currentTaskChannelId] matches. */
-    channelQualified: Boolean = false,
     /** Its network lookup runs in this resolver's shared fetch phase (the chip spinner). */
     referenceResolver: SharedReferenceResolver? = null,
     actionId: String? = null
@@ -4278,7 +4268,6 @@ internal suspend fun openMarkdownTaskNumberPayload(
                 currentChannelId = currentTaskChannelId,
                 tasksDataSource = tasksDataSource,
                 tasksDataStore = tasksDataStore,
-                channelQualified = channelQualified,
                 referenceResolver = referenceResolver,
                 actionId = actionId
             )
@@ -4319,12 +4308,6 @@ internal suspend fun openMarkdownTaskNumberPayload(
                 source = resolution.source
             )
         }
-        is SharedTaskReferenceResolution.Ambiguous ->
-            MarkdownTaskNumberOpenResult.Ambiguous(
-                taskNumber = resolution.taskNumber,
-                candidates = resolution.candidates,
-                source = resolution.source
-            )
         SharedTaskReferenceResolution.NotFound -> MarkdownTaskNumberOpenResult.NotFound
         SharedTaskReferenceResolution.AuthRequired -> MarkdownTaskNumberOpenResult.AuthRequired
         SharedTaskReferenceResolution.Failed -> MarkdownTaskNumberOpenResult.Failed
@@ -8100,9 +8083,6 @@ private fun SharedThreadRouteContentContent(
     }
     var textSelectionMessage by remember(threadInstanceKey) { mutableStateOf<RaftThreadMessageItem?>(null) }
     var createAgentDialogState by remember(threadInstanceKey) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
-    var markdownTaskCandidateModalState by remember(threadInstanceKey) {
-        mutableStateOf<ThreadMarkdownTaskCandidateModalState?>(null)
-    }
     val markdownTaskOpenRequestGate = remember(threadInstanceKey) {
         MarkdownTaskNumberOpenRequestGate()
     }
@@ -9096,10 +9076,11 @@ private fun SharedThreadRouteContentContent(
         }
     }
     val markdownTaskStatuses =
-        remember(taskProjectionSlice, serverTaskProjectionSlice) {
+        remember(taskProjectionSlice, serverTaskProjectionSlice, taskChannelId) {
             threadMarkdownTaskStatusesByNumber(
                 channelTasks = taskProjectionSlice.tasks,
                 serverTasks = serverTaskProjectionSlice.tasks,
+                currentChannelId = taskChannelId?.value,
                 loaded = threadMarkdownTaskSourceLoaded(taskProjectionSlice, serverTaskProjectionSlice)
             )
         }
@@ -14187,7 +14168,6 @@ private fun SharedThreadRouteContentContent(
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
                     try {
                         markdownTaskOpenRequestGate.nextRequest()
-                        markdownTaskCandidateModalState = null
                         val canonicalTask = linkedTasksProjection.taskById(itemId)
                         val parentMessage = renderedTimelineSlice.findTaskParentMessage(itemId, linkedTasksProjection)
                         val parentReplyMetadata =
@@ -14273,11 +14253,10 @@ private fun SharedThreadRouteContentContent(
                     val taskNumber = qualifiedTaskRef?.taskNumber ?: itemId.removePrefix("#").trim().toIntOrNull()
                     if (taskNumber == null || currentServerId.isNullOrBlank()) {
                         finishMarkdownReferencePending(markdownPendingToken)
-                        bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
+                        bridge.log("thread_markdown_task_resolve result=unresolvable label=${itemId.take(32)}")
                         return@ThreadPageContent
                     }
                     val requestGeneration = markdownTaskOpenRequestGate.nextRequest()
-                    markdownTaskCandidateModalState = null
                     val resolveStartedAt = TimeSource.Monotonic.markNow()
                     bridge.log(
                         "thread_markdown_task_resolve result=start taskNumber=$taskNumber " +
@@ -14312,7 +14291,6 @@ private fun SharedThreadRouteContentContent(
                                     tasksDataStore = tasksDataStore,
                                     taskV2Enabled = taskV2Enabled,
                                     conversationIdentityProvider = conversationIdentityProvider,
-                                    channelQualified = qualifiedTaskRef != null,
                                     referenceResolver = dataSource.referenceResolver,
                                     actionId = markdownActionId
                                 )
@@ -14337,29 +14315,17 @@ private fun SharedThreadRouteContentContent(
                                     )
                                     onOpenThreadPayload(result.payload)
                                 }
-                                is MarkdownTaskNumberOpenResult.Ambiguous -> {
-                                    bridge.log(
-                                        "thread_markdown_task_resolve result=ambiguous taskNumber=$taskNumber " +
-                                            "source=${result.source.name} generation=$requestGeneration " +
-                                            "candidateCount=${result.candidates.size} " +
-                                            "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
-                                    )
-                                    markdownTaskCandidateModalState =
-                                        ThreadMarkdownTaskCandidateModalState(
-                                            taskNumber = result.taskNumber,
-                                            candidates = result.candidates
-                                        )
-                                }
                                 is MarkdownTaskNumberOpenResult.OpensInPlace -> {
                                     openCanonicalTask(result.task, "markdown_task")
                                 }
                                 MarkdownTaskNumberOpenResult.NotFound -> {
+                                    // Web `openTaskByChannelNumber`: a ref that names no task of
+                                    // its conversation opens nothing and says nothing.
                                     bridge.log(
                                         "thread_markdown_task_resolve result=not_found taskNumber=$taskNumber " +
                                             "generation=$requestGeneration " +
                                             "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
                                     )
-                                    bridge.errorToast(localizedUnableToOpenTaskNumber(taskNumber))
                                 }
                                 MarkdownTaskNumberOpenResult.AuthRequired -> {
                                     bridge.log(
@@ -15444,36 +15410,6 @@ private fun SharedThreadRouteContentContent(
             }
             )
         }
-        markdownTaskCandidateModalState?.let { modalState ->
-            ThreadMarkdownTaskCandidateModal(
-                state = modalState,
-                currentTaskChannelId = taskChannelId,
-                onDismiss = { markdownTaskCandidateModalState = null },
-                onSelect = { task ->
-                    val loadingPayload = currentServerId
-                        ?.let(::ServerId)
-                        ?.let { serverId ->
-                            renderedThread.taskThreadLaunchPayload(
-                                task = task,
-                                serverId = serverId,
-                                conversationIdentityProvider = conversationIdentityProvider
-                            )
-                        }
-                    if (loadingPayload == null) {
-                        bridge.toast(localizedUnableToOpenTaskNumber(modalState.taskNumber))
-                    } else {
-                        bridge.log(
-                            "thread_markdown_task_select taskNumber=${modalState.taskNumber} taskId=${task.id.value} " +
-                                "parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
-                                "parentMessageId=${loadingPayload.parentMessageId.orEmpty()} " +
-                                "threadId=${loadingPayload.streamChannelId.orEmpty()}"
-                        )
-                        markdownTaskCandidateModalState = null
-                        onOpenThreadPayload(loadingPayload)
-                    }
-                }
-            )
-        }
         // Where a quote of selected text lands (Select Text > Quote, the mouse selection's Quote).
         val selectionQuoteTarget =
             threadSelectTextQuoteTarget(
@@ -15711,198 +15647,6 @@ private fun SharedThreadRouteContentContent(
         }
     }
 }
-
-@Composable
-private fun ThreadMarkdownTaskCandidateModal(
-    state: ThreadMarkdownTaskCandidateModalState,
-    currentTaskChannelId: ChannelId?,
-    onDismiss: () -> Unit,
-    onSelect: (TaskSummary) -> Unit
-) {
-    RaftUnifiedDialog(
-        title = stringResource(Res.string.thread_open_task_number, state.taskNumber),
-        onDismiss = onDismiss,
-        minWidth = 320.dp,
-        maxWidth = 392.dp,
-        contentPadding = 20.dp,
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(
-                text = state.localizedThreadMarkdownTaskCandidateHelperText(),
-                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = RaftColor.TextBlack.copy(alpha = 0.58f)
-            )
-            LazyColumn(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(threadMarkdownTaskCandidateListHeight(state.candidates.size)),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (state.candidates.isEmpty()) {
-                    item {
-                        ThreadModalEmptyState(
-                            title = stringResource(Res.string.thread_state_no_tasks),
-                            detail = stringResource(Res.string.thread_members_refresh_detail)
-                        )
-                    }
-                } else {
-                    items(state.candidates.size, key = { state.candidates[it].id.value }) { index ->
-                        val task = state.candidates[index]
-                        ThreadMarkdownTaskCandidateRow(
-                            task = task,
-                            currentChannel = currentTaskChannelId != null && task.channelId == currentTaskChannelId,
-                            onClick = { onSelect(task) }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ThreadMarkdownTaskCandidateRow(
-    task: TaskSummary,
-    currentChannel: Boolean,
-    onClick: () -> Unit
-) {
-    // The current channel's task is the selected row: raft-ui's selected `info-soft` fill under
-    // the same hairline as the others, no ink edge.
-    val background = if (currentChannel) RaftTheme.colors.infoSoft else RaftColor.Card
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 2.dp)
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 82.dp)
-                    .raftControlSurface(
-                        fill = background,
-                        border = RaftColor.BorderHairline,
-                        radius = RaftAppRadius.Container,
-                        borderWidth = RaftAppStroke.Thin
-                    )
-                    .raftClickable(onClick = onClick, shape = RoundedCornerShape(RaftAppRadius.Container), tier = RaftHoverTier.Subtle, selected = currentChannel)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = "#${task.taskNumber ?: "?"}",
-                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                        color = RaftColor.TextBlack.copy(alpha = 0.52f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = task.localizedThreadMarkdownTaskCandidateChannelLabel(),
-                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                        color = RaftColor.TextBlack.copy(alpha = 0.52f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                Text(
-                    text = task.title.ifBlank { stringResource(Res.string.thread_task_candidate_untitled) },
-                    style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
-                    color = RaftColor.TextBlack,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = task.localizedThreadMarkdownTaskCandidateDetail(currentChannel),
-                    style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = RaftColor.TextBlack.copy(alpha = 0.48f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Column(
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                horizontalAlignment = Alignment.End
-            ) {
-                val statusMeta = task.status.sharedTaskStatusChipMeta()
-                RaftAnchoredMetaChip(
-                    label = task.status.localizedLabel(),
-                    iconName = statusMeta.icon,
-                    iconSize = statusMeta.iconSize,
-                    color = statusMeta.color,
-                    contentColor = statusMeta.foregroundColor,
-                    iconColorArgb = raftArgbHex(statusMeta.foregroundColor),
-                    modifier = Modifier.widthIn(max = 112.dp),
-                    onClick = null
-                )
-                if (currentChannel) {
-                    RaftBadge(
-                        text = stringResource(Res.string.thread_task_candidate_current),
-                        modifier = Modifier.widthIn(max = 112.dp),
-                        appearance = RaftBadgeAppearance.Soft,
-                        variant = RaftBadgeVariant.Information,
-                        icon = {
-                            RaftLucideIcon(
-                                RaftLucideIconName.Hash,
-                                modifier = Modifier.size(10.dp),
-                                color = raftArgbHex(LocalRaftContentColor.current)
-                            )
-                        }
-                    )
-                }
-            }
-        }
-    }
-}
-
-private fun ThreadMarkdownTaskCandidateModalState.threadMarkdownTaskCandidateHelperText(): String =
-    when (candidates.size) {
-        0 -> "No matching task loaded for #$taskNumber."
-        1 -> "Open the matching task."
-        else -> "Choose which #$taskNumber task to open."
-    }
-
-@Composable
-private fun ThreadMarkdownTaskCandidateModalState.localizedThreadMarkdownTaskCandidateHelperText(): String =
-    when (candidates.size) {
-        0 -> stringResource(Res.string.thread_task_candidate_none, taskNumber)
-        1 -> stringResource(Res.string.thread_task_candidate_open_match)
-        else -> stringResource(Res.string.thread_task_candidate_choose, taskNumber)
-    }
-
-private fun TaskSummary.threadMarkdownTaskCandidateChannelLabel(): String =
-    channelName?.trim()?.takeIf { it.isNotBlank() }?.let { "#$it" } ?: "Unknown channel"
-
-@Composable
-private fun TaskSummary.localizedThreadMarkdownTaskCandidateChannelLabel(): String =
-    channelName?.trim()?.takeIf { it.isNotBlank() }?.let { "#$it" }
-        ?: stringResource(Res.string.thread_task_candidate_unknown_channel)
-
-private fun TaskSummary.threadMarkdownTaskCandidateDetail(currentChannel: Boolean): String =
-    if (currentChannel) {
-        "Current conversation"
-    } else {
-        "Tap to open this task thread"
-    }
-
-@Composable
-private fun TaskSummary.localizedThreadMarkdownTaskCandidateDetail(currentChannel: Boolean): String =
-    if (currentChannel) {
-        stringResource(Res.string.thread_task_candidate_current_conversation)
-    } else {
-        stringResource(Res.string.thread_task_candidate_tap_open)
-    }
-
-private fun threadMarkdownTaskCandidateListHeight(count: Int): Dp =
-    (count * 80 + 12).coerceIn(156, 420).dp
 
 @Composable
 private fun ThreadCreateAgentActionDialogHost(
@@ -17980,9 +17724,12 @@ private fun ThreadPageContentContent(
         ) {
             payload.toKnownMarkdownDirectMessagePeerNameSet()
         }
+    // The tasks of the conversation being read (Web `taskByChannelNumber` for `taskContextChannelId`):
+    // a bare `#N` chips only for one of them.
+    val loadedMarkdownTaskStatuses = LocalRaftMarkdownTaskStatuses.current
     val knownMarkdownTaskNumbers =
-        remember(payload.knownMarkdownTaskNumbers) {
-            payload.toKnownMarkdownTaskNumberSetOrNull()
+        remember(payload.knownMarkdownTaskNumbers, loadedMarkdownTaskStatuses) {
+            payload.toKnownMarkdownTaskNumberSetOrNull() ?: loadedMarkdownTaskStatuses?.keys
         }
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean =
         remember(

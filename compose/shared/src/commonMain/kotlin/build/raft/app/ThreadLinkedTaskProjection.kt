@@ -379,21 +379,27 @@ internal fun Map<String, TaskSummary>.threadLinkedTaskForMessage(message: RaftTh
     }
 
 /**
- * Thread-wide task status by task number for inline `#N` chips in this thread's Markdown
- * (web MessageItem `taskByNumber`): server tasks, then channel tasks (channel wins). The message's
- * own linked task is layered on per message body by `RaftMarkdownOwnTaskStatusScope`, as on web.
+ * Status of each task of the conversation being read, by task number, for inline `#N` chips in this
+ * thread's Markdown (web MessageItem `taskByChannelNumber` looked up with `taskContextChannelId`):
+ * the server tasks of [currentChannelId], then the channel's tasks (channel wins). A number is
+ * unique only inside its channel, so another channel's task never counts. These are also the only
+ * numbers a bare `#N` chips for; any other `#N` is plain text. The message's own linked task is
+ * layered on per message body by `RaftMarkdownOwnTaskStatusScope`, as on web.
  *
- * Returns `null` until the channel or the server task slice has loaded, so task refs keep the
- * legacy chip instead of flashing the grey "unknown task" badge before turning status-coloured.
+ * Returns `null` until the channel or the server task slice has loaded.
  */
 internal fun threadMarkdownTaskStatusesByNumber(
     channelTasks: List<TaskSummary>,
     serverTasks: List<TaskSummary>,
     loaded: Boolean,
+    currentChannelId: String? = null,
 ): Map<Int, TaskStatus>? {
     if (!loaded) return null
     val statuses = LinkedHashMap<Int, TaskStatus>()
-    serverTasks.forEach { task -> task.taskNumber?.takeIf { it > 0 }?.let { statuses[it] = task.status } }
+    serverTasks.forEach { task ->
+        if (currentChannelId == null || task.channelId?.value != currentChannelId) return@forEach
+        task.taskNumber?.takeIf { it > 0 }?.let { statuses[it] = task.status }
+    }
     channelTasks.forEach { task -> task.taskNumber?.takeIf { it > 0 }?.let { statuses[it] = task.status } }
     return statuses
 }
