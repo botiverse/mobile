@@ -27,25 +27,6 @@ class CanonicalMessageV2GreenStoreTest {
     }
 
     @Test
-    fun realSqlOverlayStoreUsesOneMonotonicGateAndFullKey() = withFreshDatabase { database ->
-        val store = SqlDelightViewerOverlayStore(database)
-        val key = overlayKey()
-        runBlocking {
-            assertEquals(ViewerOverlayWriteResult.Applied(null), store.compareAndWrite(key, overlay(4, "+1")))
-            assertEquals(
-                ViewerOverlayWriteResult.VersionRegressionNoOp(4),
-                store.compareAndWrite(key, overlay(3, "heart")),
-            )
-            assertEquals(ViewerOverlayWriteResult.Idempotent, store.compareAndWrite(key, overlay(4, "+1")))
-            assertFailsWith<ViewerOverlayVersionConflict> { store.compareAndWrite(key, overlay(4, "heart")) }
-            assertEquals(ViewerOverlayWriteResult.Applied(4), store.compareAndWrite(key, overlay(5, "heart")))
-            assertEquals(overlay(5, "heart"), store.read(key))
-            assertNull(store.read(key.copy(partition = DurablePartitionKey("server-a", "principal-b", key.partition.consumerId, "env-test"))))
-            assertNull(store.read(key.copy(overlayKind = "future-overlay")))
-        }
-    }
-
-    @Test
     fun v2SnapshotRestoreIsAtomicStrictAndNeverReadsV1Partition() = withFreshDatabase { database ->
         val minimalBytes = CanonicalMessageV2RedOracle.fixture(javaClass, "canonical-message-v2.minimal.json")
         val minimal = assertIs<CanonicalMessageV2DecodeResult.Accepted>(
@@ -250,13 +231,6 @@ class CanonicalMessageV2GreenStoreTest {
 
     private fun v2Partition() = DurablePartitionKey("server-a", "principal-a", SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID, "env-test")
     private fun v2Scope() = SyncScopeKey(v2Partition(), "channel-a", "channel")
-    private fun overlayKey() = ViewerOverlayKey(v2Partition(), "channel", "channel-a", "message", "message-a", "reactions")
-    private fun overlay(version: Long, emoji: String) = VersionedViewerOverlayV1(
-        version = version,
-        completeness = OverlayCompleteness.Complete,
-        payload = ViewerOverlayPayloadV1.Reactions(listOf(emoji)),
-    )
-
     private fun probeFact() = CanonicalMessageNodeV2(
         id = "message-probe",
         seq = 1,

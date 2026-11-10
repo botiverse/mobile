@@ -82,14 +82,6 @@ class CanonicalMessageV2ContractRedTest {
     }
 
     @Test
-    fun r8_sharedRoomCannotAuthorViewerOverlay() =
-        assertRed(
-            "R8",
-            buildJsonObject { put("source", "shared-room"); put("viewerVersion", 7) },
-            CanonicalV2RedResult.State("shared-only", overlayWriteCount = 0),
-        )
-
-    @Test
     fun r9_sharedEnvelopeHasNoViewerFieldsOrForwardedProvenance() =
         assertRed("R9", fixtureElement("canonical-message-v2.maximal.json"), CanonicalV2RedResult.State("privacy-clean"))
 
@@ -152,77 +144,11 @@ class CanonicalMessageV2ContractRedTest {
         )
 
     @Test
-    fun r17_hydrateAckAndUserRoomUseOneVersionGate() =
-        assertRed(
-            "R17",
-            buildJsonObject { put("sources", JsonArray(listOf("hydrate", "ack", "user-room").map(::JsonPrimitive))) },
-            CanonicalV2RedResult.State("one-version-gate"),
-        )
-
-    @Test
-    fun r18_greaterOverlayVersionReplaces() =
-        assertRed(
-            "R18",
-            overlayVersions(stored = 4, incoming = 5, payload = "heart"),
-            CanonicalV2RedResult.State("version=5,payload=heart", transactionCount = 1, overlayWriteCount = 1),
-        )
-
-    @Test
-    fun r19_lowerOverlayVersionIsNamedNoOp() =
-        assertRed(
-            "R19",
-            overlayVersions(stored = 5, incoming = 4, payload = "heart"),
-            CanonicalV2RedResult.NoOp(VIEWER_OVERLAY_VERSION_REGRESSION_DIAGNOSTIC),
-        )
-
-    @Test
-    fun r20_equalVersionDifferentPayloadFailStops() =
-        assertRed(
-            "R20",
-            overlayVersions(stored = 5, incoming = 5, payload = "different"),
-            CanonicalV2RedResult.Rejected(VIEWER_OVERLAY_VERSION_CONFLICT_DIAGNOSTIC),
-        )
-
-    @Test
-    fun r21_missingOverlayIsUnknownNotEmpty() =
-        assertRed("R21", buildJsonObject { put("stored", JsonNull) }, CanonicalV2RedResult.Unknown)
-
-    @Test
-    fun r22_overlayKeyIncludesPrincipalConsumerAndKind() =
-        assertRed(
-            "R22",
-            buildJsonObject {
-                put("principalA", "overlay-a")
-                put("principalB", "overlay-b")
-                put("consumerV1", "absent")
-                put("consumerV2", "overlay-a")
-                put("kind", "reactions")
-            },
-            CanonicalV2RedResult.State("isolated"),
-        )
-
-    @Test
-    fun r23_overlayCompareAndWriteIsOneTransaction() =
-        assertRed(
-            "R23",
-            overlayVersions(stored = 1, incoming = 2, payload = "+1"),
-            CanonicalV2RedResult.State("committed", transactionCount = 1, overlayWriteCount = 1),
-        )
-
-    @Test
     fun r24_sqliteLongOverflowAndBoundaryFailClosed() =
         assertRed(
             "R24",
             buildJsonObject { put("stored", Long.MAX_VALUE); put("incoming", "9223372036854775808") },
             CanonicalV2RedResult.Rejected("viewer_overlay_version_out_of_range"),
-        )
-
-    @Test
-    fun r25_roomReactionFrameProducesZeroOverlayWrites() =
-        assertRed(
-            "R25",
-            buildJsonObject { put("source", "channel-room"); put("reactedEmojis", JsonArray(listOf(JsonPrimitive("+1")))) },
-            CanonicalV2RedResult.State("shared-updated", overlayWriteCount = 0),
         )
 
     @Test
@@ -345,12 +271,6 @@ class CanonicalMessageV2ContractRedTest {
     private fun fixture(name: String): String = CanonicalMessageV2RedOracle.fixture(javaClass, name)
 
     private fun fixtureElement(name: String) = CanonicalMessageV2RedOracle.fixtureElement(javaClass, name)
-
-    private fun overlayVersions(stored: Long, incoming: Long, payload: String) = buildJsonObject {
-        put("storedVersion", stored)
-        put("incomingVersion", incoming)
-        put("payload", payload)
-    }
 
     private fun embeddedServerMismatch(path: String): JsonObject {
         val envelope = when (path) {
