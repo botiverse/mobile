@@ -3,7 +3,7 @@ type: fixed
 area: navigation
 platforms:
   - ios
-pull_request: null
+pull_request: 4505
 rollout: full
 ---
 
