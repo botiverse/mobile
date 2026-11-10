@@ -415,7 +415,14 @@ internal fun TaskPendingConversationWindow(onBack: () -> Unit, sending: Boolean,
         onDismissRequest = { if (!sending) onBack() },
         properties = RaftWindowDialogProperties(drawScrim = false),
     ) {
-        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))) {
+        // Opaque under the system bars too: without a scrim the host's tab bar showed through the
+        // nav-bar strip, so the page looked like a floating sheet (web: full-screen, opaque).
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(RaftTheme.colors.layerCanvas)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+        ) {
             content()
         }
     }
