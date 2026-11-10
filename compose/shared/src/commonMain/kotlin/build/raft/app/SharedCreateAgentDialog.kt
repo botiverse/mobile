@@ -395,17 +395,24 @@ internal fun createAgentMachineDropdownItems(
         )
     }
 
+/**
+ * The computer the form opens on: the [requiredComputer] (or none while it is offline), else the
+ * [initialComputer] the entry opened it for (a Computer card's Create agent), else the
+ * [suggestedComputer], else the first online one. An offline [initialComputer] falls through, so the
+ * user picks another as usual.
+ */
 internal fun createAgentInitialMachineSelection(
     machines: List<SharedCreateAgentMachineOption>,
     requiredComputer: String?,
-    suggestedComputer: String?
+    suggestedComputer: String?,
+    initialComputer: String? = null
 ): String? {
     fun online(id: String?): String? =
         id?.takeIf { candidate -> machines.any { it.id == candidate && it.status == "online" } }
     if (!requiredComputer.isNullOrBlank()) {
         return online(requiredComputer)
     }
-    return online(suggestedComputer) ?: machines.firstOrNull { it.status == "online" }?.id
+    return online(initialComputer) ?: online(suggestedComputer) ?: machines.firstOrNull { it.status == "online" }?.id
 }
 
 internal fun createAgentAvailableMachineId(
@@ -425,6 +432,11 @@ internal fun SharedCreateAgentDialog(
     draftHint: String? = null,
     suggestedComputer: String? = null,
     requiredComputer: String? = null,
+    /**
+     * The computer the entry opened the form for (a Computer card's Create agent): selected while it
+     * is online, with no hint line; offline, the form picks as usual. The user may change it.
+     */
+    initialComputer: String? = null,
     machines: List<SharedCreateAgentMachineOption> = emptyList(),
     machinesLoading: Boolean = false,
     machinesErrorMessage: String? = null,
@@ -496,7 +508,8 @@ internal fun SharedCreateAgentDialog(
             createAgentInitialMachineSelection(
                 machines = machines,
                 requiredComputer = requiredComputer,
-                suggestedComputer = suggestedComputer
+                suggestedComputer = suggestedComputer,
+                initialComputer = initialComputer
             )
         )
     }
@@ -603,10 +616,10 @@ internal fun SharedCreateAgentDialog(
         }
     val v2Errors = v2Form?.let { validateRuntimeFormV2(it.form, it.sources, v2Values) }.orEmpty()
 
-    LaunchedEffect(machines, requiredComputer, suggestedComputer, selectedMachineId) {
+    LaunchedEffect(machines, requiredComputer, suggestedComputer, initialComputer, selectedMachineId) {
         if (skipsComputer) return@LaunchedEffect
         if (selectedMachineId == null) {
-            selectedMachineId = createAgentInitialMachineSelection(machines, requiredComputer, suggestedComputer)
+            selectedMachineId = createAgentInitialMachineSelection(machines, requiredComputer, suggestedComputer, initialComputer)
         }
     }
 

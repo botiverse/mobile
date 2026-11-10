@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -23,6 +24,10 @@ import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -210,6 +215,46 @@ class ComputersParityUiTest {
         onNodeWithText("Public (no owner)").assertIsDisplayed()
         onNodeWithText("Waiting for 2 agents on this server…").assertIsDisplayed()
         onNodeWithText("Waiting for 1 agent on this server…").assertIsDisplayed()
+    }
+
+    @Test
+    fun aCardsMenuOffersCreateAgentFirstForThatComputerAndHidesItOffline() = runRobolectricComposeUiTest {
+        val online = computer()
+        val offline = computer().copy(id = "m-2", name = "Box", online = false)
+        val model = raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(computers = listOf(online))))
+        val created = mutableListOf<String>()
+        val restarted = mutableListOf<String>()
+        var current by mutableStateOf(model)
+        setContent {
+            RaftTheme(appearance = RaftAppearance.Light) {
+                RaftComputersTheme {
+                    RaftSettingsComputersContent(
+                        model = current,
+                        onRetry = {},
+                        onAddComputer = {},
+                        onOpenComputer = {},
+                        rackView = ComputersRackView.Cards,
+                        onCreateAgent = { created += it },
+                        onRestartComputer = { restarted += it },
+                    )
+                }
+            }
+        }
+        waitForIdle()
+        onNodeWithContentDescription("More Actions").performClick()
+        waitForIdle()
+        // Create Agent above Restart.
+        val createTop = onNodeWithText("Create Agent").fetchSemanticsNode().boundsInRoot.top
+        val restartTop = onNodeWithText("Restart").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(createTop < restartTop, "Create Agent ($createTop) should sit above Restart ($restartTop)")
+        onNodeWithText("Create Agent").performClick()
+        waitForIdle()
+        assertEquals(listOf("m-1"), created)
+        assertEquals(emptyList<String>(), restarted)
+        // Offline: no Create agent and no Restart, so the card has no ⋯ at all.
+        current = raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(computers = listOf(offline))))
+        waitForIdle()
+        onNodeWithContentDescription("More Actions").assertDoesNotExist()
     }
 
     @Test

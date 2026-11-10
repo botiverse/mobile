@@ -157,6 +157,35 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
+    fun initialComputerFromAComputerCardIsPreselectedWhileOnline() {
+        val machines =
+            listOf(
+                SharedCreateAgentMachineOption("first", "First", "online"),
+                SharedCreateAgentMachineOption("card", "Card", "online"),
+                SharedCreateAgentMachineOption("asleep", "Asleep", "offline")
+            )
+        // The card's computer wins over the first online one and over a suggestion.
+        assertEquals(
+            "card",
+            createAgentInitialMachineSelection(machines, requiredComputer = null, suggestedComputer = "first", initialComputer = "card")
+        )
+        // A required computer still decides.
+        assertEquals(
+            "first",
+            createAgentInitialMachineSelection(machines, requiredComputer = "first", suggestedComputer = null, initialComputer = "card")
+        )
+        // Offline (or gone from the list): picked as usual.
+        assertEquals(
+            "first",
+            createAgentInitialMachineSelection(machines, requiredComputer = null, suggestedComputer = null, initialComputer = "asleep")
+        )
+        assertEquals(
+            "first",
+            createAgentInitialMachineSelection(machines, requiredComputer = null, suggestedComputer = null, initialComputer = "missing")
+        )
+    }
+
+    @Test
     fun runtimeRequestsRequireSelectedMachineInAvailableSnapshot() {
         val available =
             listOf(SharedCreateAgentMachineOption("machine-1", "Available", "online"))

@@ -110,4 +110,40 @@ class RaftComputersRackActionTest {
         assertNull(action(computer(isComputer = false)))
         assertNull(action(computer(version = "1.0.53")))
     }
+
+    private fun menu(
+        computer: SettingsComputerSnapshot,
+        control: SettingsComputerControlState = SettingsComputerControlState(),
+        createAgentAvailable: Boolean = true,
+    ) = raftComputerCardMenu(
+        computer = computer,
+        upgrade = raftComputerUpgradeModel(computer, control, now),
+        restart = control.restart,
+        createAgentAvailable = createAgentAvailable,
+    )
+
+    @Test
+    fun cardMenuOffersCreateAgentAboveRestartToWhoeverManagesAnOnlineComputer() {
+        assertEquals(RaftComputerCardMenu(createAgent = true, restart = true), menu(computer()))
+        // A raw daemon row can't restart remotely, but still hosts agents.
+        assertEquals(RaftComputerCardMenu(createAgent = true, restart = false), menu(computer(isComputer = false)))
+        // No signed-in owner for this server: nothing to create with.
+        assertEquals(RaftComputerCardMenu(createAgent = false, restart = true), menu(computer(), createAgentAvailable = false))
+        // Upgrading or restarting: no Restart, Create agent stays.
+        val upgrading = SettingsComputerControlState(upgradeSubmitting = SettingsComputerUpgradeRequest(machineId = "m1", targetVersion = "1.0.53"))
+        assertEquals(RaftComputerCardMenu(createAgent = true, restart = false), menu(computer(), upgrading))
+        val restarting = SettingsComputerControlState(restart = SettingsComputerRestartProgress(machineId = "m1", requestId = "r1"))
+        assertEquals(RaftComputerCardMenu(createAgent = true, restart = false), menu(computer(), restarting))
+        val restarted = SettingsComputerControlState(restart = SettingsComputerRestartProgress(machineId = "m1", requestId = "r1", done = true))
+        assertEquals(RaftComputerCardMenu(createAgent = true, restart = true), menu(computer(), restarted))
+    }
+
+    @Test
+    fun cardMenuHidesCreateAgentOfflineAndIsAbsentWithoutManageRights() {
+        // Offline: the create form can't start there (it would switch computers), and Restart needs
+        // it online; nothing is left, so no ⋯.
+        assertNull(menu(computer(online = false)))
+        assertNull(menu(computer(canManage = false)))
+        assertNull(menu(computer(isComputer = false), createAgentAvailable = false))
+    }
 }

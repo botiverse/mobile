@@ -131,6 +131,8 @@ import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.designsystem.components.RaftDialog
+import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
@@ -326,6 +328,24 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
     }
     val session by rememberRaftComputersSession(environment.authStore, firstFrame.serverId)
     val currentServerId = (session as? RaftComputersSessionRead.Read)?.currentServerId
+    // A card's ⋯ → Create agent: the canonical create form, as the signed-in owner of this page's server.
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
+    val routeOwner by
+        remember(sharedStores, environment.storeScope) {
+            sharedStores.authenticatedRouteOwnerFlow(environment.storeScope)
+        }.collectAsState(sharedStores.currentAuthenticatedRouteOwner(environment.storeScope))
+    val createAgentOwner = routeOwner?.takeIf { currentServerId != null && it.serverId == currentServerId }
+    var createAgentMachineId by remember { mutableStateOf<String?>(null) }
+    var createAgentServerPlan by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(createAgentOwner) {
+        if (createAgentOwner == null) createAgentMachineId = null
+        createAgentServerPlan =
+            createAgentOwner?.let { owner ->
+                runCatchingPreservingCancellation {
+                    environment.authStore.readSession()?.servers?.firstOrNull { it.id == owner.serverId }?.toServerSummary()?.plan
+                }.getOrNull()
+            }
+    }
     RaftComputersRealtimeEffect(pager, environment.storeScope, currentServerId, pageVisible, settingsViewModel::dispatch)
     // Machine pushes stop in the background and while the socket is down: catch up on return.
     RaftLiveCatchUpEffect(serverId = currentServerId, visible = pageVisible) {
@@ -527,6 +547,8 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                 computerControl = settingsState.computerControl,
                 onUpgradeComputer = { machineId, version -> settingsViewModel.dispatch(SharedSettingsIntent.UpgradeComputer(machineId, version)) },
                 onCopyCommand = { command -> settingsViewModel.dispatch(SharedSettingsIntent.CopyComputerCommand(command)) },
+                onCreateAgent = if (createAgentOwner != null) { machineId -> createAgentMachineId = machineId } else null,
+                onRestartComputer = { machineId -> settingsViewModel.dispatch(SharedSettingsIntent.RestartComputer(machineId)) },
                 agentsByMachine = agentsByMachine,
                 agentStatusResolver = agentStatusResolver,
                 usageLoads = usageLoads,
@@ -583,6 +605,31 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
     settingsState.addComputerDialog?.let { dialog ->
         AddComputerDialog(state = dialog, onIntent = settingsViewModel::dispatch, runtimeCatalog = runtimeCatalog)
     }
+    val createAgentFor = createAgentMachineId
+    if (createAgentOwner != null && createAgentFor != null) {
+        RaftComputerCreateAgentDialog(
+            owner = createAgentOwner,
+            machineId = createAgentFor,
+            authority = remember(sharedStores, environment.storeScope) { sharedStores.authenticatedRouteAuthorityGateway(environment.storeScope) },
+            computersStore = remember(sharedStores, environment.storeScope) { sharedStores.computersStore(environment.storeScope) },
+            formStore = remember(sharedStores, environment.storeScope) { sharedStores.createAgentFormStore(environment.storeScope) },
+            membersStore = environment.serverMembersStore,
+            onDismiss = { createAgentMachineId = null },
+            onCreated = { agentId ->
+                bridge.log("settings_computers_create_agent_done agentId=$agentId")
+                createAgentMachineId = null
+                // The new agent joins its computer's card: the roster and the machine rows.
+                usageScope.launch { environment.serverMembersStore.refreshAgents(ServerId(createAgentOwner.serverId), "computer_card_create_agent") }
+                settingsViewModel.dispatch(SharedSettingsIntent.RefreshComputers)
+            },
+            onAddComputer = {
+                createAgentMachineId = null
+                settingsViewModel.dispatch(SharedSettingsIntent.ShowAddComputerDialog)
+            },
+            serverPlan = createAgentServerPlan,
+            onUpgrade = { pager.openRaftUpgradeDialog(RaftUpgradeGate.SeatLimitAgentCreate, environment.storeScope) },
+        )
+    }
 }
 
 @Composable
@@ -612,6 +659,10 @@ internal fun RaftSettingsComputersContent(
     computerControl: SettingsComputerControlState = SettingsComputerControlState(),
     onUpgradeComputer: (machineId: String, version: String) -> Unit = { _, _ -> },
     onCopyCommand: (String) -> Unit = {},
+    /** A card's ⋯ → Create agent with that computer preselected; null (no signed-in owner) hides it. */
+    onCreateAgent: ((machineId: String) -> Unit)? = null,
+    /** A card's ⋯ → Restart. */
+    onRestartComputer: (machineId: String) -> Unit = {},
 ) {
     // The upgrade's in-flight window (web `computerUpgradeInFlight`) reads the clock.
     val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
@@ -701,14 +752,29 @@ internal fun RaftSettingsComputersContent(
                         // 250dp wide on a wide window (`repeat(auto-fill,minmax(250px,1fr))`, gap 12).
                         @Composable
                         fun card(row: RaftComputerRowModel, modifier: Modifier) {
+                            val computer = computersById[row.id]
+                            val upgrade = computer?.let { raftComputerUpgradeModel(it, computerControl, nowMillis) }
                             val action =
-                                computersById[row.id]?.let { computer ->
+                                if (computer != null && upgrade != null) {
                                     raftComputerRackAction(
                                         computer = computer,
-                                        upgrade = raftComputerUpgradeModel(computer, computerControl, nowMillis),
+                                        upgrade = upgrade,
                                         restart = computerControl.restart,
                                         commandContext = model.commandContext,
                                     )
+                                } else {
+                                    null
+                                }
+                            val menu =
+                                if (computer != null && upgrade != null) {
+                                    raftComputerCardMenu(
+                                        computer = computer,
+                                        upgrade = upgrade,
+                                        restart = computerControl.restart,
+                                        createAgentAvailable = onCreateAgent != null,
+                                    )
+                                } else {
+                                    null
                                 }
                                 RaftComputerRackCard(
                                     row = row,
@@ -722,6 +788,9 @@ internal fun RaftSettingsComputersContent(
                                     action = action,
                                     onUpgrade = { version -> onUpgradeComputer(row.id, version) },
                                     onCopyCommand = onCopyCommand,
+                                    menu = menu,
+                                    onCreateAgent = { onCreateAgent?.invoke(row.id) },
+                                    onRestart = { onRestartComputer(row.id) },
                                     modifier = modifier,
                                 )
                         }
@@ -831,26 +900,36 @@ private fun RaftComputerRackCard(
     action: RaftComputerRackAction? = null,
     onUpgrade: (String) -> Unit = {},
     onCopyCommand: (String) -> Unit = {},
+    menu: RaftComputerCardMenu? = null,
+    onCreateAgent: () -> Unit = {},
+    onRestart: () -> Unit = {},
 ) {
     RaftCard(modifier = modifier, onClick = onClick, inactive = !row.online) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             RaftComputerDeviceIcon(row)
             Spacer(Modifier.size(RaftComputerCardTitleGap))
-            RaftText(
-                row.name,
-                modifier = Modifier.weight(1f, fill = false),
-                style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold),
-                color = RaftTheme.colors.foreground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (row.diskLow) {
-                Spacer(Modifier.size(8.dp))
-                RaftBadge(
-                    stringResource(Res.string.settings_computers_disk_low),
-                    appearance = RaftBadgeAppearance.Soft,
-                    variant = RaftBadgeVariant.Warning,
+            // The name and its badge stay together; the ⋯ (when offered) sits at the card's end.
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                RaftText(
+                    row.name,
+                    modifier = Modifier.weight(1f, fill = false),
+                    style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold),
+                    color = RaftTheme.colors.foreground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
+                if (row.diskLow) {
+                    Spacer(Modifier.size(8.dp))
+                    RaftBadge(
+                        stringResource(Res.string.settings_computers_disk_low),
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = RaftBadgeVariant.Warning,
+                    )
+                }
+            }
+            if (menu != null) {
+                Spacer(Modifier.size(8.dp))
+                RaftComputerCardMenuButton(menu, onCreateAgent = onCreateAgent, onRestart = onRestart)
             }
         }
         RaftComputerCardFactsLine(
@@ -876,6 +955,48 @@ private fun RaftComputerRackCard(
         if (action != null) {
             Spacer(Modifier.height(12.dp))
             RaftComputerRackActionRow(action, onUpgrade, onCopyCommand)
+        }
+    }
+}
+
+/**
+ * Web `RackRowMenu`: the card's ⋯ with the Computer page's own actions for this computer. Create
+ * agent first (the app's create entry wording and Bot icon), then Restart while it can take one.
+ */
+@Composable
+private fun RaftComputerCardMenuButton(menu: RaftComputerCardMenu, onCreateAgent: () -> Unit, onRestart: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val label = stringResource(Res.string.common_more_actions)
+    Box {
+        RaftIconButton(
+            onClick = { open = true },
+            tooltip = label,
+            variant = RaftButtonVariant.Ghost,
+            size = RaftIconButtonSize.Sm,
+        ) {
+            RaftComputersIcon(RaftLucideIconName.EllipsisVertical)
+        }
+        RaftDropdownMenu(expanded = open, onDismissRequest = { open = false }, alignEnd = true) {
+            if (menu.createAgent) {
+                RaftMenuItem(
+                    text = stringResource(Res.string.agent_create_action_create),
+                    leadingIcon = { MembersMenuIcon(RaftLucideIconName.Bot) },
+                    onClick = {
+                        open = false
+                        onCreateAgent()
+                    },
+                )
+            }
+            if (menu.restart) {
+                RaftMenuItem(
+                    text = stringResource(Res.string.settings_computers_restart),
+                    leadingIcon = { MembersMenuIcon(RaftLucideIconName.RotateCcw) },
+                    onClick = {
+                        open = false
+                        onRestart()
+                    },
+                )
+            }
         }
     }
 }
