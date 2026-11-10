@@ -1,7 +1,10 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
+import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
+import build.raft.app.model.ThreadId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,13 +31,19 @@ private val agentLoungeJson = Json {
     coerceInputValues = true
 }
 
-/** The Lounge an agent DM row carries (`GET /channels/dm` `lounge`), with its unread from the unread summary. */
+/**
+ * The Lounge an agent DM row carries (`GET /channels/dm` `lounge`), with its unread from the unread
+ * summary. [lastMessageId] / [lastMessageSeq]: the newest message Home counted live (a repeat
+ * delivery of it, or of an older one, counts no unread again); the server sends neither.
+ */
 @Serializable
 data class AgentLoungeSummary(
     val channelId: ChannelId,
     val joined: Boolean = false,
     val unreadCount: Int = 0,
     val mentionCount: Int = 0,
+    val lastMessageId: MessageId? = null,
+    val lastMessageSeq: Long? = null,
 )
 
 /**
@@ -73,6 +82,13 @@ data class RaftAgentLounge(
     /** From POST /agents/:id/lounge; null when this client never opened it (absent = may post, as on the web). */
     val canPost: Boolean? = null,
     val archived: Boolean = false,
+    /**
+     * This person's Activity mute of the Lounge, from its own row (`GET /channels/:id`); null until
+     * the client loaded it (a Lounge known only from its agent's DM row). Sidebar row and page Mute.
+     */
+    val activityNotificationPreference: ChannelActivityNotificationPreference? = null,
+    /** The Lounge's latest activity (its row's `lastMessageAt`, then live messages): the sidebar's recency. */
+    val lastMessageAt: String? = null,
 ) {
     /** The agent's name for "{Name}'s Lounge". */
     val displayAgentName: String
@@ -81,9 +97,26 @@ data class RaftAgentLounge(
     /** May this person post here: not archived and not refused by the open answer. */
     val postable: Boolean
         get() = !archived && canPost != false
+
+    /** Its own row was loaded (mute known); a Lounge known only from a DM row is not. */
+    val loaded: Boolean
+        get() = activityNotificationPreference != null
+
+    val activityMuted: Boolean
+        get() = activityNotificationPreference?.activityMuted == true
+
+    /**
+     * Web `canToggleActivityMute` for a Lounge (a public channel): only once joined, and only once
+     * its row (the mute it carries) is loaded. A stored mute keeps its Unmute.
+     */
+    val canToggleActivityMute: Boolean
+        get() {
+            val preference = activityNotificationPreference ?: return false
+            return preference.activityMuted || (joined && preference.activityMuteSupported)
+        }
 }
 
-/** The sidebar sub-row under an agent's DM row (web `agentLoungeSidebarEntry`). */
+/** The Lounge's own sidebar row (web `agentLoungeSidebarEntry`). */
 data class AgentLoungeSidebarEntry(
     val channelId: ChannelId,
     val unreadCount: Int,
@@ -173,6 +206,32 @@ class AgentLoungeApi(private val networkClient: RaftNetworkClient) {
                 serverIdOverride = serverId,
             )
         return agentLoungeOpenResponse(response, agentId)
+    }
+
+    /**
+     * `GET channels/:id` for a listed Lounge this client never loaded (web `ensureChannel` in
+     * useSidebarItems, slock #13876): its row says whether you joined, your mute and its latest
+     * activity, so its sidebar menu offers Mute and it sorts by recency. Remembered on success.
+     */
+    suspend fun loadLounge(serverId: ServerId, channelId: ChannelId): DataResult<HomeChannelRow> {
+        val response =
+            networkClient.request(
+                priority = DataRequestPriority.Background,
+                path = "channels/${channelId.value}",
+                serverIdOverride = serverId,
+            )
+        if (!response.isSuccessful) {
+            return DataResult.Error(
+                ScreenError(code = "http_${response.code}", retryable = response.code >= 500, traceId = response.traceId)
+            )
+        }
+        val row =
+            response.bodyText
+                ?.let(::parseSharedChannelRowResult)
+                ?.takeIf { it.channelId == channelId && !it.loungeAgentId.isNullOrBlank() }
+                ?: return DataResult.Error(ScreenError(code = "agent_lounge_load_contract_mismatch", retryable = false))
+        RaftAgentLounges.rememberRow(serverId.value, row)
+        return DataResult.Content(row)
     }
 
     /**
@@ -316,8 +375,60 @@ object RaftAgentLounges {
                 joined = row.joined,
                 canPost = canPost ?: previous?.canPost,
                 archived = row.archived,
+                // The Lounge's own row (GET /channels/:id) carries your mute; the open answer
+                // ([canPost] set) may not, so it keeps the mute already known.
+                activityNotificationPreference =
+                    if (canPost == null) {
+                        row.activityNotificationPreference
+                    } else {
+                        row.activityNotificationPreference
+                            .takeIf { it.activityMuteSupported || it.activityMuted }
+                            ?: previous?.activityNotificationPreference
+                    },
+                lastMessageAt = latestLoungeActivity(previous?.lastMessageAt, row.lastMessageAt),
             )
         }
+    }
+
+    /** This person's mute of a known Lounge changed (the row menu, the page, another device). */
+    fun applyActivityMute(serverId: String, channelId: String, preference: ChannelActivityNotificationPreference) {
+        remember(serverId, channelId) { previous ->
+            previous?.copy(
+                // A mute echo may omit `activityMuteSupported`; a Lounge (a public channel) supports it.
+                activityNotificationPreference =
+                    preference.copy(activityMuteSupported = preference.activityMuteSupported || previous.activityNotificationPreference?.activityMuteSupported == true)
+            )
+        }
+    }
+
+    /** A message arrived in a known Lounge at [at]: its recency in the sidebar. */
+    fun noteActivity(serverId: String, channelId: String, at: String?) {
+        if (at.isNullOrBlank()) return
+        remember(serverId, channelId) { previous ->
+            previous?.copy(lastMessageAt = latestLoungeActivity(previous.lastMessageAt, at))
+        }
+    }
+
+    private val loading = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * Single flight for [AgentLoungeApi.loadLounge]: true when this call may load the Lounge
+     * (nothing else is loading it); [endLoad] when done. A failed load is tried again next time
+     * the sidebar asks.
+     */
+    fun beginLoad(serverId: String, channelId: String): Boolean {
+        val key = "$serverId:$channelId"
+        var began = false
+        loading.update { current ->
+            began = key !in current
+            if (began) current + key else current
+        }
+        return began
+    }
+
+    fun endLoad(serverId: String, channelId: String) {
+        val key = "$serverId:$channelId"
+        loading.update { it - key }
     }
 
     /** Remember the Lounges an agent DM list carries (the agent's name is the DM row's). */
@@ -365,6 +476,7 @@ object RaftAgentLounges {
     fun clear() {
         byServer.value = emptyMap()
         boundAccountId.value = null
+        loading.value = emptySet()
     }
 
     /** Removed from (or deleted) server [serverId]: its Lounges go. */
@@ -393,4 +505,51 @@ object RaftAgentLounges {
             if (current[channelId] == next) all else all + (serverId to (current + (channelId to next)))
         }
     }
+}
+
+/** The later of two Lounge activity timestamps (unparseable ones lose to parseable ones). */
+internal fun latestLoungeActivity(a: String?, b: String?): String? {
+    val cleanA = a?.takeIf { it.isNotBlank() }
+    val cleanB = b?.takeIf { it.isNotBlank() }
+    if (cleanA == null) return cleanB
+    if (cleanB == null) return cleanA
+    val millisA = build.raft.app.model.parseRaftTimestampEpochMillisOrNull(cleanA)
+    val millisB = build.raft.app.model.parseRaftTimestampEpochMillisOrNull(cleanB)
+    return when {
+        millisA == null -> cleanB
+        millisB == null -> cleanA
+        millisB > millisA -> cleanB
+        else -> cleanA
+    }
+}
+
+/**
+ * A Lounge as a Home row (it is in no list): the Lounge [channelId] carried by one of this
+ * snapshot's agent DM rows, or known by id here. Its unread and @ come from the DM row's summary,
+ * its mute from the Lounge's own row. Lets the sidebar row's menu (read, unread, mute) and the
+ * Lounge page's mute reach a conversation no list holds. Null for anything that is not a Lounge.
+ */
+internal fun HomeSnapshot.agentLoungeConversationRow(channelId: String): HomeChannelRow? {
+    if (channelId.isBlank()) return null
+    val carriedBy = directMessages.firstOrNull { it.lounge?.channelId?.value == channelId }
+    val summary = carriedBy?.lounge
+    val known = RaftAgentLounges.lounge(server.id.value, channelId)
+    val agentId = known?.agentId ?: carriedBy?.presenceMemberId?.value?.takeIf { it.isNotBlank() } ?: return null
+    return HomeChannelRow(
+        threadId = ThreadId(channelId),
+        channelId = ChannelId(channelId),
+        channelType = "channel",
+        name = known?.channelName.orEmpty(),
+        unreadCount = summary?.unreadCount ?: 0,
+        unreadCountKnown = summary != null,
+        mentionCount = summary?.mentionCount ?: 0,
+        mentionCountKnown = summary != null,
+        lastMessageId = summary?.lastMessageId,
+        lastMessageSeq = summary?.lastMessageSeq,
+        lastMessageAt = known?.lastMessageAt,
+        joined = known?.joined == true || summary?.joined == true,
+        archived = known?.archived == true,
+        activityNotificationPreference = known?.activityNotificationPreference ?: ChannelActivityNotificationPreference.Unsupported,
+        loungeAgentId = agentId,
+    )
 }

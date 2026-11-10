@@ -7566,14 +7566,26 @@ private fun SharedThreadRouteContentContent(
                 )
                 .copy(serverPublicPageLive = headerServerPublicPageLive)
         }
+    // Agent Lounge v0: a Lounge's mute is the Lounge's own (no Home list holds it), so its ⋯ Mute
+    // and muted mark follow what the sidebar row's menu and other devices set.
+    val mutePageLounge =
+        rememberAgentLounge(
+            headerProjectionServerId?.value,
+            payload.agentLoungeLookupChannelId()?.takeIf { payload.surfaceKind == RaftThreadSurfaceKind.Channel },
+        )
     val activityMuteState =
-        remember(payload, stableHeaderProjection, sharedHomeStore) {
-            payload.threadActivityMuteState(stableHeaderProjection)
-                ?.takeIf { sharedHomeStore != null }
+        remember(payload, stableHeaderProjection, sharedHomeStore, mutePageLounge) {
+            val state =
+                if (mutePageLounge != null) {
+                    mutePageLounge.agentLoungeActivityMuteState(joinedHint = stableHeaderProjection?.joined == true)
+                } else {
+                    payload.threadActivityMuteState(stableHeaderProjection)
+                }
+            state?.takeIf { sharedHomeStore != null }
         }
     val activityMutedIndicatorVisible =
-        remember(payload, stableHeaderProjection) {
-            payload.threadActivityMutedIndicatorVisible(stableHeaderProjection)
+        remember(payload, stableHeaderProjection, mutePageLounge) {
+            mutePageLounge?.activityMuted ?: payload.threadActivityMutedIndicatorVisible(stableHeaderProjection)
         }
     val sidebarOrder =
         remember(sharedHomeState.content) {
@@ -13277,6 +13289,14 @@ private fun SharedThreadRouteContentContent(
                     }
                 },
             )
+        // Agent Lounge v0 (web slock #13880 `reopenRouteDm`): opening a closed Lounge, from any
+        // entry point, takes it off `hiddenDmIds`, as opening a closed DM on the web does.
+        val openedLoungeId =
+            threadLounge.lounge?.channelId?.value?.takeIf { renderedThread.surfaceKind == RaftThreadSurfaceKind.Channel }
+        LaunchedEffect(openedLoungeId, sharedHomeStore) {
+            val loungeId = openedLoungeId ?: return@LaunchedEffect
+            sharedHomeStore?.dispatch(SharedHomeIntent.ReopenClosedConversation(loungeId))
+        }
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
                 lounge = threadLounge,
