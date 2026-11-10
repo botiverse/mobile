@@ -21,8 +21,6 @@ internal expect fun raftPlatformPageVisibleLifecycleState(): Lifecycle.State
 
 internal expect fun raftPlatformUsesNativeLucideIconRotation(): Boolean
 
-internal expect fun raftPlatformConsumesSnapshotsFromKuikly(): Boolean
-
 /**
  * Platform policy for the task #990 emergency Thread/IME viewport kill-switch.
  *

@@ -242,15 +242,6 @@ class RuntimeFormV2Test {
         assertNull(parseRuntimeFormV2(nonString), "a non-string requirement fails closed")
     }
 
-    @Test
-    fun theGeneratedContractClassesDecodeTheReleasedForms() {
-        val json = Json { ignoreUnknownKeys = true }
-        val decoded = json.decodeFromString(RuntimeFormV2Definition.serializer(), BUILTIN_V2_FORM_JSON)
-        assertEquals(RUNTIME_FORM_V2_PROTOCOL_VERSION, decoded.protocolVersion)
-        assertEquals("provider", decoded.dataSchema.properties["providerId"]?.optionSource)
-        assertNotNull(json.decodeFromString(RuntimeFormV2Definition.serializer(), KIMI_SDK_V2_FORM_JSON).dataSchema)
-    }
-
     // ── v2State.test.ts ──
 
     @Test

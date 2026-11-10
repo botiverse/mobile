@@ -16,8 +16,6 @@ internal actual fun raftPlatformPageVisibleLifecycleState(): Lifecycle.State = L
 
 internal actual fun raftPlatformUsesNativeLucideIconRotation(): Boolean = true
 
-internal actual fun raftPlatformConsumesSnapshotsFromKuikly(): Boolean = true
-
 internal actual fun raftPlatformThreadImeProgrammaticViewportPolicy():
     ThreadImeProgrammaticViewportPolicy =
     // task #1010: the route-focus watcher now retires before composer IME

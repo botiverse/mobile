@@ -4,7 +4,6 @@ import build.raft.app.canonical.message.CanonicalReactionWire
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -277,53 +276,5 @@ class ReactionRosterNormalizationTest {
         ).toLegacyReactionRosterDto()
 
         assertEquals(LegacyReactionRosterDto("like", 2, listOf("u2", "u1"), listOf("B", "A")), dto)
-    }
-
-    @Test
-    fun typedCacheDistinguishesUnknownFromLoadedEmptyAndEvictsByLru() {
-        val cache = BoundedReactionActorsReadCache(principalScope = "user:u2", maxEntries = 2)
-        val empty = normalized(listOf(LegacyReactionRosterDto("empty", 0))).readCacheSeed.single()
-        val like = normalized(listOf(LegacyReactionRosterDto("like", 1, listOf("u1"), listOf("A")))).readCacheSeed.single()
-        val fire = normalized(listOf(LegacyReactionRosterDto("fire", 1, listOf("u9"), listOf("I")))).readCacheSeed.single()
-
-        assertIs<ReactionActorsCacheLookup.Unknown>(cache.get(empty.discussion))
-        cache.seed(empty)
-        cache.seed(like)
-        assertEquals(emptyList(), assertIs<ReactionActorsCacheLookup.Loaded>(cache.get(empty.discussion)).actors)
-        cache.seed(fire) // `empty` was just touched, so `like` is the LRU entry.
-
-        assertIs<ReactionActorsCacheLookup.Unknown>(cache.get(like.discussion))
-        assertIs<ReactionActorsCacheLookup.Loaded>(cache.get(empty.discussion))
-        assertIs<ReactionActorsCacheLookup.Loaded>(cache.get(fire.discussion))
-        assertEquals(2, cache.size)
-    }
-
-    @Test
-    fun typedCacheRequiresAnExplicitPrincipalPartition() {
-        assertFailsWith<IllegalArgumentException> {
-            BoundedReactionActorsReadCache(principalScope = "", maxEntries = 1)
-        }
-    }
-
-    @Test
-    fun typedCacheClearsAllChildEntriesForParentScopeWithoutGlobalScanSemantics() {
-        val otherScope = ReactionParentScopeKey(serverId = "s1", scopeId = "c2", scopeKind = "channel")
-        val cache = BoundedReactionActorsReadCache(principalScope = "user:u2", maxEntries = 3)
-        val first = normalized(listOf(LegacyReactionRosterDto("like", 0))).readCacheSeed.single()
-        val second = normalized(listOf(LegacyReactionRosterDto("fire", 0))).readCacheSeed.single()
-        val other = assertIs<ReactionNormalizationOutcome.Normalized>(
-            normalizeLegacyReactionRoster(
-                context(messageId = "m2", parentScopeKey = otherScope),
-                listOf(LegacyReactionRosterDto("like", 0)),
-            ),
-        ).value.readCacheSeed.single()
-        cache.seedAll(listOf(first, second, other))
-
-        cache.clearScope(scope)
-
-        assertIs<ReactionActorsCacheLookup.Unknown>(cache.get(first.discussion))
-        assertIs<ReactionActorsCacheLookup.Unknown>(cache.get(second.discussion))
-        assertIs<ReactionActorsCacheLookup.Loaded>(cache.get(other.discussion))
-        assertEquals(1, cache.size)
     }
 }

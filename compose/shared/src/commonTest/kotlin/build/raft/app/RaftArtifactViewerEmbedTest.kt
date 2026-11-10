@@ -81,6 +81,14 @@ class RaftArtifactViewerEmbedTest {
     }
 
     @Test
+    fun theListInTheAddressKeepsTheViewerOnItsArtifact() {
+        // The page's open list is its address's fragment (`#panel=`); it never leaves the Artifact.
+        val page = "$web/artifacts/$id?$embed"
+        assertEquals(RaftArtifactViewerNavigation.Stay(null), raftArtifactViewerNavigation("$page#panel=comments", web, id))
+        assertEquals(RaftArtifactViewerNavigation.Stay(3), raftArtifactViewerNavigation("$web/artifacts/$id/v/3#panel=versions", web, id))
+    }
+
+    @Test
     fun aShortLinkOpensTheViewerOnItsShortAddress() {
         // slock staging 380482116 artifactShortId.test.ts vector: 0b6f1c2e-… is 2QthvfPeGfDnqwr7LG6itx.
         val short = "2QthvfPeGfDnqwr7LG6itx"

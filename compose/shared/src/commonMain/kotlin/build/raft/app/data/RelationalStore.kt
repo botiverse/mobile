@@ -18,27 +18,3 @@ data class RelationalRows(
     val columns: List<String>,
     val rows: List<List<RelationalValue>>
 )
-
-class InMemoryRelationalStore : RaftRelationalStore {
-    val executedStatements = mutableListOf<Pair<String, List<RelationalValue>>>()
-
-    override suspend fun execute(sql: String, bindArgs: List<RelationalValue>) {
-        executedStatements += sql to bindArgs
-    }
-
-    override suspend fun query(sql: String, bindArgs: List<RelationalValue>): RelationalRows {
-        executedStatements += sql to bindArgs
-        return RelationalRows(emptyList(), emptyList())
-    }
-
-    override suspend fun transaction(block: suspend RaftRelationalStore.() -> Unit) {
-        execute("BEGIN IMMEDIATE")
-        try {
-            block()
-            execute("COMMIT")
-        } catch (throwable: Throwable) {
-            execute("ROLLBACK")
-            throw throwable
-        }
-    }
-}
