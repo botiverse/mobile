@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -53,6 +52,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -70,6 +70,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -641,17 +642,54 @@ fun RaftMobileNavServerPopoverRow(
     }
 }
 
+/** Receiver of [RaftMobileNavServerPopoverDestinations]' content: the cells it lays out. */
+@Stable
+object RaftMobileNavServerPopoverDestinationsScope
+
+/** raft-ui `DESTINATIONS_IN_ONE_ROW`: past this many pages, the row becomes 3 columns. */
+const val RaftMobileNavServerPopoverDestinationsInOneRow = 4
+
+/** raft-ui `data-layout="grid"`: the column count for [count] destinations (one row up to 4). */
+fun raftMobileNavServerPopoverDestinationColumns(count: Int): Int =
+    if (count > RaftMobileNavServerPopoverDestinationsInOneRow) 3 else count.coerceAtLeast(1)
+
 /**
- * raft-ui `MobileNavServerPopoverDestinations`: the server's own pages (Members, Computers,
- * Settings) side by side in equal cells (4dp gap and padding).
+ * raft-ui `MobileNavServerPopoverDestinations` (raft-design #1037): the server's own pages in
+ * equal cells (4dp gap and padding). Up to 4 sit side by side in one row; more than 4 take 3
+ * columns, rows of 3 with the last row starting at the start edge, each cell as tall as in one
+ * row, so every label keeps a third of the popover and stays whole ("Computadoras" at 360dp).
  */
 @Composable
-fun RaftMobileNavServerPopoverDestinations(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-    Row(
-        modifier.fillMaxWidth().padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        content = content,
-    )
+fun RaftMobileNavServerPopoverDestinations(
+    modifier: Modifier = Modifier,
+    content: @Composable RaftMobileNavServerPopoverDestinationsScope.() -> Unit,
+) {
+    Layout(
+        content = { RaftMobileNavServerPopoverDestinationsScope.content() },
+        modifier = modifier.fillMaxWidth().padding(4.dp),
+    ) { measurables, constraints ->
+        if (measurables.isEmpty()) return@Layout layout(constraints.minWidth, constraints.minHeight) {}
+        val gap = 4.dp.roundToPx()
+        val columns = raftMobileNavServerPopoverDestinationColumns(measurables.size)
+        val width = constraints.maxWidth
+        val free = (width - gap * (columns - 1)).coerceAtLeast(0)
+        // Equal cells; a leftover pixel goes to the first columns, as a Row's weights give it.
+        val widths = List(columns) { free / columns + if (it < free % columns) 1 else 0 }
+        val lefts = widths.runningFold(0) { left, cell -> left + cell + gap }
+        val placeables = measurables.mapIndexed { index, measurable ->
+            measurable.measure(Constraints.fixedWidth(widths[index % columns]))
+        }
+        val rows = placeables.chunked(columns)
+        val rowHeights = rows.map { row -> row.maxOf { it.height } }
+        val height = (rowHeights.sum() + gap * (rows.size - 1)).coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(width, height) {
+            var top = 0
+            rows.forEachIndexed { r, row ->
+                row.forEachIndexed { c, placeable -> placeable.placeRelative(lefts[c], top) }
+                top += rowHeights[r] + gap
+            }
+        }
+    }
 }
 
 /**
@@ -662,7 +700,7 @@ fun RaftMobileNavServerPopoverDestinations(modifier: Modifier = Modifier, conten
  * avatar), read as [attentionDescription].
  */
 @Composable
-fun RowScope.RaftMobileNavServerPopoverDestination(
+fun RaftMobileNavServerPopoverDestinationsScope.RaftMobileNavServerPopoverDestination(
     label: String,
     onClick: () -> Unit,
     icon: @Composable () -> Unit,
@@ -679,7 +717,6 @@ fun RowScope.RaftMobileNavServerPopoverDestination(
     val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Highlight, highlighted = held)
     Box(
         modifier
-            .weight(1f)
             .then(if (state != null && key != null) Modifier.raftMobileNavServerPopoverTarget(state, key) else Modifier)
             .raftStateOverlay(overlay, RaftRadius.Chip)
             .raftPointerHover(source)
