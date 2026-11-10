@@ -364,7 +364,7 @@ smoke.
    `versionName` = `X.Y.Z+<short-sha>` under Settings → Apps → Raft; that is a
    cross-check, never a substitute for the versionCode/SHA half. Identity
    binding and the upload path are **never waivable**.
-2. **Run the suite on the exact carrier**: `smoke run --all` on the testbed.
+2. **Run the suite on the exact carrier**: `testbed run --all --apk <download-url> --release <id>` (the whole case table; artin 2026-09-04: the 3-step login/list/open smoke is not a release smoke; a cell not run is recorded `NOT RUN` with the reason). Receipts bind `versionCode` + SHA-256.
    A testbed case list is a dispatch list: `testbed run` makes a pending
    ticket that a device seat or CI agent must execute. Unrun or harness-blocked
    cases are `NOT RUN`/blocked, never PASS. Each case needs a terminal
@@ -523,7 +523,8 @@ IPA source commit.
 ### 7.5 App Store (artin's go)
 
 Submit only after artin's OK for that version. Upload App Store screenshots
-(including iPad 13") through Hands, not by hand in App Store Connect.
+(including iPad 13") through Hands, not by hand in App Store Connect:
+`hands app-store screenshots push raft-ios --version-name X.Y.Z --dir <dir>` (dry run first).
 App Store production is never implied by TestFlight.
 
 ### 7.6 Announce (artin's go)
