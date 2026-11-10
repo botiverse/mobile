@@ -77,7 +77,7 @@ fun RaftWorkspaceButton(
     RaftButtonBox(
         look = look,
         onClick = onClick,
-        // The top bar's item: 36, or 32 under a fine pointer (sizing v12, raft-ui 0.65 desktop density).
+        // The top bar's item: 36, or 34 (the control height) under a fine pointer.
         modifier = modifier.height(RaftTopBarDefaults.itemSize),
         enabled = true,
         loading = false,

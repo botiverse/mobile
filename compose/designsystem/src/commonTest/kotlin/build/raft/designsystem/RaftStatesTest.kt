@@ -195,7 +195,9 @@ class RaftButtonLookTest {
             // The 16dp glyph lands on the 16dp content margin.
             assertEquals(16.dp, barEdgeInset + (barButtonSize - barIconSize) / 2)
             assertEquals(44.dp, topBarHeight)
-            assertEquals(32.dp, topBarItemSize)
+            assertEquals(34.dp, topBarItemSize)
+            // raft-ui `--frame-item-height` is the control height under a fine pointer.
+            assertEquals(height, topBarItemSize)
             assertEquals(true, railCompact)
             assertEquals(38.dp, switchWidth)
             assertEquals(22.dp, switchHeight)

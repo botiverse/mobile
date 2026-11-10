@@ -68,7 +68,7 @@ object RaftTopBarDefaults {
 
     /**
      * An item on the bar (the workspace button, the search trigger, an on-frame `md` button): 36
-     * with a finger, 32 under a fine pointer (sizing v12).
+     * with a finger, 34 (the control height) under a fine pointer, as raft-ui `--frame-item-height`.
      */
     val itemSize: Dp
         @Composable @ReadOnlyComposable
