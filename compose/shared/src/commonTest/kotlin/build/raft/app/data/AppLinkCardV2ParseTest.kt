@@ -108,8 +108,8 @@ class AppLinkCardV2ParseTest {
 
     /**
      * `app.reviewed` (botiverse/slock #13945 `LinkCardReadApp`, `linkCardRead.api.test.ts`): `false`
-     * for an own-Server App read with `unreviewed_app.v1`, absent for an official App; anything else
-     * refuses the item.
+     * for an own-Server App read with `unreviewed_app.v1`, absent for an official App. Any other value
+     * keeps the card and reads as reviewed: `reviewed` never drops a card (slock #13956).
      */
     @Test
     fun appReviewedFalseReadsAndIsAbsentForOfficialApps() {
@@ -117,14 +117,21 @@ class AppLinkCardV2ParseTest {
         val unreviewed = v2Item(1).replace("\"app\":$stamp", "\"app\":$unreviewedApp")
         val reviewedTrue = v2Item(3).replace("\"app\":$stamp", "\"app\":${unreviewedApp.replace("false", "true")}")
         val reviewedString = v2Item(4).replace("\"app\":$stamp", "\"app\":${unreviewedApp.replace("false", "\"false\"")}")
-        val read = parseAppLinkCardReadAnswer(answer(unreviewed, v2Item(2), reviewedTrue, reviewedString))!!
-        assertEquals(setOf(urlOf(1), urlOf(2)), read.results.keys)
+        val reviewedOther = v2Item(5).replace("\"app\":$stamp", "\"app\":${unreviewedApp.replace("false", "\"x\"")}")
+        val reviewedNull = v2Item(6).replace("\"app\":$stamp", "\"app\":${unreviewedApp.replace("false", "null")}")
+        val read = parseAppLinkCardReadAnswer(answer(unreviewed, v2Item(2), reviewedTrue, reviewedString, reviewedOther, reviewedNull))!!
+        assertEquals(setOf(urlOf(1), urlOf(2), urlOf(3), urlOf(4), urlOf(5), urlOf(6)), read.results.keys, "reviewed never drops a card")
         val app = (read.results[urlOf(1)] as AppLinkResult.Card).app
         assertEquals(false, app.reviewed)
         assertTrue(app.unreviewed)
         val official = (read.results[urlOf(2)] as AppLinkResult.Card).app
         assertNull(official.reviewed)
         assertFalse(official.unreviewed)
+        for (n in 3..6) {
+            val other = (read.results[urlOf(n)] as AppLinkResult.Card).app
+            assertNull(other.reviewed, "only the boolean false is unreviewed (item $n)")
+            assertFalse(other.unreviewed)
+        }
     }
 
     @Test
