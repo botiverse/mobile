@@ -2,8 +2,9 @@
 
 package build.raft.app
 
-import androidx.compose.runtime.staticCompositionLocalOf
+import build.raft.designsystem.focus.LocalRaftAutofocusTargetField
 import build.raft.designsystem.focus.RaftAutofocusGuard
+import build.raft.designsystem.focus.raftReportsFocusPresence
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipeRegion
@@ -1297,7 +1298,8 @@ internal fun Modifier.dismissInputFocusOnScrollableChrome(): Modifier {
 /**
  * Installs the shared outside-gesture focus-dismiss boundary for an app, page, or modal root.
  * Inputs register themselves through [TextField], so adding a standard input never requires a
- * business-page tap handler or allowlist entry.
+ * business-page tap handler or allowlist entry. The root also reports whether anything in it holds
+ * focus ([raftReportsFocusPresence]), which a focus restore checks first (ComposerAutofocusPolicy.kt).
  */
 @Composable
 internal fun RaftInputFocusDismissHost(
@@ -1306,7 +1308,7 @@ internal fun RaftInputFocusDismissHost(
     val registry = remember { RaftInputFocusOwnerRegistry() }
     CompositionLocalProvider(LocalRaftInputFocusOwnerRegistry provides registry) {
         content(
-            Modifier.dismissInputFocusOnOutsidePointerDown(
+            Modifier.raftReportsFocusPresence().dismissInputFocusOnOutsidePointerDown(
                 registry = registry,
                 enabled = registry.hasActiveOwner
             )
@@ -1748,9 +1750,10 @@ internal class RaftTextFieldNativeEditingStateReader {
  */
 /**
  * True around a conversation composer's editor: the field that takes focus when its conversation
- * opens (ComposerAutofocusPolicy.kt), so its own focus never counts as another field's.
+ * opens (ComposerAutofocusPolicy.kt), so its own focus never counts as another field's. The
+ * design-system's own local, so a `RaftTextField` / `RaftTextarea` inside opts out as well.
  */
-internal val LocalRaftEditorIsConversationComposer = staticCompositionLocalOf { false }
+internal val LocalRaftEditorIsConversationComposer = LocalRaftAutofocusTargetField
 
 internal val LocalRaftDialogKeyboardHeightChange =
     compositionLocalOf<(KeyboardParams) -> Unit> { {} }

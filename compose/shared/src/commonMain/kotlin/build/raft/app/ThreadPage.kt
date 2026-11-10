@@ -20121,19 +20121,30 @@ private fun ConversationHeaderToggle(
 }
 
 /**
- * Whether this page's composer takes the focus when it opens: the platform policy
+ * This page's composer focus ([ComposerFocusOnOpen]): the platform policy
  * ([rememberComposerAutofocusOnOpen]), the page shown, and, in the wide detail, no reply thread
  * beside it ([composerAutofocusYieldsToSideThread]: the thread panel gets the focus, and gives it
- * back when it closes). Recomposes the page only when the answer changes.
+ * back when it closes only if the focus was lost). The composer reads it when its request runs,
+ * so a later change here (a keyboard reconnected, the page shown again) never re-runs the open.
  */
 @Composable
 private fun rememberThreadComposerAutofocusOnOpen(
     routeActive: Boolean,
     adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest?,
     adaptiveStoreScope: RaftShellStoreScope,
-): Boolean {
+): ComposerFocusOnOpen {
     val policy = rememberComposerAutofocusOnOpen()
-    if (adaptiveCloseRequest == null) return policy && routeActive
+    val yieldsToSideThread =
+        if (adaptiveCloseRequest == null) false else rememberThreadComposerYieldsToSideThread(adaptiveCloseRequest, adaptiveStoreScope)
+    return rememberComposerFocusOnOpen(policy = policy, shown = routeActive, yieldsToSideThread = yieldsToSideThread)
+}
+
+/** [composerAutofocusYieldsToSideThread] for the wide detail's page [adaptiveCloseRequest], live. */
+@Composable
+private fun rememberThreadComposerYieldsToSideThread(
+    adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest,
+    adaptiveStoreScope: RaftShellStoreScope,
+): Boolean {
     val pager = LocalActivity.current.getPager() as Pager
     val workspaceStore =
         remember(pager, adaptiveStoreScope) {
@@ -20147,7 +20158,7 @@ private fun rememberThreadComposerAutofocusOnOpen(
         }.collectAsState(
             initial = workspaceStore.snapshot().composerAutofocusYieldsToSideThread(adaptiveCloseRequest)
         )
-    return policy && routeActive && !yieldsToSideThread
+    return yieldsToSideThread
 }
 
 @Composable
@@ -20174,7 +20185,7 @@ private fun ThreadComposerRoute(
     /** A removed App Bot's DM (or a thread in it): notice above a disabled composer. */
     removedAppBot: RaftAppBotIdentity? = null,
     /** Focus the composer when the conversation opens (ComposerAutofocusPolicy.kt). */
-    autofocusOnOpen: Boolean = false,
+    autofocusOnOpen: ComposerFocusOnOpen? = null,
 ) {
     if (removedAppBot != null) {
         // The editor never mounts, so the saved draft stays in the store untouched.
@@ -20382,7 +20393,7 @@ private fun ThreadComposerContentWithSuggestions(
     contentPaddingBottom: Dp,
     adaptiveNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
     frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
-    autofocusOnOpen: Boolean = false,
+    autofocusOnOpen: ComposerFocusOnOpen? = null,
 ) {
     val memberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
     val channelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())
