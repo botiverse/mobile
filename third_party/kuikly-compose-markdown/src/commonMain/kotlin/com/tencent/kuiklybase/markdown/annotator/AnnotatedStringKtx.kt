@@ -696,8 +696,11 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                         skipIfNext = MarkdownTokenTypes.EOL
                     }
 
+                    // The lexer emits EMPH for both `*` and `_`. An unmatched
+                    // delimiter renders as the character the user wrote: a
+                    // hardcoded '*' showed a URL's trailing `_` as `*`.
                     MarkdownTokenTypes.EMPH -> if (parentType != MarkdownElementTypes.EMPH && parentType != MarkdownElementTypes.STRONG) append(
-                        '*'
+                        child.getTextInNode(content).toString()
                     )
 
                     MarkdownTokenTypes.EOL -> if (eolAsNewLine) append('\n') else append(' ')

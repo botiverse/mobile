@@ -441,6 +441,63 @@ class MarkdownContentIntegrityTest {
 
 
     @Test
+    fun bareUrlEndingInUnderscoreKeepsItInTheLinkAndNeverShowsAsterisk() {
+        // Reported Android 1.23 message: the link dropped the trailing `_` and the
+        // leftover `_` rendered as `*`.
+        val first = "https://hands.build/share/GJzCI5Wry2E3i2SAYTXqCrqqbLcVTh5_"
+        val second = "https://hands.build/share/tRW8sPYDJG_a8LbyB9KMKzm39XlxJZlY"
+        val firstItem = "main 渠道 构建 2（12300002，正式用户会收到的那个包）：$first"
+        val secondItem = "main 渠道 构建 3：$second"
+        val rendered = renderTopParagraphsWithLinks("- $firstItem\n- $secondItem")
+        assertEquals(listOf(firstItem, secondItem), rendered.map { it.text })
+        assertEquals(listOf(listOf(first), listOf(second)), rendered.map { it.urls })
+    }
+
+    @Test
+    fun bareUrlTrailingMarksFollowTheWebRule() {
+        // slock packages/web/src/utils/markdownAutolink.ts: GFM trims trailing
+        // punctuation; `restoreTrailingUrlMarks` puts an unclosed `_`/`~` run back.
+        val cases =
+            listOf(
+                "see https://x.test/a_ now" to listOf("https://x.test/a_"),
+                "see https://x.test/a__ now" to listOf("https://x.test/a__"),
+                "see https://x.test/a_b_c now" to listOf("https://x.test/a_b_c"),
+                "see https://x.test/a_." to listOf("https://x.test/a_"),
+                "see https://x.test/a._" to listOf("https://x.test/a"),
+                "see https://x.test/a* now" to listOf("https://x.test/a"),
+                "see https://x.test/a. now" to listOf("https://x.test/a"),
+                "see https://x.test/a, now" to listOf("https://x.test/a"),
+                "see https://x.test/a! now" to listOf("https://x.test/a"),
+            )
+        for ((source, expectedUrls) in cases) {
+            val rendered = renderTopParagraphsWithLinks(source).single()
+            assertEquals(source, rendered.text, "every source character must render as written; source=$source")
+            assertEquals(expectedUrls, rendered.urls, "source=$source")
+        }
+    }
+
+    @Test
+    fun underscoreEmphasisStillWorksAroundAndBesideUrls() {
+        val italic = renderTopParagraphsWithLinks("_italic_ text").single()
+        assertEquals("italic text", italic.text)
+
+        val wrapped = renderTopParagraphsWithLinks("_https://x.test/a_ next").single()
+        assertEquals("https://x.test/a next", wrapped.text)
+        assertEquals(listOf("https://x.test/a"), wrapped.urls)
+
+        val strongWrapped = renderTopParagraphsWithLinks("__https://x.test/a__ next").single()
+        assertEquals("https://x.test/a next", strongWrapped.text)
+        assertEquals(listOf("https://x.test/a"), strongWrapped.urls)
+    }
+
+    @Test
+    fun unmatchedUnderscoreRendersAsUnderscore() {
+        listOf("a _b", "a_ b", "x _ y", "a * b").forEach { source ->
+            assertEquals(listOf(source), renderTopParagraphs(source), "source=$source")
+        }
+    }
+
+    @Test
     fun raftSchemeMessageLinksAreAutolinkedWithTheirSourceText() {
         val channel = "raft:///s/raft/channel/6f1c2b9e-1d2a?msg=0b1c2d3e"
         val dm = "raft://s/my_team/dm/a3b4?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca&thread=a3b4:p_1"
