@@ -180,9 +180,9 @@ APPSTORE8_RAW_DP = {"iphone": (430, 836), "duo-outer": (466, 678), "duo-inner-po
 # <raw>/<lang>/<scene>.png. Output: <out>/<ASC locale>/APP_IPAD_PRO_3GEN_129/NN.png.
 IPAD8_SCENES = [s for s in PLAY8_SCENES if s[0] in ("01-chat", "02-mention", "03-thread", "04-tasks", "05-agent", "06-activity")] + [
     ("07-computers", CYAN, {
-        "en": ("Connect a computer to [put agents to work]", "Agents run on your computer. Follow along from your phone."),
-        "zh-Hans": ("连上一台电脑，|[Agent 就能开工]", "Agent 在你的电脑上运行，|手机上随时查看进度"),
-        "ja": ("PCをつなげば、|[エージェントが動き出す]", "エージェントはあなたのPCで動作。|進捗はスマホでいつでも確認"),
+        "en": ("Connect a computer to [put agents to work]", "Agents run on your computer. Follow along from anywhere."),
+        "zh-Hans": ("连上一台电脑，|[Agent 就能开工]", "Agent 在你的电脑上运行，|随时随地查看进度"),
+        "ja": ("PCをつなげば、|[エージェントが動き出す]", "エージェントはあなたのPCで動作。|進捗はいつでもどこでも確認"),
     }),
 ] + [s for s in PLAY8_SCENES if s[0] == "08-home"]
 IPAD8_LOCALES = {"en": "en-US", "zh-Hans": "zh-Hans", "ja": "ja"}
@@ -431,7 +431,8 @@ document.fonts.ready.then(function(){
   const aw=r.width-c.padX*2-c.shadow, ah=r.height-c.padTop-c.padBottom-c.shadow;
   const ratio=c.rawH/c.rawW+(c.sbDp+c.hbDp)/c.dpW;     // screen height / width
   const b=c.bezel;                                      // bezel / screen width
-  let sw=Math.min(aw/(1+2*b), ah/(ratio+2*b), c.maxW/(1+2*b));
+  // bleed: the device is c.maxW wide and runs off the bottom edge (cropped) to show more of the screen.
+  let sw=c.bleed ? c.maxW/(1+2*b) : Math.min(aw/(1+2*b), ah/(ratio+2*b), c.maxW/(1+2*b));
   const u=sw/c.dpW;
   d.style.width=(sw*(1+2*b))+'px'; d.style.height=(sw*(ratio+2*b))+'px';
   d.style.padding=(sw*b)+'px';
@@ -468,7 +469,7 @@ def page(style, shot, profile, accent, headline, sub, idx, lang, w, h, hl_scale=
         "maxW": w * (0.66 if landscape else (0.90 if tablet else 0.76)),
         "vAlign": 0.5 if landscape else 0.0,
     }
-    for k in ("sbDp", "hbDp", "bezel", "radiusDp"):
+    for k in ("sbDp", "hbDp", "bezel", "radiusDp", "maxW", "bleed"):
         if k in chrome:
             fit[k] = chrome[k]
     top_color, bottom_color = edge_color(shot), edge_color(shot, bottom=True)
@@ -658,7 +659,9 @@ def main():
                 out_png = f"{out}/{IPAD8_LOCALES[lang]}/APP_IPAD_PRO_3GEN_129/{idx:02d}.png"
                 jobs.append((page(a.style, cropped, "ipad", accent, headline, sub, idx, lang, w, h, 1.0, IPAD8_TEXT_LINES,
                                   chrome={"sbDp": 24, "hbDp": 20, "bezel": 0.022, "radiusDp": 18, "css": IOS_CSS,
-                                          "status": ios_status(1032, 24, island=False, time_size=14)}), out_png, w, h))
+                                          "status": ios_status(1032, 24, island=False, time_size=14),
+                                          # Ginny 11-10: the iPad ~88% of the canvas width, cut off at the bottom.
+                                          "maxW": round(w * 0.88), "bleed": True}), out_png, w, h))
         with concurrent.futures.ThreadPoolExecutor(a.jobs) as pool:
             for done in pool.map(lambda j: render(*j), jobs):
                 print("wrote", done)
