@@ -8487,6 +8487,7 @@ private fun RaftAppShellReadyContent(
                                 threadUnreadBadgeEnabled = homeThreadUnreadBadgeEnabled,
                                 sidebarMarkAllReadEnabled = homeSidebarMarkAllReadEnabled,
                                 agentLoungeEnabled = homeAgentLoungeEnabled,
+                                agentLoungeNetworkClient = appShellNetworkClient,
                                 onIntent = { intent ->
                                     prewarmAdmissionGate.invalidate("home_intent:${intent::class.simpleName}")
                                     if (intent is SharedHomeIntent.SelectServer) {
@@ -11471,8 +11472,10 @@ private fun SharedHomeScreen(
     threadUnreadBadgeEnabled: Boolean = false,
     /** Server flag `sidebar_mark_all_read_v0`: with the thread badge on, rows offer "Mark All as Read". */
     sidebarMarkAllReadEnabled: Boolean = false,
-    /** Server flag `agent_lounge_v0` and not a Guest: agent DM rows carry their Lounge's sub-row. */
+    /** Server flag `agent_lounge_v0` and not a Guest: the Lounges get their own sidebar rows. */
     agentLoungeEnabled: Boolean = false,
+    /** Loads a listed Lounge's own row (mute, recency) the client never loaded; null: none loaded. */
+    agentLoungeNetworkClient: build.raft.app.data.RaftNetworkClient? = null,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
     onAppUpdateOpen: (() -> Unit)? = null,
@@ -11796,9 +11799,6 @@ private fun SharedHomeScreen(
                     restoredRowHints,
                     threadUnreadByParent,
                     snapshot.markedUnreadIds,
-                    agentLoungeEnabled,
-                    snapshot.server.id,
-                    knownAgentLounges,
                 ) {
                     SharedHomeConversationRowProjector(
                         directoryProjections = conversationDirectoryProjections,
@@ -11806,10 +11806,49 @@ private fun SharedHomeScreen(
                         restoredRowHints = restoredRowHints,
                         threadUnreadByParent = threadUnreadByParent,
                         markedUnreadIds = snapshot.markedUnreadIds,
-                        agentLoungeEnabled = agentLoungeEnabled,
-                        agentLoungeServerId = snapshot.server.id.value,
                     )
                 }
+            // Agent Lounge v0: each listed Lounge's own row (Direct Messages, or Pinned once pinned).
+            val serverKnownAgentLounges = knownAgentLounges[snapshot.server.id.value].orEmpty()
+            val agentLoungeItems =
+                remember(agentLoungeEnabled, snapshot.directMessages, serverKnownAgentLounges, snapshot.markedUnreadIds) {
+                    homeSidebarAgentLoungeItems(
+                        enabled = agentLoungeEnabled,
+                        directMessages = snapshot.directMessages,
+                        known = serverKnownAgentLounges,
+                        markedUnreadIds = snapshot.markedUnreadIds,
+                        title = ::agentLoungeTitleNow,
+                    )
+                }
+            // web slock #13876 (useSidebarItems `ensureChannel`): a listed Lounge this client never
+            // loaded has only its DM row's summary; its own row brings your mute (the menu's Mute)
+            // and its latest activity. Each is loaded once (single flight across Home instances).
+            val unloadedAgentLoungeIds =
+                remember(agentLoungeItems, serverKnownAgentLounges) {
+                    agentLoungeItems.map { it.id }.filter { id -> serverKnownAgentLounges[id]?.loaded != true }
+                }
+            // Each load runs in the page's scope, not the effect's: one Lounge finishing changes
+            // [unloadedAgentLoungeIds] and restarts the effect, which must not cancel another
+            // Lounge's request still in flight (it would stay unloaded with no Mute).
+            val agentLoungeLoadScope = rememberCoroutineScope()
+            LaunchedEffect(snapshot.server.id, unloadedAgentLoungeIds, agentLoungeNetworkClient) {
+                val client = agentLoungeNetworkClient ?: return@LaunchedEffect
+                val serverId = snapshot.server.id
+                val api = build.raft.app.data.AgentLoungeApi(client)
+                for (loungeId in unloadedAgentLoungeIds) {
+                    if (!RaftAgentLounges.beginLoad(serverId.value, loungeId)) continue
+                    agentLoungeLoadScope.launch {
+                        try {
+                            val result = api.loadLounge(serverId, ChannelId(loungeId))
+                            if (result !is DataResult.Content) {
+                                bridge.log("agent_lounge_row_load_failed serverId=${serverId.value} lounge=${loungeId.take(8)}")
+                            }
+                        } finally {
+                            RaftAgentLounges.endLoad(serverId.value, loungeId)
+                        }
+                    }
+                }
+            }
             val servers =
                 remember(
                     current.session.servers,
@@ -11923,6 +11962,12 @@ private fun SharedHomeScreen(
                 pinnedItems = snapshot.sidebarOrder?.pinned.orEmpty(),
                 pinnedSortMode = snapshot.sidebarOrder?.pinnedSortMode ?: "manual",
                 hiddenDmIds = snapshot.sidebarOrder?.hiddenDmIds.orEmpty(),
+                agentLounges =
+                    if (conversationKindFilter == ConversationKind.Channel) {
+                        emptyList()
+                    } else {
+                        agentLoungeItems
+                    },
                 customSections = snapshot.sidebarOrder?.customSections.orEmpty(),
                 sectionOrder = snapshot.sidebarOrder?.sectionOrder.orEmpty(),
                 sectionPlacements = snapshot.sidebarOrder?.sectionPlacements.orEmpty(),
@@ -16123,9 +16168,6 @@ internal data class SharedHomeConversationRowProjector(
     val threadUnreadByParent: Map<ChannelId, HomeParentThreadUnread> = emptyMap(),
     /** [HomeSnapshot.markedUnreadIds]: rows marked unread with no count (botiverse/slock #11795). */
     val markedUnreadIds: Set<String> = emptySet(),
-    /** Agent Lounge v0 gate (flag on, not a Guest): agent DM rows get their Lounge's sub-row. */
-    val agentLoungeEnabled: Boolean = false,
-    val agentLoungeServerId: String? = null,
 ) {
     fun project(conversation: HomeConversationRow): RaftHomeConversationItem {
         // Only channel rows carry the followed-thread segment (web `SidebarChannelItem`).
@@ -16142,9 +16184,6 @@ internal data class SharedHomeConversationRowProjector(
                     // A known count (read prediction, realtime) is newer than anything restored.
                     restoredRowHints[conversation.threadId.value]?.takeIf { !conversation.unreadCountKnown }
                 )
-        ).copy(
-            agentLounge =
-                (conversation as? HomeDirectMessageRow)?.agentLoungeSidebarRow(agentLoungeEnabled, agentLoungeServerId)
         )
     }
 

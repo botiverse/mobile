@@ -42,26 +42,35 @@ class AgentLoungeRulesTest {
             lounge = summary,
         )
 
-    @Test
-    fun theSidebarSubRowNeedsTheGateAnAgentAndJoinedOrMentioned() {
-        val joined = AgentLoungeSummary(ChannelId("lounge-bugen"), joined = true, unreadCount = 3)
-        assertEquals(
-            RaftHomeAgentLoungeRow("lounge-bugen", unreadCount = 3, mentioned = false),
-            agentDm(joined).agentLoungeSidebarRow(enabled = true, serverId = "server-1"),
+    private fun loungeRows(vararg dms: HomeDirectMessageRow, enabled: Boolean = true) =
+        homeSidebarAgentLoungeItems(
+            enabled = enabled,
+            directMessages = dms.toList(),
+            known = RaftAgentLounges.lounges.value["server-1"].orEmpty(),
+            markedUnreadIds = emptySet(),
+            title = { "$it's Lounge" },
         )
-        assertNull(agentDm(joined).agentLoungeSidebarRow(enabled = false, serverId = "server-1"), "flag off or a Guest")
-        assertNull(agentDm(joined, peerType = "human").agentLoungeSidebarRow(enabled = true, serverId = "server-1"))
-        assertNull(agentDm(null).agentLoungeSidebarRow(enabled = true, serverId = "server-1"), "no Lounge yet")
-        assertNull(
-            agentDm(AgentLoungeSummary(ChannelId("lounge-bugen"), joined = false, unreadCount = 4))
-                .agentLoungeSidebarRow(enabled = true, serverId = "server-1"),
+
+    @Test
+    fun theLoungeRowNeedsTheGateAnAgentAndJoinedOrMentioned() {
+        val joined = AgentLoungeSummary(ChannelId("lounge-bugen"), joined = true, unreadCount = 3)
+        val row = loungeRows(agentDm(joined)).single()
+        assertEquals("lounge-bugen", row.id)
+        assertEquals("Bugen's Lounge", row.name)
+        assertEquals(3, row.unreadCount)
+        assertEquals(RaftHomeAgentLoungeRow("lounge-bugen", 3, false, agentId = "agent-bugen", agentName = "Bugen", joined = true), row.agentLounge)
+        assertTrue(loungeRows(agentDm(joined), enabled = false).isEmpty(), "flag off or a Guest")
+        assertTrue(loungeRows(agentDm(joined, peerType = "human")).isEmpty())
+        assertTrue(loungeRows(agentDm(null)).isEmpty(), "no Lounge yet")
+        assertTrue(
+            loungeRows(agentDm(AgentLoungeSummary(ChannelId("lounge-bugen"), joined = false, unreadCount = 4))).isEmpty(),
             "not joined and not mentioned",
         )
         assertEquals(
             true,
-            agentDm(AgentLoungeSummary(ChannelId("lounge-bugen"), joined = false, unreadCount = 1, mentionCount = 1))
-                .agentLoungeSidebarRow(enabled = true, serverId = "server-1")
-                ?.mentioned,
+            loungeRows(agentDm(AgentLoungeSummary(ChannelId("lounge-bugen"), joined = false, unreadCount = 1, mentionCount = 1)))
+                .single()
+                .mentioned,
         )
     }
 
@@ -165,12 +174,12 @@ class AgentLoungeRulesTest {
     }
 
     @Test
-    fun theHomeSubRowAppearsOnceTheFirstPostJoins() {
+    fun theHomeLoungeRowAppearsOnceTheFirstPostJoins() {
         val notJoined = AgentLoungeSummary(ChannelId("lounge-bugen"), joined = false)
         RaftAgentLounges.rememberDirectMessages("server-1", listOf(agentDm(notJoined)))
-        assertNull(agentDm(notJoined).agentLoungeSidebarRow(enabled = true, serverId = "server-1"))
+        assertTrue(loungeRows(agentDm(notJoined)).isEmpty())
         RaftAgentLounges.markJoined("server-1", "lounge-bugen")
-        assertEquals("lounge-bugen", agentDm(notJoined).agentLoungeSidebarRow(enabled = true, serverId = "server-1")?.channelId)
+        assertEquals("lounge-bugen", loungeRows(agentDm(notJoined)).single().id)
     }
 
     @Test

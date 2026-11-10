@@ -858,6 +858,8 @@ internal class SharedHomeStore(
                 markFollowedThreadRead(intent.threadChannelId)
             is SharedHomeIntent.CloseDirectMessage ->
                 closeDirectMessage(intent.conversationId)
+            is SharedHomeIntent.ReopenClosedConversation ->
+                reopenClosedConversation(intent.conversationId)
             is SharedHomeIntent.OwnMessagesSent ->
                 unhideDirectMessagesWithOwnReply(ServerId(intent.serverId), intent.channelIds)
             is SharedHomeIntent.ArchiveChannel ->
@@ -1058,6 +1060,13 @@ internal class SharedHomeStore(
             val ownRepliedDmIds =
                 event.homeRealtimeMessages().ownRepliedConversationIds(MemberId(content.session.user.id))
             if (ownRepliedDmIds.isNotEmpty()) unhideDirectMessagesWithOwnReply(serverId, ownRepliedDmIds)
+        }
+        // Agent Lounge v0: a message in a known Lounge is its latest activity (the sidebar's recency).
+        event.homeRealtimeMessages().forEach { message ->
+            val channelId = message.channelId?.value ?: return@forEach
+            if (RaftAgentLounges.lounge(serverId.value, channelId) != null) {
+                RaftAgentLounges.noteActivity(serverId.value, channelId, message.timestampLabel)
+            }
         }
         if (event is RealtimeRefreshRequired && event.scope == RealtimeRefreshScope.Machines) {
             // Visible: the Machines refresh below reads the list again. Hidden: the reload on
@@ -4291,6 +4300,22 @@ internal class SharedHomeStore(
         }
     }
 
+    private suspend fun reopenClosedConversation(conversationId: String) {
+        val serverId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id ?: return
+        val previous = ensureSidebarOrderLoaded() ?: return
+        val next = previous.withDirectMessagesUnhidden(setOf(conversationId))
+        if (next === previous) return
+        diagnosticsLogger("home_reopen_closed_conversation serverId=${serverId.value} id=${conversationId.take(8)}")
+        applySidebarOrderLocally(serverId = serverId, next = next)
+        when (val result = updateSidebarOrder(SettingsServerSidebarOrderUpdateRequest(hiddenDmIds = next.hiddenDmIds))) {
+            is DataResult.Content -> applySidebarOrderLocally(serverId = serverId, next = result.data)
+            is DataResult.Empty -> Unit
+            // Best effort, as on the web: the row stays shown here; the next sidebar-order load agrees with the server.
+            is DataResult.Error,
+            is DataResult.NoPermission -> diagnosticsLogger("home_reopen_closed_conversation_failed serverId=${serverId.value}")
+        }
+    }
+
     /**
      * Task #59: drop DMs the current user just replied in from the local `hiddenDmIds`. Local
      * only, no PATCH: the server removes them from the sender's hidden list itself on send, so
@@ -4390,18 +4415,16 @@ internal class SharedHomeStore(
                 muted = muted
             )
         channelActivityMuteRequests[channelId] = request
-        applyHomeSnapshotLocally {
-            it.withChannelActivityMute(
-                ChannelActivityMuteSettings(
-                    channelId = channelId,
-                    activityNotificationPreference =
-                        target.activityNotificationPreference.copy(
-                            activityMuted = muted,
-                            muteFromSeq = if (muted) target.muteFromSeq else null
-                        )
-                )
+        applyChannelActivityMuteLocally(
+            ChannelActivityMuteSettings(
+                channelId = channelId,
+                activityNotificationPreference =
+                    target.activityNotificationPreference.copy(
+                        activityMuted = muted,
+                        muteFromSeq = if (muted) target.muteFromSeq else null
+                    )
             )
-        }
+        )
         when (val result = setChannelActivityMuted(channelId, muted)) {
             is DataResult.Content -> {
                 val version = result.data.prefsVersion
@@ -4411,7 +4434,7 @@ internal class SharedHomeStore(
                         // A successful HTTP status without the per-receiver
                         // version is not durable authority. Drop the transient
                         // prediction instead of bypassing the shared gate.
-                        applyHomeSnapshotLocally { it.withChannelActivityMute(previousSettings) }
+                        applyChannelActivityMuteLocally(previousSettings)
                         pinUpdateFailureCallback("Unable to update channel notifications")
                     }
                 } else {
@@ -4450,7 +4473,7 @@ internal class SharedHomeStore(
             is DataResult.Empty -> {
                 if (channelActivityMuteRequests[channelId] == request) {
                     channelActivityMuteRequests.remove(channelId)
-                    applyHomeSnapshotLocally { it.withChannelActivityMute(previousSettings) }
+                    applyChannelActivityMuteLocally(previousSettings)
                     pinUpdateFailureCallback("Unable to update channel notifications")
                 }
             }
@@ -4458,7 +4481,7 @@ internal class SharedHomeStore(
             is DataResult.NoPermission -> {
                 if (channelActivityMuteRequests[channelId] == request) {
                     channelActivityMuteRequests.remove(channelId)
-                    applyHomeSnapshotLocally { it.withChannelActivityMute(previousSettings) }
+                    applyChannelActivityMuteLocally(previousSettings)
                     pinUpdateFailureCallback("Unable to update channel notifications")
                 }
             }
@@ -4586,14 +4609,24 @@ internal class SharedHomeStore(
         // A versioned authority fold resolves the local prediction. This also
         // covers an echo arriving before its PATCH response.
         channelActivityMuteRequests.remove(update.channelId)
-        return applyHomeSnapshotLocally { snapshot ->
-            snapshot.withChannelActivityMute(
-                ChannelActivityMuteSettings(
-                    channelId = update.channelId,
-                    activityNotificationPreference = update.preference
-                )
+        return applyChannelActivityMuteLocally(
+            ChannelActivityMuteSettings(
+                channelId = update.channelId,
+                activityNotificationPreference = update.preference
             )
+        )
+    }
+
+    /**
+     * A mute set (or taken back) for a Home row; for an Agent Lounge, which no Home list holds, the
+     * Lounge's own mute ([RaftAgentLounges]), which its sidebar row and page read.
+     */
+    private fun applyChannelActivityMuteLocally(settings: ChannelActivityMuteSettings): Boolean {
+        val content = _state.value.content as? SharedHomeContentState.Content
+        content?.snapshot?.server?.id?.value?.let { serverId ->
+            RaftAgentLounges.applyActivityMute(serverId, settings.channelId.value, settings.activityNotificationPreference)
         }
+        return applyHomeSnapshotLocally { snapshot -> snapshot.withChannelActivityMute(settings) }
     }
 
     private fun applyPerReceiverServerOrder(update: PerReceiverServerOrderUpdate): Boolean {
@@ -4952,6 +4985,8 @@ private fun HomeSnapshot.unmutedUnreadTotal(): Int =
 
 private fun HomeSnapshot.findHomeConversation(conversationId: String): HomeConversationRow? =
     (channels + directMessages).firstOrNull { it.matchesHomeConversation(conversationId) }
+        // Agent Lounge v0: a Lounge row's menu and page act on a conversation no list holds.
+        ?: agentLoungeConversationRow(conversationId)
 
 private data class PinnedToggleTarget(
     val conversationId: String,
@@ -5150,6 +5185,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.ProjectThreadUnfollow -> "${SharedHomeChannelFoldEvent.Patch.wireName}:thread-unfollow:$threadChannelId:$phase"
         is SharedHomeIntent.MarkFollowedThreadRead -> "${SharedHomeChannelFoldEvent.Patch.wireName}:thread-read:$threadChannelId"
         is SharedHomeIntent.CloseDirectMessage -> "${SharedHomeChannelFoldEvent.Remove.wireName}:dm:$conversationId"
+        is SharedHomeIntent.ReopenClosedConversation -> "${SharedHomeChannelFoldEvent.Patch.wireName}:reopen:$conversationId"
         is SharedHomeIntent.OwnMessagesSent -> "${SharedHomeChannelFoldEvent.Patch.wireName}:own-sent:$serverId:${channelIds.size}"
         is SharedHomeIntent.ArchiveChannel -> "${SharedHomeChannelFoldEvent.Remove.wireName}:archive:$conversationId"
         is SharedHomeIntent.LeaveChannel -> "${SharedHomeChannelFoldEvent.Remove.wireName}:leave:$conversationId"
@@ -5174,7 +5210,8 @@ private fun RealtimeEvent.homeRealtimeMessages(): List<Message> =
  * Task #59, the rule of botiverse/slock #10809: a chat message the signed-in human sent
  * themself (not a system line, not one their assistant sent for them) reopens the DM it is in,
  * or the DM whose thread it is in. Returns the conversation and, for a thread reply, its parent;
- * only DM ids are ever in `hiddenDmIds`, so a non-DM candidate matches nothing.
+ * only DM and Agent Lounge ids are ever in `hiddenDmIds` (a closed Lounge reopens the same way,
+ * web slock #13880), so any other candidate matches nothing.
  */
 internal fun List<Message>.ownRepliedConversationIds(currentMemberId: MemberId): Set<String> =
     asSequence()
@@ -5348,7 +5385,9 @@ private fun HomeSnapshot.withRealtimeMessagesForStream(
         } else {
             -1
         }
-    if (channelIndex < 0 && directMessageIndex < 0) return this
+    if (channelIndex < 0 && directMessageIndex < 0) {
+        return withRealtimeAgentLoungeMessages(streamChannelId, messages, latest, incrementUnread, activeConversationId)
+    }
     return if (channelIndex >= 0) {
         val currentConversation = channels[channelIndex]
         val conversationPatch =
@@ -5388,6 +5427,55 @@ private fun HomeSnapshot.withRealtimeMessagesForStream(
             serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
         )
     }
+}
+
+/**
+ * Agent Lounge v0: a message in a Lounge (in no Home list) counts on the summary its agent's DM
+ * row carries, as a channel row's would: not your own, not while it is open, each message once
+ * (above the newest one counted), and an @ when an unread one mentions you.
+ */
+private fun HomeSnapshot.withRealtimeAgentLoungeMessages(
+    streamChannelId: ChannelId,
+    messages: List<Message>,
+    latest: Message,
+    incrementUnread: Boolean,
+    activeConversationId: String?
+): HomeSnapshot {
+    val index = directMessages.indexOfFirst { it.lounge?.channelId == streamChannelId }
+    if (index < 0) return this
+    val row = directMessages[index]
+    val lounge = row.lounge ?: return this
+    val rowSeq = lounge.lastMessageSeq
+    val unreadCandidates =
+        if (!incrementUnread || activeConversationId == streamChannelId.value) {
+            emptyList()
+        } else {
+            messages
+                .distinctBy { it.id }
+                .filter { message ->
+                    message.id != lounge.lastMessageId &&
+                        message.author.id != currentMember.id &&
+                        (rowSeq == null || message.seq == null || message.seq > rowSeq)
+                }
+        }
+    val mentioned = unreadCandidates.any { message -> message.mentions.mentionsUser(currentMember.id.value) }
+    val newer = rowSeq == null || latest.seq == null || latest.seq >= rowSeq
+    val nextLounge =
+        lounge.copy(
+            unreadCount = lounge.unreadCount + unreadCandidates.size,
+            mentionCount = if (mentioned) maxOf(lounge.mentionCount, 1) else lounge.mentionCount,
+            lastMessageId = if (newer) latest.id else lounge.lastMessageId,
+            lastMessageSeq = if (newer) latest.seq ?: rowSeq else rowSeq,
+        )
+    if (nextLounge == lounge) return this
+    val increment = unreadCandidates.size
+    val nextServerUnreadCount = (server.unreadCount + increment).coerceAtLeast(0)
+    return copy(
+        directMessages = directMessages.replaceAt(index, row.copy(lounge = nextLounge)),
+        server = server.copy(unreadCount = nextServerUnreadCount),
+        unreadTotal = (unreadTotal + increment).coerceAtLeast(0),
+        serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
+    )
 }
 
 private fun HomeChannelRow.withRealtimePreview(
@@ -5519,7 +5607,18 @@ internal fun HomeSnapshot.withConversationUnread(
         )
     }
     fun HomeDirectMessageRow.updated(): HomeDirectMessageRow {
-        if (!matchesHomeConversation(conversationId)) return this
+        if (!matchesHomeConversation(conversationId)) {
+            // Agent Lounge v0: the Lounge's unread and @ live on its agent's DM row.
+            val carried = this.lounge?.takeIf { it.channelId.value == conversationId } ?: return this
+            val nextLoungeUnread = unreadCount.coerceAtLeast(0)
+            delta += nextLoungeUnread - carried.unreadCount
+            return copy(
+                lounge = carried.copy(
+                    unreadCount = nextLoungeUnread,
+                    mentionCount = if (nextLoungeUnread > 0) carried.mentionCount else 0
+                )
+            )
+        }
         val nextUnread = unreadCount.coerceAtLeast(0)
         delta += nextUnread - this.unreadCount
         return copy(
@@ -6142,6 +6241,12 @@ sealed interface SharedHomeIntent {
     data class MarkFollowedThreadRead(val threadChannelId: String) : SharedHomeIntent
     data class CloseDirectMessage(val conversationId: String) : SharedHomeIntent
     /**
+     * Agent Lounge v0 (web slock #13880 `reopenRouteDm`): a closed Lounge was opened, so it leaves
+     * `hiddenDmIds` (PATCH sidebar-order). A no-op for an id that is not closed. Only opening it
+     * does this: while closed, unread or an @ only shows it (display only).
+     */
+    data class ReopenClosedConversation(val conversationId: String) : SharedHomeIntent
+    /**
      * Task #59: the current user sent a message successfully in these conversations (the DM, or
      * for a thread reply also its parent). A hidden DM among them leaves the local `hiddenDmIds`,
      * matching the server (botiverse/slock #10809), which drops it from the sender's hidden list.
@@ -6209,6 +6314,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.ProjectThreadUnfollow,
             is SharedHomeIntent.MarkFollowedThreadRead,
             is SharedHomeIntent.CloseDirectMessage,
+            is SharedHomeIntent.ReopenClosedConversation,
             is SharedHomeIntent.OwnMessagesSent,
             is SharedHomeIntent.ArchiveChannel,
             is SharedHomeIntent.LeaveChannel,
@@ -6263,6 +6369,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.ProjectThreadUnfollow,
             is SharedHomeIntent.MarkFollowedThreadRead,
             is SharedHomeIntent.CloseDirectMessage,
+            is SharedHomeIntent.ReopenClosedConversation,
             is SharedHomeIntent.OwnMessagesSent,
             is SharedHomeIntent.ArchiveChannel,
             is SharedHomeIntent.LeaveChannel,
@@ -6317,6 +6424,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.ProjectThreadUnfollow,
             is SharedHomeIntent.MarkFollowedThreadRead,
             is SharedHomeIntent.CloseDirectMessage,
+            is SharedHomeIntent.ReopenClosedConversation,
             is SharedHomeIntent.OwnMessagesSent,
             is SharedHomeIntent.ArchiveChannel,
             is SharedHomeIntent.LeaveChannel,

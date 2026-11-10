@@ -16,7 +16,9 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
@@ -192,7 +194,16 @@ class AgentLoungeUiTest {
             runOnIdle { assertEquals(1, unarchives) }
         }
 
-    private fun ComposeUiTest.showHome(directMessages: List<RaftHomeConversationItem>, onOpen: (String) -> Unit = {}) =
+    private fun ComposeUiTest.showHome(
+        directMessages: List<RaftHomeConversationItem>,
+        agentLounges: List<RaftHomeConversationItem> = emptyList(),
+        pinnedItems: List<build.raft.app.data.SettingsServerSidebarPinnedItem> = emptyList(),
+        hiddenDmIds: List<String> = emptyList(),
+        onOpen: (String) -> Unit = {},
+        onPinToggle: (String) -> Unit = {},
+        onCloseDirectMessage: (String) -> Unit = {},
+        onMuteToggle: (String, Boolean) -> Unit = { _, _ -> },
+    ) =
         setContent {
             val pager =
                 remember {
@@ -205,18 +216,24 @@ class AgentLoungeUiTest {
                         currentServerId = "server-1",
                         channels = listOf(RaftHomeConversationItem(id = "general", name = "general", kind = "channel")),
                         directMessages = directMessages,
+                        agentLounges = agentLounges,
+                        pinnedItems = pinnedItems,
+                        hiddenDmIds = hiddenDmIds,
                         contentRefreshEnabled = false,
                         selectedTabKey = "home",
                         showBottomBar = true,
                         searchAndActivityOnShellNav = true,
                         outerPadding = 0.dp,
                         onChannelClick = onOpen,
+                        onPinToggle = onPinToggle,
+                        onCloseDirectMessage = onCloseDirectMessage,
+                        onChannelActivityMuteToggle = onMuteToggle,
                     )
                 }
             }
         }
 
-    private fun bugenDm(lounge: RaftHomeAgentLoungeRow?) =
+    private val bugenDm =
         RaftHomeConversationItem(
             id = "dm-bugen",
             name = "Bugen",
@@ -224,19 +241,53 @@ class AgentLoungeUiTest {
             avatarLabel = "BU",
             peerType = "agent",
             presenceMemberId = "agent-bugen",
-            agentLounge = lounge,
         )
 
-    private val loungeNamed = SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Bugen's Lounge"))
+    /** Home's projection of Bugen's Lounge ([homeSidebarAgentLoungeItems]), joined, its row loaded. */
+    private fun bugenLounge(
+        summary: build.raft.app.data.AgentLoungeSummary =
+            build.raft.app.data.AgentLoungeSummary(ChannelId("lounge-bugen"), joined = true, unreadCount = 3, mentionCount = 1),
+        muted: Boolean = false,
+    ): RaftHomeConversationItem {
+        RaftAgentLounges.rememberRow(
+            "server-1",
+            build.raft.app.data.HomeChannelRow(
+                threadId = build.raft.app.model.ThreadId("lounge-bugen"),
+                channelId = ChannelId("lounge-bugen"),
+                name = "bugen-lounge",
+                joined = summary.joined,
+                activityNotificationPreference =
+                    build.raft.app.model.ChannelActivityNotificationPreference(activityMuted = muted, activityMuteSupported = true),
+                loungeAgentId = "agent-bugen",
+            ),
+        )
+        return homeSidebarAgentLoungeItems(
+            enabled = true,
+            directMessages =
+                listOf(
+                    build.raft.app.data.HomeDirectMessageRow(
+                        threadId = build.raft.app.model.ThreadId("dm-bugen"),
+                        channelId = ChannelId("dm-bugen"),
+                        name = "Bugen",
+                        directMessagePeerType = "agent",
+                        presenceMemberId = build.raft.app.model.MemberId("agent-bugen"),
+                        lounge = summary,
+                    )
+                ),
+            known = RaftAgentLounges.lounges.value["server-1"].orEmpty(),
+            markedUnreadIds = emptySet(),
+            title = { "$it's Lounge" },
+        ).single()
+    }
 
     @Test
-    fun theSidebarSubRowShowsUnderTheAgentDmWithItsUnreadAndOpensTheLounge() =
+    fun theLoungeHasItsOwnRowInDirectMessagesWithItsUnreadAndOpensTheLounge() =
         runRobolectricComposeUiTest {
             val opened = mutableListOf<String>()
-            showHome(listOf(bugenDm(RaftHomeAgentLoungeRow("lounge-bugen", unreadCount = 3, mentioned = true))), onOpen = { opened += it })
+            showHome(listOf(bugenDm), agentLounges = listOf(bugenLounge()), onOpen = { opened += it })
+            onNodeWithText("Bugen").assertExists()
             onNodeWithTag(AgentLoungeTestTags.SidebarRow).assertExists()
-            onNode(loungeNamed, useUnmergedTree = true).assertExists()
-            onNodeWithText("Lounge").assertExists()
+            onNodeWithText("Bugen's Lounge").assertExists()
             onAllNodesWithText("bugen-lounge", substring = true).assertCountEquals(0)
             onNodeWithTag(AgentLoungeTestTags.SidebarUnread, useUnmergedTree = true).assertExists()
             onNodeWithTag(AgentLoungeTestTags.SidebarMention, useUnmergedTree = true).assertExists()
@@ -245,41 +296,60 @@ class AgentLoungeUiTest {
         }
 
     @Test
-    fun noSubRowWhenTheDmCarriesNone() =
+    fun theLoungeRowStaysWhenItsAgentsDmIsClosed() =
         runRobolectricComposeUiTest {
-            // Flag off, a Guest, no Lounge yet, or neither joined nor mentioned: nothing projected.
-            showHome(
-                listOf(
-                    bugenDm(
-                        bugenDmRowOrNull(
-                            build.raft.app.data.AgentLoungeSummary(ChannelId("lounge-bugen"), joined = false, unreadCount = 4),
-                            enabled = true,
-                        )
-                    ),
-                    bugenDm(null).copy(id = "dm-other", name = "Other", presenceMemberId = "agent-other"),
-                )
-            )
-            onNodeWithText("Bugen").assertExists()
-            onAllNodesWithTag(AgentLoungeTestTags.SidebarRow).assertCountEquals(0)
+            showHome(listOf(bugenDm), agentLounges = listOf(bugenLounge()), hiddenDmIds = listOf("dm-bugen"))
+            onAllNodesWithText("Bugen").assertCountEquals(0)
+            onNodeWithTag(AgentLoungeTestTags.SidebarRow).assertExists()
         }
 
     @Test
-    fun theFlagGateDecidesTheSubRow() =
+    fun aPinnedLoungeShowsOnlyUnderPinned() =
         runRobolectricComposeUiTest {
-            val joined = build.raft.app.data.AgentLoungeSummary(ChannelId("lounge-bugen"), joined = true)
-            showHome(listOf(bugenDm(bugenDmRowOrNull(joined, enabled = false))))
+            showHome(
+                listOf(bugenDm),
+                agentLounges = listOf(bugenLounge()),
+                pinnedItems = listOf(build.raft.app.data.SettingsServerSidebarPinnedItem(kind = "channel", id = "lounge-bugen")),
+            )
+            onAllNodesWithTag(AgentLoungeTestTags.SidebarRow).assertCountEquals(1)
+            onNodeWithText("Bugen's Lounge").assertExists()
+        }
+
+    @Test
+    fun theLoungeRowsMenuIsADmRowsMenu() =
+        runRobolectricComposeUiTest {
+            val pinned = mutableListOf<String>()
+            val closed = mutableListOf<String>()
+            val muted = mutableListOf<Pair<String, Boolean>>()
+            showHome(
+                listOf(bugenDm),
+                agentLounges = listOf(bugenLounge()),
+                onPinToggle = { pinned += it },
+                onCloseDirectMessage = { closed += it },
+                onMuteToggle = { id, mute -> muted += id to mute },
+            )
+            onNodeWithTag(AgentLoungeTestTags.SidebarRow).performTouchInput { longClick() }
+            onNodeWithText("Mark as Read", ignoreCase = true).assertExists()
+            onNodeWithText("Mute", ignoreCase = true).assertExists()
+            onAllNodesWithText("Move to Section", ignoreCase = true).assertCountEquals(0)
+            onNodeWithText("Pin", ignoreCase = true).performClick()
+            onNodeWithTag(AgentLoungeTestTags.SidebarRow).performTouchInput { longClick() }
+            onNodeWithText("Mute", ignoreCase = true).performClick()
+            onNodeWithTag(AgentLoungeTestTags.SidebarRow).performTouchInput { longClick() }
+            onNodeWithText("Close Chat", ignoreCase = true).performClick()
+            runOnIdle {
+                assertEquals(listOf("lounge-bugen"), pinned)
+                assertEquals(listOf("lounge-bugen" to true), muted)
+                assertEquals(listOf("lounge-bugen"), closed)
+            }
+        }
+
+    @Test
+    fun noLoungeRowWhenNoneIsListed() =
+        runRobolectricComposeUiTest {
+            // Flag off, a Guest, no Lounge yet, or neither joined nor mentioned: nothing projected.
+            showHome(listOf(bugenDm))
             onNodeWithText("Bugen").assertExists()
             onAllNodesWithTag(AgentLoungeTestTags.SidebarRow).assertCountEquals(0)
         }
-
-    /** The projection Home applies to the agent's DM row ([agentLoungeSidebarRow]). */
-    private fun bugenDmRowOrNull(summary: build.raft.app.data.AgentLoungeSummary, enabled: Boolean): RaftHomeAgentLoungeRow? =
-        build.raft.app.data.HomeDirectMessageRow(
-            threadId = build.raft.app.model.ThreadId("dm-bugen"),
-            channelId = ChannelId("dm-bugen"),
-            name = "Bugen",
-            directMessagePeerType = "agent",
-            presenceMemberId = build.raft.app.model.MemberId("agent-bugen"),
-            lounge = summary,
-        ).agentLoungeSidebarRow(enabled, "server-1")
 }

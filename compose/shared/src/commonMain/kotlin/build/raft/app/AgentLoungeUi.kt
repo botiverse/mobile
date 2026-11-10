@@ -39,11 +39,7 @@ import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
-import build.raft.designsystem.components.RaftMentionMarker
 import build.raft.designsystem.components.RaftReadOnlyComposer
-import build.raft.designsystem.components.RaftRowTone
-import build.raft.designsystem.components.RaftSidebarItem
-import build.raft.designsystem.components.RaftSidebarItemMarks
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.agentLoungeOpenFailureTraceId
 import kotlinx.coroutines.launch
@@ -145,68 +141,6 @@ internal fun RaftLoungeAvatar(
             RaftContentLucideIcon(RaftLucideIconName.Users, size = glyphSize)
         }
     }
-}
-
-/**
- * Agent Lounge v0: the Lounge's own row right under its agent's DM row (web `AgentLoungeRow`):
- * indented one icon box, the Lounge's face, "Lounge", its @ marker and unread count (99+). Its
- * accessible name is "{Name}'s Lounge". Shown only when [build.raft.app.data.agentLoungeSidebarEntry]
- * says so; the caller decides.
- */
-@Composable
-internal fun AgentLoungeSidebarRow(
-    agentName: String,
-    agentId: String?,
-    avatarWireValue: String?,
-    cacheServerId: String?,
-    unreadCount: Int,
-    mentioned: Boolean,
-    selected: Boolean,
-    onClick: (() -> Unit)?,
-    modifier: Modifier = Modifier,
-) {
-    val title = agentLoungeTitle(agentName)
-    val unread = unreadCount.coerceAtLeast(0)
-    val mentionDescription = if (mentioned) stringResource(Res.string.activity_list_mentioned_you) else null
-    RaftSidebarItem(
-        title = stringResource(Res.string.agent_lounge_label),
-        modifier =
-            modifier
-                .testTag(AgentLoungeTestTags.SidebarRow)
-                .semantics { contentDescription = title }
-                // An empty icon box: indents the face under the agent's name.
-                .padding(start = 20.dp),
-        onClick = onClick,
-        selected = selected,
-        tone = if (unread > 0) RaftRowTone.Unread else RaftRowTone.Default,
-        leading = {
-            RaftLoungeAvatar(
-                agentId = agentId,
-                avatarWireValue = avatarWireValue,
-                label = agentName,
-                cacheServerId = cacheServerId,
-                avatarSize = 19.dp,
-            )
-        },
-        trailing =
-            if (mentioned || unread > 0) {
-                {
-                    if (mentioned) {
-                        RaftMentionMarker(
-                            modifier = Modifier.testTag(AgentLoungeTestTags.SidebarMention),
-                            contentDescription = mentionDescription,
-                        )
-                    }
-                    if (unread > 0) {
-                        Box(Modifier.testTag(AgentLoungeTestTags.SidebarUnread)) {
-                            RaftSidebarItemMarks(unreadCount = unread, countDescription = null)
-                        }
-                    }
-                }
-            } else {
-                null
-            },
-    )
 }
 
 /** Agent Lounge v0: who is here, always on top of the conversation (web `lounge-audience-notice`). */
@@ -372,6 +306,22 @@ internal fun RaftThreadScreenPayload.agentLoungeLookupChannelId(): String? =
         else -> null
     }
 
+/**
+ * A Lounge page's Mute row (web ChannelOverflowMenu for a Lounge, slock #13875): only once joined
+ * ([joinedHint]: the page's own row says so) and its row is loaded; a stored mute keeps Unmute.
+ */
+internal fun RaftAgentLounge.agentLoungeActivityMuteState(joinedHint: Boolean = false): ThreadActivityMuteUiState? {
+    val preference = activityNotificationPreference ?: return null
+    val joinedHere = joined || joinedHint
+    if (!preference.activityMuted && !(joinedHere && preference.activityMuteSupported)) return null
+    return ThreadActivityMuteUiState(
+        channelId = channelId.value,
+        muted = preference.activityMuted,
+        supported = preference.activityMuteSupported,
+        muteFromSeq = preference.muteFromSeq,
+    )
+}
+
 /** The agent of an agent DM page, or null. */
 internal fun RaftThreadScreenPayload.agentLoungeDmAgentId(): String? =
     dmPeerIdentity
@@ -473,42 +423,6 @@ internal fun RaftThreadScreenPayload.withAgentLoungeAccess(
 
 /** "{Name}'s Lounge" while the composer belongs to a Lounge (its placeholder names the Lounge); null elsewhere. */
 internal val LocalAgentLoungeComposerName = androidx.compose.runtime.staticCompositionLocalOf<String?> { null }
-
-/** [AgentLoungeSidebarRow] for an agent DM item of the Home sidebar. */
-@Composable
-internal fun HomeSidebarAgentLoungeSubRow(
-    dm: RaftHomeConversationItem,
-    lounge: RaftHomeAgentLoungeRow,
-    cacheServerId: String?,
-    memberAvatarResolver: RaftMemberAvatarResolver,
-    selected: Boolean,
-    onClick: (() -> Unit)?,
-    modifier: Modifier = Modifier,
-) {
-    val avatar = rememberRaftMemberAvatarWireValue(memberAvatarResolver, dm.presenceMemberId)
-    AgentLoungeSidebarRow(
-        agentName = dm.name,
-        agentId = dm.presenceMemberId,
-        avatarWireValue = avatar ?: dm.avatarWireValue,
-        cacheServerId = cacheServerId,
-        unreadCount = lounge.unreadCount,
-        mentioned = lounge.mentioned,
-        selected = selected,
-        onClick = onClick,
-        modifier = modifier,
-    )
-}
-
-/** The sidebar sub-row of an agent DM row, when Lounges are on here (web `agentLoungeSidebarEntry`). */
-internal fun HomeDirectMessageRow.agentLoungeSidebarRow(enabled: Boolean, serverId: String?): RaftHomeAgentLoungeRow? {
-    if (!enabled || !directMessagePeerType.equals("agent", ignoreCase = true)) return null
-    val agentId = presenceMemberId?.value
-    val known =
-        RaftAgentLounges.loungeOfAgent(serverId, agentId)
-            ?: lounge?.channelId?.value?.let { RaftAgentLounges.lounge(serverId, it) }
-    val entry = build.raft.app.data.agentLoungeSidebarEntry(lounge, known) ?: return null
-    return RaftHomeAgentLoungeRow(entry.channelId.value, entry.unreadCount, entry.mentioned)
-}
 
 /**
  * The conversation identity of the Lounge with [channelId] when this client knows it (opened,
