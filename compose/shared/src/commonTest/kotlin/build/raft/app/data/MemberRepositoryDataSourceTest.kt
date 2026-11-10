@@ -682,6 +682,26 @@ class MemberRepositoryDataSourceTest {
         }
     }
 
+    @Test
+    fun runtimeFormV2EditAdvertisesTheClientCapabilitiesAndAPlainProfileEditDoesNot() = runBlocking {
+        // slock #13950: the v2 PATCH carries `clientCapabilities` like the edit form it came from.
+        val network = FakeMemberNetworkClient()
+        val repository = RealMemberRepository(sampleStore(), network)
+        val plain = AgentProfileUpdateRequest(agentId = MemberId("agent-1"), displayName = "Noel Bot", description = null)
+        val v2 = plain.copy(
+            runtimeFormV2 = build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody(
+                runtimeId = "pi",
+                formValues = kotlinx.serialization.json.JsonObject(emptyMap())
+            )
+        )
+        for ((request, expected) in listOf(v2 to "dependent_select.custom_value_with_options", plain to null)) {
+            network.requests.clear()
+            assertTrue(repository.updateAgentProfile(DataRequestPriority.Foreground, request) is DataResult.Content)
+            val patch = network.requests.single { it.method == "PATCH" && it.path == "agents/agent-1" }
+            assertEquals(expected, patch.query["clientCapabilities"], "v2=${request.runtimeFormV2 != null}")
+        }
+    }
+
     private fun sampleStore(session: StoredAuthSession = sampleSession()): RaftAuthSessionStore =
         InMemoryRaftAuthSessionStore(session)
 

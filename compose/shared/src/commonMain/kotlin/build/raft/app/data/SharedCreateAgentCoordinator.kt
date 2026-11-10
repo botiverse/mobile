@@ -78,7 +78,8 @@ internal class SharedCreateAgentCoordinator(
                     )
                 )
             }
-        return when (val result = agentsApiClient.createAgent(body)) {
+        val created = if (v2 != null) agentsApiClient.createAgentV2(body) else agentsApiClient.createAgent(body)
+        return when (val result = created) {
             is DataResult.Content -> DataResult.Content(result.data)
             is DataResult.Empty -> DataResult.Empty(result.reason)
             is DataResult.Error -> {

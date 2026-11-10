@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import build.raft.app.network.MultipartFile
@@ -11,6 +12,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Runtime form v2 copy is rendered by the server in the request's `Accept-Language` (slock runtime-form,
@@ -60,13 +62,58 @@ class RuntimeFormRequestLanguageTest {
                 assertEquals("zh-CN", headers["Accept-Language"], url)
                 assertEquals("Bearer access-token", headers["Authorization"], url)
             }
-            assertTrue(executor.calls.any { it.first.endsWith("/runtime-forms/v2/codex") })
+            assertTrue(executor.calls.any { it.first.substringBefore('?').endsWith("/runtime-forms/v2/codex") })
             assertTrue(executor.calls.any { "/runtime-forms/v2/codex/option-sources/model" in it.first })
             // `provider.saved_connection`: the form's revision rides along with the re-probe flag.
             val sourceUrl = executor.calls.single { "/option-sources/model" in it.first }.first
             assertTrue("refresh=1" in sourceUrl && "formRevision=rev-1" in sourceUrl, sourceUrl)
-            assertTrue(executor.calls.any { it.first.endsWith("/agents/agent-1/runtime-form") })
+            assertTrue(executor.calls.any { it.first.substringBefore('?').endsWith("/agents/agent-1/runtime-form") })
         }
+    }
+
+    @Test
+    fun everyV2RequestAdvertisesTheClientCapabilitiesOnTheWire() = runBlocking {
+        // slock #13950 (`RUNTIME_FORM_V2_CLIENT_CAPABILITIES_QUERY`): the definition, edit form, option
+        // sources and the v2 create carry `clientCapabilities`; without it OpenRouter stays list-only.
+        // The v2 PATCH is pinned in MemberRepositoryDataSourceTest.
+        val executor = RecordingExecutor()
+        val client = SharedRaftNetworkClient(
+            sessionStore = authenticatedSessionStore(),
+            baseUrlProvider = { SharedApiEnvironmentStore.Production.apiBaseUrl },
+            executor = executor,
+        )
+        val server = ServerId("server-1")
+        val computers = RaftComputersNetworkApi(client) { null }
+        val agents = RaftAgentsNetworkApi(client) { null }
+        val coordinator = SharedCreateAgentCoordinator(RaftAgentsApiClient(agents), RaftComputersApiClient(computers))
+
+        computers.runtimeFormV2(server, "machine-1", "pi")
+        computers.runtimeFormV2OptionSource(server, "machine-1", "pi", "model", refresh = true, formRevision = "rev-1")
+        agents.agentRuntimeFormV2(MemberId("agent-1"))
+        coordinator.createAgent(
+            CreateAgentRequest(
+                name = "noel",
+                description = null,
+                machineId = "machine-1",
+                external = false,
+                runtimeFormV2 = RuntimeFormV2SubmitBody(runtimeId = "pi", formValues = JsonObject(emptyMap()))
+            )
+        )
+
+        val advertised = "clientCapabilities=dependent_select.custom_value_with_options"
+        val urls = executor.calls.map { it.first }
+        assertEquals(4, urls.size, urls.toString())
+        urls.forEach { assertTrue(advertised in it, it) }
+        assertTrue(urls.any { it.substringBefore('?').endsWith("/runtime-forms/v2/pi") }, urls.toString())
+        assertTrue(urls.any { "/option-sources/model?" in it && "refresh=1" in it && "formRevision=rev-1" in it }, urls.toString())
+        assertTrue(urls.any { it.substringBefore('?').endsWith("/agents/agent-1/runtime-form") }, urls.toString())
+        assertTrue(urls.any { it.substringBefore('?').endsWith("/agents") }, urls.toString())
+
+        // An external agent is no v2 submit: the create stays without the capability, as on the web.
+        executor.calls.clear()
+        coordinator.createAgent(CreateAgentRequest(name = "ext", description = null, machineId = null, external = true))
+        val external = executor.calls.single().first
+        assertTrue(external.substringBefore('?').endsWith("/agents") && "clientCapabilities" !in external, external)
     }
 
     @Test

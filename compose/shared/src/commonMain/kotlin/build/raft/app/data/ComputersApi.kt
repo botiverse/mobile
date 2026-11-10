@@ -251,6 +251,7 @@ internal class RaftComputersNetworkApi(
             priority = DataRequestPriority.Foreground,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-forms/v2/${runtimeId.trim()}",
             headers = runtimeFormLanguageHeaders(runtimeFormLanguageTag()),
+            query = runtimeFormV2ClientCapabilityQuery(),
             serverIdOverride = serverId
         )
 
@@ -271,6 +272,7 @@ internal class RaftComputersNetworkApi(
             query = buildList {
                 if (refresh) add("refresh" to "1")
                 formRevision?.takeIf { it.isNotEmpty() }?.let { add("formRevision" to it) }
+                addAll(runtimeFormV2ClientCapabilityQuery())
             },
             serverIdOverride = serverId
         )

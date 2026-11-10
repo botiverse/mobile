@@ -146,6 +146,8 @@ internal interface RaftAgentsApi {
     suspend fun agent(agentId: MemberId): HomeNetworkResponse
     suspend fun createAgent(body: String): HomeNetworkResponse
     suspend fun updateAgent(agentId: MemberId, body: String): HomeNetworkResponse
+    /** Runtime form v2 create: `POST /agents` with the advertised runtime form client capabilities. */
+    suspend fun createAgentV2(body: String): HomeNetworkResponse = createAgent(body)
     suspend fun startAgent(agentId: MemberId): HomeNetworkResponse
     suspend fun stopAgent(agentId: MemberId): HomeNetworkResponse
     suspend fun resetAgent(agentId: MemberId, body: String): HomeNetworkResponse
@@ -222,6 +224,15 @@ internal class RaftAgentsNetworkApi(
             path = "agents",
             method = "POST",
             bodyText = body
+        )
+
+    override suspend fun createAgentV2(body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents",
+            method = "POST",
+            bodyText = body,
+            query = runtimeFormV2ClientCapabilityQuery()
         )
 
     override suspend fun updateAgent(agentId: MemberId, body: String): HomeNetworkResponse =
@@ -315,7 +326,8 @@ internal class RaftAgentsNetworkApi(
         networkClient.requestWithHeaders(
             priority = DataRequestPriority.Foreground,
             path = "agents/${agentId.value}/runtime-form",
-            headers = runtimeFormLanguageHeaders(runtimeFormLanguageTag())
+            headers = runtimeFormLanguageHeaders(runtimeFormLanguageTag()),
+            query = runtimeFormV2ClientCapabilityQuery()
         )
 
     override suspend fun agentSkills(agentId: MemberId): HomeNetworkResponse =
@@ -416,6 +428,13 @@ internal class RaftAgentsApiClient(
 
     suspend fun createAgent(body: String): DataResult<AgentSummary> =
         transport.createAgent(body).mapAgentsBody(
+            "agent_create_contract_mismatch",
+            AgentWireDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
+        ) { it.toSummary() }
+
+    suspend fun createAgentV2(body: String): DataResult<AgentSummary> =
+        transport.createAgentV2(body).mapAgentsBody(
             "agent_create_contract_mismatch",
             AgentWireDto.serializer(),
             diagnosticsLogger = diagnosticsLogger
