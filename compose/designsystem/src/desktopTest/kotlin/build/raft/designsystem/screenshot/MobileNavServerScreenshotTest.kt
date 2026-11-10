@@ -162,6 +162,35 @@ class MobileNavServerScreenshotTest {
             }
         }
 
+    /**
+     * Mobile #4500 (Lagoon): on a short phone the server list keeps at least one whole server
+     * row, the current one scrolled into view, and the footer and pages give way (the popover
+     * scrolls). 360dp wide, 5 pages in Spanish, 4 servers with the third one current, on a
+     * 360dp and a 300dp tall screen.
+     */
+    @Test
+    fun mobileNavServerPopoverShort() =
+        capture("mobile_nav_server_popover_short") {
+            val es = listOf("Artifacts", "Miembros", "Computadoras", "Apps", "Configuración")
+            val esFooter = listOf("Unirse a la comunidad", "Cambiar o crear servidor", "Invitar a una persona")
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
+                listOf(360.dp, 300.dp).forEach { height ->
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Caption("es, 5 pages, 360 x ${height.value.toInt()}dp")
+                        Phone(
+                            menuState(open = true),
+                            servers = 4,
+                            width = 360.dp,
+                            height = height,
+                            pages = pages(es),
+                            footer = esFooter,
+                            currentId = "long",
+                        )
+                    }
+                }
+            }
+        }
+
     private fun menuState(open: Boolean) = RaftMobileNavServerPopoverState().apply { if (open) show() }
 
     @Composable
@@ -173,6 +202,7 @@ class MobileNavServerScreenshotTest {
         height: Dp = 640.dp,
         pages: List<Triple<String, AppIcon, Boolean>> = threePages,
         footer: List<String> = listOf("Join Community", "Switch or Create Server", "Invite Human"),
+        currentId: String = "botiverse",
     ) {
         Column(Modifier.width(width)) {
             Box(Modifier.width(width).height(height).background(RaftTheme.colors.layerCanvas)) {
@@ -180,7 +210,7 @@ class MobileNavServerScreenshotTest {
                     RaftMobileNavServerPopoverContent(paneTitle = "Server panel") {
                         RaftMobileNavServerPopoverList(reorderState = reorder) {
                             sampleServers(servers).forEach { (id, name, unread) ->
-                                val current = id == "botiverse"
+                                val current = id == currentId
                                 RaftMobileNavServerPopoverRow(
                                     modifier =
                                         if (reorder != null) Modifier.raftReorderableItem(reorder, id, onOrderChange = {}) else Modifier,
