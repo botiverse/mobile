@@ -4,7 +4,7 @@ area: assistant
 platforms:
   - android
   - ios
-pull_request: null
+pull_request: 4535
 rollout: full
 ---
 
