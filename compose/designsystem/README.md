@@ -573,8 +573,9 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   trailing slot 6dp apart. Rows don't know their siblings: pass `divider = true` from the
   second row on. A selected or disabled row hides its badge.
 - **DescriptionList horizontal** switches on its own width and content, not the window's:
-  it measures its labels and its values on one line first (subcompositions, never placed),
-  so each fact can be one node for screen readers; it has no intrinsic size.
+  it measures its labels first (a subcomposition) so each fact can be one node for screen
+  readers, and reads each value's one-line width as its max intrinsic width (a value that
+  can't answer, such as a lazy list, doesn't decide); it has no intrinsic size.
 - **Option card** is a target of its own (`selectable`, or `toggleable` with
   `Role.Checkbox`) so the whole card picks, as the pages' option cards do; its radio or
   checkbox is drawn without a handler. The card never shows the pick itself.
