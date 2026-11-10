@@ -71,7 +71,7 @@
         <dict>
             <key>UIApplicationSupportsMultipleScenes</key>
             <true />
-            <key>UIApplicationSceneConfigurations</key>
+            <key>UISceneConfigurations</key>
             <dict>
                 <key>UIWindowSceneSessionRoleApplication</key>
                 <array>
