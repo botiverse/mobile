@@ -392,20 +392,23 @@ internal fun SettingsHomeContent(
                 nativeOnTitleClick = onHeaderClick,
             )
         }
-        if (search != null) {
-            // Pinned above the list as it scrolls (web `sticky top-0 px-2 pt-2 pb-1`), 8dp from the
-            // screen edges like the rows.
-            SettingsSearchField(
-                host = search,
-                results = searchResults.orEmpty(),
-                modifier = Modifier.raftSafeAreaHorizontalPadding().padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 4.dp),
-            )
-        }
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
+            if (search != null) {
+                // The list's first row, so it scrolls away with the groups and shows again at the
+                // top (phone settings pattern, artin dm cb575320); the web's sticky field stays on
+                // the wide split. 8dp from the screen edges like the rows.
+                item(key = SettingsHubSearchFieldKey) {
+                    SettingsSearchField(
+                        host = search,
+                        results = searchResults.orEmpty(),
+                        modifier = Modifier.raftSafeAreaHorizontalPadding().padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 4.dp),
+                    )
+                }
+            }
             if (search != null && searching) {
                 // The results take the groups' place while there is text.
                 settingsSearchResultItems(search, searchResults.orEmpty(), Modifier.padding(horizontal = 8.dp))
@@ -427,6 +430,8 @@ internal fun SettingsHomeContent(
 /** The Settings home head's fill: the canvas, like every Settings page head (web PanelHeader). */
 internal val SettingsHomeHeaderBackground: Color
     get() = RaftColor.Canvas
+
+private const val SettingsHubSearchFieldKey = "settings_hub_search_field"
 
 /** The web Settings list column's margin (raft-ui `listColumnMargin`), its head's too. */
 private val SettingsHomeHeaderMargin = 20.dp
