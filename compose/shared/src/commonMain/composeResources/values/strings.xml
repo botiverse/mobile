@@ -304,7 +304,7 @@
     <string name="host_feedback_error_unknown">Unknown error</string>
     <string name="settings_feedback_submission_failed_title">Feedback failed</string>
     <string name="settings_feedback_submission_failed_body">We could not send your feedback. Please try again.</string>
-    <string name="settings_feedback_submission_network_body">Couldn\'t send your feedback. Check your connection and try again.</string>
+    <string name="settings_feedback_submission_network_body">Couldn’t send your feedback. Check your connection and try again.</string>
     <string name="settings_feedback_submission_rate_limited_body">Too many feedback requests were sent. Wait a moment and try again.</string>
     <string name="settings_feedback_submission_attachment_read_body">An attachment could not be read. Remove it and attach the file again.</string>
     <string name="settings_feedback_submission_attachment_too_large_body">An attachment exceeds the %1$s limit. Remove it or choose a smaller file.</string>

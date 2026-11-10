@@ -976,7 +976,7 @@ internal data class SettingsHandsFeedbackCopy(
     val submissionUnavailable: String = "Feedback is unavailable right now. Please try again.",
     val submissionFailedTitle: String = "Feedback failed",
     val submissionFailedBody: String = "We could not send your feedback. Please try again.",
-    val submissionNetworkBody: String = "Couldn't send your feedback. Check your connection and try again.",
+    val submissionNetworkBody: String = "Couldn’t send your feedback. Check your connection and try again.",
     val submissionRateLimitedBody: String = "Too many feedback requests were sent. Wait a moment and try again.",
     val submissionAttachmentReadBody: String = "An attachment could not be read. Remove it and attach the file again.",
     val submissionAttachmentTooLargeBody: String = "An attachment is too large. Remove it or choose a smaller file.",
