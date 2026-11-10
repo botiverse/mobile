@@ -40,6 +40,8 @@ import org.robolectric.annotation.GraphicsMode
  * The personal assistant's otter on a channel's composer, as ThreadPage wires it: the otter
  * lying on the composer frame's top edge (phone scale, 52dp from the frame's end) over the dock,
  * over the message list's end (no band: the list keeps its place, artin 11-03). Light and dark. Web: AssistantOtter.tsx on ChatPanel's MessageInput.
+ * Its loops and its waking are held still ([LocalRaftAssistantOtterStillAt]) so each capture is
+ * one frame: asleep 1.2s in (breathing, two z's up), waking 0.5s in (out past its rest).
  * Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -55,14 +57,30 @@ class ThreadAssistantOtterComposerScreenshotTest {
     @Test
     fun channelComposerDark() = capture("assistant.otter.channel-composer.dark", RaftAppAppearance.Dark)
 
+    /** Nothing new: asleep on the edge (Cody's sleepy art), breathing, z's floating up from its head. */
+    @Test
+    fun asleepLight() = capture("assistant.otter.asleep", RaftAppAppearance.Light, stillAt = 1_200L)
+
+    @Test
+    fun asleepDark() = capture("assistant.otter.asleep.dark", RaftAppAppearance.Dark, stillAt = 1_200L)
+
+    /** A new message: waving, popped out from behind the edge, 6dp past its rest (web keyframe 35%). */
+    @Test
+    fun wakingLight() = capture("assistant.otter.waking", RaftAppAppearance.Light, mood = RaftOtterMood.New, stillAt = 525L)
+
+    /** The owner types: the otter is in the composer, only the top of its head over the edge, its z's gone. */
+    @Test
+    fun typingTucksItInLight() = capture("assistant.otter.typing", RaftAppAppearance.Light, typed = "Can you check the release notes")
+
     /**
-     * artin 11-02: the "@Volta is not in #channel — Add / Notify / Ignore" card above the composer.
-     * The otter (here with a new message, so its "New message" bubble too) goes into the frame, and
-     * the card's buttons show whole; the list's jump pill sits at the list's end, above the card.
+     * Artea #proj-assistant:#24 (web `useNoticesLift`): the "@Volta is not in #channel — Add /
+     * Notify / Ignore" card above the composer. The otter (here with a new message, so its "New
+     * message" bubble too) lies on top of the card, over none of its buttons; the list's jump pill
+     * sits at the list's end, above the card.
      */
     @Test
     @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
-    fun mentionCardHidesTheOtterLight() =
+    fun mentionCardLiftsTheOtterLight() =
         capture("assistant.otter.mention-card", RaftAppAppearance.Light, mood = RaftOtterMood.New, mentionCard = true)
 
     private fun capture(
@@ -70,6 +88,9 @@ class ThreadAssistantOtterComposerScreenshotTest {
         appearance: RaftAppAppearance,
         mood: RaftOtterMood = RaftOtterMood.Idle,
         mentionCard: Boolean = false,
+        typed: String = "",
+        // Past the waking by default: at rest.
+        stillAt: Long = RaftOtterWakeMillis.toLong(),
     ) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
@@ -84,7 +105,7 @@ class ThreadAssistantOtterComposerScreenshotTest {
                         onOpen = {},
                     )
                 }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftAssistantOtterStillAt provides stillAt) {
                 RaftDesignSystemTheme {
                     Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
                         Column(Modifier.weight(1f).fillMaxWidth()) {
@@ -112,12 +133,13 @@ class ThreadAssistantOtterComposerScreenshotTest {
                                     RaftThreadComposerPayload(
                                         instanceId = "otter",
                                         placeholder = "Message #proj-mobile-release",
+                                        seedText = typed,
                                         pendingMentionActions = if (mentionCard) listOf(voltaNotInChannel) else emptyList(),
                                     ),
                                 onEvent = { _, _, _, _ -> },
                                 attachmentPreviewEnabled = false,
-                                frameEdge = { composing, focused, covered ->
-                                    ThreadAssistantOtterFrameEdge(otter, composing, focused, covered, animateEntrance = false)
+                                frameEdge = { composing, focused, stackedAbove ->
+                                    ThreadAssistantOtterFrameEdge(otter, composing, focused, stackedAbove, animateEntrance = false)
                                 },
                             )
                         }

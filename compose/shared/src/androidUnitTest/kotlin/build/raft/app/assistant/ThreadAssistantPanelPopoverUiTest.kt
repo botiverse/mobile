@@ -17,6 +17,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -33,6 +35,7 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftAssistantOtterHosts
 import build.raft.app.runRobolectricComposeUiTest
+import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import build.raft.designsystem.text.RaftText
 import kotlin.math.abs
 import kotlin.test.Test
@@ -88,8 +91,8 @@ class ThreadAssistantPanelPopoverUiTest {
                 payload = RaftThreadComposerPayload(instanceId = CHANNEL, placeholder = "Message #$CHANNEL"),
                 onEvent = { _, _, _, _ -> },
                 attachmentPreviewEnabled = false,
-                frameEdge = { composing, focused, covered ->
-                    ThreadAssistantOtterFrameEdge(otter, composing, focused, covered, animateEntrance = false)
+                frameEdge = { composing, focused, stackedAbove ->
+                    ThreadAssistantOtterFrameEdge(otter, composing, focused, stackedAbove, animateEntrance = false)
                 },
             )
         }
@@ -104,7 +107,8 @@ class ThreadAssistantPanelPopoverUiTest {
         setContent {
             pageDensity = LocalDensity.current
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            // The otter holds still: one deterministic frame, its loops scheduling none.
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftSpinnerStillStep provides 0) {
                 RaftDesignSystemTheme { content() }
             }
         }
@@ -124,7 +128,12 @@ class ThreadAssistantPanelPopoverUiTest {
             val px = { dp: Float -> dp * pageDensity.density }
             assertTrue(abs(popover.width - px(380f)) <= 1f, "380dp wide: ${popover.width}")
             assertTrue(abs(popover.height - px(540f)) <= 1f, "540dp tall: ${popover.height}")
-            assertTrue(abs(popover.right - otterRest.right) <= 1f, "its end on the otter's end: ${popover.right} vs ${otterRest.right}")
+            // Its end on the otter's end, kept 8dp inside the window (web PopoverContent `collisionPadding={8}`):
+            // the sleeping otter reaches further toward the window's end than that.
+            // Two roots while it's open (the page and the popover's popup): the page's is the first.
+            val window = onAllNodes(isRoot()).onFirst().fetchSemanticsNode().size.width.toFloat()
+            val end = minOf(otterRest.right, window - px(8f))
+            assertTrue(abs(popover.right - end) <= 1f, "its end on the otter's end: ${popover.right} vs ${otterRest.right} (window $window)")
             assertTrue(abs(otterRest.top - popover.bottom - px(8f)) <= 1f, "8dp above the otter: ${popover.bottom} vs ${otterRest.top}")
         }
 

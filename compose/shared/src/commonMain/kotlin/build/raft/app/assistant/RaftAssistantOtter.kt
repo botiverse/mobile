@@ -5,6 +5,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -24,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,14 +43,17 @@ import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.image.rememberRaftAppInForeground
 import build.raft.app.resources.*
 import build.raft.designsystem.motion.RaftMotion
 import build.raft.designsystem.motion.rememberRaftReducedMotion
@@ -66,9 +71,11 @@ import org.jetbrains.compose.resources.painterResource
 // press opens the assistant. This file is the view only: which composer carries it, the mood's
 // inputs and the panel it opens are the host's.
 //
-// Motion (web, Raft DS › Motion): one pop-in when it appears, and the slide into the composer
-// while the person types or the panel is open. Status never loops. With reduced motion nothing
-// moves and it appears as it is.
+// Motion (web, Raft DS › Motion; Artea #proj-assistant:#24): one pop-in when it appears, and the
+// slide into the composer while the person types or the panel is open. Asleep (nothing new) it
+// breathes and z's float up from its head; something new pops it out from behind the edge with
+// two small bobs, never a sideways sway (RaftAssistantOtterMotion.kt). Its loops hold while the app
+// is in the background. With reduced motion nothing moves and it appears as it is.
 
 /**
  * What the otter shows (web assistantOtterState.ts `OtterMood`):
@@ -108,12 +115,6 @@ enum class RaftOtterTuck(
 
     /** The assistant's panel is open (web `data-open`: `translate-y-[105%]`), all of it gone. */
     PanelOpen(1.05f),
-
-    /**
-     * A card sits on the composer's top edge, where the otter lies (a mention's Add / Notify /
-     * Ignore): all of it gone like [PanelOpen], so it never covers the card's buttons (artin 11-02).
-     */
-    Covered(1.05f),
 }
 
 /**
@@ -142,13 +143,13 @@ internal object RaftOtterPoses {
     val Running = RaftOtterPose("running", Res.drawable.assistant_otter_running, 109.dp, 60.dp, 63.dp)
 }
 
-/** The pose for [mood] (web `MOOD_POSE`), or the running one while it pops in. */
+/** The pose for [mood] (web `MOOD_POSE`): nothing new, it sleeps (Artea, #24); the running one while it pops in. */
 fun raftOtterPose(mood: RaftOtterMood, entering: Boolean = false): RaftOtterPose =
     if (entering) {
         RaftOtterPoses.Running
     } else {
         when (mood) {
-            RaftOtterMood.Idle -> RaftOtterPoses.Curious
+            RaftOtterMood.Idle -> RaftOtterPoses.Sleepy
             RaftOtterMood.Working -> RaftOtterPoses.Thinking
             RaftOtterMood.New -> RaftOtterPoses.Wave
             RaftOtterMood.Confirm -> RaftOtterPoses.Confused
@@ -162,7 +163,7 @@ private val BothPaws = listOf((-37).dp, 15.dp)
 /**
  * The paws on the edge, by their left x from the head's middle (web `MOOD_PAWS`): the waving one
  * has only its right paw down, and so does the thinking one, whose left paw is on its chin (artin
- * 10-30: three hands otherwise); asleep, none. Both while it pops in.
+ * 10-30: three hands otherwise); asleep (idle or away), none. Both while it pops in.
  */
 fun raftOtterPaws(mood: RaftOtterMood, entering: Boolean = false): List<Dp> =
     if (entering) {
@@ -170,14 +171,34 @@ fun raftOtterPaws(mood: RaftOtterMood, entering: Boolean = false): List<Dp> =
     } else {
         when (mood) {
             RaftOtterMood.New, RaftOtterMood.Working -> listOf(15.dp)
-            RaftOtterMood.Away -> emptyList()
+            RaftOtterMood.Idle, RaftOtterMood.Away -> emptyList()
             else -> BothPaws
         }
     }
 
-/** Whether the state bubble shows beside its head (web: not while entering, only `new` / `confirm`). */
-fun raftOtterShowsBubble(mood: RaftOtterMood, entering: Boolean = false): Boolean =
+/** Whether it sleeps (web: idle or away): it breathes and z's float up, once it has popped in. */
+fun raftOtterAsleep(mood: RaftOtterMood, entering: Boolean = false): Boolean =
+    !entering && (mood == RaftOtterMood.Idle || mood == RaftOtterMood.Away)
+
+/**
+ * Whether its sleep loop (breath and z's) ticks every frame: asleep, the app in the foreground,
+ * no reduced motion, not held still for a screenshot, and not hidden in the frame behind an open
+ * assistant panel ([RaftOtterTuck.PanelOpen]; tucked for composing its head still shows).
+ */
+internal fun raftOtterLoopRuns(
+    asleep: Boolean,
+    foreground: Boolean,
+    reducedMotion: Boolean,
+    heldStill: Boolean,
+    tuck: RaftOtterTuck,
+): Boolean = asleep && foreground && !reducedMotion && !heldStill && tuck != RaftOtterTuck.PanelOpen
+
+/** Whether it is awake for something (web `awake`: `new` / `confirm`, once it has popped in): it wakes once per waking. */
+fun raftOtterAwake(mood: RaftOtterMood, entering: Boolean = false): Boolean =
     !entering && (mood == RaftOtterMood.New || mood == RaftOtterMood.Confirm)
+
+/** Whether the state bubble shows beside its head (web: not while entering, only `new` / `confirm`). */
+fun raftOtterShowsBubble(mood: RaftOtterMood, entering: Boolean = false): Boolean = raftOtterAwake(mood, entering)
 
 object RaftAssistantOtterDefaults {
     /** Phones and thread panels: 80% (web `SMALL_SCALE`, `max-md:scale-80`). */
@@ -225,6 +246,14 @@ private val PawBelowEdge = 9.dp
 private val BubbleAboveEdge = 12.dp
 private val BubbleGap = 6.dp
 
+/**
+ * Web `OtterZzz`: its bottom-left `pose.w - pose.cx - 18px` right of the head's middle and
+ * `pose.h - 14px` above the edge; "z", "z", "Z" at 10 / 12 / 15px, mono bold, muted.
+ */
+private val ZzzInset = 18.dp
+private val ZzzDrop = 14.dp
+private val ZzzGlyphs = listOf("z" to 10, "z" to 12, "Z" to 15)
+
 // ---- Motion -----------------------------------------------------------------------------------
 
 /** Web index.css `assistant-otter-pop`: 620ms (`OTTER_ENTRY_MS`), the running pose shows this long. */
@@ -267,15 +296,21 @@ private const val EdgeFadeMillis = 150
  *
  * - [mood]: its face ([raftOtterPose]); `new` / `confirm` also show their state beside its head.
  * - [tuck]: [RaftOtterTuck.Composing] while the composer holds text or an attachment,
- *   [RaftOtterTuck.PanelOpen] while the assistant's panel is open, [RaftOtterTuck.Covered] while a
- *   card sits above the composer: it slides into the frame
- *   (200ms `ease-slide`), and its paws and bubble fade out.
+ *   [RaftOtterTuck.PanelOpen] while the assistant's panel is open: it slides into the frame
+ *   (200ms `ease-slide`), and its paws, bubble and z's fade out. It comes back out once the
+ *   message is sent or the composer cleared.
  * - [onClick]: opens the assistant. No press or hover state (the web has none).
  * - [animateEntrance]: on its first composition it runs in (running pose) and pops up over 620ms.
  *   Pass false when it comes back without being new (the web pops it in on every mount).
  * - [scale]: [RaftAssistantOtterDefaults.PhoneScale] on phones and thread panels.
+ * - [lift]: how far above the frame's edge it lies: over the notices stacked on the frame (a
+ *   mention's Add / Notify / Ignore card), so it covers none of their buttons (web
+ *   `useNoticesLift`). It takes no room there either.
  *
- * With reduced motion ([rememberRaftReducedMotion]) there is no pop-in and the tuck snaps.
+ * Asleep ([raftOtterAsleep]) it breathes and z's float up from its head while the app is in the
+ * foreground; woken ([raftOtterAwake]) it pops out from behind the edge and bobs twice.
+ * With reduced motion ([rememberRaftReducedMotion]) there is no pop-in, the tuck snaps, it sleeps
+ * still with one z and wakes in place.
  * Screen readers get one button, "Open Assistant" or "Open Assistant: <state>".
  */
 @Composable
@@ -287,10 +322,13 @@ fun RaftAssistantOtter(
     scale: Float = RaftAssistantOtterDefaults.PhoneScale,
     endInset: Dp = RaftAssistantOtterDefaults.PhoneEndInset,
     animateEntrance: Boolean = true,
+    lift: Dp = 0.dp,
     /** Where the otter rests (its pose's box, in window coordinates, before any tuck or pop). */
     onRestBounds: ((Rect) -> Unit)? = null,
 ) {
-    val reducedMotion = rememberRaftReducedMotion()
+    val stillAt = LocalRaftAssistantOtterStillAt.current
+    // Held still (a screenshot, a preview) unless the test opts in to a moment of its motion.
+    val reducedMotion = rememberRaftReducedMotion() || (stillAt == null && raftOtterHeldStill())
     // First appearance on this composer: it runs in and pops up, then settles.
     var entering by remember { mutableStateOf(animateEntrance && !reducedMotion) }
     // The pop's translation in dp, from 105% of the running pose's height under its rest.
@@ -303,6 +341,39 @@ fun RaftAssistantOtter(
         pop.animateTo(0f, tween(RaftOtterEntryMillis - PopPeakMillis, easing = PopEasing))
         entering = false
     }
+    val asleep = raftOtterAsleep(mood, entering)
+    // Asleep it breathes and z's float up: only while the app is in the foreground (web: paused
+    // while the page is hidden) and the otter can be seen, and never with reduced motion.
+    val foreground = rememberRaftAppInForeground()
+    val loopClock =
+        rememberRaftOtterLoopClock(
+            running =
+                raftOtterLoopRuns(
+                    asleep = asleep,
+                    foreground = foreground,
+                    reducedMotion = reducedMotion,
+                    heldStill = stillAt != null,
+                    tuck = tuck,
+                ),
+        )
+    val looping by remember { derivedStateOf { loopClock.value != null } }
+    val loopMillis: (() -> Long)? =
+        when {
+            reducedMotion -> null
+            stillAt != null -> ({ stillAt })
+            looping -> ({ loopClock.value ?: 0L })
+            else -> null
+        }
+    // Something new: out from behind the edge, then two bobs, once per waking (web `assistant-otter-wake`).
+    val awake = raftOtterAwake(mood, entering)
+    val wake = remember { Animatable(RaftOtterWakeMillis.toFloat()) }
+    LaunchedEffect(awake) {
+        if (!awake || reducedMotion || stillAt != null) return@LaunchedEffect
+        wake.snapTo(0f)
+        wake.animateTo(RaftOtterWakeMillis.toFloat(), tween(RaftOtterWakeMillis, easing = LinearEasing))
+    }
+    val wakeMillis: () -> Float =
+        if (stillAt != null && awake) ({ stillAt.toFloat() }) else ({ wake.value })
     val label =
         when (val state = raftOtterStateLabel(mood)) {
             null -> stringResource(Res.string.assistant_otter_open)
@@ -322,6 +393,10 @@ fun RaftAssistantOtter(
         popOffset = { pop.value },
         modifier = modifier,
         onRestBounds = onRestBounds,
+        asleep = asleep,
+        loopMillis = loopMillis,
+        wakeMillis = wakeMillis,
+        lift = lift,
     )
 }
 
@@ -339,6 +414,9 @@ private fun raftOtterStateLabel(mood: RaftOtterMood): String? =
 /**
  * The otter at one [pose], without its own entry state (tests draw the running pose with it).
  * [popOffset]: the pop-in's downward translation in dp, read at draw time.
+ * [asleep]: it breathes and shows its z's, moving by [loopMillis] (null: still, one z).
+ * [wakeMillis]: how far into its waking it is ([RaftOtterWakeMillis] and on: at rest).
+ * [lift]: how far above the frame's edge it lies.
  */
 @Composable
 internal fun RaftAssistantOtterLayout(
@@ -355,6 +433,10 @@ internal fun RaftAssistantOtterLayout(
     modifier: Modifier = Modifier,
     popOffset: () -> Float = { 0f },
     onRestBounds: ((Rect) -> Unit)? = null,
+    asleep: Boolean = false,
+    loopMillis: (() -> Long)? = null,
+    wakeMillis: () -> Float = { RaftOtterWakeMillis.toFloat() },
+    lift: Dp = 0.dp,
 ) {
     val tuckFraction by animateFloatAsState(
         targetValue = tuck.fraction,
@@ -412,7 +494,12 @@ internal fun RaftAssistantOtterLayout(
                                         },
                                     )
                                     .graphicsLayer {
-                                        translationY = tuckFraction * pose.height.toPx() + popOffset().dp.toPx()
+                                        // The waking scales about the pose's middle (web: the button's own origin).
+                                        val wake = raftOtterWake(wakeMillis())
+                                        translationY =
+                                            tuckFraction * pose.height.toPx() + popOffset().dp.toPx() + wake.dy.dp.toPx()
+                                        scaleX = wake.scale
+                                        scaleY = wake.scale
                                     }
                                     .clickable(
                                         interactionSource = remember { MutableInteractionSource() },
@@ -422,7 +509,20 @@ internal fun RaftAssistantOtterLayout(
                                     .semantics(mergeDescendants = true) {
                                         contentDescription = label
                                         role = Role.Button
-                                    },
+                                    }
+                                    .then(
+                                        if (asleep && loopMillis != null) {
+                                            // Its breath, its belly on the edge (web `transform-origin: 50% 100%`).
+                                            Modifier.graphicsLayer {
+                                                val breath = raftOtterBreath(loopMillis())
+                                                scaleX = breath.scaleX
+                                                scaleY = breath.scaleY
+                                                transformOrigin = TransformOrigin(0.5f, 1f)
+                                            }
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
                         )
                     }
                     paws.forEach { _ ->
@@ -452,6 +552,9 @@ internal fun RaftAssistantOtterLayout(
                             RaftText(bubble, style = RaftTheme.typography.footnote, color = colors.foreground, maxLines = 1, softWrap = false)
                         }
                     }
+                    if (asleep) {
+                        RaftOtterZzz(loopMillis = loopMillis, edgeAlpha = { edgeAlpha })
+                    }
                 },
             ) { measurables, _ ->
                 val anchorX = ClipHalfWidth.roundToPx()
@@ -461,7 +564,8 @@ internal fun RaftAssistantOtterLayout(
                         Constraints.fixed(bodyWidth.roundToPx(), edge + ClipBelowEdge.roundToPx()),
                     )
                 val pawPlaceables = measurables.subList(1, 1 + paws.size).map { it.measure(Constraints()) }
-                val bubblePlaceable = measurables.getOrNull(1 + paws.size)?.measure(Constraints())
+                val bubblePlaceable = if (bubble != null) measurables[1 + paws.size].measure(Constraints()) else null
+                val zzzPlaceable = if (asleep) measurables.last().measure(Constraints()) else null
                 layout(bodyWidth.roundToPx(), bodyHeight.roundToPx()) {
                     clip.place(0, 0)
                     pawPlaceables.forEachIndexed { index, paw ->
@@ -470,6 +574,11 @@ internal fun RaftAssistantOtterLayout(
                     bubblePlaceable?.place(
                         x = anchorX - (pose.headX + BubbleGap).roundToPx() - bubblePlaceable.width,
                         y = edge - BubbleAboveEdge.roundToPx() - bubblePlaceable.height,
+                    )
+                    // Its bottom-left beside the head; the z's rise from there, over the list.
+                    zzzPlaceable?.place(
+                        x = anchorX + (pose.width - pose.headX - ZzzInset).roundToPx(),
+                        y = edge - (pose.height - ZzzDrop).roundToPx() - zzzPlaceable.height,
                     )
                 }
             }
@@ -481,7 +590,44 @@ internal fun RaftAssistantOtterLayout(
         layout(width, constraints.minHeight) {
             body.place(
                 x = width - endInset.roundToPx() - ClipHalfWidth.roundToPx(),
-                y = -edgeY.roundToPx(),
+                y = -(edgeY + lift).roundToPx(),
+            )
+        }
+    }
+}
+
+/**
+ * Asleep: three z's float up from beside its head, one after another (web `OtterZzz`), each from
+ * its bottom-left corner here. Still ([loopMillis] null): the first one only, at 70%. They fade
+ * with the paws while it is tucked in. Decoration only.
+ */
+@Composable
+private fun RaftOtterZzz(loopMillis: (() -> Long)?, edgeAlpha: () -> Float) {
+    val density = LocalDensity.current
+    val color = RaftTheme.colors.foregroundMuted
+    val mono = RaftTheme.typography.monoMeta
+    Box(Modifier.clearAndSetSemantics {}) {
+        val glyphs = if (loopMillis == null) ZzzGlyphs.take(1) else ZzzGlyphs
+        glyphs.forEachIndexed { index, (glyph, px) ->
+            // Art-sized, like the otter itself: web px, not the reader's text size.
+            val size = with(density) { px.dp.toSp() }
+            RaftText(
+                glyph,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .graphicsLayer {
+                            val z = if (loopMillis == null) RaftOtterStillZ else raftOtterZ(index, loopMillis())
+                            alpha = z.alpha * edgeAlpha()
+                            translationX = z.dx.dp.toPx()
+                            translationY = z.dy.dp.toPx()
+                            scaleX = z.scale
+                            scaleY = z.scale
+                        },
+                style = mono.copy(fontWeight = FontWeight.Bold, fontSize = size, lineHeight = size),
+                color = color,
+                maxLines = 1,
+                softWrap = false,
             )
         }
     }
