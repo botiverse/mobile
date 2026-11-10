@@ -80,11 +80,31 @@ class RaftWebViewSpareSlotTest {
     }
 
     @Test
-    fun theWebViewIsHiddenUntilItsDocumentCommitsWhenACanvasIsSet() {
+    fun theWebViewIsHiddenUntilRevealedWhenACanvasIsSet() {
         val canvas = 0xFF1C1B1A.toInt()
-        assertFalse(raftWebViewShownBeforeCommit(canvas, committed = false))
-        assertTrue(raftWebViewShownBeforeCommit(canvas, committed = true))
-        assertTrue(raftWebViewShownBeforeCommit(0, committed = false))
+        assertFalse(raftWebViewShownBeforeCommit(canvas, revealed = false))
+        assertTrue(raftWebViewShownBeforeCommit(canvas, revealed = true))
+        assertTrue(raftWebViewShownBeforeCommit(0, revealed = false))
+    }
+
+    @Test
+    fun pageThemeProbeIsDecodedAndOnlyABackgroundlessPageGoesWhite() {
+        val canvas = 0xFF1C1B1A.toInt()
+        val dark = raftWebViewDecodePageTheme("1|rgb(23, 25, 28)|rgb(23, 25, 28)")!!
+        assertTrue(dark.prefersDark)
+        assertEquals("prefersDark=true root=rgb(23,25,28) body=rgb(23,25,28)", dark.logFields())
+        assertTrue(raftWebViewPageHasOwnBackground(dark, canvas))
+        // Root painted only by the first-paint script (the canvas), body transparent: none of its own.
+        val bare = raftWebViewDecodePageTheme("0|rgb(28, 27, 26)|rgba(0, 0, 0, 0)")!!
+        assertFalse(bare.prefersDark)
+        assertFalse(raftWebViewPageHasOwnBackground(bare, canvas))
+        assertTrue(raftWebViewPageHasOwnBackground(raftWebViewDecodePageTheme("1|rgb(245, 245, 242)|rgba(0, 0, 0, 0)")!!, canvas))
+        assertFalse(raftWebViewPageHasOwnBackground(raftWebViewDecodePageTheme("1|rgba(0, 0, 0, 0)|transparent")!!, canvas))
+        assertNull(raftWebViewDecodePageTheme(""))
+        assertNull(raftWebViewDecodePageTheme(null))
+        assertNull(raftWebViewDecodePageTheme("x|a|b"))
+        assertTrue(raftWebViewCssColorIsTransparent("rgba(1, 2, 3, 0)"))
+        assertFalse(raftWebViewCssColorIsTransparent("rgba(1, 2, 3, 0.5)"))
     }
 
     @Test

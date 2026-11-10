@@ -49,7 +49,7 @@ internal actual fun RaftSandboxWebViewHost(
     modifier: Modifier,
 ) {
     UIKitView(
-        factory = { RaftIosSandboxWebViewContainer(events) },
+        factory = { RaftIosSandboxWebViewContainer(events).also { it.webViewHost.applyInitialBackground(config.backgroundArgb) } },
         modifier = modifier,
         update = { view ->
             view.webViewHost.events = events
@@ -75,6 +75,9 @@ internal class RaftIosSandboxWebViewContainer(events: RaftWebViewEvents) : UIVie
         webViewHost.onWindowAttachmentChanged(attached = window != null)
     }
 }
+
+/** A committed page is shown at the latest this long after its commit ([RaftIosSandboxWebView.reveal]). */
+private const val RevealCapSeconds = 1.5
 
 /** Poll interval standing in for the `.m` KVO on estimatedProgress/title/canGoBack/canGoForward/loading/URL. */
 private const val RaftIosNavigationStatePollSeconds = 0.25
@@ -147,8 +150,12 @@ internal class RaftIosSandboxWebView(
     private var placeholderBackground = 0
     /** The current WKWebView finished a page; from then on it is opaque white, as Safari. */
     private var pagePainted = false
-    /** The current WKWebView committed this page's document; until then it is not shown ([applyBackground]). */
-    private var pageCommitted = false
+    /** The current WKWebView is shown ([reveal]): its page finished and painted its scheme, or [RevealCapSeconds] after the commit. */
+    private var pageRevealed = false
+    /** The current WKWebView's first page finished (its background was probed once). */
+    private var pageFinished = false
+    /** Reveals the page [RevealCapSeconds] after its commit if it has not been yet. */
+    private var revealTimer: NSTimer? = null
 
     private val delegate = RaftIosWebViewDelegate(this)
     private val scriptMessageHandler = RaftIosWebViewScriptMessageHandler(this)
@@ -157,10 +164,16 @@ internal class RaftIosSandboxWebView(
         container.backgroundColor = UIColor.whiteColor
     }
 
+    /** Before the first config: the canvas colour from the start (UIKitView may show the container before `update`). */
+    fun applyInitialBackground(argb: Int) {
+        if (argb != 0 && !configured) container.backgroundColor = raftIosColor(argb)
+    }
+
     /**
-     * The page is visible from attach (no cover), so until its first page finished the WKWebView is
-     * transparent over the app's canvas colour: no white rectangle in dark mode. Then opaque white,
-     * as Safari, under pages that paint no background of their own.
+     * The page is visible from attach (no cover): with a canvas colour set, the WKWebView is not
+     * shown ([pageRevealed]) and is transparent over the canvas-coloured container, so no white
+     * rectangle in dark mode. Opaque white, as Safari, only once its first page finished without a
+     * background of its own ([pagePainted]); a page with its own background stays over the canvas.
      */
     private fun applyBackground() {
         val view = webView
@@ -170,7 +183,7 @@ internal class RaftIosSandboxWebView(
         if (view == null) return
         // Before the page's document commits the WKWebView shows whatever it had (a spare's blank
         // warm-up document, layers not yet redrawn): not shown, the canvas container is.
-        view.alpha = if (raftWebViewShownBeforeCommit(placeholderBackground, pageCommitted)) 1.0 else 0.0
+        view.alpha = if (raftWebViewShownBeforeCommit(placeholderBackground, pageRevealed)) 1.0 else 0.0
         view.opaque = painted || placeholderBackground == 0
         view.backgroundColor = if (view.opaque) color else UIColor.clearColor
         view.scrollView.backgroundColor = view.backgroundColor
@@ -236,6 +249,8 @@ internal class RaftIosSandboxWebView(
     }
 
     private fun tearDownWebView() {
+        revealTimer?.invalidate()
+        revealTimer = null
         val previous = webView ?: return
         stopObserving(previous)
         previous.navigationDelegate = null
@@ -308,7 +323,8 @@ internal class RaftIosSandboxWebView(
         next.autoresizingMask = UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
         webView = next
         pagePainted = false
-        pageCommitted = false
+        pageRevealed = false
+        pageFinished = false
         applyBackground()
         container.addSubview(next)
         startObserving(next)
@@ -529,15 +545,19 @@ internal class RaftIosSandboxWebView(
     internal fun didCommit(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
         if (raftWebViewIgnoresSpareBlankNavigation(usingSpare, source.URL?.absoluteString, src)) return
-        if (!pageCommitted) {
-            pageCommitted = true
-            applyBackground()
-        }
         currentURL = source.URL?.absoluteString ?: currentURL
         currentTitle = source.title ?: currentTitle
         currentLoading = source.loading
         // Android's name for the first paint of the new document; WebKit's nearest is the commit.
         diagnosticsInfo("page_commit_visible url=${raftWebViewUrlForLog(currentURL)} ${loadElapsedField()}")
+        if (!pageRevealed && revealTimer == null) {
+            // Not shown yet: what the page paints right after its commit may not be its theme yet.
+            revealTimer = NSTimer.scheduledTimerWithTimeInterval(RevealCapSeconds, repeats = false) { _ ->
+                revealTimer = null
+                reveal(source, "cap")
+            }
+            probePageTheme(source, "commit")
+        }
         events.onUrlChange(currentURL)
         notifyNavigationState(force = false)
         // SlockSandboxWebViewPublishNavigationCommit: only the active WebView publishes commits
@@ -548,10 +568,14 @@ internal class RaftIosSandboxWebView(
     internal fun didFinish(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
         if (raftWebViewIgnoresSpareBlankNavigation(usingSpare, source.URL?.absoluteString, src)) return
-        if (!pagePainted) {
-            pagePainted = true
-            pageCommitted = true
-            applyBackground()
+        if (!pageFinished) {
+            pageFinished = true
+            if (!allowScripts || placeholderBackground == 0) {
+                pagePainted = true
+                reveal(source, "finished")
+            } else {
+                probePageTheme(source, "finished")
+            }
         }
         currentURL = source.URL?.absoluteString ?: currentURL
         currentTitle = source.title ?: ""
@@ -561,6 +585,38 @@ internal class RaftIosSandboxWebView(
         events.onUrlChange(currentURL)
         notifyNavigationState(force = false)
         notifyLoadSuccess(currentURL)
+    }
+
+    /**
+     * Reads the page's scheme and root/body background ([RaftWebViewPageThemeProbeScript]) and
+     * logs it with the view's and host's trait style. After `finished`: white behind the page only
+     * if it paints no background of its own; shown once its scheme is the app's (else at the cap).
+     */
+    private fun probePageTheme(view: WKWebView, phase: String) {
+        view.evaluateJavaScript(RaftWebViewPageThemeProbeScript) { result, _ ->
+            if (disposed || !raftIsSameObjCObject(view, webView)) return@evaluateJavaScript
+            val theme = raftWebViewDecodePageTheme(result as? String)
+            val appDark = RaftAppThemeState.isDark
+            diagnosticsInfo(
+                "page_theme phase=$phase ${theme?.logFields() ?: "probe=none"} appDark=$appDark " +
+                    "viewStyle=${view.traitCollection.userInterfaceStyle} hostStyle=${container.traitCollection.userInterfaceStyle}"
+            )
+            if (phase != "finished") return@evaluateJavaScript
+            if (theme == null || !raftWebViewPageHasOwnBackground(theme, placeholderBackground)) {
+                pagePainted = true
+                applyBackground()
+            }
+            if (theme == null || theme.prefersDark == appDark) reveal(view, "finished")
+        }
+    }
+
+    private fun reveal(view: WKWebView, reason: String) {
+        if (pageRevealed || disposed || !raftIsSameObjCObject(view, webView)) return
+        pageRevealed = true
+        revealTimer?.invalidate()
+        revealTimer = null
+        diagnosticsInfo("page_reveal reason=$reason ${loadElapsedField()}")
+        applyBackground()
     }
 
     internal fun didFail(source: WKWebView, error: NSError) {

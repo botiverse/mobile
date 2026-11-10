@@ -51,13 +51,54 @@ internal fun raftWebViewBackgroundArgb(placeholderArgb: Int, painted: Boolean): 
     if (painted || placeholderArgb == 0) RAFT_WEB_VIEW_DEFAULT_BACKGROUND_ARGB else placeholderArgb
 
 /**
- * Whether a native WebView is shown before its page's document committed (iOS): not while a
- * canvas colour is set ([placeholderArgb] not 0), since until the commit it still shows what it
- * had (the spare's blank warm-up document, white in dark mode) and the canvas container shows
- * through instead; always once [committed].
+ * Whether a native WebView is shown (iOS): not while a canvas colour is set ([placeholderArgb] not
+ * 0) until it is [revealed] (its first page finished in the app's scheme, or a cap after the
+ * commit). Until then it still shows what it had (the spare's blank warm-up document) or the
+ * page's first paint before its theme applies; the canvas container shows through instead.
  */
-internal fun raftWebViewShownBeforeCommit(placeholderArgb: Int, committed: Boolean): Boolean =
-    committed || placeholderArgb == 0
+internal fun raftWebViewShownBeforeCommit(placeholderArgb: Int, revealed: Boolean): Boolean =
+    revealed || placeholderArgb == 0
+
+/**
+ * Read-only probe of the top document's theme: `<prefers dark 1/0>|<root background>|<body background>`
+ * (computed colours); '' on error. Nothing of the page's content.
+ */
+internal const val RaftWebViewPageThemeProbeScript: String =
+    "(function(){try{var d=document,g=function(e){return e?getComputedStyle(e).backgroundColor:'';};" +
+        "return (matchMedia('(prefers-color-scheme: dark)').matches?'1':'0')+'|'+g(d.documentElement)+'|'+g(d.body);" +
+        "}catch(e){return '';}})()"
+
+/** [RaftWebViewPageThemeProbeScript]'s answer. */
+internal class RaftWebViewPageTheme(val prefersDark: Boolean, val rootBackground: String, val bodyBackground: String) {
+    fun logFields(): String =
+        "prefersDark=$prefersDark root=${rootBackground.replace(" ", "")} body=${bodyBackground.replace(" ", "")}"
+}
+
+internal fun raftWebViewDecodePageTheme(result: String?): RaftWebViewPageTheme? {
+    val parts = result?.split('|') ?: return null
+    if (parts.size != 3 || parts[0] !in setOf("0", "1")) return null
+    return RaftWebViewPageTheme(parts[0] == "1", parts[1].trim(), parts[2].trim())
+}
+
+/** A computed CSS colour paints nothing (`transparent`, alpha 0, or none). */
+internal fun raftWebViewCssColorIsTransparent(color: String): Boolean {
+    val value = color.replace(" ", "").lowercase()
+    if (value.isEmpty() || value == "transparent") return true
+    if (!value.startsWith("rgba(")) return false
+    val alpha = value.removeSuffix(")").substringAfterLast(',').toDoubleOrNull()
+    return alpha == null || alpha == 0.0
+}
+
+/**
+ * Whether the page paints a background of its own: its body does, or its root does with another
+ * colour than [canvasArgb] ([raftWebViewFirstPaintThemeScript]'s, still applied when `load` fires).
+ * A page without one goes on white, as in a browser.
+ */
+internal fun raftWebViewPageHasOwnBackground(theme: RaftWebViewPageTheme, canvasArgb: Int): Boolean {
+    if (!raftWebViewCssColorIsTransparent(theme.bodyBackground)) return true
+    val root = theme.rootBackground.replace(" ", "").lowercase()
+    return !raftWebViewCssColorIsTransparent(root) && root != raftWebViewCssRgb(canvasArgb)
+}
 
 /**
  * The one spare WebView a platform keeps for the next page (iOS `RaftIosWebViewSpare`). A spare is
