@@ -165,8 +165,9 @@ class MobileNavServerScreenshotTest {
     /**
      * Mobile #4500 (Lagoon): on a short phone the server list keeps at least one whole server
      * row, the current one scrolled into view, and the footer and pages give way (the popover
-     * scrolls). 360dp wide, 5 pages in Spanish, 4 servers with the third one current, on a
-     * 360dp and a 300dp tall screen.
+     * scrolls). 360dp wide, 5 pages in Spanish, 14 servers with the tenth one current ("Server
+     * 9", far below the list's first rows: it opens scrolled to it), on a 360dp and a 300dp tall
+     * screen.
      */
     @Test
     fun mobileNavServerPopoverShort() =
@@ -179,12 +180,12 @@ class MobileNavServerScreenshotTest {
                         Caption("es, 5 pages, 360 x ${height.value.toInt()}dp")
                         Phone(
                             menuState(open = true),
-                            servers = 4,
+                            servers = 14,
                             width = 360.dp,
                             height = height,
                             pages = pages(es),
                             footer = esFooter,
-                            currentId = "long",
+                            currentId = "s9",
                         )
                     }
                 }
