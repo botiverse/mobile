@@ -902,7 +902,7 @@ internal fun RaftComboboxChipRemove(
             RaftGlyphIcon(RaftGlyph.X, size = 14.dp, color = colors.foregroundHint)
         }
     }
-    if (touchReach != null) RaftExactTouchBounds(content) else content()
+    if (touchReach != null) RaftExactTouchBounds(content = content) else content()
 }
 
 /**
