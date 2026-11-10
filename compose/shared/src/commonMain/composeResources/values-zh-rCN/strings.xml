@@ -3821,6 +3821,7 @@
     <string name="thread_link_preview_connect_title">连接你的 %1$s 账户</string>
     <string name="thread_link_preview_connect_body">在 %1$s 连接账户后，这里会显示这个链接的内容。</string>
     <string name="thread_link_preview_action_failed">无法执行此操作，请重试。</string>
+    <string name="thread_link_preview_refresh_failed">无法刷新此卡片，请重试。</string>
     <string name="thread_link_preview_connect_action">连接账户</string>
     <string name="thread_action_card_scope_group_server">服务器 · 只读</string>
     <string name="thread_action_card_scope_group_agent">Agent · 只读</string>

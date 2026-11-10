@@ -3,6 +3,7 @@ package build.raft.designsystem
 import build.raft.designsystem.components.RaftAppLinkCardDefaults
 import build.raft.designsystem.components.RaftPreviewCardButton
 import build.raft.designsystem.components.RaftPreviewCardButtonKind
+import build.raft.designsystem.components.raftAppLinkCardButtonLayout
 import build.raft.designsystem.components.raftAppLinkCardHostText
 import build.raft.designsystem.components.raftPreviewCardButtonLayout
 import kotlin.test.Test
@@ -21,28 +22,40 @@ class RaftAppLinkCardTest {
     }
 
     @Test
-    fun aLinkNeverTakesTheRowButTheAppsFirstTwoActionsDoInItsOrderFramelessFirst() {
+    fun theRowTakesTheAppsFirstTwoButtonsWhateverTheyDoButNeverALinkToTheItem() {
+        // The web's block card (botiverse/slock appLinkPreviewV3.behavior.test.tsx "a block card's buttons").
         val buttons =
             listOf(
-                button("Open in Stamp", RaftPreviewCardButtonKind.Link),
-                button("Merge", RaftPreviewCardButtonKind.Execute),
+                button("Open in Stamp", RaftPreviewCardButtonKind.Link, frameless = true).copy(opensItem = true),
+                button("Approve", RaftPreviewCardButtonKind.Execute),
+                button("View changes", RaftPreviewCardButtonKind.Link, frameless = true),
                 button("Refresh", RaftPreviewCardButtonKind.Read, frameless = true),
-                button("Approve", RaftPreviewCardButtonKind.Execute, frameless = true),
-                button("Close", RaftPreviewCardButtonKind.Execute),
             )
-        val layout = raftPreviewCardButtonLayout(buttons, linkTakesEmptyRow = false)
-        assertEquals(listOf("Approve", "Merge"), layout.row.map { it.label })
-        assertEquals(listOf("Open in Stamp", "Refresh", "Close"), layout.more.map { it.label })
+        val layout = raftAppLinkCardButtonLayout(buttons)
+        assertEquals(listOf("View changes", "Approve"), layout.row.map { it.label })
+        assertEquals(listOf("Open in Stamp", "Refresh"), layout.more.map { it.label })
     }
 
     @Test
-    fun withNoActionTheRowStaysEmptyAndEveryLinkIsInTheMenu() {
-        val buttons = listOf(button("Open in Stamp", RaftPreviewCardButtonKind.Link), button("Open Link", RaftPreviewCardButtonKind.Link))
-        val block = raftPreviewCardButtonLayout(buttons, linkTakesEmptyRow = false)
-        assertTrue(block.row.isEmpty())
+    fun refreshTakesTheRowBesideTheMenuThatHoldsTheItemsLinks() {
+        // A card with no action of the App's: Refresh is a button of the row, Open in Stamp and Open Link in ⋯.
+        val buttons =
+            listOf(
+                button("Refresh", RaftPreviewCardButtonKind.Read, frameless = true),
+                button("Open in Stamp", RaftPreviewCardButtonKind.Link).copy(opensItem = true),
+                button("Open Link", RaftPreviewCardButtonKind.Link).copy(opensItem = true),
+            )
+        val block = raftAppLinkCardButtonLayout(buttons)
+        assertEquals(listOf("Refresh"), block.row.map { it.label })
         assertEquals(listOf("Open in Stamp", "Open Link"), block.more.map { it.label })
-        // The hover card's rule is unchanged: its first link takes the empty row.
-        assertEquals(listOf("Open in Stamp"), raftPreviewCardButtonLayout(buttons).row.map { it.label })
+        // Only links to the item: the row stays empty, every link is in the menu.
+        val links = raftAppLinkCardButtonLayout(buttons.drop(1))
+        assertTrue(links.row.isEmpty())
+        assertEquals(listOf("Open in Stamp", "Open Link"), links.more.map { it.label })
+        // The hover card's rule is unchanged: Refresh is in its menu and its first link takes the empty row.
+        val hover = raftPreviewCardButtonLayout(buttons)
+        assertEquals(listOf("Open in Stamp"), hover.row.map { it.label })
+        assertEquals(listOf("Refresh", "Open Link"), hover.more.map { it.label })
     }
 
     @Test

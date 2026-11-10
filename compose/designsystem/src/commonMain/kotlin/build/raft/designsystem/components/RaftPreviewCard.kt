@@ -810,6 +810,8 @@ enum class RaftPreviewCardButtonKind {
  *   item's second line). A link with a reason is no link: no ↗.
  * - [enabled] false: disabled without a reason of the app's (the card is busy; say so elsewhere).
  * - [loading]: this button's work is running.
+ * - [opensItem]: a link to the item the card is about (Stamp's Open in Stamp, Raft's Open Link): a
+ *   block card's title already opens it, so it is in the More menu ([raftAppLinkCardButtonLayout]).
  */
 @Immutable
 data class RaftPreviewCardButton(
@@ -821,6 +823,7 @@ data class RaftPreviewCardButton(
     val disabledReason: String? = null,
     val enabled: Boolean = true,
     val loading: Boolean = false,
+    val opensItem: Boolean = false,
 )
 
 /** An item card's buttons as [raftPreviewCardButtonLayout] places them: [row] left to right, then [more], the More menu's, top to bottom. */
@@ -862,6 +865,24 @@ fun <T> raftPreviewCardButtonLayout(
     )
 }
 
+/**
+ * Where a block card's [buttons] (in the app's order) go (web `linkCardRowLayout` with a block,
+ * botiverse/slock `LinkCardActions.tsx`): the row takes the app's first
+ * [RaftPreviewCardDefaults.ItemRowButtons] buttons whatever they do (an action, Refresh, a link),
+ * but never a link to the item itself ([RaftPreviewCardButton.opensItem]): the card's title opens
+ * it. In the row the frameless ones come first and the bordered one last; everything else is in
+ * the More menu in the app's order.
+ */
+fun raftAppLinkCardButtonLayout(buttons: List<RaftPreviewCardButton>): RaftPreviewCardButtonLayout<RaftPreviewCardButton> {
+    val picked = buttons.indices.filterNot { buttons[it].opensItem }.take(RaftPreviewCardDefaults.ItemRowButtons)
+    val row = picked.filter { buttons[it].frameless } + picked.filterNot { buttons[it].frameless }
+    val inRow = picked.toSet()
+    return RaftPreviewCardButtonLayout(
+        row = row.map { buttons[it] },
+        more = buttons.indices.filterNot { it in inRow }.map { buttons[it] },
+    )
+}
+
 /** [raftPreviewCardButtonLayout] of [RaftPreviewCardButton]s. */
 fun raftPreviewCardButtonLayout(
     buttons: List<RaftPreviewCardButton>,
@@ -891,6 +912,17 @@ fun RaftPreviewCardItemActions(
 ) {
     if (buttons.isEmpty()) return
     val layout = remember(buttons, linkTakesEmptyRow) { raftPreviewCardButtonLayout(buttons, linkTakesEmptyRow) }
+    RaftPreviewCardLaidOutActions(layout, modifier, moreLabel)
+}
+
+/** [RaftPreviewCardItemActions]' drawing of a [layout] already made (a block card's: [RaftAppLinkCardActions]). */
+@Composable
+internal fun RaftPreviewCardLaidOutActions(
+    layout: RaftPreviewCardButtonLayout<RaftPreviewCardButton>,
+    modifier: Modifier = Modifier,
+    moreLabel: String = RaftTheme.strings.moreActions,
+) {
+    if (layout.row.isEmpty() && layout.more.isEmpty()) return
     val reason = layout.row.firstNotNullOfOrNull { it.disabledReason }
     Column(
         modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),

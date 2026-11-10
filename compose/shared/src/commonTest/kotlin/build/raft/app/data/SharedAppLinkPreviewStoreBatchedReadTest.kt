@@ -175,4 +175,24 @@ class SharedAppLinkPreviewStoreBatchedReadTest {
         job.cancel()
         assertNull(store.view(batch).results[Pr2], "the stale answer is dropped")
     }
+
+    @Test
+    fun aRefreshSaysWhenTheCardCouldNotBeReadAgain() = runTest(StandardTestDispatcher()) {
+        // Web `LinkCardMessageView.reread`: a failed read and a rate_limited link are `failed`; the card stays as it was.
+        val api = FakeAppLinkPreviewApi().apply { cardReadResponses += answer(card(Pr1), card(Pr2)) }
+        val store = store(api)
+        val batch = AppLinkBatchRead(AppLinkCardView.create(), "en")
+        store.read(BViewer, BServer, BMessage, BContent, BConversation, batch)
+        runCurrent()
+        api.cardReadResponses += answer(card(Pr1, ticket = "t-2"))
+        assertTrue(store.rereadLink(BViewer, BServer, BMessage, BContent, batch, Pr1), "read again")
+        assertEquals(listOf(Pr1), api.cardReads.last().urls)
+        assertEquals(mapOf(Pr1 to "t-2"), batch.view.tickets)
+        api.cardReadResponses += answer(limited(Pr1, 5))
+        assertFalse(store.rereadLink(BViewer, BServer, BMessage, BContent, batch, Pr1), "rate_limited")
+        api.cardReadResponses += HomeNetworkResponse(500, null)
+        assertFalse(store.rereadLink(BViewer, BServer, BMessage, BContent, batch, Pr1), "the read failed")
+        assertEquals(3, api.cardReads.size - 1)
+        assertTrue(store.view(batch).results[Pr1] is AppLinkResult.Card, "the card stays as it was")
+    }
 }

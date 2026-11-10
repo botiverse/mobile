@@ -202,10 +202,12 @@ fun RaftAppLinkCardMeta(
 ) = RaftPreviewCardMeta(details, modifier)
 
 /**
- * The App's buttons at the card's bottom end: at most two App actions on the row, the frameless
- * ones first and the bordered one last, and a More menu (⋯) to their left for the rest in the
- * App's order. The title opens the item, so a link, an Open link included, is always in the menu
- * and never takes the row's place.
+ * The App's buttons at the card's bottom end ([raftAppLinkCardButtonLayout], web `LinkCardActions`
+ * with `placement="block"`): the App's first two buttons on the row whatever they do (an action,
+ * Refresh, a link), the frameless ones first and the bordered one last, and a More menu (⋯) to
+ * their left for the rest in the App's order. The title opens the item, so a link to it
+ * ([RaftPreviewCardButton.opensItem], Raft's Open Link included) is always in the menu and never
+ * takes the row's place.
  */
 @Composable
 fun RaftAppLinkCardActions(
@@ -213,7 +215,9 @@ fun RaftAppLinkCardActions(
     modifier: Modifier = Modifier,
     moreLabel: String = RaftTheme.strings.moreActions,
 ) {
-    RaftPreviewCardItemActions(buttons, modifier, moreLabel = moreLabel, linkTakesEmptyRow = false)
+    if (buttons.isEmpty()) return
+    val layout = remember(buttons) { raftAppLinkCardButtonLayout(buttons) }
+    RaftPreviewCardLaidOutActions(layout, modifier, moreLabel = moreLabel)
 }
 
 /**
