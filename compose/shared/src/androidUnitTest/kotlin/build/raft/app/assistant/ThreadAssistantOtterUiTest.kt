@@ -1,5 +1,6 @@
 package build.raft.app.assistant
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftPendingMentionActionItem
 import build.raft.app.RaftThreadComposerPayload
@@ -76,7 +78,7 @@ class ThreadAssistantOtterUiTest {
         tag: String,
         otter: ThreadAssistantOtter?,
         pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
-        onCovered: (Boolean) -> Unit = {},
+        onStackedAbove: (Dp) -> Unit = {},
     ) {
         Column(Modifier.fillMaxWidth().testTag(tag)) {
             // The message list's end: the otter lies over it and takes no space there.
@@ -92,9 +94,9 @@ class ThreadAssistantOtterUiTest {
                 attachmentPreviewEnabled = false,
                 frameEdge =
                     otter?.let {
-                        val edge: @Composable (Boolean, Boolean, Boolean) -> Unit = { composing, focused, covered ->
-                            onCovered(covered)
-                            ThreadAssistantOtterFrameEdge(it, composing, focused, covered, animateEntrance = false)
+                        val edge: @Composable (Boolean, Boolean, Dp) -> Unit = { composing, focused, stackedAbove ->
+                            onStackedAbove(stackedAbove)
+                            ThreadAssistantOtterFrameEdge(it, composing, focused, stackedAbove, animateEntrance = false)
                         }
                         edge
                     },
@@ -179,24 +181,79 @@ class ThreadAssistantOtterUiTest {
         }
 
     /**
-     * artin 11-02: while the "not in #channel — Add / Notify / Ignore" card sits above the
-     * composer, the composer tells its frame edge it is covered, and the otter goes in (it stays
-     * registered on this composer); when the card goes, it comes back out.
+     * Artea #proj-assistant:#24 (web `useNoticesLift`): while the "not in #channel — Add / Notify /
+     * Ignore" card sits above the composer, the otter lies on top of the card, over none of its
+     * buttons, and the composer and the list keep their places; when the card goes, it lies on the
+     * frame again.
      */
     @Test
-    fun aMentionCardAboveTheComposerHidesTheOtter() =
+    fun aMentionCardAboveTheComposerLiftsTheOtterClearOfItsButtons() =
         runRobolectricComposeUiTest {
             val hosts = RaftAssistantOtterHosts()
             var actions by mutableStateOf(listOf(RaftPendingMentionActionItem(resolutionId = "res-1", targetHandle = "Volta", availableActions = listOf("add", "notify_only"))))
-            var covered: Boolean? = null
-            show { Conversation(CHANNEL, otter(hosts, CHANNEL), pendingMentionActions = actions, onCovered = { covered = it }) }
-            runOnIdle { assertEquals(true, covered) }
-            otterIn(CHANNEL).assertExists()
+            var stackedAbove: Dp? = null
+            show { Conversation(CHANNEL, otter(hosts, CHANNEL), pendingMentionActions = actions, onStackedAbove = { stackedAbove = it }) }
+            runOnIdle { assertTrue(assertNotNull(stackedAbove) > 0.dp) }
+            val lifted = otterButton(CHANNEL).fetchSemanticsNode().boundsInRoot
+            // Every button outside the otter (the card's, the composer's) starts below the otter's edge.
+            val buttons =
+                onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag(CHANNEL)) and !hasAnyAncestor(hasTestTag(ThreadAssistantOtterTestTag)))
+                    .fetchSemanticsNodes()
+            assertTrue(buttons.isNotEmpty())
+            val slack = with(density) { 2.dp.toPx() }
+            buttons.forEach { button ->
+                assertTrue(button.boundsInRoot.top >= lifted.bottom - slack, "${button.config} under the otter")
+            }
 
             runOnIdle { actions = emptyList() }
-            runOnIdle { assertEquals(false, covered) }
-            otterIn(CHANNEL).assertExists()
+            runOnIdle { assertEquals(0.dp, stackedAbove) }
+            val down = otterButton(CHANNEL).fetchSemanticsNode().boundsInRoot
+            assertTrue(down.top > lifted.top, "back on the frame's edge: $down vs $lifted")
         }
+
+    /**
+     * Web `data-composing`: while the owner types it goes into the composer (most of it under the
+     * frame's edge), and once the message is sent or the composer cleared it comes back out where
+     * it was. It stays this composer's all along.
+     */
+    @Test
+    fun typingTucksItInAndSendingBringsItBack() =
+        runRobolectricComposeUiTest {
+            val hosts = RaftAssistantOtterHosts()
+            var composing by mutableStateOf(false)
+            val otter = otter(hosts, CHANNEL)
+            show {
+                Column(Modifier.fillMaxWidth().testTag(CHANNEL)) {
+                    Spacer(Modifier.height(160.dp))
+                    SampleFrame { ThreadAssistantOtterFrameEdge(otter, composing = composing, focused = true, animateEntrance = false) }
+                }
+            }
+            val resting = otterButton(CHANNEL).fetchSemanticsNode().boundsInRoot
+
+            // Typing.
+            runOnIdle { composing = true }
+            val typing = otterButton(CHANNEL).fetchSemanticsNode().boundsInRoot
+            assertTrue(typing.top - resting.top > resting.height * 0.4f, "into the composer: $typing vs $resting")
+            otterIn(CHANNEL).assertExists()
+
+            // Sent (or cleared): the composer is empty again.
+            runOnIdle { composing = false }
+            assertEquals(resting, otterButton(CHANNEL).fetchSemanticsNode().boundsInRoot)
+            runOnIdle { assertEquals(listOf(CHANNEL), hosts.order.value) }
+        }
+
+    /** A frame-like box whose top edge carries [edge], as the composer's frame does. */
+    @Composable
+    private fun SampleFrame(edge: @Composable () -> Unit) {
+        Box(Modifier.fillMaxWidth()) {
+            Spacer(Modifier.fillMaxWidth().height(48.dp))
+            edge()
+        }
+    }
+
+    /** The otter's own button (the pose), as a reader presses it. */
+    private fun ComposeUiTest.otterButton(conversation: String): SemanticsNodeInteraction =
+        onNode(hasClickAction() and hasAnyAncestor(hasTestTag(ThreadAssistantOtterTestTag)) and hasAnyAncestor(hasTestTag(conversation)))
 
     @Test
     fun aPageWithoutTheOtterShowsNothing() =

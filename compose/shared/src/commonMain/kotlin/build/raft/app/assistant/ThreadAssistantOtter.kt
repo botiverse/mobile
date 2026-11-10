@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import build.raft.app.ConversationOpenResolution
 import build.raft.app.ConversationOpenSource
 import build.raft.app.ConversationOpenSourceMessageIdentity
@@ -292,8 +293,12 @@ internal fun ThreadAssistantOtterFrameEdge(
     otter: ThreadAssistantOtter,
     composing: Boolean,
     focused: Boolean,
-    /** Something is stacked above the composer frame (measured by the composer): the otter goes in. */
-    covered: Boolean = false,
+    /**
+     * The height of what is stacked on the composer frame (measured by the composer: a mention's
+     * Add / Notify / Ignore card, the attachment tray): the otter lies on top of it, so it covers
+     * none of its buttons (web `useNoticesLift`, Artea #proj-assistant:#24).
+     */
+    lift: Dp = 0.dp,
     animateEntrance: Boolean = true,
 ) {
     DisposableEffect(otter.hosts, otter.hostId) {
@@ -308,22 +313,22 @@ internal fun ThreadAssistantOtterFrameEdge(
     if (order.activeAssistantOtterHost() != otter.hostId) return
     RaftAssistantOtter(
         mood = otter.mood,
-        // Into the composer while the person types, and further while its panel is open.
-        tuck = threadAssistantOtterTuck(composing = composing, panelOpen = otter.panelOpen, covered = covered),
+        // Into the composer while the person types (out again once sent or cleared), and further while its panel is open.
+        tuck = threadAssistantOtterTuck(composing = composing, panelOpen = otter.panelOpen),
         onClick = otter.onOpen,
         modifier = Modifier.fillMaxWidth().testTag(ThreadAssistantOtterTestTag),
         scale = otter.scale,
         endInset = otter.endInset,
         animateEntrance = animateEntrance,
+        lift = lift,
         onRestBounds = { otter.rest.bounds = it },
     )
 }
 
-/** Web `data-[open]` over `data-composing`: the panel's tuck wins; a card above the composer hides it too. */
-internal fun threadAssistantOtterTuck(composing: Boolean, panelOpen: Boolean, covered: Boolean = false): RaftOtterTuck =
+/** Web `data-[open]` over `data-composing`: the panel's tuck wins. */
+internal fun threadAssistantOtterTuck(composing: Boolean, panelOpen: Boolean): RaftOtterTuck =
     when {
         panelOpen -> RaftOtterTuck.PanelOpen
-        covered -> RaftOtterTuck.Covered
         composing -> RaftOtterTuck.Composing
         else -> RaftOtterTuck.None
     }

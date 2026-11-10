@@ -88,8 +88,8 @@ class ThreadAssistantPanelPopoverUiTest {
                 payload = RaftThreadComposerPayload(instanceId = CHANNEL, placeholder = "Message #$CHANNEL"),
                 onEvent = { _, _, _, _ -> },
                 attachmentPreviewEnabled = false,
-                frameEdge = { composing, focused, covered ->
-                    ThreadAssistantOtterFrameEdge(otter, composing, focused, covered, animateEntrance = false)
+                frameEdge = { composing, focused, stackedAbove ->
+                    ThreadAssistantOtterFrameEdge(otter, composing, focused, stackedAbove, animateEntrance = false)
                 },
             )
         }

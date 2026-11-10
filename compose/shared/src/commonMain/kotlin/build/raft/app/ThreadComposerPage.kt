@@ -2232,10 +2232,12 @@ internal fun ThreadComposerContent(
     initialMentionActionDetailsVisible: Boolean = false,
     /**
      * Web MessageInput `frameEdge`: content on the composer frame's top edge, composed in the
-     * frame's own box after the frame, given whether the composer holds text or an attachment
-     * and whether its editor is focused (the assistant's otter, [build.raft.app.assistant.ThreadAssistantOtterFrameEdge]).
+     * frame's own box after the frame, given whether the composer holds text or an attachment,
+     * whether its editor is focused, and how high what is stacked on the frame stands (notices,
+     * cards, the attachment tray, with their gap; zero when nothing is) (the assistant's otter,
+     * [build.raft.app.assistant.ThreadAssistantOtterFrameEdge]).
      */
-    frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, stackedAbove: Dp) -> Unit)? = null,
 ) {
     ThreadComposerContent(
         surface =
@@ -2290,10 +2292,12 @@ internal fun ThreadComposerContent(
     externalNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
     /**
      * Web MessageInput `frameEdge`: content on the composer frame's top edge, composed in the
-     * frame's own box after the frame, given whether the composer holds text or an attachment
-     * and whether its editor is focused (the assistant's otter, [build.raft.app.assistant.ThreadAssistantOtterFrameEdge]).
+     * frame's own box after the frame, given whether the composer holds text or an attachment,
+     * whether its editor is focused, and how high what is stacked on the frame stands (notices,
+     * cards, the attachment tray, with their gap; zero when nothing is) (the assistant's otter,
+     * [build.raft.app.assistant.ThreadAssistantOtterFrameEdge]).
      */
-    frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, stackedAbove: Dp) -> Unit)? = null,
     /** Take the focus when this conversation opens (ComposerAutofocusPolicy.kt); focus only, no soft keyboard. */
     autofocusOnOpen: ComposerFocusOnOpen? = null,
 ) {
@@ -2369,7 +2373,7 @@ internal fun ThreadComposerContentLeaf(
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
     initialMentionActionDetailsVisible: Boolean = false,
     externalNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
-    frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, stackedAbove: Dp) -> Unit)? = null,
     autofocusOnOpen: ComposerFocusOnOpen? = null,
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
@@ -2433,8 +2437,9 @@ internal fun ThreadComposerContentLeaf(
             suggestionAnchorRef.currentCaptureResolver(RaftPopoverLocalPoint.Exact(Offset.Zero))
         }
     var composerCardSize by remember(state.instanceId) { mutableStateOf(IntSize.Zero) }
-    // Something sits above the composer frame (see the measured column below).
-    var contentAboveFrame by remember(state.instanceId) { mutableStateOf(false) }
+    // How high what sits above the composer frame stands, in px (see the measured column below).
+    var contentAboveFrameHeight by remember(state.instanceId) { mutableStateOf(0) }
+    val contentAboveFrame = contentAboveFrameHeight > 0
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
     LaunchedEffect(state.instanceId, editorSessionId, state.focusRequestNonce) {
         val explicitFocusRequest = state.focusRequestNonce > handledFocusRequestNonce
@@ -3030,11 +3035,10 @@ internal fun ThreadComposerContentLeaf(
         ) {
             // Everything stacked above the composer frame (status, attachment tray, mention
             // notice and cards): measured, so whatever sits on the frame's top edge (the otter)
-            // can make way for any of it without listing them (artin 11-02).
+            // can lie on top of any of it, clear of its buttons, without listing them (artin 11-02).
             Column(
                 modifier = Modifier.fillMaxWidth().onSizeChanged { size ->
-                    val stacked = size.height > 0
-                    if (contentAboveFrame != stacked) contentAboveFrame = stacked
+                    if (contentAboveFrameHeight != size.height) contentAboveFrameHeight = size.height
                 },
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -3377,10 +3381,12 @@ internal fun ThreadComposerContentLeaf(
                 }
                 // Web MessageInput `frameEdge`: drawn on the frame's top edge, after the frame (the
                 // assistant's otter). Neither this box nor its parents clip, so it reaches up over the list.
+                val stackedAbove = with(LocalDensity.current) { contentAboveFrameHeight.toDp() }
                 frameEdge?.invoke(
                     threadComposerComposing(text, state.pendingAttachments.size),
                     focused,
-                    contentAboveFrame,
+                    // The stack and its 6dp gap to the frame.
+                    if (contentAboveFrame) stackedAbove + 6.dp else 0.dp,
                 )
             }
         }
