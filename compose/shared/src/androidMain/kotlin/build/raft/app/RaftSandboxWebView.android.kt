@@ -331,7 +331,11 @@ internal class RaftAndroidSandboxWebView(
                     resultMsg: android.os.Message?
                 ): Boolean {
                     if (destroyed) return false
-                    notifyNavigationBlocked("")
+                    // A new window (multiple windows are off, so the engine normally navigates this
+                    // one instead): the link's address, routed by the host like any blocked page.
+                    val hit = view?.hitTestResult
+                    val link = hit?.extra?.takeIf { hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE }.orEmpty()
+                    notifyNavigationBlocked(link)
                     return false
                 }
 
@@ -541,7 +545,9 @@ internal class RaftAndroidSandboxWebView(
             }
         webView.setDownloadListener(
             DownloadListener { url, _, _, _, _ ->
-                if (!destroyed) notifyNavigationBlocked(url.orEmpty())
+                if (destroyed) return@DownloadListener
+                val download = events.onDownloadRequested
+                if (download != null) download(url.orEmpty()) else notifyNavigationBlocked(url.orEmpty())
             }
         )
     }

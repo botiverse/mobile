@@ -145,6 +145,8 @@ internal fun RaftSandboxWebView(
     keepAliveKey: String? = null,
     /** Guards this WebView's load ([RaftWebViewLoadWatchdog]): wired to its events, timer and probe run here. */
     loadWatchdog: RaftWebViewLoadWatchdog? = null,
+    /** A file the page saves (see [RaftWebViewEvents.onDownloadRequested]); null: as a blocked navigation. */
+    onDownloadRequested: ((String) -> Unit)? = null,
 ) {
     val events = remember { RaftWebViewEvents() }
     events.onLoadCommit = onLoadCommit
@@ -153,6 +155,7 @@ internal fun RaftSandboxWebView(
     events.onLoadFailure =
         if (loadWatchdog == null) onLoadFailure else { reason -> loadWatchdog.onLoadFailed(); onLoadFailure(reason) }
     events.onNavigationBlocked = onNavigationBlocked
+    events.onDownloadRequested = onDownloadRequested
     events.onUrlChange = onUrlChange
     events.onNavigationStateChange =
         if (loadWatchdog == null) onNavigationStateChange else { state -> loadWatchdog.onNavigationState(state); onNavigationStateChange(state) }

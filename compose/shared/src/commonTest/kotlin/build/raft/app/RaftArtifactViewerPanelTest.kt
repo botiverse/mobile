@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 class RaftArtifactViewerPanelTest {
     private val web = "https://raft-app-staging.botiverse.dev"
     private val id = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
-    private val page = "$web/artifacts/$id?embed=raft-settings-v1&shell=host&chrome=none"
+    private val page = "$web/artifacts/$id?embed=raft-settings-v1&shell=host"
 
     @Test
     fun theOpenListIsReadFromTheAddress() {
