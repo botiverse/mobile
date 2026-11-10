@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -271,7 +273,11 @@ internal fun AssistantInstructionsEditorBody(
     val tooLong = assistantOwnerNotesTooLong(draft)
     val showCounter = assistantOwnerNotesShowsCounter(draft)
     val limitMessage = stringResource(Res.string.assistant_instructions_too_long, ASSISTANT_OWNER_NOTES_MAX_LENGTH.toString())
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)) {
+    // RaftDialogSheet leaves the phone's 16dp margin to its body; long notes scroll the body.
+    Column(
+        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
+    ) {
         RaftText(
             text = stringResource(Res.string.assistant_instructions_description, name),
             style = RaftTheme.typography.subhead,
@@ -289,6 +295,8 @@ internal fun AssistantInstructionsEditorBody(
                     invalid = tooLong,
                     // Web `rows={8}`: eight 24dp lines and the box's padding.
                     minHeight = 214.dp,
+                    // Long notes scroll inside the box, so the limit's error and counter stay in view.
+                    maxHeight = 360.dp,
                 )
                 if (tooLong || showCounter) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
