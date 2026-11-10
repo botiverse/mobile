@@ -18,7 +18,6 @@ import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.SubcomposeLayout
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -33,6 +32,14 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.RaftTypography
 import kotlin.math.max
 import kotlin.math.min
+import androidx.compose.ui.layout.IntrinsicMeasurable
+import androidx.compose.ui.layout.IntrinsicMeasureScope
+import androidx.compose.ui.layout.LayoutModifier
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasurePolicy
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.unit.TextUnit
 
 /** raft-ui DescriptionList `direction`. */
 enum class RaftDescriptionListDirection {
@@ -40,10 +47,11 @@ enum class RaftDescriptionListDirection {
     Vertical,
 
     /**
-     * Two columns, the label on the left, when the list is 384dp wide or wider. Narrower
-     * than that it stacks into one column on its own, as raft-ui does below 24rem of the
-     * list's own width (`@max-sm/description-list`, raft-design #721): on a phone (about
-     * 358dp of list) each value sits 2dp under its label and 10dp above the next label.
+     * Two columns, the label on the left, while every value fits beside its label. Once one
+     * doesn't, the whole list stacks into one column on its own (raft-ui 0.75
+     * `useLabelValueFit`): each value 2dp under its label and 10dp above the next label. See
+     * [raftLabelsGoAbove] for the rule; it reads the list's own width and its content, not
+     * the window's, so short facts stay beside their labels on a phone.
      */
     Horizontal,
 
@@ -56,11 +64,34 @@ enum class RaftDescriptionListDirection {
     Inline,
 }
 
+/** The narrowest a two-column label/value list's label column gets: `minmax(88px, max-content)`. */
+internal val RaftLabelColumnMin: Dp = 88.dp
+
+/** The widest a label gets beside its value (`max-w-40`). */
+internal val RaftLabelColumnMax: Dp = 160.dp
+
 /**
- * The list's own width below which [RaftDescriptionListDirection.Horizontal] stacks
- * (raft-ui 0.23 `@container` `sm`, 24rem; not the window's).
+ * The narrowest the value column may be beside its labels: as wide as a label may grow. A value
+ * column narrower than its label column reads as the label's footnote, not its answer.
  */
-val RaftDescriptionListStackBelow: Dp = 384.dp
+internal val RaftValueColumnMin: Dp = 160.dp
+
+/**
+ * raft-ui 0.75 `labelsGoAbove`: whether a two-column label/value list ([RaftDescriptionList]
+ * `Horizontal`, [RaftMessageActionCardProperties]) [width] wide puts its labels above their
+ * values. [labelColumn] is the label column (the widest label, each at most
+ * [RaftLabelColumnMax], at least [RaftLabelColumnMin]) and [gap] the space after it;
+ * [valueWidths] are the values' one-line widths. The labels go above when the value column
+ * would be under [minValueColumn], or when some value doesn't fit on one line beside the
+ * labels but would on a line of its own. A value too long for a line of its own (a paragraph)
+ * wraps either way and doesn't decide. It depends only on the width and the content, so it
+ * can't flap at the boundary; the whole list goes at once, so labels never alternate.
+ */
+internal fun raftLabelsGoAbove(width: Int, labelColumn: Int, gap: Int, minValueColumn: Int, valueWidths: List<Int>): Boolean {
+    val valueColumn = width - labelColumn - gap
+    if (valueColumn < minValueColumn) return true
+    return valueWidths.any { it > valueColumn && it <= width }
+}
 
 /** Builds the facts of a [RaftDescriptionList]. */
 interface RaftDescriptionListScope {
@@ -91,14 +122,14 @@ interface RaftDescriptionListScope {
 /**
  * raft-ui 0.8.0 DescriptionList: a few facts about one item, each a label and a value.
  * Labels are `text-footnote` medium `foreground-hint`. [RaftDescriptionListDirection.Vertical]
- * puts 8dp between facts and gives each value at least 28dp; `Horizontal`, from 384dp of
- * its own width, puts a label column `minmax(88, max-content)` capped at 160dp 16dp before
- * the values (each at least 32dp, 2dp between rows), label and value on one baseline, and
- * below that stacks each value 2dp under its label with no minimum height, 10dp from the
- * next label. With no width
- * limit (in a horizontal scroll) `Horizontal` keeps two columns and sizes the values to
- * their content. A horizontal list measures its labels in a subcomposition first, so it
- * has no intrinsic size: don't put it under `IntrinsicSize`.
+ * puts 8dp between facts and gives each value at least 28dp; `Horizontal`, while every value
+ * fits beside its label ([raftLabelsGoAbove]), puts a label column `minmax(88, max-content)`
+ * capped at 160dp 16dp before the values (each at least 32dp, 2dp between rows), label and
+ * value on one baseline, and once one doesn't, stacks each value 2dp under its label with no
+ * minimum height, 10dp from the next label. With no width limit (in a horizontal scroll)
+ * `Horizontal` keeps two columns and sizes the values to their content. A horizontal list
+ * measures its labels in a subcomposition first (and reads its values' one-line widths as
+ * their max intrinsic widths), so it has no intrinsic size: don't put it under `IntrinsicSize`.
  *
  * A value that can be changed is a frameless trigger opening a picker; a fact that can't
  * be changed must not look clickable.
@@ -123,30 +154,40 @@ fun RaftDescriptionList(
             val slots = remember(content) { HorizontalSlots(content) }
             SubcomposeLayout(modifier) { constraints ->
                 val bounded = constraints.hasBoundedWidth
-                val stacked = bounded && constraints.maxWidth < RaftDescriptionListStackBelow.roundToPx()
-                // Stacked, a value is 10dp above the next label: the 2dp row gap plus `mt-2`.
-                val gapY = (if (stacked) 10.dp else 2.dp).roundToPx()
                 // The label column is as wide as the widest label (88..160dp): measure the
                 // labels alone first, then lay out each fact (one node, for screen readers) on it.
-                val column =
-                    if (stacked) {
-                        0
-                    } else {
-                        val cap = 160.dp.roundToPx()
-                        subcompose(HorizontalSlot.Terms, slots.terms)
-                            .maxOfOrNull { it.measure(Constraints(maxWidth = cap)).width }
-                            .let { (it ?: 0).coerceIn(88.dp.roundToPx(), cap) }
-                    }
-                val itemConstraints = Constraints(maxWidth = if (bounded) constraints.maxWidth else Constraints.Infinity)
-                val items =
-                    subcompose(HorizontalSlot.Items, slots.items(stacked, column))
-                        .map { it.measure(itemConstraints) }
-                val natural = items.maxOfOrNull { it.width } ?: 0
+                val cap = RaftLabelColumnMax.roundToPx()
+                val labelColumn =
+                    subcompose(HorizontalSlot.Terms, slots.terms)
+                        .maxOfOrNull { it.measure(Constraints(maxWidth = cap)).width }
+                        .let { (it ?: 0).coerceIn(RaftLabelColumnMin.roundToPx(), cap) }
+                val gapX = RaftDescriptionColumnGap.roundToPx()
+                val items = subcompose(HorizontalSlot.Items, slots.items)
+                // The labels go above their values once a value doesn't fit beside them: each
+                // value's one-line width is its fact's max intrinsic width ([HorizontalFactPolicy]).
+                // A value that can't be asked (a lazy list or a subcomposition inside) doesn't decide.
+                val stacked =
+                    bounded &&
+                        raftLabelsGoAbove(
+                            width = constraints.maxWidth,
+                            labelColumn = labelColumn,
+                            gap = gapX,
+                            minValueColumn = RaftValueColumnMin.roundToPx(),
+                            valueWidths = items.map { runCatching { it.maxIntrinsicWidth(Constraints.Infinity) }.getOrDefault(0) },
+                        )
+                // Stacked, a value is 10dp above the next label: the 2dp row gap plus `mt-2`.
+                val gapY = (if (stacked) 10.dp else 2.dp).roundToPx()
+                // A fact learns its layout from its constraints ([HorizontalFactPolicy]): a minimum
+                // width is the label column it sits beside; none, it stacks.
+                val itemConstraints =
+                    Constraints(minWidth = if (stacked) 0 else labelColumn, maxWidth = if (bounded) constraints.maxWidth else Constraints.Infinity)
+                val placeables = items.map { it.measure(itemConstraints) }
+                val natural = placeables.maxOfOrNull { it.width } ?: 0
                 val width = (if (bounded && !stacked) constraints.maxWidth else natural).coerceAtLeast(constraints.minWidth)
-                val height = items.sumOf { it.height } + gapY * (items.size - 1).coerceAtLeast(0)
+                val height = placeables.sumOf { it.height } + gapY * (placeables.size - 1).coerceAtLeast(0)
                 layout(width, height.coerceAtLeast(constraints.minHeight)) {
                     var y = 0
-                    items.forEach {
+                    placeables.forEach {
                         it.place(0, y)
                         y += it.height + gapY
                     }
@@ -158,24 +199,17 @@ fun RaftDescriptionList(
 
 private enum class HorizontalSlot { Terms, Items }
 
+/** Between the label column and the values (`gap-x-4`). */
+private val RaftDescriptionColumnGap = 16.dp
+
 /**
  * The two subcompositions of a horizontal list, kept as the same lambdas while the
- * content and the layout don't change, so a measure pass doesn't recompose them.
+ * content doesn't change, so a measure pass doesn't recompose them. The facts don't depend on
+ * the layout: whether they stack and the label column reach them as constraints.
  */
 private class HorizontalSlots(private val content: @Composable RaftDescriptionListScope.() -> Unit) {
     val terms: @Composable () -> Unit = { TermsScope.content() }
-    private var key: Pair<Boolean, Int>? = null
-    private var itemsContent: @Composable () -> Unit = {}
-
-    fun items(stacked: Boolean, column: Int): @Composable () -> Unit {
-        val next = stacked to column
-        if (key != next) {
-            key = next
-            val scope = HorizontalScope(stacked, column)
-            itemsContent = { scope.content() }
-        }
-        return itemsContent
-    }
+    val items: @Composable () -> Unit = { HorizontalScope.content() }
 }
 
 /**
@@ -255,22 +289,38 @@ private fun DescriptionDetails(
                 ) { content() }
             },
             modifier = modifier,
-        ) { measurables, constraints ->
-            val min = minHeight.roundToPx()
-            val row = measurables.single().measure(constraints.copy(minWidth = 0, minHeight = 0))
-            val inset = if (lineHeight.isSp) ((min - lineHeight.roundToPx()) / 2).coerceAtLeast(0) else 0
-            val height = if (row.height > min) row.height + inset * 2 else min
-            val top = if (row.height > min) inset else (min - row.height) / 2
-            if (lines != null) {
-                // Where the first line sits, for the label beside it: one line is the whole row;
-                // wrapped content starts a text line's height below the inset.
-                lines.valueLineTop.intValue = top
-                lines.valueLineHeight.intValue =
-                    if (row.height > min && lineHeight.isSp) lineHeight.roundToPx() else row.height
-            }
-            layout(max(row.width, constraints.minWidth), height.coerceIn(constraints.minHeight, constraints.maxHeight)) {
-                row.place(0, top)
-            }
+            measurePolicy = remember(minHeight, lineHeight, lines) { DescriptionDetailsPolicy(minHeight, lineHeight, lines) },
+        )
+    }
+}
+
+/**
+ * [DescriptionDetails]' layout: one line centred in its minimum height ([minHeight], or the
+ * constraints' when taller: a side-by-side fact's 32dp). Its intrinsic widths are its row's, with
+ * no measuring, so asking them writes nothing to [lines].
+ */
+private class DescriptionDetailsPolicy(private val minHeight: Dp, private val lineHeight: TextUnit, private val lines: HorizontalFactLines?) : MeasurePolicy {
+    override fun IntrinsicMeasureScope.maxIntrinsicWidth(measurables: List<IntrinsicMeasurable>, height: Int): Int =
+        measurables.single().maxIntrinsicWidth(height)
+
+    override fun IntrinsicMeasureScope.minIntrinsicWidth(measurables: List<IntrinsicMeasurable>, height: Int): Int =
+        measurables.single().minIntrinsicWidth(height)
+
+    override fun MeasureScope.measure(measurables: List<Measurable>, constraints: Constraints): MeasureResult {
+        val min = max(minHeight.roundToPx(), constraints.minHeight)
+        val row = measurables.single().measure(constraints.copy(minWidth = 0, minHeight = 0))
+        val inset = if (lineHeight.isSp) ((min - lineHeight.roundToPx()) / 2).coerceAtLeast(0) else 0
+        val height = if (row.height > min) row.height + inset * 2 else min
+        val top = if (row.height > min) inset else (min - row.height) / 2
+        if (lines != null) {
+            // Where the first line sits, for the label beside it: one line is the whole row;
+            // wrapped content starts a text line's height below the inset.
+            lines.valueLineTop.intValue = top
+            lines.valueLineHeight.intValue =
+                if (row.height > min && lineHeight.isSp) lineHeight.roundToPx() else row.height
+        }
+        return layout(max(row.width, constraints.minWidth), height.coerceIn(constraints.minHeight, constraints.maxHeight)) {
+            row.place(0, top)
         }
     }
 }
@@ -415,7 +465,7 @@ private object TermsScope : RaftDescriptionListScope {
  * androidx fd550bed79). The label's baseline and a text value's come from the text nodes
  * themselves ([textLineInto]); any other value's is read once it is placed.
  */
-private class HorizontalScope(private val stacked: Boolean, private val column: Int) : RaftDescriptionListScope {
+private object HorizontalScope : RaftDescriptionListScope {
     @Composable
     override fun Item(term: String, value: String?, mono: Boolean, copyable: Boolean) {
         val lines = remember { HorizontalFactLines() }
@@ -440,63 +490,82 @@ private class HorizontalScope(private val stacked: Boolean, private val column: 
         Layout(
             content = {
                 DescriptionTerm(term, termAccessory, lines = lines)
-                // Stacked, the value has no 32dp row to centre in (`min-h-0`).
-                DescriptionDetails(if (stacked) 0.dp else 32.dp, details, lines = lines)
+                // Side by side the value is at least 32dp, centred in it (its constraints); stacked
+                // it has no row to centre in (`min-h-0`).
+                DescriptionDetails(0.dp, details, lines = lines)
             },
             modifier = Modifier.semantics(mergeDescendants = true) {},
-        ) { measurables, constraints ->
-            val (termMeasurable, detailsMeasurable) = measurables
-            val bounded = constraints.hasBoundedWidth
-            val loose = Constraints(maxWidth = constraints.maxWidth)
-            if (stacked) {
-                val gapY = 2.dp.roundToPx()
-                val t = termMeasurable.measure(loose)
-                val v = detailsMeasurable.measure(loose)
-                layout(max(t.width, v.width).coerceAtLeast(constraints.minWidth), t.height + gapY + v.height) {
-                    t.place(0, 0)
-                    v.place(0, t.height + gapY)
-                }
-            } else {
-                val gapX = 16.dp.roundToPx()
-                val t = termMeasurable.measure(Constraints(maxWidth = 160.dp.roundToPx()))
-                val valueMax = if (bounded) (constraints.maxWidth - column - gapX).coerceAtLeast(0) else Constraints.Infinity
-                val v = detailsMeasurable.measure(Constraints(maxWidth = valueMax))
-                // The label's first baseline: its text is centred in its row (beside a help button).
-                val termTextHeight = lines.termTextHeight.intValue
-                val termTextTop = Alignment.CenterVertically.align(termTextHeight, t.height)
-                val tb = termTextTop + (lines.termBaseline.intValue.takeIf { it != AlignmentLine.Unspecified } ?: 0)
-                // The value's first baseline: a text value's own (its text starts the value's
-                // first line); any other value's as read when it was last placed; before that, the
-                // label's first line centred on the value's first line.
-                val lineTop = lines.valueLineTop.intValue
-                val textValue = lines.valueBaseline.intValue != AlignmentLine.Unspecified
-                val vb =
-                    when {
-                        textValue -> lineTop + lines.valueBaseline.intValue
-                        lines.placedValueBaseline.intValue != AlignmentLine.Unspecified -> lines.placedValueBaseline.intValue
-                        else -> {
-                            val labelLine = if (termLineHeight.isSp) min(termLineHeight.roundToPx(), termTextHeight) else termTextHeight
-                            lineTop + Alignment.CenterVertically.align(labelLine, lines.valueLineHeight.intValue) - termTextTop + tb
-                        }
+            measurePolicy = remember(lines, termLineHeight) { HorizontalFactPolicy(lines, termLineHeight) },
+        )
+    }
+}
+
+/**
+ * Lays out a horizontal fact. Its constraints carry the list's layout: a minimum width is the
+ * label column the value sits beside; none, the fact stacks. Its max intrinsic width is its
+ * value's one-line width, for [raftLabelsGoAbove].
+ */
+private class HorizontalFactPolicy(private val lines: HorizontalFactLines, private val termLineHeight: TextUnit) : MeasurePolicy {
+    override fun IntrinsicMeasureScope.maxIntrinsicWidth(measurables: List<IntrinsicMeasurable>, height: Int): Int =
+        measurables[1].maxIntrinsicWidth(height)
+
+    override fun IntrinsicMeasureScope.minIntrinsicWidth(measurables: List<IntrinsicMeasurable>, height: Int): Int =
+        measurables[1].minIntrinsicWidth(height)
+
+    override fun MeasureScope.measure(measurables: List<Measurable>, constraints: Constraints): MeasureResult {
+        val (termMeasurable, detailsMeasurable) = measurables
+        val stacked = constraints.minWidth == 0
+        val column = constraints.minWidth
+        val bounded = constraints.hasBoundedWidth
+        val loose = Constraints(maxWidth = constraints.maxWidth)
+        return if (stacked) {
+            val gapY = 2.dp.roundToPx()
+            val t = termMeasurable.measure(loose)
+            val v = detailsMeasurable.measure(loose)
+            layout(max(t.width, v.width).coerceAtLeast(constraints.minWidth), t.height + gapY + v.height) {
+                t.place(0, 0)
+                v.place(0, t.height + gapY)
+            }
+        } else {
+            val gapX = RaftDescriptionColumnGap.roundToPx()
+            val t = termMeasurable.measure(Constraints(maxWidth = RaftLabelColumnMax.roundToPx()))
+            val valueMax = if (bounded) (constraints.maxWidth - column - gapX).coerceAtLeast(0) else Constraints.Infinity
+            val v = detailsMeasurable.measure(Constraints(maxWidth = valueMax, minHeight = 32.dp.roundToPx()))
+            // The label's first baseline: its text is centred in its row (beside a help button).
+            val termTextHeight = lines.termTextHeight.intValue
+            val termTextTop = Alignment.CenterVertically.align(termTextHeight, t.height)
+            val tb = termTextTop + (lines.termBaseline.intValue.takeIf { it != AlignmentLine.Unspecified } ?: 0)
+            // The value's first baseline: a text value's own (its text starts the value's
+            // first line); any other value's as read when it was last placed; before that, the
+            // label's first line centred on the value's first line.
+            val lineTop = lines.valueLineTop.intValue
+            val textValue = lines.valueBaseline.intValue != AlignmentLine.Unspecified
+            val vb =
+                when {
+                    textValue -> lineTop + lines.valueBaseline.intValue
+                    lines.placedValueBaseline.intValue != AlignmentLine.Unspecified -> lines.placedValueBaseline.intValue
+                    else -> {
+                        val labelLine = if (termLineHeight.isSp) min(termLineHeight.roundToPx(), termTextHeight) else termTextHeight
+                        lineTop + Alignment.CenterVertically.align(labelLine, lines.valueLineHeight.intValue) - termTextTop + tb
                     }
-                // The label on the value's first baseline; a label whose baseline is lower than the
-                // value's pushes the value down instead.
-                val baseline = max(tb, vb)
-                val vTop = baseline - vb
-                val width = if (bounded) constraints.maxWidth else column + gapX + v.width
-                layout(width, max(baseline - tb + t.height, vTop + v.height)) {
-                    // The value goes first, so its baseline can be read once it and its content are
-                    // placed (safe, unlike while measuring); zIndex keeps the label first for screen
-                    // readers. A baseline that moved from what was measured lays the fact out again.
-                    v.place(column + gapX, vTop, zIndex = 1f)
-                    val placedVb =
-                        if (textValue) {
-                            vb
-                        } else {
-                            (v[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: tb).also { lines.placedValueBaseline.intValue = it }
-                        }
-                    t.place(0, (vTop + placedVb - tb).coerceAtLeast(0))
                 }
+            // The label on the value's first baseline; a label whose baseline is lower than the
+            // value's pushes the value down instead.
+            val baseline = max(tb, vb)
+            val vTop = baseline - vb
+            val width = if (bounded) constraints.maxWidth else column + gapX + v.width
+            layout(width, max(baseline - tb + t.height, vTop + v.height)) {
+                // The value goes first, so its baseline can be read once it and its content are
+                // placed (safe, unlike while measuring); zIndex keeps the label first for screen
+                // readers. A baseline that moved from what was measured lays the fact out again.
+                v.place(column + gapX, vTop, zIndex = 1f)
+                val placedVb =
+                    if (textValue) {
+                        vb
+                    } else {
+                        (v[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: tb).also { lines.placedValueBaseline.intValue = it }
+                    }
+                t.place(0, (vTop + placedVb - tb).coerceAtLeast(0))
             }
         }
     }
@@ -531,9 +600,26 @@ private class HorizontalFactLines {
  * reading its own line is safe while measuring, unlike a subtree's (crash 69fdce17).
  */
 private fun Modifier.textLineInto(baseline: MutableIntState, height: MutableIntState? = null): Modifier =
-    layout { measurable, constraints ->
+    this then TextLineInto(baseline, height)
+
+/** [textLineInto]: its intrinsic sizes are the text's own, so asking them writes nothing. */
+private class TextLineInto(private val baseline: MutableIntState, private val height: MutableIntState?) : LayoutModifier {
+    override fun MeasureScope.measure(measurable: Measurable, constraints: Constraints): MeasureResult {
         val placeable = measurable.measure(constraints)
         baseline.intValue = placeable[FirstBaseline]
         height?.intValue = placeable.height
-        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+        return layout(placeable.width, placeable.height) { placeable.place(0, 0) }
     }
+
+    override fun IntrinsicMeasureScope.minIntrinsicWidth(measurable: IntrinsicMeasurable, height: Int): Int = measurable.minIntrinsicWidth(height)
+
+    override fun IntrinsicMeasureScope.maxIntrinsicWidth(measurable: IntrinsicMeasurable, height: Int): Int = measurable.maxIntrinsicWidth(height)
+
+    override fun IntrinsicMeasureScope.minIntrinsicHeight(measurable: IntrinsicMeasurable, width: Int): Int = measurable.minIntrinsicHeight(width)
+
+    override fun IntrinsicMeasureScope.maxIntrinsicHeight(measurable: IntrinsicMeasurable, width: Int): Int = measurable.maxIntrinsicHeight(width)
+
+    override fun equals(other: Any?): Boolean = other is TextLineInto && other.baseline === baseline && other.height === height
+
+    override fun hashCode(): Int = baseline.hashCode() * 31 + height.hashCode()
+}
