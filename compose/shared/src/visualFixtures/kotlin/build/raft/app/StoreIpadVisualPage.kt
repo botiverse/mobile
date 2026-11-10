@@ -42,6 +42,16 @@ import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxTaskConversation
 import build.raft.app.data.RaftListPaneKind
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.RuntimeAccountUsageAccount
+import build.raft.app.data.RuntimeAccountUsageHealth
+import build.raft.app.data.RuntimeAccountUsageLoad
+import build.raft.app.data.RuntimeAccountUsageProvider
+import build.raft.app.data.RuntimeAccountUsageRead
+import build.raft.app.data.RuntimeAccountUsageSnapshot
+import build.raft.app.data.RuntimeAccountUsageWindow
+import build.raft.app.data.RuntimeAccountUsageWindowStatus
+import build.raft.app.data.SettingsComputerCreatorSnapshot
+import build.raft.app.data.SettingsComputerSizeStatusSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.app.data.TaskWireDto
@@ -242,6 +252,7 @@ private val IpadAgents =
         IpadAgent("agent-scout", "Scout", AgentStatus.Thinking, "magnifier", "Tests every change end to end"),
         IpadAgent("agent-forge", "Forge", AgentStatus.Online, "bolt", "Fixes bugs across the web app"),
         IpadAgent("agent-pixel", "Pixel", AgentStatus.Online, "catbot", "Designs the screens"),
+        IpadAgent("agent-quill", "Quill", AgentStatus.Online, "pencil", "Writes the changelog"),
     )
 
 private val IpadHumans = mapOf("human-maya" to "Maya Chen", "human-leo" to "Leo Park", "human-priya" to "Priya")
@@ -298,6 +309,9 @@ private const val IpadChannelSubtitle = "Release train for the mobile app"
 
 private val IpadChat =
     listOf(
+        IpadMessage("agent-scout", "Nightly run on build 317: 212 of 213 checks pass, one flaky checkout test filed.", "08:58"),
+        IpadMessage("agent-echo", "Overnight support queue is clear. 2 crash reports from the settings screen, both on 2.3.", "09:04", reactions = listOf("👀" to 1)),
+        IpadMessage("human-maya", "Thanks both. Let's aim to ship 2.4 to beta testers today.", "09:10", reactions = listOf("👍" to 3)),
         IpadMessage("human-priya", "Dark mode mocks for onboarding are up in #design.", "09:20"),
         IpadMessage("agent-pixel", "Exported the assets at 1x, 2x and 3x and attached them to the task.", "09:24", reactions = listOf("👍" to 2)),
         IpadMessage("agent-sage", "Settings docs are updated for 2.4.", "09:31"),
@@ -318,20 +332,25 @@ private val IpadChat =
         IpadMessage("agent-nova", "Build 2.4.0 (318) is uploading to internal testing now.", "09:52", reactions = listOf("🚀" to 3)),
     )
 
-private val IpadThreadOrigin = IpadChat[4]
+private val IpadThreadOrigin = IpadChat.first { it.authorId == "human-maya" && it.mentions.isNotEmpty() }
 
 private val IpadThreadReplies =
     listOf(
+        IpadMessage("agent-echo", "Both crash reports from this morning match: the app closes when Settings opens. Linking them here.", "09:42"),
         IpadMessage("agent-ruby", "Found it: a null `locale` when the device language isn't supported. Fix and a test are up in **PR #482**.", "09:44"),
         IpadMessage("agent-scout", "Ran the settings suite on Android and iOS: 48 of 48 pass, including the unsupported-language case.", "09:45", reactions = listOf("🎉" to 2)),
         IpadMessage("agent-atlas", "Reviewed #482 and approved.", "09:47"),
         IpadMessage("agent-ruby", "Merged. @Nova it's ready for build 318.", "09:48", mentions = listOf("agent-nova")),
         IpadMessage("agent-nova", "Build 2.4.0 (318) is uploading to internal testing.", "09:52", reactions = listOf("🚀" to 3)),
+        IpadMessage("agent-sage", "Settings docs are updated for the new language fallback.", "09:53"),
         IpadMessage("human-maya", "Thanks, everyone. Shipping it to beta testers now.", "09:54", reactions = listOf("🎉" to 2)),
     )
 
 private val IpadDmAtlas =
     listOf(
+        IpadMessage("human-maya", "Morning! What's still open for 2.4?", "08:50"),
+        IpadMessage("agent-atlas", "Two PRs: the settings crash fix from Ruby and the push migration from Nova. Both should land before the code freeze.", "08:51"),
+        IpadMessage("human-maya", "Great. Ping me when both are reviewed.", "08:53", reactions = listOf("👍" to 1)),
         IpadMessage("human-maya", "Can you draft the 2.4 release notes from the merged PRs?", "09:12"),
         IpadMessage("agent-atlas", "On it. I'll group them into fixes and features and link each PR.", "09:13"),
         IpadMessage("agent-atlas", "Release notes for 2.4 are ready for your review: 6 fixes and 2 new features.", "09:30"),
@@ -807,7 +826,7 @@ private fun IpadAgentScene() {
                         createdAt = "2026-10-28T02:30:00.000Z",
                         status = "active",
                         runtime = "pi",
-                        model = "demo",
+                        model = "Demo",
                         executionMode = "byoc",
                         machineId = "machine-mini",
                         machineName = "Mac mini",
@@ -989,15 +1008,60 @@ private fun IpadActivityList(selectedKey: String?) {
 
 // ---- 7. Computers -------------------------------------------------------------------------------------
 
-private data class IpadComputer(val id: String, val name: String, val host: String, val platform: String, val agents: List<String>, val online: Boolean = true)
+private data class IpadComputer(
+    val id: String,
+    val name: String,
+    val host: String,
+    val platform: String,
+    val agents: List<String>,
+    val diskFreeGb: Double,
+    val diskTotalGb: Double,
+    val memFreeGb: Double,
+    val memTotalGb: Double,
+    val owner: String? = "human-maya",
+    val online: Boolean = true,
+    val osRelease: String? = null,
+)
 
 private val IpadComputers =
     listOf(
-        IpadComputer("machine-mini", "Mac mini", "mini.local", "macOS 15.1", listOf("agent-ruby", "agent-atlas", "agent-forge", "agent-sage")),
-        IpadComputer("machine-studio", "Studio Mac", "studio.local", "macOS 15.1", listOf("agent-nova", "agent-pixel")),
-        IpadComputer("machine-build", "build-server", "build-01", "Ubuntu 24.04", listOf("agent-scout", "agent-echo")),
-        IpadComputer("machine-laptop", "Travel laptop", "laptop.local", "macOS 15.0", emptyList(), online = false),
+        IpadComputer("machine-mini", "Mac mini", "mini.local", "darwin arm64", listOf("agent-ruby", "agent-atlas", "agent-forge", "agent-sage"), 312.0, 994.0, 9.0, 32.0),
+        IpadComputer("machine-studio", "Studio Mac", "studio.local", "darwin arm64", listOf("agent-nova", "agent-pixel"), 1210.0, 1994.0, 41.0, 64.0, owner = "human-priya"),
+        IpadComputer("machine-build", "build-server", "build-01", "linux x64", listOf("agent-scout", "agent-echo"), 188.0, 500.0, 22.0, 64.0, owner = null, osRelease = "Ubuntu 24.04"),
+        IpadComputer("machine-leo", "Leo's MacBook Pro", "leo-mbp.local", "darwin arm64", listOf("agent-quill"), 402.0, 994.0, 12.0, 36.0, owner = "human-leo"),
+        IpadComputer("machine-laptop", "Travel laptop", "laptop.local", "darwin arm64", emptyList(), 0.0, 0.0, 0.0, 0.0, online = false),
     )
+
+private const val Gb = 1024.0 * 1024 * 1024
+
+private fun ipadUsageLoads(): Map<String, Map<RuntimeAccountUsageProvider, RuntimeAccountUsageLoad>> {
+    fun loaded(provider: String, ratio: Double) =
+        RuntimeAccountUsageLoad.Loaded(
+            RuntimeAccountUsageRead.Available(
+                stale = false,
+                snapshot =
+                    RuntimeAccountUsageSnapshot(
+                        provider,
+                        null,
+                        listOf(
+                            RuntimeAccountUsageAccount(
+                                "acct",
+                                "Max",
+                                null,
+                                RuntimeAccountUsageHealth.Ok,
+                                listOf(RuntimeAccountUsageWindow(id = "five_hour", label = "5h", status = RuntimeAccountUsageWindowStatus.Ok, usedRatio = ratio, resetsAt = null)),
+                            )
+                        ),
+                    ),
+            ),
+        )
+    return mapOf(
+        "machine-mini" to mapOf(RuntimeAccountUsageProvider.Claude to loaded("claude", 0.38), RuntimeAccountUsageProvider.Codex to loaded("codex", 0.21)),
+        "machine-studio" to mapOf(RuntimeAccountUsageProvider.Claude to loaded("claude", 0.55), RuntimeAccountUsageProvider.Codex to loaded("codex", 0.12)),
+        "machine-build" to mapOf(RuntimeAccountUsageProvider.Claude to loaded("claude", 0.27), RuntimeAccountUsageProvider.Codex to loaded("codex", 0.64)),
+        "machine-leo" to mapOf(RuntimeAccountUsageProvider.Claude to loaded("claude", 0.18), RuntimeAccountUsageProvider.Codex to loaded("codex", 0.09)),
+    )
+}
 
 @Composable
 private fun IpadComputersScene() {
@@ -1015,9 +1079,16 @@ private fun IpadComputersScene() {
                             online = computer.online,
                             hostname = computer.host,
                             platform = computer.platform,
+                            osRelease = computer.osRelease,
                             runtimes = listOf("claude", "codex"),
+                            createdAt = "2026-08-01T09:00:00Z",
                             agentCount = computer.agents.size,
                             lastHeartbeat = if (computer.online) null else "2026-10-27T18:00:00Z",
+                            ownerUserId = computer.owner,
+                            owner = computer.owner?.let { id -> SettingsComputerCreatorSnapshot(id = id, name = ipadName(id).substringBefore(' ').lowercase(), displayName = ipadName(id)) },
+                            diskStatus = if (computer.online) SettingsComputerSizeStatusSnapshot(availableBytes = computer.diskFreeGb * Gb, totalBytes = computer.diskTotalGb * Gb) else null,
+                            memoryStatus = if (computer.online) SettingsComputerSizeStatusSnapshot(availableBytes = computer.memFreeGb * Gb, totalBytes = computer.memTotalGb * Gb) else null,
+                            canViewRuntimeUsage = true,
                         )
                     },
                 canAddComputer = true,
@@ -1059,6 +1130,7 @@ private fun IpadComputersScene() {
                     onOpenComputer = {},
                     agentsByMachine = agentsByMachine,
                     agentStatusResolver = IpadStatusResolver,
+                    usageLoads = remember { ipadUsageLoads() },
                     rackView = ComputersRackView.Cards,
                     summaryInHeader = true,
                 )
