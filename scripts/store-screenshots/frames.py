@@ -188,6 +188,8 @@ IPAD8_SCENES = [s for s in PLAY8_SCENES if s[0] in ("01-chat", "02-mention", "03
 IPAD8_LOCALES = {"en": "en-US", "zh-Hans": "zh-Hans", "ja": "ja"}
 IPAD8_SIZE = (2064, 2752)
 IPAD8_CROP_PX = (48, 40)  # status bar 24pt and home indicator 20pt at 2x
+# Two headline lines and two subline lines reserved: the iPad sits at the same place in every shot.
+IPAD8_TEXT_LINES = (2, 2)
 RES_DIR = f"{REPO}/compose/shared/src/commonMain/composeResources"
 ICON_DIR = f"{REPO}/compose/iosApp/iosApp/Assets.xcassets"
 
@@ -654,7 +656,7 @@ def main():
                 im.crop((0, top, w, h - bottom)).save(cropped)
                 headline, sub = copy[lang]
                 out_png = f"{out}/{IPAD8_LOCALES[lang]}/APP_IPAD_PRO_3GEN_129/{idx:02d}.png"
-                jobs.append((page(a.style, cropped, "ipad", accent, headline, sub, idx, lang, w, h, 1.0, PLAY8_TEXT_LINES,
+                jobs.append((page(a.style, cropped, "ipad", accent, headline, sub, idx, lang, w, h, 1.0, IPAD8_TEXT_LINES,
                                   chrome={"sbDp": 24, "hbDp": 20, "bezel": 0.022, "radiusDp": 18, "css": IOS_CSS,
                                           "status": ios_status(1032, 24, island=False, time_size=14)}), out_png, w, h))
         with concurrent.futures.ThreadPoolExecutor(a.jobs) as pool:
