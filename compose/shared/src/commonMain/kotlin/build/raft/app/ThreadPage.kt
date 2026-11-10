@@ -8772,12 +8772,10 @@ private fun SharedThreadRouteContentContent(
         if (currentServerId != null) taskConversationTask?.let { taskConversationDetailsViewModel?.onTask(it) }
     }
     val featureFlagSnapshotRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-    // `feedback:submit` cards open the Feedback WebView only where Settings > Feedback is the web page
-    // (Compose desktop; settingsFeedbackUsesWebPage) and the viewing server is known. No server flag.
+    // `feedback:submit` cards open the native feedback form on their draft once the viewing server is
+    // known (every platform, 1.24; no server flag). A done card's "View in Settings" opens the native
+    // ticket page.
     val feedbackCardEntryEnabled = raftFeedbackCardEntryEnabled(currentServerId)
-    // A done feedback card's "View in Settings" opens its ticket: the native ticket page on Android /
-    // iOS (1.23), the web page where cards open it (Compose desktop).
-    val feedbackTicketPageAvailable = raftFeedbackTicketPageAvailable(currentServerId)
     // Task v2 (`task_v2_conversations_v0`, as web reads it per server): every task lists under its
     // source message and the composer drops "As Task".
     // The session is captured a few frames after the page composes; until then the shell's server
@@ -9508,7 +9506,6 @@ private fun SharedThreadRouteContentContent(
                 isDirectMessageChannel = { channelId -> channelId in latestActionCardDirectMessageIds },
                 viewerUserId = currentSession?.user?.id,
                 clientOs = featureFlagClientOs(),
-                feedbackPageAvailable = feedbackTicketPageAvailable,
                 openFeedbackTicket = { ticketId ->
                     bridge.log("thread_feedback_ticket_open hasTicket=${ticketId != null}")
                     pager.openSettingsFeedbackPage(storeScope, ticketId = ticketId)
@@ -14046,8 +14043,9 @@ private fun SharedThreadRouteContentContent(
                         if (feedbackCardEntry == null) {
                             bridge.toast(actionUnsupportedLabel)
                         } else {
+                            // The native form on the card's draft (the web page's card flow).
                             bridge.log("thread_feedback_card_open messageId=$itemId")
-                            pager.openSettingsFeedbackWebViewPage(storeScope, feedbackCardEntry)
+                            pager.openSettingsFeedbackCardPage(storeScope, feedbackCardEntry)
                         }
                         return@ThreadPageContent
                     }
@@ -30446,7 +30444,7 @@ private fun ThreadMessageCardContent(
                             val specFlagServerId = shownActionCard.actionCardSpecFlagServerId(viewerServerId)
                             val specEnabled = specHost.specEnabled(specFlagServerId)
                             val feedbackTicketVisible =
-                                shownActionCard.showsFeedbackTicket(specHost.viewerUserId, specHost.clientOs, specHost.feedbackPageAvailable)
+                                shownActionCard.showsFeedbackTicket(specHost.viewerUserId, specHost.clientOs)
                             val specCard =
                                 remember(shownActionCard, specEnabled, specHost.capabilities, feedbackTicketVisible) {
                                     shownActionCard.actionCardSpecToRender(specEnabled, specHost.capabilities, feedbackTicketVisible)
@@ -35688,7 +35686,7 @@ private fun threadDisplayReactionEmoji(emoji: String): String =
 // harden into a permanent raw-emoji fallback.
 internal val LocalThreadReactionAtlasImage = compositionLocalOf<ImageBitmap?> { null }
 
-/** Whether `feedback:submit` cards open the Feedback WebView ([raftFeedbackCardEntryEnabled]). */
+/** Whether `feedback:submit` cards open the native feedback form ([raftFeedbackCardEntryEnabled]). */
 internal val LocalThreadFeedbackCardEntryEnabled = compositionLocalOf { false }
 
 /**

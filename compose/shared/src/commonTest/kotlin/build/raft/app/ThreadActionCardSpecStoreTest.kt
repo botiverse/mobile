@@ -127,7 +127,7 @@ class ThreadActionCardSpecStoreTest {
         val on = stripActionCardSpec(read, raftAppActionCardCapabilities(feedbackFormAvailable = true))!!
         assertTrue((on.spec.element("fb") as ActionCardSpecButton).action is ActionCardSpecAction.Open)
         assertEquals(ActionCardSpecAction.OpenForm("details"), (on.spec.element("fill") as ActionCardSpecButton).action)
-        // Where the Feedback page is off, the feedback Button opens in web instead.
+        // Before the viewing server is known (no native form to open), the feedback Button opens in web instead.
         val off = stripActionCardSpec(read, raftAppActionCardCapabilities(feedbackFormAvailable = false))!!
         assertEquals(ActionCardSpecAction.OpenInWeb, (off.spec.element("fb") as ActionCardSpecButton).action)
     }

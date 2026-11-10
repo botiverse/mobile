@@ -80,7 +80,6 @@ internal val RaftStackSettingsWebSurfaces: List<build.raft.app.SettingsWebViewSu
         build.raft.app.SettingsWebViewSurface.Administration,
         build.raft.app.SettingsWebViewSurface.ImBridges,
         build.raft.app.SettingsWebViewSurface.Marketplace,
-        build.raft.app.SettingsWebViewSurface.Feedback,
     )
 
 /**
@@ -95,7 +94,7 @@ internal val RaftStackSettingsWebSurfaces: List<build.raft.app.SettingsWebViewSu
  * Batch 2: the pages that need an Activity result or replace the window. Account (avatar picker;
  * sign-out replaces the window: the host clears the stack, then today's login replacement),
  * Feedback (attachment picker, camera), the Settings web pages (one rule per surface: Billing,
- * Administration, IM Bridges, Connected apps, web Feedback; WebView file chooser), Storage,
+ * Administration, IM Bridges, Connected apps; WebView file chooser), Storage,
  * Release notes and Computers (list and one machine). The picker, camera and file chooser results
  * reach the page that asked through the host's result routing, keyed by the page's content key.
  *

@@ -924,6 +924,7 @@ internal class SharedRaftNetworkClient(
         headers: Map<String, String>,
         fields: Map<String, String>,
         files: List<MultipartFile>,
+        serverIdOverride: ServerId?,
     ): HomeNetworkResponse {
         val resolvedFiles = files.preparePlatformFileStreams().getOrElse { return it }
         return uploadMultipart(
@@ -935,7 +936,8 @@ internal class SharedRaftNetworkClient(
             files = resolvedFiles,
             requestBytes = resolvedFiles.uploadByteEstimate(),
             key = path,
-            extraHeaders = headers
+            extraHeaders = headers,
+            serverIdOverride = serverIdOverride,
         )
     }
 
@@ -1105,7 +1107,8 @@ internal class SharedRaftNetworkClient(
         key: String,
         expectedAuthority: RaftExpectedAuthBinding? = null,
         onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
-        extraHeaders: Map<String, String> = emptyMap()
+        extraHeaders: Map<String, String> = emptyMap(),
+        serverIdOverride: ServerId? = null,
     ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val requestBaseUrl = expectedAuthority?.environmentId?.normalizedEnvironmentId() ?: currentBaseUrl()
@@ -1130,7 +1133,7 @@ internal class SharedRaftNetworkClient(
                 }
                 val transportResponse =
                     authMiddleware(requestBaseUrl).request(
-                        serverIdOverride = expectedAuthority?.serverId?.let(::ServerId),
+                        serverIdOverride = serverIdOverride ?: expectedAuthority?.serverId?.let(::ServerId),
                         expectedAuthority = expectedAuthority,
                         caller = "shared_network:$diagnosticPath"
                     ) authenticated@{ auth ->

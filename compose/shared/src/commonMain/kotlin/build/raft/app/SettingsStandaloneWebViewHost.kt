@@ -9,12 +9,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import build.raft.app.base.Utils
-import build.raft.app.base.BridgeModule
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftIconTileSize
@@ -50,7 +47,6 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
-import build.raft.app.network.RaftAppIdentityRegistry
 
 const val SETTINGS_WEB_VIEW_PAGE = "compose_settings_webview"
 internal const val SETTINGS_WEB_VIEW_SURFACE = "settingsWebViewSurface"
@@ -68,8 +64,6 @@ internal fun settingsWebViewPageData(
     surface: SettingsWebViewSurface,
     storeScope: build.raft.app.data.RaftShellStoreScope,
     versionCode: String = "",
-    feedbackCardEntry: RaftFeedbackCardEntry? = null,
-    feedbackTicketId: String? = null,
     /** A search result's setting: the web page opens at `#<id>` (Billing, Administration). */
     anchor: SettingsSearchAnchorRequest? = null,
 ): JSONObject =
@@ -84,10 +78,6 @@ internal fun settingsWebViewPageData(
                 put(SETTINGS_WEB_VIEW_VERSION_CODE, it)
             }
         }
-        if (surface == SettingsWebViewSurface.Feedback) {
-            putSettingsFeedbackCardEntry(feedbackCardEntry)
-            putSettingsFeedbackTicketId(feedbackTicketId)
-        }
     }
 
 internal fun settingsWebViewSurfaceFromPageData(params: JSONObject): SettingsWebViewSurface? {
@@ -99,13 +89,11 @@ internal fun Pager.openSettingsWebViewPage(
     surface: SettingsWebViewSurface,
     storeScope: build.raft.app.data.RaftShellStoreScope,
     versionCode: String = "",
-    feedbackCardEntry: RaftFeedbackCardEntry? = null,
-    feedbackTicketId: String? = null,
     anchor: SettingsSearchAnchorRequest? = null,
 ) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         SETTINGS_WEB_VIEW_PAGE,
-        settingsWebViewPageData(surface, storeScope, versionCode, feedbackCardEntry, feedbackTicketId, anchor),
+        settingsWebViewPageData(surface, storeScope, versionCode, anchor),
     )
 }
 
@@ -192,31 +180,6 @@ private fun SettingsWebViewScreen() {
                 iconName = RaftLucideIconName.Link2,
                 spec = settingsMarketplaceWebViewSpec,
             )
-        SettingsWebViewSurface.Feedback ->
-            StandaloneSettingsWebViewPage(
-                pager = pager,
-                title = stringResource(Res.string.settings_feedback_title),
-                iconName = RaftLucideIconName.MessageSquarePlus,
-                spec =
-                    remember(pager.pageData.params) {
-                        settingsFeedbackWebViewSpec(
-                            settingsFeedbackCardEntryFromPageData(pager.pageData.params),
-                            settingsFeedbackTicketIdFromPageData(pager.pageData.params),
-                        )
-                    },
-                onHostMessage = { kind, _ ->
-                    when (kind) {
-                        "close" -> closeSection()
-                        "auth-required" -> Unit // keep the page and draft; auth/session reconciliation supplies the next token
-                        "integration-unavailable" -> {
-                            closeSection()
-                            pager.openSettingsHandsFeedbackPage(
-                                pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
-                            )
-                        }
-                    }
-                },
-            )
         SettingsWebViewSurface.Administration ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
@@ -276,8 +239,7 @@ internal data class StandaloneSettingsWebViewSpec(
     val headerFollowsDocumentTitle: Boolean = false,
     /**
      * When false, the native host admits only the original document URL (same
-     * scheme/host/port/path/query). Feedback keeps auth-bearing scripts fenced
-     * to that trusted document; in-page history remains available.
+     * scheme/host/port/path/query); in-page history remains available.
      */
     val allowNavigation: Boolean = true,
     val allowedNavigationSchemes: Set<String> = setOf("http", "https"),
@@ -492,10 +454,8 @@ private fun StandaloneSettingsWebViewBody(
     StandaloneSettingsWebViewContent(
         authSnapshot = authSnapshot,
         webBaseUrl = webBaseUrl,
-        apiOrigin = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/').removeSuffix("/api"),
         spec = spec,
         controller = controller,
-        bridge = bridge,
         accessTokenSyncLogger = bridge::log,
         onUrlChange = { url ->
             // Never the query: a Settings URL can carry tokens.
@@ -519,11 +479,9 @@ private fun StandaloneSettingsWebViewBody(
 internal fun StandaloneSettingsWebViewContent(
     authSnapshot: SettingsWebViewAuthSnapshot,
     webBaseUrl: String?,
-    apiOrigin: String,
     spec: StandaloneSettingsWebViewSpec,
     modifier: Modifier = Modifier,
     controller: RaftWebViewController = rememberRaftWebViewController(),
-    bridge: BridgeModule? = null,
     onLoadCommit: () -> Unit = {},
     onLoadSuccess: () -> Unit = {},
     onUrlChange: (String) -> Unit = {},
@@ -539,25 +497,9 @@ internal fun StandaloneSettingsWebViewContent(
             spec.buildWebUrl(webBaseUrl, session, localeTag)
         }
     val hostAuthBinding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
-    val feedbackDiagnosticsHost =
-        remember(bridge, controller, spec.surface) {
-            bridge
-                ?.takeIf { spec.surface == SettingsWebViewSurface.Feedback }
-                ?.let { FeedbackDiagnosticsWebViewHost(it, controller) }
-        }
-    DisposableEffect(feedbackDiagnosticsHost, hostAuthBinding) {
-        feedbackDiagnosticsHost?.bind(hostAuthBinding)
-        onDispose { feedbackDiagnosticsHost?.unbind(hostAuthBinding) }
-    }
     val injectedJavaScript =
-        remember(spec.surface, session, hostAuthBinding, apiOrigin, webUrl) {
-            standaloneSettingsWebViewInjectedJavaScript(
-                session,
-                hostAuthBinding,
-                spec.surface,
-                apiOrigin,
-                trustedDocumentUrl = webUrl,
-            )
+        remember(spec.surface, session, hostAuthBinding) {
+            standaloneSettingsWebViewInjectedJavaScript(session, hostAuthBinding, spec.surface)
         }
     var documentReady by remember(webUrl, hostAuthBinding?.webViewGeneration) { mutableStateOf(false) }
 
@@ -582,12 +524,7 @@ internal fun StandaloneSettingsWebViewContent(
         onUrlChange = onUrlChange,
         onLoadFailure = onLoadFailure,
         onNavigationStateChange = onNavigationStateChange,
-        onHostMessage = { kind, payload ->
-            val handled = feedbackDiagnosticsHost?.handle(kind, payload, hostAuthBinding) == true
-            if (kind == "close" || kind == "integration-unavailable") feedbackDiagnosticsHost?.invalidate()
-            if (!handled) onHostMessage(kind, payload)
-        },
-        onWebViewInvalidated = { feedbackDiagnosticsHost?.invalidate() },
+        onHostMessage = onHostMessage,
         onDocumentReadyChange = { documentReady = it },
     )
 
@@ -597,7 +534,6 @@ internal fun StandaloneSettingsWebViewContent(
         controller = controller,
         binding = hostAuthBinding,
         surface = spec.surface,
-        trustedDocumentUrl = webUrl,
         logger = accessTokenSyncLogger,
     )
 }
@@ -733,7 +669,7 @@ internal fun SettingsWebViewContent(
                     onNavigationBlocked = onNavigationBlocked,
                     onHostMessage = { kind, payload ->
                         if (navigationAuthority.accepts(navigationOwner)) {
-                            // The page's own bridge `ready` (Feedback posts it) is a ready signal too.
+                            // The page's own bridge `ready` is a ready signal too.
                             if (kind == "ready") loadWatchdog.onPageReadyMessage()
                             onHostMessage(kind, payload)
                         }
@@ -820,176 +756,6 @@ internal fun settingsWebViewFrameIsReady(
     height: Int,
 ): Boolean = positionY.isFinite() && positionY >= 0f && width > 0 && height > 0
 
-/**
- * Owns the optional feedback diagnostics stream for one embedded WebView generation.
- *
- * The Web page supplies its binding on every command, but the host never trusts that value by
- * itself: it must exactly match the currently rendered authenticated WebView binding. Native
- * callbacks are fenced again before they are evaluated in the page, so a callback retained by a
- * replaced WebView cannot create a ticket in the replacement page.
- */
-private class FeedbackDiagnosticsWebViewHost(
-    private val bridge: BridgeModule,
-    private val controller: RaftWebViewController,
-) {
-    private class ActiveRequest(
-        val requestId: String,
-        val binding: FeedbackDiagnosticsBinding,
-        var removeStream: () -> Unit,
-    )
-
-    private var currentBinding: FeedbackDiagnosticsBinding? = null
-    private var active: ActiveRequest? = null
-
-    fun bind(binding: SettingsWebViewHostAuthBinding?) {
-        val next = binding?.toDiagnosticsBinding()
-        if (next == currentBinding) return
-        invalidate()
-        currentBinding = next
-    }
-
-    fun unbind(binding: SettingsWebViewHostAuthBinding?) {
-        val expected = binding?.toDiagnosticsBinding()
-        if (expected == null || expected == currentBinding) {
-            currentBinding = null
-            invalidate()
-        }
-    }
-
-    fun invalidate() {
-        val request = active ?: return
-        active = null
-        request.removeStream()
-        val removeCancellationCallback = bridge.settingsCapabilityStream(
-            feedbackDiagnosticsCommand(
-                action = "feedbackDiagnosticsCancel",
-                requestId = request.requestId,
-                binding = request.binding,
-            ),
-        ) { }
-        removeCancellationCallback()
-    }
-
-    /** Returns true when the host-owned diagnostics message was consumed. */
-    fun handle(
-        kind: String,
-        payload: JSONObject,
-        binding: SettingsWebViewHostAuthBinding?,
-    ): Boolean {
-        if (kind != FeedbackDiagnosticsBridge.START_KIND && kind != FeedbackDiagnosticsBridge.CANCEL_KIND) {
-            return false
-        }
-        val expected = binding?.toDiagnosticsBinding() ?: return true
-        if (expected != currentBinding) return true
-        val requestId = payload.optString(FeedbackDiagnosticsBridge.REQUEST_ID).trim()
-        val requested = payload.optJSONObject(FeedbackDiagnosticsBridge.BINDING)?.toDiagnosticsBinding() ?: return true
-        if (requested != expected || !FeedbackDiagnosticsBridge.validRequestId(requestId)) return true
-        return if (kind == FeedbackDiagnosticsBridge.START_KIND) {
-            start(requestId, expected)
-            true
-        } else {
-            cancel(requestId, expected)
-            true
-        }
-    }
-
-    private fun start(requestId: String, binding: FeedbackDiagnosticsBinding) {
-        if (active != null) return
-        val request = ActiveRequest(requestId, binding) {}
-        active = request
-        val cancelStream =
-            bridge.settingsCapabilityStream(
-                feedbackDiagnosticsCommand(
-                    action = "feedbackDiagnosticsStart",
-                    requestId = requestId,
-                    binding = binding,
-                ),
-            ) { event ->
-                onNativeEvent(request, event)
-            }
-        if (active === request) {
-            request.removeStream = cancelStream
-        } else {
-            // A synchronous terminal callback can race callback registration on a host. Do not
-            // retain a callback after that request has already reached a terminal state.
-            cancelStream()
-        }
-    }
-
-    private fun cancel(requestId: String, binding: FeedbackDiagnosticsBinding) {
-        val request = active ?: return
-        if (request.requestId != requestId || request.binding != binding) return
-        active = null
-        request.removeStream()
-        val removeCancellationCallback = bridge.settingsCapabilityStream(
-            feedbackDiagnosticsCommand(
-                action = "feedbackDiagnosticsCancel",
-                requestId = requestId,
-                binding = binding,
-            ),
-        ) { }
-        removeCancellationCallback()
-    }
-
-    private fun onNativeEvent(request: ActiveRequest, event: JSONObject?) {
-        if (active !== request || currentBinding != request.binding || event == null) return
-        val eventRequestId = event.optString(FeedbackDiagnosticsBridge.REQUEST_ID).trim()
-        val eventBinding = event.optJSONObject(FeedbackDiagnosticsBridge.BINDING)?.toDiagnosticsBinding()
-        if (eventRequestId != request.requestId || eventBinding != request.binding) return
-        val type = event.optString(FeedbackDiagnosticsBridge.TYPE).trim()
-        if (type != "progress" && type != "done" && type != "failed") return
-        val terminal = event.optBoolean("terminal", false)
-        if (type == "progress" && terminal) return
-
-        if (terminal) {
-            active = null
-            request.removeStream()
-        }
-        controller.evaluateJavaScript(feedbackWebViewDiagnosticsEventJavaScript(event))
-    }
-
-    private fun JSONObject.toDiagnosticsBinding(): FeedbackDiagnosticsBinding? {
-        val accountId = optString("accountId").trim()
-        val sessionGeneration = optLong("sessionGeneration", -1L)
-        val webViewGeneration = optLong("webViewGeneration", -1L)
-        return FeedbackDiagnosticsBinding(accountId, sessionGeneration, webViewGeneration)
-            .takeIf { it.isValid() }
-    }
-
-    private fun SettingsWebViewHostAuthBinding.toDiagnosticsBinding(): FeedbackDiagnosticsBinding =
-        FeedbackDiagnosticsBinding(
-            accountId = accountId,
-            sessionGeneration = sessionGeneration,
-            webViewGeneration = webViewGeneration,
-        )
-
-    private fun feedbackDiagnosticsCommand(
-        action: String,
-        requestId: String,
-        binding: FeedbackDiagnosticsBinding,
-    ): JSONObject =
-        JSONObject().apply {
-            put("action", action)
-            put(FeedbackDiagnosticsBridge.REQUEST_ID, requestId)
-            put("accountId", binding.accountId)
-            put("sessionGeneration", binding.sessionGeneration)
-            put("webViewGeneration", binding.webViewGeneration)
-        }
-}
-
-private fun feedbackWebViewDiagnosticsEventJavaScript(event: JSONObject): String {
-    val encoded = Json.encodeToString(event.toString())
-    val eventName = Json.encodeToString(FeedbackDiagnosticsBridge.EVENT)
-    return """
-        (function() {
-          try {
-            var detail = JSON.parse($encoded);
-            window.dispatchEvent(new CustomEvent($eventName, {detail: detail}));
-          } catch (_) {}
-        })();
-    """.trimIndent()
-}
-
 private const val SETTINGS_WEB_VIEW_HEADER_SETTLE_FRAMES = 1
 internal const val SETTINGS_WEB_VIEW_HEADER_Z_INDEX = 1f
 internal const val SETTINGS_WEB_VIEW_BODY_Z_INDEX = 0f
@@ -1020,12 +786,7 @@ internal fun standaloneSettingsWebViewInjectedJavaScript(
     session: StoredAuthSession?,
     hostBinding: SettingsWebViewHostAuthBinding?,
     surface: SettingsWebViewSurface,
-    apiOrigin: String = "",
-    trustedDocumentUrl: String = "",
 ): String {
-    if (surface == SettingsWebViewSurface.Feedback) {
-        return feedbackWebViewBootstrapJavaScript(session, hostBinding, apiOrigin, trustedDocumentUrl)
-    }
     val writes = settingsWebViewAuthStorageJavaScript(session, hostBinding)
     val clientKind = ""
     return """
@@ -1037,76 +798,5 @@ internal fun standaloneSettingsWebViewInjectedJavaScript(
             console.error("slock_mobile_${surface.diagnosticsName}_injected_js_error", error && (error.stack || error.message || error));
           }
         })();
-    """.trimIndent()
-}
-
-internal fun feedbackWebViewBootstrapJavaScript(
-    session: StoredAuthSession?,
-    binding: SettingsWebViewHostAuthBinding?,
-    apiOrigin: String,
-    trustedDocumentUrl: String = "",
-): String {
-    val json = kotlinx.serialization.json.Json
-    val accountId = json.encodeToString(binding?.accountId.orEmpty())
-    val sessionGeneration = binding?.sessionGeneration ?: 0L
-    val webViewGeneration = binding?.webViewGeneration ?: 0L
-    val accessToken = json.encodeToString(session?.accessToken.orEmpty())
-    val api = json.encodeToString(apiOrigin)
-    val clientVersion = json.encodeToString(feedbackWebViewClientVersion())
-    val clientKind = json.encodeToString(raftFeedbackWebViewClientKind())
-    val trustedUrl = json.encodeToString(trustedDocumentUrl)
-    return """
-        (function() { 'use strict';
-          if (window.top !== window) return;
-          if ($trustedUrl) { try { var trusted = new URL($trustedUrl); var bootstrapPath = '/__raft_mobile_bootstrap__'; if (location.origin !== trusted.origin || (location.pathname !== trusted.pathname && location.pathname !== bootstrapPath) || (location.pathname !== bootstrapPath && location.search !== trusted.search)) return; } catch (_) { return; } }
-          var port = window.raftHostPort;
-          var binding = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration};
-          var session = {accountId:$accountId, sessionGeneration:$sessionGeneration, webViewGeneration:$webViewGeneration, accessToken:$accessToken, apiOrigin:$api, clientKind:$clientKind, clientVersion:$clientVersion, locale:((navigator.language || '').toLowerCase().indexOf('zh') === 0 ? 'zh-CN' : 'en'), theme:'elegant', mode:((typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')};
-          function post(kind, payload) {
-            if (!port) return;
-            try { port.postMessage(JSON.stringify({kind:kind, payload:payload || binding})); } catch (_) {}
-          }
-          function diagnosticsCommand(kind, request, nextBinding) {
-            var requestId = request && typeof request === 'object' ? request.requestId : request;
-            var requestedBinding = request && typeof request === 'object' && request.binding ? request.binding : (nextBinding || binding);
-            post(kind, {requestId:requestId, binding:requestedBinding});
-          }
-          var feedback = window.RaftFeedback;
-          if (!feedback || feedback.version !== 'raft-feedback-v1') {
-            feedback = {version:'raft-feedback-v1', session:session, capabilities:['diagnostics-upload-v1'], diagnostics:{start:function(request, nextBinding){ diagnosticsCommand('diagnostics:start', request, nextBinding); }, cancel:function(request, nextBinding){ diagnosticsCommand('diagnostics:cancel', request, nextBinding); }}, emit:function(event, nextBinding){ post(event, nextBinding || binding); }};
-            try { Object.defineProperty(window, 'RaftFeedback', {value:feedback, writable:false, configurable:false}); } catch (_) { feedback = window.RaftFeedback; }
-          }
-          if (feedback && feedback.session) {
-            try {
-              feedback.session.accountId = session.accountId;
-              feedback.session.sessionGeneration = session.sessionGeneration;
-              feedback.session.webViewGeneration = session.webViewGeneration;
-              feedback.session.accessToken = session.accessToken;
-              feedback.session.apiOrigin = session.apiOrigin;
-              feedback.session.clientKind = session.clientKind;
-              feedback.session.clientVersion = session.clientVersion;
-            } catch (_) {}
-          }
-          try { if (feedback && !feedback.capabilities) feedback.capabilities = ['diagnostics-upload-v1']; } catch (_) {}
-          try { if (feedback && !feedback.diagnostics) feedback.diagnostics = {start:function(request, nextBinding){ diagnosticsCommand('diagnostics:start', request, nextBinding); }, cancel:function(request, nextBinding){ diagnosticsCommand('diagnostics:cancel', request, nextBinding); }}; } catch (_) {}
-        })();
-    """.trimIndent()
-}
-
-/** The host's installed app identity is the source of truth for Web feedback metadata. */
-private fun feedbackWebViewClientVersion(): String =
-    RaftAppIdentityRegistry.current()?.version?.trim().orEmpty()
-
-internal fun feedbackWebViewRuntimeSessionJavaScript(
-    accessToken: String,
-    accountId: String,
-    sessionGeneration: Long,
-    webViewGeneration: Long,
-    trustedDocumentUrl: String = "",
-): String {
-    val json = kotlinx.serialization.json.Json
-    val trustedUrl = json.encodeToString(trustedDocumentUrl)
-    return """
-        (function() { if (window.top !== window) return; if ($trustedUrl) { try { var trusted = new URL($trustedUrl); if (location.origin !== trusted.origin || location.pathname !== trusted.pathname || location.search !== trusted.search) return; } catch (_) { return; } } var host = window.RaftFeedback; if (!host || !host.session) return; host.session.accessToken = ${json.encodeToString(accessToken)}; host.session.accountId = ${json.encodeToString(accountId)}; host.session.sessionGeneration = $sessionGeneration; host.session.webViewGeneration = $webViewGeneration; window.dispatchEvent(new CustomEvent('raft:feedback-session-updated', {detail:host.session})); })();
     """.trimIndent()
 }

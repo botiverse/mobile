@@ -21,9 +21,9 @@ import kotlin.uuid.Uuid
 internal const val SETTINGS_FEEDBACK_DIAGNOSTICS_STALL_MILLIS: Long = 120_000L
 
 /**
- * The diagnostics archive for the native Settings form, through the same host actions the
- * feedback WebView drives (`feedbackDiagnosticsStart` / `feedbackDiagnosticsCancel`: Android
- * RaftCmpActivity, iOS HRBridgeModule). The host writes the ZIP, presigns it with Hands and PUTs
+ * The diagnostics archive for the native Settings form, through the host actions
+ * `feedbackDiagnosticsStart` / `feedbackDiagnosticsCancel` (Android RaftCmpActivity, iOS
+ * HRBridgeModule; the Compose desktop app has none and answers "not implemented"). The host writes the ZIP, presigns it with Hands and PUTs
  * it, streaming `progress` events and one terminal `done` (with the reference) or `failed`.
  *
  * The binding's account is the signed-in person (the host cancels the upload when the account
@@ -60,6 +60,13 @@ internal class HostSettingsFeedbackDiagnosticsUploader(
                             logger("settings_feedback_diagnostics_skipped reason=stalled")
                             return null
                         }
+                if (event.isHostUnsupportedAnswer()) {
+                    // A host without the diagnostics action (the Compose desktop app answers "not
+                    // implemented" at once): file the feedback without an archive, without waiting.
+                    finished = true
+                    logger("settings_feedback_diagnostics_skipped reason=unsupported")
+                    return null
+                }
                 if (!event.matches(requestId, binding)) continue
                 when (event.optString(FeedbackDiagnosticsBridge.TYPE).trim()) {
                     "progress" -> continue
@@ -100,6 +107,10 @@ internal class HostSettingsFeedbackDiagnosticsUploader(
             put("sessionGeneration", binding.sessionGeneration)
             put("webViewGeneration", binding.webViewGeneration)
         }
+
+    /** The host's own error answer (`{code, message}`, no request id): it has no diagnostics action. */
+    private fun JsonObject.isHostUnsupportedAnswer(): Boolean =
+        optString(FeedbackDiagnosticsBridge.REQUEST_ID).isBlank() && containsKey("code") && optLong("code", 0L) !in 200L..299L
 
     private fun JsonObject.matches(requestId: String, binding: FeedbackDiagnosticsBinding): Boolean {
         if (optString(FeedbackDiagnosticsBridge.REQUEST_ID).trim() != requestId) return false

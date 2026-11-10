@@ -7260,8 +7260,7 @@ private fun RaftAppShellReadyContent(
             SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope, anchor)
             SettingsDestinationImBridges -> pager.openSettingsImBridgesPage(storeScope)
             SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
-            // The native ticket list on Android / iOS (1.23); the ticket web page only where the App
-            // cannot submit natively (Compose desktop), see settingsFeedbackUsesWebPage.
+            // The native ticket list, on every platform.
             SettingsDestinationHandsFeedback -> pager.openSettingsFeedbackPage(storeScope)
             else -> {
                 val page = SettingsNativeDetailPage.fromKey(key)
@@ -7296,7 +7295,7 @@ private fun RaftAppShellReadyContent(
             retainedAppShellTabs = retainedAppShellTabs + "settings"
             when {
                 key == null -> settingsWidePicked = null
-                settingsWidePick(key, settingsFeedbackUsesWebPage()) is SettingsWidePick.Detail -> settingsWidePicked = key
+                settingsWidePick(key) is SettingsWidePick.Detail -> settingsWidePicked = key
                 else -> openSettingsRow(key)
             }
         } else if (key != null) {
@@ -7827,15 +7826,7 @@ private fun RaftAppShellReadyContent(
                                 railHelpOpen = false
                                 bridge.log("app_shell_rail_help_pick item=feedback")
                                 // The Settings Feedback row's page (web Help > Feedback opens Settings' Feedback).
-                                val feedbackWeb = settingsFeedbackUsesWebPage()
-                                if (feedbackWeb && navRailActive) {
-                                    // Wide: Settings with Feedback in its detail pane, as the web.
-                                    railInlineSecondaryDestination = null
-                                    settingsWidePicked = SettingsDestinationHandsFeedback
-                                    onAppShellTabSelected("settings")
-                                } else {
-                                    pager.openSettingsFeedbackPage(storeScope, feedbackWeb = feedbackWeb)
-                                }
+                                pager.openSettingsFeedbackPage(storeScope)
                             },
                         )
                     }
@@ -8806,17 +8797,14 @@ private fun RaftAppShellReadyContent(
                         val settingsSearchServerName = settingsSession?.settingsThemeServer()?.name.orEmpty()
                         if (navRailActive) {
                             // artin 2026-10-29: the wide Settings is list + detail like the web's; the
-                            // section opens beside the list (SettingsWideSplit.kt). Feedback opens in
-                            // the pane only as the web page (settingsFeedbackUsesWebPage).
-                            val feedbackWeb = settingsFeedbackUsesWebPage()
+                            // section opens beside the list (SettingsWideSplit.kt). Feedback is pushed.
                             SettingsWideListDetail(
                                 payload = appShellSettingsHomePayload(settingsSession, imBridgesEnabled = imBridgesEnabled),
                                 widths = adaptiveListPaneWidths,
                                 active = active,
                                 picked = settingsWidePicked,
-                                feedbackWeb = feedbackWeb,
                                 onPick = { key ->
-                                    when (val pick = settingsWidePick(key, feedbackWeb)) {
+                                    when (val pick = settingsWidePick(key)) {
                                         is SettingsWidePick.Detail -> {
                                             if (pick.key == SettingsDestinationComputers) {
                                                 writeComputerAttentionSeen(
@@ -8845,7 +8833,7 @@ private fun RaftAppShellReadyContent(
                                         onOpen = { setting ->
                                             val anchor = SettingsSearchAnchorRequest(setting.id, ++settingsSearchOpenNonce)
                                             bridge.log("settings_search_open id=${setting.id} row=${setting.rowKey} mode=wide")
-                                            when (val pick = settingsWidePick(setting.rowKey, feedbackWeb)) {
+                                            when (val pick = settingsWidePick(setting.rowKey)) {
                                                 is SettingsWidePick.Detail -> {
                                                     settingsWidePicked = pick.key
                                                     settingsWideAnchor = pick.key to anchor
@@ -8869,8 +8857,8 @@ private fun RaftAppShellReadyContent(
                                 detailPane = { key, modifier ->
                                     val detailAnchor = settingsWideAnchor?.takeIf { it.first == key }?.second
                                     val detailPage =
-                                        remember(key, storeScope, feedbackWeb, detailAnchor) {
-                                            settingsWideDetailPage(key, storeScope, feedbackWeb, detailAnchor)
+                                        remember(key, storeScope, detailAnchor) {
+                                            settingsWideDetailPage(key, storeScope, detailAnchor)
                                         }
                                     if (detailPage != null) {
                                         RaftChildPage(

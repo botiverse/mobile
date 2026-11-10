@@ -645,7 +645,8 @@ internal fun ThreadActionCard.withExecutedChannelMembers(
 
 /**
  * `feedback:submit`: never executed inline (the server refuses a generic execute); it is sent from
- * the feedback form, which on mobile is the Feedback WebView (see `raftFeedbackCardEntryOrNull`).
+ * the feedback form, which in the App is the native feedback form on the card's draft (see
+ * `raftFeedbackCardEntryOrNull`).
  */
 internal fun ThreadActionCard.isFeedbackSubmitAction(): Boolean =
     type.equals(FeedbackSubmitActionCardType, ignoreCase = true)

@@ -4270,6 +4270,10 @@
     <string name="settings_feedback_tickets_error_conflict">This retry no longer matches the original request.</string>
     <string name="settings_feedback_tickets_error_invalid">Check the feedback details and try again.</string>
     <string name="settings_feedback_tickets_error_not_found">This feedback ticket is no longer available.</string>
+    <string name="settings_feedback_card_not_waiting">This feedback was already sent. Find it in Settings.</string>
+    <string name="settings_feedback_card_changed">This card changed after you opened it. Go back and open it again.</string>
+    <string name="settings_feedback_card_unavailable">Feedback cards are not available here anymore.</string>
+    <string name="settings_feedback_card_not_allowed">You can't send this card.</string>
     <string name="settings_feedback_tickets_error_rate_limited">Too many feedback requests. Try again later.</string>
     <string name="settings_feedback_tickets_error_unauthorized">Your feedback session expired. Reopen feedback and try again.</string>
     <string name="settings_feedback_tickets_error_unavailable">Couldn’t load feedback. Try again.</string>

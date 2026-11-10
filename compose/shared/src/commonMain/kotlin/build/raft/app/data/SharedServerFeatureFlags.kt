@@ -74,8 +74,7 @@ const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread
 // (curl DNS-over-HTTPS fallback), mobile_curl_socketio_v0 (realtime over curl Socket.IO).
 // sync_core_messages_v1 is no longer read either (2026-10-30): the sync-core message line is always on.
 // product_feedback_multi_app is no longer read from 1.22 (artin): Settings > Feedback and feedback cards
-// follow the platform (settingsFeedbackUsesWebPage): the native ticket list on Android / iOS (1.23),
-// the ticket web page on Compose desktop.
+// are native on every platform (1.24, desktop included).
 // Gogo removes the server flag row after old clients are checked.
 
 /**

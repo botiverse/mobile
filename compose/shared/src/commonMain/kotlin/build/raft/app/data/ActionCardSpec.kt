@@ -83,9 +83,9 @@ val RAFT_APP_ACTION_CARD_CAPABILITIES: List<String> =
 
 /**
  * [RAFT_APP_ACTION_CARD_CAPABILITIES] for one viewer: without `intent.feedback_form` while the
- * Feedback web page a feedback card opens is unavailable (Android / iOS, where Feedback is the
- * native ticket list, which does not run a card's draft; or the viewing server is not known yet),
- * so that button is "Open in web" rather than a button that only says it can't.
+ * native feedback form a feedback card opens is unavailable (the viewing server is not known yet,
+ * [build.raft.app.raftFeedbackCardEntryEnabled]), so that button is "Open in web" rather than a
+ * button that only says it can't.
  */
 fun raftAppActionCardCapabilities(feedbackFormAvailable: Boolean): List<String> =
     if (feedbackFormAvailable) RAFT_APP_ACTION_CARD_CAPABILITIES else RAFT_APP_ACTION_CARD_CAPABILITIES - ActionCardSpecIntent.FeedbackForm.capability

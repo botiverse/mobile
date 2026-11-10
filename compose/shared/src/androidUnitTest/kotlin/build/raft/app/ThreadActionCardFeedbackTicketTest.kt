@@ -130,25 +130,24 @@ class ThreadActionCardFeedbackTicketTest {
         // The wire fields survive the thread's message-metadata projection, which rebuilds the card on every read.
         val projected = assertNotNull(actionCardFromMessageMetadata(done.toMessageMetadata()))
         assertEquals(Triple(sender, ticketId, "android"), Triple(projected.executedByUserId, projected.resultTicketId, projected.resultSource))
-        assertTrue(projected.showsFeedbackTicket(viewerUserId = sender, clientOs = "android", feedbackPageAvailable = true))
+        assertTrue(projected.showsFeedbackTicket(viewerUserId = sender, clientOs = "android"))
 
-        data class Case(val label: String, val card: ThreadActionCard, val viewer: String?, val clientOs: String, val page: Boolean)
+        data class Case(val label: String, val card: ThreadActionCard, val viewer: String?, val clientOs: String)
         val hidden =
             listOf(
-                Case("another viewer", done, "0e7a9c1d-2b3f-4a5b-8c6d-7e8f9a0b1c2d", "android", true),
-                Case("no viewer", done, null, "android", true),
-                Case("filed into ios, viewed on android", done.copy(resultSource = "ios"), sender, "android", true),
-                Case("filed into web (multi-app off)", doneFeedbackCard(source = "web"), sender, "ios", true),
-                Case("a card done before S0.3: no source", doneFeedbackCard(source = null), sender, "android", true),
-                Case("no executedByUserId (the canonical V2 read)", doneFeedbackCard(executedBy = null), sender, "android", true),
-                Case("Feedback page off for the viewing server", done, sender, "android", false),
-                Case("not done", doneFeedbackCard(state = "prepared"), sender, "android", true),
-                Case("not a feedback card", done.copy(type = "channel:create"), sender, "android", true),
+                Case("another viewer", done, "0e7a9c1d-2b3f-4a5b-8c6d-7e8f9a0b1c2d", "android"),
+                Case("no viewer", done, null, "android"),
+                Case("filed into ios, viewed on android", done.copy(resultSource = "ios"), sender, "android"),
+                Case("filed into web (multi-app off)", doneFeedbackCard(source = "web"), sender, "ios"),
+                Case("a card done before S0.3: no source", doneFeedbackCard(source = null), sender, "android"),
+                Case("no executedByUserId (the canonical V2 read)", doneFeedbackCard(executedBy = null), sender, "android"),
+                Case("not done", doneFeedbackCard(state = "prepared"), sender, "android"),
+                Case("not a feedback card", done.copy(type = "channel:create"), sender, "android"),
             )
         for (case in hidden) {
-            assertFalse(case.card.showsFeedbackTicket(case.viewer, case.clientOs, case.page), case.label)
+            assertFalse(case.card.showsFeedbackTicket(case.viewer, case.clientOs), case.label)
         }
-        assertTrue(doneFeedbackCard(source = "ios").showsFeedbackTicket(sender, "ios", true), "same app on iOS")
+        assertTrue(doneFeedbackCard(source = "ios").showsFeedbackTicket(sender, "ios"), "same app on iOS")
 
         // Hidden means removed (the summary alone), not "Open in web".
         val result = assertNotNull(done.render(visible = false).result)
@@ -175,21 +174,13 @@ class ThreadActionCardFeedbackTicketTest {
             assertEquals(ThreadActionCardSpecPress.OpenFeedbackTicket(null), threadActionCardSpecPress(card, card.render(visible = true), "openTicket"), "$raw")
         }
 
-        // The route carries the ticket id only, and the page asks the web for that ticket.
-        val page =
-            settingsWebViewPageData(
-                surface = SettingsWebViewSurface.Feedback,
-                storeScope = RaftShellStoreScope.create(shellInstanceId = "shell-feedback", initialServerId = "s-1"),
-                feedbackTicketId = ticketId,
-            )
-        assertEquals(ticketId, settingsFeedbackTicketIdFromPageData(page))
+        // It opens the native ticket page on that ticket, the route carrying the ticket id only; a
+        // value that is not a ticket id opens the list.
+        val scope = RaftShellStoreScope.create(shellInstanceId = "shell-feedback", initialServerId = "s-1")
+        val (pageName, page) = settingsFeedbackPageRequest(scope, ticketId)
+        assertEquals(SETTINGS_FEEDBACK_TICKETS_PAGE, pageName)
+        assertEquals(ticketId, page.optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID))
         assertNull(settingsFeedbackCardEntryFromPageData(page))
-        assertEquals(
-            "https://web.example.test/feedback/?embed=raft-settings-v1&shell=host&ticket=$ticketId",
-            settingsFeedbackWebViewSpec(ticketId = settingsFeedbackTicketIdFromPageData(page)).buildWebUrl("https://web.example.test", null, "en"),
-        )
-        val list = settingsWebViewPageData(SettingsWebViewSurface.Feedback, RaftShellStoreScope.create(shellInstanceId = "shell-feedback"), feedbackTicketId = "FB-7")
-        assertNull(settingsFeedbackTicketIdFromPageData(list))
-        assertEquals("https://web.example.test/feedback/?embed=raft-settings-v1&shell=host", settingsFeedbackWebUrl("https://web.example.test", null, "FB-7"))
+        assertEquals("", settingsFeedbackPageRequest(scope, "FB-7").second.optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID))
     }
 }

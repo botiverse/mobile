@@ -4159,6 +4159,9 @@
     <string name="settings_feedback_tickets_error_conflict">這次重試與原本的請求不一致。</string>
     <string name="settings_feedback_tickets_error_invalid">請檢查意見回饋內容後重試。</string>
     <string name="settings_feedback_tickets_error_not_found">這個意見回饋工單已無法使用。</string>
+    <string name="settings_feedback_card_not_waiting">這則意見回饋已經送出，可在「設定」中查看。</string>
+    <string name="settings_feedback_card_unavailable">這裡已無法再使用意見回饋卡片。</string>
+    <string name="settings_feedback_card_not_allowed">你無法傳送這張卡片。</string>
     <string name="settings_feedback_tickets_error_rate_limited">請求過於頻繁，請稍後再試。</string>
     <string name="settings_feedback_tickets_error_unauthorized">意見回饋工作階段已過期，請重新開啟後再試。</string>
     <string name="settings_feedback_tickets_error_unavailable">意見回饋載入失敗，請重試。</string>

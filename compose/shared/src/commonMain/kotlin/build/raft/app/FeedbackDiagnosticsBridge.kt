@@ -1,11 +1,11 @@
 package build.raft.app
 
-/** Stable cross-platform contract for the feedback diagnostics WebView bridge. */
+/**
+ * Stable cross-platform contract of the host's feedback diagnostics stream (`feedbackDiagnosticsStart`
+ * / `feedbackDiagnosticsCancel`), which the native Settings form drives
+ * ([build.raft.app.data.HostSettingsFeedbackDiagnosticsUploader]).
+ */
 internal object FeedbackDiagnosticsBridge {
-    const val CAPABILITY = "diagnostics-upload-v1"
-    const val EVENT = "raft:feedback-diagnostics"
-    const val START_KIND = "diagnostics:start"
-    const val CANCEL_KIND = "diagnostics:cancel"
     const val REQUEST_ID = "requestId"
     const val BINDING = "binding"
     const val TYPE = "type"

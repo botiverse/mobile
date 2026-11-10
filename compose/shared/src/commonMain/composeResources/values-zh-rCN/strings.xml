@@ -4270,6 +4270,10 @@
     <string name="settings_feedback_tickets_error_conflict">本次重试与原请求不一致。</string>
     <string name="settings_feedback_tickets_error_invalid">请检查反馈内容后重试。</string>
     <string name="settings_feedback_tickets_error_not_found">该反馈工单已不可用。</string>
+    <string name="settings_feedback_card_not_waiting">这条反馈已经发送过，可在设置中查看。</string>
+    <string name="settings_feedback_card_changed">打开之后这张卡片有变动，请返回后重新打开。</string>
+    <string name="settings_feedback_card_unavailable">这里已经不能再发送反馈卡片。</string>
+    <string name="settings_feedback_card_not_allowed">你不能发送这张卡片。</string>
     <string name="settings_feedback_tickets_error_rate_limited">请求过于频繁，请稍后重试。</string>
     <string name="settings_feedback_tickets_error_unauthorized">反馈会话已过期，请重新打开后重试。</string>
     <string name="settings_feedback_tickets_error_unavailable">反馈加载失败，请重试。</string>

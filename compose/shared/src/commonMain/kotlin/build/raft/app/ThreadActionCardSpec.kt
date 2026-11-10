@@ -96,13 +96,11 @@ internal fun ThreadActionCard.actionCardSpecToRender(
  * `docs/development/action-card-forms.md`): the card is done with a `product-feedback` result,
  * the viewer ([viewerUserId]) is the one who sent it (`executedByUserId`), and the ticket was
  * filed into this App's own Hands app (`result.source` == [clientOs], `android` / `ios`:
- * `featureFlagClientOs`). A ticket is read only through its own app. [feedbackPageAvailable]: the
- * App's Settings › Feedback ticket page can be opened ([raftFeedbackTicketPageAvailable]: the
- * native ticket page on Android and iOS, the web page on Compose desktop once the viewing server
- * is known).
+ * `featureFlagClientOs`). A ticket is read only through its own app; it opens in the native
+ * Settings › Feedback ticket page.
  */
-internal fun ThreadActionCard.showsFeedbackTicket(viewerUserId: String?, clientOs: String, feedbackPageAvailable: Boolean): Boolean {
-    if (!feedbackPageAvailable || !isExecuted || !isFeedbackSubmitAction()) return false
+internal fun ThreadActionCard.showsFeedbackTicket(viewerUserId: String?, clientOs: String): Boolean {
+    if (!isExecuted || !isFeedbackSubmitAction()) return false
     if (resultKind != "product-feedback") return false
     val viewer = viewerUserId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
     val source = resultSource ?: return false

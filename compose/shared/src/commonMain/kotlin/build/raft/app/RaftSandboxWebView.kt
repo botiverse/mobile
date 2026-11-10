@@ -81,12 +81,6 @@ internal fun raftDecodeWebViewHostMessage(raw: String): Pair<String, JSONObject>
     val acceptedKind =
         when (kind) {
             "ready", "close", "auth-required", "integration-unavailable" -> kind
-            "feedback:ready" -> "ready"
-            "feedback:close" -> "close"
-            "feedback:auth-required" -> "auth-required"
-            "feedback:integration-unavailable" -> "integration-unavailable"
-            FeedbackDiagnosticsBridge.START_KIND -> FeedbackDiagnosticsBridge.START_KIND
-            FeedbackDiagnosticsBridge.CANCEL_KIND -> FeedbackDiagnosticsBridge.CANCEL_KIND
             // botiverse/slock `packages/web/src/embed/hostBridge.ts`: the user signed out on the page.
             RAFT_HOST_EVENT_SESSION_LOGOUT -> RAFT_HOST_EVENT_SESSION_LOGOUT
             else -> null
