@@ -97,30 +97,6 @@ internal fun interface CanonicalMessageV2OwnerGateway {
 }
 
 /**
- * The realtime half of the durable canary (task #168 step 3): hands every frame to the canary with the
- * connection that delivered it. Never touches the network — a window is only ever created by the enter
- * snapshot (a channel's, or since task #14a a reply thread's), and a realtime frame never requests one.
- */
-internal class ProviderBackedCanonicalMessageV2OwnerGateway(
-    private val canary: CanonicalMessageV2ProductionCanary,
-) : CanonicalMessageV2OwnerGateway {
-    override suspend fun accept(
-        grant: RealtimeGrantRecord,
-        foldInput: CanonicalMessageFoldInput,
-        transportEpoch: Long?,
-    ): CanonicalMessageV2CanaryOutcome =
-        canary.accept(
-            partition = grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID),
-            foldInput = foldInput,
-            frameTransportEpoch = transportEpoch,
-        )
-
-    override suspend fun noteTransportEpoch(grant: RealtimeGrantRecord, transportEpoch: Long) {
-        canary.noteTransportEpoch(grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID), transportEpoch)
-    }
-}
-
-/**
  * The server-confirmed parent of a reply thread scope (task #168 step 3): exactly the three values a
  * `thread` cursor stores and every reply envelope's context carries.
  */

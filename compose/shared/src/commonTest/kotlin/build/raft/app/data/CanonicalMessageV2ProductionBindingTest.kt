@@ -29,8 +29,8 @@ class CanonicalMessageV2ProductionBindingTest {
     @Test
     fun aRealtimeFrameWithoutAWindowNeverRequestsOrWritesAnything() = runBlocking {
         val h = harness()
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, h.gateway.accept(grant(), input(7L)))
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, h.gateway.accept(grant(), input(8L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, h.canary.accept(partition, input(7L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, h.canary.accept(partition, input(8L)))
         assertEquals(emptyList(), h.network.paths, "no first-frame activation (task #168 step 3)")
         assertEquals(0, h.store.snapshots.size)
         assertEquals(0, h.store.incrementals.size)
@@ -38,7 +38,7 @@ class CanonicalMessageV2ProductionBindingTest {
         // Twin: the same frames after the user opened the channel are appended — still without a request.
         h.loader.loadOnEnter(partition, "channel-1") { true }
         val pathsAfterEnter = h.network.paths.toList()
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, h.gateway.accept(grant(), input(8L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, h.canary.accept(partition, input(8L)))
         assertEquals(1, h.store.incrementals.size)
         assertEquals(pathsAfterEnter, h.network.paths, "a realtime append never requests the network")
     }
@@ -73,7 +73,7 @@ class CanonicalMessageV2ProductionBindingTest {
         assertEquals(0, h.store.snapshots.size)
         val scope = SyncScopeKey(partition, "channel-1", "channel")
         assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, h.canary.continuityOf(scope))
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, h.gateway.accept(grant(), input(8L)))
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, h.canary.accept(partition, input(8L)))
         assertTrue(h.store.incrementals.isEmpty())
     }
 
@@ -81,7 +81,6 @@ class CanonicalMessageV2ProductionBindingTest {
         val network: RecordingNetworkClient,
         val store: RecordingStore,
         val canary: CanonicalMessageV2ProductionCanary,
-        val gateway: ProviderBackedCanonicalMessageV2OwnerGateway,
         val loader: CanonicalMessageV2EnteredScopeLoader,
     )
 
@@ -105,7 +104,7 @@ class CanonicalMessageV2ProductionBindingTest {
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network),
         )
-        return Harness(network, store, canary, ProviderBackedCanonicalMessageV2OwnerGateway(canary), loader)
+        return Harness(network, store, canary, loader)
     }
 
     private val partition = grant().durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
