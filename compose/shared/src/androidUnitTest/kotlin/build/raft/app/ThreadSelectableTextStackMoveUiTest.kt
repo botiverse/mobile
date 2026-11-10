@@ -307,23 +307,26 @@ class ThreadSelectableTextStackMoveUiTest {
     fun aBodyGoesSelectableOnlyFramesAfterItsPageBecameActiveAndPlainAtOnce() =
         runRobolectricComposeUiTest {
             var pageActive by mutableStateOf(true)
-            val selectable = mutableListOf<Boolean>()
-            setContent { selectable += rememberThreadInPlaceBodySelectable(pageActive, hasSelection = false) }
+            // Every composition's (page active, body selectable): the rule is per composition, so it
+            // holds whatever frame the test clock lands the recomposition on.
+            val compositions = mutableListOf<Pair<Boolean, Boolean>>()
+            setContent { compositions += pageActive to rememberThreadInPlaceBodySelectable(pageActive, hasSelection = false) }
             waitForIdle()
-            assertTrue(selectable.last(), "first composed on an active page: selectable at once")
+            assertEquals(true to true, compositions.last(), "first composed on an active page: selectable at once")
 
-            mainClock.autoAdvance = false
+            val beforeDeactivation = compositions.size
             runOnIdle { pageActive = false }
-            mainClock.advanceTimeByFrame()
-            assertFalse(selectable.last(), "plain in the frame the page goes inactive")
+            waitForIdle()
+            val inactive = compositions.drop(beforeDeactivation)
+            assertTrue(inactive.isNotEmpty() && inactive.all { (active, _) -> !active }, "recomposed inactive: $compositions")
+            assertTrue(inactive.none { (_, selectable) -> selectable }, "plain in the composition the page goes inactive: $compositions")
 
+            val beforeActivation = compositions.size
             runOnIdle { pageActive = true }
-            mainClock.advanceTimeByFrame()
-            assertFalse(selectable.last(), "still plain in the frame the page becomes active")
-
-            repeat(ThreadInPlaceSelectableActivationFrames + 1) { mainClock.advanceTimeByFrame() }
-            assertTrue(selectable.last(), "selectable once the page has been active for a few frames")
-            mainClock.autoAdvance = true
+            waitForIdle()
+            val active = compositions.drop(beforeActivation)
+            assertEquals(true to false, active.first(), "still plain in the composition the page becomes active: $compositions")
+            assertEquals(true to true, active.last(), "selectable once the page has been active for a few frames: $compositions")
         }
 
     /**
