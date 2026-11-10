@@ -29,6 +29,9 @@ internal actual fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPag
 
 internal actual fun raftPlatformSupportsMultiShellHost(): Boolean = true
 
+// The router starts the owner's document task (RaftCmpActivity.startAppShell).
+internal actual fun raftPlatformRequestsShellWindowScene(): Boolean = false
+
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = false
 
 internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = false

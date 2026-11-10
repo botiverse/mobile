@@ -521,7 +521,7 @@ internal const val RAFT_CONVERSATION_FORWARD_PAGER_EVENT = "slockConversationFor
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 internal const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
 internal const val AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD = "slockAuthChooseServerSkipInitialLoad"
-private const val APP_SHELL_SUPPRESS_RESTORE_LANDING = "slockSuppressRestoreLanding"
+internal const val APP_SHELL_SUPPRESS_RESTORE_LANDING = "slockSuppressRestoreLanding"
 private const val APP_SHELL_AUTH_GATE_INSTANCE_ID = "slockAuthGateInstanceId"
 
 internal sealed interface AuthGateMessage {
@@ -6883,8 +6883,16 @@ private fun RaftAppShellReadyContent(
     val appShellHomeLabels = RaftHomeShellLabels.localized()
     val serverDrawerUserHeader = rememberRaftServerDrawerUserHeader(readySession)
     // "Open workspaces in separate app windows": another server opens in (or brings to front) its
-    // own window, the way the Choose workspace page does; false means switch in place.
-    fun openServerInSeparateWindowIfEnabled(serverId: String, source: String, keepTab: String? = null): Boolean {
+    // own window, the way the Choose workspace page does; false means switch in place. True with a
+    // host that requests window-system scenes (iOS, #4484) means "asked": should the host refuse
+    // (no other scene can be shown, activation error, timeout), [onFallbackInPlace] later runs the
+    // caller's in-place switch, so the pick never leaves this window on the old server.
+    fun openServerInSeparateWindowIfEnabled(
+        serverId: String,
+        source: String,
+        keepTab: String? = null,
+        onFallbackInPlace: () -> Unit
+    ): Boolean {
         val session = readySession ?: return false
         // The server this window shows now (the shell's selected server, else what Home renders,
         // else the session's) — never the launch-time scope server.
@@ -6913,7 +6921,15 @@ private fun RaftAppShellReadyContent(
             "app_shell_server_switch_new_window source=$source " +
                 "from=${currentServerId.orEmpty()} to=${serverId.trim()} tab=${keepTab.orEmpty()}"
         )
-        pager.openAppShellReplacingCurrentPage(pageData)
+        pager.openAppShellInOwnWindow(
+            bridge = bridge,
+            pageData = pageData,
+            source = source,
+            onSwitchInPlace = {
+                bridge.logWarn("app_shell_server_switch_new_window_fallback source=$source to=${serverId.trim()}")
+                onFallbackInPlace()
+            }
+        )
         return true
     }
 
@@ -6926,15 +6942,24 @@ private fun RaftAppShellReadyContent(
             )
             return
         }
-        if (openServerInSeparateWindowIfEnabled(normalizedServerId, source = "server_drawer")) {
+        fun openInPlace() {
+            selectAppShellTab("home")
+            retainedAppShellTabs = retainedAppShellTabs + "home"
+            homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(normalizedServerId)))
+        }
+        if (
+            openServerInSeparateWindowIfEnabled(
+                normalizedServerId,
+                source = "server_drawer",
+                onFallbackInPlace = { openInPlace() }
+            )
+        ) {
             serverDrawerProgrammaticCloseFence?.invoke("server_drawer_new_window")
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
             return
         }
-        selectAppShellTab("home")
-        retainedAppShellTabs = retainedAppShellTabs + "home"
-        homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
-        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(normalizedServerId)))
+        openInPlace()
     }
 
     fun openServerDrawerConversation(serverIdValue: String, conversationId: String) {
@@ -7134,23 +7159,36 @@ private fun RaftAppShellReadyContent(
         serverMenuState.dismiss()
         val current = serverMenuModel?.currentServer?.id.orEmpty()
         val plan = appShellServerMenuSwitchPlan(current, serverId, selectedTab) ?: return
-        if (openServerInSeparateWindowIfEnabled(plan.serverId, source = "server_menu", keepTab = plan.tab)) return
-        val homeServerId = appShellHomeListServerId(renderedServerId = renderedHomeServerId, readyServerId = readyServerId)
-        pendingHomeServerSwitchId = plan.serverId.takeIf { it != homeServerId }
-        observedHomeServerSwitchId = null
-        bridge.performanceMarker(
-            phase = "home_server_switch_select",
-            routeName = "kuikly_home",
-            event = "instant",
-            metadata = mapOf("from" to current, "to" to plan.serverId, "source" to "server_menu", "tab" to plan.tab)
-        )
-        readySession
-            ?.withAppShellSelectedServer(plan.serverId)
-            ?.let { session -> authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session)) }
-        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
-        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(plan.serverId)))
-        if (selectedTab != plan.tab) selectAppShellTab(plan.tab, directChildSwitch = true)
-        bridge.log("app_shell_server_menu_switch to=${plan.serverId} tab=${plan.tab}")
+        fun switchInPlace() {
+            val homeServerId = appShellHomeListServerId(renderedServerId = renderedHomeServerId, readyServerId = readyServerId)
+            pendingHomeServerSwitchId = plan.serverId.takeIf { it != homeServerId }
+            observedHomeServerSwitchId = null
+            bridge.performanceMarker(
+                phase = "home_server_switch_select",
+                routeName = "kuikly_home",
+                event = "instant",
+                metadata = mapOf("from" to current, "to" to plan.serverId, "source" to "server_menu", "tab" to plan.tab)
+            )
+            // Latest, not this composition's: a refused window request runs this later.
+            latestReadySession
+                ?.withAppShellSelectedServer(plan.serverId)
+                ?.let { session -> authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session)) }
+            homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(plan.serverId)))
+            if (selectedTab != plan.tab) selectAppShellTab(plan.tab, directChildSwitch = true)
+            bridge.log("app_shell_server_menu_switch to=${plan.serverId} tab=${plan.tab}")
+        }
+        if (
+            openServerInSeparateWindowIfEnabled(
+                plan.serverId,
+                source = "server_menu",
+                keepTab = plan.tab,
+                onFallbackInPlace = { switchInPlace() }
+            )
+        ) {
+            return
+        }
+        switchInPlace()
     }
 
     LaunchedEffect(pendingNotificationActivityServerId, readySession?.currentServerId) {
@@ -8543,8 +8581,13 @@ private fun RaftAppShellReadyContent(
                                 onSelectedConversationCleared = {
                                     homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
                                 },
-                                onOpenServerInSeparateWindow = { serverId ->
-                                    openServerInSeparateWindowIfEnabled(serverId, source = "home_switcher", keepTab = selectedTab)
+                                onOpenServerInSeparateWindow = { serverId, onFallbackInPlace ->
+                                    openServerInSeparateWindowIfEnabled(
+                                        serverId,
+                                        source = "home_switcher",
+                                        keepTab = selectedTab,
+                                        onFallbackInPlace = onFallbackInPlace
+                                    )
                                 },
                                 onOpenSearch = {
                                     openSearchTab(source = "home_head")
@@ -11480,7 +11523,9 @@ private fun SharedHomeScreen(
     selectedConversationId: String? = null,
     onSelectedConversationCleared: () -> Unit = {},
     /** A picked server opens in its own window (multi-window setting); true = handled, no in-place switch. */
-    onOpenServerInSeparateWindow: (serverId: String) -> Boolean = { false },
+    // True: the server opens in (or was requested for) its own window. [onFallbackInPlace] is the
+    // in-place switch the window path runs should the host refuse the window later (iOS scenes).
+    onOpenServerInSeparateWindow: (serverId: String, onFallbackInPlace: () -> Unit) -> Boolean = { _, _ -> false },
     onOpenSearch: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenSaved: () -> Unit,
@@ -11518,11 +11563,14 @@ private fun SharedHomeScreen(
     // The Home switcher pick: a server that opens in its own window leaves this one (and its open
     // conversation) as it is; otherwise switch in place.
     val selectServerFromSwitcher: (String) -> Unit = { serverId ->
-        if (onOpenServerInSeparateWindow(serverId)) {
-            onIntent(SharedHomeIntent.DismissServerSwitcher)
-        } else {
+        val switchInPlace = {
             onSelectedConversationCleared()
             onIntent(SharedHomeIntent.SelectServer(serverId))
+        }
+        if (onOpenServerInSeparateWindow(serverId, switchInPlace)) {
+            onIntent(SharedHomeIntent.DismissServerSwitcher)
+        } else {
+            switchInPlace()
         }
     }
     val conversationUnavailableMessage = stringResource(Res.string.home_error_conversation_unavailable)

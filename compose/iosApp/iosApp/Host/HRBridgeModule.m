@@ -3577,6 +3577,33 @@ NSString *const RaftBridgeCallbackKey = @"callback";
     });
 }
 
+// #4484: "Open workspaces in separate app windows". The shared server switch asks for a window
+// (UIScene) hosting the picked server's route owner, with launch intent only (initial tab, no
+// restored landing). The callback answers once: opened / reused (a window shows the server, this
+// one keeps its own) or refused (shared switches this window in place).
+- (void)requestShellWindow:(NSDictionary *)args {
+    NSDictionary *params = RaftBridgeParams(args);
+    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
+    RaftBridgeRunOnMain(^{
+        UIWindowScene *requestingScene = self.raftHostController.viewIfLoaded.window.windowScene;
+        NSString *initialTab = RaftBridgeString(params[@"slockInitialTab"]);
+        NSString *source = RaftBridgeString(params[@"source"]);
+        [RaftIosShellWindowBridge
+            requestShellWindowWithEnvironmentId:RaftBridgeString(params[@"slockRouteEnvironmentId"])
+                                      accountId:RaftBridgeString(params[@"slockRouteAccountId"])
+                                       serverId:RaftBridgeString(params[@"slockRouteServerId"])
+                                     initialTab:(initialTab.length > 0 ? initialTab : nil)
+                         suppressRestoreLanding:RaftBridgeBool(params[@"slockSuppressRestoreLanding"])
+                                         source:(source.length > 0 ? source : @"unknown")
+                                requestingScene:requestingScene
+                                     completion:^(NSString *status, NSString *reason) {
+            if (callback) {
+                callback(@{ @"status" : status ?: @"refused", @"reason" : reason ?: @"" });
+            }
+        }];
+    });
+}
+
 - (void)adaptiveNavigation:(NSDictionary *)args {
     NSDictionary *params = RaftBridgeParams(args);
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];

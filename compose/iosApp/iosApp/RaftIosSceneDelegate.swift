@@ -31,21 +31,41 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let activity = connectionOptions.userActivities.first(where: {
             $0.activityType == RaftIosShellWindowContract.shellUserActivityType
         }), let context = RaftIosShellWindowContract.context(from: activity) {
+            // A window requested by a server switch (#4484): identity + launch intent.
             shellContext.apply(context)
             RaftIosDiagnosticsRecord(
                 "info",
                 "RaftIosShellWindow",
                 "scene_identity_resolved source=user_activity shell=\(context.shellInstanceId)"
             )
+        } else if let context = session.stateRestorationActivity.flatMap({
+            RaftIosShellWindowContract.context(from: $0, includeLaunchIntent: false)
+        }) ?? RaftIosShellWindowContract.context(fromSessionUserInfo: session.userInfo) {
+            // A document window the system restores or reconnects (relaunch, a backgrounded
+            // window brought back): it keeps the server it showed, as an Android document task does.
+            shellContext.apply(context)
+            RaftIosDiagnosticsRecord(
+                "info",
+                "RaftIosShellWindow",
+                "scene_identity_resolved source=session_restoration shell=\(context.shellInstanceId)"
+            )
         }
+        session.userInfo = RaftIosShellWindowContract.sessionUserInfo(for: shellContext)
         RaftIosShellWindowRegistry.register(session: session, context: shellContext)
         RaftIosTopBandDiagnostics.install()
 
         // With a custom scene delegate the App's WindowGroup is inert; the
         // delegate owns window creation.
         if let windowScene = scene as? UIWindowScene {
+            if shellContext.routeOwner != nil {
+                // #4484: an activation targeting this owner (its canonical URI) prefers this window.
+                windowScene.activationConditions.prefersToActivateForTargetContentIdentifierPredicate =
+                    NSPredicate(format: "self == %@", shellContext.shellInstanceId)
+            }
             let window = UIWindow(windowScene: windowScene)
-            window.rootViewController = UIHostingController(rootView: ContentView())
+            // The scene's shell identity from the first frame: a document window never builds a
+            // legacy-shell page first (the resolver would only rebuild it a frame later).
+            window.rootViewController = UIHostingController(rootView: ContentView(initialShellContext: shellContext))
             // Settings > Appearance > Theme: an explicit Light/Dark choice overrides the OS
             // style for the whole window (keyboards, system menus, the native tab bar);
             // System leaves it unspecified. The dark canvas behind the first frame avoids a
@@ -93,6 +113,32 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
                 source: "scene_connect"
             )
         }
+        // #4484: answers the server switch that requested this window (the source window keeps
+        // its server), or closes a window that arrived after that request had timed out.
+        RaftIosShellWindowContract.noteShellScene(
+            session: session,
+            shellInstanceId: shellContext.shellInstanceId,
+            connected: true
+        )
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        // #4484: an existing document window brought back by a server switch.
+        RaftIosShellWindowContract.noteShellScene(
+            session: scene.session,
+            shellInstanceId: shellInstanceId(for: scene),
+            connected: false
+        )
+    }
+
+    /// #4484: what the system saves to restore this window later. A document window restores to
+    /// its server (identity only: no launch tab); the legacy window restores as before.
+    func stateRestorationActivity(for scene: UIScene) -> NSUserActivity? {
+        guard let owner = RaftIosShellWindowRegistry.context(forSessionId: scene.session.persistentIdentifier)?
+            .routeOwner ?? shellContext.routeOwner else {
+            return nil
+        }
+        return RaftIosShellWindowContract.shellUserActivity(owner: owner)
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
@@ -114,6 +160,9 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
             return
         }
         shellContext.apply(context)
+        scene.session.userInfo = RaftIosShellWindowContract.sessionUserInfo(for: shellContext)
+        // Re-register: the registry's shell-id -> session index follows the new identity.
+        RaftIosShellWindowRegistry.register(session: scene.session, context: shellContext)
         RaftIosDiagnosticsRecord(
             "info",
             "RaftIosShellWindow",

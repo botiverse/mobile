@@ -28,6 +28,8 @@ internal actual fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPag
 
 internal actual fun raftPlatformSupportsMultiShellHost(): Boolean = false
 
+internal actual fun raftPlatformRequestsShellWindowScene(): Boolean = false
+
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = false
 
 internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = true
