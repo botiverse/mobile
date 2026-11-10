@@ -3,7 +3,7 @@ type: fixed
 area: thread
 platforms:
   - android
-pull_request: TBD
+pull_request: 4509
 rollout: full
 ---
 
