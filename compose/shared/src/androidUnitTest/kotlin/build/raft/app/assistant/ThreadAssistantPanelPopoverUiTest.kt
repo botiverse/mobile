@@ -17,7 +17,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -129,7 +130,8 @@ class ThreadAssistantPanelPopoverUiTest {
             assertTrue(abs(popover.height - px(540f)) <= 1f, "540dp tall: ${popover.height}")
             // Its end on the otter's end, kept 8dp inside the window (web PopoverContent `collisionPadding={8}`):
             // the sleeping otter reaches further toward the window's end than that.
-            val window = onRoot().fetchSemanticsNode().size.width.toFloat()
+            // Two roots while it's open (the page and the popover's popup): the page's is the first.
+            val window = onAllNodes(isRoot()).onFirst().fetchSemanticsNode().size.width.toFloat()
             val end = minOf(otterRest.right, window - px(8f))
             assertTrue(abs(popover.right - end) <= 1f, "its end on the otter's end: ${popover.right} vs ${otterRest.right} (window $window)")
             assertTrue(abs(otterRest.top - popover.bottom - px(8f)) <= 1f, "8dp above the otter: ${popover.bottom} vs ${otterRest.top}")
