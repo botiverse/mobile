@@ -22,6 +22,16 @@ import UIKit
 // `slockShellInstanceId` keeps the historical broadcast path. Host lifecycle
 // visibility fans out across every registered shell id (legacy fallback).
 
+/// Shell-window diagnostics. Plain `RaftIosDiagnosticsRecord` writes the diagnostics file only
+/// (emitConsole NO), which is why the verification of 7724fe83 showed none of these lines; these
+/// also reach the host console, so a device run shows where a scene request stops.
+internal func RaftIosShellWindowLog(_ level: String, _ message: String) {
+    // NSLog directly: the diagnostics recorder's own console echo is skipped when its admission
+    // lock is contended, and these lines must never be missing.
+    NSLog("[RaftIosShellWindow][%@] %@", level, message)
+    RaftIosDiagnosticsRecord(level, "RaftIosShellWindow", message)
+}
+
 /// Canonical document-shell identity: the authenticated route owner the shell
 /// hosts. Byte-compatible port of `AndroidShellRouteOwner`.
 internal struct RaftIosShellRouteOwner: Equatable {
@@ -237,7 +247,9 @@ internal enum RaftIosShellWindowContract {
         suppressRestoreLanding: Bool = false
     ) -> NSUserActivity {
         let activity = NSUserActivity(activityType: shellUserActivityType)
-        activity.targetContentIdentifier = owner.shellCanonicalUri
+        // No targetContentIdentifier: with one, UIKit may hand the request to an existing scene
+        // whose activation conditions accept it (every scene accepts any identifier by default)
+        // through scene(_:continue:) instead of connecting a new scene. The identity is userInfo.
         // A window identity of this device: never offered to Handoff, Spotlight or Siri.
         activity.isEligibleForHandoff = false
         activity.isEligibleForSearch = false
@@ -308,9 +320,8 @@ internal enum RaftIosShellWindowContract {
             owner = parseShellUri(identifier)
         }
         guard let routeOwner = owner else {
-            RaftIosDiagnosticsRecord(
+            RaftIosShellWindowLog(
                 "warn",
-                "RaftIosShellWindow",
                 "shell_user_activity_rejected reason=missing_route_owner"
             )
             return nil
@@ -341,6 +352,10 @@ internal enum RaftIosShellWindowContract {
     /// Main thread only. Requests waiting for their owner's scene, by shell instance id (the
     /// owner's canonical URI), each under its own token so a timeout completes only its request.
     private static var pendingRequests: [String: [UUID: RequestCompletion]] = [:]
+    /// Main thread only. The shell context (identity + launch intent) each pending request asked
+    /// for, by shell instance id, in request order: a new scene that connects without the request's
+    /// activity (none in its connection options, no restoration identity) adopts the oldest.
+    private static var pendingContexts: [(shellInstanceId: String, context: RaftIosShellContext, requestedAt: Date)] = []
     /// Main thread only. Owners whose request timed out (the source switched in place), until when
     /// a late scene for them is closed again.
     private static var abandonedRequests: [String: Date] = [:]
@@ -374,18 +389,22 @@ internal enum RaftIosShellWindowContract {
         completion: RequestCompletion? = nil
     ) {
         dispatchPrecondition(condition: .onQueue(.main))
+        RaftIosShellWindowLog(
+            "info",
+            "activate_shell_entry source=\(source) server=\(owner.serverId) " +
+                "supportsMultipleScenes=\(UIApplication.shared.supportsMultipleScenes) " +
+                "connectedScenes=\(UIApplication.shared.connectedScenes.count)"
+        )
         let finish: RequestCompletion = { status, reason in
-            RaftIosDiagnosticsRecord(
+            RaftIosShellWindowLog(
                 status == .refused ? "warn" : "info",
-                "RaftIosShellWindow",
                 "scene_request_result status=\(status.rawValue) reason=\(reason) source=\(source)"
             )
             completion?(status, reason)
         }
         guard let normalized = owner.normalizedOrNull() else {
-            RaftIosDiagnosticsRecord(
+            RaftIosShellWindowLog(
                 "warn",
-                "RaftIosShellWindow",
                 "activate_shell_rejected reason=invalid_owner source=\(source)"
             )
             finish(.refused, "invalid_owner")
@@ -408,9 +427,8 @@ internal enum RaftIosShellWindowContract {
                     userActivity: nil,
                     options: options
                 ) { error in
-                    RaftIosDiagnosticsRecord(
+                    RaftIosShellWindowLog(
                         "warn",
-                        "RaftIosShellWindow",
                         "scene_activation_failed errorType=\(String(describing: type(of: error))) " +
                             "source=\(source) state=foreground_active"
                     )
@@ -419,24 +437,48 @@ internal enum RaftIosShellWindowContract {
                 return
             }
             let token = awaitScene(shellInstanceId: shellInstanceId, source: source, completion: finish)
+            RaftIosShellWindowLog(
+                "info",
+                "scene_request_call kind=existing shell=\(shellInstanceId) source=\(source) " +
+                    "sceneState=\(existing.scene.map { String(describing: $0.activationState.rawValue) } ?? "none")"
+            )
             UIApplication.shared.requestSceneSessionActivation(
                 existing,
                 userActivity: nil,
                 options: options
             ) { error in
+                RaftIosShellWindowLog(
+                    "warn",
+                    "scene_request_error_handler kind=existing error=\(String(describing: error)) source=\(source)"
+                )
                 DispatchQueue.main.async {
                     RaftIosShellWindowContract.complete(shellInstanceId: shellInstanceId, token: token, status: .refused,
                              reason: "activation_error:\(String(describing: type(of: error)))")
                 }
             }
-            RaftIosDiagnosticsRecord(
+            RaftIosShellWindowLog(
                 "info",
-                "RaftIosShellWindow",
                 "scene_reactivation_requested reason=owner_reuse source=\(source)"
             )
             return
         }
         let token = awaitScene(shellInstanceId: shellInstanceId, source: source, completion: finish)
+        pendingContexts.append((
+            shellInstanceId: shellInstanceId,
+            context: RaftIosShellContext(
+                shellInstanceId: shellInstanceId,
+                serverId: normalized.serverId,
+                routeOwner: normalized,
+                launchInitialTab: initialTab,
+                launchSuppressRestoreLanding: suppressRestoreLanding
+            ),
+            requestedAt: Date()
+        ))
+        RaftIosShellWindowLog(
+            "info",
+            "scene_request_call kind=new shell=\(shellInstanceId) source=\(source) " +
+                "tab=\(initialTab ?? "") requestingScene=\(requestingScene != nil)"
+        )
         UIApplication.shared.requestSceneSessionActivation(
             nil,
             userActivity: shellUserActivity(
@@ -446,14 +488,17 @@ internal enum RaftIosShellWindowContract {
             ),
             options: options
         ) { error in
+            RaftIosShellWindowLog(
+                "warn",
+                "scene_request_error_handler kind=new error=\(String(describing: error)) source=\(source)"
+            )
             DispatchQueue.main.async {
                 RaftIosShellWindowContract.complete(shellInstanceId: shellInstanceId, token: token, status: .refused,
                          reason: "request_error:\(String(describing: type(of: error)))")
             }
         }
-        RaftIosDiagnosticsRecord(
+        RaftIosShellWindowLog(
             "info",
-            "RaftIosShellWindow",
             "scene_requested source=\(source)"
         )
     }
@@ -467,6 +512,12 @@ internal enum RaftIosShellWindowContract {
         pendingRequests[shellInstanceId, default: [:]][token] = completion
         DispatchQueue.main.asyncAfter(deadline: .now() + sceneRequestTimeoutSeconds) {
             guard RaftIosShellWindowContract.pendingRequests[shellInstanceId]?[token] != nil else { return }
+            RaftIosShellWindowLog(
+                "warn",
+                "scene_request_timeout shell=\(shellInstanceId) source=\(source) " +
+                    "connectedScenes=\(UIApplication.shared.connectedScenes.count) " +
+                    "openSessions=\(UIApplication.shared.openSessions.count)"
+            )
             RaftIosShellWindowContract.abandonedRequests[shellInstanceId] =
                 Date().addingTimeInterval(RaftIosShellWindowContract.lateSceneDestructionWindowSeconds)
             RaftIosShellWindowContract.complete(shellInstanceId: shellInstanceId, token: token, status: .refused, reason: "timeout")
@@ -479,8 +530,32 @@ internal enum RaftIosShellWindowContract {
         guard let completion = pendingRequests[shellInstanceId]?.removeValue(forKey: token) else { return }
         if pendingRequests[shellInstanceId]?.isEmpty == true {
             pendingRequests.removeValue(forKey: shellInstanceId)
+            pendingContexts.removeAll { $0.shellInstanceId == shellInstanceId }
         }
         completion(status, reason)
+    }
+
+    /// True while a request for `shellInstanceId` waits for its scene.
+    static func hasPendingRequest(shellInstanceId: String) -> Bool {
+        pendingRequests[shellInstanceId]?.isEmpty == false
+    }
+
+    /// The identity a newly connecting scene without any identity of its own adopts: the oldest
+    /// pending new-scene request (UIKit connects the scene it was asked for; the activity carrying
+    /// the identity is the part that can go missing). Nil when nothing is pending.
+    static func pendingContextForIdentitylessScene() -> RaftIosShellContext? {
+        dispatchPrecondition(condition: .onQueue(.main))
+        pendingContexts.removeAll { pendingRequests[$0.shellInstanceId]?.isEmpty != false }
+        guard let oldest = pendingContexts.first else { return nil }
+        pendingContexts.removeFirst()
+        let context = oldest.context
+        return RaftIosShellContext(
+            shellInstanceId: context.shellInstanceId,
+            serverId: context.serverId,
+            routeOwner: context.routeOwner,
+            launchInitialTab: context.launchInitialTab,
+            launchSuppressRestoreLanding: context.launchSuppressRestoreLanding
+        )
     }
 
     /// The scene delegate reports that the scene of `session` now hosts `shellInstanceId`:
@@ -489,6 +564,11 @@ internal enum RaftIosShellWindowContract {
     /// already timed out (the source window switched in place) is closed again.
     static func noteShellScene(session: UISceneSession, shellInstanceId: String, connected: Bool) {
         dispatchPrecondition(condition: .onQueue(.main))
+        RaftIosShellWindowLog(
+            "info",
+            "scene_noted connected=\(connected) shell=\(shellInstanceId) " +
+                "pending=\(pendingRequests[shellInstanceId]?.count ?? 0) pendingTotal=\(pendingRequests.count)"
+        )
         guard shellInstanceId != legacyShellInstanceId else { return }
         if let waiting = pendingRequests.removeValue(forKey: shellInstanceId) {
             let status: RequestStatus = connected ? .opened : .reused
@@ -499,15 +579,13 @@ internal enum RaftIosShellWindowContract {
         }
         guard connected, let until = abandonedRequests.removeValue(forKey: shellInstanceId) else { return }
         guard until > Date() else { return }
-        RaftIosDiagnosticsRecord(
+        RaftIosShellWindowLog(
             "warn",
-            "RaftIosShellWindow",
             "scene_destroyed reason=late_after_timeout shell=\(shellInstanceId)"
         )
         UIApplication.shared.requestSceneSessionDestruction(session, options: nil) { error in
-            RaftIosDiagnosticsRecord(
+            RaftIosShellWindowLog(
                 "warn",
-                "RaftIosShellWindow",
                 "scene_destruction_failed errorType=\(String(describing: type(of: error)))"
             )
         }
@@ -553,6 +631,11 @@ final class RaftIosShellWindowBridge: NSObject {
         requestingScene: UIWindowScene?,
         completion: @escaping (String, String) -> Void
     ) {
+        RaftIosShellWindowLog(
+            "info",
+            "bridge_request_entry source=\(source) server=\(serverId ?? "") tab=\(initialTab ?? "") " +
+                "main=\(Thread.isMainThread)"
+        )
         let run: () -> Void = {
             guard let owner = RaftIosShellWindowBridge.routeOwner(
                 environmentId: environmentId,
@@ -591,9 +674,8 @@ final class RaftIosShellWindowBridge: NSObject {
             accountId: accountId ?? "",
             serverId: serverId ?? ""
         ).normalizedOrNull() else {
-            RaftIosDiagnosticsRecord(
+            RaftIosShellWindowLog(
                 "warn",
-                "RaftIosShellWindow",
                 "document_shell_rejected reason=invalid_owner source=\(source)"
             )
             return nil

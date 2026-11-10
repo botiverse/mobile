@@ -617,9 +617,8 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
                 shellInstanceId: shellInstanceId,
                 serverId: context?.serverId
             )
-            RaftIosDiagnosticsRecord(
+            RaftIosShellWindowLog(
                 "info",
-                "RaftIosShellWindow",
                 "discarded_session_released shell=\(shellInstanceId)"
             )
         }

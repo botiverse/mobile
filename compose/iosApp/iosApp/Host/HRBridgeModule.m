@@ -3584,6 +3584,11 @@ NSString *const RaftBridgeCallbackKey = @"callback";
 - (void)requestShellWindow:(NSDictionary *)args {
     NSDictionary *params = RaftBridgeParams(args);
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
+    // Console too (NSLog): the verification log must show the call reached the host.
+    NSString *entryLine = [NSString stringWithFormat:@"bridge_method_entry method=requestShellWindow server=%@ callback=%d",
+                                                     RaftBridgeString(params[@"slockRouteServerId"]), callback != nil];
+    NSLog(@"[RaftIosShellWindow][info] %@", entryLine);
+    RaftIosDiagnosticsRecord(@"info", @"RaftIosShellWindow", entryLine);
     RaftBridgeRunOnMain(^{
         UIWindowScene *requestingScene = self.raftHostController.viewIfLoaded.window.windowScene;
         NSString *initialTab = RaftBridgeString(params[@"slockInitialTab"]);
@@ -3597,6 +3602,9 @@ NSString *const RaftBridgeCallbackKey = @"callback";
                                          source:(source.length > 0 ? source : @"unknown")
                                 requestingScene:requestingScene
                                      completion:^(NSString *status, NSString *reason) {
+            NSString *answerLine = [NSString stringWithFormat:@"bridge_method_answer status=%@ reason=%@", status, reason];
+            NSLog(@"[RaftIosShellWindow][info] %@", answerLine);
+            RaftIosDiagnosticsRecord(@"info", @"RaftIosShellWindow", answerLine);
             if (callback) {
                 callback(@{ @"status" : status ?: @"refused", @"reason" : reason ?: @"" });
             }
