@@ -96,7 +96,7 @@ class ThreadAppLinkCardPressUnreviewedTest {
         press.confirm()
         runCurrent()
         assertNull(press.confirmation)
-        assertEquals(listOf("h-ship" to null), recorder.executes, "confirmed: runs at once")
+        assertEquals(listOf<Pair<String, AppLinkPrepared?>>("h-ship" to null), recorder.executes, "confirmed: runs at once")
     }
 
     @Test
@@ -124,7 +124,7 @@ class ThreadAppLinkCardPressUnreviewedTest {
         assertEquals("Approve release 7?", pending.prepared?.description?.title)
         press.confirm()
         runCurrent()
-        assertEquals(listOf("h-approve" to prepared), recorder.executes)
+        assertEquals(listOf<Pair<String, AppLinkPrepared?>>("h-approve" to prepared), recorder.executes)
     }
 
     @Test
@@ -140,7 +140,7 @@ class ThreadAppLinkCardPressUnreviewedTest {
         assertTrue(recorder.executes.isEmpty(), "still within the undo window")
         advanceTimeBy(2)
         runCurrent()
-        assertEquals(listOf("h-ship" to null), recorder.executes)
+        assertEquals(listOf<Pair<String, AppLinkPrepared?>>("h-ship" to null), recorder.executes)
 
         press.click(approve)
         runCurrent()
