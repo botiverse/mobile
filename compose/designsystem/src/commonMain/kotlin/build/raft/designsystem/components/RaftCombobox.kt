@@ -868,9 +868,9 @@ private fun RaftComboboxChip(text: String, enabled: Boolean, onRemove: (() -> Un
 /**
  * combobox.tsx `chipRemove`: 28dp (4dp under the chip; [size]), sticker radius, a 14dp × in
  * `foreground-hint`; pressed `fill-pressed`. Its keyboard focus ring is a 2dp `foreground`
- * ring drawn inside it, which the chip would clip outside. With [widenTouchTarget] it takes
- * touches 44dp square (a standalone chip on a phone, [RaftFilterChip]); the combobox's
- * chips keep their box (see the README).
+ * ring drawn inside it, which the chip would clip outside. With [touchReach] it takes
+ * touches that far past its box (a standalone chip on a phone, [RaftFilterChip]); the
+ * combobox's chips keep their box (see the README).
  */
 @Composable
 internal fun RaftComboboxChipRemove(
@@ -878,7 +878,7 @@ internal fun RaftComboboxChipRemove(
     onClick: () -> Unit,
     // `calc(var(--control-embedded-size) - 4px)`: 28dp, 16dp on a desktop.
     size: Dp = RaftTheme.controls.embeddedSize - 4.dp,
-    widenTouchTarget: Boolean = false,
+    touchReach: RaftTouchReach? = null,
 ) {
     val colors = RaftTheme.colors
     val source = remember { MutableInteractionSource() }
@@ -886,19 +886,23 @@ internal fun RaftComboboxChipRemove(
     val isHovered = raftIsHovered(source)
     val pressed = isPressed || isHovered
     val focused = raftIsFocused(source)
-    Box(
-        Modifier
-            .size(size)
-            .then(if (widenTouchTarget) Modifier.raftTouchTarget(true, source, onClick) else Modifier)
-            .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Sticker)
-            .raftInsetFocusOutline(focused, colors.foreground, RaftRadius.Sticker)
-            .raftPointerHover(source)
-            .clickable(source, indication = null, role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = label },
-        contentAlignment = Alignment.Center,
-    ) {
-        RaftGlyphIcon(RaftGlyph.X, size = 14.dp, color = colors.foregroundHint)
+    // Exact only where it reaches by [touchReach]: the combobox's chips keep Compose's default.
+    val content: @Composable () -> Unit = {
+        Box(
+            Modifier
+                .size(size)
+                .then(if (touchReach != null) Modifier.raftTouchTarget(true, source, onClick, touchReach) else Modifier)
+                .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Sticker)
+                .raftInsetFocusOutline(focused, colors.foreground, RaftRadius.Sticker)
+                .raftPointerHover(source)
+                .clickable(source, indication = null, role = Role.Button, onClick = onClick)
+                .semantics { contentDescription = label },
+            contentAlignment = Alignment.Center,
+        ) {
+            RaftGlyphIcon(RaftGlyph.X, size = 14.dp, color = colors.foregroundHint)
+        }
     }
+    if (touchReach != null) RaftExactTouchBounds(content) else content()
 }
 
 /**

@@ -9,6 +9,7 @@ import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -41,7 +42,10 @@ import androidx.compose.ui.node.PointerInputModifierNode
 import androidx.compose.ui.node.TouchBoundsExpansion
 import androidx.compose.ui.node.requireDensity
 import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.tokens.RaftElevation
@@ -545,7 +549,46 @@ fun Modifier.raftTouchTarget(
     minSize: Dp = RaftTouchTargetSize,
     onLongClick: (() -> Unit)? = null,
     expandStart: Boolean = true,
-): Modifier = this then RaftTouchTargetElement(minSize, enabled, interactionSource, onClick, onLongClick, expandStart)
+): Modifier = this then RaftTouchTargetElement(minSize, enabled, interactionSource, onClick, onLongClick, expandStart, reach = null)
+
+/**
+ * How far a [raftTouchTarget] reaches past each edge of the control's box, as raft-ui's
+ * `::after` insets do where a square would reach a neighbour: a segment's 6 up and down only,
+ * the filter chip ×'s 6 toward its label and 14 toward the chip's end.
+ */
+@Immutable
+internal data class RaftTouchReach(val start: Dp = 0.dp, val top: Dp = 0.dp, val end: Dp = 0.dp, val bottom: Dp = 0.dp)
+
+/**
+ * Composes [content] without Compose's own touch near-hit: by default a finger that lands within
+ * [ViewConfiguration.minimumTouchTargetSize] (48dp) of a smaller control, on nothing else that
+ * takes touches, presses it. Inside, a control takes taps only in its box and the reach its
+ * [raftTouchTarget] gives it, so a tap area that must stop short on one side (the filter chip ×
+ * toward its label, a segment toward its neighbours) does.
+ */
+@Composable
+internal fun RaftExactTouchBounds(content: @Composable () -> Unit) {
+    val base = LocalViewConfiguration.current
+    val exact =
+        remember(base) {
+            object : ViewConfiguration by base {
+                override val minimumTouchTargetSize: DpSize get() = DpSize.Zero
+            }
+        }
+    CompositionLocalProvider(LocalViewConfiguration provides exact, content = content)
+}
+
+/**
+ * [raftTouchTarget] reaching past the box by [reach] on each side (start and end follow the
+ * layout direction), whatever the box's size, in place of out to a square. Compose the control
+ * in [RaftExactTouchBounds] so Compose's own 48dp near-hit doesn't reach further.
+ */
+internal fun Modifier.raftTouchTarget(
+    enabled: Boolean,
+    interactionSource: MutableInteractionSource,
+    onClick: () -> Unit,
+    reach: RaftTouchReach,
+): Modifier = this then RaftTouchTargetElement(RaftTouchTargetSize, enabled, interactionSource, onClick, null, expandStart = true, reach = reach)
 
 private data class RaftTouchTargetElement(
     val minSize: Dp,
@@ -554,8 +597,9 @@ private data class RaftTouchTargetElement(
     val onClick: () -> Unit,
     val onLongClick: (() -> Unit)?,
     val expandStart: Boolean,
+    val reach: RaftTouchReach?,
 ) : ModifierNodeElement<RaftTouchTargetNode>() {
-    override fun create() = RaftTouchTargetNode(minSize, enabled, interactionSource, onClick, onLongClick, expandStart)
+    override fun create() = RaftTouchTargetNode(minSize, enabled, interactionSource, onClick, onLongClick, expandStart, reach)
 
     override fun update(node: RaftTouchTargetNode) {
         node.minSize = minSize
@@ -563,6 +607,7 @@ private data class RaftTouchTargetElement(
         node.interactionSource = interactionSource
         node.onClick = onClick
         node.expandStart = expandStart
+        node.reach = reach
         node.updateLongClick(onLongClick)
     }
 }
@@ -579,6 +624,7 @@ private class RaftTouchTargetNode(
     var onClick: () -> Unit,
     private var onLongClick: (() -> Unit)?,
     var expandStart: Boolean,
+    var reach: RaftTouchReach?,
 ) : DelegatingNode(), PointerInputModifierNode, LayoutAwareModifierNode {
     private var size = IntSize.Zero
 
@@ -625,6 +671,9 @@ private class RaftTouchTargetNode(
 
     override val touchBoundsExpansion: TouchBoundsExpansion
         get() {
+            reach?.let { r ->
+                return with(requireDensity()) { TouchBoundsExpansion(r.start.roundToPx(), r.top.roundToPx(), r.end.roundToPx(), r.bottom.roundToPx()) }
+            }
             val min = with(requireDensity()) { minSize.roundToPx() }
             val y = ((min - size.height) / 2).coerceAtLeast(0)
             if (!expandStart) return TouchBoundsExpansion(0, y, (min - size.width).coerceAtLeast(0), y)

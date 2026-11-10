@@ -1324,8 +1324,9 @@ internal fun SharedActivityFilterBar(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
-                // Never push Mark all read off the row; 12dp keeps the gap (web gap-3).
-                modifier = Modifier.weight(1f, fill = false).padding(end = 12.dp),
+                // Never push Mark all read off the row; 16dp keeps the gap (web gap-4): the filter
+                // chip's × takes taps 10dp past the chip's end (raft-ui 0.73 FilterChip).
+                modifier = Modifier.weight(1f, fill = false).padding(end = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
