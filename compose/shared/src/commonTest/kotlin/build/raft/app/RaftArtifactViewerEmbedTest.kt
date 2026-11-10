@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 class RaftArtifactViewerEmbedTest {
     private val web = "https://raft-app-staging.botiverse.dev"
     private val id = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
-    private val embed = "embed=raft-settings-v1&shell=host"
+    private val embed = "embed=raft-settings-v1&shell=host&back=host"
 
     @Test
     fun theViewerOpensThePageUnderTheAppTitleBar() {
@@ -40,6 +40,7 @@ class RaftArtifactViewerEmbedTest {
                 // `chrome=none` (it drops the page's toolbar and ⋯) is never kept, whatever its value.
                 "$web/artifacts/$id?chrome=full&embed=raft-settings-v1&shell=host" to "$web/artifacts/$id?$embed",
                 "$web/artifacts/$id?embed=raft-settings-v1&shell=host&chrome=none" to "$web/artifacts/$id?$embed",
+                "$web/artifacts/$id?back=web&embed=raft-settings-v1&shell=host" to "$web/artifacts/$id?$embed",
                 "$web/artifacts/$id?$embed" to "$web/artifacts/$id?$embed",
             )
         for ((url, expected) in cases) assertEquals(expected, raftArtifactViewerEmbeddedUrl(url), url)
@@ -49,6 +50,12 @@ class RaftArtifactViewerEmbedTest {
     fun whereAnAddressTakesTheViewer() {
         val cases =
             listOf(
+                // The page's own Back (`back=host`) writes `#host=close`: the viewer closes.
+                "$web/artifacts/$id?$embed#host=close" to RaftArtifactViewerNavigation.Close,
+                "$web/artifacts/$id/v/2?$embed#host=close" to RaftArtifactViewerNavigation.Close,
+                // Any other fragment is the page's own (a list, a comment): still this Artifact.
+                "$web/artifacts/$id?$embed#panel=comments" to RaftArtifactViewerNavigation.Stay(null),
+                "$web/artifacts/$id?$embed#host=closed" to RaftArtifactViewerNavigation.Stay(null),
                 // This Artifact, any version, with or without the contract: the viewer stays.
                 "$web/artifacts/$id?$embed" to RaftArtifactViewerNavigation.Stay(null),
                 "$web/artifacts/$id/" to RaftArtifactViewerNavigation.Stay(null),

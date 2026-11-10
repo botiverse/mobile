@@ -224,10 +224,21 @@ internal fun raftArtifactViewerPagePath(target: ArtifactLinkTarget): String =
  * message, presence, Comments, Find, ⋯ with every action the web has). No `chrome=none` (slock
  * #12362, owner decision 2026-11-10): that drops the toolbar and with it most of the web's actions.
  * The web reads it once, from the document's entry URL, and keeps it for the session.
+ *
+ * `back=host` asks the page for a Back at its toolbar's left edge that closes the viewer by setting
+ * its address's fragment to `#host=close` ([raftArtifactViewerNavigation]), the same address-only
+ * contract as `#panel=` (no bridge). Proposed to the web (2026-11-10); a web that does not know it
+ * ignores it, and the App's own bar keeps Back meanwhile.
  */
-internal val RaftArtifactViewerEmbedQuery: String = "embed=$SharedSettingsEmbedContract&shell=$SharedSettingsEmbedHostShell"
+internal val RaftArtifactViewerEmbedQuery: String =
+    "embed=$SharedSettingsEmbedContract&shell=$SharedSettingsEmbedHostShell&back=$RAFT_ARTIFACT_VIEWER_HOST_BACK"
 
-private val RaftArtifactViewerEmbedKeys = setOf("embed", "shell", "chrome")
+internal const val RAFT_ARTIFACT_VIEWER_HOST_BACK = "host"
+
+/** The fragment the page writes when its host Back is pressed: the viewer closes. */
+internal const val RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT = "#host=close"
+
+private val RaftArtifactViewerEmbedKeys = setOf("embed", "shell", "chrome", "back")
 
 /**
  * [url] with the embed contract in its query: any `embed`/`shell` already there is replaced and a `chrome` dropped, every
@@ -377,6 +388,8 @@ internal sealed interface RaftArtifactViewerNavigation {
 internal fun raftArtifactViewerNavigation(url: String, webOrigin: String, artifactId: String): RaftArtifactViewerNavigation {
     val origin = raftWebOriginOf(url) ?: return RaftArtifactViewerNavigation.Ignore
     if (origin != raftWebOriginOf(webOrigin)) return RaftArtifactViewerNavigation.SystemBrowser(url)
+    // The page's own Back (`back=host`): it asks the App to close the viewer.
+    if (url.substringAfter('#', "") == RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT.removePrefix("#")) return RaftArtifactViewerNavigation.Close
     val pathAndQuery = url.substringAfter("://").let { rest ->
         val start = rest.indexOfFirst { it == '/' || it == '?' || it == '#' }
         if (start < 0) "/" else rest.substring(start).substringBefore('#')
