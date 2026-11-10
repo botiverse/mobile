@@ -102,7 +102,6 @@ class CanonicalMessageV2EnteredPageWriteThroughTest {
             JdbcSqliteDriver(url).let { driver ->
                 val reader = CanonicalMessageV2DurableLastKnownReader(
                     SqlDelightCanonicalMessageV2Store(RaftSqlDatabase(driver), now = { 2L }),
-                    isEnabledForServer = { true },
                 )
                 val frame = assertNotNull(runBlocking { reader.read(partition, "channel-1") })
                 assertEquals(listOf("m10", "m20"), frame.envelopes.map { it.fact.id })
@@ -212,13 +211,12 @@ class CanonicalMessageV2EnteredPageWriteThroughTest {
         )
         val canaryLogs = mutableListOf<String>()
         val canary = CanonicalMessageV2ProductionCanary(
-            isEnabledForServer = { true },
             generationEngine = engine,
             logger = { canaryLogs += it },
         )
         private val fetcher = CanonicalMessageV2RestSnapshotFetcher(network)
-        val loader = CanonicalMessageV2EnteredScopeLoader(canary, engine, fetcher, isEnabledForServer = { true })
-        val writer = CanonicalMessageV2AdjacentPageWriter(canary, engine, fetcher, isEnabledForServer = { true })
+        val loader = CanonicalMessageV2EnteredScopeLoader(canary, engine, fetcher)
+        val writer = CanonicalMessageV2AdjacentPageWriter(canary, engine, fetcher)
         private val partition = canonicalV2TestGrant().durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
         private val scope = SyncScopeKey(partition, "channel-1", "channel")
 
@@ -232,7 +230,7 @@ class CanonicalMessageV2EnteredPageWriteThroughTest {
         suspend fun onDisk() = store.restore(scope).envelopes
 
         suspend fun coldStart() =
-            CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true }).read(partition, "channel-1")
+            CanonicalMessageV2DurableLastKnownReader(store).read(partition, "channel-1")
     }
 
     private fun pageOf(vararg nodes: String): JsonArray = adjacentPageOf(*nodes)

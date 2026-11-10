@@ -81,7 +81,7 @@ class CanonicalMessageV2ActionCardPresentationTest {
     @Test
     fun aDurableCardRestoresWithItsPresentationAndANarrowerCopyNeverTakesItAway() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
         suspend fun storedCard() = assertIs<CanonicalActionMetadataV2.ActionCard>(
             assertNotNull(reader.read(partitionA, "channel-a")).envelopes.single().fact.actionMetadata,
         )
@@ -127,7 +127,7 @@ class CanonicalMessageV2ActionCardPresentationTest {
     @Test
     fun aCardStoredWithoutTheKeysStillDecodesAndRendersTheLegacyFallback() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
         runBlocking {
             val bare = card(confirmationVersion = null).copy(sourceServerId = null, targetServerName = null, presentation = null)
             store.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, listOf(envelope(1, bare)), cursor(1)))

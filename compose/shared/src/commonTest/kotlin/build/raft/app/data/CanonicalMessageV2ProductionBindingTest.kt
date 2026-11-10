@@ -27,18 +27,8 @@ import kotlin.test.assertTrue
  */
 class CanonicalMessageV2ProductionBindingTest {
     @Test
-    fun flagOffDoesZeroV2Work() = runBlocking {
-        val h = harness(flagOn = false)
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, h.gateway.accept(grant(), input(7L)))
-        h.loader.loadOnEnter(partition, "channel-1") { true }
-        assertEquals(emptyList(), h.network.paths)
-        assertEquals(0, h.store.snapshots.size)
-        assertEquals(0, h.store.incrementals.size)
-    }
-
-    @Test
     fun aRealtimeFrameWithoutAWindowNeverRequestsOrWritesAnything() = runBlocking {
-        val h = harness(flagOn = true)
+        val h = harness()
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, h.gateway.accept(grant(), input(7L)))
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, h.gateway.accept(grant(), input(8L)))
         assertEquals(emptyList(), h.network.paths, "no first-frame activation (task #168 step 3)")
@@ -56,7 +46,6 @@ class CanonicalMessageV2ProductionBindingTest {
     @Test
     fun theEnterPageBecomesAFullV2SnapshotWithItsRealReplyCount() = runBlocking {
         val h = harness(
-            flagOn = true,
             network = RecordingNetworkClient(
                 canonicalV2TestThreadParentPage(),
                 threadSummariesBody = canonicalV2TestThreadSummaries(replyCount = 4),
@@ -78,7 +67,6 @@ class CanonicalMessageV2ProductionBindingTest {
     @Test
     fun aThreadParentWithoutItsSummaryNeverBecomesAWindow() = runBlocking {
         val h = harness(
-            flagOn = true,
             network = RecordingNetworkClient(canonicalV2TestThreadParentPage(), threadSummariesBody = "{}"),
         )
         h.loader.loadOnEnter(partition, "channel-1") { true }
@@ -98,7 +86,6 @@ class CanonicalMessageV2ProductionBindingTest {
     )
 
     private fun harness(
-        flagOn: Boolean,
         network: RecordingNetworkClient = RecordingNetworkClient(canonicalV2TestPage()),
     ): Harness {
         val store = RecordingStore()
@@ -107,7 +94,7 @@ class CanonicalMessageV2ProductionBindingTest {
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
-        val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { flagOn }, generationEngine = engine)
+        val canary = CanonicalMessageV2ProductionCanary(generationEngine = engine)
         // The connection's rooms:joined arrived: an entered member channel becomes continuous (task #168 step 3).
         runBlocking {
             canary.noteTransportEpoch(partition, 1L)
@@ -117,7 +104,6 @@ class CanonicalMessageV2ProductionBindingTest {
             canary = canary,
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network),
-            isEnabledForServer = { flagOn },
         )
         return Harness(network, store, canary, ProviderBackedCanonicalMessageV2OwnerGateway(canary), loader)
     }

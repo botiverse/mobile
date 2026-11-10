@@ -351,24 +351,6 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
     }
 
     @Test
-    fun withTheFlagOffAFrameSkipsTheQueueAndEndsTheWindowsContinuity() = withFile { file ->
-        file.rig().session { rig ->
-            rig.connect(1L)
-            rig.enter(channel, 10L, 20L)
-            rig.enabled = false
-            assertTrue(rig.deliver(rig.messageNew(channel, "m30", 30L), epoch = 1L))
-            rig.ingest.awaitIdle()
-            assertTrue(rig.logs.none { "canonical_v2_realtime" in it && "msg=m30" in it }, rig.logs.toString())
-            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
-            // Back on: the frames missed meanwhile are never claimed over.
-            rig.enabled = true
-            assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L))
-            assertEquals(listOf(10L to 20L), rig.segments(channel))
-            assertEquals(listOf(10L, 20L, 40L), assertNotNull(rig.coldRead(channel)).seqs())
-        }
-    }
-
-    @Test
     fun theT4RouteAlsoCommitsOffTheGrantAndBeforeDisplay() = withFile { file ->
         file.rig(t4 = true).session { rig ->
             rig.connect(1L)
@@ -552,9 +534,6 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
         t4: Boolean,
         commitTimeoutMs: Long,
     ) : AutoCloseable {
-        /** The `sync_core_messages` flag for the server (canary and ingest read it). */
-        @Volatile var enabled = true
-
         /** The ingest's log sink throws (a broken platform logger). */
         @Volatile var throwingLogger = false
 
@@ -595,7 +574,7 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
-        val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { enabled }, generationEngine = engine, logger = { logs += it })
+        val canary = CanonicalMessageV2ProductionCanary(generationEngine = engine, logger = { logs += it })
         private val tracker = object : CanonicalMessageV2LiveCoverageTracker {
             override suspend fun accept(
                 partition: DurablePartitionKey,
@@ -628,7 +607,6 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
         val ingest = CanonicalMessageV2RealtimeIngest(
             tracker = tracker,
             generationEngine = engine,
-            isEnabledForServer = { enabled },
             logger = {
                 if (throwingLogger) throw IllegalStateException("log sink down")
                 logs += it
@@ -715,7 +693,6 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
                 fetcher = CanonicalMessageV2RestSnapshotFetcher(
                     RecordingNetworkClient("""{"messages":$page,"historyLimited":false}""", channelIds = setOf(scope.scopeId)),
                 ),
-                isEnabledForServer = { true },
                 logger = { logs += it },
             ).loadOnEnter(partition, scope.scopeId) { true }
         }
@@ -725,7 +702,6 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
 
         private fun coldReader() = CanonicalMessageV2DurableLastKnownReader(
             SqlDelightCanonicalMessageV2Store(database, now = { 2_000L }),
-            isEnabledForServer = { true },
         )
 
         suspend fun coldRead(scope: SyncScopeKey): ThreadDurableLastKnownFrame? = coldReader().read(partition, scope.scopeId)

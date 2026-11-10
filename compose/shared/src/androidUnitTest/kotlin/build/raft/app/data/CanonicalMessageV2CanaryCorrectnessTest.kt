@@ -869,7 +869,7 @@ class CanonicalMessageV2CanaryCorrectnessTest {
                 },
                 rig.logs.toString(),
             )
-            val offline = CanonicalMessageV2DurableLastKnownReader(rig.store, isEnabledForServer = { true })
+            val offline = CanonicalMessageV2DurableLastKnownReader(rig.store)
                 .readReplyThread(partition, "thread-1", thread1Parent)
             assertEquals(listOf("r1"), offline?.envelopes?.map { it.fact.id }, "the durable read serves the enter page")
 
@@ -932,7 +932,7 @@ class CanonicalMessageV2CanaryCorrectnessTest {
                 rig.logs.toString(),
             )
             val offline = assertNotNull(
-                CanonicalMessageV2DurableLastKnownReader(rig.store, isEnabledForServer = { true }).read(partition, "channel-a"),
+                CanonicalMessageV2DurableLastKnownReader(rig.store).read(partition, "channel-a"),
             )
             assertEquals(mapOf("a2" to BOTH_UNKNOWN), offline.unknownFieldsByFactId)
             val row = assertNotNull(offline.envelopes.single { it.fact.id == "a2" }.toThreadMessageItem(currentUserId = "user-9"))
@@ -1457,7 +1457,6 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
         val canary = CanonicalMessageV2ProductionCanary(
-            isEnabledForServer = { true },
             generationEngine = engine,
             logger = { logs += it },
         )
@@ -1467,7 +1466,6 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             canary = canary,
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(server),
-            isEnabledForServer = { true },
             logger = { logs += it },
             isKnownNonMember = { _, channelId -> channelId in nonMembers },
         )
@@ -1517,7 +1515,6 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             canary = canary,
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(server),
-            isEnabledForServer = { true },
             logger = { logs += it },
             isKnownNonMember = { _, channelId -> channelId in nonMembers },
         )

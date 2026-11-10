@@ -209,21 +209,6 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
     }
 
     @Test
-    fun withTheFlagOffNothingIsStoredButTheHoleIsReported() = withFile { file ->
-        file.rig().session { rig ->
-            rig.cursorAt(9L)
-            rig.connect(1L)
-            rig.enter(channel, 10L, 20L)
-            rig.enabled = false
-            assertTrue(rig.deliver(rig.resume(30L, rig.resumeRow("m30", 30L, channel.scopeId))))
-            rig.enabled = true
-            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
-            assertEquals(listOf(10L, 20L), rig.seqsInScope(channel))
-            assertEquals(30L, rig.appliedSeq())
-        }
-    }
-
-    @Test
     fun aPartitionClearedAfterTheGrantCheckRefusesTheResumeAndAStaleDisplaySavesNoCursor() = withFile { file ->
         file.rig().session { rig ->
             rig.cursorAt(29L)
@@ -362,9 +347,6 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
     }
 
     private class Rig(private val driver: JdbcSqliteDriver, kv: InMemoryRaftKeyValueStore, timeoutMs: Long) : AutoCloseable {
-        /** The `sync_core_messages` flag (canary, both ingests). */
-        @Volatile var enabled = true
-
         /** Whether the authority registry still holds the grant at display (the legacy continuation's own check). */
         @Volatile var grantCurrentAtDisplay = true
         val database = RaftSqlDatabase(driver)
@@ -387,18 +369,16 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
-        val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { enabled }, generationEngine = engine, logger = { logs += it })
+        val canary = CanonicalMessageV2ProductionCanary(generationEngine = engine, logger = { logs += it })
         private val realtime = CanonicalMessageV2RealtimeIngest(
             tracker = canary,
             generationEngine = engine,
-            isEnabledForServer = { true },
             logger = { logs += it },
             dispatcher = Dispatchers.IO,
         )
         val resumeIngest = CanonicalMessageV2ResumeIngest(
             tracker = canary,
             generationEngine = engine,
-            isEnabledForServer = { enabled },
             logger = { logs += it },
             dispatcher = Dispatchers.IO,
         )
@@ -447,7 +427,6 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
                     RecordingNetworkClient("""{"messages":$page,"historyLimited":false}""", channelIds = setOf(scope.scopeId))
                         .also { it.onPageRequested = duringFetch },
                 ),
-                isEnabledForServer = { true },
                 logger = { logs += it },
             ).loadOnEnter(partition, scope.scopeId) { true }
         }
@@ -461,7 +440,6 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
                 fetcher = CanonicalMessageV2RestSnapshotFetcher(
                     RecordingNetworkClient("""{"messages":[],"historyLimited":false}""", channelIds = setOf(scope.scopeId)),
                 ),
-                isEnabledForServer = { true },
                 logger = { logs += it },
             ).applyLatestPage(
                 partition = partition,
@@ -506,7 +484,6 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
 
         private fun coldReader() = CanonicalMessageV2DurableLastKnownReader(
             SqlDelightCanonicalMessageV2Store(database, now = { 2_000L }),
-            isEnabledForServer = { true },
         )
 
         suspend fun coldSeqs(scope: SyncScopeKey): List<Long> =

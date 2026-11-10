@@ -163,11 +163,10 @@ class AccountLocalDataTest {
                 store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L }),
                 snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
             )
-        private val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine)
+        private val canary = CanonicalMessageV2ProductionCanary(generationEngine = engine)
         private val reader =
             CanonicalMessageV2DurableLastKnownReader(
                 SqlDelightCanonicalMessageV2Store(database = database, now = { 2L }),
-                isEnabledForServer = { true },
             )
         val accountLocalData =
             AccountLocalData(
@@ -205,7 +204,6 @@ class AccountLocalDataTest {
                 fetcher = CanonicalMessageV2RestSnapshotFetcher(
                     RecordingNetworkClient("""{"messages":$page,"historyLimited":false}"""),
                 ),
-                isEnabledForServer = { true },
             ).loadOnEnter(partition, "channel-1") { true }
         }
 

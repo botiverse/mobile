@@ -135,10 +135,9 @@ class SharedThreadReplyPrewarmDurableRoundTripTest {
         val loader =
             HeadEpochRecordingLoader(
                 CanonicalMessageV2EnteredScopeLoader(
-                    canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine),
+                    canary = CanonicalMessageV2ProductionCanary(generationEngine = engine),
                     generationEngine = engine,
                     fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
-                    isEnabledForServer = { true },
                     logger = logs::add,
                 ),
             ) { repository.replyRequests.size.toLong() }
@@ -151,7 +150,7 @@ class SharedThreadReplyPrewarmDurableRoundTripTest {
                 selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("thread-prewarm-durable", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore,
-                durableLastKnownReader = CanonicalMessageV2DurableLastKnownReader(sqlStore, isEnabledForServer = { true }, logger = logs::add),
+                durableLastKnownReader = CanonicalMessageV2DurableLastKnownReader(sqlStore, logger = logs::add),
                 enteredScopeSnapshotLoader = loader,
                 diagnosticsLogger = logs::add,
             )

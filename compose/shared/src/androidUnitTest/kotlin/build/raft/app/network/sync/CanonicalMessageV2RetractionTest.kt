@@ -58,7 +58,7 @@ class CanonicalMessageV2RetractionTest {
     @Test
     fun aDurableRetractedFrameRestoresAsAFlaggedThreadItemWithoutTakenBackContent() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
         val retracted = fact(1).copy(
             deletedAt = retractedAt,
             content = "This message was retracted.",
@@ -84,7 +84,7 @@ class CanonicalMessageV2RetractionTest {
     @Test
     fun anOlderFrameWithoutDeletedAtNeverUnRetractsAStoredFact() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
         val placeholder = "This message was retracted."
         runBlocking {
             store.applySnapshot(
@@ -114,7 +114,7 @@ class CanonicalMessageV2RetractionTest {
     @Test
     fun aRetractionFrameRetractsAStoredLiveFact() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
         runBlocking {
             store.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, listOf(envelope(fact(1))), cursor(1)))
             assertNull(assertNotNull(reader.read(partitionA, "channel-a")).envelopes.single().fact.deletedAt)

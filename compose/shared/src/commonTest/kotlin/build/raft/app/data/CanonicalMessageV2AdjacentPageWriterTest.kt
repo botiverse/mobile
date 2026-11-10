@@ -5,7 +5,9 @@ import build.raft.app.network.sync.mirroring
 import build.raft.app.canonical.message.CanonicalConversationContextWire
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.MessageAggregateField
+import build.raft.app.network.sync.CanonicalConversationContextV2
 import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
+import build.raft.app.network.sync.TopLevelScopeRefV2
 import build.raft.app.network.sync.CanonicalMessageFoldInput
 import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
@@ -271,7 +273,7 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         assertEquals(before, h.store.cursors.getValue(scope), "no mirror column moves")
         assertTrue(h.logs.any { "outcome=committed reason=island_stored facts=2" in it }, h.logs.toString())
 
-        val reader = CanonicalMessageV2DurableLastKnownReader(h.store, isEnabledForServer = { true })
+        val reader = CanonicalMessageV2DurableLastKnownReader(h.store)
         assertEquals(listOf(20L, 30L, 40L), reader.read(partition, "channel-1")?.envelopes?.map { it.fact.seq }, "users see the same window")
     }
 
@@ -301,7 +303,7 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         assertEquals(null, cursor.oldestLoadedSeq)
         assertEquals(null, cursor.newestLoadedSeq)
         assertEquals(null, cursor.latestSeq)
-        val reader = CanonicalMessageV2DurableLastKnownReader(h.store, isEnabledForServer = { true })
+        val reader = CanonicalMessageV2DurableLastKnownReader(h.store)
         assertEquals(null, reader.read(partition, "channel-1"), "offline stays what it was")
         assertEquals(emptyList<String>(), h.network.paths, "the caller named the type: no extra request")
     }
@@ -449,22 +451,14 @@ class CanonicalMessageV2AdjacentPageWriterTest {
     }
 
     @Test
-    fun identityChangeOrFlagOffWritesNothing() = runBlocking {
+    fun identityChangeWritesNothing() = runBlocking {
         val changed = harness()
         changed.seedWindow()
         changed.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5)), limit = 3, stillCurrent = { false })
         assertEquals(listOf(20L, 30L, 40L), changed.store.seqs(scope))
         assertTrue(changed.logs.any { "outcome=identity_changed" in it }, changed.logs.toString())
 
-        var flagOn = true
-        val off = harness(flag = { flagOn })
-        off.seedWindow()
-        flagOn = false
-        off.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5)), limit = 3)
-        assertEquals(listOf(20L, 30L, 40L), off.store.seqs(scope))
-        assertTrue(off.logs.any { "outcome=flag_off" in it }, off.logs.toString())
-
-        // Twin: same seed, current identity, flag on.
+        // Twin: same seed, current identity.
         val on = harness()
         on.seedWindow()
         on.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5)), limit = 3)
@@ -543,6 +537,89 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         )
     }
 
+    @Test
+    fun anOlderPageOfATaskConversationIsStoredUnderItsTaskChannel() = runBlocking {
+        // Task #proj-mobile:#46. The page rows name no context, so the parent comes from `channels/conv-1`.
+        val h = taskHarness()
+        h.seedWindow(taskScope, taskParentChannelId = "channel-1")
+        h.extend(
+            ThreadDurablePageDirection.Older, anchorSeq = 20,
+            adjacentPageOf(adjacentPageNode("m5", 5, channelId = "conv-1"), adjacentPageNode("m10", 10, channelId = "conv-1")),
+            limit = 3, channelId = "conv-1", coveredAfterSeq = 0,
+        )
+
+        assertEquals(listOf(5L, 10L, 20L, 30L, 40L), h.store.seqs(taskScope))
+        assertEquals(listOf(1L to 40L), h.store.segments.getValue(taskScope).map { it.lowSeq to it.highSeq })
+        val cursor = h.store.cursors.getValue(taskScope)
+        assertEquals(5L, cursor.oldestLoadedSeq)
+        assertTrue(cursor.hasLoadedOldest, "coveredAfterSeq 0: nothing below the page")
+        assertEquals(40L, cursor.newestLoadedSeq)
+        assertEquals(null, cursor.parentScopeId, "a task header names no reply parent")
+        val context = h.store.facts.getValue(taskScope).getValue("m5").context as CanonicalConversationContextV2.TopLevel
+        assertEquals(TopLevelScopeRefV2.Task("server-1", "conv-1", "channel-1"), context.scope)
+        assertEquals(listOf("channels/conv-1"), h.network.paths)
+        assertTrue(h.logs.any { "scope=conv-1 direction=older outcome=committed facts=2" in it }, h.logs.toString())
+    }
+
+    @Test
+    fun aTaskPageWhoseRowsNameTheirChannelNeedsNoRequest() = runBlocking {
+        val node = { id: String, seq: Long ->
+            adjacentPageNode(id, seq, channelId = "conv-1", conversationContext = """{"channelType":"task","parentChannelId":"channel-1"}""")
+        }
+        // The server could not name the parent: only the rows do.
+        val h = taskHarness(parentChannelId = null)
+        h.seedWindow(taskScope, taskParentChannelId = "channel-1")
+        h.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(node("m10", 10)), limit = 3, channelId = "conv-1")
+        assertEquals(listOf(10L, 20L, 30L, 40L), h.store.seqs(taskScope))
+        assertEquals(listOf(10L to 40L), h.store.segments.getValue(taskScope).map { it.lowSeq to it.highSeq })
+        assertEquals(emptyList<String>(), h.network.paths)
+
+        // Twin: same page without the row context. Nothing names the parent, so nothing is written.
+        val unknown = taskHarness(parentChannelId = null)
+        unknown.seedWindow(taskScope, taskParentChannelId = "channel-1")
+        unknown.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m10", 10, channelId = "conv-1")), limit = 3, channelId = "conv-1")
+        assertEquals(listOf(20L, 30L, 40L), unknown.store.seqs(taskScope))
+        assertEquals(listOf(20L to 40L), unknown.store.segments.getValue(taskScope).map { it.lowSeq to it.highSeq })
+        assertTrue(unknown.logs.any { "scope=conv-1 direction=older outcome=task_parent_unknown" in it }, unknown.logs.toString())
+    }
+
+    @Test
+    fun aNewerAndALatestPageOfATaskConversationAreStoredToo() = runBlocking {
+        val newer = taskHarness()
+        newer.seedWindow(taskScope, taskParentChannelId = "channel-1")
+        newer.extend(ThreadDurablePageDirection.Newer, 40, adjacentPageOf(adjacentPageNode("m50", 50, channelId = "conv-1")), limit = 3, channelId = "conv-1")
+        assertEquals(listOf(20L to 50L), newer.store.segments.getValue(taskScope).map { it.lowSeq to it.highSeq })
+        assertEquals(50L, newer.store.cursors.getValue(taskScope).newestLoadedSeq)
+
+        val latest = taskHarness()
+        latest.seedWindow(taskScope, taskParentChannelId = "channel-1")
+        latest.latest(
+            adjacentPageOf(adjacentPageNode("m60", 60, channelId = "conv-1"), adjacentPageNode("m70", 70, channelId = "conv-1")),
+            limit = 2, channelId = "conv-1",
+            messageWindow = channelWindow(coveredAfterSeq = 40, coveredThroughSeq = 70, scopeId = "conv-1"),
+        )
+        assertEquals(listOf(20L, 30L, 40L, 60L, 70L), latest.store.seqs(taskScope))
+        assertEquals(listOf(20L to 70L), latest.store.segments.getValue(taskScope).map { it.lowSeq to it.highSeq })
+        assertTrue(latest.logs.any { "scope=conv-1 outcome=window_extended new=60..70" in it }, latest.logs.toString())
+    }
+
+    @Test
+    fun aChannelPageStillAsksForNoParent() = runBlocking {
+        // Unchanged channel behaviour: the parent lookup is for task windows only.
+        val h = harness()
+        h.seedWindow()
+        h.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m10", 10)), limit = 3)
+        assertEquals(listOf(10L to 40L), h.store.segments.getValue(scope).map { it.lowSeq to it.highSeq })
+        assertEquals(emptyList<String>(), h.network.paths)
+        val context = h.store.facts.getValue(scope).getValue("m10").context as CanonicalConversationContextV2.TopLevel
+        assertEquals(TopLevelScopeRefV2.Channel("server-1", "channel-1"), context.scope)
+    }
+
+    private fun taskHarness(parentChannelId: String? = "channel-1") =
+        harness(channelIds = setOf("conv-1"), channelType = "task", parentChannelId = parentChannelId)
+
+    private val taskScope get() = SyncScopeKey(partition, "conv-1", "task")
+
     private inner class Harness(
         val network: RecordingNetworkClient,
         val store: InMemoryCanonicalMessageV2Store,
@@ -557,12 +634,14 @@ class CanonicalMessageV2AdjacentPageWriterTest {
             seqs: List<Long> = listOf(20L, 30L, 40L),
             oldest: Long = seqs.min(),
             hasLoadedOldest: Boolean = false,
+            taskParentChannelId: SyncScopeId? = null,
         ) {
             val converted = CanonicalMessageV2RestSnapshotFetcher(network).convertPage(
                 partition = partition,
                 scopeId = target.scopeId,
                 channelType = target.scopeKind,
                 rawMessages = adjacentPageOf(*seqs.map { adjacentPageNode("m$it", it, channelId = target.scopeId) }.toTypedArray()),
+                taskParentChannelId = taskParentChannelId,
             ) as CanonicalMessageV2PageConversion.Converted
             val result = seedEngine.applySnapshot(
                 CanonicalMessageV2SnapshotFrame(
@@ -645,16 +724,19 @@ class CanonicalMessageV2AdjacentPageWriterTest {
      * a cold start.
      */
     private fun harness(
-        flag: () -> Boolean = { true },
         channelIds: Set<String> = setOf("channel-1"),
         threadSummariesBody: String? = "{}",
         sameEngineForWriter: Boolean = false,
         nowMs: () -> Long = { Long.MAX_VALUE / 2 },
+        channelType: String = "channel",
+        parentChannelId: String? = null,
     ): Harness {
         val network = RecordingNetworkClient(
             canonicalV2TestPage(),
             channelIds = channelIds,
+            channelType = channelType,
             threadSummariesBody = threadSummariesBody,
+            parentChannelId = parentChannelId,
         )
         val store = InMemoryCanonicalMessageV2Store()
         fun engine() = CanonicalMessageV2GenerationEngine(
@@ -664,13 +746,12 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         )
         val seedEngine = engine()
         val writerEngine = if (sameEngineForWriter) seedEngine else engine()
-        val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { flag() }, generationEngine = writerEngine)
+        val canary = CanonicalMessageV2ProductionCanary(generationEngine = writerEngine)
         val logs = mutableListOf<String>()
         val writer = CanonicalMessageV2AdjacentPageWriter(
             canary = canary,
             generationEngine = writerEngine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
-            isEnabledForServer = { flag() },
             logger = logs::add,
             nowMs = nowMs,
         )
@@ -705,15 +786,18 @@ internal fun adjacentPageNode(
     channelId: String = "channel-1",
     threadId: String? = null,
     thin: Boolean = false,
+    /** Raw `conversationContext` JSON object of the row; omitted when null. */
+    conversationContext: String? = null,
 ): String {
     val thread = threadId?.let { "\"$it\"" } ?: "null"
     val reactions = if (thin) "" else "\"reactions\":[],"
+    val context = conversationContext?.let { ",\"conversationContext\":$it" }.orEmpty()
     fun two(value: Long) = value.toString().padStart(2, '0')
     val time = "${two(seq / 3600 % 24)}:${two(seq / 60 % 60)}:${two(seq % 60)}"
     return """{"id":"$id","seq":$seq,"channelId":"$channelId","senderType":"user","senderId":"user-1",""" +
         """"content":"hello $id","messageType":"chat","randomId":null,"threadId":$thread,""" +
         """"createdAt":"2026-07-17T$time.000Z","senderName":"Alice","senderDescription":null,""" +
-        """"senderMembershipStatus":null,"mentions":[],"attachments":[],$reactions"commentRef":null,"actionMetadata":null}"""
+        """"senderMembershipStatus":null,"mentions":[],"attachments":[],$reactions"commentRef":null,"actionMetadata":null$context}"""
 }
 
 internal fun adjacentPageOf(vararg nodes: String): JsonArray =

@@ -1404,7 +1404,6 @@ internal class RaftSharedStoreProvider private constructor(
         CanonicalMessageV2ResumeIngest(
             tracker = canonicalMessageV2Canary,
             generationEngine = canonicalMessageV2GenerationEngine,
-            isEnabledForServer = { _ -> true },
             // Lines already start with `canonical_v2_resume`.
             logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2Resume"),
             dispatcher = RaftMessageDbDispatcher,
@@ -1415,7 +1414,6 @@ internal class RaftSharedStoreProvider private constructor(
         CanonicalMessageV2RealtimeIngest(
             tracker = canonicalMessageV2Canary,
             generationEngine = canonicalMessageV2GenerationEngine,
-            isEnabledForServer = { _ -> true },
             // Lines already start with `canonical_v2_realtime`.
             logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2Realtime"),
         )
@@ -3279,7 +3277,6 @@ internal class RaftSharedStoreProvider private constructor(
                 )
             val canonicalMessageV2Canary =
                 CanonicalMessageV2ProductionCanary(
-                    isEnabledForServer = { _ -> true },
                     generationEngine = canonicalMessageV2GenerationEngine,
                     // Lines already start with `canonical_v2_canary` (task #168: no doubled prefix).
                     logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2Canary"),
@@ -3298,7 +3295,6 @@ internal class RaftSharedStoreProvider private constructor(
             val threadDurableLastKnownReader =
                 CanonicalMessageV2DurableLastKnownReader(
                     store = canonicalMessageV2Store,
-                    isEnabledForServer = { _ -> true },
                     logger = sharedInfoLogger("ThreadDurableLastKnown", "thread_durable_last_known"),
                     replyWindowCache = threadReplyWindowCache,
                 )
@@ -3528,7 +3524,7 @@ internal class RaftSharedStoreProvider private constructor(
                     diagnosticsLogger = sharedInfoLogger("SlockForegroundReconcile", "shared_foreground_reconcile")
                 )
             // Write side of the same partition (task #1124): same canary (for "is this scope yours"),
-            // same engine, same per-server flag, the process-level network client the canary's own
+            // same engine, the process-level network client the canary's own
             // snapshot loads use.
             val threadEnteredScopeSnapshotLoader =
                 CanonicalMessageV2EnteredScopeLoader(
@@ -3539,11 +3535,10 @@ internal class RaftSharedStoreProvider private constructor(
                             networkClient = networkClient,
                             logger = sharedInfoLogger("CanonicalMessageV2EnterSnapshot", "canonical_v2_enter_snapshot"),
                         ),
-                    isEnabledForServer = { _ -> true },
                     logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2EnterSnapshot"),
                     isKnownNonMember = { serverId, channelId -> provider.isKnownNonMemberConversation(serverId, channelId) },
                 )
-            // Paging write side (task #168): same canary, engine, flag and network client as the enter
+            // Paging write side (task #168): same canary, engine and network client as the enter
             // loader; extends the window that loader created, never creates one.
             val threadDurablePageExtender =
                 CanonicalMessageV2AdjacentPageWriter(
@@ -3554,7 +3549,6 @@ internal class RaftSharedStoreProvider private constructor(
                             networkClient = networkClient,
                             logger = sharedInfoLogger("CanonicalMessageV2AdjacentPage", "canonical_v2_adjacent_page"),
                         ),
-                    isEnabledForServer = { _ -> true },
                     // Lines already start with `canonical_v2_adjacent_page` / `canonical_v2_latest_page`: a prefix
                     // here doubled the latest-page line on device (task #168).
                     logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2AdjacentPage"),

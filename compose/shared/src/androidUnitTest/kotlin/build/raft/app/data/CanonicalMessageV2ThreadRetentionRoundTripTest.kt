@@ -115,10 +115,9 @@ class CanonicalMessageV2ThreadRetentionRoundTripTest {
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
         private val loader = CanonicalMessageV2EnteredScopeLoader(
-            canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine),
+            canary = CanonicalMessageV2ProductionCanary(generationEngine = engine),
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
-            isEnabledForServer = { true },
             logger = logs::add,
         )
 

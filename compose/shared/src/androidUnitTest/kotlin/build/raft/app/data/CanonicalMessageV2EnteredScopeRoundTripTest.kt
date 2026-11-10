@@ -29,7 +29,7 @@ class CanonicalMessageV2EnteredScopeRoundTripTest {
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
         val loader = CanonicalMessageV2EnteredScopeLoader(
-            canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine),
+            canary = CanonicalMessageV2ProductionCanary(generationEngine = engine),
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(
                 RecordingNetworkClient(
@@ -37,9 +37,8 @@ class CanonicalMessageV2EnteredScopeRoundTripTest {
                     threadSummariesBody = canonicalV2TestThreadSummaries(replyCount = 4),
                 ),
             ),
-            isEnabledForServer = { true },
         )
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
 
         runBlocking {
             assertNull(reader.read(partition, "channel-1"), "nothing on disk before the first entry")
@@ -67,12 +66,11 @@ class CanonicalMessageV2EnteredScopeRoundTripTest {
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
         val loader = CanonicalMessageV2EnteredScopeLoader(
-            canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine),
+            canary = CanonicalMessageV2ProductionCanary(generationEngine = engine),
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(
                 RecordingNetworkClient(canonicalV2TestPage(channelId = "dm-1"), channelIds = setOf("dm-1"), channelType = "dm"),
             ),
-            isEnabledForServer = { true },
         )
         runBlocking {
             loader.loadOnEnter(partition, "dm-1") { true }
@@ -93,12 +91,11 @@ class CanonicalMessageV2EnteredScopeRoundTripTest {
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
         fun loaderFor(pageBody: String) = CanonicalMessageV2EnteredScopeLoader(
-            canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine),
+            canary = CanonicalMessageV2ProductionCanary(generationEngine = engine),
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(RecordingNetworkClient(pageBody)),
-            isEnabledForServer = { true },
         )
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
 
         runBlocking {
             loaderFor("""{"messages":[],"historyLimited":false}""").loadOnEnter(partition, "channel-1") { true }

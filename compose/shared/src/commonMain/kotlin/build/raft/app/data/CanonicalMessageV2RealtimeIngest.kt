@@ -54,7 +54,7 @@ internal sealed interface CanonicalMessageV2RealtimeIngestOutcome {
     /** Written as a loose fact (no segment claims it). */
     data object Loose : CanonicalMessageV2RealtimeIngestOutcome
 
-    /** Not written, by rule (flag off, not a storable V2 fact, the same frame again, …). */
+    /** Not written, by rule (not a storable V2 fact, the same frame again, …). */
     data class Skipped(val reason: String) : CanonicalMessageV2RealtimeIngestOutcome
 
     /** The write threw; nothing was committed (one SQLite transaction). */
@@ -91,7 +91,7 @@ internal sealed interface CanonicalMessageV2RealtimeIngestOutcome {
  * A frame that cannot be queued (more than [queueCapacity] waiting: the disk is stuck) is skipped and reported as
  * unrecorded to the tracker.
  *
- * Not written: the `sync_core_messages` flag is off for the server; a frame without a storable V2 scope or that
+ * Not written: a frame without a storable V2 scope or that
  * does not convert to a (partial) V2 fact; a `message:updated` naming a reply thread (its reply count is not in
  * the frame, and writing 0 would erase the stored one: Phase 3c's ReplyCount marker); a frame equal to one of the
  * last few written for the same fact (another owner entry delivered it again); a reply whose claimed parent
@@ -100,7 +100,6 @@ internal sealed interface CanonicalMessageV2RealtimeIngestOutcome {
 internal class CanonicalMessageV2RealtimeIngest(
     private val tracker: CanonicalMessageV2LiveCoverageTracker,
     private val generationEngine: CanonicalMessageV2GenerationEngine,
-    private val isEnabledForServer: (serverId: String) -> Boolean,
     logger: (String) -> Unit = {},
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val queueCapacity: Int = CANONICAL_MESSAGE_V2_REALTIME_QUEUE_CAPACITY,
@@ -262,17 +261,6 @@ internal class CanonicalMessageV2RealtimeIngest(
             pendingUnrecorded.any { it.partition == partition && it.foldInput.row.channelId == foldInput.row.channelId }
         }
 
-    /** Whether the `sync_core_messages` flag lets [serverId]'s frames be stored at all. */
-    fun isEnabledFor(serverId: String): Boolean = isEnabledForServer(serverId)
-
-    /**
-     * The flag is off: nothing is stored and no disk is touched, but the frame is still reported to the tracker so a
-     * window it held cannot claim across the frames missed while the flag was off. In-memory only.
-     */
-    suspend fun noteFlagOffFrame(partition: DurablePartitionKey, foldInput: CanonicalMessageFoldInput) {
-        tracker.noteFrameUnrecorded(partition, foldInput)
-    }
-
     /** The generation a commit of [partition] is bound to; read it under the exact current grant. */
     suspend fun partitionGeneration(partition: DurablePartitionKey): Long = generationEngine.partitionGeneration(partition)
 
@@ -329,7 +317,6 @@ internal class CanonicalMessageV2RealtimeIngest(
         // A skip of this channel whose report has not landed yet: the tracker may still believe the stream whole, so
         // this frame must not extend any claim. Stored loose instead.
         if (hasPendingSkip(partition, foldInput)) {
-            if (!isEnabledForServer(partition.serverId)) return skip(partition, foldInput, "flag_off")
             return writeLoose(work, CanonicalMessageV2CanaryOutcome.Held("unrecorded_report_pending"))
         }
         val tracked = try {
@@ -346,7 +333,6 @@ internal class CanonicalMessageV2RealtimeIngest(
             CanonicalMessageV2CanaryOutcome.Held("tracker_failed")
         }
         if (tracked == CanonicalMessageV2CanaryOutcome.Committed) return CanonicalMessageV2RealtimeIngestOutcome.Covered
-        if (!isEnabledForServer(partition.serverId)) return skip(partition, foldInput, "flag_off")
         return writeLoose(work, tracked)
     }
 
@@ -500,8 +486,6 @@ internal class RealtimeIngestCanonicalMessageV2OwnerGateway(
         transportEpoch: Long?,
     ): suspend () -> Unit {
         val partition = grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
-        // Flag off: no queue round-trip and no disk, only the in-memory continuity report.
-        if (!ingest.isEnabledFor(partition.serverId)) return { ingest.noteFlagOffFrame(partition, foldInput) }
         val expectedGeneration = ingest.partitionGeneration(partition)
         return { ingest.enqueue(partition, foldInput, transportEpoch, expectedGeneration).await() }
     }

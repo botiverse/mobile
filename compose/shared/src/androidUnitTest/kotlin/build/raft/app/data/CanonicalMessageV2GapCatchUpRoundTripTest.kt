@@ -150,12 +150,11 @@ class CanonicalMessageV2GapCatchUpRoundTripTest {
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
-        private val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine)
+        private val canary = CanonicalMessageV2ProductionCanary(generationEngine = engine)
         private val writer = CanonicalMessageV2AdjacentPageWriter(
             canary = canary,
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
-            isEnabledForServer = { true },
             logger = logs::add,
         )
 
@@ -163,7 +162,6 @@ class CanonicalMessageV2GapCatchUpRoundTripTest {
         fun coldStartReader() =
             CanonicalMessageV2DurableLastKnownReader(
                 SqlDelightCanonicalMessageV2Store(database = database, now = { 2L }),
-                isEnabledForServer = { true },
             )
 
         suspend fun enter(seqs: List<Long>, window: ChannelMessageWindow? = null) {
@@ -173,7 +171,6 @@ class CanonicalMessageV2GapCatchUpRoundTripTest {
                 canary = canary,
                 generationEngine = engine,
                 fetcher = CanonicalMessageV2RestSnapshotFetcher(RecordingNetworkClient(body)),
-                isEnabledForServer = { true },
             ).loadOnEnter(partition, "channel-1") { true }
         }
 

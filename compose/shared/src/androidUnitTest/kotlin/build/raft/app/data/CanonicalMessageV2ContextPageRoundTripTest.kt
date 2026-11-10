@@ -62,7 +62,7 @@ class CanonicalMessageV2ContextPageRoundTripTest {
             assertEquals(listOf(10L to 40L, 50L to 80L, 100L to 110L), rig.segments())
 
             // A restart keeps them, and shows the same window.
-            val cold = CanonicalMessageV2DurableLastKnownReader(rig.freshStore(), isEnabledForServer = { true })
+            val cold = CanonicalMessageV2DurableLastKnownReader(rig.freshStore())
             assertEquals(listOf(50L, 60L, 70L, 80L), assertNotNull(cold.read(partition, "channel-1")).envelopes.map { it.fact.seq })
             assertEquals(10, rig.storedSeqs().size)
         }
@@ -184,15 +184,10 @@ class CanonicalMessageV2ContextPageRoundTripTest {
     }
 
     @Test
-    fun flagOffAndAnchorMissingWriteNothing() = withFreshDatabase { database ->
+    fun anAnchorMissingFromThePageWritesNothing() = withFreshDatabase { database ->
         runBlocking {
-            val off = Rig(database, flagOn = false)
-            off.enter(listOf(50L, 60L))
-            off.persist("m40", page(40, 50), hasOlder = true)
-            assertEquals(listOf(50L, 60L), assertNotNull(off.reader.read(partition, "channel-1")).envelopes.map { it.fact.seq })
-            assertEquals(true, off.logs.last().endsWith("anchor=m40 outcome=skipped reason=flag_off facts=0"), off.logs.last())
-
             val on = Rig(database)
+            on.enter(listOf(50L, 60L))
             on.persist("m99", page(40, 50), hasOlder = true)
             assertEquals(listOf(50L, 60L), assertNotNull(on.reader.read(partition, "channel-1")).envelopes.map { it.fact.seq })
             assertEquals(true, on.logs.last().endsWith("anchor=m99 outcome=skipped reason=anchor_not_on_page facts=0"), on.logs.last())
@@ -214,7 +209,7 @@ class CanonicalMessageV2ContextPageRoundTripTest {
         }
     }
 
-    private class Rig(private val database: RaftSqlDatabase, flagOn: Boolean = true, private val maxFactsPerScope: Int = 500) {
+    private class Rig(private val database: RaftSqlDatabase, private val maxFactsPerScope: Int = 500) {
         val logs = mutableListOf<String>()
         private var clock = 1L
         private val store = freshStore()
@@ -224,13 +219,12 @@ class CanonicalMessageV2ContextPageRoundTripTest {
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
-        val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine)
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
+        val canary = CanonicalMessageV2ProductionCanary(generationEngine = engine)
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
         private val writer = CanonicalMessageV2AdjacentPageWriter(
             canary = canary,
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(RecordingNetworkClient(canonicalV2TestPage()), logs::add),
-            isEnabledForServer = { flagOn },
             logger = logs::add,
         )
 
@@ -274,7 +268,6 @@ class CanonicalMessageV2ContextPageRoundTripTest {
                 canary = canary,
                 generationEngine = engine,
                 fetcher = CanonicalMessageV2RestSnapshotFetcher(RecordingNetworkClient(body)),
-                isEnabledForServer = { true },
             ).loadOnEnter(partition, "channel-1") { true }
         }
 

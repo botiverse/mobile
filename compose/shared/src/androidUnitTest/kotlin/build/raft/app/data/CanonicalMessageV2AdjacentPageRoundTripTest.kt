@@ -10,10 +10,14 @@ import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
 import build.raft.app.network.sync.ThreadDurablePageDirection
+import build.raft.app.network.sync.CanonicalConversationContextV2
+import build.raft.app.network.sync.SyncScopeKey
+import build.raft.app.network.sync.TopLevelScopeRefV2
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 /**
  * Task #168 on the real SQLite schema: the enter creates the window, paging pages connected to it grow it, and the cursor the reader sees always describes facts that are actually on disk —
@@ -96,10 +100,47 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
         }
     }
 
-    private class Rig(database: RaftSqlDatabase, maxFactsPerScope: Int) {
+    @Test
+    fun aTaskConversationsOlderPageIsStoredAsASegmentOfItsTaskWindow() = withFreshDatabase { database ->
+        // Task #proj-mobile:#46 on the real schema: the enter writes the `task` window, the older page the user scrolls
+        // back to joins it, and the stored segment spans both with the page's bounds.
+        val rig = Rig(database, maxFactsPerScope = 500, channelId = "conv-1", channelType = "task", parentChannelId = "channel-1")
+        val taskScope = SyncScopeKey(partition, "conv-1", "task")
+        runBlocking {
+            rig.enter(listOf(20L, 30L, 40L))
+            assertEquals(listOf(20L to 40L), rig.store.readSegments(taskScope).map { it.lowSeq to it.highSeq })
+
+            rig.extend(
+                ThreadDurablePageDirection.Older, 20,
+                adjacentPageOf(adjacentPageNode("m5", 5, channelId = "conv-1"), adjacentPageNode("m10", 10, channelId = "conv-1")),
+            )
+
+            assertEquals(listOf(5L to 40L), rig.store.readSegments(taskScope).map { it.lowSeq to it.highSeq })
+            val restored = rig.store.restore(taskScope)
+            assertEquals(listOf(5L, 10L, 20L, 30L, 40L), restored.envelopes.map { it.fact.seq })
+            assertTrue(
+                restored.envelopes.all {
+                    (it.context as CanonicalConversationContextV2.TopLevel).scope ==
+                        TopLevelScopeRefV2.Task(partition.serverId, "conv-1", "channel-1")
+                },
+            )
+            assertEquals(5L, restored.cursor?.oldestLoadedSeq)
+            assertTrue(rig.logs.any { "scope=conv-1 direction=older outcome=committed facts=2" in it }, rig.logs.toString())
+        }
+    }
+
+    private class Rig(
+        database: RaftSqlDatabase,
+        maxFactsPerScope: Int,
+        val channelId: String = "channel-1",
+        private val channelType: String = "channel",
+        private val parentChannelId: String? = null,
+    ) {
         val logs = mutableListOf<String>()
-        private val network = RecordingNetworkClient(canonicalV2TestPage())
-        private val store = SqlDelightCanonicalMessageV2Store(
+        val network = RecordingNetworkClient(
+            canonicalV2TestPage(), channelIds = setOf(channelId), channelType = channelType, parentChannelId = parentChannelId,
+        )
+        val store = SqlDelightCanonicalMessageV2Store(
             database = database,
             now = { 1L },
             retention = CanonicalMessageV2RetentionPolicy(maxFactsPerScope = maxFactsPerScope),
@@ -109,26 +150,31 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
-        private val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine)
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
+        private val canary = CanonicalMessageV2ProductionCanary(generationEngine = engine)
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
         private val writer = CanonicalMessageV2AdjacentPageWriter(
             canary = canary,
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
-            isEnabledForServer = { true },
             logger = logs::add,
         )
 
         /** The real enter loader commits the window from a REST page (seqs ascending). */
         suspend fun enter(seqs: List<Long>) {
-            val window = channelWindowJson(channelWindow(coveredAfterSeq = seqs.min() - 1L, coveredThroughSeq = seqs.max()))
-            val body = """{"messages":${adjacentPageOf(*seqs.map { adjacentPageNode("m$it", it) }.toTypedArray())},"historyLimited":false,"messageWindow":$window}"""
+            val window = channelWindowJson(
+                channelWindow(coveredAfterSeq = seqs.min() - 1L, coveredThroughSeq = seqs.max(), scopeId = channelId),
+            )
+            val nodes = seqs.map { adjacentPageNode("m$it", it, channelId = channelId) }.toTypedArray()
+            val body = """{"messages":${adjacentPageOf(*nodes)},"historyLimited":false,"messageWindow":$window}"""
             CanonicalMessageV2EnteredScopeLoader(
                 canary = canary,
                 generationEngine = engine,
-                fetcher = CanonicalMessageV2RestSnapshotFetcher(RecordingNetworkClient(body)),
-                isEnabledForServer = { true },
-            ).loadOnEnter(partition, "channel-1") { true }
+                fetcher = CanonicalMessageV2RestSnapshotFetcher(
+                    RecordingNetworkClient(
+                        body, channelIds = setOf(channelId), channelType = channelType, parentChannelId = parentChannelId,
+                    ),
+                ),
+            ).loadOnEnter(partition, channelId) { true }
         }
 
         suspend fun extend(
@@ -137,8 +183,8 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
             rawMessages: kotlinx.serialization.json.JsonArray,
             coveredAfterSeq: Long? = null,
         ) = writer.extendWithAdjacentPage(
-            partition, "channel-1", direction, anchorSeq, rawMessages, 3, replyParent = null, requestHeadEpoch = null,
-            messageWindow = pagingWindowFor(direction, anchorSeq, rawMessages, coveredAfterSeq = coveredAfterSeq),
+            partition, channelId, direction, anchorSeq, rawMessages, 3, replyParent = null, requestHeadEpoch = null,
+            messageWindow = pagingWindowFor(direction, anchorSeq, rawMessages, channelId, coveredAfterSeq = coveredAfterSeq),
         ) { true }
     }
 

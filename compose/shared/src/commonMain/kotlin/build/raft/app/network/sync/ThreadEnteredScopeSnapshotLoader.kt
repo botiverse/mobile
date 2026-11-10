@@ -51,7 +51,7 @@ internal interface ThreadEnteredScopeSnapshotLoader {
      * Task #14b: the Activity reply-thread prewarm already fetched the thread's latest reply page
      * ([rawMessages], sent with `limit=`[requestedLimit]); persist THAT page as the `thread` scope's
      * window instead of discarding it with the in-memory prewarm. Same admission as
-     * [beginEnter] + [persistEnteredPage] (flag, partition generation, server-confirmed parent, `stillCurrent`
+     * [beginEnter] + [persistEnteredPage] (partition generation, server-confirmed parent, `stillCurrent`
      * re-read under the scope writer) but page-only: no realtime baseline is registered, a stored
      * window at least as new as the page is never replaced, and any write of the scope after
      * [expectedCommitGeneration] was read (e.g. an enter that saw a deletion) makes the page stale. Implementations that do not persist reply
