@@ -10514,7 +10514,8 @@ private fun SharedThreadRouteContentContent(
                         errorCode = errorCode,
                         errorMessage = errorMessage,
                         expectedProvenance = sendProvenance,
-                        expectedRoute = sendRoute
+                        expectedRoute = sendRoute,
+                        randomId = context.randomId,
                     )
                 )
                 if (startedFromComposer && sendAuthorityStillCurrent()) {

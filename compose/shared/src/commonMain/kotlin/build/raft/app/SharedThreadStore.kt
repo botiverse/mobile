@@ -2310,6 +2310,31 @@ internal class SharedThreadDataSource(
     internal val hasDurablePendingSendJournal: Boolean
         get() = pendingSendJournal != null
 
+    /**
+     * Records a live send's failure on the send's own journal row (proj-mobile#66). Not fenced
+     * on the current selection: [sendProvenance] is the identity the send was admitted under,
+     * and the failure belongs to that server's channel even after the user switched away.
+     */
+    internal fun markPendingLocalSendFailedForSendOwner(
+        sendProvenance: ReplyCacheProvenance,
+        route: ThreadRouteIdentity,
+        localId: String,
+        randomId: String?,
+        errorCode: String?,
+        errorMessage: String?,
+    ): Boolean {
+        val journal = pendingSendJournal ?: return true
+        val cleanRandomId = randomId?.trim()?.takeIf { it.isNotBlank() } ?: return false
+        return journal.markFailedForSendOwner(
+            provenance = sendProvenance,
+            route = route,
+            localId = localId,
+            randomId = cleanRandomId,
+            errorCode = errorCode,
+            errorMessage = errorMessage,
+        )
+    }
+
     internal fun markPendingLocalSendFailedForLocalSend(
         expectedProvenance: ReplyCacheProvenance,
         route: ThreadRouteIdentity,
@@ -7875,7 +7900,9 @@ internal sealed interface SharedThreadIntent {
         val errorCode: String? = null,
         val errorMessage: String? = null,
         val expectedProvenance: ReplyCacheProvenance,
-        val expectedRoute: ThreadRouteIdentity
+        val expectedRoute: ThreadRouteIdentity,
+        /** The send's idempotency key; names its journal row even when the page no longer shows it. */
+        val randomId: String? = null,
     ) : SharedThreadIntent
     data class CancelLocalSend(val messageId: String) : SharedThreadIntent
     data class DismissLocalFailedSend(val messageId: String) : SharedThreadIntent
@@ -8353,7 +8380,8 @@ internal class SharedThreadStore(
                     intent.errorCode,
                     intent.errorMessage,
                     intent.expectedProvenance,
-                    intent.expectedRoute
+                    intent.expectedRoute,
+                    intent.randomId,
                 )
             is SharedThreadIntent.CancelLocalSend -> cancelLocalSend(intent.messageId)
             is SharedThreadIntent.DismissLocalFailedSend -> dismissLocalFailedSend(intent.messageId)
@@ -12441,62 +12469,33 @@ internal class SharedThreadStore(
         errorCode: String?,
         errorMessage: String?,
         expectedProvenance: ReplyCacheProvenance,
-        expectedRoute: ThreadRouteIdentity
+        expectedRoute: ThreadRouteIdentity,
+        randomId: String? = null,
     ) {
-        if (!dataSource.isCurrentReplyCacheProvenanceForLocalSend(expectedProvenance)) return
-        if (!_state.value.payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)) return
-        val currentProvenance =
-            dataSource.currentReplyCacheProvenanceForLocalSend(expectedProvenance)
-                ?: return
+        // proj-mobile#66: the durable failure belongs to the send's own server/account, whatever
+        // is selected now. A server switch while the request was in flight advances the auth
+        // revision and rehomes the row, so a write fenced on the current selection (or on the
+        // admission generation) missed it and the failure was lost.
+        val visibleMessage = _state.value.payload.messages.firstOrNull { message -> message.id == messageId }
+        val sendRandomId =
+            randomId?.trim()?.takeIf { it.isNotBlank() }
+                ?: visibleMessage?.pendingSendContext?.randomId?.trim()?.takeIf { it.isNotBlank() }
         val durableFailure =
-            if (currentProvenance == expectedProvenance) {
-                dataSource.markPendingLocalSendFailedForLocalSend(
-                    expectedProvenance = expectedProvenance,
-                    route = expectedRoute,
-                    localId = messageId,
-                    errorCode = errorCode,
-                    errorMessage = errorMessage,
-                )
-            } else {
-                // The auth lifecycle may have retired the pre-refresh journal partition while
-                // the request was in flight. Re-admit the still-visible local intent into the
-                // verified successor owner before marking it failed, so an explicit retry remains
-                // durable after a token rotation.
-                val pendingMessage =
-                    _state.value.payload.messages.firstOrNull { message -> message.id == messageId }
-                val rehomed =
-                    pendingMessage != null &&
-                    dataSource.persistPendingLocalSend(
-                        provenance = currentProvenance,
-                        route = expectedRoute,
-                        message = pendingMessage,
-                    ) &&
-                    dataSource.markPendingLocalSendFailedForLocalSend(
-                        expectedProvenance = currentProvenance,
-                        route = expectedRoute,
-                        localId = messageId,
-                        errorCode = errorCode,
-                        errorMessage = errorMessage,
-                    )
-                if (rehomed) {
-                    when (
-                        dataSource.clearPendingLocalSendForLocalSend(
-                            expectedProvenance,
-                            expectedRoute,
-                            messageId,
-                        )
-                    ) {
-                        ThreadPendingSendJournal.ConsumeResult.Failed ->
-                            diagnosticsLogger?.invoke(
-                                "thread_pending_send_failure_old_owner_cleanup_failed localId=$messageId " +
-                                    "serverId=${expectedProvenance.serverId} route=${expectedRoute.instanceKey}"
-                            )
-                        ThreadPendingSendJournal.ConsumeResult.Deleted,
-                        ThreadPendingSendJournal.ConsumeResult.NotFound -> Unit
-                    }
-                }
-                rehomed
-            }
+            dataSource.markPendingLocalSendFailedForSendOwner(
+                sendProvenance = expectedProvenance,
+                route = expectedRoute,
+                localId = messageId,
+                randomId = sendRandomId,
+                errorCode = errorCode,
+                errorMessage = errorMessage,
+            ) || readmitLocalSendFailureIntoSuccessor(
+                messageId = messageId,
+                errorCode = errorCode,
+                errorMessage = errorMessage,
+                expectedProvenance = expectedProvenance,
+                expectedRoute = expectedRoute,
+                visibleMessage = visibleMessage,
+            )
         if (!durableFailure) {
             diagnosticsLogger?.invoke(
                 "thread_send_failure_projection_blocked reason=pending_journal_write_failed localId=$messageId"
@@ -12515,6 +12514,52 @@ internal class SharedThreadStore(
             // automatic retry path owns it from here (backoff + online/foreground triggers).
             pendingSendDrainer?.onSendFailed()
         }
+    }
+
+    /**
+     * The auth lifecycle may have retired the send's journal partition while the request was in
+     * flight (same binding, token rotation). Re-admit the still-visible local intent into the
+     * verified successor owner and mark it failed there, so an explicit retry stays durable.
+     * Never crosses a server or account boundary: the live identity must be a successor.
+     */
+    private fun readmitLocalSendFailureIntoSuccessor(
+        messageId: String,
+        errorCode: String?,
+        errorMessage: String?,
+        expectedProvenance: ReplyCacheProvenance,
+        expectedRoute: ThreadRouteIdentity,
+        visibleMessage: RaftThreadMessageItem?,
+    ): Boolean {
+        val pendingMessage = visibleMessage ?: return false
+        val currentProvenance =
+            dataSource.currentReplyCacheProvenanceForLocalSend(expectedProvenance) ?: return false
+        if (currentProvenance == expectedProvenance) return false
+        if (!_state.value.payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)) return false
+        val rehomed =
+            dataSource.persistPendingLocalSend(
+                provenance = currentProvenance,
+                route = expectedRoute,
+                message = pendingMessage,
+            ) &&
+                dataSource.markPendingLocalSendFailedForLocalSend(
+                    expectedProvenance = currentProvenance,
+                    route = expectedRoute,
+                    localId = messageId,
+                    errorCode = errorCode,
+                    errorMessage = errorMessage,
+                )
+        if (rehomed) {
+            when (dataSource.clearPendingLocalSendForLocalSend(expectedProvenance, expectedRoute, messageId)) {
+                ThreadPendingSendJournal.ConsumeResult.Failed ->
+                    diagnosticsLogger?.invoke(
+                        "thread_pending_send_failure_old_owner_cleanup_failed localId=$messageId " +
+                            "serverId=${expectedProvenance.serverId} route=${expectedRoute.instanceKey}"
+                    )
+                ThreadPendingSendJournal.ConsumeResult.Deleted,
+                ThreadPendingSendJournal.ConsumeResult.NotFound -> Unit
+            }
+        }
+        return rehomed
     }
 
     /**

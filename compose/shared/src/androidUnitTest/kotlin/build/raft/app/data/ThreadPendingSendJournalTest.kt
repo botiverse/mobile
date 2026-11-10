@@ -177,6 +177,48 @@ class ThreadPendingSendJournalTest {
         }
     }
 
+    /**
+     * proj-mobile#66: a live send's failure lands on its own row after a server switch rehomed it
+     * to a newer auth generation, and only on that row: not another launch's row with the same
+     * local id, and not the same send on another server.
+     */
+    @Test
+    fun sendOwnerFailureMarksOnlyItsOwnRowAcrossARehome() {
+        withDatabase { path ->
+            JdbcSqliteDriver(url(path)).use { driver ->
+                val journal = journal(driver)
+                val admitted = provenance(authGeneration = 10L, selectionGeneration = 20L)
+                val route = route()
+                val olderLaunch = provenance(authGeneration = 9L, selectionGeneration = 20L)
+                val otherServer = provenance(serverId = "server-b")
+                assertTrue(journal.persistSending(olderLaunch, route, message("local-send-1", "random-older")))
+                assertTrue(journal.persistSending(admitted, route, message("local-send-1", "random-live")))
+                assertTrue(journal.persistSending(otherServer, route, message("local-send-1", "random-live")))
+                assertEquals(2, journal.rehomeAuthRevision("env-a", "principal-a", 10L, 11L))
+
+                // The generation-fenced live path cannot see the rehomed row.
+                assertFalse(journal.markFailed(admitted, route, "local-send-1", "http_400", "bad"))
+                assertTrue(
+                    journal.markFailedForSendOwner(admitted, route, "local-send-1", "random-live", "http_400", "bad")
+                )
+
+                val rows = journal.restore(admitted, route)
+                assertEquals(
+                    setOf("random-older" to ThreadMessageDeliverySending, "random-live" to ThreadMessageDeliveryFailed),
+                    rows.map { it.pendingSendContext?.randomId to it.deliveryState }.toSet(),
+                )
+                assertEquals(
+                    listOf(ThreadMessageDeliverySending),
+                    journal.restore(otherServer, route).map { it.deliveryState },
+                )
+                assertFalse(
+                    journal.markFailedForSendOwner(admitted, route, "local-send-1", "random-gone", "http_400", null),
+                    "no row, no write",
+                )
+            }
+        }
+    }
+
     @Test
     fun failedRowsSurviveRebuildAndExplicitRetryReusesTheSameIdempotencyKey() {
         withDatabase { path ->

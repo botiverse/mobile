@@ -1571,6 +1571,19 @@ WHERE environmentId = ?
   AND routeInstanceKey = ?
   AND localId = ?;
 
+-- A live send's terminal failure, keyed by the send's own stable identity and idempotency key
+-- (proj-mobile#66): a server switch or token rotation may have rehomed the row to a newer
+-- generation while the request was in flight, and the row still belongs to this send.
+updateThreadPendingSendFailureForSendOwner:
+UPDATE threadPendingSendEntity
+SET status = 'failed', lastErrorCode = ?, lastErrorMessage = ?
+WHERE environmentId = ?
+  AND principalId = ?
+  AND serverId = ?
+  AND routeInstanceKey = ?
+  AND localId = ?
+  AND randomId = ?;
+
 deleteThreadPendingSendByRandomIdForStableIdentity:
 DELETE FROM threadPendingSendEntity
 WHERE environmentId = ?
