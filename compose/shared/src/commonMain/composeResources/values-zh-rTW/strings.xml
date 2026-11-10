@@ -701,7 +701,6 @@
     <string name="thread_members_remove_confirm_title">移除成員</string>
     <string name="thread_members_remove_confirm_question">要將 %1$s 移出 #%2$s 嗎？</string>
     <string name="thread_members_remove_confirm_detail">此成員將不再收到此頻道的一般訊息。已追蹤的討論串不會自動取消追蹤；在對方取消追蹤或管理這些討論串之前，已追蹤的公開討論串仍可能通知對方。私人內容仍受目前的存取權限控管。</string>
-    <string name="thread_members_refresh_detail">請重新整理目前的對話後再試一次。</string>
     <string name="thread_members_search_placeholder">搜尋成員…</string>
     <string name="thread_members_loading">正在載入成員…</string>
     <string name="thread_members_empty">沒有成員</string>
@@ -1133,14 +1132,6 @@
     <string name="thread_share_width_wide">寬</string>
     <string name="thread_share_width_custom">自訂</string>
     <string name="thread_share_rendering">正在排版圖片…</string>
-    <string name="thread_task_candidate_current">目前</string>
-    <string name="thread_task_candidate_untitled">未命名的任務</string>
-    <string name="thread_task_candidate_unknown_channel">未知頻道</string>
-    <string name="thread_task_candidate_current_conversation">目前的對話</string>
-    <string name="thread_task_candidate_tap_open">點一下即可開啟此任務的討論串</string>
-    <string name="thread_task_candidate_none">未載入符合 #%1$d 的任務。</string>
-    <string name="thread_task_candidate_open_match">開啟符合的任務。</string>
-    <string name="thread_task_candidate_choose">請選擇要開啟的 #%1$d 任務。</string>
     <string name="thread_retry_older">重新載入較早的訊息</string>
     <string name="thread_retry_new">重新載入較新的訊息</string>
     <string name="thread_load_new">載入新訊息</string>
@@ -1171,7 +1162,6 @@
     <string name="thread_date_divider_month_october">10月</string>
     <string name="thread_date_divider_month_november">11月</string>
     <string name="thread_date_divider_month_december">12月</string>
-    <string name="thread_state_no_tasks">沒有任務</string>
     <string name="thread_state_no_members">沒有成員</string>
     <string name="thread_state_no_comments">沒有留言</string>
     <string name="thread_files_loading">正在載入檔案…</string>
@@ -1185,7 +1175,6 @@
     <string name="thread_files_jump_to_message">跳至原始訊息</string>
     <string name="thread_files_download_file">下載檔案</string>
     <string name="thread_state_note">備註</string>
-    <string name="thread_open_task_number">開啟任務 #%1$d</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
     <string name="thread_placeholder_search">搜尋此討論串…</string>
     <string name="thread_long_message_show_more">展開全文</string>

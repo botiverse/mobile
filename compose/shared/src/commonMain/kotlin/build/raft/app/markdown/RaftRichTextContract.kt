@@ -443,7 +443,8 @@ private fun RaftRichTextContext.toMarkdownTagValidator(): (ThreadMarkdownTag) ->
                     tag.channelName != null -> channelKeys.contains(tag.channelName.trim().lowercase())
                     tag.directMessagePeerName != null ->
                         directMessagePeerKeys.contains(tag.directMessagePeerName.trim().lowercase())
-                    else -> knownTaskNumbers?.contains(tag.label.removePrefix("#").toIntOrNull()) ?: true
+                    // No task list knows no task: a bare `#N` is plain text (Web MessageItem).
+                    else -> tag.label.removePrefix("#").toIntOrNull()?.let { knownTaskNumbers?.contains(it) } == true
                 }
             ThreadMarkdownTagKind.UserMention ->
                 mentionKeys.contains(tag.label.removePrefix("@").trim().lowercase())

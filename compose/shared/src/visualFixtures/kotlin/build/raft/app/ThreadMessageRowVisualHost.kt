@@ -438,9 +438,11 @@ internal fun ThreadMessageVisualScreenContent() {
         ) {
             payload.toKnownMarkdownDirectMessagePeerNameSet()
         }
+    // As the Thread page: the fixture's own numbers, else the tasks it provides statuses for.
+    val loadedMarkdownTaskStatuses = LocalRaftMarkdownTaskStatuses.current
     val knownMarkdownTaskNumbers =
-        remember(payload.knownMarkdownTaskNumbers) {
-            payload.toKnownMarkdownTaskNumberSetOrNull()
+        remember(payload.knownMarkdownTaskNumbers, loadedMarkdownTaskStatuses) {
+            payload.toKnownMarkdownTaskNumberSetOrNull() ?: loadedMarkdownTaskStatuses?.keys
         }
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean =
         remember(

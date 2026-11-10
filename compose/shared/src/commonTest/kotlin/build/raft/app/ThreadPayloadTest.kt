@@ -7403,7 +7403,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun markdownTaskNumberOpenUsesCurrentChannelNumberEndpointBeforeServerFallback() = runBlocking {
+    fun markdownTaskNumberOpenUsesCurrentChannelNumberEndpoint() = runBlocking {
         val api =
             FakeMarkdownTaskNumberApi(
                 channelTaskBody =
@@ -7542,7 +7542,7 @@ class ThreadPayloadTest {
                         sourceThreadId = "current-channel",
                         streamChannelId = "current-channel"
                     ),
-                currentTaskChannelId = ChannelId("current-channel"),
+                currentTaskChannelId = ChannelId("target-channel"),
                 tasksDataSource = SharedTasksDataSource(api),
                 tasksDataStore = store,
                 conversationIdentityProvider = conversationIdentityProvider
@@ -7585,8 +7585,7 @@ class ThreadPayloadTest {
                         taskNumber = 16,
                         currentChannelId = channel,
                         tasksDataSource = source,
-                        tasksDataStore = store,
-                        channelQualified = true
+                        tasksDataStore = store
                     )
                 assertEquals("From the server", assertIs<SharedTaskReferenceResolution.Found>(resolution).task.title)
             }
@@ -7652,8 +7651,9 @@ class ThreadPayloadTest {
         assertEquals(emptyList(), api.calls)
     }
 
+    /** Removed mobile-only guess: the server task list used to stand in for the conversation. */
     @Test
-    fun markdownTaskNumberOpenShowsLoadedAmbiguousStoreWithoutNetwork() = runBlocking {
+    fun markdownTaskNumberOpenNeverOpensAnotherChannelsTaskOfThatNumber() = runBlocking {
         val store = SharedTasksDataStore()
         store.publishSnapshot(
             serverId = "server-1",
@@ -7684,10 +7684,12 @@ class ThreadPayloadTest {
                     summaryCounts = emptyMap()
                 )
         )
+        // The real answer for a number the channel has no task of: 404 `{"error":"Task not found"}`.
         val api =
             FakeMarkdownTaskNumberApi(
-                channelTaskBody = """{"task":{"id":"network-task"}}""",
-                serverTasksBody = """{"tasks":[]}"""
+                channelTaskBody = """{"error":"Task not found"}""",
+                serverTasksBody = """{"tasks":[]}""",
+                channelTaskCode = 404
             )
 
         val result =
@@ -7707,10 +7709,80 @@ class ThreadPayloadTest {
                 tasksDataStore = store
             )
 
-        val ambiguous = assertIs<MarkdownTaskNumberOpenResult.Ambiguous>(result)
-        assertEquals(listOf("task-a-343", "task-b-343"), ambiguous.candidates.map { it.id.value })
-        assertEquals(SharedTaskReferenceResolutionSource.LoadedServer, ambiguous.source)
-        assertEquals(emptyList(), api.calls)
+        // Web `openTaskByChannelNumber`: `#343` is task 343 of the conversation being read and
+        // nothing else. Two other channels' #343 are not offered, and no server-wide search runs.
+        // The 404 is "no such task" (NotFound: logged, no toast), not a failure to open.
+        assertEquals(MarkdownTaskNumberOpenResult.NotFound, result)
+        assertEquals(listOf("taskByNumber:server-1:current-channel:343"), api.calls)
+    }
+
+    /** A 5xx is a real failure to open: Failed, which still toasts (with the trace ID). */
+    @Test
+    fun markdownTaskNumberOpenServerErrorIsAFailureNotAMiss() = runBlocking {
+        for (code in listOf(500, 503)) {
+            val result =
+                openMarkdownTaskNumberPayload(
+                    serverId = ServerId("server-1"),
+                    taskNumber = 343,
+                    currentPayload =
+                        RaftThreadScreenPayload(
+                            status = "content",
+                            surfaceKind = RaftThreadSurfaceKind.Channel,
+                            channelKind = "channel",
+                            sourceThreadId = "current-channel",
+                            streamChannelId = "current-channel"
+                        ),
+                    currentTaskChannelId = ChannelId("current-channel"),
+                    tasksDataSource =
+                        SharedTasksDataSource(
+                            FakeMarkdownTaskNumberApi(
+                                channelTaskBody = """{"error":"Internal error"}""",
+                                serverTasksBody = """{"tasks":[]}""",
+                                channelTaskCode = code
+                            )
+                        ),
+                    tasksDataStore = SharedTasksDataStore()
+                )
+            assertEquals(MarkdownTaskNumberOpenResult.Failed, result, "HTTP $code")
+        }
+    }
+
+    /**
+     * Web TaskConversationDialog `parentChannelId: task.channelId`: a `#16` tapped in a task
+     * conversation opens task 16 of the task's host channel, asking only that channel.
+     */
+    @Test
+    fun taskConversationTaskRefOpensTheHostChannelsTask() = runBlocking {
+        val conversation =
+            RaftThreadScreenPayload(
+                status = "content",
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = RaftTaskConversationChannelKind,
+                sourceThreadId = "task-conv-1",
+                streamChannelId = "task-conv-1"
+            )
+        val api =
+            FakeMarkdownTaskNumberApi(
+                channelTaskBody =
+                    """{"task":{"id":"task-16","title":"Host task","status":"todo","taskNumber":16,""" +
+                        """"channelId":"wg-host","messageId":"host-message","revision":1}}""",
+                serverTasksBody = """{"tasks":[]}"""
+            )
+        val context = conversation.markdownTaskContextChannelId(taskConversationHostChannelId = "wg-host")?.let(::ChannelId)
+        assertEquals(ChannelId("wg-host"), context)
+
+        // The tap resolves the ref with that context (ThreadPage `openMarkdownTaskNumber`).
+        val resolution =
+            resolveSharedTaskReference(
+                serverId = ServerId("server-1"),
+                taskNumber = 16,
+                currentChannelId = context,
+                tasksDataSource = SharedTasksDataSource(api),
+                tasksDataStore = null
+            )
+
+        assertEquals("task-16", assertIs<SharedTaskReferenceResolution.Found>(resolution).task.id.value)
+        assertEquals(listOf("taskByNumber:server-1:wg-host:16"), api.calls.filter { it.startsWith("taskByNumber") })
     }
 
     @Test
@@ -9522,7 +9594,9 @@ class ThreadPayloadTest {
         private val channelTaskBody: String,
         private val serverTasksBody: String,
         /** Runs inside every request (reads the reference resolver's fetch phase). */
-        private val onRequest: (String) -> Unit = {}
+        private val onRequest: (String) -> Unit = {},
+        /** HTTP status of `GET /tasks/channel/:channelId/number/:n`. */
+        private val channelTaskCode: Int = 200
     ) : RaftTasksApi {
         val calls = mutableListOf<String>()
 
@@ -9549,7 +9623,7 @@ class ThreadPayloadTest {
         ): HomeNetworkResponse {
             calls += "taskByNumber:${serverId.value}:${channelId.value}:$taskNumber"
             onRequest("taskByNumber")
-            return HomeNetworkResponse(code = 200, bodyText = channelTaskBody)
+            return HomeNetworkResponse(code = channelTaskCode, bodyText = channelTaskBody)
         }
 
         override suspend fun updateTaskStatus(

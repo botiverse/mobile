@@ -705,7 +705,6 @@
     <string name="thread_members_remove_confirm_title">移除成员</string>
     <string name="thread_members_remove_confirm_question">要将 %1$s 移出 #%2$s 吗？</string>
     <string name="thread_members_remove_confirm_detail">该成员将停止接收此频道的普通消息。已关注的消息列不会自动取消关注；在其取消关注或管理这些消息列之前，已关注的公开消息列仍可能通知该成员。私密内容仍按当前访问权限控制。</string>
-    <string name="thread_members_refresh_detail">请刷新当前对话后重试。</string>
     <string name="thread_members_search_placeholder">搜索成员…</string>
     <string name="thread_members_loading">正在加载成员…</string>
     <string name="thread_members_empty">没有成员</string>
@@ -1140,14 +1139,6 @@
     <string name="thread_share_width_wide">宽</string>
     <string name="thread_share_width_custom">自定义</string>
     <string name="thread_share_rendering">正在排版图片…</string>
-    <string name="thread_task_candidate_current">当前</string>
-    <string name="thread_task_candidate_untitled">未命名任务</string>
-    <string name="thread_task_candidate_unknown_channel">未知频道</string>
-    <string name="thread_task_candidate_current_conversation">当前对话</string>
-    <string name="thread_task_candidate_tap_open">点按打开此任务消息列</string>
-    <string name="thread_task_candidate_none">未加载到编号 #%1$d 的匹配任务。</string>
-    <string name="thread_task_candidate_open_match">打开匹配的任务。</string>
-    <string name="thread_task_candidate_choose">请选择要打开的 #%1$d 任务。</string>
     <string name="thread_retry_older">重试加载更早的消息</string>
     <string name="thread_retry_new">重试加载更新的消息</string>
     <string name="thread_load_new">加载新消息</string>
@@ -1178,7 +1169,6 @@
     <string name="thread_date_divider_month_october">10月</string>
     <string name="thread_date_divider_month_november">11月</string>
     <string name="thread_date_divider_month_december">12月</string>
-    <string name="thread_state_no_tasks">暂无任务</string>
     <string name="thread_state_no_members">暂无成员</string>
     <string name="thread_state_no_comments">暂无评论</string>
     <string name="thread_files_loading">正在加载文件…</string>
@@ -1192,7 +1182,6 @@
     <string name="thread_files_jump_to_message">跳转到原消息</string>
     <string name="thread_files_download_file">下载文件</string>
     <string name="thread_state_note">备注</string>
-    <string name="thread_open_task_number">打开任务 #%1$d</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
     <string name="thread_placeholder_search">搜索此消息列…</string>
     <string name="composer_placeholder_message_design">消息设计</string>

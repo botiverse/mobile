@@ -701,7 +701,6 @@
     <string name="thread_members_remove_confirm_title">Remover membro</string>
     <string name="thread_members_remove_confirm_question">Remover %1$s de #%2$s?</string>
     <string name="thread_members_remove_confirm_detail">Essa pessoa deixará de receber as mensagens normais do canal. As threads seguidas não deixam de ser seguidas automaticamente; threads públicas seguidas ainda podem notificá-la até que ela deixe de segui-las ou as gerencie. O conteúdo privado continua protegido pelo acesso atual.</string>
-    <string name="thread_members_refresh_detail">Atualize esta conversa e tente novamente.</string>
     <string name="thread_members_search_placeholder">Pesquisar membros…</string>
     <string name="thread_members_loading">Carregando membros…</string>
     <string name="thread_members_empty">Nenhum membro</string>
@@ -1133,14 +1132,6 @@
     <string name="thread_share_width_wide">Larga</string>
     <string name="thread_share_width_custom">Personalizada</string>
     <string name="thread_share_rendering">Montando a imagem…</string>
-    <string name="thread_task_candidate_current">Atual</string>
-    <string name="thread_task_candidate_untitled">Tarefa sem título</string>
-    <string name="thread_task_candidate_unknown_channel">Canal desconhecido</string>
-    <string name="thread_task_candidate_current_conversation">Conversa atual</string>
-    <string name="thread_task_candidate_tap_open">Toque para abrir a thread desta tarefa</string>
-    <string name="thread_task_candidate_none">Nenhuma tarefa correspondente a #%1$d foi carregada.</string>
-    <string name="thread_task_candidate_open_match">Abra a tarefa correspondente.</string>
-    <string name="thread_task_candidate_choose">Escolha qual tarefa #%1$d abrir.</string>
     <string name="thread_retry_older">Tentar carregar mensagens anteriores novamente</string>
     <string name="thread_retry_new">Tentar carregar mensagens novas novamente</string>
     <string name="thread_load_new">Carregar mensagens novas</string>
@@ -1171,7 +1162,6 @@
     <string name="thread_date_divider_month_october">OUTUBRO</string>
     <string name="thread_date_divider_month_november">NOVEMBRO</string>
     <string name="thread_date_divider_month_december">DEZEMBRO</string>
-    <string name="thread_state_no_tasks">NENHUMA TAREFA</string>
     <string name="thread_state_no_members">NENHUM MEMBRO</string>
     <string name="thread_state_no_comments">NENHUM COMENTÁRIO</string>
     <string name="thread_files_loading">Carregando arquivos…</string>
@@ -1185,7 +1175,6 @@
     <string name="thread_files_jump_to_message">Ir para a mensagem original</string>
     <string name="thread_files_download_file">Baixar arquivo</string>
     <string name="thread_state_note">NOTA</string>
-    <string name="thread_open_task_number">ABRIR TAREFA #%1$d</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
     <string name="thread_placeholder_search">Pesquisar nesta thread…</string>
     <string name="thread_long_message_show_more">Mostrar mais</string>

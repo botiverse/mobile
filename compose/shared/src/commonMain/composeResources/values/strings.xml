@@ -705,7 +705,6 @@
     <string name="thread_members_remove_confirm_title">Remove Member</string>
     <string name="thread_members_remove_confirm_question">Remove %1$s from #%2$s?</string>
     <string name="thread_members_remove_confirm_detail">Ordinary channel delivery stops for them. Existing followed threads are not automatically unfollowed; followed public threads can still notify them until they unfollow or manage those threads. Private content remains gated by current access.</string>
-    <string name="thread_members_refresh_detail">REFRESH THIS CONVERSATION AND TRY AGAIN.</string>
     <string name="thread_members_search_placeholder">Search members…</string>
     <string name="thread_members_loading">Loading members…</string>
     <string name="thread_members_empty">No members</string>
@@ -1140,14 +1139,6 @@
     <string name="thread_share_width_wide">Wide</string>
     <string name="thread_share_width_custom">Custom</string>
     <string name="thread_share_rendering">Laying out the image…</string>
-    <string name="thread_task_candidate_current">Current</string>
-    <string name="thread_task_candidate_untitled">Untitled task</string>
-    <string name="thread_task_candidate_unknown_channel">Unknown channel</string>
-    <string name="thread_task_candidate_current_conversation">Current conversation</string>
-    <string name="thread_task_candidate_tap_open">Tap to open this task thread</string>
-    <string name="thread_task_candidate_none">No matching task loaded for #%1$d.</string>
-    <string name="thread_task_candidate_open_match">Open the matching task.</string>
-    <string name="thread_task_candidate_choose">Choose which #%1$d task to open.</string>
     <string name="thread_retry_older">Retry older messages</string>
     <string name="thread_retry_new">Retry new messages</string>
     <string name="thread_load_new">Load new messages</string>
@@ -1178,7 +1169,6 @@
     <string name="thread_date_divider_month_october">OCTOBER</string>
     <string name="thread_date_divider_month_november">NOVEMBER</string>
     <string name="thread_date_divider_month_december">DECEMBER</string>
-    <string name="thread_state_no_tasks">NO TASKS</string>
     <string name="thread_state_no_members">NO MEMBERS</string>
     <string name="thread_state_no_comments">NO COMMENTS</string>
     <string name="thread_files_loading">Loading files…</string>
@@ -1192,7 +1182,6 @@
     <string name="thread_files_jump_to_message">Jump to Original Message</string>
     <string name="thread_files_download_file">Download File</string>
     <string name="thread_state_note">NOTE</string>
-    <string name="thread_open_task_number">OPEN TASK #%1$d</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
     <string name="thread_placeholder_search">Search this thread…</string>
     <string name="thread_long_message_show_more">Show More</string>

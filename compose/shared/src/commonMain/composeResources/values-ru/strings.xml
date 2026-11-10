@@ -701,7 +701,6 @@
     <string name="thread_members_remove_confirm_title">Удалить участника</string>
     <string name="thread_members_remove_confirm_question">Удалить участника %1$s из канала #%2$s?</string>
     <string name="thread_members_remove_confirm_detail">Участник перестанет получать обычные сообщения из канала. Подписки на ветки автоматически не отменяются: публичные ветки с подпиской по-прежнему могут присылать уведомления, пока участник не отпишется от них или не изменит их настройки. Доступ к закрытому содержимому по-прежнему определяется текущими правами.</string>
-    <string name="thread_members_refresh_detail">Обновите чат и попробуйте ещё раз.</string>
     <string name="thread_members_search_placeholder">Поиск участников…</string>
     <string name="thread_members_loading">Загрузка участников…</string>
     <string name="thread_members_empty">Нет участников</string>
@@ -1133,14 +1132,6 @@
     <string name="thread_share_width_wide">Широкий</string>
     <string name="thread_share_width_custom">Свой</string>
     <string name="thread_share_rendering">Компоновка изображения…</string>
-    <string name="thread_task_candidate_current">Текущий</string>
-    <string name="thread_task_candidate_untitled">Задача без названия</string>
-    <string name="thread_task_candidate_unknown_channel">Неизвестный канал</string>
-    <string name="thread_task_candidate_current_conversation">Текущий чат</string>
-    <string name="thread_task_candidate_tap_open">Нажмите, чтобы открыть ветку задачи</string>
-    <string name="thread_task_candidate_none">Задача #%1$d не найдена среди загруженных.</string>
-    <string name="thread_task_candidate_open_match">Откройте найденную задачу.</string>
-    <string name="thread_task_candidate_choose">Выберите, какую задачу #%1$d открыть.</string>
     <string name="thread_retry_older">Повторить загрузку ранних сообщений</string>
     <string name="thread_retry_new">Повторить загрузку новых сообщений</string>
     <string name="thread_load_new">Загрузить новые сообщения</string>
@@ -1171,7 +1162,6 @@
     <string name="thread_date_divider_month_october">ОКТЯБРЯ</string>
     <string name="thread_date_divider_month_november">НОЯБРЯ</string>
     <string name="thread_date_divider_month_december">ДЕКАБРЯ</string>
-    <string name="thread_state_no_tasks">НЕТ ЗАДАЧ</string>
     <string name="thread_state_no_members">НЕТ УЧАСТНИКОВ</string>
     <string name="thread_state_no_comments">НЕТ КОММЕНТАРИЕВ</string>
     <string name="thread_files_loading">Загрузка файлов…</string>
@@ -1185,7 +1175,6 @@
     <string name="thread_files_jump_to_message">Перейти к исходному сообщению</string>
     <string name="thread_files_download_file">Скачать файл</string>
     <string name="thread_state_note">КОММЕНТАРИЙ</string>
-    <string name="thread_open_task_number">ОТКРЫТЬ ЗАДАЧУ #%1$d</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
     <string name="thread_placeholder_search">Поиск в этой ветке…</string>
     <string name="thread_long_message_show_more">Показать полностью</string>
