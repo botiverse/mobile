@@ -10,11 +10,6 @@ import kotlin.test.assertTrue
 
 class RaftPlatformCapabilitiesIosTest {
     @Test
-    fun kuiklyRemainsTheSnapshotConsumerWithoutAndroidxCompose() {
-        assertTrue(raftPlatformConsumesSnapshotsFromKuikly())
-    }
-
-    @Test
     fun threadImeRestoresAutomaticViewportCorrection() {
         assertEquals(
             ThreadImeProgrammaticViewportPolicy.AllowWhileImeOpen,

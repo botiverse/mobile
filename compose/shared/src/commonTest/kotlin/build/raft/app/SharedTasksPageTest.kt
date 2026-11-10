@@ -53,39 +53,6 @@ class SharedTasksPageTest {
     }
 
     @Test
-    fun tasksEmptyStateCopyMatchesReactFilterText() {
-        assertEquals(
-            SharedTasksEmptyStateCopy(
-                title = "No tasks match this filter",
-                description = "Try a different combination or clear the current selection."
-            ),
-            sharedTasksEmptyStateCopy(hasAnyFilter = true, isChannelMode = true)
-        )
-    }
-
-    @Test
-    fun tasksEmptyStateCopyMatchesReactChannelModeText() {
-        assertEquals(
-            SharedTasksEmptyStateCopy(
-                title = "No tasks yet",
-                description = "Create one with the New Task button."
-            ),
-            sharedTasksEmptyStateCopy(hasAnyFilter = false, isChannelMode = true)
-        )
-    }
-
-    @Test
-    fun tasksEmptyStateCopyMatchesReactServerWideText() {
-        assertEquals(
-            SharedTasksEmptyStateCopy(
-                title = "No tasks yet",
-                description = "DM and agent task boards are intentionally excluded from this server-wide view."
-            ),
-            sharedTasksEmptyStateCopy(hasAnyFilter = false, isChannelMode = false)
-        )
-    }
-
-    @Test
     fun serverWideEmptyTasksSkipsToolbarWithoutCreateAction() {
         assertEquals(false, sharedTasksEmptyToolbarVisible(createTasksChannelId = null))
         assertEquals(true, sharedTasksEmptyToolbarVisible(createTasksChannelId = ChannelId("channel-1")))

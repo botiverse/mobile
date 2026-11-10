@@ -5,7 +5,6 @@ import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.artifactCanonicalId
 import build.raft.app.data.artifactIdOrNull
 import build.raft.app.data.ArtifactSummary
-import build.raft.app.data.ArtifactViewerPanel
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.isArtifactContentHost
@@ -296,29 +295,6 @@ internal fun raftArtifactViewerNavigateScript(webOrigin: String, sessionWrites: 
           var index = typeof previous.idx === 'number' ? previous.idx + 1 : 0;
           window.history.pushState({usr: null, key: Math.random().toString(36).slice(2, 10), idx: index}, '', $address);
           window.dispatchEvent(new PopStateEvent('popstate', {state: window.history.state}));
-        }
-        """.trimIndent(),
-    )
-}
-
-/**
- * Opens or closes the page's list without a reload (slock #12364): its address's fragment becomes
- * `#panel=<panel>` (replaced, never a new history entry) and the page is told (`hashchange`, which it
- * follows in the host shell). The page writes the list it shows back to the fragment, which the
- * viewer reads from the address ([build.raft.app.data.artifactViewerPanelOf]). No bridge: only the
- * address.
- */
-internal fun raftArtifactViewerPanelScript(webOrigin: String, panel: ArtifactViewerPanel): String {
-    val hash = Json.encodeToString(String.serializer(), "#panel=" + panel.wire)
-    return raftArtifactViewerGuardedScript(
-        webOrigin,
-        """
-        var hash = $hash;
-        if (window.location.hash !== hash) {
-          var url = new URL(window.location.href);
-          url.hash = hash;
-          window.history.replaceState(window.history.state, '', url.toString());
-          window.dispatchEvent(new HashChangeEvent('hashchange'));
         }
         """.trimIndent(),
     )

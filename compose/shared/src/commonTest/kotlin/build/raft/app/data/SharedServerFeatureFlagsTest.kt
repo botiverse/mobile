@@ -160,19 +160,6 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun ordinaryRegisteredFlagsRequireExplicitResolvedEnablement() = runTest {
-        // activity_conversation_list_v0 is no longer read: the conversation list is the only Activity.
-        assertFalse("activity_conversation_list_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
-        // mobile_curl_transport_v1 is no longer read: new requests always use curl over HTTP/2.
-        assertFalse("mobile_curl_transport_v1" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
-        // attachment_comments_v0 is no longer read or prefetched; the server keeps its record for older clients.
-        assertFalse("attachment_comments_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
-        assertFalse("attachment_comments_v0" in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
-        // agent_migration_v0 is no longer read: agent migration is always shown, as on web.
-        assertFalse("agent_migration_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
-        // sync_core_messages_v1 is no longer read: the sync-core offline-cache line is always on.
-        assertFalse("sync_core_messages_v1" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
-        assertFalse("sync_core_messages_v1" in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
-        assertFalse("sync_core_messages_v1" in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
         assertEquals("activity_overview_web_v0", ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY)
         // slock serverFeatureFlags.ts THREAD_UNREAD_BADGE_FLAG_KEY (staging 259f9fe0), default off.
         assertEquals("thread_unread_badge_v0", THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY)
@@ -186,9 +173,8 @@ class SharedServerFeatureFlagsTest {
         assertEquals("personal_assistant", PERSONAL_ASSISTANT_FEATURE_FLAG_KEY)
         // botiverse/slock #12159 packages/web/src/store/serverFeatureFlags.ts DRAFTS_SECTION_FLAG_KEY (default off).
         assertEquals("drafts_section_v0", DRAFTS_SECTION_FEATURE_FLAG_KEY)
-        // New mobile switch for server setup; the old enable_webview_onboarding_v0 is no longer read.
+        // New mobile switch for server setup.
         assertEquals("mobile_server_setup_v1", MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY)
-        assertFalse("enable_webview_onboarding_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         for (
             key in listOf(
                 MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,

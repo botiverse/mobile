@@ -484,49 +484,6 @@ interface MviPersistSliceTransitionSnapshot {
     fun requiresApplyOnEquivalent(): Boolean = false
 }
 
-class MviStateHolder<UiState, UiAction, StoreIntent, UiEvent>(
-    initialState: UiState,
-    private val scope: CoroutineScope,
-    reduce: (UiState, StoreIntent) -> UiState,
-    private val handleAction: suspend MviActionScope<StoreIntent, UiEvent>.(UiAction) -> Unit,
-    persistSlices: List<MviPersistSlice<UiState, StoreIntent>> = emptyList(),
-    transitionLogger: (MviTransition<StoreIntent>) -> Unit = {},
-    equivalent: (UiState, UiState) -> Boolean = { previous, next -> previous == next },
-    completionFailureLogger: (String) -> Unit = {}
-) : SharedStateHolder<UiState, UiAction, UiEvent> {
-    private val runtime =
-        MviStoreRuntime(
-            initialState = initialState,
-            scope = scope,
-            reduce = reduce,
-            persistSlices = persistSlices,
-            transitionLogger = transitionLogger,
-            completionFailureLogger = completionFailureLogger,
-            equivalent = equivalent
-        )
-    private val effectEmitter = MviEffectEmitter<UiEvent>()
-
-    override val uiState: StateFlow<UiState> = runtime.state
-    override val uiEvents: Flow<UiEvent> = effectEmitter.effects
-
-    override fun dispatch(action: UiAction) {
-        scope.launch {
-            MviActionScope(runtime::acceptQueued, effectEmitter::emit).handleAction(action)
-        }
-    }
-
-    fun accept(intent: StoreIntent): Boolean = runtime.accept(intent)
-}
-
-class MviActionScope<StoreIntent, UiEvent>(
-    private val acceptIntent: suspend (StoreIntent) -> Boolean,
-    private val emitEvent: (UiEvent) -> Boolean
-) {
-    suspend fun reduce(intent: StoreIntent): Boolean = acceptIntent(intent)
-
-    fun emit(event: UiEvent): Boolean = emitEvent(event)
-}
-
 data class MviTransition<Intent>(
     val intent: Intent,
     val emitted: Boolean,

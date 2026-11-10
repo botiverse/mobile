@@ -742,17 +742,6 @@ private data class PushTestResponseDto(
 
 // ── Request bodies ──
 
-@Serializable
-internal data class CreateIntegrationClientBody(
-    val name: String,
-    val description: String? = null,
-    val homepageUrl: String? = null,
-    val clientId: String? = null
-)
-
-@Serializable
-internal data class ApproveIntegrationRequestBody(val remember: Boolean)
-
 /**
  * Body of POST /api/actions/:messageId/execute (botiverse/slock shared `ExecuteActionRequestBody`).
  * [expectedConfirmationVersion] is the card's `confirmationVersion`; left out when unknown.
@@ -834,44 +823,6 @@ internal data class ActionCardResultBody(
     val addedAgentIds: List<String>? = null,
 )
 
-@Serializable
-internal data class ActionEventBody(
-    val eventType: String,
-    val metadata: JsonObject? = null,
-    val idempotencyKey: String? = null
-)
-
-@Serializable
-internal data class PushPromptEventBody(
-    val event: String,
-    val trigger: String,
-    val result: String? = null,
-    val permissionBefore: String? = null,
-    val permissionAfter: String? = null,
-    val detail: String? = null
-)
-
-@Serializable
-internal data class PushSubscriptionBody(val endpoint: String, val keys: PushSubscriptionKeys)
-
-@Serializable
-internal data class PushSubscriptionKeys(val p256dh: String, val auth: String)
-
-@Serializable
-internal data class PushUnsubscribeBody(val endpoint: String)
-
-internal fun buildCreateIntegrationClientBody(
-    name: String,
-    description: String? = null,
-    homepageUrl: String? = null,
-    clientId: String? = null,
-): String = integrationsActionsPushJson.encodeToString(
-    CreateIntegrationClientBody(name = name, description = description, homepageUrl = homepageUrl, clientId = clientId)
-)
-
-internal fun buildApproveIntegrationRequestBody(remember: Boolean): String =
-    integrationsActionsPushJson.encodeToString(ApproveIntegrationRequestBody(remember = remember))
-
 internal fun buildExecuteActionBody(
     expectedState: String? = null,
     expectedConfirmationVersion: Int? = null,
@@ -917,37 +868,3 @@ internal fun buildMarkChannelMembersActionExecutedBody(
             expectedConfirmationVersion = expectedConfirmationVersion,
         )
     )
-
-internal fun buildActionEventBody(
-    eventType: String,
-    metadata: JsonObject? = null,
-    idempotencyKey: String? = null,
-): String = integrationsActionsPushJson.encodeToString(
-    ActionEventBody(eventType = eventType, metadata = metadata, idempotencyKey = idempotencyKey)
-)
-
-internal fun buildPushPromptEventBody(
-    event: String,
-    trigger: String,
-    result: String? = null,
-    permissionBefore: String? = null,
-    permissionAfter: String? = null,
-    detail: String? = null,
-): String = integrationsActionsPushJson.encodeToString(
-    PushPromptEventBody(
-        event = event,
-        trigger = trigger,
-        result = result,
-        permissionBefore = permissionBefore,
-        permissionAfter = permissionAfter,
-        detail = detail,
-    )
-)
-
-internal fun buildPushSubscribeBody(endpoint: String, p256dh: String, auth: String): String =
-    integrationsActionsPushJson.encodeToString(
-        PushSubscriptionBody(endpoint = endpoint, keys = PushSubscriptionKeys(p256dh = p256dh, auth = auth))
-    )
-
-internal fun buildPushUnsubscribeBody(endpoint: String): String =
-    integrationsActionsPushJson.encodeToString(PushUnsubscribeBody(endpoint = endpoint))

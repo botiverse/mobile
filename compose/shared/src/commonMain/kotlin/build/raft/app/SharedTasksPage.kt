@@ -338,28 +338,6 @@ internal data class SharedTasksEmptyStateCopy(
     val description: String
 )
 
-internal fun sharedTasksEmptyStateCopy(
-    hasAnyFilter: Boolean,
-    isChannelMode: Boolean
-): SharedTasksEmptyStateCopy =
-    when {
-        hasAnyFilter ->
-            SharedTasksEmptyStateCopy(
-                title = "No tasks match this filter",
-                description = "Try a different combination or clear the current selection."
-            )
-        isChannelMode ->
-            SharedTasksEmptyStateCopy(
-                title = "No tasks yet",
-                description = "Create one with the New Task button."
-            )
-        else ->
-            SharedTasksEmptyStateCopy(
-                title = "No tasks yet",
-                description = "DM and agent task boards are intentionally excluded from this server-wide view."
-            )
-    }
-
 @Composable
 private fun localizedSharedTasksEmptyStateCopy(
     hasAnyFilter: Boolean,

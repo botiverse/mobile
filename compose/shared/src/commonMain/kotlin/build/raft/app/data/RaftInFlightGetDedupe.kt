@@ -15,8 +15,8 @@ import kotlinx.coroutines.ensureActive
  *
  * A GET whose [Key] matches one that started at most [joinWindowMillis] ago and has not answered yet
  * waits for that request's answer instead of sending its own. The priority is not part of the key:
- * a Foreground ask joins a Visible request already on the wire (the shared scheduler's priority gate
- * is off, so a request never queues and there is nothing left to raise once it is sent).
+ * a Foreground ask joins a Visible request already on the wire (the shared scheduler has no priority
+ * gate, so a request never queues and there is nothing left to raise once it is sent).
  *
  * The window is short on purpose: an ask is usually made because something changed, and a request sent
  * well before that change may answer without it. Only requests started together are shared.

@@ -18,8 +18,6 @@ internal actual fun raftPlatformPageVisibleLifecycleState(): Lifecycle.State = L
 
 internal actual fun raftPlatformUsesNativeLucideIconRotation(): Boolean = false
 
-internal actual fun raftPlatformConsumesSnapshotsFromKuikly(): Boolean = true
-
 internal actual fun raftPlatformThreadImeProgrammaticViewportPolicy(): ThreadImeProgrammaticViewportPolicy =
     ThreadImeProgrammaticViewportPolicy.AllowWhileImeOpen
 

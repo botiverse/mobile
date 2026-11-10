@@ -20,13 +20,13 @@ class IntegrationsActionsPushApiTest {
         assertEquals(
             true,
             assertIs<DataResult.Content<IntegrationClientCreateResult>>(
-                client.createIntegrationClient(buildCreateIntegrationClientBody(name = "Linear"))
+                client.createIntegrationClient("""{"name":"Linear","description":null,"homepageUrl":null,"clientId":null}""")
             ).data.clientSecretPresent
         )
         assertEquals(
             "grant-1",
             assertIs<DataResult.Content<IntegrationApproveResult>>(
-                client.approveIntegrationRequest("request-1", buildApproveIntegrationRequestBody(remember = true))
+                client.approveIntegrationRequest("request-1", """{"remember":true}""")
             ).data.grantId
         )
         assertEquals("denied", assertIs<DataResult.Content<IntegrationRequestResult>>(client.denyIntegrationRequest("request-1")).data.status)
@@ -52,7 +52,7 @@ class IntegrationsActionsPushApiTest {
         assertEquals(
             true,
             assertIs<DataResult.Content<ActionEventResult>>(
-                client.emitActionEvent(MessageId("message-1"), buildActionEventBody(eventType = "action_card.open"))
+                client.emitActionEvent(MessageId("message-1"), """{"eventType":"action_card.open","metadata":null,"idempotencyKey":null}""")
             ).data.ok
         )
         assertEquals(
@@ -63,18 +63,18 @@ class IntegrationsActionsPushApiTest {
         assertEquals(
             true,
             assertIs<DataResult.Content<PushCommandResult>>(
-                client.recordPushPromptEvent(buildPushPromptEventBody(event = "web_push_prompt_shown", trigger = "settings"))
+                client.recordPushPromptEvent("""{"event":"web_push_prompt_shown","trigger":"settings","result":null,"permissionBefore":null,"permissionAfter":null,"detail":null}""")
             ).data.ok
         )
         assertEquals(
             true,
             assertIs<DataResult.Content<PushCommandResult>>(
-                client.subscribePush(buildPushSubscribeBody(endpoint = "https://push.test/1", p256dh = "key", auth = "auth"))
+                client.subscribePush("""{"endpoint":"https://push.test/1","keys":{"p256dh":"key","auth":"auth"}}""")
             ).data.ok
         )
         assertEquals(
             true,
-            assertIs<DataResult.Content<PushCommandResult>>(client.unsubscribePush(buildPushUnsubscribeBody(endpoint = "https://push.test/1"))).data.ok
+            assertIs<DataResult.Content<PushCommandResult>>(client.unsubscribePush("""{"endpoint":"https://push.test/1"}""")).data.ok
         )
         assertEquals(1, assertIs<DataResult.Content<PushTestResult>>(client.testPush()).data.delivered)
 
@@ -245,7 +245,7 @@ class IntegrationsActionsPushApiTest {
             )
 
         for (result in listOf(
-            client.approveIntegrationRequest("request-1", buildApproveIntegrationRequestBody(remember = true)),
+            client.approveIntegrationRequest("request-1", """{"remember":true}"""),
             client.executeAction(MessageId("message-1"), """{"expectedState":"prepared"}"""),
         )) {
             val challenge = assertNotNull(result.secondFactorStepUpChallengeOrNull())
