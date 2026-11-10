@@ -135,6 +135,63 @@ class SettingsFeedbackProxySubmitterTest {
         }
     }
 
+    private val card =
+        SettingsFeedbackCardDraft(
+            messageId = "0b6f3c8e-5d1a-4c2e-9f7a-1e2d3c4b5a69",
+            serverId = "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+            type = SettingsFeedbackType.Problem,
+            message = "Search is slow",
+            confirmationVersion = 2L,
+        )
+
+    @Test
+    fun aCardsAttemptIsSentAsTheCardAndItsRefusalsAreFinal() = runTest {
+        val repository = FakeRepository(mutableListOf(FeedbackResult.Ok("ticket-1")))
+        val submitter = submitter(repository, mutableListOf())
+        assertEquals(SettingsFeedbackProxyOutcome.Filed("ticket-1"), submitter.submit(submitter.newAttempt("Search is slow", emptyList(), card.type, card)))
+        assertEquals(card, repository.requests.single().card)
+
+        // web FeedbackCardForm REFUSALS, by the server's code; none can be retried.
+        mapOf(
+            failed(FeedbackErrorKind.Unavailable, "feedback_card_already_sent", 409) to SETTINGS_FEEDBACK_CARD_ALREADY_SENT,
+            failed(FeedbackErrorKind.Unavailable, "STATE_MISMATCH", 409) to SETTINGS_FEEDBACK_CARD_NOT_WAITING,
+            failed(FeedbackErrorKind.Unavailable, "CONFIRMATION_VERSION_MISMATCH", 409) to SETTINGS_FEEDBACK_CARD_CHANGED,
+            failed(FeedbackErrorKind.Unavailable, "action_card_conversion_frozen", 409) to SETTINGS_FEEDBACK_CARD_CHANGED,
+            failed(FeedbackErrorKind.Unauthorized, "FEATURE_DISABLED", 403) to SETTINGS_FEEDBACK_CARD_UNAVAILABLE,
+            failed(FeedbackErrorKind.NotSupported, "NOT_FEEDBACK_CARD", 404) to SETTINGS_FEEDBACK_CARD_UNAVAILABLE,
+            failed(FeedbackErrorKind.Unauthorized, "NOT_A_MEMBER", 403) to SETTINGS_FEEDBACK_CARD_NOT_ALLOWED,
+        ).forEach { (answer, code) ->
+            val cardSubmitter = submitter(FakeRepository(mutableListOf(answer)), mutableListOf())
+            val outcome = assertIs<SettingsFeedbackProxyOutcome.Failed>(cardSubmitter.submit(cardSubmitter.newAttempt("x", emptyList(), card = card)))
+            assertEquals(code, outcome.code, answer.failure.code)
+            assertNull(outcome.retry, answer.failure.code)
+        }
+    }
+
+    @Test
+    fun aRefusalCarriesTheResponsesTraceIdToTheForm() = runTest {
+        val traceId = "4bf92f3577b34da6a3ce929d0e0e4736"
+        val answer = FeedbackResult.Failed(FeedbackFailure(FeedbackErrorKind.Unavailable, "CONFIRMATION_VERSION_MISMATCH", 409, traceId = traceId))
+        val submitter = submitter(FakeRepository(mutableListOf(answer)), mutableListOf())
+        val outcome = assertIs<SettingsFeedbackProxyOutcome.Failed>(submitter.submit(submitter.newAttempt("x", emptyList(), card = card)))
+        assertEquals(SETTINGS_FEEDBACK_CARD_CHANGED, outcome.code)
+        assertEquals(traceId, outcome.traceId)
+    }
+
+    @Test
+    fun aCardsSendNeverHandsOverToTheAnonymousNativeForm() = runTest {
+        // The native Hands form cannot complete the card: the server is unavailable, retry later.
+        listOf(
+            failed(FeedbackErrorKind.Unavailable, "feedback_integration_unavailable", 503),
+            failed(FeedbackErrorKind.NotSupported, "feedback_http_404", 404),
+        ).forEach { answer ->
+            val submitter = submitter(FakeRepository(mutableListOf(answer)), mutableListOf())
+            val outcome = assertIs<SettingsFeedbackProxyOutcome.Failed>(submitter.submit(submitter.newAttempt("x", emptyList(), card = card)))
+            assertEquals("settings_feedback_server_unavailable", outcome.code)
+            assertEquals(card, outcome.retry?.card)
+        }
+    }
+
     @Test
     fun aNonImageAttachmentBlocksBeforeAnyUpload() = runTest {
         val repository = FakeRepository(mutableListOf())
@@ -246,5 +303,17 @@ class SettingsFeedbackProxySubmitterTest {
         assertNull(HostSettingsFeedbackDiagnosticsUploader(stalledHost, stallMillis = 1_000L).upload("user-1"))
         // A stalled upload is stopped, as the web skips it.
         assertEquals(listOf("feedbackDiagnosticsStart", "feedbackDiagnosticsCancel"), stalledHost.commands.map { it.optString("action") })
+    }
+
+    @Test
+    fun aHostWithoutTheDiagnosticsActionAttachesNothingAtOnce() = runTest {
+        // The Compose desktop bridge answers an unknown settings action with `{code: -1, message}`.
+        val desktopHost =
+            FakeDiagnosticsHost {
+                listOf(buildJsonObject { put("code", -1); put("message", "Method not implemented") })
+            }
+        assertNull(HostSettingsFeedbackDiagnosticsUploader(desktopHost, stallMillis = Long.MAX_VALUE).upload("user-1"))
+        assertEquals(listOf("feedbackDiagnosticsStart"), desktopHost.commands.map { it.optString("action") })
+        assertEquals(0L, testScheduler.currentTime)
     }
 }

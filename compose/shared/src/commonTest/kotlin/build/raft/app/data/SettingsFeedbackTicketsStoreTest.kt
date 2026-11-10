@@ -152,13 +152,26 @@ class SettingsFeedbackTicketsStoreTest {
     }
 
     @Test
-    fun aServerWithoutTheTicketRoutesHandsOverToTheWebPage() = runTest {
+    fun aServerWithoutTheTicketRoutesShowsTheErrorWithRetryAndItsTraceId() = runTest {
         val repository = FakeRepository()
-        repository.listAnswers += failed(FeedbackErrorKind.NotSupported)
+        val traceId = "4bf92f3577b34da6a3ce929d0e0e4736"
+        repository.listAnswers += FeedbackResult.Failed(FeedbackFailure(FeedbackErrorKind.NotSupported, "feedback_http_404", 404, traceId = traceId))
+        repository.listAnswers += page(ticket("a"))
         val store = store(repository)
         store.start()
         runCurrent()
-        assertTrue(store.state.value.notSupported)
+        // No web page to hand over to: the native error state, with the failed read's trace id.
+        val failed = store.state.value.list
+        assertEquals(FeedbackTicketsListPhase.Failed, failed.phase)
+        assertEquals(FeedbackErrorKind.NotSupported, failed.error)
+        assertEquals(traceId, failed.errorTraceId)
+        store.retryList()
+        runCurrent()
+        val ready = store.state.value.list
+        assertEquals(FeedbackTicketsListPhase.Ready, ready.phase)
+        assertEquals(listOf("a"), ready.tickets.map { it.id })
+        assertNull(ready.error)
+        assertNull(ready.errorTraceId)
     }
 
     @Test

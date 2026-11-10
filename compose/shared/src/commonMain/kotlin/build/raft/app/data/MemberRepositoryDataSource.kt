@@ -192,7 +192,8 @@ interface RaftNetworkClient {
      * form [fields] in order, then [files]. A file given as a [MultipartFile.fileRef] is streamed
      * from the platform file resolver. [headers] are extra request headers (the feedback route's
      * `X-Raft-Client-Kind`); auth and server-binding headers still come from the client and win
-     * over a same-named extra header. Clients that cannot send multipart bodies answer 501.
+     * over a same-named extra header. [serverIdOverride] binds the request to that server
+     * (`X-Server-Id`), as [request]'s does. Clients that cannot send multipart bodies answer 501.
      */
     suspend fun requestMultipartWithHeaders(
         priority: DataRequestPriority,
@@ -200,6 +201,7 @@ interface RaftNetworkClient {
         headers: Map<String, String>,
         fields: Map<String, String>,
         files: List<MultipartFile>,
+        serverIdOverride: ServerId? = null,
     ): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
 

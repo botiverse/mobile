@@ -26,10 +26,15 @@ class SettingsFeedbackSubmitApiTest {
         val headers: Map<String, String>,
         val fields: Map<String, String>,
         val files: List<MultipartFile>,
+        val serverId: String? = null,
     )
 
-    private class FakeNetwork(private val answer: () -> HomeNetworkResponse) : RaftNetworkClient {
+    private class FakeNetwork(
+        private val getAnswer: (() -> HomeNetworkResponse)? = null,
+        private val answer: () -> HomeNetworkResponse,
+    ) : RaftNetworkClient {
         val calls = mutableListOf<MultipartCall>()
+        val reads = mutableListOf<Pair<String, String?>>()
 
         override suspend fun request(
             priority: DataRequestPriority,
@@ -38,7 +43,11 @@ class SettingsFeedbackSubmitApiTest {
             query: List<Pair<String, String>>,
             serverIdOverride: ServerId?,
             bodyText: String?,
-        ): HomeNetworkResponse = error("feedback is filed as a multipart form: $path")
+        ): HomeNetworkResponse {
+            val read = getAnswer ?: error("feedback is filed as a multipart form: $path")
+            reads += path to serverIdOverride?.value
+            return read()
+        }
 
         override suspend fun requestMultipartWithHeaders(
             priority: DataRequestPriority,
@@ -46,8 +55,9 @@ class SettingsFeedbackSubmitApiTest {
             headers: Map<String, String>,
             fields: Map<String, String>,
             files: List<MultipartFile>,
+            serverIdOverride: ServerId?,
         ): HomeNetworkResponse {
-            calls += MultipartCall(path, headers, fields, files)
+            calls += MultipartCall(path, headers, fields, files, serverIdOverride?.value)
             return answer()
         }
     }
@@ -116,6 +126,66 @@ class SettingsFeedbackSubmitApiTest {
         assertEquals("image/png", file.mimeType)
         assertEquals("draft://shot", file.fileRef)
         assertTrue(file.bytes.isEmpty())
+        // An ordinary send is bound to the shell's server, as before.
+        assertNull(call.serverId)
+    }
+
+    private val cardMessageId = "0b6f3c8e-5d1a-4c2e-9f7a-1e2d3c4b5a69"
+    private val viewingServerId = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+    private val card =
+        SettingsFeedbackCardDraft(
+            messageId = cardMessageId,
+            serverId = viewingServerId,
+            type = SettingsFeedbackType.Idea,
+            message = "Add dark mode",
+            confirmationVersion = 3L,
+        )
+
+    @Test
+    fun aCardsSendAddsTheCardAndItsConfirmationUnderTheServerItIsViewedIn() = runTest {
+        val network = FakeNetwork { HomeNetworkResponse(code = 201, bodyText = receipt) }
+
+        val result = repository(network).submit(request(diagnostics = null).copy(type = SettingsFeedbackType.Idea, card = card))
+
+        assertEquals(FeedbackResult.Ok("11111111-2222-4333-8444-555555555555"), result)
+        val call = network.calls.single()
+        // web sendFeedbackCard: the form's fields, then the card's.
+        assertEquals(
+            listOf("type", "message", "metadata", "submission_id", "may_contact", "action_card_message_id", "expected_confirmation_version"),
+            call.fields.keys.toList(),
+        )
+        assertEquals(cardMessageId, call.fields["action_card_message_id"])
+        assertEquals("3", call.fields["expected_confirmation_version"])
+        assertEquals(viewingServerId, call.serverId)
+    }
+
+    @Test
+    fun readsACardsDraftAsOperatedFromTheViewingServer() = runTest {
+        val body =
+            """{"message_id":"$cardMessageId","feedback_type":"idea","message":"Add dark mode","confirmation_version":3}"""
+        val network = FakeNetwork(getAnswer = { HomeNetworkResponse(code = 200, bodyText = body) }) { error("no send") }
+
+        assertEquals(card, repository(network).loadCardDraft(cardMessageId, viewingServerId))
+        assertEquals(listOf<Pair<String, String?>>("product-feedback/action-card/$cardMessageId" to viewingServerId), network.reads)
+    }
+
+    @Test
+    fun aCardDraftItCannotReadIsNone() = runTest {
+        // The server's one 404 for every refusal, and the answers web loadFeedbackActionCardDraft refuses.
+        val unreadable =
+            listOf(
+                404 to """{"error":"Feedback card unavailable","code":"feedback_card_unavailable"}""",
+                500 to null,
+                200 to """{"message_id":"another","feedback_type":"idea","message":"x","confirmation_version":1}""",
+                200 to """{"message_id":"$cardMessageId","feedback_type":"bug","message":"x","confirmation_version":1}""",
+                200 to """{"message_id":"$cardMessageId","feedback_type":"idea","confirmation_version":1}""",
+                200 to """{"message_id":"$cardMessageId","feedback_type":"idea","message":"x","confirmation_version":0}""",
+                200 to "not json",
+            )
+        for ((code, body) in unreadable) {
+            val network = FakeNetwork(getAnswer = { HomeNetworkResponse(code = code, bodyText = body) }) { error("no send") }
+            assertNull(repository(network).loadCardDraft(cardMessageId, viewingServerId), "$code $body")
+        }
     }
 
     @Test

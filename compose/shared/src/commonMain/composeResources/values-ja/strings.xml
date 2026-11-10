@@ -4270,6 +4270,10 @@
     <string name="settings_feedback_tickets_error_conflict">この再試行は元のリクエストと一致しません。</string>
     <string name="settings_feedback_tickets_error_invalid">フィードバックの内容を確認して、もう一度お試しください。</string>
     <string name="settings_feedback_tickets_error_not_found">このフィードバックチケットは利用できなくなりました。</string>
+    <string name="settings_feedback_card_not_waiting">このフィードバックは送信済みです。「設定」で確認できます。</string>
+    <string name="settings_feedback_card_changed">開いた後にこのカードが変更されました。戻って、もう一度開いてください。</string>
+    <string name="settings_feedback_card_unavailable">ここではフィードバックカードを利用できなくなりました。</string>
+    <string name="settings_feedback_card_not_allowed">このカードを送信する権限がありません。</string>
     <string name="settings_feedback_tickets_error_rate_limited">リクエストが多すぎます。しばらくしてからもう一度お試しください。</string>
     <string name="settings_feedback_tickets_error_unauthorized">フィードバックのセッションの有効期限が切れました。開き直してもう一度お試しください。</string>
     <string name="settings_feedback_tickets_error_unavailable">フィードバックを読み込めませんでした。もう一度お試しください。</string>

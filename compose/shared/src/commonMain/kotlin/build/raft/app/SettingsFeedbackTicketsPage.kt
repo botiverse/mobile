@@ -99,13 +99,13 @@ import org.jetbrains.compose.resources.StringResource
 import kotlin.io.encoding.ExperimentalEncodingApi
 
 /*
- * Settings › Feedback on Android and iOS (1.23, task #90): the person's own feedback tickets,
- * natively, in place of the web page's Hands FeedbackWorkspace (`<web>/feedback/`). Same reads and
- * rules (SettingsFeedbackTicketsStore), the same words (the Hands SDK's en / zh-CN copy). New
- * feedback opens the native submit form (SettingsHandsFeedbackPage), which files through the Raft
- * server and comes back to the new ticket. Compose desktop keeps the web
- * page ([settingsFeedbackUsesWebPage]). A server without the ticket routes hands over to the web
- * page ([SettingsFeedbackTicketsState.notSupported]).
+ * Settings › Feedback (Android and iOS since 1.23, task #90; Compose desktop since 1.24): the
+ * person's own feedback tickets, natively, in place of the web page's Hands FeedbackWorkspace
+ * (`<web>/feedback/`, no longer opened by the App). Same reads and rules
+ * (SettingsFeedbackTicketsStore), the same words (the Hands SDK's en / zh-CN copy). New feedback
+ * opens the native submit form (SettingsHandsFeedbackPage), which files through the Raft server and
+ * comes back to the new ticket. A server without the ticket routes shows the list's error state
+ * with Retry and the failed read's trace ID.
  */
 
 const val SETTINGS_FEEDBACK_TICKETS_PAGE = "compose_settings_feedback_tickets"
@@ -139,20 +139,17 @@ internal fun Pager.openSettingsFeedbackTicketsPage(storeScope: RaftShellStoreSco
 
 /**
  * Settings › Feedback, from every entry (the Settings row, rail Help › Feedback, a done feedback
- * card's "View in Settings", an agent issue's "View Ticket"): the native ticket list where the App
- * files feedback natively (Android, iOS), the ticket web page where it cannot (Compose desktop).
+ * card's "View in Settings", an agent issue's "View Ticket"): the native ticket list, on [ticketId]
+ * when one is named, on every platform.
  */
-internal fun Pager.openSettingsFeedbackPage(
-    storeScope: RaftShellStoreScope,
-    ticketId: String? = null,
-    feedbackWeb: Boolean = settingsFeedbackUsesWebPage(),
-) {
-    if (feedbackWeb) {
-        openSettingsFeedbackWebViewPage(storeScope, ticketId = ticketId)
-    } else {
-        openSettingsFeedbackTicketsPage(storeScope, ticketId)
-    }
+internal fun Pager.openSettingsFeedbackPage(storeScope: RaftShellStoreScope, ticketId: String? = null) {
+    val (pageName, pageData) = settingsFeedbackPageRequest(storeScope, ticketId)
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
 }
+
+/** The page [openSettingsFeedbackPage] opens: the native ticket list (on [ticketId] when it is one). */
+internal fun settingsFeedbackPageRequest(storeScope: RaftShellStoreScope, ticketId: String? = null): Pair<String, JSONObject> =
+    SETTINGS_FEEDBACK_TICKETS_PAGE to settingsFeedbackTicketsPageData(storeScope, ticketId)
 
 @Composable
 private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
@@ -187,14 +184,6 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
     }
     val state by store.state.collectAsState()
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
-    LaunchedEffect(state.notSupported) {
-        if (state.notSupported) {
-            // This server has no ticket routes: the web page, as before 1.23.
-            bridge.log("settings_feedback_tickets_not_supported fallback=web")
-            router.closePage()
-            pager.openSettingsFeedbackWebViewPage(storeScope, ticketId = initialTicketId)
-        }
-    }
     val timeContext = LocalRaftPageBaseTimeContextProvider.current?.current
     val openViewer by rememberUpdatedState<(FeedbackOpenedAttachment) -> Unit>({ opened ->
         val payload = opened.toFeedbackImagePreviewPayload()
@@ -426,7 +415,7 @@ private fun FeedbackTicketList(
                 // An error over rows already shown (a refresh, Load More) is a banner; the rows stay.
                 if (list.phase == FeedbackTicketsListPhase.Ready && list.error != null) {
                     item(key = "error") {
-                        FeedbackErrorBanner(list.error, list.retrying, actions.onRetryList, Modifier.padding(16.dp))
+                        FeedbackErrorBanner(list.error, list.retrying, actions.onRetryList, Modifier.padding(16.dp), traceId = list.errorTraceId)
                     }
                 }
                 when (list.phase) {
@@ -442,11 +431,7 @@ private fun FeedbackTicketList(
                             RaftEmptyState(
                                 title = stringResource(list.error.messageResource()),
                                 actions = {
-                                    RaftButton(
-                                        text = stringResource(Res.string.settings_feedback_tickets_retry),
-                                        onClick = actions.onRetryList,
-                                        loading = list.retrying,
-                                    )
+                                    FeedbackRetryWithTraceId(list.retrying, actions.onRetryList, list.errorTraceId)
                                 },
                             )
                         }
@@ -507,13 +492,39 @@ internal fun FeedbackErrorKind?.messageResource(): StringResource =
         FeedbackErrorKind.Unavailable, FeedbackErrorKind.NotSupported, null -> Res.string.settings_feedback_tickets_error_unavailable
     }
 
+/** An error state's Retry, with the failed read's trace ID under it (AGENTS.md "Errors carry the trace ID"). */
 @Composable
-private fun FeedbackErrorBanner(kind: FeedbackErrorKind?, retrying: Boolean, onRetry: (() -> Unit)?, modifier: Modifier = Modifier) {
+private fun FeedbackRetryWithTraceId(retrying: Boolean, onRetry: () -> Unit, traceId: String?) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        RaftButton(
+            text = stringResource(Res.string.settings_feedback_tickets_retry),
+            onClick = onRetry,
+            loading = retrying,
+        )
+        RaftTraceIdNote(traceId)
+    }
+}
+
+@Composable
+private fun FeedbackErrorBanner(
+    kind: FeedbackErrorKind?,
+    retrying: Boolean,
+    onRetry: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    traceId: String? = null,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        FeedbackErrorBannerBody(kind, retrying, onRetry)
+        RaftTraceIdNote(traceId)
+    }
+}
+
+@Composable
+private fun FeedbackErrorBannerBody(kind: FeedbackErrorKind?, retrying: Boolean, onRetry: (() -> Unit)?) {
     RaftBanner(
         description = stringResource(kind.messageResource()),
         status = RaftBannerStatus.Warning,
         size = RaftBannerSize.Sm,
-        modifier = modifier,
         action =
             onRetry?.let { retry ->
                 {
@@ -765,11 +776,7 @@ private fun FeedbackTicketThread(detail: FeedbackTicketDetailState, timeContext:
                     RaftEmptyState(
                         title = stringResource(detail.loadError.messageResource()),
                         actions = {
-                            RaftButton(
-                                text = stringResource(Res.string.settings_feedback_tickets_retry),
-                                onClick = actions.onRetryTicket,
-                                loading = detail.retrying,
-                            )
+                            FeedbackRetryWithTraceId(detail.retrying, actions.onRetryTicket, detail.loadErrorTraceId)
                         },
                     )
                 }
@@ -784,7 +791,9 @@ private fun FeedbackTicketThread(detail: FeedbackTicketDetailState, timeContext:
             return@LazyColumn
         }
         if (detail.loadError != null) {
-            item(key = "error") { FeedbackErrorBanner(detail.loadError, detail.retrying, actions.onRetryTicket, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            item(key = "error") {
+                FeedbackErrorBanner(detail.loadError, detail.retrying, actions.onRetryTicket, Modifier.padding(horizontal = 16.dp, vertical = 8.dp), traceId = detail.loadErrorTraceId)
+            }
         }
         val ticket = read.ticket
         item(key = "day-${ticket.id}") { FeedbackDateDivider(ticket.createdAt, timeContext) }

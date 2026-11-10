@@ -19,8 +19,8 @@ import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 
 /**
- * Mobile entry for `feedback:submit` cards: slock `docs/development/feedback-native-entry.md`
- * ("Opened from a feedback card") and `packages/shared/src/actionCards.ts` at botiverse/slock
+ * The App's entry for `feedback:submit` cards (the native form on the card's draft, as the web page's
+ * card flow): slock `docs/development/feedback-native-entry.md` ("Opened from a feedback card") and `packages/shared/src/actionCards.ts` at botiverse/slock
  * af05e7a04a5f6c64bdb5e9364dffdd242a013972.
  */
 class RaftFeedbackCardEntryTest {
@@ -67,40 +67,38 @@ class RaftFeedbackCardEntryTest {
         )
 
     @Test
-    fun preparedFeedbackCardOpensTheFeedbackWebPageWhereFeedbackIsTheWebPage() {
-        // Compose desktop (settingsFeedbackUsesWebPage), no server flag: a prepared feedback card
-        // opens the ticket web page once the viewing server is known, with the card's entry in the URL.
+    fun aPreparedFeedbackCardOpensTheNativeFormOnItsDraft() {
+        // Every platform (1.24), no server flag: once the viewing server is known, tapping a prepared
+        // card opens the native feedback form (not the web page), with the card's identity only.
         val card = preparedFeedbackCard()
-        assertTrue(raftFeedbackCardEntryEnabled(viewingServerId, feedbackWeb = true))
+        assertTrue(raftFeedbackCardEntryEnabled(viewingServerId))
         assertTrue(card.opensFeedbackCardEntry())
-        val entry = raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId, feedbackWeb = true)
+        val entry = assertNotNull(raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId))
         assertEquals(RaftFeedbackCardEntry(actionCardMessageId = cardMessageId, serverId = viewingServerId), entry)
-        assertEquals(
-            "https://web.example.test/feedback/?embed=raft-settings-v1&shell=host&actionCard=$cardMessageId&server=$viewingServerId",
-            settingsFeedbackWebUrl("https://web.example.test", entry),
-        )
-        // An unknown viewing server keeps the button off (the entry needs it).
-        assertFalse(raftFeedbackCardEntryEnabled(null, feedbackWeb = true))
-        assertFalse(raftFeedbackCardEntryEnabled(" ", feedbackWeb = true))
+
+        val scope = RaftShellStoreScope.create(shellInstanceId = "shell-feedback", initialServerId = viewingServerId)
+        val (pageName, pageData) = settingsFeedbackCardPageRequest(scope, entry)
+        assertEquals(SETTINGS_HANDS_FEEDBACK_PAGE, pageName)
+        assertEquals(SETTINGS_HANDS_FEEDBACK_PAGE, pageData.optString("pageName"))
+        assertEquals(entry, settingsFeedbackCardEntryFromPageData(pageData))
+        // Identity only: the draft is read by the page, never carried in the route.
+        assertFalse(pageData.toString().contains("Add dark mode"))
+        assertFalse(pageData.optBoolean(SETTINGS_HANDS_FEEDBACK_RETURN_TO_TICKETS, false))
+
+        // An unknown viewing server keeps the button off (the draft is read as operated from it).
+        assertFalse(raftFeedbackCardEntryEnabled(null))
+        assertFalse(raftFeedbackCardEntryEnabled(" "))
     }
 
     @Test
-    fun feedbackCardHasNoInAppEntryWhereFeedbackIsTheNativeForm() {
-        // artin (1.22.0): Android and iOS are as 1.21 with the flag off. Settings > Feedback is the
-        // native submit form, so a card neither opens the web page nor offers the feedback form
-        // intent (its button is "Open in web"), and a done card has no "View in Settings".
-        assertFalse(settingsFeedbackUsesWebPage(nativeSubmit = true))
-        val feedbackWeb = settingsFeedbackUsesWebPage(nativeSubmit = true)
-        val card = preparedFeedbackCard()
-        assertFalse(raftFeedbackCardEntryEnabled(viewingServerId, feedbackWeb))
-        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId, feedbackWeb))
-        assertFalse(
-            ActionCardSpecIntent.FeedbackForm.capability in
-                raftAppActionCardCapabilities(feedbackFormAvailable = raftFeedbackCardEntryEnabled(viewingServerId, feedbackWeb))
-        )
+    fun theFeedbackFormIntentIsDeclaredOnceTheViewingServerIsKnown() {
         assertTrue(
             ActionCardSpecIntent.FeedbackForm.capability in
-                raftAppActionCardCapabilities(feedbackFormAvailable = raftFeedbackCardEntryEnabled(viewingServerId, feedbackWeb = true))
+                raftAppActionCardCapabilities(feedbackFormAvailable = raftFeedbackCardEntryEnabled(viewingServerId))
+        )
+        assertFalse(
+            ActionCardSpecIntent.FeedbackForm.capability in
+                raftAppActionCardCapabilities(feedbackFormAvailable = raftFeedbackCardEntryEnabled(null))
         )
     }
 
@@ -116,14 +114,12 @@ class RaftFeedbackCardEntryTest {
     @Test
     fun entryRequiresCardTypeOpenStateAndBothIds() {
         val card = preparedFeedbackCard()
-        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, preparedFeedbackCard(state = "executed"), viewingServerId, feedbackWeb = true))
-        assertNull(
-            raftFeedbackCardEntryOrNull(cardMessageId, card.copy(type = "agent:create"), viewingServerId, feedbackWeb = true)
-        )
-        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, null, viewingServerId, feedbackWeb = true))
+        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, preparedFeedbackCard(state = "executed"), viewingServerId))
+        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, card.copy(type = "agent:create"), viewingServerId))
+        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, null, viewingServerId))
         listOf(null, "", "  ").forEach { blank ->
-            assertNull(raftFeedbackCardEntryOrNull(blank, card, viewingServerId, feedbackWeb = true), "messageId=$blank")
-            assertNull(raftFeedbackCardEntryOrNull(cardMessageId, card, blank, feedbackWeb = true), "server=$blank")
+            assertNull(raftFeedbackCardEntryOrNull(blank, card, viewingServerId), "messageId=$blank")
+            assertNull(raftFeedbackCardEntryOrNull(cardMessageId, card, blank), "server=$blank")
         }
     }
 
@@ -134,66 +130,18 @@ class RaftFeedbackCardEntryTest {
         assertEquals(cardServerId, card.sourceServerId)
         assertEquals(cardServerId, actionCardFromMessageMetadata(card.toMessageMetadata())?.sourceServerId)
 
-        val entry = assertNotNull(raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId, feedbackWeb = true))
+        val entry = assertNotNull(raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId))
 
         assertEquals(viewingServerId, entry.serverId)
-        val url = settingsFeedbackWebUrl("https://web.example.test", entry)
-        assertTrue(url.contains("server=$viewingServerId"), url)
-        assertFalse(url.contains(cardServerId), url)
+        val pageData = settingsHandsFeedbackPageData(RaftShellStoreScope.create(shellInstanceId = "shell-joint"), cardEntry = entry)
+        assertEquals(viewingServerId, pageData.optString(SETTINGS_FEEDBACK_ACTION_CARD_SERVER_ID))
+        assertFalse(pageData.toString().contains(cardServerId))
     }
 
     @Test
-    fun webUrlCarriesBothCardParamsOnTheEnvironmentWebOrigin() {
-        val entry = RaftFeedbackCardEntry(actionCardMessageId = cardMessageId, serverId = viewingServerId)
-
-        assertEquals(
-            "https://staging.web.example.test/feedback/?embed=raft-settings-v1&shell=host" +
-                "&actionCard=$cardMessageId&server=$viewingServerId",
-            settingsFeedbackWebUrl(" https://staging.web.example.test/ ", entry),
-        )
-        assertEquals(
-            "https://staging.web.example.test/feedback/?embed=raft-settings-v1&shell=host",
-            settingsFeedbackWebUrl("https://staging.web.example.test", null),
-        )
-        assertEquals(
-            settingsFeedbackWebUrl("http://10.0.2.2:5173", entry),
-            settingsFeedbackWebViewSpec(entry).buildWebUrl("http://10.0.2.2:5173", null, "en"),
-        )
-    }
-
-    @Test
-    fun webUrlPercentEncodesCardParams() {
-        val url =
-            settingsFeedbackWebUrl(
-                "https://web.example.test",
-                RaftFeedbackCardEntry(actionCardMessageId = "a&b=c d", serverId = "s/1?#é"),
-            )
-
-        assertTrue(url.endsWith("&actionCard=a%26b%3Dc%20d&server=s%2F1%3F%23%C3%A9"), url)
-    }
-
-    @Test
-    fun feedbackRouteCarriesOnlyTheCardIdentityAndRoundTrips() {
-        val entry = RaftFeedbackCardEntry(actionCardMessageId = cardMessageId, serverId = viewingServerId)
-        val pageData =
-            settingsWebViewPageData(
-                surface = SettingsWebViewSurface.Feedback,
-                storeScope = RaftShellStoreScope.create(shellInstanceId = "shell-feedback", initialServerId = viewingServerId),
-                feedbackCardEntry = entry,
-            )
-
-        assertEquals(SettingsWebViewSurface.Feedback, settingsWebViewSurfaceFromPageData(pageData))
-        assertEquals(entry, settingsFeedbackCardEntryFromPageData(pageData))
-        assertFalse(pageData.toString().contains("Add dark mode"))
-
-        // Another surface never carries a card, and a half entry opens the ordinary page.
-        val billing =
-            settingsWebViewPageData(
-                surface = SettingsWebViewSurface.Billing,
-                storeScope = RaftShellStoreScope.create(shellInstanceId = "shell-billing"),
-                feedbackCardEntry = entry,
-            )
-        assertNull(settingsFeedbackCardEntryFromPageData(billing))
+    fun aHalfCardEntryOpensTheOrdinaryForm() {
+        val scope = RaftShellStoreScope.create(shellInstanceId = "shell-feedback")
+        assertNull(settingsFeedbackCardEntryFromPageData(settingsHandsFeedbackPageData(scope)))
         assertNull(settingsFeedbackCardEntryFromPageData(JSONObject().put(SETTINGS_FEEDBACK_ACTION_CARD_ID, cardMessageId)))
         assertNull(
             settingsFeedbackCardEntryFromPageData(JSONObject().put(SETTINGS_FEEDBACK_ACTION_CARD_SERVER_ID, viewingServerId))
@@ -201,13 +149,19 @@ class RaftFeedbackCardEntryTest {
     }
 
     @Test
-    fun aDoneCardsTicketOpensTheNativeTicketPageWhereFeedbackIsNative() {
-        // Android / iOS (1.23): the native ticket page needs no viewing server.
-        assertTrue(raftFeedbackTicketPageAvailable(null, feedbackWeb = false))
-        assertTrue(raftFeedbackTicketPageAvailable(viewingServerId, feedbackWeb = false))
-        // Compose desktop: the web page, once the viewing server is known.
-        assertTrue(raftFeedbackTicketPageAvailable(viewingServerId, feedbackWeb = true))
-        assertFalse(raftFeedbackTicketPageAvailable(null, feedbackWeb = true))
+    fun everySettingsFeedbackEntryOpensTheNativeTicketList() {
+        // The Settings row, rail Help > Feedback, a done card's "View in Settings" and an agent
+        // issue's "View Ticket" all go through openSettingsFeedbackPage: the native ticket list on
+        // every platform (Compose desktop included), never the Settings web page.
+        val scope = RaftShellStoreScope.create(shellInstanceId = "shell-feedback", initialServerId = viewingServerId)
+        for (ticketId in listOf(null, cardMessageId)) {
+            val (pageName, pageData) = settingsFeedbackPageRequest(scope, ticketId)
+            assertEquals(SETTINGS_FEEDBACK_TICKETS_PAGE, pageName, "$ticketId")
+            assertEquals(SETTINGS_FEEDBACK_TICKETS_PAGE, pageData.optString("pageName"), "$ticketId")
+            assertNull(settingsWebViewSurfaceFromPageData(pageData), "$ticketId")
+            assertEquals(ticketId.orEmpty(), pageData.optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID))
+        }
+        assertFalse(SettingsWebViewSurface.entries.any { it.diagnosticsName == "feedback" })
     }
 
     @Test

@@ -4159,6 +4159,10 @@
     <string name="settings_feedback_tickets_error_conflict">Esta nova tentativa não corresponde mais à solicitação original.</string>
     <string name="settings_feedback_tickets_error_invalid">Confira os detalhes do feedback e tente novamente.</string>
     <string name="settings_feedback_tickets_error_not_found">Este ticket de feedback não está mais disponível.</string>
+    <string name="settings_feedback_card_not_waiting">Este feedback já foi enviado. Você pode encontrá-lo em Configurações.</string>
+    <string name="settings_feedback_card_changed">Este cartão mudou depois que você o abriu. Volte e abra-o novamente.</string>
+    <string name="settings_feedback_card_unavailable">Os cartões de feedback não estão mais disponíveis aqui.</string>
+    <string name="settings_feedback_card_not_allowed">Você não pode enviar este cartão.</string>
     <string name="settings_feedback_tickets_error_rate_limited">Muitas solicitações. Tente novamente mais tarde.</string>
     <string name="settings_feedback_tickets_error_unauthorized">Sua sessão de feedback expirou. Abra o feedback de novo e tente novamente.</string>
     <string name="settings_feedback_tickets_error_unavailable">Não foi possível carregar o feedback. Tente novamente.</string>

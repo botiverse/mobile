@@ -171,6 +171,8 @@ data class FeedbackFailure(
     val httpStatus: Int = 0,
     /** A 429's `Retry-After` (delta-seconds), when it named one. */
     val retryAfterSeconds: Long? = null,
+    /** The failed response's server trace id (as [ScreenError.traceId]): shown under the error. */
+    val traceId: String? = build.raft.app.network.RaftFailedRequestTraceIds.recent(),
 )
 
 sealed interface FeedbackResult<out T> {

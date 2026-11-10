@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.FeedbackDiagnosticsReference
+import build.raft.app.model.ServerId
 import build.raft.app.network.MultipartFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
@@ -20,6 +21,13 @@ import kotlin.uuid.Uuid
  * The body is the web form (`productFeedbackForm`): `type`, `message`, `metadata`,
  * `submission_id`, `may_contact`, then `diagnostics` (the presigned archive's reference, web
  * standalone/diagnostics.ts) and the image `attachments` (PNG / JPEG / GIF / WebP only).
+ *
+ * Sent from an agent's `feedback:submit` card (slock docs/development/feedback-native-entry.md,
+ * "Opened from a feedback card"; web standalone/actionCard.tsx + agentFeedbackCard.ts): the card's
+ * draft is read first (`GET /api/product-feedback/action-card/:messageId`, `X-Server-Id` the server
+ * the card is viewed in), and the send adds `action_card_message_id` and
+ * `expected_confirmation_version` under the same `X-Server-Id`; the server checks the card before
+ * Hands and completes it from the receipt.
  */
 
 /** Server `PRODUCT_FEEDBACK_MAX_ATTACHMENTS`. */
@@ -58,6 +66,20 @@ enum class SettingsFeedbackType(val wireValue: String) {
     Problem("problem"),
 }
 
+/**
+ * A `feedback:submit` card's draft as this person may send it now
+ * (`GET /api/product-feedback/action-card/:messageId`: `message_id`, `feedback_type`, `message`,
+ * `confirmation_version`), and [serverId], the server it is viewed (operated) from. Identity and
+ * the confirmation it was read at go back with the send.
+ */
+data class SettingsFeedbackCardDraft(
+    val messageId: String,
+    val serverId: String,
+    val type: SettingsFeedbackType,
+    val message: String,
+    val confirmationVersion: Long,
+)
+
 /** One `POST /api/product-feedback`. Safe to resend with the same [submissionId]: Hands dedupes on it. */
 data class SettingsFeedbackSubmitRequest(
     val message: String,
@@ -67,11 +89,20 @@ data class SettingsFeedbackSubmitRequest(
     val locale: String,
     val diagnostics: FeedbackDiagnosticsReference? = null,
     val type: SettingsFeedbackType = SettingsFeedbackType.Problem,
+    /** Sent as this card's submission (its draft, possibly edited). */
+    val card: SettingsFeedbackCardDraft? = null,
 )
 
 interface SettingsFeedbackSubmitRepository {
     /** The new ticket's id. */
     suspend fun submit(request: SettingsFeedbackSubmitRequest): FeedbackResult<String>
+
+    /**
+     * The draft of card [messageId] as operated from [serverId], or null whenever it cannot be read
+     * (the server's one 404 for every refusal, a network failure, a malformed answer): the caller
+     * then opens the ordinary Feedback page, as the web page does.
+     */
+    suspend fun loadCardDraft(messageId: String, serverId: String): SettingsFeedbackCardDraft? = null
 }
 
 class NetworkSettingsFeedbackSubmitRepository(
@@ -99,6 +130,8 @@ class NetworkSettingsFeedbackSubmitRepository(
                     headers = if (kind.isEmpty()) emptyMap() else mapOf(FEEDBACK_CLIENT_KIND_HEADER to kind),
                     fields = productFeedbackFormFields(request, kind, clientVersion.trim()),
                     files = files,
+                    // A card's send is checked as operated from the server it is viewed in.
+                    serverIdOverride = request.card?.serverId?.let(::ServerId),
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -108,10 +141,12 @@ class NetworkSettingsFeedbackSubmitRepository(
             }
         logger(
             "settings_feedback_submit code=${response.code} attachments=${files.size} " +
-                "diagnostics=${request.diagnostics != null}"
+                "diagnostics=${request.diagnostics != null} card=${request.card != null}"
         )
         if (!response.isSuccessful) {
-            val failure = feedbackFailureOf(response.code, response.errorBodyText ?: response.bodyText)
+            val failure =
+                feedbackFailureOf(response.code, response.errorBodyText ?: response.bodyText)
+                    .let { it.copy(traceId = response.traceId ?: it.traceId) }
             return FeedbackResult.Failed(
                 if (response.code == 429) failure.copy(retryAfterSeconds = response.retryAfterHeaderSeconds()) else failure
             )
@@ -128,7 +163,67 @@ class NetworkSettingsFeedbackSubmitRepository(
         }
         return FeedbackResult.Ok(ticketId)
     }
+
+    override suspend fun loadCardDraft(messageId: String, serverId: String): SettingsFeedbackCardDraft? {
+        val id = messageId.trim().takeIf { it.isNotEmpty() } ?: return null
+        val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return null
+        val kind = clientKind.trim()
+        val response =
+            try {
+                networkClient.requestWithHeaders(
+                    priority = DataRequestPriority.Foreground,
+                    path = "$PRODUCT_FEEDBACK_ROUTE/action-card/$id",
+                    headers = if (kind.isEmpty()) emptyMap() else mapOf(FEEDBACK_CLIENT_KIND_HEADER to kind),
+                    serverIdOverride = ServerId(server),
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                logger("settings_feedback_card_draft_unreadable reason=transport type=${error::class.simpleName}")
+                return null
+            }
+        val draft = if (response.isSuccessful) parseProductFeedbackCardDraft(response.bodyText, id, server) else null
+        val reason =
+            when {
+                draft != null -> null
+                response.code == 0 -> "transport"
+                response.code == 404 -> "card_unavailable"
+                !response.isSuccessful -> "http_${response.code}"
+                else -> "contract_mismatch"
+            }
+        // The page then opens the ticket list (web's ordinary page); the reason code says why.
+        logger(
+            if (reason == null) "settings_feedback_card_draft_ready code=${response.code}"
+            else "settings_feedback_card_draft_unreadable reason=$reason code=${response.code} traceId=${response.traceId.orEmpty()}"
+        )
+        return draft
+    }
 }
+
+/**
+ * The card draft route's answer for card [messageId] (web `loadFeedbackActionCardDraft`): the same
+ * message id, an `idea` / `problem` type, a message, and a positive confirmation version; anything
+ * else is no draft.
+ */
+internal fun parseProductFeedbackCardDraft(body: String?, messageId: String, serverId: String): SettingsFeedbackCardDraft? {
+    val wire =
+        body?.takeIf { it.isNotBlank() }
+            ?.let { text -> runCatching { submitJson.decodeFromString(ProductFeedbackCardDraftWire.serializer(), text) }.getOrNull() }
+            ?: return null
+    if (wire.messageId != messageId) return null
+    val type = SettingsFeedbackType.entries.firstOrNull { it.wireValue == wire.feedbackType } ?: return null
+    val message = wire.message ?: return null
+    val version = wire.confirmationVersion?.takeIf { it >= 1L } ?: return null
+    return SettingsFeedbackCardDraft(messageId = messageId, serverId = serverId, type = type, message = message, confirmationVersion = version)
+}
+
+@Serializable
+private data class ProductFeedbackCardDraftWire(
+    @SerialName("message_id") val messageId: String? = null,
+    @SerialName("feedback_type") val feedbackType: String? = null,
+    val message: String? = null,
+    @SerialName("confirmation_version") val confirmationVersion: Long? = null,
+)
 
 private const val PRODUCT_FEEDBACK_ROUTE = "product-feedback"
 
@@ -164,6 +259,11 @@ internal fun productFeedbackFormFields(
                 )
             )
         }
+        // A card's send (web sendFeedbackCard): the card, and the confirmation its draft was read at.
+        request.card?.let { card ->
+            put("action_card_message_id", card.messageId)
+            put("expected_confirmation_version", card.confirmationVersion.toString())
+        }
     }
 
 /** The multipart `attachments` part: streamed from its file ref, else its bytes. */
@@ -198,6 +298,8 @@ data class SettingsFeedbackProxyAttempt(
     val diagnosticsPrepared: Boolean = false,
     val diagnostics: FeedbackDiagnosticsReference? = null,
     val type: SettingsFeedbackType = SettingsFeedbackType.Problem,
+    /** Sent as this card's submission. */
+    val card: SettingsFeedbackCardDraft? = null,
 )
 
 sealed interface SettingsFeedbackProxyOutcome {
@@ -218,11 +320,46 @@ sealed interface SettingsFeedbackProxyOutcome {
         val retryable: Boolean,
         val retryAfterSeconds: Long? = null,
         val retry: SettingsFeedbackProxyAttempt? = null,
+        /** The refusing response's server trace id, shown under the error (AGENTS.md "Errors carry the trace ID"). */
+        val traceId: String? = null,
     ) : SettingsFeedbackProxyOutcome
 }
 
 /** The Settings form's codes for a failure it explains (SettingsHandsFeedbackCopy.submissionFailure). */
 internal const val SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID = "settings_feedback_attachment_type_invalid"
+
+/** A card this person already sent (409 `feedback_card_already_sent`): the page opens the ticket list, where it is. */
+internal const val SETTINGS_FEEDBACK_CARD_ALREADY_SENT = "settings_feedback_card_already_sent"
+
+/** A card that is no longer waiting (`STATE_MISMATCH`): web `actionCard.feedback.error.alreadySent`. */
+internal const val SETTINGS_FEEDBACK_CARD_NOT_WAITING = "settings_feedback_card_not_waiting"
+
+/** The card changed after its draft was read: web `actionCard.feedback.error.changed`. */
+internal const val SETTINGS_FEEDBACK_CARD_CHANGED = "settings_feedback_card_changed"
+
+/** Feedback cards are off here, or this is not one: web `actionCard.feedback.error.unavailable`. */
+internal const val SETTINGS_FEEDBACK_CARD_UNAVAILABLE = "settings_feedback_card_unavailable"
+
+/** This person may not send the card: web `actionCard.feedback.error.notAllowed`. */
+internal const val SETTINGS_FEEDBACK_CARD_NOT_ALLOWED = "settings_feedback_card_not_allowed"
+
+/**
+ * A card send's refusals (web FeedbackCardForm `REFUSALS`, server `assertFeedbackCardSendable` /
+ * `sendFeedbackCardRefusal`), by the server's `code`, to the form's codes. All are final: a retry
+ * of the same send cannot help.
+ */
+private val FeedbackCardRefusals: Map<String, String> =
+    mapOf(
+        "feedback_card_already_sent" to SETTINGS_FEEDBACK_CARD_ALREADY_SENT,
+        "STATE_MISMATCH" to SETTINGS_FEEDBACK_CARD_NOT_WAITING,
+        "NOT_FEEDBACK_CARD" to SETTINGS_FEEDBACK_CARD_UNAVAILABLE,
+        "FEATURE_DISABLED" to SETTINGS_FEEDBACK_CARD_UNAVAILABLE,
+        "NOT_A_MEMBER" to SETTINGS_FEEDBACK_CARD_NOT_ALLOWED,
+        "CONFIRMATION_VERSION_MISMATCH" to SETTINGS_FEEDBACK_CARD_CHANGED,
+        "CONFIRMATION_VERSION_REQUIRED" to SETTINGS_FEEDBACK_CARD_CHANGED,
+        "action_card_reconfirmation_required" to SETTINGS_FEEDBACK_CARD_CHANGED,
+        "action_card_conversion_frozen" to SETTINGS_FEEDBACK_CARD_CHANGED,
+    )
 
 /** Diagnostics the server or Hands refused: the feedback is sent once more without them (web `omit`). */
 private val DiagnosticsRefusedCodes = setOf("feedback_diagnostics_invalid", "feedback_diagnostics_rejected")
@@ -243,8 +380,9 @@ class SettingsFeedbackProxySubmitter(
         message: String,
         attachments: List<PlatformFile>,
         type: SettingsFeedbackType = SettingsFeedbackType.Problem,
+        card: SettingsFeedbackCardDraft? = null,
     ): SettingsFeedbackProxyAttempt =
-        SettingsFeedbackProxyAttempt(message = message, attachments = attachments, submissionId = newSubmissionId(), type = type)
+        SettingsFeedbackProxyAttempt(message = message, attachments = attachments, submissionId = newSubmissionId(), type = type, card = card)
 
     suspend fun submit(attempt: SettingsFeedbackProxyAttempt): SettingsFeedbackProxyOutcome {
         // The route refuses the whole feedback for one non-image file (web's form takes images
@@ -289,16 +427,23 @@ class SettingsFeedbackProxySubmitter(
                 is FeedbackResult.Failed -> result.failure
             }
         logger("settings_feedback_submit_failed kind=${failure.kind} code=${failure.code} status=${failure.httpStatus}")
-        if (failure.kind == FeedbackErrorKind.NotSupported || failure.code == "feedback_integration_unavailable") {
-            return SettingsFeedbackProxyOutcome.UseNativeForm
-        }
         fun failed(code: String, retry: SettingsFeedbackProxyAttempt?) =
             SettingsFeedbackProxyOutcome.Failed(
                 code = code,
                 retryable = retry != null,
                 retryAfterSeconds = failure.retryAfterSeconds,
                 retry = retry,
+                traceId = failure.traceId,
             )
+        if (sent.card != null) {
+            FeedbackCardRefusals[failure.code]?.let { code -> return failed(code, null) }
+        }
+        if (failure.kind == FeedbackErrorKind.NotSupported || failure.code == "feedback_integration_unavailable") {
+            // The native Hands form files anonymously and cannot complete a card: a card's send
+            // says the server is unavailable instead.
+            if (sent.card != null) return failed("settings_feedback_server_unavailable", sent)
+            return SettingsFeedbackProxyOutcome.UseNativeForm
+        }
         return when {
             failure.code == "feedback_attachment_type_invalid" -> failed(SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID, null)
             failure.code == "feedback_attachment_too_large" -> failed("settings_feedback_attachment_too_large", null)
@@ -320,6 +465,7 @@ class SettingsFeedbackProxySubmitter(
             locale = locale(),
             diagnostics = diagnostics,
             type = type,
+            card = card,
         )
 }
 

@@ -213,7 +213,8 @@ class RaftAndroidNav3StackTest {
             SETTINGS_WEB to web("administration"),
             SETTINGS_WEB to web("im-bridges"),
             SETTINGS_WEB to web("marketplace"),
-            SETTINGS_WEB to web("feedback"),
+            // Feedback is native: its ticket list.
+            "compose_settings_feedback_tickets" to scope,
         ).forEach { (name, data) ->
             assertTrue(name, stack.openLikeTheShell(name, data, from = null))
             assertTrue(name, stack.openLikeTheShell(name, data, from = stack.pages.last()))
@@ -261,7 +262,7 @@ class RaftAndroidNav3StackTest {
     @Test
     fun webViewFileChooserResultFollowsItsPage() {
         val stack = RaftPageStack()
-        stack.openLikeTheShell(SETTINGS_WEB, web("feedback"), from = null)
+        stack.openLikeTheShell(SETTINGS_WEB, web("billing"), from = null)
         val web = stack.pages.last()
         val results = results(stack)
         val first = results.begin(web.contentKey, RAFT_STACK_RESULT_WEB_FILE_CHOOSER)

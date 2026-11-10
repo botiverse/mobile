@@ -1,86 +1,14 @@
 package build.raft.app
 
 import build.raft.app.data.RaftShellStoreScope
-import build.raft.app.data.StoredAuthServer
-import build.raft.app.data.StoredAuthSession
-import build.raft.app.data.StoredAuthUser
 import build.raft.app.compat.json.JSONObject
-import build.raft.app.network.RaftAppIdentity
-import build.raft.app.network.RaftAppIdentityRegistry
 import kotlin.test.Test
-import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SettingsStandaloneWebViewHostTest {
-    @Test
-    fun feedbackBootstrapUsesInstalledIdentityAndInstallsDiagnosticsBridgeIdempotently() {
-        try {
-            RaftAppIdentityRegistry.install(
-                RaftAppIdentity(
-                    name = "Raft",
-                    version = " 1.0.11-alpha+abc123 ",
-                    buildNumber = "10011019",
-                    buildType = "debug",
-                )
-            )
-
-            val script = feedbackWebViewBootstrapJavaScript(null, null, "https://api.example.test")
-
-            assertContains(script, "clientVersion:\"1.0.11-alpha+abc123\"")
-            assertFalse(script.contains("clientVersion:'mobile'"))
-            assertContains(script, "diagnostics-upload-v1")
-            assertContains(script, "diagnostics:start")
-            assertContains(script, "if (!feedback || feedback.version !== 'raft-feedback-v1')")
-        } finally {
-            RaftAppIdentityRegistry.resetForTest()
-        }
-    }
-
-    @Test
-    fun feedbackBootstrapKeepsUserSessionBearerInMemoryWithoutStorageOrDiagnosticsLeakage() {
-        val session =
-            StoredAuthSession(
-                user = StoredAuthUser(id = "user-1", email = "user@example.test"),
-                accessToken = "session-bearer-secret",
-                refreshToken = "refresh-secret",
-                selectedServerId = "server-1",
-                selectedServerSlug = "workspace",
-                servers = listOf(StoredAuthServer(id = "server-1", name = "Workspace", slug = "workspace")),
-            )
-        val binding =
-            SettingsWebViewHostAuthBinding(
-                accountId = "user-1",
-                serverId = "server-1",
-                sessionGeneration = 42L,
-                webViewGeneration = 7L,
-                fence = SettingsWebViewAccessTokenFence(session, 42L, 7L),
-            )
-
-        val script = feedbackWebViewBootstrapJavaScript(
-            session,
-            binding,
-            "https://api.example.test",
-            trustedDocumentUrl = "https://web.example.test/feedback/",
-        )
-
-        assertContains(script, "window.top !== window")
-        assertContains(script, "location.pathname")
-        assertContains(script, "accessToken:\"session-bearer-secret\"")
-        assertFalse(script.contains("localStorage"))
-        assertFalse(script.contains("refresh-secret"))
-        assertFalse(script.contains("handsClientKey"))
-        assertFalse(script.contains("presign"))
-        assertFalse(script.contains("diagnosticsBytes"))
-    }
-
-    @Test
-    fun feedbackWebViewKeepsMainDocumentNavigationFenced() {
-        assertFalse(settingsFeedbackWebViewSpec().allowNavigation)
-    }
-
     @Test
     fun everySettingsWebSurfaceUsesTheSinglePageRoute() {
         SettingsWebViewSurface.entries.forEach { surface ->

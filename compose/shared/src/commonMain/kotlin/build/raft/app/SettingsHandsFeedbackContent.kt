@@ -26,6 +26,13 @@ import build.raft.app.data.SettingsFeedbackProxyAttempt
 import build.raft.app.data.SettingsFeedbackProxyOutcome
 import build.raft.app.data.SettingsFeedbackProxySubmitter
 import build.raft.app.data.SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID
+import build.raft.app.data.SETTINGS_FEEDBACK_CARD_ALREADY_SENT
+import build.raft.app.data.SETTINGS_FEEDBACK_CARD_CHANGED
+import build.raft.app.data.SETTINGS_FEEDBACK_CARD_NOT_ALLOWED
+import build.raft.app.data.SETTINGS_FEEDBACK_CARD_NOT_WAITING
+import build.raft.app.data.SETTINGS_FEEDBACK_CARD_UNAVAILABLE
+import build.raft.app.data.SettingsFeedbackCardDraft
+import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.PRODUCT_FEEDBACK_MAX_ATTACHMENTS
 import build.raft.app.data.SettingsFeedbackType
 import build.raft.app.data.SettingsHandsFeedbackSubmission
@@ -91,7 +98,15 @@ internal fun SharedHandsFeedbackContent(
      */
     proxySubmitter: SettingsFeedbackProxySubmitter? = null,
     /** A ticket filed through [proxySubmitter], after the draft is cleared (the page shows it). */
-    onTicketFiled: ((ticketId: String) -> Unit)? = null
+    onTicketFiled: ((ticketId: String) -> Unit)? = null,
+    /**
+     * An agent's `feedback:submit` card's draft: the form opens on it (type and message, editable)
+     * and sends it as that card's submission. The person's own saved draft is neither read nor
+     * written meanwhile (the card's text lives only on this page).
+     */
+    card: SettingsFeedbackCardDraft? = null,
+    /** The card was already sent by this person (no ticket named): the page shows the list, where it is. */
+    onCardAlreadySent: (() -> Unit)? = null,
 ) {
     // The Raft proxy takes images up to 10 MB each (server PRODUCT_FEEDBACK_MAX_ATTACHMENT_BYTES; web
     // NewFeedbackForm says the same); the diagnostics zip goes through its own presigned upload.
@@ -113,8 +128,8 @@ internal fun SharedHandsFeedbackContent(
             KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
         }
     val feedbackDraftStore =
-        remember {
-            SettingsHandsFeedbackDraftStore(raftSharedPreferenceStore())
+        remember(card) {
+            SettingsHandsFeedbackDraftStore(if (card == null) raftSharedPreferenceStore() else SettingsFeedbackCardDraftMemory())
         }
     val feedbackPageGeneration =
         remember(accountId) {
@@ -122,7 +137,9 @@ internal fun SharedHandsFeedbackContent(
         }
     val restoredDraft =
         remember(feedbackDraftStore, accountId, visualFixture) {
-            visualFixture?.draft ?: feedbackDraftStore.read(accountId)
+            visualFixture?.draft
+                ?: card?.let { SettingsHandsFeedbackDraftSnapshot(text = it.message) }
+                ?: feedbackDraftStore.read(accountId)
         }
     val lastPersistedDraftState =
         remember(feedbackDraftStore, accountId, visualFixture) {
@@ -171,10 +188,12 @@ internal fun SharedHandsFeedbackContent(
     var pendingRetryRequest by remember { mutableStateOf<SettingsHandsFeedbackRetryRequest?>(null) }
     // The banner text of the last failed send: Retry shows while that failure is the one shown.
     var failedSubmitError by remember { mutableStateOf<String?>(null) }
+    // That failure's server trace id, shown under it while it is the one shown.
+    var failedSubmitTraceId by remember { mutableStateOf<String?>(null) }
     // A ticket the native form filed (no ticket page to open): said in the banner, with its reference.
     var filedSubmission by remember(accountId) { mutableStateOf<SettingsHandsFeedbackSubmission?>(null) }
     // Web NewFeedbackForm: Idea first and picked, then Bug.
-    var feedbackType by remember(accountId) { mutableStateOf(SettingsFeedbackType.Idea) }
+    var feedbackType by remember(accountId) { mutableStateOf(card?.type ?: SettingsFeedbackType.Idea) }
     var keyboardInsetDp by remember { mutableStateOf(0f) }
     var visualAutoSubmitted by remember(accountId, visualFixture) { mutableStateOf(false) }
     // Native Hands SDK caps feedback submissions at maxAttachments=3 (one slot is
@@ -704,14 +723,16 @@ internal fun SharedHandsFeedbackContent(
         // A retry of the same feedback keeps its submission id and uploaded diagnostics.
         val proxyAttempt =
             proxySubmitter?.let { submitter ->
-                retryRequest?.proxyAttempt ?: submitter.newAttempt(submittedMessage, submittedAttachments, submittedType)
+                retryRequest?.proxyAttempt ?: submitter.newAttempt(submittedMessage, submittedAttachments, submittedType, card)
             }
         val submittedRequest = SettingsHandsFeedbackRetryRequest(submittedMessage, submittedAttachments, proxyAttempt, submittedType)
 
         fun appendFailure(
             failure: SettingsHandsFeedbackFailurePresentation,
-            nextProxyAttempt: SettingsFeedbackProxyAttempt? = proxyAttempt
+            nextProxyAttempt: SettingsFeedbackProxyAttempt? = proxyAttempt,
+            traceId: String? = null,
         ) {
+            failedSubmitTraceId = traceId
             val nextRetryRequest = submittedRequest.copy(proxyAttempt = nextProxyAttempt).takeIf { failure.retryable }
             pendingRetryRequest = nextRetryRequest
             messageFieldValue = TextFieldValue(submittedMessage, selection = TextRange(submittedMessage.length))
@@ -734,7 +755,7 @@ internal fun SharedHandsFeedbackContent(
                             }
                             is SettingsFeedbackProxyOutcome.Failed -> {
                                 nextProxyAttempt = outcome.retry
-                                DataResult.Error(ScreenError(outcome.code, retryable = outcome.retryable))
+                                DataResult.Error(ScreenError(outcome.code, retryable = outcome.retryable, traceId = outcome.traceId))
                             }
                             SettingsFeedbackProxyOutcome.UseNativeForm -> {
                                 settingsCapabilities.log("settings_hands_feedback_submit_native_fallback")
@@ -802,7 +823,12 @@ internal fun SharedHandsFeedbackContent(
                         settingsCapabilities.log(
                             "settings_hands_feedback_submit_result status=error code=${result.error.code}"
                         )
-                        appendFailure(copy.submissionFailure(result.error.code, result.error.retryable), nextProxyAttempt)
+                        val alreadySent = onCardAlreadySent?.takeIf { result.error.code == SETTINGS_FEEDBACK_CARD_ALREADY_SENT }
+                        if (alreadySent != null) {
+                            alreadySent()
+                        } else {
+                            appendFailure(copy.submissionFailure(result.error.code, result.error.retryable), nextProxyAttempt, result.error.traceId)
+                        }
                     }
                     is DataResult.NoPermission -> {
                         settingsCapabilities.log(
@@ -924,7 +950,8 @@ internal fun SharedHandsFeedbackContent(
                     // type still picked.
                     retryable =
                         !busy && error == failedSubmitError &&
-                            pendingRetryRequest?.type == feedbackType
+                            pendingRetryRequest?.type == feedbackType,
+                    traceId = failedSubmitTraceId.takeIf { error == failedSubmitError },
                 )
             else -> filedSubmission?.toSettingsHandsFeedbackFiledNotice(copy)
         }
@@ -986,6 +1013,10 @@ internal data class SettingsHandsFeedbackCopy(
     val submissionAuthBody: String = "Feedback authentication failed. Update the app or contact support.",
     val submissionPermissionTitle: String = "Permission needed",
     val submissionPermissionBody: String = "You do not have permission to send feedback.",
+    val cardNotWaitingBody: String = "This feedback was already sent. Find it in Settings.",
+    val cardChangedBody: String = "This card changed after you opened it. Go back and open it again.",
+    val cardUnavailableBody: String = "Feedback cards are not available here anymore.",
+    val cardNotAllowedBody: String = "You can't send this card.",
     val submissionSucceeded: (String) -> String = { ticket -> "Submitted $ticket." },
     val referenceCopied: String = "Reference copied automatically.",
     val placeholder: String = "Describe your idea or the bug you ran into…",
@@ -1013,6 +1044,10 @@ internal fun SettingsHandsFeedbackCopy.submissionFailure(
             "settings_feedback_attachment_too_large" -> submissionAttachmentTooLargeBody
             SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID -> submissionAttachmentTypeBody
             "settings_feedback_auth_failed" -> submissionAuthBody
+            SETTINGS_FEEDBACK_CARD_NOT_WAITING, SETTINGS_FEEDBACK_CARD_ALREADY_SENT -> cardNotWaitingBody
+            SETTINGS_FEEDBACK_CARD_CHANGED -> cardChangedBody
+            SETTINGS_FEEDBACK_CARD_UNAVAILABLE -> cardUnavailableBody
+            SETTINGS_FEEDBACK_CARD_NOT_ALLOWED -> cardNotAllowedBody
             else -> submissionFailedBody
         }
     val canRetry =
@@ -1022,7 +1057,12 @@ internal fun SettingsHandsFeedbackCopy.submissionFailure(
                     "settings_feedback_attachment_read_failed",
                     "settings_feedback_attachment_too_large",
                     SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID,
-                    "settings_feedback_auth_failed"
+                    "settings_feedback_auth_failed",
+                    SETTINGS_FEEDBACK_CARD_ALREADY_SENT,
+                    SETTINGS_FEEDBACK_CARD_NOT_WAITING,
+                    SETTINGS_FEEDBACK_CARD_CHANGED,
+                    SETTINGS_FEEDBACK_CARD_UNAVAILABLE,
+                    SETTINGS_FEEDBACK_CARD_NOT_ALLOWED,
                 )
     return SettingsHandsFeedbackFailurePresentation(
         composerStatus = body,
@@ -1082,6 +1122,10 @@ internal fun settingsHandsFeedbackCopy(attachmentMaxLabel: String): SettingsHand
         submissionAuthBody = stringResource(Res.string.settings_feedback_submission_auth_body),
         submissionPermissionTitle = stringResource(Res.string.settings_feedback_submission_permission_title),
         submissionPermissionBody = stringResource(Res.string.settings_feedback_submission_permission_body),
+        cardNotWaitingBody = stringResource(Res.string.settings_feedback_card_not_waiting),
+        cardChangedBody = stringResource(Res.string.settings_feedback_card_changed),
+        cardUnavailableBody = stringResource(Res.string.settings_feedback_card_unavailable),
+        cardNotAllowedBody = stringResource(Res.string.settings_feedback_card_not_allowed),
         submissionSucceeded = { ticket -> submissionSucceededTemplate.replaceLocalizedFormatArgs(ticket) },
         referenceCopied = stringResource(Res.string.settings_feedback_reference_copied),
         placeholder = stringResource(Res.string.settings_feedback_describe_placeholder),
@@ -1199,7 +1243,7 @@ internal fun PlatformFile.toSettingsHandsFeedbackAttachmentPreviewPayload(
 /** What the banner over the composer says: what went wrong, or that the native form filed it. */
 internal sealed interface SettingsHandsFeedbackNotice {
     /** A send or an attachment that failed; [retryable] shows Retry (it resends the same feedback). */
-    data class Problem(val message: String, val retryable: Boolean) : SettingsHandsFeedbackNotice
+    data class Problem(val message: String, val retryable: Boolean, val traceId: String? = null) : SettingsHandsFeedbackNotice
 
     /** Filed through the native form, which has no ticket page; [shareText] is its reference to copy. */
     data class Filed(val message: String, val shareText: String?) : SettingsHandsFeedbackNotice
@@ -1312,24 +1356,27 @@ private fun SettingsHandsFeedbackNoticeBanner(
 ) {
     when (notice) {
         is SettingsHandsFeedbackNotice.Problem ->
-            RaftBanner(
-                description = notice.message,
-                status = RaftBannerStatus.Warning,
-                size = RaftBannerSize.Sm,
-                modifier = Modifier.testTag(SettingsHandsFeedbackNoticeTag),
-                action =
-                    if (notice.retryable) {
-                        {
-                            RaftButton(
-                                text = copy.retry,
-                                onClick = onRetry,
-                                size = RaftButtonSize.Md,
-                            )
-                        }
-                    } else {
-                        null
-                    },
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                RaftBanner(
+                    description = notice.message,
+                    status = RaftBannerStatus.Warning,
+                    size = RaftBannerSize.Sm,
+                    modifier = Modifier.testTag(SettingsHandsFeedbackNoticeTag),
+                    action =
+                        if (notice.retryable) {
+                            {
+                                RaftButton(
+                                    text = copy.retry,
+                                    onClick = onRetry,
+                                    size = RaftButtonSize.Md,
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                )
+                RaftTraceIdNote(notice.traceId)
+            }
         is SettingsHandsFeedbackNotice.Filed -> {
             val shareText = notice.shareText
             RaftBanner(
@@ -1434,3 +1481,17 @@ internal const val SETTINGS_FEEDBACK_IMAGE_MAX_BYTES: Long = 10L * 1024L * 1024L
 
 /** The cap the form enforces and shows: the platform's, at most the proxy's 10 MB. */
 internal fun settingsFeedbackImageMaxBytes(): Long = minOf(raftFeedbackAttachmentMaxBytes(), SETTINGS_FEEDBACK_IMAGE_MAX_BYTES)
+
+/**
+ * The draft store a card's form keeps its text and attachments in while it is open: memory only,
+ * so the person's own saved Settings draft is left as it was.
+ */
+private class SettingsFeedbackCardDraftMemory : SharedPreferenceStore {
+    private val values = mutableMapOf<String, String>()
+
+    override fun getString(key: String): String? = values[key]
+
+    override fun putString(key: String, value: String?) {
+        if (value == null) values.remove(key) else values[key] = value
+    }
+}

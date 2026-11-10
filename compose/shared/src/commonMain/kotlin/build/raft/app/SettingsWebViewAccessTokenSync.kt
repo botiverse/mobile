@@ -24,7 +24,6 @@ internal enum class SettingsWebViewSurface(val diagnosticsName: String) {
     Administration("administration"),
     ImBridges("im-bridges"),
     ReleaseNotes("release-notes"),
-    Feedback("feedback"),
     /** Settings > Account > Delete account: the web deletion page (also its pending state). */
     AccountDeletion("account-deletion"),
     /** The in-app Artifact viewer's web page (not a Settings route; shares the token sync). */
@@ -239,7 +238,6 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
     controller: RaftWebViewController,
     binding: SettingsWebViewHostAuthBinding?,
     surface: SettingsWebViewSurface,
-    trustedDocumentUrl: String = "",
     logger: (String) -> Unit = {},
 ) {
     val session = snapshot.session ?: return
@@ -253,24 +251,14 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
     fun dispatch(update: SettingsWebViewAccessTokenUpdate) {
         val dispatched =
             controller.evaluateJavaScript(
-                if (surface == SettingsWebViewSurface.Feedback) {
-                    feedbackWebViewRuntimeSessionJavaScript(
-                        accessToken = update.accessToken,
-                        accountId = update.accountId,
-                        sessionGeneration = update.sessionGeneration,
-                        webViewGeneration = update.webViewGeneration,
-                        trustedDocumentUrl = trustedDocumentUrl,
-                    )
-                } else {
-                    settingsWebViewRuntimeAccessTokenJavaScript(
-                        accessToken = update.accessToken,
-                        accountId = update.accountId,
-                        serverId = update.serverId,
-                        sessionGeneration = update.sessionGeneration,
-                        webViewGeneration = update.webViewGeneration,
-                        sequence = update.sequence,
-                    )
-                }
+                settingsWebViewRuntimeAccessTokenJavaScript(
+                    accessToken = update.accessToken,
+                    accountId = update.accountId,
+                    serverId = update.serverId,
+                    sessionGeneration = update.sessionGeneration,
+                    webViewGeneration = update.webViewGeneration,
+                    sequence = update.sequence,
+                )
             )
         if (!dispatched) fence.onDispatchFailed(update)
         logger(

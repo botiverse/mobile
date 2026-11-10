@@ -4159,6 +4159,10 @@
     <string name="settings_feedback_tickets_error_conflict">이번 재시도가 원래 요청과 일치하지 않아요.</string>
     <string name="settings_feedback_tickets_error_invalid">피드백 내용을 확인하고 다시 시도해 주세요.</string>
     <string name="settings_feedback_tickets_error_not_found">이 피드백 티켓은 더 이상 사용할 수 없어요.</string>
+    <string name="settings_feedback_card_not_waiting">이미 보낸 피드백이에요. 설정에서 확인할 수 있어요.</string>
+    <string name="settings_feedback_card_changed">카드를 연 후에 내용이 바뀌었어요. 뒤로 돌아가서 다시 열어 주세요.</string>
+    <string name="settings_feedback_card_unavailable">이제 여기서는 피드백 카드를 사용할 수 없어요.</string>
+    <string name="settings_feedback_card_not_allowed">이 카드를 보낼 수 없어요.</string>
     <string name="settings_feedback_tickets_error_rate_limited">요청이 너무 많아요. 잠시 후 다시 시도해 주세요.</string>
     <string name="settings_feedback_tickets_error_unauthorized">피드백 세션이 만료됐어요. 피드백을 다시 열고 시도해 주세요.</string>
     <string name="settings_feedback_tickets_error_unavailable">피드백을 불러오지 못했어요. 다시 시도해 주세요.</string>

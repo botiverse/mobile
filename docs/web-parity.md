@@ -202,7 +202,7 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Billing, usage, hosted spend | `PlanSection`, `HostedRuntimeSpendCard.tsx` | WebView (in-app purchase policy TBC) | `SettingsBillingPage.kt` | existing | – |
 | Applications / marketplace | `IntegrationsSection` | WebView | `SettingsMarketplacePage.kt` | existing | – |
 | **IM Bridges, AI Providers, MCP Servers, Labs** | `settings/IMBridgesSettingsSection.tsx`, `ProviderConnectionsSettings.tsx`, `McpSettingsSection`, `LabsSection` | missing | searched each name | existing | S each as WebView |
-| Feedback, release notes | `feedback/*`, `ReleaseNotesPanel.tsx` | WebView (+ native screenshot report) | `SettingsFeedbackWebViewPage.kt`, `ReleaseNotesPage.kt` | existing | – |
+| Feedback, release notes | `feedback/*`, `ReleaseNotesPanel.tsx` | Native (Feedback ticket list, thread and form) / WebView (release notes) | `SettingsFeedbackTicketsPage.kt`, `SettingsHandsFeedbackPage.kt`, `ReleaseNotesPage.kt` | existing | – |
 | Announcements | `components/AnnouncementModal.tsx` | done | `AnnouncementModal.kt` | existing | – |
 | RaftBench | `raftbench/RaftBenchPage.tsx` | missing | – | existing | L (low) |
 | Member graph | `members/graph` | TBC | – | – | – |

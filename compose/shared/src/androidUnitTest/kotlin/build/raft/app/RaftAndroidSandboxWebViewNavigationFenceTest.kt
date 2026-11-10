@@ -16,7 +16,6 @@ import kotlin.test.assertTrue
  * Drives the real Android sandbox WebView host (its WebViewClient and controller commands) to check
  * the native navigation fence: a fenced document (allowNavigation = false) may only stay on its
  * exact main document, and runtime scripts (auth updates) are only delivered while it does.
- * Replaces the source-text regexes of `scripts/tests/feedback-host-scripts.test.mjs` case 5.
  */
 @RunWith(RobolectricTestRunner::class)
 class RaftAndroidSandboxWebViewNavigationFenceTest {

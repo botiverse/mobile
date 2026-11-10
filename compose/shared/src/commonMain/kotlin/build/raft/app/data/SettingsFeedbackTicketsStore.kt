@@ -26,6 +26,8 @@ data class FeedbackTicketsListState(
     val loadingMore: Boolean = false,
     /** Why the list could not be read: the whole page when [phase] is Failed, else a banner over the rows. */
     val error: FeedbackErrorKind? = null,
+    /** [error]'s server trace id, shown under it (AGENTS.md "Errors carry the trace ID"). */
+    val errorTraceId: String? = null,
     /** A Retry of [error] is running. */
     val retrying: Boolean = false,
     /** The server answered "can't read right now"; the store is asking again (web onListDegradedChange). */
@@ -50,6 +52,8 @@ data class FeedbackTicketDetailState(
     val detail: FeedbackTicketDetail? = null,
     val loading: Boolean = true,
     val loadError: FeedbackErrorKind? = null,
+    /** [loadError]'s server trace id (AGENTS.md "Errors carry the trace ID"). */
+    val loadErrorTraceId: String? = null,
     val retrying: Boolean = false,
     val refreshing: Boolean = false,
     val loadingMoreReplies: Boolean = false,
@@ -73,8 +77,6 @@ data class FeedbackTicketDetailState(
 data class SettingsFeedbackTicketsState(
     val list: FeedbackTicketsListState = FeedbackTicketsListState(),
     val detail: FeedbackTicketDetailState? = null,
-    /** This server has no ticket routes: the page hands over to the web page. */
-    val notSupported: Boolean = false,
 )
 
 /** An attachment read for the image viewer, handed to the page once. */
@@ -154,7 +156,7 @@ class SettingsFeedbackTicketsStore(
             state.copy(
                 list =
                     when (mode) {
-                        ListLoad.Initial -> list.copy(phase = FeedbackTicketsListPhase.Loading, error = null, retrying = false)
+                        ListLoad.Initial -> list.copy(phase = FeedbackTicketsListPhase.Loading, error = null, errorTraceId = null, retrying = false)
                         ListLoad.Refresh -> list.copy(refreshing = true)
                         ListLoad.Retry ->
                             if (list.phase == FeedbackTicketsListPhase.Ready) list.copy(retrying = true, refreshing = true) else list.copy(retrying = true)
@@ -186,6 +188,7 @@ class SettingsFeedbackTicketsStore(
                                                     refreshing = false,
                                                     loadingMore = false,
                                                     error = null,
+                                                    errorTraceId = null,
                                                     retrying = false,
                                                     degraded = false,
                                                 )
@@ -210,10 +213,8 @@ class SettingsFeedbackTicketsStore(
                         is FeedbackResult.Failed -> {
                             val failure = result.failure
                             logger("settings_feedback_tickets_list_failed kind=${failure.kind} code=${failure.code}")
-                            if (failure.kind == FeedbackErrorKind.NotSupported && mutableState.value.list.phase != FeedbackTicketsListPhase.Ready) {
-                                mutableState.update { it.copy(notSupported = true) }
-                                return@launch
-                            }
+                            // A server without the ticket routes (NotSupported) fails like any other
+                            // read: the error state with Retry (no web page to hand over to).
                             lastFailedLoadWasMore = cursor != null
                             mutableState.update { state ->
                                 val list = state.list
@@ -226,6 +227,7 @@ class SettingsFeedbackTicketsStore(
                                             retrying = false,
                                             degraded = false,
                                             error = failure.kind,
+                                            errorTraceId = failure.traceId,
                                         )
                                 )
                             }
@@ -286,7 +288,7 @@ class SettingsFeedbackTicketsStore(
         val cursor = if (mode == TicketLoad.More) current.detail?.nextCommentCursor else null
         updateDetail(ticketId) { detail ->
             when (mode) {
-                TicketLoad.Initial -> detail.copy(loading = true, loadError = null)
+                TicketLoad.Initial -> detail.copy(loading = true, loadError = null, loadErrorTraceId = null)
                 TicketLoad.Refresh -> detail.copy(refreshing = true)
                 TicketLoad.Retry -> detail.copy(retrying = true, loading = detail.detail == null)
                 TicketLoad.More -> detail.copy(loadingMoreReplies = true, retrying = detail.loadError != null)
@@ -317,6 +319,7 @@ class SettingsFeedbackTicketsStore(
                                         retrying = false,
                                         loadingMoreReplies = false,
                                         loadError = null,
+                                        loadErrorTraceId = null,
                                     ),
                                 // The first page read the ticket (web onReadSuccess): its row is no
                                 // longer unread, and shows the ticket as it is now.
@@ -335,6 +338,7 @@ class SettingsFeedbackTicketsStore(
                                 retrying = false,
                                 loadingMoreReplies = false,
                                 loadError = result.failure.kind,
+                                loadErrorTraceId = result.failure.traceId,
                             )
                         }
                     }

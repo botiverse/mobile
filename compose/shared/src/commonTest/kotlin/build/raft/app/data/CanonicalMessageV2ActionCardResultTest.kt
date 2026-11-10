@@ -164,7 +164,7 @@ class CanonicalMessageV2ActionCardResultTest {
         val card = assertNotNull(assertNotNull(stored.toThreadMessageItem(currentUserId = "user-1")).threadActionCard())
         assertEquals(Triple("user-1", TICKET, "android"), Triple(card.executedByUserId, card.resultTicketId, card.resultSource))
 
-        assertTrue(card.showsFeedbackTicket(viewerUserId = "user-1", clientOs = "android", feedbackPageAvailable = true))
+        assertTrue(card.showsFeedbackTicket(viewerUserId = "user-1", clientOs = "android"))
         val shown = assertNotNull(
             card.actionCardSpecToRender(specEnabled = true, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES, feedbackTicketVisible = true),
         )
@@ -173,8 +173,8 @@ class CanonicalMessageV2ActionCardResultTest {
             (shown.result?.element("openTicket") as ActionCardSpecButton).action,
         )
         // Another viewer, or the iOS app (the ticket was filed into Android's): the summary alone.
-        assertFalse(card.showsFeedbackTicket(viewerUserId = "user-2", clientOs = "android", feedbackPageAvailable = true))
-        assertFalse(card.showsFeedbackTicket(viewerUserId = "user-1", clientOs = "ios", feedbackPageAvailable = true))
+        assertFalse(card.showsFeedbackTicket(viewerUserId = "user-2", clientOs = "android"))
+        assertFalse(card.showsFeedbackTicket(viewerUserId = "user-1", clientOs = "ios"))
         val hidden = assertNotNull(card.actionCardSpecToRender(true, RAFT_APP_ACTION_CARD_CAPABILITIES, feedbackTicketVisible = false))
         assertNull(hidden.result?.element("openTicket"))
     }

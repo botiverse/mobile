@@ -56,7 +56,7 @@ import build.raft.designsystem.components.RaftDialogSheet
  *   [ThreadActionCardSpecState.slice], so the host does not change when one card runs.
  * - [openInWeb]: dispatches [ThreadActionCardSpecIntent.OpenInWeb] with this message's link.
  * - [isDirectMessageChannel]: whether a channel id is a DM this device knows (a message target's route).
- * - [viewerUserId] / [clientOs] / [feedbackPageAvailable]: who may follow a done feedback card to
+ * - [viewerUserId] / [clientOs]: who may follow a done feedback card to
  *   its ticket ([showsFeedbackTicket], S0.3); [openFeedbackTicket] opens Settings › Feedback on
  *   that ticket (null: the list).
  */
@@ -70,7 +70,6 @@ internal data class ThreadActionCardSpecHost(
     val isDirectMessageChannel: (channelId: String) -> Boolean = { false },
     val viewerUserId: String? = null,
     val clientOs: String = "",
-    val feedbackPageAvailable: Boolean = false,
     val openFeedbackTicket: (ticketId: String?) -> Unit = {},
     /** iOS view-only Billing: "View your plan" opens the view-only Plan & Billing page. */
     val openPlan: () -> Unit = {},

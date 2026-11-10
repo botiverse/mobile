@@ -105,17 +105,14 @@ class RaftStackPageAllowlistTest {
         assertEquals(RaftStackOpenRoute.Stack, route(SETTINGS_COMPUTERS_PAGE, data("machineId" to "m1"), fromRoot = false))
     }
 
-    @Test fun `batch 2 allowlist has the five Settings web pages and no other web surface`() {
-        val onStack = listOf("billing", "administration", "im-bridges", "marketplace", "feedback")
+    @Test fun `batch 2 allowlist has the four Settings web pages and no other web surface`() {
+        val onStack = listOf("billing", "administration", "im-bridges", "marketplace")
         assertEquals(onStack, RaftStackSettingsWebSurfaces.map { it.diagnosticsName })
         onStack.forEach { surface ->
             assertEquals(RaftStackOpenRoute.Stack, route(SETTINGS_WEB_VIEW_PAGE, data("settingsWebViewSurface" to surface)), surface)
         }
-        // Web Feedback opened on a ticket / action card: identity fields, still the same rule.
-        assertEquals(
-            RaftStackOpenRoute.Stack,
-            route(SETTINGS_WEB_VIEW_PAGE, data("settingsWebViewSurface" to "feedback", "settingsFeedbackTicketId" to "t1")),
-        )
+        // Feedback is native (the ticket list), no longer a Settings web surface.
+        assertEquals(RaftStackOpenRoute.Host, route(SETTINGS_WEB_VIEW_PAGE, data("settingsWebViewSurface" to "feedback")))
         SettingsWebViewSurface.entries.map { it.diagnosticsName }.filterNot { it in onStack }.forEach { surface ->
             assertEquals(RaftStackOpenRoute.Host, route(SETTINGS_WEB_VIEW_PAGE, data("settingsWebViewSurface" to surface)), surface)
         }
