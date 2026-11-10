@@ -159,8 +159,6 @@ PROTECTED: set[str] = set()
 # `build.raft.*.SlockX` class are renamed by rule, see rename_in_string().)
 STRING_TOKEN_RENAMES: set[str] = {
     "slockNetworkClientConfig",               # :shared verifyNetworkTransportClientWiring check
-    "SlockKuiklyBaseDatetimeEnabledByBuild",  # generated Kotlin source in shared/build.gradle.kts
-    "SlockDatetimeBuildConfig",               # generated source file name in shared/build.gradle.kts
     "SlockLucideIconName",                    # PrimitiveSerialDescriptor name (never on the wire)
     "handleUnsupportedSlockWebLink",          # MainActivityLaunchTest source assertion
     "SharedSlockCmpIosBridge",                # NSClassFromString: Kotlin class exported to ObjC

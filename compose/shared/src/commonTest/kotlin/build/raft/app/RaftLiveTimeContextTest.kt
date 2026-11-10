@@ -191,9 +191,7 @@ class RaftLiveTimeContextTest {
         val contexts = mutableListOf<RaftTimeContext?>()
         val foundationOwner =
             raftTestDatetimeFoundationOwner(
-                kuiklyBaseEnabled = true,
-                kuiklyBaseNowMillis = { now },
-                legacyNowMillis = { now },
+                nowMillis = { now },
                 localOffsetMinutesAt = { systemOffsetMinutes },
             )
         val controller =

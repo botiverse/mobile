@@ -176,9 +176,7 @@ private val owner = SharedComputersOwner(environmentId = "https://api.example", 
 /** The device zone fixed at UTC+8 (the reporter's), whatever the CI host's zone is. */
 private val fixedZone =
     RaftDatetimeFoundationOwner(
-        usesKuiklyBase = true,
         kuiklyBaseClock = RaftEpochMillisSource { NOW_MILLIS },
-        legacyClock = RaftEpochMillisSource { NOW_MILLIS },
         kuiklyBaseOffset = RaftLocalOffsetMinutesSource { 8 * 60 },
     )
 

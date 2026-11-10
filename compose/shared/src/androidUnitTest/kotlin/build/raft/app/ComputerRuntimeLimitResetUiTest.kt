@@ -169,9 +169,7 @@ private val owner = SharedComputersOwner(environmentId = "https://api.example", 
 
 private val fixedZone =
     RaftDatetimeFoundationOwner(
-        usesKuiklyBase = true,
         kuiklyBaseClock = RaftEpochMillisSource { NOW_MILLIS },
-        legacyClock = RaftEpochMillisSource { NOW_MILLIS },
         kuiklyBaseOffset = RaftLocalOffsetMinutesSource { 8 * 60 },
     )
 
