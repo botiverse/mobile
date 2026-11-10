@@ -54,6 +54,15 @@ const val RAFT_PRODUCT_EVENTS_SELECT_TEXT_SLOCK_SHA: String = "27f555f166a5f51e8
 const val RAFT_PRODUCT_ENTRY_EVENTS_BASE_SLOCK_SHA: String = "3e959613eeeaa80607e826792c1f72bd17459191"
 
 /**
+ * botiverse/slock #13636 head (gated features with no server record; live in server v1.21.61):
+ * `drafts_page_viewed` (`DRAFT_COUNT_BUCKETS`), `drafts_item_opened` (`DRAFT_PLACES`) and
+ * `agent_read_progress_shown` (`AGENT_READ_PROGRESS_PARTS`, `AGENT_READ_PROGRESS_CONVERSATIONS`),
+ * all registered for `APP_CLIENTS`. Web emitters: `packages/web/src/analytics/gatedFeatures.ts`,
+ * re-read on staging @ 987c47fa6ca2eb03fcace5777f807cd17070cea9.
+ */
+const val RAFT_PRODUCT_EVENTS_GATED_FEATURES_SLOCK_SHA: String = "a5a145f9fe3ce4da49cba8e7d2ec39293c1f1270"
+
+/**
  * botiverse/slock #10790 head, where `clientEventBatchSchema` gained the optional batch-level
  * `device_class: "phone" | "tablet"` (`packages/server/src/services/productEventIngest.ts`).
  */
@@ -239,6 +248,63 @@ enum class RaftAgentCreateEntry(val wire: String) {
     @SerialName("members_page") MembersPage("members_page"),
 }
 
+/** `DRAFT_COUNT_BUCKETS`: how many drafts the Drafts page listed when it opened. */
+@Serializable
+enum class RaftDraftCountBucket(val wire: String) {
+    @SerialName("0") None("0"),
+    @SerialName("1") One("1"),
+    @SerialName("2-5") TwoToFive("2-5"),
+    @SerialName("6+") SixOrMore("6+"),
+}
+
+/** Web `draftCountBucket`: the bucket for [count] listed drafts. */
+fun raftDraftCountBucket(count: Int): RaftDraftCountBucket =
+    when {
+        count <= 0 -> RaftDraftCountBucket.None
+        count == 1 -> RaftDraftCountBucket.One
+        count <= 5 -> RaftDraftCountBucket.TwoToFive
+        else -> RaftDraftCountBucket.SixOrMore
+    }
+
+/** `DRAFT_PLACES`: the kind of conversation a draft was started in. */
+@Serializable
+enum class RaftDraftPlaceKind(val wire: String) {
+    @SerialName("channel") Channel("channel"),
+    @SerialName("dm") Dm("dm"),
+    @SerialName("thread") Thread("thread"),
+    @SerialName("task") Task("task"),
+}
+
+/** `AGENT_READ_PROGRESS_PARTS`: the agents' faces, or the line saying a message will not reach an agent. */
+@Serializable
+enum class RaftAgentReadProgressPart(val wire: String) {
+    @SerialName("faces") Faces("faces"),
+    @SerialName("not_reaching_line") NotReachingLine("not_reaching_line"),
+}
+
+/** `AGENT_READ_PROGRESS_CONVERSATIONS`: a DM never shows agent read progress. */
+@Serializable
+enum class RaftAgentReadProgressConversation(val wire: String) {
+    @SerialName("channel") Channel("channel"),
+    @SerialName("thread") Thread("thread"),
+}
+
+@Serializable
+data class RaftDraftsPageViewedProperties(
+    val drafts: RaftDraftCountBucket,
+)
+
+@Serializable
+data class RaftDraftsItemOpenedProperties(
+    val place: RaftDraftPlaceKind,
+)
+
+@Serializable
+data class RaftAgentReadProgressShownProperties(
+    val part: RaftAgentReadProgressPart,
+    val conversation: RaftAgentReadProgressConversation,
+)
+
 @Serializable
 data class RaftChannelTabSelectedProperties(
     val tab: RaftChannelTab,
@@ -312,6 +378,15 @@ sealed class RaftProductEvent<P>(val name: String, private val serializer: KSeri
 
     data class AgentCreateOpened(override val properties: RaftAgentCreateOpenedProperties) :
         RaftProductEvent<RaftAgentCreateOpenedProperties>("agent_create_opened", RaftAgentCreateOpenedProperties.serializer())
+
+    data class DraftsPageViewed(override val properties: RaftDraftsPageViewedProperties) :
+        RaftProductEvent<RaftDraftsPageViewedProperties>("drafts_page_viewed", RaftDraftsPageViewedProperties.serializer())
+
+    data class DraftsItemOpened(override val properties: RaftDraftsItemOpenedProperties) :
+        RaftProductEvent<RaftDraftsItemOpenedProperties>("drafts_item_opened", RaftDraftsItemOpenedProperties.serializer())
+
+    data class AgentReadProgressShown(override val properties: RaftAgentReadProgressShownProperties) :
+        RaftProductEvent<RaftAgentReadProgressShownProperties>("agent_read_progress_shown", RaftAgentReadProgressShownProperties.serializer())
 
     data class AppOpened(override val properties: RaftAppOpenedProperties) :
         RaftProductEvent<RaftAppOpenedProperties>("app_opened", RaftAppOpenedProperties.serializer())

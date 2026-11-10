@@ -232,6 +232,28 @@ class RaftPageViewTracker(
 }
 
 /**
+ * `agent_read_progress_shown` dedupe (web `trackAgentReadProgressShown`): each part counts once per
+ * conversation (its read-receipt scope id) for the life of this tracker, the first time it is
+ * generated there. The recorder holds one per process, the app's equivalent of web's page load.
+ */
+class RaftAgentReadProgressShownTracker {
+    private val lock = SynchronizedObject()
+    private val shown = HashSet<String>()
+
+    /** The parts of [faces] / [notReachingLine] not yet counted for [scopeId], marking them counted. */
+    fun take(scopeId: String, faces: Boolean, notReachingLine: Boolean): List<RaftAgentReadProgressPart> {
+        val key = scopeId.trim().takeIf { it.isNotEmpty() } ?: return emptyList()
+        val parts =
+            buildList {
+                if (faces) add(RaftAgentReadProgressPart.Faces)
+                if (notReachingLine) add(RaftAgentReadProgressPart.NotReachingLine)
+            }
+        if (parts.isEmpty()) return emptyList()
+        return synchronized(lock) { parts.filter { part -> shown.add("${part.wire}:$key") } }
+    }
+}
+
+/**
  * Product analytics for one app process: the queue ([client]) plus the app-open and page-view
  * rules. Hosts report lifecycle and navigation; this decides what becomes an event.
  */
@@ -245,6 +267,7 @@ class RaftProductEventsRecorder(
     private val lock = SynchronizedObject()
     private val taskThreadInstanceIds = LinkedHashSet<String>()
     private val openVia = RaftAppOpenViaTracker()
+    private val agentReadProgressShown = RaftAgentReadProgressShownTracker()
 
     /** How the app is being opened, reported before the foreground it belongs to. */
     fun onAppOpenSignal(signal: RaftAppOpenSignal) {
@@ -320,6 +343,33 @@ class RaftProductEventsRecorder(
 
     fun agentCreateOpened(entry: RaftAgentCreateEntry) {
         client.track(RaftProductEvent.AgentCreateOpened(RaftAgentCreateOpenedProperties(entry)))
+    }
+
+    /** The Drafts page opened listing [count] drafts (once per opening; the caller decides when). */
+    fun draftsPageViewed(count: Int) {
+        client.track(RaftProductEvent.DraftsPageViewed(RaftDraftsPageViewedProperties(raftDraftCountBucket(count))))
+    }
+
+    /** A Drafts row took the person to its conversation. */
+    fun draftsItemOpened(place: RaftDraftPlaceKind) {
+        client.track(RaftProductEvent.DraftsItemOpened(RaftDraftsItemOpenedProperties(place)))
+    }
+
+    /**
+     * What agent read progress generated in the open conversation [scopeId] now: [faces] when at
+     * least one face is placed on a loaded row, [notReachingLine] when the line under the viewer's
+     * latest message is rendered. Each part is sent once per conversation per process; the scroll
+     * position is not checked (not an impression).
+     */
+    fun agentReadProgressShown(
+        scopeId: String,
+        conversation: RaftAgentReadProgressConversation,
+        faces: Boolean,
+        notReachingLine: Boolean,
+    ) {
+        agentReadProgressShown.take(scopeId, faces, notReachingLine).forEach { part ->
+            client.track(RaftProductEvent.AgentReadProgressShown(RaftAgentReadProgressShownProperties(part, conversation)))
+        }
     }
 
     /** The next thread page with [instanceId] opens a task (a task opens as a thread on phones). */

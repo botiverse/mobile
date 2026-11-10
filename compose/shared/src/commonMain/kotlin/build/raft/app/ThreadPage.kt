@@ -87,6 +87,7 @@ import build.raft.app.data.homeStateForPage
 import build.raft.app.data.RaftKnownEntityResolver
 import build.raft.app.data.RaftAgentCreateEntry
 import build.raft.app.data.RaftMessageAction
+import build.raft.app.data.RaftAgentReadProgressConversation
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
@@ -22351,6 +22352,15 @@ private fun ThreadMessagesListContent(
                 threadWorkingAgentIds = { parent -> agentTypingInThread?.agentIds(parent).orEmpty() },
             )
         }
+    // agent_read_progress_shown (web useAgentReadProgress): the faces / the line count once per
+    // conversation and part per process when generated here; the scrolled viewport is not checked.
+    val agentReadFacesShown = agentReadProgress?.facesByMessageId?.isNotEmpty() == true
+    val agentReadLineShown = agentReadProgress?.status != null
+    val agentReadScopeId = peerReadReceipts?.scopeId?.takeIf { agentReadProgress != null }
+    val agentReadConversation = peerReadReceipts?.readProgressConversation ?: RaftAgentReadProgressConversation.Channel
+    LaunchedEffect(agentReadScopeId, agentReadConversation, agentReadFacesShown, agentReadLineShown) {
+        RaftProductEvents.agentReadProgressShown(agentReadScopeId, agentReadConversation, agentReadFacesShown, agentReadLineShown)
+    }
     // Task #1125: offline stand-in chrome (top inset + tip overlay), see threadOfflineLastKnownChrome.
     val offlineLastKnownChrome =
         threadOfflineLastKnownChrome(

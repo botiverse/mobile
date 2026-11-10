@@ -26,6 +26,7 @@ import build.raft.app.data.PeerReadReceiptIntent
 import build.raft.app.data.PeerReadReceiptOwner
 import build.raft.app.data.PeerReadReceiptScope
 import build.raft.app.data.AGENT_READ_PROGRESS_FEATURE_FLAG_KEY
+import build.raft.app.data.RaftAgentReadProgressConversation
 import build.raft.app.data.READ_RECEIPTS_FEATURE_FLAG_KEY
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
@@ -78,6 +79,10 @@ internal data class ThreadPeerReadReceiptsUi(
     val agentNames: Map<String, String> = emptyMap(),
     /** The server the scope belongs to: the agents' faces are read from its directory. */
     val serverId: String? = null,
+    /** The read-receipt scope id ([peerReadReceiptScopeId]): `agent_read_progress_shown` counts once per scope. */
+    val scopeId: String? = null,
+    /** `agent_read_progress_shown.conversation` (web: the scope is a thread, or any other conversation). */
+    val readProgressConversation: RaftAgentReadProgressConversation = RaftAgentReadProgressConversation.Channel,
 )
 
 internal val LocalThreadPeerReadReceipts = compositionLocalOf<ThreadPeerReadReceiptsUi?> { null }
@@ -125,6 +130,17 @@ internal fun RaftThreadScreenPayload.isPeerReadReceiptDmSurface(): Boolean =
         channelKind == "dm" ||
         (surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
             (parentSurfaceKind == RaftThreadSurfaceKind.DirectMessage || parentChannelKind == "dm"))
+
+/**
+ * `agent_read_progress_shown.conversation` (web `useAgentReadProgress`: `scope.type === "thread"`):
+ * a reply thread is a thread; a channel or a task's own conversation counts as a channel.
+ */
+internal fun RaftThreadScreenPayload.agentReadProgressConversation(): RaftAgentReadProgressConversation =
+    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread && channelKind.normalizedThreadChannelKind() != RaftTaskConversationChannelKind) {
+        RaftAgentReadProgressConversation.Thread
+    } else {
+        RaftAgentReadProgressConversation.Channel
+    }
 
 /**
  * Web `isReadReceiptScopeEligible`: a thread is its own scope (the server decides from its parent);
@@ -287,7 +303,8 @@ internal fun rememberThreadPeerReadReceipts(
     val agentNames = remember(serverMembers, payload.members, payload.memberCandidates) {
         threadAgentNames(serverMembers, payload.members + payload.memberCandidates)
     }
-    return remember(scope, dmSurface, directory, managedAgentIds, agentReadProgressEnabled, agentNames, owner) {
+    val readProgressConversation = payload.agentReadProgressConversation()
+    return remember(scope, dmSurface, directory, managedAgentIds, agentReadProgressEnabled, agentNames, owner, scopeId, readProgressConversation) {
         scope?.let {
             ThreadPeerReadReceiptsUi(
                 scope = it,
@@ -297,6 +314,8 @@ internal fun rememberThreadPeerReadReceipts(
                 agentReadProgressEnabled = agentReadProgressEnabled,
                 agentNames = agentNames,
                 serverId = owner?.serverId,
+                scopeId = scopeId,
+                readProgressConversation = readProgressConversation,
             )
         }
     }

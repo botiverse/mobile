@@ -51,6 +51,7 @@ import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.RaftDraftChannelPlace
+import build.raft.app.data.RaftDraftPlaceKind
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedTasksDataStore
@@ -124,6 +125,14 @@ internal sealed interface RaftDraftPlace {
         val taskId: String?,
     ) : RaftDraftPlace
 }
+
+/** `drafts_item_opened.place` (web `trackDraftsItemOpened`): only the kind of place goes out. */
+internal fun RaftDraftPlace.productEventPlace(): RaftDraftPlaceKind =
+    when (this) {
+        is RaftDraftPlace.Conversation -> if (directMessage) RaftDraftPlaceKind.Dm else RaftDraftPlaceKind.Channel
+        is RaftDraftPlace.Thread -> RaftDraftPlaceKind.Thread
+        is RaftDraftPlace.Task -> RaftDraftPlaceKind.Task
+    }
 
 /** What this device knows about the current server's conversations (Home rows and loaded tasks). */
 @Immutable
@@ -242,6 +251,13 @@ internal data class RaftDraftListing(
 ) {
     val count: Int
         get() = entries.size
+
+    /**
+     * Every draft is placed (no server lookup outstanding), so [count] is what the page lists: web
+     * DraftsPanel's `settled`, when `drafts_page_viewed` goes out.
+     */
+    val settled: Boolean
+        get() = lookupChannelIds.isEmpty()
 
     companion object {
         val Empty = RaftDraftListing()

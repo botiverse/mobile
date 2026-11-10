@@ -4,6 +4,7 @@ import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.RaftDraftChannelPlace
+import build.raft.app.data.RaftDraftPlaceKind
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.parseRaftDraftChannelPlace
 import build.raft.app.model.ChannelId
@@ -361,5 +362,23 @@ class RaftDraftsTest {
         assertEquals(ConversationKind.Task, task?.conversationIdentity?.kind)
         assertEquals(ChannelId("conv-7"), task?.conversationIdentity?.channelId)
         assertIs<ThreadId>(task?.conversationIdentity?.threadId)
+    }
+
+    @Test
+    fun productEventPlaceIsOnlyTheKindOfPlace() {
+        val cases =
+            listOf(
+                RaftDraftPlace.Conversation("general", directMessage = false) to RaftDraftPlaceKind.Channel,
+                RaftDraftPlace.Conversation("dm-alice", directMessage = true) to RaftDraftPlaceKind.Dm,
+                RaftDraftPlace.Thread("general", "msg-1", threadChannelId = null) to RaftDraftPlaceKind.Thread,
+                RaftDraftPlace.Task("conv-7", parentChannelId = null, taskId = null) to RaftDraftPlaceKind.Task,
+            )
+        cases.forEach { (place, kind) -> assertEquals(kind, place.productEventPlace(), "$place") }
+    }
+
+    @Test
+    fun listingIsSettledForThePageViewOnlyWithNoLookupOutstanding() {
+        assertTrue(RaftDraftListing.Empty.settled)
+        assertFalse(RaftDraftListing(lookupChannelIds = setOf("ch-unknown")).settled)
     }
 }
