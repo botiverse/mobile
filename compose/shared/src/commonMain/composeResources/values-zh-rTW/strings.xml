@@ -288,8 +288,6 @@
     <string name="settings_release_notes_subtitle">版本記錄與更新內容</string>
     <string name="settings_feedback_title">意見回饋</string>
     <string name="settings_feedback_subtitle">回報問題或提出建議</string>
-    <string name="settings_feedback_introduction">回報問題或建議。每次送出都會建立一則意見回饋訊息，並自動複製可分享的參照。</string>
-    <string name="settings_feedback_you">你</string>
     <string name="settings_feedback_attachment">附件</string>
     <string name="settings_feedback_attachment_limit_reached">一次最多可上傳 %1$d 個附件。</string>
     <string name="settings_feedback_attachment_too_large">已略過大於 %1$s 的附件。</string>
@@ -316,8 +314,6 @@
     <string name="settings_feedback_submission_permission_body">你沒有傳送意見回饋的權限。</string>
     <string name="settings_feedback_submission_succeeded">已送出 %1$s。</string>
     <string name="settings_feedback_reference_copied">已自動複製參照。</string>
-    <string name="settings_feedback_submitting">正在送出意見回饋並準備要複製的參照…</string>
-    <string name="settings_feedback_placeholder">分享意見回饋</string>
     <string name="settings_feedback_copy_result">複製結果</string>
     <string name="settings_members_title">成員</string>
     <string name="settings_hands_title">Hands</string>

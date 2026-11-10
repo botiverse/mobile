@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID
+import build.raft.app.data.SettingsFeedbackType
 import build.raft.app.format.RaftFormat
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ScreenLoadState
@@ -633,117 +634,8 @@ class SettingsHomePageDiagnosticsTest {
         assertTrue(request.matches("  上传图片失败  ", listOf(attachment)))
         assertFalse(request.matches("另一条反馈", listOf(attachment)))
         assertFalse(request.matches("上传图片失败", emptyList()))
-    }
-
-    @Test
-    fun feedbackBottomAnchorFollowsGenuineConversationAppendWhenParked() {
-        assertEquals(
-            SettingsFeedbackBottomUpdatePresentation(targetIndex = 2),
-            settingsFeedbackBottomUpdatePresentation(
-                previousEntryIds = listOf(0, 1),
-                currentEntryIds = listOf(0, 1, 2),
-                busy = false,
-                allowBottomAnchor = true,
-                isScrollInProgress = false
-            )
-        )
-    }
-
-    @Test
-    fun feedbackBottomAnchorTargetsBusySentinelAfterConversationAppend() {
-        assertEquals(
-            SettingsFeedbackBottomUpdatePresentation(targetIndex = 3),
-            settingsFeedbackBottomUpdatePresentation(
-                previousEntryIds = listOf(0, 1),
-                currentEntryIds = listOf(0, 1, 2),
-                busy = true,
-                allowBottomAnchor = true,
-                isScrollInProgress = false
-            )
-        )
-    }
-
-    @Test
-    fun feedbackBottomAnchorDefersAppendDuringUserScroll() {
-        assertEquals(
-            SettingsFeedbackBottomUpdatePresentation(targetIndex = null),
-            settingsFeedbackBottomUpdatePresentation(
-                previousEntryIds = listOf(0),
-                currentEntryIds = listOf(0, 1),
-                busy = true,
-                allowBottomAnchor = true,
-                isScrollInProgress = true
-            )
-        )
-        assertFalse(
-            resolveSettingsFeedbackBottomAnchorAllowed(
-                SettingsFeedbackBottomAnchorAvailabilityState(
-                    currentAllow = true,
-                    isScrollInProgress = true,
-                    isAtBottom = true
-                )
-            )
-        )
-    }
-
-    @Test
-    fun feedbackBottomAnchorIgnoresBusyToggleAndNonAppendMutation() {
-        assertEquals(
-            SettingsFeedbackBottomUpdatePresentation(targetIndex = null),
-            settingsFeedbackBottomUpdatePresentation(
-                previousEntryIds = listOf(0, 1),
-                currentEntryIds = listOf(0, 1),
-                busy = true,
-                allowBottomAnchor = true,
-                isScrollInProgress = false
-            )
-        )
-        assertEquals(
-            SettingsFeedbackBottomUpdatePresentation(targetIndex = null),
-            settingsFeedbackBottomUpdatePresentation(
-                previousEntryIds = listOf(0, 1),
-                currentEntryIds = listOf(0, 1),
-                busy = false,
-                allowBottomAnchor = true,
-                isScrollInProgress = false
-            )
-        )
-    }
-
-    @Test
-    fun feedbackBottomAnchorRecognizesCoalescedRetryOutcomeAsNewTailEntry() {
-        assertEquals(
-            SettingsFeedbackBottomUpdatePresentation(targetIndex = 1),
-            settingsFeedbackBottomUpdatePresentation(
-                previousEntryIds = listOf(0, 1),
-                currentEntryIds = listOf(0, 2),
-                busy = false,
-                allowBottomAnchor = true,
-                isScrollInProgress = false
-            )
-        )
-    }
-
-    @Test
-    fun feedbackBottomAnchorKeepsHistoryViewportUntilUserReturnsToBottom() {
-        assertFalse(
-            resolveSettingsFeedbackBottomAnchorAllowed(
-                SettingsFeedbackBottomAnchorAvailabilityState(
-                    currentAllow = false,
-                    isScrollInProgress = false,
-                    isAtBottom = false
-                )
-            )
-        )
-        assertTrue(
-            resolveSettingsFeedbackBottomAnchorAllowed(
-                SettingsFeedbackBottomAnchorAvailabilityState(
-                    currentAllow = false,
-                    isScrollInProgress = false,
-                    isAtBottom = true
-                )
-            )
-        )
+        // Switching Idea / Bug after a failure is a new feedback, not a retry of the old one.
+        assertFalse(request.matches("上传图片失败", listOf(attachment), SettingsFeedbackType.Problem))
     }
 
     @Test

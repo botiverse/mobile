@@ -290,8 +290,6 @@
     <string name="settings_release_notes_subtitle">バージョン履歴と変更履歴</string>
     <string name="settings_feedback_title">フィードバック</string>
     <string name="settings_feedback_subtitle">問題や提案を報告</string>
-    <string name="settings_feedback_introduction">問題や提案をお寄せください。送信するたびにフィードバックメッセージが作成され、共有可能な参照がコピーされます。</string>
-    <string name="settings_feedback_you">あなた</string>
     <string name="settings_feedback_attachment">添付ファイル</string>
     <string name="settings_feedback_attachment_limit_reached">一度にアップロードできる添付ファイルは %1$d 個までです。</string>
     <string name="settings_feedback_attachment_too_large">%1$s を超える添付ファイルはスキップされました。</string>
@@ -318,9 +316,11 @@
     <string name="settings_feedback_submission_permission_body">フィードバックを送信する権限がありません。</string>
     <string name="settings_feedback_submission_succeeded">%1$s を送信しました。</string>
     <string name="settings_feedback_reference_copied">参照を自動的にコピーしました。</string>
-    <string name="settings_feedback_submitting">フィードバックを送信し、コピー用の参照を準備しています...</string>
-    <string name="settings_feedback_placeholder">フィードバックを共有</string>
     <string name="settings_feedback_copy_result">結果をコピー</string>
+    <string name="settings_feedback_new_meta">チームがチケットで返信します。</string>
+    <string name="settings_feedback_type_label">種類</string>
+    <string name="settings_feedback_describe_placeholder">アイデアや発生した不具合を入力してください…</string>
+    <string name="settings_feedback_attachment_hint">画像は %1$d 枚まで、各 %2$s まで。</string>
     <string name="settings_members_title">メンバー</string>
     <string name="settings_hands_title">Hands</string>
     <string name="settings_onboarding_title">オンボーディング</string>

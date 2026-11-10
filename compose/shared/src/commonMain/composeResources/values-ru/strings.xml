@@ -288,8 +288,6 @@
     <string name="settings_release_notes_subtitle">История версий и изменений</string>
     <string name="settings_feedback_title">Обратная связь</string>
     <string name="settings_feedback_subtitle">Сообщить о проблеме или предложить идею</string>
-    <string name="settings_feedback_introduction">Расскажите о проблеме или поделитесь идеей. При каждой отправке создаётся сообщение с отзывом, а сведения о нём копируются, чтобы ими можно было поделиться.</string>
-    <string name="settings_feedback_you">Вы</string>
     <string name="settings_feedback_attachment">Вложение</string>
     <string name="settings_feedback_attachment_limit_reached">Максимум вложений за раз: %1$d.</string>
     <string name="settings_feedback_attachment_too_large">Вложения больше %1$s пропущены.</string>
@@ -316,8 +314,6 @@
     <string name="settings_feedback_submission_permission_body">У вас нет прав на отправку отзывов.</string>
     <string name="settings_feedback_submission_succeeded">Отправлено: %1$s.</string>
     <string name="settings_feedback_reference_copied">Сведения об обращении скопированы автоматически.</string>
-    <string name="settings_feedback_submitting">Отправка отзыва и подготовка сведений для копирования…</string>
-    <string name="settings_feedback_placeholder">Напишите отзыв</string>
     <string name="settings_feedback_copy_result">Копировать результат</string>
     <string name="settings_members_title">Участники</string>
     <string name="settings_hands_title">Hands</string>

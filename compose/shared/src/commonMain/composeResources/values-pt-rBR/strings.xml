@@ -288,8 +288,6 @@
     <string name="settings_release_notes_subtitle">Histórico de versões e alterações</string>
     <string name="settings_feedback_title">Feedback</string>
     <string name="settings_feedback_subtitle">Relatar um problema ou dar uma sugestão</string>
-    <string name="settings_feedback_introduction">Compartilhe um problema ou uma sugestão. Cada envio cria uma mensagem de feedback e copia uma referência compartilhável.</string>
-    <string name="settings_feedback_you">Você</string>
     <string name="settings_feedback_attachment">Anexo</string>
     <string name="settings_feedback_attachment_limit_reached">Você pode enviar até %1$d anexos por vez.</string>
     <string name="settings_feedback_attachment_too_large">Os anexos maiores que %1$s foram ignorados.</string>
@@ -316,8 +314,6 @@
     <string name="settings_feedback_submission_permission_body">Você não tem permissão para enviar feedback.</string>
     <string name="settings_feedback_submission_succeeded">%1$s enviado.</string>
     <string name="settings_feedback_reference_copied">Referência copiada automaticamente.</string>
-    <string name="settings_feedback_submitting">Enviando feedback e preparando a referência copiada…</string>
-    <string name="settings_feedback_placeholder">Compartilhe seu feedback</string>
     <string name="settings_feedback_copy_result">Copiar resultado</string>
     <string name="settings_members_title">Membros</string>
     <string name="settings_hands_title">Hands</string>

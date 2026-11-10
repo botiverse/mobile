@@ -79,10 +79,10 @@ private fun SettingsHandsFeedbackScreen() {
         accountId = environment.authStore.readSession()?.user?.id.orEmpty()
     }
 
+    // Web NewFeedbackForm's head: "New Feedback", then "The team replies in the ticket."
     SettingsDetailShell(
         title = settingsHandsFeedbackTitle(),
-        subtitle = "",
-        iconName = RaftLucideIconName.MessageSquarePlus,
+        subtitle = settingsHandsFeedbackSubtitle(),
         onBack = { router.closePage() }
     ) {
         val resolvedAccountId = accountId
@@ -113,7 +113,7 @@ private fun SettingsHandsFeedbackScreen() {
                 sourceStoreScope = environment.storeScope,
                 accountId = resolvedAccountId,
                 // task #176: this standalone page is outside the app shell, so the
-                // bottom composer reserves the system navigation bar itself.
+                // form reserves the system navigation bar itself.
                 bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
                 proxySubmitter = proxySubmitter,
                 onTicketFiled = { ticketId ->
@@ -133,7 +133,13 @@ private fun SettingsHandsFeedbackScreen() {
 }
 
 @Composable
-private fun settingsHandsFeedbackTitle(): String =
+internal fun settingsHandsFeedbackTitle(): String =
     build.raft.app.resources.stringResource(
-        Res.string.settings_feedback_title
+        Res.string.settings_feedback_tickets_new_feedback
+    )
+
+@Composable
+internal fun settingsHandsFeedbackSubtitle(): String =
+    build.raft.app.resources.stringResource(
+        Res.string.settings_feedback_new_meta
     )

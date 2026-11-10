@@ -49,6 +49,15 @@ internal fun PlatformFile.productFeedbackImageContentType(): String? {
     return ProductFeedbackImageExtensions[extension]
 }
 
+/**
+ * The form's Idea / Bug choice (web NewFeedbackForm `kind`: `feedback` / `bug`), sent as the
+ * `type` field (`idea` / `problem`, web createTicket).
+ */
+enum class SettingsFeedbackType(val wireValue: String) {
+    Idea("idea"),
+    Problem("problem"),
+}
+
 /** One `POST /api/product-feedback`. Safe to resend with the same [submissionId]: Hands dedupes on it. */
 data class SettingsFeedbackSubmitRequest(
     val message: String,
@@ -57,6 +66,7 @@ data class SettingsFeedbackSubmitRequest(
     /** The UI locale (`en`, `zh-CN`, `ja`), the form's `metadata.locale`. */
     val locale: String,
     val diagnostics: FeedbackDiagnosticsReference? = null,
+    val type: SettingsFeedbackType = SettingsFeedbackType.Problem,
 )
 
 interface SettingsFeedbackSubmitRepository {
@@ -140,8 +150,7 @@ internal fun productFeedbackFormFields(
     clientVersion: String,
 ): Map<String, String> =
     buildMap {
-        // The Settings form has no idea/problem choice; the native form filed every one as a bug.
-        put("type", "problem")
+        put("type", request.type.wireValue)
         put("message", request.message)
         put("metadata", productFeedbackMetadataJson(clientKind, clientVersion, request.locale))
         put("submission_id", request.submissionId)
@@ -188,6 +197,7 @@ data class SettingsFeedbackProxyAttempt(
     /** The diagnostics step ran (whether or not it produced an archive). */
     val diagnosticsPrepared: Boolean = false,
     val diagnostics: FeedbackDiagnosticsReference? = null,
+    val type: SettingsFeedbackType = SettingsFeedbackType.Problem,
 )
 
 sealed interface SettingsFeedbackProxyOutcome {
@@ -229,8 +239,12 @@ class SettingsFeedbackProxySubmitter(
     private val newSubmissionId: () -> String = ::newSettingsFeedbackSubmissionId,
     private val logger: (String) -> Unit = {},
 ) {
-    fun newAttempt(message: String, attachments: List<PlatformFile>): SettingsFeedbackProxyAttempt =
-        SettingsFeedbackProxyAttempt(message = message, attachments = attachments, submissionId = newSubmissionId())
+    fun newAttempt(
+        message: String,
+        attachments: List<PlatformFile>,
+        type: SettingsFeedbackType = SettingsFeedbackType.Problem,
+    ): SettingsFeedbackProxyAttempt =
+        SettingsFeedbackProxyAttempt(message = message, attachments = attachments, submissionId = newSubmissionId(), type = type)
 
     suspend fun submit(attempt: SettingsFeedbackProxyAttempt): SettingsFeedbackProxyOutcome {
         // The route refuses the whole feedback for one non-image file (web's form takes images
@@ -305,6 +319,7 @@ class SettingsFeedbackProxySubmitter(
             submissionId = submissionId,
             locale = locale(),
             diagnostics = diagnostics,
+            type = type,
         )
 }
 

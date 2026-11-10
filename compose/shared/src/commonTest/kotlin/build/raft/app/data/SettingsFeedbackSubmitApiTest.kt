@@ -119,6 +119,15 @@ class SettingsFeedbackSubmitApiTest {
     }
 
     @Test
+    fun sendsTheFormsIdeaChoiceAsTheIdeaType() = runTest {
+        val network = FakeNetwork { HomeNetworkResponse(code = 201, bodyText = receipt) }
+
+        repository(network).submit(request().copy(type = SettingsFeedbackType.Idea))
+
+        assertEquals("idea", network.calls.single().fields["type"])
+    }
+
+    @Test
     fun omitsTheDiagnosticsFieldWithoutAnArchive() = runTest {
         val network = FakeNetwork { HomeNetworkResponse(code = 201, bodyText = receipt) }
 

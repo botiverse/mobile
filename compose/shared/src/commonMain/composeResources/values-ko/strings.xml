@@ -288,8 +288,6 @@
     <string name="settings_release_notes_subtitle">버전 기록 및 변경 내역</string>
     <string name="settings_feedback_title">피드백</string>
     <string name="settings_feedback_subtitle">문제 신고 또는 제안</string>
-    <string name="settings_feedback_introduction">문제나 제안을 알려 주세요. 제출할 때마다 피드백 메시지가 만들어지고 공유할 수 있는 참조가 복사돼요.</string>
-    <string name="settings_feedback_you">나</string>
     <string name="settings_feedback_attachment">첨부 파일</string>
     <string name="settings_feedback_attachment_limit_reached">한 번에 첨부 파일을 최대 %1$d개까지 업로드할 수 있어요.</string>
     <string name="settings_feedback_attachment_too_large">%1$s보다 큰 첨부 파일은 건너뛰었어요.</string>
@@ -316,8 +314,6 @@
     <string name="settings_feedback_submission_permission_body">피드백을 보낼 권한이 없어요.</string>
     <string name="settings_feedback_submission_succeeded">%1$s 제출 완료.</string>
     <string name="settings_feedback_reference_copied">참조를 자동으로 복사했어요.</string>
-    <string name="settings_feedback_submitting">피드백을 제출하고 복사할 참조를 준비하는 중…</string>
-    <string name="settings_feedback_placeholder">피드백 공유</string>
     <string name="settings_feedback_copy_result">결과 복사</string>
     <string name="settings_members_title">멤버</string>
     <string name="settings_hands_title">Hands</string>

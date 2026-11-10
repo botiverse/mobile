@@ -288,8 +288,6 @@
     <string name="settings_release_notes_subtitle">Version history and changelog</string>
     <string name="settings_feedback_title">Feedback</string>
     <string name="settings_feedback_subtitle">Report a problem or suggestion</string>
-    <string name="settings_feedback_introduction">Share a problem or suggestion. Each submission creates a feedback message and copies a shareable reference.</string>
-    <string name="settings_feedback_you">You</string>
     <string name="settings_feedback_attachment">Attachment</string>
     <string name="settings_feedback_attachment_limit_reached">You can upload up to %1$d attachments at a time.</string>
     <string name="settings_feedback_attachment_too_large">Attachments larger than %1$s were skipped.</string>
@@ -316,9 +314,11 @@
     <string name="settings_feedback_submission_permission_body">You do not have permission to send feedback.</string>
     <string name="settings_feedback_submission_succeeded">Submitted %1$s.</string>
     <string name="settings_feedback_reference_copied">Reference copied automatically.</string>
-    <string name="settings_feedback_submitting">Submitting feedback and preparing the copied reference...</string>
-    <string name="settings_feedback_placeholder">Share feedback</string>
     <string name="settings_feedback_copy_result">Copy result</string>
+    <string name="settings_feedback_new_meta">The team replies in the ticket.</string>
+    <string name="settings_feedback_type_label">Type</string>
+    <string name="settings_feedback_describe_placeholder">Describe your idea or the bug you ran into…</string>
+    <string name="settings_feedback_attachment_hint">Up to %1$d images, %2$s each.</string>
     <string name="settings_members_title">Members</string>
     <string name="settings_hands_title">Hands</string>
     <string name="settings_onboarding_title">Onboarding</string>

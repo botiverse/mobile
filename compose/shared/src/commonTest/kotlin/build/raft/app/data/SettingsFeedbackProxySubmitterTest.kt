@@ -72,6 +72,16 @@ class SettingsFeedbackProxySubmitterTest {
     }
 
     @Test
+    fun theFormsTypeChoiceIsSentWithTheAttempt() = runTest {
+        val repository = FakeRepository(mutableListOf(FeedbackResult.Ok("ticket-1")))
+        val submitter = submitter(repository, mutableListOf())
+
+        submitter.submit(submitter.newAttempt("Dark mode for the composer", emptyList(), SettingsFeedbackType.Idea))
+
+        assertEquals(SettingsFeedbackType.Idea, repository.requests.single().type)
+    }
+
+    @Test
     fun aRetryKeepsTheSubmissionIdAndNeverUploadsAgain() = runTest {
         val repository =
             FakeRepository(
@@ -91,6 +101,7 @@ class SettingsFeedbackProxySubmitterTest {
 
         assertEquals(1, uploads.size)
         assertEquals(listOf("submission-1", "submission-1"), repository.requests.map { it.submissionId })
+        assertEquals(listOf(SettingsFeedbackType.Problem, SettingsFeedbackType.Problem), repository.requests.map { it.type })
         assertEquals(listOf(ref, ref), repository.requests.map { it.diagnostics })
     }
 
