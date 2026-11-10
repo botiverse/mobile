@@ -74,6 +74,14 @@ class MarkdownMathRenderTest {
     }
 
     @Test
+    fun formulasWithSurrogatesShowTheirSourceInsteadOfReachingSkia() {
+        // A lone high surrogate, a lone low surrogate, and a whole emoji pair.
+        for (source in listOf("a\uD83D", "\uDE00 + b", "x = 😀")) {
+            assertFalse(raftMathFormulaRenders(source), source)
+        }
+    }
+
+    @Test
     fun escapedLineBreakDecodingLeavesFormulasAndCodeAlone() {
         // One line, so a literal `\n` would otherwise be decoded as an escaped line break.
         val oneLine = "\$a \\neq b\$ and \$\\nu\$"
