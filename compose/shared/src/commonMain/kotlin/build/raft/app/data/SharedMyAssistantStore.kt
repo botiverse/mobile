@@ -140,14 +140,24 @@ class SharedMyAssistantStore(
                 applySavedOwnerNotes(key, result.answer, trimmed)
                 MyAssistantOwnerNotesSaveOutcome.Saved
             }
-            MyAssistantOwnerNotesSaveResult.TooLong -> MyAssistantOwnerNotesSaveOutcome.TooLong
-            MyAssistantOwnerNotesSaveResult.NotAvailable -> {
+            is MyAssistantOwnerNotesSaveResult.TooLong ->
+                MyAssistantOwnerNotesSaveOutcome.TooLong(
+                    ScreenError("assistant_owner_notes_too_long", retryable = false, traceId = result.traceId)
+                )
+            is MyAssistantOwnerNotesSaveResult.NotAvailable -> {
                 scope.launch { load(key, keepOnError = true) }
-                MyAssistantOwnerNotesSaveOutcome.Failed
+                MyAssistantOwnerNotesSaveOutcome.Failed(
+                    ScreenError("http_${result.code}", retryable = false, traceId = result.traceId)
+                )
             }
             is MyAssistantOwnerNotesSaveResult.Failed -> {
-                logger("my_assistant owner_notes_save_failed server=${key.serverId} code=${result.code ?: "transport"}")
-                MyAssistantOwnerNotesSaveOutcome.Failed
+                logger(
+                    "my_assistant owner_notes_save_failed server=${key.serverId} code=${result.code ?: "transport"}" +
+                        " traceId=${result.traceId ?: "none"}"
+                )
+                MyAssistantOwnerNotesSaveOutcome.Failed(
+                    ScreenError(result.code?.let { "http_$it" } ?: "network_error", traceId = result.traceId)
+                )
             }
         }
     }
@@ -173,16 +183,20 @@ class SharedMyAssistantStore(
     }
 }
 
-/** What saving the owner's notes means for the editor (web AssistantInstructionsDialog `SaveError`). */
-enum class MyAssistantOwnerNotesSaveOutcome {
+/**
+ * What saving the owner's notes means for the editor (web AssistantInstructionsDialog `SaveError`).
+ * A refusal keeps the [ScreenError], so the editor shows its trace ID (AGENTS.md "Errors carry the
+ * trace ID").
+ */
+sealed interface MyAssistantOwnerNotesSaveOutcome {
     /** Saved: the editor closes. */
-    Saved,
+    data object Saved : MyAssistantOwnerNotesSaveOutcome
 
     /** Over the limit: the editor says so. */
-    TooLong,
+    data class TooLong(val error: ScreenError) : MyAssistantOwnerNotesSaveOutcome
 
     /** Not saved for any other reason; the draft stays. */
-    Failed,
+    data class Failed(val error: ScreenError) : MyAssistantOwnerNotesSaveOutcome
 }
 
 private fun MyAssistantAnswer?.awaitsDm(): Boolean =

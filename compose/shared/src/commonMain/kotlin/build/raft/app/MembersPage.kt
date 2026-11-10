@@ -4585,7 +4585,11 @@ internal fun MemberDetailPageContent(
                 store = build.raft.app.data.RaftSharedStoreRegistry.get(bridge).myAssistantStore(provider.storeScope),
                 featureFlags = flags,
                 serverMembersStore = provider.serverMembersStore,
-                agentsApiClient = provider.agentsApiClient,
+                // The profile's own lifecycle Start (MemberRepository.startAgent), single-flight per agent.
+                startAgent = { agentId ->
+                    provider.runLifecycleAction(route.server.id, agentId, MembersAgentLifecycleAction.Start)
+                },
+                onErrorToast = { message, error -> bridge.errorToast(message, error) },
                 serverId = route.server.id.value,
                 userId = userId,
                 viewerIsGuest = route.server.role?.trim()?.equals("guest", ignoreCase = true) == true
@@ -11716,10 +11720,6 @@ private fun MembersAgentProfileTab(
             onChangeAvatar = onChangeAvatar,
             lifecycle = lifecycle
         )
-        if (!remoteProfile && !deleted) {
-            // Web AgentDetailPanel: under the hero, the owner's paused notice with Start.
-            AssistantOwnerPausedNotice(agentId = member.id.value, fallbackPausedAt = member.assistantPausedAt)
-        }
         if (!remoteProfile) {
             MembersAgentInfoSection(
                 member = member,
@@ -11775,8 +11775,6 @@ private fun MembersAgentProfileTab(
             // then Agent migration and Actions (both their own items of the detail list, see
             // MembersDetailContent). It has no "Created agents" section (that list lives on a
             // person's profile, HumanDetailPanel), so the agent profile does not render one either.
-            // The owner's assistant settings come before Skills (web `AssistantOwnerSection`).
-            if (!deleted) MembersAgentAssistantOwnerSection(member.id)
             MembersAgentSkillsSection(detail)
         }
     }
@@ -11846,6 +11844,12 @@ private fun MembersAgentProfileIdentity(
             )
         }
     )
+    // Web AgentDetailPanel: under the hero, the owner's paused notice with Start. Here, not in
+    // [MembersAgentProfileTab], whose body is shape-sensitive (see MembersAgentRuntimeModelInputs).
+    // Only the viewer's own assistant of this server shows it, never a remote agent's profile.
+    if (summary?.deletedAt.isNullOrBlank()) {
+        AssistantOwnerPausedNotice(agentId = member.id.value, fallbackPausedAt = member.assistantPausedAt)
+    }
 }
 
 @Composable
@@ -12607,6 +12611,9 @@ private fun List<Pair<String, String>>.toMembersRuntimeEnvVars(): Map<String, St
  */
 @Composable
 private fun MembersAgentSkillsSection(detail: AgentDetailSnapshot?) {
+    // The owner's assistant settings come before Skills (web `AssistantOwnerSection`), emitted here
+    // rather than in [MembersAgentProfileTab], whose body is shape-sensitive.
+    if (detail != null && detail.summary?.deletedAt.isNullOrBlank()) MembersAgentAssistantOwnerSection(detail.agentId)
     val groups = detail?.skills?.groups.orEmpty()
     val totalSkills = groups.sumOf { group -> group.paths.sumOf { path -> path.skills.size } }
     Column(modifier = Modifier.fillMaxWidth()) {

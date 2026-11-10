@@ -447,8 +447,21 @@ internal class RaftAgentsApiClient(
             diagnosticsLogger = diagnosticsLogger
         ) { it.toSummary() }
 
-    suspend fun startAgent(agentId: MemberId): DataResult<AgentCommandResult> =
-        transport.startAgent(agentId).mapAgentsCommand("agent_start_contract_mismatch", diagnosticsLogger)
+    /**
+     * `POST agents/:id/start`. A refusal keeps the server's machine `code` as
+     * [ScreenError.serverCode] (409 `machine_unassigned` / `computer_access_revoked`), so a caller
+     * can say why; [ScreenError.code] stays the generic mapping.
+     */
+    suspend fun startAgent(agentId: MemberId): DataResult<AgentCommandResult> {
+        val response = transport.startAgent(agentId)
+        val mapped = response.mapAgentsCommand("agent_start_contract_mismatch", diagnosticsLogger)
+        val serverCode = response.serverErrorCodeOrNull()
+        return if (mapped is DataResult.Error && serverCode != null) {
+            DataResult.Error(mapped.error.copy(serverCode = serverCode))
+        } else {
+            mapped
+        }
+    }
 
     suspend fun stopAgent(agentId: MemberId): DataResult<AgentCommandResult> =
         transport.stopAgent(agentId).mapAgentsCommand("agent_stop_contract_mismatch", diagnosticsLogger)

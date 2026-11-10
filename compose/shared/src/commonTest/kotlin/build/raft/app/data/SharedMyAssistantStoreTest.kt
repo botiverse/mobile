@@ -4,9 +4,14 @@ import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -176,8 +181,9 @@ class SharedMyAssistantStoreTest {
 
     @Test
     fun thePatchSendsTheTrimmedNotesOrNull() {
-        assertEquals("""{"ownerNotes":"Be brief."}""", encodeAssistantOwnerNotesPatchBody("  Be brief.\n"))
-        assertEquals("""{"ownerNotes":null}""", encodeAssistantOwnerNotesPatchBody("  \n "))
+        fun ownerNotesOf(body: String) = Json.parseToJsonElement(body).jsonObject.getValue("ownerNotes")
+        assertEquals(JsonPrimitive("Be brief."), ownerNotesOf(encodeAssistantOwnerNotesPatchBody("  Be brief.\n")))
+        assertEquals(JsonNull, ownerNotesOf(encodeAssistantOwnerNotesPatchBody("  \n ")))
     }
 
     @Test
@@ -189,17 +195,24 @@ class SharedMyAssistantStoreTest {
             )
         assertEquals(MyAssistantOwnerNotesSaveResult.Saved(withNotes), saved)
         assertEquals(
-            MyAssistantOwnerNotesSaveResult.TooLong,
+            MyAssistantOwnerNotesSaveResult.TooLong(),
             myAssistantOwnerNotesSaveResultOf(400, """{"error":"invalid_owner_notes"}"""),
         )
         assertEquals(
-            MyAssistantOwnerNotesSaveResult.TooLong,
+            MyAssistantOwnerNotesSaveResult.TooLong(),
             myAssistantOwnerNotesSaveResultOf(400, """{"error":"Notes are too long","code":"invalid_owner_notes"}"""),
         )
         assertEquals(MyAssistantOwnerNotesSaveResult.Failed(400), myAssistantOwnerNotesSaveResultOf(400, """{"error":"bad_request"}"""))
-        assertEquals(MyAssistantOwnerNotesSaveResult.NotAvailable, myAssistantOwnerNotesSaveResultOf(403, """{"code":"assistant_not_enabled"}"""))
-        assertEquals(MyAssistantOwnerNotesSaveResult.NotAvailable, myAssistantOwnerNotesSaveResultOf(404, null))
+        assertEquals(MyAssistantOwnerNotesSaveResult.NotAvailable(403), myAssistantOwnerNotesSaveResultOf(403, """{"code":"assistant_not_enabled"}"""))
+        assertEquals(MyAssistantOwnerNotesSaveResult.NotAvailable(404), myAssistantOwnerNotesSaveResultOf(404, null))
         assertEquals(MyAssistantOwnerNotesSaveResult.Failed(500), myAssistantOwnerNotesSaveResultOf(500, null))
+        // Every refusal keeps the response's trace ID (AGENTS.md "Errors carry the trace ID").
+        assertEquals(MyAssistantOwnerNotesSaveResult.Failed(500, TRACE_ID), myAssistantOwnerNotesSaveResultOf(500, null, TRACE_ID))
+        assertEquals(
+            MyAssistantOwnerNotesSaveResult.TooLong(TRACE_ID),
+            myAssistantOwnerNotesSaveResultOf(400, """{"code":"invalid_owner_notes"}""", TRACE_ID),
+        )
+        assertEquals(MyAssistantOwnerNotesSaveResult.NotAvailable(404, TRACE_ID), myAssistantOwnerNotesSaveResultOf(404, null, TRACE_ID))
     }
 
     @Test
@@ -230,18 +243,21 @@ class SharedMyAssistantStoreTest {
     @Test
     fun aRefusedSaveChangesNothing() =
         runTest {
-            val tooLong = ScriptedApi(MyAssistantFetchResult.Answer(withNotes), saveResult = MyAssistantOwnerNotesSaveResult.TooLong)
+            val tooLong = ScriptedApi(MyAssistantFetchResult.Answer(withNotes), saveResult = MyAssistantOwnerNotesSaveResult.TooLong(TRACE_ID))
             val store = SharedMyAssistantStore(tooLong, scope = backgroundScope)
             store.ensureLoaded(key)
             settle()
-            assertEquals(MyAssistantOwnerNotesSaveOutcome.TooLong, store.saveOwnerNotes(key, "x".repeat(4001)))
+            val refused = assertIs<MyAssistantOwnerNotesSaveOutcome.TooLong>(store.saveOwnerNotes(key, "x".repeat(4001)))
+            assertEquals(TRACE_ID, refused.error.traceId)
             assertEquals(withNotes, store.answerFor(key))
 
-            val failed = ScriptedApi(MyAssistantFetchResult.Answer(withNotes), saveResult = MyAssistantOwnerNotesSaveResult.Failed(null))
+            val failed = ScriptedApi(MyAssistantFetchResult.Answer(withNotes), saveResult = MyAssistantOwnerNotesSaveResult.Failed(500, TRACE_ID))
             val other = SharedMyAssistantStore(failed, scope = backgroundScope)
             other.ensureLoaded(key)
             settle()
-            assertEquals(MyAssistantOwnerNotesSaveOutcome.Failed, other.saveOwnerNotes(key, "Be briefer."))
+            val failure = assertIs<MyAssistantOwnerNotesSaveOutcome.Failed>(other.saveOwnerNotes(key, "Be briefer."))
+            assertEquals(TRACE_ID, failure.error.traceId, "the editor shows the failed request's trace ID")
+            assertEquals("http_500", failure.error.code)
             assertEquals(withNotes, other.answerFor(key))
             assertEquals(1, failed.asked.size, "a transient failure reads nothing again")
         }
@@ -253,15 +269,17 @@ class SharedMyAssistantStoreTest {
                 ScriptedApi(
                     MyAssistantFetchResult.Answer(withNotes),
                     MyAssistantFetchResult.NotAvailable,
-                    saveResult = MyAssistantOwnerNotesSaveResult.NotAvailable,
+                    saveResult = MyAssistantOwnerNotesSaveResult.NotAvailable(403, TRACE_ID),
                 )
             val store = SharedMyAssistantStore(api, scope = backgroundScope)
             store.ensureLoaded(key)
             settle()
             val outcome = store.saveOwnerNotes(key, "Be briefer.")
             settle()
-            assertEquals(MyAssistantOwnerNotesSaveOutcome.Failed, outcome)
+            assertEquals(TRACE_ID, assertIs<MyAssistantOwnerNotesSaveOutcome.Failed>(outcome).error.traceId)
             assertEquals(2, api.asked.size)
             assertEquals(MyAssistantAnswer.NotEnabled, store.answerFor(key))
         }
 }
+
+private const val TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"

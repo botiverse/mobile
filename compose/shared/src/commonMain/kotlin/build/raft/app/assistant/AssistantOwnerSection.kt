@@ -23,7 +23,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftTraceIdNote
 import build.raft.app.data.ASSISTANT_OWNER_NOTES_MAX_LENGTH
+import build.raft.app.data.AgentLifecycleActionResult
+import build.raft.app.data.ComputerAccessRevokedErrorCode
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.MyAssistantKey
@@ -31,7 +34,7 @@ import build.raft.app.data.MyAssistantOwnerNotesSaveOutcome
 import build.raft.app.data.MyAssistantRecord
 import build.raft.app.data.MyAssistantState
 import build.raft.app.data.PERSONAL_ASSISTANT_FEATURE_FLAG_KEY
-import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedMyAssistantStore
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.SharedServerMembersStore
@@ -76,12 +79,17 @@ import kotlinx.coroutines.launch
 /**
  * What the profile needs to find the viewer's own assistant, provided by the member detail route
  * (MembersPage `MemberDetailPageContent`) for the server it shows. Absent elsewhere: no section.
+ *
+ * [startAgent] is the route's lifecycle Start (`MemberRepository.startAgent`, single-flight per
+ * agent with the profile's own Start); null when the route cannot start agents. [onErrorToast]
+ * is `bridge.errorToast`, for a failure that outlives the notice.
  */
 internal class AssistantOwnerScope(
     val store: SharedMyAssistantStore,
     val featureFlags: SharedServerFeatureFlags,
     val serverMembersStore: SharedServerMembersStore,
-    val agentsApiClient: RaftAgentsApiClient?,
+    val startAgent: (suspend (MemberId) -> DataResult<AgentLifecycleActionResult>)?,
+    val onErrorToast: (message: String, error: ScreenError) -> Unit,
     val serverId: String,
     val userId: String,
     val viewerIsGuest: Boolean,
@@ -171,8 +179,17 @@ internal fun AssistantOwnerSectionContent(
     }
 }
 
-/** Why the editor could not save (web AssistantInstructionsDialog `SaveError`). */
-internal enum class AssistantInstructionsSaveError { TooLong, Failed }
+/**
+ * Why the editor could not save (web AssistantInstructionsDialog `SaveError`), with the failed
+ * request's [traceId] shown under the message (AGENTS.md "Errors carry the trace ID").
+ */
+internal sealed interface AssistantInstructionsSaveError {
+    val traceId: String?
+
+    data class TooLong(override val traceId: String? = null) : AssistantInstructionsSaveError
+
+    data class Failed(override val traceId: String? = null) : AssistantInstructionsSaveError
+}
 
 /**
  * Extra Instructions (web `AssistantInstructionsDialog`, the phone sheet): the owner's own notes
@@ -212,13 +229,16 @@ internal fun AssistantInstructionsSheet(
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
-                    MyAssistantOwnerNotesSaveOutcome.Failed
+                    // No server answer to trace.
+                    MyAssistantOwnerNotesSaveOutcome.Failed(ScreenError("assistant_owner_notes_save_failed", traceId = null))
                 }
             saving = false
             when (outcome) {
                 MyAssistantOwnerNotesSaveOutcome.Saved -> onDismiss()
-                MyAssistantOwnerNotesSaveOutcome.TooLong -> saveError = AssistantInstructionsSaveError.TooLong
-                MyAssistantOwnerNotesSaveOutcome.Failed -> saveError = AssistantInstructionsSaveError.Failed
+                is MyAssistantOwnerNotesSaveOutcome.TooLong ->
+                    saveError = AssistantInstructionsSaveError.TooLong(outcome.error.traceId)
+                is MyAssistantOwnerNotesSaveOutcome.Failed ->
+                    saveError = AssistantInstructionsSaveError.Failed(outcome.error.traceId)
             }
         }
     }
@@ -317,16 +337,19 @@ internal fun AssistantInstructionsEditorBody(
             }
         }
         if (saveError != null) {
-            RaftBanner(
-                description =
-                    when (saveError) {
-                        AssistantInstructionsSaveError.TooLong -> limitMessage
-                        AssistantInstructionsSaveError.Failed -> stringResource(Res.string.assistant_instructions_save_failed)
-                    },
-                status = RaftBannerStatus.Warning,
-                size = RaftBannerSize.Sm,
-                modifier = Modifier.testTag("assistant-instructions-error"),
-            )
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                RaftBanner(
+                    description =
+                        when (saveError) {
+                            is AssistantInstructionsSaveError.TooLong -> limitMessage
+                            is AssistantInstructionsSaveError.Failed -> stringResource(Res.string.assistant_instructions_save_failed)
+                        },
+                    status = RaftBannerStatus.Warning,
+                    size = RaftBannerSize.Sm,
+                    modifier = Modifier.testTag("assistant-instructions-error"),
+                )
+                RaftTraceIdNote(saveError.traceId)
+            }
         }
     }
 }
@@ -359,9 +382,15 @@ private fun AssistantInstructionsDiscardDialog(onKeepEditing: () -> Unit, onDisc
 
 /**
  * The paused notice for the assistant's owner (web `AssistantPausedNotice` with `isOwner`): who
- * paused it and when, that it won't reply or run its brief, and Start (`POST agents/:id/start`),
- * after which the roster is read again. The pause rides on the roster's agent (`assistantPausedAt`,
- * `assistantPausedBy`); [fallbackPausedAt] is the profile's own value while the roster has none.
+ * paused it and when, that it won't reply or run its brief, and Start (`POST agents/:id/start`,
+ * through the route's lifecycle Start), after which the roster is read again. The pause rides on
+ * the roster's agent (`assistantPausedAt`, `assistantPausedBy`); [fallbackPausedAt] is the
+ * profile's own value while the roster has none.
+ *
+ * A failed start shows under the notice with its trace ID. The server lifts the pause before it
+ * refuses an assistant with no Computer (409 `machine_unassigned`) or a revoked one
+ * (`computer_access_revoked`), so the notice goes away with `agent:updated`: those say why in an
+ * error toast instead, which outlives it.
  */
 @Composable
 internal fun AssistantOwnerPausedNotice(
@@ -381,40 +410,64 @@ internal fun AssistantOwnerPausedNotice(
     // Started here: hidden at once on the server's yes (web clears the pause before the refetch).
     var startedFrom by remember(agentId) { mutableStateOf<String?>(null) }
     var starting by remember(agentId) { mutableStateOf(false) }
-    var failed by remember(agentId) { mutableStateOf(false) }
+    var failure by remember(agentId) { mutableStateOf<ScreenError?>(null) }
     val scope = rememberCoroutineScope()
+    val revokedMessage = stringResource(Res.string.agent_status_computer_access_revoked)
+    val noComputerMessage = stringResource(Res.string.member_machine_no_computer_assigned)
     if (pausedAt == null || startedFrom == pausedAt) return
-    val client = owner.agentsApiClient
+    val start = owner.startAgent
     AssistantPausedBanner(
         line = assistantPausedLine(pausedAt, rostered?.assistantPausedByName),
         starting = starting,
-        failed = failed,
+        failed = failure != null,
+        failureTraceId = failure?.traceId,
         onStart =
-            client?.let {
+            start?.let {
                 {
                     if (!starting) {
                         starting = true
-                        failed = false
+                        failure = null
                         scope.launch {
                             val result =
                                 try {
-                                    client.startAgent(MemberId(agentId.trim()))
+                                    start(MemberId(agentId.trim()))
                                 } catch (cancellation: CancellationException) {
                                     throw cancellation
                                 } catch (_: Throwable) {
-                                    null
+                                    DataResult.Error(ScreenError("agent_start_failed", traceId = null))
                                 }
                             starting = false
-                            if (result is DataResult.Content) {
-                                startedFrom = pausedAt
-                                owner.serverMembersStore.refreshMembers(
-                                    serverId,
-                                    DataRequestPriority.Foreground,
-                                    force = true,
-                                    reason = "assistant_start",
-                                )
-                            } else {
-                                failed = true
+                            val error = assistantStartError(result)
+                            when {
+                                error == null -> {
+                                    startedFrom = pausedAt
+                                    owner.serverMembersStore.refreshMembers(
+                                        serverId,
+                                        DataRequestPriority.Foreground,
+                                        force = true,
+                                        reason = "assistant_start",
+                                    )
+                                }
+                                // The profile's own Start is on its way; its answer updates the roster.
+                                error.code == AssistantStartInFlightCode -> Unit
+                                else -> {
+                                    failure = error
+                                    val refusal = assistantStartRefusal(error) ?: return@launch
+                                    owner.onErrorToast(
+                                        when (refusal) {
+                                            AssistantStartRefusal.MachineUnassigned -> noComputerMessage
+                                            AssistantStartRefusal.ComputerAccessRevoked -> revokedMessage
+                                        },
+                                        error,
+                                    )
+                                    // The pause is lifted already: read the roster for it.
+                                    owner.serverMembersStore.refreshMembers(
+                                        serverId,
+                                        DataRequestPriority.Foreground,
+                                        force = true,
+                                        reason = "assistant_start_refused",
+                                    )
+                                }
                             }
                         }
                     }
@@ -423,6 +476,28 @@ internal fun AssistantOwnerPausedNotice(
         modifier = modifier,
     )
 }
+
+/** `MemberRepository.startAgent`'s single-flight refusal: another Start of this agent is running. */
+internal const val AssistantStartInFlightCode = "agent_start_in_flight"
+
+/** The start refusals the server answers after it has lifted the pause (slock `POST agents/:id/start`). */
+internal enum class AssistantStartRefusal { MachineUnassigned, ComputerAccessRevoked }
+
+internal fun assistantStartRefusal(error: ScreenError): AssistantStartRefusal? =
+    when (error.serverCode ?: error.code) {
+        "machine_unassigned" -> AssistantStartRefusal.MachineUnassigned
+        ComputerAccessRevokedErrorCode -> AssistantStartRefusal.ComputerAccessRevoked
+        else -> null
+    }
+
+/** Null when the start went through, else why not. */
+internal fun assistantStartError(result: DataResult<AgentLifecycleActionResult>): ScreenError? =
+    when (result) {
+        is DataResult.Content -> if (result.data.success) null else ScreenError("agent_start_failed", traceId = null)
+        is DataResult.Empty -> ScreenError(result.reason.name, retryable = false, traceId = null)
+        is DataResult.Error -> result.error
+        is DataResult.NoPermission -> ScreenError(result.blocker.code, retryable = false, traceId = result.blocker.traceId)
+    }
 
 /**
  * "Paused by {name} · {time}" (web `useAssistantPausedLine`): without the name for a viewer who
@@ -443,6 +518,7 @@ internal fun assistantPausedLine(pausedAt: String, pausedByName: String?): Strin
 /**
  * The owner's paused notice (web `PausedNotice`, `isOwner`): an info banner with [line] as its
  * title, the owner's body, a failed start under it, and one bordered Start ([onStart] null: none).
+ * A failed start's [failureTraceId] shows under the banner.
  */
 @Composable
 internal fun AssistantPausedBanner(
@@ -451,27 +527,31 @@ internal fun AssistantPausedBanner(
     failed: Boolean,
     onStart: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    failureTraceId: String? = null,
 ) {
     val body = stringResource(Res.string.assistant_paused_owner_body)
     val failure = stringResource(Res.string.assistant_paused_start_failed)
-    RaftBanner(
-        description = if (failed) "$body\n$failure" else body,
-        status = RaftBannerStatus.Info,
-        title = line,
-        modifier = modifier.fillMaxWidth().testTag("assistant-paused-notice"),
-        action =
-            onStart?.let { start ->
-                {
-                    RaftButton(
-                        text = stringResource(Res.string.assistant_paused_start),
-                        onClick = start,
-                        modifier = Modifier.testTag("assistant-paused-start"),
-                        variant = RaftButtonVariant.Default,
-                        size = RaftButtonSize.Md,
-                        loading = starting,
-                        loadingLabel = stringResource(Res.string.assistant_paused_starting),
-                    )
-                }
-            },
-    )
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftBanner(
+            description = if (failed) "$body\n$failure" else body,
+            status = RaftBannerStatus.Info,
+            title = line,
+            modifier = Modifier.fillMaxWidth().testTag("assistant-paused-notice"),
+            action =
+                onStart?.let { start ->
+                    {
+                        RaftButton(
+                            text = stringResource(Res.string.assistant_paused_start),
+                            onClick = start,
+                            modifier = Modifier.testTag("assistant-paused-start"),
+                            variant = RaftButtonVariant.Default,
+                            size = RaftButtonSize.Md,
+                            loading = starting,
+                            loadingLabel = stringResource(Res.string.assistant_paused_starting),
+                        )
+                    }
+                },
+        )
+        RaftTraceIdNote(failureTraceId.takeIf { failed })
+    }
 }

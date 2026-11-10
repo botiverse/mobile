@@ -172,14 +172,17 @@ sealed interface MyAssistantOwnerNotesSaveResult {
     /** Saved; [answer] is the server's view after the save, null when it could not be read. */
     data class Saved(val answer: MyAssistantAnswer?) : MyAssistantOwnerNotesSaveResult
 
-    /** 400 `invalid_owner_notes`: longer than the limit. */
-    data object TooLong : MyAssistantOwnerNotesSaveResult
+    /** 400 `invalid_owner_notes`: longer than the limit. [traceId] is the response's `X-Trace-Id`. */
+    data class TooLong(val traceId: String? = null) : MyAssistantOwnerNotesSaveResult
 
     /** 403 / 404: the assistant is gone or no longer available here. */
-    data object NotAvailable : MyAssistantOwnerNotesSaveResult
+    data class NotAvailable(val code: Int, val traceId: String? = null) : MyAssistantOwnerNotesSaveResult
 
-    /** Anything else; nothing changed. [code] is the HTTP status, null for transport. */
-    data class Failed(val code: Int?) : MyAssistantOwnerNotesSaveResult
+    /**
+     * Anything else; nothing changed. [code] is the HTTP status, null for transport; [traceId] the
+     * response's `X-Trace-Id`, null when there was no response.
+     */
+    data class Failed(val code: Int?, val traceId: String? = null) : MyAssistantOwnerNotesSaveResult
 }
 
 interface RaftMyAssistantApi {
@@ -216,16 +219,20 @@ internal class RaftMyAssistantNetworkApi(
                     bodyText = encodeAssistantOwnerNotesPatchBody(notes),
                 )
             }.getOrElse { return MyAssistantOwnerNotesSaveResult.Failed(code = null) }
-        return myAssistantOwnerNotesSaveResultOf(response.code, response.bodyText ?: response.errorBodyText)
+        return myAssistantOwnerNotesSaveResultOf(response.code, response.bodyText ?: response.errorBodyText, response.traceId)
     }
 }
 
-internal fun myAssistantOwnerNotesSaveResultOf(code: Int, bodyText: String?): MyAssistantOwnerNotesSaveResult =
+internal fun myAssistantOwnerNotesSaveResultOf(
+    code: Int,
+    bodyText: String?,
+    traceId: String? = null,
+): MyAssistantOwnerNotesSaveResult =
     when {
         code in 200..299 -> MyAssistantOwnerNotesSaveResult.Saved(bodyText?.let(::parseSharedMyAssistantResponse))
-        code == 400 && myAssistantErrorCode(bodyText) == "invalid_owner_notes" -> MyAssistantOwnerNotesSaveResult.TooLong
-        code == 403 || code == 404 -> MyAssistantOwnerNotesSaveResult.NotAvailable
-        else -> MyAssistantOwnerNotesSaveResult.Failed(code)
+        code == 400 && myAssistantErrorCode(bodyText) == "invalid_owner_notes" -> MyAssistantOwnerNotesSaveResult.TooLong(traceId)
+        code == 403 || code == 404 -> MyAssistantOwnerNotesSaveResult.NotAvailable(code, traceId)
+        else -> MyAssistantOwnerNotesSaveResult.Failed(code, traceId)
     }
 
 /** The error body's `code`, else its `error` (web assistantClient `errorOf`). */

@@ -32,8 +32,9 @@ import org.robolectric.annotation.GraphicsMode
  * - `assistant.instructions.empty`: the editor (the phone sheet) on no saved notes, Save disabled;
  * - `assistant.instructions.near-limit`: a draft at 90% of the limit, the counter shown, Save enabled;
  * - `assistant.instructions.too-long`: a draft over the limit, the error and the red counter, Save
- *   disabled, and the banner of a save the server refused as too long;
- * - `assistant.paused-notice`: the owner's paused notice with Start, then Starting…, then a failed start.
+ *   disabled, and the banner of a save the server refused as too long with its trace ID;
+ * - `assistant.paused-notice`: the owner's paused notice with Start, then Starting…, then a failed
+ *   start with its trace ID.
  * Goldens are CI's render (`test.yml` with `record_screenshots=true`).
  */
 @RunWith(RobolectricTestRunner::class)
@@ -66,7 +67,7 @@ class AssistantOwnerSectionScreenshotTest {
         capture("assistant.instructions.too-long", RaftAppAppearance.Light) {
             EditorFixture(
                 draft = longDraft(ASSISTANT_OWNER_NOTES_MAX_LENGTH + 37),
-                saveError = AssistantInstructionsSaveError.TooLong,
+                saveError = AssistantInstructionsSaveError.TooLong(traceId = FIXTURE_TRACE_ID),
             )
         }
 
@@ -83,6 +84,8 @@ class AssistantOwnerSectionScreenshotTest {
 }
 
 private const val SAVED_NOTES = ""
+
+private const val FIXTURE_TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 
 /** Words, not one repeated letter, so the field wraps as real notes do. */
 private fun longDraft(size: Int): String {
@@ -127,6 +130,12 @@ private fun PausedFixture() {
     ) {
         AssistantPausedBanner(line = "Paused by Grace · 2h ago", starting = false, failed = false, onStart = {})
         AssistantPausedBanner(line = "Paused · 2h ago", starting = true, failed = false, onStart = {}, modifier = Modifier.fillMaxWidth())
-        AssistantPausedBanner(line = "Paused by Grace · 2h ago", starting = false, failed = true, onStart = {})
+        AssistantPausedBanner(
+            line = "Paused by Grace · 2h ago",
+            starting = false,
+            failed = true,
+            onStart = {},
+            failureTraceId = FIXTURE_TRACE_ID,
+        )
     }
 }
