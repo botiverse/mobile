@@ -99,6 +99,25 @@ object RaftProductEvents {
         recorder.agentCreateOpened(entry)
     }
 
+    fun draftsPageViewed(count: Int) {
+        recorder.draftsPageViewed(count)
+    }
+
+    fun draftsItemOpened(place: RaftDraftPlaceKind) {
+        recorder.draftsItemOpened(place)
+    }
+
+    /** See [RaftProductEventsRecorder.agentReadProgressShown]; a null [scopeId] (feature off there) sends nothing. */
+    fun agentReadProgressShown(
+        scopeId: String?,
+        conversation: RaftAgentReadProgressConversation,
+        faces: Boolean,
+        notReachingLine: Boolean,
+    ) {
+        if (scopeId == null) return
+        recorder.agentReadProgressShown(scopeId, conversation, faces, notReachingLine)
+    }
+
     fun navEntrySelected(destination: RaftNavDestination?, surface: RaftNavSurface, wasActive: Boolean) {
         if (destination == null) return
         recorder.navEntrySelected(destination, surface, wasActive)

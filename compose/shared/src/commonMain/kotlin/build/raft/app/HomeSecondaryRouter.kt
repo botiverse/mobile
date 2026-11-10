@@ -22,6 +22,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RaftChatLayoutPreferenceEvents
+import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.MyMessageAlignmentPreference
@@ -1327,6 +1328,15 @@ private fun HomeDraftsRouterContent(
         remember(environment.serverMembersStore, serverId) {
             raftScopedAgentStatusResolver(environment.serverMembersStore, serverId.orEmpty())
         }
+    // drafts_page_viewed (web DraftsPanel): once per opening of the page, with how many drafts it
+    // lists once Home has loaded and every draft is placed. No ids, text or lengths go out.
+    val draftsPageViewSettled = directory != null && listing.settled
+    var draftsPageViewRecorded by remember { mutableStateOf(false) }
+    LaunchedEffect(draftsPageViewSettled) {
+        if (!draftsPageViewSettled || draftsPageViewRecorded) return@LaunchedEffect
+        draftsPageViewRecorded = true
+        RaftProductEvents.draftsPageViewed(listing.count)
+    }
     val listState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     CompositionLocalProvider(LocalActivityAvatarSource provides avatarSource) {
@@ -1342,6 +1352,7 @@ private fun HomeDraftsRouterContent(
                     environment.bridge.toast(conversationNotReadyMessage)
                     return@RaftDraftsPanel
                 }
+                RaftProductEvents.draftsItemOpened(entry.place.productEventPlace())
                 environment.inlineOpenRequest?.let { open ->
                     open(request, "home_drafts")
                 } ?: run {
