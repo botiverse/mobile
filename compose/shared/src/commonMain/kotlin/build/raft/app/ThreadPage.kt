@@ -5779,7 +5779,13 @@ private fun ThreadMembersPageScreen() {
                     onRetry = { externalInvitesStore.dispatch(ExternalInvitesIntent.Load) },
                     onResend = { externalInvitesStore.dispatch(ExternalInvitesIntent.Resend(it)) },
                     onWithdraw = { externalInvitesStore.dispatch(ExternalInvitesIntent.RequestWithdraw(it)) },
-                    onOpenInvite = { if (externalInviteAccessOn) externalInvitesStore.dispatch(ExternalInvitesIntent.OpenDialog) },
+                    onOpenInvite = {
+                        if (externalInviteAccessOn) {
+                            // Web: the invite dialog takes over from Add Member, which closes behind it.
+                            if (addMemberStatus != "adding") addDialogVisible = false
+                            externalInvitesStore.dispatch(ExternalInvitesIntent.OpenDialog)
+                        }
+                    },
                 ),
             // The two rows (web sidebar Agents "+" order: Create Agent, Create External Agent) open
             // that create dialog directly, the channel preselected.
