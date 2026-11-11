@@ -93,6 +93,7 @@ import build.raft.app.cmp.RaftCmpRoot
 import build.raft.app.cmp.RaftCmpToastLayer
 import build.raft.app.cmp.RaftCmpToasts
 import build.raft.app.RaftWebViewFileChooserHost
+import build.raft.app.RaftAndroidWebViewProvider
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
 import build.raft.app.cmp.host.HostBridgeTransport
 import build.raft.app.cmp.host.RaftChildPageLoadListener
@@ -522,6 +523,7 @@ internal fun formatMergedSettingsDiagnosticsExportText(
             appendDiagnosticsExportLine("SDK", about.diagnosticsStringValue("sdkLabel"))
             appendDiagnosticsExportLine("Device", about.diagnosticsStringValue("deviceLabel"))
             appendDiagnosticsExportLine("Model", about.diagnosticsStringValue("modelLabel"))
+            appendDiagnosticsExportLine("WebView", about.diagnosticsStringValue("webViewLabel"))
             appendDiagnosticsExportLine("Install time", about.diagnosticsStringValue("installTimeLabel"))
             appendDiagnosticsExportLine("Screen", about.diagnosticsStringValue("screenLabel"))
             appendDiagnosticsExportLine("Density", about.diagnosticsStringValue("densityLabel"))
@@ -568,7 +570,8 @@ internal fun settingsFeedbackShareEnvironmentSection(exportText: String): String
             "Platform",
             "SDK",
             "Device",
-            "Model"
+            "Model",
+            "WebView"
         )
     return settingsDiagnosticsEnvironmentSection(exportText)
         .lineSequence()
@@ -5729,6 +5732,8 @@ internal class RaftBridgeModule(
                 "notificationStatusLabel" to "Managed by system settings",
                 "deviceLabel" to "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
                 "modelLabel" to Build.MODEL,
+                // The system WebView pages run in (#triage:#322: Huawei's own, older Chromium).
+                "webViewLabel" to RaftAndroidWebViewProvider.label(appContext),
                 "platformLabel" to "Android ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT}",
                 "sdkLabel" to Build.VERSION.SDK_INT.toString(),
                 "installTimeLabel" to installTimeLabel,
