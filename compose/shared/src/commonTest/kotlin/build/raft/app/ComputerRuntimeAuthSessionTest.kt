@@ -36,6 +36,7 @@ import kotlin.test.assertTrue
  * RuntimeSignOutDialog.tsx, PiSignInDialog.tsx and RuntimeUsageSurface.tsx `runtimeAuthAction`
  * (botiverse/slock staging 853c6998b).
  */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ComputerRuntimeAuthSessionTest {
     @Test
     fun eventsBeforeTheLoginIdAreReplayedOnlyForThatLogin() = runTest {
