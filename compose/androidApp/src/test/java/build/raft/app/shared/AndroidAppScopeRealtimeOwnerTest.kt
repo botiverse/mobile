@@ -269,6 +269,35 @@ class AndroidAppScopeRealtimeOwnerTest {
     }
 
     @Test
+    fun multiSessionDesiredServersKeepCallerOrderAndDropBlanks() {
+        assertEquals(
+            listOf(ServerId("server-b"), ServerId("server-a")),
+            normalizeAndroidDesiredRealtimeServers(listOf(" server-b ", "", "server-a", "server-b")).toList()
+        )
+        assertTrue(normalizeAndroidDesiredRealtimeServers(listOf(" ", "")).isEmpty())
+    }
+
+    @Test
+    fun multiSessionReconcileDiagnosticLineNamesServerSetsOnly() {
+        val result =
+            AndroidRealtimeDesiredReconcileResult(
+                desired =
+                    listOf(
+                        AndroidRealtimeDesiredRuntime(ServerId("server-b"), "runtime-b", created = false, parkedResumeSeq = null),
+                        AndroidRealtimeDesiredRuntime(ServerId("server-c"), "runtime-c", created = true, parkedResumeSeq = 7L)
+                    ),
+                added = setOf(ServerId("server-c")),
+                released = setOf(ServerId("server-a")),
+                parked = emptySet()
+            )
+
+        assertEquals(
+            "multi_session_reconcile desired=[server-b,server-c] added=[server-c] released=[server-a] parked=[]",
+            androidMultiSessionReconcileDiagnosticLine(result)
+        )
+    }
+
+    @Test
     fun apiEnvironmentChangeDisposesAppScopeRealtimeRuntime() {
         assertTrue(AndroidAppScopeRealtimeOwner.shouldDisposeRuntimeForSessionEnd("api_environment_changed"))
         assertFalse(AndroidAppScopeRealtimeOwner.shouldDisposeRuntimeForSessionEnd("logout"))
