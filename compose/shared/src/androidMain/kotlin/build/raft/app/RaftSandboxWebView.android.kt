@@ -162,6 +162,7 @@ internal class RaftAndroidSandboxWebView(
     private var persistedConsoleErrors: Int = 0
 
     init {
+        RaftAndroidWebViewProvider.logOnce(context)
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         configureWebView()
     }

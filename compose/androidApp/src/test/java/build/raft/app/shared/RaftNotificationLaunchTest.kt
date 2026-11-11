@@ -106,7 +106,8 @@ class RaftNotificationLaunchTest {
                         "sessionStatusLabel" to "Signed in",
                         "signedInUserLabel" to "Artin",
                         "selectedServerLabel" to "Botiverse",
-                        "socketStatusLabel" to "active"
+                        "socketStatusLabel" to "active",
+                        "webViewLabel" to "com.huawei.webview 114.0.5735.196"
                     ),
                 recentLogs = "",
                 hasFallbackDiagnosticsLogs = false
@@ -116,6 +117,9 @@ class RaftNotificationLaunchTest {
 
         listOf("App:", "Version:", "Version code:", "Build:", "Source:", "Platform:", "SDK:", "Device:", "Model:")
             .forEach { label -> assertTrue("missing $label", feedbackEnvironment.contains(label)) }
+        // #triage:#322: which system WebView (package and version) pages run in.
+        assertTrue(exportText.contains("WebView: com.huawei.webview 114.0.5735.196\n"))
+        assertTrue(feedbackEnvironment.lines().contains("WebView: com.huawei.webview 114.0.5735.196"))
         listOf("Package:", "Install time:", "Screen:", "Density:", "Font scale:", "Session:", "Signed in user:", "Selected server:", "Socket:")
             .forEach { label -> assertFalse("feedback copy included $label", feedbackEnvironment.contains(label)) }
     }
