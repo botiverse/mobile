@@ -134,7 +134,9 @@ internal fun authenticatedProductPageView(
         AuthenticatedProductRoute.FilePreview,
         AuthenticatedProductRoute.ArtifactViewer,
         // No `artifacts` route in the shared page_viewed registry yet.
-        AuthenticatedProductRoute.ArtifactsHome -> null
+        AuthenticatedProductRoute.ArtifactsHome,
+        // No `external_invite` route in the shared page_viewed registry (the server records its own view).
+        AuthenticatedProductRoute.ExternalInvite -> null
     }
 
 private val productPageRouteJson = Json { ignoreUnknownKeys = true }

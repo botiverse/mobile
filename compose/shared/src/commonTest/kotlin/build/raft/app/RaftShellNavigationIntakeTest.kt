@@ -32,7 +32,8 @@ class RaftShellNavigationIntakeTest {
     private val inbox = RaftMessageLinkInbox(nowEpochMillis = { 1_000L })
     private val coordinator = SharedWindowNavigationCoordinator()
     private val artifactInbox = RaftArtifactLinkInbox(nowEpochMillis = { 1_000L })
-    private val intake = RaftShellNavigationIntake(coordinator, inbox, artifactInbox)
+    private val externalInviteInbox = RaftExternalInviteLinkInbox(nowEpochMillis = { 1_000L })
+    private val intake = RaftShellNavigationIntake(coordinator, inbox, artifactInbox, externalInviteInbox)
     private val host = FakeHost()
 
     @Test
@@ -126,6 +127,23 @@ class RaftShellNavigationIntakeTest {
     }
 
     /** [body] with the intake running (a foreground child, so advanceUntilIdle runs it), stopped after. */
+    @Test
+    fun anExternalInviteLinkWaitsForAReadySessionThenOpensItsPageOnce() = intakeTest {
+        host.sessionReady = false
+        externalInviteInbox.submit("tok-123", "android_view")
+        advanceUntilIdle()
+        assertTrue(host.openedInvites.isEmpty(), "no invite page before the session is ready")
+        host.sessionReady = true
+        intake.wake()
+        advanceUntilIdle()
+        assertEquals(listOf("tok-123"), host.openedInvites.map { it.token })
+        assertNull(externalInviteInbox.pending.value)
+        assertTrue(host.performed.isEmpty(), "an invite link opens no conversation")
+        intake.wake()
+        advanceUntilIdle()
+        assertEquals(1, host.openedInvites.size, "taken once")
+    }
+
     private fun intakeTest(body: suspend TestScope.() -> Unit) = runTest {
         val running = launch { intake.run(host) }
         advanceUntilIdle()
@@ -145,6 +163,7 @@ class RaftShellNavigationIntakeTest {
         var topPage: ThreadRouteIdentity? = null
         val performed = mutableListOf<WindowNavigationAction>()
         val openedArtifacts = mutableListOf<RaftPendingArtifactLink>()
+        val openedInvites = mutableListOf<RaftPendingExternalInviteLink>()
         val logs = mutableListOf<String>()
 
         override fun messageLinkSessionReady(): Boolean = sessionReady
@@ -166,6 +185,10 @@ class RaftShellNavigationIntakeTest {
 
         override fun openArtifactLink(taken: RaftPendingArtifactLink) {
             openedArtifacts += taken
+        }
+
+        override fun openExternalInviteLink(taken: RaftPendingExternalInviteLink) {
+            openedInvites += taken
         }
 
         override fun readiness(): WindowNavigationReadiness =
