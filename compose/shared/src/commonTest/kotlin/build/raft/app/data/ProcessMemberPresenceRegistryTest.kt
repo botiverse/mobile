@@ -38,6 +38,19 @@ class ProcessMemberPresenceRegistryTest {
     )
 
     @Test
+    fun anErrorFramesCodeIsPartOfTheVisibleFact() {
+        // Web #13985 activityStateEqual: the same error with another code is a new state.
+        val registry = ProcessMemberPresenceRegistry()
+        val usage = fact(serverSeq = 1, status = AgentStatus.Error, presence = Presence.Active).copy(errorCode = AgentRuntimeErrorCode.UsageLimit)
+        registry.apply(ownerServerA, usage, GEN0)
+        assertEquals(AgentRuntimeErrorCode.UsageLimit, registry.factFor(ownerServerA, "agent-1")?.errorCode)
+        val auth = usage.copy(serverSeq = 2, errorCode = AgentRuntimeErrorCode.AuthRequired)
+        assertEquals(false, auth.hasSameVisibleRegisteredPresenceAs(usage))
+        registry.apply(ownerServerA, auth, GEN0)
+        assertEquals(AgentRuntimeErrorCode.AuthRequired, registry.factFor(ownerServerA, "agent-1")?.errorCode)
+    }
+
+    @Test
     fun seqNeverGoesBackwardsWithinAnOwner() {
         val registry = ProcessMemberPresenceRegistry()
         registry.apply(ownerServerA, fact(serverSeq = 5, presence = Presence.Offline, status = AgentStatus.Offline), GEN0)

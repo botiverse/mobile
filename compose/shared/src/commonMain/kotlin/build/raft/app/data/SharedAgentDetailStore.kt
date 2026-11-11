@@ -848,6 +848,10 @@ private fun AgentDetailSnapshot.withAgentActivity(
             credentialHold =
                 if (isSeenEvent || event.coarseState) currentSummary.credentialHold
                 else event.credentialHold,
+            // Web activityTypedCarriers (#13985): the error code rides only a detailed error frame.
+            activityErrorCode =
+                if (isSeenEvent || event.coarseState) currentSummary.activityErrorCode
+                else event.errorCode,
             lastSeenAt = event.lastSeenAt ?: currentSummary.lastSeenAt
         ),
         activity =

@@ -1129,6 +1129,11 @@ data class MemberPresenceUpdated(
      */
     val credentialHold: AgentCredentialHoldReason? = null,
     /**
+     * The code of the runtime error this frame shows (the `errorCode` carrier of `agent:activity`,
+     * web #13985), only with [agentStatus] Error; null otherwise or for an unknown code.
+     */
+    val errorCode: build.raft.app.data.AgentRuntimeErrorCode? = null,
+    /**
      * From `agent:activity_state` (botiverse/slock 968d102d): the coarse state of the detailed frame with
      * the same [serverSeq], without its label or entries. It never replaces that frame or a newer one
      * (see `shouldReplaceRegisteredPresenceFact`).

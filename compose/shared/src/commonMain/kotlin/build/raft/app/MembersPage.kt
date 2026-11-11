@@ -7342,7 +7342,7 @@ private fun MembersDetailContent(
             // Web AgentDetailPanel `activityErrorText`: known runtime errors in the app's words (a
             // "not installed" says how the lookup ended and names the runtime, botiverse/slock
             // #12729), anything else as the server put it.
-            val runtimeErrorDisplay = member.membersAgentRuntimeErrorDisplay(detail, agentStatusIndicatorState)
+            val runtimeErrorDisplay = member.membersAgentRuntimeErrorDisplay(detail, agentStatusIndicatorState, canViewPrivate)
             val runtimeErrorText = runtimeErrorDisplay?.let { agentRuntimeErrorDisplayText(it) }
             if (member.kind == MemberKind.Human) {
                 MembersHumanDetailHeader(
@@ -7403,7 +7403,8 @@ private fun MembersDetailContent(
                     onViewLogs = { selectedTabOverride = MembersAgentDetailTab.Activity },
                     onCopyInfo = { copyDiagnostics() },
                     billingAgentName = member.displayName.takeIf { runtimeErrorBanner.billingExhausted },
-                    onOpenModelSettings = openModelSettings
+                    onOpenModelSettings = openModelSettings,
+                    coded = runtimeErrorDisplay as? AgentRuntimeErrorDisplay.Coded
                 )
             }
             if (member.kind == MemberKind.Agent && !agentPanelTabOrderReady) {
@@ -9140,7 +9141,12 @@ internal fun MembersAgentRuntimeErrorBanner(
     /** The agent's name when the error is a typed BillingError: the billing banner (web AgentRuntimeErrorNotice). */
     billingAgentName: String? = null,
     /** Present when the viewer may open the agent's model settings. */
-    onOpenModelSettings: (() -> Unit)? = null
+    onOpenModelSettings: (() -> Unit)? = null,
+    /**
+     * The error has a code (web #13985): [errorText] is the code's catalog sentence, which every
+     * viewer reads, and a manager reads the error's detail under it.
+     */
+    coded: AgentRuntimeErrorDisplay.Coded? = null
 ) {
     if (billingAgentName != null) {
         MembersAgentBillingBanner(
@@ -9155,8 +9161,10 @@ internal fun MembersAgentRuntimeErrorBanner(
     }
     // raft-ui PanelNotice under the header: the runtime error, then Copy Info and View Logs.
     RaftPanelNotice(
-        message = if (canViewPrivate) errorText else stringResource(Res.string.member_state_agent_error),
+        message = if (canViewPrivate || coded != null) errorText else stringResource(Res.string.member_state_agent_error),
         modifier = modifier,
+        // Web: a manager's detail goes under the code's headline (muted).
+        details = listOfNotNull(coded?.detail?.trim()?.takeIf { canViewPrivate && it.isNotEmpty() }),
         status = RaftBannerStatus.Warning,
         // The error text gets the full width; the actions go underneath. Web `line-clamp-2`, with
         // the whole text in a tooltip on the notice (a long press here).
@@ -15442,7 +15450,9 @@ internal fun membersMigrationPlacesWithoutSource(executionMode: String?, blocked
  */
 internal fun MemberProfile.membersAgentRuntimeErrorDisplay(
     detail: AgentDetailSnapshot?,
-    statusIndicatorState: RaftAgentStatusIndicatorState?
+    statusIndicatorState: RaftAgentStatusIndicatorState?,
+    /** The viewer may see the agent's details (web `canViewPrivateAgentSurfaces`). */
+    canViewDetails: Boolean = true
 ): AgentRuntimeErrorDisplay? {
     if (kind != MemberKind.Agent) return null
     val summary = detail?.summary
@@ -15465,6 +15475,14 @@ internal fun MemberProfile.membersAgentRuntimeErrorDisplay(
                 summary?.lastRuntimeErrorMessage ?: if (keptBillingError) "" else return null
             else -> if (keptBillingError) summary?.lastRuntimeErrorMessage.orEmpty() else return null
         }
+    // Web AgentDetailPanel `runtimeErrorCode` (#13985): from the same source as the text, the error
+    // activity's code, else the kept error's.
+    val errorCode =
+        if (liveStatus == AgentStatus.Error) {
+            statusIndicatorState?.errorCode ?: summary?.activityErrorCode
+        } else {
+            summary?.lastRuntimeErrorCode
+        }
     val runtime = (summary?.runtime ?: statusIndicatorState?.runtime)?.trim()?.takeIf { it.isNotEmpty() }
     return agentRuntimeErrorDisplay(
         runtimeError = runtimeError,
@@ -15472,6 +15490,8 @@ internal fun MemberProfile.membersAgentRuntimeErrorDisplay(
         typedErrorReason = summary?.lastRuntimeErrorReason,
         spawnFailure = summary?.spawnFailure,
         runtimeName = runtime?.let(::raftAgentRuntimeDisplayName),
+        errorCode = errorCode,
+        canViewDetails = canViewDetails,
     )
 }
 

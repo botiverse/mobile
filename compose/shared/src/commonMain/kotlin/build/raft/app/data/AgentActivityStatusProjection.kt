@@ -31,7 +31,9 @@ internal data class AgentActivityStatusProjection(
      * the normalized tool name, so the UI can localize the label instead of
      * printing the English [detail].
      */
-    val toolName: String? = null
+    val toolName: String? = null,
+    /** The code of the runtime error an Error [status] shows (web `activityErrorCode`, #13985). */
+    val errorCode: AgentRuntimeErrorCode? = null
 ) {
     val presence: Presence
         get() = status.presence
@@ -114,7 +116,8 @@ internal fun AgentDetailSummary?.agentActivityStatusFallbackProjection(): AgentA
     val status = normalizedAgentRuntimeStatus(activity = activity, lifecycleStatus = status) ?: return null
     return AgentActivityStatusProjection(
         status = status,
-        detail = activityDetail.projectionNonBlankOrNull()
+        detail = activityDetail.projectionNonBlankOrNull(),
+        errorCode = activityErrorCode.takeIf { status == AgentStatus.Error }
     )
 }
 
@@ -155,7 +158,8 @@ internal fun AgentActivityStatusProjection.toMemberPresenceUpdated(
         statusLabel = detail,
         detailKind = detailKind,
         activityToolName = toolName,
-        serverSeq = serverSeq
+        serverSeq = serverSeq,
+        errorCode = errorCode
     )
 
 internal const val AgentActivityDetailKindCompactingContext = "compacting_context"

@@ -17,6 +17,7 @@ import build.raft.app.data.AgentActivityDetailKindIdle
 import build.raft.app.data.AgentActivityDetailKindRuntimeUnavailable
 import build.raft.app.data.AgentActivityDetailKindWakeCrashLoopBlocked
 import build.raft.app.data.AgentActivityStatusProjection
+import build.raft.app.data.AgentRuntimeErrorCode
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.parseConversationKindOrNull
@@ -804,6 +805,8 @@ private data class AgentActivityDto(
     val toolStuck: ToolStuckDto? = null,
     /** Shared `CredentialHoldActivityDiagnostic`, sent with detailKind `idle` (botiverse/slock #13276). */
     val credentialHold: CredentialHoldDto? = null,
+    /** #wg-rbac:#57 (server #13949): the runtime error's code on an error frame, for every viewer. */
+    val errorCode: String? = null,
 )
 
 /**
@@ -1443,6 +1446,8 @@ private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
         wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(projectedActivity.detailKind),
         spawnFailure = spawnFailure.toAgentSpawnFailure(projectedActivity.detailKind),
         credentialHold = credentialHold.toAgentCredentialHold(projectedActivity.detailKind),
+        // Web attachSocketTypedCarriers (#13985): the code rides only an error frame.
+        errorCode = AgentRuntimeErrorCode.fromWire(errorCode).takeIf { status == AgentStatus.Error },
         toolStuck =
             toolStuck.toAgentToolStuck(
                 // The server stamps the frame with its own clock in epoch ms.

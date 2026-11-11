@@ -1007,6 +1007,10 @@ data class AgentDetailSummary(
      * error, `user_reauth` or `user_model_access`; null when none or from older servers.
      */
     val lastRuntimeErrorRequiredAction: build.raft.app.model.AgentCredentialHoldReason? = null,
+    /** `lastRuntimeError.code` (web #13985): the kept error's code, for every viewer; null when none or unknown. */
+    val lastRuntimeErrorCode: AgentRuntimeErrorCode? = null,
+    /** `activityErrorCode` (web #13985): the code of the error [activity] shows; only while it is `error`. */
+    val activityErrorCode: AgentRuntimeErrorCode? = null,
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
     val toolStuck: build.raft.app.model.AgentToolStuck? = null,
     /**
