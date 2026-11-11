@@ -2581,6 +2581,7 @@ internal class RaftSharedStoreProvider private constructor(
                 hiddenRealtimeBackgroundRefreshIntervalMillis = ActivityHiddenRealtimeBackgroundRefreshIntervalMillis,
                 syncReloads = syncReloadLedger,
                 inboxInPlaceEnabled = ::inboxInPlaceEnabled,
+                inPlaceCheckSink = RaftClientTraceEvents::emitInPlaceCheck,
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {
                         if (scope == RaftShellStoreScope.Legacy) homeActivityStoreScope else RaftStoreThreading.newScope()
@@ -3139,6 +3140,8 @@ internal class RaftSharedStoreProvider private constructor(
             val networkClient = scopedNetworkClientFactory(authStore)
             // Product analytics (RFC-067) sends through the shared client at Background priority.
             RaftProductEvents.bindTransport(networkClient)
+            // Client trace events (`/api/web-traces`, as web): `activity:inplace_check`.
+            RaftClientTraceEvents.bindTransport(networkClient)
             val messageBodyFontSizeStore =
                 SharedMessageBodyFontSizeStore(
                     scope = RaftStoreThreading.newScope(),

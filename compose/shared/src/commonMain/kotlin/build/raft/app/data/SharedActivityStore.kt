@@ -340,7 +340,13 @@ class SharedActivityStore internal constructor(
      */
     private val inboxInPlaceEnabled: (serverId: String) -> Boolean = { false },
     /** See [ActivityInPlaceReconcileIntervalMillis]; injectable for virtual time. */
-    private val inPlaceReconcileIntervalMillis: Long = ActivityInPlaceReconcileIntervalMillis
+    private val inPlaceReconcileIntervalMillis: Long = ActivityInPlaceReconcileIntervalMillis,
+    /**
+     * `mobile_inbox_inplace_v0`: where each `activity:inplace_check` goes (web
+     * `emitStateTransitionTrace`; [RaftClientTraceEvents.emitInPlaceCheck] in the app). Called under
+     * the realtime owner lock: it must only queue.
+     */
+    private val inPlaceCheckSink: (serverId: String, check: ActivityInPlaceCheck) -> Unit = { _, _ -> }
 ) {
     private val _state = raftStoreState(SharedActivityState(), "SharedActivityStore")
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
@@ -480,6 +486,11 @@ class SharedActivityStore internal constructor(
      */
     private var inPlaceReconcileMark: Long? = null
     private var inPlaceReconcileJob: Job? = null
+    /**
+     * `mobile_inbox_inplace_v0` (guarded by realtimeOwnerLock): rows patched in place (or found
+     * absent) by a live message, judged against the next first-window All answer.
+     */
+    private val inPlaceDriftCheck = ActivityInPlaceDriftCheck(nowMillis)
 
     init {
         scope.launch {
@@ -1407,7 +1418,10 @@ class SharedActivityStore internal constructor(
                         null
                     }
                     RealtimeRowPatch.Unchanged -> null
-                    RealtimeRowPatch.Absent,
+                    RealtimeRowPatch.Absent -> {
+                        noteInPlaceAbsentLocked(event)
+                        scheduleRealtimeBackgroundReconcileLocked(trigger)
+                    }
                     RealtimeRowPatch.NeedsRead -> scheduleRealtimeBackgroundReconcileLocked(trigger)
                 }
             }
@@ -1502,6 +1516,7 @@ class SharedActivityStore internal constructor(
         advanceReplyThreadContent(existing, patched)
         rememberRealtimeHighWater(patched, seq = incomingSeq, inPlaceUnread = unread != null)
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
+        if (unread != null) inPlaceDriftCheck.notePatched(patched, intent.inPlaceTrigger())
         return if (inPlace == null || unread != null) RealtimeRowPatch.Patched else RealtimeRowPatch.NeedsRead
     }
 
@@ -1556,6 +1571,7 @@ class SharedActivityStore internal constructor(
                 inPlaceUnread = unread != null
             )
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
+        if (unread != null) inPlaceDriftCheck.notePatched(patched, intent.inPlaceTrigger())
         return if (inPlace == null || unread != null) RealtimeRowPatch.Patched else RealtimeRowPatch.NeedsRead
     }
 
@@ -1912,6 +1928,53 @@ class SharedActivityStore internal constructor(
         inPlaceReconcileJob?.cancel()
         inPlaceReconcileJob = null
         inPlaceReconcileMark = null
+        inPlaceDriftCheck.clear()
+    }
+
+    /** The trigger of a row a live message patched in place (web `InPlaceTrigger`). */
+    private fun SharedActivityIntent.ApplyRealtimeEvent.inPlaceTrigger(): InboxRefreshTrigger =
+        if (event is ThreadUpdated) InboxRefreshTrigger.ThreadReply else InboxRefreshTrigger.MessageNew
+
+    /** A live message for a row the list lacks: the check notes whether the re-read brings it. */
+    private fun noteInPlaceAbsentLocked(event: RealtimeEvent) {
+        when (event) {
+            is MessageNew -> {
+                val scopeId = (event.message.channelId ?: event.message.threadChannelId)?.value ?: return
+                inPlaceDriftCheck.noteAbsent(
+                    scopeId,
+                    InboxRefreshTrigger.MessageNew,
+                    event.message.seq?.takeIf { it >= 0L }?.toString()
+                )
+            }
+            is ThreadUpdated ->
+                inPlaceDriftCheck.noteAbsent(
+                    event.threadChannelId.value,
+                    InboxRefreshTrigger.ThreadReply,
+                    event.latestReply?.seq?.takeIf { it >= 0L }?.toString()
+                )
+            else -> Unit
+        }
+    }
+
+    /**
+     * Web `checkInPlaceDrift` (inboxStore.ts: a reset answer of the All list, before the local
+     * holds of newer rows): judges the rows patched in place against [served] and sends the checks.
+     * Flag off, nothing was noted and nothing is sent.
+     */
+    private fun checkInPlaceDriftLocked(current: SharedActivityState, served: List<InboxItem>) {
+        if (inPlaceDriftCheck.isEmpty || current.selectedFilter != InboxFilter.All) return
+        val serverId = current.ownerServerId
+        if (serverId == null || !inboxInPlaceEnabled(serverId)) {
+            inPlaceDriftCheck.clear()
+            return
+        }
+        for (check in inPlaceDriftCheck.check(current.items, served)) {
+            diagnosticsLogger(
+                "activity_inplace_check entity=${check.entityId} trigger=${check.trigger.wireValue} " +
+                    "outcome=${check.outcome.wireValue} result=${check.result}"
+            )
+            inPlaceCheckSink(serverId, check)
+        }
     }
 
     private fun realtimeBackgroundRefreshWaitMillisLocked(): Long {
@@ -3058,6 +3121,8 @@ class SharedActivityStore internal constructor(
                             .withActivityThreadTaskProjection(result.data.server.id.value, tasksDataStore)
                             .reconcileLocallyClearedUnreadItems(current.selectedFilter, owner)
                             .reconcileLocallyDoneItems(owner)
+                    // A remembered (`X-Raft-Stale`) answer can be minutes old: it judges nothing.
+                    if (!append && result.data.staleReason == null) checkInPlaceDriftLocked(current, pageItems.items)
                     beforeRealtimeHighWaterFold()
                     val realtimeReconcile =
                         reconcileRealtimeHighWater(
@@ -3140,6 +3205,7 @@ class SharedActivityStore internal constructor(
                     nextState
                 }
                 is DataResult.Empty -> {
+                    if (!append) checkInPlaceDriftLocked(current, emptyList())
                     val realtimeReconcile =
                         if (!append) {
                             reconcileRealtimeHighWater(
