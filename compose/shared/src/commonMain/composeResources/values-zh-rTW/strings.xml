@@ -2505,7 +2505,6 @@
     <string name="settings_notifications_mode_none_detail">此工作區的任何內容都不通知，包括 @我；另外設定過的頻道或討論串除外。</string>
     <string name="settings_notifications_mode_unavailable">無法載入此工作區的通知設定，載入完成後才能修改。</string>
     <string name="settings_computers_loading">正在載入電腦</string>
-    <string name="settings_computers_loading_detail">正在從此伺服器取得已連線的電腦。</string>
     <string name="settings_computers_error_load">無法載入電腦清單</string>
     <string name="settings_computers_error_retry_detail">請下拉重新整理或再試一次。</string>
     <string name="settings_computers_error_unavailable_detail">設定暫時無法載入已連線的電腦。</string>

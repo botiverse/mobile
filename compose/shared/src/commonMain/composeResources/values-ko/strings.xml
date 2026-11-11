@@ -2505,7 +2505,6 @@
     <string name="settings_notifications_mode_none_detail">멘션을 포함해 이 워크스페이스의 어떤 알림도 받지 않아요. 단, 따로 설정한 채널이나 스레드는 예외예요.</string>
     <string name="settings_notifications_mode_unavailable">워크스페이스 알림 설정을 불러오지 못했어요. 불러온 후에 변경할 수 있어요.</string>
     <string name="settings_computers_loading">컴퓨터 불러오는 중</string>
-    <string name="settings_computers_loading_detail">이 서버에서 연결된 컴퓨터를 가져오는 중이에요.</string>
     <string name="settings_computers_error_load">컴퓨터 목록을 불러오지 못했어요</string>
     <string name="settings_computers_error_retry_detail">아래로 당겨 새로고침하거나 다시 시도해 주세요.</string>
     <string name="settings_computers_error_unavailable_detail">지금은 설정에서 연결된 컴퓨터를 불러올 수 없어요.</string>

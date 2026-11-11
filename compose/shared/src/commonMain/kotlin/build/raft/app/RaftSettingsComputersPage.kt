@@ -128,6 +128,10 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftCardVariant
+import build.raft.designsystem.components.RaftSkeleton
+import build.raft.designsystem.components.RaftSkeletonVariant
+import androidx.compose.foundation.layout.heightIn
 import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftDescriptionListDirection
@@ -739,17 +743,14 @@ internal fun RaftSettingsComputersContent(
     onToolbarIntent: (RaftComputersRackToolbarIntent) -> Unit = {},
     /** The page's server: the folds hold on it only. */
     serverId: String? = null,
+    /** The loading skeleton pulses; screenshots draw its resting frame. */
+    skeletonAnimated: Boolean = true,
 ) {
     // The upgrade's in-flight window (web `computerUpgradeInFlight`) reads the clock.
     val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
-            RaftComputersListModel.Loading ->
-                RaftComputersStateBlock(
-                    title = stringResource(Res.string.settings_computers_loading),
-                    detail = stringResource(Res.string.settings_computers_loading_detail),
-                    loading = true,
-                )
+            RaftComputersListModel.Loading -> RaftComputersRackLoading(toolbar, onToolbarIntent, skeletonAnimated)
             is RaftComputersListModel.Failed ->
                 if (model.failure.noAccess) {
                     RaftComputersStateBlock(
@@ -1074,6 +1075,49 @@ private fun RaftComputersRackBody(
                     }
                 }
                 item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
+            }
+        }
+    }
+}
+
+/**
+ * Web MobileComputersPanel while the machines load (no saved list to show first): the toolbar
+ * already (a list page always shows its head and toolbar, slock #14159), then four card-shaped
+ * placeholders (`ComputersSkeleton`: a 35dp block and two lines, 2/5 and 3/5 wide, in a card at
+ * least 64dp tall, 10dp apart). No counts until the list is read (#14158).
+ */
+@Composable
+private fun RaftComputersRackLoading(
+    toolbar: RaftComputersRackToolbarState,
+    onToolbarIntent: (RaftComputersRackToolbarIntent) -> Unit,
+    animated: Boolean,
+) {
+    val toolbarModel = remember(toolbar) { raftComputersRackToolbarModel(toolbar, RaftRackRuntimeColumns(emptyList(), emptyList())) }
+    Column(Modifier.fillMaxSize()) {
+        RaftComputersRackToolbar(toolbar, toolbarModel, onToolbarIntent)
+        val loading = stringResource(Res.string.settings_computers_loading)
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .semantics { contentDescription = loading }
+                .testTag(RaftComputersRackTags.LoadingSkeleton),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            repeat(4) {
+                RaftCard(variant = RaftCardVariant.Inset, modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RaftSkeleton(Modifier.size(35.dp), animated = animated)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            RaftSkeleton(Modifier.fillMaxWidth(0.4f), variant = RaftSkeletonVariant.Line, animated = animated)
+                            RaftSkeleton(Modifier.fillMaxWidth(0.6f), variant = RaftSkeletonVariant.Line, animated = animated)
+                        }
+                    }
+                }
             }
         }
     }

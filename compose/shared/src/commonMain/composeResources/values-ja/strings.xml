@@ -2512,7 +2512,6 @@
     <string name="settings_notifications_mode_none_detail">このワークスペースからは、メンションを含めて何も通知しません（個別に設定したチャンネルやスレッドを除く）。</string>
     <string name="settings_notifications_mode_unavailable">ワークスペースの通知設定を読み込めませんでした。読み込み後に変更できます。</string>
     <string name="settings_computers_loading">コンピューターを読み込み中</string>
-    <string name="settings_computers_loading_detail">このサーバーから接続済みのコンピューターを取得しています。</string>
     <string name="settings_computers_error_load">コンピューターを読み込めませんでした</string>
     <string name="settings_computers_error_retry_detail">下に引っ張って更新するか、もう一度お試しください。</string>
     <string name="settings_computers_error_unavailable_detail">設定は現在、接続済みのコンピューターを読み込めません。</string>
