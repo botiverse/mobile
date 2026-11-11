@@ -13,10 +13,12 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.PerReceiverReadStateScope
@@ -30,7 +32,9 @@ import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskSummary
+import build.raft.app.model.mentionsUser
 import build.raft.app.model.ThreadFollowersUpdated
+import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.realtime.PerReceiverReadStateFactResult
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
@@ -38,6 +42,7 @@ import build.raft.app.network.sync.ReadStateV1Fact
 import build.raft.app.network.sync.ReadStateV1ProductionCanary
 import build.raft.app.network.sync.ReadStateV1ProductionDisposition
 import build.raft.app.network.sync.ReadStateV1ProductionOwner
+import build.raft.app.network.sync.ReplyPreview
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -79,8 +84,96 @@ private data class ActivityRealtimeHighWater(
      */
     val seq: String? = null,
     /** Channel/DM rows only: the patch stops holding over older served rows after this time. */
-    val holdUntilMillis: Long? = null
+    val holdUntilMillis: Long? = null,
+    /**
+     * `mobile_inbox_inplace_v0`: the patch also moved the row's unread and mention, so a served row
+     * still behind it keeps them (with the message fields) instead of dropping back.
+     */
+    val inPlaceUnread: Boolean = false
 )
+
+/** What a live message did to the Activity row it names (`mobile_inbox_inplace_v0`). */
+private enum class RealtimeRowPatch {
+    /** The list has no row for it: only a re-read can add one. */
+    Absent,
+    /** The row took it in place (preview, unread, mention): no re-read. */
+    Patched,
+    /** The row already shows it or something newer: nothing to do. */
+    Unchanged,
+    /** The row exists but this frame cannot be applied in place (no seq to order it): re-read. */
+    NeedsRead,
+}
+
+/**
+ * Who reads (`principalId`) and the conversation open on screen, which a live message there does
+ * not make unread (web `liveActivityUnread`).
+ */
+private class InPlaceUnreadContext(val principalId: String, val activeConversationId: String?)
+
+/** Web `InboxLiveUnread`: one more unread, and whether it @-mentions the reader. */
+private data class InPlaceLiveUnread(val counts: Boolean, val mention: Boolean)
+
+/**
+ * Web `liveActivityUnread` + `liveUnreadFields`: a live message counts unless it is the reader's
+ * own, it lands in the conversation open on screen, or the row is an unfollowed thread (the server
+ * counts none for it); a lifecycle line on a thread row counts no reply. Null: cannot tell here (a
+ * thread row or reply without a seq), the row is re-read.
+ */
+private fun InPlaceUnreadContext.unreadFor(row: InboxItem, message: Message, snapshot: InboxSnapshot): InPlaceLiveUnread? {
+    val thread = row.kind == InboxItemKind.Thread
+    if (thread && (row.latestActivitySeq == null || message.seq == null)) return null
+    val streamChannelId = (message.channelId ?: message.threadChannelId)?.value ?: return null
+    val counts =
+        message.author.id.value != principalId &&
+            !isActiveActivityConversation(streamChannelId, activeConversationId, snapshot) &&
+            !row.isUnfollowedActivityThread &&
+            !(thread && message.messageType == MessageType.System)
+    return InPlaceLiveUnread(counts = counts, mention = counts && message.mentions.mentionsUser(principalId))
+}
+
+private fun InboxItem.withLiveUnread(live: InPlaceLiveUnread?, messageId: MessageId): InboxItem {
+    if (live == null || !live.counts) return this
+    return copy(
+        unreadCount = unreadCount + 1,
+        firstUnreadMessageId = if (unreadCount == 0) messageId else firstUnreadMessageId,
+        hasMention = hasMention || live.mention,
+        firstMentionMessageId = if (live.mention && !hasMention) messageId else firstMentionMessageId
+    )
+}
+
+private fun InboxSnapshot.threadRowIndex(streamChannelId: ChannelId): Int =
+    items.indexOfFirst { item ->
+        item.kind == InboxItemKind.Thread &&
+            (item.threadChannelId == streamChannelId || item.channelId == streamChannelId)
+    }
+
+/** The `thread:updated` frame's latest reply as the `message:new` it stands for. */
+private fun ReplyPreview.toActivityLiveMessage(event: ThreadUpdated): Message {
+    val kind =
+        when (senderType.trim().lowercase()) {
+            "agent" -> MemberKind.Agent
+            "system" -> MemberKind.System
+            "external", "external_projection" -> MemberKind.External
+            else -> MemberKind.Human
+        }
+    return Message(
+        id = MessageId(messageId),
+        threadId = ThreadId(event.threadChannelId.value),
+        channelId = event.threadChannelId,
+        seq = seq,
+        author =
+            MemberProfile(
+                id = MemberId(senderId),
+                displayName = senderDisplayName?.takeIf { it.isNotBlank() } ?: senderName,
+                handle = senderName,
+                kind = kind
+            ),
+        timestampLabel = createdAt,
+        body = content,
+        messageType = if (kind == MemberKind.System) MessageType.System else MessageType.Chat,
+        mentions = event.latestReplyMentions
+    )
+}
 
 /**
  * [served] (the server's order, newest first) with each [held] row (in the order shown now) put above
@@ -240,7 +333,14 @@ class SharedActivityStore internal constructor(
     private val appForeground: StateFlow<Boolean> = RaftStaleReadRecoverySignals.foreground,
     private val beforeRealtimeHighWaterFold: () -> Unit = {},
     private val onRealtimePatchOwnerEntered: () -> Unit = {},
-    private val onReadReceiptPredictionOwnerEntered: () -> Unit = {}
+    private val onReadReceiptPredictionOwnerEntered: () -> Unit = {},
+    /**
+     * `mobile_inbox_inplace_v0` for the server the store is bound to (Inbox refresh step 4,
+     * #triage 6db2bd32). Off (the default): every read is today's.
+     */
+    private val inboxInPlaceEnabled: (serverId: String) -> Boolean = { false },
+    /** See [ActivityInPlaceReconcileIntervalMillis]; injectable for virtual time. */
+    private val inPlaceReconcileIntervalMillis: Long = ActivityInPlaceReconcileIntervalMillis
 ) {
     private val _state = raftStoreState(SharedActivityState(), "SharedActivityStore")
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
@@ -373,6 +473,13 @@ class SharedActivityStore internal constructor(
      * way [resumeFoldLoads] folds the asks made in the background into the return's read.
      */
     private var hiddenFoldLoads: Long? = null
+    /**
+     * `mobile_inbox_inplace_v0` (guarded by realtimeOwnerLock): [resetLoadsStarted] at the latest
+     * live message patched in place, null when none is owed a re-read. A reset load started after it
+     * covers it; otherwise [inPlaceReconcileJob] reads once, [inPlaceReconcileIntervalMillis] later.
+     */
+    private var inPlaceReconcileMark: Long? = null
+    private var inPlaceReconcileJob: Job? = null
 
     init {
         scope.launch {
@@ -695,6 +802,7 @@ class SharedActivityStore internal constructor(
             channelAccessGenerations.clear()
             realtimeHighWater.clear()
             resetRealtimeCatchUpLocked()
+            resetInPlaceReconcileLocked()
             pendingThreadFollowMutations = emptySet()
             deferredThreadFollows = emptyMap()
             owner
@@ -1188,6 +1296,7 @@ class SharedActivityStore internal constructor(
                 current.ownerServerId?.let(replyThreadFreshnessLedger::invalidateServer)
                 realtimeHighWater.clear()
                 resetRealtimeCatchUpLocked()
+                resetInPlaceReconcileLocked()
                 presentationStore.clear()
                 lastRowsReadAtEpochMillis = null
                 // Web registerServerReset (slock #11383) starts the new server on its last
@@ -1251,9 +1360,12 @@ class SharedActivityStore internal constructor(
             } else {
                 event.inboxRefreshTrigger()
             }
+        // `mobile_inbox_inplace_v0`: non-null when this live message may patch its row in place.
+        val inPlace = inPlaceUnreadContextLocked(intent)
         when (event) {
-            // Not past a mute (the shell's allowLocalPatch): the served row stops there.
-            is MessageNew -> if (intent.allowLocalPatch) raiseRealtimeCatchUpTargetLocked(event.message)
+            // Not past a mute (the shell's allowLocalPatch): the served row stops there. In place,
+            // the shown row a target names is patched instead of re-read, so nothing is caught up.
+            is MessageNew -> if (intent.allowLocalPatch && inPlace == null) raiseRealtimeCatchUpTargetLocked(event.message)
             is MessageUpdated -> {
                 acceptMessageUpdatedFreshness(event.message)
                 applyChannelMessageUpdatedPatch(event.message, intent)
@@ -1276,6 +1388,29 @@ class SharedActivityStore internal constructor(
         // dm:new refreshes like web (channelRealtimeSync.ts dmNew -> scheduleInboxRefresh):
         // a brand-new DM row can only arrive through the canonical projection.
         if (event is MessageNew || event is SyncResumeResponse || event is ThreadUpdated || event is DirectMessageCreated) {
+            if (inPlace != null) {
+                // Inbox refresh step 4: a row the list shows takes the message in place (preview,
+                // unread, mention) and is not re-read; only a row it lacks, or a frame it cannot
+                // order, asks for the throttled re-read below.
+                val patch =
+                    when (event) {
+                        is MessageNew -> applyMessageNewPatch(event.message, intent, inPlace)
+                        is ThreadUpdated -> applyThreadUpdatedInPlace(event, intent, inPlace)
+                        else -> RealtimeRowPatch.NeedsRead
+                    }
+                diagnosticsLogger(
+                    "activity_inplace event=${event::class.simpleName.orEmpty()} result=${patch.name.lowercase()}"
+                )
+                return when (patch) {
+                    RealtimeRowPatch.Patched -> {
+                        armInPlaceReconcileLocked()
+                        null
+                    }
+                    RealtimeRowPatch.Unchanged -> null
+                    RealtimeRowPatch.Absent,
+                    RealtimeRowPatch.NeedsRead -> scheduleRealtimeBackgroundReconcileLocked(trigger)
+                }
+            }
             // Only All has stable membership under a message-only payload. Unread
             // and Mentions depend on receiver-specific read/mention facts that are
             // not fully carried by every realtime frame; patching those filters
@@ -1302,31 +1437,50 @@ class SharedActivityStore internal constructor(
         return null
     }
 
+    /**
+     * [inPlace] (`mobile_inbox_inplace_v0` on): the row's unread and mention follow the message too,
+     * and the result says whether the list still has to be re-read. Null: today's patch (preview
+     * only, unread from the reconcile); the result is then unused.
+     */
     private fun applyMessageNewPatch(
         message: Message,
-        intent: SharedActivityIntent.ApplyRealtimeEvent
-    ): Boolean {
+        intent: SharedActivityIntent.ApplyRealtimeEvent,
+        inPlace: InPlaceUnreadContext? = null
+    ): RealtimeRowPatch {
         onRealtimePatchOwnerEntered()
         val current = _state.value
-        val snapshot = current.snapshot ?: return false
-        val streamChannelId = message.channelId ?: message.threadChannelId ?: return false
-        val existingIndex =
-            snapshot.items.indexOfFirst { item ->
-                item.kind == InboxItemKind.Thread &&
-                    (item.threadChannelId == streamChannelId || item.channelId == streamChannelId)
-            }
-        if (existingIndex < 0) return applyChannelMessageNewPatch(message, intent, current, snapshot)
+        val snapshot = current.snapshot ?: return RealtimeRowPatch.Absent
+        val streamChannelId = message.channelId ?: message.threadChannelId ?: return RealtimeRowPatch.Absent
+        val existingIndex = snapshot.threadRowIndex(streamChannelId)
+        if (existingIndex < 0) return applyChannelMessageNewPatch(message, intent, current, snapshot, inPlace)
+        return patchThreadRowWithMessage(existingIndex, message, intent, current, snapshot, inPlace)
+    }
+
+    private fun patchThreadRowWithMessage(
+        existingIndex: Int,
+        message: Message,
+        intent: SharedActivityIntent.ApplyRealtimeEvent,
+        current: SharedActivityState,
+        snapshot: InboxSnapshot,
+        inPlace: InPlaceUnreadContext?
+    ): RealtimeRowPatch {
         val existing = snapshot.items[existingIndex]
-        if (existing.lastMessageId == message.id || existing.latestActivityMessageId == message.id) return true
+        if (existing.lastMessageId == message.id || existing.latestActivityMessageId == message.id) {
+            return RealtimeRowPatch.Unchanged
+        }
         // Web receiveThreadReply (slock 1bb70cbeb, inboxStore.ts:1712-1777): a row
         // carrying a content frontier advances only on a strictly newer socket
         // seq (fail closed when the frame has none); the canonical refetch
-        // supplies the row otherwise. Unread is never touched locally: the
-        // server owns it and the scheduled reconcile brings it.
+        // supplies the row otherwise. Unread is never touched locally (flag off):
+        // the server owns it and the scheduled reconcile brings it.
         val incomingSeq = message.seq?.takeIf { it >= 0L }?.toString()
         if (existing.latestActivitySeq != null && compareActivitySeq(incomingSeq, existing.latestActivitySeq) <= 0) {
-            return true
+            return if (incomingSeq == null) RealtimeRowPatch.NeedsRead else RealtimeRowPatch.Unchanged
         }
+        // In place: a thread row or reply without a seq is left to the re-read (web
+        // liveUnreadFields: its recency guard is by message id only, so a late older reply would
+        // count twice).
+        val unread = inPlace?.unreadFor(existing, message, snapshot)
 
         val patched =
             existing.copy(
@@ -1344,11 +1498,11 @@ class SharedActivityStore internal constructor(
                 // Keep the Done/read overlay marker in step with the patched row
                 // (legacy Done only; see advancedActivityFrontier).
                 readStateLatestActivitySeq = existing.advancedActivityFrontier(message.seq)
-            ).withActivityFollowStateProjection()
+            ).withLiveUnread(unread, message.id).withActivityFollowStateProjection()
         advanceReplyThreadContent(existing, patched)
-        rememberRealtimeHighWater(patched, seq = incomingSeq)
+        rememberRealtimeHighWater(patched, seq = incomingSeq, inPlaceUnread = unread != null)
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
-        return true
+        return if (inPlace == null || unread != null) RealtimeRowPatch.Patched else RealtimeRowPatch.NeedsRead
     }
 
     /**
@@ -1366,19 +1520,21 @@ class SharedActivityStore internal constructor(
         message: Message,
         intent: SharedActivityIntent.ApplyRealtimeEvent,
         current: SharedActivityState,
-        snapshot: InboxSnapshot
-    ): Boolean {
+        snapshot: InboxSnapshot,
+        inPlace: InPlaceUnreadContext?
+    ): RealtimeRowPatch {
         // A thread reply carries its thread channel as `channelId`, which never names a channel row.
-        val channelId = message.channelId ?: return false
+        val channelId = message.channelId ?: return RealtimeRowPatch.Absent
         val existingIndex =
             snapshot.items.indexOfFirst { item -> item.isChannelOrDmRow() && item.channelId == channelId }
-        if (existingIndex < 0) return false
+        if (existingIndex < 0) return RealtimeRowPatch.Absent
         val existing = snapshot.items[existingIndex]
-        if (existing.lastMessageId == message.id) return true
-        val incomingSeq = message.seq?.takeIf { it >= 0L }?.toString() ?: return true
-        if (existing.latestActivitySeq == null || compareActivitySeq(incomingSeq, existing.latestActivitySeq) <= 0) {
-            return true
-        }
+        if (existing.lastMessageId == message.id) return RealtimeRowPatch.Unchanged
+        // Fail closed when either side has no seq: the re-read supplies the row.
+        val incomingSeq = message.seq?.takeIf { it >= 0L }?.toString() ?: return RealtimeRowPatch.NeedsRead
+        if (existing.latestActivitySeq == null) return RealtimeRowPatch.NeedsRead
+        if (compareActivitySeq(incomingSeq, existing.latestActivitySeq) <= 0) return RealtimeRowPatch.Unchanged
+        val unread = inPlace?.unreadFor(existing, message, snapshot)
         val patched =
             existing.copy(
                 lastMessageId = message.id,
@@ -1390,16 +1546,17 @@ class SharedActivityStore internal constructor(
                 lastMessageSenderAvatarWireValue = message.author.avatar?.wireValue,
                 latestDelegatedBy = message.delegatedBy,
                 latestActivitySeq = incomingSeq
-            )
+            ).withLiveUnread(unread, message.id)
         realtimeHighWater[patched.key] =
             ActivityRealtimeHighWater(
                 marker = patched.lastMessageId,
                 replyCount = 0,
                 seq = incomingSeq,
-                holdUntilMillis = nowMillis() + ActivityLocalMutationHoldMillis
+                holdUntilMillis = nowMillis() + ActivityLocalMutationHoldMillis,
+                inPlaceUnread = unread != null
             )
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
-        return true
+        return if (inPlace == null || unread != null) RealtimeRowPatch.Patched else RealtimeRowPatch.NeedsRead
     }
 
     /**
@@ -1450,20 +1607,41 @@ class SharedActivityStore internal constructor(
         reduceState(intent, current.copy(snapshot = snapshot.copy(items = items)))
     }
 
+    /**
+     * `thread:updated` with `mobile_inbox_inplace_v0` on (web socketBridge threadUpdated:
+     * `receiveThreadReply(latestReply, live)` then `updateThreadActivityMeta`): the frame's latest
+     * reply patches the row like its `message:new` would (seq-guarded, so whichever of the two comes
+     * second changes nothing), then the reply count and time move. A frame without its reply says
+     * nothing about unread: the row is re-read.
+     */
+    private fun applyThreadUpdatedInPlace(
+        event: ThreadUpdated,
+        intent: SharedActivityIntent.ApplyRealtimeEvent,
+        inPlace: InPlaceUnreadContext
+    ): RealtimeRowPatch {
+        val current = _state.value
+        val snapshot = current.snapshot ?: return RealtimeRowPatch.Absent
+        val existingIndex = snapshot.threadRowIndex(event.threadChannelId)
+        if (existingIndex < 0) return RealtimeRowPatch.Absent
+        val reply =
+            event.latestReply?.toActivityLiveMessage(event)
+                ?: return RealtimeRowPatch.NeedsRead.also { applyThreadUpdatedPatch(event, intent) }
+        val replyPatch = patchThreadRowWithMessage(existingIndex, reply, intent, current, snapshot, inPlace)
+        val metaPatched = applyThreadUpdatedPatch(event, intent)
+        return if (replyPatch == RealtimeRowPatch.Unchanged && metaPatched) RealtimeRowPatch.Patched else replyPatch
+    }
+
+    /** True when the row's reply count or time moved. */
     private fun applyThreadUpdatedPatch(
         event: ThreadUpdated,
         intent: SharedActivityIntent.ApplyRealtimeEvent
     ): Boolean {
         val current = _state.value
         val snapshot = current.snapshot ?: return false
-        val existingIndex =
-            snapshot.items.indexOfFirst { item ->
-                item.kind == InboxItemKind.Thread &&
-                    (item.threadChannelId == event.threadChannelId || item.channelId == event.threadChannelId)
-            }
+        val existingIndex = snapshot.threadRowIndex(event.threadChannelId)
         if (existingIndex < 0) return false
         val existing = snapshot.items[existingIndex]
-        if (event.replyCount < existing.replyCount) return true
+        if (event.replyCount < existing.replyCount) return false
         // Web updateThreadActivityMeta (inboxStore.ts:1779-1795) moves only the
         // reply count and time; the event's unread never overwrites the row.
         val patched =
@@ -1484,7 +1662,7 @@ class SharedActivityStore internal constructor(
                         existing.readStateLatestActivitySeq
                     }
             ).withActivityFollowStateProjection()
-        if (patched == existing) return true
+        if (patched == existing) return false
         advanceReplyThreadContent(existing, patched)
         rememberRealtimeHighWater(patched)
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
@@ -1532,14 +1710,16 @@ class SharedActivityStore internal constructor(
     }
 
     /** [seq] is the `message:new` seq of the patched reply; a `thread:updated` patch keeps the one it has. */
-    private fun rememberRealtimeHighWater(item: InboxItem, seq: String? = null) {
+    private fun rememberRealtimeHighWater(item: InboxItem, seq: String? = null, inPlaceUnread: Boolean = false) {
         val previous = realtimeHighWater[item.key]
         if (previous != null && item.replyCount < previous.replyCount) return
         realtimeHighWater[item.key] =
             ActivityRealtimeHighWater(
                 marker = item.latestActivityMessageId,
                 replyCount = item.replyCount,
-                seq = seq ?: previous?.seq?.takeIf { previous.marker == item.latestActivityMessageId }
+                seq = seq ?: previous?.seq?.takeIf { previous.marker == item.latestActivityMessageId },
+                // A later `thread:updated` meta patch keeps the unread the reply put there.
+                inPlaceUnread = inPlaceUnread || previous?.inPlaceUnread == true
             )
     }
 
@@ -1551,6 +1731,12 @@ class SharedActivityStore internal constructor(
         if (!appForeground.value) {
             // In the background nothing reads: the return reads once (onAppForegroundReturned).
             realtimeReconcileOwedOnForeground = true
+            return realtimeBackgroundReconcileJob ?: Job().apply { complete() }
+        }
+        if (activitySurfaceHidden && inboxInPlaceOnLocked()) {
+            // Inbox refresh step 4, rule 3: nobody sees the list, so nothing reads it; the Refresh
+            // that shows it again reads it once (`visibility`).
+            diagnosticsLogger("store_load domain=activity phase=deferred reason=surface_hidden trigger=${trigger?.wireValue}")
             return realtimeBackgroundReconcileJob ?: Job().apply { complete() }
         }
         realtimeBackgroundReconcileDirty = true
@@ -1609,6 +1795,13 @@ class SharedActivityStore internal constructor(
                                     realtimeBackgroundReconcileJob = null
                                     ReconcileStep.Stop
                                 }
+                                // Step 4: hidden while waiting; the Refresh that shows it reads.
+                                activitySurfaceHidden && inboxInPlaceOnLocked() -> {
+                                    realtimeBackgroundReconcileDirty = false
+                                    realtimeBackgroundReconcileTrigger = null
+                                    realtimeBackgroundReconcileJob = null
+                                    ReconcileStep.Stop
+                                }
                                 // The return's one read: a reset load started since the return (the
                                 // visible page's resume refresh) already was it; asks folded into it.
                                 foldBase != null ->
@@ -1658,6 +1851,68 @@ class SharedActivityStore internal constructor(
     }
 
     private enum class ReconcileStep { Load, Again, Stop }
+
+    /** `mobile_inbox_inplace_v0` for the server the list shows. */
+    private fun inboxInPlaceOnLocked(): Boolean =
+        _state.value.ownerServerId?.let(inboxInPlaceEnabled) == true
+
+    /**
+     * Non-null when [intent]'s live message may patch its row in place: the flag is on, it is a
+     * `message:new` / `thread:updated`, not past a mute, on the All list (the only one whose
+     * membership a message alone decides) and the reader is known.
+     */
+    private fun inPlaceUnreadContextLocked(intent: SharedActivityIntent.ApplyRealtimeEvent): InPlaceUnreadContext? {
+        if (intent.event !is MessageNew && intent.event !is ThreadUpdated) return null
+        if (!intent.allowLocalPatch) return null
+        val current = _state.value
+        if (current.selectedFilter != InboxFilter.All || current.snapshot == null) return null
+        if (!inboxInPlaceOnLocked()) return null
+        val principalId = current.ownerUserId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return InPlaceUnreadContext(principalId, intent.activeConversationId)
+    }
+
+    /**
+     * Rule 5: rows patched in place are re-read once, [inPlaceReconcileIntervalMillis] after the
+     * patch, while the list is visible; a reset load of any kind started after the latest patch
+     * covers it, and a hidden or backgrounded list is read by its `visibility` read instead.
+     */
+    private fun armInPlaceReconcileLocked() {
+        inPlaceReconcileMark = resetLoadsStarted
+        if (inPlaceReconcileJob != null) return
+        inPlaceReconcileJob =
+            scope.launch {
+                val self = currentCoroutineContext()[Job]
+                while (true) {
+                    delay(inPlaceReconcileIntervalMillis)
+                    awaitCurrentLoadIdle()
+                    val read =
+                        synchronized(realtimeOwnerLock) {
+                            if (inPlaceReconcileJob !== self) return@synchronized false
+                            val mark = inPlaceReconcileMark
+                            val owed = mark != null && resetLoadsStarted <= mark
+                            inPlaceReconcileMark = null
+                            val visible = appForeground.value && !activitySurfaceHidden
+                            if (!owed || !visible) inPlaceReconcileJob = null
+                            owed && visible
+                        }
+                    if (!read) return@launch
+                    diagnosticsLogger("store_load domain=activity phase=inplace_reconcile")
+                    load(
+                        refresh = true,
+                        pullRefresh = false,
+                        backgroundRefresh = true,
+                        intent = SharedActivityIntent.Refresh,
+                        fetchReason = InboxFetchReason.InPlaceReconcile
+                    )
+                }
+            }
+    }
+
+    private fun resetInPlaceReconcileLocked() {
+        inPlaceReconcileJob?.cancel()
+        inPlaceReconcileJob = null
+        inPlaceReconcileMark = null
+    }
 
     private fun realtimeBackgroundRefreshWaitMillisLocked(): Long {
         val lastStartedAt = lastResetLoadStartedAtMillis ?: return 0L
@@ -3014,7 +3269,11 @@ class SharedActivityStore internal constructor(
                 val localVersion = realtimeHighWater[canonical.key] ?: return@map canonical
                 if (canonical.isChannelOrDmRow()) {
                     val reconciledRow = reconcileRealtimeChannelRow(canonical, localVersion, currentChannels[canonical.key])
-                    if (reconciledRow !== canonical) keptChannelKeys += canonical.key
+                    if (reconciledRow !== canonical) {
+                        keptChannelKeys += canonical.key
+                        // The kept unread is not in the answer's total yet.
+                        if (localVersion.inPlaceUnread) preserveTotalUnreadFloor = true
+                    }
                     return@map reconciledRow
                 }
                 val current = currentThreads[canonical.key]
@@ -3047,7 +3306,9 @@ class SharedActivityStore internal constructor(
                 }
                 preserveTotalUnreadFloor = true
                 keptThreadKeys += canonical.key
-                canonical.withRealtimeActivityProjection(current)
+                canonical.withRealtimeActivityProjection(current).let { held ->
+                    if (localVersion.inPlaceUnread) held.withUnreadOf(current) else held
+                }
             }
         val missingCurrent =
             if (preservePendingRealtimeUnread) {
@@ -3133,8 +3394,17 @@ class SharedActivityStore internal constructor(
             lastMessageSenderAvatarWireValue = current.lastMessageSenderAvatarWireValue,
             latestDelegatedBy = current.latestDelegatedBy,
             latestActivitySeq = current.latestActivitySeq
-        )
+        ).let { held -> if (localVersion.inPlaceUnread) held.withUnreadOf(current) else held }
     }
+
+    /** `mobile_inbox_inplace_v0`: a served row behind an in-place patch keeps the patched unread. */
+    private fun InboxItem.withUnreadOf(current: InboxItem): InboxItem =
+        copy(
+            unreadCount = current.unreadCount,
+            firstUnreadMessageId = current.firstUnreadMessageId,
+            hasMention = current.hasMention,
+            firstMentionMessageId = current.firstMentionMessageId
+        )
 
     /**
      * This served row reached the reply a `message:new` patch showed: its seq is past it, or the
@@ -4713,7 +4983,12 @@ sealed interface SharedActivityIntent {
     data class ProjectThreadUnfollow(val item: InboxItem, val phase: HomeThreadUnfollowPhase) : SharedActivityIntent
     data class ApplyRealtimeEvent(
         val event: RealtimeEvent,
-        val allowLocalPatch: Boolean = true
+        val allowLocalPatch: Boolean = true,
+        /**
+         * The conversation open on screen (the shell's seen selection): with
+         * `mobile_inbox_inplace_v0` a live message there patches its row without one more unread.
+         */
+        val activeConversationId: String? = null
     ) : SharedActivityIntent
     data class ApplyRealtimeSummaryEvent(
         val event: RealtimeEvent,

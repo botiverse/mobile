@@ -196,7 +196,8 @@ class SharedHomeShellStore(
             acceptActivityRealtime(
                 SharedActivityIntent.ApplyRealtimeEvent(
                     event = event,
-                    allowLocalPatch = current.home.allowsLocalActivityPatch(event)
+                    allowLocalPatch = current.home.allowsLocalActivityPatch(event),
+                    activeConversationId = current.selectedConversationId?.takeIf { selectedConversationSeen() }
                 )
             )
         } else if (event is PerReceiverReadStateChanged || current.primarySurfaceVisible) {
@@ -274,7 +275,8 @@ class SharedHomeShellStore(
             dispatchActivity(
                 SharedActivityIntent.ApplyRealtimeEvent(
                     event = event,
-                    allowLocalPatch = current.home.allowsLocalActivityPatch(event)
+                    allowLocalPatch = current.home.allowsLocalActivityPatch(event),
+                    activeConversationId = current.selectedConversationId?.takeIf { selectedConversationSeen() }
                 )
             )
         } else if (event is PerReceiverReadStateChanged || current.primarySurfaceVisible) {

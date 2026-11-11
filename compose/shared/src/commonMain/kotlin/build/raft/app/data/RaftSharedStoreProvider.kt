@@ -1418,7 +1418,17 @@ internal class RaftSharedStoreProvider private constructor(
         )
     }
 
+    /** `mobile_inbox_inplace_v0` (Inbox refresh step 4) for [serverId]; default off. */
+    private fun inboxInPlaceEnabled(serverId: String): Boolean =
+        serverFeatureFlags.isEnabled(ServerId(serverId), MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY)
+
     init {
+        // Inbox refresh step 4, rule 6: with the flag on, a server whose Activity All list is loaded
+        // takes its badge from that list instead of the summary read.
+        activityUnreadSummaryStore.deriveBadgeFromList { owner ->
+            inboxInPlaceEnabled(owner.serverId) &&
+                homeActivityStores.entries().any { (_, store) -> store.state.value.derivesBadgeFor(owner) }
+        }
         // Message storage Phase 0a: the V1 shadow writers are gone and nothing ever read their rows, so drop
         // every surviving `sync-core.messages.v1` row once per start (idempotent; V2 and read-state untouched).
         threadSendScope.launch {
@@ -2570,6 +2580,7 @@ internal class RaftSharedStoreProvider private constructor(
                 activityObjectsRepository = NetworkActivityObjectsRepository(networkClient),
                 hiddenRealtimeBackgroundRefreshIntervalMillis = ActivityHiddenRealtimeBackgroundRefreshIntervalMillis,
                 syncReloads = syncReloadLedger,
+                inboxInPlaceEnabled = ::inboxInPlaceEnabled,
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {
                         if (scope == RaftShellStoreScope.Legacy) homeActivityStoreScope else RaftStoreThreading.newScope()
