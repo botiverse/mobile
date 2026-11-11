@@ -19,12 +19,28 @@ runs:
         fi
         case "$(uname -s)" in
           Linux)
-            if command -v apt-get >/dev/null 2>&1; then
-              sudo apt-get update -y
-              sudo apt-get install -y ripgrep
+            # apt mirrors can be unreachable from the runner (DNS failures on
+            # archive.ubuntu.com, 2026-11-11); fall back to the pinned static
+            # release from GitHub, which checkout already proved reachable.
+            if command -v apt-get >/dev/null 2>&1 \
+              && timeout 180 sudo apt-get update -y \
+              && timeout 180 sudo apt-get install -y ripgrep; then
+              :
             else
-              echo 'ripgrep is missing and apt-get is unavailable' >&2
-              exit 1
+              echo 'apt-get could not install ripgrep; using the static release' >&2
+              rg_version=14.1.1
+              case "$(uname -m)" in
+                x86_64) rg_target=x86_64-unknown-linux-musl ;;
+                aarch64 | arm64) rg_target=aarch64-unknown-linux-gnu ;;
+                *) echo "no ripgrep release for $(uname -m)" >&2; exit 1 ;;
+              esac
+              rg_dir="${RUNNER_TEMP:-/tmp}/ripgrep"
+              mkdir -p "$rg_dir"
+              curl -fsSL --retry 3 \
+                "https://github.com/BurntSushi/ripgrep/releases/download/${rg_version}/ripgrep-${rg_version}-${rg_target}.tar.gz" \
+                | tar -xz -C "$rg_dir" --strip-components=1
+              echo "$rg_dir" >> "$GITHUB_PATH"
+              export PATH="$rg_dir:$PATH"
             fi
             ;;
           Darwin)
