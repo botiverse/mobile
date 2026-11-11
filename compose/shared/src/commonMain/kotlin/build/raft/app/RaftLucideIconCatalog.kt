@@ -175,6 +175,7 @@ enum class RaftLucideIconName(val wireName: String) {
     MailOpen("mail-open"),
     MailPlus("mail-plus"),
     MapPin("map-pin"),
+    Megaphone("megaphone"),
     MessageCircle("message-circle"),
     MessageCircleOff("message-circle-off"),
     MessageCirclePlus("message-circle-plus"),

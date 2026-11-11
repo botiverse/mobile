@@ -209,6 +209,15 @@ internal fun channelSettingsCanStopAllAgents(channel: HomeChannelRow, serverRole
 internal fun channelSettingsUsesStandalonePage(newDesignSettingsEnabled: Boolean): Boolean =
     newDesignSettingsEnabled
 
+/** The channel's wire type, as `channelTypeSupportsAnnouncement` reads it ("channel", "private", "joint", "dm", ...). */
+internal fun channelSettingsAnnouncementChannelType(channel: HomeChannelRow): String =
+    when (channel.kind) {
+        ConversationKind.Joint -> "joint"
+        ConversationKind.Channel -> channel.channelType?.takeIf { it.isNotBlank() } ?: "channel"
+        ConversationKind.DirectMessage -> "dm"
+        else -> channel.kind.name.lowercase()
+    }
+
 internal fun channelSettingsIsJoint(channel: HomeChannelRow): Boolean =
     channel.kind == ConversationKind.Joint ||
         channel.channelType.equals("joint", ignoreCase = true)
@@ -545,6 +554,14 @@ private fun ChannelSettingsPageScreen() {
         if (settingsState.effect != null) settingsStore.dispatch(ChannelSettingsIntent.ConsumeEffect)
     }
 
+    // Channel announcements (channel_announcement_v0): the Announcement row, for a channel that may have one.
+    val announcementKey =
+        rememberChannelAnnouncementKey(
+            flags = sharedStores.serverFeatureFlags,
+            serverId = route.serverId.value,
+            channelId = route.channelId.value,
+            channelType = channel?.let(::channelSettingsAnnouncementChannelType),
+        )
     Box(modifier = Modifier.fillMaxSize()) {
         ChannelSettingsScaffold(refreshing = settingsState.refreshing, onBack = router::closePage) {
             when {
@@ -571,6 +588,22 @@ private fun ChannelSettingsPageScreen() {
                             ),
                         longMessageCollapseSetting = longMessageCollapseSetting,
                         agentStatusResolver = agentStatusResolver,
+                        announcement =
+                            if (announcementKey != null) {
+                                @Composable {
+                                    ChannelSettingsAnnouncementSection(
+                                        sharedStores = sharedStores,
+                                        storeScope = storeScope,
+                                        key = announcementKey,
+                                        channelName = channel.name,
+                                        canEdit = settingsState.permissions().editMetadata && !channel.archived && authorityAccepted,
+                                        active = true,
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                                    )
+                                }
+                            } else {
+                                null
+                            },
                         notificationLevelTarget =
                             RaftNotificationLevelTarget(
                                 serverId = route.serverId.value,
@@ -852,6 +885,8 @@ internal fun ChannelSettingsContent(
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     /** The channel's notification level row (design §4.3: "Notifications" next to Mute); null hides it. */
     notificationLevelTarget: RaftNotificationLevelTarget? = null,
+    /** Channel announcements: the Announcement row after the members (ChannelSettingsAnnouncementSection); null hides it. */
+    announcement: (@Composable () -> Unit)? = null,
     callbacks: ChannelSettingsCallbacks,
 ) {
     // task #177: standalone page; the last row clears the system navigation bar.
@@ -871,6 +906,9 @@ internal fun ChannelSettingsContent(
                 onOpen = callbacks.onOpenMembers,
                 onAdd = callbacks.onAddMember,
             )
+        }
+        if (announcement != null) {
+            item(key = "announcement") { announcement() }
         }
         if (channelSettingsIsJoint(channel)) {
             item(key = "joint-connections") {
