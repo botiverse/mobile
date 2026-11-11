@@ -128,8 +128,13 @@ internal fun raftNativeNavBarSplit(actions: List<RaftNativeNavBarAction>): List<
 
 /** The leading image of the host's title view. */
 sealed interface RaftNativeNavBarTitleLeading {
-    /** The conversation's channel glyph tile: `channel` / `private` / `joint`, or on the public page. */
-    data class Channel(val channelKind: String?, val onPublicPage: Boolean) : RaftNativeNavBarTitleLeading
+    /**
+     * The conversation's channel glyph tile, from the one chooser ([raftChannelKindGlyph]): `#`, lock,
+     * joint branch, the public page's hash-globe or the External glyph.
+     */
+    data class Channel(val glyph: RaftChannelKindGlyph) : RaftNativeNavBarTitleLeading {
+        constructor(channelKind: String?, onPublicPage: Boolean) : this(raftChannelKindGlyph(channelKind, onPublicPage))
+    }
 
     /**
      * A DM peer's avatar, any wire value [RaftAppAvatar] draws (an uploaded photo, a
@@ -388,15 +393,15 @@ private fun RaftNativeNavBarTitleExtras.toJson(): JsonObject =
                     "leading",
                     buildJsonObject {
                         put("kind", "channel")
-                        put("channelKind", lead.channelKind?.lowercase() ?: "channel")
-                        put("publicPage", lead.onPublicPage)
+                        put("channelKind", lead.glyph.wireChannelKind())
+                        put("publicPage", lead.glyph == RaftChannelKindGlyph.PublicPage)
                         put("tileArgb", raftArgbHex(RaftColor.Brand))
                         put("inkArgb", raftArgbHex(RaftColor.StickerInk))
                         // The Compose tile's glyph (the public page's hash-globe has no asset: globe).
                         put(
                             "imageAsset",
                             raftNativeNavBarImageAssetName(
-                                if (lead.onPublicPage) RaftLucideIconName.Globe else lead.channelKind.threadChannelHeaderIcon()
+                                lead.glyph.iconName
                             )
                         )
                     }

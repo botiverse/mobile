@@ -45,7 +45,9 @@ data class RaftForwardTargetPickerItem<T>(
     val cacheMemberId: String? = null,
     val cacheServerId: String? = null,
     /** The thread / task the picker was opened from: a trailing soft muted "Current" badge. */
-    val current: Boolean = false
+    val current: Boolean = false,
+    /** A channel row's channel id: its glyph is the Home row's ([RaftChannelKinds], web `ChannelIcon`). */
+    val channelId: String? = null,
 ) {
     val rowKey: String
         get() = "${visualKind.name}:$stableKey"
@@ -302,12 +304,21 @@ internal suspend fun raftForwardPickerProgressiveSearch(
     return final?.takeIf { isCurrent() }
 }
 
+/** A channel row's wire type, for the one glyph chooser ([raftChannelKindGlyph]); null for other rows. */
+internal fun RaftForwardTargetVisualKind.channelType(): String? =
+    when (this) {
+        RaftForwardTargetVisualKind.PublicChannel -> "channel"
+        RaftForwardTargetVisualKind.PrivateChannel -> "private"
+        RaftForwardTargetVisualKind.JointChannel -> JointChannelKindWireValue
+        else -> null
+    }
+
 internal fun RaftForwardTargetVisualKind.iconName(): RaftLucideIconName? =
     when (this) {
         RaftForwardTargetVisualKind.DirectMessage -> null
-        RaftForwardTargetVisualKind.PublicChannel -> RaftLucideIconName.Hash
-        RaftForwardTargetVisualKind.PrivateChannel -> RaftLucideIconName.Lock
-        RaftForwardTargetVisualKind.JointChannel -> RaftLucideIconName.GitBranch
+        RaftForwardTargetVisualKind.PublicChannel,
+        RaftForwardTargetVisualKind.PrivateChannel,
+        RaftForwardTargetVisualKind.JointChannel -> raftChannelKindGlyph(channelType()).iconName
         RaftForwardTargetVisualKind.Thread -> null
         RaftForwardTargetVisualKind.Task -> RaftLucideIconName.ListTodo
     }

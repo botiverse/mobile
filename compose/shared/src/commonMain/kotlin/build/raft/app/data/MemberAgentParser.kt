@@ -10,6 +10,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
@@ -43,6 +44,20 @@ private data class WireServerMember(
     val joinedAt: String? = null,
     val membershipStatus: String? = null,
     val createdAgents: List<WireAgent> = emptyList(),
+    /**
+     * `?channelId=` reads only (botiverse/slock packages/server/src/routes/servers.ts
+     * `GET /:id/members/:memberId/profile`, `resolveProfileChannelServers`): the person's servers
+     * in that channel, `[]` when its roster lists them through none. Absent otherwise.
+     */
+    val servers: List<WireMemberServer>? = null,
+)
+
+/** `channelService.ChannelMemberServer`: `{ id, name, slug }`. */
+@Serializable
+private data class WireMemberServer(
+    val id: String,
+    val name: String? = null,
+    val slug: String? = null,
 )
 
 @Serializable
@@ -871,6 +886,7 @@ private fun WireServerMember.toMemberProfile(): MemberProfile {
         membershipStatus = membershipStatus?.takeIf { it.isNotBlank() }
             ?: joinedAt?.let { "active" },
         createdAgents = createdAgents.filterNot { it.isDeletedAgent }.map { it.toAgentProfile() },
+        servers = servers?.map { server -> MemberServerRef(id = server.id, name = server.name.orEmpty(), slug = server.slug.orEmpty()) },
     )
 }
 

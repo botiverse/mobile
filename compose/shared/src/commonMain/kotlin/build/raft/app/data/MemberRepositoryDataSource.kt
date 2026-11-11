@@ -492,12 +492,23 @@ private suspend fun RaftNetworkClient.updateAgent(
 ): HomeNetworkResponse =
     request(priority, "agents/${agentId.value}", method = "PATCH", bodyText = bodyText, query = query)
 
+/**
+ * `GET /servers/:id/members/:memberId/profile`; with [channelId] (`?channelId=`, opened from that
+ * channel) the answer carries `servers`, the person's servers in it (botiverse/slock
+ * packages/server/src/routes/servers.ts). A channel the viewer cannot see is a 404.
+ */
 private suspend fun RaftNetworkClient.memberProfile(
     priority: DataRequestPriority,
     serverId: ServerId,
-    memberId: MemberId
+    memberId: MemberId,
+    channelId: ChannelId? = null
 ): HomeNetworkResponse =
-    request(priority, "servers/${serverId.value}/members/${memberId.value}/profile", serverIdOverride = serverId)
+    request(
+        priority,
+        "servers/${serverId.value}/members/${memberId.value}/profile",
+        serverIdOverride = serverId,
+        query = channelId?.let { listOf("channelId" to it.value) }.orEmpty()
+    )
 
 private suspend fun RaftNetworkClient.agentDirectMessages(priority: DataRequestPriority, agentId: MemberId): HomeNetworkResponse =
     request(priority, "agents/${agentId.value}/agent-dms")
@@ -681,6 +692,22 @@ class RealMemberRepository(
             memberId = memberId,
             serverId = serverId ?: context.server.id,
             source = "member_profile"
+        )
+    }
+
+    override suspend fun getMemberProfileInChannel(
+        priority: DataRequestPriority,
+        memberId: MemberId,
+        serverId: ServerId,
+        channelId: ChannelId
+    ): DataResult<MemberProfile> {
+        currentContext() ?: return authRequired()
+        return getHumanProfile(
+            priority = priority,
+            memberId = memberId,
+            serverId = serverId,
+            source = "member_profile_in_channel",
+            channelId = channelId
         )
     }
 
@@ -1246,12 +1273,13 @@ class RealMemberRepository(
         priority: DataRequestPriority,
         memberId: MemberId,
         serverId: ServerId,
-        source: String
+        source: String,
+        channelId: ChannelId? = null
     ): DataResult<MemberProfile> =
         currentContext()?.let { context ->
             executeMember(
                 emptyReason = EmptyReason.NoMembers,
-                block = { networkClient.memberProfile(priority, serverId, memberId) },
+                block = { networkClient.memberProfile(priority, serverId, memberId, channelId) },
                 source = source,
                 mapper = { bodyText ->
                     parseSharedMemberProfile(bodyText)

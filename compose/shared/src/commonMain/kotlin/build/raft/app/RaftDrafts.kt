@@ -154,13 +154,18 @@ internal data class RaftDraftDirectory(
         taskId?.let { id -> tasks.firstOrNull { it.id.value == id } } ?: taskForConversation(conversationChannelId)
 
     companion object {
-        fun from(serverId: String, snapshot: HomeSnapshot?, tasks: List<TaskSummary>): RaftDraftDirectory {
+        fun from(
+            serverId: String,
+            snapshot: HomeSnapshot?,
+            tasks: List<TaskSummary>,
+            externalChannelsEnabled: Boolean = false,
+        ): RaftDraftDirectory {
             val home = snapshot?.takeIf { it.server.id.value == serverId }
             return RaftDraftDirectory(
                 serverId = serverId,
                 channels = home?.channels.orEmpty().associateBy { it.channelId.value },
                 directMessages = home?.directMessages.orEmpty().associateBy { it.channelId.value },
-                channelSymbols = home?.activityChannelSymbolsByChannelId().orEmpty(),
+                channelSymbols = home?.activityChannelSymbolsByChannelId(externalChannelsEnabled).orEmpty(),
                 tasks = tasks,
             )
         }
@@ -433,7 +438,11 @@ internal fun rememberRaftDraftDirectory(source: RaftDraftsSource?, snapshot: Hom
             source.tasksDataStore?.projectionFlow(serverId, SharedTasksScope.Server)?.map { it.tasks } ?: flowOf(emptyList())
         }
     val tasks by tasksFlow.collectAsState(emptyList())
-    return remember(serverId, snapshot, tasks) { RaftDraftDirectory.from(serverId, snapshot, tasks) }
+    // The app shell's external_channels_v1 for the current server (LocalRaftChannelKinds).
+    val externalChannelsEnabled = currentRaftChannelKinds().externalChannelsEnabled
+    return remember(serverId, snapshot, tasks, externalChannelsEnabled) {
+        RaftDraftDirectory.from(serverId, snapshot, tasks, externalChannelsEnabled)
+    }
 }
 
 /** The app's one lookup cache (Home's count and the Drafts list read the same answers). */

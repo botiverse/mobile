@@ -3323,6 +3323,7 @@
     <string name="settings_public_visibility_failed_guest_join_update">無法更新訪客加入設定</string>
     <string name="settings_public_visibility_failed_search_update">無法更新搜尋引擎存取設定</string>
     <string name="channel_public_page_readable">任何人都能在公開頁面閱讀這個頻道</string>
+    <string name="channel_external_members">外部頻道</string>
     <string name="layout_server_public_page_live">已公開：任何人無須登入即可閱讀其公開頻道</string>
     <string name="member_activity_overview_view_label">動態檢視</string>
     <string name="member_activity_overview_view_overview">概覽</string>

@@ -71,6 +71,7 @@ enum class RaftLucideIconName(val wireName: String) {
     Minimize2("minimize-2"),
     Menu("menu"),
     Eraser("eraser"),
+    ExternalChannel("external-channel"),
     ExternalLink("external-link"),
     Eye("eye"),
     EyeOff("eye-off"),

@@ -61,7 +61,6 @@ import androidx.compose.foundation.layout.RowScope
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftExternalBridgeBadge
 import build.raft.app.components.externalBridgeBadgeVisible
-import build.raft.app.components.RaftHashGlobeIcon
 import build.raft.app.components.RaftPublicPageGlobe
 import build.raft.app.components.channelOnPublicPage
 import build.raft.app.components.RaftAppSkeleton
@@ -439,6 +438,10 @@ data class RaftHomeConversationItem(
     val bridgeProvider: String? = null,
     /** Channel `guestVisible`; combine with the server's publicPageLive via [channelOnPublicPage]. */
     val guestVisible: Boolean = false,
+    /** Channel `hasExternalRelation` (a Guest or an open external invite); see [raftChannelKindGlyph]. */
+    val hasExternalRelation: Boolean = false,
+    /** The row's server has `external_channels_v1` on: an external channel draws the External glyph. */
+    val externalChannelsEnabled: Boolean = false,
     /**
      * An unread message here mentions the user (web unread summary `hasMention`, or a followed
      * thread's): the row's yellow @ sticker. Projected from the Home store's row `mentionCount`
@@ -4801,46 +4804,38 @@ internal fun RaftHomeConversationItem.homeChannelSymbol(): String =
     homeChannelKind().toRaftChannelSymbol()
 
 /**
- * Row glyph symbol including the public-page mark: a regular channel readable on the server's
- * live public page draws the hash-globe glyph in place of `#` (web channelKindIcon.tsx:22).
+ * Row glyph symbol from the one chooser ([raftChannelKindGlyph]): the External glyph for an external
+ * channel while the server's `external_channels_v1` is on, the public-page hash-globe for a regular
+ * channel readable on the server's live public page (web channelKindIcon.tsx), else the kind's own.
  * Interaction identities keep using the plain [homeChannelSymbol] so they never change with it.
  */
-internal fun RaftHomeConversationItem.homeChannelSymbol(serverPublicPageLive: Boolean): String =
-    if (
-        channelOnPublicPage(
-            serverPublicPageLive = serverPublicPageLive,
-            channelKind = homeChannelKind(),
-            guestVisible = guestVisible,
-            archived = archived,
-        )
-    ) {
-        HomeChannelSymbolHashGlobe
-    } else {
-        homeChannelSymbol()
-    }
+internal fun RaftHomeConversationItem.homeChannelSymbol(serverPublicPageLive: Boolean): String {
+    val type = homeChannelKind()
+    return raftChannelKindGlyph(
+        channelType = type,
+        onPublicPage =
+            channelOnPublicPage(
+                serverPublicPageLive = serverPublicPageLive,
+                channelKind = type,
+                guestVisible = guestVisible,
+                archived = archived,
+            ),
+        hasExternalRelation = hasExternalRelation,
+        externalChannelsEnabled = externalChannelsEnabled,
+    ).symbol
+}
 
 /**
- * The same row glyph symbol for a Home snapshot channel row, read through the sidebar item's
- * kind / channelType / guestVisible / archived (as `toSharedHomeConversationItem` maps them), so
- * other surfaces (Activity) pick exactly the icon the Home sidebar draws.
+ * The same row glyph symbol for a Home snapshot channel row ([raftChannelKindGlyph]), so other
+ * surfaces (Activity, drafts) pick exactly the icon the Home sidebar draws.
  */
-internal fun HomeChannelRow.homeChannelSymbol(serverPublicPageLive: Boolean): String =
-    RaftHomeConversationItem(
-        id = channelId.value,
-        kind = kind.toWireChannelKindOrNull() ?: kind.toRaftSurfaceKind(),
-        channelType = channelType?.takeIf { it.isNotBlank() },
-        guestVisible = guestVisible,
-        archived = archived,
-    ).homeChannelSymbol(serverPublicPageLive)
+internal fun HomeChannelRow.homeChannelSymbol(serverPublicPageLive: Boolean, externalChannelsEnabled: Boolean = false): String =
+    raftChannelKindGlyph(serverPublicPageLive, externalChannelsEnabled).symbol
 
 internal const val HomeChannelSymbolHashGlobe = "hash-globe"
 
 internal fun String?.toRaftChannelSymbol(): String =
-    when (this?.lowercase()) {
-        "private" -> "lock"
-        JointChannelKindWireValue -> "git-branch"
-        else -> "#"
-    }
+    raftChannelKindGlyph(this).symbol
 
 internal fun RaftHomeSidebarSelection.sectionSelection(
     section: RaftHomeConversationSection
@@ -7516,8 +7511,8 @@ private fun HomeSidebarChannelRow(
 }
 
 /**
- * The glyph of a [homeChannelSymbol] (`SidebarItemChannelIcon`): `#`, lock, joint branch or the
- * public-page hash-globe, at [size] in the current ink ([LocalRaftContentColor]). Home sidebar rows
+ * The glyph of a [homeChannelSymbol] (`SidebarItemChannelIcon`): `#`, lock, joint branch, the
+ * External glyph or the public-page hash-globe, at [size] in the current ink ([LocalRaftContentColor]). Home sidebar rows
  * draw it at the row's icon size; Activity draws it in a list row's channel tile and as a card's
  * title icon.
  */
@@ -7526,8 +7521,10 @@ internal fun HomeSidebarChannelGlyph(symbol: String, size: Dp = raftSidebarItemI
     when (symbol) {
         "#" -> RaftGlyphIcon(RaftGlyph.Hash, modifier = modifier, size = size)
         "lock" -> RaftGlyphIcon(RaftGlyph.Lock, modifier = modifier, size = size)
-        HomeChannelSymbolHashGlobe -> RaftHashGlobeIcon(size = size, color = raftArgbHex(LocalRaftContentColor.current), modifier = modifier)
-        else -> RaftLucideIcon(symbol, modifier.size(size), color = raftArgbHex(LocalRaftContentColor.current))
+        else ->
+            RaftChannelKindGlyph.fromSymbol(symbol)?.let { glyph ->
+                RaftChannelKindIcon(glyph, size = size, color = raftArgbHex(LocalRaftContentColor.current), modifier = modifier)
+            } ?: RaftLucideIcon(symbol, modifier.size(size), color = raftArgbHex(LocalRaftContentColor.current))
     }
 }
 

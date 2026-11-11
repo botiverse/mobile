@@ -32,11 +32,15 @@ internal data class ThreadHeaderDisplayModel(
     /** Channel-surface only: the directory row's `guestVisible` / archived state. */
     val channelGuestVisible: Boolean = false,
     val channelArchived: Boolean = false,
+    /** Channel-surface only: the directory row's `hasExternalRelation`. */
+    val channelHasExternalRelation: Boolean = false,
     /**
      * The header's server `publicPageLive`, read from the session server list (never from the
      * route payload). Applied by the Thread route after projection.
      */
-    val serverPublicPageLive: Boolean = false
+    val serverPublicPageLive: Boolean = false,
+    /** The header's server `external_channels_v1`. Applied by the Thread route after projection. */
+    val externalChannelsEnabled: Boolean = false,
 ) {
     /** Web ChatPanel.tsx:1366: the channel header icon carries the public-page globe. */
     val channelOnPublicPage: Boolean
@@ -48,7 +52,23 @@ internal data class ThreadHeaderDisplayModel(
                     guestVisible = channelGuestVisible,
                     archived = channelArchived,
                 )
+
+    /** The channel header's glyph, from the one chooser (web ChatPanel `ChannelIcon`). */
+    val channelKindGlyph: RaftChannelKindGlyph
+        get() =
+            raftChannelKindGlyph(
+                channelType = channelKind,
+                onPublicPage = channelOnPublicPage,
+                hasExternalRelation = surfaceKind == RaftThreadSurfaceKind.Channel && channelHasExternalRelation,
+                externalChannelsEnabled = surfaceKind == RaftThreadSurfaceKind.Channel && externalChannelsEnabled,
+            )
 }
+
+/** The header's server facts the channel glyph reads, applied after projection. */
+internal data class ThreadHeaderServerMarks(
+    val publicPageLive: Boolean,
+    val externalChannelsEnabled: Boolean,
+)
 
 internal sealed interface ThreadHeaderProjectionInput {
     // Order IS the contract (t432 family ③): implementations list ids that name the
@@ -347,6 +367,7 @@ internal fun RaftThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                 channelKind = directory.channelKind,
                 bridgeProvider = directory.bridgeProvider,
                 channelGuestVisible = directory.guestVisible,
+                channelHasExternalRelation = directory.hasExternalRelation,
                 channelArchived = directory.archived
             )
         RaftThreadSurfaceKind.ReplyThread ->

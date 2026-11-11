@@ -84,6 +84,14 @@ data class HomeChannelWireDto(
      * reads/writes `guestJoinable`; web `channel.guestJoinable`): guests may join the channel.
      */
     val guestJoinable: Boolean = false,
+    /**
+     * The channel has people from outside the Server (a Guest, or an open external invite):
+     * botiverse/slock packages/server/src/services/channelService.ts `attachExternalRelations`,
+     * on `GET /api/channels` items and `GET /api/channels/:id`. Omitted (false) for a joint
+     * participant's copy, DMs, and for a Guest on any channel but its own. Web reads it through
+     * `isSidebarExternalSectionChannel` (components/layout/sidebarChannelVisibility.ts).
+     */
+    val hasExternalRelation: Boolean = false,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
@@ -164,6 +172,8 @@ private data class HomeChannelDetailWireDto(
      * reads/writes `guestJoinable`; web `channel.guestJoinable`): guests may join the channel.
      */
     val guestJoinable: Boolean = false,
+    /** See [HomeChannelWireDto.hasExternalRelation]. */
+    val hasExternalRelation: Boolean = false,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
@@ -259,6 +269,7 @@ internal fun parseRaftChannelDetail(
             bridge = wire.bridge,
             guestVisible = wire.guestVisible,
             guestJoinable = wire.guestJoinable,
+            hasExternalRelation = wire.hasExternalRelation,
             activityMuted = wire.activityMuted,
             muteFromSeq = wire.muteFromSeq,
             activityMuteSupported = wire.activityMuteSupported,
@@ -470,6 +481,7 @@ internal fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
         bridgeProvider = bridge.normalizedBridgeProviderOrNull(),
         guestVisible = guestVisible,
         guestJoinable = guestJoinable,
+        hasExternalRelation = hasExternalRelation,
         activityNotificationPreference =
             ChannelActivityNotificationPreference(
                 activityMuted = activityMuted,

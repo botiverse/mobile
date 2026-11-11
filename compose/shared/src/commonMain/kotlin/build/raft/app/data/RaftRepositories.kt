@@ -407,6 +407,18 @@ interface MemberRepository {
         memberId: MemberId,
         serverId: ServerId? = null
     ): DataResult<MemberProfile>
+
+    /**
+     * A person's profile opened from [channelId] (a thread's parent), read in [serverId], the
+     * channel's server (web ProfilePanel `?channelId=`, botiverse/slock #14009): the answer's
+     * [MemberProfile.servers] names the person's servers in that channel.
+     */
+    suspend fun getMemberProfileInChannel(
+        priority: DataRequestPriority,
+        memberId: MemberId,
+        serverId: ServerId,
+        channelId: ChannelId
+    ): DataResult<MemberProfile> = getMemberProfile(priority, memberId, serverId)
     suspend fun updateAgentProfile(
         priority: DataRequestPriority,
         request: AgentProfileUpdateRequest

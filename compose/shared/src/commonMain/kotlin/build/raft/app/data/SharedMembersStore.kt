@@ -37,7 +37,10 @@ data class SharedMembersMemberSuggestion(
 
 data class SharedMembersChannelSuggestion(
     val name: String,
-    val subtitle: String? = null
+    val subtitle: String? = null,
+    /** The channel's id and wire type (`channel` / `private` / `joint`), for its kind glyph. */
+    val channelId: String? = null,
+    val channelType: String? = null,
 )
 
 data class SharedMembersMentionScope(
@@ -199,7 +202,9 @@ private fun List<ConversationSummary>.toSharedMembersChannelSuggestions(): List<
             deduped[key] =
                 SharedMembersChannelSuggestion(
                     name = name,
-                    subtitle = channel.subtitle?.trim()?.takeIf { it.isNotBlank() }
+                    subtitle = channel.subtitle?.trim()?.takeIf { it.isNotBlank() },
+                    channelId = channel.channelId?.value,
+                    channelType = if (channel.kind == ConversationKind.Joint) "joint" else channel.channelType,
                 )
         }
     }
