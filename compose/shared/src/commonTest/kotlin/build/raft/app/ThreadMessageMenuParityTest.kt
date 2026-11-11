@@ -306,8 +306,12 @@ class ThreadMessageMenuParityTest {
             listOf(
                 ThreadNewMessageMenuTool.SelectText,
                 ThreadNewMessageMenuTool.CopyLink,
+                // slock #14222: a channel message whose thread is followed marks that thread, and
+                // the channel's own Mark as Unread ends the row.
+                ThreadNewMessageMenuTool.MarkThreadUnread,
                 ThreadNewMessageMenuTool.FollowThread,
-                ThreadNewMessageMenuTool.ConvertToTask
+                ThreadNewMessageMenuTool.ConvertToTask,
+                ThreadNewMessageMenuTool.MarkConversationUnread
             ),
             availability.secondaryTools()
         )
@@ -377,7 +381,8 @@ class ThreadMessageMenuParityTest {
                 onConvertToTask = { routed += ThreadNewMessageMenuTool.ConvertToTask },
                 onSelectText = { routed += ThreadNewMessageMenuTool.SelectText },
                 onMarkThreadUnread = { routed += ThreadNewMessageMenuTool.MarkThreadUnread },
-                onCopySelection = { routed += ThreadNewMessageMenuTool.CopySelection }
+                onCopySelection = { routed += ThreadNewMessageMenuTool.CopySelection },
+                onMarkConversationUnread = { routed += ThreadNewMessageMenuTool.MarkConversationUnread }
             )
 
         ThreadNewMessageMenuSecondaryToolOrder.forEach { it.dispatch(callbacks) }

@@ -106,6 +106,98 @@ class ThreadMarkThreadUnreadMenuTest {
         assertEquals(listOf(ThreadNewMessageMenuTool.SelectText, ThreadNewMessageMenuTool.CopyLink), notFollowed.secondaryTools())
     }
 
+    // botiverse/slock #14222 (web useMessageMenuMarkUnread): in a channel's or DM's list, a
+    // message's menu offers the conversation's Mark as Unread and, when the person follows the
+    // message's thread, that thread's.
+    @Test
+    fun aConversationListOffersItsOwnMarkAsUnreadNamedByItsKind() {
+        data class Case(val name: String, val slice: ThreadTimelineSlice, val expected: ThreadMarkConversationUnreadKind?)
+        listOf(
+            Case("channel", slice(RaftThreadSurfaceKind.Channel), ThreadMarkConversationUnreadKind.Channel),
+            Case("dm", slice(RaftThreadSurfaceKind.DirectMessage), ThreadMarkConversationUnreadKind.DirectMessage),
+            Case("channel previewed without joining", slice(RaftThreadSurfaceKind.Channel).copy(joined = false), null),
+            Case("reply thread", slice(RaftThreadSurfaceKind.ReplyThread), null),
+            Case("task conversation", slice(RaftThreadSurfaceKind.Channel).copy(channelKind = RaftTaskConversationChannelKind), null),
+        ).forEach { case ->
+            assertEquals(case.expected, capabilities(message("m1"), case.slice, null).markConversationUnread, case.name)
+        }
+        assertNull(
+            capabilities(message("m1", deliveryState = ThreadMessageDeliverySending), slice(RaftThreadSurfaceKind.Channel), null)
+                .markConversationUnread,
+            "a local send has none"
+        )
+    }
+
+    @Test
+    fun aListMessageWhoseThreadIsFollowedMarksThatThread() {
+        val channel = slice(RaftThreadSurfaceKind.Channel)
+        fun markedThread(slice: ThreadTimelineSlice, metadata: ThreadReplyMetadata): String? =
+            threadMessageMenuCapabilities(
+                message = message("parent-1"),
+                replyMetadata = metadata,
+                slice = slice,
+                writeActionsEnabled = true,
+                taskV2Enabled = true,
+            ).markThreadUnreadChannelId
+        assertEquals("thread-ch-1", markedThread(channel, followed))
+        assertEquals("thread-ch-1", markedThread(slice(RaftThreadSurfaceKind.DirectMessage), followed))
+        assertEquals("thread-ch-1", markedThread(channel.copy(joined = false), followed), "a preview still marks a followed thread")
+        assertNull(markedThread(channel, followed.copy(isThreadFollowed = false)), "not followed")
+        assertNull(markedThread(channel, followed.copy(threadChannelId = " ")), "no thread channel")
+        assertNull(
+            markedThread(channel.copy(channelKind = RaftTaskConversationChannelKind), followed),
+            "a task conversation acts on itself as a thread"
+        )
+    }
+
+    @Test
+    fun classicMenuPutsTheConversationsLastOfTheJustForMeSection() {
+        var marked = 0
+        val actions =
+            classicActions(message("m1"), show = true, conversation = ThreadMarkConversationUnreadKind.DirectMessage, onMarkConversationUnread = { marked += 1 })
+        val item = actions.last()
+        assertEquals(Res.string.thread_action_mark_dm_unread.desc(), item.label)
+        assertEquals(RaftLucideIconName.MessageSquareDot, item.icon)
+        assertEquals("personal", item.group)
+        assertTrue(actions.indexOfFirst { it.label == Res.string.thread_action_save_message.desc() } < actions.lastIndex, "after Save")
+        item.onClick()
+        assertEquals(1, marked)
+        assertEquals(
+            Res.string.thread_action_mark_channel_unread.desc(),
+            classicActions(message("m1"), show = false, conversation = ThreadMarkConversationUnreadKind.Channel).last().label
+        )
+        assertTrue(classicActions(message("m1"), show = false).none { it.group == "personal" && it.icon == RaftLucideIconName.MessageSquareDot })
+    }
+
+    @Test
+    fun compactMenuShowsBothOnTheSecondRowTheConversationsLast() {
+        val metadata = followed
+        val availability =
+            threadMessageMenuCapabilities(
+                message = message("parent-1"),
+                replyMetadata = metadata,
+                slice = slice(RaftThreadSurfaceKind.Channel),
+                writeActionsEnabled = true,
+                taskV2Enabled = true,
+            ).toThreadNewMessageMenuActionAvailability(message("parent-1"), metadata)
+        val tools = availability.secondaryTools()
+        assertTrue(ThreadNewMessageMenuTool.MarkThreadUnread in tools)
+        assertEquals(ThreadNewMessageMenuTool.MarkConversationUnread, tools.last())
+        assertEquals(Res.string.thread_action_mark_channel_unread, ThreadNewMessageMenuTool.MarkConversationUnread.compactLabelResource(availability))
+        assertEquals(
+            Res.string.thread_action_mark_dm_unread,
+            ThreadNewMessageMenuTool.MarkConversationUnread.compactLabelResource(
+                availability.copy(markConversationUnread = ThreadMarkConversationUnreadKind.DirectMessage)
+            )
+        )
+        assertEquals(RaftLucideIconName.MessageSquareDot, ThreadNewMessageMenuTool.MarkConversationUnread.compactIcon(availability))
+        assertEquals(
+            false,
+            availability.copy(selectionContext = true).enabled(ThreadNewMessageMenuTool.MarkConversationUnread),
+            "a text selection's menu acts on the picked text"
+        )
+    }
+
     private fun capabilities(
         message: RaftThreadMessageItem,
         slice: ThreadTimelineSlice,
@@ -123,7 +215,9 @@ class ThreadMarkThreadUnreadMenuTest {
     private fun classicActions(
         message: RaftThreadMessageItem,
         show: Boolean,
-        onMarkThreadUnread: () -> Unit = {}
+        onMarkThreadUnread: () -> Unit = {},
+        conversation: ThreadMarkConversationUnreadKind? = null,
+        onMarkConversationUnread: () -> Unit = {}
     ): List<ThreadMessageMenuAction> =
         threadMessageMenuActions(
             message = message,
@@ -150,7 +244,9 @@ class ThreadMarkThreadUnreadMenuTest {
             onConvertToTask = {},
             onCancel = {},
             onDelete = {},
-            onMarkThreadUnread = onMarkThreadUnread
+            onMarkThreadUnread = onMarkThreadUnread,
+            markConversationUnread = conversation,
+            onMarkConversationUnread = onMarkConversationUnread
         )
 
     private fun message(id: String, deliveryState: String = ThreadMessageDeliverySent): RaftThreadMessageItem =

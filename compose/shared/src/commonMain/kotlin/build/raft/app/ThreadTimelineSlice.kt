@@ -67,6 +67,11 @@ internal data class ThreadTimelineSlice(
      * the thread timeline's first item (ThreadOutline.kt).
      */
     val parentMessageId: String? = null,
+    /**
+     * The person is a member of the conversation (false: a channel previewed without joining). Web
+     * offers no "Mark channel as unread" there: the sidebar doesn't list it, so it has no unread.
+     */
+    val joined: Boolean = true,
 ) {
     /** Derived from [surfaceKind] and [channelKind]; the menu's `reply` capability reads this single source. */
     val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
@@ -120,7 +125,8 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
         canConvertMessagesToTasks = canConvertMessagesToTasks(),
         beginningReplyCountLabel = threadBeginningReplyCountLabel(),
         beginningReplyCount = threadBeginningReplyCount(),
-        historyChannelId = (streamChannelId ?: sourceThreadId)?.trim()?.takeIf { it.isNotEmpty() }
+        historyChannelId = (streamChannelId ?: sourceThreadId)?.trim()?.takeIf { it.isNotEmpty() },
+        joined = joined
     )
 
 internal fun RaftThreadMessageItem.toThreadReplyMetadata(): ThreadReplyMetadata =

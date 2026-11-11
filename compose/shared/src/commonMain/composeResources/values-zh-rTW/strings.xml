@@ -458,6 +458,8 @@
     <string name="thread_action_save_message">儲存</string>
     <string name="thread_action_unfollow_thread">取消追蹤討論串</string>
     <string name="thread_action_mark_thread_unread">將討論串標示為未讀</string>
+    <string name="thread_action_mark_channel_unread">將頻道標示為未讀</string>
+    <string name="thread_action_mark_dm_unread">將私訊標示為未讀</string>
     <string name="thread_action_follow_thread">追蹤討論串</string>
     <string name="thread_action_reopen_task">重新開啟任務</string>
     <string name="thread_action_mark_done">標示為已完成</string>

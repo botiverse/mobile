@@ -35,12 +35,15 @@ class RaftProductEntryEventsTest {
         cases.forEach { (tool, action) -> assertEquals(action, tool.action(), tool.name) }
         assertEquals(
             ThreadNewMessageMenuTool.entries.toSet() - ThreadNewMessageMenuTool.SelectAll -
-                ThreadNewMessageMenuTool.MarkThreadUnread - ThreadNewMessageMenuTool.CopySelection,
+                ThreadNewMessageMenuTool.MarkThreadUnread - ThreadNewMessageMenuTool.CopySelection -
+                ThreadNewMessageMenuTool.MarkConversationUnread,
             cases.keys,
         )
         assertNull(ThreadNewMessageMenuTool.SelectAll.action(), "in-place selection is not the long-press menu")
         // Marks the thread, not the message; web sends no message_action_selected for it (slock #11687).
         assertNull(ThreadNewMessageMenuTool.MarkThreadUnread.action(), "mark thread unread is not a message action")
+        // Nor for the list's Mark channel/DM as unread (slock #14222).
+        assertNull(ThreadNewMessageMenuTool.MarkConversationUnread.action(), "mark conversation unread is not a message action")
         assertNull(ThreadNewMessageMenuTool.CopySelection.action(), "only a right-click menu has it; it is not the long-press menu")
     }
 

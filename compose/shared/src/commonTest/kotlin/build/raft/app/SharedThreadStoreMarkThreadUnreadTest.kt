@@ -189,6 +189,45 @@ class SharedThreadStoreMarkThreadUnreadTest {
         assertEquals(listOf("read:thread-ch-1@10", "unread:thread-ch-1", "read:thread-ch-1@10"), repository.calls)
     }
 
+    // botiverse/slock #14222: Mark channel/DM as unread from a message's menu in the list.
+    @Test
+    fun markConversationUnreadMarksThePagesConversationAndHoldsItsReads() = runTest {
+        val harness = harness(unreadAnswer = DataResult.Content(ReadReceiptResult(unreadCount = 1, readStateVersion = 9L)))
+
+        harness.store.accept(SharedThreadIntent.MarkConversationUnread)
+        harness.store.accept(SharedThreadIntent.MarkVisibleRead())
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf("unread:channel-1"), harness.repository.calls, "the page's conversation, its reads held")
+        assertTrue(harness.notices.isEmpty())
+        harness.close()
+    }
+
+    @Test
+    fun aFollowedThreadMarkedFromTheListIsWrittenWithoutHoldingThePage() = runTest {
+        val harness = harness(unreadAnswer = DataResult.Content(ReadReceiptResult(unreadCount = 2, readStateVersion = 9L)))
+
+        harness.store.accept(SharedThreadIntent.MarkThreadUnread("thread-ch-9"))
+        harness.store.accept(SharedThreadIntent.MarkVisibleRead())
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf("unread:thread-ch-9", "read:channel-1"), harness.repository.calls, "the list still reads")
+        harness.close()
+    }
+
+    @Test
+    fun aThreadMarkedFromTheListKeepsTheConversationsHold() = runTest {
+        val harness = harness(unreadAnswer = DataResult.Content(ReadReceiptResult(unreadCount = 2, readStateVersion = 9L)))
+
+        harness.store.accept(SharedThreadIntent.MarkConversationUnread)
+        harness.store.accept(SharedThreadIntent.MarkThreadUnread("thread-ch-9"))
+        harness.store.accept(SharedThreadIntent.MarkVisibleRead())
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf("unread:channel-1", "unread:thread-ch-9"), harness.repository.calls)
+        harness.close()
+    }
+
     private val pendingAnswer =
         DataResult.Content(ReadReceiptResult(channelId = ChannelId("channel-1"), markUnreadPending = true))
 

@@ -458,6 +458,8 @@
     <string name="thread_action_save_message">Сохранить</string>
     <string name="thread_action_unfollow_thread">Отписаться от ветки</string>
     <string name="thread_action_mark_thread_unread">Отметить ветку как непрочитанную</string>
+    <string name="thread_action_mark_channel_unread">Отметить канал как непрочитанный</string>
+    <string name="thread_action_mark_dm_unread">Отметить личный чат как непрочитанный</string>
     <string name="thread_action_follow_thread">Подписаться на ветку</string>
     <string name="thread_action_reopen_task">Открыть задачу заново</string>
     <string name="thread_action_mark_done">Отметить как выполненную</string>

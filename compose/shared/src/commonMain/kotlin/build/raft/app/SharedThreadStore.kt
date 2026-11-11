@@ -8171,6 +8171,13 @@ internal sealed interface SharedThreadIntent {
      * while this page shows it (its visible reads are held for [threadChannelId]).
      */
     data class MarkThreadUnread(val threadChannelId: String) : SharedThreadIntent
+
+    /**
+     * botiverse/slock #14222 (web messageMenuMarkUnread): "Mark channel/DM as unread" from a message's
+     * menu in a channel's or DM's list: the conversation this page shows (the sidebar row's Mark as
+     * Unread, the same `/unread` write). It stays unread while the person stays on it.
+     */
+    data object MarkConversationUnread : SharedThreadIntent
     data object FirstContentReady : SharedThreadIntent
     data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
@@ -8510,6 +8517,9 @@ internal class SharedThreadStore(
             is SharedThreadIntent.MarkThreadUnread -> {
                 scope.launch { markThreadUnread(intent.threadChannelId) }
             }
+            SharedThreadIntent.MarkConversationUnread -> {
+                scope.launch { markConversationUnread() }
+            }
             SharedThreadIntent.FirstContentReady -> {
                 scope.launch { markFirstContentReady() }
             }
@@ -8602,6 +8612,7 @@ internal class SharedThreadStore(
             }
             SharedThreadIntent.VisibleReadHidden -> hideVisibleRead()
             is SharedThreadIntent.MarkThreadUnread -> markThreadUnread(intent.threadChannelId)
+            SharedThreadIntent.MarkConversationUnread -> markConversationUnread()
             SharedThreadIntent.FirstContentReady -> markFirstContentReady()
             SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
@@ -11607,13 +11618,19 @@ internal class SharedThreadStore(
      */
     private suspend fun markThreadUnread(threadChannelId: String) {
         val channelId = threadChannelId.trim().takeIf { it.isNotBlank() } ?: return
-        markedUnreadHoldChannelId = channelId
-        pendingMarkUnreadChannelId = null
-        deferredReadJob?.cancel()
-        deferredReadJob = null
-        if (pendingReadMarker?.channelId == channelId) pendingReadMarker = null
-        lastCompletedReadMarker = null
-        lastCompletedReadAt = null
+        // botiverse/slock #14222: a followed thread marked from a channel's list is not the one this
+        // page shows: the same write with no hold (web markThreadUnreadFromThread), so the page's
+        // own reads (and a hold on its conversation) go on as before.
+        val holds = channelId == _state.value.payload.cacheThreadId()
+        if (holds) {
+            markedUnreadHoldChannelId = channelId
+            pendingMarkUnreadChannelId = null
+            deferredReadJob?.cancel()
+            deferredReadJob = null
+            if (pendingReadMarker?.channelId == channelId) pendingReadMarker = null
+            lastCompletedReadMarker = null
+            lastCompletedReadAt = null
+        }
         val result = dataSource.markThreadChannelUnread(channelId)
         val outcome = (result as? DataResult.Content)?.data?.markUnreadOutcome()
         diagnosticsLogger?.invoke(
@@ -11629,6 +11646,18 @@ internal class SharedThreadStore(
         if (outcome == MarkUnreadOutcome.NothingToMark) {
             _readToggleNotices.tryEmit(RaftReadToggleNotice.MarkUnreadNothing)
         }
+    }
+
+    /**
+     * botiverse/slock #14222: the conversation this page shows (its timeline channel), marked unread
+     * and held as [markThreadUnread] holds an open thread (web messageStore.markUnread keeps it
+     * unread while the person stays in it).
+     */
+    private suspend fun markConversationUnread() {
+        val payload = _state.value.payload
+        if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) return
+        val channelId = payload.cacheThreadId() ?: return
+        markThreadUnread(channelId)
     }
 
     /**

@@ -462,6 +462,8 @@
     <string name="thread_action_save_message">Save</string>
     <string name="thread_action_unfollow_thread">Unfollow Thread</string>
     <string name="thread_action_mark_thread_unread">Mark Thread as Unread</string>
+    <string name="thread_action_mark_channel_unread">Mark channel as unread</string>
+    <string name="thread_action_mark_dm_unread">Mark DM as unread</string>
     <string name="thread_action_follow_thread">Follow Thread</string>
     <string name="thread_action_reopen_task">Reopen Task</string>
     <string name="thread_action_mark_done">Mark as Done</string>

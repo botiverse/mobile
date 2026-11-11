@@ -458,6 +458,8 @@
     <string name="thread_action_save_message">저장</string>
     <string name="thread_action_unfollow_thread">스레드 팔로우 취소</string>
     <string name="thread_action_mark_thread_unread">스레드를 읽지 않음으로 표시</string>
+    <string name="thread_action_mark_channel_unread">채널을 읽지 않음으로 표시</string>
+    <string name="thread_action_mark_dm_unread">DM을 읽지 않음으로 표시</string>
     <string name="thread_action_follow_thread">스레드 팔로우</string>
     <string name="thread_action_reopen_task">작업 다시 열기</string>
     <string name="thread_action_mark_done">완료로 표시</string>
