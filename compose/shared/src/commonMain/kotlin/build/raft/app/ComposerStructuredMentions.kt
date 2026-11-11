@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.ThreadSendMessageMention
+import build.raft.app.markdown.raftMarkdownWithoutQuotes
 import build.raft.app.model.ChannelExternalMemberProfile
 
 /** `mentions[].type` of a Slack participant (slock `StructuredMentionInput`). */
@@ -71,13 +72,14 @@ internal fun List<ThreadSendMessageMention>.visibleStructuredMentionsIn(text: St
 /**
  * Whether a picked mention still has a visible `@handle` in [source]: slock
  * `structuredRaftMentionStillAppears` (packages/shared/src/raftRefs.ts). Only mention prose counts —
- * not code (fenced blocks, inline spans), link labels/URLs, bare URLs or an escaped `\<@x>`; a link to
- * `<@handle>` counts. The token ends at a non-handle character or at a Han/Kana/Hangul character.
+ * not code (fenced blocks, inline spans), link labels/URLs, bare URLs, an escaped `\<@x>` or a block
+ * quote ([raftMarkdownWithoutQuotes], slock #14349: quoting a message does not mention again); a link
+ * to `<@handle>` outside a quote counts. The token ends at a non-handle character or at a Han/Kana/Hangul character.
  */
 internal fun composerStructuredMentionStillAppears(source: String, handle: String): Boolean {
     if (handle.isEmpty() || !handle.isRaftHandle()) return false
     if (source.indexOf("@$handle") < 0) return false
-    val prose = source.withoutMarkdownCode()
+    val prose = raftMarkdownWithoutQuotes(source).withoutMarkdownCode()
     // `<@handle>` (an autolink, or a link whose destination is it) is that mention; `\<@handle>` is not.
     val angle = "<@$handle>"
     var angleAt = prose.indexOf(angle)

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.markdown.raftMarkdownWithoutQuotes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -142,7 +143,7 @@ private val ThreadAgentReadMentionToken = Regex("""(?<![\w@])@([\w.\-]+)""")
  * The agents [message] @mentions, in order, without repeats. Its resolved `mentions[]` (web
  * `message.mentions`) when it has any; a row that carries none (cached, optimistic) falls back to its
  * body's `@handle` tokens through the page directory, as its mention badges do (a sentence's
- * trailing `.` or `-` is not part of the handle).
+ * trailing `.` or `-` is not part of the handle; a quoted handle is not a mention, slock #14349).
  */
 internal fun RaftThreadMessageItem.threadAgentMentionIds(directory: Map<String, MessageMention> = emptyMap()): List<String> {
     val mentions =
@@ -150,7 +151,7 @@ internal fun RaftThreadMessageItem.threadAgentMentionIds(directory: Map<String, 
             if (directory.isEmpty()) {
                 emptyList()
             } else {
-                ThreadAgentReadMentionToken.findAll(body).mapNotNull { directory[it.groupValues[1].trimEnd('.', '-')] }.toList()
+                ThreadAgentReadMentionToken.findAll(raftMarkdownWithoutQuotes(body)).mapNotNull { directory[it.groupValues[1].trimEnd('.', '-')] }.toList()
             }
         }
     return mentions.filter { it.type == "agent" && it.id.isNotBlank() }.map { it.id }.distinct()
