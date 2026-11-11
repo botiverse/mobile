@@ -275,6 +275,11 @@ internal fun channelSettingsHostCannotDisconnect(channel: HomeChannelRow, extern
  * on, a private channel (never #all) the viewer is in shows Connected servers, with this server
  * as the host, when they have a server to connect to it (web `useMemberConnectRows`). The servers
  * and roles are the account's from `GET /api/servers`; the route decides.
+ *
+ * The web also hides it while a conversion to joint is in progress (`!conversionInProgress`: its
+ * own Convert action, or the conversion receipt). The app has neither: it cannot start a
+ * conversion and does not read `conversionJob` or conversion receipts, so there is nothing here to
+ * gate on. A channel whose conversion has finished arrives as `joint` and is refused above.
  */
 internal fun channelSettingsOffersPrivateMemberConnect(
     channel: HomeChannelRow,

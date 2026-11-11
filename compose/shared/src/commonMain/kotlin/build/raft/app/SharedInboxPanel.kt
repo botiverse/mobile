@@ -38,8 +38,6 @@ import build.raft.app.data.hasUnopenableInternalJointParentSource
 import build.raft.app.data.isUnfollowedActivityThread
 import build.raft.app.data.isFollowedActivityThread
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
-import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
-import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealInboxRepository
 import build.raft.app.data.RealChannelRepository
@@ -376,25 +374,22 @@ internal fun SharedHomeActivityScreen(
     // Selector over the Home content: only the pins, mutes and DM peers of this server reach the list.
     // Null while Home has not produced them yet (see nextActivityConversationListContext): Home facts
     // never apply after the rows have painted.
-    // external_channels_v1 for this Activity's server: external channels draw the External glyph.
-    val externalChannelsEnabled =
-        rememberServerFeatureLatched(sharedStores.serverFeatureFlags, activitySummaryServerId, EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)
     val conversationListContextSource =
-        remember(sharedHomeStore, activitySummaryServerId, externalChannelsEnabled) {
+        remember(sharedHomeStore, activitySummaryServerId) {
             val serverId = activitySummaryServerId.value
             if (serverId.isBlank()) {
                 ActivityConversationListContext.Empty to flowOf(ActivityConversationListContext.Empty)
             } else if (sharedHomeStore == null) {
-                val unavailable = nextActivityConversationListContext(null, null, serverId, externalChannelsEnabled)
+                val unavailable = nextActivityConversationListContext(null, null, serverId)
                 unavailable to flowOf(unavailable)
             } else {
-                val initial = nextActivityConversationListContext(null, sharedHomeStore.state.value.content, serverId, externalChannelsEnabled)
+                val initial = nextActivityConversationListContext(null, sharedHomeStore.state.value.content, serverId)
                 initial to
                     sharedHomeStore.state
                         .map { homeState -> homeState.content }
                         .distinctUntilChanged()
                         .runningFold(initial) { previous, content ->
-                            nextActivityConversationListContext(previous, content, serverId, externalChannelsEnabled)
+                            nextActivityConversationListContext(previous, content, serverId)
                         }
                         // Agent Lounge v0: Lounges known by id rename their rows as they become known.
                         .combine(RaftAgentLounges.lounges) { context, lounges -> context?.withKnownLounges(lounges[serverId]) }

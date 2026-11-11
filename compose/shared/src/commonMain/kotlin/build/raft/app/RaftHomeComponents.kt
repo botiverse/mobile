@@ -440,8 +440,6 @@ data class RaftHomeConversationItem(
     val guestVisible: Boolean = false,
     /** Channel `hasExternalRelation` (a Guest or an open external invite); see [raftChannelKindGlyph]. */
     val hasExternalRelation: Boolean = false,
-    /** The row's server has `external_channels_v1` on: an external channel draws the External glyph. */
-    val externalChannelsEnabled: Boolean = false,
     /**
      * An unread message here mentions the user (web unread summary `hasMention`, or a followed
      * thread's): the row's yellow @ sticker. Projected from the Home store's row `mentionCount`
@@ -4821,7 +4819,6 @@ internal fun RaftHomeConversationItem.homeChannelSymbol(serverPublicPageLive: Bo
                 archived = archived,
             ),
         hasExternalRelation = hasExternalRelation,
-        externalChannelsEnabled = externalChannelsEnabled,
     ).symbol
 }
 
@@ -4829,8 +4826,8 @@ internal fun RaftHomeConversationItem.homeChannelSymbol(serverPublicPageLive: Bo
  * The same row glyph symbol for a Home snapshot channel row ([raftChannelKindGlyph]), so other
  * surfaces (Activity, drafts) pick exactly the icon the Home sidebar draws.
  */
-internal fun HomeChannelRow.homeChannelSymbol(serverPublicPageLive: Boolean, externalChannelsEnabled: Boolean = false): String =
-    raftChannelKindGlyph(serverPublicPageLive, externalChannelsEnabled).symbol
+internal fun HomeChannelRow.homeChannelSymbol(serverPublicPageLive: Boolean): String =
+    raftChannelKindGlyph(serverPublicPageLive).symbol
 
 internal const val HomeChannelSymbolHashGlobe = "hash-globe"
 
