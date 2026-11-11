@@ -7061,6 +7061,47 @@ internal fun SharedThreadRouteContent(
     )
 }
 
+/**
+ * Data-layer plan, Tenny rule 2: a background refresh or a realtime catch-up of the open
+ * conversation proved the account lost access (403 / 404, e.g. someone removed you from the
+ * channel). The store already evicted its cached timeline; the page leaves with a notice. A channel
+ * says "You're no longer in this channel" (web #12696 `layout.main.channelAccessLost`) and drops its
+ * Activity rows like a Leave does; a DM or thread keeps the generic "no longer available".
+ */
+@Composable
+private fun ThreadConversationAccessLostEffect(
+    threadViewModel: SharedThreadViewModel,
+    instanceKey: String,
+    bridge: build.raft.app.base.BridgeModule,
+    sharedStores: build.raft.app.data.RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    onBack: () -> Unit,
+) {
+    val conversationAccessLost by remember(threadViewModel) {
+        threadViewModel.conversationAccessLostFlow()
+    }.collectAsState(threadViewModel.state.value.conversationAccessLost)
+    val channelAccessLostLabel = stringResource(Res.string.thread_channel_access_lost)
+    val conversationUnavailableLabel = stringResource(Res.string.home_error_conversation_unavailable)
+    LaunchedEffect(conversationAccessLost) {
+        if (!conversationAccessLost) return@LaunchedEffect
+        val lostChannelId = threadViewModel.state.value.payload.accessLostChannelIdOrNull()
+        bridge.logWarn("thread_access_lost_leave instanceKey=$instanceKey channel=${lostChannelId != null}")
+        bridge.toast(if (lostChannelId != null) channelAccessLostLabel else conversationUnavailableLabel)
+        lostChannelId?.let { channelId -> sharedStores.publishChannelAccessLost(storeScope, channelId) }
+        onBack()
+    }
+}
+
+/** The channel this page shows, when it is a channel (not a DM, reply thread or task conversation). */
+internal fun RaftThreadScreenPayload.accessLostChannelIdOrNull(): ChannelId? =
+    sourceThreadId
+        ?.takeIf { id ->
+            id.isNotBlank() &&
+                surfaceKind == RaftThreadSurfaceKind.Channel &&
+                channelKind.normalizedThreadChannelKind() != RaftTaskConversationChannelKind
+        }
+        ?.let(::ChannelId)
+
 @Composable
 private fun SharedThreadRouteContentContent(
     data: SharedThreadRouteContentData,
@@ -7213,20 +7254,14 @@ private fun SharedThreadRouteContentContent(
     val renderSlice by remember(threadViewModel) {
         threadViewModel.renderSliceFlow()
     }.collectAsState(threadViewModel.currentRenderSlice)
-    // Data-layer plan, Tenny rule 2: a background refresh of a conversation painted from cache
-    // proved the account lost access (403 / 404). The store already evicted its cached timeline;
-    // leave with the same notice Home shows for a conversation that is no longer available.
-    val conversationAccessLost by remember(threadViewModel) {
-        threadViewModel.conversationAccessLostFlow()
-    }.collectAsState(threadViewModel.state.value.conversationAccessLost)
-    val conversationUnavailableLabel = stringResource(Res.string.home_error_conversation_unavailable)
-    LaunchedEffect(conversationAccessLost) {
-        if (conversationAccessLost) {
-            bridge.logWarn("thread_access_lost_leave instanceKey=${initialRouteIdentity.instanceKey}")
-            bridge.toast(conversationUnavailableLabel)
-            onBack()
-        }
-    }
+    ThreadConversationAccessLostEffect(
+        threadViewModel = threadViewModel,
+        instanceKey = initialRouteIdentity.instanceKey,
+        bridge = bridge,
+        sharedStores = sharedStores,
+        storeScope = storeScope,
+        onBack = onBack,
+    )
     // task #36: the side thread's "open parent channel" keeps the column and hands focus to the
     // main detail: the side page drops its own input focus (keyboard down) and asks the main page,
     // by its key/generation, to scroll to and highlight the parent message. The composer is never

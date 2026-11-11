@@ -12269,6 +12269,9 @@ internal class SharedThreadStore(
          */
         launchCatchUp: Boolean = false,
     ) {
+        // The page is leaving: a catch-up already proved this account can no longer read it (web
+        // #12696 stops the heartbeat's sync for a channel it was removed from).
+        if (_state.value.conversationAccessLost) return
         val routeIdentity = initial.realtimeGapRouteIdentity()
         var requestSnapshot: RaftThreadScreenPayload? = null
         val recoveryId =
@@ -12413,6 +12416,10 @@ internal class SharedThreadStore(
         // Message storage Phase 2b: the durable write revision before the catch-up's fetch (its page's revAtRequest).
         var durableRevAtRequest: Long? = null
         var recoveryCompleted = false
+        // Set when the catch-up answered that this account lost the conversation (removed from the
+        // channel: 403 / 404, see [isConversationAccessLost]); the page then leaves, as after refresh.
+        var accessLost = false
+        var accessProvenance: ReplyCacheProvenance? = null
         try {
             val requestPayload =
                 realtimeGapRecoveryMutex.withLock {
@@ -12436,6 +12443,7 @@ internal class SharedThreadStore(
                     }
                     requestSnapshot
                 } ?: return
+            accessProvenance = dataSource.currentReplyCacheProvenance()
             val anchorMessageId = requestPayload.gapCatchUpAnchorMessageId()
             val requestMessageIds = requestPayload.messages.mapTo(mutableSetOf()) { it.id }
             // Two steps, one outcome (nothing is committed before the decision is final): the cheap page
@@ -12603,22 +12611,38 @@ internal class SharedThreadStore(
                         }
                     }
                     is DataResult.Error -> {
-                        if (catchUpResult.error.retryable) gapCatchUpRetryableFailures += 1L
-                        reducePayloadPatch(cachePayload = true) { latestPayload ->
-                            latestPayload.copy(
-                                newerMessagesStatus = "error",
-                                errorCode = catchUpResult.error.code,
-                            )
+                        if (catchUpResult.isConversationAccessLost()) {
+                            accessLost = true
+                            markConversationAccessLost(catchUpResult.error.code)
+                        } else {
+                            if (catchUpResult.error.retryable) gapCatchUpRetryableFailures += 1L
+                            reducePayloadPatch(cachePayload = true) { latestPayload ->
+                                latestPayload.copy(
+                                    newerMessagesStatus = "error",
+                                    errorCode = catchUpResult.error.code,
+                                )
+                            }
                         }
                     }
                     is DataResult.NoPermission -> {
-                        reducePayloadPatch(cachePayload = true) { latestPayload ->
-                            latestPayload.copy(
-                                newerMessagesStatus = "error",
-                                errorCode = catchUpResult.blocker.code,
-                            )
+                        if (catchUpResult.isConversationAccessLost()) {
+                            accessLost = true
+                            markConversationAccessLost(catchUpResult.blocker.code)
+                        } else {
+                            reducePayloadPatch(cachePayload = true) { latestPayload ->
+                                latestPayload.copy(
+                                    newerMessagesStatus = "error",
+                                    errorCode = catchUpResult.blocker.code,
+                                )
+                            }
                         }
                     }
+                }
+                if (accessLost) {
+                    diagnosticsLogger?.invoke(
+                        "thread_gap_catchup_access_lost threadId=${initial.sourceThreadId.orEmpty()} " +
+                            "result=${catchUpResult.diagnosticsResultReason()}"
+                    )
                 }
             }
             recoveryCompleted = true
@@ -12652,6 +12676,11 @@ internal class SharedThreadStore(
             launchDurableLatestPageWrite(initial, offer, durableBaseline, durableRevAtRequest)
         } else {
             durableBaseline?.let { dataSource.abandonDurableLatestPageBaseline(it) }
+        }
+        if (accessLost) {
+            // Same as refresh: drop memory + durable cache for this conversation; no backfill follows.
+            accessProvenance?.let { provenance -> dataSource.evictLostConversationAccess(initial, provenance) }
+            return
         }
         if (!mergedNewArrivals && !backfillRequested) return
         val latest = _state.value.payload
@@ -13766,6 +13795,21 @@ internal class SharedThreadStore(
                 "currentParentMessageId=${currentPayload.parentMessageId.orEmpty()}"
         )
         return false
+    }
+
+    /**
+     * A catch-up proved this account lost the open conversation (see [isConversationAccessLost]): the
+     * page leaves ([SharedThreadState.conversationAccessLost]). The payload is not re-cached; the
+     * caller evicts it.
+     */
+    private fun markConversationAccessLost(errorCode: String) {
+        val current = _state.value
+        reduceState(
+            current.copy(
+                payload = current.payload.copy(newerMessagesStatus = "error", errorCode = errorCode),
+                conversationAccessLost = true,
+            )
+        )
     }
 
     private fun reducePayloadPatch(

@@ -512,6 +512,7 @@
     <string name="thread_reply_title_preview_image">[Image]</string>
     <string name="thread_reply_title_preview_file">[File]</string>
     <string name="thread_channel_title">Channel</string>
+    <string name="thread_channel_access_lost">You're no longer in this channel</string>
     <string name="thread_direct_message_title">Direct Message</string>
     <string name="thread_state_no_replies">No replies yet</string>
     <string name="thread_inline_reply_count_one">1 reply</string>
