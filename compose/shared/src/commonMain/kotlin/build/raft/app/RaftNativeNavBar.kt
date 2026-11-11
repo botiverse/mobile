@@ -184,6 +184,8 @@ internal data class RaftNativeNavBarHead(
     val onTitleClick: (() -> Unit)? = null,
     /** The title view's leading image as drawn by the app ([RaftNativeNavBarTitleImageCapture]); null until drawn. */
     val titleImage: RaftNativeTabBarAvatar? = null,
+    /** A tap on the subtitle line (a reply thread's conversation name opens the parent message). */
+    val onSubtitleClick: (() -> Unit)? = null,
 )
 
 /** Implemented by the host (Swift). Called on the main thread. */
@@ -309,13 +311,11 @@ class RaftNativeNavBarBridge {
                 addAll(head.titleMenu)
                 head.onBack?.let { put(RaftNativeNavBarBackId, it) }
                 head.onTitleClick?.let { put(RaftNativeNavBarTitleId, it) }
+                head.onSubtitleClick?.takeUnless { head.subtitle.isNullOrBlank() }?.let { put(RaftNativeNavBarSubtitleId, it) }
             }
         val actionsJson = actions.toJsonArray().toString()
         val titleMenuJson = head.titleMenu.toJsonArray().toString()
-        val extrasJson =
-            head.extras.toJson().let { extras ->
-                if (head.onTitleClick == null) extras else JsonObject(extras + ("titleTap" to kotlinx.serialization.json.JsonPrimitive(true)))
-            }.toString()
+        val extrasJson = head.extrasJson().toString()
         val subtitle = head.subtitle?.takeIf { it.isNotBlank() }
         // The title image compares by identity: one instance per captured image.
         val wire = listOf(head.title, subtitle, actionsJson, extrasJson, titleMenuJson, hasBack, nested, head.titleImage)
@@ -435,6 +435,20 @@ internal const val RaftNativeNavBarBackId = "back"
 /** The handler id of a title tap ([RaftNativeNavBarHead.onTitleClick]); extras carry `"titleTap":true`. */
 internal const val RaftNativeNavBarTitleId = "title"
 
+/** The handler id of a subtitle tap ([RaftNativeNavBarHead.onSubtitleClick]); extras carry `"subtitleTap":true`. */
+internal const val RaftNativeNavBarSubtitleId = "subtitle"
+
+/** The title view extras the host reads, with the title / subtitle taps it should wire. */
+internal fun RaftNativeNavBarHead.extrasJson(): JsonObject {
+    val taps =
+        buildMap {
+            if (onTitleClick != null) put("titleTap", kotlinx.serialization.json.JsonPrimitive(true))
+            if (onSubtitleClick != null && !subtitle.isNullOrBlank()) put("subtitleTap", kotlinx.serialization.json.JsonPrimitive(true))
+        }
+    val base = extras.toJson()
+    return if (taps.isEmpty()) base else JsonObject(base + taps)
+}
+
 private fun List<RaftNativeNavBarAction>.toJsonArray(): kotlinx.serialization.json.JsonArray =
     buildJsonArray {
         forEach { action ->
@@ -516,6 +530,7 @@ internal fun raftNativeNavBarPublish(
     onBack: (() -> Unit)? = null,
     onTitleClick: (() -> Unit)? = null,
     titleImage: RaftNativeTabBarAvatar? = null,
+    onSubtitleClick: (() -> Unit)? = null,
 ): Boolean {
     val drawn = LocalRaftNativeNavBar.current
     // Capture only: with the prototype off the page still registers its actions in the script
@@ -527,7 +542,7 @@ internal fun raftNativeNavBarPublish(
         if (active) bridge.activate(entry)
         onDispose { bridge.deactivate(entry) }
     }
-    val head = RaftNativeNavBarHead(title, subtitle, actions, extras, titleMenu, onBack, onTitleClick, titleImage)
+    val head = RaftNativeNavBarHead(title, subtitle, actions, extras, titleMenu, onBack, onTitleClick, titleImage, onSubtitleClick)
     SideEffect { if (active) bridge.publish(entry, head) }
     return drawn != null
 }

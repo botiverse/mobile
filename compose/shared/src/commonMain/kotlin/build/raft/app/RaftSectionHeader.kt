@@ -157,6 +157,8 @@ internal fun RaftTopPageHeader(
     nativeTitleExtras: RaftNativeNavBarTitleExtras = RaftNativeNavBarTitleExtras(),
     nativeTitleMenu: List<RaftNativeNavBarAction> = emptyList(),
     nativeOnTitleClick: (() -> Unit)? = null,
+    // A tap on the bar's subtitle line (a reply thread's conversation name: View in Channel).
+    nativeOnSubtitleClick: (() -> Unit)? = null,
     // PROTOTYPE: the head's Back when it draws it itself (in [titleLeadingContent]).
     nativeOnBack: (() -> Unit)? = null,
 ) {
@@ -183,6 +185,7 @@ internal fun RaftTopPageHeader(
             titleMenu = nativeTitleMenu,
             onBack = onBack ?: nativeOnBack,
             onTitleClick = onTitleClick ?: nativeOnTitleClick,
+            onSubtitleClick = nativeOnSubtitleClick,
             titleImage = nativeTitleImage,
         )
     ) {

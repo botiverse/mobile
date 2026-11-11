@@ -123,14 +123,7 @@ class ThreadReplyHeaderPreviewTitleTest {
 
     @Test
     fun headerReplyCountSurvivesTheRenderProjection() {
-        val payload =
-            RaftThreadScreenPayload(
-                instanceId = "t1143",
-                title = ThreadReplyPageTitle,
-                status = "content",
-                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                originMessage = origin(body = "root").copy(replyCount = 12)
-            )
+        val payload = replyThread(status = "content", origin = origin(body = "root").copy(replyCount = 12))
         // Same three projections SharedThreadState.toRenderSlice() hands the route.
         val renderPayload = payload.withoutThreadTimelineContent()
         val timelineSlice = payload.toThreadTimelineSlice()
@@ -140,19 +133,51 @@ class ThreadReplyHeaderPreviewTitleTest {
         assertNull(renderPayload.originMessage)
         assertEquals(0, timelineSlice.originMessage?.replyCount)
 
-        assertEquals(12, threadHeaderOriginReplyCount(timelineSlice, replyMetadata))
+        assertEquals(12, threadHeaderReplyCount(timelineSlice, replyMetadata))
         assertEquals("@Alice: root", title(timelineSlice.originMessage))
     }
 
+    /** Web ThreadPanelHeader: max(loaded replies + the replies behind the history window, the summary). */
     @Test
-    fun headerReplyCountIsZeroWithoutLoadedOrigin() {
-        val payload =
-            RaftThreadScreenPayload(
-                instanceId = "t1143-empty",
-                title = ThreadReplyPageTitle,
-                status = "loading",
-                surfaceKind = RaftThreadSurfaceKind.ReplyThread
-            )
-        assertEquals(0, threadHeaderOriginReplyCount(payload.toThreadTimelineSlice(), payload.toThreadReplyMetadataMap()))
+    fun headerReplyCountCountsLoadedAndHiddenRepliesWhenTheSummaryLags() {
+        val replies = (1..3).map { origin(body = "r$it").copy(id = "reply-$it") }
+        // The iOS 1.23 case: the origin's summary still says 0 while its replies are on screen.
+        val payload = replyThread(status = "content", origin = origin(body = "root"), messages = replies)
+        val slice = payload.toThreadTimelineSlice()
+        val metadata = payload.toThreadReplyMetadataMap()
+        assertEquals(3, threadHeaderReplyCount(slice, metadata))
+        assertEquals(10, threadHeaderReplyCount(slice, metadata, hiddenHistoryCount = 7))
+        val summarized = replyThread(status = "content", origin = origin(body = "root").copy(replyCount = 40), messages = replies)
+        assertEquals(40, threadHeaderReplyCount(summarized.toThreadTimelineSlice(), summarized.toThreadReplyMetadataMap()))
     }
+
+    /** Web: "0 replies" once the replies are read; nothing while a count we don't know is loading or failed. */
+    @Test
+    fun headerReplyCountIsUnknownOnlyWhileLoadingOrFailed() {
+        val cases =
+            listOf(
+                replyThread(status = "loading") to null,
+                replyThread(status = "error") to null,
+                replyThread(status = "content", mainLoadFailed = true) to null,
+                replyThread(status = "empty", origin = origin(body = "root")) to 0,
+            )
+        cases.forEach { (payload, expected) ->
+            assertEquals(expected, threadHeaderReplyCount(payload.toThreadTimelineSlice(), payload.toThreadReplyMetadataMap()), payload.status)
+        }
+    }
+
+    private fun replyThread(
+        status: String,
+        origin: RaftThreadMessageItem? = null,
+        messages: List<RaftThreadMessageItem> = emptyList(),
+        mainLoadFailed: Boolean = false,
+    ) = RaftThreadScreenPayload(
+        instanceId = "t-header-count",
+        title = ThreadReplyPageTitle,
+        status = status,
+        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+        originMessage = origin,
+        messages = messages,
+        mainLoadFailed = mainLoadFailed,
+    )
 }

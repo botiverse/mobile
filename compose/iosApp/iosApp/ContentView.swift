@@ -431,6 +431,9 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         let badge = lastExtras["badge"] as? String
         let leading = lastExtras["leading"] as? [String: Any]
         let titleTap = (lastExtras["titleTap"] as? Bool) ?? false
+        // A reply thread's conversation name (web ThreadPanelHeader): the subtitle opens the parent
+        // message in its channel or DM, so it needs the title view's own subtitle label.
+        let subtitleTap = (lastExtras["subtitleTap"] as? Bool) ?? false
         // A title that opens a menu drawn by the page (Home's server switcher): its chevron,
         // "down" while closed, "up" while open.
         let chevron = lastExtras["chevron"] as? String
@@ -453,13 +456,18 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             if let badge, subtitle == nil { subtitle = badge }
         } else if !titleMenu.isEmpty && editorStyle {
             item.titleView = nil
-        } else if titleMenu.isEmpty && (leading != nil || refreshing || badge != nil || titleTap || chevron != nil || !editorStyle) {
+        } else if titleMenu.isEmpty && (leading != nil || refreshing || badge != nil || titleTap || subtitleTap || chevron != nil || !editorStyle) {
             // A compact-height bar (landscape iPhone) has room for one line only.
             let compact = (owner.navigationController ?? owner).traitCollection.verticalSizeClass == .compact
             let view = RaftNativeNavTitleView(
                 title: lastTitle, subtitle: compact ? nil : lastSubtitle, leading: leading, leadingImage: lastTitleImage,
                 badge: badge, refreshing: refreshing, compact: compact, chevron: chevron
             )
+            if subtitleTap, let subtitleLabel = view.subtitleLabel {
+                subtitleLabel.isUserInteractionEnabled = true
+                subtitleLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(subtitleTapped)))
+                subtitleLabel.accessibilityTraits.insert(.button)
+            }
             if titleTap {
                 view.isUserInteractionEnabled = true
                 view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(titleTapped)))
@@ -577,6 +585,10 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
 
     @objc private func titleTapped() {
         _ = bridge.actionTapped(id: "title")
+    }
+
+    @objc private func subtitleTapped() {
+        _ = bridge.actionTapped(id: "subtitle")
     }
 
     private struct Action {
@@ -974,6 +986,9 @@ enum RaftNativeNavBarType {
 final class RaftNativeNavTitleView: UIStackView {
     private let compact: Bool
 
+    /// The subtitle line, when there is one (the host makes it tappable).
+    private(set) var subtitleLabel: UILabel?
+
     /// The app-drawn tile / avatar's size in points (shared RaftNativeNavBarTitleImageSize).
     static let leadingImagePoints: CGFloat = 28
 
@@ -1022,6 +1037,7 @@ final class RaftNativeNavTitleView: UIStackView {
             sub.lineBreakMode = .byTruncatingTail
             sub.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             text.addArrangedSubview(sub)
+            subtitleLabel = sub
         }
         addArrangedSubview(text)
         if let chevron {
