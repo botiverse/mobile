@@ -7,6 +7,8 @@ import build.raft.app.data.RuntimeAccountUsageLoad
 import build.raft.app.data.RuntimeAccountUsageProvider
 import build.raft.app.data.RuntimeAccountUsageRead
 import build.raft.app.data.RuntimeAuthAvailability
+import build.raft.app.data.RuntimeAuthRuntime
+import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthView
 import build.raft.app.data.RuntimeLimitResetRefusal
 import build.raft.app.data.RuntimeLimitResetResult
@@ -31,7 +33,8 @@ import kotlin.test.assertNull
  * sends the same idempotency key while a settled one starts a new attempt.
  */
 class ComputerRuntimeLimitResetTest {
-    private val actor = RuntimeAuthView(canAct = true, availability = RuntimeAuthAvailability.Ok, statusKinds = mapOf("codex" to "logged_in"))
+    private val actor =
+        RuntimeAuthView(canAct = true, availability = RuntimeAuthAvailability.Ok, status = mapOf(RuntimeAuthRuntime.Codex to RuntimeAuthStatus.LoggedIn()))
 
     @Test
     fun offeredOnlyToSomeoneWhoMayActWhileTheAccountHoldsAReset() {
@@ -47,10 +50,9 @@ class ComputerRuntimeLimitResetTest {
             computerRuntimeLimitResetOffer(withReset, actor.copy(availability = RuntimeAuthAvailability.ComputerNotAttached), RuntimeAccountUsageProvider.Codex),
         )
         assertNull(
-            computerRuntimeLimitResetOffer(withReset, actor.copy(statusKinds = mapOf("codex" to "logged_out")), RuntimeAccountUsageProvider.Codex),
+            computerRuntimeLimitResetOffer(withReset, actor.copy(status = mapOf(RuntimeAuthRuntime.Codex to RuntimeAuthStatus.LoggedOut)), RuntimeAccountUsageProvider.Codex),
             "signed out",
         )
-        assertNull(computerRuntimeLimitResetOffer(withReset, actor, RuntimeAccountUsageProvider.Grok), "no sign-in from the web, so no view")
         // The reset is the main action while the account is rate-limited.
         assertEquals(true, computerRuntimeLimitResetOffer(usage("1", health = "rate_limited"), actor, RuntimeAccountUsageProvider.Codex)?.primary)
         assertEquals(true, computerRuntimeLimitResetOffer(usage("1", windowStatus = "limit_reached"), actor, RuntimeAccountUsageProvider.Codex)?.primary)

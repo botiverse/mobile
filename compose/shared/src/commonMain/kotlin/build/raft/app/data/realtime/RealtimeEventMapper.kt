@@ -84,6 +84,13 @@ import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ComputerRestartDone
+import build.raft.app.model.RuntimeAuthLoginEventPushed
+import build.raft.app.model.RuntimeAuthLoginResultPushed
+import build.raft.app.model.RuntimeAuthUpdated
+import build.raft.app.data.RuntimeAuthRuntime
+import build.raft.app.data.isRuntimeAuthLoginId
+import build.raft.app.data.toRuntimeAuthLoginOutcome
+import build.raft.app.data.toRuntimeAuthLoginStep
 import build.raft.app.model.ServerDeleted
 import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ServerFeaturesChanged
@@ -333,6 +340,21 @@ class RealtimeEventMapper(
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Machines, eventName)
             RealtimeSocketEvents.ComputerRestartDone ->
                 decodeOrNull(ComputerRestartDoneDto.serializer(), element)?.toDomain()
+            // Runtime sign-in from the app (slock docs/contracts/runtime-auth.md, RuntimeAuth.kt).
+            RealtimeSocketEvents.MachineRuntimeAuthUpdated ->
+                stringField(element, "machineId")?.trim()?.takeIf { it.isNotEmpty() }?.let(::RuntimeAuthUpdated)
+            RealtimeSocketEvents.RuntimeAuthLoginEvent ->
+                element.runtimeAuthLoginHeader()?.let { header ->
+                    element["event"]?.toRuntimeAuthLoginStep()?.let { step ->
+                        RuntimeAuthLoginEventPushed(header.serverId, header.machineId, header.runtime, header.loginId, step)
+                    }
+                }
+            RealtimeSocketEvents.RuntimeAuthLoginResult ->
+                element.runtimeAuthLoginHeader()?.let { header ->
+                    element["result"]?.toRuntimeAuthLoginOutcome()?.let { outcome ->
+                        RuntimeAuthLoginResultPushed(header.serverId, header.machineId, header.runtime, header.loginId, outcome)
+                    }
+                }
             RealtimeSocketEvents.ServerMemberAdded,
             RealtimeSocketEvents.ServerMemberUpdated,
             RealtimeSocketEvents.ServerMemberLeft,
@@ -932,6 +954,18 @@ private data class ComputerRestartDoneDto(
         val request = requestId?.takeIf { it.isNotBlank() } ?: return null
         return ComputerRestartDone(machineId = machine, requestId = request, ok = ok, error = error?.takeIf { it.isNotBlank() })
     }
+}
+
+/** The routing fields every runtime login push carries (web `loginPushHeader`), checked; null when any is off. */
+private class RuntimeAuthLoginHeader(val serverId: String, val machineId: String, val runtime: String, val loginId: String)
+
+private fun JsonObject.runtimeAuthLoginHeader(): RuntimeAuthLoginHeader? {
+    fun text(name: String): String? = (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    val serverId = text("serverId") ?: return null
+    val machineId = text("machineId") ?: return null
+    val runtime = text("runtime")?.takeIf { RuntimeAuthRuntime.fromWire(it) != null } ?: return null
+    val loginId = text("loginId")?.takeIf(::isRuntimeAuthLoginId) ?: return null
+    return RuntimeAuthLoginHeader(serverId, machineId, runtime, loginId)
 }
 
 /** slock `packages/shared/src/activityObjectsContract.ts` `ActivityChangedEvent`: `{ serverId, source }`. */

@@ -89,33 +89,45 @@ internal class SharedRuntimeAccountUsageStore(
     private val refreshesInFlight = mutableMapOf<RuntimeAccountUsageKey, CompletableDeferred<RuntimeAccountUsageRefreshLoad>>()
     private class CachedAuthView(val value: RuntimeAuthView?, val expiresAt: Long)
     private val authViews = mutableMapOf<RuntimeAuthViewKey, CachedAuthView>()
+    private val authViewGenerations = mutableMapOf<String, Long>()
     private val limitResetAttempts = mutableMapOf<RuntimeAccountUsageKey, RuntimeLimitResetIdempotencyKey>()
 
     /** One Computer's runtime-auth view per signed-in identity (web `RuntimeAuthClient` keys it by server and Computer). */
     private data class RuntimeAuthViewKey(val owner: SharedComputersOwner, val serverId: String, val machineId: String)
 
+    /** [runtimeAuthView] for a usage card's subject. */
+    suspend fun runtimeAuthView(key: RuntimeAccountUsageKey, force: Boolean = false): RuntimeAuthView? =
+        runtimeAuthView(key.owner, key.serverId, key.machineId, force)
+
     /**
-     * Who may act on [key]'s Computer runtimes (web `RuntimeAuthClient.read`, cached 30 s). Null
-     * when the read failed or was refused (403: the viewer may not see them), so nobody is offered
-     * an action the server would refuse; a failure is not cached.
+     * Who may act on the Computer's runtimes and their sign-in status (web `RuntimeAuthClient.read`,
+     * cached 30 s per identity, server and Computer). Null when the read failed or was refused (403:
+     * the viewer may not see them), so nobody is offered an action the server would refuse; a
+     * failure is not cached. A read that an [invalidateRuntimeAuthView] overtook is not cached.
      */
-    suspend fun runtimeAuthView(key: RuntimeAccountUsageKey, force: Boolean = false): RuntimeAuthView? {
-        if (!key.owner.sameIdentityAs(currentIdentity())) return null
-        val viewKey = RuntimeAuthViewKey(key.owner, key.serverId, key.machineId)
-        if (!force) {
-            mutex.withLock { authViews[viewKey]?.takeIf { it.expiresAt > clock.nowEpochMillis() } }?.let { return it.value }
-        }
-        // Only the limit-reset action hangs on this read: a transport that fails it offers no action
-        // and leaves the usage card as it is.
+    suspend fun runtimeAuthView(
+        owner: SharedComputersOwner,
+        serverId: String,
+        machineId: String,
+        force: Boolean = false,
+    ): RuntimeAuthView? {
+        if (!owner.sameIdentityAs(currentIdentity())) return null
+        val viewKey = RuntimeAuthViewKey(owner, serverId, machineId)
+        val generation =
+            mutex.withLock {
+                if (!force) authViews[viewKey]?.takeIf { it.expiresAt > clock.nowEpochMillis() }?.let { return it.value }
+                authViewGenerations[machineId] ?: 0L
+            }
+        // A transport that fails the read offers no action and leaves the card as it is.
         val result =
             try {
-                client.runtimeAuthView(ServerId(key.serverId), key.machineId)
+                client.runtimeAuthView(ServerId(serverId), machineId)
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
                 return null
             }
-        if (!key.owner.sameIdentityAs(currentIdentity())) return null
+        if (!owner.sameIdentityAs(currentIdentity())) return null
         val view =
             when (result) {
                 is DataResult.Content -> result.data
@@ -123,8 +135,110 @@ internal class SharedRuntimeAccountUsageStore(
                 is DataResult.NoPermission -> if (result.blocker.code == "server_forbidden") null else return null
                 else -> return null
             }
-        mutex.withLock { authViews[viewKey] = CachedAuthView(view, clock.nowEpochMillis() + RUNTIME_AUTH_VIEW_CACHE_MILLIS) }
+        mutex.withLock {
+            if ((authViewGenerations[machineId] ?: 0L) == generation) {
+                authViews[viewKey] = CachedAuthView(view, clock.nowEpochMillis() + RUNTIME_AUTH_VIEW_CACHE_MILLIS)
+            }
+        }
         return view
+    }
+
+    /**
+     * The Computer's sign-in status may have changed (`machine:runtime_auth:updated`, a login or a
+     * logout): every identity's and server's cached view of [machineId] goes (the event names only
+     * the Computer), and a read already running is not cached.
+     */
+    suspend fun invalidateRuntimeAuthView(machineId: String) {
+        mutex.withLock {
+            authViewGenerations[machineId] = (authViewGenerations[machineId] ?: 0L) + 1
+            authViews.keys.removeAll { it.machineId == machineId }
+        }
+    }
+
+    /** Starts a login on the Computer for the signed-in [owner] only. */
+    suspend fun startRuntimeLogin(
+        owner: SharedComputersOwner,
+        serverId: String,
+        machineId: String,
+        runtime: RuntimeAuthRuntime,
+        region: RuntimeAuthLoginRegion? = null,
+        providerId: String? = null,
+    ): RuntimeAuthCall<String> =
+        asOwner(owner) { client.startRuntimeLogin(ServerId(serverId), machineId, runtime, region, providerId) }
+
+    suspend fun submitRuntimeLoginCode(
+        owner: SharedComputersOwner,
+        serverId: String,
+        machineId: String,
+        runtime: RuntimeAuthRuntime,
+        loginId: String,
+        code: String,
+    ): RuntimeAuthCall<Unit> =
+        asOwner(owner) { client.submitRuntimeLoginCode(ServerId(serverId), machineId, runtime, loginId, code) }
+
+    /** Ends a login this app started; nothing waits on its answer, and a failure changes nothing. */
+    suspend fun cancelRuntimeLogin(owner: SharedComputersOwner, serverId: String, machineId: String, runtime: RuntimeAuthRuntime, loginId: String) {
+        if (!owner.sameIdentityAs(currentIdentity())) return
+        try {
+            client.cancelRuntimeLogin(ServerId(serverId), machineId, runtime, loginId)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // The Computer's own bound ends the login.
+        }
+    }
+
+    /** Signs the runtime out; the cached view of the Computer goes either way (web `finally invalidate`). */
+    suspend fun logoutRuntime(
+        owner: SharedComputersOwner,
+        serverId: String,
+        machineId: String,
+        runtime: RuntimeAuthRuntime,
+        providerId: String? = null,
+    ): RuntimeAuthCall<RuntimeAuthLogoutResult> =
+        try {
+            asOwner(owner) { client.logoutRuntime(ServerId(serverId), machineId, runtime, providerId) }
+        } finally {
+            withContext(NonCancellable) { invalidateRuntimeAuthView(machineId) }
+        }
+
+    suspend fun runtimeAuthProviders(
+        owner: SharedComputersOwner,
+        serverId: String,
+        machineId: String,
+        runtime: RuntimeAuthRuntime,
+    ): RuntimeAuthCall<RuntimeAuthProvidersResult> =
+        asOwner(owner) { client.runtimeAuthProviders(ServerId(serverId), machineId, runtime) }
+
+    /** Saves a Pi provider's key; a save, or one that may have happened, drops the cached view. */
+    suspend fun connectRuntimeProvider(
+        owner: SharedComputersOwner,
+        serverId: String,
+        machineId: String,
+        runtime: RuntimeAuthRuntime,
+        providerId: String,
+        apiKey: String,
+    ): RuntimeAuthCall<RuntimeAuthProviderConnectResult> {
+        val result = asOwner(owner) { client.connectRuntimeProvider(ServerId(serverId), machineId, runtime, providerId, apiKey) }
+        val value = (result as? RuntimeAuthCall.Done)?.value
+        if (value == RuntimeAuthProviderConnectResult.Connected || (value as? RuntimeAuthProviderConnectResult.Failed)?.reason == "timed_out") {
+            invalidateRuntimeAuthView(machineId)
+        }
+        return result
+    }
+
+    /** Runs [call] only for the signed-in [owner], and drops its answer when the identity changed meanwhile. */
+    private suspend fun <T> asOwner(owner: SharedComputersOwner, call: suspend () -> RuntimeAuthCall<T>): RuntimeAuthCall<T> {
+        if (!owner.sameIdentityAs(currentIdentity())) return RuntimeAuthCall.Superseded
+        val result =
+            try {
+                call()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                RuntimeAuthCall.Refused(RuntimeAuthRequestError(status = null, code = null))
+            }
+        return if (owner.sameIdentityAs(currentIdentity())) result else RuntimeAuthCall.Superseded
     }
 
     /**

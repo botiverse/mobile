@@ -43,12 +43,14 @@ import build.raft.app.data.RuntimeAccountUsageRefreshReason
 import build.raft.app.data.RuntimeAccountUsageRefreshState
 import build.raft.app.data.RuntimeAccountUsageWindow
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
+import build.raft.app.data.RuntimeAuthSignedInProvider
 import build.raft.app.data.RuntimeAuthView
+import build.raft.app.data.SettingsComputerAgentSnapshot
+import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.RuntimeLimitResetLoad
 import build.raft.app.data.RuntimeLimitResetResult
 import build.raft.app.data.RuntimeAccountUsageSnapshot
 import build.raft.app.data.SharedRuntimeAccountUsageStore
-import build.raft.app.data.authRuntime
 import build.raft.app.data.settlesAttempt
 import build.raft.app.model.RaftTimeContext
 import build.raft.designsystem.components.RaftBadge
@@ -98,25 +100,85 @@ internal fun ComputerRuntimeUsageChips(
     enabled: Boolean,
     /** The machine's `runtimeVersions` (web `MachineRuntimeChips`): the sheet's "Version …" line. */
     runtimeVersions: Map<String, String> = emptyMap(),
+    /** The Computer's name and its agents, for the sign-in and sign-out dialogs. */
+    computerName: String? = null,
+    agents: List<SettingsComputerAgentSnapshot> = emptyList(),
     plain: @Composable (RaftComputerRuntimeChip) -> Unit,
 ) {
-    val usable =
-        enabled &&
-            chips.any { it.availability == RaftComputerRuntimeAvailability.Detected && RuntimeAccountUsageProvider.forRuntime(it.id) != null }
+    fun hasCard(chip: RaftComputerRuntimeChip): Boolean =
+        chip.availability == RaftComputerRuntimeAvailability.Detected &&
+            (RuntimeAccountUsageProvider.forRuntime(chip.id) != null || computerRuntimeCardAuthRuntime(chip.id) != null)
+    val usable = enabled && chips.any(::hasCard)
     val access = if (usable) LocalMembersRuntimeAccountUsageAccess.current ?: rememberShellRuntimeAccountUsageAccess() else null
     chips.forEach { chip ->
-        if (usable && chip.availability == RaftComputerRuntimeAvailability.Detected && RuntimeAccountUsageProvider.forRuntime(chip.id) != null) {
+        if (usable && hasCard(chip)) {
             val experimental = if (chip.experimental) stringResource(Res.string.runtime_suffix_experimental) else ""
             ComputerRuntimeUsageChip(
-                chip.name + experimental,
-                membersRuntimeAccountUsageKey(access, chip.id, machineId),
-                access,
-                runtimeVersions[chip.id],
+                label = chip.name + experimental,
+                runtimeId = chip.id,
+                runtimeName = chip.name,
+                machineId = machineId,
+                key = membersRuntimeAccountUsageKey(access, chip.id, machineId),
+                access = access,
+                runtimeVersion = runtimeVersions[chip.id],
+                computerName = computerName,
+                agents = agents,
+                plain = { plain(chip) },
             )
         } else {
             plain(chip)
         }
     }
+}
+
+/**
+ * The sign-in half of one runtime card (web `useRuntimeAuthView` + the card's dialogs): null when the
+ * runtime has no sign-in from here, the page offers none ([MembersRuntimeAccountUsageAccess.auth]) or
+ * the viewer is not known yet. [readNow]: read the Computer's sign-in state at once (a chip's orange
+ * "not signed in"), else only when its card opens. Follows `machine:runtime_auth:updated` and this
+ * person's login pushes while composed; a running login ends when it leaves.
+ */
+@Composable
+internal fun rememberComputerRuntimeAuthController(
+    access: MembersRuntimeAccountUsageAccess?,
+    machineId: String,
+    raftRuntimeId: String,
+    readNow: Boolean,
+): ComputerRuntimeAuthController? {
+    val runtime = computerRuntimeCardAuthRuntime(raftRuntimeId)
+    val host = access?.auth
+    val owner = access?.owner
+    val serverId = access?.serverId?.trim()?.takeIf { it.isNotEmpty() }
+    val scope = rememberCoroutineScope()
+    val controller =
+        remember(runtime, host, owner, serverId, machineId, access?.store) {
+            if (runtime == null || host == null || owner == null || serverId == null || machineId.isBlank()) {
+                null
+            } else {
+                ComputerRuntimeAuthController(
+                    serverId = serverId,
+                    machineId = machineId,
+                    raftRuntimeId = raftRuntimeId,
+                    runtime = runtime,
+                    ops = StoreComputerRuntimeAuthOps(access.store, owner, serverId, machineId),
+                    scope = scope,
+                    log = access.log,
+                    onIdentityChanged = access.onIdentityChanged,
+                )
+            }
+        }
+    val realtime = host?.realtime
+    DisposableEffect(controller, realtime) {
+        if (controller == null) return@DisposableEffect onDispose {}
+        val sink = RealtimeGuardedActiveThreadSink { _, event -> controller.onRealtime(event) }
+        realtime?.registerGuardedActiveThreadSink(sink)
+        onDispose {
+            realtime?.unregisterGuardedActiveThreadSink(sink)
+            controller.dispose()
+        }
+    }
+    LaunchedEffect(controller, readNow) { if (readNow) controller?.read() }
+    return controller
 }
 
 /**
@@ -153,13 +215,22 @@ internal fun rememberShellRuntimeAccountUsageAccess(): MembersRuntimeAccountUsag
     }
     val owner by tracker.owner.collectAsState()
     val scope = rememberCoroutineScope()
-    return remember(store, owner, serverId, tracker) {
+    val authHost =
+        remember(sharedStores, storeScope, bridge) {
+            ComputerRuntimeAuthHost(
+                realtime = sharedStores.realtimeDomainEventOwner(storeScope),
+                // A sign-in page opens in the browser, where the person may already be signed in.
+                openUrl = { url -> bridge.openUrl(url, inBrowser = true) },
+            )
+        }
+    return remember(store, owner, serverId, tracker, authHost) {
         MembersRuntimeAccountUsageAccess(
             store = store,
             owner = owner,
             serverId = serverId,
             onIdentityChanged = { scope.launch { tracker.invalidate() } },
             log = { message -> bridge.log(message) },
+            auth = authHost,
         )
     }
 }
@@ -230,7 +301,7 @@ internal class ComputerRuntimeUsageController(
      */
     fun onOpen() {
         scope.launch { read(force = false) }
-        if (key.provider.authRuntime != null) scope.launch { authView = store.runtimeAuthView(key) }
+        scope.launch { authView = store.runtimeAuthView(key) }
     }
 
     fun refreshNow() {
@@ -432,9 +503,15 @@ internal fun RuntimeAccountUsageLoad?.computerRuntimeUsageHealth(): RaftStatusVa
 @Composable
 private fun ComputerRuntimeUsageChip(
     label: String,
+    runtimeId: String,
+    runtimeName: String,
+    machineId: String,
     key: RuntimeAccountUsageKey?,
     access: MembersRuntimeAccountUsageAccess?,
     runtimeVersion: String?,
+    computerName: String?,
+    agents: List<SettingsComputerAgentSnapshot>,
+    plain: @Composable () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val controller =
@@ -453,9 +530,19 @@ private fun ComputerRuntimeUsageChip(
         }
     DisposableEffect(controller) { onDispose { controller?.cancel() } }
     LaunchedEffect(controller) { controller?.start() }
+    // Web: the card reads the Computer's sign-in state on mount, so a signed-out chip says so at rest.
+    val auth = rememberComputerRuntimeAuthController(access, machineId, runtimeId, readNow = true)
+    val authBinding = auth?.takeIf { it.offered }?.let { ComputerRuntimeAuthBinding(it, runtimeName, computerName, agents, access?.auth?.openUrl ?: {}) }
+    // A runtime with neither usage nor a sign-in offered here has no card (Antigravity where the server does not revive it).
+    if (controller == null && authBinding == null) {
+        plain()
+        return
+    }
     val load = controller?.load
-    val offered = controller != null && load !is RuntimeAccountUsageLoad.Forbidden
-    val health = load.computerRuntimeUsageHealth()
+    val offered = (controller != null && load !is RuntimeAccountUsageLoad.Forbidden) || authBinding != null
+    // Signed out on the Computer: an orange chip that says so in words, and no health dot (web).
+    val signedOut = authBinding?.controller?.signedOut == true
+    val health = if (signedOut) null else load.computerRuntimeUsageHealth()
     val healthDot: (@Composable () -> Unit)? =
         if (health == null) {
             null
@@ -475,30 +562,46 @@ private fun ComputerRuntimeUsageChip(
                 )
             }
         }
+    val text = if (signedOut) label + stringResource(Res.string.settings_computers_runtime_auth_not_signed_in_suffix) else label
     val chip: @Composable () -> Unit = {
         // A badge whose long press copies the runtime name; the usage card opens on hover and pins
         // on a click (below), so the badge takes no click of its own.
         RaftBadge(
-            text = label,
+            text = text,
+            modifier = Modifier.testTag(if (signedOut) COMPUTER_RUNTIME_CHIP_SIGNED_OUT_TAG else COMPUTER_RUNTIME_CHIP_TAG),
             copyText = label,
             appearance = RaftBadgeAppearance.Soft,
-            variant = RaftBadgeVariant.Information,
+            variant = if (signedOut) RaftBadgeVariant.Warning else RaftBadgeVariant.Information,
             trailing = healthDot,
         )
     }
     // Web `RuntimeUsageHoverCard` (artin 11-02): a mouse resting on the chip shows the usage card,
     // a click (a finger's tap too) pins it.
-    if (controller == null) {
-        chip()
-    } else {
-        ComputerRuntimeUsagePreviewCard(
-            runtimeLabel = label,
-            controller = controller,
-            runtimeVersion = runtimeVersion,
-            enabled = offered,
-            trigger = chip,
-        )
-    }
+    ComputerRuntimeUsagePreviewCard(
+        runtimeLabel = label,
+        controller = controller,
+        runtimeVersion = runtimeVersion,
+        enabled = offered,
+        auth = authBinding,
+        trigger = chip,
+    )
+}
+
+internal const val COMPUTER_RUNTIME_CHIP_TAG = "runtime-chip"
+internal const val COMPUTER_RUNTIME_CHIP_SIGNED_OUT_TAG = "runtime-chip-signed-out"
+
+/** A card's sign-in: its controller and what its dialogs name. */
+internal class ComputerRuntimeAuthBinding(
+    val controller: ComputerRuntimeAuthController,
+    /** The runtime's display name ("Claude Code"): the card's title once there is no usage to name. */
+    val runtimeName: String,
+    val computerName: String?,
+    val agents: List<SettingsComputerAgentSnapshot>?,
+    val openUrl: (String) -> Unit,
+) {
+    /** What the card draws; null until the Computer's sign-in state is read. */
+    val cardState: ComputerRuntimeAuthCardState?
+        get() = controller.view?.let { ComputerRuntimeAuthCardState(controller.raftRuntimeId, controller.runtime, it) }
 }
 
 /**
@@ -514,6 +617,11 @@ internal fun ComputerRuntimeUsageSheetHost(
     /** The machine's `runtimeVersions[runtimeId]` (web rack `RackRuntimeUsage`); null when not reported. */
     runtimeVersion: String?,
     onDismiss: () -> Unit,
+    /** The rack column's Raft runtime id, for its sign-in; null shows usage alone. */
+    runtimeId: String? = null,
+    runtimeName: String = runtimeLabel,
+    computerName: String? = null,
+    agents: List<SettingsComputerAgentSnapshot>? = null,
 ) {
     val scope = rememberCoroutineScope()
     val controller =
@@ -527,6 +635,8 @@ internal fun ComputerRuntimeUsageSheetHost(
             )
         }
     DisposableEffect(controller) { onDispose { controller.cancel() } }
+    // The sheet reads the Computer's sign-in state as it opens (web: the card's own read).
+    val auth = runtimeId?.let { rememberComputerRuntimeAuthController(access, key.machineId, it, readNow = true) }
     LaunchedEffect(controller) {
         controller.onOpen()
         while (true) {
@@ -535,6 +645,7 @@ internal fun ComputerRuntimeUsageSheetHost(
         }
     }
     val timeContext = currentRaftTimeContextProvider?.current
+    val authState = auth?.view?.let { ComputerRuntimeAuthCardState(auth.raftRuntimeId, auth.runtime, it) }
     ComputerRuntimeUsageSheet(
         runtimeLabel = runtimeLabel,
         state = controller.sheetState(runtimeVersion),
@@ -542,8 +653,13 @@ internal fun ComputerRuntimeUsageSheetHost(
         onRefresh = controller::refreshNow,
         onUseLimitReset = controller::openLimitReset,
         onDismiss = onDismiss,
+        auth = authState,
+        authRuntimeName = runtimeName,
+        onSignIn = { auth?.openSignIn() },
+        onSignOut = { auth?.openSignOut() },
     )
     ComputerRuntimeLimitResetDialogHost(runtimeLabel, controller)
+    if (auth != null) ComputerRuntimeAuthDialogHost(auth, runtimeName, computerName, agents, access.auth?.openUrl ?: {})
 }
 
 /** What the controller shows, for the sheet or the card. */
@@ -573,6 +689,10 @@ private fun ComputerRuntimeLimitResetDialogHost(runtimeLabel: String, controller
     }
 }
 
+/** The usage block already names the account (web `usageShowsAccount`): the sign-in line then does not. */
+internal val ComputerRuntimeUsageSheetState.showsAccount: Boolean
+    get() = ((load as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available)?.snapshot?.accounts?.isNotEmpty() == true
+
 /** What the usage sheet shows (web `Surface` props). */
 internal data class ComputerRuntimeUsageSheetState(
     val load: RuntimeAccountUsageLoad?,
@@ -596,12 +716,34 @@ private fun ComputerRuntimeUsageSheet(
     onRefresh: () -> Unit,
     onUseLimitReset: () -> Unit,
     onDismiss: () -> Unit,
+    auth: ComputerRuntimeAuthCardState? = null,
+    authRuntimeName: String = runtimeLabel,
+    onSignIn: () -> Unit = {},
+    onSignOut: () -> Unit = {},
 ) {
+    // Signed out: there is no usage to show, only the way to sign in (web).
+    val signedOut = auth?.signedOut == true
     RaftSheet(
         onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
-        actions = { ComputerRuntimeUsageActions(state, timeContext, onRefresh, onUseLimitReset, onDismiss) },
-        content = { ComputerRuntimeUsageContents(state, timeContext, showsVersion = true) },
+        title = if (signedOut) authRuntimeName else stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
+        actions = {
+            if (auth != null) ComputerRuntimeAuthActionView(auth, onSignIn, onSignOut, fullWidth = true)
+            if (signedOut) {
+                RaftButton(
+                    text = stringResource(Res.string.common_close),
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg,
+                )
+            } else {
+                ComputerRuntimeUsageActions(state, timeContext, onRefresh, onUseLimitReset, onDismiss)
+            }
+        },
+        content = {
+            if (auth != null) ComputerRuntimeAuthHeaderLine(auth, usageShowsAccount = state.showsAccount, authOnly = false)
+            if (!signedOut) ComputerRuntimeUsageContents(state, timeContext, showsVersion = true)
+        },
     )
 }
 
@@ -924,37 +1066,74 @@ private fun RuntimeAccountUsageHealth.label(): String =
 @Composable
 internal fun ComputerRuntimeUsagePreviewCard(
     runtimeLabel: String,
-    controller: ComputerRuntimeUsageController,
+    controller: ComputerRuntimeUsageController?,
     runtimeVersion: String?,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    /** The runtime's sign-in on this card (web `SurfaceAuth`); null shows usage alone. */
+    auth: ComputerRuntimeAuthBinding? = null,
     trigger: @Composable () -> Unit,
 ) {
     val state = rememberRaftPreviewCardState(closeDelayMillis = ComputerRuntimeUsagePreviewCardCloseDelayMillis)
     val timeContext = currentRaftTimeContextProvider?.current
     if (state.isOpen) {
-        LaunchedEffect(controller) {
-            controller.onOpen()
-            while (true) {
+        LaunchedEffect(controller, auth) {
+            controller?.onOpen()
+            // Web `openNow`: the sign-in state is read again with the usage.
+            auth?.controller?.read()
+            while (controller != null) {
                 controller.updateCooldown()
                 delay(1_000L)
             }
         }
     }
+    val authController = auth?.controller
+    // Web: a dialog takes over from the card, so the card does not float above it.
+    val onSignIn = {
+        state.dismiss()
+        authController?.openSignIn()
+        Unit
+    }
+    val onSignOut = {
+        state.dismiss()
+        authController?.openSignOut()
+        Unit
+    }
+    val onSignOutProvider = { provider: RuntimeAuthSignedInProvider ->
+        state.dismiss()
+        authController?.openSignOut(provider)
+        Unit
+    }
     RaftPreviewCard(
         card = {
-            ComputerRuntimeUsageCard(
-                runtimeLabel = runtimeLabel,
-                state = controller.sheetState(runtimeVersion),
-                timeContext = timeContext,
-                onRefresh = controller::refreshNow,
-                onClose = state::dismiss,
-                onUseLimitReset = {
-                    // Web: the dialog takes over from the card, so the card does not float above it.
-                    state.dismiss()
-                    controller.openLimitReset()
-                },
-            )
+            if (controller != null) {
+                ComputerRuntimeUsageCard(
+                    runtimeLabel = runtimeLabel,
+                    state = controller.sheetState(runtimeVersion),
+                    timeContext = timeContext,
+                    onRefresh = controller::refreshNow,
+                    onClose = state::dismiss,
+                    onUseLimitReset = {
+                        state.dismiss()
+                        controller.openLimitReset()
+                    },
+                    auth = auth?.cardState,
+                    authRuntimeName = auth?.runtimeName ?: runtimeLabel,
+                    onSignIn = onSignIn,
+                    onSignOut = onSignOut,
+                    onSignOutProvider = onSignOutProvider,
+                )
+            } else if (auth != null) {
+                ComputerRuntimeAuthOnlyCard(
+                    runtimeName = auth.runtimeName,
+                    runtimeVersion = runtimeVersion,
+                    auth = auth.cardState,
+                    onClose = state::dismiss,
+                    onSignIn = onSignIn,
+                    onSignOut = onSignOut,
+                    onSignOutProvider = onSignOutProvider,
+                )
+            }
         },
         modifier = modifier,
         state = state,
@@ -963,25 +1142,45 @@ internal fun ComputerRuntimeUsagePreviewCard(
         width = RaftPreviewCardDefaults.WideWidth,
         trigger = trigger,
     )
-    ComputerRuntimeLimitResetDialogHost(runtimeLabel, controller)
+    if (controller != null) ComputerRuntimeLimitResetDialogHost(runtimeLabel, controller)
+    if (auth != null) ComputerRuntimeAuthDialogHost(auth.controller, auth.runtimeName, auth.computerName, auth.agents, auth.openUrl)
 }
 
-/** Web `HOVER_CLOSE_DELAY_MS`: the usage card waits a little longer than a profile card. */
-internal const val ComputerRuntimeUsagePreviewCardCloseDelayMillis = 160L
-
 /**
- * Web `Surface` in its desktop card: a header (title, version, who may see it, close) over a
- * hairline, the accounts, then a footer row with the refresh state and an outline Refresh. The
- * phone keeps the sheet ([ComputerRuntimeUsageSheet]) with the same content.
+ * Web `RuntimeUsageSurface` for a runtime with no usage to read (Qoder, Pi, Antigravity): its
+ * sign-in alone — the title, "Signed in" or "Not signed in" (Pi: its stored providers), the version,
+ * who may see it, and the sign-in action.
  */
 @Composable
-internal fun ComputerRuntimeUsageCard(
-    runtimeLabel: String,
-    state: ComputerRuntimeUsageSheetState,
-    timeContext: RaftTimeContext?,
-    onRefresh: () -> Unit,
+internal fun ComputerRuntimeAuthOnlyCard(
+    runtimeName: String,
+    runtimeVersion: String?,
+    auth: ComputerRuntimeAuthCardState?,
     onClose: (() -> Unit)?,
-    onUseLimitReset: () -> Unit = {},
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+    onSignOutProvider: (RuntimeAuthSignedInProvider) -> Unit,
+) {
+    ComputerRuntimeCardHeader(title = runtimeName, runtimeVersion = runtimeVersion, onClose = onClose) {
+        if (auth != null) ComputerRuntimeAuthHeaderLine(auth, usageShowsAccount = false, authOnly = true)
+    }
+    if (auth != null) {
+        ComputerRuntimeAuthProviderRows(auth, onSignOutProvider)
+        if (auth.action() != null) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                ComputerRuntimeAuthActionView(auth, onSignIn, onSignOut)
+            }
+        }
+    }
+}
+
+/** The card's head (web `Surface`): title, the sign-in line, the version, who may see it, and close. */
+@Composable
+private fun ComputerRuntimeCardHeader(
+    title: String,
+    runtimeVersion: String?,
+    onClose: (() -> Unit)?,
+    authLine: @Composable () -> Unit = {},
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -992,12 +1191,9 @@ internal fun ComputerRuntimeUsageCard(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            RaftText(
-                stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
-                style = typography.headline,
-                color = colors.foreground,
-            )
-            val version = state.runtimeVersion?.trim()?.takeIf { it.isNotEmpty() }
+            RaftText(title, style = typography.headline, color = colors.foreground)
+            authLine()
+            val version = runtimeVersion?.trim()?.takeIf { it.isNotEmpty() }
             RaftText(
                 if (version != null) {
                     stringResource(Res.string.settings_computers_runtime_usage_version, version)
@@ -1020,6 +1216,58 @@ internal fun ComputerRuntimeUsageCard(
         }
     }
     RaftSeparator()
+}
+
+/** Web `HOVER_CLOSE_DELAY_MS`: the usage card waits a little longer than a profile card. */
+internal const val ComputerRuntimeUsagePreviewCardCloseDelayMillis = 160L
+
+/**
+ * Web `Surface` in its desktop card: a header (title, version, who may see it, close) over a
+ * hairline, the accounts, then a footer row with the refresh state and an outline Refresh. The
+ * phone keeps the sheet ([ComputerRuntimeUsageSheet]) with the same content.
+ */
+@Composable
+internal fun ComputerRuntimeUsageCard(
+    runtimeLabel: String,
+    state: ComputerRuntimeUsageSheetState,
+    timeContext: RaftTimeContext?,
+    onRefresh: () -> Unit,
+    onClose: (() -> Unit)?,
+    onUseLimitReset: () -> Unit = {},
+    /** The runtime's sign-in (web `SurfaceAuth`); null shows usage alone. */
+    auth: ComputerRuntimeAuthCardState? = null,
+    authRuntimeName: String = runtimeLabel,
+    onSignIn: () -> Unit = {},
+    onSignOut: () -> Unit = {},
+    onSignOutProvider: (RuntimeAuthSignedInProvider) -> Unit = {},
+) {
+    // Signed out: there is no usage to show, only the way to sign in (web `showsUsage`).
+    if (auth?.signedOut == true) {
+        ComputerRuntimeAuthOnlyCard(authRuntimeName, state.runtimeVersion, auth, onClose, onSignIn, onSignOut, onSignOutProvider)
+        return
+    }
+    ComputerRuntimeCardHeader(
+        title = stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
+        runtimeVersion = state.runtimeVersion,
+        onClose = onClose,
+    ) {
+        if (auth != null) ComputerRuntimeAuthHeaderLine(auth, usageShowsAccount = state.showsAccount, authOnly = false)
+    }
+    ComputerRuntimeUsageCardBody(state, timeContext, onRefresh, onUseLimitReset, auth, onSignIn, onSignOut)
+}
+
+@Composable
+private fun ComputerRuntimeUsageCardBody(
+    state: ComputerRuntimeUsageSheetState,
+    timeContext: RaftTimeContext?,
+    onRefresh: () -> Unit,
+    onUseLimitReset: () -> Unit,
+    auth: ComputerRuntimeAuthCardState?,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
     val load = state.load
     when {
         load == null && state.loading ->
@@ -1116,6 +1364,12 @@ internal fun ComputerRuntimeUsageCard(
             leadingIcon = { RaftComputersIcon(RaftLucideIconName.RefreshCw) },
         )
         state.limitReset?.let { offer -> ComputerRuntimeLimitResetButton(offer, onUseLimitReset) }
+    }
+    // Web: the quiet sign-in action in the card's action row (here under it: a phone-wide card).
+    if (auth?.action() != null) {
+        Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp)) {
+            ComputerRuntimeAuthActionView(auth, onSignIn, onSignOut)
+        }
     }
 }
 

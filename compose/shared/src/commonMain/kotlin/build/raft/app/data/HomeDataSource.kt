@@ -348,6 +348,10 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is build.raft.app.model.AgentTypingUpdated -> false
         // A web restart's result only concerns the open computer detail page (settings store).
         is build.raft.app.model.ComputerRestartDone -> false
+        // A Computer's runtime sign-in: only the Computer page's runtime cards read it.
+        is build.raft.app.model.RuntimeAuthUpdated,
+        is build.raft.app.model.RuntimeAuthLoginEventPushed,
+        is build.raft.app.model.RuntimeAuthLoginResultPushed -> false
         // A flag-refetch hint: the feature-flag refresher handles it; Home's rows do not change.
         is build.raft.app.model.ServerFeaturesChanged -> false
         // Object rows live in Activity only; the Activity store and the unread summary refetch on it.

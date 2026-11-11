@@ -63,7 +63,9 @@ internal class MembersRuntimeAccountUsageAccess(
     /** Diagnostics sink (no identity, token or machine data is ever written to it). */
     val log: (String) -> Unit = {},
     /** Who is looking, for [canViewMachineRuntimeAccountUsage]; null while unknown (the server decides). */
-    val viewer: RuntimeAccountUsageViewer? = null
+    val viewer: RuntimeAccountUsageViewer? = null,
+    /** Signing the Computer's runtimes in and out from their cards; null offers no sign-in (the agent page). */
+    val auth: ComputerRuntimeAuthHost? = null,
 )
 
 /**

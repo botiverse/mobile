@@ -233,7 +233,14 @@ internal fun raftComputersOpenAddOnLoad(state: ScreenLoadState<*>): Boolean? =
 internal data class RaftComputerPageTarget(val machineId: String, val serverId: String?)
 
 /** The usage sheet open on the Computers page: whose usage, the runtime's name and its reported version. */
-private data class RaftComputersOpenUsage(val key: RuntimeAccountUsageKey, val label: String, val runtimeVersion: String?)
+private data class RaftComputersOpenUsage(
+    val key: RuntimeAccountUsageKey,
+    val label: String,
+    val runtimeVersion: String?,
+    /** The rack column's runtime, for its sign-in. */
+    val runtimeId: String? = null,
+    val computerName: String? = null,
+)
 
 private data class RaftComputersFirstFrame(val computersStore: SharedComputersStore, val serverId: String?)
 
@@ -555,7 +562,9 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                                 ?.firstOrNull { it.id == machineId }
                                 ?.runtimeVersions
                                 ?.get(column.runtimeId)
-                        RaftRackUsagePreviewCard(label, key, usageAccess, runtimeVersion, trigger)
+                        val computerName =
+                            (settingsState.computers as? ScreenLoadState.Content)?.data?.computers?.firstOrNull { it.id == machineId }?.name
+                        RaftRackUsagePreviewCard(label, key, usageAccess, runtimeVersion, column.runtimeId, computerName, trigger)
                     }
                 }
             }
@@ -606,8 +615,16 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                                 ?.firstOrNull { it.id == machineId }
                                 ?.runtimeVersions
                                 ?.get(column.runtimeId)
+                        val computerName =
+                            (settingsState.computers as? ScreenLoadState.Content)?.data?.computers?.firstOrNull { it.id == machineId }?.name
                         openUsage =
-                            RaftComputersOpenUsage(RuntimeAccountUsageKey(owner, usageServerId, machineId, column.provider), label, runtimeVersion)
+                            RaftComputersOpenUsage(
+                                RuntimeAccountUsageKey(owner, usageServerId, machineId, column.provider),
+                                label,
+                                runtimeVersion,
+                                runtimeId = column.runtimeId,
+                                computerName = computerName,
+                            )
                     }
                 },
                 onOpenAgent = { agent ->
@@ -631,13 +648,15 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
         }
         }
     }
-    openUsage?.let { (key, label, runtimeVersion) ->
+    openUsage?.let { (key, label, runtimeVersion, runtimeId, computerName) ->
         RaftComputersTheme {
             ComputerRuntimeUsageSheetHost(
                 runtimeLabel = label,
                 key = key,
                 access = usageAccess,
                 runtimeVersion = runtimeVersion,
+                runtimeId = runtimeId,
+                computerName = computerName,
                 onDismiss = {
                     openUsage = null
                     // The sheet may have refreshed it: show the store's value (no request).
@@ -2573,6 +2592,8 @@ private fun RaftComputerDetailBody(
                             machineId,
                             enabled = canEdit,
                             runtimeVersions = snapshot.computer.runtimeVersions,
+                            computerName = computer.name,
+                            agents = snapshot.agents,
                         ) { chip ->
                             RaftComputerRuntimeBadge(chip)
                         }
@@ -3425,6 +3446,8 @@ private fun RaftRackUsagePreviewCard(
     key: RuntimeAccountUsageKey,
     access: MembersRuntimeAccountUsageAccess,
     runtimeVersion: String?,
+    runtimeId: String,
+    computerName: String?,
     trigger: @Composable () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -3433,5 +3456,9 @@ private fun RaftRackUsagePreviewCard(
             ComputerRuntimeUsageController(key = key, store = access.store, scope = scope, log = access.log, onIdentityChanged = access.onIdentityChanged)
         }
     DisposableEffect(controller) { onDispose { controller.cancel() } }
-    ComputerRuntimeUsagePreviewCard(runtimeLabel = label, controller = controller, runtimeVersion = runtimeVersion, trigger = trigger)
+    // The card's sign-in, read only when it opens: a page of Computers asks for nothing more at rest.
+    val auth = rememberComputerRuntimeAuthController(access, key.machineId, runtimeId, readNow = false)
+    // The line's label is the runtime's display name (web rack `RackRuntimeUsage`).
+    val binding = auth?.let { ComputerRuntimeAuthBinding(it, label, computerName, agents = null, openUrl = access.auth?.openUrl ?: {}) }
+    ComputerRuntimeUsagePreviewCard(runtimeLabel = label, controller = controller, runtimeVersion = runtimeVersion, auth = binding, trigger = trigger)
 }

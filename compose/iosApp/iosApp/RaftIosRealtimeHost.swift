@@ -1077,6 +1077,10 @@ final class RaftIosRealtimeHost: NSObject {
         GeneratedRealtimeContract.SocketEvent.computerUpgradeDone,
         GeneratedRealtimeContract.SocketEvent.machineUpgradeRequest,
         GeneratedRealtimeContract.SocketEvent.computerRestartDone,
+        // Signing a Computer's runtimes in and out (slock docs/contracts/runtime-auth.md).
+        GeneratedRealtimeContract.SocketEvent.machineRuntimeAuthUpdated,
+        GeneratedRealtimeContract.SocketEvent.runtimeAuthLoginEvent,
+        GeneratedRealtimeContract.SocketEvent.runtimeAuthLoginResult,
         GeneratedRealtimeContract.SocketEvent.daemonStatus,
         GeneratedRealtimeContract.SocketEvent.serverMemberAdded,
         GeneratedRealtimeContract.SocketEvent.serverMemberUpdated,

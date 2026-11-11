@@ -97,6 +97,9 @@ object GeneratedRealtimeContract {
         const val ComputerUpgradeDone = "computer:upgrade:done"
         const val MachineUpgradeRequest = "machine:upgrade-request"
         const val ComputerRestartDone = "computer:restart:done"
+        const val MachineRuntimeAuthUpdated = "machine:runtime_auth:updated"
+        const val RuntimeAuthLoginEvent = "runtime_auth:login:event"
+        const val RuntimeAuthLoginResult = "runtime_auth:login:result"
         const val DaemonStatus = "daemon:status"
         const val ServerMemberAdded = "server:member-added"
         const val ServerMemberUpdated = "server:member-updated"
@@ -141,6 +144,9 @@ object GeneratedRealtimeContract {
             ComputerUpgradeDone,
             MachineUpgradeRequest,
             ComputerRestartDone,
+            MachineRuntimeAuthUpdated,
+            RuntimeAuthLoginEvent,
+            RuntimeAuthLoginResult,
             DaemonStatus,
             ServerMemberAdded,
             ServerMemberUpdated,
