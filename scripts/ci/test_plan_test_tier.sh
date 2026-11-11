@@ -24,6 +24,7 @@ ios_main="$(paths ios_main compose/shared/src/iosMain/kotlin/A.kt)"
 android_only="$(paths android_only compose/androidApp/src/main/A.kt)"
 docs="$(paths docs docs/readme.md)"
 unknown="$(paths unknown __CI_CHANGED_PATHS_UNKNOWN__)"
+ci_control="$(paths ci_control .github/workflows/test.yml)"
 
 B='["blacksmith-xcode27.0"]'
 BG='["blacksmith-xcode27.0","github-xcode27.1"]'
@@ -49,6 +50,19 @@ expect() {
     failures=$((failures + 1))
   else
     echo "ok   $name -> $got"
+  fi
+}
+
+expect_reason() {
+  local name="$1" want="$2"
+  shift 3
+  local got
+  got="$("$planner" "$@" 2>/dev/null | sed -n 's/^reason=//p')" || true
+  if test "$got" != "$want"; then
+    echo "FAIL $name: want reason=$want, got reason=$got"
+    failures=$((failures + 1))
+  else
+    echo "ok   $name -> reason=$got"
   fi
 }
 
@@ -82,10 +96,25 @@ expect "dispatch scope=pr"          "true false false [] false false []"        
 expect "dispatch scope=ios"         "false true false $B false false []"        -- workflow_dispatch "$empty" false feature ios
 expect "dispatch scope=ios xcode"   "false true false $B false false []"        -- workflow_dispatch "$empty" false feature ios /Applications/Xcode_27.1.app
 expect "dispatch scope=full (no 27.1)" "true true false $B true true [29,31,34]" -- workflow_dispatch "$empty" false feature full
+expect "premerge commonMain"        "false true false $B false false []"        -- workflow_dispatch "$common" false feature premerge "" main
+expect "premerge iosApp"            "false true false $B false false []"        -- workflow_dispatch "$ios_app" false feature premerge "" main
+expect "premerge android-only"      "false false false [] false false []"       -- workflow_dispatch "$android_only" false feature premerge "" main
+expect "premerge docs-only"         "false false false [] false false []"       -- workflow_dispatch "$docs" false feature premerge "" main
+expect "premerge ci-control"        "false true false $B false false []"        -- workflow_dispatch "$ci_control" false feature premerge "" main
+expect "premerge diff unknown"      "true true false $B false false []"         -- workflow_dispatch "$unknown" false feature premerge "" main
+expect "premerge release/ base"     "true true false $B true true [29,31,34]"   -- workflow_dispatch "$android_only" false feature premerge "" release/1.20.0
+expect "premerge release- base"     "true true false $B true true [29,31,34]"   -- workflow_dispatch "$docs" false feature premerge "" release-1.20.0
+expect "premerge iosApp xcode"      "false true false $B false false []"        -- workflow_dispatch "$ios_app" false feature premerge /Applications/Xcode_27.1.app main
+expect_reason "premerge reason ios"     "workflow_dispatch-premerge:ios"          -- workflow_dispatch "$common" false feature premerge "" main
+expect_reason "premerge reason no-ios"  "workflow_dispatch-premerge:no-ios"       -- workflow_dispatch "$android_only" false feature premerge "" main
+expect_reason "premerge reason release" "workflow_dispatch-premerge:release-full" -- workflow_dispatch "$common" false feature premerge "" release/1.20.0
+expect_reason "premerge reason unknown" "workflow_dispatch-premerge:diff-unavailable-fail-closed" -- workflow_dispatch "$unknown" false feature premerge "" main
 
 expect_reject "dispatch empty scope"          -- workflow_dispatch "$empty" false feature ""
 expect_reject "dispatch unknown scope"        -- workflow_dispatch "$empty" false feature nightly
 expect_reject "dispatch scope=pr with xcode"  -- workflow_dispatch "$empty" false feature pr /Applications/Xcode_27.1.app
+expect_reject "premerge without base ref"    -- workflow_dispatch "$common" false feature premerge
+expect_reject "premerge no-ios with xcode"   -- workflow_dispatch "$android_only" false feature premerge /Applications/Xcode_27.1.app main
 expect_reject "push to unsupported ref"       -- push "$common" false feature
 
 if test "$failures" -ne 0; then

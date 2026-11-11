@@ -598,8 +598,15 @@ The canonical flow is (Stamp commands, run from a Stamp checkout):
    shared Kotlin code that could break the iOS build. `scope=full` is only for
    release candidates or a deliberate full readback (it adds the Android
    emulator/device suite and canonical-final). The `iOS compile (Xcode 27.1)`
-   lane runs only in the nightly schedule and on `release-*` pushes. Details:
-   skill `raft-ci-validation`.
+   lane runs only in the nightly schedule and on `release-*` pushes.
+   `scope=premerge` (with `-f base_ref=<PR base branch>`, default `main`) is
+   Stamp's ready-to-merge check on the PR head: it diffs against the merge-base
+   with `base_ref`, runs the Blacksmith `iOS compile` only when the diff can
+   affect iOS (shared `compose/**` such as `commonMain`, iOS/native paths, CI
+   control; an unavailable diff selects every platform), never reruns Android,
+   and runs the `scope=full` tier when `base_ref` is `release/*`. The plan's
+   `reason=workflow_dispatch-premerge:<ios|no-ios|release-full|...>` says
+   which. Details: skill `raft-ci-validation`.
 
    A new push voids the approval and any auto-merge registration. The reviewer
    reviews and approves the new head, and the author registers auto-merge
