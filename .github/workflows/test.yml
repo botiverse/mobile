@@ -351,6 +351,10 @@ jobs:
         shell: bash
         run: scripts/check_search_snippet_vector.sh
 
+      - name: Guard Web/mobile human pixel-avatar vector
+        shell: bash
+        run: scripts/check_human_pixel_avatar_vector.sh
+
       - name: Guard server/Android notification copy keys
         shell: bash
         run: scripts/check_notification_copy_vector.sh

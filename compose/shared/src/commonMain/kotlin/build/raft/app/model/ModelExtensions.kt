@@ -1,5 +1,7 @@
 package build.raft.app.model
 
+import build.raft.app.isRaftHumanPixelAvatarUrl
+
 // ConversationSummary extensions
 private val ConversationTitleUuidRegex =
     Regex("^[A-Fa-f0-9]{8}(?:-[A-Fa-f0-9]{4}){3}-[A-Fa-f0-9]{12}$")
@@ -326,14 +328,23 @@ internal fun String.raftUploadedHumanAvatarWireValueOrNull(): String? {
     return normalized.takeIf { RaftUploadedHumanAvatarPath.matches(path) }
 }
 
+/**
+ * What a person's avatar shows (web `humanAvatarSource`): their uploaded photo, else the pixel
+ * avatar they built (`pixel-human:v1:...`); anything else (an old social-provider picture, a
+ * value Raft doesn't draw) is none, the placeholder.
+ */
+internal fun String.raftShownHumanAvatarWireValueOrNull(): String? =
+    raftUploadedHumanAvatarWireValueOrNull()
+        ?: trim().takeIf(::isRaftHumanPixelAvatarUrl)
+
 private fun explicitAvatarWireValue(
     kind: MemberKind,
     avatarWireValue: String?,
     avatarUrl: String?
 ): String? =
     if (kind == MemberKind.Human) {
-        avatarWireValue?.raftUploadedHumanAvatarWireValueOrNull()
-            ?: avatarUrl?.raftUploadedHumanAvatarWireValueOrNull()
+        avatarWireValue?.raftShownHumanAvatarWireValueOrNull()
+            ?: avatarUrl?.raftShownHumanAvatarWireValueOrNull()
     } else {
         avatarWireValue?.appAvatarWireValueOrNull()
             ?: avatarUrl?.appAvatarWireValueOrNull()

@@ -8259,8 +8259,15 @@ internal fun RaftAppAvatar(
             displayAvatarWireValue?.toPixelAvatarSpec()
         }
     }
+    // A person's built pixel avatar (`pixel-human:v1:...`, web PersonAvatar → HumanPixelAvatar).
+    val humanPixelPicture = remember(displayAvatarWireValue) { raftHumanPixelAvatarPicture(displayAvatarWireValue) }
     val step = RaftAvatarStep.nearest(avatarSize)
     when {
+        humanPixelPicture != null -> traceMarkdownSection(RaftAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
+            RaftAppAvatarFrame(modifier, avatarSize, borderWidth, humanPixelPicture.background) {
+                RaftNativeHumanPixelAvatar(humanPixelPicture)
+            }
+        }
         pixelSpec != null -> traceMarkdownSection(RaftAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
             RaftPixelAvatarDrawCache.onCompose()
             RaftAppAvatarFrame(modifier, avatarSize, borderWidth, pixelSpec.background) {

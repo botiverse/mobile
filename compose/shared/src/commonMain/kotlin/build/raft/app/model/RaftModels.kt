@@ -1,5 +1,6 @@
 package build.raft.app.model
 
+import build.raft.app.isRaftHumanPixelAvatarUrl
 import build.raft.app.toRaftAvatarLabel
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.data.SettingsServerSidebarPinnedItem
@@ -365,6 +366,19 @@ sealed class AvatarReference {
         override val wireValue: String = "pixel:random:$seed"
     }
 
+    /**
+     * A person's built pixel avatar, `pixel-human:v1:...` as stored (web `HumanPixelAvatar`).
+     * Like [Url], the person's own concrete avatar, not a render fallback.
+     */
+    @Serializable
+    data class HumanPixel(val value: String) : AvatarReference() {
+        override val wireValue: String = value
+    }
+
+    /** The person's or agent's own avatar (a photo or a built pixel avatar), not a render fallback. */
+    val isConcrete: Boolean
+        get() = this is Url || this is HumanPixel
+
     companion object {
         fun fromWireValue(value: String?): AvatarReference? {
             val normalized = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
@@ -378,6 +392,7 @@ sealed class AvatarReference {
                     Pixel(normalized.removePrefix("pixel:").ifBlank { "robot" })
                 normalized.startsWith("http://") || normalized.startsWith("https://") ->
                     normalized.takeUnless { it.isLegacyGravatarAvatarUrl() }?.let(::Url)
+                isRaftHumanPixelAvatarUrl(normalized) -> HumanPixel(normalized)
                 else -> null
             }
         }

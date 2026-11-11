@@ -1498,12 +1498,13 @@ class SharedServerMembersStore internal constructor(
         merged: MemberProfile,
         source: String
     ) {
-        val hadConcrete = (existing.avatar as? AvatarReference.Url) != null
-        val lostConcrete = (merged.avatar as? AvatarReference.Url) == null
+        val hadConcrete = existing.avatar?.isConcrete == true
+        val lostConcrete = merged.avatar?.isConcrete != true
         if (!hadConcrete || !lostConcrete) return
         val incomingAvatarKind =
             when {
                 incoming.avatar is AvatarReference.Url -> "url"
+                incoming.avatar is AvatarReference.HumanPixel -> "human_pixel"
                 incoming.avatar != null -> "pixel"
                 else -> "none"
             }
@@ -4377,8 +4378,9 @@ private fun MemberProfile.mergeAuthoritativeProfile(incoming: MemberProfile): Me
     // populate an empty slot, but it must never erase a concrete URL learned earlier. A cached
     // pixel avatar is not a concrete URL: the agent's new pixel avatar replaces it (an agent set
     // from `pixel:antenna` to `pixel:pencil` on the web kept the antenna, even across restarts,
-    // as the durable roster re-seeded it — Edgar, artin 10-29).
-    if (incomingAvatar !is AvatarReference.Url && this.avatar is AvatarReference.Url) {
+    // as the durable roster re-seeded it — Edgar, artin 10-29). A person's built pixel avatar
+    // (`pixel-human:`) is concrete like a photo: either replaces the other.
+    if (!incomingAvatar.isConcrete && this.avatar?.isConcrete == true) {
         return statusMerged.copy(avatar = this.avatar)
     }
     return statusMerged.copy(avatar = incomingAvatar)

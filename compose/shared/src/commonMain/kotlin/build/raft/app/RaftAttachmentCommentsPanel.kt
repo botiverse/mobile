@@ -34,7 +34,9 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ThreadAttachmentCommentAnchor
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.model.MemberKind
 import build.raft.app.model.formatRaftTimestampLabel
+import build.raft.app.model.raftShownHumanAvatarWireValueOrNull
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
@@ -252,6 +254,11 @@ private fun AttachmentCommentCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             val agent = comment.senderType == "agent"
+            // web AvatarSlot `humanAvatarUrl`: the person's photo or built pixel avatar, else the User glyph.
+            val humanAvatarWireValue =
+                remember(comment.senderAvatarUrl, agent) {
+                    if (agent) null else comment.senderAvatarUrl?.raftShownHumanAvatarWireValueOrNull()
+                }
             RaftAvatar(
                 type = if (agent) RaftAvatarType.Agent else RaftAvatarType.Human,
                 size = RaftAvatarSize.Xs,
@@ -259,6 +266,17 @@ private fun AttachmentCommentCard(
                 image =
                     if (agent) {
                         null
+                    } else if (humanAvatarWireValue != null) {
+                        {
+                            RaftAppAvatar(
+                                avatarWireValue = humanAvatarWireValue,
+                                label = "",
+                                // The face fills the inside of the sticker edge.
+                                avatarSize = CommentAvatarSize - RaftStroke.Control * 2,
+                                borderWidth = 0.dp,
+                                cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Human, comment.senderId),
+                            )
+                        }
                     } else {
                         {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
