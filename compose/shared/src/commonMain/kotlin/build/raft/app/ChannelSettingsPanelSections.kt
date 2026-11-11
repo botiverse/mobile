@@ -235,6 +235,8 @@ internal data class ThreadChannelSettingsPanel(
      * ArchivedNameCollisionBanner `nav.toChannel`): Open Channel, or after Unarchive ([unarchived]).
      */
     val onOpenChannel: (conversation: ThreadLaunchConversationIdentity, unarchived: Boolean) -> Unit = { _, _ -> },
+    /** `external_channels_v1` for this server: the host's joint copy has no Disconnect ([channelSettingsHostCannotDisconnect]). */
+    val externalChannelsEnabled: Boolean = false,
 )
 
 /** Web ChatPanel `hideAllChannelMembersButton`: #all, a member's view, a server that hides people from members. */

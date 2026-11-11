@@ -294,6 +294,7 @@ LUCIDE_ICONS = [
     "unfollow-artifact",
     "unfollow-thread",
     "unlink",
+    "unplug",
     "upload",
     "user",
     "user-minus",

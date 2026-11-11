@@ -23,6 +23,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.base.Utils
@@ -32,6 +33,7 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
 import build.raft.app.data.JOINT_CHANNEL_FREE_LIMIT_REACHED
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
 import build.raft.app.data.JOINT_FREE_SERVER_LIMIT
@@ -48,6 +50,7 @@ import build.raft.app.data.JointChannelServerPlan
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.jointSameAdminContext
+import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftBadge
@@ -57,7 +60,12 @@ import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftDialog
+import build.raft.designsystem.components.RaftDialogSize
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
@@ -86,6 +94,11 @@ internal fun jointChannelConnectionsPageData(route: ChannelSettingsRoute): JSONO
  * connected/pending server list with plan and status badges, Resend Invite, and the
  * "Channel connection invitation" form. Disconnect stays in Channel Settings' management card,
  * where web puts it in place of Delete.
+ *
+ * With `external_channels_v1` on for this server (web slock f3c3905046d1 EditChannelDialog
+ * #13705 / #13856): the host leads under a Host badge, no plan chips, only pending rows badged,
+ * no invite form or Resend, and the host's admins get each other server's Disconnect
+ * (JointServerDisconnectAction) with its confirm.
  */
 @Page(JOINT_CHANNEL_CONNECTIONS_PAGE, supportInLocal = true)
 internal class RaftJointChannelConnectionsPage :
@@ -159,6 +172,11 @@ private fun JointChannelConnectionsScreen() {
     }
     // The last finished action's receipt (web: the role="status" line under the form).
     var statusMessage by remember(route) { mutableStateOf<JointChannelConnectionsEffect?>(null) }
+    // Web reads external_channels_v1 for the current server: the one whose copy is open.
+    val externalChannels = rememberServerFeatureLatched(sharedStores.serverFeatureFlags, route.serverId, EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)
+    LaunchedEffect(store, externalChannels) {
+        store.dispatch(JointChannelConnectionsIntent.SetExternalChannelsEnabled(externalChannels))
+    }
 
     LaunchedEffect(store, liveOwner, routeOwner) {
         if (liveOwner == routeOwner) store.dispatch(JointChannelConnectionsIntent.Refresh)
@@ -172,6 +190,8 @@ private fun JointChannelConnectionsScreen() {
                 statusMessage = effect
             }
             is JointChannelConnectionsEffect.Resent -> statusMessage = effect
+            is JointChannelConnectionsEffect.ServerDisconnected ->
+                bridge.toast(Res.string.joint_server_disconnected_toast.format(effect.serverName, effect.channelName).resolve())
             null -> Unit
         }
         if (state.effect != null) store.dispatch(JointChannelConnectionsIntent.ConsumeEffect)
@@ -224,6 +244,9 @@ private fun JointChannelConnectionsScreen() {
                                 statusMessage = null
                                 store.dispatch(JointChannelConnectionsIntent.Resend)
                             },
+                            onDisconnectServer = { serverId ->
+                                store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer(serverId))
+                            },
                         )
                         }
                     state.status == JointChannelConnectionsLoadStatus.Error ->
@@ -237,11 +260,21 @@ private fun JointChannelConnectionsScreen() {
                 }
             }
         }
+        state.disconnectConfirmServer?.let { server ->
+            JointServerDisconnectConfirmDialog(
+                serverName = server.name.ifBlank { server.slug },
+                channelName = state.connections?.channelName?.removePrefix("#").orEmpty(),
+                busy = state.actionInFlight == JointChannelConnectionsAction.DisconnectServer,
+                failure = state.disconnectFailure,
+                onDismiss = { store.dispatch(JointChannelConnectionsIntent.DismissDisconnectServer) },
+                onConfirm = { store.dispatch(JointChannelConnectionsIntent.DisconnectServer) },
+            )
+        }
     }
 }
 
 @Composable
-private fun JointConnectionsContent(
+internal fun JointConnectionsContent(
     state: JointChannelConnectionsState,
     slug: String,
     people: String,
@@ -252,6 +285,7 @@ private fun JointConnectionsContent(
     onSameAdminConfirmedChange: (Boolean) -> Unit,
     onSendInvite: () -> Unit,
     onResend: () -> Unit,
+    onDisconnectServer: (serverId: String) -> Unit = {},
 ) {
     val connections = state.connections ?: return
     val bottomSafeArea = raftBottomSafeAreaPadding()
@@ -275,15 +309,20 @@ private fun JointConnectionsContent(
                         color = RaftTheme.colors.foregroundHint,
                     )
                 } else {
-                    RaftListRowGroup(Modifier.fillMaxWidth()) {
-                        connections.servers.forEachIndexed { index, server ->
-                            JointConnectedServerRow(server = server, divider = index > 0)
+                    RaftListRowGroup(Modifier.fillMaxWidth().testTag(JointConnectionsServerListTag)) {
+                        state.displayServers.forEachIndexed { index, server ->
+                            JointConnectedServerRow(
+                                server = server,
+                                state = state,
+                                divider = index > 0,
+                                onDisconnect = { onDisconnectServer(server.serverId) },
+                            )
                         }
                     }
                 }
                 if (state.canResend) {
                     Row(
-                        Modifier.fillMaxWidth().padding(top = 12.dp),
+                        Modifier.fillMaxWidth().padding(top = 12.dp).testTag(JointConnectionsResendTag),
                         horizontalArrangement = Arrangement.End,
                     ) {
                         RaftButton(
@@ -356,18 +395,45 @@ private fun jointConnectionsReceiptText(receipt: JointChannelConnectionsEffect):
             }
     }
 
+internal const val JointConnectionsServerListTag = "joint-connections-servers"
+internal const val JointConnectionsHostBadgeTag = "joint-connections-host-badge"
+internal const val JointConnectionsStatusBadgeTag = "joint-connections-status-badge"
+internal const val JointConnectionsPlanBadgeTag = "joint-connections-plan-badge"
+internal const val JointConnectionsDisconnectTag = "joint-connections-disconnect"
+internal const val JointConnectionsInviteTag = "joint-connections-invite"
+internal const val JointConnectionsResendTag = "joint-connections-resend"
+internal const val JointConnectionsDisconnectConfirmTag = "joint-connections-disconnect-confirm"
+
 @Composable
-private fun JointConnectedServerRow(server: JointChannelServer, divider: Boolean) {
+private fun JointConnectedServerRow(
+    server: JointChannelServer,
+    state: JointChannelConnectionsState,
+    divider: Boolean,
+    onDisconnect: () -> Unit,
+) {
     val thisServer = stringResource(Res.string.joint_connections_this_server)
+    val serverName = server.name.ifBlank { server.slug }
     RaftListRow(
-        title = server.name.ifBlank { server.slug },
+        title = serverName,
         divider = divider,
         subtitle =
             listOfNotNull(server.slug.takeIf(String::isNotBlank), thisServer.takeIf { server.isCurrentServer })
                 .joinToString(" · ")
                 .takeIf(String::isNotBlank),
+        badge =
+            if (state.showsHostBadge(server)) {
+                {
+                    RaftBadge(
+                        text = stringResource(Res.string.joint_connections_role_host),
+                        appearance = RaftBadgeAppearance.Outline,
+                        modifier = Modifier.testTag(JointConnectionsHostBadgeTag),
+                    )
+                }
+            } else {
+                null
+            },
         trailing = {
-            server.plan?.let { plan ->
+            server.plan?.takeIf { state.showsPlanBadge(server) }?.let { plan ->
                 RaftBadge(
                     text =
                         stringResource(
@@ -378,19 +444,99 @@ private fun JointConnectedServerRow(server: JointChannelServer, divider: Boolean
                             }
                         ),
                     appearance = RaftBadgeAppearance.Outline,
+                    modifier = Modifier.testTag(JointConnectionsPlanBadgeTag),
                 )
             }
-            RaftBadge(
-                text =
-                    stringResource(
-                        if (server.active) Res.string.joint_connections_status_active else Res.string.joint_connections_status_pending
-                    ),
-                appearance = RaftBadgeAppearance.Soft,
-                variant = if (server.active) RaftBadgeVariant.Success else RaftBadgeVariant.Warning,
-            )
+            if (state.showsStatusBadge(server)) {
+                RaftBadge(
+                    text =
+                        stringResource(
+                            if (server.active) Res.string.joint_connections_status_active else Res.string.joint_connections_status_pending
+                        ),
+                    appearance = RaftBadgeAppearance.Soft,
+                    variant = if (server.active) RaftBadgeVariant.Success else RaftBadgeVariant.Warning,
+                    modifier = Modifier.testTag(JointConnectionsStatusBadgeTag),
+                )
+            }
+            // Web JointServerDisconnectAction: always visible on touch (no hover there).
+            if (state.canDisconnectServer(server)) {
+                val label = stringResource(Res.string.joint_server_disconnect_action, serverName)
+                RaftIconButton(
+                    onClick = onDisconnect,
+                    tooltip = label,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftIconButtonSize.Md,
+                    enabled = state.actionInFlight == null,
+                    modifier = Modifier.testTag(JointConnectionsDisconnectTag),
+                ) {
+                    RaftComputersIcon(RaftLucideIconName.Unplug, size = 20.dp)
+                }
+            }
         },
     )
 }
+
+/**
+ * Web JointServerDisconnectAction's ConfirmDialog: "Disconnect {server}?", what happens to that
+ * server's copy, Cancel and a red "Disconnect {server}". A refusal stays in the dialog as one line
+ * (web `channel.edit.disconnectServerFailed`) with the request's trace ID.
+ */
+@Composable
+internal fun JointServerDisconnectConfirmDialog(
+    serverName: String,
+    channelName: String,
+    busy: Boolean,
+    failure: JointChannelFailure?,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    RaftDesignSystemTheme {
+        RaftDialog(
+            onDismissRequest = { if (!busy) onDismiss() },
+            title = stringResource(Res.string.joint_server_disconnect_title, serverName),
+            description = stringResource(Res.string.joint_server_disconnect_confirm, serverName, channelName),
+            size = RaftDialogSize.Sm,
+            dismissOnClickOutside = false,
+            closeLabel = stringResource(Res.string.common_close),
+            footer = {
+                RaftButton(
+                    text = stringResource(Res.string.common_cancel),
+                    onClick = onDismiss,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg,
+                    enabled = !busy,
+                )
+                RaftButton(
+                    text = stringResource(Res.string.joint_server_disconnect_action, serverName),
+                    onClick = onConfirm,
+                    variant = RaftButtonVariant.Danger,
+                    size = RaftButtonSize.Lg,
+                    loading = busy,
+                    loadingLabel = stringResource(Res.string.joint_disconnecting),
+                    modifier = Modifier.testTag(JointConnectionsDisconnectConfirmTag),
+                )
+            },
+            content =
+                failure?.let { error ->
+                    {
+                        RaftText(
+                            stringResource(Res.string.joint_server_disconnect_failed, serverName),
+                            style = RaftTheme.typography.callout,
+                            color = RaftTheme.colors.dangerStrong,
+                        )
+                        RaftTraceIdNote(error.traceId)
+                    }
+                },
+        )
+    }
+}
+
+private val JointChannelFailure.traceId: String?
+    get() =
+        when (this) {
+            is JointChannelFailure.Error -> error.traceId
+            is JointChannelFailure.Blocked -> blocker.traceId
+        }
 
 @Composable
 private fun JointInviteSection(
@@ -431,7 +577,10 @@ private fun JointInviteSection(
             failureField == JointInviteField.Form -> failureText
             else -> null
         }
-    RaftSection(title = stringResource(Res.string.joint_connections_invite_section)) {
+    RaftSection(
+        title = stringResource(Res.string.joint_connections_invite_section),
+        modifier = Modifier.testTag(JointConnectionsInviteTag),
+    ) {
         if (connections.serverLimitReached) {
             RaftText(
                 stringResource(Res.string.joint_connections_max_servers, JOINT_CHANNEL_MAX_SERVERS),

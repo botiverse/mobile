@@ -22,6 +22,7 @@ import build.raft.app.data.RealJointChannelRepository
 import build.raft.app.data.ScreenError
 import build.raft.app.data.JointChannelServer
 import build.raft.app.data.JointChannelServerPlan
+import build.raft.app.data.JointChannelRole
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.jointServerSlugIssue
 import build.raft.app.data.parseJointInvitedPeopleText
@@ -74,7 +75,13 @@ internal fun jointInviteFailureField(code: String): JointInviteField =
 
 internal enum class JointChannelConnectionsLoadStatus { Loading, Content, Error }
 
-internal enum class JointChannelConnectionsAction { Invite, Resend }
+internal enum class JointChannelConnectionsAction {
+    Invite,
+    Resend,
+
+    /** The host's admin takes another server out (web JointServerDisconnectAction). */
+    DisconnectServer,
+}
 
 /** Client-side invite form rejection (web parity: checked before any request). */
 internal enum class JointInviteValidation {
@@ -96,6 +103,9 @@ internal sealed interface JointChannelConnectionsEffect {
     data class InviteSent(val emailedCount: Int, val connectedServerName: String? = null) : JointChannelConnectionsEffect
 
     data class Resent(val resentCount: Int) : JointChannelConnectionsEffect
+
+    /** Web `channel.edit.disconnectedServerToast`: "Disconnected {server} from #{channel}". */
+    data class ServerDisconnected(val serverName: String, val channelName: String) : JointChannelConnectionsEffect
 }
 
 internal data class JointChannelConnectionsSnapshot(
@@ -117,14 +127,70 @@ internal data class JointChannelConnectionsState(
     val effect: JointChannelConnectionsEffect? = null,
     /** The inviter's account, servers and roles; null until the session is known. */
     val sameAdminContext: JointSameAdminContext? = null,
+    /**
+     * `external_channels_v1` for this server (web `useServerFeatureFlag(EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)`).
+     * Off: the page is as before. On: host first under a Host badge, no plan chips, only pending
+     * rows badged, no server-invite form or Resend, and the host's per-row Disconnect.
+     */
+    val externalChannelsEnabled: Boolean = false,
+    /** The server whose Disconnect confirm is open; null when none is. */
+    val disconnectConfirmServerId: String? = null,
+    /** The confirm's failure: web keeps the dialog open with one line (and here the trace ID). */
+    val disconnectFailure: JointChannelFailure? = null,
 ) {
     /** Web EditChannelDialog `inviteSameAdminTarget` for the form's current slug and people. */
     fun sameAdminTarget(targetServerSlug: String, invitedPeopleText: String): JointSameAdminServer? =
         findSameAdminJointTarget(sameAdminContext, targetServerSlug, parseJointInvitedPeopleText(invitedPeopleText))
 
-    /** Web: invite / resend controls render only for `federateChannels` on a live joint channel. */
+    /**
+     * Web: invite / resend controls render only for `federateChannels` on a live joint channel,
+     * and (`serverInviteOfferAllowed`) only while external channels are off.
+     */
     val canManageConnections: Boolean
-        get() = canFederate && connections?.isJoint == true && connections.archived.not()
+        get() = canFederate && connections?.isJoint == true && connections.archived.not() && !externalChannelsEnabled
+
+    /**
+     * The rows as shown. External channels on: the host leads (web `jointServerRows`), the rest
+     * keep the server's order. Off: the server's order, as before.
+     */
+    val displayServers: List<JointChannelServer>
+        get() {
+            val servers = connections?.servers.orEmpty()
+            if (!externalChannelsEnabled) return servers
+            val (host, rest) = servers.partition { it.role == JointChannelRole.Host }
+            return host + rest
+        }
+
+    /** External channels on: the host row's Host badge. */
+    fun showsHostBadge(server: JointChannelServer): Boolean =
+        externalChannelsEnabled && server.role == JointChannelRole.Host
+
+    /** External channels on: no Free/Paid chip (web #wg-rbac:2ee0381d). */
+    fun showsPlanBadge(server: JointChannelServer): Boolean = !externalChannelsEnabled && server.plan != null
+
+    /** Off: every row says active or pending. On: a connected server needs no badge, pending still says so. */
+    fun showsStatusBadge(server: JointChannelServer): Boolean = !externalChannelsEnabled || !server.active
+
+    /**
+     * Web `canDisconnectJointServers` and its row check: this server hosts the joint, external
+     * channels are on, the channel's own `federateChannels` is true (the server's check, never a
+     * server-wide fallback), and the row is another server's active copy. Everything here is
+     * what the server sent; the route re-checks it.
+     */
+    fun canDisconnectServer(server: JointChannelServer): Boolean {
+        val current = connections ?: return false
+        return externalChannelsEnabled &&
+            current.isJoint &&
+            current.jointRole == JointChannelRole.Host &&
+            current.federateChannels == true &&
+            server.active &&
+            server.role != JointChannelRole.Host &&
+            !server.isCurrentServer
+    }
+
+    /** The row whose Disconnect confirm is open, while it can still be disconnected. */
+    val disconnectConfirmServer: JointChannelServer?
+        get() = disconnectConfirmServerId?.let { id -> connections?.servers?.firstOrNull { it.serverId == id } }
 
     val canResend: Boolean
         get() = canManageConnections && connections?.hasCurrentServerPendingInvites == true
@@ -139,6 +205,14 @@ internal sealed interface JointChannelConnectionsIntent {
         val sameAdminConfirmed: Boolean = false,
     ) : JointChannelConnectionsIntent
     data class SetSameAdminContext(val context: JointSameAdminContext?) : JointChannelConnectionsIntent
+    /** `external_channels_v1` as last read for this server. */
+    data class SetExternalChannelsEnabled(val enabled: Boolean) : JointChannelConnectionsIntent
+    /** A row's Disconnect: open its confirm. */
+    data class ConfirmDisconnectServer(val serverId: String) : JointChannelConnectionsIntent
+    /** The confirm's Cancel (ignored while the request runs). */
+    data object DismissDisconnectServer : JointChannelConnectionsIntent
+    /** The confirm's Disconnect {server}. */
+    data object DisconnectServer : JointChannelConnectionsIntent
     data object Resend : JointChannelConnectionsIntent
     data object ClearInviteFeedback : JointChannelConnectionsIntent
     data object ConsumeEffect : JointChannelConnectionsIntent
@@ -148,6 +222,7 @@ internal interface JointChannelConnectionsDataSource {
     suspend fun load(): DataResult<JointChannelConnectionsSnapshot>
     suspend fun invite(targetServerSlug: String, invitedPeople: List<String>, sameAdmin: Boolean): DataResult<JointChannelConnections>
     suspend fun resend(): DataResult<Int>
+    suspend fun disconnectServer(serverId: String): DataResult<Unit>
 }
 
 internal class RealJointChannelConnectionsDataSource(
@@ -184,6 +259,9 @@ internal class RealJointChannelConnectionsDataSource(
 
     override suspend fun resend(): DataResult<Int> =
         runner.run { _, networkClient -> repository(networkClient).resendInvites(route.channelId) }
+
+    override suspend fun disconnectServer(serverId: String): DataResult<Unit> =
+        runner.run { _, networkClient -> repository(networkClient).disconnectServer(route.channelId, serverId) }
 
     private fun repository(networkClient: build.raft.app.data.RaftNetworkClient) =
         RealJointChannelRepository(networkClient) { logger("joint_connections $it") }
@@ -246,6 +324,30 @@ internal class JointChannelConnectionsStore(
             JointChannelConnectionsIntent.Refresh -> load(force = true)
             is JointChannelConnectionsIntent.Invite -> invite(intent)
             JointChannelConnectionsIntent.Resend -> resend()
+            is JointChannelConnectionsIntent.SetExternalChannelsEnabled ->
+                if (mutableState.value.externalChannelsEnabled != intent.enabled) {
+                    mutableState.value =
+                        mutableState.value.copy(
+                            externalChannelsEnabled = intent.enabled,
+                            // Off again: no per-row Disconnect, so no confirm either.
+                            disconnectConfirmServerId = mutableState.value.disconnectConfirmServerId.takeIf { intent.enabled },
+                            disconnectFailure = mutableState.value.disconnectFailure.takeIf { intent.enabled },
+                        )
+                }
+            is JointChannelConnectionsIntent.ConfirmDisconnectServer -> {
+                val current = mutableState.value
+                val server = current.connections?.servers?.firstOrNull { it.serverId == intent.serverId }
+                if (server != null && current.canDisconnectServer(server) && current.actionInFlight == null) {
+                    mutableState.value = current.copy(disconnectConfirmServerId = server.serverId, disconnectFailure = null)
+                }
+            }
+            JointChannelConnectionsIntent.DismissDisconnectServer -> {
+                val current = mutableState.value
+                if (current.actionInFlight != JointChannelConnectionsAction.DisconnectServer && current.disconnectConfirmServerId != null) {
+                    mutableState.value = current.copy(disconnectConfirmServerId = null, disconnectFailure = null)
+                }
+            }
+            JointChannelConnectionsIntent.DisconnectServer -> disconnectServer()
             is JointChannelConnectionsIntent.SetSameAdminContext ->
                 if (mutableState.value.sameAdminContext != intent.context) {
                     mutableState.value = mutableState.value.copy(sameAdminContext = intent.context)
@@ -413,6 +515,44 @@ internal class JointChannelConnectionsStore(
         }
     }
 
+    private fun disconnectServer() {
+        val current = mutableState.value
+        if (current.status != JointChannelConnectionsLoadStatus.Content || current.actionInFlight != null) return
+        val connections = current.connections ?: return
+        val server = current.disconnectConfirmServer ?: return
+        if (!current.canDisconnectServer(server)) return
+        mutableState.value =
+            current.copy(actionInFlight = JointChannelConnectionsAction.DisconnectServer, disconnectFailure = null, effect = null)
+        launchAction {
+            val result = runCall { dataSource.disconnectServer(server.serverId) }
+            val previous = mutableState.value
+            if (result is DataResult.Content) {
+                // Done once the server agreed; the list is read again for what is left (web
+                // re-reads the channel; channel:updated follows on both sides).
+                val remaining =
+                    previous.connections?.takeIf { it.channelId == connections.channelId }?.let { shown ->
+                        shown.copy(servers = shown.servers.filterNot { it.serverId == server.serverId })
+                    }
+                mutableState.value =
+                    previous.copy(
+                        actionInFlight = null,
+                        connections = remaining ?: previous.connections,
+                        disconnectConfirmServerId = null,
+                        disconnectFailure = null,
+                        effect =
+                            JointChannelConnectionsEffect.ServerDisconnected(
+                                serverName = server.name.ifBlank { server.slug },
+                                channelName = connections.channelName.removePrefix("#"),
+                            ),
+                    )
+                load(force = true)
+            } else {
+                // Web: every refusal reads as one line in the still-open confirm.
+                mutableState.value = previous.copy(actionInFlight = null, disconnectFailure = result.toJointChannelFailure())
+            }
+        }
+    }
+
     private fun launchAction(block: suspend () -> Unit) {
         loadGeneration += 1L
         loadJob?.cancel()
@@ -461,6 +601,8 @@ internal data class RaftJointConnectionsDurableRecord(
     val servers: List<RaftJointConnectionsDurableServer>,
     val hasCurrentServerPendingInvites: Boolean,
     val canFederate: Boolean,
+    val jointRole: String? = null,
+    val federateChannels: Boolean? = null,
 )
 
 @Serializable
@@ -471,6 +613,7 @@ internal data class RaftJointConnectionsDurableServer(
     val active: Boolean,
     val isCurrentServer: Boolean,
     val plan: String? = null,
+    val role: String? = null,
 )
 
 internal fun JointChannelConnectionsSnapshot.toJointConnectionsDurableRecord(): RaftJointConnectionsDurableRecord =
@@ -488,10 +631,13 @@ internal fun JointChannelConnectionsSnapshot.toJointConnectionsDurableRecord(): 
                     active = server.active,
                     isCurrentServer = server.isCurrentServer,
                     plan = server.plan?.name,
+                    role = server.role?.name,
                 )
             },
         hasCurrentServerPendingInvites = connections.hasCurrentServerPendingInvites,
         canFederate = canFederate,
+        jointRole = connections.jointRole?.name,
+        federateChannels = connections.federateChannels,
     )
 
 internal fun RaftJointConnectionsDurableRecord.toJointConnectionsSnapshot(): JointChannelConnectionsSnapshot? {
@@ -512,9 +658,12 @@ internal fun RaftJointConnectionsDurableRecord.toJointConnectionsSnapshot(): Joi
                             active = server.active,
                             isCurrentServer = server.isCurrentServer,
                             plan = JointChannelServerPlan.entries.firstOrNull { it.name == server.plan },
+                            role = JointChannelRole.entries.firstOrNull { it.name == server.role },
                         )
                     },
                 hasCurrentServerPendingInvites = hasCurrentServerPendingInvites,
+                jointRole = JointChannelRole.entries.firstOrNull { it.name == jointRole },
+                federateChannels = federateChannels,
             ),
         canFederate = canFederate,
     )
