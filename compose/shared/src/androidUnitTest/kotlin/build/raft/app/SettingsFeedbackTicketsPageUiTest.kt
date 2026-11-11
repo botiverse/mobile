@@ -141,7 +141,7 @@ class SettingsFeedbackTicketsPageUiTest {
         )
 
     @Composable
-    private fun Page(repository: FakeRepository, onNewFeedback: () -> Unit = {}) {
+    private fun Page(repository: FakeRepository, onNewFeedback: () -> Unit = {}, onCopyTicketLink: ((String) -> Unit)? = null) {
         val scope = rememberCoroutineScope()
         val store = remember { SettingsFeedbackTicketsStore(repository, scope).also { it.start() } }
         val state by store.state.collectAsState()
@@ -158,6 +158,7 @@ class SettingsFeedbackTicketsPageUiTest {
                         onOpenTicket = store::openTicket,
                         onReplyChange = store::setReplyDraft,
                         onSendReply = store::sendReply,
+                        onCopyTicketLink = onCopyTicketLink,
                     ),
                 replyComposer = { draft, enabled, sending, error, onChange, onSend ->
                     Column {
@@ -263,6 +264,35 @@ class SettingsFeedbackTicketsPageUiTest {
             runOnIdle { assertEquals(listOf(crash.id to "It still crashes on 1.22.1"), repository.replies) }
             onNodeWithTag(SettingsFeedbackTicketThreadTag).performScrollToNode(hasText("It still crashes on 1.22.1"))
             onNodeWithText("It still crashes on 1.22.1").assertExists()
+        }
+
+    @Test
+    fun copyLinkInTheTicketsHeadCopiesThatTicket() =
+        runRobolectricComposeUiTest {
+            val copied = mutableListOf<String>()
+            val repository = FakeRepository(pageOf(crash), mapOf(crash.id to crashDetail))
+            setContent { Page(repository, onCopyTicketLink = { copied += it }) }
+            waitForIdle()
+            // Not on the list: only an open ticket has a link.
+            onNode(hasContentDescription("Copy Link")).assertDoesNotExist()
+            onNodeWithText("Crash on launch").performClick()
+            waitForIdle()
+
+            onNode(hasContentDescription("Close Ticket")).assertIsDisplayed()
+            onNode(hasContentDescription("Copy Link")).assertIsDisplayed().performClick()
+            runOnIdle { assertEquals(listOf(crash.id), copied) }
+        }
+
+    @Test
+    fun noCopyLinkWhereNoHandsAppReadsTheTicket() =
+        runRobolectricComposeUiTest {
+            val repository = FakeRepository(pageOf(crash), mapOf(crash.id to crashDetail))
+            setContent { Page(repository) }
+            waitForIdle()
+            onNodeWithText("Crash on launch").performClick()
+            waitForIdle()
+            onNode(hasContentDescription("Close Ticket")).assertIsDisplayed()
+            onNode(hasContentDescription("Copy Link")).assertDoesNotExist()
         }
 
     private companion object {

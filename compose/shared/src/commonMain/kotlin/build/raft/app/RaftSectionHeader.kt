@@ -45,6 +45,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.designsystem.components.RaftBackButton
@@ -579,7 +581,9 @@ internal fun RaftHeaderIconAction(
 ) {
     RaftPanelAction(
         onClick = onClick,
+        // The icon's name for accessibility and tests: it was taken but never set (#119).
         modifier = modifier
+            .semantics { this.contentDescription = contentDescription }
             .heightIn(min = 38.dp)
             .widthIn(min = if (label == null) 38.dp else 54.dp)
     ) {
