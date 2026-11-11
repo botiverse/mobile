@@ -154,22 +154,8 @@ internal fun MembersAgentIssueReportDialog(
             }
             item {
                 Column {
+                    // Web #14218: the Include list carries no default-included / summary lines.
                     RaftSectionEyebrow(text = stringResource(Res.string.member_report_issue_include))
-                    Column(
-                        modifier = Modifier.padding(top = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        RaftText(
-                            text = stringResource(Res.string.member_report_issue_default_included),
-                            style = typography.caption,
-                            color = colors.foregroundHint
-                        )
-                        RaftText(
-                            text = stringResource(Res.string.member_report_issue_structured_summary),
-                            style = typography.caption,
-                            color = colors.foregroundHint
-                        )
-                    }
                     RaftCheckboxRow(
                         label = stringResource(Res.string.member_report_issue_recent_messages),
                         checked = includeRecentMessages,

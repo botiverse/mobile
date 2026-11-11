@@ -24,7 +24,7 @@ import org.robolectric.shadows.ShadowDialog
  * JVM screenshots of the agent Report Issue panel and its "Report Submitted" screen (web
  * ReportIssueDialog), light and dark:
  * - `members.report-issue`: the panel for an agent on the reporter's own machine — the Include
- *   section with both disclosures, every box on, the transcript hint, the machine runner log tail
+ *   section (no disclosure lines, web #14218), every box on, the transcript hint, the machine runner log tail
  *   with its disclosure, and the warning box with the consent checkbox.
  * - `members.report-issue.submitted`: the ticket was filed (View Ticket + Done), session record
  *   requested.

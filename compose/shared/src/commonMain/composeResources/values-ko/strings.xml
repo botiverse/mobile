@@ -1300,7 +1300,7 @@
     <string name="member_report_issue_runtime_transcript">런타임 세션 기록</string>
     <string name="member_report_issue_runtime_transcript_unavailable">에이전트가 컴퓨터에 배정되어야 런타임 기록을 업로드할 수 있어요.</string>
     <string name="member_report_issue_disclosure">이 신고에는 %1$s이(가) 포함될 수 있어요. 민감한 데이터는 최대한 가리지만 완전히 가려진다고 보장할 수는 없어요.</string>
-    <string name="member_report_issue_consent">에이전트를 포함한 Botiverse 워크스페이스의 모든 멤버가 이 신고와 선택한 진단 데이터를 볼 수 있다는 점을 이해했으며, 제출에 동의해요.</string>
+    <string name="member_report_issue_consent">이 신고를 Raft 팀에 보내는 데 동의해요.</string>
     <string name="member_report_issue_submit">신고</string>
     <string name="member_report_issue_submitting">제출 중…</string>
     <string name="member_report_issue_failed">신고를 제출하지 못했어요: %1$s</string>
@@ -1313,11 +1313,9 @@
     <string name="member_report_issue_copy_reference">신고 참조 정보 복사</string>
     <string name="member_report_issue_reference_copied">복사됨</string>
     <string name="member_report_issue_disclosure_strong">프롬프트 기록, 파일 경로, 명령 출력</string>
-    <string name="member_report_issue_default_included">기본으로 포함되는 항목이에요. 보내고 싶지 않은 항목은 체크를 해제하세요.</string>
-    <string name="member_report_issue_structured_summary">모든 신고와 함께 전송되는 시스템 요약에는 버전, 실패 횟수, 추적 필드가 담겨 있어요. 자유 텍스트 없이 구조화된 데이터로만 이루어져 있어요.</string>
-    <string name="member_report_issue_runtime_transcript_hint">에이전트의 컴퓨터에 세션 기록을 요청해요. 기록이 없을 수도 있어요.</string>
+    <string name="member_report_issue_runtime_transcript_hint">에이전트의 컴퓨터에서 가져와요. 없을 수도 있어요.</string>
     <string name="member_report_issue_machine_log_tail">컴퓨터 러너 로그의 마지막 부분 (내 컴퓨터인 경우만)</string>
-    <string name="member_report_issue_machine_log_tail_disclosure">이 컴퓨터 러너 로그의 마지막 몇 줄이에요. 같은 컴퓨터에서 실행되는 다른 에이전트의 로그도 포함된 자유 텍스트예요. 크기는 제한되지만, 에이전트를 포함해 이 신고를 읽을 수 있는 모든 사람이 볼 수 있어요. 시크릿 마스킹은 알려진 자격 증명 형식만 처리하므로 최소한의 보호일 뿐 보장되지는 않아요. 위의 런타임 세션 기록을 함께 선택해야 해요.</string>
+    <string name="member_report_issue_machine_log_tail_disclosure">이 컴퓨터 로그의 마지막 몇 줄이에요. 이 컴퓨터의 다른 에이전트 내용이 포함될 수 있어요.</string>
     <string name="member_report_issue_title_for_agent">%1$s 관련 문제 신고</string>
     <string name="member_report_issue_ticket_filed">이 신고에 대한 피드백 티켓을 열었어요. Raft 팀의 답변은 티켓에 표시돼요.</string>
     <string name="member_report_issue_ticket_failed">신고는 업로드됐지만 피드백 티켓을 열지 못했어요. 아래 참조 정보를 Raft 팀에 공유해 주세요.</string>
