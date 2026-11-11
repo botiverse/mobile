@@ -12,6 +12,8 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,7 +37,8 @@ import kotlinx.coroutines.launch
  *  - on `activity:changed` for its server (a new version, for those who follow the Artifact; and
  *    the person's own open of it, which marks it seen);
  *  - when its change line arrives in the channel (`message:new` with the notice);
- *  - while shown, every [CHANNEL_ANNOUNCEMENT_POLL_MILLIS] and when the app comes back (the UI asks).
+ *  - while shown ([ChannelAnnouncementIntent.Watch]), every [CHANNEL_ANNOUNCEMENT_POLL_MILLIS]; and when
+ *    the page comes back (the UI asks).
  *
  * There is no announcement event on the wire (botiverse/slock 6a848d0a: the server emits nothing
  * of its own for a set or a new version); these are the events the web reads it again on.
@@ -104,6 +107,15 @@ sealed interface ChannelAnnouncementIntent {
         val event: RealtimeEvent,
     ) : ChannelAnnouncementIntent
 
+    /**
+     * A page shows [key]: read it every [CHANNEL_ANNOUNCEMENT_POLL_MILLIS] until the matching
+     * [Unwatch] (counted, so two pages showing it poll once). The poll runs in the store's scope,
+     * not the composition's.
+     */
+    data class Watch(val key: ChannelAnnouncementKey) : ChannelAnnouncementIntent
+
+    data class Unwatch(val key: ChannelAnnouncementKey) : ChannelAnnouncementIntent
+
     /** Signed out, or another account: nothing of the last one is kept. */
     data object Reset : ChannelAnnouncementIntent
 }
@@ -142,6 +154,7 @@ internal class SharedChannelAnnouncementStore(
     private val repository: ChannelAnnouncementRepository,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit = {},
+    private val pollMillis: Long = CHANNEL_ANNOUNCEMENT_POLL_MILLIS,
 ) {
     private val mutableState = MutableStateFlow(ChannelAnnouncementState())
     val state: StateFlow<ChannelAnnouncementState> = mutableState.asStateFlow()
@@ -151,6 +164,8 @@ internal class SharedChannelAnnouncementStore(
     private val loading = mutableSetOf<ChannelAnnouncementKey>()
     private val loadAgain = mutableSetOf<ChannelAnnouncementKey>()
     private var epoch = 0L
+    private val watchers = mutableMapOf<ChannelAnnouncementKey, Int>()
+    private val polls = mutableMapOf<ChannelAnnouncementKey, Job>()
     private var nextMutationId = 0L
 
     /** [key]'s slice alone, re-emitted only when it changes. */
@@ -187,7 +202,43 @@ internal class SharedChannelAnnouncementStore(
                 val reason = channelAnnouncementRealtimeReloadReason(intent.key, intent.eventServerId, intent.event) ?: return
                 load(intent.key, reason, DataRequestPriority.Background)
             }
+            is ChannelAnnouncementIntent.Watch -> {
+                val start = synchronized(lock) {
+                    val count = (watchers[intent.key] ?: 0) + 1
+                    watchers[intent.key] = count
+                    count == 1
+                }
+                if (!start) return
+                val job =
+                    scope.launch {
+                        while (true) {
+                            delay(pollMillis)
+                            load(intent.key, "poll", DataRequestPriority.Background)
+                        }
+                    }
+                synchronized(lock) {
+                    if (watchers.containsKey(intent.key)) polls.put(intent.key, job)?.cancel() else job.cancel()
+                }
+            }
+            is ChannelAnnouncementIntent.Unwatch -> {
+                val stopped = synchronized(lock) {
+                    val count = (watchers[intent.key] ?: return) - 1
+                    if (count > 0) {
+                        watchers[intent.key] = count
+                        null
+                    } else {
+                        watchers.remove(intent.key)
+                        polls.remove(intent.key)
+                    }
+                }
+                stopped?.cancel()
+            }
             ChannelAnnouncementIntent.Reset -> {
+                val stopped = synchronized(lock) {
+                    watchers.clear()
+                    polls.values.toList().also { polls.clear() }
+                }
+                stopped.forEach { it.cancel() }
                 synchronized(lock) {
                     epoch += 1
                     generations.clear()

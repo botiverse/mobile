@@ -368,6 +368,8 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ThreadId
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.ChannelSosStore
+import build.raft.app.data.channelAnnouncementNoticeOf
+import build.raft.app.data.isChannelAnnouncementNoticeMetadataKey
 import build.raft.app.data.RaftAgentControlsApi
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.MessageId
@@ -13362,6 +13364,10 @@ private fun SharedThreadRouteContentContent(
             val loungeId = openedLoungeId ?: return@LaunchedEffect
             sharedHomeStore?.dispatch(SharedHomeIntent.ReopenClosedConversation(loungeId))
         }
+        // JVM limit: this lambda captures about 255 locals of the route, the most an invokedynamic
+        // lambda may take. One more fails at runtime (BootstrapMethodError "bad parameter count 256":
+        // the page never composes and stays on Loading). Read new inputs from values already used
+        // here, or group these captures into a state holder, before adding a local referenced below.
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
                 lounge = threadLounge,
@@ -13370,6 +13376,23 @@ private fun SharedThreadRouteContentContent(
                 onToggleFocusMode = threadFocusModeToggle,
                 focusModeActive = threadFocusModeActive,
             taskConversationBar = taskConversationBar,
+            // Channel announcements (channel_announcement_v0): the strip on a channel's own page (not a
+            // thread, DM or task conversation). Built here from values this lambda already captures:
+            // it is at the JVM's 255-capture limit, and one more local breaks it (BootstrapMethodError).
+            channelAnnouncementStrip =
+                rememberThreadChannelAnnouncementStripSlot(
+                    sharedStores = sharedStores,
+                    storeScope = storeScope,
+                    bridge = bridge,
+                    serverId = threadMembersServerId?.value,
+                    channelId = threadMembersChannelId?.value,
+                    channelType =
+                        renderedThread.channelKind.takeIf {
+                            renderedThread.surfaceKind == RaftThreadSurfaceKind.Channel && !renderedThread.isTaskConversationSurface()
+                        },
+                    active = active && threadHostForeground,
+                    onOpenSettings = { openSettingsPage() },
+                ),
             taskConversationChrome = taskConversationChrome,
             taskConversationHead = taskHeadScrollState.takeIf { taskConversationBar != null },
             taskConversationFloat = taskConversationFloat,
@@ -16633,6 +16656,8 @@ private data class ThreadPageContentData(
     val agentFollowersHeader: @Composable () -> Unit,
     /** Task v2: the task conversation's status / assignee / follow bar under the header; null elsewhere. */
     val taskConversationBar: (@Composable () -> Unit)? = null,
+    /** Channel announcements: the strip above the timeline (ChannelAnnouncementHost.kt); null where none can show. */
+    val channelAnnouncementStrip: (@Composable () -> Unit)? = null,
     /** Task v2: the top bar's task title and More menu rows; null elsewhere or before the task is known. */
     val taskConversationChrome: TaskConversationHeaderChrome? = null,
     /** Task v2 on a phone: whether the head's row is in view, and the head pulled down from the bar while it is not. */
@@ -16751,6 +16776,7 @@ fun ThreadPageContent(
     lounge: ThreadPageLounge? = null,
     agentFollowersHeader: @Composable () -> Unit = {},
     taskConversationBar: (@Composable () -> Unit)? = null,
+    channelAnnouncementStrip: (@Composable () -> Unit)? = null,
     taskConversationChrome: TaskConversationHeaderChrome? = null,
     taskConversationHead: TaskHeadScrollState? = null,
     taskConversationFloat: (@Composable () -> Unit)? = null,
@@ -16866,6 +16892,7 @@ fun ThreadPageContent(
                 lounge = lounge,
                 agentFollowersHeader = agentFollowersHeader,
                 taskConversationBar = taskConversationBar,
+                channelAnnouncementStrip = channelAnnouncementStrip,
                 taskConversationChrome = taskConversationChrome,
                 taskConversationHead = taskConversationHead,
                 taskConversationFloat = taskConversationFloat,
@@ -18333,6 +18360,8 @@ private fun ThreadPageContentContent(
             if (conversationLounge != null) {
                 AgentLoungeAudienceNotice(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
+            // The channel's announcement: last of the top regions, right above the timeline (raft-design channel.md).
+            data.channelAnnouncementStrip?.invoke()
             val threadTabContent: @Composable ColumnScope.() -> Unit = {
             data.taskConversationBar?.invoke()
             // In the assistant's panel only the chat shows (web AssistantDm: ChatPanel without its head or tasks).
@@ -28851,12 +28880,16 @@ internal fun ThreadSystemMessageRow(
 ) {
     var expanded by remember(message.id) { mutableStateOf(false) }
     val timestampLayout = remember { threadSystemMessageTimestampLayoutSpec() }
+    // A channel announcement's set, replace or remove line, in the reader's language (its text is
+    // the English record; web MessageItem `channelAnnouncementNoticeLine`).
+    val announcementNotice = remember(message.metadata) { channelAnnouncementNoticeOf(message.metadata) }
+    val announcementLine = announcementNotice?.let { channelAnnouncementNoticeLine(it) }
     val systemBody =
-        remember(message.body, message.metadata, message.systemEventType, expanded) {
-            if (expanded) {
-                message.expandedSystemContent()
-            } else {
-                message.systemContentSummary()
+        remember(message.body, message.metadata, message.systemEventType, expanded, announcementLine) {
+            when {
+                announcementLine != null -> announcementLine
+                expanded -> message.expandedSystemContent()
+                else -> message.systemContentSummary()
             }
         }
     Row(
@@ -34234,7 +34267,7 @@ internal fun RaftThreadMessageItem.expandedSystemDetails(): String =
     buildList {
         systemEventType?.takeIf { it.isNotBlank() }?.let { add("Type: ${it.sanitizeThreadSystemText()}") }
         metadata.entries.sortedBy { it.key }.forEach { (key, value) ->
-            if (key.isNotBlank() && value.isNotBlank()) {
+            if (key.isNotBlank() && value.isNotBlank() && !isChannelAnnouncementNoticeMetadataKey(key)) {
                 add("${key.sanitizeThreadSystemText()}: ${value.sanitizeThreadSystemText()}")
             }
         }

@@ -7,6 +7,7 @@ import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -162,6 +163,25 @@ class SharedChannelAnnouncementStoreTest {
             val failed = assertIs<ChannelAnnouncementMutationStatus.Failed>(store.state.value.mutations[key]?.status)
             assertEquals("channel_announcement_forbidden", failed.error.code)
             assertEquals("0123456789abcdef0123456789abcdef", failed.error.traceId)
+        }
+
+    @Test
+    fun aWatchedChannelIsReadEveryMinuteUntilTheLastPageStopsWatching() =
+        runTest {
+            val api = FakeApi()
+            val store = SharedChannelAnnouncementStore(ChannelAnnouncementRepository(api), backgroundScope)
+            store.dispatch(ChannelAnnouncementIntent.Watch(key))
+            store.dispatch(ChannelAnnouncementIntent.Watch(key))
+            advanceTimeBy(CHANNEL_ANNOUNCEMENT_POLL_MILLIS + 1)
+            assertEquals(listOf(DataRequestPriority.Background), api.readCalls, "one poll for two pages")
+            api.reads.removeFirst().complete(ok(body("pt_a")))
+            store.dispatch(ChannelAnnouncementIntent.Unwatch(key))
+            advanceTimeBy(CHANNEL_ANNOUNCEMENT_POLL_MILLIS)
+            assertEquals(2, api.readCalls.size, "still shown on one page")
+            api.reads.removeFirst().complete(ok(body("pt_a")))
+            store.dispatch(ChannelAnnouncementIntent.Unwatch(key))
+            advanceTimeBy(CHANNEL_ANNOUNCEMENT_POLL_MILLIS * 3)
+            assertEquals(2, api.readCalls.size, "no page shows it")
         }
 
     @Test
