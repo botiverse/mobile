@@ -84,6 +84,10 @@ private val ProgressHeight = 4.dp
 private val ProgressRadius = 2.dp
 private val OverlayInset = 4.dp
 private val LabelBarGap = 2.dp
+
+/** How far the remove sticker reaches into a tile from its top edge. */
+private val RemoveClearance = RemoveSize - RaftComposerAttachmentRemoveOverhang
+private val FailedBottomInset = 2.dp
 private const val IndeterminateSegment = 0.4f
 private const val MaxLabelLines = 2
 private val MinLabelFontSize = 9.sp
@@ -297,7 +301,8 @@ fun BoxScope.RaftComposerAttachmentOverlay(
                     .background(colors.layerVeil)
                     .border(RaftStroke.Hairline, colors.dangerStrong, shape)
                     .tileClick(onAction, action)
-                    .padding(horizontal = OverlayInset, vertical = OverlayInset),
+                    // Below the remove sticker's corner, so "Upload failed" never runs under the ✕.
+                    .padding(start = OverlayInset, end = OverlayInset, top = RemoveClearance, bottom = FailedBottomInset),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
