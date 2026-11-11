@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.RaftComputersRackToolbarStore
 import build.raft.app.resources.raftSystemPreferredLanguageTagsOrEmpty
 import build.raft.app.toJointConnectionsDurableRecord
 import build.raft.app.toJointConnectionsSnapshot
@@ -558,6 +559,7 @@ internal class RaftSharedStoreProvider private constructor(
     private val shellComputersStores = RaftShellScopedStoreCache<SharedComputersStore>()
     private val shellRuntimeAccountUsageStores = RaftShellScopedStoreCache<SharedRuntimeAccountUsageStore>()
     private val shellMyAssistantStores = RaftShellScopedStoreCache<SharedMyAssistantStore>()
+    private val shellComputersRackToolbarStores = RaftShellScopedStoreCache<RaftComputersRackToolbarStore>()
 
     /** Durable machine lists shared by every shell's computers store (data-layer plan step 5). */
     private val computersDurableStore by lazy {
@@ -2166,6 +2168,16 @@ internal class RaftSharedStoreProvider private constructor(
      * Runtime account usage reads and refreshes for this shell (the computer detail's runtime
      * chips): one cache and one refresh window per shell, whichever page asks.
      */
+    /**
+     * The Computers page's toolbar (#proj-mobile:#60): one per shell window for the app session,
+     * like the web's toolbar store, so the search and filters are still there when the page is
+     * opened again; Group, Sort and View are kept on this device. Pure local state, no requests.
+     */
+    internal fun computersRackToolbarStore(scope: RaftShellStoreScope): RaftComputersRackToolbarStore =
+        shellComputersRackToolbarStores.getOrPut(scope) {
+            RaftComputersRackToolbarStore(KeyValueComputersRackPreferenceRepository(sharedPreferenceStore))
+        }
+
     internal fun runtimeAccountUsageStore(scope: RaftShellStoreScope): SharedRuntimeAccountUsageStore =
         shellRuntimeAccountUsageStores.getOrPut(scope) {
             SharedRuntimeAccountUsageStore(
@@ -2835,6 +2847,7 @@ internal class RaftSharedStoreProvider private constructor(
         shellComputersStores.remove(scope)?.dispatch(SharedComputersIntent.Clear)
         shellRuntimeAccountUsageStores.remove(scope)
         shellMyAssistantStores.remove(scope)
+        shellComputersRackToolbarStores.remove(scope)
         shellCreateAgentFormOwnerJobs.remove(scope)?.cancel()
         shellAuthLoginGenerationJobs.remove(scope)?.cancel()
         shellAuthLoginGenerations.remove(scope)

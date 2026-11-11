@@ -145,8 +145,10 @@ import build.raft.designsystem.components.RaftListRowMeta
 import build.raft.designsystem.components.RaftSegment
 import build.raft.designsystem.components.RaftSegmentedControl
 import build.raft.app.data.ComputersRackView
-import build.raft.app.data.KeyValueComputersRackViewPreferenceRepository
-import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.data.ComputersRackGroupBy
+import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.designsystem.components.RaftEmptyState
+import androidx.compose.ui.platform.testTag
 import build.raft.designsystem.components.RaftPresence
 import build.raft.designsystem.components.RaftSection
 import build.raft.designsystem.components.RaftSpinner
@@ -436,9 +438,15 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
             },
             currentServerId,
         )
-    // List / Cards, kept on this device (web `computersRackViewPreference`); the cards by default.
-    val rackViewRepository = remember { KeyValueComputersRackViewPreferenceRepository(raftSharedPreferenceStore()) }
-    var rackView by remember(rackViewRepository) { mutableStateOf(rackViewRepository.getComputersRackViewSync()) }
+    // The toolbar (search, Status, Runtime, Group, Sort) and Cards / List: one store per shell
+    // window for the app session; Group, Sort and View are kept on this device. Another server
+    // starts with no search or filters: shown at once, committed to the store just after.
+    val toolbarStore = remember(sharedStores, environment.storeScope) { sharedStores.computersRackToolbarStore(environment.storeScope) }
+    val storedToolbar by toolbarStore.state.collectAsState()
+    val toolbar = storedToolbar.onServer(currentServerId)
+    LaunchedEffect(toolbarStore, currentServerId) { toolbarStore.onServer(currentServerId) }
+    val rackView = toolbar.view
+    val chooseView: (ComputersRackView) -> Unit = { toolbarStore.dispatch(RaftComputersRackToolbarIntent.SetView(it)) }
     // Wide (the shell's content area / the wide Settings pane): the web's desktop head, the counts
     // beside the title and Add Computer beside the toggle; the phone keeps them on the first row.
     val wideHead = LocalRaftSettingsWideDetail.current
@@ -460,7 +468,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
             if (model is RaftComputersListModel.Content) {
                 {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RaftComputersRackViewToggle(rackView) { rackView = rackViewRepository.selectComputersRackViewSync(it) }
+                        RaftComputersRackViewToggle(rackView, chooseView)
                         if (wideHead && model.canAddComputer) {
                             RaftComputersAddButton { settingsViewModel.dispatch(SharedSettingsIntent.ShowAddComputerDialog) }
                         }
@@ -472,7 +480,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
         // PROTOTYPE (native nav bar): the List / Cards toggle as a bar button with a checked menu.
         nativeActions =
             if (model is RaftComputersListModel.Content) {
-                val choose: (ComputersRackView) -> Unit = { rackView = rackViewRepository.selectComputersRackViewSync(it) }
+                val choose = chooseView
                 listOf(
                     RaftNativeNavBarAction(
                         id = "computers-rack-view",
@@ -483,20 +491,20 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                         children =
                             listOf(
                                 RaftNativeNavBarAction(
-                                    "computers-rack-view-list",
-                                    stringResource(Res.string.settings_computers_rack_view_list),
-                                    "list.bullet",
-                                    { choose(ComputersRackView.List) },
-                                    checked = rackView == ComputersRackView.List,
-                                    icon = RaftLucideIconName.LayoutList,
-                                ),
-                                RaftNativeNavBarAction(
                                     "computers-rack-view-cards",
                                     stringResource(Res.string.settings_computers_rack_view_cards),
                                     "square.grid.2x2",
                                     { choose(ComputersRackView.Cards) },
                                     checked = rackView == ComputersRackView.Cards,
                                     icon = RaftLucideIconName.LayoutGrid,
+                                ),
+                                RaftNativeNavBarAction(
+                                    "computers-rack-view-list",
+                                    stringResource(Res.string.settings_computers_rack_view_list),
+                                    "list.bullet",
+                                    { choose(ComputersRackView.List) },
+                                    checked = rackView == ComputersRackView.List,
+                                    icon = RaftLucideIconName.LayoutList,
                                 ),
                             ),
                     )
@@ -549,6 +557,9 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                 onCopyCommand = { command -> settingsViewModel.dispatch(SharedSettingsIntent.CopyComputerCommand(command)) },
                 onCreateAgent = if (createAgentOwner != null) { machineId -> createAgentMachineId = machineId } else null,
                 onRestartComputer = { machineId -> settingsViewModel.dispatch(SharedSettingsIntent.RestartComputer(machineId)) },
+                toolbar = toolbar,
+                onToolbarIntent = toolbarStore::dispatch,
+                serverId = currentServerId,
                 agentsByMachine = agentsByMachine,
                 agentStatusResolver = agentStatusResolver,
                 usageLoads = usageLoads,
@@ -663,6 +674,11 @@ internal fun RaftSettingsComputersContent(
     onCreateAgent: ((machineId: String) -> Unit)? = null,
     /** A card's ⋯ → Restart. */
     onRestartComputer: (machineId: String) -> Unit = {},
+    /** The toolbar's search, filters, Group and Sort ([RaftComputersRackToolbarStore]); the list follows them. */
+    toolbar: RaftComputersRackToolbarState = RaftComputersRackToolbarState(),
+    onToolbarIntent: (RaftComputersRackToolbarIntent) -> Unit = {},
+    /** The page's server: the folds hold on it only. */
+    serverId: String? = null,
 ) {
     // The upgrade's in-flight window (web `computerUpgradeInFlight`) reads the clock.
     val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
@@ -700,119 +716,248 @@ internal fun RaftSettingsComputersContent(
                     onAction = onAddComputer,
                 )
             is RaftComputersListModel.Content ->
-                BoxWithConstraints(Modifier.fillMaxSize()) {
-                val cardColumns = raftComputerCardColumns(maxWidth)
-                // Web ComputersRack desktop: `p-5` around the grid; the phone's single column keeps 16dp.
-                val cardEdge = if (cardColumns > 1) RaftComputerCardGridEdge else 16.dp
-                LazyColumn(Modifier.fillMaxSize()) {
-                    refreshErrorCode?.let { code -> item(key = "refresh-error") { RaftComputersRefreshErrorBanner(code) } }
-                    if (summaryInHeader) {
-                        item(key = "summary-gap") { Spacer(Modifier.height(if (cardColumns > 1) RaftComputerCardGridEdge else 16.dp)) }
-                    } else item(key = "summary") {
-                        Row(
-                            Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RaftText(
-                                raftComputersCountsLine(raftComputersCounts(model.rows, agentsByMachine)),
-                                modifier = Modifier.weight(1f),
-                                style = RaftTheme.typography.monoMeta,
-                                color = RaftTheme.colors.foregroundHint,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            if (model.canAddComputer) {
-                                RaftButton(
-                                    text = stringResource(Res.string.settings_computers_add_computer),
-                                    onClick = onAddComputer,
-                                    variant = RaftButtonVariant.Primary,
-                                    leadingIcon = { RaftComputersIcon(RaftLucideIconName.Plus) },
-                                )
-                            }
-                        }
+                RaftComputersRackBody(
+                    model = model,
+                    refreshErrorCode = refreshErrorCode,
+                    bottomContentPadding = bottomContentPadding,
+                    onAddComputer = onAddComputer,
+                    onOpenComputer = onOpenComputer,
+                    agentsByMachine = agentsByMachine,
+                    agentStatusResolver = agentStatusResolver,
+                    onOpenAgent = onOpenAgent,
+                    usageLoads = usageLoads,
+                    runtimeCatalog = runtimeCatalog,
+                    onOpenUsage = onOpenUsage,
+                    rackView = rackView,
+                    summaryInHeader = summaryInHeader,
+                    computerControl = computerControl,
+                    onUpgradeComputer = onUpgradeComputer,
+                    onCopyCommand = onCopyCommand,
+                    onCreateAgent = onCreateAgent,
+                    onRestartComputer = onRestartComputer,
+                    toolbar = toolbar,
+                    onToolbarIntent = onToolbarIntent,
+                    serverId = serverId,
+                    nowMillis = nowMillis,
+                )
+        }
+    }
+}
+
+/**
+ * The loaded page (web `MobileComputersPanel` with the rack): the counts and Add Computer, the
+ * toolbar ([RaftComputersRackToolbar]), then the computers as the toolbar has them
+ * ([raftComputersRackLayout]): filtered, sorted (Name A to Z by default), the online ones in
+ * their groups under fold titles when grouped, the offline ones in one folded section at the end
+ * (open when nothing else is online), or the no-match state with Clear all. Cards or List rows,
+ * as the head's toggle picks.
+ *
+ * Folds are this page's own (web `useState`): a group's fold holds on this server only; the
+ * Offline section's holds on this server while its default (open when nothing is online) stays.
+ */
+@Composable
+private fun RaftComputersRackBody(
+    model: RaftComputersListModel.Content,
+    refreshErrorCode: String?,
+    bottomContentPadding: Dp,
+    onAddComputer: () -> Unit,
+    onOpenComputer: (String) -> Unit,
+    agentsByMachine: Map<String, List<RaftComputerCardAgent>>,
+    agentStatusResolver: RaftAgentStatusResolver,
+    onOpenAgent: (RaftComputerCardAgent) -> Unit,
+    usageLoads: Map<String, Map<RuntimeAccountUsageProvider, RuntimeAccountUsageLoad>>,
+    runtimeCatalog: ServerRuntimeCatalog,
+    onOpenUsage: (machineId: String, column: RaftRackUsageColumn, runtimeLabel: String) -> Unit,
+    rackView: ComputersRackView,
+    summaryInHeader: Boolean,
+    computerControl: SettingsComputerControlState,
+    onUpgradeComputer: (machineId: String, version: String) -> Unit,
+    onCopyCommand: (String) -> Unit,
+    onCreateAgent: ((machineId: String) -> Unit)?,
+    onRestartComputer: (machineId: String) -> Unit,
+    toolbar: RaftComputersRackToolbarState,
+    onToolbarIntent: (RaftComputersRackToolbarIntent) -> Unit,
+    serverId: String?,
+    nowMillis: Long,
+) {
+    val catalogOrder = remember(runtimeCatalog) { runtimeCatalog.runtimes.map { it.id } }
+    val fleetColumns = remember(model.computers, catalogOrder) { raftRackFleetRuntimeColumns(model.computers, catalogOrder) }
+    val toolbarModel = remember(toolbar, fleetColumns) { raftComputersRackToolbarModel(toolbar, fleetColumns) }
+    val groupLabels =
+        RaftRackGroupLabels(
+            personal = stringResource(Res.string.settings_computers_rack_group_personal),
+            other = stringResource(Res.string.settings_computers_rack_group_other),
+        )
+    val layout =
+        remember(model.computers, toolbarModel, toolbar.groupBy, usageLoads, groupLabels) {
+            raftComputersRackLayout(model.computers, toolbarModel, toolbar.groupBy, usageLoads, groupLabels)
+        }
+    val rowsById = remember(model.rows) { model.rows.associateBy { it.id } }
+    val computersById = remember(model.computers) { model.computers.associateBy { it.id } }
+    // Web ComputersRackList: `offlineChoice` per server and default, `folded` per server.
+    var offlineChoice by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    val offlineScope = "${serverId.orEmpty()}\u0000${if (layout.offlineOpenByDefault) "open" else "folded"}"
+    val offlineOpen = offlineChoice?.takeIf { it.first == offlineScope }?.second ?: layout.offlineOpenByDefault
+    var folded by remember { mutableStateOf<Pair<String?, Set<String>>>(serverId to emptySet()) }
+    val collapsedGroups = if (folded.first == serverId) folded.second else emptySet()
+    val grouped = toolbar.groupBy != ComputersRackGroupBy.None
+    val offlineTitle = stringResource(Res.string.settings_computers_rack_filter_status_offline)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val cardColumns = raftComputerCardColumns(maxWidth)
+        // Web ComputersRack desktop: `p-5` around the grid; the phone's single column keeps 16dp.
+        val cardEdge = if (cardColumns > 1) RaftComputerCardGridEdge else 16.dp
+        Column(Modifier.fillMaxSize()) {
+            if (!summaryInHeader) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RaftText(
+                        raftComputersCountsLine(raftComputersCounts(model.rows, agentsByMachine)),
+                        modifier = Modifier.weight(1f),
+                        style = RaftTheme.typography.monoMeta,
+                        color = RaftTheme.colors.foregroundHint,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (model.canAddComputer) {
+                        RaftButton(
+                            text = stringResource(Res.string.settings_computers_add_computer),
+                            onClick = onAddComputer,
+                            variant = RaftButtonVariant.Primary,
+                            leadingIcon = { RaftComputersIcon(RaftLucideIconName.Plus) },
+                        )
                     }
-                    if (rackView == ComputersRackView.List) {
-                        // Web MobileComputersPanel's phone list: one inset group, the whole row opens the computer.
-                        item(key = "computers-list") {
-                            RaftListRowGroup(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                                model.rows.forEachIndexed { index, row ->
-                                    RaftComputerListRow(
-                                        row = row,
-                                        agentCount = agentsByMachine[row.id]?.size ?: 0,
-                                        divider = index > 0,
-                                        onClick = { onOpenComputer(row.id) },
-                                    )
-                                }
-                            }
-                        }
+                }
+            }
+            RaftComputersRackToolbar(toolbar, toolbarModel, onToolbarIntent)
+            // Web ComputersRack cards: one column on a phone, a grid of cards at least 250dp wide on
+            // a wide window (`repeat(auto-fill,minmax(250px,1fr))`, gap 12).
+            @Composable
+            fun card(row: RaftComputerRowModel, modifier: Modifier) {
+                val computer = computersById[row.id]
+                val upgrade = computer?.let { raftComputerUpgradeModel(it, computerControl, nowMillis) }
+                val action =
+                    if (computer != null && upgrade != null) {
+                        raftComputerRackAction(computer = computer, upgrade = upgrade, restart = computerControl.restart, commandContext = model.commandContext)
                     } else {
-                        val computersById = model.computers.associateBy { it.id }
-                        // Web ComputersRack cards: one column on a phone, a grid of cards at least
-                        // 250dp wide on a wide window (`repeat(auto-fill,minmax(250px,1fr))`, gap 12).
-                        @Composable
-                        fun card(row: RaftComputerRowModel, modifier: Modifier) {
-                            val computer = computersById[row.id]
-                            val upgrade = computer?.let { raftComputerUpgradeModel(it, computerControl, nowMillis) }
-                            val action =
-                                if (computer != null && upgrade != null) {
-                                    raftComputerRackAction(
-                                        computer = computer,
-                                        upgrade = upgrade,
-                                        restart = computerControl.restart,
-                                        commandContext = model.commandContext,
-                                    )
-                                } else {
-                                    null
-                                }
-                            val menu =
-                                if (computer != null && upgrade != null) {
-                                    raftComputerCardMenu(
-                                        computer = computer,
-                                        upgrade = upgrade,
-                                        restart = computerControl.restart,
-                                        createAgentAvailable = onCreateAgent != null,
-                                    )
-                                } else {
-                                    null
-                                }
-                                RaftComputerRackCard(
-                                    row = row,
-                                    agents = agentsByMachine[row.id].orEmpty(),
-                                    agentStatusResolver = agentStatusResolver,
-                                    onClick = { onOpenComputer(row.id) },
-                                    onOpenAgent = onOpenAgent,
-                                    usageLoads = usageLoads[row.id].orEmpty(),
-                                    runtimeCatalog = runtimeCatalog,
-                                    onOpenUsage = { column, label -> onOpenUsage(row.id, column, label) },
-                                    action = action,
-                                    onUpgrade = { version -> onUpgradeComputer(row.id, version) },
-                                    onCopyCommand = onCopyCommand,
-                                    menu = menu,
-                                    onCreateAgent = { onCreateAgent?.invoke(row.id) },
-                                    onRestart = { onRestartComputer(row.id) },
-                                    modifier = modifier,
+                        null
+                    }
+                val menu =
+                    if (computer != null && upgrade != null) {
+                        raftComputerCardMenu(computer = computer, upgrade = upgrade, restart = computerControl.restart, createAgentAvailable = onCreateAgent != null)
+                    } else {
+                        null
+                    }
+                RaftComputerRackCard(
+                    row = row,
+                    agents = agentsByMachine[row.id].orEmpty(),
+                    agentStatusResolver = agentStatusResolver,
+                    onClick = { onOpenComputer(row.id) },
+                    onOpenAgent = onOpenAgent,
+                    usageLoads = usageLoads[row.id].orEmpty(),
+                    runtimeCatalog = runtimeCatalog,
+                    onOpenUsage = { column, label -> onOpenUsage(row.id, column, label) },
+                    action = action,
+                    onUpgrade = { version -> onUpgradeComputer(row.id, version) },
+                    onCopyCommand = onCopyCommand,
+                    menu = menu,
+                    onCreateAgent = { onCreateAgent?.invoke(row.id) },
+                    onRestart = { onRestartComputer(row.id) },
+                    modifier = modifier,
+                )
+            }
+            LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                refreshErrorCode?.let { code -> item(key = "refresh-error") { RaftComputersRefreshErrorBanner(code) } }
+                item(key = "top-gap") { Spacer(Modifier.height(if (cardColumns > 1) RaftComputerCardGridEdge else 16.dp)) }
+                if (layout.empty) {
+                    // Web ComputersRackList `data-empty="filters"`: nothing matches; Clear all.
+                    item(key = "no-match") {
+                        RaftEmptyState(
+                            title = stringResource(Res.string.settings_computers_rack_no_match_title),
+                            description = stringResource(Res.string.settings_computers_rack_no_match_description),
+                            icon = { RaftComputersIcon(RaftLucideIconName.SearchX, size = 36.dp) },
+                            actions = {
+                                RaftButton(
+                                    text = stringResource(Res.string.settings_computers_rack_filter_clear_all),
+                                    onClick = { onToolbarIntent(RaftComputersRackToolbarIntent.ClearFilters) },
+                                    modifier = Modifier.testTag(RaftComputersRackTags.EmptyClear),
                                 )
-                        }
-                        model.rows.chunked(cardColumns).forEachIndexed { rowIndex, rowCards ->
-                            item(key = "computers-${rowCards.first().id}") {
-                                Row(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = cardEdge)
-                                        .padding(top = if (rowIndex > 0) RaftComputerCardGridGap else 0.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(RaftComputerCardGridGap),
-                                ) {
-                                    rowCards.forEach { row -> card(row, Modifier.weight(1f)) }
-                                    // A short last row keeps the grid's card width.
-                                    repeat(cardColumns - rowCards.size) { Spacer(Modifier.weight(1f)) }
+                            },
+                        )
+                    }
+                } else {
+                    // Every block after the first sits 12dp under the one before (the grid's gap).
+                    var blocks = 0
+                    fun gap(): Dp = if (blocks++ > 0) RaftComputerCardGridGap else 0.dp
+                    fun computers(section: String, computers: List<SettingsComputerSnapshot>) {
+                        val rows = computers.mapNotNull { rowsById[it.id] }
+                        if (rows.isEmpty()) return
+                        if (rackView == ComputersRackView.List) {
+                            // Web MobileComputersPanel's phone list: one inset group, the whole row opens the computer.
+                            val top = gap()
+                            item(key = "computers-list-$section") {
+                                RaftListRowGroup(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = top)) {
+                                    rows.forEachIndexed { index, row ->
+                                        RaftComputerListRow(
+                                            row = row,
+                                            agentCount = agentsByMachine[row.id]?.size ?: 0,
+                                            divider = index > 0,
+                                            onClick = { onOpenComputer(row.id) },
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            rows.chunked(cardColumns).forEach { rowCards ->
+                                val top = gap()
+                                item(key = "computers-$section-${rowCards.first().id}") {
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = cardEdge).padding(top = top),
+                                        horizontalArrangement = Arrangement.spacedBy(RaftComputerCardGridGap),
+                                    ) {
+                                        rowCards.forEach { row -> card(row, Modifier.weight(1f)) }
+                                        // A short last row keeps the grid's card width.
+                                        repeat(cardColumns - rowCards.size) { Spacer(Modifier.weight(1f)) }
+                                    }
                                 }
                             }
                         }
                     }
-                    item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
+                    fun foldTitle(key: String, testTag: String, title: String, count: Int, collapsed: Boolean, onToggle: () -> Unit) {
+                        val top = gap()
+                        item(key = "title-$key") {
+                            RaftRackFoldTitle(
+                                title = title,
+                                count = count,
+                                collapsed = collapsed,
+                                onToggle = onToggle,
+                                modifier = Modifier.padding(horizontal = cardEdge).padding(top = top).testTag(testTag),
+                            )
+                        }
+                    }
+                    layout.groups.forEach { group ->
+                        if (grouped && group.computers.isNotEmpty()) {
+                            val collapsed = group.key in collapsedGroups
+                            foldTitle(group.key, "${RaftComputersRackTags.GroupTitle}-${group.key}", group.title, group.computers.size, collapsed) {
+                                val keys = if (folded.first == serverId) folded.second else emptySet()
+                                folded = serverId to (if (group.key in keys) keys - group.key else keys + group.key)
+                            }
+                            if (!collapsed) computers(group.key, group.computers)
+                        } else {
+                            computers(group.key, group.computers)
+                        }
+                    }
+                    if (layout.offline.isNotEmpty()) {
+                        foldTitle("offline", RaftComputersRackTags.OfflineTitle, offlineTitle, layout.offline.size, !offlineOpen) {
+                            offlineChoice = offlineScope to !offlineOpen
+                        }
+                        if (offlineOpen) computers("offline", layout.offline)
+                    }
                 }
-                }
+                item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
+            }
         }
     }
 }
@@ -1041,7 +1186,7 @@ private fun RaftComputerRackActionRow(action: RaftComputerRackAction, onUpgrade:
     }
 }
 
-/** Web `ComputersRackViewToggle`: List / Cards with their icons, icons only when the labels don't fit. */
+/** Web `ComputersRackViewToggle`: Cards / List (the default first, stdrc 11-05) with their icons, icons only when the labels don't fit. */
 @Composable
 internal fun RaftComputersRackViewToggle(view: ComputersRackView, onViewChange: (ComputersRackView) -> Unit) {
     val label = stringResource(Res.string.settings_computers_rack_view_label)
@@ -1050,16 +1195,16 @@ internal fun RaftComputersRackViewToggle(view: ComputersRackView, onViewChange: 
         iconsOnlyWhenLabelsDontFit = true,
     ) {
         RaftSegment(
-            text = stringResource(Res.string.settings_computers_rack_view_list),
-            selected = view == ComputersRackView.List,
-            onClick = { onViewChange(ComputersRackView.List) },
-            icon = { RaftComputersIcon(RaftLucideIconName.LayoutList) },
-        )
-        RaftSegment(
             text = stringResource(Res.string.settings_computers_rack_view_cards),
             selected = view == ComputersRackView.Cards,
             onClick = { onViewChange(ComputersRackView.Cards) },
             icon = { RaftComputersIcon(RaftLucideIconName.LayoutGrid) },
+        )
+        RaftSegment(
+            text = stringResource(Res.string.settings_computers_rack_view_list),
+            selected = view == ComputersRackView.List,
+            onClick = { onViewChange(ComputersRackView.List) },
+            icon = { RaftComputersIcon(RaftLucideIconName.LayoutList) },
         )
     }
 }
