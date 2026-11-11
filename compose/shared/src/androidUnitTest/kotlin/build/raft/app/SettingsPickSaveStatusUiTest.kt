@@ -22,9 +22,10 @@ import org.robolectric.annotation.Config
 
 /**
  * [rememberSettingsPickSaveStatus] on a real composition, driven the way the settings store drives
- * a Language & Region pick: the pick, the store's in-flight action state, then its result. "Saved"
- * shows once the pick is stored and clears after two seconds; a failure says what failed (and the
- * control is back on the stored value, [settingsLanguageRegionShownValue]) until the next pick.
+ * a Language & Region pick: the pick, the store's in-flight action state, then its result. A stored
+ * pick says nothing (raft-ui 0.84: the control showing it is the confirmation); a failure says what
+ * failed (and the control is back on the stored value, [settingsLanguageRegionShownValue]) until the
+ * next pick.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -62,7 +63,7 @@ class SettingsPickSaveStatusUiTest {
     }
 
     @Test
-    fun timeFormatSavesThenClearsAfterTwoSeconds() = runRobolectricComposeUiTest {
+    fun timeFormatSavesWithoutSayingSo() = runRobolectricComposeUiTest {
         show(LANGUAGE_REGION_ACTION_TIME_FORMAT)
         assertEquals(RaftSaveStatusState.Idle, status)
 
@@ -71,11 +72,7 @@ class SettingsPickSaveStatusUiTest {
 
         actionState = SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIME_FORMAT)
         settle()
-        assertEquals(RaftSaveStatusState.Saved, status)
-
-        mainClock.advanceTimeBy(2_100)
-        waitForIdle()
-        assertEquals(RaftSaveStatusState.Idle, status)
+        assertEquals(RaftSaveStatusState.Idle, status, "no \"Saved\": the control already shows the pick")
     }
 
     @Test
@@ -108,7 +105,7 @@ class SettingsPickSaveStatusUiTest {
     }
 
     @Test
-    fun appLanguageReportsOnlyItsOwnPick() = runRobolectricComposeUiTest {
+    fun appLanguageReportsOnlyItsOwnFailure() = runRobolectricComposeUiTest {
         // A result already on screen when the page opens is not a save made here.
         actionState = SharedSettingsActionState(MOBILE_ACTION_LANGUAGE)
         show(MOBILE_ACTION_LANGUAGE)
@@ -120,10 +117,16 @@ class SettingsPickSaveStatusUiTest {
         settle()
         assertEquals(RaftSaveStatusState.Idle, status)
 
-        pickAndRun(MOBILE_ACTION_LANGUAGE, "ja")
-        actionState = SharedSettingsActionState(MOBILE_ACTION_LANGUAGE)
+        pickAndRun(LANGUAGE_REGION_ACTION_TIME_FORMAT, "24h")
+        actionState =
+            SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIME_FORMAT, errorCode = "network", screenError = ScreenError("network"))
         settle()
-        assertEquals(RaftSaveStatusState.Saved, status)
+        assertEquals(RaftSaveStatusState.Idle, status)
+
+        pickAndRun(MOBILE_ACTION_LANGUAGE, "ja")
+        actionState = SharedSettingsActionState(MOBILE_ACTION_LANGUAGE, errorCode = "network", screenError = ScreenError("network"))
+        settle()
+        assertEquals(RaftSaveStatusState.Failed(FailureMessage), status)
     }
 
     private companion object {

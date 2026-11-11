@@ -205,7 +205,7 @@ internal fun SettingsSegmentedControlField(
     detail: String? = null,
     enabled: Boolean = true,
     fillWidth: Boolean = false,
-    /** A choice that applies at once: its raft-ui SaveStatus line, 4dp under the control, height kept while empty. */
+    /** A choice that applies at once: a failure (raft-ui SaveStatus) 4dp under the control; nothing otherwise. */
     saveStatus: RaftSaveStatusState? = null
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -315,7 +315,7 @@ internal fun SettingsComboboxField(
     options: List<RaftComboboxOption<String>>,
     onValueChange: (String) -> Unit,
     enabled: Boolean,
-    /** A choice that applies at once: its raft-ui SaveStatus line, under the control and before [description]. */
+    /** A choice that applies at once: a failure (raft-ui SaveStatus) under the control and before [description]. */
     saveStatus: RaftSaveStatusState? = null
 ) {
     RaftField(label = label, description = description, enabled = enabled, labelSize = RaftFieldLabelSize.Sm, saveStatus = saveStatus) {
