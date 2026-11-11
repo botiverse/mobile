@@ -169,6 +169,26 @@ class MessageCardTest {
         for ((case, json) in cases) assertNull(parseV2(json), case)
     }
 
+    @Test
+    fun `a Button with open beside (web preview, slock 14133) still reads as a card, its link unchanged`() {
+        for (json in listOf(messageCardOpenBesideInputJson, messageCardOpenBesideStoredJson)) {
+            val card = assertNotNull(parse(json), json)
+            val (id, button) = card.messageCardButtons().single()
+            assertEquals("go", id)
+            assertEquals("Open preview", button.label)
+            assertEquals(RaftLinkCardButtonAction.Navigate("https://preview.example.com/"), button.action)
+            assertEquals(RaftCardButtonOpen.Beside, button.open)
+        }
+        val tab = assertNotNull(parse(messageCardOpenBesideStoredJson.replace(""""open":"beside"""", """"open":"tab"""")))
+        assertEquals(RaftCardButtonOpen.Tab, tab.messageCardButtons().single().second.open)
+        assertNull(assertNotNull(parse(messageCardBuildStoredJson)).messageCardButtons().single().second.open, "absent stays absent")
+        // The Server refuses any other value (card_invalid at card.elements.go.props.open), so a stored one never has it.
+        assertNull(parse(messageCardOpenBesideStoredJson.replace(""""open":"beside"""", """"open":"window"""")))
+
+        val metadata = metadataOf(messageCardMetadataJson(messageCardOpenBesideStoredJson, 1, "2026-11-11T00:40:00.000Z"))
+        assertNotNull(messageCardToRender(metadata, cardsEnabled = true), "drawn as a card, not its fallback text")
+    }
+
     private fun fiveButtonCard(): String {
         val ids = (0 until 5).map { "b$it" }
         val buttons =
