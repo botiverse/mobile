@@ -8,8 +8,9 @@ import build.raft.app.data.SharedPreferenceStore
  * widgets), so they render from the same data as the app — the runtime-downloaded table when
  * one is active, else the generated [PixelAvatarFixedSpecs] — instead of keeping a copy.
  *
- * [cellArgb] holds [PixelAvatarRasterCellCount] rows of [PixelAvatarRasterCellCount] ARGB
- * colors; a fully transparent cell (alpha 0) is not drawn.
+ * [cellArgb] holds square rows of ARGB colors ([PixelAvatarRasterCellCount] for an agent's
+ * `pixel:` avatar, the art's 112 for a person's built `pixel-human:` one); a fully transparent
+ * cell (alpha 0) is not drawn.
  */
 class RaftPixelAvatarRaster(
     val backgroundArgb: Int,
@@ -19,11 +20,17 @@ class RaftPixelAvatarRaster(
 const val PixelAvatarRasterCellCount = 8
 
 /**
- * Resolves `pixel:<key>` (unknown keys fall back to the active table's default key) and
- * `pixel:random:<seed>` exactly like the in-app avatar renderer. Returns null for any other
- * wire value.
+ * Resolves `pixel:<key>` (unknown keys fall back to the active table's default key),
+ * `pixel:random:<seed>` and a person's built `pixel-human:` avatar exactly like the in-app
+ * avatar renderer. Returns null for any other wire value.
  */
 fun raftPixelAvatarRaster(wireValue: String): RaftPixelAvatarRaster? {
+    raftHumanPixelAvatarRaster(wireValue)?.let { human ->
+        return RaftPixelAvatarRaster(
+            backgroundArgb = human.backgroundArgb,
+            cellArgb = List(human.size) { row -> human.argb.copyOfRange(row * human.size, (row + 1) * human.size) }
+        )
+    }
     val spec = pixelAvatarSpecForWireValue(wireValue) ?: return null
     return RaftPixelAvatarRaster(
         backgroundArgb = spec.background.toArgb(),
@@ -33,6 +40,10 @@ fun raftPixelAvatarRaster(wireValue: String): RaftPixelAvatarRaster? {
             }
     )
 }
+
+/** Art revision of the people's built pixel avatars [raftPixelAvatarRaster] draws. */
+val raftHumanPixelAvatarArtRevision: String
+    get() = RaftHumanPixelAvatarArtData.artVersion
 
 /** Version of the pixel-avatar table currently used by [raftPixelAvatarRaster]. */
 val raftPixelAvatarActiveDataVersion: Int

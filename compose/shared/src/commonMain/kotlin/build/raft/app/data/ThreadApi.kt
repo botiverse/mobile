@@ -621,6 +621,8 @@ internal data class ThreadAttachmentCommentItem(
     val createdAt: String,
     val reactions: List<ThreadAttachmentCommentReaction>,
     val anchorLabel: String? = null,
+    /** The sender's stored avatar (`senderAvatarUrl`): a photo or a person's built pixel avatar. */
+    val senderAvatarUrl: String? = null,
     /** The anchor the viewer can jump to; null for anchors it only labels (sections, lines, regions). */
     val anchor: ThreadAttachmentCommentAnchor? = null
 )
@@ -835,6 +837,7 @@ private data class AttachmentCommentDto(
     val senderType: String = "",
     val senderId: String = "",
     val senderName: String = "",
+    val senderAvatarUrl: String? = null,
     val content: String = "",
     val createdAt: String = "",
     val reactions: List<AttachmentCommentReactionDto> = emptyList(),
@@ -944,7 +947,8 @@ private fun AttachmentCommentDto.toThreadAttachmentCommentItem(): ThreadAttachme
         createdAt = createdAt,
         reactions = reactions.map { it.toThreadAttachmentCommentReaction() },
         anchorLabel = anchor?.toAnchorLabel(),
-        anchor = anchor?.toThreadAttachmentCommentAnchor()
+        anchor = anchor?.toThreadAttachmentCommentAnchor(),
+        senderAvatarUrl = senderAvatarUrl?.takeIf { it.isNotBlank() }
     )
 }
 

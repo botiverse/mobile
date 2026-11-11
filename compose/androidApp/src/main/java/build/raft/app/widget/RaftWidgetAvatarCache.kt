@@ -7,6 +7,7 @@ import build.raft.app.RaftPixelAvatarRaster
 import build.raft.app.core.data.auth.androidMMKVLocalPreferenceKeyValueStore
 import build.raft.app.network.SharedBinaryDownloader
 import build.raft.app.raftApplyPersistedPixelAvatars
+import build.raft.app.raftHumanPixelAvatarArtRevision
 import build.raft.app.raftPixelAvatarActiveDataVersion
 import build.raft.app.raftPixelAvatarRaster
 import kotlinx.coroutines.CancellationException
@@ -28,6 +29,8 @@ internal suspend fun Context.cacheRaftWidgetAvatarPath(wireValue: String): Strin
         }
         normalized.startsWith("pixel:") || normalized.startsWith("random:") ->
             cachePixelAvatar(normalized, directory)
+        // A person's built pixel avatar (`pixel-human:v1:...`): drawn from the shared art.
+        normalized.startsWith(HumanPixelAvatarScheme) -> cachePixelAvatar(normalized, directory)
         else -> null
     }
 }
@@ -53,8 +56,11 @@ private fun Context.cachePixelAvatar(wireValue: String, directory: File): String
     runCatching {
         raftApplyPersistedPixelAvatars(androidMMKVLocalPreferenceKeyValueStore(this))
         val raster = raftPixelAvatarRaster(wireValue.toSharedPixelAvatarWireValue()) ?: return@runCatching null
-        // Key the render by the active table version so a runtime table update re-renders.
-        val file = File(directory, "${wireValue.sha256()}-pixel-v$raftPixelAvatarActiveDataVersion.png")
+        // Key the render by the active table version (or, for a person's built avatar, the art
+        // revision) so a runtime table update or new art re-renders.
+        val version =
+            if (wireValue.startsWith(HumanPixelAvatarScheme)) "human-$raftHumanPixelAvatarArtRevision" else "v$raftPixelAvatarActiveDataVersion"
+        val file = File(directory, "${wireValue.sha256()}-pixel-$version.png")
         if (file.isFile && file.length() > 0L) return@runCatching file.absolutePath
         val bitmap = renderRaftWidgetPixelAvatar(raster)
         file.outputStream().use { output -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, output) }
@@ -69,17 +75,19 @@ internal fun String.toSharedPixelAvatarWireValue(): String =
     if (startsWith(LegacyRandomPrefix)) "pixel:random:${removePrefix(LegacyRandomPrefix)}" else this
 
 private const val LegacyRandomPrefix = "random:"
+private const val HumanPixelAvatarScheme = "pixel-human:"
 
 /** Pixel raster for a resolved avatar; split out (no Bitmap) so unit tests can compare it. */
-internal fun RaftPixelAvatarRaster.widgetPixelArgb(size: Int = WidgetPixelAvatarSizePx): IntArray {
+internal fun RaftPixelAvatarRaster.widgetPixelArgb(size: Int = widgetPixelSize()): IntArray {
     val pixels = IntArray(size * size) { backgroundArgb }
+    val cells = cellArgb.size
     cellArgb.forEachIndexed { rowIndex, row ->
         row.forEachIndexed { columnIndex, color ->
             if ((color ushr 24) != 0) {
-                val left = widgetPixelEdge(columnIndex, size)
-                val top = widgetPixelEdge(rowIndex, size)
-                val right = widgetPixelEdge(columnIndex + 1, size)
-                val bottom = widgetPixelEdge(rowIndex + 1, size)
+                val left = widgetPixelEdge(columnIndex, size, cells)
+                val top = widgetPixelEdge(rowIndex, size, cells)
+                val right = widgetPixelEdge(columnIndex + 1, size, cells)
+                val bottom = widgetPixelEdge(rowIndex + 1, size, cells)
                 for (y in top until bottom) {
                     for (x in left until right) pixels[y * size + x] = color
                 }
@@ -90,17 +98,20 @@ internal fun RaftPixelAvatarRaster.widgetPixelArgb(size: Int = WidgetPixelAvatar
 }
 
 private fun renderRaftWidgetPixelAvatar(raster: RaftPixelAvatarRaster): Bitmap {
-    val size = WidgetPixelAvatarSizePx
+    val size = raster.widgetPixelSize()
     return Bitmap.createBitmap(raster.widgetPixelArgb(size), size, size, Bitmap.Config.ARGB_8888)
 }
 
 private const val WidgetPixelAvatarSizePx = 48
 
-private fun widgetPixelEdge(index: Int, extent: Int): Int =
+/** 48px for an agent's 8x8 face; a person's 112x112 built avatar keeps one pixel per cell. */
+internal fun RaftPixelAvatarRaster.widgetPixelSize(): Int = maxOf(WidgetPixelAvatarSizePx, cellArgb.size)
+
+private fun widgetPixelEdge(index: Int, extent: Int, cells: Int = PixelAvatarRasterCellCount): Int =
     when {
         index <= 0 -> 0
-        index >= PixelAvatarRasterCellCount -> extent
-        else -> (extent.toFloat() * index / PixelAvatarRasterCellCount).roundToInt()
+        index >= cells -> extent
+        else -> (extent.toFloat() * index / cells).roundToInt()
     }
 
 private fun String.sha256(): String {
