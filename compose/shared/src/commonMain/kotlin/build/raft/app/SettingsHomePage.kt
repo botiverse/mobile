@@ -2737,7 +2737,7 @@ private fun RaftAppShellReadyContent(
     // materialize so its identity-bound durable snapshot can paint before remote auth settles.
     if (authGateState == SharedAuthGateState.Restoring && cachedRestoreSession == null) {
         if (suppressRestoreLanding) {
-            AppShellSilentRestoreContent()
+            AppShellNewWindowRestoreFrame(adaptivePane = adaptivePane, selectedTab = selectedTab)
         } else {
             AppShellRestoreSplashContent()
         }
@@ -4720,7 +4720,7 @@ private fun RaftAppShellReadyContent(
                 )
             } else {
                 if (suppressRestoreLanding) {
-                    AppShellSilentRestoreContent()
+                    AppShellNewWindowRestoreFrame(adaptivePane = adaptivePane, selectedTab = selectedTab)
                 } else {
                     AppShellRestoreSplashContent()
                 }
@@ -6971,6 +6971,7 @@ private fun RaftAppShellReadyContent(
                     ).normalizedOrNull(),
                 keepTab = keepTab
             ) ?: return false
+        pageData.put(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, build.raft.app.data.raftNowEpochMillis())
         bridge.log(
             "app_shell_server_switch_new_window source=$source " +
                 "from=${currentServerId.orEmpty()} to=${serverId.trim()} tab=${keepTab.orEmpty()}"
