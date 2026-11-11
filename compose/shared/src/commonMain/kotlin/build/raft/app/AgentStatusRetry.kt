@@ -14,6 +14,7 @@ import build.raft.app.data.AgentActivityDetailKindRuntimeUnavailable
 import build.raft.app.data.AgentActivityDetailKindWakeCrashLoopBlocked
 import build.raft.app.data.AgentBlockedState
 import build.raft.app.data.normalizedAgentRuntimeStatus
+import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentStatus
 import build.raft.app.resources.*
@@ -52,6 +53,8 @@ private const val RateLimitErrorClass = "RateLimitError"
  * someone restarts it, so its profile status offers Retry (the Actions section's Restart) to
  * whoever may restart it:
  *
+ * - an invalid credential ([credentialReason], [agentCredentialInvalidReason], botiverse/slock
+ *   #13276): held until a restart, whether its own error or another agent's on the same sign-in;
  * - the error light, unless the kept error is a rate limit ([runtimeErrorClass] `RateLimitError`);
  * - an agent whose automatic starts stopped ([ManualStartDetailKinds]): for a failed start, only
  *   once the server paused automatic restarts ([AgentSpawnFailure.autoRestartPaused]; before
@@ -59,8 +62,7 @@ private const val RateLimitErrorClass = "RateLimitError"
  *   session fixes.
  *
  * Never for an external agent, a held one ([blocked]: a restart cannot reach it), or one only
- * guessed online. The web's third case, an invalid sign-in held for another agent's error on the
- * same credential (`credentialHold`), is not carried by the app, so it gets no Retry here.
+ * guessed online.
  */
 internal fun agentNeedsManualRestart(
     status: AgentStatus?,
@@ -70,8 +72,10 @@ internal fun agentNeedsManualRestart(
     external: Boolean,
     blocked: AgentBlockedState?,
     likelyOnline: Boolean,
+    credentialReason: AgentCredentialHoldReason? = null,
 ): Boolean {
     if (external || blocked != null || likelyOnline) return false
+    if (credentialReason != null) return true
     if (status == AgentStatus.Error) return runtimeErrorClass?.trim() != RateLimitErrorClass
     if (detailKind?.trim() !in ManualStartDetailKinds) return false
     val failure = spawnFailure ?: return true

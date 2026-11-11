@@ -4264,6 +4264,10 @@
     <string name="agent_status_retry">再試行</string>
     <string name="agent_status_retrying">再起動中…</string>
     <string name="agent_status_retry_failed">エージェントをリセットできませんでした</string>
+    <string name="agent_status_credential_sign_in">%1$s へのログインが必要です</string>
+    <string name="agent_status_credential_plan_model">プランに %1$s が含まれていません</string>
+    <string name="agent_status_credential_plan_default_model">プランにこのモデルが含まれていません</string>
+    <string name="agent_status_credential_billing">プロバイダーの残高がありません</string>
     <string name="agent_status_computer_access_revoked">コンピューターのアクセスが取り消されました。エージェントを別のコンピューターに移動してください（再接続すると新しいコンピューターとして追加されます）</string>
     <string name="agent_migration_place_from_revoked_computer_note">このエージェントのコンピューターはサーバーへのアクセスを失ったため、ファイルを移せません。選んだコンピューターに移動し、次にメッセージを受け取ったときにそこで新しいセッションを始めます。</string>
     <string name="agent_status_model_unsupported">このランタイムのアカウントまたはプランには「%1$s」が含まれていません。モデルを変更するか、このモデルを含むアカウントでログインしてください</string>

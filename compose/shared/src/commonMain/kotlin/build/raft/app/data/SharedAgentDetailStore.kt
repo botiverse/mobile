@@ -758,7 +758,8 @@ private fun SharedAgentDetailState.mergeSequencedActivityIntoDetail(
                 status = currentSummary.status ?: incomingSummary.status,
                 activity = currentSummary.activity ?: incomingSummary.activity,
                 activityDetail = currentSummary.activityDetail ?: incomingSummary.activityDetail,
-                spawnFailure = if (currentSummary.activityDetail != null) currentSummary.spawnFailure else incomingSummary.spawnFailure
+                spawnFailure = if (currentSummary.activityDetail != null) currentSummary.spawnFailure else incomingSummary.spawnFailure,
+                credentialHold = if (currentSummary.activityDetail != null) currentSummary.credentialHold else incomingSummary.credentialHold
             )
         } else {
             incomingSummary
@@ -842,6 +843,11 @@ private fun AgentDetailSnapshot.withAgentActivity(
             spawnFailure =
                 if (isSeenEvent || event.coarseState) currentSummary.spawnFailure
                 else event.spawnFailure,
+            // Web activityTypedCarriers: the held reason rides only an idle frame; the next detailed
+            // frame without it (the release, any other status) drops it.
+            credentialHold =
+                if (isSeenEvent || event.coarseState) currentSummary.credentialHold
+                else event.credentialHold,
             lastSeenAt = event.lastSeenAt ?: currentSummary.lastSeenAt
         ),
         activity =

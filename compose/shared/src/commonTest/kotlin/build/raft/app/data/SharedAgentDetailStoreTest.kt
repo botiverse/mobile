@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.MembersAgentLifecycleAction
 import build.raft.app.seedRemoteAgentProfile
+import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
@@ -821,6 +822,31 @@ class SharedAgentDetailStoreTest {
         )
         assertEquals("Working", state.detail?.activity?.single()?.title)
         assertEquals("Building", state.detail?.activity?.single()?.body)
+    }
+
+    @Test
+    fun theHeldReasonRidesTheIdleFrameAndTheNextFrameWithoutItDropsIt() {
+        // Web credentialHoldProjection.test.ts (botiverse/slock #13276): the latest frame is the state.
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Online", activity = "Online")))
+        fun push(seq: Long, status: AgentStatus, hold: AgentCredentialHoldReason?, coarse: Boolean = false) =
+            s.dispatch(
+                SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                    event =
+                        activityEvent(status, detail = if (coarse) null else "held notice", serverSeq = seq)
+                            .copy(detailKind = "idle", credentialHold = hold, coarseState = coarse),
+                    observedAtMillis = seq * 100L
+                )
+            )
+        push(1L, AgentStatus.Online, AgentCredentialHoldReason.UserReauth)
+        assertEquals(AgentCredentialHoldReason.UserReauth, s.state.value.detail?.summary?.credentialHold)
+        push(2L, AgentStatus.Online, AgentCredentialHoldReason.Billing)
+        assertEquals(AgentCredentialHoldReason.Billing, s.state.value.detail?.summary?.credentialHold, "a new reason with the same text")
+        push(3L, AgentStatus.Online, null, coarse = true)
+        assertEquals(AgentCredentialHoldReason.Billing, s.state.value.detail?.summary?.credentialHold, "a coarse state keeps it")
+        push(4L, AgentStatus.Online, null)
+        assertNull(s.state.value.detail?.summary?.credentialHold, "the release's idle frame clears it")
     }
 
     @Test

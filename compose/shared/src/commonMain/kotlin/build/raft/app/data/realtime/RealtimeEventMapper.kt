@@ -13,6 +13,7 @@ import build.raft.app.data.reportedSourceMessageId
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.ServerPushMode
 import build.raft.app.data.PushPreviewMode
+import build.raft.app.data.AgentActivityDetailKindIdle
 import build.raft.app.data.AgentActivityDetailKindRuntimeUnavailable
 import build.raft.app.data.AgentActivityDetailKindWakeCrashLoopBlocked
 import build.raft.app.data.AgentActivityStatusProjection
@@ -26,6 +27,7 @@ import build.raft.app.strictTaskStatusOrNull
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AgentCreated
 import build.raft.app.model.AgentActivitySubscribed
+import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentSpawnFailure
@@ -800,7 +802,28 @@ private data class AgentActivityDto(
     val spawnFailure: SpawnFailureDto? = null,
     /** Shared `ToolStuckActivityDiagnostic`, on every frame while the agent is stuck on a tool call. */
     val toolStuck: ToolStuckDto? = null,
+    /** Shared `CredentialHoldActivityDiagnostic`, sent with detailKind `idle` (botiverse/slock #13276). */
+    val credentialHold: CredentialHoldDto? = null,
 )
+
+/**
+ * Shared `CredentialHoldActivityDiagnostic` (botiverse/slock #13276 packages/shared/src/index.ts):
+ * the typed reason an idle frame showing the daemon's held notice carries. The server passes only a
+ * known reason through (`normalizeCredentialHoldActivityDiagnostic`).
+ */
+@Serializable
+internal data class CredentialHoldDto(
+    val reason: String? = null,
+)
+
+/**
+ * The hold reason of an `idle` status (web `activityTypedCarriers`); null for any other kind, and
+ * for a reason this app does not know (a newer daemon's: the plain status, as before the carrier).
+ */
+internal fun CredentialHoldDto?.toAgentCredentialHold(detailKind: String?): AgentCredentialHoldReason? {
+    if (this == null || detailKind?.trim() != AgentActivityDetailKindIdle) return null
+    return AgentCredentialHoldReason.fromWireValue(reason)
+}
 
 /** Shared `ToolStuckActivityDiagnostic` (botiverse/slock packages/shared/src/index.ts, #10409). */
 @Serializable
@@ -1419,6 +1442,7 @@ private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
         serverSeq = serverSeq,
         wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(projectedActivity.detailKind),
         spawnFailure = spawnFailure.toAgentSpawnFailure(projectedActivity.detailKind),
+        credentialHold = credentialHold.toAgentCredentialHold(projectedActivity.detailKind),
         toolStuck =
             toolStuck.toAgentToolStuck(
                 // The server stamps the frame with its own clock in epoch ms.

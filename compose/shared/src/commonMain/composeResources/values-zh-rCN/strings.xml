@@ -4264,6 +4264,10 @@
     <string name="agent_status_retry">重试</string>
     <string name="agent_status_retrying">重启中…</string>
     <string name="agent_status_retry_failed">重置 Agent 失败</string>
+    <string name="agent_status_credential_sign_in">需要重新登录 %1$s</string>
+    <string name="agent_status_credential_plan_model">套餐不包含 %1$s</string>
+    <string name="agent_status_credential_plan_default_model">套餐不包含这个模型</string>
+    <string name="agent_status_credential_billing">服务商余额已用完</string>
     <string name="agent_status_computer_access_revoked">Computer 访问权限已撤销：请把 Agent 移到另一台 Computer（重新加入会新增一台 Computer）</string>
     <string name="agent_migration_place_from_revoked_computer_note">这个 Agent 所在的 Computer 已失去对服务器的访问权限，无法带走它的文件。它会移到你选择的 Computer，并在下次收到消息时在那里开始新的会话。</string>
     <string name="agent_status_model_unsupported">这个运行时的账号或套餐不包含模型「%1$s」。请更换模型，或登录包含该模型的账号</string>

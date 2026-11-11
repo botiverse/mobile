@@ -166,6 +166,9 @@ internal const val AgentActivityDetailKindWakeCrashLoopBlocked = "wake_crash_loo
 /** Shared detail kind of a failed start (it carries `spawnFailure`). */
 internal const val AgentActivityDetailKindRuntimeUnavailable = "runtime_unavailable"
 
+/** Shared detail kind of an idle status (a held agent's carries `credentialHold`, botiverse/slock #13276). */
+internal const val AgentActivityDetailKindIdle = "idle"
+
 /** `mcp__chat__read_file` / `chat/read_file` / `chat.read_file` -> `read_file`; null when nothing is left. */
 internal fun String.normalizedAgentToolName(): String? =
     trim()

@@ -1123,6 +1123,12 @@ data class MemberPresenceUpdated(
      */
     val toolStuck: AgentToolStuck? = null,
     /**
+     * Why the daemon holds the agent for an unusable sign-in another agent on the same credential
+     * saw rejected, with [detailKind] `idle` (the `credentialHold` carrier of `agent:activity`,
+     * botiverse/slock #13276); null for every other status, and from older daemons.
+     */
+    val credentialHold: AgentCredentialHoldReason? = null,
+    /**
      * From `agent:activity_state` (botiverse/slock 968d102d): the coarse state of the detailed frame with
      * the same [serverSeq], without its label or entries. It never replaces that frame or a newer one
      * (see `shouldReplaceRegisteredPresenceFact`).
@@ -1139,6 +1145,26 @@ data class MemberPresenceUpdated(
 data class AgentActivitySubscribed(
     val agentIds: List<String>
 ) : RealtimeEvent
+
+/**
+ * Why an agent cannot run until someone fixes its provider credential (shared
+ * `CredentialHoldReason`, botiverse/slock #13276 packages/shared/src/index.ts): its sign-in needs
+ * renewing, its plan does not include its model, or the provider balance is exhausted. The same
+ * values name an own error's `lastRuntimeError.requiredAction` (`user_reauth`,
+ * `user_model_access`).
+ */
+@Serializable
+enum class AgentCredentialHoldReason(val wireValue: String) {
+    UserReauth("user_reauth"),
+    UserModelAccess("user_model_access"),
+    Billing("billing");
+
+    companion object {
+        /** Shared `isCredentialHoldReason`: a known reason, else null (a newer daemon's: no reason). */
+        fun fromWireValue(value: String?): AgentCredentialHoldReason? =
+            value?.let { wire -> entries.firstOrNull { it.wireValue == wire } }
+    }
+}
 
 /**
  * Why an agent's start failed (shared `SpawnFailureActivityDiagnostic`, botiverse/slock task #1123):

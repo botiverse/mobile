@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -7,6 +8,7 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 class ProcessMemberPresenceRegistryTest {
@@ -350,5 +352,31 @@ class ProcessMemberPresenceRegistryTest {
         )
 
         assertEquals(AgentStatus.Working, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
+    }
+
+    @Test
+    fun theHeldReasonIsVisibleStateAndSurvivesAnAgentSeenMerge() {
+        // botiverse/slock #13276: `credentialHold` rides the idle frame; a frame without it drops it,
+        // agent:seen (no activity) keeps it.
+        val held =
+            fact(serverSeq = 4).copy(statusLabel = "held notice", detailKind = "idle", credentialHold = AgentCredentialHoldReason.Billing)
+        val released = held.copy(serverSeq = 5, credentialHold = null)
+        assertFalse(released.hasSameVisibleRegisteredPresenceAs(held), "a dropped reason is a visible change")
+
+        val registry = ProcessMemberPresenceRegistry()
+        registry.apply(ownerServerA, held, GEN0)
+        registry.apply(
+            ownerServerA,
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                lastSeenAt = "2026-11-11T00:00:00.000Z"
+            ),
+            GEN0
+        )
+        assertEquals(AgentCredentialHoldReason.Billing, registry.factFor(ownerServerA, "agent-1")?.credentialHold)
+        registry.apply(ownerServerA, released.copy(serverSeq = 6), GEN0)
+        assertNull(registry.factFor(ownerServerA, "agent-1")?.credentialHold)
     }
 }
