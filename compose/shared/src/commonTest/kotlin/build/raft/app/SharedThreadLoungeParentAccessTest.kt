@@ -78,7 +78,10 @@ class SharedThreadLoungeParentAccessTest {
                 assertTrue(mounted.payload.composer.enabled, case.name)
             } else {
                 assertEquals(ReplyParentAuthorityStatus.Denied, settled.replyParentAuthority, case.name)
-                assertFalse(settled.writeActionsEnabled, case.name)
+                // Denied closes the composer (payload write facts); writeActionsEnabled is not the
+                // composer gate for a decided parent.
+                assertFalse(settled.payload.canSend, case.name)
+                assertFalse(settled.payload.composer.enabled, case.name)
             }
             // Decided from the known Lounge: no channel list fetch and no fallback read.
             assertEquals(0, harness.channelRepository.channelsCalls, case.name)
@@ -127,7 +130,10 @@ class SharedThreadLoungeParentAccessTest {
             if (case.expected == ReplyParentAuthorityStatus.Writable) {
                 assertTrue(harness.awaitState("${case.name}: composer") { it.writeActionsEnabled }.payload.composer.enabled, case.name)
             } else {
-                assertFalse(settled.writeActionsEnabled, case.name)
+                // Denied closes the composer (payload write facts); writeActionsEnabled is not the
+                // composer gate for a decided parent.
+                assertFalse(settled.payload.canSend, case.name)
+                assertFalse(settled.payload.composer.enabled, case.name)
             }
             assertTrue(
                 harness.diagnostics.any {
@@ -238,6 +244,10 @@ class SharedThreadLoungeParentAccessTest {
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = conversations,
                         channelRepository = channelRepository,
+                        diagnosticsLogger = { message ->
+                            diagnostics.add(message)
+                            projectionRejectingDiagnosticsLogger(message)
+                        },
                     ),
                 scope = scope,
                 diagnosticsLogger = { diagnostics.add(it) },
