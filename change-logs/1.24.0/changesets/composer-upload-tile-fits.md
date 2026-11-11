@@ -4,7 +4,7 @@ area: composer
 platforms:
   - android
   - ios
-pull_request: 0
+pull_request: 4596
 rollout: full
 ---
 
