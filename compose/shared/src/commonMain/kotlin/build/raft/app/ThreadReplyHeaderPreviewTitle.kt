@@ -57,10 +57,31 @@ internal fun threadHeaderReplyCount(
     hiddenHistoryCount: Int = 0
 ): Int? {
     val origin = timelineSlice.originMessage
-    val summaryCount = origin?.let { replyMetadataByParentId[it.id]?.replyCount }?.coerceAtLeast(0) ?: 0
-    val loadedCount = timelineSlice.messages.count { it.id != origin?.id } + hiddenHistoryCount.coerceAtLeast(0)
-    val replyCount = maxOf(loadedCount, summaryCount)
-    val loading = timelineSlice.status == "loading" || timelineSlice.originStatus == "loading"
-    val failed = timelineSlice.status == "error" || timelineSlice.mainLoadFailed
+    return threadReplyCountLikeWeb(
+        summaryCount = origin?.let { replyMetadataByParentId[it.id]?.replyCount },
+        loadedCount = timelineSlice.messages.count { it.id != origin?.id } + hiddenHistoryCount.coerceAtLeast(0),
+        status = timelineSlice.status,
+        originStatus = timelineSlice.originStatus,
+        mainLoadFailed = timelineSlice.mainLoadFailed
+    )
+}
+
+/**
+ * Web ThreadPanelHeader's reply count: the larger of the replies loaded (plus any behind the history
+ * window) and the origin's reply summary, which can lag (an Activity seed or a cached origin still
+ * saying 0 while the replies are on screen). Null while it is unknown -- nothing counted yet and the
+ * replies still loading or failed to load -- since that is not "0 replies". The thread header and
+ * the "Beginning of conversation" row both read it, so they always agree.
+ */
+internal fun threadReplyCountLikeWeb(
+    summaryCount: Int?,
+    loadedCount: Int,
+    status: String,
+    originStatus: String,
+    mainLoadFailed: Boolean
+): Int? {
+    val replyCount = maxOf(loadedCount.coerceAtLeast(0), summaryCount?.coerceAtLeast(0) ?: 0)
+    val loading = status == "loading" || originStatus == "loading"
+    val failed = status == "error" || mainLoadFailed
     return replyCount.takeUnless { it == 0 && (loading || failed) }
 }

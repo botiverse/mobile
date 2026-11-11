@@ -166,6 +166,32 @@ class ThreadReplyHeaderPreviewTitleTest {
         }
     }
 
+    /**
+     * Hands 75dc2b46: a thread opened from Activity kept its seeded origin (summary 0) while its 19
+     * replies loaded, and "Beginning of conversation" said "0 replies" above them. The row now reads
+     * the header's count, so the two never disagree.
+     */
+    @Test
+    fun beginningOfConversationCountMatchesTheHeaderWhenTheSummaryLags() {
+        val replies = (1..2).map { origin(body = "r$it").copy(id = "reply-$it") }
+        val cases =
+            listOf(
+                replyThread(status = "content", origin = origin(body = "root"), messages = replies) to 2,
+                replyThread(status = "content", origin = origin(body = "root").copy(replyCount = 40), messages = replies) to 40,
+                replyThread(status = "empty", origin = origin(body = "root")) to 0,
+                replyThread(status = "loading", origin = origin(body = "root")) to null,
+                replyThread(status = "content", origin = origin(body = "root"), mainLoadFailed = true) to null,
+            )
+        cases.forEach { (payload, expected) ->
+            val slice = payload.toThreadTimelineSlice()
+            val header = threadHeaderReplyCount(slice, payload.toThreadReplyMetadataMap())
+            assertEquals(expected, header, payload.status)
+            assertEquals(header, threadOlderMessagesStatusSpec(slice).secondaryReplyCount, payload.status)
+        }
+        // Not a reply thread (no origin): no count under the row.
+        assertNull(replyThread(status = "content", messages = replies).threadBeginningReplyCount())
+    }
+
     private fun replyThread(
         status: String,
         origin: RaftThreadMessageItem? = null,

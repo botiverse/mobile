@@ -34208,9 +34208,22 @@ internal fun RaftThreadScreenPayload.threadBeginningReplyCountLabel(): String? {
     }
 }
 
-/** Origin-projected reply count under "Beginning of conversation"; rendered via string resources. */
-internal fun RaftThreadScreenPayload.threadBeginningReplyCount(): Int? =
-    originMessage?.replyCount?.coerceAtLeast(0)
+/**
+ * The reply count under "Beginning of conversation" (rendered via string resources): the header's
+ * count ([threadReplyCountLikeWeb]), so a lagging origin summary (Hands 75dc2b46: an Activity-opened
+ * thread said "0 replies" above its loaded replies) never contradicts the replies on screen. Null
+ * without an origin (not a reply thread) or while the count is unknown.
+ */
+internal fun RaftThreadScreenPayload.threadBeginningReplyCount(): Int? {
+    val origin = originMessage ?: return null
+    return threadReplyCountLikeWeb(
+        summaryCount = origin.replyCount,
+        loadedCount = messages.count { it.id != origin.id },
+        status = status,
+        originStatus = originStatus,
+        mainLoadFailed = mainLoadFailed
+    )
+}
 
 /** The task status choices, labelled in the app's language (`tasks_status_*`), keyed by status. */
 @Composable
