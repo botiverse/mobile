@@ -1272,6 +1272,7 @@ internal class BridgeModule : Module() {
         authorityPrincipalId: String = "",
         authorityAuthGeneration: Long = 0L,
         authorityConnectionFamilyId: String = "",
+        multiSession: Boolean = false,
     ) {
         val methodArgs = JSONObject()
         val serverIdArray = JSONArray()
@@ -1287,6 +1288,7 @@ internal class BridgeModule : Module() {
         methodArgs.put("authorityPrincipalId", authorityPrincipalId)
         methodArgs.put("authorityAuthGeneration", authorityAuthGeneration)
         methodArgs.put("authorityConnectionFamilyId", authorityConnectionFamilyId)
+        if (multiSession) methodArgs.put("multiSession", true)
         callNativeMethod(REPORT_REALTIME, methodArgs, null)
     }
 

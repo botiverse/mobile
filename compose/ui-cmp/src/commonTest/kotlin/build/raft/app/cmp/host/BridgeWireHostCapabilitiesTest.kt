@@ -4,9 +4,15 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -98,6 +104,24 @@ class BridgeWireHostCapabilitiesTest {
             ),
             wire(),
         )
+    }
+
+    @Test
+    fun realtimeReconcileCarriesMultiSessionOnlyWhenOn() {
+        listOf(false, true).forEach { multiSession ->
+            capabilities.realtimeReconcile(
+                serverIds = setOf("s2", "s1"),
+                accessToken = "t",
+                environmentId = "env",
+                multiSession = multiSession,
+            )
+        }
+        val (off, on) = calls.map { Json.parseToJsonElement(it.params).jsonObject }
+
+        assertFalse("multiSession" in off, "with the setting off the reconcile wire is unchanged")
+        assertEquals(true, on["multiSession"]?.jsonPrimitive?.booleanOrNull)
+        assertEquals(off, JsonObject(on - "multiSession"), "multiSession is the only difference")
+        assertEquals(listOf("s1", "s2"), on.getValue("serverIds").jsonArray.map { it.jsonPrimitive.content })
     }
 
     @Test
