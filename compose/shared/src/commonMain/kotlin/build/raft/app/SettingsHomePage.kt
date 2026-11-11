@@ -6942,7 +6942,12 @@ private fun RaftAppShellReadyContent(
             "app_shell_server_switch_new_window source=$source " +
                 "from=${currentServerId.orEmpty()} to=${serverId.trim()} tab=${keepTab.orEmpty()}"
         )
-        pager.openAppShellReplacingCurrentPage(pageData)
+        openAppShellServerSwitchWindow(
+            serverId = serverId,
+            pageData = pageData,
+            noteServerSelected = sharedStores::noteServerSwitchedToWindow,
+            open = pager::openAppShellReplacingCurrentPage
+        )
         return true
     }
 
@@ -10134,6 +10139,26 @@ internal fun appShellServerSwitchNewWindowPageDataOrNull(
         val tab = keepTab?.let(::retainedAppShellSelectedTab)
         if (tab != null && tab != "home") put(AppShellInitialTabKey, tab)
     }
+}
+
+/**
+ * Opens [serverId]'s own shell window for a cross-server switch ([pageData] from
+ * [appShellServerSwitchNewWindowPageDataOrNull]). The user switched, so the socket reconnect that
+ * follows refetches agent status at once ([noteServerSelected], the reconnect jitter's
+ * `onServerSelected`) before the window opens. The shell's selection collector cannot do it here:
+ * Android brings back the server's existing document window (`AndroidShellWindowRegistry
+ * .targetForOwner`), whose selection store already holds [serverId] and never emits again, so the
+ * reconnect waited the 0–20 s jitter while Home showed the statuses of the server's last visit
+ * (Hands c76f162d: 9.3 s).
+ */
+internal fun openAppShellServerSwitchWindow(
+    serverId: String,
+    pageData: JSONObject,
+    noteServerSelected: (String) -> Unit,
+    open: (JSONObject) -> Unit
+) {
+    serverId.trim().takeIf { it.isNotEmpty() }?.let(noteServerSelected)
+    open(pageData)
 }
 
 internal fun isMultiShellCrossServerSelection(
