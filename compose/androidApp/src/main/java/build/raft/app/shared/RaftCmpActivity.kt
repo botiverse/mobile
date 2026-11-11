@@ -3192,7 +3192,11 @@ internal open class RaftCmpActivity :
         forceReconnect: Boolean,
         disconnectReason: String,
         witness: RealtimeConnectionWitnessToken,
+        multiSession: Boolean,
     ) {
+        // TODO(realtime multi-session PR2): hand multiSession to the owner once
+        // AndroidAppScopeRealtimeOwner.reconcileFromSharedRequest takes it. Until then every reconcile
+        // keeps the single current-server path, and shared never sets it (the setting is off).
         AndroidAppScopeRealtimeOwner.reconcileFromSharedRequest(
             context = applicationContext,
             serverIds = serverIds.map(String::trim).filter(String::isNotEmpty).toSet(),
@@ -4266,6 +4270,7 @@ internal class RaftBridgeModule(
                             authGeneration = request.optLong("authorityAuthGeneration", 0L),
                             connectionFamilyId = request.optString("authorityConnectionFamilyId"),
                         ),
+                    multiSession = request.optBoolean("multiSession", false),
                 )
             }
             "connect" ->

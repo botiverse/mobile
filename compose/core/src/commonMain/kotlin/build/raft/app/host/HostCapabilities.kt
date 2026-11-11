@@ -107,6 +107,11 @@ interface HostRealtimeCapability {
         authorityConnectionFamilyId: String,
     )
 
+    /**
+     * [multiSession] (Phase 3, default off): [serverIds] are the servers with an open window, each
+     * kept on its own session, instead of the single current server. Sent only when true, so the
+     * wire is unchanged while the setting is off; hosts without separate windows ignore it.
+     */
     fun realtimeReconcile(
         serverIds: Set<String>,
         accessToken: String,
@@ -118,6 +123,7 @@ interface HostRealtimeCapability {
         authorityPrincipalId: String = "",
         authorityAuthGeneration: Long = 0L,
         authorityConnectionFamilyId: String = "",
+        multiSession: Boolean = false,
     )
 
     fun realtimeDisconnect(

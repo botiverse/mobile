@@ -89,6 +89,7 @@ internal class RaftHostCapabilities(
         authorityPrincipalId: String,
         authorityAuthGeneration: Long,
         authorityConnectionFamilyId: String,
+        multiSession: Boolean,
     ) = bridge.realtimeReconcile(
         serverIds = serverIds,
         accessToken = accessToken,
@@ -100,6 +101,7 @@ internal class RaftHostCapabilities(
         authorityPrincipalId = authorityPrincipalId,
         authorityAuthGeneration = authorityAuthGeneration,
         authorityConnectionFamilyId = authorityConnectionFamilyId,
+        multiSession = multiSession,
     )
 
     override fun realtimeDisconnect(

@@ -65,6 +65,7 @@ internal interface RaftHostActivity : LifecycleOwner {
         forceReconnect: Boolean,
         disconnectReason: String,
         witness: RealtimeConnectionWitnessToken,
+        multiSession: Boolean = false,
     )
 
     fun requestRealtimeDisconnect(

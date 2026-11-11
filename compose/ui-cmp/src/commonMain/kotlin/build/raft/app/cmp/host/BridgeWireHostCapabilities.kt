@@ -172,6 +172,7 @@ class BridgeWireHostCapabilities(
         authorityPrincipalId: String,
         authorityAuthGeneration: Long,
         authorityConnectionFamilyId: String,
+        multiSession: Boolean,
     ) = send(
         REPORT_REALTIME,
         params(
@@ -189,6 +190,7 @@ class BridgeWireHostCapabilities(
             "authorityPrincipalId" to authorityPrincipalId,
             "authorityAuthGeneration" to authorityAuthGeneration,
             "authorityConnectionFamilyId" to authorityConnectionFamilyId,
+            "multiSession" to multiSession.takeIf { it },
         ),
     )
 
