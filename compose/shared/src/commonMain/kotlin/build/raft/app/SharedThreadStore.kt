@@ -7697,7 +7697,8 @@ private fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): Dat
                     PermissionBlocker(
                         code = contractCode ?: "thread_forbidden",
                         requiredCapability = "thread_access",
-                        serverMessage = projection.serverMessage
+                        serverMessage = projection.serverMessage,
+                        serverCode = contractCode ?: projection.errorCode.takeUnless { it == "http_$code" }
                     )
                 )
             else ->
@@ -7825,6 +7826,12 @@ internal data class SharedThreadState(
      */
     val conversationAccessLost: Boolean = false,
     /**
+     * With [conversationAccessLost]: the answer was web's channel denial ([isChannelAccessDenial],
+     * #12696), so a channel says "You're no longer in this channel" and drops its Activity rows; any
+     * other lost access keeps the generic notice.
+     */
+    val channelAccessDenied: Boolean = false,
+    /**
      * The unread-thread pill's parents of this channel's unread followed threads, by thread channel
      * id, resolved from the followed-threads list for parents the page has not loaded (web
      * `FollowedThread.parentMessageId`). Filled by [SharedThreadIntent.ResolveUnreadThreadParents].
@@ -7851,6 +7858,28 @@ internal data class SharedThreadState(
  * a non-auth 403 (removed / kicked / private) or a 404 (deleted). 401 is an auth-session problem
  * handled by the auth route, and an edge block is a network fact, not an access fact.
  */
+/**
+ * Web `isChannelAccessDenial` (botiverse/slock store/channelAccessLoss.ts, #12696): only the server's
+ * answers that mean "this channel, for this person" — `denyChannelAccess`'s 403 for an ex-member, the
+ * 404s otherwise — with no error code. Every other 403 / 404 (not a member of the server, email
+ * verification, device sessions, an unknown server) is not a removal. The realtime catch-up reads
+ * this one, so a heartbeat never leaves a conversation on another kind of refusal.
+ */
+internal fun DataResult<*>.isChannelAccessDenial(): Boolean =
+    when (this) {
+        is DataResult.NoPermission ->
+            blocker.serverCode == null && blocker.serverMessage?.trim() in ChannelAccessDenial403Messages
+        is DataResult.Error ->
+            error.serverCode == null &&
+                error.serverMessage?.trim() in ChannelAccessDenial404Messages &&
+                // The repository's uncoded 404; the thread API's uncoded 404 takes the caller's fallback.
+                (error.code == "http_404" || (error.code.startsWith("thread_") && error.code.endsWith("_network")))
+        else -> false
+    }
+
+private val ChannelAccessDenial403Messages = setOf("Access denied", "You do not have access to this channel")
+private val ChannelAccessDenial404Messages = setOf("Channel not found or not visible", "Channel not found")
+
 internal fun DataResult<*>.isConversationAccessLost(): Boolean =
     when (this) {
         is DataResult.NoPermission ->
@@ -9590,6 +9619,9 @@ internal class SharedThreadStore(
                                         conversationAccessLost =
                                             currentState.conversationAccessLost ||
                                                 (hasRenderableContent && result.isConversationAccessLost()),
+                                        channelAccessDenied =
+                                            currentState.channelAccessDenied ||
+                                                (hasRenderableContent && result.isChannelAccessDenial()),
                                         writeActionsEnabled =
                                             authorityProjectedPayload.hasWriteAuthorityForAccess(
                                                 accessResolution = projectedAccessResolution,
@@ -12417,7 +12449,7 @@ internal class SharedThreadStore(
         var durableRevAtRequest: Long? = null
         var recoveryCompleted = false
         // Set when the catch-up answered that this account lost the conversation (removed from the
-        // channel: 403 / 404, see [isConversationAccessLost]); the page then leaves, as after refresh.
+        // channel: web's exact denials, see [isChannelAccessDenial]); the page then leaves, as after refresh.
         var accessLost = false
         var accessProvenance: ReplyCacheProvenance? = null
         try {
@@ -12611,7 +12643,7 @@ internal class SharedThreadStore(
                         }
                     }
                     is DataResult.Error -> {
-                        if (catchUpResult.isConversationAccessLost()) {
+                        if (catchUpResult.isChannelAccessDenial()) {
                             accessLost = true
                             markConversationAccessLost(catchUpResult.error.code)
                         } else {
@@ -12625,7 +12657,7 @@ internal class SharedThreadStore(
                         }
                     }
                     is DataResult.NoPermission -> {
-                        if (catchUpResult.isConversationAccessLost()) {
+                        if (catchUpResult.isChannelAccessDenial()) {
                             accessLost = true
                             markConversationAccessLost(catchUpResult.blocker.code)
                         } else {
@@ -13808,6 +13840,7 @@ internal class SharedThreadStore(
             current.copy(
                 payload = current.payload.copy(newerMessagesStatus = "error", errorCode = errorCode),
                 conversationAccessLost = true,
+                channelAccessDenied = true,
             )
         )
     }

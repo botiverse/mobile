@@ -98,6 +98,17 @@ class SharedThreadStoreGapAccessLostTest {
                 "network" to DataResult.Error(ScreenError(code = "thread_gap_catchup_network", retryable = true)),
                 // 401 is the auth route's problem, not this channel's.
                 "401" to authSessionRequiredResult(),
+                // Web isChannelAccessDenial: other 403 / 404s are not a removal from this channel.
+                "403 email verification" to forbidden("Email verification required"),
+                "403 not a server member" to forbidden("Not a member of this server"),
+                "403 coded device session" to forbidden("Access denied", serverCode = "device_session_not_allowed"),
+                "403 no body" to forbidden(null),
+                "404 unknown server" to
+                    DataResult.Error(ScreenError(code = "http_404", retryable = false, serverMessage = "Server not found")),
+                "404 coded" to
+                    DataResult.Error(
+                        ScreenError(code = "http_404", retryable = false, serverMessage = "Channel not found", serverCode = "joint_peer_gone")
+                    ),
             )
         answers.forEach { (label, answer) ->
             runTest {
@@ -116,5 +127,28 @@ class SharedThreadStoreGapAccessLostTest {
         assertNull(channel.copy(surfaceKind = RaftThreadSurfaceKind.DirectMessage).accessLostChannelIdOrNull())
         assertNull(channel.copy(surfaceKind = RaftThreadSurfaceKind.ReplyThread).accessLostChannelIdOrNull())
         assertNull(channel.copy(channelKind = RaftTaskConversationChannelKind).accessLostChannelIdOrNull())
+    }
+
+    private fun forbidden(message: String?, serverCode: String? = null): DataResult<ThreadSnapshot> =
+        DataResult.NoPermission(
+            PermissionBlocker(
+                code = "server_forbidden",
+                requiredCapability = "server_access",
+                serverMessage = message,
+                serverCode = serverCode,
+            )
+        )
+
+    @Test
+    fun theDenialPredicateIsTheWebs() {
+        assertTrue(forbidden("Access denied").isChannelAccessDenial())
+        assertTrue(forbidden("You do not have access to this channel").isChannelAccessDenial())
+        assertFalse(forbidden("Access denied", serverCode = "device_session_not_allowed").isChannelAccessDenial())
+        assertFalse(forbidden("Email verification required").isChannelAccessDenial())
+        assertTrue(DataResult.Error(ScreenError(code = "http_404", serverMessage = "Channel not found or not visible")).isChannelAccessDenial())
+        // The thread API path's uncoded 404 carries the caller's fallback code.
+        assertTrue(DataResult.Error(ScreenError(code = "thread_gap_catchup_network", serverMessage = "Channel not found")).isChannelAccessDenial())
+        assertFalse(DataResult.Error(ScreenError(code = "server_unavailable", serverMessage = "Channel not found")).isChannelAccessDenial())
+        assertFalse(DataResult.Error(ScreenError(code = "http_404", serverMessage = "Not found")).isChannelAccessDenial())
     }
 }

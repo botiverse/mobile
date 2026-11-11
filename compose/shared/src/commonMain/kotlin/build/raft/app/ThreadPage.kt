@@ -7084,10 +7084,14 @@ private fun ThreadConversationAccessLostEffect(
     val conversationUnavailableLabel = stringResource(Res.string.home_error_conversation_unavailable)
     LaunchedEffect(conversationAccessLost) {
         if (!conversationAccessLost) return@LaunchedEffect
-        val lostChannelId = threadViewModel.state.value.payload.accessLostChannelIdOrNull()
+        val lostState = threadViewModel.state.value
+        // Only web's channel denial says the person left this channel (#12696 isChannelAccessDenial).
+        val lostChannelId = lostState.payload.accessLostChannelIdOrNull()?.takeIf { lostState.channelAccessDenied }
         bridge.logWarn("thread_access_lost_leave instanceKey=$instanceKey channel=${lostChannelId != null}")
         bridge.toast(if (lostChannelId != null) channelAccessLostLabel else conversationUnavailableLabel)
         lostChannelId?.let { channelId -> sharedStores.publishChannelAccessLost(storeScope, channelId) }
+        // As the Channel settings close path does: re-read Home so the conversation leaves the sidebar.
+        sharedStores.sharedHomeStore(storeScope)?.dispatch(SharedHomeIntent.Refresh)
         onBack()
     }
 }
