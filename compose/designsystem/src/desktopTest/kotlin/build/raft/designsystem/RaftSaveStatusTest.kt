@@ -33,7 +33,7 @@ class RaftSaveStatusTest {
     @Test
     fun anIdleSettingsRowIsAsTallAsOneWithoutItAndAFailureGrowsIt() =
         runComposeUiTest {
-            var state: RaftSaveStatusState? by mutableStateOf(null)
+            var state by mutableStateOf<RaftSaveStatusState?>(null)
             setContent {
                 RaftTheme {
                     RaftListRow(
@@ -63,7 +63,7 @@ class RaftSaveStatusTest {
     @Test
     fun aFieldSaysNothingUntilAChangeFails() =
         runComposeUiTest {
-            var state: RaftSaveStatusState? by mutableStateOf(null)
+            var state by mutableStateOf<RaftSaveStatusState?>(null)
             setContent {
                 RaftTheme {
                     RaftField(label = "Time zone", modifier = Modifier.testTag("field"), description = "Used for times in messages.", saveStatus = state) {
