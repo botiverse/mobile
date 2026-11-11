@@ -425,6 +425,27 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
+    fun developerPayloadMultiServerRealtimeRowOnlyWhereWindowsAreSupported() {
+        fun rows(supported: Boolean, enabled: Boolean) =
+            SharedSettingsDeveloperSnapshot().toDeveloperPayload(
+                state = ScreenLoadState.Content(SharedSettingsDeveloperSnapshot()),
+                actionState = null,
+                errorStrings = englishErrorPresentationStringsForTest(),
+                multiServerRealtimeSupported = supported,
+                multiServerRealtimeEnabled = enabled
+            ).sections.first { it.title == "Diagnostics" }.rows
+
+        assertTrue(rows(supported = false, enabled = true).none { it.key == DEVELOPER_ACTION_MULTI_SERVER_REALTIME })
+        listOf(false, true).forEach { enabled ->
+            val row = rows(supported = true, enabled = enabled).last()
+            assertEquals(DEVELOPER_ACTION_MULTI_SERVER_REALTIME, row.key)
+            assertEquals(enabled, row.toggleValue)
+            assertEquals((!enabled).toString(), row.value)
+            assertEquals(if (enabled) "On" else "Off", row.status)
+        }
+    }
+
+    @Test
     fun developerPayloadVerboseDiagnosticsRowTogglesToTheOtherState() {
         listOf(false, true).forEach { enabled ->
             val payload =

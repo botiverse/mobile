@@ -339,15 +339,184 @@ class ProcessRealtimeIngressCoordinatorTest {
         assertEquals(listOf(0L, delayMs), rosterFetches, "the roster refetches once the jitter delay ends")
     }
 
+    // Phase 3 multi-session realtime: the process reconcile (token rotation included) sends the windows' set.
+
+    @Test
+    fun twoWindowClaimsReconcileBothServersAsOneMultiSessionSet() = runTest {
+        val fixture = multiSessionFixture(enabled = true)
+        fixture.demand.claim("shell-a", "server-a")
+        fixture.demand.claim("shell-b", "server-b")
+        runCurrent()
+
+        val last = fixture.host.reconciles.last()
+        assertEquals(setOf("server-a", "server-b"), last.serverIds.toSet())
+        assertTrue(last.multiSession, "the set goes out as a multi-session reconcile")
+    }
+
+    @Test
+    fun releasingAWindowShrinksTheSet() = runTest {
+        val fixture = multiSessionFixture(enabled = true)
+        fixture.demand.claim("shell-a", "server-a")
+        fixture.demand.claim("shell-b", "server-b")
+        runCurrent()
+
+        fixture.demand.release("shell-b")
+        runCurrent()
+
+        assertEquals(setOf("server-a"), fixture.host.reconciles.last().serverIds.toSet())
+        assertTrue(fixture.host.reconciles.last().multiSession)
+    }
+
+    @Test
+    fun tokenRotationKeepsEveryWindowServer() = runTest {
+        val fixture = multiSessionFixture(enabled = true)
+        fixture.demand.claim("shell-a", "server-a")
+        fixture.demand.claim("shell-b", "server-b")
+        runCurrent()
+        val before = fixture.host.reconciles.size
+
+        fixture.auth.replace(
+            twoServerSession().copy(accessToken = "access-rotated"),
+            AuthSessionEvent.TokensRotated(generation = 2),
+        )
+        runCurrent()
+
+        assertTrue(fixture.host.reconciles.size > before, "the rotated token reconciles again")
+        val last = fixture.host.reconciles.last()
+        assertEquals("access-rotated", last.accessToken)
+        assertEquals(setOf("server-a", "server-b"), last.serverIds.toSet(), "rotation must not fall back to the selected server")
+        assertTrue(last.multiSession)
+    }
+
+    @Test
+    fun settingOffSendsOnlyTheSelectedServerAndIgnoresClaims() = runTest {
+        val fixture = multiSessionFixture(enabled = false)
+        val before = fixture.host.reconciles.size
+        fixture.demand.claim("shell-a", "server-a")
+        fixture.demand.claim("shell-b", "server-b")
+        runCurrent()
+        assertEquals(before, fixture.host.reconciles.size, "with the setting off a claim never reconciles")
+
+        fixture.auth.replace(
+            twoServerSession().copy(accessToken = "access-rotated"),
+            AuthSessionEvent.TokensRotated(generation = 2),
+        )
+        runCurrent()
+
+        val last = fixture.host.reconciles.last()
+        assertEquals(setOf("server-a"), last.serverIds.toSet())
+        assertFalse(last.multiSession)
+    }
+
+    @Test
+    fun turningTheSettingOffRevertsToTheSelectedServerOnce() = runTest {
+        val fixture = multiSessionFixture(enabled = true)
+        fixture.demand.claim("shell-a", "server-a")
+        fixture.demand.claim("shell-b", "server-b")
+        runCurrent()
+
+        fixture.enabled = false
+        fixture.demand.notifySettingChanged()
+        runCurrent()
+        val reverted = fixture.host.reconciles.last()
+        assertEquals(setOf("server-a"), reverted.serverIds.toSet())
+        assertFalse(reverted.multiSession)
+
+        val count = fixture.host.reconciles.size
+        fixture.demand.release("shell-b")
+        runCurrent()
+        assertEquals(count, fixture.host.reconciles.size, "once reverted, claims no longer reconcile")
+    }
+
+    // Hands a92fbb13: two restored windows, the one behind reconciled last. With multi-session realtime
+    // the window in front keeps its own server's session and that server's frames are accepted.
+    @Test
+    fun twoRestoredWindowsTheFrontWindowServerStaysConnectedAndItsFramesApply() = runTest {
+        val fixture = multiSessionFixture(enabled = true)
+        // Restore order: shell-b (in front) comes up, then shell-a restores behind it and reconciles last.
+        fixture.demand.claim("shell-b", "server-b")
+        fixture.demand.onVisibility("shell-b", visible = true, nowMillis = 1_000L)
+        fixture.demand.claim("shell-a", "server-a")
+        fixture.demand.onVisibility("shell-a", visible = false, nowMillis = 1_000L)
+        runCurrent()
+
+        val last = fixture.host.reconciles.last()
+        assertEquals("server-b", last.serverIds.first(), "the front window's server comes first")
+        assertTrue("server-a" in last.serverIds, "the window behind keeps its session too")
+
+        fixture.bus.post(
+            RaftRealtimeNotifyContract.EventName,
+            eventEnvelope(
+                fixture.authority,
+                RealtimeSocketEvents.SyncResumeResponse,
+                "{\"messages\":[],\"currentSeq\":7,\"hasMore\":false}",
+                serverId = "server-b",
+            ),
+        )
+        runCurrent()
+        assertEquals(listOf("server-b" to 7L), fixture.host.advancedCursors)
+    }
+
+    private class MultiSessionFixture(
+        val auth: FakeAuthStore,
+        val host: FakeNativeHost,
+        val bus: FakeEventBus,
+        val demand: RaftRealtimeSessionDemand,
+        val authority: RealtimeScopeAuthority,
+    ) {
+        var enabled: Boolean = false
+    }
+
+    private suspend fun kotlinx.coroutines.test.TestScope.multiSessionFixture(enabled: Boolean): MultiSessionFixture {
+        val auth = FakeAuthStore()
+        val registry =
+            RealtimeAuthorityRegistry(
+                KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
+                processInstanceId = "process-ingress-test",
+            )
+        val provider = RealtimeAuthorityProvider(registry, auth, auth, { "env-test" })
+        provider.start(backgroundScope)
+        provider.registerScope("process-realtime-host", "process-owner")
+        auth.replace(twoServerSession(), AuthSessionEvent.Authenticated(generation = 1))
+        runCurrent()
+        val authority = assertNotNull(provider.authorityFlow("process-realtime-host").value)
+        val host = FakeNativeHost()
+        val bus = FakeEventBus()
+        val fixture = MultiSessionFixture(auth, host, bus, RaftRealtimeSessionDemand(), authority)
+        fixture.enabled = enabled
+        ProcessRealtimeIngressCoordinator(
+            events = RaftRealtimeEvents(bus),
+            authorityProvider = provider,
+            authorityFlow = provider.authorityFlow("process-realtime-host"),
+            domainOwner =
+                SharedRealtimeDomainEventOwner(
+                    cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore()),
+                    runIfCurrentGrant = provider::runIfCurrentGrant,
+                    runWithCurrentMessageGrant = provider::runWithCurrentMessageGrant,
+                ),
+            authStore = auth,
+            environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
+            mapper = RealtimeEventMapper(),
+            nativeHost = host,
+            scope = backgroundScope,
+            sessionDemand = fixture.demand,
+            multiSessionEnabled = { fixture.enabled },
+            nowMillis = { 1_000L },
+        ).start()
+        runCurrent()
+        return fixture
+    }
+
     private fun eventEnvelope(
         authority: RealtimeScopeAuthority,
         eventName: String,
         rawPayload: String,
+        serverId: String = "server-a",
     ): JsonObject =
         buildJsonObject {
             put(RaftRealtimeNotifyContract.KeyEventName, eventName)
             put(RaftRealtimeNotifyContract.KeyRawPayload, rawPayload)
-            put(RaftRealtimeNotifyContract.KeyServerId, "server-a")
+            put(RaftRealtimeNotifyContract.KeyServerId, serverId)
             put(RaftRealtimeNotifyContract.KeyAuthorityScopeLeaseId, authority.witness.scopeLeaseId)
             put(RaftRealtimeNotifyContract.KeyAuthorityPrincipalId, authority.witness.principalId)
             put(RaftRealtimeNotifyContract.KeyAuthorityAuthGeneration, authority.witness.authGeneration)
@@ -388,21 +557,28 @@ class ProcessRealtimeIngressCoordinatorTest {
         }
     }
 
+    private data class Reconcile(val serverIds: List<String>, val accessToken: String?, val multiSession: Boolean)
+
     private class FakeNativeHost : ProcessRealtimeNativeHost {
         val reconciliations = mutableListOf<RealtimeProcessDesiredSession?>()
+        val reconciles = mutableListOf<Reconcile>()
         val disconnects = mutableListOf<String>()
         val advancedSeqs = mutableListOf<Long>()
+        val advancedCursors = mutableListOf<Pair<String, Long>>()
 
         override fun reconcile(
             authority: RealtimeScopeAuthority?,
             desired: RealtimeProcessDesiredSession?,
             fallbackSocketUrl: String,
+            multiSession: Boolean,
         ) {
             reconciliations += desired
+            reconciles += Reconcile(desired?.serverIds.orEmpty().toList(), desired?.accessToken, multiSession)
         }
 
         override fun advanceCursor(serverId: String, appliedSeq: Long, grant: RealtimeGrantRecord) {
             advancedSeqs += appliedSeq
+            advancedCursors += serverId to appliedSeq
         }
 
         override fun disconnect(serverId: String, reason: String) {
@@ -430,6 +606,15 @@ class ProcessRealtimeIngressCoordinatorTest {
             events.emit(event)
         }
     }
+
+    private fun twoServerSession() =
+        session().copy(
+            servers =
+                listOf(
+                    StoredAuthServer(id = "server-a", name = "A", slug = "a"),
+                    StoredAuthServer(id = "server-b", name = "B", slug = "b"),
+                ),
+        )
 
     private fun session() =
         StoredAuthSession(

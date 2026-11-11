@@ -89,6 +89,13 @@ internal fun realtimeProcessDesiredSession(
     environmentId: String,
     socketUrl: String,
     currentServerId: String?,
+    /**
+     * The servers to connect, from the granted ones. Default: the current server alone (task #366);
+     * multi-session realtime passes the windows' demand (`RaftRealtimeSessionDemand.desiredServerIds`).
+     */
+    serverIdsFor: (grantedServerIds: Set<String>) -> Set<String> = { granted ->
+        realtimeCurrentServerScopedServerIds(currentServerId, granted)
+    },
 ): RealtimeProcessDesiredSession? {
     val current = authority ?: return null
     return RealtimeProcessDesiredSession(
@@ -98,7 +105,7 @@ internal fun realtimeProcessDesiredSession(
         authGeneration = current.witness.authGeneration,
         connectionFamilyId = current.witness.connectionFamilyId,
         accessToken = current.accessToken,
-        serverIds = realtimeCurrentServerScopedServerIds(currentServerId, current.grantsByServer.keys),
+        serverIds = serverIdsFor(current.grantsByServer.keys),
     ).normalizedOrNull()
 }
 

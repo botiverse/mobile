@@ -3039,6 +3039,8 @@
     <string name="settings_developer_text_input_trace_detail">Registra en los registros de la app cada edición del teclado y sincronización de texto en los campos (solo longitudes, nunca el texto), para reportar errores del IME.</string>
     <string name="settings_developer_nav3_stack">Pila de páginas de Navigation 3</string>
     <string name="settings_developer_nav3_stack_detail">Abre las páginas migradas hasta ahora dentro de la ventana de la app (Android). Se aplica la próxima vez que inicies la app.</string>
+    <string name="settings_developer_multi_server_realtime">Actualizaciones en vivo en cada ventana</string>
+    <string name="settings_developer_multi_server_realtime_detail">Con Varias ventanas de la app activado, el espacio de trabajo de cada ventana mantiene su propia conexión en tiempo real (hasta 3), así una ventana en segundo plano sigue recibiendo mensajes nuevos. Desactivado: solo el espacio de trabajo al frente sigue conectado.</string>
     <string name="settings_mobile_ios_native_nav">Navegación nativa de iOS</string>
     <string name="settings_mobile_ios_native_nav_detail">Muestra los títulos y botones de las páginas migradas en la barra de navegación del sistema, con el gesto de deslizar para volver del sistema (iPhone). Se aplica la próxima vez que inicies la app.</string>
     <string name="settings_developer_presets">Ajustes predefinidos</string>

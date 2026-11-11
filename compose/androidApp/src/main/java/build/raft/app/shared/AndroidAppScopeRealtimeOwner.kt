@@ -920,8 +920,10 @@ internal object AndroidAppScopeRealtimeOwner {
         val registry = multiSessionRegistry(context)
         val holder =
             if (keepOtherServers) {
+                // Multi-session reconcile owns every server under the process owner id, so the next
+                // reconcile that leaves this server out releases it too (a shell id would pin it).
                 currentDesiredServerIds = currentDesiredServerIds + serverId
-                registry.acquire(serverId = serverId, shellInstanceId = shellInstanceId)
+                registry.acquire(serverId = serverId, shellInstanceId = ProcessRealtimeOwnerId)
             } else {
                 currentDesiredServerIds = setOf(serverId)
                 registry.acquireCurrent(

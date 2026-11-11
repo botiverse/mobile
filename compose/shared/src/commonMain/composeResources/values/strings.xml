@@ -3048,6 +3048,8 @@
     <string name="settings_developer_verbose_diagnostics_detail">Also write duplicate realtime events, avatar, markdown and scroll details, and every successful request to the app logs. Feedback reports get larger. Turns off when the app restarts.</string>
     <string name="settings_developer_nav3_stack">Navigation 3 page stack</string>
     <string name="settings_developer_nav3_stack_detail">Open the pages moved so far inside the app window (Android). Takes effect on the next app start.</string>
+    <string name="settings_developer_multi_server_realtime">Live updates in every window</string>
+    <string name="settings_developer_multi_server_realtime_detail">With Multiple app windows on, each window's workspace keeps its own realtime connection (up to 3), so a window in the back still gets new messages. Off: only the workspace in front stays connected.</string>
     <string name="settings_mobile_ios_native_nav">iOS native navigation</string>
     <string name="settings_mobile_ios_native_nav_detail">Show the migrated pages' titles and buttons in the system navigation bar, with the system swipe back (iPhone). Takes effect on the next app start.</string>
     <string name="settings_developer_presets">Presets</string>

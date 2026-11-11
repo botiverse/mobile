@@ -3048,6 +3048,8 @@
     <string name="settings_developer_verbose_diagnostics_detail">同时把重复的实时事件、头像、Markdown 与滚动细节以及每个成功的请求写入应用日志。反馈附带的日志会变大。重启应用后自动关闭。</string>
     <string name="settings_developer_nav3_stack">Navigation 3 页面栈</string>
     <string name="settings_developer_nav3_stack_detail">已迁移的页面在应用窗口内打开（安卓）。下次启动应用时生效。</string>
+    <string name="settings_developer_multi_server_realtime">每个窗口都实时更新</string>
+    <string name="settings_developer_multi_server_realtime_detail">开启“多应用窗口”后，每个窗口的工作空间各自保持实时连接（最多 3 个），在后面的窗口也能收到新消息。关闭时只有最前面的工作空间保持连接。</string>
     <string name="settings_mobile_ios_native_nav">iOS 原生导航</string>
     <string name="settings_mobile_ios_native_nav_detail">已迁移页面的标题和按钮显示在系统导航栏中，使用系统的滑动返回（iPhone）。下次启动应用时生效。</string>
     <string name="settings_developer_presets">预设</string>

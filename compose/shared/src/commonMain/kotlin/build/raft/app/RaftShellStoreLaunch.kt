@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.raftProcessRealtimeSessionDemand
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.normalizedOrNull
 import build.raft.app.compat.json.JSONObject
@@ -132,6 +133,8 @@ fun releaseRaftShellStoreScope(shellInstanceId: String, serverId: String? = null
     val normalizedShellInstanceId = shellInstanceId.trim()
     if (normalizedShellInstanceId.isBlank()) return
     ProcessAttachmentAuthScopes.retireShell(normalizedShellInstanceId)
+    // The window closed: its server stops counting for the realtime sessions (multi-session realtime).
+    raftProcessRealtimeSessionDemand.release(normalizedShellInstanceId)
     RaftSharedStoreRegistry.currentOrNull()?.releaseShellStoreScope(
         RaftShellStoreScope.create(
             shellInstanceId = normalizedShellInstanceId,
