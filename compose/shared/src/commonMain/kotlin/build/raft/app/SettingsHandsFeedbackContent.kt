@@ -260,52 +260,7 @@ internal fun SharedHandsFeedbackContent(
         }
     }
 
-    fun pickAttachment(imageOnly: Boolean) {
-        if (busy) return
-        if (remainingSlots <= 0) {
-            error = copy.attachmentLimitReached(attachmentLimit)
-            return
-        }
-        busy = true
-        error = null
-        // A replacement picker supersedes any promotion already in flight. Keep its native
-        // handoff alive until its finally cleanup, but make its draft commit stale immediately.
-        feedbackDraftResetGeneration += 1L
-        abortAllOwnedImageEditSessions()
-        pendingImageEditSession = null
-        scope.launch {
-            when (val result = settingsCapabilities.pickFeedbackAttachment(imageOnly)) {
-                is DataResult.Content -> {
-                    val pickedFiles =
-                        normalizeSettingsHandsFeedbackPickerFiles(
-                            files = result.data,
-                            imageOnly = imageOnly
-                        )
-                    // Feedback attachments mount straight into the form, identical to the
-                    // file path: no chat-style annotation detour for images.
-                    val merge =
-                        settingsHandsFeedbackMergedAttachments(
-                            existing = attachmentsState.value,
-                            picked = pickedFiles,
-                            attachmentMaxBytes = attachmentMaxBytes,
-                            attachmentLimit = attachmentLimit
-                        )
-                    attachments = merge.attachments
-                    error = when {
-                        merge.rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
-                        merge.limitTrimmed -> copy.attachmentLimitTrimmed(attachmentLimit)
-                        else -> null
-                    }
-                }
-                is DataResult.Empty -> Unit
-                is DataResult.Error -> error = copy.attachmentPickerFailed
-                is DataResult.NoPermission -> error = copy.attachmentPickerPermissionNeeded
-            }
-            busy = false
-        }
-    }
-
-    fun previewAttachment(attachmentId: String) {
+    fun previewAttachment(attachmentId: String, opensInEditor: Boolean = false) {
         val file =
             attachmentsState.value
                 .firstOrNull { it.feedbackComposerAttachmentId() == attachmentId }
@@ -323,12 +278,15 @@ internal fun SharedHandsFeedbackContent(
                     accountId = accountId,
                     pageGeneration = feedbackPageGeneration,
                     file = file,
-                    sourceStoreScope = sourceStoreScope
+                    sourceStoreScope = sourceStoreScope,
+                    opensInEditor = opensInEditor
                 )
             } else {
                 null
             }
         if (editRequest == null) {
+            // A just-picked image that cannot be edited simply stays attached.
+            if (opensInEditor) return
             file.toSettingsHandsFeedbackAttachmentPreviewPayload(copy.attachment)
                 ?.let { payload ->
                     pager.openRaftFilePreviewPage(payload, sourceStoreScope = sourceStoreScope)
@@ -367,6 +325,59 @@ internal fun SharedHandsFeedbackContent(
             abortOwnedImageEditSessions(listOf(previewSessionId))
             pendingImageEditSession = null
             error = copy.attachmentPickerFailed
+        }
+    }
+
+    fun pickAttachment(imageOnly: Boolean) {
+        if (busy) return
+        if (remainingSlots <= 0) {
+            error = copy.attachmentLimitReached(attachmentLimit)
+            return
+        }
+        busy = true
+        error = null
+        // A replacement picker supersedes any promotion already in flight. Keep its native
+        // handoff alive until its finally cleanup, but make its draft commit stale immediately.
+        feedbackDraftResetGeneration += 1L
+        abortAllOwnedImageEditSessions()
+        pendingImageEditSession = null
+        scope.launch {
+            when (val result = settingsCapabilities.pickFeedbackAttachment(imageOnly)) {
+                is DataResult.Content -> {
+                    val pickedFiles =
+                        normalizeSettingsHandsFeedbackPickerFiles(
+                            files = result.data,
+                            imageOnly = imageOnly
+                        )
+                    // Picks mount straight into the form; a picked image then opens in the
+                    // annotation editor. Done there replaces it in place, Cancel keeps it.
+                    val before = attachmentsState.value
+                    val merge =
+                        settingsHandsFeedbackMergedAttachments(
+                            existing = before,
+                            picked = pickedFiles,
+                            attachmentMaxBytes = attachmentMaxBytes,
+                            attachmentLimit = attachmentLimit
+                        )
+                    attachments = merge.attachments
+                    error = when {
+                        merge.rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
+                        merge.limitTrimmed -> copy.attachmentLimitTrimmed(attachmentLimit)
+                        else -> null
+                    }
+                    settingsHandsFeedbackPickedImageToAnnotate(
+                        existing = before,
+                        merged = merge.attachments,
+                        fallbackName = copy.attachment
+                    )?.let { picked ->
+                        previewAttachment(picked.feedbackComposerAttachmentId(), opensInEditor = true)
+                    }
+                }
+                is DataResult.Empty -> Unit
+                is DataResult.Error -> error = copy.attachmentPickerFailed
+                is DataResult.NoPermission -> error = copy.attachmentPickerPermissionNeeded
+            }
+            busy = false
         }
     }
 

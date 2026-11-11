@@ -96,6 +96,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
@@ -1669,7 +1670,13 @@ internal data class RaftFilePreviewPayload(
     /** True only when that final deliverable is the JPEG returned by the compressor. */
     val composerImageCompressed: Boolean = false,
     val composerImageCanComplete: Boolean = false,
-    val composerImageCanEdit: Boolean = false
+    val composerImageCanEdit: Boolean = false,
+    /**
+     * Open straight in the image editor (a feedback image just picked). Back from that editor
+     * closes the page without a result, and the editor's Done hands the edit over at once instead
+     * of returning to the preview. Process-local, like the other composer-image fields.
+     */
+    val composerImageOpensInEditor: Boolean = false
 )
 
 @Serializable
@@ -1907,9 +1914,8 @@ private fun RaftFilePreviewStandalonePageContent() {
     val imageGalleryResolutionJobs = remember(launchPayloadTrace.payload.imageGallery) {
         mutableMapOf<String, Job>()
     }
-    var composerImageEditMode by remember(payload.composerImageActionId, payload.attachmentId, payload.imageUrl) {
-        mutableStateOf(false)
-    }
+    val composerImageEditFlow = rememberRaftFilePreviewComposerImageEditFlow(payload)
+    var composerImageEditMode by composerImageEditFlow::editMode
     val composerImageEditorState =
         remember(payload.composerImageActionId, payload.attachmentId, payload.imageUrl, composerImageEditMode) {
             RaftComposerImageEditorState()
@@ -3863,12 +3869,16 @@ private fun RaftFilePreviewStandalonePageContent() {
                         }
                         // A completable session keeps the result for the caller's later Done;
                         // an immediate-send session reaches this point only after relay success.
-                        payload = nextPayload
-                        composerImageEditMode = false
+                        // A page opened in the editor hands the edit over now (the preview's own
+                        // Done path, which closes the page); if that fails it stays on the preview.
+                        val handOver = composerImageEditFlow.saved()
+                        payload = nextPayload.copy(composerImageOpensInEditor = false)
                         composerImageEditSaving = false
                         composerImageOperationGate.complete(token)
                         if (!nextPayload.composerImageCanComplete) {
                             pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                        } else if (handOver) {
+                            postComposerImageSelection()
                         }
                     } catch (cancelled: CancellationException) {
                         composerImageOperationGate.cancel(token)
@@ -3973,9 +3983,7 @@ private fun RaftFilePreviewStandalonePageContent() {
         subtitle = if (composerImageEditMode) null else payload.previewHeaderSubtitle(),
         iconName = if (composerImageEditMode) RaftLucideIconName.Pencil else payload.previewIconName(),
         onBack = {
-            if (composerImageEditMode && !composerImageEditSaving) {
-                composerImageEditMode = false
-            } else if (!composerImageEditMode) {
+            if (composerImageEditFlow.back(saving = composerImageEditSaving)) {
                 closePreviewPage()
             }
         },
@@ -4677,6 +4685,54 @@ internal fun raftComposerImageEditorCaptureSize(
     if (!scale.isFinite() || scale <= 0f) return null
     return Size(width = effectiveWidth * scale, height = effectiveHeight * scale)
 }
+
+/**
+ * Whether a composer-image preview shows its editor, and what Back and a saved edit do.
+ *
+ * A page opened in the editor ([RaftFilePreviewPayload.composerImageOpensInEditor], a feedback
+ * image just picked) treats Back as Cancel: the page closes with no result, so the image the
+ * caller already holds stays as it was. Its Done hands the edit over at once. Otherwise the editor
+ * is entered from the preview's Edit, Back returns to the preview, and Done waits for the
+ * preview's own Done.
+ */
+@Stable
+internal class RaftFilePreviewComposerImageEditFlow(
+    val opensInEditor: Boolean,
+) {
+    var editMode by mutableStateOf(opensInEditor)
+
+    /** Header Back. True when the page should close. */
+    fun back(saving: Boolean): Boolean =
+        when {
+            !editMode -> true
+            saving -> false
+            opensInEditor -> true
+            else -> {
+                editMode = false
+                false
+            }
+        }
+
+    /** The editor's Done saved its result. True when that result is to be handed over now. */
+    fun saved(): Boolean {
+        editMode = false
+        return opensInEditor
+    }
+}
+
+@Composable
+internal fun rememberRaftFilePreviewComposerImageEditFlow(
+    payload: RaftFilePreviewPayload,
+): RaftFilePreviewComposerImageEditFlow =
+    remember(payload.composerImageActionId, payload.attachmentId, payload.imageUrl) {
+        RaftFilePreviewComposerImageEditFlow(
+            opensInEditor =
+                payload.composerImageOpensInEditor &&
+                    payload.composerImageCanEdit &&
+                    payload.composerImageActionId.isNotBlank() &&
+                    payload.imageUrl != null,
+        )
+    }
 
 internal data class RaftComposerImageEditCaptureOwner(
     val actionId: String,
