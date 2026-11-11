@@ -55,6 +55,7 @@ import build.raft.app.data.migrationFailurePresentation
 import build.raft.app.data.RaftProGateDecision
 import build.raft.app.data.canCancel
 import build.raft.app.data.endedComputerMigration
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.isAborted
 import build.raft.app.data.isActive
 import build.raft.app.data.isCancelRequested
@@ -73,6 +74,7 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftDescriptionList
+import build.raft.designsystem.components.RaftDescriptionListScope
 import build.raft.designsystem.components.RaftDescriptionValue
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftDialogSheet
@@ -136,7 +138,14 @@ internal class AgentMigrationSectionInputs(
      * lost its access (`blockedReason` `computer_access_revoked`), so nothing can be brought over.
      * The same Move places it on the target: no Pro gate, no cloud, a fresh session there.
      */
-    val placesWithoutSource: Boolean = false
+    val placesWithoutSource: Boolean = false,
+    /** The agent as its page names it (web `agent.displayName || agent.name`), for the drain and retry lines. */
+    val agentName: String = "",
+    /** The viewer, to say a retry was started "on your behalf" (web `useAuthStore` user id). */
+    val viewerUserId: String? = null,
+    /** The viewer's clock for a wire time (web `formatClock`); null when it cannot be read. */
+    val formatClock: (String) -> String? = { null },
+    val nowMillis: () -> Long = ::defaultNowMillis,
 ) {
     /** Web `hostedAvailable && !placesWithoutSource`: a move to the cloud uploads from a source. */
     val offersHosted: Boolean
@@ -456,7 +465,11 @@ private fun AgentLastMigration(
                     if (failed) {
                         AgentMigrationProgressPanel(notice = notice, state = state, inputs = inputs, onShowCancel = onShowCancel)
                     } else {
+                        // The retry block: its line directly above the size rows, which lead the details.
+                        if (notice.isAgentRetry) AgentMigrationRetryNote(notice, inputs, Modifier.padding(bottom = 12.dp))
+                        val retryRows = agentMigrationRetryRows(notice)
                         RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
+                            AgentMigrationRetryItems(retryRows)
                             Item(term = stringResource(Res.string.agent_migration_last_source), value = facts.source)
                             Item(term = stringResource(Res.string.agent_migration_detail_target_computer), value = facts.target)
                             facts.startedBy?.let { Item(term = stringResource(Res.string.agent_migration_last_started_by), value = it) }
@@ -591,8 +604,10 @@ private fun agentMigrationNoticeCopy(notice: AgentMigrationNotice, inputs: Agent
                         } else {
                             stringResource(Res.string.agent_migration_detail_migration_uploading, source, target)
                         }
+                    // What the source waits for before it stops the agent (#14230), when it said.
                     notice.sourceQuiescedAt == null ->
-                        stringResource(Res.string.agent_migration_detail_migration_stopping_source, source)
+                        notice.sourceDrain?.let { agentMigrationSourceDrainMessage(it, inputs) }
+                            ?: stringResource(Res.string.agent_migration_detail_migration_stopping_source, source)
                     else -> stringResource(Res.string.agent_migration_detail_migration_packing, source)
                 }
             )
@@ -727,13 +742,22 @@ private fun AgentMigrationProgressPanel(
     if (notice.endedComputerMigration() == AgentMigrationEnding.Failed) {
         Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AgentMigrationBlockGap)) {
             AgentMigrationProgressSteps(notice)
+            // The agent had one retry and this was it: the next move is a person's (#14275).
+            val retryAlsoFailed = if (notice.isAgentRetry) stringResource(Res.string.agent_migration_retry_also_failed, inputs.agentName) else null
             RaftBanner(
-                description = agentMigrationNoticeText(copy, boldPlacement = false),
+                description =
+                    agentMigrationNoticeText(copy, boldPlacement = false).let { text ->
+                        if (retryAlsoFailed == null) text else buildAnnotatedString { append(text); append("\n"); append(retryAlsoFailed) }
+                    },
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm
             )
             copy.technicalCode?.let { AgentMigrationTechnicalDetails(it) }
+            // The retry block: its line directly above the size rows.
+            if (notice.isAgentRetry) AgentMigrationRetryNote(notice, inputs)
+            val retryRows = agentMigrationRetryRows(notice)
             RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
+                AgentMigrationRetryItems(retryRows)
                 Item(term = stringResource(Res.string.agent_migration_reference_label)) {
                     AgentMigrationReferenceValue(notice, inputs)
                 }
@@ -786,6 +810,14 @@ private fun AgentMigrationProgressPanel(
                     RaftText(text = it, style = typography.callout.copy(fontWeight = FontWeight.SemiBold), color = colors.foreground)
                 }
                 RaftText(text = copy.message, style = typography.callout, color = colors.foregroundMuted)
+            }
+        }
+        // The retry block, after the status line so the Steps stay under the title (#14275).
+        if (notice.isAgentRetry) {
+            AgentMigrationRetryNote(notice, inputs)
+            val retryRows = agentMigrationRetryRows(notice)
+            if (!retryRows.isEmpty) {
+                RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) { AgentMigrationRetryItems(retryRows) }
             }
         }
         if (reviewSummary != null) {
@@ -1233,4 +1265,11 @@ private fun AgentMigrationCancelDialog(
             }
         }
     }
+}
+
+/** Web `MigrationRetryComparisonItems`: the size rows, as items of the card's DescriptionList. */
+@Composable
+private fun RaftDescriptionListScope.AgentMigrationRetryItems(rows: AgentMigrationRetryRows) {
+    rows.failedAttempt?.let { Item(term = stringResource(Res.string.agent_migration_retry_failed_attempt), value = it, copyable = false) }
+    rows.thisAttempt?.let { Item(term = stringResource(Res.string.agent_migration_retry_this_attempt), value = it, copyable = false) }
 }

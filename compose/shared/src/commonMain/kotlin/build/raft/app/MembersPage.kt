@@ -7672,7 +7672,10 @@ private fun MembersDetailContent(
                                                         executionMode = detail?.summary?.executionMode,
                                                         blocked = agentStatusIndicatorState?.blocked
                                                             ?: agentBlockedState(member.agentBlockedReason)
-                                                    )
+                                                    ),
+                                                agentName = member.displayName.ifBlank { member.handle },
+                                                viewerUserId = currentUserId,
+                                                formatClock = { value -> formatThreadTimeRevealLabel(value, timeContext).takeIf { it.isNotBlank() } }
                                             ),
                                         // The list's own item spacing is the web section's `py-4` bottom.
                                         bottomPadding = 0.dp

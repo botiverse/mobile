@@ -153,6 +153,7 @@ private val FixtureNames =
             ThreadActionCardEntityKind.Human -> mapOf(AdaId to "Ada Lovelace", WillId to "Will")[id]
             ThreadActionCardEntityKind.Agent -> mapOf(AtlasId to "Atlas")[id]
             ThreadActionCardEntityKind.Channel -> if (id == ChannelId) "release-review" else null
+            ThreadActionCardEntityKind.Computer -> null
         }
     }
 

@@ -4409,4 +4409,18 @@
     <string name="task_handoff_label">%1$s passou #%2$d para %3$s</string>
     <string name="task_handoff_returned">Voltou para %1$s · %2$s</string>
     <string name="task_handoff_handed_back">%1$s devolveu para %2$s · %3$s</string>
+    <!-- Agent migration: what a stopping source waits for (web agent.detail.migrationDrain*, botiverse/slock #14230) and the agent's own retry (agent.migration.retry.*, #14275). -->
+    <string name="agent_migration_retry_note_you">%1$s reduziu o espaço de trabalho e tentou esta migração de novo em seu nome.</string>
+    <string name="agent_migration_retry_note_named">%1$s reduziu o espaço de trabalho e tentou esta migração de novo em nome de %2$s.</string>
+    <string name="agent_migration_retry_note_none">%1$s reduziu o espaço de trabalho e tentou esta migração de novo.</string>
+    <string name="agent_migration_retry_also_failed">Esta era a única nova tentativa de %1$s; uma pessoa precisa iniciar a próxima migração.</string>
+    <string name="agent_migration_retry_failed_attempt">Tentativa com falha</string>
+    <string name="agent_migration_retry_this_attempt">Esta tentativa</string>
+    <string name="agent_migration_retry_files_one">%1$s arquivo</string>
+    <string name="agent_migration_retry_files_other">%1$s arquivos</string>
+    <string name="agent_migration_retry_at_least">Pelo menos %1$s</string>
+    <string name="agent_migration_retry_packed_one">%1$s arquivo, %2$s</string>
+    <string name="agent_migration_retry_packed_other">%1$s arquivos, %2$s</string>
+    <string name="agent_migration_retry_packed_when_stopped_one">%1$s arquivo, %2$s ao parar</string>
+    <string name="agent_migration_retry_packed_when_stopped_other">%1$s arquivos, %2$s ao parar</string>
 </resources>

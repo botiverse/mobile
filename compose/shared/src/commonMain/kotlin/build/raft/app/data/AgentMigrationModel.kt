@@ -10,6 +10,9 @@ import kotlinx.serialization.json.Json
 //    POST /agents/:id/migration/cancel, POST /agents/:id/migration/confirm-hosted
 //  - shared/src/agentMigration.ts: AGENT_MIGRATION_STATES, progress types
 //  - web components/agentMigration/{state,realtime,presentation}.ts
+// sourceDrain (#14221/#14230) and the agent's own retry (#14275): botiverse/slock staging
+// 0e8b4fab7440307f58c64e3448e820f517359194 (routes/agents.ts serializeOwnerMigrationStatus +
+// retryComparison, services/agentMigrationRetry.ts, shared/src/agentMigration.ts).
 private val migrationJson = Json { ignoreUnknownKeys = true }
 private val migrationRequestJson = Json { explicitNulls = false }
 
@@ -85,7 +88,62 @@ internal data class AgentMigrationNotice(
     val updatedAt: String? = null,
     /** Who started it, while they are still a member of this server (botiverse/slock #10951); null otherwise. */
     val initiatedBy: AgentMigrationInitiator? = null,
-    val hosted: AgentMigrationHostedReview? = null
+    val hosted: AgentMigrationHostedReview? = null,
+    /**
+     * What a stopping source waits for before it stops the agent, and until when (botiverse/slock
+     * #14221 `sourceDrainOf`, shared `AgentMigrationSourceDrain`); null once quiesced or unreported.
+     */
+    val sourceDrain: AgentMigrationSourceDrain? = null,
+    /** The agent's own retry of a migration that failed for size (`raft migration retry`, #14275): the failed one's id. */
+    val retryOfMigrationId: String? = null,
+    /** The agent that retried it (#14275). */
+    val triggeredByAgentId: String? = null,
+    /** For a retry: the failed attempt's size next to this one's (server `agentMigrationRetryComparison`). */
+    val retryComparison: AgentMigrationRetryComparison? = null
+)
+
+/** Shared `AgentMigrationSourceDrain`: `waitingFor` is `turn`, `background_tasks`, `queued_input`, `other` or null. */
+@Serializable
+internal data class AgentMigrationSourceDrain(
+    val until: String,
+    val waitingFor: String? = null,
+    val reportedAt: String? = null
+)
+
+/** Shared `AGENT_MIGRATION_SOURCE_DRAIN_WAITING_FOR`; a value outside it reads as [Other], as the server folds it. */
+internal enum class AgentMigrationSourceDrainWaitingFor(val wire: String) {
+    Turn("turn"),
+    BackgroundTasks("background_tasks"),
+    QueuedInput("queued_input"),
+    Other("other"),
+    ;
+
+    companion object {
+        /** Web `drain.waitingFor ?? "other"`. */
+        fun of(value: String?): AgentMigrationSourceDrainWaitingFor = entries.firstOrNull { it.wire == value } ?: Other
+    }
+}
+
+/** Server `AgentMigrationRetryComparison` (services/agentMigrationRetry.ts). */
+@Serializable
+internal data class AgentMigrationRetryComparison(
+    val previousFailure: AgentMigrationRetryPreviousFailure? = null,
+    val packed: AgentMigrationRetryPacked? = null
+)
+
+@Serializable
+internal data class AgentMigrationRetryPreviousFailure(
+    val code: String,
+    val entries: Long? = null,
+    val bytes: Long? = null,
+    val bytesIsLowerBound: Boolean = false
+)
+
+@Serializable
+internal data class AgentMigrationRetryPacked(
+    val files: Long,
+    val bytes: Long,
+    val final: Boolean = false
 )
 
 /** `GET /agents/:id/migration` `migration.initiatedBy` (routes/agents.ts at botiverse/slock 24873fd5be37). */

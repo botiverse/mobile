@@ -4521,4 +4521,26 @@
     <string name="task_handoff_label">%1$s 把 #%2$d 交给了 %3$s</string>
     <string name="task_handoff_returned">%1$s 已接回 · %2$s</string>
     <string name="task_handoff_handed_back">%1$s 交回给了 %2$s · %3$s</string>
+    <!-- Agent migration: what a stopping source waits for (web agent.detail.migrationDrain*, botiverse/slock #14230) and the agent's own retry (agent.migration.retry.*, #14275). -->
+    <string name="agent_migration_drain_turn">正在等 %1$s 结束当前回合，最晚 %2$s 停下，之后打包工作区。停止 Agent 即可立即继续。</string>
+    <string name="agent_migration_drain_turn_now">正在等 %1$s 结束当前回合，马上就会停下，之后打包工作区。</string>
+    <string name="agent_migration_drain_background_tasks">正在等 %1$s 的后台任务结束，最晚 %2$s 停下，之后打包工作区。停止 Agent 即可立即继续。</string>
+    <string name="agent_migration_drain_background_tasks_now">正在等 %1$s 的后台任务结束，马上就会停下，之后打包工作区。</string>
+    <string name="agent_migration_drain_queued_input">正在等 %1$s 处理完排队的消息，最晚 %2$s 停下，之后打包工作区。停止 Agent 即可立即继续。</string>
+    <string name="agent_migration_drain_queued_input_now">正在等 %1$s 处理完排队的消息，马上就会停下，之后打包工作区。</string>
+    <string name="agent_migration_drain_other">%1$s 还在忙，最晚 %2$s 停下，之后打包工作区。停止 Agent 即可立即继续。</string>
+    <string name="agent_migration_drain_other_now">%1$s 还在忙，马上就会停下，之后打包工作区。</string>
+    <string name="agent_migration_retry_note_you">%1$s 精简了工作区，并代你重新发起了这次迁移。</string>
+    <string name="agent_migration_retry_note_named">%1$s 精简了工作区，并代 %2$s 重新发起了这次迁移。</string>
+    <string name="agent_migration_retry_note_none">%1$s 精简了工作区，并重新发起了这次迁移。</string>
+    <string name="agent_migration_retry_also_failed">这是 %1$s 唯一的一次重试，下一次迁移需要由人发起。</string>
+    <string name="agent_migration_retry_failed_attempt">失败的尝试</string>
+    <string name="agent_migration_retry_this_attempt">本次尝试</string>
+    <string name="agent_migration_retry_files_one">%1$s 个文件</string>
+    <string name="agent_migration_retry_files_other">%1$s 个文件</string>
+    <string name="agent_migration_retry_at_least">至少 %1$s</string>
+    <string name="agent_migration_retry_packed_one">%1$s 个文件，%2$s</string>
+    <string name="agent_migration_retry_packed_other">%1$s 个文件，%2$s</string>
+    <string name="agent_migration_retry_packed_when_stopped_one">停止时 %1$s 个文件，%2$s</string>
+    <string name="agent_migration_retry_packed_when_stopped_other">停止时 %1$s 个文件，%2$s</string>
 </resources>

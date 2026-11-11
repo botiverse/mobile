@@ -4521,4 +4521,26 @@
     <string name="task_handoff_label">%1$s handed #%2$d to %3$s</string>
     <string name="task_handoff_returned">%1$s took it back · %2$s</string>
     <string name="task_handoff_handed_back">%1$s handed it back to %2$s · %3$s</string>
+    <!-- Agent migration: what a stopping source waits for (web agent.detail.migrationDrain*, botiverse/slock #14230) and the agent's own retry (agent.migration.retry.*, #14275). -->
+    <string name="agent_migration_drain_turn">Waiting for %1$s to finish its current turn. It stops by %2$s at the latest, then its workspace is packed. Stop the agent to continue now.</string>
+    <string name="agent_migration_drain_turn_now">Waiting for %1$s to finish its current turn. It stops any moment now, then its workspace is packed.</string>
+    <string name="agent_migration_drain_background_tasks">Waiting for %1$s’s background tasks to finish. It stops by %2$s at the latest, then its workspace is packed. Stop the agent to continue now.</string>
+    <string name="agent_migration_drain_background_tasks_now">Waiting for %1$s’s background tasks to finish. It stops any moment now, then its workspace is packed.</string>
+    <string name="agent_migration_drain_queued_input">Waiting for %1$s to handle its queued messages. It stops by %2$s at the latest, then its workspace is packed. Stop the agent to continue now.</string>
+    <string name="agent_migration_drain_queued_input_now">Waiting for %1$s to handle its queued messages. It stops any moment now, then its workspace is packed.</string>
+    <string name="agent_migration_drain_other">%1$s is still busy. It stops by %2$s at the latest, then its workspace is packed. Stop the agent to continue now.</string>
+    <string name="agent_migration_drain_other_now">%1$s is still busy. It stops any moment now, then its workspace is packed.</string>
+    <string name="agent_migration_retry_note_you">%1$s trimmed its workspace and retried this migration on your behalf.</string>
+    <string name="agent_migration_retry_note_named">%1$s trimmed its workspace and retried this migration on behalf of %2$s.</string>
+    <string name="agent_migration_retry_note_none">%1$s trimmed its workspace and retried this migration.</string>
+    <string name="agent_migration_retry_also_failed">This was %1$s's one retry; a person needs to start the next migration.</string>
+    <string name="agent_migration_retry_failed_attempt">Failed attempt</string>
+    <string name="agent_migration_retry_this_attempt">This attempt</string>
+    <string name="agent_migration_retry_files_one">%1$s file</string>
+    <string name="agent_migration_retry_files_other">%1$s files</string>
+    <string name="agent_migration_retry_at_least">At least %1$s</string>
+    <string name="agent_migration_retry_packed_one">%1$s file, %2$s</string>
+    <string name="agent_migration_retry_packed_other">%1$s files, %2$s</string>
+    <string name="agent_migration_retry_packed_when_stopped_one">%1$s file, %2$s when it stopped</string>
+    <string name="agent_migration_retry_packed_when_stopped_other">%1$s files, %2$s when it stopped</string>
 </resources>
