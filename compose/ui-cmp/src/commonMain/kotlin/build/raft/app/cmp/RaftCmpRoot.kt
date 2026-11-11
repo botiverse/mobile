@@ -2,6 +2,7 @@ package build.raft.app.cmp
 
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -58,6 +59,12 @@ import build.raft.designsystem.tokens.RaftSpacing
  * host fires it too (iOS: the page container as it disappears), else the root makes its own.
  * The page draws under the window's toast host ([RaftCmpToastLayer]): one per window, this
  * root's own unless the host wrapped its roots in one.
+ * [systemDark] is the OS light/dark setting the page wears under System appearance. Null (iOS,
+ * desktop) reads the window's own (isSystemInDarkTheme) and reports it to the process-wide theme.
+ * Android passes the process-wide report (`RaftThemeState.App.systemDark`, from each Activity's
+ * configuration): a background window keeps its old configuration until it is shown again, and
+ * read from there its design-system colours disagreed with the app tokens (`RaftColor`) and it
+ * wrote its old mode back for every window (#118: dark surfaces under light-theme text).
  */
 @Composable
 fun RaftCmpRoot(
@@ -67,6 +74,7 @@ fun RaftCmpRoot(
     onCanvasColorResolved: ((Color) -> Unit)? = null,
     backSwipeRegions: RaftBackSwipeRegions? = null,
     coverSignal: RaftPageCoverSignal? = null,
+    systemDark: Boolean? = null,
 ) {
     if (backSwipeRegions != null) {
         val density = LocalDensity.current.density
@@ -74,7 +82,7 @@ fun RaftCmpRoot(
     }
     val pageCoverSignal = coverSignal ?: remember { RaftPageCoverSignal() }
     ProvideRaftPageCover(host, pageCoverSignal) {
-        RaftCmpPage(args, onSystemBarsResolved, onCanvasColorResolved, backSwipeRegions)
+        RaftCmpPage(args, onSystemBarsResolved, onCanvasColorResolved, backSwipeRegions, systemDark)
     }
 }
 
@@ -128,13 +136,14 @@ private fun RaftCmpPage(
     onSystemBarsResolved: ((RaftSystemBarsAppearance) -> Unit)?,
     onCanvasColorResolved: ((Color) -> Unit)?,
     backSwipeRegions: RaftBackSwipeRegions?,
+    systemDark: Boolean?,
 ) {
     val host = LocalRaftHost.current
     CompositionLocalProvider(
         LocalRaftPageArgs provides args,
         LocalRaftBackSwipeRegions provides backSwipeRegions,
     ) {
-        RaftTheme {
+        RaftTheme(systemDark = systemDark ?: isSystemInDarkTheme()) {
             val canvas = RaftTheme.colors.layerCanvas
             val statusBarBackdrop = remember { RaftStatusBarBackdrop() }
             if (onSystemBarsResolved != null) {
