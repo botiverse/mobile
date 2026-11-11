@@ -216,8 +216,10 @@ class SharedServerMembersPresenceReconciliationTest {
         )
         rosterStatus = AgentStatus.Offline
         store.refreshMembers(serverId, force = true, reason = "test_duplicate_signal")
+        // Hands c76f162d (web `loadAgents` parity): a roster read this caller started after the
+        // push is the server's later state and replaces the sequenced fact, keeping its seq floor.
         val sequenced = registry.factFor(owner, agentId.value)
-        assertEquals(AgentStatus.Working, sequenced?.agentStatus)
+        assertEquals(AgentStatus.Offline, sequenced?.agentStatus)
         assertEquals(7L, sequenced?.serverSeq)
     }
 

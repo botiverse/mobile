@@ -40,7 +40,12 @@ internal data class ProcessServerMembersLoadResult(
     internal val owner: ProcessServerMembersDirectoryOwner,
     internal val generation: ProcessServerMembersGeneration,
     /** Answered from the process cache (possibly a durable seed), not by a network flight. */
-    val cacheHit: Boolean = false
+    val cacheHit: Boolean = false,
+    /**
+     * This caller started the network flight that answered it (not a cache hit, not a join of a flight
+     * that was already running): the read began after anything the caller captured before calling.
+     */
+    val startedByCaller: Boolean = false
 )
 
 /**
@@ -51,7 +56,9 @@ internal data class ProcessServerMembersLoadResult(
 internal data class ProcessServerAgentsLoadResult(
     val result: DataResult<List<MemberProfile>>,
     internal val owner: ProcessServerMembersOwner,
-    internal val generation: ProcessServerMembersGeneration
+    internal val generation: ProcessServerMembersGeneration,
+    /** This caller started the `/agents` flight (see [ProcessServerMembersLoadResult.startedByCaller]). */
+    val startedByCaller: Boolean = false
 )
 
 internal data class ProcessServerMembersSeedResult(
@@ -151,7 +158,7 @@ internal class ProcessServerMembersCore(
                 flight to true
             }
         if (started) flight.result.start()
-        return flight.result.await()
+        return flight.result.await().copy(startedByCaller = started)
     }
 
     /** Runs [publish] when no roster change or reload moved [loadResult]'s owner since its read started. */
@@ -246,7 +253,7 @@ internal class ProcessServerMembersCore(
                 } finally {
                     if (decision.started) decision.flight.result.start()
                 }
-                decision.flight.result.await()
+                decision.flight.result.await().copy(startedByCaller = decision.started)
             }
         }
     }

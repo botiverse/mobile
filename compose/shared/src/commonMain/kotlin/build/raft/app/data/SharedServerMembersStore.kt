@@ -1899,6 +1899,7 @@ class SharedServerMembersStore internal constructor(
                     serverId = key,
                     profiles = fetched,
                     completesRosterRefill = true,
+                    freshRoster = loadResult.startedByCaller,
                     filteredOut = agents.rosterPresenceFilteredOut(fetched)
                 )
                 var current = false
@@ -2611,6 +2612,7 @@ class SharedServerMembersStore internal constructor(
                         applyAuthoritativeRosterPresence(
                             request = rosterPresenceRequestForResult,
                             serverId = normalizedKey,
+                            freshRoster = processResult.startedByCaller,
                             profiles =
                                 unchanged.data.members
                                     .filterServerRosterMembers(normalizedKey)
@@ -2648,6 +2650,7 @@ class SharedServerMembersStore internal constructor(
                                 request = rosterPresenceRequestForResult,
                                 serverId = normalizedKey,
                                 profiles = snapshot.members,
+                                freshRoster = processResult.startedByCaller,
                                 completesRosterRefill = true,
                                 filteredOut = result.data.members.rosterPresenceFilteredOut(snapshot.members)
                             )
@@ -2930,7 +2933,13 @@ class SharedServerMembersStore internal constructor(
         serverId: String,
         profiles: List<MemberProfile>,
         completesRosterRefill: Boolean = false,
-        filteredOut: List<MemberProfile> = emptyList()
+        filteredOut: List<MemberProfile> = emptyList(),
+        /**
+         * [profiles] came from a network read this caller started after capturing [request]: they may
+         * replace a seq-carrying fact a missed push left stale (web `loadAgents`). A push during the
+         * read still wins (the request's mutation fence). Cache hits and joined reads only fill gaps.
+         */
+        freshRoster: Boolean = false
     ) {
         if (request == null || request.owner.serverId != serverId) return
         if (completesRosterRefill) presenceRegistry.completeRosterRefill(request)
@@ -2950,7 +2959,7 @@ class SharedServerMembersStore internal constructor(
                     diagnostics?.skipped?.add("$memberId:${profile.agentLifecycleStatus ?: "none"}")
                     return@forEach
                 }
-            val memberRequest = request.memberRequest(profile.id.value) ?: return@forEach
+            val memberRequest = request.memberRequest(profile.id.value, freshRoster = freshRoster) ?: return@forEach
             if (status.presence == Presence.Offline) diagnostics?.offline?.add(memberId)
             diagnostics?.let { it.projected += 1 }
             presenceRegistry.applyProjection(
@@ -2971,7 +2980,7 @@ class SharedServerMembersStore internal constructor(
             val retained = presenceRegistry.carriedOverMemberIds(request.owner).sorted()
             logger(
                 "roster_presence_projection serverId=$serverId agents=${profiles.count { it.kind == MemberKind.Agent }} " +
-                    "projected=${diagnostics.projected} " +
+                    "projected=${diagnostics.projected} fresh=$freshRoster " +
                     "offline=${diagnostics.offline.size}${diagnostics.offline.rosterPresenceSample()} " +
                     "retained=${retained.size}${retained.rosterPresenceSample()} " +
                     "skipped=${diagnostics.skipped.size}${diagnostics.skipped.rosterPresenceSample()} " +

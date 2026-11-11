@@ -279,6 +279,11 @@ internal enum class ProcessPresenceProjectionSource(
     val replacesSequencedFact: Boolean
 ) {
     Historical(authorityRank = 0, isCurrent = false, replacesSequencedFact = false),
+    /**
+     * Replaces a seq-carrying fact only when [ProcessPresenceProjectionRequest.freshRoster]: a
+     * `/agents` (or roster) read this caller started on the network after capturing the request
+     * (web `loadAgents` parity, slock `agentStore.ts`). A cached or joined read keeps filling gaps only.
+     */
     RosterCurrent(authorityRank = 1, isCurrent = true, replacesSequencedFact = false),
     DetailCurrent(authorityRank = 2, isCurrent = true, replacesSequencedFact = true)
 }
@@ -304,8 +309,20 @@ internal data class ProcessPresenceProjectionRequest(
     val mutationVersion: Long,
     val source: ProcessPresenceProjectionSource,
     val requestVersion: Long,
-    val baseRequestVersion: Long?
-)
+    val baseRequestVersion: Long?,
+    /**
+     * A [ProcessPresenceProjectionSource.RosterCurrent] answer read from the network by a flight this
+     * caller started after capturing the fence (never a process-cache hit or a joined flight).
+     * Like web's `/agents` reload it then repairs a seq-carrying fact that a missed push left stale;
+     * a realtime write during the request still wins through [mutationVersion].
+     */
+    val freshRoster: Boolean = false
+) {
+    val replacesSequencedFact: Boolean
+        get() =
+            source.replacesSequencedFact ||
+                (freshRoster && source == ProcessPresenceProjectionSource.RosterCurrent)
+}
 
 /** Server-roster request fence captured before a forced current-status refresh. */
 internal data class ProcessPresenceRosterProjectionRequest(
@@ -316,7 +333,7 @@ internal data class ProcessPresenceRosterProjectionRequest(
     val requestVersion: Long,
     val baseRequestVersions: Map<String, Long>
 ) {
-    fun memberRequest(memberId: String?): ProcessPresenceProjectionRequest? {
+    fun memberRequest(memberId: String?, freshRoster: Boolean = false): ProcessPresenceProjectionRequest? {
         val key = memberId?.trim()?.takeIf { it.isNotBlank() } ?: return null
         return ProcessPresenceProjectionRequest(
             owner = owner,
@@ -326,7 +343,8 @@ internal data class ProcessPresenceRosterProjectionRequest(
             mutationVersion = mutationVersions[key] ?: 0L,
             source = ProcessPresenceProjectionSource.RosterCurrent,
             requestVersion = requestVersion,
-            baseRequestVersion = baseRequestVersions[key]
+            baseRequestVersion = baseRequestVersions[key],
+            freshRoster = freshRoster
         )
     }
 }
@@ -765,7 +783,7 @@ internal class ProcessMemberPresenceRegistry {
             }
             val acceptsCurrentProjection =
                 request.source.isCurrent &&
-                    (request.source.replacesSequencedFact || previous?.serverSeq == null)
+                    (request.replacesSequencedFact || previous?.serverSeq == null)
             val nextOwnerFacts =
                 when {
                     // A fresh agent-detail summary is the server's current

@@ -1,11 +1,13 @@
 package build.raft.app.data
 
+import build.raft.app.compat.json.JSONObject
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.openAppShellServerSwitchWindow
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -108,6 +110,35 @@ class PresenceTransportRosterRefetchTest {
         assertEquals(2, fixture.repository.memberCalls, "the roster refill ran without the jitter")
         assertEquals(AgentStatus.Online, fixture.registry.factFor(owner, "agent-1")?.agentStatus)
         assertEquals(2, fixture.invalidations.size, "sync off: each connect retires the old roster")
+    }
+
+    /**
+     * Hands c76f162d: a server-menu switch to a server whose window is already open brings that
+     * window back; its selection store already holds the server, so the selection collector never
+     * ran and the reconnect waited the jitter (9.3 s of the last visit's statuses on Home). The
+     * switch itself now tells the jitter.
+     */
+    @Test
+    fun newWindowServerSwitchMakesTheFollowingReconnectImmediate() = runTest {
+        val fixture = fixture()
+        assertEquals(RaftReconnectRefetchDecision.Immediate, fixture.connect(epoch = 1L))
+        runCurrent()
+        val opened = mutableListOf<JSONObject>()
+        val pageData = JSONObject().put("pageName", "app_shell")
+
+        openAppShellServerSwitchWindow(
+            serverId = " ${serverId.value} ",
+            pageData = pageData,
+            noteServerSelected = { fixture.jitter.onServerSelected(it, reason = "server_switch_window") },
+            open = { opened += it }
+        )
+        advanceTimeBy(1_100L)
+        val decision = fixture.connect(epoch = 2L, agentsOnly = true)
+        runCurrent()
+
+        assertEquals(listOf(pageData), opened)
+        assertEquals(RaftReconnectRefetchDecision.ImmediateAfterSwitch, decision)
+        assertEquals(1, fixture.repository.agentCalls, "/agents read at once, not after the jitter")
     }
 
     @Test

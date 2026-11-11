@@ -1204,6 +1204,16 @@ internal class RaftSharedStoreProvider private constructor(
         )
     }
 
+    /**
+     * The user switched to [serverId] by bringing up its own shell window. That window's selection
+     * may not change (a reused window already holds [serverId]), so the selection collector below
+     * does not see the switch: tell the reconnect jitter directly, so the connect that follows
+     * refetches at once ([RaftReconnectRefetchDecision.ImmediateAfterSwitch]).
+     */
+    internal fun noteServerSwitchedToWindow(serverId: String) {
+        reconnectRefetchJitter.onServerSelected(serverId, reason = "server_switch_window")
+    }
+
     private val presenceTransportRosterRefetch: PresenceTransportRosterRefetch by lazy {
         PresenceTransportRosterRefetch(
             jitter = reconnectRefetchJitter,
