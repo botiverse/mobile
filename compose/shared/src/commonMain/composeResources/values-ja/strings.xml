@@ -2689,9 +2689,13 @@
     <string name="settings_computers_rack_agent_count_other">エージェント %1$d 個</string>
     <string name="settings_computers_rack_version">v%1$s</string>
     <string name="settings_computers_rack_last_seen">最終接続は%1$sです。</string>
-    <string name="settings_computers_rack_agents_overflow">+%1$d</string>
     <string name="settings_computers_rack_percent_used">%1$s使用</string>
     <string name="settings_computers_rack_used_up">上限到達</string>
+    <string name="settings_computers_rack_resets_in_minutes">%1$dm で回復</string>
+    <string name="settings_computers_rack_resets_in_hours">%1$dh で回復</string>
+    <string name="settings_computers_rack_resets_in_days">%1$dd で回復</string>
+    <string name="settings_computers_rack_used_up_resets">上限到達、%1$sにリセット</string>
+    <string name="settings_computers_rack_col_other">その他</string>
     <string name="settings_computers_rack_other_runtimes">その他のランタイム</string>
     <string name="settings_computers_rack_usage_unavailable">%1$s: 使用量を取得できません</string>
     <string name="settings_computers_rack_usage_meter">%1$s アカウント: %2$s</string>

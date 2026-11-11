@@ -324,7 +324,7 @@ internal fun RaftRelativeTimeLabel.Relative.selectLocalizedStringResource(): Raf
     }
 
 @Composable
-private fun RaftRelativeTimeLabel.Relative.localized(): String {
+internal fun RaftRelativeTimeLabel.Relative.localized(): String {
     val selection = selectLocalizedStringResource()
     val formatArg = selection.formatArg
     return if (formatArg != null) {

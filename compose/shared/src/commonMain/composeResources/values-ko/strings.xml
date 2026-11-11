@@ -2682,9 +2682,13 @@
     <string name="settings_computers_rack_agent_count_other">에이전트 %1$d개</string>
     <string name="settings_computers_rack_version">v%1$s</string>
     <string name="settings_computers_rack_last_seen">마지막 접속: %1$s</string>
-    <string name="settings_computers_rack_agents_overflow">+%1$d</string>
     <string name="settings_computers_rack_percent_used">%1$s 사용</string>
     <string name="settings_computers_rack_used_up">모두 사용</string>
+    <string name="settings_computers_rack_resets_in_minutes">%1$dm 후 리셋</string>
+    <string name="settings_computers_rack_resets_in_hours">%1$dh 후 리셋</string>
+    <string name="settings_computers_rack_resets_in_days">%1$dd 후 리셋</string>
+    <string name="settings_computers_rack_used_up_resets">모두 사용, %1$s 초기화</string>
+    <string name="settings_computers_rack_col_other">기타</string>
     <string name="settings_computers_rack_other_runtimes">기타 런타임</string>
     <string name="settings_computers_rack_usage_unavailable">%1$s: 사용량을 알 수 없음</string>
     <string name="settings_computers_rack_usage_meter">%1$s 계정: %2$s</string>
