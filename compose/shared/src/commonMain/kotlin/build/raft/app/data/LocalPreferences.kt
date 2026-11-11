@@ -377,6 +377,14 @@ interface ChatLayoutPreferenceStore {
     fun readMultiShellHostEnabledSync(): Boolean
     suspend fun readMultiShellHostEnabled(): Boolean
     suspend fun saveMultiShellHostEnabled(enabled: Boolean)
+
+    /**
+     * Phase 3 multi-session realtime (default off): one realtime session per server with an open
+     * window instead of one for the process. Only takes effect together with the multi-window
+     * setting; read through `raftMultiServerRealtimeEnabled()`.
+     */
+    fun readMultiServerRealtimeEnabledSync(): Boolean = false
+    fun saveMultiServerRealtimeEnabledSync(enabled: Boolean) {}
     fun readServerDrawerEnabledSync(): Boolean
     suspend fun readServerDrawerEnabled(): Boolean
     suspend fun saveServerDrawerEnabled(enabled: Boolean)
@@ -554,6 +562,13 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_MULTI_SHELL_HOST_ENABLED, enabled)
     }
 
+    override fun readMultiServerRealtimeEnabledSync(): Boolean =
+        store.getBoolean(KEY_MULTI_SERVER_REALTIME_ENABLED, false)
+
+    override fun saveMultiServerRealtimeEnabledSync(enabled: Boolean) {
+        store.putBoolean(KEY_MULTI_SERVER_REALTIME_ENABLED, enabled)
+    }
+
     override fun readServerDrawerEnabledSync(): Boolean =
         store.getBoolean(KEY_SERVER_DRAWER_ENABLED, DEFAULT_SERVER_DRAWER_ENABLED)
 
@@ -621,6 +636,7 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_ACTIVITY_SENDER_AVATARS_ENABLED = "chatLayout:activity_sender_avatars_enabled"
         const val KEY_COMPOSER_SEND_KEY_ENABLED = "chatLayout:composer_send_key_enabled"
         const val KEY_MULTI_SHELL_HOST_ENABLED = "mobile:multi_shell_host_enabled"
+        const val KEY_MULTI_SERVER_REALTIME_ENABLED = "mobile:multi_server_realtime_enabled"
         const val KEY_SERVER_DRAWER_ENABLED = "mobile:server_drawer_enabled"
         const val KEY_NEW_DESIGN_SETTINGS_ENABLED = "mobile:new_design_settings_enabled"
         const val KEY_HOME_SERVER_AVATAR_ENABLED = "mobile:home_server_avatar_enabled"
