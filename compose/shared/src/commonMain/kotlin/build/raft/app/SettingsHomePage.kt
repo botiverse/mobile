@@ -326,7 +326,6 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.MemberSnapshot
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
-import build.raft.app.model.agentAvatarFallbackWireValue
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ChannelId
@@ -804,7 +803,15 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                     statusPulsing = status?.pulsing == true
                 ) {
                     RaftAppAvatar(
-                        avatarWireValue = memberAvatarWireValue ?: result.avatarWireValue ?: AvatarReference.Random(result.key).wireValue,
+                        // web EntityResultRow: an agent's face (else the robot), a person's stored
+                        // avatar (else the placeholder person), never a made-up one.
+                        kind =
+                            when (result.type) {
+                                SearchEntityType.Agent -> RaftAvatarKind.Agent
+                                SearchEntityType.Human -> RaftAvatarKind.Human
+                                else -> raftAvatarKind(result.memberIdentity?.kind)
+                            },
+                        avatarWireValue = memberAvatarWireValue ?: result.avatarWireValue,
                         label = result.title.removePrefix("@").removePrefix("#"),
                         // task #107: must match the RaftAvatarWithStatus wrapper's
                         // avatarSize — the default (ChannelAvatarSize = 20.dp) leaves the
@@ -14648,8 +14655,9 @@ private fun SharedHomeSavedUnsaveButton(
 }
 
 /**
- * web SavedPanel sender: the 14dp `preview-mini` avatar, 4dp, the name in semibold ink. A
- * person without a photo shows the placeholder person (web GravatarAvatar), not initials.
+ * web SavedPanel sender: the 14dp `preview-mini` avatar, 4dp, the name in semibold ink. The
+ * sender's kind decides the face without a photo ([RaftAvatarKind]): an agent's robot, a
+ * person's placeholder, an external sender's initials.
  */
 @Composable
 private fun SharedHomeSavedSenderMeta(
@@ -14664,10 +14672,10 @@ private fun SharedHomeSavedSenderMeta(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val wireValue = avatarWireValue ?: savedSenderAvatarFallback(senderName)
         RaftAppAvatar(
-            avatarWireValue = wireValue,
-            label = if (wireValue == null && senderKind == MemberKind.Human) "" else senderName,
+            kind = raftAvatarKind(senderKind),
+            avatarWireValue = avatarWireValue,
+            label = senderName,
             avatarSize = 14.dp,
             cacheSubject = avatarCacheIdentity?.subject,
             cacheServerId = avatarCacheIdentity?.serverId
@@ -14743,13 +14751,6 @@ private fun InboxItem.resolvedSenderAvatarWireValueForPreview(
 
 private fun InboxItem.previewSenderMemberId(): String? =
     previewSenderIdentityOrNull()?.memberId
-
-private fun savedSenderAvatarFallback(senderName: String): String? =
-    if (senderName.contains("developer", ignoreCase = true) || senderName.contains("agent", ignoreCase = true)) {
-        "pixel:robot"
-    } else {
-        null
-    }
 
 // raft-ui SearchEmpty (EmptyState): search icon, headline title, callout description.
 @Composable
@@ -15229,11 +15230,11 @@ internal fun SharedHomeSearchMessageResultRow(
         val senderLabel = sender?.takeIf { it.isNotBlank() }
         // web MessageHitRow AvatarSlot: a sender without an avatar shows the kind's default, the
         // robot for an agent and the person glyph on lavender for anyone else.
-        val resolvedAvatar = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver)
         val senderIsAgent = (item.latestActivitySenderKind ?: item.lastMessageSenderKind) == MemberKind.Agent
         RaftAppAvatar(
-            avatarWireValue = resolvedAvatar ?: if (senderIsAgent) agentAvatarFallbackWireValue(item.key) else null,
-            label = if (resolvedAvatar == null && !senderIsAgent) "" else senderLabel.orEmpty(),
+            kind = if (senderIsAgent) RaftAvatarKind.Agent else RaftAvatarKind.Human,
+            avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
+            label = senderLabel.orEmpty(),
             avatarSize = RaftSearchMetrics.EntityLeading,
             cacheSubject = avatarCacheIdentity?.subject,
             cacheServerId = avatarCacheIdentity?.serverId
@@ -16103,7 +16104,7 @@ internal fun SearchSenderFilterItem.toHomeSearchEntityResult(
         threadId = conversationIdentity?.threadId?.value,
         memberIdentity = identity,
         conversationIdentity = conversationIdentity,
-        avatarWireValue = avatarWireValue ?: AvatarReference.Random(identity.memberId.value).wireValue,
+        avatarWireValue = avatarWireValue,
         showPresence = kind == MemberKind.Agent,
     )
 }

@@ -1233,7 +1233,7 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
     roleBadgeLabel: String? = null,
     cacheSubject: build.raft.app.data.RaftAvatarCacheSubject?,
     cacheServerId: String?,
-    avatarFill: Color = RaftColor.AccentLavender,
+    avatarKind: RaftAvatarKind,
     titleBadge: (@Composable () -> Unit)? = null
 ) {
     val mutedInk = RaftColor.TextMutedGray
@@ -1243,12 +1243,12 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
             statusPulsing = statusPulsing
         ) {
             RaftAppAvatar(
+                kind = avatarKind,
                 avatarWireValue = avatarWireValue,
                 label = avatarLabel,
                 avatarSize = avatarSize,
                 cacheSubject = cacheSubject,
                 cacheServerId = cacheServerId,
-                fallbackFill = avatarFill
             )
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {

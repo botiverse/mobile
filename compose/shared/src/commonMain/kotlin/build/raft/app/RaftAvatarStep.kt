@@ -45,6 +45,10 @@ internal enum class RaftAvatarStep(val designSize: RaftAvatarSize) {
     val badgeRadius: Dp get() = 2.dp
 
     companion object {
+        /** The step of a design-system [size] (raft `xs` and `2xs` are both [Xs]). */
+        fun of(size: RaftAvatarSize): RaftAvatarStep =
+            entries.firstOrNull { it.designSize == size } ?: nearest(size.edge)
+
         /** The web step whose edge is closest to [avatarSize]; a size halfway between two steps takes the larger. */
         fun nearest(avatarSize: Dp): RaftAvatarStep =
             entries.minWith(

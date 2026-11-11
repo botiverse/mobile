@@ -903,6 +903,8 @@ private fun SettingsProfileAvatar(
         contentAlignment = Alignment.Center
     ) {
         RaftAppAvatar(
+            // web AvatarSlot `account-tile type="human"`: your stored avatar, else the placeholder person.
+            kind = RaftAvatarKind.Human,
             avatarWireValue = profile.avatarUrl,
             label = profile.avatarLabel,
             avatarSize = 51.dp,

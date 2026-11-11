@@ -1,6 +1,7 @@
 package build.raft.app.components
 
 import build.raft.app.RaftAppAvatar
+import build.raft.app.RaftAvatarKind
 import build.raft.app.RaftAvatarStep
 import build.raft.app.RaftAvatarWithStatus
 import build.raft.app.RaftMonoFamily
@@ -546,10 +547,12 @@ internal fun RaftUiAvatar(
             avatarSize = size
         ) {
             RaftAppAvatar(
+                // The library page's initials specimen: the label's letters on the type's fill.
+                kind = RaftAvatarKind.Labeled,
                 avatarWireValue = null,
                 label = label,
                 avatarSize = size,
-                fallbackFill = if (type == RaftUiAvatarType.Agent) RaftColor.Inactive else RaftColor.AccentLavender
+                fallbackFill = if (type == RaftUiAvatarType.Agent) RaftColor.Inactive else RaftColor.AccentLavender,
             )
         }
     }

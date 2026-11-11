@@ -20,9 +20,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.data.runtimeCatalogDisplayName
-import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
-import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftPreviewCard
@@ -36,7 +34,6 @@ import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.designsystem.tokens.RaftStroke
 import kotlinx.coroutines.flow.flowOf
 
 /** Whether the mentioned agent has read the message the mention is in (web `readReceipt`). */
@@ -316,29 +313,20 @@ internal fun RaftProfilePreviewCardContent(
     }
 }
 
-/** raft-ui Avatar `lg` (51dp sticker) round the member's face, as the Members page draws it. */
+/**
+ * raft-ui Avatar `lg` (51dp sticker) round the member's face, as the Members page draws it. An
+ * unavailable profile has no face of its own: the kind's default (web ProfilePreviewCardContent:
+ * `AvatarSlot type="agent"`, the robot; `humanPlaceholder`, the placeholder person).
+ */
 @Composable
 private fun ProfilePreviewAvatar(model: RaftProfilePreviewCardModel) {
-    val size = RaftAvatarSize.Lg
-    val type = if (model.kind == MemberKind.Agent) RaftAvatarType.Agent else RaftAvatarType.Human
-    if (model.unavailable) {
-        RaftAvatar(type = type, size = size)
-        return
-    }
-    RaftAvatar(
-        type = type,
-        size = size,
-        image = {
-            RaftAppAvatar(
-                avatarWireValue = model.avatarWireValue,
-                label = model.avatarLabel,
-                // The face fills the inside of the 1.5dp sticker edge.
-                avatarSize = size.edge - RaftStroke.Control * 2,
-                borderWidth = 0.dp,
-                cacheSubject = raftMemberAvatarCacheSubject(model.kind, model.memberId),
-                cacheServerId = model.serverId,
-            )
-        },
+    RaftAppAvatarSticker(
+        kind = raftAvatarKind(model.kind),
+        avatarWireValue = model.avatarWireValue.takeUnless { model.unavailable },
+        label = model.avatarLabel,
+        size = RaftAvatarSize.Lg,
+        cacheSubject = raftMemberAvatarCacheSubject(model.kind, model.memberId).takeUnless { model.unavailable },
+        cacheServerId = model.serverId,
     )
 }
 

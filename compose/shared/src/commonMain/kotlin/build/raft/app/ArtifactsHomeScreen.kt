@@ -775,7 +775,15 @@ private fun ArtifactsHomeAuthorLine(actor: ArtifactsHomeActor, readerId: String?
     val (name, behalf) = artifactsHomeAuthorText(actor, readerId)
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         RaftAppAvatar(
-            avatarWireValue = actor.avatarUrl.orEmpty(),
+            // web ArtifactActorAvatar: an agent's face (else the robot); a person's picture (else,
+            // when it fails, the placeholder); a person without one, their initial.
+            kind =
+                when {
+                    actor.type == "agent" -> RaftAvatarKind.Agent
+                    actor.avatarUrl.isNullOrBlank() -> RaftAvatarKind.Labeled
+                    else -> RaftAvatarKind.Human
+                },
+            avatarWireValue = actor.avatarUrl,
             label = name,
             avatarSize = 16.dp,
         )

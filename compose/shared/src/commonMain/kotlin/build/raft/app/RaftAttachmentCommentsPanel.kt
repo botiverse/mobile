@@ -36,10 +36,7 @@ import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.model.MemberKind
 import build.raft.app.model.formatRaftTimestampLabel
-import build.raft.app.model.raftShownHumanAvatarWireValueOrNull
-import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
-import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
@@ -50,7 +47,6 @@ import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
-import build.raft.designsystem.tokens.RaftUiPalette
 import build.raft.designsystem.components.raftClickable
 import androidx.compose.foundation.shape.CircleShape
 
@@ -81,8 +77,6 @@ private val CommentChipIconSize = 12.dp
 // On the web the card's anchor chip is `inline-flex`, so it sits on a line box whose strut
 // reaches below the chip's baseline; the body starts that much lower than the `mt-1` alone.
 private val CommentChipLineBoxDescent = (8f / 3f).dp
-// web AvatarSlot `compact-list` for a person without a photo: lucide User at 12px.
-private val CommentAvatarIconSize = 12.dp
 
 /**
  * The attachment comments panel: the web `AttachmentCommentsPanel` on a phone. [onClose] adds
@@ -254,40 +248,15 @@ private fun AttachmentCommentCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             val agent = comment.senderType == "agent"
-            // web AvatarSlot `humanAvatarUrl`: the person's photo or built pixel avatar, else the User glyph.
-            val humanAvatarWireValue =
-                remember(comment.senderAvatarUrl, agent) {
-                    if (agent) null else comment.senderAvatarUrl?.raftShownHumanAvatarWireValueOrNull()
-                }
-            RaftAvatar(
-                type = if (agent) RaftAvatarType.Agent else RaftAvatarType.Human,
+            // web AttachmentCommentsPanel: AvatarSlot `type` by sender. A person's photo or built
+            // pixel avatar, an agent's face; with none (or a failed image) the robot / placeholder.
+            RaftAppAvatarSticker(
+                kind = if (agent) RaftAvatarKind.Agent else RaftAvatarKind.Human,
+                avatarWireValue = comment.senderAvatarUrl,
+                label = comment.senderName,
                 size = RaftAvatarSize.Xs,
                 modifier = Modifier.size(CommentAvatarSize),
-                image =
-                    if (agent) {
-                        null
-                    } else if (humanAvatarWireValue != null) {
-                        {
-                            RaftAppAvatar(
-                                avatarWireValue = humanAvatarWireValue,
-                                label = "",
-                                // The face fills the inside of the sticker edge.
-                                avatarSize = CommentAvatarSize - RaftStroke.Control * 2,
-                                borderWidth = 0.dp,
-                                cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Human, comment.senderId),
-                            )
-                        }
-                    } else {
-                        {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                RaftLucideIcon(
-                                    RaftLucideIconName.User,
-                                    modifier = Modifier.size(CommentAvatarIconSize),
-                                    color = raftArgbHex(RaftUiPalette.stickerInk)
-                                )
-                            }
-                        }
-                    }
+                cacheSubject = raftMemberAvatarCacheSubject(if (agent) MemberKind.Agent else MemberKind.Human, comment.senderId),
             )
             RaftText(
                 text = comment.senderName.ifBlank { stringResource(Res.string.thread_comments_unknown_author) },

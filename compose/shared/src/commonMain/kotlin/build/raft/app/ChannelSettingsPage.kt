@@ -1168,6 +1168,8 @@ internal fun ChannelMembersSection(
                     members.take(visible).forEach { member -> ChannelSettingsMemberAvatar(member, agentStatusResolver) }
                     slice.externalMembers.take((visible - members.size).coerceAtLeast(0)).forEach { external ->
                         RaftAppAvatar(
+                            // An external participant (web `type="app"`): their image, else initials.
+                            kind = RaftAvatarKind.Labeled,
                             avatarWireValue = external.avatarUrl,
                             label = external.displayName,
                             avatarSize = ChannelSettingsStripTile,

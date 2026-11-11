@@ -207,7 +207,7 @@ class RaftNativeNavBarBridgeTest {
         bridge.attachListener(recorder)
         val page = RaftNativeNavBarBridge.Entry()
         bridge.activate(page)
-        val avatar = RaftNativeNavBarTitleLeading.Avatar("Ada Lovelace", "pixel:robot", androidx.compose.ui.graphics.Color.Gray)
+        val avatar = RaftNativeNavBarTitleLeading.Avatar("Ada Lovelace", "pixel:robot", RaftAvatarKind.Labeled)
         val extras = RaftNativeNavBarTitleExtras(leading = avatar)
         bridge.publish(page, RaftNativeNavBarHead("Ada", null, emptyList(), extras))
         val image = RaftNativeTabBarAvatar(1, 1, intArrayOf(0xFF102030.toInt()))
@@ -221,6 +221,9 @@ class RaftNativeNavBarBridgeTest {
         val next = RaftNativeTabBarAvatar(1, 1, intArrayOf(0xFF102030.toInt()))
         bridge.publish(page, RaftNativeNavBarHead("Ada", null, emptyList(), extras, titleImage = next))
         assertEquals(3, recorder.images.size)
+        // An agent's or a person's stand-in carries no letters: their fallback face is the app's to draw.
+        bridge.publish(page, RaftNativeNavBarHead("Ada", null, emptyList(), RaftNativeNavBarTitleExtras(leading = avatar.copy(kind = RaftAvatarKind.Agent))))
+        assertTrue(""""label":""""" in recorder.extras.last())
     }
 
     @Test

@@ -1126,7 +1126,8 @@ final class RaftNativeNavTitleView: UIStackView {
 
     /// The tile / avatar: the app's drawing ([image]) when it has arrived, else a stand-in in the
     /// Compose head's shape (raft-ui sticker: 4pt corners, 1.5pt ink edge): the channel tile with
-    /// its Lucide glyph, or the person's initials in Space Grotesk on their fill.
+    /// its Lucide glyph, or the avatar's fill with the initials the app sent in Space Grotesk (none
+    /// for an agent or a person, whose fallback face is the app's to draw: robot / placeholder).
     private static func leadingView(_ leading: [String: Any], image: UIImage?, size: CGFloat) -> UIView? {
         let kind = leading["kind"] as? String
         // The native Home title's server tile (#4464): drawn here from its own image / initial.

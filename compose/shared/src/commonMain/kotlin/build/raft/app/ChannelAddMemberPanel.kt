@@ -256,14 +256,13 @@ private fun ThreadAddMemberAvatar(
         cutoutColor = RaftTheme.colors.layerCard,
     ) {
         RaftAppAvatar(
+            // web AvatarSlot: a person is their uploaded avatar or the placeholder person, never initials.
+            kind = raftAvatarKind(member.kind.parsedMemberKindOrNull()),
             avatarWireValue = avatarWireValue,
-            // web AvatarSlot: a person is their uploaded avatar or, without one, the placeholder person icon,
-            // never initials (an empty label falls back to the icon).
-            label = if (member.kind.parsedMemberKindOrNull() == MemberKind.Human) "" else member.modalAvatarLabel(),
+            label = member.modalAvatarLabel(),
             avatarSize = ThreadAddMemberAvatarSize,
             cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
             cacheServerId = member.sourceServerId,
-            fallbackFill = raftAvatarFallbackFill(member.kind.parsedMemberKindOrNull()),
         )
     }
 }

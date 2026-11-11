@@ -29,8 +29,8 @@ internal data class RaftMemberAvatarIdentity(
  *    saved for the id while the directory has none;
  * 2. [carriedAvatarWireValue], the avatar the row itself carries (a wire payload's), filtered as a
  *    profile's own avatar is (a person shows only an uploaded image; a retired `gravatar:` value is none);
- * 3. the kind's own default: an agent's pixel robot. A person with none stays null (the caller's
- *    label / placeholder).
+ * 3. the kind's own default: an agent's pixel robot. A person with none stays null ([RaftAppAvatar]
+ *    draws the placeholder person).
  */
 internal fun raftMemberAvatarWireValue(
     identity: RaftMemberAvatarIdentity,
@@ -66,7 +66,8 @@ internal fun rememberRaftMemberAvatarResolver(
 /**
  * The one way to draw a known person's or agent's face: resolves [identity] through the member
  * directory ([raftMemberAvatarWireValue]: directory, then saved avatar, then [carriedAvatarWireValue],
- * then the kind's default) and draws [RaftAppAvatar] keyed by member for the image cache. Pass
+ * then the kind's default) and draws [RaftAppAvatar] of [identity]'s kind (its fallback, also when an
+ * image fails: an agent's robot, a person's placeholder, never initials), keyed by member for the image cache. Pass
  * [resolver] where the page already holds one for [identity]'s server; otherwise the app's shared
  * members store is read. Non-person faces (server icons, app bots' own images) use [RaftAppAvatar].
  */
@@ -83,6 +84,7 @@ internal fun RaftMemberAvatar(
 ) {
     val resolved = rememberRaftMemberAvatarWireValue(resolver, identity.memberId?.trim()?.takeIf { it.isNotEmpty() })
     RaftAppAvatar(
+        kind = raftAvatarKind(identity.kind),
         avatarWireValue = raftMemberAvatarWireValue(identity, resolved, carriedAvatarWireValue),
         label = label,
         modifier = modifier,
@@ -91,6 +93,5 @@ internal fun RaftMemberAvatar(
         diagnostics = diagnostics,
         cacheSubject = raftMemberAvatarCacheSubject(identity.kind, identity.memberId),
         cacheServerId = identity.serverId?.trim()?.takeIf { it.isNotEmpty() },
-        fallbackFill = raftAvatarFallbackFill(identity.kind),
     )
 }

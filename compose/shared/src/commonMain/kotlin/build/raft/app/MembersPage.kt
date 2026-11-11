@@ -249,9 +249,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
-import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
-import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftMenuItem
@@ -8246,23 +8244,15 @@ private fun MembersRaftAvatar(
     val fallbackAvatarWireValue = remember(member.avatar, member.gravatarHash, member.kind, member.id) {
         member.avatarWireValueForAvatarSlot()
     }
-    val avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue
-    RaftAvatar(
-        type = if (member.kind == MemberKind.Human) RaftAvatarType.Human else RaftAvatarType.Agent,
+    RaftAppAvatarSticker(
+        kind = raftAvatarKind(member.kind),
+        avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue,
+        label = member.raftAvatarName(),
         size = size,
-        presence = presence,
         modifier = modifier,
-        image = {
-            RaftAppAvatar(
-                avatarWireValue = avatarWireValue,
-                label = member.avatarLabel,
-                // The face fills the inside of the 1.5dp sticker edge.
-                avatarSize = size.edge - RaftStroke.Control * 2,
-                borderWidth = 0.dp,
-                cacheSubject = member.raftAvatarCacheSubject(),
-                cacheServerId = member.serverId?.value
-            )
-        }
+        presence = presence,
+        cacheSubject = member.raftAvatarCacheSubject(),
+        cacheServerId = member.serverId?.value,
     )
 }
 
@@ -9302,22 +9292,14 @@ private fun MembersStickerAvatar(
     val fallbackAvatarWireValue = remember(member.avatar, member.gravatarHash, member.kind, member.id) {
         member.avatarWireValueForAvatarSlot()
     }
-    RaftAvatar(
-        type = if (member.kind == MemberKind.Agent) RaftAvatarType.Agent else RaftAvatarType.Human,
+    RaftAppAvatarSticker(
+        // Web AvatarSlot: a person without a photo is the User placeholder, never initials.
+        kind = raftAvatarKind(member.kind),
+        avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue,
+        label = member.raftAvatarName(),
         size = size,
-        image = {
-            RaftAppAvatar(
-                avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue,
-                // Web AvatarSlot: a person without a photo is the User placeholder, never initials.
-                label = if (member.kind == MemberKind.Human) "" else member.raftAvatarName(),
-                // The face fills the inside of the sticker's two 1.5dp edges.
-                avatarSize = size.edge - RaftAppStroke.Control * 2,
-                borderWidth = 0.dp,
-                cacheSubject = member.raftAvatarCacheSubject(),
-                cacheServerId = member.serverId?.value,
-                fallbackFill = raftAvatarFallbackFill(member.kind)
-            )
-        }
+        cacheSubject = member.raftAvatarCacheSubject(),
+        cacheServerId = member.serverId?.value,
     )
 }
 
@@ -13046,19 +13028,14 @@ private fun MembersAgentDmRow(
         descriptionMaxLines = 3,
         alignTop = true,
         leading = {
-            RaftAvatar(
-                type = RaftAvatarType.Human,
+            // web AgentDMConversationCard: the peer is an agent (`kind: "agent"`), its face or the robot.
+            RaftAppAvatarSticker(
+                kind = RaftAvatarKind.Agent,
+                avatarWireValue = row.peerAvatarUrl,
+                label = row.peerName,
                 size = RaftAvatarSize.Md,
-                image = {
-                    RaftAppAvatar(
-                        avatarWireValue = row.peerAvatarUrl,
-                        label = row.peerName.take(1).uppercase(),
-                        avatarSize = RaftAvatarSize.Md.edge - RaftStroke.Control * 2,
-                        borderWidth = 0.dp,
-                        cacheSubject = avatarCacheIdentity?.subject,
-                        cacheServerId = avatarCacheIdentity?.serverId
-                    )
-                }
+                cacheSubject = avatarCacheIdentity?.subject,
+                cacheServerId = avatarCacheIdentity?.serverId,
             )
         },
         badge = {
@@ -15051,12 +15028,12 @@ private fun MembersAvatar(
         statusPulsing = false
     ) {
         RaftAppAvatar(
+            kind = raftAvatarKind(member.kind),
             avatarWireValue = avatarWireValue,
             label = member.raftAvatarName(),
             avatarSize = avatarSize,
             cacheSubject = member.raftAvatarCacheSubject(),
             cacheServerId = member.serverId?.value,
-            fallbackFill = raftAvatarFallbackFill(member.kind)
         )
     }
 }

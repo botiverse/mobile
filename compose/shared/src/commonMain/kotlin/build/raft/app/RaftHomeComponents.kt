@@ -32,7 +32,9 @@ import build.raft.designsystem.components.RaftMutedCount
 import build.raft.designsystem.components.raftUnreadCountText
 import build.raft.designsystem.components.RaftAvatarAttentionLight
 import build.raft.designsystem.components.RaftAvatarBadgeBox
+import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftPresence
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftMentionMarker
 import build.raft.designsystem.components.RaftRowTone
@@ -111,7 +113,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
-import build.raft.app.model.appAvatarWireValueOrNull
+import build.raft.app.model.agentAvatarFallbackWireValue
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.compat.pager.BridgeManager
 import build.raft.app.compat.module.RouterModule
@@ -6270,6 +6272,7 @@ internal fun HomeServerDrawerHostedPanel(
                     horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
                 ) {
                     RaftAppAvatar(
+                        kind = RaftAvatarKind.Human,
                         avatarWireValue = userHeader.avatarWireValue,
                         label = userHeader.displayName.ifBlank { userHeader.avatarLabel },
                         avatarSize = 32.dp,
@@ -7068,6 +7071,7 @@ internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem, size: Dp =
                 // Visual-fixture pixel avatars use the same renderer as the compact header so
                 // the connected comparison can prove one identity projection at both levels.
                 RaftAppAvatar(
+                    kind = RaftAvatarKind.Labeled,
                     avatarWireValue = source,
                     label = presentation.fallbackLabel,
                     modifier = Modifier.fillMaxSize(),
@@ -7958,7 +7962,7 @@ private fun HomeSidebarSortRow(
                         avatarLabel = item.name.ifBlank { item.avatarLabel },
                         cacheSubject = raftMemberAvatarCacheSubject(item.peerType.homeDmPeerMemberKindOrNull(), memberId),
                         cacheServerId = cacheServerId,
-                        fallbackFill = raftAvatarFallbackFill(if (isAgent) MemberKind.Agent else MemberKind.Human)
+                        kind = if (isAgent) RaftAvatarKind.Agent else RaftAvatarKind.Human
                     )
                 } else {
                     HomeSidebarChannelGlyph(item.homeChannelSymbol())
@@ -8056,7 +8060,7 @@ internal fun HomeSidebarDirectMessageRow(
                     avatarLabel = name.ifBlank { avatarLabel },
                     cacheSubject = raftMemberAvatarCacheSubject(peerType.homeDmPeerMemberKindOrNull(), memberId),
                     cacheServerId = cacheServerId,
-                    fallbackFill = raftAvatarFallbackFill(if (isAgent) MemberKind.Agent else MemberKind.Human)
+                    kind = if (isAgent) RaftAvatarKind.Agent else RaftAvatarKind.Human
                 )
             },
             trailing =
@@ -8129,7 +8133,7 @@ private fun DirectMessageAvatar(
     avatarLabel: String,
     cacheSubject: RaftAvatarCacheSubject.Member?,
     cacheServerId: String?,
-    fallbackFill: Color
+    kind: RaftAvatarKind
 ) {
     val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
     RaftAvatarWithStatus(
@@ -8138,11 +8142,11 @@ private fun DirectMessageAvatar(
         statusPulsing = false
     ) {
         RaftAppAvatar(
+            kind = kind,
             avatarWireValue = avatarWireValue,
             label = avatarLabel,
             cacheSubject = cacheSubject,
             cacheServerId = cacheServerId,
-            fallbackFill = fallbackFill
         )
     }
 }
@@ -8226,8 +8230,16 @@ internal fun MemberProfile.raftAvatarCacheIdentity(
     return raftMemberAvatarCacheIdentity(kind, id.value, cleanCacheServerId)
 }
 
+/**
+ * The one app avatar (web `AvatarSlot`'s face): [kind] decides the fallback, so a page passes the
+ * wire value it has and never picks one ([RaftAvatarKind]). The face is, in order: a pixel avatar
+ * (`pixel:<key>` / `pixel:random:<seed>`), an uploaded image (http(s)), else [kind]'s fallback,
+ * which an image that fails to load also shows: an agent's default pixel robot, a person's
+ * placeholder, a labeled face's initials of [label]. [label] is only read for [RaftAvatarKind.Labeled].
+ */
 @Composable
 internal fun RaftAppAvatar(
+    kind: RaftAvatarKind,
     avatarWireValue: String?,
     label: String,
     modifier: Modifier = Modifier,
@@ -8238,17 +8250,20 @@ internal fun RaftAppAvatar(
     diagnostics: RaftAvatarRowDiagnostics? = null,
     cacheSubject: RaftAvatarCacheSubject? = null,
     cacheServerId: String? = null,
-    // The sticker fill under a photo or initials: `palette-lavender` (people) by default;
-    // raft-ui agents sit on `inactive` until their pixel avatar covers it
-    // ([raftAvatarFallbackFill]).
-    fallbackFill: Color = RaftColor.AccentLavender
+    // The raft-ui step that sizes the fallback's initials and icon: the one nearest [avatarSize],
+    // or the sticker's own when the face fills a [RaftAppAvatarSticker].
+    step: RaftAvatarStep = RaftAvatarStep.nearest(avatarSize),
+    // The sticker fill under a photo or the fallback: the kind's (raft-ui `type`). Only the
+    // design-system specimens ([build.raft.app.components.RaftUiAvatar]) set it.
+    fallbackFill: Color = kind.fill,
 ) {
     // #192 trace scope extension: per-phase attribution for avatar rendering. The
     // avatar is rendered for every channel row in Home + every participant in
     // Thread — that's a lot of recompositions on scroll, so we want to know whether
     // it's the identify / http-fetch / render / fallback-default that's hot.
-    // A retired Gravatar value (`gravatar:<hash>`, a gravatar.com URL) is no avatar: the placeholder.
-    val displayAvatarWireValue = avatarWireValue?.appAvatarWireValueOrNull()
+    // The kind's rule ([raftAvatarFaceWireValue]): a retired Gravatar value is none; an agent
+    // without a face wears the default robot; a person shows only an avatar Raft stores.
+    val displayAvatarWireValue = remember(kind, avatarWireValue) { raftAvatarFaceWireValue(kind, avatarWireValue) }
     val httpAvatarSource = remember(displayAvatarWireValue) {
         displayAvatarWireValue?.takeIf {
             it.startsWith("http://") || it.startsWith("https://")
@@ -8261,7 +8276,7 @@ internal fun RaftAppAvatar(
     }
     // A person's built pixel avatar (`pixel-human:v1:...`, web PersonAvatar → HumanPixelAvatar).
     val humanPixelPicture = remember(displayAvatarWireValue) { raftHumanPixelAvatarPicture(displayAvatarWireValue) }
-    val step = RaftAvatarStep.nearest(avatarSize)
+    val fill = fallbackFill
     when {
         humanPixelPicture != null -> traceMarkdownSection(RaftAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
             RaftAppAvatarFrame(modifier, avatarSize, borderWidth, humanPixelPicture.background) {
@@ -8274,7 +8289,7 @@ internal fun RaftAppAvatar(
                 RaftNativePixelAvatar(pixelSpec)
             }
         }
-        httpAvatarSource != null -> RaftAppAvatarFrame(modifier, avatarSize, borderWidth, fallbackFill) {
+        httpAvatarSource != null -> RaftAppAvatarFrame(modifier, avatarSize, borderWidth, fill) {
             // task #343: an uploaded avatar must not flash the fallback while its cached
             // bytes are still being resolved (cold start reads them from SQLite + native). Keep
             // the neutral background until the load settles; draw the fallback only on a
@@ -8285,15 +8300,51 @@ internal fun RaftAppAvatar(
                 diagnostics = diagnostics,
                 cacheSubject = cacheSubject,
                 cacheServerId = cacheServerId,
-                fallback = { RaftAppAvatarFallback(label, step) }
+                fallback = { RaftAppAvatarFallback(kind, label, step) }
             )
         }
         else -> traceMarkdownSection(RaftAvatarTraceNames.FALLBACK_DEFAULT, displayAvatarWireValue?.length ?: 0) {
-            RaftAppAvatarFrame(modifier, avatarSize, borderWidth, fallbackFill) {
-                RaftAppAvatarFallback(label, step)
+            RaftAppAvatarFrame(modifier, avatarSize, borderWidth, fill) {
+                RaftAppAvatarFallback(kind, label, step)
             }
         }
     }
+}
+
+/**
+ * [RaftAppAvatar] in the design system's sticker ([RaftAvatar] at [size], with its [presence]
+ * light): the face fills the inside of the 1.5dp edge. Use it where a page lays out raft-ui
+ * Avatar steps; the face and its fallback are [RaftAppAvatar]'s, never the page's.
+ */
+@Composable
+internal fun RaftAppAvatarSticker(
+    kind: RaftAvatarKind,
+    avatarWireValue: String?,
+    label: String,
+    size: RaftAvatarSize,
+    modifier: Modifier = Modifier,
+    presence: RaftPresence? = null,
+    cacheSubject: RaftAvatarCacheSubject? = null,
+    cacheServerId: String? = null,
+) {
+    RaftAvatar(
+        type = kind.stickerType,
+        size = size,
+        modifier = modifier,
+        presence = presence,
+        image = {
+            RaftAppAvatar(
+                kind = kind,
+                avatarWireValue = avatarWireValue,
+                label = label,
+                avatarSize = size.edge - RaftAppStroke.Control * 2,
+                borderWidth = 0.dp,
+                cacheSubject = cacheSubject,
+                cacheServerId = cacheServerId,
+                step = RaftAvatarStep.of(size),
+            )
+        },
+    )
 }
 
 /**
@@ -8357,39 +8408,44 @@ private val RaftAvatarStickerShape = RoundedCornerShape(RaftAppRadius.Sticker)
 private val RaftAvatarFaceShape = RoundedCornerShape(2.dp)
 
 /**
- * raft-ui AvatarFallback: a person without a photo shows their initials (Space Grotesk
- * bold, `leading-none`, -0.01em, `sticker-ink`, sized per avatar step: 40 / 22 / 15 / 13 /
- * 11 / 8); with no name to take them from, the placeholder person icon at the step's size.
- * The initials are decoration: the row or header around the avatar names the person, so
- * they are hidden from accessibility services.
+ * [kind]'s face when there is no image or it failed ([raftAvatarFallbackFace]): an agent's default
+ * pixel robot; the placeholder person; or, for a labeled face, raft-ui AvatarFallback's initials
+ * (Space Grotesk bold, `leading-none`, -0.01em, `sticker-ink`, sized per avatar step: 40 / 22 /
+ * 15 / 13 / 11 / 8), the placeholder when the label has no letter. The initials are decoration:
+ * the row or header around the avatar names the face, so they are hidden from accessibility services.
  */
 @Composable
-private fun RaftAppAvatarFallback(label: String, step: RaftAvatarStep) {
-    val initials = remember(label, step) { raftAppAvatarInitials(label, step) }
-    if (initials.isEmpty()) {
-        RaftLucideIcon(
-            RaftLucideIconName.User,
-            modifier = Modifier.size(step.iconSize),
-            color = raftArgbHex(RaftColor.StickerInk)
-        )
-        return
+private fun RaftAppAvatarFallback(kind: RaftAvatarKind, label: String, step: RaftAvatarStep) {
+    val initials = remember(kind, label, step) { if (kind == RaftAvatarKind.Labeled) raftAppAvatarInitials(label, step) else "" }
+    when (raftAvatarFallbackFace(kind, initials)) {
+        RaftAvatarFallbackFace.DefaultPixel -> {
+            val spec = remember { pixelAvatarSpecForWireValue(agentAvatarFallbackWireValue("")) }
+            if (spec != null) RaftNativePixelAvatar(spec)
+        }
+        RaftAvatarFallbackFace.Placeholder ->
+            RaftLucideIcon(
+                RaftLucideIconName.User,
+                modifier = Modifier.size(step.iconSize),
+                color = raftArgbHex(RaftColor.StickerInk)
+            )
+        RaftAvatarFallbackFace.Initials ->
+            Text(
+                text = initials,
+                modifier = Modifier.clearAndSetSemantics {},
+                style =
+                    RaftType.Body
+                        .withRaftFontWeight(FontWeight.Bold)
+                        .copy(
+                            fontSize = step.initialsSize,
+                            lineHeight = step.initialsSize,
+                            letterSpacing = (-0.01).em,
+                            textAlign = TextAlign.Center
+                        ),
+                color = RaftColor.StickerInk,
+                maxLines = 1,
+                softWrap = false
+            )
     }
-    Text(
-        text = initials,
-        modifier = Modifier.clearAndSetSemantics {},
-        style =
-            RaftType.Body
-                .withRaftFontWeight(FontWeight.Bold)
-                .copy(
-                    fontSize = step.initialsSize,
-                    lineHeight = step.initialsSize,
-                    letterSpacing = (-0.01).em,
-                    textAlign = TextAlign.Center
-                ),
-        color = RaftColor.StickerInk,
-        maxLines = 1,
-        softWrap = false
-    )
 }
 
 /**
@@ -8399,10 +8455,6 @@ private fun RaftAppAvatarFallback(label: String, step: RaftAvatarStep) {
 internal fun MemberProfile.raftAvatarName(): String =
     listOf(displayName, handle).map(String::trim).firstOrNull { it.isNotEmpty() && it != id.value }
         ?: avatarLabel
-
-/** raft-ui Avatar `type`: an agent without a face sits on `inactive`, a person on `palette-lavender`. */
-internal fun raftAvatarFallbackFill(kind: MemberKind?): Color =
-    if (kind == MemberKind.Agent) RaftColor.Inactive else RaftColor.AccentLavender
 
 private val RaftAppPresence.homeRowColor: Color
     get() = when (this) { RaftAppPresence.Online -> RaftColor.AccentLime; RaftAppPresence.Offline -> RaftColor.StatusNeutralGray; RaftAppPresence.Unknown -> RaftColor.BrandYellow }

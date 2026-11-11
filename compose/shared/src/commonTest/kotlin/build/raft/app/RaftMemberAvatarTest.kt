@@ -45,7 +45,7 @@ class RaftMemberAvatarTest {
         assertEquals("pixel:robot", resolve(MemberKind.Agent, "plain", resolver))
         assertEquals("pixel:robot", resolve(MemberKind.Agent, "unknown-agent", resolver))
         assertEquals("pixel:robot", resolve(MemberKind.Agent, "no-store", EmptyRaftMemberAvatarResolver))
-        // A person has no default face: the caller's label / placeholder shows.
+        // A person has no default face: RaftAppAvatar of a person shows the placeholder.
         assertNull(resolve(MemberKind.Human, "unknown-human", resolver))
     }
 
