@@ -29,4 +29,5 @@
 - Announcement links to web-only Settings pages open in the browser instead of showing an error
 - Home, Activity or a channel's member list that failed to load after an update loads again on the next sync
 - Opening a task that has no conversation yet covers the whole screen, so the tab bar no longer shows through
+- Message cards whose buttons ask the web app to open links in the side preview now show as cards, and their buttons open links as before, instead of falling back to plain text
 - Smaller fixes: easier-to-tap segmented controls, the Activity filter chip's × no longer clears the filter by mistake, top bar items match field height with a trackpad or mouse, and the optional marker on form labels no longer has an extra space in Chinese and Japanese

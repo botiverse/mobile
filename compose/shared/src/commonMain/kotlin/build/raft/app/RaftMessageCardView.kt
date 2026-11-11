@@ -120,7 +120,11 @@ internal fun RaftMessageCardView(
     }
 }
 
-/** A card Button: a link out of Raft (label, domain, ↗), never an action; with a reason, disabled. */
+/**
+ * A card Button: a link out of Raft (label, domain, ↗), never an action; with a reason, disabled.
+ * Its `open` ([RaftLinkCardV2Element.Button.open]; `beside` is the web's preview panel, #14133) is
+ * ignored: every Button opens through [onOpenUrl], as before.
+ */
 @Composable
 private fun RaftMessageCardLink(button: RaftLinkCardV2Element.Button, onOpenUrl: (String) -> Unit) {
     val url = (button.action as? RaftLinkCardButtonAction.Navigate)?.url ?: return
