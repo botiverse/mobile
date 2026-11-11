@@ -1038,6 +1038,31 @@ class DisplayComponentScreenshotTest {
         }
 
     /**
+     * raft-ui 0.84.0 ListRow `attached`: rows that belong to the setting above them draw no hairline
+     * and, plain, no top padding (a display-only one under a switch, quiet hours' times); an
+     * interactive one keeps the 44dp control height. The row after draws its hairline as usual.
+     */
+    @Test
+    fun listRowAttached() =
+        capture("list_row_attached") {
+            Column(Modifier.width(360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                RaftListRowGroup {
+                    RaftListRow(
+                        "Quiet hours",
+                        variant = RaftListRowVariant.Plain,
+                        description = "No notifications between these times.",
+                        wrapDescription = true,
+                        trailing = { RaftSwitch(checked = true, onCheckedChange = {}) },
+                    )
+                    RaftListRow("22:00 to 08:00", variant = RaftListRowVariant.Plain, divider = true, attached = true)
+                    RaftListRow("Acme", variant = RaftListRowVariant.Plain, divider = true, onClick = {}, trailing = { RaftListRowValue("All messages"); RaftListRowChevron() })
+                    RaftListRow("#ops", variant = RaftListRowVariant.Plain, divider = true, attached = true, onClick = {}, trailing = { RaftListRowValue("Mentions"); RaftListRowChevron() })
+                    RaftListRow("Language", variant = RaftListRowVariant.Plain, divider = true, onClick = {}, trailing = { RaftListRowValue("English"); RaftListRowChevron() })
+                }
+            }
+        }
+
+    /**
      * The quiet unread pixel (web `QuietUnreadDot`, botiverse/slock #11795): a conversation marked
      * unread with nothing counted, on its own and at the end of sidebar rows: a joined channel
      * (unread name), a muted one, a selected one (`sticker-ink`), and a DM.

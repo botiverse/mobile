@@ -172,6 +172,12 @@ fun RaftListRowGroup(
  * - [divider] draws the hairline above the row, from where the text starts (63dp) in the
  *   default variant and from the edge (16dp) in [RaftListRowVariant.Plain]; entry rows
  *   never have one.
+ * - [attached] (raft-ui 0.84.0): the row belongs to the setting in the row above it, in the same
+ *   [RaftListRowGroup] (quiet hours' times under Quiet hours, a font size's preview under it). It
+ *   draws no hairline above it whatever [divider] says (a hairline says "another setting"), and a
+ *   [RaftListRowVariant.Plain] one has no top padding, so only the row above's 12dp bottom inset
+ *   sits between them. An interactive one keeps the control height as its least, so it stays a
+ *   44dp target. The row above keeps its height; the row after draws its hairline as usual.
  *
  * [text]: [RaftListRowText.Member] sets the title and subtitle as the web members page does.
  *
@@ -219,6 +225,7 @@ fun RaftListRow(
     titleTrailing: (@Composable () -> Unit)? = null,
     saveStatus: RaftSaveStatusState? = null,
     titleMaxLines: Int = 1,
+    attached: Boolean = false,
     /**
      * A description with marks of its own (an [appendRaftTextLink] at its end, web
      * `ListRowDescription` children); wins over [description] and wraps like it under [wrapDescription].
@@ -256,7 +263,7 @@ fun RaftListRow(
         Row(
             modifier
                 .fillMaxWidth()
-                .heightIn(min = variant.minHeight)
+                .heightIn(min = raftListRowMinHeight(variant, attached, interactive, RaftTheme.controls.height))
                 .then(if (selected) Modifier.background(colors.infoSoft).semantics { this.selected = true } else Modifier)
                 .raftStateOverlay(overlay, 0.dp)
                 .raftInsetFocusOutline(focused, colors.foreground)
@@ -276,8 +283,8 @@ fun RaftListRow(
                 // The washes above run edge to edge; the content (and the divider, which starts
                 // where the text starts) stays out of the horizontal safe area.
                 .raftSafeAreaHorizontalPadding()
-                .then(if (divider && ruleStart != null) Modifier.topHairline(colors.lineHairline, ruleStart) else Modifier)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .then(if (divider && !attached && ruleStart != null) Modifier.topHairline(colors.lineHairline, ruleStart) else Modifier)
+                .padding(start = 16.dp, end = 16.dp, top = raftListRowTopPadding(variant, attached), bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = align,
         ) {
@@ -363,6 +370,14 @@ fun RaftListRow(
         }
     }
 }
+
+/** The least height of a [RaftListRow]: an attached interactive plain row stays a [controlHeight] target. */
+internal fun raftListRowMinHeight(variant: RaftListRowVariant, attached: Boolean, interactive: Boolean, controlHeight: Dp): Dp =
+    if (attached && interactive && variant == RaftListRowVariant.Plain) maxOf(variant.minHeight, controlHeight) else variant.minHeight
+
+/** The padding above a [RaftListRow]'s content: none for an attached plain row (it follows the row it belongs to). */
+internal fun raftListRowTopPadding(variant: RaftListRowVariant, attached: Boolean): Dp =
+    if (attached && variant == RaftListRowVariant.Plain) 0.dp else 12.dp
 
 /**
  * Machine-written facts in Space Mono 12 tabular, ink-3: the time, a gray count. Kept whole
