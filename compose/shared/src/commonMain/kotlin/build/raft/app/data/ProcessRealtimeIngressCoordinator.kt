@@ -69,7 +69,8 @@ internal class ProcessRealtimeIngressCoordinator(
                 authority = authority,
                 environmentId = environment.apiBaseUrl,
                 socketUrl = environment.socketBaseUrl,
-                currentServerId = selectedServerId,
+                currentServerId =
+                    raftProcessRealtimeServerId(selectedServerId, authority?.grantsByServer?.keys.orEmpty()),
             )
         nativeHost.reconcile(authority, desired, environment.socketBaseUrl)
     }
