@@ -168,6 +168,13 @@ class SharedComputersStore internal constructor(
     private val generations = mutableMapOf<String, Long>()
     private val serverRecency = mutableListOf<String>()
 
+    /**
+     * Servers whose machine list answered "no permission" (a guest's non-auth 403) for this owner.
+     * An Ensure (a card naming a computer, a picker opening) never asks again for them while the
+     * owner stays; only a forced refresh (the person's own pull) does. Cleared with the owner.
+     */
+    private val deniedServers = mutableSetOf<String>()
+
     // Memory-only machine pages (workspaces / agents sections), LRU, cleared with the owner.
     private val detailCache = linkedMapOf<Pair<String, String>, SettingsComputerDetailSnapshot>()
     private var detailCacheOwner: SharedComputersOwner? = null
@@ -291,6 +298,10 @@ class SharedComputersStore internal constructor(
         val deferred = mutex.withLock {
             installOwnerLocked(owner)
             val current = _state.value.selectComputerServerSlice(normalizedServerId)
+            if (!force && normalizedServerId in deniedServers) {
+                logger("shared_computers_skip serverId=$normalizedServerId reason=no_permission_remembered")
+                return@withLock null
+            }
             if (!force && current.hasSnapshot && !current.seededFromDurable) {
                 logger("shared_computers_skip serverId=$normalizedServerId reason=snapshot_available")
                 logger(
@@ -380,6 +391,11 @@ class SharedComputersStore internal constructor(
             }
             loads.remove(serverId)
             val current = _state.value.selectComputerServerSlice(serverId)
+            if (result is DataResult.NoPermission && result.isConversationAccessLost()) {
+                deniedServers += serverId
+            } else if (result is DataResult.Content || result is DataResult.Empty) {
+                deniedServers -= serverId
+            }
             if (result.isConversationAccessLost()) {
                 // Tenny rule 2: the account lost the server's machine list (non-auth 403 / 404).
                 // Nothing cached may paint again; the page shows the terminal state.
@@ -653,6 +669,7 @@ class SharedComputersStore internal constructor(
     private fun installOwnerLocked(owner: SharedComputersOwner) {
         if (currentOwner == owner) return
         currentOwner = owner
+        deniedServers.clear()
         loads.clear()
         generations.clear()
         serverRecency.clear()
@@ -661,6 +678,7 @@ class SharedComputersStore internal constructor(
 
     private fun clearOwnerLocked() {
         currentOwner = null
+        deniedServers.clear()
         loads.clear()
         generations.clear()
         serverRecency.clear()

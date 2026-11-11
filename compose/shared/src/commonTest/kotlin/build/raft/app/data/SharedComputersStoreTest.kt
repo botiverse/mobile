@@ -46,6 +46,47 @@ class SharedComputersStoreTest {
         )
     }
 
+    // Review of #4591: a card naming a computer asks on every Home rebuild; a guest's 403 must not
+    // send the request again for that server while the owner stays (a forced refresh still does).
+    @Test
+    fun noPermissionIsRememberedPerServerUntilAForcedRefresh() = runBlocking {
+        val api = RecordingComputersApi()
+        api.respond = { HomeNetworkResponse(code = 403, bodyText = """{"error":"Forbidden"}""") }
+        val store = store(api)
+
+        store.ensureComputerPickerForServer("server-1")
+        assertEquals(SharedComputersLoadStatus.Error, store.state.value.selectComputerPickerSlice("server-1").status)
+        repeat(3) { store.ensureComputerPickerForServer("server-1", priority = DataRequestPriority.Background) }
+        assertEquals(1, api.calls.count { it == "GET servers/server-1/machines" }, "no retry after no permission")
+
+        // Another server is asked on its own.
+        api.respond = { HomeNetworkResponse(code = 200, bodyText = machinesBody) }
+        store.ensureComputerPickerForServer("server-2")
+        assertEquals(1, api.calls.count { it == "GET servers/server-2/machines" })
+
+        // The person's own refresh asks again; once allowed, the list loads and the memo is gone.
+        store.ensureComputerPickerForServer("server-1", force = true)
+        assertEquals(2, api.calls.count { it == "GET servers/server-1/machines" })
+        assertEquals(SharedComputersLoadStatus.Loaded, store.state.value.selectComputerPickerSlice("server-1").status)
+    }
+
+    @Test
+    fun concurrentEnsuresShareOneRequest() = runBlocking {
+        val api = ControlledComputersApi()
+        val pending = api.enqueuePending()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = controlledStore(api, scope)
+
+        val first = scope.async(start = CoroutineStart.UNDISPATCHED) { store.ensureComputerPickerForServer("server-1", priority = DataRequestPriority.Background) }
+        val second = scope.async(start = CoroutineStart.UNDISPATCHED) { store.ensureComputerPickerForServer("server-1", priority = DataRequestPriority.Background) }
+        pending.complete(HomeNetworkResponse(code = 403, bodyText = """{"error":"Forbidden"}"""))
+        first.await()
+        second.await()
+        store.ensureComputerPickerForServer("server-1", priority = DataRequestPriority.Background)
+
+        assertEquals(listOf("server-1"), api.serverIds, "one request in flight, none after the 403")
+    }
+
     @Test
     fun failedComputerPickerLoadRetries() = runBlocking {
         val api = RecordingComputersApi()

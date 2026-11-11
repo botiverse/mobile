@@ -242,7 +242,10 @@ internal fun ThreadActionCardSpecView(
     val names = LocalThreadActionCardNames.current
     // A card names a computer only by id (botiverse/slock #14234): ask for this server's computers to name it.
     val namesComputer = remember(spec) { spec.referencesComputer() }
-    LaunchedEffect(names, namesComputer) { if (namesComputer) names.ensureComputers() }
+    // Keyed by the card and its server, not the lookup: the lookup is rebuilt on every Home content
+    // change, and the store answers repeats (single-flight per server, a "no permission" kept).
+    val currentNames by rememberUpdatedState(names)
+    LaunchedEffect(namesComputer, viewerServerId) { if (namesComputer) currentNames.ensureComputers() }
     val displayLocale = rememberActionCardDisplayLocale()
     val blockedReason =
         when {
