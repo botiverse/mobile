@@ -1298,7 +1298,7 @@
     <string name="member_report_issue_runtime_transcript">執行環境工作階段記錄</string>
     <string name="member_report_issue_runtime_transcript_unavailable">Agent 指派到電腦後，才能上傳執行環境記錄。</string>
     <string name="member_report_issue_disclosure">此回報可能包含%1$s。敏感資料會盡量遮蔽，但無法保證完全遮蔽。</string>
-    <string name="member_report_issue_consent">我了解 Botiverse 工作區中的所有成員（包括 Agent）都能讀取這份回報及所選的診斷資料，並同意提交。</string>
+    <string name="member_report_issue_consent">我同意將這份回報傳送給 Raft 團隊。</string>
     <string name="member_report_issue_submit">回報</string>
     <string name="member_report_issue_submitting">提交中…</string>
     <string name="member_report_issue_failed">無法提交回報：%1$s</string>
@@ -1311,11 +1311,9 @@
     <string name="member_report_issue_copy_reference">複製回報參考資訊</string>
     <string name="member_report_issue_reference_copied">已複製</string>
     <string name="member_report_issue_disclosure_strong">提示詞紀錄、檔案路徑和指令輸出</string>
-    <string name="member_report_issue_default_included">以上項目預設會包含——不想傳送的請取消勾選。</string>
-    <string name="member_report_issue_structured_summary">每份回報都會附上的系統摘要（版本、失敗次數、追蹤欄位）屬於結構化資料，不含任何自由文字。</string>
-    <string name="member_report_issue_runtime_transcript_hint">系統會向 Agent 所在的電腦要求工作階段記錄，但該電腦可能沒有記錄。</string>
+    <string name="member_report_issue_runtime_transcript_hint">從 Agent 所在的電腦取得，可能取不到。</string>
     <string name="member_report_issue_machine_log_tail">電腦 runner 記錄末段（僅限你自己的電腦）</string>
-    <string name="member_report_issue_machine_log_tail_disclosure">這台電腦 runner 記錄的最後幾行，屬於自由文字，可能包含同一台電腦上其他 Agent 的記錄。內容有大小上限，所有能讀取這份回報的人（包括 Agent）都看得到。機密遮蔽只涵蓋已知格式的憑證——這是基本防護，不是保證。需先勾選上方的執行環境工作階段記錄。</string>
+    <string name="member_report_issue_machine_log_tail_disclosure">記錄檔最後幾行，可能含這台電腦上其他 Agent 的內容。</string>
     <string name="member_report_issue_title_for_agent">%1$s 的問題回報</string>
     <string name="member_report_issue_ticket_filed">我們已為這份回報建立意見回饋單，Raft 團隊的回覆會顯示在那裡。</string>
     <string name="member_report_issue_ticket_failed">回報已上傳，但無法為其建立意見回饋單。請將下方的參考資訊提供給 Raft 團隊。</string>

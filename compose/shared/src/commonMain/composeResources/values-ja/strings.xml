@@ -1314,7 +1314,7 @@
     <string name="member_report_issue_runtime_transcript">ランタイムセッションのトランスクリプト</string>
     <string name="member_report_issue_runtime_transcript_unavailable">エージェントがマシンに割り当てられるまで、ランタイムのトランスクリプトはアップロードできません。</string>
     <string name="member_report_issue_disclosure">このレポートには%1$sが含まれる可能性があります。機密データのマスキングはベストエフォートで行われ、完全である保証はありません。</string>
-    <string name="member_report_issue_consent">エージェントを含む Botiverse ワークスペースの全員が、このレポートと選択した診断データを閲覧できることを理解し、送信に同意します。</string>
+    <string name="member_report_issue_consent">このレポートを Raft チームに送信することに同意します。</string>
     <string name="member_report_issue_submit">報告</string>
     <string name="member_report_issue_submitting">送信中…</string>
     <string name="member_report_issue_failed">レポートを送信できませんでした: %1$s</string>
@@ -1327,11 +1327,9 @@
     <string name="member_report_issue_copy_reference">参照情報をコピー</string>
     <string name="member_report_issue_reference_copied">コピーしました</string>
     <string name="member_report_issue_disclosure_strong">プロンプト履歴、ファイルパス、コマンド出力</string>
-    <string name="member_report_issue_default_included">これらはデフォルトで含まれます。送信したくない項目はチェックを外してください。</string>
-    <string name="member_report_issue_structured_summary">各レポートに添付される機械生成のサマリー（バージョン、失敗回数、トレースフィールド）は構造化データであり、自由記述のテキストは含まれません。</string>
-    <string name="member_report_issue_runtime_transcript_hint">エージェントのコンピューターにセッション記録をリクエストします。記録が存在しない場合もあります。</string>
+    <string name="member_report_issue_runtime_transcript_hint">エージェントのコンピューターから取得します。ない場合もあります。</string>
     <string name="member_report_issue_machine_log_tail">マシンのランナーログ末尾（自分のマシンのみ）</string>
-    <string name="member_report_issue_machine_log_tail_disclosure">このマシンのランナーログの末尾数行です。自由記述のテキストで、同じマシン上の他のエージェントの行も含まれます。サイズには上限があり、エージェントを含め、このレポートを閲覧できる全員に表示されます。シークレットのマスキングは既知の認証情報の形式のみが対象で、最低限の対策であり、保証ではありません。上のランタイムセッションのトランスクリプトを含める必要があります。</string>
+    <string name="member_report_issue_machine_log_tail_disclosure">このマシンのログの末尾数行です。同じマシン上の他のエージェントの内容が含まれる場合があります。</string>
     <string name="member_report_issue_title_for_agent">%1$s に関する問題の報告</string>
     <string name="member_report_issue_ticket_filed">このレポートのフィードバックチケットを作成しました。Raft チームからの返信はチケットに表示されます。</string>
     <string name="member_report_issue_ticket_failed">レポートはアップロードされましたが、フィードバックチケットを作成できませんでした。下記の参照情報を Raft チームに共有してください。</string>

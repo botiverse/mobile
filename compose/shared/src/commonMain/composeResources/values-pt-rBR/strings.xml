@@ -1298,7 +1298,7 @@
     <string name="member_report_issue_runtime_transcript">Transcrição da sessão do runtime</string>
     <string name="member_report_issue_runtime_transcript_unavailable">O envio da transcrição do runtime fica indisponível até que o agente seja atribuído a um computador.</string>
     <string name="member_report_issue_disclosure">Este relatório pode conter %1$s. A ocultação de dados sensíveis é feita da melhor forma possível, mas não é garantida.</string>
-    <string name="member_report_issue_consent">Entendo que todos no espaço de trabalho Botiverse, incluindo agentes, podem ler este relatório e os dados de diagnóstico selecionados, e autorizo o envio.</string>
+    <string name="member_report_issue_consent">Concordo em enviar este relatório para a equipe do Raft.</string>
     <string name="member_report_issue_submit">Relatar</string>
     <string name="member_report_issue_submitting">Enviando…</string>
     <string name="member_report_issue_failed">Não foi possível enviar o relatório: %1$s</string>
@@ -1311,11 +1311,9 @@
     <string name="member_report_issue_copy_reference">Copiar referência do relatório</string>
     <string name="member_report_issue_reference_copied">Copiado</string>
     <string name="member_report_issue_disclosure_strong">histórico de prompts, caminhos de arquivos e saída de comandos</string>
-    <string name="member_report_issue_default_included">Estes itens são incluídos por padrão — desmarque o que você não quiser enviar.</string>
-    <string name="member_report_issue_structured_summary">O resumo técnico enviado com todo relatório (versões, contagens de falhas, campos de trace) contém apenas dados estruturados, sem texto livre.</string>
-    <string name="member_report_issue_runtime_transcript_hint">O registro da sessão será solicitado ao computador do agente; talvez ele não tenha um.</string>
+    <string name="member_report_issue_runtime_transcript_hint">Vem do computador do agente; ele pode não ter uma.</string>
     <string name="member_report_issue_machine_log_tail">Final do log do runner do computador (somente do seu próprio computador)</string>
-    <string name="member_report_issue_machine_log_tail_disclosure">Últimas linhas do log do runner deste computador — texto livre, incluindo linhas de outros agentes que rodam nele. Tamanho limitado; visível para todos que podem ler este relatório, incluindo agentes. O mascaramento de segredos cobre apenas formatos conhecidos de credenciais — é uma proteção mínima, não uma garantia. Requer a transcrição do runtime acima.</string>
+    <string name="member_report_issue_machine_log_tail_disclosure">As últimas linhas do log deste computador. Podem incluir linhas de outros agentes que rodam nele.</string>
     <string name="member_report_issue_title_for_agent">Relatório de problema sobre %1$s</string>
     <string name="member_report_issue_ticket_filed">Abrimos um chamado de feedback para este relatório. As respostas da equipe do Raft aparecerão lá.</string>
     <string name="member_report_issue_ticket_failed">O relatório foi enviado, mas não foi possível abrir um chamado de feedback para ele. Compartilhe a referência abaixo com a equipe do Raft.</string>

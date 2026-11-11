@@ -1298,7 +1298,7 @@
     <string name="member_report_issue_runtime_transcript">Запись сеанса среды выполнения</string>
     <string name="member_report_issue_runtime_transcript_unavailable">Запись сеанса среды выполнения можно будет загрузить, когда агенту будет назначен компьютер.</string>
     <string name="member_report_issue_disclosure">Этот отчёт может содержать %1$s. Конфиденциальные данные скрываются по мере возможности, но без гарантий.</string>
-    <string name="member_report_issue_consent">Я понимаю, что все в рабочем пространстве Botiverse, включая агентов, смогут прочитать этот отчёт и выбранные диагностические данные, и даю согласие на его отправку.</string>
+    <string name="member_report_issue_consent">Я даю согласие на отправку этого отчёта команде Raft.</string>
     <string name="member_report_issue_submit">Отправить</string>
     <string name="member_report_issue_submitting">Отправка…</string>
     <string name="member_report_issue_failed">Не удалось отправить отчёт: %1$s</string>
@@ -1311,11 +1311,9 @@
     <string name="member_report_issue_copy_reference">Копировать сведения об отчёте</string>
     <string name="member_report_issue_reference_copied">Скопировано</string>
     <string name="member_report_issue_disclosure_strong">историю промптов, пути к файлам и вывод команд</string>
-    <string name="member_report_issue_default_included">Эти данные включены по умолчанию — снимите отметку с того, что не хотите отправлять.</string>
-    <string name="member_report_issue_structured_summary">Технические сведения, которые отправляются с каждым отчётом (версии, число сбоев, поля трассировки), — это структурированные данные без произвольного текста.</string>
-    <string name="member_report_issue_runtime_transcript_hint">Компьютеру агента будет отправлен запрос на запись сеанса; её может не оказаться.</string>
+    <string name="member_report_issue_runtime_transcript_hint">Берётся с компьютера агента; там её может не оказаться.</string>
     <string name="member_report_issue_machine_log_tail">Последние строки журнала раннера (только с вашего компьютера)</string>
-    <string name="member_report_issue_machine_log_tail_disclosure">Последние строки журнала раннера на этом компьютере — произвольный текст, в том числе строки других агентов на нём. Объём ограничен; их увидят все, кто может читать этот отчёт, включая агентов. Маскирование секретов распознаёт только известные форматы учётных данных — это минимальная защита, а не гарантия. Требуется запись сеанса среды выполнения (см. выше).</string>
+    <string name="member_report_issue_machine_log_tail_disclosure">Последние строки журнала этого компьютера. В них могут быть строки других агентов на нём.</string>
     <string name="member_report_issue_title_for_agent">Сообщение о проблеме с агентом %1$s</string>
     <string name="member_report_issue_ticket_filed">Мы создали обращение по этому отчёту. Ответы команды Raft появятся там.</string>
     <string name="member_report_issue_ticket_failed">Отчёт загружен, но создать по нему обращение не удалось. Передайте команде Raft сведения об отчёте ниже.</string>
