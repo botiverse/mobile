@@ -6,6 +6,7 @@ import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.AttachmentUploadCapabilitiesCache
 import build.raft.app.data.DataResult
 import build.raft.app.data.rwRetryAfterMillis
+import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.RaftStaleReadRecovery
 import build.raft.app.data.RaftJsonParseDispatcher
 import build.raft.app.data.isOlderMessageCardRevision
@@ -217,6 +218,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -3708,6 +3710,24 @@ internal class SharedThreadDataSource(
                 )
             }
 
+        // Agent Lounge v0: a Lounge is in no Home list and `GET /channels` leaves it out, so the
+        // directory can never answer for a thread in one. When this client knows the parent is a
+        // Lounge, decide as the web does (useThreadParentChannel `parentJoined`): any member may
+        // reply unless it is archived or the open answer said `canPost: false`; no Join step.
+        agentLoungeReplyParentAccessCandidate(serverId, parentId, parentKind)?.let { candidate ->
+            val ownerCurrent = replyAccessResolutionOwnerStillCurrent(resolutionScope)
+            diagnosticsLogger(
+                "thread_initial_parent_access source=agent_lounge serverId=${serverId.value} " +
+                    "parentId=$parentId canSend=${candidate.permissions.canSend} ownerCurrent=$ownerCurrent"
+            )
+            return ThreadHomeContextResolution(
+                payload = payload,
+                accessCandidate = candidate,
+                ownerCurrent = ownerCurrent,
+                requiresBackgroundHomeContextHydration = true,
+            )
+        }
+
         val repository = channelRepository
         val conversations: List<HomeConversationRow> =
             if (repository == null) {
@@ -3758,6 +3778,89 @@ internal class SharedThreadDataSource(
             ownerCurrent = ownerCurrent,
             requiresBackgroundHomeContextHydration = true,
         )
+    }
+
+    private fun agentLoungeReplyParentAccessCandidate(
+        serverId: ServerId,
+        parentId: String,
+        parentKind: ConversationKind,
+    ): ConversationAccessCandidate? {
+        if (parentKind != ConversationKind.Channel) return null
+        val lounge = RaftAgentLounges.lounge(serverId.value, parentId) ?: return null
+        return agentLoungeParentAccessCandidate(parentId, postable = lounge.postable)
+    }
+
+    /**
+     * Bounded fallback for a reply thread whose parent write authority is still undetermined
+     * after [SharedThreadStore]'s fallback window: read the parent conversation itself
+     * (`GET /channels/:id`, web `ensureChannel`) instead of waiting on a directory row that may
+     * never come (a Lounge is in no list). A Lounge parent is decided by the Lounge rule (any
+     * member may post unless archived / `canPost: false`); any other parent keeps the ordinary
+     * joined + canSend check.
+     */
+    suspend fun replyParentAccessFallback(payload: RaftThreadScreenPayload): ReplyParentAccessFallbackResult {
+        val (parentId, parentKind) =
+            payload.replyParentAccessIdentityOrNull()
+                ?: return ReplyParentAccessFallbackResult.Unavailable("parent_identity_missing")
+        val repository =
+            conversationRepository
+                ?: return ReplyParentAccessFallbackResult.Unavailable("conversation_repository_missing")
+        val resolutionScope =
+            readReplyResolutionScope()
+                ?: return ReplyParentAccessFallbackResult.Unavailable("resolution_scope_missing")
+        val result =
+            try {
+                repository.getConversationDetail(ChannelId(parentId), DataRequestPriority.Foreground)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                return ReplyParentAccessFallbackResult.Failed(
+                    "exception_${throwable::class.simpleName.orEmpty()}"
+                )
+            }
+        if (!replyAccessResolutionOwnerStillCurrent(resolutionScope)) {
+            return ReplyParentAccessFallbackResult.Unavailable("owner_changed")
+        }
+        return when (result) {
+            is DataResult.Content -> {
+                val detail = result.data
+                val detailId = detail.channelId?.value ?: detail.threadId.value
+                if (detailId != parentId) {
+                    return ReplyParentAccessFallbackResult.Failed("parent_id_mismatch")
+                }
+                if (!detail.loungeAgentId.isNullOrBlank()) {
+                    if (parentKind != ConversationKind.Channel) {
+                        return ReplyParentAccessFallbackResult.Failed("parent_kind_mismatch")
+                    }
+                    val serverId = resolutionScope.provenance.serverId
+                    val known = RaftAgentLounges.lounge(serverId, parentId)
+                    val postable = !detail.archived && known?.canPost != false
+                    ReplyParentAccessFallbackResult.Resolved(
+                        candidate = agentLoungeParentAccessCandidate(parentId, postable = postable),
+                        lounge = true,
+                    )
+                } else {
+                    if (detail.kind != parentKind) {
+                        return ReplyParentAccessFallbackResult.Failed("parent_kind_mismatch")
+                    }
+                    ReplyParentAccessFallbackResult.Resolved(
+                        candidate =
+                            ConversationAccessCandidate(
+                                ids = setOf(parentId),
+                                conversationKind = parentKind,
+                                surfaceKind = "channel",
+                                joined = detail.joined && !detail.archived,
+                                archived = detail.archived,
+                                permissions = detail.permissions,
+                            ),
+                        lounge = false,
+                    )
+                }
+            }
+            is DataResult.NoPermission -> ReplyParentAccessFallbackResult.Failed("no_permission")
+            is DataResult.Empty -> ReplyParentAccessFallbackResult.Failed("empty_${result.reason.name}")
+            is DataResult.Error -> ReplyParentAccessFallbackResult.Failed(result.error.code)
+        }
     }
 
     private suspend fun replyAccessResolutionOwnerStillCurrent(
@@ -7644,6 +7747,12 @@ private const val SharedThreadFirstFrameDelayMillis = 16L
  */
 private const val ThreadVisibleReadCoalesceWindowMillis = 2_000L
 private const val ThreadInitialAccessLookupTimeoutMillis = 1_000L
+/**
+ * A reply thread whose parent write authority is still Resolving / Unknown this long after the
+ * initial access pass reads the parent conversation itself (`GET /channels/:id`) instead of
+ * waiting for a directory row that may never arrive (an agent's Lounge is in no list).
+ */
+private const val ReplyParentAuthorityFallbackDelayMillis = 4_000L
 /** Upper bound of a task conversation's late initial-access lookup (after the 1 s first pass). */
 private const val ThreadInitialAccessLateLookupTimeoutMillis = 15_000L
 
@@ -7785,6 +7894,44 @@ internal enum class ReplyParentAuthorityStatus {
     ParentDeleted,
 
 }
+
+/**
+ * Agent Lounge v0: the reply-parent write authority of a Lounge (web useThreadParentChannel:
+ * `parentJoined = parentIsLounge && !parentLoungeReadOnly`; server `canUserPostToChannel`: any
+ * non-guest member may post, the first post joins). A Lounge has no Join step, so "joined" is
+ * whether you may post here: not archived and not refused by `POST /agents/:id/lounge`.
+ */
+internal fun agentLoungeParentAccessCandidate(parentId: String, postable: Boolean): ConversationAccessCandidate =
+    ConversationAccessCandidate(
+        ids = setOf(parentId),
+        conversationKind = ConversationKind.Channel,
+        surfaceKind = "channel",
+        joined = postable,
+        archived = false,
+        permissions =
+            ConversationPermissions(
+                canRead = true,
+                canSend = postable,
+                canAttach = postable,
+                canCreateTask = postable,
+            ),
+    )
+
+/** What [SharedThreadDataSource.replyParentAccessFallback] learned from reading the parent itself. */
+internal sealed interface ReplyParentAccessFallbackResult {
+    /** The parent answered: [candidate] is its write authority; [lounge] when it is an agent's Lounge. */
+    data class Resolved(val candidate: ConversationAccessCandidate, val lounge: Boolean) : ReplyParentAccessFallbackResult
+
+    /** The read failed or did not match the parent; [reason] is the diagnostics reason code. */
+    data class Failed(val reason: String) : ReplyParentAccessFallbackResult
+
+    /** Nothing could be asked (no identity / repository / owner); [reason] is the diagnostics reason code. */
+    data class Unavailable(val reason: String) : ReplyParentAccessFallbackResult
+}
+
+/** Resolving / Unknown: nothing has decided the parent's write authority yet. */
+internal fun ReplyParentAuthorityStatus.isUndeterminedReplyParentAuthority(): Boolean =
+    this == ReplyParentAuthorityStatus.Resolving || this == ReplyParentAuthorityStatus.Unknown
 
 internal enum class ChannelProfileUpdateStatus {
     Idle,
@@ -8044,6 +8191,12 @@ internal class SharedThreadStore(
     private val initialAccessLookupDeadline: suspend () -> Unit = {
         delay(ThreadInitialAccessLookupTimeoutMillis)
     },
+    // How long a reply thread's parent write authority may stay undetermined (Resolving /
+    // Unknown) before the store reads the parent itself. Injectable for the same reason as
+    // [initialAccessLookupDeadline]; invoked once per route open.
+    private val replyParentAuthorityFallbackDelay: suspend () -> Unit = {
+        delay(ReplyParentAuthorityFallbackDelayMillis)
+    },
     // task #41: the clock of the visible-read coalesce window. Its deferred retry is a `delay`, so a
     // virtual-time test hands in the scheduler's time source to keep the window and the retry on
     // one clock; production keeps the monotonic wall clock.
@@ -8161,6 +8314,11 @@ internal class SharedThreadStore(
     private var secondaryTimelineRefreshJob: Job? = null
     private var focusedOriginHydrationJob: Job? = null
     private var initialAccessResolutionJob: Job? = null
+    // The bounded parent-authority fallback of the current route (see [launchReplyParentAuthorityFallback]).
+    private var replyParentAuthorityFallbackJob: Job? = null
+    // A positive parent-directory hint that arrived before the access passes it needs had run; it
+    // is applied once they have (see [applyParentDirectoryHint]) instead of being lost.
+    private var deferredParentDirectoryHintJob: Job? = null
     private var cappedRefreshFollowUpJob: Job? = null
     private var homeContextHydrationJob: Job? = null
     private var taskConversationTitleJob: Job? = null
@@ -8270,6 +8428,10 @@ internal class SharedThreadStore(
                 if (intent is SharedThreadIntent.Start) {
                     initialAccessResolutionJob?.cancel()
                     initialAccessResolutionJob = null
+                    replyParentAuthorityFallbackJob?.cancel()
+                    replyParentAuthorityFallbackJob = null
+                    deferredParentDirectoryHintJob?.cancel()
+                    deferredParentDirectoryHintJob = null
                     cappedRefreshFollowUpJob?.cancel()
                     cappedRefreshFollowUpJob = null
                 }
@@ -9830,6 +9992,8 @@ internal class SharedThreadStore(
         staleToken: MviStaleToken
     ) {
         initialAccessResolutionJob?.cancel()
+        replyParentAuthorityFallbackJob?.cancel()
+        replyParentAuthorityFallbackJob = null
         initialAccessResolutionJob =
             scope.launch {
                 suspend fun applyResolution(
@@ -9995,6 +10159,9 @@ internal class SharedThreadStore(
                     }
                 if (!routePayload.isTaskConversationSurface()) {
                     applyResolution(raceInitialAccessLookupDeadline { lookup() }, late = false)
+                    if (routePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
+                        launchReplyParentAuthorityFallback(routePayload, staleToken)
+                    }
                     return@launch
                 }
                 // A task conversation's lookup waits on a `GET /channels/:id` ref fetch. The deadline
@@ -10157,7 +10324,10 @@ internal class SharedThreadStore(
         ) {
             return
         }
-        if (!state.canonicalAccessResolved || !state.initialHomeAccessLookupComplete) return
+        if (!state.canonicalAccessResolved || !state.initialHomeAccessLookupComplete) {
+            deferParentDirectoryHint(hint)
+            return
+        }
         val parentChannelId = payload.parentChannelId?.takeIf { it.isNotBlank() } ?: return
         if (parentChannelId != hint.parentChannelId) return
         val parentMessageId =
@@ -10265,6 +10435,152 @@ internal class SharedThreadStore(
                 )
             )
         }
+    }
+
+    /**
+     * A positive parent row that arrived before the canonical reply load and the initial access
+     * pass had both run used to be dropped, and the page only sends it again when the directory or
+     * the known Lounges change - which for a Lounge (in no list) may be never, leaving the thread
+     * on "checking permissions" for good. Keep the latest such hint and apply it once both passes
+     * ran, only while they left the parent authority undetermined (a decided authority stays
+     * theirs). An absent-row hint is not kept: a parent deletion is only read from a hint that
+     * arrives after the passes, as before.
+     */
+    private fun deferParentDirectoryHint(hint: SharedThreadIntent.ApplyParentDirectoryHint) {
+        if (!hint.present) return
+        val payload = _state.value.payload
+        if (payload.parentChannelId != hint.parentChannelId) return
+        val parentMessageId =
+            payload.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: payload.originParentMessageId?.takeIf { it.isNotBlank() }
+        if (parentMessageId != hint.parentMessageId) return
+        val sourceThreadId = payload.sourceThreadId
+        diagnosticsLogger?.invoke(
+            "thread_parent_authority_hint_deferred threadId=${sourceThreadId.orEmpty()} " +
+                "joined=${hint.joined} canSend=${hint.canSend}"
+        )
+        deferredParentDirectoryHintJob?.cancel()
+        deferredParentDirectoryHintJob =
+            scope.launch {
+                val ready =
+                    _state.first { state ->
+                        state.payload.sourceThreadId != sourceThreadId ||
+                            state.payload.parentChannelId != hint.parentChannelId ||
+                            state.accessResolution == ThreadAccessResolution.NoPermission ||
+                            state.accessResolution == ThreadAccessResolution.Error ||
+                            (state.canonicalAccessResolved && state.initialHomeAccessLookupComplete)
+                    }
+                if (ready.payload.sourceThreadId != sourceThreadId) return@launch
+                if (!ready.replyParentAuthority.isUndeterminedReplyParentAuthority()) return@launch
+                diagnosticsLogger?.invoke(
+                    "thread_parent_authority_hint_replayed threadId=${sourceThreadId.orEmpty()} " +
+                        "authority=${ready.replyParentAuthority}"
+                )
+                applyParentDirectoryHint(hint)
+            }
+    }
+
+    /**
+     * Bounded fallback (fb artin / tygg, 1.23): a reply thread whose parent write authority is
+     * still undetermined [replyParentAuthorityFallbackDelay] after the initial access pass reads
+     * the parent itself instead of waiting forever for a directory row. Runs once per access
+     * pass; a decided authority, a terminal access answer or a route change ends it. The answer
+     * goes through [applyParentDirectoryHint], so it obeys the same route and terminal fences
+     * (and waits for the canonical reply load if that has not landed yet).
+     */
+    private fun launchReplyParentAuthorityFallback(
+        routePayload: RaftThreadScreenPayload,
+        staleToken: MviStaleToken,
+    ) {
+        replyParentAuthorityFallbackJob?.cancel()
+        replyParentAuthorityFallbackJob =
+            scope.launch {
+                replyParentAuthorityFallbackDelay()
+                val threadId = routePayload.sourceThreadId.orEmpty()
+                val waited = _state.value
+                if (
+                    !staleTokenStillCurrent(staleToken, "thread_parent_authority_fallback", "start", routePayload) ||
+                    !routeStillCurrent(routePayload, "thread_parent_authority_fallback", "start", waited.payload)
+                ) {
+                    return@launch
+                }
+                // ParentDeleted too: a Lounge this client did not know yet is absent from every
+                // directory snapshot, which reads as "deleted"; only a Lounge answer may lift it.
+                val waitedParentDeleted = waited.replyParentAuthority == ReplyParentAuthorityStatus.ParentDeleted
+                if (!waited.replyParentAuthority.isUndeterminedReplyParentAuthority() && !waitedParentDeleted) {
+                    return@launch
+                }
+                if (
+                    waited.accessResolution == ThreadAccessResolution.NoPermission ||
+                    waited.accessResolution == ThreadAccessResolution.Error ||
+                    waited.conversationAccessLost
+                ) {
+                    return@launch
+                }
+                val reason =
+                    when (waited.replyParentAuthority) {
+                        ReplyParentAuthorityStatus.Unknown -> "authority_unknown_timeout"
+                        ReplyParentAuthorityStatus.ParentDeleted -> "authority_parent_deleted_timeout"
+                        else -> "authority_resolving_timeout"
+                    }
+                diagnosticsLogger?.invoke(
+                    "thread_parent_authority_fallback_start threadId=$threadId reason=$reason " +
+                        "canonical=${waited.canonicalAccessResolved} lookupComplete=${waited.initialHomeAccessLookupComplete}"
+                )
+                val result =
+                    try {
+                        dataSource.replyParentAccessFallback(waited.payload)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (throwable: Throwable) {
+                        ReplyParentAccessFallbackResult.Failed(
+                            "exception_${throwable::class.simpleName.orEmpty()}"
+                        )
+                    }
+                when (result) {
+                    is ReplyParentAccessFallbackResult.Resolved -> {
+                        val candidate = result.candidate
+                        if (waitedParentDeleted && !result.lounge) {
+                            // An ordinary parent keeps what its directory said.
+                            diagnosticsLogger?.invoke(
+                                "thread_parent_authority_fallback_result threadId=$threadId reason=$reason " +
+                                    "result=ignored_not_lounge"
+                            )
+                            return@launch
+                        }
+                        diagnosticsLogger?.invoke(
+                            "thread_parent_authority_fallback_result threadId=$threadId reason=$reason " +
+                                "result=resolved lounge=${result.lounge} joined=${candidate.joined} " +
+                                "canSend=${candidate.permissions.canSend}"
+                        )
+                        val parentChannelId = waited.payload.parentChannelId?.takeIf { it.isNotBlank() } ?: return@launch
+                        val parentMessageId =
+                            waited.payload.parentMessageId?.takeIf { it.isNotBlank() }
+                                ?: waited.payload.originParentMessageId?.takeIf { it.isNotBlank() }
+                                ?: return@launch
+                        applyParentDirectoryHint(
+                            SharedThreadIntent.ApplyParentDirectoryHint(
+                                parentChannelId = parentChannelId,
+                                parentMessageId = parentMessageId,
+                                present = true,
+                                joined = candidate.joined && !candidate.archived,
+                                canSend = candidate.permissions.canSend && !candidate.archived,
+                                authoritative = true,
+                            )
+                        )
+                    }
+                    is ReplyParentAccessFallbackResult.Failed ->
+                        diagnosticsLogger?.invoke(
+                            "thread_parent_authority_fallback_result threadId=$threadId reason=$reason " +
+                                "result=failed code=${result.reason}"
+                        )
+                    is ReplyParentAccessFallbackResult.Unavailable ->
+                        diagnosticsLogger?.invoke(
+                            "thread_parent_authority_fallback_result threadId=$threadId reason=$reason " +
+                                "result=unavailable code=${result.reason}"
+                        )
+                }
+            }
     }
 
     private suspend fun retryAccessResolution() {
