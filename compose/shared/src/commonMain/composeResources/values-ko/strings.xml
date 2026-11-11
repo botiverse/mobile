@@ -4214,6 +4214,8 @@
     <string name="settings_computers_owner_dialog_saving">저장 중…</string>
     <string name="settings_computers_owner_dialog_failed">소유자가 바뀌지 않았어요. 다시 시도해 주세요.</string>
     <string name="settings_feedback_tickets_new_feedback">새 피드백</string>
+    <string name="settings_feedback_agent_hint_lead">알고 계셨나요?</string>
+    <string name="settings_feedback_agent_hint">%1$s 어떤 에이전트든 피드백 초안을 써 줄 수 있어요. 부탁만 하면 되고, 보내기 전에 직접 확인해요.</string>
     <string name="settings_feedback_tickets_filter_all">전체</string>
     <string name="settings_feedback_tickets_filter_active">진행 중</string>
     <string name="settings_feedback_tickets_filter_ended">종료됨</string>

@@ -4326,6 +4326,8 @@
     <string name="settings_computers_owner_dialog_saving">Saving…</string>
     <string name="settings_computers_owner_dialog_failed">The owner wasn’t changed. Try again.</string>
     <string name="settings_feedback_tickets_new_feedback">New Feedback</string>
+    <string name="settings_feedback_agent_hint_lead">Did you know?</string>
+    <string name="settings_feedback_agent_hint">%1$s Any agent can draft your feedback. Just ask, and you’ll review it before it’s sent.</string>
     <string name="settings_feedback_tickets_filter_all">All</string>
     <string name="settings_feedback_tickets_filter_active">Active</string>
     <string name="settings_feedback_tickets_filter_ended">Ended</string>

@@ -4291,6 +4291,8 @@
     <string name="settings_computers_owner_dialog_saving">Сохранение…</string>
     <string name="settings_computers_owner_dialog_failed">Владелец не изменился. Попробуйте ещё раз.</string>
     <string name="settings_feedback_tickets_new_feedback">Новый отзыв</string>
+    <string name="settings_feedback_agent_hint_lead">А вы знали?</string>
+    <string name="settings_feedback_agent_hint">%1$s Любой агент может составить для вас отзыв. Просто попросите — перед отправкой вы его проверите.</string>
     <string name="settings_feedback_tickets_filter_all">Все</string>
     <string name="settings_feedback_tickets_filter_active">Активные</string>
     <string name="settings_feedback_tickets_filter_ended">Завершённые</string>

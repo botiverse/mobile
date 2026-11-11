@@ -124,7 +124,8 @@ private val RaftBannerSmClosablePaddingY = 10.dp
  * the first line. Use it in an [RaftBannerStatus.Info] banner: waiting is not a problem.
  *
  * Destructive banners are announced assertively, the others politely (`role="alert"` /
- * `"status"`). Show at most one banner in one place.
+ * `"status"`); [live] false announces none, for a banner that is part of the page rather than
+ * news (web Banner `live={false}`). Show at most one banner in one place.
  */
 @Composable
 fun RaftBanner(
@@ -160,6 +161,7 @@ fun RaftBanner(
     onDismiss: (() -> Unit)? = null,
     pending: Boolean = false,
     dismissLabel: String? = null,
+    live: Boolean = true,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
@@ -174,9 +176,15 @@ fun RaftBanner(
             .background(raftBannerFill(status, colors), shape)
             .border(RaftStroke.Hairline, colors.lineHairline, shape)
             .padding(horizontal = metrics.paddingX, vertical = raftBannerPaddingY(size, metrics, closable = onDismiss != null && action == null))
-            .semantics {
-                liveRegion = if (status == RaftBannerStatus.Destructive) LiveRegionMode.Assertive else LiveRegionMode.Polite
-            },
+            .then(
+                if (live) {
+                    Modifier.semantics {
+                        liveRegion = if (status == RaftBannerStatus.Destructive) LiveRegionMode.Assertive else LiveRegionMode.Polite
+                    }
+                } else {
+                    Modifier
+                },
+            ),
         horizontalArrangement = Arrangement.spacedBy(metrics.gap),
         verticalAlignment = Alignment.Top,
     ) {

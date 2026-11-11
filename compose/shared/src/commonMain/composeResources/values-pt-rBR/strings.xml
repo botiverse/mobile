@@ -4214,6 +4214,8 @@
     <string name="settings_computers_owner_dialog_saving">Salvando…</string>
     <string name="settings_computers_owner_dialog_failed">O proprietário não foi alterado. Tente de novo.</string>
     <string name="settings_feedback_tickets_new_feedback">Novo feedback</string>
+    <string name="settings_feedback_agent_hint_lead">Você sabia?</string>
+    <string name="settings_feedback_agent_hint">%1$s Qualquer agente pode escrever seu feedback. É só pedir, e você revisa antes do envio.</string>
     <string name="settings_feedback_tickets_filter_all">Todos</string>
     <string name="settings_feedback_tickets_filter_active">Ativos</string>
     <string name="settings_feedback_tickets_filter_ended">Encerrados</string>

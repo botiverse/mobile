@@ -4326,6 +4326,8 @@
     <string name="settings_computers_owner_dialog_saving">保存中…</string>
     <string name="settings_computers_owner_dialog_failed">所有者没有改变，请重试。</string>
     <string name="settings_feedback_tickets_new_feedback">新建反馈</string>
+    <string name="settings_feedback_agent_hint_lead">你知道吗？</string>
+    <string name="settings_feedback_agent_hint">%1$s任意一个 Agent 都能帮你起草反馈，跟它说一声就行，发出前你会先确认。</string>
     <string name="settings_feedback_tickets_filter_all">全部</string>
     <string name="settings_feedback_tickets_filter_active">活跃</string>
     <string name="settings_feedback_tickets_filter_ended">已结束</string>

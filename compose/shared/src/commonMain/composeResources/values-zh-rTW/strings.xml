@@ -4214,6 +4214,8 @@
     <string name="settings_computers_owner_dialog_saving">正在儲存…</string>
     <string name="settings_computers_owner_dialog_failed">擁有者沒有變更，請再試一次。</string>
     <string name="settings_feedback_tickets_new_feedback">新增意見回饋</string>
+    <string name="settings_feedback_agent_hint_lead">你知道嗎？</string>
+    <string name="settings_feedback_agent_hint">%1$s任何一個 Agent 都能幫你起草意見回饋，跟它說一聲就行，送出前你會先確認。</string>
     <string name="settings_feedback_tickets_filter_all">全部</string>
     <string name="settings_feedback_tickets_filter_active">進行中</string>
     <string name="settings_feedback_tickets_filter_ended">已結束</string>

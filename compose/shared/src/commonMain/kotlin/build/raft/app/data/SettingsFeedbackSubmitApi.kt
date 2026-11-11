@@ -375,6 +375,8 @@ class SettingsFeedbackProxySubmitter(
     private val locale: () -> String,
     private val newSubmissionId: () -> String = ::newSettingsFeedbackSubmissionId,
     private val logger: (String) -> Unit = {},
+    /** A card's draft filed: Settings › Feedback stops suggesting an agent's draft ([accountId]'s flag). */
+    private val agentDraftSent: RaftFeedbackAgentDraftSentRepository = RaftFeedbackAgentDraftSent.repository,
 ) {
     fun newAttempt(
         message: String,
@@ -423,7 +425,11 @@ class SettingsFeedbackProxySubmitter(
     private fun outcome(sent: SettingsFeedbackProxyAttempt, result: FeedbackResult<String>): SettingsFeedbackProxyOutcome {
         val failure =
             when (result) {
-                is FeedbackResult.Ok -> return SettingsFeedbackProxyOutcome.Filed(result.value)
+                is FeedbackResult.Ok -> {
+                    // They sent an agent's draft (web useFeedbackCardDialog `sent`, slock #14076).
+                    if (sent.card != null) agentDraftSent.markSent(accountId)
+                    return SettingsFeedbackProxyOutcome.Filed(result.value)
+                }
                 is FeedbackResult.Failed -> result.failure
             }
         logger("settings_feedback_submit_failed kind=${failure.kind} code=${failure.code} status=${failure.httpStatus}")

@@ -30,6 +30,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -43,6 +45,9 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftIconSpinner
 import build.raft.app.components.RaftStorePullToRefreshBox
+import build.raft.app.data.RaftFeedbackAgentDraftSent
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DataResult
 import build.raft.app.data.FeedbackAttachment
@@ -171,6 +176,12 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
                 repository = NetworkSettingsFeedbackTicketsRepository(networkClient, raftFeedbackWebViewClientKind(), bridge::log),
                 scope = scope,
                 logger = bridge::log,
+                // The signed-in person's "sent an agent's draft" flag (web useAgentFeedbackSent(user.id)).
+                agentDraftSent =
+                    flow {
+                        val userId = sharedStores.authStore(storeScope).readSession()?.user?.id
+                        emitAll(RaftFeedbackAgentDraftSent.repository.sent(userId))
+                    },
             )
         }
     val initialTicketId = remember(pager.pageData.params) { feedbackTicketIdOrNull(pager.pageData.params.optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID)) }
@@ -381,7 +392,7 @@ internal fun SettingsFeedbackTicketsScreen(
             },
     ) {
         if (detail == null) {
-            FeedbackTicketList(state.list, timeContext, actions, bottomContentPadding)
+            FeedbackTicketList(state.list, timeContext, actions, bottomContentPadding, showAgentHint = state.showAgentHint)
         } else {
             FeedbackTicketDetail(detail, timeContext, actions, replyComposer, bottomContentPadding, onOpenCloseDialog = openCloseDialog)
         }
@@ -465,8 +476,13 @@ private fun FeedbackTicketList(
     timeContext: RaftTimeContext?,
     actions: SettingsFeedbackTicketsActions,
     bottomContentPadding: androidx.compose.ui.unit.Dp,
+    showAgentHint: Boolean = false,
 ) {
     Column(Modifier.fillMaxSize()) {
+        // The inbox only, above its New Feedback (web AboutFeedbackDialog: `px-4 pt-3`).
+        if (showAgentHint) {
+            FeedbackAgentHint(Modifier.fillMaxWidth().background(RaftTheme.colors.layerCanvas).padding(start = 16.dp, top = 12.dp, end = 16.dp))
+        }
         // One row: the status tabs once there is something to filter, and the one pink button (web).
         Row(
             Modifier.fillMaxWidth().background(RaftTheme.colors.layerCanvas).padding(horizontal = 16.dp, vertical = 8.dp),
@@ -556,6 +572,31 @@ private fun FeedbackTicketList(
     }
 }
 
+/**
+ * Web FeedbackAgentHint (slock #14053): any agent can draft feedback. It promotes one feature at the
+ * top of a list page, so it is an info Banner (one line with a bold lead, its Info icon, small): no
+ * button, so New Feedback stays the page's one action, and no ×. Part of the page rather than news,
+ * so it is not announced as live. Gone once this person has sent an agent's draft (#14076,
+ * [SettingsFeedbackTicketsState.showAgentHint]).
+ */
+@Composable
+private fun FeedbackAgentHint(modifier: Modifier = Modifier) {
+    val lead = stringResource(Res.string.settings_feedback_agent_hint_lead)
+    val text = stringResource(Res.string.settings_feedback_agent_hint, lead)
+    val description =
+        remember(lead, text) {
+            buildAnnotatedString {
+                append(text)
+                val start = text.indexOf(lead)
+                if (start >= 0) addStyle(SpanStyle(fontWeight = FontWeight.Bold), start, start + lead.length)
+            }
+        }
+    Box(modifier.testTag(SettingsFeedbackAgentHintTag)) {
+        RaftBanner(description = description, status = RaftBannerStatus.Info, size = RaftBannerSize.Sm, live = false)
+    }
+}
+
+internal const val SettingsFeedbackAgentHintTag = "settings_feedback_agent_hint"
 internal const val SettingsFeedbackTicketsListTag = "settings_feedback_tickets_list"
 internal const val SettingsFeedbackTicketThreadTag = "settings_feedback_ticket_thread"
 

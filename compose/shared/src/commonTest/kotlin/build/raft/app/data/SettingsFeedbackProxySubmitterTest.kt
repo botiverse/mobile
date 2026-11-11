@@ -9,6 +9,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
@@ -41,6 +42,8 @@ class SettingsFeedbackProxySubmitterTest {
     private fun failed(kind: FeedbackErrorKind, code: String, status: Int) =
         FeedbackResult.Failed(FeedbackFailure(kind, code, status))
 
+    private val agentDraftSent = RaftFeedbackAgentDraftSentRepository { SyncTestPreferences() }
+
     private fun submitter(repository: FakeRepository, uploads: MutableList<String>, answer: FeedbackDiagnosticsReference? = ref): SettingsFeedbackProxySubmitter {
         var ids = 0
         return SettingsFeedbackProxySubmitter(
@@ -49,6 +52,7 @@ class SettingsFeedbackProxySubmitterTest {
             accountId = "user-1",
             locale = { "ja" },
             newSubmissionId = { "submission-${++ids}" },
+            agentDraftSent = agentDraftSent,
         )
     }
 
@@ -166,6 +170,22 @@ class SettingsFeedbackProxySubmitterTest {
             assertEquals(code, outcome.code, answer.failure.code)
             assertNull(outcome.retry, answer.failure.code)
         }
+    }
+
+    @Test
+    fun onlyAFiledCardRetiresTheAgentTipForItsSender() = runTest {
+        // slock #14076: the tip goes once this person sent an agent's draft, not their own feedback
+        // and not a card the server refused.
+        val own = submitter(FakeRepository(mutableListOf(FeedbackResult.Ok("ticket-1"))), mutableListOf())
+        own.submit(own.newAttempt("It froze", emptyList()))
+        assertFalse(agentDraftSent.isSent("user-1"))
+        val refused = submitter(FakeRepository(mutableListOf(failed(FeedbackErrorKind.Unavailable, "STATE_MISMATCH", 409))), mutableListOf())
+        refused.submit(refused.newAttempt("x", emptyList(), card = card))
+        assertFalse(agentDraftSent.isSent("user-1"))
+
+        val sent = submitter(FakeRepository(mutableListOf(FeedbackResult.Ok("ticket-2"))), mutableListOf())
+        sent.submit(sent.newAttempt("Search is slow", emptyList(), card.type, card))
+        assertTrue(agentDraftSent.isSent("user-1"))
     }
 
     @Test

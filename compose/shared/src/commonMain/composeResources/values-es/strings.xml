@@ -4214,6 +4214,8 @@
     <string name="settings_computers_owner_dialog_saving">Guardando…</string>
     <string name="settings_computers_owner_dialog_failed">No se cambió el propietario. Inténtalo de nuevo.</string>
     <string name="settings_feedback_tickets_new_feedback">Nuevo comentario</string>
+    <string name="settings_feedback_agent_hint_lead">¿Lo sabías?</string>
+    <string name="settings_feedback_agent_hint">%1$s Cualquier agente puede redactar tus comentarios. Solo pídeselo y los revisarás antes de enviarlos.</string>
     <string name="settings_feedback_tickets_filter_all">Todos</string>
     <string name="settings_feedback_tickets_filter_active">Activos</string>
     <string name="settings_feedback_tickets_filter_ended">Finalizados</string>
