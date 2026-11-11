@@ -26,6 +26,11 @@ import build.raft.app.data.ActionCardSpecCard
 import build.raft.app.data.ActionCardSpecEntityKind
 import build.raft.app.data.ActionCardSpecEntityRef
 import build.raft.app.data.ActionCardSpecMsg
+import androidx.compose.runtime.LaunchedEffect
+import build.raft.app.data.ActionCardSpecContent
+import build.raft.app.data.ActionCardSpecDisplayElement
+import build.raft.app.data.ActionCardSpecFieldValue
+import build.raft.app.data.ActionCardSpecMsgParam
 import build.raft.app.data.ActionCardSpecTree
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.HomeChannelRow
@@ -206,7 +211,7 @@ private fun ThreadActionCardNameLookup.actionCardSpecEntityName(ref: ActionCardS
             ActionCardSpecEntityKind.User -> ThreadActionCardEntityKind.Human
             ActionCardSpecEntityKind.Agent -> ThreadActionCardEntityKind.Agent
             ActionCardSpecEntityKind.Channel -> ThreadActionCardEntityKind.Channel
-            ActionCardSpecEntityKind.Computer -> return null
+            ActionCardSpecEntityKind.Computer -> ThreadActionCardEntityKind.Computer
         }
     return name(kind, ref.id)
 }
@@ -235,6 +240,12 @@ internal fun ThreadActionCardSpecView(
     val slice by sliceFlow.collectAsState(remember(host.state, messageId) { host.state.value.slice(messageId) })
     val viewerServerId = LocalThreadViewerServerId.current
     val names = LocalThreadActionCardNames.current
+    // A card names a computer only by id (botiverse/slock #14234): ask for this server's computers to name it.
+    val namesComputer = remember(spec) { spec.referencesComputer() }
+    // Keyed by the card and its server, not the lookup: the lookup is rebuilt on every Home content
+    // change, and the store answers repeats (single-flight per server, a "no permission" kept).
+    val currentNames by rememberUpdatedState(names)
+    LaunchedEffect(namesComputer, viewerServerId) { if (namesComputer) currentNames.ensureComputers() }
     val displayLocale = rememberActionCardDisplayLocale()
     val blockedReason =
         when {
@@ -524,4 +535,25 @@ internal fun threadActionCardFormCandidates(
         joinedChannels = rows.filter { it.first }.map { it.second },
         visibleChannels = rows.map { it.second },
     )
+}
+
+/** Whether the card's body or result names a computer (a Field of computer refs, an EntityRef, a Msg param). */
+internal fun ActionCardSpecCard.referencesComputer(): Boolean {
+    fun ActionCardSpecMsg.msgNames(): Boolean =
+        params.orEmpty().values.any { (it as? ActionCardSpecMsgParam.Entity)?.ref?.kind == ActionCardSpecEntityKind.Computer }
+    fun ActionCardSpecContent.contentNames(): Boolean = (this as? ActionCardSpecContent.Message)?.msg?.msgNames() == true
+    fun ActionCardSpecTree.treeNames(): Boolean =
+        elements.values.any { element ->
+            when (element) {
+                is ActionCardSpecDisplayElement.Field ->
+                    element.label.msgNames() ||
+                        (element.value as? ActionCardSpecFieldValue.Entities)?.refs?.any { it.kind == ActionCardSpecEntityKind.Computer } == true ||
+                        (element.value as? ActionCardSpecFieldValue.Message)?.msg?.msgNames() == true
+                is ActionCardSpecDisplayElement.EntityRef -> element.ref.kind == ActionCardSpecEntityKind.Computer
+                is ActionCardSpecDisplayElement.Text -> element.text.contentNames()
+                is ActionCardSpecDisplayElement.Notice -> element.text.msgNames()
+                else -> false
+            }
+        }
+    return title.msgNames() || spec.treeNames() || result?.treeNames() == true
 }

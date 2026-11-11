@@ -12979,6 +12979,8 @@ private fun SharedThreadRouteContentContent(
                 knownEntities = knownEntityResolver,
                 accountId = knownEntityAccountId,
                 knownEntitiesRevision = sharedHomeState.content,
+                // Computers are named from this server's list only (botiverse/slock #14234).
+                computersStore = computersStore,
             )
         // The profile card an @mention in a message, or an author's avatar, opens under a mouse or
         // trackpad pointer (web MentionLink): a mention is the member its click opens.
@@ -31656,7 +31658,9 @@ private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionC
                         )
                 )
                 val required = requiredComputer?.takeIf { it.isNotBlank() }
-                val computer = required ?: suggestedComputer?.takeIf { it.isNotBlank() }
+                val computerId = required ?: suggestedComputer?.takeIf { it.isNotBlank() }
+                // A computer by its name from this server's list, as the spec card names it (slock #14234).
+                val computer = computerId?.let { names.name(ThreadActionCardEntityKind.Computer, it) ?: it }
                 if (computer != null) {
                     add(
                         ThreadActionCardProperty(

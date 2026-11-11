@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.data.ComputerStatus
+import build.raft.app.data.ComputerSummary
 import build.raft.app.data.KnownConversationSource
 import build.raft.app.data.RaftKnownEntityResolver
 import build.raft.app.data.SharedConversationDirectoryProjection
@@ -95,5 +97,40 @@ class ThreadActionCardNamesTest {
             threadActionCardNameLookup(members = entry, serverId = "server-1", knownEntities = known, accountId = "account-2")
                 .name(ThreadActionCardEntityKind.Channel, channelId)
         )
+    }
+
+    private fun machine(id: String, name: String, isComputer: Boolean = true) =
+        ComputerSummary(
+            id = id, name = name, status = ComputerStatus.Online, statusVersion = 1, apiKeyPrefix = null, runtimes = emptyList(),
+            daemonVersion = null, computerVersion = null, isComputer = isComputer, hostname = null, os = null, description = null,
+            lastHeartbeat = null, createdAt = null,
+        )
+
+    /**
+     * botiverse/slock #14234: a card carries only a computer's short id; a viewer who may list this
+     * server's computers names it from that list (web actionCardEntities `findComputer`:
+     * `m.id === id && m.isComputer`), anyone else keeps the short id.
+     */
+    @Test
+    fun aComputerIsNamedOnlyFromThisServersComputerList() {
+        val macId = "4f5c1a8c-5b6e-4d0f-9a7b-9c1d2e3f4a5b"
+        val daemonId = "6b7e3c0e-7d8a-4f2b-9c9d-1e3f4a5b6c7d"
+        var asked = 0
+        val withComputers =
+            threadActionCardNameLookup(
+                members = entry,
+                serverId = "server-1",
+                computers = listOf(machine(macId, "Mac mini"), machine(daemonId, "raw daemon", isComputer = false)),
+                ensureComputers = { asked++ },
+            )
+        assertEquals("Mac mini", withComputers.name(ThreadActionCardEntityKind.Computer, macId))
+        assertEquals("Mac mini", withComputers.name(ThreadActionCardEntityKind.Computer, macId.uppercase()))
+        assertNull(withComputers.name(ThreadActionCardEntityKind.Computer, daemonId), "a raw daemon is not a computer")
+        assertNull(withComputers.name(ThreadActionCardEntityKind.Agent, macId))
+        assertNull(names.name(ThreadActionCardEntityKind.Computer, macId), "no list (a guest): the card's short id")
+        withComputers.ensureComputers()
+        assertEquals(1, asked)
+        // The people and agents lookup is unchanged.
+        assertEquals("Ada Lovelace", withComputers.name(ThreadActionCardEntityKind.Human, adaId))
     }
 }

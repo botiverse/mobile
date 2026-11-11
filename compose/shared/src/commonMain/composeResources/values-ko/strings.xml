@@ -4413,4 +4413,18 @@
     <string name="task_handoff_label">%1$s님이 #%2$d을(를) %3$s님에게 넘겼습니다</string>
     <string name="task_handoff_returned">%1$s님이 다시 맡음 · %2$s</string>
     <string name="task_handoff_handed_back">%1$s님이 %2$s님에게 돌려줌 · %3$s</string>
+    <!-- Agent migration: what a stopping source waits for (web agent.detail.migrationDrain*, botiverse/slock #14230) and the agent's own retry (agent.migration.retry.*, #14275). -->
+    <string name="agent_migration_retry_note_you">%1$s이(가) 워크스페이스를 정리하고 회원님을 대신해 이 마이그레이션을 다시 시도했어요.</string>
+    <string name="agent_migration_retry_note_named">%1$s이(가) 워크스페이스를 정리하고 %2$s 님을 대신해 이 마이그레이션을 다시 시도했어요.</string>
+    <string name="agent_migration_retry_note_none">%1$s이(가) 워크스페이스를 정리하고 이 마이그레이션을 다시 시도했어요.</string>
+    <string name="agent_migration_retry_also_failed">%1$s의 한 번뿐인 재시도였어요. 다음 마이그레이션은 사람이 시작해야 해요.</string>
+    <string name="agent_migration_retry_failed_attempt">실패한 시도</string>
+    <string name="agent_migration_retry_this_attempt">이번 시도</string>
+    <string name="agent_migration_retry_files_one">파일 %1$s개</string>
+    <string name="agent_migration_retry_files_other">파일 %1$s개</string>
+    <string name="agent_migration_retry_at_least">최소 %1$s</string>
+    <string name="agent_migration_retry_packed_one">파일 %1$s개, %2$s</string>
+    <string name="agent_migration_retry_packed_other">파일 %1$s개, %2$s</string>
+    <string name="agent_migration_retry_packed_when_stopped_one">중단 시점 파일 %1$s개, %2$s</string>
+    <string name="agent_migration_retry_packed_when_stopped_other">중단 시점 파일 %1$s개, %2$s</string>
 </resources>
