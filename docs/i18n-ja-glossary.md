@@ -91,6 +91,9 @@ new product concept gets a Japanese rendering.
 | Session | セッション | |
 | Public / Private | 公開 / 非公開 | Channel visibility |
 | Timestamp (video comment) | タイムスタンプ | Video comment anchor `M:SS`; copied from the web ja catalog (`message.messageItem.addTimestamp`) |
+| Two-step verification | 2 段階認証 | Half-width space before 段階; web `settings.twoStep.*` |
+| Passkey | パスキー | Count: パスキー N 個 (web `settings.twoStep.passkeyCount`) |
+| Login & security | ログインとセキュリティ | Settings › Account group of the passkey and two-step rows |
 
 Brand names stay in Latin script: **Raft**, **Hands**, **Claude Code**,
 **Kuikly**, **Markdown**, **OAuth**, **API**.

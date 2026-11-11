@@ -52,6 +52,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SecondFactorStepUpDialogState
 import build.raft.app.data.SecondFactorStepUpIntent
+import build.raft.app.data.SharedAccountLoginSecurityIntent
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsState
@@ -288,6 +289,10 @@ private fun SettingsAccountScreen() {
         onDispose(subscription::close)
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
+    val loginSecurityNetworkClient =
+        remember(bridge, environment.storeScope) { RaftSharedStoreRegistry.get(bridge).networkClient(environment.storeScope) }
+    val loginSecurityStore = rememberSettingsAccountLoginSecurityStore(loginSecurityNetworkClient)
+    val loginSecurityState by loginSecurityStore.state.collectAsState()
     val accountDeletionStore = rememberAccountDeletionRequestStore(environment)
     val accountDeletionState by accountDeletionStore.state.collectAsState()
     // account_deletion_v0 for the current server, live (off until it resolves on).
@@ -361,6 +366,18 @@ private fun SettingsAccountScreen() {
                         settingsViewModel.dispatch(SharedSettingsIntent.SecondFactorStepUp(intent))
                     }
                 },
+            loginSecurity =
+                SettingsAccountLoginSecurityUi(
+                    state = loginSecurityState,
+                    onOpen =
+                        settingsAccountLoginSecurityOpener(
+                            webBaseUrl = environment.webBaseUrl,
+                            serverSlug = { standaloneSettingsServerSlug(session.value) },
+                            log = { line -> bridge.log(line) },
+                            openInBrowser = { url -> bridge.openUrl(url, inBrowser = true) },
+                        ),
+                    onRetry = { loginSecurityStore.dispatch(SharedAccountLoginSecurityIntent.Refresh) },
+                ),
             onEvent = { action, value ->
                 handleStandaloneAccountAction(
                     action = action,
@@ -488,6 +505,8 @@ internal fun SettingsAccountContent(
     accountDeletion: SettingsAccountDeletionUi? = null,
     /** The open "Verify it's you" of a refused password or sign-in method change; null: none. */
     secondFactorStepUp: SettingsSecondFactorStepUpUi? = null,
+    /** Login & security (passkeys, two-step verification); null hides the group (visual fixtures). */
+    loginSecurity: SettingsAccountLoginSecurityUi? = null,
     onEvent: (String, String?) -> Unit
 ) {
     val localizedPayload = payload.localizedPresentationCopy()
@@ -524,6 +543,11 @@ internal fun SettingsAccountContent(
                         }
                     )
                 }
+            }
+            // Web: Passkeys and Two-step verification right after the Account card (nothing while
+            // auth_second_factor_v1 is off for the person, or before the first read answers).
+            if (loginSecurity != null && loginSecurity.state.visible) {
+                item(key = SettingsAccountLoginSecurityGroupTag) { SettingsAccountLoginSecurityGroup(loginSecurity) }
             }
             // Web order: the Account card, Session (Sign out), then Share usage data.
             item {

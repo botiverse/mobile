@@ -7352,9 +7352,12 @@ private fun RaftAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(serverId)))
         }
         val key = target.destinationKey
+        // A block the in-app page has (Account's `#two-step` / `#passkeys`): opened at it, located
+        // as a Settings search result is.
+        val anchor = link.inAppAnchor?.let { SettingsSearchAnchorRequest(it, ++settingsSearchOpenNonce) }
         bridge.log(
             "settings_link_open source=$source tab=${link.webTab ?: "home"} page=${key ?: "home"} " +
-                "section=${link.section != null} switched=${target.switchToServerId != null}"
+                "section=${link.section != null} anchor=${anchor?.id ?: "none"} switched=${target.switchToServerId != null}"
         )
         if (navRailActive) {
             // The wide rail's Settings: the section beside the list, or a page over it.
@@ -7362,11 +7365,14 @@ private fun RaftAppShellReadyContent(
             retainedAppShellTabs = retainedAppShellTabs + "settings"
             when {
                 key == null -> settingsWidePicked = null
-                settingsWidePick(key) is SettingsWidePick.Detail -> settingsWidePicked = key
-                else -> openSettingsRow(key)
+                settingsWidePick(key) is SettingsWidePick.Detail -> {
+                    settingsWidePicked = key
+                    settingsWideAnchor = anchor?.let { key to it }
+                }
+                else -> openSettingsRowAt(key, anchor)
             }
         } else if (key != null) {
-            openSettingsRow(key)
+            openSettingsRowAt(key, anchor)
         } else if (appShellServerPagePushes(stackShellTabs != null, navRailActive)) {
             pager.openAppShellServerStackPage(AppShellServerTabKey)
         } else {

@@ -210,6 +210,16 @@
     <string name="settings_account_delete_requested">削除を依頼しました。%1$d 日以内にメールでお知らせします。</string>
     <string name="settings_account_delete_failed">削除の依頼を送信できませんでした。もう一度お試しください。</string>
     <string name="settings_usage_data_title">使用状況データを共有</string>
+    <string name="settings_account_login_security_title">ログインとセキュリティ</string>
+    <string name="settings_account_two_step_title">2 段階認証</string>
+    <string name="settings_account_two_step_on">オン</string>
+    <string name="settings_account_two_step_off">オフ</string>
+    <string name="settings_account_passkeys_title">パスキー</string>
+    <string name="settings_account_passkeys_none">パスキーはまだありません</string>
+    <string name="settings_account_passkeys_count_one">パスキー %1$d 個</string>
+    <string name="settings_account_passkeys_count_other">パスキー %1$d 個</string>
+    <string name="settings_account_login_security_footer">変更はブラウザで Web 版の Raft を開いて行います。</string>
+    <string name="settings_account_login_security_load_failed">2 段階認証とパスキーを読み込めませんでした。</string>
     <string name="settings_usage_data_description">使用しているページや機能の情報を共有して、Raft の改善にご協力ください。メッセージやその他のコンテンツは含まれません。</string>
     <string name="settings_usage_data_learn_more">詳細を見る</string>
     <string name="settings_usage_data_save_failed">この設定を保存できませんでした。もう一度お試しください。</string>

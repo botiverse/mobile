@@ -210,6 +210,16 @@
     <string name="settings_account_delete_requested">Exclusão solicitada. Enviaremos um e-mail em até %1$d dias.</string>
     <string name="settings_account_delete_failed">Não foi possível enviar sua solicitação de exclusão. Tente novamente.</string>
     <string name="settings_usage_data_title">Compartilhar dados de uso</string>
+    <string name="settings_account_login_security_title">Login e segurança</string>
+    <string name="settings_account_two_step_title">Verificação em duas etapas</string>
+    <string name="settings_account_two_step_on">Ativada</string>
+    <string name="settings_account_two_step_off">Desativada</string>
+    <string name="settings_account_passkeys_title">Chaves de acesso</string>
+    <string name="settings_account_passkeys_none">Nenhuma chave de acesso ainda</string>
+    <string name="settings_account_passkeys_count_one">%1$d chave de acesso</string>
+    <string name="settings_account_passkeys_count_other">%1$d chaves de acesso</string>
+    <string name="settings_account_login_security_footer">As alterações são feitas no Raft pela web, no seu navegador.</string>
+    <string name="settings_account_login_security_load_failed">Não foi possível carregar a verificação em duas etapas e as chaves de acesso.</string>
     <string name="settings_usage_data_description">Ajude a melhorar o Raft compartilhando quais páginas e recursos você usa. Suas mensagens e outros conteúdos nunca são incluídos.</string>
     <string name="settings_usage_data_learn_more">Saiba mais</string>
     <string name="settings_usage_data_save_failed">Não foi possível salvar esta configuração. Tente novamente.</string>

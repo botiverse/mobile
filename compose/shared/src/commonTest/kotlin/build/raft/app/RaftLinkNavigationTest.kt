@@ -38,8 +38,8 @@ class RaftLinkNavigationTest {
 
     @Test
     fun raftWebPagesFollowTheModeButReachARealBrowser() {
-        // dm:@artin #97: an announcement's /settings/account#two-step, a Raft page the app has no screen for.
-        val url = "https://app.raft.build/s/hq/settings/account#two-step"
+        // dm:@artin #97: an announcement's link to a Raft page the app has no screen for.
+        val url = "https://app.raft.build/s/hq/apps"
         val opened = mutableListOf<String>()
         fun navigator(mode: LinkOpenMode) =
             RaftLinkNavigator(

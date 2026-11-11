@@ -210,6 +210,16 @@
     <string name="settings_account_delete_requested">已提交删除申请。我们会在 %1$d 天内发邮件通知你。</string>
     <string name="settings_account_delete_failed">删除申请未能发送，请重试。</string>
     <string name="settings_usage_data_title">共享使用数据</string>
+    <string name="settings_account_login_security_title">登录与安全</string>
+    <string name="settings_account_two_step_title">两步验证</string>
+    <string name="settings_account_two_step_on">已开启</string>
+    <string name="settings_account_two_step_off">已关闭</string>
+    <string name="settings_account_passkeys_title">通行密钥</string>
+    <string name="settings_account_passkeys_none">还没有通行密钥</string>
+    <string name="settings_account_passkeys_count_one">%1$d 个通行密钥</string>
+    <string name="settings_account_passkeys_count_other">%1$d 个通行密钥</string>
+    <string name="settings_account_login_security_footer">更改会在浏览器中打开网页版 Raft。</string>
+    <string name="settings_account_login_security_load_failed">无法加载两步验证和通行密钥。</string>
     <string name="settings_usage_data_description">帮助我们改进 Raft：记录你使用了哪些页面和功能，不包含消息或其他内容。</string>
     <string name="settings_usage_data_learn_more">了解更多</string>
     <string name="settings_usage_data_save_failed">设置没有保存成功，请重试。</string>

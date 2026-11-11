@@ -25,8 +25,8 @@ internal enum class RaftLinkOpenIntent {
     ForceExternal,
 
     /**
-     * A page of Raft's own web the app has no screen for (an announcement's
-     * `/settings/account#two-step`). The link setting still decides where it opens, but "Default
+     * A page of Raft's own web the app has no screen for (an announcement's `/apps`, or Settings
+     * of a server the account is not on). The link setting still decides where it opens, but "Default
      * browser" asks the host for a real browser (`browser: true`): Raft claims its own origin as
      * Android App Links / iOS Universal Links, so a plain VIEW of it can route straight back into
      * the app, which has nothing to show for it.

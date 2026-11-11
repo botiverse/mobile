@@ -210,6 +210,16 @@
     <string name="settings_account_delete_requested">已送出刪除申請。我們會在 %1$d 天內寄電子郵件通知你。</string>
     <string name="settings_account_delete_failed">無法送出刪除申請，請再試一次。</string>
     <string name="settings_usage_data_title">分享使用資料</string>
+    <string name="settings_account_login_security_title">登入與安全</string>
+    <string name="settings_account_two_step_title">兩步驟驗證</string>
+    <string name="settings_account_two_step_on">已開啟</string>
+    <string name="settings_account_two_step_off">已關閉</string>
+    <string name="settings_account_passkeys_title">通行密鑰</string>
+    <string name="settings_account_passkeys_none">還沒有通行密鑰</string>
+    <string name="settings_account_passkeys_count_one">%1$d 個通行密鑰</string>
+    <string name="settings_account_passkeys_count_other">%1$d 個通行密鑰</string>
+    <string name="settings_account_login_security_footer">變更會在瀏覽器中開啟網頁版 Raft。</string>
+    <string name="settings_account_login_security_load_failed">無法載入兩步驟驗證和通行密鑰。</string>
     <string name="settings_usage_data_description">分享你使用了哪些頁面和功能，協助我們改善 Raft。絕不包含你的訊息或其他內容。</string>
     <string name="settings_usage_data_learn_more">瞭解詳情</string>
     <string name="settings_usage_data_save_failed">無法儲存此設定，請再試一次。</string>

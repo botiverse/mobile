@@ -210,6 +210,16 @@
     <string name="settings_account_delete_requested">Deletion requested. We'll email you within %1$d days.</string>
     <string name="settings_account_delete_failed">We couldn't send your deletion request. Please try again.</string>
     <string name="settings_usage_data_title">Share usage data</string>
+    <string name="settings_account_login_security_title">Login &amp; security</string>
+    <string name="settings_account_two_step_title">Two-step verification</string>
+    <string name="settings_account_two_step_on">On</string>
+    <string name="settings_account_two_step_off">Off</string>
+    <string name="settings_account_passkeys_title">Passkeys</string>
+    <string name="settings_account_passkeys_none">No passkeys yet</string>
+    <string name="settings_account_passkeys_count_one">%1$d passkey</string>
+    <string name="settings_account_passkeys_count_other">%1$d passkeys</string>
+    <string name="settings_account_login_security_footer">Changes open Raft on the web in your browser.</string>
+    <string name="settings_account_login_security_load_failed">Couldn't load two-step verification and passkeys.</string>
     <string name="settings_usage_data_description">Help improve Raft by sharing which pages and features you use. Never includes your messages or other content.</string>
     <string name="settings_usage_data_learn_more">Learn more</string>
     <string name="settings_usage_data_save_failed">Couldn't save this setting. Try again.</string>

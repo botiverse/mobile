@@ -52,9 +52,9 @@ internal sealed interface AnnouncementLinkAction {
 
     /**
      * Anything else: the link opens as any other web link (the link setting decides where).
-     * [raftWebPage]: a page on Raft's own web origin the app has no screen for (the passkey
-     * announcement's `/settings/account#two-step`), opened with [RaftLinkOpenIntent.RaftWebPage]
-     * so it reaches a browser instead of bouncing off Raft's own App Link / Universal Link.
+     * [raftWebPage]: a page on Raft's own web origin the app has no screen for (a Settings tab of
+     * another server the account is not on), opened with [RaftLinkOpenIntent.RaftWebPage] so it
+     * reaches a browser instead of bouncing off Raft's own App Link / Universal Link.
      */
     data class OpenUrl(val url: String, val raftWebPage: Boolean = false) : AnnouncementLinkAction {
         val openIntent: RaftLinkOpenIntent
