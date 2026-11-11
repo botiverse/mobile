@@ -266,6 +266,16 @@ kotlin {
     }
 }
 
+// Android: org.jetbrains.androidx.navigation3:navigation3-ui (commonMain above) delegates to Google's
+// androidx.navigation3 artifacts and pins the release it was built with. Raise them to the newest stable
+// patch; navigation3-runtime follows through the androidx.navigation3 atomic group. Drop this once the
+// JetBrains release depends on this version or newer.
+dependencies {
+    constraints {
+        add("androidMainImplementation", libs.androidx.navigation3.ui)
+    }
+}
+
 group = "build.raft.app"
 version = System.getenv("kuiklyBizVersion") ?: "1.0.0"
 
