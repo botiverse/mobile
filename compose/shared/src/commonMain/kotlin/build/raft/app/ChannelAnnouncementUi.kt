@@ -336,15 +336,20 @@ internal fun ChannelAnnouncementDetailsRow(
                 description = stringResource(Res.string.channel_announcement_details_empty_body),
                 wrapDescription = true,
                 leading = { RaftSlotIcon(RaftLucideIconName.Megaphone, size = 20.dp) },
-                trailing = {
-                    RaftButton(
-                        text = stringResource(Res.string.channel_announcement_details_set),
-                        onClick = onSet,
-                        modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsSet),
-                        variant = RaftButtonVariant.Default,
-                    )
-                },
             )
+            // On a phone the button goes under the line (web: at its end, which leaves the text a few
+            // words a line at 390dp), in a row that belongs to it, like Remove and Replace.
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                RaftButton(
+                    text = stringResource(Res.string.channel_announcement_details_set),
+                    onClick = onSet,
+                    modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsSet),
+                    variant = RaftButtonVariant.Default,
+                )
+            }
         }
     }
 }
