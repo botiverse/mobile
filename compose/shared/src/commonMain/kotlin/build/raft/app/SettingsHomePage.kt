@@ -5336,6 +5336,7 @@ private fun RaftAppShellReadyContent(
             linkNavigator.open(artifactWebUrl(sharedStores.apiEnvironmentStore.current().webUrl, taken.target))
         }
     }
+    val latestNavigationAccountId by rememberUpdatedState { readySession?.user?.id?.takeIf(String::isNotBlank) }
     // An external channel invite link: its page, which reads the invite for this account.
     val latestOpenExternalInviteLink by rememberUpdatedState<(RaftPendingExternalInviteLink) -> Unit> { taken ->
         if (!pager.openExternalInvitePage(taken.token, navigationStoreScope)) {
@@ -5361,6 +5362,8 @@ private fun RaftAppShellReadyContent(
                 override fun openArtifactLink(taken: RaftPendingArtifactLink) = latestOpenArtifactLink(taken)
 
                 override fun openExternalInviteLink(taken: RaftPendingExternalInviteLink) = latestOpenExternalInviteLink(taken)
+
+                override fun currentAccountId(): String? = latestNavigationAccountId()
 
                 override fun readiness(): WindowNavigationReadiness? = latestNavigationReadiness()
 

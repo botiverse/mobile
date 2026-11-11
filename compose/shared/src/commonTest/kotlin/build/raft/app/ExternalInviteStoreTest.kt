@@ -218,6 +218,25 @@ class ExternalInviteStoreTest {
     }
 
     @Test
+    fun aHiddenPageDoesNotPollAndReadsAgainWhenShown() = runTest {
+        val source = FakeExternalInviteDataSource()
+        source.page = DataResult.Content(InviteeAnswer.Ok(inviteTestPage(status = "connecting").copy(connectServerId = "s1")))
+        val store = loaded(source)
+        assertEquals(InviteStep.Connecting("s1"), store.state.value.step)
+        store.dispatch(ExternalInviteIntent.SetVisible(false))
+        val reads = source.getCalls
+        advanceTimeBy(ExternalInvitePollMillis * 3)
+        assertEquals(reads, source.getCalls)
+
+        store.dispatch(ExternalInviteIntent.SetVisible(true))
+        runCurrent()
+        assertEquals(reads + 1, source.getCalls)
+        advanceTimeBy(ExternalInvitePollMillis + 1)
+        assertEquals(reads + 2, source.getCalls)
+        store.clear()
+    }
+
+    @Test
     fun aConnectionThatDidNotGoThroughSaysSoAndOneThatDidOpensTheChannel() = runTest {
         val source = FakeExternalInviteDataSource()
         source.connectAnswer = DataResult.Content(InviteeAnswer.Ok(listOf(ServerConnectOutcome.Connecting("s1"))))

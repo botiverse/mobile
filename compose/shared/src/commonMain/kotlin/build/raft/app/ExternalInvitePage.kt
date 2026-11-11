@@ -103,7 +103,7 @@ internal class RaftExternalInvitePage : AuthenticatedProductPager(AuthenticatedP
         super.willInit()
         setAuthenticatedContent {
             RaftInputFocusDismissHost { focusDismissModifier ->
-                Box(modifier = focusDismissModifier.fillMaxSize()) { ExternalInviteScreen() }
+                Box(modifier = focusDismissModifier.fillMaxSize()) { ExternalInviteScreen(raftPageVisible) }
             }
         }
     }
@@ -113,7 +113,7 @@ private fun StoredAuthSession.inviteMyServers(): List<InviteMyServer> =
     servers.map { InviteMyServer(id = it.id, name = it.name, slug = it.slug, plan = it.plan) }
 
 @Composable
-private fun ExternalInviteScreen() {
+private fun ExternalInviteScreen(pageVisible: Boolean) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
     val params = pager.pageData.params
@@ -131,6 +131,8 @@ private fun ExternalInviteScreen() {
             )
         }
     DisposableEffect(store) { onDispose { store.clear() } }
+    // Polling (a connection under way, a request waiting) only while the page shows.
+    LaunchedEffect(store, pageVisible) { store.dispatch(ExternalInviteIntent.SetVisible(pageVisible)) }
     val state by store.state.collectAsState()
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val authDataSource = remember(sharedStores, storeScope) { sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope) }
@@ -173,9 +175,12 @@ private fun ExternalInviteScreen() {
                 ExternalInviteEffect.Close -> router.closePage()
                 ExternalInviteEffect.SignOut ->
                     scope.launch {
-                        // Switch account: the invite opens again once signed in with the right one.
-                        token?.let { RaftExternalInviteLinkInbox.Process.submit(it, "external_invite_switch_account") }
-                        pager.performStandaloneSettingsLogout(authDataSource)
+                        val accountId = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()?.user?.id
+                        runCatchingPreservingCancellation { authDataSource.logout() }
+                        // Switch account: the invite opens again once signed in with another account,
+                        // never for the one just signed out of (the shell may not have seen it go yet).
+                        token?.let { RaftExternalInviteLinkInbox.Process.submit(it, "external_invite_switch_account", notForAccountId = accountId) }
+                        router.openPage(LOGIN_PAGE, loginPageData(replaceCurrent = true))
                     }
             }
         }

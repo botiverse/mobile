@@ -331,6 +331,9 @@ internal data class ExternalInviteState(
 internal sealed interface ExternalInviteIntent {
     data object Load : ExternalInviteIntent
 
+    /** The page shows (or no longer does): polling runs only while it is visible. */
+    data class SetVisible(val visible: Boolean) : ExternalInviteIntent
+
     data class SetMyServers(val servers: List<InviteMyServer>) : ExternalInviteIntent
 
     data object ShowOptions : ExternalInviteIntent
@@ -426,10 +429,21 @@ internal class ExternalInviteStore(
     private var loadGeneration = 0
     private var pollJob: Job? = null
     private var pollKey: String? = null
+    private var visible = true
+
+    /** Hidden: the poll stops. Shown again while something is under way: read now, then poll again. */
+    private fun setVisible(value: Boolean) {
+        if (value == visible) return
+        visible = value
+        val resumed = value && pollingKey(mutableState.value) != null
+        syncPolling()
+        if (resumed) scope.launch { poll() }
+    }
 
     fun dispatch(intent: ExternalInviteIntent) {
         when (intent) {
             ExternalInviteIntent.Load -> load()
+            is ExternalInviteIntent.SetVisible -> setVisible(intent.visible)
             is ExternalInviteIntent.SetMyServers -> mutableState.update { it.copy(myServers = intent.servers) }
             ExternalInviteIntent.ShowOptions -> goTo(InviteStep.Options)
             ExternalInviteIntent.ShowGuest -> goTo(InviteStep.Guest)
@@ -768,6 +782,7 @@ internal class ExternalInviteStore(
     // ── Polling (web `useInvitePolling`) ──
 
     private fun pollingKey(state: ExternalInviteState): String? {
+        if (!visible) return null
         val step = state.step
         val status = state.invite?.status
         return when {

@@ -321,7 +321,7 @@ internal class SharedRaftNetworkClient(
         bodyText: String?
     ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
-        val diagnosticPath = url.substringBefore('?')
+        val diagnosticPath = raftRedactSensitivePath(url.substringBefore('?'))
         return try {
             requestScheduler.run(
                 priority = priority.toNetworkPriority(),
@@ -1631,7 +1631,7 @@ private fun String.networkDiagnosticsCategory(): String {
 }
 
 private fun String.networkDiagnosticsPath(): String =
-    trim().trimStart('/').ifBlank { "root" }
+    raftRedactSensitivePath(trim().trimStart('/')).ifBlank { "root" }
 
 private fun List<Pair<String, String>>.networkDiagnosticsQueryKeys(): String =
     if (isEmpty()) {

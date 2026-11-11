@@ -1,5 +1,6 @@
 package build.raft.app.network
 
+import build.raft.app.data.raftRedactSensitivePath
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.timeout
@@ -143,7 +144,7 @@ internal class KtorRaftHttpExecutor(
         // dedupe, so a rare extra stored copy is accepted (Tenny 2026-10-29). Each attempt reopens
         // the file streams through RaftMultipartContent.
         warningLogger(
-            "slock_http_multipart_retry path=${spec.path} reason=connection_reset " +
+            "slock_http_multipart_retry path=${raftRedactSensitivePath(spec.path)} reason=connection_reset " +
                 "firstError=${first.errorBodyText?.take(80)?.toSafeHeaderValue()}"
         )
         return perform(spec)
@@ -265,7 +266,9 @@ internal class KtorRaftHttpExecutor(
             .firstOrNull { it.key.equals(KTOR_REQUEST_ID_HEADER, ignoreCase = true) }
             ?.value
             .orEmpty()
-        val pathField = if (spec.redactSensitive) spec.path else "path=${spec.path}"
+        // A secret in the path (an invite token) never reaches the logs.
+        val loggedPath = raftRedactSensitivePath(spec.path)
+        val pathField = if (spec.redactSensitive) loggedPath else "path=$loggedPath"
         val common =
             "$pathField method=${spec.method} priority=${spec.priority} ${spec.extraLogFields} " +
                 "requestBytes=${spec.requestBytes} engine=$engineLabel lane=${spec.kind.logValue(spec.priority)}"

@@ -28,6 +28,9 @@ internal interface RaftShellNavigationIntakeHost {
     /** Opens a taken external invite link ([RaftExternalInviteLinkInbox]) on the invite page, over whatever is shown. */
     fun openExternalInviteLink(taken: RaftPendingExternalInviteLink) {}
 
+    /** The signed-in account's id, for a link that waits for another account; null when unknown. */
+    fun currentAccountId(): String? = null
+
     /** The coordinator's readiness, or null while Home may not start (nothing advances). */
     fun readiness(): WindowNavigationReadiness?
 
@@ -116,6 +119,9 @@ internal class RaftShellNavigationIntake(
     private fun takeExternalInviteLink(host: RaftShellNavigationIntakeHost): RaftPendingExternalInviteLink? {
         val pending = externalInviteInbox.pending.value ?: return null
         if (!host.messageLinkSessionReady()) return null
+        // Switch account: still the account it isn't for (signing out is under way); keep waiting.
+        val account = host.currentAccountId()
+        if (pending.notForAccountId != null && (account == null || account == pending.notForAccountId)) return null
         val taken = externalInviteInbox.take(pending.id)
         if (taken == null) {
             host.log("external_invite_link_take_skipped id=${pending.id} reason=taken_replaced_or_expired")

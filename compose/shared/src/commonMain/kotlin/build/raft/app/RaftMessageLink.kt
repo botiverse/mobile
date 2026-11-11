@@ -421,6 +421,11 @@ internal data class RaftPendingExternalInviteLink(
     val token: String,
     val receivedAtEpochMillis: Long,
     val source: String,
+    /**
+     * Switch account (#13942): the account the invite was not for. A shell still signed in as it
+     * leaves the link waiting, so it opens only once another account is signed in.
+     */
+    val notForAccountId: String? = null,
 )
 
 /**
@@ -437,8 +442,9 @@ internal class RaftExternalInviteLinkInbox(
     private val mutablePending = MutableStateFlow<RaftPendingExternalInviteLink?>(null)
     val pending: StateFlow<RaftPendingExternalInviteLink?> = mutablePending.asStateFlow()
 
-    fun submit(token: String, source: String): RaftPendingExternalInviteLink = synchronized(lock) {
-        RaftPendingExternalInviteLink(nextId++, token, nowEpochMillis(), source).also { mutablePending.value = it }
+    fun submit(token: String, source: String, notForAccountId: String? = null): RaftPendingExternalInviteLink = synchronized(lock) {
+        RaftPendingExternalInviteLink(nextId++, token, nowEpochMillis(), source, notForAccountId?.takeIf(String::isNotBlank))
+            .also { mutablePending.value = it }
     }
 
     /** Takes the pending link [id]; null when it was already taken, replaced, or expired (then cleared). */
