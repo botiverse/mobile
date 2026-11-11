@@ -8,6 +8,9 @@ cmpMaterial3 = "1.9.0"
 cmpLifecycle = "2.11.0"
 # JetBrains Navigation 3 (:shared page stack, hosted by desktop for now; built against CMP 1.10+, we ship 1.12.2).
 cmpNavigation3 = "1.2.0"
+# Android only: JetBrains navigation3-ui 1.2.0 resolves Google's androidx.navigation3 1.2.0 on Android; :shared
+# constrains the androidx artifacts up to the newest stable patch (1.2.1 = same classes, compileSdk floor 37 -> 36).
+androidxNavigation3 = "1.2.1"
 androidxComposeRuntime = "1.12.1"
 kotlinxCoroutines = "1.11.0"
 kotlinxSerialization = "1.12.0"
@@ -146,6 +149,7 @@ cmp-components-resources = { group = "org.jetbrains.compose.components", name = 
 cmp-lifecycle-viewmodel-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "cmpLifecycle" }
 cmp-lifecycle-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "cmpLifecycle" }
 cmp-navigation3-ui = { group = "org.jetbrains.androidx.navigation3", name = "navigation3-ui", version.ref = "cmpNavigation3" }
+androidx-navigation3-ui = { group = "androidx.navigation3", name = "navigation3-ui", version.ref = "androidxNavigation3" }
 androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "androidxComposeRuntime" }
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-svg = { group = "io.coil-kt.coil3", name = "coil-svg", version.ref = "coil" }
