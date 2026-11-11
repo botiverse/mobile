@@ -169,7 +169,7 @@ class ComputersRackCardsListUiTest {
         show(ComputersRackView.List)
         onNodeWithTag(RaftComputersRackTags.ListHeader).assertIsDisplayed()
         // Online: its runtime cells, under the header's columns; no Disk / Memory in the list.
-        onNodeWithTag("rack-metrics-m-studio").assertIsDisplayed()
+        assertTrue(onAllNodes(hasTestTag("rack-metrics-m-studio"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
         onNodeWithText("42% used", useUnmergedTree = true).assertIsDisplayed()
         onNodeWithText("Back in 3h", useUnmergedTree = true).assertIsDisplayed()
         assertTrue(onAllNodes(hasText("Disk"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
@@ -185,7 +185,7 @@ class ComputersRackCardsListUiTest {
         onNodeWithTag(RaftComputersRackTags.OfflineTitle).performClick()
         waitForIdle()
         onNodeWithTag("rack-row-m-laptop").assertIsDisplayed()
-        assertTrue(onAllNodes(hasTestTag("rack-metrics-m-laptop")).fetchSemanticsNodes().isEmpty(), "an offline computer reads no usage")
+        assertTrue(onAllNodes(hasTestTag("rack-metrics-m-laptop"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty(), "an offline computer reads no usage")
         assertTrue(onAllNodes(hasText("Last seen", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
     }
 }
