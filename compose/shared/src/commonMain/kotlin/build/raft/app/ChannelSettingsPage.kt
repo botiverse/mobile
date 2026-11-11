@@ -271,6 +271,32 @@ internal fun channelSettingsHostCannotDisconnect(channel: HomeChannelRow, extern
     externalChannelsEnabled && channelSettingsIsJoint(channel) && channel.jointRole == "host"
 
 /**
+ * Web EditChannelDialog `showPrivateConnectSection` (cindyz 38086073): with `external_channels_v1`
+ * on, a private channel (never #all) the viewer is in shows Connected servers, with this server
+ * as the host, when they have a server to connect to it (web `useMemberConnectRows`). The servers
+ * and roles are the account's from `GET /api/servers`; the route decides.
+ */
+internal fun channelSettingsOffersPrivateMemberConnect(
+    channel: HomeChannelRow,
+    externalChannelsEnabled: Boolean,
+    account: MemberConnectAccount?,
+): Boolean {
+    if (!externalChannelsEnabled || channelSettingsIsJoint(channel) || !channel.channelType.equals("private", ignoreCase = true)) {
+        return false
+    }
+    val memberChannel =
+        MemberConnectChannel(
+            isJoint = false,
+            isPrivate = true,
+            name = channel.name,
+            archived = channel.archived,
+            joined = channel.joined,
+            servers = emptyList(),
+        )
+    return memberConnectRows(memberChannel, account).any { it.state == MemberConnectRowState.Eligible }
+}
+
+/**
  * The channel-management capabilities the settings page gates on (web EditChannelDialog
  * `effectiveCapabilities = channel.channelCapabilities ?? serverCapabilities`). Mobile's server
  * capability is [ChannelSettingsState.canManage] (`canManageSettings`), standing in for every key
@@ -480,10 +506,14 @@ private fun ChannelSettingsPageScreen() {
     var viewerServerRole by remember(route) { mutableStateOf<String?>(null) }
     // Web `currentServerName`: the "{server} disconnected from #{channel}" notice after Disconnect.
     var viewerServerName by remember(route) { mutableStateOf<String?>(null) }
+    // Connect your servers on a private channel: the account's servers and its role on each.
+    var memberConnectAccount by remember(route) { mutableStateOf<MemberConnectAccount?>(null) }
     LaunchedEffect(authStore, route) {
-        val server = authStore.readSession()?.servers?.firstOrNull { it.id == route.serverId.value }
+        val session = authStore.readSession()
+        val server = session?.servers?.firstOrNull { it.id == route.serverId.value }
         viewerServerRole = server?.role
         viewerServerName = server?.name
+        memberConnectAccount = session?.memberConnectAccount(route.serverId.value)
     }
     // Web reads external_channels_v1 for the current server: the one whose copy is open.
     val externalChannels =
@@ -609,6 +639,8 @@ private fun ChannelSettingsPageScreen() {
                                 slackBridge = settingsState.slackBridge,
                                 section = section,
                                 externalChannelsEnabled = externalChannels,
+                                privateMemberConnect =
+                                    channelSettingsOffersPrivateMemberConnect(channel, externalChannels, memberConnectAccount),
                             ),
                         longMessageCollapseSetting = longMessageCollapseSetting,
                         agentStatusResolver = agentStatusResolver,
@@ -781,6 +813,11 @@ internal data class ChannelSettingsUiModel(
     val section: ChannelSectionPlacement? = null,
     /** `external_channels_v1` for this server: the host's joint copy then has no Disconnect. */
     val externalChannelsEnabled: Boolean = false,
+    /**
+     * A private channel the viewer can connect one of their servers to
+     * ([channelSettingsOffersPrivateMemberConnect]): it then lists Connected servers too.
+     */
+    val privateMemberConnect: Boolean = false,
 )
 
 internal class ChannelSettingsCallbacks(
@@ -937,7 +974,7 @@ internal fun ChannelSettingsContent(
         if (announcement != null) {
             item(key = "announcement") { announcement() }
         }
-        if (channelSettingsIsJoint(channel)) {
+        if (channelSettingsIsJoint(channel) || model.privateMemberConnect) {
             item(key = "joint-connections") {
                 ChannelJointConnectionsEntry(onClick = callbacks.onOpenJointConnections)
             }

@@ -255,6 +255,9 @@ class JointChannelConnectionsCacheFirstTest {
         override suspend fun resend(): DataResult<Int> = error("unused")
 
         override suspend fun disconnectServer(serverId: String): DataResult<Unit> = error("unused")
+
+        override suspend fun connectMyServers(serverIds: List<String>): DataResult<build.raft.app.data.MemberConnectResponse> =
+            error("unused")
     }
 
     private companion object {

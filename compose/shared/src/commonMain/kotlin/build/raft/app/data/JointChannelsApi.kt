@@ -103,6 +103,8 @@ private data class WireJointChannel(
     val name: String = "",
     val type: String,
     val archivedAt: String? = null,
+    /** Whether the caller is in the channel (`GET channels/:id` sends it, as the list does). */
+    val joined: Boolean? = null,
     val jointRole: String? = null,
     val channelCapabilities: WireJointChannelCapabilities? = null,
     val jointPeerServerId: String? = null,
@@ -371,6 +373,10 @@ data class JointChannelConnections(
     val jointRole: JointChannelRole? = null,
     /** The channel's own `channelCapabilities.federateChannels`; null when the payload has none. */
     val federateChannels: Boolean? = null,
+    /** `type == "private"`: a member may connect a server, which makes it joint (web memberConnect). */
+    val isPrivate: Boolean = false,
+    /** The channel row's `joined`; null when the payload has none. */
+    val joined: Boolean? = null,
 ) {
     /** Web `jointServerLimitReached`: active + pending servers count toward the 30-server cap. */
     val serverLimitReached: Boolean
@@ -433,6 +439,8 @@ private fun WireJointChannel.toConnections(): JointChannelConnections? {
         hasCurrentServerPendingInvites = pendingFromCurrent,
         jointRole = JointChannelRole.fromWire(jointRole),
         federateChannels = channelCapabilities?.federateChannels,
+        isPrivate = type == "private",
+        joined = joined,
     )
 }
 
@@ -581,6 +589,10 @@ internal class RealJointChannelRepository(
                 )
             },
         ) { body -> Unit.takeIf { parseSharedJointDisconnectOk(body) } }
+
+    /** A member connects servers they own or administer (`POST channels/:id/connect-my-servers`). */
+    suspend fun connectMyServers(channelId: ChannelId, serverIds: List<String>): DataResult<MemberConnectResponse> =
+        networkClient.connectMyServers(channelId, serverIds, warningLogger)
 
     suspend fun pendingInvites(serverId: ServerId, priority: DataRequestPriority): DataResult<List<PendingJointInvite>> =
         execute(

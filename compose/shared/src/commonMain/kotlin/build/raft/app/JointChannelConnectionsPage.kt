@@ -158,6 +158,12 @@ private fun JointChannelConnectionsScreen() {
             scope = scope,
             // Data-layer plan step 5: the first frame is the cached list for this account + channel.
             cacheSlot = jointChannelConnectionsCacheSlot(sharedStores.jointConnectionsCache, routeOwner, route),
+            // Web "Connected by you": what this account connected here while the app runs.
+            connectedByYouSlot =
+                MemberConnectedByYouSlot(
+                    RaftMemberConnectedByYou,
+                    "${routeOwner.environmentId}|${routeOwner.accountId}|${route.serverId.value}|${route.channelId.value}",
+                ),
         )
     }
     val state by store.state.collectAsState()
@@ -169,6 +175,8 @@ private fun JointChannelConnectionsScreen() {
     LaunchedEffect(store, authStore, liveOwner) {
         val session = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
         store.dispatch(JointChannelConnectionsIntent.SetSameAdminContext(session?.jointSameAdminContext(route.serverId.value)))
+        // Connect your servers: the account's servers and its role on each, as `GET /api/servers` sent them.
+        store.dispatch(JointChannelConnectionsIntent.SetMemberConnectAccount(session?.memberConnectAccount(route.serverId.value)))
     }
     // The last finished action's receipt (web: the role="status" line under the form).
     var statusMessage by remember(route) { mutableStateOf<JointChannelConnectionsEffect?>(null) }
@@ -181,6 +189,7 @@ private fun JointChannelConnectionsScreen() {
     LaunchedEffect(store, liveOwner, routeOwner) {
         if (liveOwner == routeOwner) store.dispatch(JointChannelConnectionsIntent.Refresh)
     }
+    val memberConnectToasts = jointMemberConnectToasts(state.effect as? JointChannelConnectionsEffect.MemberConnectFinished)
     LaunchedEffect(state.effect) {
         when (val effect = state.effect) {
             is JointChannelConnectionsEffect.InviteSent -> {
@@ -192,6 +201,7 @@ private fun JointChannelConnectionsScreen() {
             is JointChannelConnectionsEffect.Resent -> statusMessage = effect
             is JointChannelConnectionsEffect.ServerDisconnected ->
                 bridge.toast(Res.string.joint_server_disconnected_toast.format(effect.serverName, effect.channelName).resolve())
+            is JointChannelConnectionsEffect.MemberConnectFinished -> memberConnectToasts.forEach { bridge.toast(it) }
             null -> Unit
         }
         if (state.effect != null) store.dispatch(JointChannelConnectionsIntent.ConsumeEffect)
@@ -247,6 +257,7 @@ private fun JointChannelConnectionsScreen() {
                             onDisconnectServer = { serverId ->
                                 store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer(serverId))
                             },
+                            onConnectYourServers = { store.dispatch(JointChannelConnectionsIntent.OpenMemberConnect) },
                         )
                         }
                     state.status == JointChannelConnectionsLoadStatus.Error ->
@@ -270,7 +281,35 @@ private fun JointChannelConnectionsScreen() {
                 onConfirm = { store.dispatch(JointChannelConnectionsIntent.DisconnectServer) },
             )
         }
+        JointMemberConnectSheet(
+            state = state,
+            onDismiss = { store.dispatch(JointChannelConnectionsIntent.DismissMemberConnect) },
+            onSelectionChange = { store.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(it)) },
+            onSubmit = { store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect) },
+        )
     }
+}
+
+/** Web ConnectYourServersDialog's toasts once every chosen server was answered well. */
+@Composable
+internal fun jointMemberConnectToasts(effect: JointChannelConnectionsEffect.MemberConnectFinished?): List<String> {
+    effect ?: return emptyList()
+    val connected = jointMemberConnectNames(effect.connected)
+    val connecting = jointMemberConnectNames(effect.connecting)
+    val already = jointMemberConnectNames(effect.alreadyConnected)
+    return listOfNotNull(
+        stringResource(Res.string.joint_member_connect_toast_connected, connected).takeIf { effect.connected.isNotEmpty() },
+        when {
+            effect.connecting.isEmpty() -> null
+            effect.connecting.size == 1 -> stringResource(Res.string.joint_member_connect_toast_connecting_one, connecting)
+            else -> stringResource(Res.string.joint_member_connect_toast_connecting_many, connecting)
+        },
+        when {
+            effect.alreadyConnected.isEmpty() -> null
+            effect.alreadyConnected.size == 1 -> stringResource(Res.string.joint_member_connect_toast_already_connected_one, already)
+            else -> stringResource(Res.string.joint_member_connect_toast_already_connected_many, already)
+        },
+    )
 }
 
 @Composable
@@ -286,6 +325,7 @@ internal fun JointConnectionsContent(
     onSendInvite: () -> Unit,
     onResend: () -> Unit,
     onDisconnectServer: (serverId: String) -> Unit = {},
+    onConnectYourServers: () -> Unit = {},
     // The page's bottom inset; a test composes the list without the pager host that provides it.
     bottomSafeArea: androidx.compose.ui.unit.Dp = raftBottomSafeAreaPadding(),
 ) {
@@ -294,8 +334,15 @@ internal fun JointConnectionsContent(
         item(key = "servers") {
             RaftSection(
                 title = stringResource(Res.string.joint_connections_title),
-                count = connections.servers.size.toString(),
+                count = state.displayServers.size.toString(),
                 separator = false,
+                // Web ConnectedServersMenu: drawn only where the viewer has a server to connect.
+                action =
+                    if (state.memberConnectAvailable) {
+                        { JointMemberConnectMenu(enabled = state.actionInFlight == null, onConnectYourServers = onConnectYourServers) }
+                    } else {
+                        null
+                    },
             ) {
                 RaftText(
                     stringResource(Res.string.joint_connections_rule),
@@ -303,7 +350,7 @@ internal fun JointConnectionsContent(
                     style = RaftTheme.typography.footnote,
                     color = RaftTheme.colors.foregroundHint,
                 )
-                if (connections.servers.isEmpty()) {
+                if (state.displayServers.isEmpty()) {
                     RaftText(
                         stringResource(Res.string.joint_connections_meta_unavailable),
                         style = RaftTheme.typography.callout,
@@ -397,6 +444,8 @@ private fun jointConnectionsReceiptText(receipt: JointChannelConnectionsEffect):
         // A toast, not the status line (never kept as [statusMessage]).
         is JointChannelConnectionsEffect.ServerDisconnected ->
             stringResource(Res.string.joint_server_disconnected_toast, receipt.serverName, receipt.channelName)
+        // Toasts too (never kept as [statusMessage]).
+        is JointChannelConnectionsEffect.MemberConnectFinished -> jointMemberConnectToasts(receipt).joinToString(" ")
     }
 
 internal const val JointConnectionsServerListTag = "joint-connections-servers"
@@ -416,12 +465,17 @@ private fun JointConnectedServerRow(
     onDisconnect: () -> Unit,
 ) {
     val thisServer = stringResource(Res.string.joint_connections_this_server)
+    val connectedByYou = stringResource(Res.string.joint_member_connect_row_connected_by_you)
     val serverName = server.name.ifBlank { server.slug }
     RaftListRow(
         title = serverName,
         divider = divider,
         subtitle =
-            listOfNotNull(server.slug.takeIf(String::isNotBlank), thisServer.takeIf { server.isCurrentServer })
+            listOfNotNull(
+                server.slug.takeIf(String::isNotBlank),
+                thisServer.takeIf { server.isCurrentServer },
+                connectedByYou.takeIf { server.serverId in state.connectedByYou },
+            )
                 .joinToString(" · ")
                 .takeIf(String::isNotBlank),
         badge =

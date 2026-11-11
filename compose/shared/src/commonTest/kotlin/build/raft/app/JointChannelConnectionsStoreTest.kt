@@ -384,4 +384,16 @@ internal class FakeJointConnectionsDataSource(
         disconnectGate?.await()
         return disconnectResult
     }
+
+    /** Connect your servers: the answer each call gets, and the server lists sent. */
+    var memberConnectResult: DataResult<build.raft.app.data.MemberConnectResponse> =
+        DataResult.Content(build.raft.app.data.MemberConnectResponse.Answered(emptyList(), traceId = null))
+    var memberConnectGate: CompletableDeferred<Unit>? = null
+    val memberConnectCalls = mutableListOf<List<String>>()
+
+    override suspend fun connectMyServers(serverIds: List<String>): DataResult<build.raft.app.data.MemberConnectResponse> {
+        memberConnectCalls += serverIds
+        memberConnectGate?.await()
+        return memberConnectResult
+    }
 }
