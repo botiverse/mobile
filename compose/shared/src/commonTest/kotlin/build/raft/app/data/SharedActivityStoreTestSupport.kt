@@ -114,7 +114,8 @@ internal fun activityStore(
     diagnosticsLogger: (String) -> Unit = {},
     appForeground: kotlinx.coroutines.flow.StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(true),
     inboxInPlaceEnabled: (serverId: String) -> Boolean = { false },
-    inPlaceReconcileIntervalMillis: Long = ActivityInPlaceReconcileIntervalMillis
+    inPlaceReconcileIntervalMillis: Long = ActivityInPlaceReconcileIntervalMillis,
+    inPlaceCheckSink: (serverId: String, check: ActivityInPlaceCheck) -> Unit = { _, _ -> }
 ): SharedActivityStore =
     SharedActivityStore(
         authStore = authStore,
@@ -153,7 +154,8 @@ internal fun activityStore(
         appForeground = appForeground,
         diagnosticsLogger = diagnosticsLogger,
         inboxInPlaceEnabled = inboxInPlaceEnabled,
-        inPlaceReconcileIntervalMillis = inPlaceReconcileIntervalMillis
+        inPlaceReconcileIntervalMillis = inPlaceReconcileIntervalMillis,
+        inPlaceCheckSink = inPlaceCheckSink
     )
 
 internal class FakeInboxRepository(
