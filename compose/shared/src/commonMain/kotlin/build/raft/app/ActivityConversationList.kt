@@ -150,9 +150,11 @@ internal data class ActivityConversationListContext(
     val currentMemberId: String? = null,
     /**
      * Home channel rows keyed by channel id: the glyph the Home sidebar draws for that channel
-     * ([homeChannelSymbol]: `#`, lock, joint branch, public-page hash-globe).
+     * ([homeChannelSymbol]: `#`, lock, joint branch, public-page hash-globe, External).
      */
     val channelSymbolsByChannelId: Map<String, String> = emptyMap(),
+    /** The server's `external_channels_v1`: a joint channel Home doesn't list still draws External. */
+    val externalChannelsEnabled: Boolean = false,
     /**
      * Agent Lounge v0: the Lounges known here, keyed by their channel id (an agent DM row's `lounge`,
      * or a Lounge this client opened or loaded). Their rows are named "{Name}'s Lounge" and lead
@@ -178,7 +180,10 @@ internal data class ActivityConversationListPresentation(
  * Projects the Home snapshot into the list context. A snapshot of another server is not a candidate for
  * this Activity (route-identity rule): it yields [ActivityConversationListContext.Empty].
  */
-internal fun HomeSnapshot?.toActivityConversationListContext(activityServerId: String): ActivityConversationListContext {
+internal fun HomeSnapshot?.toActivityConversationListContext(
+    activityServerId: String,
+    externalChannelsEnabled: Boolean = false,
+): ActivityConversationListContext {
     val snapshot = this ?: return ActivityConversationListContext.Empty
     if (activityServerId.isBlank() || snapshot.server.id.value != activityServerId) {
         return ActivityConversationListContext.Empty
@@ -201,7 +206,8 @@ internal fun HomeSnapshot?.toActivityConversationListContext(activityServerId: S
                     )
             },
         currentMemberId = snapshot.currentMember.id.value.takeIf { it.isNotBlank() },
-        channelSymbolsByChannelId = snapshot.activityChannelSymbolsByChannelId(),
+        channelSymbolsByChannelId = snapshot.activityChannelSymbolsByChannelId(externalChannelsEnabled),
+        externalChannelsEnabled = externalChannelsEnabled,
         loungesByChannelId = snapshot.activityLoungesByChannelId(),
     )
 }
@@ -242,9 +248,10 @@ internal fun ActivityConversationListContext.withKnownLounges(
 }
 
 /** The Home sidebar's glyph per channel id ([homeChannelSymbol]), for Activity's channel icons. */
-internal fun HomeSnapshot.activityChannelSymbolsByChannelId(): Map<String, String> =
+internal fun HomeSnapshot.activityChannelSymbolsByChannelId(externalChannelsEnabled: Boolean = false): Map<String, String> =
     channels.associate { channel ->
-        channel.channelId.value to channel.homeChannelSymbol(serverPublicPageLive = server.publicPageLive)
+        channel.channelId.value to
+            channel.homeChannelSymbol(serverPublicPageLive = server.publicPageLive, externalChannelsEnabled = externalChannelsEnabled)
     }
 
 /**
@@ -263,11 +270,12 @@ internal fun nextActivityConversationListContext(
     previous: ActivityConversationListContext?,
     homeContent: SharedHomeContentState?,
     activityServerId: String,
+    externalChannelsEnabled: Boolean = false,
 ): ActivityConversationListContext? =
     when (homeContent) {
         is SharedHomeContentState.Content ->
             if (activityServerId.isNotBlank() && homeContent.snapshot.server.id.value == activityServerId) {
-                homeContent.snapshot.toActivityConversationListContext(activityServerId)
+                homeContent.snapshot.toActivityConversationListContext(activityServerId, externalChannelsEnabled)
             } else {
                 previous
             }
@@ -472,19 +480,31 @@ internal fun InboxItem.activityConversationMuted(
  * the row's channel (a thread: its parent channel). The type is the item's own wire `channelType` /
  * `parentChannelType` (private → lock, joint → branch, channel → `#`); the public-page globe needs the
  * Home channel row (guestVisible, archived) and the server's live page, so it comes from the Home
- * sidebar's symbol for that channel. An item without a wire type (built from a realtime event) uses
- * the Home row's symbol, else its folded kind (joint), else `#`.
+ * sidebar's symbol for that channel, and so does the External glyph (`hasExternalRelation`, read with
+ * the server's `external_channels_v1`: [raftChannelKindGlyph]). An item without a wire type (built
+ * from a realtime event) uses the Home row's symbol, else its folded kind (joint), else `#`.
  */
-internal fun InboxItem.activityChannelSymbol(homeChannelSymbols: Map<String, String>): String {
+internal fun InboxItem.activityChannelSymbol(
+    homeChannelSymbols: Map<String, String>,
+    externalChannelsEnabled: Boolean = false,
+): String {
     val thread = kind == InboxItemKind.Thread
     val placeId = if (thread) parentChannelId else channelId
     val wireType = if (thread) parentChannelType else channelType
     val homeSymbol = placeId?.let { homeChannelSymbols[it.value] }
     if (wireType == null) {
-        return homeSymbol ?: (if (thread) parentChannelKind else channelKind)?.toWireChannelKindOrNull().toRaftChannelSymbol()
+        return homeSymbol
+            ?: raftChannelKindGlyph(
+                (if (thread) parentChannelKind else channelKind)?.toWireChannelKindOrNull(),
+                externalChannelsEnabled = externalChannelsEnabled,
+            ).symbol
     }
-    val symbol = wireType.toRaftChannelSymbol()
-    return if (symbol == "#" && homeSymbol == HomeChannelSymbolHashGlobe) homeSymbol else symbol
+    val symbol = raftChannelKindGlyph(wireType, externalChannelsEnabled = externalChannelsEnabled).symbol
+    return when {
+        homeSymbol == RaftChannelKindGlyph.External.symbol -> homeSymbol
+        symbol == "#" && homeSymbol == HomeChannelSymbolHashGlobe -> homeSymbol
+        else -> symbol
+    }
 }
 
 /** The web `InboxRow` list-layout projection of one Activity item. Pure; unit-tested. */
@@ -584,7 +604,7 @@ internal fun InboxItem.activityConversationRowModel(
         threadChannelLabelVisible = kind == InboxItemKind.Thread && (threadDmPeer == null || (taskTitle != null && taskRef != null)),
         threadInDirectMessage = threadInDirectMessage,
         channelSymbol =
-            if (leadingKind == ActivityConversationLeadingKind.DirectMessage || threadInDirectMessage) "#" else activityChannelSymbol(context.channelSymbolsByChannelId),
+            if (leadingKind == ActivityConversationLeadingKind.DirectMessage || threadInDirectMessage) "#" else activityChannelSymbol(context.channelSymbolsByChannelId, context.externalChannelsEnabled),
         sender = sender,
         preview = preview?.let(::markdownToPreview)?.takeIf { it.text.isNotBlank() },
         muted = muted,

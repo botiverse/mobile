@@ -73,6 +73,14 @@ internal enum class RaftUpgradeGate(val wire: String) {
     AgentMigration("agent_migration"),
     PlanDowngraded("plan_downgraded"),
     ProTheme("pro_theme"),
+
+    /**
+     * The Free plan's one external channel (shared `UPGRADE_GATES` `external_channel_free_limit`,
+     * botiverse/slock #14034; the server's `free_external_limit` refusal). Until its own copy is
+     * decided the web reads it as `general` (upgradeGateCopy.ts GATE_COPY, UpgradeDialog
+     * GATE_HIGHLIGHT), and so does the app ([raftUpgradeGateCopy]).
+     */
+    ExternalChannelFreeLimit("external_channel_free_limit"),
     General("general"),
 
     /** Web `seat_limit_invite`: an invite past the seats (InviteHumanDialog → Plan & Billing). */
@@ -99,6 +107,8 @@ internal fun raftUpgradeGateForErrorCode(code: String?): RaftUpgradeGate? =
         "FILE_UPLOAD_QUOTA_EXCEEDED" -> RaftUpgradeGate.UploadMonthlyQuota
         "joint_channel_free_limit_reached" -> RaftUpgradeGate.JointChannelHostLimit
         "joint_free_server_limit" -> RaftUpgradeGate.JointChannelFreeCap
+        // server externalChannelLimitService ExternalChannelLimitError (paywallHit.ts → this gate).
+        "free_external_limit" -> RaftUpgradeGate.ExternalChannelFreeLimit
         "MIGRATION_PRO_PLAN_REQUIRED" -> RaftUpgradeGate.AgentMigration
         // shared AGENT_LIMIT_REACHED_CODE / HUMAN_SEAT_LIMIT_REACHED_CODE (planService CapacityLimitError).
         "agent_limit_reached" -> RaftUpgradeGate.SeatLimitAgentCreate
@@ -195,6 +205,7 @@ internal fun raftUpgradeOutcome(
                 gate == RaftUpgradeGate.JointChannelHostLimit ||
                 gate == RaftUpgradeGate.JointChannelOverLimit ||
                 gate == RaftUpgradeGate.JointChannelReadOnly ||
+                gate == RaftUpgradeGate.ExternalChannelFreeLimit ||
                 gate == RaftUpgradeGate.General
         return if (billing && linksOut) RaftUpgradeOutcome.OpenBilling else RaftUpgradeOutcome.None
     }
@@ -399,6 +410,8 @@ internal fun raftUpgradeGateCopy(gate: RaftUpgradeGate): RaftUpgradeGateCopy =
             RaftUpgradeGateCopy(Res.string.upgrade_dialog_downgraded_title, Res.string.upgrade_dialog_downgraded_hint, Res.string.upgrade_dialog_limit_downgraded, RaftUpgradeBenefit.History)
         RaftUpgradeGate.ProTheme ->
             RaftUpgradeGateCopy(Res.string.upgrade_dialog_pro_theme_title, Res.string.upgrade_dialog_pro_theme_hint, Res.string.upgrade_dialog_limit_pro_theme, null)
+        // The external channel limit reads as `general` until its own copy is decided (web GATE_COPY).
+        RaftUpgradeGate.ExternalChannelFreeLimit,
         RaftUpgradeGate.General ->
             RaftUpgradeGateCopy(Res.string.upgrade_dialog_general_title, Res.string.upgrade_dialog_general_hint, Res.string.upgrade_dialog_limit_general, null)
         // On Free a seat limit is Free's: the web's `general` offer.

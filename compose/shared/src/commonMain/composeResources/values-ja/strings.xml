@@ -3332,6 +3332,7 @@
     <string name="settings_public_visibility_failed_guest_join_update">ゲスト参加の設定を更新できませんでした</string>
     <string name="settings_public_visibility_failed_search_update">検索エンジンの設定を更新できませんでした</string>
     <string name="channel_public_page_readable">誰でも公開ページでこのチャンネルを閲覧できます</string>
+    <string name="channel_external_members">外部チャンネル</string>
     <string name="layout_server_public_page_live">公開中：サインインしなくても誰でも公開チャンネルを閲覧できます</string>
     <string name="member_activity_overview_view_label">アクティビティ表示</string>
     <string name="member_activity_overview_view_overview">概要</string>

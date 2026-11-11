@@ -1269,7 +1269,10 @@ internal data class RaftComposerMemberItem(
 @Serializable
 internal data class RaftComposerChannelItem(
     val name: String,
-    val subtitle: String? = null
+    val subtitle: String? = null,
+    /** The channel's id and wire type: its glyph comes from the one chooser ([RaftChannelKinds]). */
+    val channelId: String? = null,
+    val channelType: String? = null,
 )
 
 data class SharedThreadComposerSnapshot(
@@ -5108,9 +5111,10 @@ private fun ComposerChannelSuggestionRow(
                         .background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Sticker)),
                 contentAlignment = Alignment.Center
             ) {
-                RaftLucideIcon(
-                    RaftLucideIconName.Hash,
-                    modifier = Modifier.size(ComposerChannelSuggestionGlyphSize),
+                // web MessageInput channel suggestion `ChannelIcon`: the channel's own kind glyph.
+                RaftChannelKindIcon(
+                    currentRaftChannelKinds().glyph(channel.channelId, channel.channelType),
+                    size = ComposerChannelSuggestionGlyphSize,
                     color = raftArgbHex(RaftColor.TextMuted)
                 )
             }

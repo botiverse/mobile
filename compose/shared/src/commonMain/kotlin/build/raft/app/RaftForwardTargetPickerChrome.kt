@@ -251,9 +251,18 @@ internal fun <T> RaftForwardPickerTargetRow(
                     avatarSize = ForwardPickerAvatarSize,
                     carriedAvatarWireValue = target.avatarWireValue,
                 )
+            // web ChannelPicker `ChannelIcon`: the channel's glyph from the one chooser.
             RaftForwardTargetVisualKind.PublicChannel,
             RaftForwardTargetVisualKind.PrivateChannel,
-            RaftForwardTargetVisualKind.JointChannel,
+            RaftForwardTargetVisualKind.JointChannel ->
+                RaftIconTile(size = RaftIconTileSize.Sm) {
+                    val ink = LocalRaftContentColor.current.takeIf { it.isSpecified } ?: RaftTheme.colors.foreground
+                    RaftChannelKindIcon(
+                        currentRaftChannelKinds().glyph(target.channelId, target.visualKind.channelType()),
+                        size = RaftIconTileSize.Sm.icon,
+                        color = raftArgbHex(ink),
+                    )
+                }
             RaftForwardTargetVisualKind.Task ->
                 RaftIconTile(size = RaftIconTileSize.Sm) {
                     ForwardPickerGlyph(

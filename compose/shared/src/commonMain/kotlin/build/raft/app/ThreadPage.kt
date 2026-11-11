@@ -2682,6 +2682,8 @@ private fun ThreadMembersPageRoute.toMemberDetailPageData(
         put("memberKind", identity.kind.memberKindWireValue())
         identity.sourceServerId?.value?.let { put("sourceServerId", it) }
         sourceServerName?.takeIf { it.isNotBlank() }?.let { put("sourceServerName", it) }
+        // web ChannelMembers: a person opened from the channel's members names their servers in it.
+        if (identity.kind == MemberKind.Human) channelId.value.takeIf { it.isNotBlank() }?.let { put(MemberDetailProfileChannelIdKey, it) }
         put("localOffsetMinutes", localOffsetMinutes)
         todayEpochDay?.let { put("todayEpochDay", it) }
         nowEpochMillis?.let { put("nowEpochMillis", it) }
@@ -3046,6 +3048,7 @@ internal fun RaftThreadScreenPayload.toThreadMemberDetailPageData(
         put("memberId", selected)
         put("memberKind", identity.kind.memberKindWireValue())
         identity.sourceServerId?.value?.let { put("sourceServerId", it) }
+        if (identity.kind == MemberKind.Human) profileChannelId()?.let { put(MemberDetailProfileChannelIdKey, it) }
         members
             .firstOrNull { it.id == selected && it.sourceServerId == identity.sourceServerId?.value }
             ?.sourceServerLabel
@@ -3057,6 +3060,21 @@ internal fun RaftThreadScreenPayload.toThreadMemberDetailPageData(
         put("timeFormat", timeFormat)
     }
 }
+
+/**
+ * The channel a person's profile opened from this page names their servers in (web MessageItem /
+ * TaskConversationDialog `channelId`): a channel's (or task conversation's) own id, a reply
+ * thread's parent channel; none from a DM.
+ */
+internal fun RaftThreadScreenPayload.profileChannelId(): String? =
+    when (surfaceKind) {
+        RaftThreadSurfaceKind.Channel -> sourceThreadId.nonBlank()
+        RaftThreadSurfaceKind.ReplyThread ->
+            parentChannelId.nonBlank()?.takeUnless {
+                parentSurfaceKind == RaftThreadSurfaceKind.DirectMessage || parentChannelKind == "dm"
+            }
+        else -> null
+    }
 
 internal fun RaftThreadScreenPayload.threadChannelSearchChannelId(): String? =
     sourceThreadId
@@ -7571,19 +7589,28 @@ private fun SharedThreadRouteContentContent(
             lastAcceptedHeaderProjection = accepted
         }
     }
-    // Public-page globe on the channel header icon: the server's publicPageLive comes from
-    // the session server list (canonical store state), never from the route payload.
-    val headerServerPublicPageLive =
-        currentSession?.servers?.firstOrNull { it.id == headerProjectionServerId?.value }?.publicPageLive == true
+    // The channel header icon's server facts: the public-page globe (publicPageLive from the session
+    // server list, canonical store state, never the route payload) and external_channels_v1 (the
+    // External glyph). One holder, not two locals (the route's lambdas are at the JVM capture limit).
+    val headerServerMarks =
+        ThreadHeaderServerMarks(
+            publicPageLive =
+                currentSession?.servers?.firstOrNull { it.id == headerProjectionServerId?.value }?.publicPageLive == true,
+            externalChannelsEnabled =
+                rememberServerFeatureLatched(sharedStores.serverFeatureFlags, headerProjectionServerId, EXTERNAL_CHANNELS_FEATURE_FLAG_KEY),
+        )
     val headerDisplayModel =
-        remember(headerProjectionInput, stableHeaderProjection, payload, headerServerPublicPageLive, knownHeaderCandidate) {
+        remember(headerProjectionInput, stableHeaderProjection, payload, headerServerMarks, knownHeaderCandidate) {
             headerProjectionInput
                 .displayModelWithKnownCandidate(
                     projection = stableHeaderProjection,
                     contentPayload = payload,
                     knownCandidate = knownHeaderCandidate
                 )
-                .copy(serverPublicPageLive = headerServerPublicPageLive)
+                .copy(
+                    serverPublicPageLive = headerServerMarks.publicPageLive,
+                    externalChannelsEnabled = headerServerMarks.externalChannelsEnabled,
+                )
         }
     // Agent Lounge v0: a Lounge's mute is the Lounge's own (no Home list holds it), so its ⋯ Mute
     // and muted mark follow what the sidebar row's menu and other devices set.
@@ -12973,6 +13000,9 @@ private fun SharedThreadRouteContentContent(
             }
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
+                // One channel-kind glyph per channel (forward targets, composer suggestions). Read
+                // from values this lambda already captures (see the JVM-limit note below).
+                LocalRaftChannelKinds provides rememberRaftChannelKindsState(sharedStores.serverFeatureFlags, sharedHomeStore.homeStateForPage()),
                 LocalRaftMemberPreviewCardSource provides memberPreviewCardSource,
                 LocalThreadAppLinkPreviewHost provides appLinkPreviewHost,
                 LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
@@ -19372,7 +19402,7 @@ internal fun ThreadPageHeader(
                                 fill = raftAvatarFallbackFill(headerDisplay.dmPeerIdentity?.kind),
                             )
                         payload.showModeTabs ->
-                            RaftNativeNavBarTitleLeading.Channel(headerDisplay.channelKind, headerDisplay.channelOnPublicPage)
+                            RaftNativeNavBarTitleLeading.Channel(headerDisplay.channelKindGlyph)
                         else -> null
                     },
                 refreshing = payload.backgroundRefreshing,
@@ -19433,10 +19463,7 @@ internal fun ThreadPageHeader(
                 )
             } else if (payload.showModeTabs) {
                 Box(modifier = Modifier.padding(end = ThreadHeaderChannelTitleGapExtra)) {
-                    RaftChannelIdentityTile(
-                        channelKind = headerDisplay.channelKind,
-                        onPublicPage = headerDisplay.channelOnPublicPage
-                    )
+                    RaftChannelIdentityTile(glyph = headerDisplay.channelKindGlyph)
                 }
             }
         },
@@ -19892,10 +19919,9 @@ private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState, modifier
 
 @Composable
 internal fun RaftChannelIdentityTile(
-    channelKind: String?,
+    glyph: RaftChannelKindGlyph,
     tileSize: Dp = ThreadHeaderChannelTileSize,
     iconSize: Dp = ThreadHeaderChannelIconSize,
-    onPublicPage: Boolean = false
 ) {
     // raft-ui `PanelHeaderIcon`: Source Yellow sticker, sticker radius, 1.5dp sticker-ink edge.
     val shape = RoundedCornerShape(RaftAppRadius.Sticker)
@@ -19905,24 +19931,12 @@ internal fun RaftChannelIdentityTile(
             .border(RaftAppStroke.Control, RaftColor.StickerInk, shape),
         contentAlignment = Alignment.Center
     ) {
-        if (onPublicPage) {
-            build.raft.app.components.RaftHashGlobeIcon(size = iconSize, color = raftArgbHex(RaftColor.StickerInk))
-        } else {
-            RaftLucideIcon(
-                channelKind.threadChannelHeaderIcon(),
-                modifier = Modifier.size(iconSize),
-                color = raftArgbHex(RaftColor.StickerInk)
-            )
-        }
+        RaftChannelKindIcon(glyph, size = iconSize, color = raftArgbHex(RaftColor.StickerInk))
     }
 }
 
-internal fun String?.threadChannelHeaderIcon(): RaftLucideIconName =
-    when (this?.lowercase()) {
-        "private" -> RaftLucideIconName.Lock
-        "joint" -> RaftLucideIconName.GitBranch
-        else -> RaftLucideIconName.Hash
-    }
+/** A channel's glyph from its type alone ([raftChannelKindGlyph]) where nothing else is known. */
+internal fun String?.threadChannelHeaderIcon(): RaftLucideIconName = raftChannelKindGlyph(this).iconName
 
 @Composable
 private fun ThreadDmPeerAvatarTile(
@@ -20307,7 +20321,9 @@ private fun ThreadComposerContentWithSuggestions(
             channelSuggestionSlice.suggestions.map { suggestion ->
                 RaftComposerChannelItem(
                     name = suggestion.name,
-                    subtitle = suggestion.subtitle
+                    subtitle = suggestion.subtitle,
+                    channelId = suggestion.channelId,
+                    channelType = suggestion.channelType,
                 )
             }
         }
@@ -38093,7 +38109,8 @@ internal fun ForwardMessageTarget.toRaftForwardTargetPickerItem(): RaftForwardTa
         cacheServerId = serverId.value,
         visualKind = forwardTargetVisualKind(),
         current = current && isForwardConversationTarget(),
-        payload = this
+        payload = this,
+        channelId = channelId?.value?.takeIf { forwardTargetVisualKind().channelType() != null },
     )
 
 internal fun ForwardMessageTarget.forwardTargetVisualKind(): RaftForwardTargetVisualKind =

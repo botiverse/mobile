@@ -200,6 +200,7 @@ import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.model.MessageId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.Presence
 import build.raft.app.model.supportsRuntimeFastMode
 import build.raft.app.model.supportsRuntimeReasoningEffort
@@ -981,6 +982,32 @@ internal fun membersAgentDetailTabsForAccess(
  */
 internal fun membersAgentProfileIsRemote(accessMode: MemberDetailAccessMode): Boolean =
     accessMode == MemberDetailAccessMode.RemoteProfileOnly
+
+/** pageData key of [RaftMemberDetailPayload.profileChannelId]. */
+internal const val MemberDetailProfileChannelIdKey = "profileChannelId"
+
+/**
+ * A person's profile "From" row (web HumanDetailPanel `sourceServerLabel`, utils/
+ * channelLocalMembership.ts `memberServerBadgeLabels`): the servers they are from, joined by ", ",
+ * when any is not the viewer's server; null for a purely local person. [MemberProfile.servers] is
+ * the server's answer exactly, an empty list included (then nothing shows); without it, the single
+ * server fields.
+ */
+internal fun membersHumanSourceServerLabel(member: MemberProfile, viewerServerId: String?): String? {
+    val viewer = viewerServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val servers =
+        member.servers
+            ?: member.serverId?.value?.takeIf { it.isNotBlank() }?.let { id ->
+                listOf(MemberServerRef(id = id, name = member.serverName.orEmpty(), slug = member.serverSlug.orEmpty()))
+            }
+            ?: emptyList()
+    if (servers.all { it.id == viewer }) return null
+    return servers
+        .map { server -> server.name.ifBlank { server.slug } }
+        .filter { it.isNotEmpty() }
+        .joinToString(", ")
+        .ifEmpty { null }
+}
 
 /** The "From" row's server name (web `agent.serverName || agent.serverSlug`); never a raw id. */
 internal fun membersRemoteAgentSourceServerName(member: MemberProfile): String? {
@@ -1774,7 +1801,13 @@ internal data class RaftMemberDetailPayload(
     val timeFormat: String = RaftTimeFormat24Hour,
     val agentPanelTabOrder: List<String> = emptyList(),
     /** A remote member's server label from the opener's joint roster (never authority). */
-    val sourceServerName: String? = null
+    val sourceServerName: String? = null,
+    /**
+     * The channel (a thread's parent) the person's profile was opened from: the profile read names
+     * their servers in it (web profileStore `profileChannelId`, botiverse/slock #14009). Identity
+     * of the opener only; the servers come from the read.
+     */
+    val profileChannelId: String? = null,
 )
 
 @Serializable
@@ -3278,7 +3311,9 @@ private class MemberDetailRouteProvider(
         /** The roster seed the opener left for a remote agent, read before the route cleared it. */
         remoteAgentSeed: AgentDetailSnapshot? = null,
         /** The opener's label for the remote member's server (joint roster `serverName`). */
-        sourceServerName: String? = null
+        sourceServerName: String? = null,
+        /** The channel a person's profile was opened from ([RaftMemberDetailPayload.profileChannelId]). */
+        profileChannelId: ChannelId? = null
     ): MemberDetailRouteState {
         val session = authStore.readSession()
         val serverId = session?.currentServerId
@@ -3294,7 +3329,8 @@ private class MemberDetailRouteProvider(
                     profileServerId = sourceServerId ?: ServerId(serverId),
                     server = server,
                     currentUserId = session.user.id,
-                    accessMode = accessMode
+                    accessMode = accessMode,
+                    profileChannelId = profileChannelId
                 )
             },
             loadAgent = { selectedId, accessMode ->
@@ -3608,13 +3644,28 @@ private class MemberDetailRouteProvider(
         profileServerId: ServerId,
         server: ServerSummary,
         currentUserId: String?,
-        accessMode: MemberDetailAccessMode
+        accessMode: MemberDetailAccessMode,
+        profileChannelId: ChannelId? = null
     ): MemberDetailRouteState {
         agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
-        return when (val memberResult = memberRepository.getMemberProfile(DataRequestPriority.Visible, selectedId, profileServerId)) {
+        // Opened from a channel (web ProfilePanel `?channelId=`): read in the channel's server, the
+        // viewer's, which names the person's servers in it; the answer's server fields stand.
+        val memberResult =
+            if (profileChannelId != null) {
+                memberRepository.getMemberProfileInChannel(DataRequestPriority.Visible, selectedId, server.id, profileChannelId)
+            } else {
+                memberRepository.getMemberProfile(DataRequestPriority.Visible, selectedId, profileServerId)
+            }
+        return when (memberResult) {
             is DataResult.Content -> {
-                val member = memberResult.data.copy(serverId = profileServerId)
-                serverMembersStore.seedProfiles(profileServerId, listOf(member))
+                val member =
+                    if (profileChannelId != null) {
+                        memberResult.data.copy(serverId = memberResult.data.serverId ?: profileServerId)
+                    } else {
+                        memberResult.data.copy(serverId = profileServerId)
+                    }
+                // The channel's `servers` answer belongs to this open, not to the server roster.
+                serverMembersStore.seedProfiles(profileServerId, listOf(member.copy(servers = null)))
                 MemberDetailRouteState.Human(server, currentUserId, member, accessMode)
             }
             is DataResult.Empty ->
@@ -4408,7 +4459,8 @@ internal fun MemberDetailPageContent(
         val loaded = provider.loadMember(memberIdentity, requestOwner, generation, {
             requestFence?.matches(memberIdentity, activeServerId, agentProfileRequestGeneration) == true
         }, hasCachedAgentDetail = hasCachedAgentDetail, remoteAgentSeed = remoteAgentSeed,
-            sourceServerName = payload.sourceServerName)
+            sourceServerName = payload.sourceServerName,
+            profileChannelId = payload.profileChannelId?.let(::ChannelId))
         if (requestFence != null &&
             !requestFence.matches(memberIdentity, activeServerId, agentProfileRequestGeneration)
         ) {
@@ -5860,7 +5912,8 @@ internal fun JSONObject.toRaftMemberDetailPayload(): RaftMemberDetailPayload {
         nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
         timeFormat = payload.optString("timeFormat").ifBlank { RaftTimeFormat24Hour },
         agentPanelTabOrder = payload.optStringArray("agentPanelTabOrder"),
-        sourceServerName = payload.optNullableString("sourceServerName")
+        sourceServerName = payload.optNullableString("sourceServerName"),
+        profileChannelId = payload.optNullableString(MemberDetailProfileChannelIdKey)
     )
 }
 
@@ -9080,6 +9133,21 @@ private fun MembersHumanDetailSections(
     val departure = membersHumanDeparture(member.membershipStatus)
     val isSelf = membersHumanIsSelf(member, currentUserId)
     Column(modifier = modifier.fillMaxWidth()) {
+        // Web HumanDetailPanel: "From" and the person's servers, above the avatar, when any is not ours.
+        membersHumanSourceServerLabel(member, currentServerId)?.let { label ->
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = MembersHumanSectionPaddingX, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+            ) {
+                MembersDetailSectionTitle(stringResource(Res.string.member_section_from))
+                RaftText(
+                    text = label,
+                    style = RaftTheme.typography.callout.withRaftFontWeight(FontWeight.SemiBold),
+                    color = RaftTheme.colors.foreground
+                )
+            }
+            RaftSeparator()
+        }
         MembersHumanProfileSummary(
             member = member,
             departure = departure,

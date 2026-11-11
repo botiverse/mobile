@@ -99,10 +99,9 @@ internal fun RaftNativeNavBarTitleImageCapture(
             when (leading) {
                 is RaftNativeNavBarTitleLeading.Channel ->
                     RaftChannelIdentityTile(
-                        channelKind = leading.channelKind,
+                        glyph = leading.glyph,
                         tileSize = RaftNativeNavBarTitleImageSize,
                         iconSize = RaftNativeNavBarChannelGlyphSize,
-                        onPublicPage = leading.onPublicPage,
                     )
                 is RaftNativeNavBarTitleLeading.Avatar ->
                     RaftAppAvatar(

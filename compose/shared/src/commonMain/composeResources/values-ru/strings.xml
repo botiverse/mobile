@@ -3320,6 +3320,7 @@
     <string name="settings_public_visibility_failed_guest_join_update">Не удалось изменить настройку присоединения гостей</string>
     <string name="settings_public_visibility_failed_search_update">Не удалось изменить доступ для поисковых систем</string>
     <string name="channel_public_page_readable">Этот канал может читать кто угодно на публичной странице</string>
+    <string name="channel_external_members">Внешний канал</string>
     <string name="layout_server_public_page_live">Публичный: его публичные каналы может читать кто угодно без входа</string>
     <string name="member_activity_overview_view_label">Режим просмотра активности</string>
     <string name="member_activity_overview_view_overview">Обзор</string>

@@ -153,6 +153,8 @@ data class ConversationSummary(
     val guestVisible: Boolean = false,
     /** Channel row `guestJoinable` (see [build.raft.app.data.HomeChannelWireDto.guestJoinable]). */
     val guestJoinable: Boolean = false,
+    /** Channel row `hasExternalRelation` (see [build.raft.app.data.HomeChannelWireDto.hasExternalRelation]). */
+    val hasExternalRelation: Boolean = false,
     val activityNotificationPreference: ChannelActivityNotificationPreference = ChannelActivityNotificationPreference.Unsupported,
     val permissions: ConversationPermissions = ConversationPermissions(),
     /**
@@ -382,6 +384,14 @@ sealed class AvatarReference {
     }
 }
 
+/** A server a person participates through in a channel (server `ChannelMemberServer`). */
+@Serializable
+data class MemberServerRef(
+    val id: String,
+    val name: String = "",
+    val slug: String = "",
+)
+
 @Serializable
 data class MemberProfile(
     val id: MemberId,
@@ -489,6 +499,13 @@ data class MemberProfile(
     val serverId: ServerId? = null,
     val serverName: String? = null,
     val serverSlug: String? = null,
+    /**
+     * A human profile read from a channel (`GET /servers/:id/members/:memberId/profile?channelId=`):
+     * the servers the person is from in that channel, as the server answers them, an empty list
+     * included (the channel lists them through no server). Null when the read named no channel
+     * (or an older server); then the single [serverId] / [serverName] / [serverSlug] stand.
+     */
+    val servers: List<MemberServerRef>? = null,
     /**
      * Channel-membership projection (web `channel_members` join row fields on
      * `useChannelMembers` results): the role the member effectively has inside

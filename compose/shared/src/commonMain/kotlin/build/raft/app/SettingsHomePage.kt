@@ -171,6 +171,7 @@ import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeParentThreadUnread
 import build.raft.app.data.SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY
+import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
 import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
 import build.raft.app.data.DRAFTS_SECTION_FEATURE_FLAG_KEY
 import build.raft.app.data.agentLoungeEnabled
@@ -757,7 +758,14 @@ private fun SharedHomeSearchEntityLeadingAvatar(
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver
 ) {
     when (result.type) {
-        SearchEntityType.Channel,
+        SearchEntityType.Channel ->
+            RaftIconTile(size = RaftIconTileSize.Sm) {
+                RaftChannelKindIcon(
+                    result.homeSearchChannelGlyph(currentRaftChannelKinds()),
+                    size = RaftIconTileSize.Sm.icon,
+                    color = raftArgbHex(RaftColor.TextMuted),
+                )
+            }
         SearchEntityType.Computer ->
             RaftIconTile(size = RaftIconTileSize.Sm) {
                 RaftLucideIcon(
@@ -7594,6 +7602,9 @@ private fun RaftAppShellReadyContent(
         CompositionLocalProvider(
             LocalRaftAppShellTopBar provides appShellTopBar.takeIf { navRailActive },
             LocalRaftWorkingNow provides workingNowSource,
+            // One channel-kind glyph per channel (search, drafts, pickers): this server's Home rows
+            // and its external_channels_v1.
+            LocalRaftChannelKinds provides rememberRaftChannelKindsState(sharedStores.serverFeatureFlags, homeState),
         ) {
         RaftAppShellSurface(
             shellScope = shellScope,
@@ -8515,6 +8526,16 @@ private fun RaftAppShellReadyContent(
                                         SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY
                                     )
                             }
+                        // external_channels_v1 (web serverFeatureFlags externalChannels): the External glyph.
+                        val homeExternalChannelsEnabled =
+                            remember(homeListServerId, homeFeatureFlagRevision) {
+                                val flagServerId = homeListServerId?.takeIf { it.isNotBlank() }
+                                flagServerId != null &&
+                                    sharedStores.serverFeatureFlags.isEnabled(
+                                        ServerId(flagServerId),
+                                        EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
+                                    )
+                            }
                         // agent_lounge_v0 (web useAgentLoungeEnabled): flag on and not a Guest.
                         val homeAgentLoungeEnabled =
                             remember(homeListServerId, homeFeatureFlagRevision, homeState) {
@@ -8575,6 +8596,7 @@ private fun RaftAppShellReadyContent(
                                 threadUnreadBadgeEnabled = homeThreadUnreadBadgeEnabled,
                                 sidebarMarkAllReadEnabled = homeSidebarMarkAllReadEnabled,
                                 agentLoungeEnabled = homeAgentLoungeEnabled,
+                                externalChannelsEnabled = homeExternalChannelsEnabled,
                                 agentLoungeNetworkClient = appShellNetworkClient,
                                 onIntent = { intent ->
                                     prewarmAdmissionGate.invalidate("home_intent:${intent::class.simpleName}")
@@ -11593,6 +11615,8 @@ private fun SharedHomeScreen(
     sidebarMarkAllReadEnabled: Boolean = false,
     /** Server flag `agent_lounge_v0` and not a Guest: the Lounges get their own sidebar rows. */
     agentLoungeEnabled: Boolean = false,
+    /** Server flag `external_channels_v1`: external channels draw the External glyph ([raftChannelKindGlyph]). */
+    externalChannelsEnabled: Boolean = false,
     /** Loads a listed Lounge's own row (mute, recency) the client never loaded; null: none loaded. */
     agentLoungeNetworkClient: build.raft.app.data.RaftNetworkClient? = null,
     onIntent: (SharedHomeIntent) -> Unit,
@@ -11920,6 +11944,7 @@ private fun SharedHomeScreen(
                     restoredRowHints,
                     threadUnreadByParent,
                     snapshot.markedUnreadIds,
+                    externalChannelsEnabled,
                 ) {
                     SharedHomeConversationRowProjector(
                         directoryProjections = conversationDirectoryProjections,
@@ -11927,6 +11952,7 @@ private fun SharedHomeScreen(
                         restoredRowHints = restoredRowHints,
                         threadUnreadByParent = threadUnreadByParent,
                         markedUnreadIds = snapshot.markedUnreadIds,
+                        externalChannelsEnabled = externalChannelsEnabled,
                     )
                 }
             // Agent Lounge v0: each listed Lounge's own row (Direct Messages, or Pinned once pinned).
@@ -15572,16 +15598,19 @@ internal fun SearchEntityResult.appBotLookupMemberId(): String? {
     return memberId?.trim()?.takeIf { it.isNotBlank() }
 }
 
-internal fun ThreadLaunchConversationIdentity.homeSearchChannelLeadingIconName(): RaftLucideIconName =
-    when {
-        kind == ConversationKind.Joint -> RaftLucideIconName.GitBranch
-        channelType.equals("private", ignoreCase = true) -> RaftLucideIconName.Lock
-        else -> RaftLucideIconName.Hash
-    }
+/**
+ * A channel result's glyph (web EntityResultRow `ChannelIcon`): the Home row's ([RaftChannelKinds])
+ * when the channel is loaded, else from its type with the server's `external_channels_v1`.
+ */
+internal fun SearchEntityResult.homeSearchChannelGlyph(kinds: RaftChannelKinds = RaftChannelKinds.Empty): RaftChannelKindGlyph {
+    val identity = conversationIdentity ?: return kinds.glyph(null, null)
+    val type = if (identity.kind == ConversationKind.Joint) JointChannelKindWireValue else identity.channelType
+    return kinds.glyph(identity.channelId?.value, type)
+}
 
-internal fun SearchEntityResult.homeSearchEntityLeadingIconName(): RaftLucideIconName? =
+internal fun SearchEntityResult.homeSearchEntityLeadingIconName(kinds: RaftChannelKinds = RaftChannelKinds.Empty): RaftLucideIconName? =
     when (type) {
-        SearchEntityType.Channel -> conversationIdentity?.homeSearchChannelLeadingIconName() ?: RaftLucideIconName.Hash
+        SearchEntityType.Channel -> homeSearchChannelGlyph(kinds).iconName
         SearchEntityType.Computer -> RaftLucideIconName.Monitor
         SearchEntityType.DirectMessage,
         SearchEntityType.Human,
@@ -16272,6 +16301,7 @@ internal data class SharedHomeConversationRowSeed(
     val fallbackActivityMuteSupported: Boolean = false,
     val fallbackBridgeProvider: String? = null,
     val fallbackGuestVisible: Boolean = false,
+    val fallbackHasExternalRelation: Boolean = false,
     /** Unread summary `hasMention` (or a followed thread's), carried by the store. */
     val mentioned: Boolean = false,
     /** Followed threads under this channel with new replies, carried by the store. */
@@ -16292,6 +16322,8 @@ internal data class SharedHomeConversationRowProjector(
     val threadUnreadByParent: Map<ChannelId, HomeParentThreadUnread> = emptyMap(),
     /** [HomeSnapshot.markedUnreadIds]: rows marked unread with no count (botiverse/slock #11795). */
     val markedUnreadIds: Set<String> = emptySet(),
+    /** The server's `external_channels_v1`: external channel rows draw the External glyph. */
+    val externalChannelsEnabled: Boolean = false,
 ) {
     fun project(conversation: HomeConversationRow): RaftHomeConversationItem {
         // Only channel rows carry the followed-thread segment (web `SidebarChannelItem`).
@@ -16315,7 +16347,7 @@ internal data class SharedHomeConversationRowProjector(
         seed.toSharedHomeConversationItem(
             directoryProjection = directoryProjections[seed.id],
             draftProjection = draftProjection
-        )
+        ).let { item -> if (externalChannelsEnabled) item.copy(externalChannelsEnabled = true) else item }
 }
 
 internal fun HomeServerDrawerState.toRaftHomeServerDrawerSections(
@@ -16413,7 +16445,8 @@ private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeCon
         fallbackActivityMuted = activityMuted,
         fallbackActivityMuteSupported = activityMuteSupported,
         fallbackBridgeProvider = bridgeProvider,
-        fallbackGuestVisible = guestVisible
+        fallbackGuestVisible = guestVisible,
+        fallbackHasExternalRelation = hasExternalRelation
     )
 
 private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
@@ -16456,6 +16489,8 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         // The Home row seed is the canonical channel row; a directory projection from a
         // sparse source (inbox) never carries guestVisible, so it may only add, not clear.
         guestVisible = fallbackGuestVisible || directoryProjection?.guestVisible == true,
+        // Same rule: only the canonical channel row carries it (inbox projections never do).
+        hasExternalRelation = fallbackHasExternalRelation || directoryProjection?.hasExternalRelation == true,
         mentioned = mentioned,
         followedThreadUnreadCount = followedThreadUnreadCount,
         markedUnread = markedUnread

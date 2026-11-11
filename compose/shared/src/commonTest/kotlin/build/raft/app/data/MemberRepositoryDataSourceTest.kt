@@ -19,6 +19,46 @@ import kotlinx.coroutines.yield
 
 class MemberRepositoryDataSourceTest {
     @Test
+    fun aProfileOpenedFromAChannelSendsItAndKeepsTheServersAnswer() = runBlocking {
+        // botiverse/slock@44ce160f1 routes/servers.ts GET /:id/members/:memberId/profile?channelId=
+        // (resolveProfileChannelServers): another server's person, with their servers in that channel.
+        val network =
+            FakeMemberNetworkClient().apply {
+                memberProfileResponse =
+                    HomeNetworkResponse(
+                        200,
+                        """
+                        {"userId":"user-remote","serverId":"server-peer","serverName":"Peer Labs","serverSlug":"peer-labs",
+                         "name":"ada","displayName":"Ada","description":null,"avatarUrl":null,"email":null,"gravatarHash":"",
+                         "role":null,"joinedAt":null,"membershipStatus":"active","createdAgents":[],"profileProjection":"channel_summary",
+                         "servers":[{"id":"server-peer","name":"Peer Labs","slug":"peer-labs"},{"id":"server-1","name":"Slock","slug":"slock"}]}
+                        """.trimIndent()
+                    )
+            }
+        val repository = RealMemberRepository(sampleStore(), network)
+
+        val profile =
+            assertIs<DataResult.Content<build.raft.app.model.MemberProfile>>(
+                repository.getMemberProfileInChannel(DataRequestPriority.Visible, MemberId("user-remote"), ServerId("server-1"), ChannelId("channel-1"))
+            ).data
+        val request = network.requests.single()
+        assertEquals("servers/server-1/members/user-remote/profile", request.path)
+        assertEquals(mapOf("channelId" to "channel-1"), request.query)
+        assertEquals(listOf("server-peer", "server-1"), profile.servers?.map { it.id })
+        assertEquals(listOf("Peer Labs", "Slock"), profile.servers?.map { it.name })
+
+        // Without a channel: no query, and no `servers` (the single server fields stand).
+        network.memberProfileResponse =
+            HomeNetworkResponse(200, """{"userId":"user-remote","serverId":"server-1","name":"ada","membershipStatus":"active"}""")
+        val plain =
+            assertIs<DataResult.Content<build.raft.app.model.MemberProfile>>(
+                repository.getMemberProfile(DataRequestPriority.Visible, MemberId("user-remote"), ServerId("server-1"))
+            ).data
+        assertEquals(emptyMap(), network.requests.last().query)
+        assertEquals(null, plain.servers)
+    }
+
+    @Test
     fun emptyChannelRosterPreservesCanonicalAddPermission() = runBlocking {
         val network =
             FakeMemberNetworkClient().apply {
@@ -513,6 +553,7 @@ class MemberRepositoryDataSourceTest {
         var agentsListActivityDetail: String = "Ready"
         var channelMembersResponse: HomeNetworkResponse? = null
         var channelDetailResponse: HomeNetworkResponse = HomeNetworkResponse(403, "{}")
+        var memberProfileResponse: HomeNetworkResponse = HomeNetworkResponse(404, """{"error":"User not found"}""")
         var startBlocker: CompletableDeferred<Unit>? = null
         var patchConfigApply: String? = null
 
@@ -658,6 +699,7 @@ class MemberRepositoryDataSourceTest {
                     ok("""{"ok":true}""")
                 }
                 normalized == "channels/channel-empty" && method == "GET" -> channelDetailResponse
+                normalized == "servers/server-1/members/user-remote/profile" && method == "GET" -> memberProfileResponse
                 normalized == "channels/channel-empty/members" && method == "GET" ->
                     channelMembersResponse ?: error("Missing channel members response")
                 else -> error("Unhandled request $method $normalized query=$query")

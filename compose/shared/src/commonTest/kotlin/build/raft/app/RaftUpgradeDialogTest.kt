@@ -49,6 +49,7 @@ class RaftUpgradeDialogTest {
             RaftUpgradeGate.JointChannelHostLimit,
             RaftUpgradeGate.JointChannelOverLimit,
             RaftUpgradeGate.JointChannelReadOnly,
+            RaftUpgradeGate.ExternalChannelFreeLimit,
             RaftUpgradeGate.General,
         ).forEach { gate ->
             assertEquals(RaftUpgradeOutcome.OpenBilling, raftUpgradeOutcome(gate, plan = "pro", linksOut = true), gate.wire)
@@ -100,6 +101,8 @@ class RaftUpgradeDialogTest {
         assertEquals(RaftUpgradeGate.AgentMigration, raftUpgradeGateForErrorCode("MIGRATION_PRO_PLAN_REQUIRED"))
         assertEquals(RaftUpgradeGate.SeatLimitAgentCreate, raftUpgradeGateForErrorCode("agent_limit_reached"))
         assertEquals(RaftUpgradeGate.SeatLimitInvite, raftUpgradeGateForErrorCode("human_seat_limit_reached"))
+        // botiverse/slock@44ce160f1 routes/paywallHit.ts: `free_external_limit` is this gate.
+        assertEquals(RaftUpgradeGate.ExternalChannelFreeLimit, raftUpgradeGateForErrorCode("free_external_limit"))
         assertNull(raftUpgradeGateForErrorCode("UPLOAD_RATE_LIMITED"))
         assertNull(raftUpgradeGateForErrorCode(null))
     }
@@ -172,5 +175,17 @@ class RaftUpgradeDialogTest {
         assertEquals(RaftUpgradeBenefit.Joint, raftUpgradeBenefits(raftUpgradeGateCopy(RaftUpgradeGate.JointChannelReadOnly).first).first())
         assertEquals(RaftUpgradeBenefit.entries, raftUpgradeBenefits(raftUpgradeGateCopy(RaftUpgradeGate.General).first))
         assertEquals(4, raftUpgradeBenefits(RaftUpgradeBenefit.Migration).size)
+    }
+
+    @Test
+    fun theExternalChannelLimitIsTheWebsGateAndReadsAsGeneral() {
+        // shared upgradeGates.ts UPGRADE_GATES; web upgradeGateCopy.ts GATE_COPY and UpgradeDialog
+        // GATE_HIGHLIGHT map it to the general copy and the offer's own order (#14034).
+        val gate = RaftUpgradeGate.ExternalChannelFreeLimit
+        assertEquals("external_channel_free_limit", gate.wire)
+        assertEquals("external_channel_free_limit", gate.webDialogGate)
+        assertFalse(gate.isSeatLimit)
+        assertEquals(raftUpgradeGateCopy(RaftUpgradeGate.General), raftUpgradeGateCopy(gate))
+        assertEquals(RaftUpgradeBenefit.entries, raftUpgradeBenefits(raftUpgradeGateCopy(gate).first))
     }
 }

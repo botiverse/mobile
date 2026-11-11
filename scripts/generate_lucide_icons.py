@@ -117,6 +117,7 @@ LUCIDE_ICONS = [
     "minimize-2",
     "menu",
     "eraser",
+    "external-channel",
     "external-link",
     "eye",
     "eye-off",
@@ -331,6 +332,10 @@ CUSTOM_ICONS = {
     "unfollow-artifact": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "unfollow-artifact.svg"),
     "message": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "message.svg"),
     "direct-message": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "direct-message.svg"),
+    # The web's External channel glyph (botiverse/slock packages/web/src/components/channel/
+    # channelKindIcon.tsx EXTERNAL_CHANNEL_PATH): lucide's lock shrunk into the top-left cells
+    # with an arrow out of the bottom-right corner, one path.
+    "external-channel": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "external-channel.svg"),
 }
 
 BRAND_SVGS = {

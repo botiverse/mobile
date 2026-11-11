@@ -315,6 +315,9 @@ sealed interface HomeConversationRow {
     /** Channel `guestJoinable` (see [HomeChannelWireDto.guestJoinable]); only channels carry one. */
     val guestJoinable: Boolean
         get() = false
+    /** Channel `hasExternalRelation` (see [HomeChannelWireDto.hasExternalRelation]); only channels carry one. */
+    val hasExternalRelation: Boolean
+        get() = false
     /** Agent Lounge v0: the agent this channel is the Lounge of; only channels carry one. */
     val loungeAgentId: String?
         get() = null
@@ -374,6 +377,7 @@ data class HomeChannelRow(
     override val bridgeProvider: String? = null,
     override val guestVisible: Boolean = false,
     override val guestJoinable: Boolean = false,
+    override val hasExternalRelation: Boolean = false,
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
     override val permissions: ConversationPermissions = ConversationPermissions(),
@@ -469,6 +473,7 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         bridgeProvider = bridgeProvider,
         guestVisible = guestVisible,
         guestJoinable = guestJoinable,
+        hasExternalRelation = hasExternalRelation,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,
         channelCapabilities = channelCapabilities,
@@ -514,6 +519,7 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         bridgeProvider = bridgeProvider,
         guestVisible = guestVisible,
         guestJoinable = guestJoinable,
+        hasExternalRelation = hasExternalRelation,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,
         channelCapabilities = channelCapabilities,
