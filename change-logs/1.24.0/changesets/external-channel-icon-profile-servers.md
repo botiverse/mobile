@@ -4,7 +4,7 @@ area: channel
 platforms:
   - android
   - ios
-pull_request: 0
+pull_request: 4578
 rollout: flag
 ---
 
