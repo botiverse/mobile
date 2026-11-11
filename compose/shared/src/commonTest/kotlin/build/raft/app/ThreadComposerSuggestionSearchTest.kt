@@ -8,6 +8,24 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 class ThreadComposerSuggestionSearchTest {
+    @Test
+    fun anEntrysTierOrdersComparableMatchesButNeverOutranksAnExactNameOrTheCap() {
+        // slock #14228 (web composerSuggestionSearch `tier` / `matchBand`).
+        fun entry(index: Int, name: String, tier: Int = 0) =
+            ThreadComposerSuggestionSearchEntry(index, name, listOf(ThreadComposerSuggestionSearchField(name, priority = 0)), tier)
+        val strong = listOf(entry(0, "onboarding-old", 2), entry(1, "wg-onboarding-v3"), entry(2, "onboarding-new", 1))
+        assertEquals(listOf("wg-onboarding-v3", "onboarding-new", "onboarding-old"), rankThreadComposerSuggestionEntries("onboarding", strong))
+
+        // Forty archived prefix matches cannot push a live word-start match off the capped list,
+        val many = List(40) { entry(it, "onboarding-$it", 2) } + entry(40, "wg-onboarding-v3")
+        val ranked = rankThreadComposerSuggestionEntries("onboarding", many)
+        assertEquals("wg-onboarding-v3", ranked.first())
+        assertEquals(30, ranked.size)
+        // nor forty loose live matches an exact name in a higher tier.
+        val loose = List(40) { entry(it, "d-e-s-i-g-n-$it") } + entry(40, "design", 1)
+        assertEquals("design", rankThreadComposerSuggestionEntries("design", loose).first())
+    }
+
     private data class Person(
         val id: String,
         val handle: String,

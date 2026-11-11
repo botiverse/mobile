@@ -2074,6 +2074,12 @@
     <string name="member_hosted_runtime_state_deleting">正在移除</string>
     <string name="member_hosted_runtime_state_deleted">已移除</string>
     <string name="members_agent_group_no_computer">外部与云端</string>
+    <string name="members_group_none">不分组</string>
+    <string name="members_group_by_computer">按计算机</string>
+    <string name="members_group_trigger_label">Agent 分组：%1$s</string>
+    <string name="members_tab_all">全部</string>
+    <string name="members_search_label">搜索成员</string>
+    <string name="members_no_matches">没有符合「%1$s」的成员。</string>
     <string name="member_hosted_runtime_location">在云端运行</string>
     <string name="member_hosted_runtime_free">限时免费</string>
     <string name="member_hosted_runtime_last_error">最近一次错误（%1$s）：%2$s</string>

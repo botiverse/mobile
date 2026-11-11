@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueMembersAgentMachineGroupCollapseStore
 import build.raft.app.data.MembersAgentMachineGroupNoMachineKey
+import build.raft.app.data.MembersAgentsGrouping
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -17,6 +18,28 @@ import kotlin.test.assertTrue
  * (`slock:sidebarCollapsed:<userId>:agent-machine-group:<machineKey>`).
  */
 class MembersAgentMachineGroupCollapseTest {
+
+    @Test
+    fun agentsAreUngroupedUntilTheReaderPicksAGroupingWhichIsKeptPerUser() {
+        // slock #14068: No grouping is the default; a choice is kept (web localStorage
+        // `raft_members_agents_grouping`; here per signed-in user).
+        val store = KeyValueMembersAgentMachineGroupCollapseStore(InMemoryRaftKeyValueStore())
+        assertEquals(MembersAgentsGrouping.None, store.agentsGrouping("user-1"))
+
+        store.setAgentsGrouping("user-1", MembersAgentsGrouping.Computer)
+        assertEquals(MembersAgentsGrouping.Computer, store.agentsGrouping("user-1"))
+        assertEquals(MembersAgentsGrouping.None, store.agentsGrouping("user-2"))
+        // A value this build does not know (the web's "creator") reads as the default.
+        assertEquals(MembersAgentsGrouping.None, MembersAgentsGrouping.fromStorageValue("creator"))
+    }
+
+    @Test
+    fun anUngroupedListHasNoComputerRows() {
+        val agents = listOf(member("a1", "computer:Mac", "computer-id:m1"), member("a2", "computer:Box", "computer-id:m2"))
+        // Spacer, Agents head, two rows, Humans head, two humans, spacer.
+        assertEquals(8, membersLazyItemCount(agents, humansCount = 2, agentsExpanded = true, humansExpanded = true, agentsGrouping = MembersAgentsGrouping.None))
+        assertEquals(10, membersLazyItemCount(agents, humansCount = 2, agentsExpanded = true, humansExpanded = true, agentsGrouping = MembersAgentsGrouping.Computer))
+    }
 
     @Test
     fun groupKeyPrefersComputerIdSoRenamesKeepTheCollapsedEntry() {

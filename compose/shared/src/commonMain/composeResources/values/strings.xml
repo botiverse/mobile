@@ -2076,6 +2076,12 @@
     <string name="member_hosted_runtime_state_deleting">Removing</string>
     <string name="member_hosted_runtime_state_deleted">Removed</string>
     <string name="members_agent_group_no_computer">external &amp; cloud</string>
+    <string name="members_group_none">No grouping</string>
+    <string name="members_group_by_computer">By computer</string>
+    <string name="members_group_trigger_label">Group agents: %1$s</string>
+    <string name="members_tab_all">All</string>
+    <string name="members_search_label">Search members</string>
+    <string name="members_no_matches">No members match “%1$s”.</string>
     <string name="member_hosted_runtime_location">Runs in the cloud</string>
     <string name="member_hosted_runtime_free">Free for a limited time</string>
     <string name="member_hosted_runtime_last_error">Last error (%1$s): %2$s</string>
