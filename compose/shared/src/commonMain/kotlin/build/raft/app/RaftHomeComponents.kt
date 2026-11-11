@@ -4802,14 +4802,14 @@ internal fun RaftHomeConversationItem.homeChannelSymbol(): String =
     homeChannelKind().toRaftChannelSymbol()
 
 /**
- * Row glyph symbol from the one chooser ([raftChannelKindGlyph]): the External glyph for an external
- * channel while the server's `external_channels_v1` is on, the public-page hash-globe for a regular
+ * Row glyph symbol from the one chooser ([raftChannelRecordKindGlyph]): the External glyph for an
+ * external channel, the public-page hash-globe for a regular
  * channel readable on the server's live public page (web channelKindIcon.tsx), else the kind's own.
  * Interaction identities keep using the plain [homeChannelSymbol] so they never change with it.
  */
 internal fun RaftHomeConversationItem.homeChannelSymbol(serverPublicPageLive: Boolean): String {
     val type = homeChannelKind()
-    return raftChannelKindGlyph(
+    return raftChannelRecordKindGlyph(
         channelType = type,
         onPublicPage =
             channelOnPublicPage(

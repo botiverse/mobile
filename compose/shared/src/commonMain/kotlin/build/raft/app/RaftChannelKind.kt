@@ -57,27 +57,27 @@ internal fun isRaftExternalSectionChannel(channelType: String?, hasExternalRelat
     }
 
 /**
- * The one chooser of a channel's kind glyph (web components/channel/channelKind.ts
- * `channelKindIconProps` + channelKindIcon.tsx `ChannelKindIcon`), so the sidebar, the header,
- * Activity, search, pickers and composer suggestions draw the same channel the same way:
+ * A channel's kind glyph from what is known of it (web channelKindIcon.tsx `ChannelKindIcon`):
  *
- * - External (lock + arrow out) when the channel is external ([isRaftExternalSectionChannel]). Not
- *   gated by `external_channels_v1`, like the web (sidebarChannelVisibility.ts
- *   `isSidebarExternalOnlyChannel`, plan §2a): a channel that is already external keeps its icon
- *   when the flag is off.
+ * - External (lock + arrow out) when [external] (a public, private or joint channel);
  * - else private: lock; a public channel on the server's live public page ([onPublicPage],
  *   [channelOnPublicPage]): the hash-globe; joint: git-branch; any other channel: `#`.
+ *
+ * Called with the type alone it is the web's fallback for a channel that is not loaded
+ * (`<ChannelKindIcon type={type} />`): a joint channel keeps git-branch. A surface that holds the
+ * channel record takes [raftChannelRecordKindGlyph], which decides [external].
  *
  * [channelType] is the wire type (`channel` / `private` / `joint`); null or unknown draws `#`.
  */
 internal fun raftChannelKindGlyph(
     channelType: String?,
     onPublicPage: Boolean = false,
-    hasExternalRelation: Boolean = false,
+    external: Boolean = false,
 ): RaftChannelKindGlyph {
     val type = channelType?.trim()?.lowercase()
     return when {
-        isRaftExternalSectionChannel(type, hasExternalRelation) -> RaftChannelKindGlyph.External
+        external && (type == "channel" || type == "private" || type == JointChannelKindWireValue) ->
+            RaftChannelKindGlyph.External
         type == "private" -> RaftChannelKindGlyph.Lock
         type == JointChannelKindWireValue -> RaftChannelKindGlyph.Joint
         onPublicPage && (type == null || type == "channel") -> RaftChannelKindGlyph.PublicPage
@@ -85,10 +85,26 @@ internal fun raftChannelKindGlyph(
     }
 }
 
-/** [raftChannelKindGlyph] for a Home channel row (the canonical channel record). */
+/**
+ * The one chooser for a channel whose record is known (web components/channel/channelKind.ts
+ * `channelKindIconProps`), so the sidebar, the header, Activity, search, pickers and composer
+ * suggestions draw the same channel the same way: External when the channel is external
+ * ([isRaftExternalSectionChannel]: a joint channel, or one with `hasExternalRelation`). Not gated
+ * by `external_channels_v1`, like the web (sidebarChannelVisibility.ts
+ * `isSidebarExternalOnlyChannel`, plan §2a): a channel that is already external keeps its icon
+ * when the flag is off. Otherwise [raftChannelKindGlyph].
+ */
+internal fun raftChannelRecordKindGlyph(
+    channelType: String?,
+    onPublicPage: Boolean = false,
+    hasExternalRelation: Boolean = false,
+): RaftChannelKindGlyph =
+    raftChannelKindGlyph(channelType, onPublicPage, external = isRaftExternalSectionChannel(channelType, hasExternalRelation))
+
+/** [raftChannelRecordKindGlyph] for a Home channel row (the canonical channel record). */
 internal fun HomeChannelRow.raftChannelKindGlyph(serverPublicPageLive: Boolean): RaftChannelKindGlyph {
     val type = if (kind == build.raft.app.model.ConversationKind.Joint) JointChannelKindWireValue else channelType
-    return raftChannelKindGlyph(
+    return raftChannelRecordKindGlyph(
         channelType = type,
         onPublicPage = channelOnPublicPage(serverPublicPageLive, type, guestVisible, archived),
         hasExternalRelation = hasExternalRelation,

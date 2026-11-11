@@ -42,8 +42,20 @@ class RaftChannelKindTest {
             )
         for (case in cases) {
             val name = "${case.type} publicPage=${case.onPublicPage} external=${case.hasExternalRelation}"
-            assertEquals(case.glyph, raftChannelKindGlyph(case.type, case.onPublicPage, case.hasExternalRelation), name)
+            assertEquals(case.glyph, raftChannelRecordKindGlyph(case.type, case.onPublicPage, case.hasExternalRelation), name)
         }
+    }
+
+    @Test
+    fun theTypeAloneIsTheWebFallbackAndNeverExternal() {
+        // web `<ChannelKindIcon type={type} />` for a channel that is not loaded: no `external`.
+        assertEquals(RaftChannelKindGlyph.Joint, raftChannelKindGlyph("joint"))
+        assertEquals(RaftChannelKindGlyph.Lock, raftChannelKindGlyph("private"))
+        assertEquals(RaftChannelKindGlyph.Hash, raftChannelKindGlyph("channel"))
+        assertEquals(RaftChannelKindGlyph.PublicPage, raftChannelKindGlyph("channel", onPublicPage = true))
+        // `external` applies to a public, private or joint channel only.
+        assertEquals(RaftChannelKindGlyph.External, raftChannelKindGlyph("joint", external = true))
+        assertEquals(RaftChannelKindGlyph.Hash, raftChannelKindGlyph("dm", external = true))
     }
 
     @Test

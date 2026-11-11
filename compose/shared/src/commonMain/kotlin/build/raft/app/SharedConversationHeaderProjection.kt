@@ -54,11 +54,12 @@ internal data class ThreadHeaderDisplayModel(
     /** The channel header's glyph, from the one chooser (web ChatPanel `ChannelIcon`). */
     val channelKindGlyph: RaftChannelKindGlyph
         get() =
-            raftChannelKindGlyph(
-                channelType = channelKind,
-                onPublicPage = channelOnPublicPage,
-                hasExternalRelation = surfaceKind == RaftThreadSurfaceKind.Channel && channelHasExternalRelation,
-            )
+            if (surfaceKind == RaftThreadSurfaceKind.Channel) {
+                raftChannelRecordKindGlyph(channelKind, channelOnPublicPage, channelHasExternalRelation)
+            } else {
+                // A reply thread's header is not the channel's: its type alone.
+                raftChannelKindGlyph(channelKind, channelOnPublicPage)
+            }
 }
 
 internal sealed interface ThreadHeaderProjectionInput {
