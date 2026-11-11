@@ -175,6 +175,142 @@ class AndroidRealtimeSessionRegistryTest {
         assertEquals(listOf("server-a:last_owner_explicit_close"), fixture.disconnected)
     }
 
+    @Test
+    fun multiSessionAddingServerKeepsExistingRuntime() {
+        val fixture = Fixture()
+        val first = fixture.reconcile("server-a")
+        val runtimeA = first.desired.single().runtime
+
+        val second = fixture.reconcile("server-a", "server-b")
+
+        assertEquals(listOf(ServerId("server-a"), ServerId("server-b")), second.desired.map { it.serverId })
+        assertSame(runtimeA, second.desired.first().runtime)
+        assertFalse(second.desired.first().created)
+        assertTrue(second.desired.last().created)
+        assertEquals(setOf(ServerId("server-b")), second.added)
+        assertTrue(second.released.isEmpty())
+        assertEquals(2, fixture.created.size)
+        assertTrue(fixture.disconnected.isEmpty())
+    }
+
+    @Test
+    fun multiSessionDroppedServerDisconnectsOnlyAfterUndesiredGrace() {
+        val fixture = Fixture()
+        fixture.reconcile("server-a", "server-b")
+
+        val result = fixture.reconcile("server-b")
+
+        assertEquals(setOf(ServerId("server-a")), result.released)
+        assertEquals(listOf(MultiSessionGraceMillis), fixture.scheduler.pendingDelays())
+        assertTrue(fixture.disconnected.isEmpty())
+        assertTrue(fixture.snapshot("server-a").releasePending)
+        assertTrue(fixture.snapshot("server-a").owners.isEmpty())
+
+        fixture.scheduler.runAll()
+
+        assertEquals(listOf("server-a:undesired_grace_elapsed"), fixture.disconnected)
+        assertEquals(null, fixture.registry.runtime(ServerId("server-a")))
+        assertTrue(fixture.registry.runtime(ServerId("server-b")) != null)
+    }
+
+    @Test
+    fun multiSessionReaddWithinGraceKeepsRuntimeWithoutRecreate() {
+        val fixture = Fixture()
+        val runtimeA = fixture.reconcile("server-a", "server-b").desired.first().runtime
+        fixture.reconcile("server-b")
+
+        val readded = fixture.reconcile("server-a", "server-b")
+        fixture.scheduler.runAll()
+
+        assertSame(runtimeA, readded.desired.first().runtime)
+        assertFalse(readded.desired.first().created)
+        assertTrue(readded.added.isEmpty())
+        assertEquals(2, fixture.created.size)
+        assertTrue(fixture.disconnected.isEmpty())
+        assertFalse(fixture.snapshot("server-a").releasePending)
+        assertEquals(setOf(MultiSessionOwner), fixture.snapshot("server-a").owners)
+    }
+
+    @Test
+    fun multiSessionParkedResumeSeqIsReusedOnNextAcquire() {
+        val fixture = Fixture()
+        fixture.reconcile("server-a", "server-b").desired.first().runtime.cursor = 42L
+        fixture.reconcile("server-b")
+        fixture.scheduler.runAll()
+
+        assertEquals(42L, fixture.registry.parkedResumeSeq(ServerId("server-a")))
+        assertEquals(setOf(ServerId("server-a")), fixture.reconcile("server-b").parked)
+
+        val returned = fixture.reconcile("server-a", "server-b")
+
+        val desiredA = returned.desired.first()
+        assertTrue(desiredA.created)
+        assertEquals(42L, desiredA.parkedResumeSeq)
+        assertEquals(null, returned.desired.last().parkedResumeSeq)
+        assertTrue(returned.parked.isEmpty())
+        assertEquals(null, fixture.registry.parkedResumeSeq(ServerId("server-a")))
+    }
+
+    @Test
+    fun multiSessionUndesiredRuntimeWithoutCursorIsNotParked() {
+        val fixture = Fixture()
+        fixture.reconcile("server-a", "server-b")
+        fixture.reconcile("server-b")
+        fixture.scheduler.runAll()
+
+        assertEquals(null, fixture.registry.parkedResumeSeq(ServerId("server-a")))
+        assertEquals(null, fixture.reconcile("server-a", "server-b").desired.first().parkedResumeSeq)
+    }
+
+    @Test
+    fun serverTerminalDisconnectClearsThatServersParkedSeq() {
+        val fixture = Fixture()
+        val desired = fixture.reconcile("server-a", "server-b", "server-c").desired
+        desired[0].runtime.cursor = 11L
+        desired[1].runtime.cursor = 22L
+        fixture.reconcile("server-c")
+        fixture.scheduler.runAll()
+
+        assertTrue(fixture.registry.disconnectServer(ServerId("server-c"), "server_removed"))
+        assertFalse(fixture.registry.disconnectServer(ServerId("server-a"), "server_removed"))
+
+        assertEquals(null, fixture.registry.parkedResumeSeq(ServerId("server-a")))
+        assertEquals(22L, fixture.registry.parkedResumeSeq(ServerId("server-b")))
+    }
+
+    @Test
+    fun processWideDisconnectClearsEveryParkedSeq() {
+        val fixture = Fixture()
+        val desired = fixture.reconcile("server-a", "server-b", "server-c").desired
+        desired[0].runtime.cursor = 11L
+        desired[1].runtime.cursor = 22L
+        fixture.reconcile("server-c")
+        fixture.scheduler.runAll()
+
+        fixture.registry.disconnectAll("process_identity_replaced")
+
+        assertEquals(null, fixture.registry.parkedResumeSeq(ServerId("server-a")))
+        assertEquals(null, fixture.registry.parkedResumeSeq(ServerId("server-b")))
+        assertTrue(fixture.registry.snapshots().isEmpty())
+        val again = fixture.reconcile("server-a")
+        assertTrue(again.desired.single().created)
+        assertEquals(null, again.desired.single().parkedResumeSeq)
+    }
+
+    @Test
+    fun multiSessionReleaseLeavesServersHeldByOtherOwners() {
+        val fixture = Fixture()
+        fixture.reconcile("server-a")
+        fixture.registry.acquire(ServerId("server-a"), "shell-a")
+
+        val result = fixture.reconcile("server-b")
+        fixture.scheduler.runAll()
+
+        assertTrue(result.released.isEmpty())
+        assertTrue(fixture.disconnected.isEmpty())
+        assertEquals(setOf("shell-a"), fixture.snapshot("server-a").owners)
+    }
+
     private class Fixture {
         val created = mutableListOf<FakeRuntime>()
         val disconnected = mutableListOf<String>()
@@ -184,7 +320,15 @@ class AndroidRealtimeSessionRegistryTest {
                 createRuntime = { serverId -> FakeRuntime(serverId).also(created::add) },
                 disconnectRuntime = { serverId, _, reason -> disconnected += "${serverId.value}:$reason" },
                 releaseScheduler = scheduler,
-                replaceGraceMillis = 1_000L
+                replaceGraceMillis = 1_000L,
+                resumeSeqOf = FakeRuntime::cursor
+            )
+
+        fun reconcile(vararg serverIds: String): AndroidRealtimeDesiredReconcileResult<FakeRuntime> =
+            registry.reconcileDesired(
+                desired = serverIds.mapTo(linkedSetOf(), ::ServerId),
+                ownerId = MultiSessionOwner,
+                undesiredGraceMillis = MultiSessionGraceMillis
             )
 
         fun snapshot(serverId: String): AndroidRealtimeSessionRegistrySnapshot =
@@ -201,14 +345,17 @@ class AndroidRealtimeSessionRegistryTest {
         private val pending = mutableListOf<Pending>()
 
         override fun schedule(delayMillis: Long, block: () -> Unit): AndroidRealtimePendingRelease =
-            Pending(block).also(pending::add)
+            Pending(delayMillis, block).also(pending::add)
+
+        fun pendingDelays(): List<Long> = pending.filterNot { it.canceled }.map { it.delayMillis }
 
         fun runAll() {
             pending.toList().also { pending.clear() }.forEach { it.run() }
         }
 
-        private class Pending(private val block: () -> Unit) : AndroidRealtimePendingRelease {
-            private var canceled = false
+        private class Pending(val delayMillis: Long, private val block: () -> Unit) : AndroidRealtimePendingRelease {
+            var canceled = false
+                private set
 
             override fun cancel() {
                 canceled = true
@@ -218,5 +365,10 @@ class AndroidRealtimeSessionRegistryTest {
                 if (!canceled) block()
             }
         }
+    }
+
+    private companion object {
+        const val MultiSessionOwner = "process-realtime-host-owner"
+        const val MultiSessionGraceMillis = 10_000L
     }
 }

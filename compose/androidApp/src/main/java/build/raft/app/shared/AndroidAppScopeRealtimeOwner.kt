@@ -50,6 +50,8 @@ internal object AndroidAppScopeRealtimeOwner {
     private const val LOG_TAG = "SlockKuiklyRealtime"
     private const val ForegroundReconnectAfterBackgroundMillis = 5L * 60L * 1000L
     private const val RealtimeOwnerReplaceGraceMillis = 1_500L
+    /** Multi-session: how long a server that left the desired set keeps its socket for a quick return. */
+    private const val MultiSessionUndesiredGraceMillis = 10_000L
     private const val ProcessRealtimeOwnerId = "process-realtime-host-owner"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -60,7 +62,14 @@ internal object AndroidAppScopeRealtimeOwner {
     private var realtimeConnectJob: Job? = null
     private var multiSessionRegistry: AndroidRealtimeSessionRegistry<MultiSessionRuntime>? = null
     private var multiSessionIdentity: MultiSessionIdentity? = null
-    private var currentDesiredServerId: ServerId? = null
+    /**
+     * Servers the process keeps a realtime session for. Single-session mode holds at most one;
+     * multi-session reconcile ([reconcileFromSharedRequest] with multiSession = true) holds the whole
+     * desired set. Only reconcile and session-end paths change it; getters never prune.
+     */
+    private var currentDesiredServerIds: Set<ServerId> = emptySet()
+    /** Mode of the last reconcile; multi-session keeps every desired runtime instead of evicting others. */
+    private var multiSessionReconcile = false
     private var appVisibility: AppVisibility = AppVisibility.Background
     private var installedApplicationContext: Context? = null
     private var lastHiddenAtMillis: Long? = null
@@ -227,7 +236,7 @@ internal object AndroidAppScopeRealtimeOwner {
         appVisibility = AppVisibility.Foreground
         syncRealtimeReconnectPolicy()
         if (multiSessionEnabled) {
-            currentMultiSessionRuntimes("app_shown").forEach { it.runtime.onAppShown() }
+            currentMultiSessionRuntimes().forEach { it.runtime.onAppShown() }
         } else {
             realtimeRuntime?.onAppShown()
         }
@@ -241,7 +250,7 @@ internal object AndroidAppScopeRealtimeOwner {
         )
         if (shouldForceReconnectAfterLongBackground(hiddenAtMillis, shownAtMillis)) {
             if (multiSessionEnabled) {
-                currentMultiSessionRuntimes("long_background").forEach { holder ->
+                currentMultiSessionRuntimes().forEach { holder ->
                     reconnectMultiSession(holder, "long_background")
                 }
                 return
@@ -291,7 +300,7 @@ internal object AndroidAppScopeRealtimeOwner {
         }
         syncRealtimeReconnectPolicy()
         if (multiSessionEnabled) {
-            currentMultiSessionRuntimes("app_hidden").forEach { it.runtime.onAppHidden() }
+            currentMultiSessionRuntimes().forEach { it.runtime.onAppHidden() }
         } else {
             realtimeRuntime?.onAppHidden()
         }
@@ -360,7 +369,7 @@ internal object AndroidAppScopeRealtimeOwner {
     /** Whether this process holds a realtime session to keep alive (read-only; never prunes state). */
     fun hasRealtimeOwnerSession(): Boolean =
         if (multiServerRealtimeEnabled()) {
-            multiSessionRegistry != null && currentDesiredServerId != null
+            multiSessionRegistry != null && currentDesiredServerIds.isNotEmpty()
         } else {
             realtimeRuntime?.ownedSession() != null
         }
@@ -406,6 +415,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 requestedLastSeq = requestedLastSeq,
                 forceReconnect = forceReconnect,
                 witness = witness,
+                keepOtherServers = multiSessionReconcile,
             )
             return
         }
@@ -437,7 +447,22 @@ internal object AndroidAppScopeRealtimeOwner {
         forceReconnect: Boolean,
         disconnectReason: String,
         witness: RealtimeConnectionWitnessToken,
+        multiSession: Boolean = false,
     ) {
+        if (multiSession) {
+            reconcileMultiSessionFromSharedRequest(
+                context = context,
+                serverIds = serverIds,
+                accessToken = accessToken,
+                environmentId = environmentId,
+                socketUrl = socketUrl,
+                forceReconnect = forceReconnect,
+                disconnectReason = disconnectReason,
+                witness = witness,
+            )
+            return
+        }
+        multiSessionReconcile = false
         val selection = selectAndroidCurrentRealtimeServer(serverIds)
         if (selection.rejectedMultipleServers) {
             clearMultiSessionState("multiple_current_servers")
@@ -450,31 +475,136 @@ internal object AndroidAppScopeRealtimeOwner {
         }
         val desiredServerId = selection.serverId
         if (desiredServerId == null) {
-            multiSessionRegistry?.disconnectAll(disconnectReason)
-            multiSessionRegistry = null
-            multiSessionIdentity = null
-            currentDesiredServerId = null
-            realtimeConnectionWitness = null
-            backgroundKeepAliveEnabled = false
-            RaftAppLog.d(LOG_TAG, "process_reconcile result=cleared reason=$disconnectReason")
+            clearForEmptyReconcile(disconnectReason)
             return
         }
-        if (
-            accessToken.isBlank() ||
-            environmentId.isBlank() ||
-            witness.scopeLeaseId.isBlank() ||
-            witness.principalId.isBlank() ||
-            witness.authGeneration <= 0L ||
-            witness.connectionFamilyId.isBlank()
-        ) {
+        if (!hasValidProcessAuthority(accessToken, environmentId, witness)) {
             RaftAppLog.w(LOG_TAG, "process_reconcile_skip reason=invalid_authority serverCount=1")
-            multiSessionRegistry?.disconnectAll("invalid_process_authority")
-            multiSessionRegistry = null
-            multiSessionIdentity = null
-            currentDesiredServerId = null
-            realtimeConnectionWitness = null
+            clearForInvalidAuthority()
             return
         }
+        val identityUpdate = applyProcessIdentity(accessToken, environmentId, socketUrl, witness)
+        val identityChanged = identityUpdate.identityChanged
+        val bindingReplaced = identityUpdate.bindingReplaced
+        val registry = multiSessionRegistry(context.applicationContext)
+        connectMultiSession(
+            context = context.applicationContext,
+            serverId = desiredServerId,
+            accessToken = accessToken,
+            shellInstanceId = ProcessRealtimeOwnerId,
+            requestedLastSeq = registry.runtime(desiredServerId)?.runtime?.lastSeq ?: 0L,
+            forceReconnect = forceReconnect || identityChanged,
+            witness = witness,
+        )
+        RaftAppLog.d(
+            LOG_TAG,
+            "process_reconcile result=applied serverCount=1 serverId=${desiredServerId.value} " +
+                "identityChanged=$identityChanged bindingReplaced=$bindingReplaced " +
+                "forceReconnect=$forceReconnect"
+        )
+    }
+
+    /**
+     * Multi-session reconcile: keep one runtime per desired server. Servers that left the set are
+     * released after [MultiSessionUndesiredGraceMillis]; their cursor is parked for a later return.
+     */
+    private fun reconcileMultiSessionFromSharedRequest(
+        context: Context,
+        serverIds: Set<String>,
+        accessToken: String,
+        environmentId: String,
+        socketUrl: String,
+        forceReconnect: Boolean,
+        disconnectReason: String,
+        witness: RealtimeConnectionWitnessToken,
+    ) {
+        multiSessionReconcile = true
+        val desired = normalizeAndroidDesiredRealtimeServers(serverIds)
+        if (desired.isEmpty()) {
+            clearForEmptyReconcile(disconnectReason)
+            return
+        }
+        if (!hasValidProcessAuthority(accessToken, environmentId, witness)) {
+            RaftAppLog.w(LOG_TAG, "process_reconcile_skip reason=invalid_authority serverCount=${desired.size}")
+            clearForInvalidAuthority()
+            return
+        }
+        val identityUpdate = applyProcessIdentity(accessToken, environmentId, socketUrl, witness)
+        val registry = multiSessionRegistry(context.applicationContext)
+        val result =
+            registry.reconcileDesired(
+                desired = desired,
+                ownerId = ProcessRealtimeOwnerId,
+                undesiredGraceMillis = MultiSessionUndesiredGraceMillis
+            )
+        currentDesiredServerIds = result.desiredServerIds
+        result.desired.forEach { desiredRuntime ->
+            startMultiSessionConnect(
+                holder = desiredRuntime.runtime,
+                accessToken = accessToken,
+                shellInstanceId = ProcessRealtimeOwnerId,
+                requestedLastSeq =
+                    if (desiredRuntime.created) {
+                        desiredRuntime.parkedResumeSeq ?: 0L
+                    } else {
+                        desiredRuntime.runtime.runtime.lastSeq
+                    },
+                forceReconnect = forceReconnect || identityUpdate.identityChanged,
+                witness = witness,
+            )
+        }
+        syncRealtimeReconnectPolicy()
+        RaftAndroidLocalDiagnostics.recordLog(
+            "info",
+            LOG_TAG,
+            androidMultiSessionReconcileDiagnosticLine(result)
+        )
+        RaftAppLog.d(
+            LOG_TAG,
+            "process_reconcile result=applied mode=multi serverCount=${desired.size} " +
+                "identityChanged=${identityUpdate.identityChanged} " +
+                "bindingReplaced=${identityUpdate.bindingReplaced} forceReconnect=$forceReconnect"
+        )
+    }
+
+    private fun clearForEmptyReconcile(disconnectReason: String) {
+        multiSessionRegistry?.disconnectAll(disconnectReason)
+        multiSessionRegistry = null
+        multiSessionIdentity = null
+        currentDesiredServerIds = emptySet()
+        realtimeConnectionWitness = null
+        backgroundKeepAliveEnabled = false
+        RaftAppLog.d(LOG_TAG, "process_reconcile result=cleared reason=$disconnectReason")
+    }
+
+    private fun clearForInvalidAuthority() {
+        multiSessionRegistry?.disconnectAll("invalid_process_authority")
+        multiSessionRegistry = null
+        multiSessionIdentity = null
+        currentDesiredServerIds = emptySet()
+        realtimeConnectionWitness = null
+    }
+
+    private fun hasValidProcessAuthority(
+        accessToken: String,
+        environmentId: String,
+        witness: RealtimeConnectionWitnessToken,
+    ): Boolean =
+        accessToken.isNotBlank() &&
+            environmentId.isNotBlank() &&
+            witness.scopeLeaseId.isNotBlank() &&
+            witness.principalId.isNotBlank() &&
+            witness.authGeneration > 0L &&
+            witness.connectionFamilyId.isNotBlank()
+
+    private class ProcessIdentityUpdate(val identityChanged: Boolean, val bindingReplaced: Boolean)
+
+    private fun applyProcessIdentity(
+        accessToken: String,
+        environmentId: String,
+        socketUrl: String,
+        witness: RealtimeConnectionWitnessToken,
+    ): ProcessIdentityUpdate {
         val nextIdentity =
             MultiSessionIdentity(
                 socketUrl = socketUrl.trim(),
@@ -494,27 +624,13 @@ internal object AndroidAppScopeRealtimeOwner {
         val bindingReplaced =
             previousIdentity != null && !previousIdentity.sameBindingAs(nextIdentity)
         if (bindingReplaced) {
+            // Also drops every parked resume cursor: they belong to the replaced identity.
             multiSessionRegistry?.disconnectAll("process_identity_replaced")
             multiSessionRegistry = null
         }
         multiSessionIdentity = nextIdentity
         realtimeConnectionWitness = witness
-        val registry = multiSessionRegistry(context.applicationContext)
-        connectMultiSession(
-            context = context.applicationContext,
-            serverId = desiredServerId,
-            accessToken = accessToken,
-            shellInstanceId = ProcessRealtimeOwnerId,
-            requestedLastSeq = registry.runtime(desiredServerId)?.runtime?.lastSeq ?: 0L,
-            forceReconnect = forceReconnect || identityChanged,
-            witness = witness,
-        )
-        RaftAppLog.d(
-            LOG_TAG,
-            "process_reconcile result=applied serverCount=1 serverId=${desiredServerId.value} " +
-                "identityChanged=$identityChanged bindingReplaced=$bindingReplaced " +
-                "forceReconnect=$forceReconnect"
-        )
+        return ProcessIdentityUpdate(identityChanged = identityChanged, bindingReplaced = bindingReplaced)
     }
 
     fun advanceResumeCursorFromSharedRequest(
@@ -658,7 +774,7 @@ internal object AndroidAppScopeRealtimeOwner {
             return
         }
         if (multiServerRealtimeEnabled()) {
-            val runtimes = currentMultiSessionRuntimes("health_check_$reason")
+            val runtimes = currentMultiSessionRuntimes()
             if (runtimes.isEmpty()) {
                 RaftAppLog.d(LOG_TAG, "realtime_health_check_skip reason=no_multi_session trigger=$reason")
                 return
@@ -725,15 +841,22 @@ internal object AndroidAppScopeRealtimeOwner {
                 registry.disconnectAll(cleanReason)
                 multiSessionRegistry = null
                 multiSessionIdentity = null
-                currentDesiredServerId = null
+                currentDesiredServerIds = emptySet()
                 backgroundKeepAliveEnabled = false
                 realtimeConnectionWitness = null
                 return
             }
             val targetServerId = serverId ?: return
             if (cleanReason in ServerTerminalDisconnectReasons) {
+                // Also drops the server's parked resume cursor.
                 registry.disconnectServer(targetServerId, cleanReason)
-                if (currentDesiredServerId == targetServerId) currentDesiredServerId = null
+                currentDesiredServerIds = currentDesiredServerIds - targetServerId
+                if (!multiSessionReconcile && currentDesiredServerIds.isEmpty()) {
+                    // Single-session: losing the one current server ends the process session. This
+                    // used to happen as a side effect of the next currentMultiSessionRuntimes read
+                    // (syncRealtimeReconnectPolicy below); it is explicit now that reads are pure.
+                    clearMultiSessionState("missing_current_server_reconnect_policy")
+                }
             } else {
                 registry.release(
                     serverId = targetServerId,
@@ -792,15 +915,40 @@ internal object AndroidAppScopeRealtimeOwner {
         requestedLastSeq: Long,
         forceReconnect: Boolean,
         witness: RealtimeConnectionWitnessToken,
+        keepOtherServers: Boolean = false,
     ) {
         val registry = multiSessionRegistry(context)
-        currentDesiredServerId = serverId
         val holder =
-            registry.acquireCurrent(
-                serverId = serverId,
-                shellInstanceId = shellInstanceId,
-                disconnectReason = GeneratedRealtimeContract.DisconnectReason.ServerRemoved
-            )
+            if (keepOtherServers) {
+                currentDesiredServerIds = currentDesiredServerIds + serverId
+                registry.acquire(serverId = serverId, shellInstanceId = shellInstanceId)
+            } else {
+                currentDesiredServerIds = setOf(serverId)
+                registry.acquireCurrent(
+                    serverId = serverId,
+                    shellInstanceId = shellInstanceId,
+                    disconnectReason = GeneratedRealtimeContract.DisconnectReason.ServerRemoved
+                )
+            }
+        startMultiSessionConnect(
+            holder = holder,
+            accessToken = accessToken,
+            shellInstanceId = shellInstanceId,
+            requestedLastSeq = requestedLastSeq,
+            forceReconnect = forceReconnect,
+            witness = witness,
+        )
+    }
+
+    private fun startMultiSessionConnect(
+        holder: MultiSessionRuntime,
+        accessToken: String,
+        shellInstanceId: String,
+        requestedLastSeq: Long,
+        forceReconnect: Boolean,
+        witness: RealtimeConnectionWitnessToken,
+    ) {
+        val serverId = holder.serverId
         val requestedIdentity =
             MultiSessionConnectIdentity(
                 accessToken = accessToken,
@@ -872,7 +1020,8 @@ internal object AndroidAppScopeRealtimeOwner {
                     }
                     AndroidRealtimePendingRelease { job.cancel() }
                 },
-            replaceGraceMillis = RealtimeOwnerReplaceGraceMillis
+            replaceGraceMillis = RealtimeOwnerReplaceGraceMillis,
+            resumeSeqOf = { holder -> holder.runtime.lastSeq }
         ).also { multiSessionRegistry = it }
     }
 
@@ -895,31 +1044,20 @@ internal object AndroidAppScopeRealtimeOwner {
         }
     }
 
-    private fun currentMultiSessionRuntimes(reason: String): List<MultiSessionRuntime> {
+    /**
+     * The runtimes of the desired servers. A pure read: pruning happens only in reconcile and
+     * session-end paths (a runtime in its release grace window is not desired and not returned).
+     */
+    private fun currentMultiSessionRuntimes(): List<MultiSessionRuntime> {
         val registry = multiSessionRegistry ?: return emptyList()
-        val targetServerId = currentDesiredServerId
-        if (targetServerId == null) {
-            registry.disconnectAll("missing_current_server_$reason")
-            multiSessionRegistry = null
-            multiSessionIdentity = null
-            realtimeConnectionWitness = null
-            backgroundKeepAliveEnabled = false
-            return emptyList()
-        }
-        registry.snapshots()
-            .map(AndroidRealtimeSessionRegistrySnapshot::serverId)
-            .filterNot { it == targetServerId }
-            .forEach { staleServerId ->
-                registry.disconnectServer(staleServerId, "non_current_server_$reason")
-            }
-        return listOfNotNull(registry.runtime(targetServerId))
+        return currentDesiredServerIds.mapNotNull(registry::runtime)
     }
 
     private fun clearMultiSessionState(reason: String) {
         multiSessionRegistry?.disconnectAll(reason)
         multiSessionRegistry = null
         multiSessionIdentity = null
-        currentDesiredServerId = null
+        currentDesiredServerIds = emptySet()
         realtimeConnectionWitness = null
         backgroundKeepAliveEnabled = false
     }
@@ -952,7 +1090,7 @@ internal object AndroidAppScopeRealtimeOwner {
 
     private fun joinedChannelCount(): Int =
         if (multiServerRealtimeEnabled()) {
-            currentMultiSessionRuntimes("joined_channel_count").sumOf { it.runtime.joinedChannelCount }
+            currentMultiSessionRuntimes().sumOf { it.runtime.joinedChannelCount }
         } else {
             realtimeRuntime?.joinedChannelCount ?: 0
         }
@@ -1095,7 +1233,7 @@ internal object AndroidAppScopeRealtimeOwner {
             clients =
                 buildList {
                     realtimeClient?.let(::add)
-                    currentMultiSessionRuntimes("reconnect_policy").forEach { add(it.client) }
+                    currentMultiSessionRuntimes().forEach { add(it.client) }
                 },
             visibility = appVisibility,
             backgroundKeepAliveEnabled = backgroundKeepAliveEnabled,
