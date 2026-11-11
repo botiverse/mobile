@@ -100,6 +100,7 @@ import build.raft.app.data.RealtimeRoomLeaseOwner
 import build.raft.app.data.isAppUpdateHomeNotificationId
 import build.raft.app.data.homeComputerVersionGateTargetOrNull
 import build.raft.app.data.isMachineHomeNotificationId
+import build.raft.app.data.raftMachineNoticeComputerIds
 import build.raft.app.data.normalizedAgentRuntimeStatus
 import build.raft.app.data.AppLocale
 import build.raft.app.data.MyMessageAlignmentPreference
@@ -6657,12 +6658,13 @@ private fun RaftAppShellReadyContent(
     }
     // Every way into Computers (the More/Settings row, Settings > Computers on the wide rail, a
     // Home notice).
-    val openComputersPage: () -> Unit = {
+    val openComputersPageWith: (attention: Boolean) -> Unit = { attention ->
         writeComputerAttentionSeen(
             build.raft.app.data.raftComputerAttentionMarkSeen(computerAttentionSeen, currentComputerAttention)
         )
-        pager.openSettingsComputersPage(storeScope)
+        pager.openSettingsComputersPage(storeScope, attention = attention)
     }
+    val openComputersPage: () -> Unit = { openComputersPageWith(false) }
     // Something new in More / Settings (app update -> About; an offline/outdated machine not yet
     // seen -> Computers); it dots the More tab and the matching Settings rows from this one set,
     // so tab and rows light and clear together.
@@ -8663,6 +8665,11 @@ private fun RaftAppShellReadyContent(
                                     } else {
                                         pager.openSettingsComputerPage(storeScope, identity)
                                     }
+                                },
+                                onOpenComputersAttention = {
+                                    selectAppShellTab("settings")
+                                    retainedAppShellTabs = retainedAppShellTabs + "settings"
+                                    openComputersPageWith(true)
                                 },
                                 onOpenUrl = settingsCapabilities::openUrl,
                                 onOpenServerSelection = {
@@ -11583,6 +11590,8 @@ private fun SharedHomeScreen(
     onOpenComputers: () -> Unit = {},
     /** One Computer's page (a version-gate notice's View); falls back to the Computers list. */
     onOpenComputer: (machineId: String) -> Unit = { onOpenComputers() },
+    /** The Computers list at Status: Needs attention (web `/computers?filter=attention`). */
+    onOpenComputersAttention: () -> Unit = onOpenComputers,
     onOpenUrl: (String) -> Unit = bridge::openUrl,
     onOpenServerSelection: () -> Unit,
     /** Server switcher "Invite Human" for the given server; null hides the entry. */
@@ -12116,8 +12125,11 @@ private fun SharedHomeScreen(
                             onAppUpdateOpen()
                         versionGateComputerId != null ->
                             onOpenComputer(versionGateComputerId)
+                        // Web computer-attention View: one computer opens it, several open the list
+                        // filtered to those needing attention.
                         notification.id.isMachineHomeNotificationId() ->
-                            onOpenComputers()
+                            raftMachineNoticeComputerIds(notification.id).singleOrNull()?.let(onOpenComputer)
+                                ?: onOpenComputersAttention()
                         notification.targetId?.startsWith("http://") == true ||
                             notification.targetId?.startsWith("https://") == true -> {
                             notification.targetId?.let(onOpenUrl)

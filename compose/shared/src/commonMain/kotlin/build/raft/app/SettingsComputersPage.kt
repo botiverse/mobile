@@ -18,6 +18,7 @@ internal const val SETTINGS_COMPUTER_ID = "settingsComputerId"
  * Create Agent's "Add Computer" -> `setShowAddMachine(true)`).
  */
 internal const val SETTINGS_COMPUTERS_OPEN_ADD = "settingsComputersOpenAdd"
+internal const val SETTINGS_COMPUTERS_FILTER_ATTENTION = "settingsComputersFilterAttention"
 
 /**
  * Identity-only target for the native Computers page. The page loads the
@@ -63,11 +64,16 @@ internal fun settingsComputerPageData(
         put(SETTINGS_COMPUTER_ID, target.machineId)
     }
 
-internal fun Pager.openSettingsComputersPage(storeScope: RaftShellStoreScope, openAddComputer: Boolean = false) {
+/**
+ * [attention]: opened from a computer attention entry (a Home machine notice's View, web
+ * `/computers?filter=attention`): the list starts at Status: Needs attention. Intent only.
+ */
+internal fun Pager.openSettingsComputersPage(storeScope: RaftShellStoreScope, openAddComputer: Boolean = false, attention: Boolean = false) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         SETTINGS_COMPUTERS_PAGE,
         settingsComputersPageData(storeScope).apply {
             if (openAddComputer) put(SETTINGS_COMPUTERS_OPEN_ADD, true)
+            if (attention) put(SETTINGS_COMPUTERS_FILTER_ATTENTION, true)
         },
     )
 }

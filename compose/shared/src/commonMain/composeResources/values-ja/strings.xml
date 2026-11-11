@@ -2584,6 +2584,18 @@
     <string name="settings_computers_delete_title">コンピューターを削除</string>
     <string name="settings_computers_delete_detail">このコンピューターを完全に削除します。先にすべてのエージェントを削除する必要があります。</string>
     <string name="settings_computers_delete_action">コンピューターを削除</string>
+    <string name="settings_computers_delete_menu">コンピューターを削除</string>
+    <string name="settings_computers_delete_confirm_named">「%1$s」を削除しますか？</string>
+    <string name="settings_computers_upgrade_status_managed_by_desktop">このコンピューターは Raft Desktop が自動で最新の状態に保ちます。</string>
+    <string name="settings_computers_upgrade_status_installer_repair_hint">このコンピューターでの以前のインストールが完了しておらず、修復するまでウェブからのアップグレードは失敗する可能性があります。おすすめ：コンピューター上でインストールコマンドを一度実行してください。インストールが修復され、v%1$s が入ります。</string>
+    <string name="settings_computers_installer_repair_hint_label">ウェブからのアップグレードが失敗する可能性がある理由</string>
+    <string name="settings_computers_upgrade_failure_hint_label">Web からのアップグレードが失敗した理由</string>
+    <string name="settings_computers_upgrade_failure_hint_unsafe_kill_mode">この Computer はあなたが用意した systemd ユニット %1$s（KillMode=%2$s）の下で動いており、このバージョンではそれが Web からのアップグレードを止めてしまいます。そのコンピューターで、ユニットを停止し（%3$s）、下のインストールコマンドを一度実行してから、ユニットを再び起動してください（%4$s）。</string>
+    <string name="settings_computers_upgrade_failure_hint_unsafe_kill_mode_generic">この Computer はあなたが用意した systemd ユニットの下で動いており、このバージョンではその KillMode が Web からのアップグレードを止めてしまいます。そのコンピューターで、ユニットを停止し、下のインストールコマンドを一度実行してから、ユニットを再び起動してください。</string>
+    <string name="settings_computers_upgrade_failure_hint_installation_held">この Computer があなたの systemd ユニット %1$s の中で動いている間は、インストーラーがアップグレードできません。そのコンピューターで、ユニットを停止し（%2$s）、下のインストールコマンドを一度実行してから、再び起動してください（%3$s）。</string>
+    <string name="settings_computers_upgrade_failure_hint_installation_held_generic">この Computer があなたの systemd ユニットの中で動いている間は、インストーラーがアップグレードできません。ユニットを停止し、下のインストールコマンドを一度実行してから、再び起動してください。</string>
+    <string name="settings_computers_rack_no_attention_title">対応が必要なコンピューターはありません</string>
+    <string name="settings_computers_rack_no_attention_description">接続中のコンピューターはすべて最新の状態です。</string>
     <string name="settings_computers_delete_busy">削除中...</string>
     <string name="settings_computers_status_connected">接続中</string>
     <string name="settings_computers_status_offline">オフライン</string>

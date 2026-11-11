@@ -72,6 +72,12 @@ internal object RaftComputersRackTags {
     const val OfflineTitle = "rack-group-offline"
     const val CardMeters = "rack-card-meters"
     const val ListHeader = "computers-rack-header"
+    const val MenuDelete = "rack-row-delete"
+    const val DeleteConfirm = "computers-delete-confirm"
+    const val ActionError = "computers-action-error"
+    const val UpgradeHint = "rack-upgrade-hint"
+    const val ManualUpgrade = "rack-manual-upgrade"
+    const val InstallSheet = "rack-install-sheet"
 }
 
 @Composable

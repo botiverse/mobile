@@ -132,20 +132,31 @@ internal fun RaftComputerCommandLine(
  */
 @Composable
 private fun RaftComputerManualInstall(context: RaftComputerControlsContext) {
-    val commands = context.commands
-    Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    RaftComputerManualInstallCommands(context.commands, context.platform, context.onCopy, context.onOpenInstallGuide)
+}
+
+/** [RaftComputerManualInstall] from its parts, for the Computers cards' manual upgrade and hints. */
+@Composable
+internal fun RaftComputerManualInstallCommands(
+    commands: RaftComputerCommandSet?,
+    platform: RaftComputerCommandPlatform,
+    onCopy: (String) -> Unit,
+    onOpenInstallGuide: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (commands != null) {
-            val oneLine = commands.installAndSetup.takeIf { context.platform == RaftComputerCommandPlatform.MacLinux }
+            val oneLine = commands.installAndSetup.takeIf { platform == RaftComputerCommandPlatform.MacLinux }
             if (oneLine != null) {
-                RaftComputerCommandLine(oneLine, context.onCopy)
+                RaftComputerCommandLine(oneLine, onCopy)
             } else {
-                RaftComputerCommandLine(commands.install, context.onCopy, label = stringResource(Res.string.settings_computers_install_step))
-                RaftComputerCommandLine(commands.setup, context.onCopy, label = stringResource(Res.string.settings_computers_setup_step))
+                RaftComputerCommandLine(commands.install, onCopy, label = stringResource(Res.string.settings_computers_install_step))
+                RaftComputerCommandLine(commands.setup, onCopy, label = stringResource(Res.string.settings_computers_setup_step))
             }
         }
         RaftTextLink(
             text = stringResource(Res.string.settings_computers_install_guide),
-            onClick = context.onOpenInstallGuide,
+            onClick = onOpenInstallGuide,
             variant = RaftTextLinkVariant.Strong,
             style = RaftTheme.typography.footnote,
         )
@@ -514,6 +525,7 @@ private fun raftComputerCardSentence(card: RaftComputerCardState, tier: RaftComp
                 // With the version notice up, its copy of the command is the one to use.
                 stringResource(Res.string.settings_computers_upgrade_status_manual_above, card.version)
             }
+        RaftComputerCardState.ManagedByDesktop -> stringResource(Res.string.settings_computers_upgrade_status_managed_by_desktop)
         is RaftComputerCardState.Commands ->
             if (card.refusedNotAllowed) {
                 stringResource(Res.string.settings_computers_upgrade_status_refused_not_allowed)

@@ -242,6 +242,37 @@ class ComputersApiTest {
     }
 
     @Test
+    fun installerRepairAndUpgradeFailureHintsMapFromTheMachineList() = runPortableCoroutineTest {
+        // botiverse/slock routes/servers.ts GET /:id/machines `installerRepairHint` and
+        // computerUpgradeRequestService.ts `failureHint` (packages/shared/src/index.ts
+        // ComputerInstallerRepairHint / ComputerUpgradeFailureHint); unknown reasons are no hint.
+        val body =
+            """
+            {"machines":[
+              {"id":"c-1","name":"a","status":"online","isComputer":true,"installerRepairHint":{"reason":"unrecovered_operation"},
+               "upgradeRequest":{"id":"u1","targetVersion":"1.0.53","requestedAt":"2026-11-10T00:00:00Z","state":"failed","observedVersion":"1.0.49",
+                 "failureHint":{"reason":"unsafe_kill_mode","unit":"raft.service","killMode":"process","scope":"user"}}},
+              {"id":"c-2","name":"b","status":"online","isComputer":true,"installerRepairHint":{"reason":"something_new"},
+               "upgradeRequest":{"id":"u2","targetVersion":"1.0.53","requestedAt":"2026-11-10T00:00:00Z","state":"failed","failureHint":{"reason":"later"}}},
+              {"id":"c-3","name":"c","status":"online","isComputer":true,"installerRepairHint":null}
+            ]}
+            """.trimIndent()
+        val machines =
+            assertIs<DataResult.Content<ComputerListSummary>>(
+                RaftComputersApiClient(RecordingComputersApi(machinesBody = body)).machines(ServerId("server-1"), DataRequestPriority.Visible)
+            ).data.machines.associateBy { it.id }.mapValues { it.value.toSettingsComputerSnapshot() }
+        assertEquals("unrecovered_operation", machines.getValue("c-1").installerRepairHint)
+        assertEquals(
+            SettingsComputerUpgradeFailureHintSnapshot(reason = "unsafe_kill_mode", unit = "raft.service", killMode = "process", scope = "user"),
+            machines.getValue("c-1").upgradeRequest?.failureHint,
+        )
+        assertEquals("1.0.49", machines.getValue("c-1").upgradeRequest?.observedVersion)
+        assertEquals(null, machines.getValue("c-2").installerRepairHint)
+        assertEquals(null, machines.getValue("c-2").upgradeRequest?.failureHint)
+        assertEquals(null, machines.getValue("c-3").installerRepairHint)
+    }
+
+    @Test
     fun typedComputersApiAcceptsRawRowShapeForRename() = runPortableCoroutineTest {
         // Server returns the raw machines DB row for PATCH (no status / statusVersion
         // enrichment). The typed API must accept this shape, NOT flag it as contract

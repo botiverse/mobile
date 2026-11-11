@@ -6,6 +6,7 @@ import build.raft.app.data.SettingsComputerControlState
 import build.raft.app.data.SettingsComputerRestartProgress
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRequest
+import build.raft.app.data.SettingsComputerUpgradeFailureHintSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -139,11 +140,45 @@ class RaftComputersRackActionTest {
     }
 
     @Test
-    fun cardMenuHidesCreateAgentOfflineAndIsAbsentWithoutManageRights() {
+    fun cardMenuKeepsDeleteOfflineAndIsAbsentWithoutManageRights() {
         // Offline: the create form can't start there (it would switch computers), and Restart needs
-        // it online; nothing is left, so no ⋯.
-        assertNull(menu(computer(online = false)))
+        // it online; Delete computer stays (web RackRowMenu).
+        assertEquals(RaftComputerCardMenu(createAgent = false, restart = false, delete = true), menu(computer(online = false)))
+        assertEquals(RaftComputerCardMenu(createAgent = false, restart = false, delete = true), menu(computer(isComputer = false), createAgentAvailable = false))
         assertNull(menu(computer(canManage = false)))
-        assertNull(menu(computer(isComputer = false), createAgentAvailable = false))
+    }
+
+    @Test
+    fun upgradeCarriesTheRepairHintOrTheFailuresStepsBesideIt() {
+        val repair = computer().copy(installerRepairHint = "unrecovered_operation")
+        assertEquals(RaftComputerRackAction.Upgrade("1.0.53", RaftComputerRackHint.Repair("1.0.53")), action(repair))
+        // The last web upgrade failed on the machine's systemd unit, still on the version it failed on.
+        val hint = SettingsComputerUpgradeFailureHintSnapshot(reason = "installation_held", unit = "raft.service", scope = "user")
+        val failed =
+            SettingsComputerUpgradeRequestSnapshot(
+                id = "u1",
+                targetVersion = "1.0.53",
+                requestedAt = "2026-10-22T01:00:00Z",
+                state = "failed",
+                observedVersion = "1.0.49",
+                failureHint = hint,
+            )
+        // Both apply: the failure's steps (they include the install command, which is also the repair).
+        assertEquals(
+            RaftComputerRackAction.Upgrade("1.0.53", RaftComputerRackHint.UpgradeFailed(hint)),
+            action(repair.copy(upgradeRequest = failed)),
+        )
+        // It moved on from the version it failed on: no hint.
+        assertEquals(RaftComputerRackAction.Upgrade("1.0.53"), action(computer(upgradeRequest = failed.copy(observedVersion = "1.0.48"))))
+    }
+
+    @Test
+    fun manualUpgradeAndRaftDesktopHaveTheirOwnStep() {
+        assertEquals(RaftComputerRackAction.ManualUpgrade("1.0.53"), action(computer().copy(remoteUpgradeSupported = false)))
+        val desktop =
+            computer().copy(
+                broadcastPolicy = SettingsComputerBroadcastPolicySnapshot(eligibility = "ineligible", targetVersion = "1.0.53", reasonCode = "managed_by_desktop"),
+            )
+        assertEquals(RaftComputerRackAction.ManagedByDesktop, action(desktop))
     }
 }

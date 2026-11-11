@@ -2577,6 +2577,18 @@
     <string name="settings_computers_delete_title">刪除電腦</string>
     <string name="settings_computers_delete_detail">永久移除這台電腦。必須先刪除所有 Agent。</string>
     <string name="settings_computers_delete_action">刪除電腦</string>
+    <string name="settings_computers_delete_menu">刪除電腦</string>
+    <string name="settings_computers_delete_confirm_named">確定要刪除「%1$s」嗎？</string>
+    <string name="settings_computers_upgrade_status_managed_by_desktop">Raft Desktop 會自動更新這台電腦。</string>
+    <string name="settings_computers_upgrade_status_installer_repair_hint">這台電腦上先前的一次安裝沒有完成，修復之前從網頁升級可能會失敗。建議在那台電腦上執行一次安裝指令：它會修復安裝並裝上 v%1$s。</string>
+    <string name="settings_computers_installer_repair_hint_label">為什麼從網頁升級可能會失敗</string>
+    <string name="settings_computers_upgrade_failure_hint_label">從網頁升級為什麼失敗</string>
+    <string name="settings_computers_upgrade_failure_hint_unsafe_kill_mode">這台 Computer 執行在你自己的 systemd 單元 %1$s（KillMode=%2$s）下，這個版本從網頁升級會被它中斷。請在那台電腦上：先停止該單元（%3$s），執行一次下面的安裝指令，再重新啟動該單元（%4$s）。</string>
+    <string name="settings_computers_upgrade_failure_hint_unsafe_kill_mode_generic">這台 Computer 執行在你自己的 systemd 單元下，這個版本從網頁升級會被它的 KillMode 中斷。請在那台電腦上：先停止該單元，執行一次下面的安裝指令，再重新啟動該單元。</string>
+    <string name="settings_computers_upgrade_failure_hint_installation_held">這台 Computer 執行在你的 systemd 單元 %1$s 裡時，安裝程式無法升級它。請在那台電腦上：先停止該單元（%2$s），執行一次下面的安裝指令，再重新啟動它（%3$s）。</string>
+    <string name="settings_computers_upgrade_failure_hint_installation_held_generic">這台 Computer 執行在你的 systemd 單元裡時，安裝程式無法升級它。先停止該單元，執行一次下面的安裝指令，再重新啟動它。</string>
+    <string name="settings_computers_rack_no_attention_title">沒有需要處理的電腦</string>
+    <string name="settings_computers_rack_no_attention_description">所有已連接的電腦都是最新版本。</string>
     <string name="settings_computers_delete_busy">刪除中…</string>
     <string name="settings_computers_status_connected">已連結</string>
     <string name="settings_computers_status_offline">離線</string>

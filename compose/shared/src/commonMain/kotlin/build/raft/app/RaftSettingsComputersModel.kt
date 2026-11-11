@@ -11,6 +11,7 @@ import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSizeStatusSnapshot
 import build.raft.app.data.SettingsComputerRestartProgress
 import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.app.data.SettingsComputerUpgradeFailureHintSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.app.data.SettingsSectionErrorSnapshot
 import build.raft.app.data.SharedSettingsActionState
@@ -516,8 +517,18 @@ internal fun RaftComputerRowModel.cardFacts(): RaftComputerCardFacts =
  * state ([raftComputerUpgradeModel], the settings store's `computerControl`). Null: nothing.
  */
 internal sealed interface RaftComputerRackAction {
-    /** Online, a one-click upgrade waits: "Upgrade to v{version}". */
-    data class Upgrade(val version: String) : RaftComputerRackAction
+    /**
+     * Online, a one-click upgrade waits: "Upgrade to v{version}"; with [hint], a ⚠ beside it says
+     * why upgrading from the web may fail (or failed) and gives the install command (web
+     * `recommendRepair` / `upgradeFailureHint`). Upgrade stays offered.
+     */
+    data class Upgrade(val version: String, val hint: RaftComputerRackHint? = null) : RaftComputerRackAction
+
+    /** Online, newer than this version but not upgradable from the app: the install command to run on it. */
+    data class ManualUpgrade(val version: String) : RaftComputerRackAction
+
+    /** Raft Desktop's own Computer: "Raft Desktop keeps this Computer up to date." */
+    data object ManagedByDesktop : RaftComputerRackAction
 
     /**
      * The upgrade was asked for and is running: "Upgrading…", or "Waiting for N agents on this
@@ -532,11 +543,21 @@ internal sealed interface RaftComputerRackAction {
     data class OfflineRestart(val command: String) : RaftComputerRackAction
 }
 
+/** The advisory beside Upgrade: the failure's steps when both apply (they include the install command, which is also the repair). */
+internal sealed interface RaftComputerRackHint {
+    /** The installer state needs a repair run (web `installerRepairHint`). */
+    data class Repair(val version: String) : RaftComputerRackHint
+
+    /** The last web upgrade failed on the machine's systemd unit (web `upgradeFailureHint`). */
+    data class UpgradeFailed(val hint: SettingsComputerUpgradeFailureHintSnapshot) : RaftComputerRackHint
+}
+
 /**
  * Web `RackRowAction`: only for whoever may manage a managed Computer. Offline, the restart
  * command (none while it restarts for an upgrade); online, a restart in progress first, then the
- * one-click upgrade or the upgrade in flight. A Computer the app cannot upgrade in one tap (manual
- * install, commands, up to date) shows nothing here; its page has the rest.
+ * one-click upgrade (with its repair or failure hint), the upgrade in flight, the manual upgrade
+ * (the install command to run on the machine), or Raft Desktop's own note. Commands, up to date
+ * and the rest show nothing here; its page has them.
  */
 internal fun raftComputerRackAction(
     computer: SettingsComputerSnapshot,
@@ -552,22 +573,31 @@ internal fun raftComputerRackAction(
     }
     restart?.takeIf { it.machineId == computer.id }?.let { return RaftComputerRackAction.Restarting(it) }
     return when (val card = upgrade.card) {
-        is RaftComputerCardState.OneClick -> RaftComputerRackAction.Upgrade(card.version)
+        is RaftComputerCardState.OneClick ->
+            RaftComputerRackAction.Upgrade(
+                card.version,
+                hint =
+                    upgrade.upgradeFailureHint?.let(RaftComputerRackHint::UpgradeFailed)
+                        ?: RaftComputerRackHint.Repair(card.version).takeIf { upgrade.recommendRepair },
+            )
         is RaftComputerCardState.Upgrading -> RaftComputerRackAction.Upgrading(card.waitingAgents)
+        is RaftComputerCardState.ManualUpgrade -> RaftComputerRackAction.ManualUpgrade(card.version)
+        RaftComputerCardState.ManagedByDesktop -> RaftComputerRackAction.ManagedByDesktop
         else -> null
     }
 }
 
 /**
  * A Computer card's ⋯ menu (web `RackRowMenu`), top to bottom: Create agent (this computer
- * preselected), then Restart while it can take one. Null, and no ⋯, for a viewer who may not manage
- * the computer (web `canManageMachine`) or when neither applies. Create agent is online only: the
- * dialog can't start on an offline computer and would switch to another, which reads wrong from
- * this computer's own card. [createAgentAvailable] is false while the page has no signed-in owner
- * for the computer's server to create with.
+ * preselected), Restart while it can take one, then Delete computer, always (the Computer page's
+ * own delete confirm; the server has the last word). Null, and no ⋯, for a viewer who may not
+ * manage the computer (web `canManageMachine`). Create agent is online only: the dialog can't
+ * start on an offline computer and would switch to another, which reads wrong from this
+ * computer's own card. [createAgentAvailable] is false while the page has no signed-in owner for
+ * the computer's server to create with.
  */
-internal data class RaftComputerCardMenu(val createAgent: Boolean, val restart: Boolean) {
-    val isEmpty: Boolean get() = !createAgent && !restart
+internal data class RaftComputerCardMenu(val createAgent: Boolean, val restart: Boolean, val delete: Boolean = true) {
+    val isEmpty: Boolean get() = !createAgent && !restart && !delete
 }
 
 internal fun raftComputerCardMenu(

@@ -2577,6 +2577,18 @@
     <string name="settings_computers_delete_title">컴퓨터 삭제</string>
     <string name="settings_computers_delete_detail">이 컴퓨터를 영구적으로 삭제해요. 먼저 모든 에이전트를 삭제해야 해요.</string>
     <string name="settings_computers_delete_action">컴퓨터 삭제</string>
+    <string name="settings_computers_delete_menu">컴퓨터 삭제</string>
+    <string name="settings_computers_delete_confirm_named">‘%1$s’ 컴퓨터를 삭제할까요?</string>
+    <string name="settings_computers_upgrade_status_managed_by_desktop">이 컴퓨터는 Raft Desktop이 자동으로 최신 상태로 유지해요.</string>
+    <string name="settings_computers_upgrade_status_installer_repair_hint">이 컴퓨터의 이전 설치가 완료되지 않아, 복구하기 전까지 웹에서 업그레이드하면 실패할 수 있어요. 권장: 해당 컴퓨터에서 설치 명령을 한 번 실행하세요. 설치가 복구되고 v%1$s 버전이 설치돼요.</string>
+    <string name="settings_computers_installer_repair_hint_label">웹 업그레이드가 실패할 수 있는 이유</string>
+    <string name="settings_computers_upgrade_failure_hint_label">웹 업그레이드가 실패한 이유</string>
+    <string name="settings_computers_upgrade_failure_hint_unsafe_kill_mode">이 Computer는 직접 만든 systemd 유닛 %1$s(KillMode=%2$s) 아래에서 실행되며, 이 버전에서는 이 설정 때문에 웹 업그레이드가 중단됩니다. 해당 컴퓨터에서 유닛을 중지하고(%3$s), 아래 설치 명령을 한 번 실행한 다음, 유닛을 다시 시작하세요(%4$s).</string>
+    <string name="settings_computers_upgrade_failure_hint_unsafe_kill_mode_generic">이 Computer는 직접 만든 systemd 유닛 아래에서 실행되며, 이 버전에서는 그 KillMode 때문에 웹 업그레이드가 중단됩니다. 해당 컴퓨터에서 유닛을 중지하고, 아래 설치 명령을 한 번 실행한 다음, 유닛을 다시 시작하세요.</string>
+    <string name="settings_computers_upgrade_failure_hint_installation_held">이 Computer가 systemd 유닛 %1$s 안에서 실행되는 동안에는 설치 프로그램이 업그레이드할 수 없습니다. 해당 컴퓨터에서 유닛을 중지하고(%2$s), 아래 설치 명령을 한 번 실행한 다음, 다시 시작하세요(%3$s).</string>
+    <string name="settings_computers_upgrade_failure_hint_installation_held_generic">이 Computer가 systemd 유닛 안에서 실행되는 동안에는 설치 프로그램이 업그레이드할 수 없습니다. 유닛을 중지하고, 아래 설치 명령을 한 번 실행한 다음, 다시 시작하세요.</string>
+    <string name="settings_computers_rack_no_attention_title">확인이 필요한 컴퓨터가 없어요</string>
+    <string name="settings_computers_rack_no_attention_description">연결된 컴퓨터가 모두 최신 상태예요.</string>
     <string name="settings_computers_delete_busy">삭제 중…</string>
     <string name="settings_computers_status_connected">연결됨</string>
     <string name="settings_computers_status_offline">오프라인</string>

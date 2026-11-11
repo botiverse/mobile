@@ -218,7 +218,7 @@ class ComputersParityUiTest {
     }
 
     @Test
-    fun aCardsMenuOffersCreateAgentFirstForThatComputerAndHidesItOffline() = runRobolectricComposeUiTest {
+    fun aCardsMenuOffersCreateAgentFirstForThatComputerAndOnlyDeleteOffline() = runRobolectricComposeUiTest {
         val online = computer()
         val offline = computer().copy(id = "m-2", name = "Box", online = false)
         val model = raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(computers = listOf(online))))
@@ -251,10 +251,14 @@ class ComputersParityUiTest {
         waitForIdle()
         assertEquals(listOf("m-1"), created)
         assertEquals(emptyList<String>(), restarted)
-        // Offline: no Create agent and no Restart, so the card has no ⋯ at all.
+        // Offline: no Create agent and no Restart; Delete computer stays (web RackRowMenu).
         current = raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(computers = listOf(offline))))
         waitForIdle()
-        onNodeWithContentDescription("More Actions").assertDoesNotExist()
+        onNodeWithContentDescription("More Actions").performClick()
+        waitForIdle()
+        onNodeWithTag(RaftComputersRackTags.MenuDelete).assertExists()
+        onNodeWithText("Create Agent").assertDoesNotExist()
+        onNodeWithText("Restart").assertDoesNotExist()
     }
 
     @Test

@@ -408,6 +408,20 @@ internal fun String.isMachineHomeNotificationId(): Boolean =
         startsWith("machine-outdated:") ||
         isComputerVersionGateHomeNotificationId()
 
+/**
+ * The computers a machine Home notice names (`machine-offline:<ids>`,
+ * `machine-outdated:<latest>:<ids>`), ids comma-joined; empty for any other notice.
+ */
+internal fun raftMachineNoticeComputerIds(notificationId: String): List<String> {
+    val ids =
+        when {
+            notificationId.startsWith("machine-offline:") -> notificationId.removePrefix("machine-offline:")
+            notificationId.startsWith("machine-outdated:") -> notificationId.removePrefix("machine-outdated:").substringAfterLast(':')
+            else -> return emptyList()
+        }
+    return ids.split(',').map(String::trim).filter(String::isNotEmpty).distinct()
+}
+
 internal fun String.isAppUpdateHomeNotificationId(): Boolean =
     startsWith(APP_UPDATE_HOME_NOTIFICATION_ID)
 

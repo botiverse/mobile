@@ -2574,6 +2574,18 @@
     <string name="settings_computers_delete_title">Удалить компьютер</string>
     <string name="settings_computers_delete_detail">Компьютер будет удалён навсегда. Сначала нужно удалить всех его агентов.</string>
     <string name="settings_computers_delete_action">Удалить компьютер</string>
+    <string name="settings_computers_delete_menu">Удалить компьютер</string>
+    <string name="settings_computers_delete_confirm_named">Удалить компьютер «%1$s»?</string>
+    <string name="settings_computers_upgrade_status_managed_by_desktop">Raft Desktop сам обновляет этот компьютер.</string>
+    <string name="settings_computers_upgrade_status_installer_repair_hint">Предыдущая установка на этом компьютере не была завершена, и пока она не исправлена, обновление из веб-интерфейса может не сработать. Рекомендуем один раз выполнить команду установки на самом компьютере: она исправит установку и установит v%1$s.</string>
+    <string name="settings_computers_installer_repair_hint_label">Почему обновление из веб-интерфейса может не сработать</string>
+    <string name="settings_computers_upgrade_failure_hint_label">Почему не удалось обновить из веб-интерфейса</string>
+    <string name="settings_computers_upgrade_failure_hint_unsafe_kill_mode">Этот компьютер работает под вашим собственным юнитом systemd %1$s (KillMode=%2$s), который в этой версии прерывает обновление из веб-интерфейса. На самом компьютере остановите юнит (%3$s), один раз выполните команду установки ниже, затем снова запустите юнит (%4$s).</string>
+    <string name="settings_computers_upgrade_failure_hint_unsafe_kill_mode_generic">Этот компьютер работает под вашим собственным юнитом systemd, параметр KillMode которого в этой версии прерывает обновление из веб-интерфейса. На самом компьютере остановите юнит, один раз выполните команду установки ниже, затем снова запустите юнит.</string>
+    <string name="settings_computers_upgrade_failure_hint_installation_held">Установщик не может обновить этот компьютер, пока он работает внутри вашего юнита systemd %1$s. На самом компьютере остановите юнит (%2$s), один раз выполните команду установки ниже, затем снова запустите его (%3$s).</string>
+    <string name="settings_computers_upgrade_failure_hint_installation_held_generic">Установщик не может обновить этот компьютер, пока он работает внутри вашего юнита systemd. Остановите юнит, один раз выполните команду установки ниже, затем снова запустите его.</string>
+    <string name="settings_computers_rack_no_attention_title">Нет компьютеров, требующих внимания</string>
+    <string name="settings_computers_rack_no_attention_description">Все подключённые компьютеры обновлены.</string>
     <string name="settings_computers_delete_busy">Удаление…</string>
     <string name="settings_computers_status_connected">Подключён</string>
     <string name="settings_computers_status_offline">Не в сети</string>
