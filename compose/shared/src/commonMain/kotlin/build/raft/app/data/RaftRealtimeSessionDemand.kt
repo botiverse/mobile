@@ -74,6 +74,25 @@ internal class RaftRealtimeSessionDemand {
     /** The multi-session setting changed: the process reconcile re-reads the set (and the mode). */
     fun notifySettingChanged() = bumpRevision()
 
+    /**
+     * A hidden window's [HiddenWindowSessionGraceMillis] ran out ([nextHiddenGraceExpiryMillis]): its server
+     * may leave the set, so the process reconcile re-reads it without waiting for an unrelated change.
+     */
+    fun notifyHiddenGraceElapsed() = bumpRevision()
+
+    /**
+     * When the next hidden window with a claim stops counting (the first instant [desiredServerIds] drops it),
+     * or null when no hidden window is still inside its grace at [nowMillis].
+     */
+    fun nextHiddenGraceExpiryMillis(nowMillis: Long): Long? =
+        synchronized(lock) {
+            shells.values
+                .asSequence()
+                .filter { shell -> shell.serverId != null && !shell.visible && !shell.hiddenTooLong(nowMillis) }
+                .mapNotNull { shell -> shell.hiddenSinceMillis?.let { it + HiddenWindowSessionGraceMillis + 1L } }
+                .minOrNull()
+        }
+
     fun onVisibility(shellInstanceId: String, visible: Boolean, nowMillis: Long) {
         val changed =
             synchronized(lock) {
@@ -154,9 +173,12 @@ internal class RaftRealtimeSessionDemand {
         const val HiddenWindowSessionGraceMillis: Long = 5L * 60L * 1000L
 
         /** At most this many realtime sessions at once, whatever the number of open windows. */
-        const val MaxRealtimeSessions: Int = 3
+        const val MaxRealtimeSessions: Int = RaftRealtimeMaxSessions
     }
 }
+
+/** At most this many realtime sessions at once (multi-session realtime); public for the Android diagnostics line. */
+const val RaftRealtimeMaxSessions: Int = 3
 
 private fun normalizeShell(shellInstanceId: String): String =
     shellInstanceId.trim().ifBlank { RaftShellStoreScope.Legacy.shellInstanceId }

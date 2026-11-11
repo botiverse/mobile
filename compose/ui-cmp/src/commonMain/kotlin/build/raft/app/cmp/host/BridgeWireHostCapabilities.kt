@@ -179,7 +179,10 @@ class BridgeWireHostCapabilities(
             "action" to "reconcile",
             "serverIds" to
                 JsonArray(
-                    serverIds.map(String::trim).filter(String::isNotEmpty).distinct().sorted().map(::JsonPrimitive),
+                    // Multi-session: caller order, primary server first (see BridgeModule.realtimeReconcile).
+                    serverIds.map(String::trim).filter(String::isNotEmpty).distinct()
+                        .let { ids -> if (multiSession) ids else ids.sorted() }
+                        .map(::JsonPrimitive),
                 ),
             "accessToken" to accessToken,
             "environmentId" to environmentId,

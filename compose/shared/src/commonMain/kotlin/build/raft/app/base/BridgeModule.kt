@@ -1276,7 +1276,11 @@ internal class BridgeModule : Module() {
     ) {
         val methodArgs = JSONObject()
         val serverIdArray = JSONArray()
-        serverIds.map(String::trim).filter(String::isNotEmpty).distinct().sorted().forEach(serverIdArray::put)
+        // Multi-session keeps the caller's order: the first server is the primary one (the front window's),
+        // the only session Android keeps reconnecting in the background. Single-session stays sorted.
+        serverIds.map(String::trim).filter(String::isNotEmpty).distinct()
+            .let { ids -> if (multiSession) ids else ids.sorted() }
+            .forEach(serverIdArray::put)
         methodArgs.put("action", "reconcile")
         methodArgs.put("serverIds", serverIdArray)
         methodArgs.put("accessToken", accessToken)

@@ -19,6 +19,8 @@ import build.raft.app.optLong
 import build.raft.app.optString
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -67,6 +69,13 @@ internal class ProcessRealtimeIngressCoordinator(
     @Volatile
     private var lastReconcileMultiSession = false
 
+    /**
+     * Wakes the reconcile when the next hidden window's grace runs out, so its server leaves the set on
+     * time instead of at the next unrelated claim, visibility change or token rotation. Multi-session only.
+     */
+    @Volatile
+    private var hiddenGraceExpiryJob: Job? = null
+
     fun start() {
         // kotlinx JsonObject is immutable: hand the event to the coroutine without a defensive copy.
         events.addListener { event -> scope.launch { accept(event) } }
@@ -108,6 +117,21 @@ internal class ProcessRealtimeIngressCoordinator(
             }
         lastReconcileMultiSession = multiSession
         nativeHost.reconcile(authority, desired, environment.socketBaseUrl, multiSession)
+        scheduleHiddenGraceExpiry(multiSession)
+    }
+
+    private fun scheduleHiddenGraceExpiry(multiSession: Boolean) {
+        hiddenGraceExpiryJob?.cancel()
+        hiddenGraceExpiryJob = null
+        if (!multiSession) return
+        val now = nowMillis()
+        val expiresAt = sessionDemand.nextHiddenGraceExpiryMillis(now) ?: return
+        hiddenGraceExpiryJob =
+            scope.launch {
+                delay((expiresAt - now).coerceAtLeast(0L))
+                // Bumps the revision: the collector in start() reconciles and schedules the next expiry.
+                sessionDemand.notifyHiddenGraceElapsed()
+            }
     }
 
     private suspend fun accept(eventData: JsonObject) {

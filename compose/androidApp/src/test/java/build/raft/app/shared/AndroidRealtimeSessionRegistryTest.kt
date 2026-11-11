@@ -214,6 +214,32 @@ class AndroidRealtimeSessionRegistryTest {
     }
 
     @Test
+    fun lastWindowClosedReleasesItsServerOnlyAfterTheGrace() {
+        val fixture = Fixture()
+        fixture.reconcile("server-a", "server-b").desired.last().runtime.cursor = 11L
+        // The last window on server-b closes: shared leaves it out of the set.
+        fixture.reconcile("server-a")
+        assertTrue("no disconnect before the grace", fixture.disconnected.isEmpty())
+
+        // No window left at all: an empty set releases the remaining server with the same grace, no clear-all.
+        val empty = fixture.reconcile()
+
+        assertEquals(setOf(ServerId("server-a")), empty.released)
+        assertTrue(empty.desired.isEmpty())
+        assertEquals(listOf(MultiSessionGraceMillis, MultiSessionGraceMillis), fixture.scheduler.pendingDelays())
+        assertTrue(fixture.disconnected.isEmpty())
+        assertTrue(fixture.snapshot("server-a").releasePending)
+
+        fixture.scheduler.runAll()
+
+        assertEquals(
+            listOf("server-b:undesired_grace_elapsed", "server-a:undesired_grace_elapsed"),
+            fixture.disconnected
+        )
+        assertEquals(mapOf(ServerId("server-b") to 11L), fixture.registry.parkedResumeSeqs())
+    }
+
+    @Test
     fun multiSessionReaddWithinGraceKeepsRuntimeWithoutRecreate() {
         val fixture = Fixture()
         val runtimeA = fixture.reconcile("server-a", "server-b").desired.first().runtime
