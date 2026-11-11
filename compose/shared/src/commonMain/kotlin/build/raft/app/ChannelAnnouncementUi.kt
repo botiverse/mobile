@@ -1,7 +1,6 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -38,6 +36,8 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftChoiceList
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftDialogSize
@@ -148,7 +148,8 @@ internal fun ChannelAnnouncementStrip(
             Modifier
                 .weight(1f)
                 .height(40.dp)
-                .clickable(onClickLabel = linkName, role = Role.Button, onClick = onOpen)
+                // Hover lays `fill-subtle` over the row, as the web strip's `hover:bg-fill-subtle`.
+                .raftClickable(onClick = onOpen, onClickLabel = linkName, tier = RaftHoverTier.Subtle)
                 .padding(start = if (wide) 20.dp else 16.dp, end = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
