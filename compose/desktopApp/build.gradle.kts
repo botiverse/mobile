@@ -74,7 +74,7 @@ val pinnedDesktopJarSha256 =
         "io.github.vinceglb:filekit-dialogs-jvm" to "1c2afa8001a9cc5f136c25a53856573c65334cdd7d2352a6c8da8bd91a983557",
         "io.github.vinceglb:filekit-core-jvm" to "d35a1c44b47b6566712e8f6e7340778c3bb6f49b61496152d9bc64125387e992",
         "io.github.kdroidfilter:composemediaplayer-jvm" to "ef8f7ab9a6fcb8a56052453f217432b978477ae15db03cccdc271354deaf5c24",
-        "org.jetbrains.runtime:jbr-api" to "7e37284e33b5b304ee6174dcaa92db949b257cc4c8991ca865e7daf5113d8279",
+        "org.jetbrains.runtime:jbr-api" to "7820798e5325dbd515dd2eea035a897e63db3871e1aaaa515c361bde52851425",
     )
 val verifyPinnedDesktopJars by tasks.registering {
     val artifacts = configurations.named("runtimeClasspath").flatMap { it.incoming.artifacts.resolvedArtifacts }
