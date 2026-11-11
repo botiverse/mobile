@@ -1,11 +1,14 @@
 package build.raft.app.data
 
 import build.raft.app.model.isExternalAgent
+import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
+import build.raft.app.data.realtime.CredentialHoldDto
 import build.raft.app.data.realtime.ToolStuckDto
+import build.raft.app.data.realtime.toAgentCredentialHold
 import build.raft.app.data.realtime.SpawnFailureDto
 import build.raft.app.data.realtime.WakeCrashLoopDto
 import build.raft.app.data.realtime.toAgentSpawnFailure
@@ -726,8 +729,12 @@ internal data class AgentSummary(
     /** `lastRuntimeError.errorClass` / `errorReason`: the kept error's typed diagnostic, when it has one. */
     val lastRuntimeErrorClass: String? = null,
     val lastRuntimeErrorReason: String? = null,
+    /** `lastRuntimeError.requiredAction`: what the owner must do about the kept error (botiverse/slock #13276). */
+    val lastRuntimeErrorRequiredAction: AgentCredentialHoldReason? = null,
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
     val toolStuck: AgentToolStuck? = null,
+    /** Why the daemon holds the agent for an unusable sign-in, with [activityDetailKind] `idle`. */
+    val credentialHold: AgentCredentialHoldReason? = null,
     /** `modelLimits.defaultsReported`: true only when the server says so; false, null or absent is false. */
     val modelLimitsDefaultsReported: Boolean = false,
     val hostedRuntime: AgentHostedRuntimeSnapshot? = null,
@@ -775,7 +782,9 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         lastRuntimeErrorMessage = lastRuntimeErrorMessage,
         lastRuntimeErrorClass = lastRuntimeErrorClass,
         lastRuntimeErrorReason = lastRuntimeErrorReason,
+        lastRuntimeErrorRequiredAction = lastRuntimeErrorRequiredAction,
         toolStuck = toolStuck,
+        credentialHold = credentialHold,
         modelLimitsDefaultsReported = modelLimitsDefaultsReported,
         runningRuntime = runningRuntime,
         runningModel = runningModel
@@ -1002,6 +1011,8 @@ private data class AgentWireDto(
     val lastRuntimeError: AgentLastRuntimeErrorWireDto? = null,
     /** Shared `ToolStuckActivityDiagnostic`, served with any activity while the agent is stuck. */
     val toolStuck: ToolStuckDto? = null,
+    /** Shared `CredentialHoldActivityDiagnostic`, sent with `activityDetailKind` `idle` (botiverse/slock #13276). */
+    val credentialHold: CredentialHoldDto? = null,
     /**
      * botiverse/slock #13492 (`routes/agents.ts`): `{ defaultsReported }` on the detail, the list and the
      * PATCH answer of a Built-in custom gateway agent; absent elsewhere and from older servers, null in a
@@ -1023,7 +1034,16 @@ private data class AgentLastRuntimeErrorWireDto(
     /** #688(c) typed diagnostic (`RuntimeErrorClass` / `RuntimeErrorReason`); absent for an untyped error. */
     val errorClass: String? = null,
     val errorReason: String? = null,
+    /**
+     * Shared `RuntimeErrorRequiredAction` (`user_reauth` / `user_model_access`, botiverse/slock
+     * #13276): what the owner must do; absent for errors that need no action and older servers.
+     */
+    val requiredAction: String? = null,
 )
+
+/** Shared `RUNTIME_ERROR_REQUIRED_ACTIONS`: only `user_reauth` and `user_model_access`; anything else is none. */
+private fun String?.toRuntimeErrorRequiredAction(): AgentCredentialHoldReason? =
+    AgentCredentialHoldReason.fromWireValue(this)?.takeIf { it != AgentCredentialHoldReason.Billing }
 
 @Serializable
 private data class AgentCreatorWireDto(
@@ -1083,7 +1103,9 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         lastRuntimeErrorMessage = lastRuntimeError?.message?.trim()?.takeIf { it.isNotEmpty() },
         lastRuntimeErrorClass = lastRuntimeError?.errorClass?.trim()?.takeIf { it.isNotEmpty() },
         lastRuntimeErrorReason = lastRuntimeError?.errorReason?.trim()?.takeIf { it.isNotEmpty() },
+        lastRuntimeErrorRequiredAction = lastRuntimeError?.requiredAction.toRuntimeErrorRequiredAction(),
         toolStuck = toolStuck.toAgentToolStuck(),
+        credentialHold = credentialHold.toAgentCredentialHold(activityDetailKind),
         modelLimitsDefaultsReported = modelLimits?.defaultsReported == true,
         runningRuntime = currentProfile?.runtime?.trim()?.takeIf { it.isNotEmpty() },
         runningModel = currentProfile?.model?.trim()?.takeIf { it.isNotEmpty() }

@@ -4205,6 +4205,10 @@
     <string name="agent_status_retry">Повторить</string>
     <string name="agent_status_retrying">Перезапуск…</string>
     <string name="agent_status_retry_failed">Не удалось сбросить агента</string>
+    <string name="agent_status_credential_sign_in">Нужно снова войти в %1$s</string>
+    <string name="agent_status_credential_plan_model">Тариф не включает %1$s</string>
+    <string name="agent_status_credential_plan_default_model">Тариф не включает эту модель</string>
+    <string name="agent_status_credential_billing">Баланс провайдера исчерпан</string>
     <string name="agent_status_computer_access_revoked">Доступ компьютера отозван: перенесите агента на другой компьютер (повторное подключение добавит новый компьютер)</string>
     <string name="agent_migration_place_from_revoked_computer_note">Компьютер этого агента потерял доступ к серверу, поэтому его файлы перенести нельзя. Агент переедет на выбранный компьютер и начнёт там новый сеанс, когда получит следующее сообщение.</string>
     <string name="agent_status_model_unsupported">Аккаунт или тариф этой среды выполнения не включает «%1$s». Смените модель или войдите в аккаунт, где она есть</string>

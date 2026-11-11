@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.runPortableCoroutineTest
+import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
@@ -412,6 +413,60 @@ class AgentsApiTest {
         val clearedDetail =
             assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = cleared)).agent(MemberId("agent-1"))).data
         assertEquals(null, clearedDetail.lastRuntimeErrorMessage)
+    }
+
+    @Test
+    fun agentDetailCarriesTheHeldReasonOnTheIdleSnapshotOnly() = runPortableCoroutineTest {
+        // GET /agents/:id (botiverse/slock #13276 routes/agents.ts; rows from web
+        // credentialHoldProjection.test.ts, staging 853c6998b): `credentialHold` beside an idle status.
+        suspend fun detailOf(extra: String): AgentDetailSummary =
+            assertIs<DataResult.Content<AgentSummary>>(
+                RaftAgentsApiClient(
+                    RecordingAgentsApi(agentBody = """{"id":"agent-1","name":"held","runtime":"codex","model":"gpt-x","status":"active",$extra}""")
+                ).agent(MemberId("agent-1"))
+            ).data.toAgentDetailSummary()
+        assertEquals(
+            AgentCredentialHoldReason.UserReauth,
+            detailOf(""""activity":"online","activityDetail":"held notice","activityDetailKind":"idle","credentialHold":{"reason":"user_reauth"}""").credentialHold,
+        )
+        assertEquals(
+            null,
+            detailOf(""""activity":"working","activityDetail":"Running","activityDetailKind":"running_command","credentialHold":{"reason":"user_reauth"}""").credentialHold,
+            "only the idle snapshot carries it",
+        )
+        assertEquals(null, detailOf(""""activity":"online","activityDetail":"held notice","activityDetailKind":"idle"""").credentialHold, "an older daemon")
+        assertEquals(
+            null,
+            detailOf(""""activity":"online","activityDetail":"held notice","activityDetailKind":"idle","credentialHold":{"reason":"quota"}""").credentialHold,
+            "an unknown reason is none",
+        )
+    }
+
+    @Test
+    fun theKeptErrorCarriesItsRequiredAction() = runPortableCoroutineTest {
+        // botiverse/slock #13276: the stored lastRuntimeError keeps the typed carrier's `requiredAction`
+        // (web agentRuntimeErrorBanner.behavior.test.tsx "4b" rows).
+        suspend fun detailOf(lastRuntimeError: String): AgentDetailSummary =
+            assertIs<DataResult.Content<AgentSummary>>(
+                RaftAgentsApiClient(
+                    RecordingAgentsApi(
+                        agentBody =
+                            """{"id":"agent-1","name":"own","runtime":"codex","model":"gpt-x","status":"active","activity":"error",""" +
+                                """"activityDetail":"boom","activityDetailKind":"runtime_error","lastRuntimeError":$lastRuntimeError}"""
+                    )
+                ).agent(MemberId("agent-1"))
+            ).data.toAgentDetailSummary()
+        val own = detailOf("""{"message":"boom","errorClass":"AuthError","errorReason":"auth_failed","requiredAction":"user_reauth"}""")
+        assertEquals(AgentCredentialHoldReason.UserReauth, own.lastRuntimeErrorRequiredAction)
+        assertEquals("AuthError", own.lastRuntimeErrorClass)
+        assertEquals(
+            AgentCredentialHoldReason.UserModelAccess,
+            detailOf("""{"message":"boom","errorClass":"ModelConfigError","errorReason":"model_config_error","requiredAction":"user_model_access"}""")
+                .lastRuntimeErrorRequiredAction,
+        )
+        // Legacy errors (no field), and values outside RUNTIME_ERROR_REQUIRED_ACTIONS, are none.
+        assertEquals(null, detailOf("""{"message":"boom","errorClass":"AuthError","errorReason":"auth_failed"}""").lastRuntimeErrorRequiredAction)
+        assertEquals(null, detailOf("""{"message":"boom","requiredAction":"billing"}""").lastRuntimeErrorRequiredAction)
     }
 
     @Test

@@ -4536,6 +4536,25 @@ internal fun MemberDetailPageContent(
         val identity = memberIdentity?.takeIf { it.kind == MemberKind.Agent } ?: return@LaunchedEffect
         if (billingRereadOnRun) rereadAgentDetailInBackground(identity)
     }
+    // botiverse/slock #13276 (web agentErrorRecordRefresh): the server pushes an error status before
+    // it stores the error (with its `requiredAction`, which names an unusable sign-in or plan), so a
+    // live error the kept record does not describe yet re-reads the detail once the burst settles,
+    // at most once per error detail.
+    val errorRecordStaleDetail =
+        if (agentDetailStoreState.agentId == billingRereadAgentId) {
+            membersAgentErrorRecordStaleDetail(billingRereadStatus, agentDetailStoreState.detail?.summary)
+        } else {
+            null
+        }
+    var errorRecordRereadDetail by remember(billingRereadAgentId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(provider, memberIdentity, errorRecordStaleDetail) {
+        val identity = memberIdentity?.takeIf { it.kind == MemberKind.Agent } ?: return@LaunchedEffect
+        val detail = errorRecordStaleDetail ?: return@LaunchedEffect
+        if (detail == errorRecordRereadDetail) return@LaunchedEffect
+        delay(MembersAgentErrorRecordRereadDelayMs)
+        errorRecordRereadDetail = detail
+        rereadAgentDetailInBackground(identity)
+    }
     val currentBillingErrorShown by rememberUpdatedState(billingErrorShown)
     LaunchedEffect(provider, memberIdentity, pageVisibleTick) {
         val identity = memberIdentity?.takeIf { it.kind == MemberKind.Agent } ?: return@LaunchedEffect
@@ -9042,6 +9061,9 @@ internal fun membersAgentRuntimeErrorBannerState(
     )
 }
 
+/** Web `agentErrorRecordRefreshDelayMs`: how long a burst of error frames settles before the re-read. */
+private const val MembersAgentErrorRecordRereadDelayMs = 1_500L
+
 /**
  * A kept BillingError is on screen and the agent is running again (botiverse/slock #13435): the
  * error may have been cleared without this page hearing `agent:updated`, so re-read once.
@@ -10174,6 +10196,20 @@ internal fun MembersAgentProfileHeader(
                 blocked == null &&
                 agentSpawnFailureCopy(it.spawnFailure, it.daemonDetail, nowMs = Long.MIN_VALUE) != null
         }
+    val external = member.isExternal || summary?.isExternal == true || agentStatusIndicatorState?.external == true
+    // Web AgentStatusBadge `credentialReason` (botiverse/slock #13276): an unusable sign-in, plan or
+    // balance reads as the error light; the reason is a detail of the error, for its managers only.
+    val credentialReason =
+        if (appBot) {
+            null
+        } else {
+            membersAgentCredentialInvalidReason(
+                indicator = agentStatusIndicatorState,
+                summary = summary,
+                external = external,
+                blocked = blocked,
+            )
+        }
     val showRetry =
         onRetry != null &&
             !appBot &&
@@ -10188,9 +10224,10 @@ internal fun MembersAgentProfileHeader(
                     ),
                 spawnFailure = spawnFailure?.spawnFailure,
                 runtimeErrorClass = summary?.lastRuntimeErrorClass,
-                external = member.isExternal || summary?.isExternal == true || agentStatusIndicatorState?.external == true,
+                external = external,
                 blocked = blocked,
                 likelyOnline = agentStatusIndicatorState?.likelyOnline == true,
+                credentialReason = credentialReason,
             )
     val rawStatusLabel = membersHeroAgentStatusLabel(
         indicatorState = agentStatusIndicatorState,
@@ -10205,6 +10242,16 @@ internal fun MembersAgentProfileHeader(
     val statusLabel =
         if (blocked != null) {
             stringResource(Res.string.member_row_status_error)
+        } else if (credentialReason != null) {
+            if (showActivityDetail) {
+                agentCredentialInvalidText(
+                    reason = credentialReason,
+                    runtime = summary?.runtime ?: agentStatusIndicatorState?.runtime,
+                    model = summary?.model,
+                )
+            } else {
+                stringResource(Res.string.member_row_status_error)
+            }
         } else {
             agentStatusIndicatorState?.copy(label = rawStatusLabel)?.localizedMemberStatusLabel() ?: rawStatusLabel
         }
@@ -10316,16 +10363,19 @@ internal fun MembersAgentProfileHeader(
                 // something authoritative arrives (task #253/#256).
                 // An App Bot renders no presence (web: always-offline on a signal that does
                 // not apply to it).
+                // Web: held or not, an invalid credential cannot run until someone acts: the error light.
+                val chipStatus = if (credentialReason != null) AgentStatus.Error else agentStatusObservedState?.status
+                val chipColor = if (credentialReason != null) RaftColor.AccentOrange else agentStatusObservedState?.color
                 val statusChip: @Composable (Modifier) -> Unit = { chipModifier ->
                     RaftBadge(
                         text = statusLabel,
                         appearance = RaftBadgeAppearance.Soft,
-                        variant = agentStatusObservedState?.status.membersStatusBadgeVariant(),
+                        variant = chipStatus.membersStatusBadgeVariant(),
                         modifier = chipModifier,
-                        icon = if (agentStatusObservedState != null) {
+                        icon = if (chipColor != null) {
                             {
                                 // raft-ui Status in a Badge (`lead-dot`): the 10dp light, never an animation.
-                                RaftStatusIndicator(color = agentStatusObservedState.color, pulsing = false)
+                                RaftStatusIndicator(color = chipColor, pulsing = false)
                             }
                         } else {
                             null

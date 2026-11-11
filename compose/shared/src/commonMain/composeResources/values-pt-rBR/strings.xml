@@ -4152,6 +4152,10 @@
     <string name="agent_status_retry">Tentar de novo</string>
     <string name="agent_status_retrying">Reiniciando…</string>
     <string name="agent_status_retry_failed">Não foi possível redefinir o agente</string>
+    <string name="agent_status_credential_sign_in">É preciso entrar de novo no %1$s</string>
+    <string name="agent_status_credential_plan_model">O plano não inclui %1$s</string>
+    <string name="agent_status_credential_plan_default_model">O plano não inclui este modelo</string>
+    <string name="agent_status_credential_billing">Saldo do provedor esgotado</string>
     <string name="agent_status_computer_access_revoked">Acesso do computador revogado: mova o agente para outro computador (conectar de novo adiciona um novo)</string>
     <string name="agent_migration_place_from_revoked_computer_note">O computador deste agente perdeu o acesso ao servidor, então os arquivos dele não podem ser trazidos. Ele vai para o computador que você escolher e começa uma sessão nova lá na próxima vez que receber uma mensagem.</string>
     <string name="agent_status_model_unsupported">A conta ou o plano deste runtime não inclui “%1$s”. Troque o modelo ou entre com uma conta que o inclua</string>

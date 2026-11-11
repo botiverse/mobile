@@ -1002,8 +1002,18 @@ data class AgentDetailSummary(
     /** `lastRuntimeError.errorClass` / `errorReason`: its typed diagnostic (web `typedRuntimeError`), when it has one. */
     val lastRuntimeErrorClass: String? = null,
     val lastRuntimeErrorReason: String? = null,
+    /**
+     * `lastRuntimeError.requiredAction` (botiverse/slock #13276): what the owner must do about the kept
+     * error, `user_reauth` or `user_model_access`; null when none or from older servers.
+     */
+    val lastRuntimeErrorRequiredAction: build.raft.app.model.AgentCredentialHoldReason? = null,
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
     val toolStuck: build.raft.app.model.AgentToolStuck? = null,
+    /**
+     * Why the daemon holds the agent for an unusable sign-in another agent on the same credential saw
+     * rejected, with [activityDetailKind] `idle` (web `activityState.credentialHold`, botiverse/slock #13276).
+     */
+    val credentialHold: build.raft.app.model.AgentCredentialHoldReason? = null,
     /**
      * `modelLimits.defaultsReported` (botiverse/slock #13492): the agent's Computer reported that the
      * current session filled at least one limit of its Built-in custom gateway model with a Raft

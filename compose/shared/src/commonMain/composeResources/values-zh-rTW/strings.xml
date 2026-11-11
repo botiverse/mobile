@@ -4152,6 +4152,10 @@
     <string name="agent_status_retry">重試</string>
     <string name="agent_status_retrying">重新啟動中…</string>
     <string name="agent_status_retry_failed">無法重設 Agent</string>
+    <string name="agent_status_credential_sign_in">需要重新登入 %1$s</string>
+    <string name="agent_status_credential_plan_model">方案不包含 %1$s</string>
+    <string name="agent_status_credential_plan_default_model">方案不包含這個模型</string>
+    <string name="agent_status_credential_billing">服務商餘額已用完</string>
     <string name="agent_status_computer_access_revoked">電腦的存取權已撤銷：請把 Agent 移到另一台電腦（重新加入會新增一台電腦）</string>
     <string name="agent_migration_place_from_revoked_computer_note">這個 Agent 所在的電腦已失去伺服器的存取權，無法帶走它的檔案。它會移到你選擇的電腦，並在下次收到訊息時在那裡開始新的工作階段。</string>
     <string name="agent_status_model_unsupported">這個執行環境的帳號或方案不包含模型「%1$s」。請更換模型，或登入包含該模型的帳號</string>
