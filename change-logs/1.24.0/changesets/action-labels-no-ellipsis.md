@@ -4,7 +4,7 @@ area: ui
 platforms:
   - android
   - ios
-pull_request: PR_NUMBER
+pull_request: 4560
 rollout: full
 ---
 
