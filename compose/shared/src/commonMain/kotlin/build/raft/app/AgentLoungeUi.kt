@@ -118,12 +118,12 @@ internal fun RaftLoungeAvatar(
     val glyphSize = (badgeSize * 0.7f).coerceAtLeast(8.dp)
     Box(modifier = modifier.size(avatarSize).clearAndSetSemantics {}) {
         RaftAppAvatar(
+            kind = RaftAvatarKind.Agent,
             avatarWireValue = avatarWireValue,
             label = label,
             avatarSize = avatarSize,
             cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Agent, agentId),
             cacheServerId = cacheServerId,
-            fallbackFill = raftAvatarFallbackFill(MemberKind.Agent),
             modifier = Modifier.align(Alignment.Center),
         )
         Box(

@@ -136,7 +136,7 @@ internal fun ChannelMembersRow(
     subtitle: String?,
     avatarWireValue: String?,
     avatarLabel: String,
-    avatarFill: Color,
+    avatarKind: RaftAvatarKind,
     cacheSubject: RaftAvatarCacheSubject?,
     cacheServerId: String?,
     statusColor: Color?,
@@ -168,12 +168,12 @@ internal fun ChannelMembersRow(
                 cutoutColor = RaftTheme.colors.layerCanvas,
             ) {
                 RaftAppAvatar(
+                    kind = avatarKind,
                     avatarWireValue = avatarWireValue,
                     label = avatarLabel,
                     avatarSize = ChannelMembersAvatarSize,
                     cacheSubject = cacheSubject,
                     cacheServerId = cacheServerId,
-                    fallbackFill = avatarFill,
                 )
             }
         },

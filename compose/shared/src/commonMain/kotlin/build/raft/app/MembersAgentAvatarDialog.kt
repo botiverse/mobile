@@ -49,7 +49,6 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ScreenError
-import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.designsystem.components.RaftAvatar
@@ -527,13 +526,13 @@ private fun MembersAgentAvatarPreview(
                         else -> currentAvatarWireValue ?: member.avatarWireValueForAvatarSlot()
                     }
                 RaftAppAvatar(
+                    kind = RaftAvatarKind.Agent,
                     avatarWireValue = wireValue,
                     label = member.avatarLabel,
                     avatarSize = face,
                     borderWidth = 0.dp,
                     cacheSubject = if (draft == MembersAgentAvatarDraft.Unchanged) member.raftAvatarCacheSubject() else null,
                     cacheServerId = member.serverId?.value,
-                    fallbackFill = raftAvatarFallbackFill(MemberKind.Agent)
                 )
             }
         }
@@ -595,19 +594,11 @@ private fun MembersAgentAvatarPresetTile(
     onClick: () -> Unit
 ) {
     MembersAgentAvatarTileFrame(selected = selected, enabled = enabled, label = key, onClick = onClick) {
-        val size = RaftAvatarSize.Md
-        RaftAvatar(
-            type = RaftAvatarType.Agent,
-            size = size,
-            image = {
-                RaftAppAvatar(
-                    avatarWireValue = "$MembersAgentPixelAvatarPrefix$key",
-                    label = key,
-                    avatarSize = size.edge - RaftStroke.Control * 2,
-                    borderWidth = 0.dp,
-                    fallbackFill = raftAvatarFallbackFill(MemberKind.Agent)
-                )
-            }
+        RaftAppAvatarSticker(
+            kind = RaftAvatarKind.Agent,
+            avatarWireValue = "$MembersAgentPixelAvatarPrefix$key",
+            label = key,
+            size = RaftAvatarSize.Md,
         )
     }
 }

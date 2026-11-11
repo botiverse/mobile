@@ -116,9 +116,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
-import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
-import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -176,9 +174,7 @@ import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextarea
-import build.raft.designsystem.components.raftAvatarInitials
 import build.raft.designsystem.tokens.RaftRadius
-import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftAppearance
@@ -2224,7 +2220,6 @@ private fun RaftComputerCardAgentSlot(
             canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, agent.id),
         )
     val size = RaftComputerCardAvatarSize
-    val avatarWireValue = agent.avatarWireValue?.takeIf { it.isNotBlank() }
     RaftAvatarWithStatus(
         statusColor = live?.color,
         avatarSize = size.edge,
@@ -2236,25 +2231,13 @@ private fun RaftComputerCardAgentSlot(
                 .clickable(role = Role.Button, onClickLabel = agent.name, onClick = onClick)
                 .semantics { contentDescription = agent.name },
     ) {
-        RaftAvatar(
-            type = RaftAvatarType.Agent,
+        // web AgentRackSlot -> AgentAvatar: an agent without a face, or whose image fails, wears the robot.
+        RaftAppAvatarSticker(
+            kind = RaftAvatarKind.Agent,
+            avatarWireValue = agent.avatarWireValue,
+            label = agent.name,
             size = size,
-            initials = raftAvatarInitials(agent.name, size),
-            image =
-                if (avatarWireValue != null) {
-                    {
-                        RaftAppAvatar(
-                            avatarWireValue = avatarWireValue,
-                            label = agent.name,
-                            avatarSize = size.edge - RaftStroke.Control * 2,
-                            borderWidth = 0.dp,
-                            cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Agent, agent.id),
-                            fallbackFill = raftAvatarFallbackFill(MemberKind.Agent),
-                        )
-                    }
-                } else {
-                    null
-                },
+            cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Agent, agent.id),
         )
     }
 }
@@ -2822,29 +2805,15 @@ internal fun RaftComputerCreatorLink(creator: RaftComputerCreatorModel, onClick:
     }
 }
 
-/** A person's avatar: their uploaded photo, else the placeholder person. */
+/** A person's avatar: their uploaded photo, else (also when it fails) the placeholder person. */
 @Composable
 private fun RaftComputerCreatorAvatar(creator: RaftComputerCreatorModel) {
-    val size = RaftAvatarSize.Xs
-    val avatarWireValue = creator.avatarWireValue
-    RaftAvatar(
-        type = RaftAvatarType.Human,
-        size = size,
-        image =
-            if (avatarWireValue != null) {
-                {
-                    RaftAppAvatar(
-                        avatarWireValue = avatarWireValue,
-                        label = "",
-                        // The face fills the inside of the sticker edge.
-                        avatarSize = size.edge - RaftStroke.Control * 2,
-                        borderWidth = 0.dp,
-                        cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Human, creator.id),
-                    )
-                }
-            } else {
-                null
-            },
+    RaftAppAvatarSticker(
+        kind = RaftAvatarKind.Human,
+        avatarWireValue = creator.avatarWireValue,
+        label = "",
+        size = RaftAvatarSize.Xs,
+        cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Human, creator.id),
     )
 }
 
@@ -3125,33 +3094,17 @@ private fun RaftComputerAgentStatus(live: RaftAgentStatusIndicatorState) {
 
 /**
  * An agent on this computer: its own avatar (pixel avatar or photo) in the agent sticker,
- * as the Members list draws it; an agent with none wears the default pixel robot, as web
- * `AgentAvatar` does ([raftComputerAgentAvatarWireValue]).
+ * as the Members list draws it; an agent with none, or whose image fails, wears the default
+ * pixel robot, as web `AgentAvatar` does ([RaftAvatarKind.Agent]).
  */
 @Composable
 private fun RaftComputerAgentAvatar(agent: SettingsComputerAgentSnapshot) {
-    val size = RaftAvatarSize.Md
-    val avatarUrl = agent.raftComputerAgentAvatarWireValue()
-    RaftAvatar(
-        type = RaftAvatarType.Agent,
-        size = size,
-        initials = raftAvatarInitials(agent.name, size),
-        image =
-            if (avatarUrl != null) {
-                {
-                    RaftAppAvatar(
-                        avatarWireValue = avatarUrl,
-                        label = agent.name,
-                        // The face fills the inside of the 1.5dp sticker edge.
-                        avatarSize = size.edge - RaftStroke.Control * 2,
-                        borderWidth = 0.dp,
-                        cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Agent, agent.id),
-                        fallbackFill = raftAvatarFallbackFill(MemberKind.Agent),
-                    )
-                }
-            } else {
-                null
-            },
+    RaftAppAvatarSticker(
+        kind = RaftAvatarKind.Agent,
+        avatarWireValue = agent.raftComputerAgentAvatarWireValue(),
+        label = agent.name,
+        size = RaftAvatarSize.Md,
+        cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Agent, agent.id),
     )
 }
 

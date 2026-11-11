@@ -105,10 +105,10 @@ internal fun RaftNativeNavBarTitleImageCapture(
                     )
                 is RaftNativeNavBarTitleLeading.Avatar ->
                     RaftAppAvatar(
+                        kind = leading.kind,
                         avatarWireValue = leading.avatarWireValue,
                         label = leading.label,
                         avatarSize = RaftNativeNavBarTitleImageSize,
-                        fallbackFill = leading.fill,
                     )
                 // A kind without an app drawing here keeps the host's own (PR #4464's server tile).
                 else -> Unit

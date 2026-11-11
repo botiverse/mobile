@@ -28,9 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import build.raft.designsystem.components.RaftAvatar
-import build.raft.designsystem.components.RaftAvatarSize
-import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftBadge
@@ -223,31 +220,13 @@ internal fun <T> RaftForwardPickerTargetRow(
             RaftCheckbox(checked = selected, onCheckedChange = null)
         }
         when (target.visualKind) {
+            // web AvatarSlot by the peer's kind: without a face an agent wears the robot, a person
+            // the placeholder ([RaftMemberAvatar] of the peer's kind), never initials. A recent DM
+            // whose peer kind the row does not carry: no letters either (the empty label), the placeholder.
             RaftForwardTargetVisualKind.DirectMessage ->
-                if (target.avatarWireValue.isNullOrBlank()) {
-                    // AvatarSlot `humanPlaceholder`: no photo is the person glyph, not initials.
-                    // web AvatarSlot `humanPlaceholder`: lucide User inside the lavender sticker.
-                    RaftAvatar(
-                        type =
-                            if (target.cacheMemberKind == build.raft.app.model.MemberKind.Agent) {
-                                RaftAvatarType.Agent
-                            } else {
-                                RaftAvatarType.Human
-                            },
-                        size = RaftAvatarSize.Sm,
-                        image = {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                RaftLucideIcon(
-                                    RaftLucideIconName.User,
-                                    modifier = Modifier.size(RaftAvatarSize.Sm.iconSize),
-                                    color = raftArgbHex(RaftColor.StickerInk)
-                                )
-                            }
-                        }
-                    )
-                } else RaftMemberAvatar(
+                RaftMemberAvatar(
                     identity = RaftMemberAvatarIdentity(target.cacheMemberKind, target.cacheMemberId, target.cacheServerId),
-                    label = target.title.ifBlank { target.avatarLabel },
+                    label = "",
                     avatarSize = ForwardPickerAvatarSize,
                     carriedAvatarWireValue = target.avatarWireValue,
                 )

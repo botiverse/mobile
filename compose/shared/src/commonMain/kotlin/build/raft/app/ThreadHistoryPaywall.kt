@@ -35,7 +35,6 @@ import build.raft.app.data.RaftHiddenHistoryStore
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
@@ -335,15 +334,6 @@ private fun HiddenHistoryMessage.memberKind(): MemberKind? =
 private fun ThreadHiddenHistoryRow(message: HiddenHistoryMessage, timeContext: RaftTimeContext?) {
     val name = message.senderName?.trim()?.takeIf { it.isNotEmpty() } ?: stringResource(Res.string.thread_history_paywall_unknown_sender)
     val kind = message.memberKind()
-    // Only what the page carries: the server already left out faces the viewer may not see.
-    val avatarWireValue =
-        kind?.let {
-            avatarWireValueForAvatarSlot(
-                kind = it,
-                id = message.senderId,
-                avatarWireValue = message.senderAvatarUrl,
-            )
-        }
     // The message row's rhythm: a turn's 8 on top, 4 inside, the 35dp gutter and its 12 gap.
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = ThreadMessageTimelineTurn).padding(vertical = ThreadMessageTimelineRowInset),
@@ -351,10 +341,11 @@ private fun ThreadHiddenHistoryRow(message: HiddenHistoryMessage, timeContext: R
     ) {
         Box(Modifier.width(35.dp).padding(top = 2.dp)) {
             RaftAppAvatar(
-                avatarWireValue = avatarWireValue,
+                kind = raftAvatarKind(kind),
+                // Only what the page carries: the server already left out faces the viewer may not see.
+                avatarWireValue = message.senderAvatarUrl,
                 label = name,
                 avatarSize = 35.dp,
-                fallbackFill = raftAvatarFallbackFill(kind),
             )
         }
         Column(Modifier.weight(1f)) {

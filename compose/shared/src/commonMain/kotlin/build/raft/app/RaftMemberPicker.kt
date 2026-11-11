@@ -277,7 +277,7 @@ private fun RaftMemberPickerRow(
             onTrailingClick = null,
             cacheSubject = member.raftAvatarCacheSubject(),
             cacheServerId = member.serverId?.value,
-            avatarFill = raftAvatarFallbackFill(member.kind),
+            avatarKind = raftAvatarKind(member.kind),
             titleBadge = appBot?.let { bot -> { RaftAppBotBadge(identity = bot, botName = member.displayName.ifBlank { member.handle }) } },
         )
     }

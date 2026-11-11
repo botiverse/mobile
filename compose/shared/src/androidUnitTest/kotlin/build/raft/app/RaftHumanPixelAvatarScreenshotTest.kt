@@ -57,6 +57,7 @@ class RaftHumanPixelAvatarScreenshotTest {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             for (size in listOf(19.dp, 35.dp, 51.dp)) {
                                 RaftAppAvatar(
+                                    kind = RaftAvatarKind.Human,
                                     avatarWireValue = avatarWireValueForAvatarSlot(MemberKind.Human, "person", value),
                                     label = "",
                                     avatarSize = size,

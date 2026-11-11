@@ -9,14 +9,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.model.ExternalMessageAuthor
 import build.raft.app.model.providerLabel
-import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
-import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftPreviewCardHeader
 import build.raft.designsystem.components.RaftPreviewCardTitle
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.designsystem.tokens.RaftStroke
 
 /**
  * Web `ExternalIdentityPreviewBody` (`components/message/ExternalIdentityPreviewCard.tsx`): who a
@@ -83,13 +80,6 @@ internal fun ExternalMessageAuthor.actorKindLabel() =
 
 @Composable
 private fun ExternalIdentityAvatar(author: ExternalMessageAuthor, shownName: String) {
-    val size = RaftAvatarSize.Lg
-    RaftAvatar(
-        type = RaftAvatarType.Human,
-        size = size,
-        image = {
-            // The face fills the inside of the sticker edge; no picture draws the initials.
-            RaftAppAvatar(avatarWireValue = author.avatarUrl, label = shownName, avatarSize = size.edge - RaftStroke.Control * 2, borderWidth = 0.dp)
-        },
-    )
+    // web `AvatarSlot type="app"`: the external author's picture, else (or when it fails) their initials.
+    RaftAppAvatarSticker(kind = RaftAvatarKind.Labeled, avatarWireValue = author.avatarUrl, label = shownName, size = RaftAvatarSize.Lg)
 }

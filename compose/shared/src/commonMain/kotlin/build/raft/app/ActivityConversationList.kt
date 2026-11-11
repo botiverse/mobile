@@ -784,14 +784,15 @@ internal fun ActivityMemberFace(
             enabled = identity.jointSurface,
         )
     RaftAppAvatar(
+        // web Activity rows: an agent's face that does not load is the robot, a person's the
+        // placeholder person; a sender of unknown kind has no label to take letters from either.
+        kind = raftAvatarKind(identity.senderKind),
         avatarWireValue = activityFaceAvatarWireValue(memberAvatar, identity, jointActor?.explicitAvatarWireValue()),
-        // Empty: a face that does not load shows the placeholder person, as on web, not a letter.
         label = "",
         modifier = modifier,
         avatarSize = avatarSize,
         cacheSubject = raftMemberAvatarCacheSubject(identity.senderKind, identity.senderId),
         cacheServerId = source.cacheServerId,
-        fallbackFill = raftAvatarFallbackFill(identity.senderKind),
     )
 }
 

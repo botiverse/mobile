@@ -120,6 +120,12 @@ enum class RaftAvatarSize(
  * icon. raft-ui hides a loading or failed image behind the fallback; here the caller
  * passes [image] only once it has loaded.
  *
+ * This is raft-ui's Avatar frame, as generic as the web's: it does not know whose face it holds.
+ * An agent's or a person's face, and what it falls back to (the default pixel robot, the
+ * placeholder person; never initials), belong to the app's identity adapter, web `AvatarSlot`'s
+ * counterpart (`RaftAppAvatar` / `RaftAppAvatarSticker` in `:shared`, keyed by `RaftAvatarKind`),
+ * which fills [image]; pages do not choose a fallback through [initials].
+ *
  * [presence] adds the presence light in the bottom-right corner, overhanging the edge, cut
  * out of [presenceCutoutColor]: the surface the avatar sits on, by default
  * [RaftTheme.surfaceColor] (`layer-card` in a card or list row). [contentDescription] names

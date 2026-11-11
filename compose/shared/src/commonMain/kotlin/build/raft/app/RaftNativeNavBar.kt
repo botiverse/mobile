@@ -17,7 +17,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollDispatcher
@@ -137,15 +136,16 @@ sealed interface RaftNativeNavBarTitleLeading {
     }
 
     /**
-     * A DM peer's avatar, any wire value [RaftAppAvatar] draws (an uploaded photo, a
-     * pixel avatar, [label]'s initials on [fill]). The app draws it and hands the host the pixels
-     * ([RaftNativeNavBarTitleImageCapture]); the host only draws [label]'s initials on [fill] until
-     * they arrive.
+     * A DM peer's avatar, drawn by [RaftAppAvatar] of [kind] (an uploaded photo, a pixel avatar,
+     * else the kind's fallback: an agent's robot, a person's placeholder). The app draws it and hands
+     * the host the pixels ([RaftNativeNavBarTitleImageCapture]); until they arrive the host draws
+     * the kind's fill, with [label]'s initials only for a [RaftAvatarKind.Labeled] face (an agent or
+     * a person never shows letters).
      */
     data class Avatar(
         val label: String,
         val avatarWireValue: String?,
-        val fill: Color,
+        val kind: RaftAvatarKind,
     ) : RaftNativeNavBarTitleLeading
 
     /**
@@ -411,8 +411,9 @@ private fun RaftNativeNavBarTitleExtras.toJson(): JsonObject =
                     "leading",
                     buildJsonObject {
                         put("kind", "avatar")
-                        put("label", lead.label)
-                        put("fillArgb", raftArgbHex(lead.fill))
+                        // The host's stand-in writes these initials; an agent or a person has none.
+                        put("label", if (lead.kind == RaftAvatarKind.Labeled) lead.label else "")
+                        put("fillArgb", raftArgbHex(lead.kind.fill))
                         put("inkArgb", raftArgbHex(RaftColor.StickerInk))
                     }
                 )

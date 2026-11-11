@@ -640,12 +640,12 @@ private fun RaftForegroundBannerAvatar(
     val memberAvatarWireValue = profile?.explicitForegroundBannerAvatarWireValue()
     val avatarLabel = profile?.raftAvatarName()?.takeIf { it.isNotBlank() } ?: banner.avatarLabel
     RaftAppAvatar(
+        kind = raftAvatarKind(profile?.kind),
         avatarWireValue = memberAvatarWireValue ?: banner.avatarWireValue,
         label = avatarLabel,
         avatarSize = ForegroundBannerAvatarSize,
         cacheSubject = profile?.raftAvatarCacheSubject(),
         cacheServerId = profile?.serverId?.value ?: currentServerId?.value,
-        fallbackFill = raftAvatarFallbackFill(profile?.kind)
     )
 }
 
