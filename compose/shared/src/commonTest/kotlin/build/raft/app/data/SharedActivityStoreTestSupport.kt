@@ -112,7 +112,9 @@ internal fun activityStore(
     staleRecoveryDelayMillis: (attempt: Int, retryAfterMillis: Long?) -> Long =
         { attempt, retryAfter -> raftStaleRecoveryDelayMillis(attempt, retryAfter) },
     diagnosticsLogger: (String) -> Unit = {},
-    appForeground: kotlinx.coroutines.flow.StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(true)
+    appForeground: kotlinx.coroutines.flow.StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(true),
+    inboxInPlaceEnabled: (serverId: String) -> Boolean = { false },
+    inPlaceReconcileIntervalMillis: Long = ActivityInPlaceReconcileIntervalMillis
 ): SharedActivityStore =
     SharedActivityStore(
         authStore = authStore,
@@ -149,7 +151,9 @@ internal fun activityStore(
         onReadReceiptPredictionOwnerEntered = onReadReceiptPredictionOwnerEntered,
         staleRecoveryDelayMillis = staleRecoveryDelayMillis,
         appForeground = appForeground,
-        diagnosticsLogger = diagnosticsLogger
+        diagnosticsLogger = diagnosticsLogger,
+        inboxInPlaceEnabled = inboxInPlaceEnabled,
+        inPlaceReconcileIntervalMillis = inPlaceReconcileIntervalMillis
     )
 
 internal class FakeInboxRepository(

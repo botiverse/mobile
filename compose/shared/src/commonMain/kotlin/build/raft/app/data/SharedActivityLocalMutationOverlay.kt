@@ -47,6 +47,13 @@ internal const val ActivityHiddenRealtimeBackgroundRefreshIntervalMillis: Long =
 internal const val ActivityUnreadRealtimeMinIntervalMillis: Long = 10_000L
 
 /**
+ * `mobile_inbox_inplace_v0` (Inbox refresh step 4, rule 5): while the Activity list is visible and
+ * live messages patched rows in place, it is re-read (`inplace_reconcile`) at most once per this
+ * window, the first time this long after the patch. A read of any kind in between covers it.
+ */
+internal const val ActivityInPlaceReconcileIntervalMillis: Long = 60_000L
+
+/**
  * #triage 84d44d75: after a realtime-triggered Activity read answers behind the newest
  * `message:new` seq (the warehouse view lags the write by ~1-2 s), re-read after these waits, at
  * most once each, then stop.

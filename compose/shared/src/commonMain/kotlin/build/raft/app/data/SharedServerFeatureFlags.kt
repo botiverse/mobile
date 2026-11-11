@@ -159,6 +159,17 @@ const val TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY: String = "task_v2_conversation
 const val MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY: String = "mobile_sync_changes_v0"
 
 /**
+ * Inbox refresh step 4 (#triage 6db2bd32): a live `message:new` / `thread:updated` for a row the
+ * Activity list already shows patches its preview, unread and mention in place instead of
+ * re-reading the list; a hidden list reads nothing until it shows again (`visibility`); while
+ * visible, patched rows are re-read at most once per [ActivityInPlaceReconcileIntervalMillis]
+ * (`inplace_reconcile`); and the Activity badge follows the loaded All list instead of its own
+ * summary read. Mobile-only key, default OFF (server-unresolved evaluates false): off, every read
+ * is today's.
+ */
+const val MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY: String = "mobile_inbox_inplace_v0"
+
+/**
  * Personal assistant (botiverse/slock `PERSONAL_ASSISTANT_FEATURE_FLAG_KEY` in
  * `packages/server/src/services/featureFlagService.ts`, web `PERSONAL_ASSISTANT_FLAG_KEY`): per
  * server, default off. A pre-check before asking `GET servers/:id/assistant`, whose `enabled` then
@@ -259,6 +270,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     ACTION_CARD_SPEC_FEATURE_FLAG_KEY,
     WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
     MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY,
+    MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY,
     TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY,
     PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
     DRAFTS_SECTION_FEATURE_FLAG_KEY,

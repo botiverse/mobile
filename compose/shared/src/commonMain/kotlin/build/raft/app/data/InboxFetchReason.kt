@@ -45,6 +45,12 @@ enum class InboxFetchReason(val wireValue: String) {
     LegacyNoFields("legacy_no_fields"),
     /** A sync change the app did not patch in place. */
     SyncUnpatchable("sync_unpatchable"),
+    /**
+     * `mobile_inbox_inplace_v0`: the at-most-once-per-minute re-read of a visible list whose rows
+     * live messages patched in place ([ActivityInPlaceReconcileIntervalMillis]). Mobile-only for
+     * now: a server without it in `ACTIVITY_LIST_FETCH_REASONS` files it under `other`.
+     */
+    InPlaceReconcile("inplace_reconcile"),
 }
 
 /**

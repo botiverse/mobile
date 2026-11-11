@@ -142,6 +142,20 @@ internal class ProcessActivityUnreadStore(
     internal val projections: StateFlow<Map<ProcessActivityUnreadOwner, ActivityUnreadSummaryProjection>> = _projections
     private var nextRevision = 0L
     private var processGeneration = 0L
+    /** See [deriveBadgeFromList]. */
+    @kotlin.concurrent.Volatile
+    private var listDerivesBadge: (ProcessActivityUnreadOwner) -> Boolean = { false }
+
+    /**
+     * `mobile_inbox_inplace_v0` (Inbox refresh step 4, rule 6): while [derives] holds for an owner
+     * (the flag is on and an Activity All list of that server is loaded), its badge is the count that
+     * list publishes ([submitFact]: in-place patches, read predictions, its own reads), so the reads
+     * that list already answers are not made ([isListDerivedActivitySummaryRead]). Not installed:
+     * every read is today's.
+     */
+    fun deriveBadgeFromList(derives: (ProcessActivityUnreadOwner) -> Boolean) {
+        listDerivesBadge = derives
+    }
 
     /**
      * Reads once on every background -> foreground return of [appForeground]. Started by the host
@@ -387,6 +401,13 @@ internal class ProcessActivityUnreadStore(
                     // Nothing reads in the background; the return reads once (onReturnedToForeground).
                     logger(
                         "process_activity_unread_request result=deferred reason=app_background " +
+                            "${owner.diagnosticsKey} source=$reason"
+                    )
+                    return@withLock
+                }
+                if (reason.isListDerivedActivitySummaryRead() && listDerivesBadge(owner)) {
+                    logger(
+                        "process_activity_unread_request result=derived reason=inbox_inplace " +
                             "${owner.diagnosticsKey} source=$reason"
                     )
                     return@withLock
@@ -809,6 +830,25 @@ internal class ProcessActivityUnreadStore(
  */
 private val RealtimeOnlyActivitySummarySources = setOf("realtime", "realtime_summary")
 
+/**
+ * The summary reads a loaded Activity All list answers itself under `mobile_inbox_inplace_v0`: a
+ * realtime event (the list patches its row in place or re-reads it), the person's own read (the list
+ * applies the prediction and its outcome), a first load (the list's own first load publishes the
+ * count) and a sync change (the list re-reads). The return to the foreground (`visibility`), an
+ * explicit refresh and unlabelled reads still read: a hidden list is only read when it shows again.
+ */
+internal fun String.isListDerivedActivitySummaryRead(): Boolean {
+    val base = removeSuffix(":owner_ready").removeSuffix(":missing_epoch")
+    return when (activityUnreadSummaryFetchReason(base)) {
+        InboxFetchReason.RealtimeFallback,
+        InboxFetchReason.Initial,
+        InboxFetchReason.SyncReset,
+        InboxFetchReason.SyncUnpatchable -> true
+        InboxFetchReason.Manual -> base.startsWith("invalidate:")
+        else -> false
+    }
+}
+
 internal fun String.isRealtimeOnlyActivitySummarySource(): Boolean =
     removePrefix("activity:") in RealtimeOnlyActivitySummarySources
 
@@ -864,6 +904,13 @@ internal fun processActivityUnreadRealtimeSink(
         }
     }
 }
+
+/** This Activity list is [owner]'s server, read by its account, on All with rows read: it can count the badge. */
+internal fun SharedActivityState.derivesBadgeFor(owner: ProcessActivityUnreadOwner): Boolean =
+    ownerServerId == owner.serverId &&
+        ownerUserId == owner.accountId &&
+        selectedFilter == InboxFilter.All &&
+        snapshot != null
 
 internal fun ProcessPresenceAuthContext.activityUnreadOwnerFor(rawServerId: String): ProcessActivityUnreadOwner? {
     val environment = environmentId.trim().takeIf { it.isNotBlank() } ?: return null

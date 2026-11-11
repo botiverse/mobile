@@ -17,7 +17,9 @@ class InboxFetchReasonHeaderTest {
         assertEquals(
             listOf(
                 "initial", "reconnect", "visibility", "sync_reset",
-                "realtime_fallback", "manual", "legacy_no_fields", "sync_unpatchable"
+                "realtime_fallback", "manual", "legacy_no_fields", "sync_unpatchable",
+                // Mobile-only until the server lists it (`mobile_inbox_inplace_v0` reconcile).
+                "inplace_reconcile"
             ),
             InboxFetchReason.entries.map { it.wireValue }
         )
