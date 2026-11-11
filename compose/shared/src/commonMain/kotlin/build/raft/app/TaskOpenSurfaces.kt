@@ -25,6 +25,8 @@ import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.TaskConversationHeaderState
+import build.raft.app.data.TaskAmendPatch
+import build.raft.app.data.TaskAmendResult
 import build.raft.app.data.currentTaskSummary
 import build.raft.app.model.TaskStatus
 import build.raft.designsystem.components.RaftBackButton
@@ -346,6 +348,7 @@ internal fun TaskOpenSurfaceHost(
                     onAssign = { member -> edits?.assign(task, member) },
                     serverId = serverId,
                     onMoveToBacklog = { reason -> edits?.moveToBacklog(task, reason) },
+                    onAmend = channelTasks.taskHeadAmend(task),
                 )
             }
         }
@@ -400,6 +403,20 @@ internal class TaskHeadEdits(private val dispatch: (SharedTasksRouteIntent) -> U
 
     fun assign(task: TaskSummary, assignee: MemberProfile?) = dispatch(SharedTasksRouteIntent.AssignTask(task, assignee))
 }
+
+/**
+ * A task head's title / description write (slock #14114) through the task channel's store, the
+ * same on every task page; null without a store (the head shows them as plain text).
+ */
+internal fun SharedTasksViewModel?.taskHeadAmend(task: TaskSummary): (suspend (TaskAmendPatch, Long?) -> TaskAmendResult)? =
+    this?.let { viewModel -> { patch, expectedRevision -> viewModel.amendTask(task, patch, expectedRevision) } }
+
+/**
+ * A task page's Delete task (slock #14115) through the task channel's store: null once deleted (then
+ * [onDeleted]), else the refusal for the confirmation. Null without a store.
+ */
+internal fun SharedTasksViewModel?.taskHeadDelete(task: TaskSummary, onDeleted: () -> Unit): (suspend () -> build.raft.app.data.ScreenError?)? =
+    this?.let { viewModel -> { viewModel.deleteTask(task).also { if (it == null) onDeleted() } } }
 
 /** The page state of a task that has no conversation yet: nothing followed, nothing resolved. */
 internal fun TaskSummary.taskPendingHeaderState(): TaskConversationHeaderState =
@@ -471,6 +488,8 @@ internal fun TaskPendingConversationPage(
     serverId: String? = null,
     /** A move into Backlog with its reason ([TaskConversationHeadRoute]); null: Backlog asks nothing. */
     onMoveToBacklog: ((reason: String?) -> Unit)? = null,
+    /** Saves an edit of the title or description ([TaskConversationHeadRoute]); null: plain text. */
+    onAmend: (suspend (TaskAmendPatch, Long?) -> TaskAmendResult)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -516,6 +535,7 @@ internal fun TaskPendingConversationPage(
                 onUpdateStatus = onUpdateStatus,
                 onAssign = onAssign,
                 onMoveToBacklog = onMoveToBacklog,
+                onAmend = onAmend,
                 // Source and Earlier discussion lead into the channel from the conversation page.
                 onOpenSource = null,
                 onOpenEarlierDiscussion = null,

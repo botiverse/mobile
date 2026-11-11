@@ -13,6 +13,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
@@ -188,6 +189,9 @@ sealed interface SharedTasksIntent {
     data class RefreshFailed(val errorCode: String) : SharedTasksIntent
     data class UpdateTaskStatus(val taskId: String, val nextStatus: TaskStatus) : SharedTasksIntent
     data class TaskStatusUpdateSucceeded(val task: TaskSummary) : SharedTasksIntent
+
+    /** The task was deleted (this store's own delete): it leaves the list. */
+    data class TaskRemoved(val taskId: String) : SharedTasksIntent
     data class TaskStatusUpdateFailed(val previousTask: TaskSummary, val errorCode: String) : SharedTasksIntent
     data class TaskAssignStarted(val taskId: String, val assignee: MemberProfile?) : SharedTasksIntent
     data class TaskAssignSucceeded(val task: TaskSummary) : SharedTasksIntent
@@ -1305,6 +1309,94 @@ internal class SharedTasksViewModel(
         }
     }
 
+    /**
+     * Edits [task]'s title or description (web taskStore `amendTask`, slock #14114): not optimistic,
+     * the head keeps the draft until the server answers. [expectedRevision] is the OCC token (the
+     * revision the editor saves against). A saved edit folds into this list and the shared task
+     * projection, so every page showing the task follows at once; other readers get the server's
+     * `task:updated`. The write runs in this store's scope, so it lands even when the editor that
+     * asked for it is gone.
+     */
+    suspend fun amendTask(task: TaskSummary, patch: TaskAmendPatch, expectedRevision: Long?): TaskAmendResult {
+        if (state.value.standIn) {
+            diagnosticsLogger("tasks_amend_update_skip reason=offline_stand_in taskId=${task.id.value}")
+            return TaskAmendResult.Failed(ScreenError(code = "tasks_local_projection_missing", retryable = true, traceId = null))
+        }
+        return runtimeScope.async {
+            val serverId =
+                useCase.currentServerId()
+                    ?: return@async TaskAmendResult.Failed(ScreenError(code = "selected_server_missing", retryable = false, traceId = null))
+            val result =
+                try {
+                    useCase.amendTask(serverId, task.id, patch, expectedRevision)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    TaskAmendResult.Failed(ScreenError(code = "tasks_amend_network", retryable = true))
+                }
+            diagnosticsLogger(
+                "tasks_amend taskId=${task.id.value} field=${if (patch is TaskAmendPatch.Title) "title" else "description"} " +
+                    "expectedRevision=${expectedRevision ?: -1L} result=${result::class.simpleName}"
+            )
+            if (result is TaskAmendResult.Saved) applySavedTask(serverId, result.task)
+            result
+        }.await()
+    }
+
+    /**
+     * Deletes [task] (web `useTaskDeleteMenu`, slock #14115): not optimistic, the confirmation waits
+     * for the server. Null once deleted (the task leaves this list and the shared projection), else
+     * the refusal with the server's sentence and trace ID. Runs in this store's scope.
+     */
+    suspend fun deleteTask(task: TaskSummary): ScreenError? {
+        if (state.value.standIn) {
+            diagnosticsLogger("tasks_delete_update_skip reason=offline_stand_in taskId=${task.id.value}")
+            return ScreenError(code = "tasks_local_projection_missing", retryable = true, traceId = null)
+        }
+        return runtimeScope.async {
+            val serverId =
+                useCase.currentServerId()
+                    ?: return@async ScreenError(code = "selected_server_missing", retryable = false, traceId = null)
+            val result =
+                try {
+                    useCase.deleteTask(serverId, task.id)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    DataResult.Error(ScreenError(code = "tasks_delete_network", retryable = true))
+                }
+            diagnosticsLogger("tasks_delete taskId=${task.id.value} result=${result::class.simpleName}")
+            when (result) {
+                is DataResult.Content,
+                is DataResult.Empty -> {
+                    sharedTasksDataStore?.removeTaskForCurrentOwner(serverId.value, task.id)
+                    store.accept(SharedTasksIntent.TaskRemoved(task.id.value))
+                    null
+                }
+                is DataResult.Error -> result.error
+                is DataResult.NoPermission ->
+                    ScreenError(
+                        code = result.blocker.code,
+                        retryable = false,
+                        serverMessage = result.blocker.serverMessage,
+                        traceId = result.blocker.traceId,
+                    )
+            }
+        }.await()
+    }
+
+    private suspend fun applySavedTask(serverId: ServerId, task: TaskSummary) {
+        val sharedStore = sharedTasksDataStore
+        if (sharedStore == null) {
+            store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(task))
+            return
+        }
+        when (sharedStore.upsertTaskForCurrentServer(serverId.value, task)) {
+            SharedTaskFactFoldOutcome.Accepted -> store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(task))
+            else -> diagnosticsLogger("tasks_amend_fold_ignore taskId=${task.id.value} serverId=${serverId.value}")
+        }
+    }
+
     private suspend fun createTasks(operation: TasksCreateOperationId, titles: List<String>, status: TaskStatus? = null) {
         val serverId = useCase.currentServerId()
         val isLocalChannelScope = scope is SharedTasksScope.Channel && scope.channelId == operation.channelId
@@ -1496,6 +1588,15 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
         is SharedTasksIntent.RefreshFailed -> withRefreshFailure(intent.errorCode)
         is SharedTasksIntent.UpdateTaskStatus -> withTaskStatusUpdating(intent.taskId, intent.nextStatus)
         is SharedTasksIntent.TaskStatusUpdateSucceeded -> withTaskStatusUpdateSuccess(intent.task)
+        is SharedTasksIntent.TaskRemoved -> {
+            val contentState = loadState as? ScreenLoadState.Content
+            if (contentState == null) {
+                this
+            } else {
+                val rest = contentState.data.tasks.filterNot { it.id.value == intent.taskId }
+                copy(loadState = ScreenLoadState.Content(contentState.data.copy(tasks = rest, summaryCounts = rest.summaryCounts())))
+            }
+        }
         is SharedTasksIntent.TaskStatusUpdateFailed ->
             withTaskStatusUpdateFailure(
                 previousTask = intent.previousTask,

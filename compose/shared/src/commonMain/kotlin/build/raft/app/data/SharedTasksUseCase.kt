@@ -68,6 +68,18 @@ class SharedTasksUseCase(
     ): DataResult<TaskActionResult> =
         repository.assignTask(serverId, taskId, assignee, expectedRevision)
 
+    /** Edit a task's title or description; see [SharedTasksRepository.amendTask]. */
+    suspend fun amendTask(
+        serverId: ServerId,
+        taskId: TaskId,
+        patch: TaskAmendPatch,
+        expectedRevision: Long?
+    ): TaskAmendResult =
+        repository.amendTask(serverId, taskId, patch, expectedRevision)
+
+    suspend fun deleteTask(serverId: ServerId, taskId: TaskId): DataResult<Unit> =
+        repository.deleteTask(serverId, taskId)
+
     suspend fun createTasks(request: TasksCreateRequest): DataResult<TaskSnapshot> {
         val serverId = selectedServerIdOrError() ?: return selectedServerMissing()
         return createTasks(serverId, request)
