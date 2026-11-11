@@ -3,7 +3,7 @@ type: improved
 area: diagnostics
 platforms:
   - android
-pull_request: 0
+pull_request: 4554
 rollout: full
 ---
 
