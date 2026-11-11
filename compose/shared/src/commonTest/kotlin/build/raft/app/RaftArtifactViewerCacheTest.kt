@@ -26,6 +26,7 @@ class RaftArtifactViewerCacheTest {
     private val target = ArtifactLinkTarget("pt_c82e597f-5434-4741-909b-d1c8a7a531c8")
     private val header = RaftArtifactViewerHeader(target.id, "Q4 Launch Plan", ArtifactKind.Html, 1)
     private val pageUrl = "$web/artifacts/${target.id}"
+    private val token = "access-token-1"
 
     private fun cache(drops: MutableList<Unit> = mutableListOf()) = RaftArtifactViewerCache(onKeptDocumentDropped = { drops += Unit })
 
@@ -43,8 +44,8 @@ class RaftArtifactViewerCacheTest {
         val cache = cache()
         cache.remember(null, header)
         assertNull(cache.header(null, target.id))
-        assertFalse(cache.rememberKeptDocument(null, target, pageUrl))
-        assertFalse(cache.keptDocumentUsable(null))
+        assertFalse(cache.rememberKeptDocument(null, target, pageUrl, token))
+        assertFalse(cache.keptDocumentUsable(null, token))
         assertFalse(cache.keptDocumentShows(null, target))
 
         cache.remember(maya, header)
@@ -60,7 +61,7 @@ class RaftArtifactViewerCacheTest {
         val drops = mutableListOf<Unit>()
         val cache = cache(drops)
         cache.remember(maya, header)
-        assertTrue(cache.rememberKeptDocument(maya, target, pageUrl))
+        assertTrue(cache.rememberKeptDocument(maya, target, pageUrl, token))
         drops.clear()
 
         cache.remember(someoneElse, header.copy(title = "Theirs"))
@@ -69,10 +70,10 @@ class RaftArtifactViewerCacheTest {
         assertFalse(cache.keptDocumentShows(someoneElse, target))
         assertNull(cache.header(maya, target.id))
 
-        cache.markKeptWarm(mayaOtherServer)
+        cache.markKeptWarm(mayaOtherServer, token)
         assertNull(cache.header(someoneElse, target.id))
-        assertTrue(cache.keptDocumentUsable(mayaOtherServer))
-        assertFalse(cache.keptDocumentUsable(someoneElse))
+        assertTrue(cache.keptDocumentUsable(mayaOtherServer, token))
+        assertFalse(cache.keptDocumentUsable(someoneElse, token))
     }
 
     @Test
@@ -80,11 +81,11 @@ class RaftArtifactViewerCacheTest {
         val drops = mutableListOf<Unit>()
         val cache = cache(drops)
         cache.remember(maya, header)
-        cache.rememberKeptDocument(maya, target, pageUrl)
+        cache.rememberKeptDocument(maya, target, pageUrl, token)
         drops.clear()
         cache.clear()
         assertNull(cache.header(maya, target.id))
-        assertFalse(cache.keptDocumentUsable(maya))
+        assertFalse(cache.keptDocumentUsable(maya, token))
         assertEquals(1, drops.size)
     }
 
@@ -93,7 +94,7 @@ class RaftArtifactViewerCacheTest {
         val drops = mutableListOf<Unit>()
         val cache = cache(drops)
         cache.remember(maya, header)
-        assertTrue(cache.rememberKeptDocument(maya, target, pageUrl))
+        assertTrue(cache.rememberKeptDocument(maya, target, pageUrl, token))
         assertTrue(cache.keptDocumentShows(maya, target))
         drops.clear()
 
@@ -120,10 +121,10 @@ class RaftArtifactViewerCacheTest {
                 "https://evil.test/artifacts/${target.id}",
             )
         for (url in ticketUrls) {
-            assertFalse(cache.rememberKeptDocument(maya, target, url), url)
+            assertFalse(cache.rememberKeptDocument(maya, target, url, token), url)
             assertFalse(cache.keptDocumentShows(maya, target), url)
         }
-        assertTrue(cache.rememberKeptDocument(maya, target, pageUrl))
+        assertTrue(cache.rememberKeptDocument(maya, target, pageUrl, token))
         // What the app does send to a kept document carries the path alone, never a ticket.
         val script = raftArtifactViewerNavigateScript(web, "", ArtifactLinkTarget(target.id, 2))
         assertTrue("\"/artifacts/${target.id}/v/2\"" in script)
