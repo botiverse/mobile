@@ -174,8 +174,9 @@
             </intent-filter>
             <!--
                 Raft message links (#proj-mobile #25): verified App Links on both hosts, which serve the
-                same assetlinks.json. Only the conversation permalink prefix is claimed; MainActivity
-                parses the exact /s/{slug}/channel|dm/{id} shape and leaves anything else to the browser.
+                same assetlinks.json. Only the conversation permalink prefix and the external channel
+                invite link are claimed; MainActivity parses the exact /s/{slug}/channel|dm/{id} and
+                /external-invite/{token} shapes and leaves anything else to the browser.
             -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
@@ -187,6 +188,8 @@
                 <data android:host="app.raft.build" />
                 <data android:host="open.raft.build" />
                 <data android:pathPrefix="/s/" />
+                <!-- An external channel invite email's link (RaftMessageLinkIngress: parseRaftExternalInviteLink). -->
+                <data android:pathPrefix="/external-invite/" />
             </intent-filter>
             <!--
                 The web origin root only: email verification (`/?verify=`) and the social auth callback

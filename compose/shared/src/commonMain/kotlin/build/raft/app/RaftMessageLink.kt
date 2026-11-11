@@ -103,6 +103,26 @@ internal fun parseRaftArtifactDeepLink(
 }
 
 /**
+ * An external channel invite link opened from outside the app (the invite email's
+ * `/external-invite/{token}`, slock `emailService.externalChannelInviteUrl`): its token, or null
+ * when the app must not claim it. The origin is a message link's (the hosts [parseRaftMessageLink]
+ * takes); the path is exactly `/external-invite/{token}` (web `externalLinkSignIn`), the token
+ * percent-decoded. Identity only: the invite page reads everything else from the server.
+ */
+internal fun parseRaftExternalInviteLink(
+    url: String,
+    configuredWebUrl: String? = null,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): String? {
+    val origin = url.toRaftLinkUrl() ?: return null
+    if (!origin.isAllowedMessageLinkOrigin(configuredWebUrl?.toRaftLinkUrl(), appHosts)) return null
+    val segments = origin.path.removePrefix("/").removeSuffix("/").split('/')
+    if (segments.size != 2 || segments[0] != "external-invite") return null
+    val token = segments[1].raftLinkPercentDecode()?.takeIf { it.isNotBlank() && '/' !in it && it.length <= 512 } ?: return null
+    return token
+}
+
+/**
  * The web link of [link], the inverse of [parseRaftMessageLink]: `{web}/s/{slug}/{channel|dm}/{cid}`
  * with `?msg={mid}` and/or `thread={cid}%3A{pid}` (the path's channel, as the parser requires).
  * [webUrl] is the Developer environment's web URL (AGENTS.md "Environment Web Link URL Rule");
@@ -395,6 +415,53 @@ internal class RaftArtifactLinkInbox(
     }
 }
 
+/** An external invite link waiting for a ready app shell, as [RaftPendingMessageLink] waits. */
+internal data class RaftPendingExternalInviteLink(
+    val id: Long,
+    val token: String,
+    val receivedAtEpochMillis: Long,
+    val source: String,
+    /**
+     * Switch account (#13942): the account the invite was not for. A shell still signed in as it
+     * leaves the link waiting, so it opens only once another account is signed in.
+     */
+    val notForAccountId: String? = null,
+)
+
+/**
+ * The process-wide single slot for an external invite link ([parseRaftExternalInviteLink]): the
+ * same rules as [RaftMessageLinkInbox] (newest wins, taken once by a shell with a ready session,
+ * dropped after [ttlMillis]), so a link opened signed out opens once signed in.
+ */
+internal class RaftExternalInviteLinkInbox(
+    private val nowEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val ttlMillis: Long = RaftMessageLinkInbox.DefaultTtlMillis,
+) {
+    private val lock = SynchronizedObject()
+    private var nextId = 1L
+    private val mutablePending = MutableStateFlow<RaftPendingExternalInviteLink?>(null)
+    val pending: StateFlow<RaftPendingExternalInviteLink?> = mutablePending.asStateFlow()
+
+    fun submit(token: String, source: String, notForAccountId: String? = null): RaftPendingExternalInviteLink = synchronized(lock) {
+        RaftPendingExternalInviteLink(nextId++, token, nowEpochMillis(), source, notForAccountId?.takeIf(String::isNotBlank))
+            .also { mutablePending.value = it }
+    }
+
+    /** Takes the pending link [id]; null when it was already taken, replaced, or expired (then cleared). */
+    fun take(id: Long): RaftPendingExternalInviteLink? = synchronized(lock) {
+        val current = mutablePending.value?.takeIf { it.id == id } ?: return null
+        mutablePending.value = null
+        current.takeIf { nowEpochMillis() - it.receivedAtEpochMillis <= ttlMillis }
+    }
+
+    fun clear() = synchronized(lock) { mutablePending.value = null }
+
+    companion object {
+        /** The slot the platform ingresses and every app shell of this process share. */
+        val Process: RaftExternalInviteLinkInbox = RaftExternalInviteLinkInbox()
+    }
+}
+
 /**
  * Whether a shell takes the pending link now: only with a signed-in, server-ready session
  * ([sessionReady]); before that (signed out, restoring, choosing a server) it keeps waiting.
@@ -407,7 +474,8 @@ internal fun raftMessageLinkShouldTake(pending: RaftPendingMessageLink?, session
  * link, or a Raft Desktop `raft://` link ([raftSchemeLinkToWebLink]). Returns
  * false when the URL is not a Raft message link this app takes; the caller then leaves it to the
  * browser. On true the link waits in [RaftMessageLinkInbox.Process] for the app shell, or, for an
- * Artifacts home address ([parseRaftArtifactDeepLink]), in [RaftArtifactLinkInbox.Process].
+ * Artifacts home address ([parseRaftArtifactDeepLink]), in [RaftArtifactLinkInbox.Process], or, for
+ * an external channel invite ([parseRaftExternalInviteLink]), in [RaftExternalInviteLinkInbox.Process].
  */
 object RaftMessageLinkIngress {
     /** [configuredWebUrl] is the Developer environment's web URL; null reads the app-scope one. */
@@ -426,6 +494,12 @@ object RaftMessageLinkIngress {
                     RaftMessageLinkLogTag,
                     "artifact_link_ingress result=pending id=${pending.id} source=${pending.source} version=${artifact.version != null}"
                 )
+                return true
+            }
+            val inviteToken = parseRaftExternalInviteLink(url, webUrl)
+            if (inviteToken != null) {
+                val pending = RaftExternalInviteLinkInbox.Process.submit(inviteToken, source.raftLinkLogToken())
+                raftLogInfo(RaftMessageLinkLogTag, "external_invite_link_ingress result=pending id=${pending.id} source=${pending.source}")
                 return true
             }
             raftLogInfo(RaftMessageLinkLogTag, "message_link_ingress result=not_claimed source=${source.raftLinkLogToken()}")

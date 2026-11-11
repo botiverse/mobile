@@ -36,6 +36,8 @@ class AuthenticatedProductRouteTest {
                 RAFT_ARTIFACT_VIEWER_PAGE,
                 // The Artifacts home (workspace_artifacts_v0), pushed from the server panel.
                 ARTIFACTS_HOME_PAGE,
+                // An external channel invite link's page (identity: the token only).
+                EXTERNAL_INVITE_PAGE,
             )
 
         assertEquals(expected, authenticatedProductRoutePageNames)

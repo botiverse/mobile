@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.encodeInviteTokenSegment
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.updatedAgentIdOrNull
 import build.raft.app.data.raftDedupeKey
@@ -5335,6 +5336,17 @@ private fun RaftAppShellReadyContent(
             linkNavigator.open(artifactWebUrl(sharedStores.apiEnvironmentStore.current().webUrl, taken.target))
         }
     }
+    val latestNavigationAccountId by rememberUpdatedState { readySession?.user?.id?.takeIf(String::isNotBlank) }
+    // An external channel invite link: its page, which reads the invite for this account.
+    val latestOpenExternalInviteLink by rememberUpdatedState<(RaftPendingExternalInviteLink) -> Unit> { taken ->
+        if (!pager.openExternalInvitePage(taken.token, navigationStoreScope)) {
+            bridge.log("external_invite_link_open result=browser_fallback reason=no_page_scope")
+            linkNavigator.open(
+                sharedSettingsResolvedWebBaseUrl(sharedStores.apiEnvironmentStore.current().webUrl) +
+                    "/external-invite/" + taken.token.encodeInviteTokenSegment()
+            )
+        }
+    }
     // Phone layout: the conversation page on top of the shell, so a link to it is not pushed twice.
     val latestNavigationTopPageRoute by rememberUpdatedState {
         if (desktopModeOnLargeScreen) null else foregroundBannerStore.visibleRouteIdentity()
@@ -5348,6 +5360,10 @@ private fun RaftAppShellReadyContent(
                     latestResolveMessageLink(taken)
 
                 override fun openArtifactLink(taken: RaftPendingArtifactLink) = latestOpenArtifactLink(taken)
+
+                override fun openExternalInviteLink(taken: RaftPendingExternalInviteLink) = latestOpenExternalInviteLink(taken)
+
+                override fun currentAccountId(): String? = latestNavigationAccountId()
 
                 override fun readiness(): WindowNavigationReadiness? = latestNavigationReadiness()
 
