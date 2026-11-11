@@ -337,6 +337,14 @@ internal data class WireActionCardMetadata(
     val actor: JsonElement? = null,
     val artifactId: JsonElement? = null,
     val title: JsonElement? = null,
+    /*
+     * A task's assignment line (`kind: "task-assignment"`, TaskAssignmentNotice.kt; it also reads
+     * [actor]): kept as JSON for the same reason. An explicit `assignee: null` (cleared) and an
+     * absent one both decode to null here; either way the line is no hand-off.
+     */
+    val taskNumber: JsonElement? = null,
+    val assignee: JsonElement? = null,
+    val reason: JsonElement? = null,
 )
 
 /** The channel announcement notice this `actionMetadata` carries, read as the web reads it; null for anything else. */
@@ -350,6 +358,22 @@ internal fun WireActionCardMetadata.channelAnnouncementNotice(): ChannelAnnounce
                 actor?.let { put("actor", it) }
                 artifactId?.let { put("artifactId", it) }
                 title?.let { put("title", it) }
+            }
+        )
+    )
+}
+
+/** The task assignment notice this `actionMetadata` carries, read as the web reads it; null for anything else. */
+internal fun WireActionCardMetadata.taskAssignmentNotice(): TaskAssignmentNotice? {
+    if (kind != TASK_ASSIGNMENT_NOTICE_KIND) return null
+    return readTaskAssignmentNotice(
+        JsonObject(
+            buildMap {
+                put("kind", JsonPrimitive(TASK_ASSIGNMENT_NOTICE_KIND))
+                taskNumber?.let { put("taskNumber", it) }
+                actor?.let { put("actor", it) }
+                put("assignee", assignee ?: JsonNull)
+                reason?.let { put("reason", it) }
             }
         )
     )

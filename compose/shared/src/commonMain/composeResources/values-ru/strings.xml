@@ -4482,4 +4482,8 @@
     <string name="member_activity_subagents_detail_time">Длительность</string>
     <string name="member_activity_log_subagent">Субагент</string>
     <string name="member_activity_log_subagent_with_type">Субагент: %1$s</string>
+    <!-- A task handed to someone with a reason (web task.handoff.*, botiverse/slock #13927). -->
+    <string name="task_handoff_label">Задача #%2$d: %1$s → %3$s</string>
+    <string name="task_handoff_returned">Задача вернулась к %1$s · %2$s</string>
+    <string name="task_handoff_handed_back">Задача снова у %2$s (вернул(а) %1$s) · %3$s</string>
 </resources>

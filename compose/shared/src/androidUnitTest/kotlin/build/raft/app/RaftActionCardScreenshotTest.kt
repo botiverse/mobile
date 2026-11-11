@@ -18,10 +18,14 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ActionCardSpecCard
 import build.raft.app.data.ActionCardSpecEntityRef
+import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
+import build.raft.app.data.parseActionCardSpec
+import build.raft.app.data.stripActionCardSpec
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
+import kotlinx.serialization.json.Json
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -53,6 +57,8 @@ import org.robolectric.annotation.GraphicsMode
  *   whose dropped roles leave plain Stacks (no quote).
  * - approve-call (schemaVersion 7, slock #11937): the vector's form_submit_labels, an
  *   `agent:approve_call`-shaped card (shield, a mono Field, Decide opening its decision form).
+ * - migrate-agent (schemaVersion 9, slock #14018 / #14223 / #14226): Requested by, Current and
+ *   Suggested computer, Move agent as "Open in web" (en, zh-cn), the vector's open_migrate_agent.
  * - limits: every string at its limit in English and Chinese (title wraps, labels truncate),
  *   and the install card in `zh-cn`.
  *
@@ -101,6 +107,10 @@ class RaftActionCardScreenshotTest {
     @Test fun questionCardLight() = capture("thread.action-card.question", RaftAppAppearance.Light) { QuestionCards() }
 
     @Test fun questionCardDark() = capture("thread.action-card.question.dark", RaftAppAppearance.Dark) { QuestionCards() }
+
+    @Test fun migrateAgentLight() = capture("thread.action-card.migrate-agent", RaftAppAppearance.Light) { MigrateAgent() }
+
+    @Test fun migrateAgentDark() = capture("thread.action-card.migrate-agent.dark", RaftAppAppearance.Dark) { MigrateAgent() }
 
     @Test fun limitsLight() = capture("thread.action-card.limits", RaftAppAppearance.Light) { Limits() }
 
@@ -232,6 +242,20 @@ private fun QuestionCards() {
     Card("question_card")
     Card("question_card_answered", RaftActionCardFrameState(status = RaftActionCardStatus.Executed, record = "Answered by Alice Chen"))
     Card("question_card_single_anyone", RaftActionCardFrameState(status = RaftActionCardStatus.Frozen))
+}
+
+/**
+ * agent:migrate (botiverse/slock v1.21.64): another agent asked (Requested by), Current computer
+ * before Suggested computer; Move agent as this App shows it ("Open in web", strip with the App's
+ * capabilities), the same card in zh-cn, and the vector's open_migrate_agent with its intent kept.
+ */
+@Composable
+private fun MigrateAgent() {
+    val read = remember { checkNotNull(parseActionCardSpec(Json.parseToJsonElement(ActionCardSpecFixtures.AGENT_MIGRATE_V9))) }
+    val forApp = remember(read) { checkNotNull(stripActionCardSpec(read, RAFT_APP_ACTION_CARD_CAPABILITIES)) }
+    Card(forApp)
+    Card(forApp, locale = "zh-cn")
+    Card("open_migrate_agent")
 }
 
 @Composable

@@ -90,7 +90,9 @@ internal fun WireActionCardMetadata.messageCardMetadata(): Map<String, String> {
 internal fun WireActionCardMetadata?.toMessageItemMetadata(): Map<String, String> {
     val meta = this ?: return emptyMap()
     return meta.toThreadActionCard()?.toMessageMetadata()
-        ?: meta.messageCardMetadata().ifEmpty { meta.channelAnnouncementNotice()?.toMessageMetadata().orEmpty() }
+        ?: meta.messageCardMetadata()
+            .ifEmpty { meta.channelAnnouncementNotice()?.toMessageMetadata().orEmpty() }
+            .ifEmpty { meta.taskAssignmentNotice()?.toMessageMetadata().orEmpty() }
 }
 
 /** The card revision a projected message carries; null when it is not a card message. */

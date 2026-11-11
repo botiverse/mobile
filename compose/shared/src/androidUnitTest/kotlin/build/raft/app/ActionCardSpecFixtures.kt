@@ -118,4 +118,33 @@ internal object ActionCardSpecFixtures {
   "q_how":{"type":"Field","props":{"label":{"key":"actionCard.question.question","text":{"en":"Question"}},"value":"$question"}},
   "a_how":{"type":"Field","props":{"label":{"key":"actionCard.question.answerLabel","text":{"en":"Answer"}},"value":"$answer"}}}}}
 """
+    /** The agent `agent:migrate` moves (scout), the agent that asked for it (IT Ops), its computer now and the one suggested. */
+    const val MIGRATE_SCOUT_ID: String = "2d3a9e6a-3f4c-4b8d-9e5f-7a9b0c1d2e3f"
+    const val MIGRATE_REQUESTER_ID: String = "7c8f4d1f-8e9b-4a3c-8d0e-2f4a5b6c7d8e"
+    const val MIGRATE_CURRENT_COMPUTER_ID: String = "6b7e3c0e-7d8a-4f2b-9c9d-1e3f4a5b6c7d"
+    const val MIGRATE_SUGGESTED_COMPUTER_ID: String = "4f5c1a8c-5b6e-4d0f-9a7b-9c1d2e3f4a5b"
+
+    /**
+     * botiverse/slock v1.21.64 (0d4ec9fd) shared builder output for a prepared `agent:migrate` card
+     * another agent asked for (#14018 snapshot "agent:migrate prepared", #14223 `requestedBy`, #14226
+     * `currentComputer`, ids from actionCardSpecBuilder.test.ts): a muted "Requested by {agent}" under
+     * the title, Current computer before Suggested computer (both by id, the fallback the short id),
+     * the reason, and Move agent (`open` migrate_agent). Catalog text in en and zh-cn.
+     */
+    const val AGENT_MIGRATE_V9: String = """
+{"catalog":"action-card.v1","icon":"bot",
+ "title":{"key":"actionCard.title.migrateAgent","text":{"en":"Move {agent} to another computer","zh-cn":"把 {agent} 迁移到另一台电脑"},"params":{"agent":{"kind":"agent","id":"$MIGRATE_SCOUT_ID","fallback":"scout"}}},
+ "spec":{"root":"root","elements":{
+  "root":{"type":"Stack","props":{"direction":"column","wrap":false},"children":["requestedBy","properties","reason","actions"]},
+  "requestedBy":{"type":"Text","props":{"text":{"key":"actionCard.migrateAgent.requestedBy","text":{"en":"Requested by {agent}","zh-cn":"由 {agent} 发起"},"params":{"agent":{"kind":"agent","id":"$MIGRATE_REQUESTER_ID","fallback":"IT Ops"}}},"tone":"muted","mono":false}},
+  "properties":{"type":"Stack","props":{"direction":"column","wrap":false},"children":["currentComputer","computer"]},
+  "currentComputer":{"type":"Field","props":{"label":{"key":"actionCard.field.currentComputer","text":{"en":"Current computer","zh-cn":"当前的计算机"}},"value":[{"kind":"computer","id":"$MIGRATE_CURRENT_COMPUTER_ID","fallback":"6b7e3c0e"}],"mono":true}},
+  "computer":{"type":"Field","props":{"label":{"key":"actionCard.field.suggestedComputer","text":{"en":"Suggested computer","zh-cn":"建议的计算机"}},"value":[{"kind":"computer","id":"$MIGRATE_SUGGESTED_COMPUTER_ID","fallback":"4f5c1a8c"}],"mono":true}},
+  "reason":{"type":"Stack","props":{"direction":"column","wrap":false,"role":"reason"},"children":["reasonLabel","reasonText"]},
+  "reasonLabel":{"type":"Text","props":{"text":{"key":"actionCard.reason","text":{"en":"Reason","zh-cn":"原因"}},"tone":"muted","mono":false}},
+  "reasonText":{"type":"Text","props":{"text":"My computer has been offline since 07:40, so I can't run tonight's eval.","tone":"default","mono":false}},
+  "actions":{"type":"Stack","props":{"direction":"row","wrap":true,"role":"actions"},"children":["migrateAgent"]},
+  "migrateAgent":{"type":"Button","props":{"label":{"key":"actionCard.verb.migrateAgent","text":{"en":"Move agent","zh-cn":"迁移 Agent"}},"emphasis":"primary","action":{"kind":"open","intent":"migrate_agent"}}}
+ }}}
+"""
 }

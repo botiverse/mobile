@@ -13,8 +13,9 @@ import kotlinx.serialization.json.put
 /*
  * `action-card.v1`: Raft's first-party action cards described as data (`presentation.card`).
  *
- * Contract: botiverse/slock bffda833 (S0 #11226, S0.1 #11232, S0.2 #11234, S0.3 #11381, schemaVersion 6 #11668,
- * schemaVersion 7 #11937, schemaVersion 8 question cards: Choice, form steps and placement, too_few, the raw Msg)
+ * Contract: botiverse/slock 0d4ec9fd (v1.21.64; S0 #11226, S0.1 #11232, S0.2 #11234, S0.3 #11381, schemaVersion 6 #11668,
+ * schemaVersion 7 #11937, schemaVersion 8 question cards: Choice, form steps and placement, too_few, the raw Msg,
+ * schemaVersion 9 #14018: the open intent migrate_agent)
  * `packages/shared/src/actionCardSpec.ts`, pinned by
  * the vendored `actionCard.v1.vector.json` (scripts/check_action_card_v1_vector.sh). An action
  * card keeps its durable row, `confirmationVersion`, state machine and `/api/actions` endpoints;
@@ -48,7 +49,7 @@ val ACTION_CARD_SPEC_CAPABILITIES: List<String> =
         "field.text_input", "field.text_area", "field.select", "field.toggle", "field.member_picker", "field.channel_picker",
         "field.agent_picker", "field.choice",
         "intent.create_channel", "intent.add_members", "intent.create_agent", "intent.feedback_form", "intent.upgrade_dialog",
-        "intent.feedback_ticket", "intent.add_seats",
+        "intent.feedback_ticket", "intent.add_seats", "intent.migrate_agent",
     )
 
 /**
@@ -72,6 +73,8 @@ val ACTION_CARD_SPEC_CAPABILITIES: List<String> =
 // only for a ticket filed into this App (`showsFeedbackTicket`), else removed. Not
 // intent.upgrade_dialog or intent.add_seats: the App has no upgrade or add-seats dialog for a card, so
 // those buttons are "Open in web".
+// Not intent.migrate_agent either (schemaVersion 9, an agent:migrate card's Move agent): no migration
+// dialog for a card, so it is "Open in web" too.
 val RAFT_APP_ACTION_CARD_CAPABILITIES: List<String> =
     listOf(
         "card.v1", "confirm.v1", "form.v1",
@@ -152,6 +155,13 @@ enum class ActionCardSpecIntent(val wire: String) {
 
     /** A seat request's owner flow (schemaVersion 5): a `seats:add` card's Add Seats. */
     AddSeats("add_seats"),
+
+    /**
+     * An agent:migrate card's Move agent (schemaVersion 9, botiverse/slock #14018): the agent page's
+     * migration dialog for the card's Agent. Not declared ([RAFT_APP_ACTION_CARD_CAPABILITIES]): the
+     * App has no migration dialog for a card yet, so strip makes it "Open in web".
+     */
+    MigrateAgent("migrate_agent"),
     ;
 
     /** `intent.<wire>`. */
