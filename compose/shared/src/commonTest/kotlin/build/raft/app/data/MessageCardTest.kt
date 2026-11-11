@@ -170,7 +170,7 @@ class MessageCardTest {
     }
 
     @Test
-    fun `a Button with open beside (web preview, slock 14133) still reads as a card, its link unchanged`() {
+    fun `a Button with open beside from the web preview still renders and opens as before`() {
         for (json in listOf(messageCardOpenBesideInputJson, messageCardOpenBesideStoredJson)) {
             val card = assertNotNull(parse(json), json)
             val (id, button) = card.messageCardButtons().single()
