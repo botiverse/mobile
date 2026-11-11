@@ -7,7 +7,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.json.JSONObject
@@ -66,10 +70,13 @@ class ThreadMarkConversationUnreadMenuUiTest {
                 }
             }
             waitForIdle()
-            val items = onAllNodesWithText("Mark channel as unread", useUnmergedTree = true)
+            onAllNodesWithText("Mark channel as unread", useUnmergedTree = true).assertCountEquals(2)
+            // The menu rows themselves (the label merges into its clickable row); by their click
+            // action, as the stacked menus run past the test window's bottom.
+            val items = onAllNodes(hasClickAction() and (hasText("Mark channel as unread") or hasContentDescription("Mark channel as unread")))
             items.assertCountEquals(2)
-            items[0].performClick()
-            items[1].performClick()
+            items[0].performSemanticsAction(SemanticsActions.OnClick)
+            items[1].performSemanticsAction(SemanticsActions.OnClick)
             waitForIdle()
             assertEquals(2, marked, "each menu's item runs it once")
             onAllNodesWithText("Mark DM as unread", useUnmergedTree = true).assertCountEquals(0)
