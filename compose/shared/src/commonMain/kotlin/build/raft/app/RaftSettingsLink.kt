@@ -7,8 +7,8 @@ import build.raft.app.data.StoredAuthServer
  * A link to the web's Settings on one of Raft's own origins: `/settings[/{tab}]` or
  * `/s/{slug}/settings[/{tab}]` (slock `components/settings/settingsNavigation.ts`, the
  * `/s/:serverSlug/settings/:tab` route). Announcements link here, e.g. "Choose a theme" to
- * `/settings/theme` and the passkey announcement to `/settings/account#two-step` (which the app
- * leaves to the web: its Account page has no two-step block).
+ * `/settings/theme` and the passkey announcement to `/settings/account#two-step` (the in-app
+ * Account page's Login & security group, whose rows open the web section in the browser).
  */
 internal data class RaftSettingsLink(
     /** The `/s/{slug}` server the link names, or null when it names none (the current server). */
@@ -19,7 +19,14 @@ internal data class RaftSettingsLink(
     val destinationKey: String?,
     /** The `#…` block of the tab (web `useScrollToSettingsSection`), e.g. `two-step`. */
     val section: String?,
-)
+) {
+    /**
+     * The in-app page's setting to open at for [section] ([SettingsSearchAnchorRequest] id), or null
+     * when the page has no such block of its own (it opens at its top).
+     */
+    val inAppAnchor: String?
+        get() = section?.takeIf { RaftSettingsInAppSections[destinationKey]?.contains(it) == true }
+}
 
 /**
  * The in-app Settings row for a web Settings tab slug (its aliases included, as the web's
@@ -85,11 +92,15 @@ internal fun parseRaftSettingsLink(
 
 /**
  * The `#…` blocks of a web Settings tab the in-app page can show, by in-app row key. The in-app
- * Account page has none of the web's linkable ones (`#two-step`, `#passkeys`), so an Account link
- * with any block opens the web page. Tabs not listed take any block (the page opens at its top).
+ * Account page has the web's linkable ones (`#two-step`, `#passkeys`) as its Login & security rows
+ * (anchored by the same ids); an Account link with any other block opens the web page. Tabs not
+ * listed take any block (the page opens at its top).
  */
 private val RaftSettingsInAppSections: Map<String, Set<String>> =
-    mapOf(SettingsDestinationAccount to emptySet())
+    mapOf(
+        SettingsDestinationAccount to
+            SettingsAccountLoginSecuritySection.entries.mapTo(mutableSetOf()) { it.webAnchor },
+    )
 
 private fun raftSettingsInAppPageHasSection(destinationKey: String?, section: String): Boolean =
     RaftSettingsInAppSections[destinationKey]?.contains(section) ?: true

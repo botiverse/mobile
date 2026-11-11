@@ -73,19 +73,27 @@ class RaftSettingsLinkTest {
     }
 
     @Test
-    fun accountLinkToABlockTheAppLacksStaysAWebLink() {
-        for (url in listOf(
-            "$prod/settings/account#two-step",
-            "$prod/s/hq/settings/account#two-step",
-            "$prod/s/hq/settings/account#passkeys",
-            "$prod/s/hq/settings/account?x=1#something-new",
+    fun accountLoginSecurityBlocksOpenTheInAppAccountAtTheirRow() {
+        for ((url, anchor) in listOf(
+            "$prod/settings/account#two-step" to "two-step",
+            "$prod/s/hq/settings/account#two-step" to "two-step",
+            "$prod/s/hq/settings/account#passkeys" to "passkeys",
         )) {
-            assertNull(parse(url), url)
+            val link = assertNotNull(parse(url), url)
+            assertEquals(SettingsDestinationAccount, link.destinationKey, url)
+            assertEquals(anchor, link.inAppAnchor, url)
         }
+    }
+
+    @Test
+    fun accountLinkToABlockTheAppLacksStaysAWebLink() {
+        assertNull(parse("$prod/s/hq/settings/account?x=1#something-new"))
         // An empty fragment names no block.
         assertEquals(SettingsDestinationAccount, key("$prod/settings/account#"))
+        assertNull(parse("$prod/settings/account#")?.inAppAnchor)
         // Other tabs open at their top whatever block they name.
         assertEquals(SettingsNativeDetailPage.Theme.key, key("$prod/s/hq/settings/theme?x=1#y"))
+        assertNull(parse("$prod/s/hq/settings/theme?x=1#y")?.inAppAnchor)
     }
 
     @Test
@@ -178,21 +186,23 @@ class RaftSettingsLinkTest {
     }
 
     @Test
-    fun announcementTwoStepLinkOpensTheWebPageOnTheCurrentServer() {
-        // dm:@artin #97: the passkey announcement's button. The app has no two-step page, so it is
-        // Raft's web page, opened in a browser even though Raft claims `/s/…` as its own App Link.
-        val twoStep = AnnouncementLinkAction.OpenUrl("$prod/s/hq/settings/account#two-step", raftWebPage = true)
-        assertEquals(twoStep, action("/settings/account#two-step"))
-        assertEquals(twoStep, action("$prod/s/hq/settings/account#two-step"))
-        assertEquals(RaftLinkOpenIntent.RaftWebPage, twoStep.openIntent)
-        assertEquals(
-            AnnouncementLinkAction.OpenUrl("$prod/s/hq/settings/account#unknown-block", raftWebPage = true),
-            action("/settings/account#unknown-block"),
-        )
-        assertEquals(
-            AnnouncementLinkAction.OpenUrl("$staging/s/hq/settings/account#two-step", raftWebPage = true),
-            action("/settings/account#two-step", webBase = staging),
-        )
+    fun announcementTwoStepLinkOpensTheInAppLoginSecurityGroup() {
+        // dm:@artin #97: the passkey announcement's button lands on Account › Login & security
+        // (#proj-mobile:#121), whose rows open the web section in the system browser.
+        for ((href, webBase) in listOf(
+            "/settings/account#two-step" to prod,
+            "$prod/s/hq/settings/account#two-step" to prod,
+            "/settings/account#two-step" to staging,
+        )) {
+            val opened = assertIs<AnnouncementLinkAction.OpenSettings>(action(href, webBase = webBase), href)
+            assertEquals(RaftSettingsLinkTarget(null, SettingsDestinationAccount), opened.target, href)
+            assertEquals("two-step", opened.link.inAppAnchor, href)
+        }
+        assertEquals("passkeys", assertIs<AnnouncementLinkAction.OpenSettings>(action("/settings/account#passkeys")).link.inAppAnchor)
+        // A block the app does not have is still Raft's web page, in a browser.
+        val unknown = AnnouncementLinkAction.OpenUrl("$prod/s/hq/settings/account#unknown-block", raftWebPage = true)
+        assertEquals(unknown, action("/settings/account#unknown-block"))
+        assertEquals(RaftLinkOpenIntent.RaftWebPage, unknown.openIntent)
     }
 
     @Test

@@ -40,7 +40,8 @@ class RaftSettingsSearchIndexTest {
         val ids = RaftSettingsSearchEntries.map { it.id }
         assertEquals(ids.distinct(), ids)
         assertEquals(webIds.filter { it in ids }, ids)
-        // The app has no Passkeys / Two-step blocks, no Providers page and no About › Desktop app card.
+        // Passkeys / Two-step (Account › Login & security, rows that open the web) are not indexed;
+        // the app has no Providers page and no About › Desktop app card.
         assertEquals(setOf("passkeys", "two-step", "ai-providers", "desktop-app"), webIds.toSet() - ids.toSet())
         assertEquals(ids.toSet(), RaftSettingsSearchCopies.keys)
         RaftSettingsSearchEntries.forEach { entry ->

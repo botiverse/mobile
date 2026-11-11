@@ -9,10 +9,13 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.AccountLoginSecurity
+import build.raft.app.data.ScreenError
 import build.raft.app.data.SecondFactorStepUpBanner
 import build.raft.app.data.SecondFactorStepUpDialogState
 import build.raft.app.data.SecondFactorStepUpFieldError
 import build.raft.app.data.SecondFactorStepUpMethod
+import build.raft.app.data.SharedAccountLoginSecurityState
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -26,6 +29,8 @@ import org.robolectric.shadows.ShadowDialog
  * Disconnect) and one not (Google, "Not connected", Connect), then Sign out and Delete account.
  * `settings.account.delete-dialog{,.failed}`: Delete account's confirm dialog, and the same after
  * a failed request (the warning under the consequences; Request deletion retries).
+ * `settings.account.login-security{,.dark,.failed}`: the page with Login & security after the
+ * profile (2 passkeys, two-step verification On; a failed first read with its trace ID).
  * `settings.account.step-up{,.dark,.backup-used,.locked,.passkey-only}`: "Verify it's you" for a
  * refused password or sign-in method change (code field with the backup-code link; a used backup
  * code; the lock banner; only a passkey listed). Fixed fixture data. Reports land in
@@ -44,6 +49,22 @@ class SettingsAccountScreenshotTest {
 
     @Test
     fun accountDark() = capture("settings.account.dark", RaftAppAppearance.Dark)
+
+    @Test
+    fun accountLoginSecurityLight() = capture("settings.account.login-security", RaftAppAppearance.Light, loginSecurityOn)
+
+    @Test
+    fun accountLoginSecurityDark() = capture("settings.account.login-security.dark", RaftAppAppearance.Dark, loginSecurityOn)
+
+    @Test
+    fun accountLoginSecurityFailedLight() =
+        capture(
+            "settings.account.login-security.failed",
+            RaftAppAppearance.Light,
+            SharedAccountLoginSecurityState(
+                error = ScreenError(code = "second_factor_status_http_500", traceId = "0af7651916cd43dd8448eb211c80319c")
+            ),
+        )
 
     @Test
     @Config(qualifiers = "w390dp-h844dp-xxhdpi")
@@ -112,13 +133,14 @@ class SettingsAccountScreenshotTest {
             }
         }
 
-    private fun capture(name: String, appearance: RaftAppAppearance) =
+    private fun capture(name: String, appearance: RaftAppAppearance, loginSecurity: SharedAccountLoginSecurityState? = null) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             Page {
                 SettingsAccountContent(
                     payload = accountFixture,
                     applyTopSafeArea = false,
                     accountDeletion = SettingsAccountDeletionUi(RaftAccountDeletionRequestState.Idle, {}, {}, {}),
+                    loginSecurity = loginSecurity?.let { SettingsAccountLoginSecurityUi(it, onOpen = {}, onRetry = {}) },
                     onEvent = { _, _ -> },
                 )
             }
@@ -148,6 +170,9 @@ class SettingsAccountScreenshotTest {
         CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { content() }
     }
 }
+
+private val loginSecurityOn =
+    SharedAccountLoginSecurityState(security = AccountLoginSecurity(twoStepEnabled = true, passkeyCount = 2))
 
 private val stepUpCode =
     SecondFactorStepUpDialogState(

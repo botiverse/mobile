@@ -210,6 +210,16 @@
     <string name="settings_account_delete_requested">Запрос на удаление отправлен. Мы напишем вам в течение %1$d дн.</string>
     <string name="settings_account_delete_failed">Не удалось отправить запрос на удаление. Попробуйте ещё раз.</string>
     <string name="settings_usage_data_title">Передавать данные об использовании</string>
+    <string name="settings_account_login_security_title">Вход и безопасность</string>
+    <string name="settings_account_two_step_title">Двухэтапная аутентификация</string>
+    <string name="settings_account_two_step_on">Включена</string>
+    <string name="settings_account_two_step_off">Отключена</string>
+    <string name="settings_account_passkeys_title">Ключи доступа</string>
+    <string name="settings_account_passkeys_none">Пока нет ключей доступа</string>
+    <string name="settings_account_passkeys_count_one">%1$d ключ доступа</string>
+    <string name="settings_account_passkeys_count_other">%1$d ключа доступа</string>
+    <string name="settings_account_login_security_footer">Изменения вносятся в веб-версии Raft в браузере.</string>
+    <string name="settings_account_login_security_load_failed">Не удалось загрузить настройки двухэтапной аутентификации и ключей доступа.</string>
     <string name="settings_usage_data_description">Помогите улучшить Raft, делясь информацией о том, какими страницами и функциями вы пользуетесь. Ваши сообщения и другой контент не передаются никогда.</string>
     <string name="settings_usage_data_learn_more">Подробнее</string>
     <string name="settings_usage_data_save_failed">Не удалось сохранить настройку. Попробуйте ещё раз.</string>
