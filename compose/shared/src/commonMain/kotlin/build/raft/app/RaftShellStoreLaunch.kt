@@ -18,6 +18,13 @@ const val RAFT_ROUTE_ACCOUNT_ID = "slockRouteAccountId"
 const val RAFT_ROUTE_SERVER_ID = "slockRouteServerId"
 
 /**
+ * Page data: wall-clock epoch millis of the server-switch tap that opened this shell window
+ * (Multiple app windows). The host logs its first drawn frame against it
+ * (`app_shell_new_window_first_frame ms=`), so a feedback zip shows how long the window was blank.
+ */
+const val RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS = "slockServerSwitchTapEpochMillis"
+
+/**
  * Page data flag: the host shows the page without its push transition (Android
  * `FLAG_ACTIVITY_NO_ANIMATION`, iOS `animated:NO`), for a page that takes the place of what the
  * source page shows over itself (a task's first send opens its conversation where the pending task

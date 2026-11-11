@@ -187,6 +187,9 @@ internal class RaftWebViewLoadWatchdog(
 ) {
     private val prefix = "page=${page.forLogToken()} host=${raftWebViewLogHost(url)}"
 
+    /** The page name of the white-screen lines ([RaftFirstContentWatch]): `webview:<page>`. */
+    val whiteScreenPage: String = "webview:${page.forLogToken()}"
+
     var state: RaftWebViewLoadState by mutableStateOf(RaftWebViewLoadState(startedAtMs = clock()))
         private set
 
@@ -234,6 +237,12 @@ internal class RaftWebViewLoadWatchdog(
 @Composable
 internal fun RaftWebViewLoadWatchdogEffect(watchdog: RaftWebViewLoadWatchdog, controller: RaftWebViewController) {
     val state = watchdog.state
+    // The same load, seen as a white-screen watch: first_content when it is ready, a
+    // white_screen_suspect (stage webview_loading) a second in; the stall stays this watchdog's.
+    RaftFirstContentWatch(
+        page = watchdog.whiteScreenPage,
+        stage = raftWhiteScreenStage(webViewLoading = state.phase != RaftWebViewLoadPhase.Ready),
+    )
     LaunchedEffect(watchdog, state.attempt) {
         if (watchdog.state.phase != RaftWebViewLoadPhase.Loading) return@LaunchedEffect
         delay(watchdog.remainingMs())

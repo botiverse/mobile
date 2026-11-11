@@ -81,6 +81,12 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import build.raft.app.R
+import build.raft.app.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
+import build.raft.app.RAFT_WHITE_SCREEN_SUSPECT_MS
+import build.raft.app.RAFT_WHITE_SCREEN_TAG
+import build.raft.app.raftFirstFrameLine
+import build.raft.app.raftWhiteScreenStage
+import build.raft.app.raftWhiteScreenSuspectLine
 import build.raft.app.MainActivity
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.cmp.RaftCmpRoot
@@ -810,6 +816,15 @@ internal open class RaftCmpActivity :
         Runnable { handleHomeColdStartFallbackTimeout() }
     private var homeColdStartFirstDrawListener: ViewTreeObserver.OnDrawListener? = null
     private var hostAttached = false
+    /** A new Intent arrived while not resumed: rebuild on the next resume ([raftHostRecreatesOnNewIntentNow]). */
+    private var recreateOnResume = false
+    /** The server-switch tap that opened this shell window (page data), for its first-frame line. */
+    private var serverSwitchTapEpochMillis = 0L
+    /** White-screen diagnostics: when this window was created and whether its page has drawn. */
+    private var hostCreatedAtMillis = 0L
+    private var hostFirstFrameDrawn = false
+    private val whiteScreenHandler = Handler(Looper.getMainLooper())
+    private val whiteScreenWatch = Runnable { checkWindowWhiteScreen() }
     // Hands 1af517cc: the window's IME as dispatched by the platform, for pages to fall back on
     // when no IME animation drives Compose's WindowInsets.ime (see RaftHostImeInsets). API 30+
     // only, where the window is edge to edge and Compose owns the keyboard inset.
@@ -975,6 +990,9 @@ internal open class RaftCmpActivity :
         applyHostCanvasColor(hostWindowBackgroundColor())
         prepareScreenshotFeedbackObserver()
         registerAndroidShellWindow(intent)
+        serverSwitchTapEpochMillis = pendingServerSwitchTapEpochMillis(intent)
+        hostCreatedAtMillis = SystemClock.elapsedRealtime()
+        whiteScreenHandler.postDelayed(whiteScreenWatch, RAFT_WHITE_SCREEN_SUSPECT_MS)
         setupImmersiveMode()
         setupImeInsetsRelayout()
         suppressVisualKeyboard()
@@ -1251,6 +1269,8 @@ internal open class RaftCmpActivity :
      */
     private fun onCmpFirstFrame() {
         if (isFinishing || isDestroyed) return
+        recordWindowFirstFrame()
+        recordServerSwitchWindowFirstFrame()
         val now = SystemClock.elapsedRealtime()
         renderReadinessTopPageLoad = RaftLoadReadiness(succeeded = true, completedAtMillis = now)
         if (Build.VERSION.SDK_INT >= 30) {
@@ -1316,11 +1336,18 @@ internal open class RaftCmpActivity :
     private fun androidSystemDark(): Boolean = isAndroidSystemDark(resources.configuration.uiMode)
 
     /**
-     * Before the first frame: the window colour of the resolved app theme (light keeps the cream
-     * splash colour, dark the dark canvas), whatever the OS mode the resources were resolved in.
+     * Before the first frame: the window colour of the resolved app theme, whatever the OS mode the
+     * resources were resolved in. Light keeps the cream splash colour behind the Home cold-start
+     * splash; every other window (a server switch's window on its tab, pushed pages) takes the
+     * canvas the page will paint, so it does not go cream, then the canvas.
      */
     private fun hostWindowBackgroundColor(): Int =
-        if (RaftAppAppearanceRuntime.isDark) RaftAppAppearanceRuntime.canvasArgb else getColor(R.color.raft_surface_cream)
+        raftHostWindowBackgroundArgb(
+            dark = RaftAppAppearanceRuntime.isDark,
+            homeSplash = homeColdStartSplashGate != null,
+            canvasArgb = RaftAppAppearanceRuntime.canvasArgb,
+            splashArgb = getColor(R.color.raft_surface_cream),
+        )
 
     /** The window and root view behind the Compose page take the app canvas, so nothing flashes. */
     private fun applyHostCanvasColor(argb: Int) {
@@ -1476,15 +1503,86 @@ internal open class RaftCmpActivity :
         }
         androidShellLaunchTarget?.let { AndroidShellWindowRegistry.unregister(it.shellInstanceId) }
         setIntent(intent)
+        intent.putExtra(KEY_REBUILT_ON_NEW_INTENT, true)
         registerAndroidShellWindow(intent)
         // As today: a new intent resets the window to the shell (singleTask cleared the Activities
         // above it); pages on the stack are not brought back by the recreation.
         nav3DropStackOnSave = true
-        RaftAppLog.record(
-                "SlockKuiklyActivity",
-                "host_new_intent page=${resolvedPageName(intent)} currentPage=${pageSpec?.pageName.orEmpty()}"
+        val recreateNow = raftHostRecreatesOnNewIntentNow(lifecycle.currentState)
+        val line =
+            "host_new_intent page=${resolvedPageName(intent)} currentPage=${pageSpec?.pageName.orEmpty()} " +
+                "state=${lifecycle.currentState} recreate=${if (recreateNow) "now" else "on_resume"}"
+        RaftAppLog.record("SlockKuiklyActivity", line)
+        RaftAndroidLocalDiagnostics.recordLog("info", "SlockKuiklyActivity", line)
+        if (recreateNow) {
+            recreate()
+        } else {
+            recreateOnResume = true
+        }
+    }
+
+    /**
+     * The tap time of the server switch that opened this window, once: a later rebuild of the same
+     * window (rotation, a new Intent without a tap) does not log a first frame against it again.
+     */
+    private fun pendingServerSwitchTapEpochMillis(intent: Intent?): Long {
+        val tap =
+            runCatching {
+                JSONObject(resolvedPageData(intent).text).optLong(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, 0L)
+            }.getOrDefault(0L)
+        if (tap <= 0L || intent?.getLongExtra(KEY_SERVER_SWITCH_FIRST_FRAME_LOGGED_TAP, 0L) == tap) return 0L
+        return tap
+    }
+
+    /** `first_frame page=.. ms=.. scope=window`: this window's page drew, ms after the window was created. */
+    private fun recordWindowFirstFrame() {
+        if (hostFirstFrameDrawn) return
+        hostFirstFrameDrawn = true
+        whiteScreenHandler.removeCallbacks(whiteScreenWatch)
+        RaftAndroidLocalDiagnostics.recordLog(
+            "info",
+            RAFT_WHITE_SCREEN_TAG,
+            raftFirstFrameLine("first_frame", pageName, SystemClock.elapsedRealtime() - hostCreatedAtMillis, scope = "window"),
         )
-        recreate()
+    }
+
+    /**
+     * A window whose page has not drawn [RAFT_WHITE_SCREEN_SUSPECT_MS] after it was created: a warn
+     * line with why (not shown, or shown but not drawing). Page routes and web pages have their own
+     * shared watches (RaftFirstContentWatch).
+     */
+    private fun checkWindowWhiteScreen() {
+        if (hostFirstFrameDrawn || isFinishing || isDestroyed) return
+        val stage =
+            raftWhiteScreenStage(
+                windowVisible = raftHostWindowVisible(lifecycle.currentState, window?.decorView?.isShown == true),
+                drawn = false,
+            ) ?: return
+        RaftAndroidLocalDiagnostics.recordLog(
+            "warn",
+            RAFT_WHITE_SCREEN_TAG,
+            raftWhiteScreenSuspectLine(pageName, SystemClock.elapsedRealtime() - hostCreatedAtMillis, stage, scope = "window") +
+                " lifecycle=${lifecycle.currentState} focus=${hasWindowFocus()} attached=$hostAttached",
+        )
+    }
+
+    private fun recordServerSwitchWindowFirstFrame() {
+        val tap = serverSwitchTapEpochMillis
+        if (tap <= 0L) return
+        serverSwitchTapEpochMillis = 0L
+        intent?.putExtra(KEY_SERVER_SWITCH_FIRST_FRAME_LOGGED_TAP, tap)
+        val path =
+            if (intent?.getBooleanExtra(KEY_REBUILT_ON_NEW_INTENT, false) == true) {
+                RaftNewWindowPath.Reused
+            } else {
+                RaftNewWindowPath.Created
+            }
+        raftNewWindowFirstFrameLine(
+            tapEpochMillis = tap,
+            nowEpochMillis = System.currentTimeMillis(),
+            path = path,
+            page = pageName,
+        )?.let { line -> RaftAndroidLocalDiagnostics.recordLog("info", "SlockHomeShell", line) }
     }
 
     /**
@@ -1518,6 +1616,7 @@ internal open class RaftCmpActivity :
         removeHomeColdStartFirstDrawListener()
         removeHomeColdStartNativeHold(reason = "destroy")
         removeCmpFirstFrameListener()
+        whiteScreenHandler.removeCallbacks(whiteScreenWatch)
         removeDatabaseLaunchDrawListener()
         if (adaptivePaneHostDelegate.isInitialized()) {
             adaptivePaneHost.stop()
@@ -1754,6 +1853,16 @@ internal open class RaftCmpActivity :
 
     override fun onResume() {
         super.onResume()
+        if (recreateOnResume) {
+            recreateOnResume = false
+            RaftAndroidLocalDiagnostics.recordLog(
+                "info",
+                "SlockKuiklyActivity",
+                "host_new_intent_recreate page=${resolvedPageName(intent)} source=on_resume",
+            )
+            recreate()
+            return
+        }
         RaftNotificationPermissionReporter.report(applicationContext)
         renderReadinessResumedAtMillis = SystemClock.elapsedRealtime()
         RaftResumeFrameProbe.onActivityResumed(this, pageName)
@@ -3304,6 +3413,10 @@ internal open class RaftCmpActivity :
         private const val NOTIFICATION_CATEGORY_DM = "dm"
         private const val ACTION_OPEN_DIAGNOSTICS = "build.raft.app.diagnostics.OPEN"
         internal const val KEY_APP_SHELL_INITIAL_TAB = "slockInitialTab"
+        /** Set on the Intent an existing window was rebuilt on (onNewIntent), for its first-frame line. */
+        private const val KEY_REBUILT_ON_NEW_INTENT = "build.raft.app.rebuiltOnNewIntent"
+        /** The tap a first-frame line was already written for (see pendingServerSwitchTapEpochMillis). */
+        private const val KEY_SERVER_SWITCH_FIRST_FRAME_LOGGED_TAP = "build.raft.app.serverSwitchFirstFrameLoggedTap"
         private const val KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION = "slockInitialSettingsDestination"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_ID = "slockDiagnosticsDeepLinkId"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS = "slockDiagnosticsDeepLinkAutoCloseMs"
