@@ -29,6 +29,7 @@ import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.SharedChannelAnnouncementStore
+import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.channelTypeSupportsAnnouncement
@@ -155,11 +156,19 @@ internal fun rememberThreadChannelAnnouncementStripSlot(
     serverId: String?,
     channelId: String?,
     channelType: String?,
-    canEdit: Boolean,
     active: Boolean,
     onOpenSettings: () -> Unit,
 ): (@Composable () -> Unit)? {
     val key = rememberChannelAnnouncementKey(sharedStores.serverFeatureFlags, serverId, channelId, channelType) ?: return null
+    // Who may change it: the channel's row in Home (its capabilities), as the channel details read it.
+    val homeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
+    val homeState by remember(homeStore) { homeStore?.state ?: kotlinx.coroutines.flow.MutableStateFlow(null) }.collectAsState()
+    val canEdit =
+        ((homeState?.content as? SharedHomeContentState.Content)?.snapshot)
+            ?.takeIf { it.server.id.value == key.serverId }
+            ?.channels
+            ?.firstOrNull { it.channelId.value == key.channelId }
+            ?.let { it.channelCapabilities?.editChannelMetadata == true && !it.archived } == true
     val latestActive by rememberUpdatedState(active)
     val latestCanEdit by rememberUpdatedState(canEdit)
     val latestOpenSettings by rememberUpdatedState(onOpenSettings)

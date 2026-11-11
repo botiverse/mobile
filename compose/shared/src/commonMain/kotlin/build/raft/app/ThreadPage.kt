@@ -13324,23 +13324,6 @@ private fun SharedThreadRouteContentContent(
                     onMissingScope = { bridge.logWarn("thread_settings_page_open_skip reason=missing_scope") },
                 )
         }
-        // Channel announcements (channel_announcement_v0): the strip on a channel's own page (not a
-        // thread, DM or task conversation), Announcement settings for who may change it.
-        val channelAnnouncementStrip =
-            rememberThreadChannelAnnouncementStripSlot(
-                sharedStores = sharedStores,
-                storeScope = storeScope,
-                bridge = bridge,
-                serverId = threadMembersServerId?.value,
-                channelId = threadMembersChannelId?.value,
-                channelType =
-                    directoryConversationProjection?.channelKind?.takeIf {
-                        renderedThread.surfaceKind == RaftThreadSurfaceKind.Channel && !renderedThread.isTaskConversationSurface()
-                    },
-                canEdit = directoryConversationProjection?.let { it.channelCapabilities?.editChannelMetadata == true && !it.archived } == true,
-                active = active && threadHostForeground,
-                onOpenSettings = { openSettingsPage() },
-            )
         // Agent Lounge v0: this page as (or inside) an agent's Lounge, and an agent DM's Lounge toggle.
         val loungeAssistantAnswers by
             remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) }.answers.collectAsState()
@@ -13381,6 +13364,10 @@ private fun SharedThreadRouteContentContent(
             val loungeId = openedLoungeId ?: return@LaunchedEffect
             sharedHomeStore?.dispatch(SharedHomeIntent.ReopenClosedConversation(loungeId))
         }
+        // JVM limit: this lambda captures about 255 locals of the route, the most an invokedynamic
+        // lambda may take. One more fails at runtime (BootstrapMethodError "bad parameter count 256":
+        // the page never composes and stays on Loading). Read new inputs from values already used
+        // here, or group these captures into a state holder, before adding a local referenced below.
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
                 lounge = threadLounge,
@@ -13389,7 +13376,23 @@ private fun SharedThreadRouteContentContent(
                 onToggleFocusMode = threadFocusModeToggle,
                 focusModeActive = threadFocusModeActive,
             taskConversationBar = taskConversationBar,
-            channelAnnouncementStrip = channelAnnouncementStrip,
+            // Channel announcements (channel_announcement_v0): the strip on a channel's own page (not a
+            // thread, DM or task conversation). Built here from values this lambda already captures:
+            // it is at the JVM's 255-capture limit, and one more local breaks it (BootstrapMethodError).
+            channelAnnouncementStrip =
+                rememberThreadChannelAnnouncementStripSlot(
+                    sharedStores = sharedStores,
+                    storeScope = storeScope,
+                    bridge = bridge,
+                    serverId = threadMembersServerId?.value,
+                    channelId = threadMembersChannelId?.value,
+                    channelType =
+                        renderedThread.channelKind.takeIf {
+                            renderedThread.surfaceKind == RaftThreadSurfaceKind.Channel && !renderedThread.isTaskConversationSurface()
+                        },
+                    active = active && threadHostForeground,
+                    onOpenSettings = { openSettingsPage() },
+                ),
             taskConversationChrome = taskConversationChrome,
             taskConversationHead = taskHeadScrollState.takeIf { taskConversationBar != null },
             taskConversationFloat = taskConversationFloat,
