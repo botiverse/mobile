@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.releaseRaftShellStoreScope
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -99,5 +100,28 @@ class RaftHostVisibilityTest {
 
         noteRaftShellRealtimeServer(null)
         assertEquals("server-a", raftProcessRealtimeServerId("server-a", granted))
+    }
+
+    // Phase 3: host visibility and closing a window reach the process realtime demand.
+    @Test
+    fun visibilityAndWindowCloseFeedTheProcessRealtimeDemand() {
+        val granted = setOf("server-a", "server-b")
+        raftProcessRealtimeSessionDemand.claim("shell-a", "server-a")
+        raftProcessRealtimeSessionDemand.claim("shell-b", "server-b")
+
+        updateRaftHostVisibility("shell-a", visible = false)
+        updateRaftHostVisibility("shell-b", visible = true)
+        assertEquals(
+            listOf("server-b", "server-a"),
+            raftProcessRealtimeSessionDemand.desiredServerIds(granted, "server-a", defaultNowMillis(), enabled = true).toList(),
+        )
+
+        val revision = raftProcessRealtimeSessionDemand.revision.value
+        releaseRaftShellStoreScope("shell-b", "server-b")
+        assertTrue(raftProcessRealtimeSessionDemand.revision.value > revision, "closing a window re-reconciles")
+        assertEquals(
+            setOf("server-a"),
+            raftProcessRealtimeSessionDemand.desiredServerIds(granted, "server-a", defaultNowMillis(), enabled = true),
+        )
     }
 }

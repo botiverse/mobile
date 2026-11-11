@@ -197,4 +197,33 @@ class RaftRealtimeSessionDemandTest {
         demand.release(RaftShellStoreScope.Legacy.shellInstanceId)
         assertEquals(listOf("s1"), demand.desired())
     }
+
+    @Test
+    fun revisionMovesOnlyWhenTheClaimsOrAClaimingWindowVisibilityChange() {
+        val demand = RaftRealtimeSessionDemand()
+        fun revision() = demand.revision.value
+
+        val start = revision()
+        demand.onVisibility("thread-page", visible = false, nowMillis = now)
+        assertEquals(start, revision(), "a window without a claim does not move the set")
+
+        demand.claim("shell-a", "s1")
+        val claimed = revision()
+        assertTrue(claimed > start)
+        demand.claim("shell-a", "s1")
+        assertEquals(claimed, revision(), "claiming the same server again changes nothing")
+
+        demand.onVisibility("shell-a", visible = false, nowMillis = now)
+        val hidden = revision()
+        assertTrue(hidden > claimed)
+
+        demand.release("shell-a")
+        assertTrue(revision() > hidden)
+        val released = revision()
+        demand.release("shell-a")
+        assertEquals(released, revision(), "releasing twice changes nothing")
+
+        demand.notifySettingChanged()
+        assertTrue(revision() > released)
+    }
 }

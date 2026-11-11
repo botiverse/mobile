@@ -3194,9 +3194,8 @@ internal open class RaftCmpActivity :
         witness: RealtimeConnectionWitnessToken,
         multiSession: Boolean,
     ) {
-        // TODO(realtime multi-session PR2): hand multiSession to the owner once
-        // AndroidAppScopeRealtimeOwner.reconcileFromSharedRequest takes it. Until then every reconcile
-        // keeps the single current-server path, and shared never sets it (the setting is off).
+        // multiSession: shared sends it only with the multi-session realtime setting on (Phase 3); the
+        // owner then keeps one session per server in serverIds instead of the single current server.
         AndroidAppScopeRealtimeOwner.reconcileFromSharedRequest(
             context = applicationContext,
             serverIds = serverIds.map(String::trim).filter(String::isNotEmpty).toSet(),
@@ -3206,6 +3205,7 @@ internal open class RaftCmpActivity :
             forceReconnect = forceReconnect,
             disconnectReason = disconnectReason,
             witness = witness,
+            multiSession = multiSession,
         )
     }
 

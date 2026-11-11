@@ -3,6 +3,10 @@ package build.raft.app.data
 import build.raft.app.data.realtime.realtimeCurrentServerScopedServerIds
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 /**
  * Which servers keep a realtime session when workspaces open in separate app windows (Phase 3,
@@ -34,6 +38,14 @@ internal class RaftRealtimeSessionDemand {
     private val lock = SynchronizedObject()
     private val shells = linkedMapOf<String, ShellDemand>()
     private var visibleOrder = 0L
+    private val revisionState = MutableStateFlow(0L)
+
+    /**
+     * Bumped whenever a claim, a release or a visibility report may change [desiredServerIds], and by
+     * [notifySettingChanged]. The process realtime reconcile follows it so a window that opens or closes
+     * re-reconciles the whole set, not only the window that changed.
+     */
+    val revision: StateFlow<Long> = revisionState.asStateFlow()
 
     /** [shellInstanceId] now shows [serverId]; replaces the server it claimed before. A blank server releases. */
     fun claim(shellInstanceId: String, serverId: String) {
@@ -42,30 +54,55 @@ internal class RaftRealtimeSessionDemand {
             release(shellInstanceId)
             return
         }
-        synchronized(lock) {
-            val shell = shells.getOrPut(normalizeShell(shellInstanceId)) { ShellDemand() }
-            shell.serverId = server
-            if (shell.lastVisibleOrder == 0L) shell.lastVisibleOrder = ++visibleOrder
-        }
+        val changed =
+            synchronized(lock) {
+                val shell = shells.getOrPut(normalizeShell(shellInstanceId)) { ShellDemand() }
+                val previous = shell.serverId
+                shell.serverId = server
+                if (shell.lastVisibleOrder == 0L) shell.lastVisibleOrder = ++visibleOrder
+                previous != server
+            }
+        if (changed) bumpRevision()
     }
 
     /** The window closed: drop its claim and visibility. Other windows on the same server keep it wanted. */
     fun release(shellInstanceId: String) {
-        synchronized(lock) { shells.remove(normalizeShell(shellInstanceId)) }
+        val removed = synchronized(lock) { shells.remove(normalizeShell(shellInstanceId)) }
+        if (removed?.serverId != null) bumpRevision()
     }
 
+    /** The multi-session setting changed: the process reconcile re-reads the set (and the mode). */
+    fun notifySettingChanged() = bumpRevision()
+
     fun onVisibility(shellInstanceId: String, visible: Boolean, nowMillis: Long) {
-        synchronized(lock) {
-            val shell = shells.getOrPut(normalizeShell(shellInstanceId)) { ShellDemand() }
-            if (visible) {
-                shell.visible = true
-                shell.hiddenSinceMillis = null
-                shell.lastVisibleOrder = ++visibleOrder
-            } else if (shell.visible) {
-                shell.visible = false
-                shell.hiddenSinceMillis = nowMillis
+        val changed =
+            synchronized(lock) {
+                val shell = shells.getOrPut(normalizeShell(shellInstanceId)) { ShellDemand() }
+                val wasVisible = shell.visible
+                if (visible) {
+                    shell.visible = true
+                    shell.hiddenSinceMillis = null
+                    shell.lastVisibleOrder = ++visibleOrder
+                } else if (shell.visible) {
+                    shell.visible = false
+                    shell.hiddenSinceMillis = nowMillis
+                }
+                // Only a window with a claim moves the set; a page that never claimed (thread, settings) does not.
+                shell.serverId != null && wasVisible != visible
             }
+        if (changed) bumpRevision()
+    }
+
+    internal fun clearForTests() {
+        synchronized(lock) {
+            shells.clear()
+            visibleOrder = 0L
         }
+        revisionState.value = 0L
+    }
+
+    private fun bumpRevision() {
+        revisionState.update { it + 1 }
     }
 
     /** The servers to keep a realtime session for, highest priority first. */

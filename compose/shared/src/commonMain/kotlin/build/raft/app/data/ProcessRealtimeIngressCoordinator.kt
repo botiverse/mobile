@@ -17,8 +17,10 @@ import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.ServerAppearanceUpdated
 import build.raft.app.optLong
 import build.raft.app.optString
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 
@@ -52,27 +54,60 @@ internal class ProcessRealtimeIngressCoordinator(
     private val onServerAccessLost: suspend (RealtimeGrantRecord) -> Unit = {},
     /** Every event the domain owner accepted, with the grant it was accepted under (after the owner ran). */
     private val onAccepted: suspend (RealtimeGrantRecord, RealtimeEvent) -> Unit = { _, _ -> },
+    /**
+     * Phase 3 multi-session realtime: the windows' claims. With [multiSessionEnabled] on, every reconcile
+     * (token rotation included) sends [RaftRealtimeSessionDemand.desiredServerIds], the same set the shell
+     * reconcile sends, and a claim or release re-reconciles. Off: the single current server, as before.
+     */
+    private val sessionDemand: RaftRealtimeSessionDemand = raftProcessRealtimeSessionDemand,
+    private val multiSessionEnabled: () -> Boolean = { false },
+    private val nowMillis: () -> Long = ::defaultNowMillis,
 ) {
+    /** Whether the last reconcile was a multi-session one, so turning the setting off reverts the set once. */
+    @Volatile
+    private var lastReconcileMultiSession = false
+
     fun start() {
         // kotlinx JsonObject is immutable: hand the event to the coroutine without a defensive copy.
         events.addListener { event -> scope.launch { accept(event) } }
         scope.launch {
             authorityFlow.collect { authority -> reconcile(authority) }
         }
+        scope.launch {
+            // A window opened, closed or came to the front: re-reconcile the set. Never with the setting
+            // off (behaviour unchanged), except once right after it was turned off, to drop the extra servers.
+            sessionDemand.revision.drop(1).collect {
+                if (multiSessionEnabled() || lastReconcileMultiSession) reconcile(authorityFlow.value)
+            }
+        }
     }
 
     private suspend fun reconcile(authority: RealtimeScopeAuthority?) {
         val environment = environmentStore.current()
         val selectedServerId = authStore.readSession()?.selectedServerId
+        val multiSession = multiSessionEnabled()
+        val grantedServerIds = authority?.grantsByServer?.keys.orEmpty()
         val desired =
-            realtimeProcessDesiredSession(
-                authority = authority,
-                environmentId = environment.apiBaseUrl,
-                socketUrl = environment.socketBaseUrl,
-                currentServerId =
-                    raftProcessRealtimeServerId(selectedServerId, authority?.grantsByServer?.keys.orEmpty()),
-            )
-        nativeHost.reconcile(authority, desired, environment.socketBaseUrl)
+            if (multiSession) {
+                realtimeProcessDesiredSession(
+                    authority = authority,
+                    environmentId = environment.apiBaseUrl,
+                    socketUrl = environment.socketBaseUrl,
+                    currentServerId = selectedServerId,
+                    serverIdsFor = { granted ->
+                        sessionDemand.desiredServerIds(granted, selectedServerId, nowMillis(), enabled = true)
+                    },
+                )
+            } else {
+                realtimeProcessDesiredSession(
+                    authority = authority,
+                    environmentId = environment.apiBaseUrl,
+                    socketUrl = environment.socketBaseUrl,
+                    currentServerId = raftProcessRealtimeServerId(selectedServerId, grantedServerIds),
+                )
+            }
+        lastReconcileMultiSession = multiSession
+        nativeHost.reconcile(authority, desired, environment.socketBaseUrl, multiSession)
     }
 
     private suspend fun accept(eventData: JsonObject) {
@@ -193,6 +228,7 @@ internal interface ProcessRealtimeNativeHost {
         authority: RealtimeScopeAuthority?,
         desired: build.raft.app.data.realtime.RealtimeProcessDesiredSession?,
         fallbackSocketUrl: String,
+        multiSession: Boolean,
     )
 
     fun advanceCursor(serverId: String, appliedSeq: Long, grant: RealtimeGrantRecord)
@@ -207,6 +243,7 @@ internal class BridgeProcessRealtimeNativeHost(
         authority: RealtimeScopeAuthority?,
         desired: build.raft.app.data.realtime.RealtimeProcessDesiredSession?,
         fallbackSocketUrl: String,
+        multiSession: Boolean,
     ) {
         bridge.realtimeReconcile(
             serverIds = desired?.serverIds.orEmpty(),
@@ -219,6 +256,7 @@ internal class BridgeProcessRealtimeNativeHost(
             authorityPrincipalId = authority?.witness?.principalId.orEmpty(),
             authorityAuthGeneration = authority?.witness?.authGeneration ?: 0L,
             authorityConnectionFamilyId = authority?.witness?.connectionFamilyId.orEmpty(),
+            multiSession = multiSession,
         )
     }
 

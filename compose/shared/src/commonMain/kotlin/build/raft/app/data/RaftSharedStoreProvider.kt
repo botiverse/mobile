@@ -1595,6 +1595,8 @@ internal class RaftSharedStoreProvider private constructor(
                     )
                 }
             },
+            // Phase 3: with multi-session realtime on, token rotation keeps every window's server.
+            multiSessionEnabled = { build.raft.app.raftMultiServerRealtimeEnabled() },
         ).start()
         RaftHostNetworkEvents(eventBus).addAuthoritativeOnlineListener {
             // Task #150: a new default network (e.g. a VPN switched on/off) may resolve the host

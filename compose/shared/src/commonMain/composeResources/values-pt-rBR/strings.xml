@@ -3040,6 +3040,8 @@
     <string name="settings_developer_text_input_trace_detail">Registra nos logs do app cada edição do teclado e sincronização de texto nos campos (apenas tamanhos, nunca o texto), para relatar bugs do IME.</string>
     <string name="settings_developer_nav3_stack">Pilha de páginas do Navigation 3</string>
     <string name="settings_developer_nav3_stack_detail">Abre as páginas migradas até agora dentro da janela do app (Android). Entra em vigor na próxima vez que o app for iniciado.</string>
+    <string name="settings_developer_multi_server_realtime">Atualizações ao vivo em cada janela</string>
+    <string name="settings_developer_multi_server_realtime_detail">Com Várias janelas do app ativado, o espaço de trabalho de cada janela mantém a própria conexão em tempo real (até 3), então uma janela em segundo plano continua recebendo novas mensagens. Desativado: só o espaço de trabalho em primeiro plano fica conectado.</string>
     <string name="settings_mobile_ios_native_nav">Navegação nativa do iOS</string>
     <string name="settings_mobile_ios_native_nav_detail">Mostra os títulos e botões das páginas migradas na barra de navegação do sistema, com o gesto de deslizar para voltar do sistema (iPhone). Entra em vigor na próxima vez que o app for iniciado.</string>
     <string name="settings_developer_presets">Predefinições</string>

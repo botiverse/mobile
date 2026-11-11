@@ -48,7 +48,16 @@ private object RaftHostVisibilityRegistry {
 
 fun updateRaftHostVisibility(shellInstanceId: String, visible: Boolean) {
     RaftHostVisibilityRegistry.update(shellInstanceId, visible)
+    raftProcessRealtimeSessionDemand.onVisibility(shellInstanceId, visible, defaultNowMillis())
 }
+
+/**
+ * The process' one [RaftRealtimeSessionDemand]: shell windows claim their server here, closing a
+ * window releases it ([build.raft.app.releaseRaftShellStoreScope]), [updateRaftHostVisibility] reports
+ * visibility. Both the shell reconcile and the process reconcile read it, so with multi-session realtime
+ * on they send the same set.
+ */
+internal val raftProcessRealtimeSessionDemand: RaftRealtimeSessionDemand = RaftRealtimeSessionDemand()
 
 fun isRaftHostVisible(shellInstanceId: String): Boolean =
     RaftHostVisibilityRegistry.isVisible(shellInstanceId)
@@ -86,6 +95,7 @@ internal fun raftProcessRealtimeServerId(selectedServerId: String?, grantedServe
 
 internal fun clearRaftHostVisibilityForTests() {
     RaftHostVisibilityRegistry.clear()
+    raftProcessRealtimeSessionDemand.clearForTests()
 }
 
 private fun normalizeShellInstanceId(shellInstanceId: String): String =

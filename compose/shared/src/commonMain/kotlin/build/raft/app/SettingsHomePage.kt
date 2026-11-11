@@ -28,6 +28,8 @@ import build.raft.app.data.raftHostShowsContent
 import build.raft.app.data.raftProcessRealtimeOwnerGeneration
 import build.raft.app.data.raftShellOwnsProcessRealtime
 import build.raft.app.data.noteRaftShellRealtimeServer
+import build.raft.app.data.raftProcessRealtimeSessionDemand
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.RaftNavDestination
 import build.raft.app.data.RaftNavSurface
 import build.raft.app.data.RaftProductEvents
@@ -5333,7 +5335,16 @@ private fun RaftAppShellReadyContent(
         realtimeShellForegroundTick,
     ) {
         if (!authoritativeHomeStartAllowed) return@LaunchedEffect
-        if (!raftShellOwnsProcessRealtime(storeScope.shellInstanceId, raftMultiShellHostEnabled())) {
+        // Phase 3: this window claims its server; with multi-session realtime on every claimed server
+        // keeps its own session, so no window has to take the connection from another one.
+        val multiSessionRealtime = raftMultiServerRealtimeEnabled()
+        canonicalFinalSelectedServerId?.let { serverId ->
+            raftProcessRealtimeSessionDemand.claim(storeScope.shellInstanceId, serverId)
+        }
+        if (
+            !multiSessionRealtime &&
+            !raftShellOwnsProcessRealtime(storeScope.shellInstanceId, raftMultiShellHostEnabled())
+        ) {
             // A window behind another one never takes the connection away from the window in front.
             bridge.log(
                 "app_shell_realtime_reconcile_skip reason=background_window " +
@@ -5347,15 +5358,36 @@ private fun RaftAppShellReadyContent(
             return@LaunchedEffect
         }
         realtimeReconciledOwnerGeneration = raftProcessRealtimeOwnerGeneration()
-        noteRaftShellRealtimeServer(canonicalFinalSelectedServerId.takeIf { raftMultiShellHostEnabled() })
+        if (!multiSessionRealtime) {
+            noteRaftShellRealtimeServer(canonicalFinalSelectedServerId.takeIf { raftMultiShellHostEnabled() })
+        }
         val environment = sharedStores.apiEnvironmentStore.current()
         val desired =
-            realtimeProcessDesiredSession(
-                authority = processRealtimeAuthority,
-                environmentId = environment.apiBaseUrl,
-                socketUrl = environment.socketBaseUrl,
-                currentServerId = canonicalFinalSelectedServerId,
-            )
+            if (multiSessionRealtime) {
+                // The same set the process reconcile sends (ProcessRealtimeIngressCoordinator), so the
+                // two never take a server from each other.
+                realtimeProcessDesiredSession(
+                    authority = processRealtimeAuthority,
+                    environmentId = environment.apiBaseUrl,
+                    socketUrl = environment.socketBaseUrl,
+                    currentServerId = canonicalFinalSelectedServerId,
+                    serverIdsFor = { granted ->
+                        raftProcessRealtimeSessionDemand.desiredServerIds(
+                            grantedServerIds = granted,
+                            selectedServerId = canonicalFinalSelectedServerId,
+                            nowMillis = defaultNowMillis(),
+                            enabled = true,
+                        )
+                    },
+                )
+            } else {
+                realtimeProcessDesiredSession(
+                    authority = processRealtimeAuthority,
+                    environmentId = environment.apiBaseUrl,
+                    socketUrl = environment.socketBaseUrl,
+                    currentServerId = canonicalFinalSelectedServerId,
+                )
+            }
         realtimeConnectionFamilyId = desired?.connectionFamilyId
         appShellAgentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
         bridge.realtimeReconcile(
@@ -5372,6 +5404,7 @@ private fun RaftAppShellReadyContent(
             authorityPrincipalId = processRealtimeAuthority?.witness?.principalId.orEmpty(),
             authorityAuthGeneration = processRealtimeAuthority?.witness?.authGeneration ?: 0L,
             authorityConnectionFamilyId = processRealtimeAuthority?.witness?.connectionFamilyId.orEmpty(),
+            multiSession = multiSessionRealtime,
         )
         val familyId = desired?.connectionFamilyId
         pendingRealtimeAuthRefreshReason?.let { reason ->
