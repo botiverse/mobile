@@ -430,7 +430,7 @@
     <string name="thread_action_forward">Forward</string>
     <string name="thread_action_add_member">Add Member</string>
     <string name="thread_action_save_changes">Save</string>
-    <string name="thread_action_open_with">Open with…</string>
+    <string name="thread_action_open_with">Open with</string>
     <string name="thread_action_select_message">Select Message</string>
     <string name="thread_action_search">Search</string>
     <string name="thread_action_search_in_thread">Search in Thread</string>
@@ -787,7 +787,7 @@
     <string name="channel_settings_info_detail">Name and description shown across the workspace.</string>
     <string name="channel_settings_section_detail">Choose where this channel appears in your sidebar.</string>
     <string name="channel_settings_section_detail_dm">Choose where this conversation appears in your sidebar.</string>
-    <string name="channel_settings_section_create">Create section…</string>
+    <string name="channel_settings_section_create">Create section</string>
     <string name="channel_settings_collapse_detail">Fold messages taller than the preview height behind a Show more toggle. Turn off to always show full messages in this channel.</string>
     <string name="channel_settings_collapse_detail_dm">Fold messages taller than the preview height behind a Show more toggle. Turn off to always show full messages in this conversation.</string>
     <string name="channel_settings_actions">Actions</string>
@@ -988,7 +988,7 @@
     <string name="thread_action_card_group_agent_reminder_write_summary">Write due reminders (official apps only)</string>
     <string name="thread_action_card_error_load_computers">Failed to load computers: %1$s</string>
     <string name="thread_image_preview_title">Image preview</string>
-    <string name="thread_image_preview_open_with">Open with…</string>
+    <string name="thread_image_preview_open_with">Open with</string>
     <string name="thread_image_preview_save_to_photos">Save to Photos</string>
     <string name="thread_image_preview_saving_to_photos">Saving to Photos…</string>
     <string name="thread_image_preview_retry_save_to_photos">Retry Save to Photos</string>
@@ -1789,7 +1789,7 @@
     <string name="file_preview_action_download">Download</string>
     <string name="file_preview_action_install">Install</string>
     <string name="file_preview_action_open">Open</string>
-    <string name="file_preview_action_open_with">Open with…</string>
+    <string name="file_preview_action_open_with">Open with</string>
     <string name="file_preview_action_save_to_files">Save</string>
     <string name="file_preview_action_open_in_browser">Open in browser</string>
     <string name="file_preview_action_open_in_other_app">Open in another app</string>
@@ -2027,7 +2027,6 @@
     <string name="agent_create_label_key">Key</string>
     <string name="agent_create_label_value">Value</string>
     <string name="agent_create_label_environment_variables">Environment variables</string>
-    <string name="agent_create_label_custom_ellipsis">Custom…</string>
     <string name="agent_create_placeholder_name">e.g. Noel</string>
     <string name="agent_create_placeholder_select_computer">Select computer</string>
     <string name="agent_create_placeholder_select_runtime">Select runtime</string>
@@ -2234,10 +2233,10 @@
     <string name="home_sort_az">A-Z</string>
     <string name="home_section_move_to">Move to section</string>
     <string name="home_section_remove_from">Remove from section</string>
-    <string name="home_section_new_menu">New section…</string>
+    <string name="home_section_new_menu">New section</string>
     <string name="home_sidebar_row_menu_action">More actions</string>
     <string name="home_sidebar_section_menu_action">%1$s options</string>
-    <string name="home_section_rename">Rename / change icon…</string>
+    <string name="home_section_rename">Edit section</string>
     <string name="home_section_delete">Delete section</string>
     <string name="home_section_delete_confirm">Delete Section</string>
     <string name="home_section_delete_message">Delete "%1$s"? Its conversations will return to their default sections.</string>
@@ -4046,7 +4045,7 @@
     <string name="rail_tab_order_save_failed">Couldn't save the tab order</string>
     <string name="settings_notifications_device_section">This device</string>
     <string name="settings_notifications_pause_section">Pause and schedule</string>
-    <string name="settings_notifications_pause_custom">Custom…</string>
+    <string name="settings_notifications_pause_custom">Custom</string>
     <string name="settings_notifications_pause_custom_label">Pause until</string>
     <string name="settings_notifications_pause_apply">Pause</string>
     <string name="settings_notifications_quiet_hours_stored_zone">Saved for %1$s. Changing a time saves it for this device’s time zone.</string>

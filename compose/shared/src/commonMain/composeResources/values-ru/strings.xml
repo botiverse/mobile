@@ -426,7 +426,7 @@
     <string name="thread_action_forward">Переслать</string>
     <string name="thread_action_add_member">Добавить участника</string>
     <string name="thread_action_save_changes">Сохранить</string>
-    <string name="thread_action_open_with">Открыть с помощью…</string>
+    <string name="thread_action_open_with">Открыть с помощью</string>
     <string name="thread_action_select_message">Выбрать сообщение</string>
     <string name="thread_action_search">Поиск</string>
     <string name="thread_action_search_in_thread">Искать в ветке</string>
@@ -783,7 +783,7 @@
     <string name="channel_settings_info_detail">Название и описание, которые видны во всём рабочем пространстве.</string>
     <string name="channel_settings_section_detail">Выберите, в каком разделе боковой панели будет этот канал.</string>
     <string name="channel_settings_section_detail_dm">Выберите, в каком разделе боковой панели будет этот чат.</string>
-    <string name="channel_settings_section_create">Создать раздел…</string>
+    <string name="channel_settings_section_create">Создать раздел</string>
     <string name="channel_settings_collapse_detail">Сообщения выше области предпросмотра сворачиваются под кнопку «Показать полностью». Отключите, чтобы в этом канале длинные сообщения всегда были видны целиком.</string>
     <string name="channel_settings_collapse_detail_dm">Сообщения выше области предпросмотра сворачиваются под кнопку «Показать полностью». Отключите, чтобы в этом чате длинные сообщения всегда были видны целиком.</string>
     <string name="channel_settings_actions">Действия</string>
@@ -984,7 +984,7 @@
     <string name="thread_action_card_group_agent_reminder_write_summary">Создание запланированных напоминаний (только для официальных приложений)</string>
     <string name="thread_action_card_error_load_computers">Не удалось загрузить компьютеры: %1$s</string>
     <string name="thread_image_preview_title">Просмотр изображения</string>
-    <string name="thread_image_preview_open_with">Открыть с помощью…</string>
+    <string name="thread_image_preview_open_with">Открыть с помощью</string>
     <string name="thread_image_preview_save_to_photos">Сохранить в Фото</string>
     <string name="thread_image_preview_saving_to_photos">Сохранение в Фото…</string>
     <string name="thread_image_preview_retry_save_to_photos">Повторить сохранение в Фото</string>
@@ -1779,7 +1779,7 @@
     <string name="file_preview_action_download">Скачать</string>
     <string name="file_preview_action_install">Установить</string>
     <string name="file_preview_action_open">Открыть</string>
-    <string name="file_preview_action_open_with">Открыть с помощью…</string>
+    <string name="file_preview_action_open_with">Открыть с помощью</string>
     <string name="file_preview_action_save_to_files">Сохранить</string>
     <string name="file_preview_action_open_in_browser">Открыть в браузере</string>
     <string name="file_preview_action_open_in_other_app">Открыть в другом приложении</string>
@@ -2017,7 +2017,6 @@
     <string name="agent_create_label_key">Ключ</string>
     <string name="agent_create_label_value">Значение</string>
     <string name="agent_create_label_environment_variables">Переменные окружения</string>
-    <string name="agent_create_label_custom_ellipsis">Свой вариант…</string>
     <string name="agent_create_placeholder_name">Например, Noel</string>
     <string name="agent_create_placeholder_select_computer">Выберите компьютер</string>
     <string name="agent_create_placeholder_select_runtime">Выберите среду выполнения</string>
@@ -2224,10 +2223,10 @@
     <string name="home_sort_az">По алфавиту</string>
     <string name="home_section_move_to">Переместить в раздел</string>
     <string name="home_section_remove_from">Убрать из раздела</string>
-    <string name="home_section_new_menu">Новый раздел…</string>
+    <string name="home_section_new_menu">Новый раздел</string>
     <string name="home_sidebar_row_menu_action">Другие действия</string>
     <string name="home_sidebar_section_menu_action">Параметры раздела «%1$s»</string>
-    <string name="home_section_rename">Переименовать / сменить значок…</string>
+    <string name="home_section_rename">Изменить раздел</string>
     <string name="home_section_delete">Удалить раздел</string>
     <string name="home_section_delete_confirm">Удалить раздел</string>
     <string name="home_section_delete_message">Удалить раздел «%1$s»? Его чаты вернутся в разделы по умолчанию.</string>
@@ -3980,7 +3979,7 @@
     <string name="rail_tab_order_save_failed">Не удалось сохранить порядок вкладок</string>
     <string name="settings_notifications_device_section">Это устройство</string>
     <string name="settings_notifications_pause_section">Пауза и расписание</string>
-    <string name="settings_notifications_pause_custom">Указать время…</string>
+    <string name="settings_notifications_pause_custom">Указать время</string>
     <string name="settings_notifications_pause_custom_label">Приостановить до</string>
     <string name="settings_notifications_pause_apply">Приостановить</string>
     <string name="settings_notifications_quiet_hours_stored_zone">Сохранено для часового пояса %1$s. Если изменить время, оно сохранится для часового пояса этого устройства.</string>

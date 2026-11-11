@@ -9,7 +9,7 @@ class RaftFilePreviewApkContractTest {
             download = "Download",
             install = "Install",
             open = "Open",
-            openWith = "Open with..."
+            openWith = "Open with"
         )
 
     @Test

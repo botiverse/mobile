@@ -430,7 +430,7 @@
     <string name="thread_action_forward">转发</string>
     <string name="thread_action_add_member">添加成员</string>
     <string name="thread_action_save_changes">保存</string>
-    <string name="thread_action_open_with">打开方式…</string>
+    <string name="thread_action_open_with">打开方式</string>
     <string name="thread_action_select_message">选择消息</string>
     <string name="thread_action_search">搜索</string>
     <string name="thread_action_search_in_thread">搜索消息列</string>
@@ -787,7 +787,7 @@
     <string name="channel_settings_info_detail">在整个工作空间中显示的名称和描述。</string>
     <string name="channel_settings_section_detail">选择此频道在侧栏中所在的分区。</string>
     <string name="channel_settings_section_detail_dm">选择此会话在侧栏中所在的分区。</string>
-    <string name="channel_settings_section_create">新建分区…</string>
+    <string name="channel_settings_section_create">创建分区</string>
     <string name="channel_settings_collapse_detail">超过预览高度的消息折叠在「显示更多」开关后。关闭后此频道的长消息始终完整显示。</string>
     <string name="channel_settings_collapse_detail_dm">超过预览高度的消息折叠在「显示更多」开关后。关闭后此会话的长消息始终完整显示。</string>
     <string name="channel_settings_actions">操作</string>
@@ -988,7 +988,7 @@
     <string name="thread_action_card_group_agent_reminder_write_summary">写入到期提醒（仅限官方应用）</string>
     <string name="thread_action_card_error_load_computers">无法加载计算机：%1$s</string>
     <string name="thread_image_preview_title">图片预览</string>
-    <string name="thread_image_preview_open_with">打开方式…</string>
+    <string name="thread_image_preview_open_with">打开方式</string>
     <string name="thread_image_preview_save_to_photos">存储到照片</string>
     <string name="thread_image_preview_saving_to_photos">正在存储到照片…</string>
     <string name="thread_image_preview_retry_save_to_photos">重试存储到照片</string>
@@ -1787,7 +1787,7 @@
     <string name="file_preview_action_download">下载</string>
     <string name="file_preview_action_install">安装</string>
     <string name="file_preview_action_open">打开</string>
-    <string name="file_preview_action_open_with">打开方式…</string>
+    <string name="file_preview_action_open_with">打开方式</string>
     <string name="file_preview_action_save_to_files">保存</string>
     <string name="file_preview_action_open_in_browser">在浏览器中打开</string>
     <string name="file_preview_action_open_in_other_app">在其他应用中打开</string>
@@ -2025,7 +2025,6 @@
     <string name="agent_create_label_key">密钥</string>
     <string name="agent_create_label_value">值</string>
     <string name="agent_create_label_environment_variables">环境变量</string>
-    <string name="agent_create_label_custom_ellipsis">自定义…</string>
     <string name="agent_create_placeholder_name">例如 Noel</string>
     <string name="agent_create_placeholder_select_computer">选择计算机</string>
     <string name="agent_create_placeholder_select_runtime">选择运行时</string>
@@ -2234,10 +2233,10 @@
     <string name="home_sort_az">A-Z</string>
     <string name="home_section_move_to">移动到分区</string>
     <string name="home_section_remove_from">移出分区</string>
-    <string name="home_section_new_menu">新建分区…</string>
+    <string name="home_section_new_menu">新建分区</string>
     <string name="home_sidebar_row_menu_action">更多操作</string>
     <string name="home_sidebar_section_menu_action">%1$s选项</string>
-    <string name="home_section_rename">重命名 / 更换图标…</string>
+    <string name="home_section_rename">编辑分区</string>
     <string name="home_section_delete">删除分区</string>
     <string name="home_section_delete_confirm">删除分区</string>
     <string name="home_section_delete_message">删除“%1$s”？其中的会话将返回默认分区。</string>
@@ -4046,7 +4045,7 @@
     <string name="rail_tab_order_save_failed">标签顺序保存失败</string>
     <string name="settings_notifications_device_section">本机</string>
     <string name="settings_notifications_pause_section">暂停与时段</string>
-    <string name="settings_notifications_pause_custom">自定义…</string>
+    <string name="settings_notifications_pause_custom">自定义</string>
     <string name="settings_notifications_pause_custom_label">暂停到</string>
     <string name="settings_notifications_pause_apply">暂停</string>
     <string name="settings_notifications_quiet_hours_stored_zone">当前按 %1$s 保存。修改时间后会改用这台设备的时区。</string>

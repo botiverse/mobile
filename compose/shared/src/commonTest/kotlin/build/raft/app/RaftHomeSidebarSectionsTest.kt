@@ -286,10 +286,10 @@ class RaftHomeSidebarSectionsTest {
             channels.map { it.id }
         )
         assertEquals(listOf("sort:manual"), channels.filter { it.checked }.map { it.id })
-        val labels = RaftHomeShellLabels(sortMenuTitle = "排序", displaySection = "显示", hideEmptySections = "隐藏空的分区", newSectionMenu = "新建分区…")
+        val labels = RaftHomeShellLabels(sortMenuTitle = "排序", displaySection = "显示", hideEmptySections = "隐藏空的分区", newSectionMenu = "新建分区")
         val joint = raftHomeSectionMenuItems(labels = labels, sortMode = RaftSidebarSortMode.Az, custom = false)
         assertEquals(listOf("排序", "显示"), joint.mapNotNull { it.groupLabel })
-        assertEquals("新建分区…", joint.last().label)
+        assertEquals("新建分区", joint.last().label)
         assertTrue(joint.none { it.id == "create-channel" })
     }
 

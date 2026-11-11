@@ -6200,7 +6200,7 @@ sealed interface SharedHomeIntent {
     data class CreateSidebarSection(
         val name: String,
         val emoji: String?,
-        /** Row whose "Move to section > New section…" opened the dialog; moved into the new section. */
+        /** Row whose "Move to section > New section" opened the dialog; moved into the new section. */
         val moveConversationId: String? = null,
         /** sectionOrder id of the section whose header menu opened the dialog; the new section goes before it. */
         val insertBeforeSectionId: String? = null
