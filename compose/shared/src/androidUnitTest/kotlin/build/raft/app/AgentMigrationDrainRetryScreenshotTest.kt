@@ -21,7 +21,7 @@ import org.robolectric.annotation.GraphicsMode
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h1500dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "w390dp-h2400dp-xxhdpi")
 class AgentMigrationDrainRetryScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
