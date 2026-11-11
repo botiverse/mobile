@@ -45,14 +45,62 @@ internal data class AndroidRealtimeDesiredReconcileResult<RuntimeT>(
 internal fun normalizeAndroidDesiredRealtimeServers(serverIds: Collection<String>): Set<ServerId> =
     serverIds.map(String::trim).filter(String::isNotEmpty).mapTo(linkedSetOf(), ::ServerId)
 
-/** Local diagnostics line for one multi-session reconcile: server ids only, never tokens. */
+/**
+ * Local diagnostics line for one multi-session reconcile: server ids only, never tokens. [primaryServerId]
+ * is the server that keeps reconnecting in the background with keep-alive; [cap] the most sessions shared
+ * asks for at once.
+ */
 internal fun androidMultiSessionReconcileDiagnosticLine(
-    result: AndroidRealtimeDesiredReconcileResult<*>
+    result: AndroidRealtimeDesiredReconcileResult<*>,
+    primaryServerId: ServerId?,
+    cap: Int
 ): String {
     fun Collection<ServerId>.render(): String = joinToString(separator = ",", prefix = "[", postfix = "]") { it.value }
     return "multi_session_reconcile desired=${result.desiredServerIds.render()} " +
-        "added=${result.added.render()} released=${result.released.render()} parked=${result.parked.render()}"
+        "added=${result.added.render()} released=${result.released.render()} parked=${result.parked.render()} " +
+        "primary=${primaryServerId?.value ?: "none"} cap=$cap"
 }
+
+/** One realtime session in the feedback diagnostics summary. No tokens, no witness ids. */
+internal data class AndroidRealtimeSessionDiagnostic(
+    val serverId: ServerId,
+    val owners: Set<String>,
+    val releasePending: Boolean,
+    val desired: Boolean,
+    val clientState: String,
+    val lastSeq: Long,
+    val joinedRoomCount: Int
+)
+
+/** The realtime session registry as the feedback diagnostics summary shows it. */
+internal fun formatAndroidRealtimeSessionDiagnostics(
+    multiSession: Boolean,
+    visibility: String,
+    backgroundKeepAlive: Boolean,
+    primaryServerId: ServerId?,
+    sessions: List<AndroidRealtimeSessionDiagnostic>,
+    parkedResumeSeqs: Map<ServerId, Long>
+): String =
+    buildString {
+        append("mode=").append(if (multiSession) "multi" else "single")
+        append(" visibility=").append(visibility)
+        append(" keepAlive=").append(backgroundKeepAlive)
+        append(" primary=").append(primaryServerId?.value ?: "none")
+        append(" sessions=").append(sessions.size)
+        sessions.forEach { session ->
+            append("\n- serverId=").append(session.serverId.value)
+            append(" owners=").append(session.owners.sorted().joinToString(separator = ",", prefix = "[", postfix = "]"))
+            append(" releasePending=").append(session.releasePending)
+            append(" desired=").append(session.desired)
+            append(" state=").append(session.clientState)
+            append(" lastSeq=").append(session.lastSeq)
+            append(" joinedRooms=").append(session.joinedRoomCount)
+        }
+        if (parkedResumeSeqs.isNotEmpty()) {
+            append("\nparked=")
+            append(parkedResumeSeqs.entries.joinToString(separator = ",", prefix = "[", postfix = "]") { (id, seq) -> "${id.value}:$seq" })
+        }
+    }
 
 internal data class AndroidCurrentRealtimeServerSelection(
     val serverId: ServerId?,
@@ -170,6 +218,9 @@ internal class AndroidRealtimeSessionRegistry<RuntimeT>(
 
     @Synchronized
     fun parkedResumeSeq(serverId: ServerId): Long? = parkedResumeSeq[serverId]
+
+    @Synchronized
+    fun parkedResumeSeqs(): Map<ServerId, Long> = parkedResumeSeq.toMap()
 
     @Synchronized
     fun acquire(serverId: ServerId, shellInstanceId: String): RuntimeT {

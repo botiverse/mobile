@@ -292,10 +292,188 @@ class AndroidAppScopeRealtimeOwnerTest {
             )
 
         assertEquals(
-            "multi_session_reconcile desired=[server-b,server-c] added=[server-c] released=[server-a] parked=[]",
-            androidMultiSessionReconcileDiagnosticLine(result)
+            "multi_session_reconcile desired=[server-b,server-c] added=[server-c] released=[server-a] parked=[] " +
+                "primary=server-b cap=3",
+            androidMultiSessionReconcileDiagnosticLine(result, primaryServerId = ServerId("server-b"), cap = 3)
+        )
+        assertTrue(
+            androidMultiSessionReconcileDiagnosticLine(result, primaryServerId = null, cap = 3).endsWith("primary=none cap=3")
         )
     }
+
+    @Test
+    fun backgroundKeepAliveLetsOnlyThePrimarySessionReconnect() {
+        val sessions = connectedMultiSessionClients("server-a", "server-b", "server-c")
+        val primary = ServerId("server-a")
+
+        AndroidAppScopeRealtimeOwner.applyMultiSessionReconnectPolicy(
+            clients = sessions.map { it.serverId to it.client },
+            primaryServerId = primary,
+            visibility = AndroidAppScopeRealtimeOwner.AppVisibility.Background,
+            backgroundKeepAliveEnabled = true,
+        )
+
+        assertEquals(
+            "only the primary session stays up; the others are suspended",
+            mapOf("server-a" to 0, "server-b" to 1, "server-c" to 1),
+            sessions.associate { it.serverId.value to it.transport.disconnectCount }
+        )
+        // A suspended session does not connect again on its own; the primary one does.
+        sessions.forEach { it.client.connect(connectRequest(it.serverId)) }
+        assertEquals(
+            mapOf("server-a" to 2, "server-b" to 1, "server-c" to 1),
+            sessions.associate { it.serverId.value to it.transport.connectCount }
+        )
+        assertTrue(
+            listOf("server-b", "server-c").all { id -> sessions.single { it.serverId.value == id }.client.state == RealtimeConnectionState.Disconnected }
+        )
+
+        // Keep-alive ends in the background: the primary one is suspended too (today's rule without keep-alive).
+        AndroidAppScopeRealtimeOwner.applyMultiSessionReconnectPolicy(
+            clients = sessions.map { it.serverId to it.client },
+            primaryServerId = primary,
+            visibility = AndroidAppScopeRealtimeOwner.AppVisibility.Background,
+            backgroundKeepAliveEnabled = false,
+        )
+        assertEquals(1, sessions.first().transport.disconnectCount)
+    }
+
+    @Test
+    fun withoutKeepAliveNoBackgroundSessionReconnectsAndTheForegroundAllowsEvery() {
+        val servers = listOf("server-a", "server-b").map(::ServerId)
+        servers.forEach { serverId ->
+            assertFalse(
+                AndroidAppScopeRealtimeOwner.multiSessionReconnectAllowed(
+                    serverId = serverId,
+                    primaryServerId = servers.first(),
+                    visibility = AndroidAppScopeRealtimeOwner.AppVisibility.Background,
+                    backgroundKeepAliveEnabled = false,
+                )
+            )
+            assertTrue(
+                AndroidAppScopeRealtimeOwner.multiSessionReconnectAllowed(
+                    serverId = serverId,
+                    primaryServerId = servers.first(),
+                    visibility = AndroidAppScopeRealtimeOwner.AppVisibility.Foreground,
+                    backgroundKeepAliveEnabled = false,
+                )
+            )
+        }
+        assertFalse(
+            "no primary known: nothing reconnects in the background",
+            AndroidAppScopeRealtimeOwner.multiSessionReconnectAllowed(
+                serverId = servers.first(),
+                primaryServerId = null,
+                visibility = AndroidAppScopeRealtimeOwner.AppVisibility.Background,
+                backgroundKeepAliveEnabled = true,
+            )
+        )
+    }
+
+    @Test
+    fun foregroundAfterFiveMinutesReconnectsEveryDesiredSession() {
+        val desired = listOf("server-a", "server-b", "server-c").map(::ServerId)
+        val hiddenAt = 10_000L
+
+        assertEquals(
+            "every desired session, not only the primary one",
+            desired,
+            AndroidAppScopeRealtimeOwner.longBackgroundReconnectServers(desired, hiddenAt, hiddenAt + 300_000L)
+        )
+        assertTrue(AndroidAppScopeRealtimeOwner.longBackgroundReconnectServers(desired, hiddenAt, hiddenAt + 299_999L).isEmpty())
+        assertTrue(AndroidAppScopeRealtimeOwner.longBackgroundReconnectServers(desired, null, hiddenAt).isEmpty())
+
+        // Back in the foreground the suspended sessions may reconnect again.
+        val sessions = connectedMultiSessionClients("server-a", "server-b")
+        AndroidAppScopeRealtimeOwner.applyMultiSessionReconnectPolicy(
+            clients = sessions.map { it.serverId to it.client },
+            primaryServerId = ServerId("server-a"),
+            visibility = AndroidAppScopeRealtimeOwner.AppVisibility.Background,
+            backgroundKeepAliveEnabled = true,
+        )
+        AndroidAppScopeRealtimeOwner.applyMultiSessionReconnectPolicy(
+            clients = sessions.map { it.serverId to it.client },
+            primaryServerId = ServerId("server-a"),
+            visibility = AndroidAppScopeRealtimeOwner.AppVisibility.Foreground,
+            backgroundKeepAliveEnabled = true,
+        )
+        sessions.forEach { it.client.connect(connectRequest(it.serverId)) }
+        assertEquals(listOf(2, 2), sessions.map { it.transport.connectCount })
+    }
+
+    @Test
+    fun emptyMultiSessionSetReleasesWithGraceOnlyWhileSignedIn() {
+        assertTrue(AndroidAppScopeRealtimeOwner.multiSessionEmptyDesiredReleasesWithGrace(validAuthority = true, hasRegistry = true))
+        assertFalse(
+            "signed out: clear at once",
+            AndroidAppScopeRealtimeOwner.multiSessionEmptyDesiredReleasesWithGrace(validAuthority = false, hasRegistry = true)
+        )
+        assertFalse(AndroidAppScopeRealtimeOwner.multiSessionEmptyDesiredReleasesWithGrace(validAuthority = true, hasRegistry = false))
+    }
+
+    @Test
+    fun realtimeSessionDiagnosticsListEachServerWithoutTokens() {
+        val text =
+            formatAndroidRealtimeSessionDiagnostics(
+                multiSession = true,
+                visibility = "Background",
+                backgroundKeepAlive = true,
+                primaryServerId = ServerId("server-a"),
+                sessions =
+                    listOf(
+                        AndroidRealtimeSessionDiagnostic(
+                            serverId = ServerId("server-a"),
+                            owners = setOf("process-realtime-host-owner"),
+                            releasePending = false,
+                            desired = true,
+                            clientState = "RoomsJoined",
+                            lastSeq = 42L,
+                            joinedRoomCount = 3
+                        ),
+                        AndroidRealtimeSessionDiagnostic(
+                            serverId = ServerId("server-b"),
+                            owners = emptySet(),
+                            releasePending = true,
+                            desired = false,
+                            clientState = "Disconnected",
+                            lastSeq = 7L,
+                            joinedRoomCount = 0
+                        )
+                    ),
+                parkedResumeSeqs = mapOf(ServerId("server-c") to 9L)
+            )
+        val lines = text.lines()
+
+        assertEquals("mode=multi visibility=Background keepAlive=true primary=server-a sessions=2", lines[0])
+        assertEquals(
+            "- serverId=server-a owners=[process-realtime-host-owner] releasePending=false desired=true " +
+                "state=RoomsJoined lastSeq=42 joinedRooms=3",
+            lines[1]
+        )
+        assertTrue(lines[2].startsWith("- serverId=server-b owners=[] releasePending=true desired=false"))
+        assertEquals("parked=[server-c:9]", lines[3])
+        assertEquals(
+            "mode=single visibility=Foreground keepAlive=false primary=none sessions=0",
+            formatAndroidRealtimeSessionDiagnostics(false, "Foreground", false, null, emptyList(), emptyMap())
+        )
+    }
+
+    private class MultiSessionClient(
+        val serverId: ServerId,
+        val transport: OwnerPolicyFakeTransport,
+        val client: SocketIoRealtimeClient
+    )
+
+    private fun connectRequest(serverId: ServerId): RealtimeConnectRequest =
+        RealtimeConnectRequest(auth = RealtimeAuth(token = "access", serverId = serverId))
+
+    private fun connectedMultiSessionClients(vararg serverIds: String): List<MultiSessionClient> =
+        serverIds.map { id ->
+            val transport = OwnerPolicyFakeTransport()
+            val client = SocketIoRealtimeClient(transport)
+            client.connect(connectRequest(ServerId(id)))
+            MultiSessionClient(ServerId(id), transport, client)
+        }
 
     @Test
     fun apiEnvironmentChangeDisposesAppScopeRealtimeRuntime() {

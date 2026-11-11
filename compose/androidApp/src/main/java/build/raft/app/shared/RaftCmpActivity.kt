@@ -7047,8 +7047,10 @@ internal class RaftBridgeModule(
                 ProcessReadStateV1DiagnosticOverride.controller.snapshot().toRedactedJson().toString(2)
         val featureFlags =
                 ProcessDiagnosticFeatureFlagOverrides.registry.snapshots().toRedactedJson().toString(2)
+        val realtimeSessions = AndroidAppScopeRealtimeOwner.realtimeSessionDiagnosticsText()
         return "$base\n\n=== DIAGNOSTIC FEATURE FLAG OVERRIDES (REDACTED) ===\n$featureFlags" +
-                "\n\n=== READ STATE V1 DIAGNOSTIC (REDACTED) ===\n$readState"
+                "\n\n=== READ STATE V1 DIAGNOSTIC (REDACTED) ===\n$readState" +
+                "\n\n=== REALTIME SESSIONS ===\n$realtimeSessions"
     }
 
     private fun List<DiagnosticFeatureFlagOverrideSnapshot>.toRedactedJson(): JSONArray =

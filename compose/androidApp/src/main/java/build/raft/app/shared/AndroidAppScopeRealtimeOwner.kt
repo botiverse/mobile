@@ -23,6 +23,7 @@ import build.raft.app.data.RaftAndroidPushRegistrationBridge
 import build.raft.app.data.RaftAuthApiClient
 import build.raft.app.data.RaftHostNetworkNotifyContract
 import build.raft.app.data.RaftProductEvents
+import build.raft.app.data.RaftRealtimeMaxSessions
 import build.raft.app.data.updateRaftHostVisibility
 import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.realtime.GeneratedRealtimeContract
@@ -70,6 +71,11 @@ internal object AndroidAppScopeRealtimeOwner {
     private var currentDesiredServerIds: Set<ServerId> = emptySet()
     /** Mode of the last reconcile; multi-session keeps every desired runtime instead of evicting others. */
     private var multiSessionReconcile = false
+    /**
+     * Multi-session: the first server of the last reconcile (shared sends the front window's server first).
+     * In the background with keep-alive only this one may reconnect; the others stay suspended.
+     */
+    private var multiSessionPrimaryServerId: ServerId? = null
     private var appVisibility: AppVisibility = AppVisibility.Background
     private var installedApplicationContext: Context? = null
     private var lastHiddenAtMillis: Long? = null
@@ -250,9 +256,11 @@ internal object AndroidAppScopeRealtimeOwner {
         )
         if (shouldForceReconnectAfterLongBackground(hiddenAtMillis, shownAtMillis)) {
             if (multiSessionEnabled) {
-                currentMultiSessionRuntimes().forEach { holder ->
-                    reconnectMultiSession(holder, "long_background")
-                }
+                // Every desired session, not only the primary one that may have kept reconnecting.
+                val registry = multiSessionRegistry
+                longBackgroundReconnectServers(currentDesiredServerIds, hiddenAtMillis, shownAtMillis)
+                    .mapNotNull { serverId -> registry?.runtime(serverId) }
+                    .forEach { holder -> reconnectMultiSession(holder, "long_background") }
                 return
             }
             val runtime = realtimeRuntime
@@ -373,6 +381,38 @@ internal object AndroidAppScopeRealtimeOwner {
         } else {
             realtimeRuntime?.ownedSession() != null
         }
+
+    /**
+     * The realtime session registry for the feedback diagnostics summary: per server its owners, release
+     * grace, client state, resume cursor and joined room count. No tokens, no witness ids.
+     */
+    fun realtimeSessionDiagnosticsText(): String {
+        val registry = multiSessionRegistry
+        val sessions =
+            registry?.snapshots().orEmpty().mapNotNull { snapshot ->
+                val holder = registry?.runtime(snapshot.serverId) ?: return@mapNotNull null
+                AndroidRealtimeSessionDiagnostic(
+                    serverId = snapshot.serverId,
+                    owners = snapshot.owners,
+                    releasePending = snapshot.releasePending,
+                    desired = snapshot.serverId in currentDesiredServerIds,
+                    clientState = holder.client.state.diagnosticName(),
+                    lastSeq = holder.runtime.lastSeq,
+                    joinedRoomCount = holder.runtime.joinedChannelCount
+                )
+            }
+        return formatAndroidRealtimeSessionDiagnostics(
+            multiSession = multiSessionReconcile,
+            visibility = appVisibility.name,
+            backgroundKeepAlive = backgroundKeepAliveEnabled,
+            primaryServerId = multiSessionPrimaryServerId,
+            sessions = sessions,
+            parkedResumeSeqs = registry?.parkedResumeSeqs().orEmpty()
+        )
+    }
+
+    /** The state's name only: a Failed state's message stays out of the summary. */
+    private fun RealtimeConnectionState.diagnosticName(): String = this::class.simpleName ?: "Unknown"
 
     fun disableBackgroundKeepAlive(reason: String = "unknown") {
         if (!backgroundKeepAliveEnabled) return
@@ -520,17 +560,22 @@ internal object AndroidAppScopeRealtimeOwner {
     ) {
         multiSessionReconcile = true
         val desired = normalizeAndroidDesiredRealtimeServers(serverIds)
-        if (desired.isEmpty()) {
+        val validAuthority = hasValidProcessAuthority(accessToken, environmentId, witness)
+        if (desired.isEmpty() && !multiSessionEmptyDesiredReleasesWithGrace(validAuthority, multiSessionRegistry != null)) {
             clearForEmptyReconcile(disconnectReason)
             return
         }
-        if (!hasValidProcessAuthority(accessToken, environmentId, witness)) {
+        if (!validAuthority) {
             RaftAppLog.w(LOG_TAG, "process_reconcile_skip reason=invalid_authority serverCount=${desired.size}")
             clearForInvalidAuthority()
             return
         }
         val identityUpdate = applyProcessIdentity(accessToken, environmentId, socketUrl, witness)
+        // Set before the registry creates runtimes, so a new client starts with its own reconnect policy.
+        multiSessionPrimaryServerId = desired.firstOrNull()
         val registry = multiSessionRegistry(context.applicationContext)
+        // An empty set (no server left to show) releases every server after the same grace as one that
+        // left the set, instead of dropping them all at once; signing out still clears at once (above).
         val result =
             registry.reconcileDesired(
                 desired = desired,
@@ -538,6 +583,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 undesiredGraceMillis = MultiSessionUndesiredGraceMillis
             )
         currentDesiredServerIds = result.desiredServerIds
+        syncRealtimeReconnectPolicy()
         result.desired.forEach { desiredRuntime ->
             startMultiSessionConnect(
                 holder = desiredRuntime.runtime,
@@ -553,11 +599,14 @@ internal object AndroidAppScopeRealtimeOwner {
                 witness = witness,
             )
         }
-        syncRealtimeReconnectPolicy()
         RaftAndroidLocalDiagnostics.recordLog(
             "info",
             LOG_TAG,
-            androidMultiSessionReconcileDiagnosticLine(result)
+            androidMultiSessionReconcileDiagnosticLine(
+                result = result,
+                primaryServerId = multiSessionPrimaryServerId,
+                cap = RaftRealtimeMaxSessions
+            )
         )
         RaftAppLog.d(
             LOG_TAG,
@@ -572,6 +621,7 @@ internal object AndroidAppScopeRealtimeOwner {
         multiSessionRegistry = null
         multiSessionIdentity = null
         currentDesiredServerIds = emptySet()
+        multiSessionPrimaryServerId = null
         realtimeConnectionWitness = null
         backgroundKeepAliveEnabled = false
         RaftAppLog.d(LOG_TAG, "process_reconcile result=cleared reason=$disconnectReason")
@@ -582,6 +632,7 @@ internal object AndroidAppScopeRealtimeOwner {
         multiSessionRegistry = null
         multiSessionIdentity = null
         currentDesiredServerIds = emptySet()
+        multiSessionPrimaryServerId = null
         realtimeConnectionWitness = null
     }
 
@@ -774,7 +825,11 @@ internal object AndroidAppScopeRealtimeOwner {
             return
         }
         if (multiServerRealtimeEnabled()) {
-            val runtimes = currentMultiSessionRuntimes()
+            // Multi-session in the background (keep-alive): only the primary session may reconnect.
+            val runtimes =
+                currentMultiSessionRuntimes().filter { holder ->
+                    !multiSessionReconcile || realtimeReconnectAllowedFor(holder.serverId)
+                }
             if (runtimes.isEmpty()) {
                 RaftAppLog.d(LOG_TAG, "realtime_health_check_skip reason=no_multi_session trigger=$reason")
                 return
@@ -842,6 +897,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 multiSessionRegistry = null
                 multiSessionIdentity = null
                 currentDesiredServerIds = emptySet()
+                multiSessionPrimaryServerId = null
                 backgroundKeepAliveEnabled = false
                 realtimeConnectionWitness = null
                 return
@@ -999,7 +1055,7 @@ internal object AndroidAppScopeRealtimeOwner {
                         scope = scope,
                         pinnedServerId = serverId
                     )
-                hostContext.client.setReconnectAllowed(realtimeReconnectAllowed())
+                hostContext.client.setReconnectAllowed(realtimeReconnectAllowedFor(serverId))
                 val runtime = bootstrapRealtime(hostContext)
                 syncRuntimeVisibility(runtime, appVisibility)
                 MultiSessionRuntime(serverId, hostContext.client, runtime)
@@ -1060,6 +1116,7 @@ internal object AndroidAppScopeRealtimeOwner {
         multiSessionRegistry = null
         multiSessionIdentity = null
         currentDesiredServerIds = emptySet()
+        multiSessionPrimaryServerId = null
         realtimeConnectionWitness = null
         backgroundKeepAliveEnabled = false
     }
@@ -1230,7 +1287,27 @@ internal object AndroidAppScopeRealtimeOwner {
         backgroundKeepAliveEnabled: Boolean,
     ): Boolean = visibility == AppVisibility.Foreground || backgroundKeepAliveEnabled
 
+    /** Single-session (flag off): every client follows [realtimeReconnectAllowed]. Multi-session: see [multiSessionReconnectAllowed]. */
+    private fun realtimeReconnectAllowedFor(serverId: ServerId): Boolean =
+        if (multiSessionReconcile) {
+            multiSessionReconnectAllowed(serverId, multiSessionPrimaryServerId, appVisibility, backgroundKeepAliveEnabled)
+        } else {
+            realtimeReconnectAllowed()
+        }
+
     private fun syncRealtimeReconnectPolicy() {
+        if (multiSessionReconcile) {
+            realtimeClient?.setReconnectAllowed(realtimeReconnectAllowed())
+            // Every runtime the registry holds, the ones in their release grace too: hidden, they must not
+            // reconnect on their own unless they are the primary one.
+            applyMultiSessionReconnectPolicy(
+                clients = multiSessionRegistry?.runtimes().orEmpty().map { holder -> holder.serverId to holder.client },
+                primaryServerId = multiSessionPrimaryServerId,
+                visibility = appVisibility,
+                backgroundKeepAliveEnabled = backgroundKeepAliveEnabled,
+            )
+            return
+        }
         applyRealtimeReconnectPolicy(
             clients =
                 buildList {
@@ -1250,6 +1327,46 @@ internal object AndroidAppScopeRealtimeOwner {
         val allowed = realtimeReconnectAllowed(visibility, backgroundKeepAliveEnabled)
         clients.forEach { client -> client.setReconnectAllowed(allowed) }
     }
+
+    /**
+     * Multi-session background policy: in the foreground every session reconnects; in the background only
+     * the primary one, and only with keep-alive (devices without Play services, [AndroidRealtimeKeepAliveController]).
+     */
+    internal fun multiSessionReconnectAllowed(
+        serverId: ServerId,
+        primaryServerId: ServerId?,
+        visibility: AppVisibility,
+        backgroundKeepAliveEnabled: Boolean,
+    ): Boolean =
+        visibility == AppVisibility.Foreground || (backgroundKeepAliveEnabled && serverId == primaryServerId)
+
+    internal fun applyMultiSessionReconnectPolicy(
+        clients: Iterable<Pair<ServerId, SocketIoRealtimeClient>>,
+        primaryServerId: ServerId?,
+        visibility: AppVisibility,
+        backgroundKeepAliveEnabled: Boolean,
+    ) {
+        clients.forEach { (serverId, client) ->
+            client.setReconnectAllowed(
+                multiSessionReconnectAllowed(serverId, primaryServerId, visibility, backgroundKeepAliveEnabled)
+            )
+        }
+    }
+
+    /** Back after [ForegroundReconnectAfterBackgroundMillis] or more: force-reconnect every desired server. */
+    internal fun longBackgroundReconnectServers(
+        desiredServerIds: Collection<ServerId>,
+        hiddenAtMillis: Long?,
+        shownAtMillis: Long
+    ): List<ServerId> =
+        if (shouldForceReconnectAfterLongBackground(hiddenAtMillis, shownAtMillis)) desiredServerIds.toList() else emptyList()
+
+    /**
+     * Multi-session reconcile with no desired server: with a valid authority and live sessions they are released
+     * after the undesired grace like any server that left the set; otherwise (signed out, nothing held) clear.
+     */
+    internal fun multiSessionEmptyDesiredReleasesWithGrace(validAuthority: Boolean, hasRegistry: Boolean): Boolean =
+        validAuthority && hasRegistry
 
     internal fun shouldDisposeRuntimeForSessionEnd(reason: String): Boolean =
         reason == GeneratedRealtimeContract.DisconnectReason.ApiEnvironmentChanged

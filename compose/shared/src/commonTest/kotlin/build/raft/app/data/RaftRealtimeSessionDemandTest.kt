@@ -150,6 +150,34 @@ class RaftRealtimeSessionDemandTest {
     }
 
     @Test
+    fun nextHiddenGraceExpiryIsTheFirstInstantAHiddenWindowStopsCounting() {
+        val demand = RaftRealtimeSessionDemand()
+        assertNull(demand.nextHiddenGraceExpiryMillis(now), "no claims, nothing to wake for")
+        demand.claim("a", "s1")
+        demand.claim("b", "s2")
+        assertNull(demand.nextHiddenGraceExpiryMillis(now), "visible windows never expire")
+
+        val bHiddenAt = now
+        demand.onVisibility("b", visible = false, nowMillis = bHiddenAt)
+        now += 1_000L
+        demand.onVisibility("a", visible = false, nowMillis = now)
+        // A page that never claimed (thread, settings) is not woken for.
+        demand.onVisibility("thread", visible = false, nowMillis = bHiddenAt)
+
+        val first = bHiddenAt + HiddenWindowSessionGraceMillis + 1
+        assertEquals(first, demand.nextHiddenGraceExpiryMillis(now))
+
+        now = first - 1
+        assertEquals(listOf("s2", "s1"), demand.desired(selected = "s3"), "one instant before, b still counts")
+        now = first
+        assertEquals(listOf("s1"), demand.desired(selected = "s3"), "at the expiry b's server leaves the set")
+        assertEquals(first + 1_000L, demand.nextHiddenGraceExpiryMillis(now), "then the next hidden window")
+
+        now = first + 1_000L
+        assertNull(demand.nextHiddenGraceExpiryMillis(now), "every hidden window already expired")
+    }
+
+    @Test
     fun everyWindowHiddenPastTheGraceFallsBackToTheSelectedServer() {
         val demand = RaftRealtimeSessionDemand()
         demand.claim("a", "s2")

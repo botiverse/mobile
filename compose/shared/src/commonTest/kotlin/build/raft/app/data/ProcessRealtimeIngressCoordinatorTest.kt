@@ -406,6 +406,12 @@ class ProcessRealtimeIngressCoordinatorTest {
         val last = fixture.host.reconciles.last()
         assertEquals(setOf("server-a"), last.serverIds.toSet())
         assertFalse(last.multiSession)
+
+        val count = fixture.host.reconciles.size
+        fixture.demand.onVisibility("shell-b", visible = false, nowMillis = 1_000L + currentTime)
+        advanceTimeBy(RaftRealtimeSessionDemand.HiddenWindowSessionGraceMillis + 1L)
+        runCurrent()
+        assertEquals(count, fixture.host.reconciles.size, "with the setting off a hidden window's grace never reconciles")
     }
 
     @Test
@@ -426,6 +432,32 @@ class ProcessRealtimeIngressCoordinatorTest {
         fixture.demand.release("shell-b")
         runCurrent()
         assertEquals(count, fixture.host.reconciles.size, "once reverted, claims no longer reconcile")
+    }
+
+    @Test
+    fun aWindowHiddenPastItsGraceLeavesTheSetWithoutAnotherChange() = runTest {
+        val fixture = multiSessionFixture(enabled = true)
+        fixture.demand.claim("shell-a", "server-a")
+        fixture.demand.claim("shell-b", "server-b")
+        fixture.demand.onVisibility("shell-b", visible = false, nowMillis = 1_000L + currentTime)
+        runCurrent()
+        assertEquals(setOf("server-a", "server-b"), fixture.host.reconciles.last().serverIds.toSet())
+        val before = fixture.host.reconciles.size
+
+        advanceTimeBy(RaftRealtimeSessionDemand.HiddenWindowSessionGraceMillis)
+        runCurrent()
+        assertEquals(before, fixture.host.reconciles.size, "still inside the grace: nothing to reconcile")
+
+        advanceTimeBy(1L)
+        runCurrent()
+        val last = fixture.host.reconciles.last()
+        assertEquals(before + 1, fixture.host.reconciles.size, "the expiry alone re-reconciles")
+        assertEquals(listOf("server-a"), last.serverIds)
+        assertTrue(last.multiSession)
+
+        advanceTimeBy(RaftRealtimeSessionDemand.HiddenWindowSessionGraceMillis * 2)
+        runCurrent()
+        assertEquals(before + 1, fixture.host.reconciles.size, "no hidden window left inside a grace: no more wake-ups")
     }
 
     // Hands a92fbb13: two restored windows, the one behind reconciled last. With multi-session realtime
@@ -501,7 +533,8 @@ class ProcessRealtimeIngressCoordinatorTest {
             scope = backgroundScope,
             sessionDemand = fixture.demand,
             multiSessionEnabled = { fixture.enabled },
-            nowMillis = { 1_000L },
+            // Wall clock = virtual time (+1 s), so a hidden window's grace runs out on the test scheduler.
+            nowMillis = { 1_000L + currentTime },
         ).start()
         runCurrent()
         return fixture

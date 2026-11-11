@@ -11,6 +11,7 @@ import build.raft.app.compat.pager.Pager
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
@@ -59,7 +60,7 @@ class BridgeModuleRealtimeReconcileWireTest {
                 multiSession = multiSession,
             )
             capabilities.realtimeReconcile(
-                serverIds = setOf("s1", "s2"),
+                serverIds = setOf("s2", "s1"),
                 accessToken = "t",
                 environmentId = "env",
                 authorityScopeLeaseId = "lease",
@@ -70,8 +71,15 @@ class BridgeModuleRealtimeReconcileWireTest {
             )
             val (kuikly, cmp) = calls
             assertEquals(kuikly, cmp, "multiSession=$multiSession")
-            val decoded = Json.parseToJsonElement(kuikly.second).jsonObject["multiSession"]?.jsonPrimitive?.booleanOrNull
+            val wire = Json.parseToJsonElement(kuikly.second).jsonObject
+            val decoded = wire["multiSession"]?.jsonPrimitive?.booleanOrNull
             if (multiSession) assertEquals(true, decoded) else assertNull(decoded, "the flag-off wire has no multiSession key")
+            // Flag off: sorted as before. Multi-session: the caller's order, primary (front window) server first.
+            assertEquals(
+                if (multiSession) listOf("s2", "s1") else listOf("s1", "s2"),
+                wire.getValue("serverIds").jsonArray.map { it.jsonPrimitive.content },
+                "multiSession=$multiSession",
+            )
         }
     }
 }

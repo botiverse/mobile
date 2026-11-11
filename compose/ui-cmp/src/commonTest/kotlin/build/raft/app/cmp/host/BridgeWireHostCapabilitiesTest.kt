@@ -120,8 +120,14 @@ class BridgeWireHostCapabilitiesTest {
 
         assertFalse("multiSession" in off, "with the setting off the reconcile wire is unchanged")
         assertEquals(true, on["multiSession"]?.jsonPrimitive?.booleanOrNull)
-        assertEquals(off, JsonObject(on - "multiSession"), "multiSession is the only difference")
-        assertEquals(listOf("s1", "s2"), on.getValue("serverIds").jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(
+            JsonObject(off - "serverIds"),
+            JsonObject(on - "multiSession" - "serverIds"),
+            "multiSession and the server order are the only differences",
+        )
+        assertEquals(listOf("s1", "s2"), off.getValue("serverIds").jsonArray.map { it.jsonPrimitive.content })
+        // Multi-session keeps the caller's order: the first server is the primary (front window) one.
+        assertEquals(listOf("s2", "s1"), on.getValue("serverIds").jsonArray.map { it.jsonPrimitive.content })
     }
 
     @Test
