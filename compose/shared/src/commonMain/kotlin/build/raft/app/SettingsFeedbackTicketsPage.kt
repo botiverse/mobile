@@ -43,6 +43,8 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftIconSpinner
 import build.raft.app.components.RaftStorePullToRefreshBox
+import build.raft.app.data.BridgeSettingsPlatformCapabilities
+import build.raft.app.data.DataResult
 import build.raft.app.data.FeedbackAttachment
 import build.raft.app.data.FeedbackAuthorType
 import build.raft.app.data.FeedbackClosureReason
@@ -96,6 +98,7 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.io.encoding.Base64
 import org.jetbrains.compose.resources.StringResource
+import kotlinx.coroutines.launch
 import kotlin.io.encoding.ExperimentalEncodingApi
 
 /*
@@ -181,6 +184,29 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
     val state by store.state.collectAsState()
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
     val timeContext = LocalRaftPageBaseTimeContextProvider.current?.current
+    // Copy Link (#119): the ticket's web address for an agent, on the Developer environment's web
+    // URL (AGENTS.md "Environment Web Link URL Rule") and this session's server. Only where a Hands
+    // app reads the ticket (Android, iOS): desktop has none, so no action there.
+    val linkPlatform = remember { settingsFeedbackTicketLinkPlatform(raftFeedbackWebViewClientKind()) }
+    val copiedMessage = stringResource(Res.string.common_copied)
+    val copyLinkFailedMessage = stringResource(Res.string.thread_error_copy_link)
+    val settingsCapabilities = remember(bridge, copiedMessage) { BridgeSettingsPlatformCapabilities(bridge, copiedMessage) }
+    val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
+    val copyTicketLink: ((String) -> Unit)? =
+        linkPlatform?.let { platform ->
+            { ticketId ->
+                scope.launch {
+                    val session = authStore.readSession()
+                    val serverSlug =
+                        session?.servers?.firstOrNull { it.id == storeScope.initialServerId }?.slug?.takeIf(String::isNotBlank)
+                            ?: session?.currentServerSlug()
+                    val webUrl = (settingsCapabilities.loadDeveloper() as? DataResult.Content)?.data?.webUrl
+                    val link = settingsFeedbackTicketLink(webUrl, serverSlug, ticketId, platform)
+                    bridge.log("settings_feedback_tickets_copy_link ticket=${ticketId.take(8)} ok=${link != null}")
+                    if (link != null) settingsCapabilities.bridgeCopyToClipboard(link) else bridge.toast(copyLinkFailedMessage)
+                }
+            }
+        }
     val openViewer by rememberUpdatedState<(FeedbackOpenedAttachment) -> Unit>({ opened ->
         val payload = opened.toFeedbackImagePreviewPayload()
         if (payload == null || !pager.openRaftFilePreviewPage(payload, sourceStoreScope = storeScope)) {
@@ -211,10 +237,45 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
                 onClearCloseError = store::clearCloseError,
                 onOpenAttachment = { attachment -> store.openAttachment(attachment) { openViewer(it) } },
                 onDismissAttachmentError = store::dismissAttachmentError,
+                onCopyTicketLink = copyTicketLink,
             ),
         bottomContentPadding = raftBottomSafeAreaPadding(),
     )
 }
+
+/** The Hands app a copied ticket link names (`raft-android`, `raft-ios`); null where there is none (desktop). */
+internal fun settingsFeedbackTicketLinkPlatform(clientKind: String): String? =
+    clientKind.takeIf { it == "android" || it == "ios" }
+
+/**
+ * A ticket's web address, to hand it to an agent (#119): the web's Settings › Feedback ticket route
+ * (slock `packages/web/src/feedback/feedbackPaths.ts` `feedbackTicketPath`:
+ * `/s/{slug}/settings/feedback/ticket/{encodeURIComponent(id)}`) on [webUrl], the Developer
+ * environment's web URL (blank or null is production), plus `?platform=android|ios`, so the agent
+ * reads the ticket and its diagnostics from that Hands app. The web reads the ticket from the path
+ * only (AboutFeedbackDialog `feedbackWorkspaceRouteFromPath`), so the link still opens it there.
+ * Null without a server slug, a ticket id, or a [platform] other than `android` / `ios`.
+ */
+internal fun settingsFeedbackTicketLink(webUrl: String?, serverSlug: String?, ticketId: String, platform: String): String? {
+    val slug = serverSlug?.trim()?.takeIf(::isRaftLinkIdentifier) ?: return null
+    val id = ticketId.trim().takeIf(String::isNotEmpty) ?: return null
+    if (settingsFeedbackTicketLinkPlatform(platform) == null) return null
+    return "${sharedSettingsResolvedWebBaseUrl(webUrl)}/s/$slug/settings/feedback/ticket/${id.encodeUriComponent()}?platform=$platform"
+}
+
+/** JavaScript `encodeURIComponent`: UTF-8, all but `A-Z a-z 0-9 - _ . ! ~ * ' ( )` escaped. */
+private fun String.encodeUriComponent(): String =
+    buildString {
+        encodeToByteArray().forEach { byte ->
+            val value = byte.toInt() and 0xFF
+            val char = value.toChar()
+            if (value < 0x80 && (char.isLetterOrDigit() || char in "-_.!~*'()")) {
+                append(char)
+            } else {
+                append('%').append(value.toString(16).uppercase().padStart(2, '0'))
+            }
+        }
+    }
 
 /**
  * Each ticket the submit form files ([SettingsFeedbackFiledTicketHandoff]): the list is read again
@@ -250,6 +311,8 @@ internal class SettingsFeedbackTicketsActions(
     val onClearCloseError: () -> Unit = {},
     val onOpenAttachment: (FeedbackAttachment) -> Unit = {},
     val onDismissAttachmentError: () -> Unit = {},
+    /** Copy Link in an open ticket's head; null (desktop, no Hands app) shows none. */
+    val onCopyTicketLink: ((String) -> Unit)? = null,
 )
 
 /**
@@ -288,13 +351,30 @@ internal fun SettingsFeedbackTicketsScreen(
             null
         },
         trailingContent =
-            if (detail != null && detail.canClose && ticket?.status != FeedbackTicketStatus.Resolved) {
-                {
-                    RaftHeaderIconAction(
-                        icon = RaftLucideIconName.CircleCheck,
-                        contentDescription = stringResource(Res.string.settings_feedback_tickets_close_ticket),
-                        onClick = openCloseDialog,
-                    )
+            if (detail != null) {
+                val showClose = detail.canClose && ticket?.status != FeedbackTicketStatus.Resolved
+                val onCopyLink = actions.onCopyTicketLink
+                if (showClose || onCopyLink != null) {
+                    {
+                        Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs), verticalAlignment = Alignment.CenterVertically) {
+                            if (onCopyLink != null) {
+                                RaftHeaderIconAction(
+                                    icon = RaftLucideIconName.Link,
+                                    contentDescription = stringResource(Res.string.thread_action_copy_link),
+                                    onClick = { onCopyLink(detail.ticketId) },
+                                )
+                            }
+                            if (showClose) {
+                                RaftHeaderIconAction(
+                                    icon = RaftLucideIconName.CircleCheck,
+                                    contentDescription = stringResource(Res.string.settings_feedback_tickets_close_ticket),
+                                    onClick = openCloseDialog,
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    null
                 }
             } else {
                 null
