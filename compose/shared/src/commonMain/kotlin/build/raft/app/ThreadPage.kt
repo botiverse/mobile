@@ -371,6 +371,7 @@ import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.ChannelSosStore
 import build.raft.app.data.channelAnnouncementNoticeOf
 import build.raft.app.data.isChannelAnnouncementNoticeMetadataKey
+import build.raft.app.data.isTaskAssignmentNoticeMetadataKey
 import build.raft.app.data.RaftAgentControlsApi
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.MessageId
@@ -25650,7 +25651,8 @@ private fun ThreadMessagesListContent(
                         if (isSystemMessage && actionCard == null) {
                             ThreadSystemMessageRow(
                                 message = displayMessage,
-                                timestampValue = message.timestampLabel
+                                timestampValue = message.timestampLabel,
+                                timeline = renderPayload.messages,
                             )
                         } else {
                             val translationUi =
@@ -28971,8 +28973,12 @@ private val ThreadSystemMessageBodyColor: Color get() = RaftColor.TextBlack.copy
 @Composable
 internal fun ThreadSystemMessageRow(
     message: RaftThreadMessageItem,
-    timestampValue: String
+    timestampValue: String,
+    /** The conversation's messages, oldest first: a hand-off card reads whether the task came back since. */
+    timeline: List<RaftThreadMessageItem> = emptyList(),
 ) {
+    // A task handed to someone with a reason is a card, not the one-line notice (web MessageItem).
+    if (ThreadTaskHandoffRow(message, timeline)) return
     var expanded by remember(message.id) { mutableStateOf(false) }
     val timestampLayout = remember { threadSystemMessageTimestampLayoutSpec() }
     // A channel announcement's set, replace or remove line, in the reader's language (its text is
@@ -34389,7 +34395,7 @@ internal fun RaftThreadMessageItem.expandedSystemDetails(): String =
     buildList {
         systemEventType?.takeIf { it.isNotBlank() }?.let { add("Type: ${it.sanitizeThreadSystemText()}") }
         metadata.entries.sortedBy { it.key }.forEach { (key, value) ->
-            if (key.isNotBlank() && value.isNotBlank() && !isChannelAnnouncementNoticeMetadataKey(key)) {
+            if (key.isNotBlank() && value.isNotBlank() && !isChannelAnnouncementNoticeMetadataKey(key) && !isTaskAssignmentNoticeMetadataKey(key)) {
                 add("${key.sanitizeThreadSystemText()}: ${value.sanitizeThreadSystemText()}")
             }
         }

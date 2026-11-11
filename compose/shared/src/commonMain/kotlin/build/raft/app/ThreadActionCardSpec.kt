@@ -165,7 +165,7 @@ internal fun ActionCardSpecIntent.typedActionType(): String? =
         ActionCardSpecIntent.FeedbackForm -> FeedbackSubmitActionCardType
         // A done feedback card's "View in Settings" (S0.3): Settings › Feedback on the ticket.
         ActionCardSpecIntent.FeedbackTicket -> FeedbackSubmitActionCardType
-        ActionCardSpecIntent.UpgradeDialog, ActionCardSpecIntent.AddSeats -> null
+        ActionCardSpecIntent.UpgradeDialog, ActionCardSpecIntent.AddSeats, ActionCardSpecIntent.MigrateAgent -> null
     }
 
 /** The store's refusal for a card that ended ([threadActionCardCommitBlockedByEnd]); nothing ran. */
