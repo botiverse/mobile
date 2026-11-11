@@ -10,6 +10,7 @@ import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.height
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowVariant
