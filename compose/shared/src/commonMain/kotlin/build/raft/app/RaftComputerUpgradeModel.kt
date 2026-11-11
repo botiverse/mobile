@@ -4,6 +4,7 @@ import build.raft.app.data.SettingsComputerAcceptedUpgrade
 import build.raft.app.data.SettingsComputerControlState
 import build.raft.app.data.SettingsComputerReleaseNotesSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.app.data.SettingsComputerUpgradeFailureHintSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
 import build.raft.app.data.settingsComputerUpgradeAvailabilityKey
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
@@ -218,13 +219,14 @@ internal fun raftComputerUpgradeReconnect(
 }
 
 /** Web `UpgradeRefusal`, mapped from the route's code (never its text). */
-internal enum class RaftComputerUpgradeRefusal { WebUpgradeOff, TooOld, NotAllowed, Unknown }
+internal enum class RaftComputerUpgradeRefusal { WebUpgradeOff, TooOld, NotAllowed, ManagedByDesktop, Unknown }
 
 internal fun raftComputerUpgradeRefusal(code: String?): RaftComputerUpgradeRefusal =
     when (code) {
         "remote_upgrade_disabled" -> RaftComputerUpgradeRefusal.WebUpgradeOff
         "computer_remote_upgrade_unsupported" -> RaftComputerUpgradeRefusal.TooOld
         "computer_broadcast_not_eligible" -> RaftComputerUpgradeRefusal.NotAllowed
+        "computer_managed_by_desktop" -> RaftComputerUpgradeRefusal.ManagedByDesktop
         else -> RaftComputerUpgradeRefusal.Unknown
     }
 
@@ -239,6 +241,8 @@ internal sealed interface RaftComputerCardState {
     data class OneClick(val version: String) : RaftComputerCardState
     data class ManualUpgrade(val version: String) : RaftComputerCardState
     data class Commands(val version: String, val refusedNotAllowed: Boolean) : RaftComputerCardState
+    /** Raft Desktop's bundled Computer (policy or refusal `managed_by_desktop`): Desktop updates it. */
+    data object ManagedByDesktop : RaftComputerCardState
 }
 
 /** Everything the Computer card and the version notice decide from, resolved once per composition. */
@@ -254,6 +258,17 @@ internal data class RaftComputerUpgradeModel(
     val webUpgradeOn: Boolean,
     /** Release notes of exactly the version the card offers, when the server has them. */
     val releaseNotes: SettingsComputerReleaseNotesSnapshot?,
+    /**
+     * Web `recommendRepair` (#proj-raft-computer task #34): the installer state needs a repair run,
+     * so the install command is recommended beside the offered one-click Upgrade, which stays.
+     */
+    val recommendRepair: Boolean = false,
+    /**
+     * Web `upgradeFailureHint`: the last web upgrade failed in a way only the install command on the
+     * machine gets past; shown beside an offered Upgrade while the Computer still runs the version
+     * it failed on.
+     */
+    val upgradeFailureHint: SettingsComputerUpgradeFailureHintSnapshot? = null,
 )
 
 internal fun raftComputerUpgradeModel(
@@ -286,6 +301,8 @@ internal fun raftComputerUpgradeModel(
                 when {
                     inFlight != null -> RaftComputerCardState.Upgrading(inFlight.targetVersion, raftComputerUpgradeWaitingAgents(inFlight))
                     submittingVersion != null -> RaftComputerCardState.Upgrading(submittingVersion)
+                    policy?.reasonCode == "managed_by_desktop" || refusal == RaftComputerUpgradeRefusal.ManagedByDesktop ->
+                        RaftComputerCardState.ManagedByDesktop
                     refusal == RaftComputerUpgradeRefusal.NotAllowed -> RaftComputerCardState.Commands(version, refusedNotAllowed = true)
                     refusal == RaftComputerUpgradeRefusal.WebUpgradeOff || refusal == RaftComputerUpgradeRefusal.TooOld ->
                         RaftComputerCardState.Commands(version, refusedNotAllowed = false)
@@ -310,6 +327,11 @@ internal fun raftComputerUpgradeModel(
         (fact as? RaftComputerVersionFact.Outdated)?.let { outdated ->
             computer.latestComputerReleaseNotes?.takeIf { it.version == outdated.availableVersion }
         }
+    val upgradeFailureHint =
+        row?.failureHint?.takeIf {
+            card is RaftComputerCardState.OneClick && requestOutcome != null && row.state == "failed" &&
+                (row.observedVersion == null || row.observedVersion == computer.computerVersion)
+        }
     return RaftComputerUpgradeModel(
         fact = fact,
         tier = tier,
@@ -319,6 +341,8 @@ internal fun raftComputerUpgradeModel(
         requestOutcome = requestOutcome,
         webUpgradeOn = webUpgradeOn,
         releaseNotes = releaseNotes,
+        recommendRepair = computer.installerRepairHint == "unrecovered_operation" && card is RaftComputerCardState.OneClick,
+        upgradeFailureHint = upgradeFailureHint,
     )
 }
 

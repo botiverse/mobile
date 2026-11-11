@@ -1704,6 +1704,11 @@ data class SettingsComputerSnapshot(
      * `HOST_PROVIDER_LABELS` id ("hetzner", "aws"); null when none (a personal computer) or an older server.
      */
     val hostProvider: String? = null,
+    /**
+     * Server `installerRepairHint.reason` (`unrecovered_operation`): advisory, the installer state
+     * needs a repair run on the machine; the install command is recommended beside Upgrade.
+     */
+    val installerRepairHint: String? = null,
     /** Server `runtimeVersions`: runtime id -> detected CLI version, for the usage sheet's "Version …" line. */
     val runtimeVersions: Map<String, String> = emptyMap(),
     /** Server `diskStatus`: free and total disk while online; null when offline or never reported. */
@@ -1779,6 +1784,18 @@ data class SettingsComputerBroadcastPolicySnapshot(
  * `upgradeRequest` of a machines row and of `POST …/computer/upgrade` (slock
  * packages/server/src/services/computerUpgradeRequestService.ts `projectComputerUpgradeRequest`).
  */
+/**
+ * Shared `ComputerUpgradeFailureHint`: a failed web upgrade only a run of the install command on
+ * the machine gets past. [reason] `unsafe_kill_mode` or `installation_held`; [unit], [killMode]
+ * and [scope] (`user` / `system`) only when the failure named them.
+ */
+data class SettingsComputerUpgradeFailureHintSnapshot(
+    val reason: String,
+    val unit: String? = null,
+    val killMode: String? = null,
+    val scope: String? = null
+)
+
 data class SettingsComputerUpgradeRequestSnapshot(
     val id: String,
     val targetVersion: String,
@@ -1798,7 +1815,9 @@ data class SettingsComputerUpgradeRequestSnapshot(
     /** The agents of THIS server still finishing their work while [phase] is `draining` (other servers' are not listed). */
     val drainingAgentIds: List<String> = emptyList(),
     /** When the drain stops waiting (ISO). */
-    val drainDeadlineAt: String? = null
+    val drainDeadlineAt: String? = null,
+    /** Server `failureHint` (a failed request only): what to run on the machine. */
+    val failureHint: SettingsComputerUpgradeFailureHintSnapshot? = null
 )
 
 /** `versionGate` of a machines row (slock packages/shared/src/index.ts `ComputerVersionGate`). */

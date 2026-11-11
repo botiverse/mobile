@@ -2577,6 +2577,18 @@
     <string name="settings_computers_delete_title">Excluir computador</string>
     <string name="settings_computers_delete_detail">Remove este computador permanentemente. Todos os agentes precisam ser excluídos antes.</string>
     <string name="settings_computers_delete_action">Excluir computador</string>
+    <string name="settings_computers_delete_menu">Excluir computador</string>
+    <string name="settings_computers_delete_confirm_named">Tem certeza de que deseja excluir “%1$s”?</string>
+    <string name="settings_computers_upgrade_status_managed_by_desktop">O Raft Desktop mantém este computador atualizado.</string>
+    <string name="settings_computers_upgrade_status_installer_repair_hint">Uma instalação anterior neste computador não terminou, e atualizar pela web pode falhar até que ela seja reparada. Recomendado: execute o comando de instalação uma vez nessa máquina; ele repara a instalação e instala a v%1$s.</string>
+    <string name="settings_computers_installer_repair_hint_label">Por que atualizar pela web pode falhar</string>
+    <string name="settings_computers_upgrade_failure_hint_label">Por que a atualização pela web falhou</string>
+    <string name="settings_computers_upgrade_failure_hint_unsafe_kill_mode">Este Computer roda na sua própria unidade do systemd %1$s (KillMode=%2$s), que interrompe uma atualização pela web nesta versão. Nessa máquina: pare a unidade (%3$s), rode uma vez o comando de instalação abaixo e inicie a unidade de novo (%4$s).</string>
+    <string name="settings_computers_upgrade_failure_hint_unsafe_kill_mode_generic">Este Computer roda na sua própria unidade do systemd, cujo KillMode interrompe uma atualização pela web nesta versão. Nessa máquina: pare a unidade, rode uma vez o comando de instalação abaixo e inicie a unidade de novo.</string>
+    <string name="settings_computers_upgrade_failure_hint_installation_held">O instalador não consegue atualizar este Computer enquanto ele roda dentro da sua unidade do systemd %1$s. Nessa máquina: pare a unidade (%2$s), rode uma vez o comando de instalação abaixo e inicie-a de novo (%3$s).</string>
+    <string name="settings_computers_upgrade_failure_hint_installation_held_generic">O instalador não consegue atualizar este Computer enquanto ele roda dentro da sua unidade do systemd. Pare a unidade, rode uma vez o comando de instalação abaixo e inicie-a de novo.</string>
+    <string name="settings_computers_rack_no_attention_title">Nenhum computador precisa de atenção</string>
+    <string name="settings_computers_rack_no_attention_description">Todos os computadores conectados estão atualizados.</string>
     <string name="settings_computers_delete_busy">Excluindo…</string>
     <string name="settings_computers_status_connected">Conectado</string>
     <string name="settings_computers_status_offline">Offline</string>

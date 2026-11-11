@@ -104,6 +104,7 @@ import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerRenameRequest
 import build.raft.app.data.SettingsComputerWorkspaceSnapshot
 import build.raft.app.data.SharedSettingsActionState
+import build.raft.app.data.SettingsComputerUpgradeFailureHintSnapshot
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsEffect
 import build.raft.app.data.SharedSettingsIntent
@@ -429,6 +430,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                 .mapValues { (_, loads) -> loads.toMap() }
         }
     var openUsage by remember { mutableStateOf<RaftComputersOpenUsage?>(null) }
+    var deleteComputerId by remember { mutableStateOf<String?>(null) }
     fun refresh() {
         settingsViewModel.dispatch(SharedSettingsIntent.RefreshComputers)
         if (usageKeys.isNotEmpty()) usageScope.launch { usageSession.pullToRefresh(usageKeys, onUsageResult) }
@@ -459,7 +461,17 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
     val toolbarStore = remember(sharedStores, environment.storeScope) { sharedStores.computersRackToolbarStore(environment.storeScope) }
     val storedToolbar by toolbarStore.state.collectAsState()
     val toolbar = storedToolbar.onServer(currentServerId)
-    LaunchedEffect(toolbarStore, currentServerId) { toolbarStore.onServer(currentServerId) }
+    // A computer attention entry (a Home machine notice's View, web `/computers?filter=attention`):
+    // the list starts at Status: Needs attention, once, on the page's server.
+    var attentionPending by remember { mutableStateOf(pager.pageData.params.optBoolean(SETTINGS_COMPUTERS_FILTER_ATTENTION)) }
+    LaunchedEffect(toolbarStore, currentServerId) {
+        toolbarStore.onServer(currentServerId)
+        if (attentionPending && currentServerId != null) {
+            attentionPending = false
+            bridge.log("settings_computers_open_attention")
+            toolbarStore.dispatch(RaftComputersRackToolbarIntent.SetStatus(RaftComputersRackStatusFilter.Attention))
+        }
+    }
     val rackView = toolbar.view
     val chooseView: (ComputersRackView) -> Unit = { toolbarStore.dispatch(RaftComputersRackToolbarIntent.SetView(it)) }
     // Wide (the shell's content area / the wide Settings pane): the web's desktop head, the counts
@@ -572,6 +584,12 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                 onCopyCommand = { command -> settingsViewModel.dispatch(SharedSettingsIntent.CopyComputerCommand(command)) },
                 onCreateAgent = if (createAgentOwner != null) { machineId -> createAgentMachineId = machineId } else null,
                 onRestartComputer = { machineId -> settingsViewModel.dispatch(SharedSettingsIntent.RestartComputer(machineId)) },
+                onDeleteComputer = { machineId -> deleteComputerId = machineId },
+                onOpenInstallGuide = { settingsViewModel.dispatch(SharedSettingsIntent.OpenComputerInstallGuide) },
+                actionError =
+                    settingsState.actionState?.takeIf {
+                        it.action == COMPUTER_ACTION_DELETE && !it.inProgress && it.hasComputerActionError()
+                    },
                 toolbar = toolbar,
                 onToolbarIntent = toolbarStore::dispatch,
                 serverId = currentServerId,
@@ -631,6 +649,27 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
     settingsState.addComputerDialog?.let { dialog ->
         AddComputerDialog(state = dialog, onIntent = settingsViewModel::dispatch, runtimeCatalog = runtimeCatalog)
     }
+    // A card's ⋯ → Delete computer (web RackRowMenu → DeleteComputerDialog): the Computer page's
+    // confirm; the agents on it are the ones the cards show.
+    deleteComputerId?.let { machineId ->
+        val row = (model as? RaftComputersListModel.Content)?.rows?.firstOrNull { it.id == machineId }
+        if (row == null) {
+            deleteComputerId = null
+        } else {
+            RaftComputersTheme {
+                RaftComputerDeleteDialog(
+                    name = row.name,
+                    agentCount = agentsByMachine[machineId]?.size ?: 0,
+                    onConfirm = {
+                        deleteComputerId = null
+                        bridge.log("settings_computers_card_delete")
+                        settingsViewModel.dispatch(SharedSettingsIntent.DeleteComputer(machineId))
+                    },
+                    onDismiss = { deleteComputerId = null },
+                )
+            }
+        }
+    }
     val createAgentFor = createAgentMachineId
     if (createAgentOwner != null && createAgentFor != null) {
         RaftComputerCreateAgentDialog(
@@ -689,6 +728,12 @@ internal fun RaftSettingsComputersContent(
     onCreateAgent: ((machineId: String) -> Unit)? = null,
     /** A card's ⋯ → Restart. */
     onRestartComputer: (machineId: String) -> Unit = {},
+    /** A card's ⋯ → Delete computer: the page opens its confirm. */
+    onDeleteComputer: (machineId: String) -> Unit = {},
+    /** The install guide link under a card's install command. */
+    onOpenInstallGuide: () -> Unit = {},
+    /** A card's Delete that failed (the settings store's action state), shown over the list with its trace ID. */
+    actionError: SharedSettingsActionState? = null,
     /** The toolbar's search, filters, Group and Sort ([RaftComputersRackToolbarStore]); the list follows them. */
     toolbar: RaftComputersRackToolbarState = RaftComputersRackToolbarState(),
     onToolbarIntent: (RaftComputersRackToolbarIntent) -> Unit = {},
@@ -750,6 +795,9 @@ internal fun RaftSettingsComputersContent(
                     onCopyCommand = onCopyCommand,
                     onCreateAgent = onCreateAgent,
                     onRestartComputer = onRestartComputer,
+                    onDeleteComputer = onDeleteComputer,
+                    onOpenInstallGuide = onOpenInstallGuide,
+                    actionError = actionError,
                     toolbar = toolbar,
                     onToolbarIntent = onToolbarIntent,
                     serverId = serverId,
@@ -790,6 +838,9 @@ private fun RaftComputersRackBody(
     onCopyCommand: (String) -> Unit,
     onCreateAgent: ((machineId: String) -> Unit)?,
     onRestartComputer: (machineId: String) -> Unit,
+    onDeleteComputer: (machineId: String) -> Unit,
+    onOpenInstallGuide: () -> Unit,
+    actionError: SharedSettingsActionState?,
     toolbar: RaftComputersRackToolbarState,
     onToolbarIntent: (RaftComputersRackToolbarIntent) -> Unit,
     serverId: String?,
@@ -858,6 +909,12 @@ private fun RaftComputersRackBody(
                 return raftComputerRackAction(computer = computer, upgrade = upgrade, restart = computerControl.restart, commandContext = model.commandContext)
             }
 
+            fun installOf(row: RaftComputerRowModel): RaftComputerRackInstall? =
+                computersById[row.id]?.let {
+                    val platform = raftComputerCommandPlatform(it.platform)
+                    RaftComputerRackInstall(raftComputerCommands(model.commandContext, platform), platform, onOpenInstallGuide)
+                }
+
             @Composable
             fun block(row: RaftComputerRowModel) {
                 RaftComputerRackBlock(
@@ -875,6 +932,7 @@ private fun RaftComputersRackBody(
                     onUpgrade = { version -> onUpgradeComputer(row.id, version) },
                     onCopyCommand = onCopyCommand,
                     nowMillis = nowMillis,
+                    install = installOf(row),
                 )
             }
 
@@ -906,6 +964,8 @@ private fun RaftComputersRackBody(
                     onRestart = { onRestartComputer(row.id) },
                     sortKey = toolbarModel.sort.key,
                     nowMillis = nowMillis,
+                    onDelete = { onDeleteComputer(row.id) },
+                    install = installOf(row),
                     modifier = modifier,
                 )
             }
@@ -916,12 +976,21 @@ private fun RaftComputersRackBody(
                 if (list && !layout.empty && (fleetColumns.usage.isNotEmpty() || fleetColumns.other.isNotEmpty())) {
                     stickyHeader(key = "rack-header") { RaftComputersRackListHeader(fleetColumns, listCellWidth, runtimeCatalog) }
                 }
+                actionError?.let { failed -> item(key = "action-error") { RaftComputerActionErrorBanner(failed) } }
                 if (layout.empty) {
                     // Web ComputersRackList `data-empty="filters"`: nothing matches; Clear all.
+                    // Only Needs attention, and nothing needs it (web MobileComputersPanel `attentionOnly`).
+                    val attentionOnly = toolbarModel.filters == RaftComputersRackFilters(status = RaftComputersRackStatusFilter.Attention)
                     item(key = "no-match") {
                         RaftEmptyState(
-                            title = stringResource(Res.string.settings_computers_rack_no_match_title),
-                            description = stringResource(Res.string.settings_computers_rack_no_match_description),
+                            title =
+                                stringResource(
+                                    if (attentionOnly) Res.string.settings_computers_rack_no_attention_title else Res.string.settings_computers_rack_no_match_title
+                                ),
+                            description =
+                                stringResource(
+                                    if (attentionOnly) Res.string.settings_computers_rack_no_attention_description else Res.string.settings_computers_rack_no_match_description
+                                ),
                             icon = { RaftComputersIcon(RaftLucideIconName.SearchX, size = 36.dp) },
                             actions = {
                                 RaftButton(
@@ -1099,6 +1168,8 @@ private fun RaftComputerRackCard(
     /** What the list is sorted by: that metric's line leads the meters, bold (web `sortKey`). */
     sortKey: ComputersRackSortKey = ComputersRackSortKey.Name,
     nowMillis: Long = 0L,
+    onDelete: () -> Unit = {},
+    install: RaftComputerRackInstall? = null,
 ) {
     RaftCard(modifier = modifier.testTag("rack-row-${row.id}"), onClick = onClick, inactive = !row.online) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1125,7 +1196,7 @@ private fun RaftComputerRackCard(
             }
             if (menu != null) {
                 Spacer(Modifier.size(8.dp))
-                RaftComputerCardMenuButton(menu, onCreateAgent = onCreateAgent, onRestart = onRestart)
+                RaftComputerCardMenuButton(menu, onCreateAgent = onCreateAgent, onRestart = onRestart, onDelete = onDelete)
             }
         }
         RaftComputerCardFactsLine(
@@ -1150,7 +1221,7 @@ private fun RaftComputerRackCard(
         // The card's one next step ends its content (web: a card-level action, not a footer note).
         if (action != null) {
             Spacer(Modifier.height(12.dp))
-            RaftComputerRackActionRow(action, onUpgrade, onCopyCommand)
+            RaftComputerRackActionRow(action, onUpgrade, onCopyCommand, install = install)
         }
     }
 }
@@ -1160,7 +1231,7 @@ private fun RaftComputerRackCard(
  * agent first (the app's create entry wording and Bot icon), then Restart while it can take one.
  */
 @Composable
-private fun RaftComputerCardMenuButton(menu: RaftComputerCardMenu, onCreateAgent: () -> Unit, onRestart: () -> Unit) {
+private fun RaftComputerCardMenuButton(menu: RaftComputerCardMenu, onCreateAgent: () -> Unit, onRestart: () -> Unit, onDelete: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     val label = stringResource(Res.string.common_more_actions)
     Box {
@@ -1193,14 +1264,35 @@ private fun RaftComputerCardMenuButton(menu: RaftComputerCardMenu, onCreateAgent
                     },
                 )
             }
+            if (menu.delete) {
+                RaftMenuItem(
+                    text = stringResource(Res.string.settings_computers_delete_menu),
+                    leadingIcon = { MembersMenuIcon(RaftLucideIconName.Trash2) },
+                    modifier = Modifier.testTag(RaftComputersRackTags.MenuDelete),
+                    onClick = {
+                        open = false
+                        onDelete()
+                    },
+                )
+            }
         }
     }
 }
 
+/** What a card's manual upgrade and hints show: the install command for this computer's platform. */
+internal class RaftComputerRackInstall(
+    val commands: RaftComputerCommandSet?,
+    val platform: RaftComputerCommandPlatform,
+    val onOpenInstallGuide: () -> Unit,
+)
+
 /**
  * Web `RackRowAction` on a card: online, the step sits at the end ("Upgrade to v1.0.53" as an
- * outline button with ▶, "Upgrading…" disabled with its spinner, or the restart's progress line);
- * offline, the restart command with its copy button across the card.
+ * outline button with its circled arrow, and a ⚠ beside it when upgrading from the web may fail
+ * or failed; "Upgrade to v1.0.53" with the terminal mark when it is upgraded on the machine
+ * itself; "Upgrading…" disabled with its spinner; the restart's progress line; or Raft Desktop's
+ * note); offline, the restart command with its copy button across the card. The ⚠ and the manual
+ * upgrade open a sheet with what to do and the install command (web: a popover).
  */
 @Composable
 private fun RaftComputerRackActionRow(
@@ -1209,18 +1301,53 @@ private fun RaftComputerRackActionRow(
     onCopyCommand: (String) -> Unit,
     /** A card ends its step at its end; a phone list block starts it at the start. */
     alignEnd: Boolean = true,
+    install: RaftComputerRackInstall? = null,
 ) {
     val arrangement = if (alignEnd) Arrangement.End else Arrangement.Start
+    var sheet by remember(action) { mutableStateOf<RaftComputerRackSheet?>(null) }
     when (action) {
         is RaftComputerRackAction.OfflineRestart -> RaftComputerCommandLine(action.command, onCopyCommand)
         is RaftComputerRackAction.Upgrade ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = arrangement) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, if (alignEnd) Alignment.End else Alignment.Start), verticalAlignment = Alignment.CenterVertically) {
+                action.hint?.let { hint ->
+                    val label =
+                        stringResource(
+                            if (hint is RaftComputerRackHint.UpgradeFailed) Res.string.settings_computers_upgrade_failure_hint_label else Res.string.settings_computers_installer_repair_hint_label
+                        )
+                    RaftIconButton(
+                        onClick = { sheet = RaftComputerRackSheet.Hint(hint) },
+                        tooltip = label,
+                        variant = RaftButtonVariant.Ghost,
+                        modifier = Modifier.testTag(RaftComputersRackTags.UpgradeHint),
+                    ) {
+                        CompositionLocalProvider(LocalRaftContentColor provides RaftTheme.colors.warningStrong) {
+                            RaftComputersIcon(RaftLucideIconName.TriangleAlert)
+                        }
+                    }
+                }
                 RaftButton(
                     text = stringResource(Res.string.settings_computers_upgrade_to_version, action.version),
                     onClick = { onUpgrade(action.version) },
-                    leadingIcon = { RaftComputersIcon(RaftLucideIconName.Play) },
+                    leadingIcon = { RaftComputersIcon(RaftLucideIconName.CircleArrowUp) },
                 )
             }
+        is RaftComputerRackAction.ManualUpgrade ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = arrangement) {
+                // ▲ is the one-click upgrade that runs now; this one opens the command to run on that
+                // machine, so it carries the terminal mark (web).
+                RaftButton(
+                    text = stringResource(Res.string.settings_computers_upgrade_to_version, action.version),
+                    onClick = { sheet = RaftComputerRackSheet.Manual(action.version) },
+                    leadingIcon = { RaftComputersIcon(RaftLucideIconName.Terminal) },
+                    modifier = Modifier.testTag(RaftComputersRackTags.ManualUpgrade),
+                )
+            }
+        RaftComputerRackAction.ManagedByDesktop ->
+            RaftText(
+                stringResource(Res.string.settings_computers_upgrade_status_managed_by_desktop),
+                style = RaftTheme.typography.footnote,
+                color = RaftTheme.colors.foregroundMuted,
+            )
         is RaftComputerRackAction.Upgrading ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = arrangement) {
                 // Web: the disabled button keeps its label beside the spinner; while the Computer
@@ -1241,6 +1368,92 @@ private fun RaftComputerRackActionRow(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = arrangement) {
                 RaftComputerRestartProgressLine(action.progress)
             }
+    }
+    sheet?.let { open ->
+        RaftComputerRackInstallSheet(open, install, onCopyCommand, onDismiss = { sheet = null })
+    }
+}
+
+/** What the card's sheet explains: the manual upgrade, or the hint beside Upgrade. */
+private sealed interface RaftComputerRackSheet {
+    data class Manual(val version: String) : RaftComputerRackSheet
+
+    data class Hint(val hint: RaftComputerRackHint) : RaftComputerRackSheet
+}
+
+/**
+ * Web `RackRowAction`'s popovers as a sheet: the sentence (the manual upgrade's, the installer
+ * repair's, or the failed upgrade's steps naming its systemd unit), then the install command for
+ * this computer's platform and the install guide.
+ */
+@Composable
+private fun RaftComputerRackInstallSheet(
+    sheet: RaftComputerRackSheet,
+    install: RaftComputerRackInstall?,
+    onCopyCommand: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val title: String
+    val sentence: String
+    when (sheet) {
+        is RaftComputerRackSheet.Manual -> {
+            title = stringResource(Res.string.settings_computers_upgrade_to_version, sheet.version)
+            sentence = stringResource(Res.string.settings_computers_upgrade_status_manual, sheet.version)
+        }
+        is RaftComputerRackSheet.Hint ->
+            when (val hint = sheet.hint) {
+                is RaftComputerRackHint.Repair -> {
+                    title = stringResource(Res.string.settings_computers_installer_repair_hint_label)
+                    sentence = stringResource(Res.string.settings_computers_upgrade_status_installer_repair_hint, hint.version)
+                }
+                is RaftComputerRackHint.UpgradeFailed -> {
+                    title = stringResource(Res.string.settings_computers_upgrade_failure_hint_label)
+                    sentence = raftComputerUpgradeFailureHintText(hint.hint)
+                }
+            }
+    }
+    RaftDialog(
+        onDismissRequest = onDismiss,
+        title = title,
+        closeLabel = stringResource(Res.string.common_close),
+        modifier = Modifier.testTag(RaftComputersRackTags.InstallSheet),
+    ) {
+        RaftText(sentence, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
+        RaftComputerManualInstallCommands(
+            commands = install?.commands,
+            platform = install?.platform ?: RaftComputerCommandPlatform.MacLinux,
+            onCopy = onCopyCommand,
+            onOpenInstallGuide = { install?.onOpenInstallGuide?.invoke() },
+        )
+    }
+}
+
+/**
+ * Web `ComputerUpgradeFailureHintText`: stop the systemd unit, run the install command once, start
+ * it again, naming the unit and its commands when the failure did (commands are the same in
+ * every language).
+ */
+@Composable
+internal fun raftComputerUpgradeFailureHintText(hint: SettingsComputerUpgradeFailureHintSnapshot): String {
+    val killMode = hint.reason == "unsafe_kill_mode"
+    val unit = hint.unit
+    if (unit == null || (killMode && hint.killMode == null)) {
+        return stringResource(
+            if (killMode) Res.string.settings_computers_upgrade_failure_hint_unsafe_kill_mode_generic else Res.string.settings_computers_upgrade_failure_hint_installation_held_generic
+        )
+    }
+    val systemctl =
+        when (hint.scope) {
+            "user" -> "systemctl --user"
+            "system" -> "systemctl"
+            else -> "systemctl [--user]"
+        }
+    val stop = "$systemctl stop $unit"
+    val start = "$systemctl start $unit"
+    return if (killMode) {
+        stringResource(Res.string.settings_computers_upgrade_failure_hint_unsafe_kill_mode, unit, hint.killMode.orEmpty(), stop, start)
+    } else {
+        stringResource(Res.string.settings_computers_upgrade_failure_hint_installation_held, unit, stop, start)
     }
 }
 
@@ -1367,6 +1580,7 @@ private fun RaftComputerRackBlock(
     onUpgrade: (String) -> Unit,
     onCopyCommand: (String) -> Unit,
     nowMillis: Long,
+    install: RaftComputerRackInstall? = null,
 ) {
     val colors = RaftTheme.colors
     val surface = if (row.online) colors.layerCard else colors.fillSubtle.compositeOver(colors.layerCard)
@@ -1436,7 +1650,7 @@ private fun RaftComputerRackBlock(
                 }
             }
             if (action != null) {
-                Box(Modifier.padding(top = 8.dp)) { RaftComputerRackActionRow(action, onUpgrade, onCopyCommand, alignEnd = false) }
+                Box(Modifier.padding(top = 8.dp)) { RaftComputerRackActionRow(action, onUpgrade, onCopyCommand, alignEnd = false, install = install) }
             }
         }
     }
@@ -2281,14 +2495,7 @@ private fun RaftComputerDetailBody(
             // The owner's failures are the dialog's line and Make it mine's toast (web).
             ?.takeIf { !it.inProgress && it.hasComputerActionError() && it.action != COMPUTER_ACTION_OWNER }
             ?.let { failed ->
-                item(key = "action-error") {
-                    RaftBanner(
-                        description = raftComputerActionErrorMessage(failed),
-                        status = RaftBannerStatus.Warning,
-                        title = raftComputerActionErrorTitle(failed),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                }
+                item(key = "action-error") { RaftComputerActionErrorBanner(failed) }
             }
         // Web MachineDetailPanel order: Name, Description, Info, Agents, Workspaces, Actions.
         item(key = "name") {
@@ -2448,50 +2655,67 @@ private fun RaftComputerDetailBody(
             onDismiss = { transferOwnerOpen = false },
         )
     }
-    if (confirmDelete && model.assignedAgentCount > 0) {
-        // Web MachineDetailPanel: a machine with agents gets a notice, not a destructive confirm.
-        val count = model.assignedAgentCount
+    if (confirmDelete) {
+        RaftComputerDeleteDialog(
+            name = computer.name,
+            agentCount = model.assignedAgentCount,
+            onConfirm = {
+                confirmDelete = false
+                onIntent(SharedSettingsIntent.DeleteComputer(machineId))
+            },
+            onDismiss = { confirmDelete = false },
+        )
+    }
+}
+
+/**
+ * Web `DeleteComputerDialog`, from the Computer page and a card's ⋯: a computer with agents on it
+ * gets the "cannot delete" notice (the server would refuse it), otherwise the destructive confirm
+ * naming it. Other people's agents on one's own computer (revoke the key, notify or force unbind)
+ * are not here yet: the server's refusal shows as the page's error, with its trace ID.
+ */
+@Composable
+internal fun RaftComputerDeleteDialog(name: String, agentCount: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    if (agentCount > 0) {
         RaftDialog(
-            onDismissRequest = { confirmDelete = false },
+            onDismissRequest = onDismiss,
             title = stringResource(Res.string.settings_computers_error_title_cannot_delete),
             description =
-                if (count == 1) {
-                    stringResource(Res.string.settings_computers_cannot_delete_message_one, count)
+                if (agentCount == 1) {
+                    stringResource(Res.string.settings_computers_cannot_delete_message_one, agentCount)
                 } else {
-                    stringResource(Res.string.settings_computers_cannot_delete_message_many, count)
+                    stringResource(Res.string.settings_computers_cannot_delete_message_many, agentCount)
                 },
             closeLabel = stringResource(Res.string.common_close),
             footer = {
                 RaftButton(
                     text = stringResource(Res.string.common_ok),
-                    onClick = { confirmDelete = false },
+                    onClick = onDismiss,
                     variant = RaftButtonVariant.Default,
                     size = RaftButtonSize.Lg,
                 )
             },
         )
-    } else if (confirmDelete) {
+    } else {
         RaftDialog(
-            onDismissRequest = { confirmDelete = false },
+            onDismissRequest = onDismiss,
             title = stringResource(Res.string.settings_computers_delete_title),
-            description = stringResource(Res.string.settings_computers_delete_detail),
+            description = stringResource(Res.string.settings_computers_delete_confirm_named, name),
             dismissOnClickOutside = false,
             closeLabel = stringResource(Res.string.common_close),
             footer = {
                 RaftButton(
                     text = stringResource(Res.string.common_cancel),
-                    onClick = { confirmDelete = false },
+                    onClick = onDismiss,
                     variant = RaftButtonVariant.Ghost,
                     size = RaftButtonSize.Lg,
                 )
                 RaftButton(
                     text = stringResource(Res.string.settings_computers_delete_action),
-                    onClick = {
-                        confirmDelete = false
-                        onIntent(SharedSettingsIntent.DeleteComputer(machineId))
-                    },
+                    onClick = onConfirm,
                     variant = RaftButtonVariant.Danger,
                     size = RaftButtonSize.Lg,
+                    modifier = Modifier.testTag(RaftComputersRackTags.DeleteConfirm),
                 )
             },
         )
@@ -3153,6 +3377,19 @@ private fun raftComputerErrorCodeMessage(
                 ?: stringResource(Res.string.settings_computers_error_unavailable_detail)
         }
     }
+
+/** A failed computer action (web: the dialog's error with `TraceIdNote`): what went wrong, then its trace ID. */
+@Composable
+private fun RaftComputerActionErrorBanner(failed: SharedSettingsActionState) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag(RaftComputersRackTags.ActionError), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftBanner(
+            description = raftComputerActionErrorMessage(failed),
+            status = RaftBannerStatus.Warning,
+            title = raftComputerActionErrorTitle(failed),
+        )
+        RaftTraceIdNote(failed.screenError?.traceId ?: failed.permissionBlocker?.traceId)
+    }
+}
 
 @Composable
 private fun raftComputerActionErrorMessage(action: SharedSettingsActionState): String =

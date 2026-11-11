@@ -2584,6 +2584,18 @@
     <string name="settings_computers_delete_title">Delete Computer</string>
     <string name="settings_computers_delete_detail">Permanently remove this computer. All agents must be deleted first.</string>
     <string name="settings_computers_delete_action">Delete Computer</string>
+    <string name="settings_computers_delete_menu">Delete computer</string>
+    <string name="settings_computers_delete_confirm_named">Are you sure you want to delete "%1$s"?</string>
+    <string name="settings_computers_upgrade_status_managed_by_desktop">Raft Desktop keeps this Computer up to date.</string>
+    <string name="settings_computers_upgrade_status_installer_repair_hint">An earlier installation on this computer was not finished, and upgrading from the web may fail until it is repaired. Recommended: run the install command on that machine once; it repairs the installation and installs v%1$s.</string>
+    <string name="settings_computers_installer_repair_hint_label">Why upgrading from the web may fail</string>
+    <string name="settings_computers_upgrade_failure_hint_label">Why the web upgrade failed</string>
+    <string name="settings_computers_upgrade_failure_hint_unsafe_kill_mode">This Computer runs under your own systemd unit %1$s (KillMode=%2$s), which stops a web upgrade on this version. On that machine: stop the unit (%3$s), run the install command below once, then start the unit again (%4$s).</string>
+    <string name="settings_computers_upgrade_failure_hint_unsafe_kill_mode_generic">This Computer runs under your own systemd unit, whose KillMode stops a web upgrade on this version. On that machine: stop the unit, run the install command below once, then start the unit again.</string>
+    <string name="settings_computers_upgrade_failure_hint_installation_held">The installer can't upgrade this Computer while it runs inside your systemd unit %1$s. On that machine: stop the unit (%2$s), run the install command below once, then start it again (%3$s).</string>
+    <string name="settings_computers_upgrade_failure_hint_installation_held_generic">The installer can't upgrade this Computer while it runs inside your systemd unit. Stop the unit, run the install command below once, then start it again.</string>
+    <string name="settings_computers_rack_no_attention_title">No computers need attention</string>
+    <string name="settings_computers_rack_no_attention_description">All connected computers are up to date.</string>
     <string name="settings_computers_delete_busy">Deleting...</string>
     <string name="settings_computers_status_connected">Connected</string>
     <string name="settings_computers_status_offline">Offline</string>

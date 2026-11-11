@@ -2577,6 +2577,18 @@
     <string name="settings_computers_delete_title">Eliminar computadora</string>
     <string name="settings_computers_delete_detail">Elimina esta computadora de forma permanente. Primero debes eliminar todos los agentes.</string>
     <string name="settings_computers_delete_action">Eliminar computadora</string>
+    <string name="settings_computers_delete_menu">Eliminar computadora</string>
+    <string name="settings_computers_delete_confirm_named">¿Seguro que quieres eliminar “%1$s”?</string>
+    <string name="settings_computers_upgrade_status_managed_by_desktop">Raft Desktop mantiene esta computadora actualizada.</string>
+    <string name="settings_computers_upgrade_status_installer_repair_hint">Una instalación anterior en esta computadora no terminó, y actualizar desde la web puede fallar hasta que se repare. Recomendado: ejecuta el comando de instalación una vez en esa máquina; repara la instalación e instala la v%1$s.</string>
+    <string name="settings_computers_installer_repair_hint_label">Por qué actualizar desde la web puede fallar</string>
+    <string name="settings_computers_upgrade_failure_hint_label">Por qué falló la actualización desde la web</string>
+    <string name="settings_computers_upgrade_failure_hint_unsafe_kill_mode">Esta Computer se ejecuta en tu propia unidad de systemd %1$s (KillMode=%2$s), que detiene una actualización desde la web en esta versión. En esa computadora: detén la unidad (%3$s), ejecuta una vez el comando de instalación de abajo y vuelve a iniciar la unidad (%4$s).</string>
+    <string name="settings_computers_upgrade_failure_hint_unsafe_kill_mode_generic">Esta Computer se ejecuta en tu propia unidad de systemd, cuyo KillMode detiene una actualización desde la web en esta versión. En esa computadora: detén la unidad, ejecuta una vez el comando de instalación de abajo y vuelve a iniciar la unidad.</string>
+    <string name="settings_computers_upgrade_failure_hint_installation_held">El instalador no puede actualizar esta Computer mientras se ejecuta dentro de tu unidad de systemd %1$s. En esa computadora: detén la unidad (%2$s), ejecuta una vez el comando de instalación de abajo y vuelve a iniciarla (%3$s).</string>
+    <string name="settings_computers_upgrade_failure_hint_installation_held_generic">El instalador no puede actualizar esta Computer mientras se ejecuta dentro de tu unidad de systemd. Detén la unidad, ejecuta una vez el comando de instalación de abajo y vuelve a iniciarla.</string>
+    <string name="settings_computers_rack_no_attention_title">Ninguna computadora requiere atención</string>
+    <string name="settings_computers_rack_no_attention_description">Todas las computadoras conectadas están actualizadas.</string>
     <string name="settings_computers_delete_busy">Eliminando…</string>
     <string name="settings_computers_status_connected">Conectado</string>
     <string name="settings_computers_status_offline">Sin conexión</string>

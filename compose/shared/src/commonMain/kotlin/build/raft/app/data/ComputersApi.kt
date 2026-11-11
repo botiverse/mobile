@@ -610,6 +610,8 @@ internal data class ComputerSummary(
     val osRelease: String? = null,
     /** Server `hostProvider`: a shared `HOST_PROVIDER_LABELS` id ("hetzner"); null when not recognized or an older server. */
     val hostProvider: String? = null,
+    /** Server `installerRepairHint.reason` (a known one only); null when there is nothing to hint or an older server. */
+    val installerRepairHint: String? = null,
     /** Server `runtimeVersions`: runtime id -> the CLI version the Computer detected ("2.1.59 (Claude Code)"). */
     val runtimeVersions: Map<String, String> = emptyMap(),
     /** `machines.userId`: the user who registered the machine (server's "machine creator" authority). */
@@ -820,6 +822,10 @@ private data class ComputerDto(
     // (packages/shared/src/index.ts HOST_PROVIDER_LABELS ids, db/schema.ts `host_provider`): the cloud / VM
     // platform the Computer recognized; null when none and from older servers (absent).
     val hostProvider: String? = null,
+    // routes/servers.ts GET /:id/machines `installerRepairHint: await readInstallerRepairHint(...)`
+    // (packages/shared/src/index.ts ComputerInstallerRepairHint, #proj-raft-computer task #34):
+    // advisory, the installer state needs a repair run on the machine; null when nothing to hint.
+    val installerRepairHint: ComputerInstallerRepairHintDto? = null,
     // services/machineReadModel.ts `runtimeVersions: Record<string, string>` (runtime id -> the version
     // string the Computer's `ready` reported, e.g. "2.1.59 (Claude Code)"); the usage sheet's version line.
     val runtimeVersions: Map<String, String> = emptyMap(),
@@ -960,7 +966,10 @@ private data class ComputerUpgradeRequestDto(
     val deadlineAt: String? = null,
     val phase: String? = null,
     val drainingAgentIds: List<String>? = null,
-    val drainDeadlineAt: String? = null
+    val drainDeadlineAt: String? = null,
+    // projectComputerUpgradeRequest `failureHint: row.outcome === "failed" ? upgradeFailureHintFromReason(row.reason) : null`
+    // (packages/shared/src/index.ts ComputerUpgradeFailureHint).
+    val failureHint: ComputerUpgradeFailureHintDto? = null
 ) {
     fun toSnapshot(): SettingsComputerUpgradeRequestSnapshot? {
         val requestId = id?.takeIf { it.isNotBlank() } ?: return null
@@ -976,7 +985,34 @@ private data class ComputerUpgradeRequestDto(
             deadlineAt = deadlineAt?.trim()?.takeIf { it.isNotBlank() },
             phase = phase?.trim()?.takeIf { it == "draining" || it == "installing" },
             drainingAgentIds = drainingAgentIds.orEmpty().map { it.trim() }.filter { it.isNotBlank() }.distinct(),
-            drainDeadlineAt = drainDeadlineAt?.trim()?.takeIf { it.isNotBlank() }
+            drainDeadlineAt = drainDeadlineAt?.trim()?.takeIf { it.isNotBlank() },
+            failureHint = failureHint?.toSnapshot()
+        )
+    }
+}
+
+/** Shared `COMPUTER_INSTALLER_REPAIR_HINT_REASONS`: a reason this build does not know is no hint. */
+internal val COMPUTER_INSTALLER_REPAIR_HINT_REASONS = setOf("unrecovered_operation")
+
+/** Shared `ComputerInstallerRepairHint`. */
+@Serializable
+private data class ComputerInstallerRepairHintDto(val reason: String? = null)
+
+/** Shared `ComputerUpgradeFailureHint`: `reason` is `unsafe_kill_mode` or `installation_held`. */
+@Serializable
+private data class ComputerUpgradeFailureHintDto(
+    val reason: String? = null,
+    val unit: String? = null,
+    val killMode: String? = null,
+    val scope: String? = null
+) {
+    fun toSnapshot(): SettingsComputerUpgradeFailureHintSnapshot? {
+        val known = reason?.takeIf { it == "unsafe_kill_mode" || it == "installation_held" } ?: return null
+        return SettingsComputerUpgradeFailureHintSnapshot(
+            reason = known,
+            unit = unit?.trim()?.takeIf { it.isNotBlank() },
+            killMode = killMode?.trim()?.takeIf { it.isNotBlank() },
+            scope = scope?.takeIf { it == "user" || it == "system" }
         )
     }
 }
@@ -1077,6 +1113,7 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         createdAt = createdAt,
         osRelease = osRelease?.trim()?.takeIf { it.isNotBlank() },
         hostProvider = hostProvider?.trim()?.takeIf { it.isNotBlank() },
+        installerRepairHint = installerRepairHint?.reason?.takeIf { it in COMPUTER_INSTALLER_REPAIR_HINT_REASONS },
         runtimeVersions =
             runtimeVersions.mapNotNull { (runtime, version) ->
                 version.trim().takeIf { runtime.isNotBlank() && it.isNotEmpty() }?.let { runtime to it }
