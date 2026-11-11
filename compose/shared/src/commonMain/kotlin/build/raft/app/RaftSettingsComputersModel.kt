@@ -5,6 +5,7 @@ import build.raft.app.data.COMPUTER_ACTION_DELETE
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.app.data.SettingsComputerCommandContext
 import build.raft.app.data.SettingsComputerCreatorSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
@@ -646,6 +647,20 @@ internal fun raftComputerAgentsByMachine(members: List<MemberProfile>): Map<Stri
     }
     return byMachine
 }
+
+/**
+ * The face of an agent on the computer detail page (web `MachineAgentRow` ->
+ * `AvatarSlot type="agent" agentAvatarUrl={agent.avatarUrl}` -> `AgentAvatar`): the agent's own
+ * avatar from `GET /agents`, else the one the member directory carries, else the default pixel
+ * robot. Never null: like web, an agent without an avatar shows the default face, not initials.
+ */
+internal fun SettingsComputerAgentSnapshot.raftComputerAgentAvatarWireValue(): String? =
+    avatarWireValueForAvatarSlot(
+        kind = MemberKind.Agent,
+        id = id,
+        avatarWireValue = avatarUrl,
+        avatarUrl = memberProfile?.avatar?.wireValue,
+    )
 
 /** The page header's counts (web `ComputersRackCounts`): computers, online ones, and their agents. */
 internal data class RaftComputersCounts(val computers: Int, val online: Int, val agents: Int)

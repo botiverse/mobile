@@ -16,6 +16,10 @@ import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsRoute
 import build.raft.app.data.SharedSettingsState
+import build.raft.app.model.AvatarReference
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
@@ -157,6 +161,36 @@ class RaftSettingsComputersModelTest {
             raftComputerAssignedAgentCount(withAgents.copy(agents = emptyList(), agentsError = SettingsSectionErrorSnapshot("http_500"))),
         )
         assertEquals(0, raftComputerAssignedAgentCount(detail("m-1")))
+    }
+
+    @Test
+    fun agentOnAComputerWithoutAnAvatarWearsTheDefaultFaceNotInitials() {
+        // Web MachineAgentRow -> AgentAvatar: a null avatarUrl draws the default pixel avatar.
+        assertEquals(
+            "pixel:robot",
+            SettingsComputerAgentSnapshot(id = "agent-friday", name = "Friday").raftComputerAgentAvatarWireValue(),
+        )
+        assertEquals(
+            "pixel:robot",
+            SettingsComputerAgentSnapshot(id = "agent-friday", name = "Friday", avatarUrl = " ").raftComputerAgentAvatarWireValue(),
+        )
+        // Its own avatar wins; the member directory's stands in when the agents row has none.
+        assertEquals(
+            "pixel:fox",
+            SettingsComputerAgentSnapshot(id = "a", name = "Friday", avatarUrl = "pixel:fox").raftComputerAgentAvatarWireValue(),
+        )
+        val member =
+            MemberProfile(
+                id = MemberId("a"),
+                displayName = "Friday",
+                handle = "friday",
+                kind = MemberKind.Agent,
+                avatar = AvatarReference.Url("https://cdn.example/avatars/agents/a.webp"),
+            )
+        assertEquals(
+            "https://cdn.example/avatars/agents/a.webp",
+            SettingsComputerAgentSnapshot(id = "a", name = "Friday", memberProfile = member).raftComputerAgentAvatarWireValue(),
+        )
     }
 
     @Test
