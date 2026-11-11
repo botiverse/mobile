@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 
 /*
  * The page an external channel invite's email links to (`/external-invite/:token`, #wg-rbac:#16;
- * web `pages/ExternalInvitePage.tsx`, `components/externalInvite/*`, botiverse/slock staging
+ * web `pages/ExternalInvitePage.tsx`, the `components/externalInvite` files, botiverse/slock staging
  * 0e8b4fab7440). The route carries the token only; the server decides everything else: the one
  * neutral 404 (invalid, expired, withdrawn, external_channels_v1 off) is "not valid", an invite
  * sent to another address opens on "isn't for this account" (#13942) with the address masked.

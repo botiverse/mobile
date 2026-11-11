@@ -20,6 +20,7 @@ internal val raftProductPageFactories: Map<String, () -> Pager> =
         "compose_child_page_visibility_active" to { build.raft.app.RaftChildPageVisibilityActivePage() },
         "compose_child_page_visibility_inactive" to { build.raft.app.RaftChildPageVisibilityInactivePage() },
         "compose_child_page_visibility_probe" to { build.raft.app.RaftChildPageVisibilityProbePage() },
+        "compose_external_invite" to { build.raft.app.RaftExternalInvitePage() },
         "compose_file_preview" to { build.raft.app.ComposeRaftFilePreviewPage() },
         "compose_home" to { build.raft.app.ComposeRaftHomePage() },
         "compose_home_activity" to { build.raft.app.ComposeHomeActivityPage() },
