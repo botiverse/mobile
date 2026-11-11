@@ -25,6 +25,8 @@ job (`scripts/ci/plan_test_tier.sh`) picks jobs:
 | Push to `release-*` | yes | yes | no |
 | Nightly schedule | yes | yes | yes |
 | `workflow_dispatch` `scope=pr` / `scope=ios` / `scope=full` | yes / **no** / yes | no / yes / yes | no / no / yes |
+| `workflow_dispatch` `scope=premerge` (`base_ref`, default `main`) | **no** (fail-closed: yes if the diff is unavailable) | only if the diff vs merge-base can affect iOS | no |
+| `workflow_dispatch` `scope=premerge` with `base_ref=release/*` | yes | yes | yes (= `scope=full`) |
 
 iOS compile runs on Blacksmith with Xcode 27.0. A second lane, `iOS compile
 (Xcode 27.1)` on GitHub `xcode-27` (~48 min, the most expensive runner), runs
@@ -43,6 +45,12 @@ and the Blacksmith `iOS compile` only — Android is already covered by the PR r
 bin/stamp workflow run test.yml --repo botiverse/mobile --ref <branch> -f scope=ios
 gh run list --repo botiverse/mobile --workflow test.yml --branch <branch> --limit 3
 ```
+Stamp's ready-to-merge check dispatches `-f scope=premerge -f base_ref=<PR base>`
+on the PR head: same path classification as a pull_request against the
+merge-base with `origin/<base_ref>`, iOS compile only when the diff can affect
+iOS, no Android rerun. The plan prints `reason=workflow_dispatch-premerge:ios`,
+`:no-ios`, `:release-full` or `:diff-unavailable-fail-closed`; with no iOS the
+run is plan + `CI gate` only.
 `scope=full` (Android device/emulator suite, canonical-final, attachment legs)
 is only for release candidates or a deliberate full readback — never just to
 check that iOS compiles.

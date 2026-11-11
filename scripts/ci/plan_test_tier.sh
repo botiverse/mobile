@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name> [dispatch-scope:pr|ios|full] [xcode-app-path]" >&2
+  echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name> [dispatch-scope:pr|ios|premerge|full] [xcode-app-path] [premerge-base-ref]" >&2
   exit 2
 }
 
@@ -152,6 +152,7 @@ emit_plan() {
   local ref_name="$4"
   local dispatch_scope="${5:-}"
   local xcode_app_path="${6:-}"
+  local premerge_base_ref="${7:-}"
   run_android=false
   run_ios=false
   local run_device_suite=false
@@ -285,6 +286,51 @@ emit_plan() {
           attachment_api_levels="[]"
           reason="workflow_dispatch-ios-tier"
           ;;
+        premerge)
+          # Stamp's ready-to-merge check (artin 2026-11-11): dispatched once on
+          # the PR's exact head. Changed paths are head vs its merge-base with
+          # the PR base (premerge-base-ref) and get the pull_request
+          # classification; iOS compiles only when they can affect iOS
+          # (classify selected iOS: iOS/native paths, shared compose/** such
+          # as commonMain, CI-control). Android is not rerun: the PR-tier run
+          # already compiled and tested it. An unavailable diff stays
+          # fail-closed and selects every platform. A PR into a release
+          # branch gets the scope=full readback instead.
+          case "$premerge_base_ref" in
+            "")
+              echo "workflow_dispatch scope=premerge requires the base ref (input base_ref)" >&2
+              return 1
+              ;;
+            release/*|release-*)
+              mark_all_platforms
+              run_device_suite=true
+              run_canonical_final=true
+              attachment_api_levels="[29,31,34]"
+              reason="workflow_dispatch-premerge:release-full"
+              ;;
+            *)
+              classify_changed_paths "$changed_paths_file" "workflow_dispatch-premerge"
+              echo "premerge base=${premerge_base_ref} classification=${reason} platforms=$(platform_summary)" >&2
+              run_device_suite=false
+              run_canonical_final=false
+              attachment_api_levels="[]"
+              case "$reason" in
+                workflow_dispatch-premerge-diff-unavailable-fail-closed)
+                  mark_all_platforms
+                  reason="workflow_dispatch-premerge:diff-unavailable-fail-closed"
+                  ;;
+                *)
+                  run_android=false
+                  if test "$run_ios" = true; then
+                    reason="workflow_dispatch-premerge:ios"
+                  else
+                    reason="workflow_dispatch-premerge:no-ios"
+                  fi
+                  ;;
+              esac
+              ;;
+          esac
+          ;;
         full)
           mark_all_platforms
           run_device_suite=true
@@ -293,7 +339,7 @@ emit_plan() {
           reason="workflow_dispatch-full-readback"
           ;;
         *)
-          echo "workflow_dispatch scope must be pr, ios or full, got: '${dispatch_scope}'" >&2
+          echo "workflow_dispatch scope must be pr, ios, premerge or full, got: '${dispatch_scope}'" >&2
           return 1
           ;;
       esac
@@ -347,5 +393,5 @@ emit_plan() {
   printf 'reason=%s\n' "$reason"
 }
 
-test "$#" -ge 4 && test "$#" -le 6 || usage
-emit_plan "$1" "$2" "$3" "$4" "${5:-}" "${6:-}"
+test "$#" -ge 4 && test "$#" -le 7 || usage
+emit_plan "$1" "$2" "$3" "$4" "${5:-}" "${6:-}" "${7:-}"

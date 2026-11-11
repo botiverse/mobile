@@ -15,13 +15,19 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile, no iOS, no device suite); ios = pre-merge iOS check (plan + Blacksmith 'iOS compile' only; no Android, no Xcode 27.1 lane, no device suite); full = release-candidate / deliberate full readback (all platforms + device suite + canonical-final; the Xcode 27.1 lane stays nightly/release-* only)."
+        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile, no iOS, no device suite); ios = pre-merge iOS check (plan + Blacksmith 'iOS compile' only; no Android, no Xcode 27.1 lane, no device suite); premerge = Stamp's ready-to-merge check (diff vs merge-base with base_ref; Blacksmith 'iOS compile' only when the diff can affect iOS, no Android rerun; a release/* or release-* base_ref runs the full tier); full = release-candidate / deliberate full readback (all platforms + device suite + canonical-final; the Xcode 27.1 lane stays nightly/release-* only)."
         type: choice
         options:
           - pr
           - ios
+          - premerge
           - full
         default: pr
+      base_ref:
+        description: "scope=premerge only: the PR's base branch as a plain name (main, release/1.23.0). The changed paths are the dispatched head vs its merge-base with origin/<base_ref>; a release/* or release-* base selects the full tier. Ignored by other scopes."
+        required: false
+        type: string
+        default: main
       attachment_authority_repeat:
         description: "Re-run the public-Downloads authority class N times per API level to reproduce the intermittent API 31 cross-UID SecurityException. Default 1."
         type: number
@@ -35,7 +41,7 @@ on:
         type: boolean
         default: false
       xcode_app_path:
-        description: "Opt-in Xcode for the Blacksmith iOS compile lane only; requires scope=ios or scope=full (the plan fails otherwise). Empty = /Applications/Xcode_27.0.app (iOS 27.0 SDK) on Blacksmith macOS; symlinked bundles are resolved to their real path under /Applications. The extra 'iOS compile (Xcode 27.1)' lane (GitHub xcode-27, nightly and release-* pushes only, never on dispatch) always uses /Applications/Xcode_27.1.app, like ios-release.yml."
+        description: "Opt-in Xcode for the Blacksmith iOS compile lane only; requires a plan that runs iOS: scope=ios, scope=full, or a premerge whose diff selects iOS (the plan fails otherwise). Empty = /Applications/Xcode_27.0.app (iOS 27.0 SDK) on Blacksmith macOS; symlinked bundles are resolved to their real path under /Applications. The extra 'iOS compile (Xcode 27.1)' lane (GitHub xcode-27, nightly and release-* pushes only, never on dispatch) always uses /Applications/Xcode_27.1.app, like ios-release.yml."
         required: false
         type: string
         default: ""
@@ -120,6 +126,7 @@ jobs:
           DISPATCH_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.scope || '' }}
           # The planner refuses a non-empty xcode_app_path when its plan skips the iOS compile.
           XCODE_APP_PATH: ${{ github.event_name == 'workflow_dispatch' && inputs.xcode_app_path || '' }}
+          PREMERGE_BASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.scope == 'premerge' && inputs.base_ref || '' }}
         run: |
           set -euo pipefail
           changed="$RUNNER_TEMP/test-changed-paths.txt"
@@ -159,9 +166,26 @@ jobs:
             push)
               write_changed_paths "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" direct
               ;;
+            workflow_dispatch)
+              if test "$DISPATCH_SCOPE" = premerge; then
+                # Same merge-base semantics as pull_request, against the PR's
+                # base branch. The fetch-depth: 0 checkout already has every
+                # origin/* branch; an unknown or malformed base leaves the
+                # base empty, which writes the fail-closed sentinel.
+                PREMERGE_BASE_REF="${PREMERGE_BASE_REF#refs/heads/}"
+                premerge_base_sha=""
+                if git check-ref-format --branch "$PREMERGE_BASE_REF" >/dev/null 2>&1; then
+                  premerge_base_sha="$(git rev-parse --verify -q "refs/remotes/origin/${PREMERGE_BASE_REF}^{commit}" || true)"
+                fi
+                echo "premerge base_ref=${PREMERGE_BASE_REF} base_sha=${premerge_base_sha:-unresolved} head_sha=${PUSH_HEAD_SHA}"
+                write_changed_paths "$premerge_base_sha" "$PUSH_HEAD_SHA" merge-base
+                echo "premerge changed paths ($(wc -l < "$changed")):"
+                head -n 50 "$changed"
+              fi
+              ;;
           esac
           scripts/ci/plan_test_tier.sh "$EVENT_NAME" "$changed" "$FULL_CI" "$REF_NAME" "$DISPATCH_SCOPE" \
-            "$XCODE_APP_PATH" | tee -a "$GITHUB_OUTPUT"
+            "$XCODE_APP_PATH" "$PREMERGE_BASE_REF" | tee -a "$GITHUB_OUTPUT"
 
       - name: Self-test gitlink carry-in gate
         run: python3 scripts/ci/test_gitlink_carry_in_gate.py
@@ -1048,6 +1072,8 @@ jobs:
     #   breakage still surfaces in the nightly within 24h and in ios-release.yml's 27.1 build.
     # workflow_dispatch scope=ios runs plan + this job's Blacksmith lane only (no Android jobs):
     # the pre-merge iOS check. The CI gate expects android and the emulator jobs skipped.
+    # workflow_dispatch scope=premerge (Stamp's ready-to-merge check) runs this lane only when
+    # the PR diff can affect iOS; otherwise every job but plan and the CI gate is skipped.
     # The simulator steps pick an iPhone on the newest iOS runtime not newer than the SDK, skipping
     # iPhone Duo (on xcode-27 the iOS 27.1 runtime only offers Duo; the tab-bar tests expect a phone).
     needs: [plan]
