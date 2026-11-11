@@ -15,7 +15,6 @@ import androidx.compose.ui.platform.LocalUriHandler
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY
-import build.raft.app.data.CHANNEL_ANNOUNCEMENT_POLL_MILLIS
 import build.raft.app.data.ChannelAnnouncementIntent
 import build.raft.app.data.ChannelAnnouncementKey
 import build.raft.app.data.ChannelAnnouncementMutationStatus
@@ -36,7 +35,6 @@ import build.raft.app.data.channelTypeSupportsAnnouncement
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
-import kotlinx.coroutines.delay
 
 /*
  * Channel announcements wired to a page: the flag, the shared store's slice, the reads (open,
@@ -80,13 +78,13 @@ internal fun rememberChannelAnnouncementSlice(
     active: Boolean,
 ): ChannelAnnouncementSlice {
     val store = remember(sharedStores, storeScope) { sharedStores.channelAnnouncementStore(storeScope) }
-    LaunchedEffect(store, key, active) {
-        if (key == null || !active) return@LaunchedEffect
+    // Read on open and on coming back; the minute-by-minute poll is the store's (its scope, not
+    // this composition's), held while the page shows it.
+    DisposableEffect(store, key, active) {
+        if (key == null || !active) return@DisposableEffect onDispose {}
         store.dispatch(ChannelAnnouncementIntent.Load(key, "open", DataRequestPriority.Visible))
-        while (true) {
-            delay(CHANNEL_ANNOUNCEMENT_POLL_MILLIS)
-            store.dispatch(ChannelAnnouncementIntent.Load(key, "poll", DataRequestPriority.Background))
-        }
+        store.dispatch(ChannelAnnouncementIntent.Watch(key))
+        onDispose { store.dispatch(ChannelAnnouncementIntent.Unwatch(key)) }
     }
     val owner = remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
     DisposableEffect(owner, store, key) {
