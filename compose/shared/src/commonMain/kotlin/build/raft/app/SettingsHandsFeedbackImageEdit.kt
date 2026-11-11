@@ -418,7 +418,9 @@ internal fun settingsHandsFeedbackImageEditPreviewRequest(
     pageGeneration: String,
     file: PlatformFile,
     sourceStoreScope: RaftShellStoreScope,
-    groupId: String = newSettingsHandsFeedbackImageEditId()
+    groupId: String = newSettingsHandsFeedbackImageEditId(),
+    /** A just-picked image: the page opens in the editor; Back there keeps [file] as it is. */
+    opensInEditor: Boolean = false
 ): SettingsHandsFeedbackImageEditRequest? {
     if (groupId.isBlank() || pageGeneration.isBlank() || file.fileRef.isNullOrBlank()) return null
     val previewUri = file.composerLocalPreviewUri().orEmpty()
@@ -456,7 +458,8 @@ internal fun settingsHandsFeedbackImageEditPreviewRequest(
                 imageGallery =
                     listOf(
                         file.toComposerImageGalleryImage().copy(
-                            composerImageReplaceAttachmentId = file.feedbackComposerAttachmentId()
+                            composerImageReplaceAttachmentId = file.feedbackComposerAttachmentId(),
+                            composerImageOwnedTemporary = false
                         )
                     ),
                 composerImageThreadKey = threadKey,
@@ -467,14 +470,34 @@ internal fun settingsHandsFeedbackImageEditPreviewRequest(
                 composerImageMimeType = file.mimeType.orEmpty(),
                 composerImageSizeBytes = file.sizeBytes,
                 composerImagePreviewUri = previewUri,
-                composerImageOwnedTemporaryFileRefs =
-                    listOf(file).filter(PlatformFile::isComposerImageOwnedTemporary)
-                        .mapNotNull(PlatformFile::fileRef),
+                // The image is attached to the form, which owns its file: closing the editor
+                // without Done (or a later abort of this session) must not delete it.
+                composerImageOwnedTemporaryFileRefs = emptyList(),
                 composerImageCompressAfterEdit = true,
                 composerImageCanComplete = true,
-                composerImageCanEdit = true
+                composerImageCanEdit = true,
+                composerImageOpensInEditor = opensInEditor
             )
     )
+}
+
+/**
+ * The image a pick just added to the form, which opens straight in the annotation editor: the
+ * first image in [merged] that was not already in [existing]. It is already attached, so
+ * cancelling the editor keeps it; the editor's Done replaces it in place. Null when the pick added
+ * no editable image (files only, all too large, or no slot left).
+ */
+internal fun settingsHandsFeedbackPickedImageToAnnotate(
+    existing: List<PlatformFile>,
+    merged: List<PlatformFile>,
+    fallbackName: String = ""
+): PlatformFile? {
+    val existingIds = existing.mapTo(mutableSetOf()) { it.feedbackComposerAttachmentId() }
+    return merged.firstOrNull { file ->
+        file.feedbackComposerAttachmentId() !in existingIds &&
+            !file.fileRef.isNullOrBlank() &&
+            raftFilePreviewIsImageAttachment(file.fileName.ifBlank { fallbackName }, file.mimeType.orEmpty())
+    }
 }
 
 internal fun normalizeSettingsHandsFeedbackPickerFiles(

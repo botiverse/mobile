@@ -1061,32 +1061,63 @@ class SettingsHandsFeedbackImageEditTest {
     }
 
     @Test
-    fun feedbackImagePickerMountsDirectlyWithoutAnnotationDetour() {
-        // task #300: feedback image picks must mount like attachFile — the merge helper is the
-        // only post-pick path, regardless of what the thread resolver would say about images.
+    fun feedbackImagePickMountsThenOpensTheFirstNewImageInTheEditor() {
+        // The pick is attached first (so cancelling the editor keeps it), then its first new image
+        // opens in the annotation editor; images already in the form are not reopened.
+        val existing = image("existing", "file:///draft/existing.jpg")
         val picked =
             listOf(
                 image("photo-1", "file:///picked/1.jpg"),
                 image("photo-2", "file:///picked/2.jpg")
             )
-        assertEquals(
-            ThreadPickedAttachmentComposerAction.OpenImageAnnotation,
-            resolveThreadPickedAttachmentComposerAction(
-                action = "attachImage",
-                fileCount = picked.size,
-                allFilesAreImages = true
-            )
-        )
         val merge =
             settingsHandsFeedbackMergedAttachments(
-                existing = emptyList(),
+                existing = listOf(existing),
                 picked = picked,
                 attachmentMaxBytes = 1_000,
                 attachmentLimit = 3
             )
-        assertEquals(picked.map { it.fileRef }, merge.attachments.map { it.fileRef })
-        assertEquals(0, merge.rejectedCount)
-        assertFalse(merge.limitTrimmed)
+        assertEquals(
+            listOf("file:///draft/existing.jpg") + picked.map { it.fileRef },
+            merge.attachments.map { it.fileRef }
+        )
+        assertEquals(
+            "file:///picked/1.jpg",
+            settingsHandsFeedbackPickedImageToAnnotate(
+                existing = listOf(existing),
+                merged = merge.attachments
+            )?.fileRef
+        )
+    }
+
+    @Test
+    fun feedbackPickWithoutANewEditableImageOpensNoEditor() {
+        val existing = image("existing", "file:///draft/existing.jpg")
+        val log =
+            PlatformFile(
+                id = "log",
+                fileName = "trace.txt",
+                mimeType = "text/plain",
+                sizeBytes = 10L,
+                fileRef = "file:///picked/trace.txt"
+            )
+        val tooBig = image("big", "file:///picked/big.jpg", sizeBytes = 2_000L)
+        listOf(listOf(log), listOf(tooBig), listOf(existing.copy(id = "same-ref"))).forEach { picked ->
+            val merge =
+                settingsHandsFeedbackMergedAttachments(
+                    existing = listOf(existing),
+                    picked = picked,
+                    attachmentMaxBytes = 1_000,
+                    attachmentLimit = 3
+                )
+            assertNull(
+                settingsHandsFeedbackPickedImageToAnnotate(
+                    existing = listOf(existing),
+                    merged = merge.attachments
+                ),
+                "picked=${picked.map { it.fileRef }}"
+            )
+        }
     }
 
     @Test
