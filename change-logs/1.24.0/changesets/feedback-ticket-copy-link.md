@@ -4,6 +4,7 @@ area: settings
 platforms:
   - android
   - ios
+pull_request: 4546
 rollout: full
 ---
 
