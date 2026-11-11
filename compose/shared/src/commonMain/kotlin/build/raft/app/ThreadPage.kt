@@ -742,6 +742,12 @@ internal enum class ThreadNewMessageMenuTool {
     SelectText,
     /** botiverse/slock #11687: a followed reply thread's messages mark the whole thread unread. */
     MarkThreadUnread,
+    /**
+     * botiverse/slock #14222: "Mark channel as unread" / "Mark DM as unread" on a message in a
+     * channel's or DM's list (the sidebar row's Mark as Unread), last of the second row as web puts
+     * it last of the just-for-me section.
+     */
+    MarkConversationUnread,
     /** In-place text selection context only: select the whole message body. */
     SelectAll,
     /**
@@ -789,7 +795,8 @@ internal val ThreadNewMessageMenuSecondaryToolOrder =
         ThreadNewMessageMenuTool.MarkThreadUnread,
         ThreadNewMessageMenuTool.FollowThread,
         ThreadNewMessageMenuTool.TaskStatus,
-        ThreadNewMessageMenuTool.ConvertToTask
+        ThreadNewMessageMenuTool.ConvertToTask,
+        ThreadNewMessageMenuTool.MarkConversationUnread
     )
 
 /** One message's Compact menu actions: reactions plus the tool callbacks. */
@@ -813,7 +820,8 @@ internal data class ThreadNewMessageMenuToolCallbacks(
     val onSelectText: () -> Unit = {},
     val onSelectAll: () -> Unit = {},
     val onMarkThreadUnread: () -> Unit = {},
-    val onCopySelection: () -> Unit = {}
+    val onCopySelection: () -> Unit = {},
+    val onMarkConversationUnread: () -> Unit = {}
 )
 
 internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuToolCallbacks) {
@@ -832,6 +840,7 @@ internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuTo
         ThreadNewMessageMenuTool.SelectText -> callbacks.onSelectText()
         ThreadNewMessageMenuTool.SelectAll -> callbacks.onSelectAll()
         ThreadNewMessageMenuTool.MarkThreadUnread -> callbacks.onMarkThreadUnread()
+        ThreadNewMessageMenuTool.MarkConversationUnread -> callbacks.onMarkConversationUnread()
         ThreadNewMessageMenuTool.CopySelection -> callbacks.onCopySelection()
     }
 }
@@ -859,6 +868,8 @@ internal data class ThreadNewMessageMenuActionAvailability(
     val threadFollowed: Boolean = false,
     /** botiverse/slock #11687: "Mark Thread as Unread" (a followed reply thread's messages). */
     val markThreadUnread: Boolean = false,
+    /** botiverse/slock #14222: the list's conversation "Mark channel/DM as unread"; null: none. */
+    val markConversationUnread: ThreadMarkConversationUnreadKind? = null,
     val taskStatus: Boolean = false,
     val taskDone: Boolean = false,
     val convertToTask: Boolean = false,
@@ -885,6 +896,7 @@ internal data class ThreadNewMessageMenuActionAvailability(
             ThreadNewMessageMenuTool.FollowThread -> followThread
             // A message's action on its thread, not on picked text.
             ThreadNewMessageMenuTool.MarkThreadUnread -> markThreadUnread && !selectionContext
+            ThreadNewMessageMenuTool.MarkConversationUnread -> markConversationUnread != null && !selectionContext
             ThreadNewMessageMenuTool.TaskStatus -> taskStatus
             ThreadNewMessageMenuTool.ConvertToTask -> convertToTask
             // The sheet is for picking text; an in-place selection already does that.
@@ -929,6 +941,7 @@ internal fun ThreadMessageMenuCapabilities.toThreadNewMessageMenuActionAvailabil
         followThread = follow,
         threadFollowed = replyMetadata.isThreadFollowed,
         markThreadUnread = markThreadUnreadChannelId != null,
+        markConversationUnread = markConversationUnread,
         taskStatus = taskStatus,
         taskDone = message.isThreadTaskDone(),
         convertToTask = convertToTask,
@@ -14017,8 +14030,13 @@ private fun SharedThreadRouteContentContent(
                     }
                 }
                 action == MARK_THREAD_UNREAD_ACTION && !attachmentId.isNullOrBlank() -> {
-                    // botiverse/slock #11687: the reads of this page are held for it until it leaves.
+                    // botiverse/slock #11687: the reads of this page are held for it until it leaves
+                    // (#14222: a followed thread marked from a channel's list is written, not held).
                     threadViewModel.dispatch(SharedThreadIntent.MarkThreadUnread(attachmentId))
+                }
+                action == MARK_CONVERSATION_UNREAD_ACTION -> {
+                    // botiverse/slock #14222: this page's channel or DM, held unread while it stays here.
+                    threadViewModel.dispatch(SharedThreadIntent.MarkConversationUnread)
                 }
                 action == "openParentMessage" -> {
                     val sideParentFocus =
@@ -26240,12 +26258,17 @@ private fun ThreadMessagesListContent(
                         },
                         onMarkThreadUnread = {
                             close()
-                            threadPanelMarkUnreadChannelId(
-                                renderPayload.replyThreadSurface,
+                            threadMessageMarkThreadUnreadChannelId(
+                                renderPayload,
+                                replyMetadata,
                                 renderPayload.originMessage?.let(replyMetadataByParentId::threadReplyMetadataFor)
                             )?.let { threadChannelId ->
                                     onThreadEvent(MARK_THREAD_UNREAD_ACTION, message.id, threadChannelId, null)
                                 }
+                        },
+                        onMarkConversationUnread = {
+                            close()
+                            onThreadEvent(MARK_CONVERSATION_UNREAD_ACTION, message.id, null, null)
                         }
                     )
             )
@@ -26417,7 +26440,8 @@ private fun ThreadMessagesListContent(
                         onConvertToTask = actions.tools.onConvertToTask,
                         onSelectText = actions.tools.onSelectText,
                         onMarkThreadUnread = actions.tools.onMarkThreadUnread,
-                        onCopySelection = onCopySelection ?: {}
+                        onCopySelection = onCopySelection ?: {},
+                        onMarkConversationUnread = actions.tools.onMarkConversationUnread
                     )
                 } else {
                     ThreadMessageActionMenu(
@@ -26503,6 +26527,11 @@ private fun ThreadMessagesListContent(
                             capabilities.markThreadUnreadChannelId?.let { threadChannelId ->
                                 onThreadEvent(MARK_THREAD_UNREAD_ACTION, message.id, threadChannelId, null)
                             }
+                        },
+                        markConversationUnread = capabilities.markConversationUnread,
+                        onMarkConversationUnread = {
+                            closeActionMenu()
+                            onThreadEvent(MARK_CONVERSATION_UNREAD_ACTION, message.id, null, null)
                         },
                         onCopySelection = onCopySelection,
                         onDownloadVideo =
@@ -30859,7 +30888,8 @@ internal fun ThreadNewMessageMenu(
     onConvertToTask: () -> Unit = {},
     onSelectText: () -> Unit = {},
     onMarkThreadUnread: () -> Unit = {},
-    onCopySelection: () -> Unit = {}
+    onCopySelection: () -> Unit = {},
+    onMarkConversationUnread: () -> Unit = {}
 ) {
     val density = LocalDensity.current
     val secondaryRowCount = if (availability.secondaryTools().isEmpty()) 0 else 1
@@ -30907,7 +30937,8 @@ internal fun ThreadNewMessageMenu(
             onConvertToTask = onConvertToTask,
             onSelectText = onSelectText,
             onMarkThreadUnread = onMarkThreadUnread,
-            onCopySelection = onCopySelection
+            onCopySelection = onCopySelection,
+            onMarkConversationUnread = onMarkConversationUnread
         )
     }
 }
@@ -30932,7 +30963,8 @@ internal fun ThreadNewMessageMenuChrome(
     onSelectText: () -> Unit = {},
     onSelectAll: () -> Unit = {},
     onMarkThreadUnread: () -> Unit = {},
-    onCopySelection: () -> Unit = {}
+    onCopySelection: () -> Unit = {},
+    onMarkConversationUnread: () -> Unit = {}
 ) {
     val callbacks =
         ThreadNewMessageMenuToolCallbacks(
@@ -30950,7 +30982,8 @@ internal fun ThreadNewMessageMenuChrome(
             onSelectText = onSelectText,
             onSelectAll = onSelectAll,
             onMarkThreadUnread = onMarkThreadUnread,
-            onCopySelection = onCopySelection
+            onCopySelection = onCopySelection,
+            onMarkConversationUnread = onMarkConversationUnread
         )
     val secondaryTools = availability.secondaryTools()
     // raft-ui overlay: popover layer, seam ring and the float shadow (no offset box).
@@ -31059,7 +31092,16 @@ internal fun ThreadNewMessageMenuTool.compactLabelResource(
         ThreadNewMessageMenuTool.SelectText -> Res.string.thread_action_select_text
         ThreadNewMessageMenuTool.SelectAll -> Res.string.thread_text_selection_select_all
         ThreadNewMessageMenuTool.MarkThreadUnread -> Res.string.thread_action_mark_thread_unread
+        ThreadNewMessageMenuTool.MarkConversationUnread ->
+            (availability.markConversationUnread ?: ThreadMarkConversationUnreadKind.Channel).menuLabel()
         ThreadNewMessageMenuTool.CopySelection -> Res.string.common_copy
+    }
+
+/** web `message.messageItem.markChannelAsUnread` / `markDmAsUnread`. */
+internal fun ThreadMarkConversationUnreadKind.menuLabel(): StringResource =
+    when (this) {
+        ThreadMarkConversationUnreadKind.Channel -> Res.string.thread_action_mark_channel_unread
+        ThreadMarkConversationUnreadKind.DirectMessage -> Res.string.thread_action_mark_dm_unread
     }
 
 internal fun ThreadNewMessageMenuTool.compactIcon(
@@ -31082,7 +31124,8 @@ internal fun ThreadNewMessageMenuTool.compactIcon(
         // Not SquareCheckBig: that is Mark as Done in the same menu (web MessageItem). Select All
         // only shows over a partial selection, where Select Text is hidden.
         ThreadNewMessageMenuTool.SelectAll -> RaftLucideIconName.SquareDashedText
-        ThreadNewMessageMenuTool.MarkThreadUnread -> RaftLucideIconName.MessageSquareDot
+        ThreadNewMessageMenuTool.MarkThreadUnread,
+        ThreadNewMessageMenuTool.MarkConversationUnread -> RaftLucideIconName.MessageSquareDot
         // Not Copy: that is Copy Markdown beside it in the same menu (web's icon for it).
         ThreadNewMessageMenuTool.CopySelection -> RaftLucideIconName.Type
     }
@@ -34461,6 +34504,7 @@ internal fun RaftThreadMessageItem.withThreadReplyFacts(metadata: ThreadReplyMet
     )
 
 internal const val MARK_THREAD_UNREAD_ACTION = "markThreadUnread"
+internal const val MARK_CONVERSATION_UNREAD_ACTION = "markConversationUnread"
 internal const val FOLLOW_THREAD_ACTION = "followMessageThread"
 internal const val UNFOLLOW_THREAD_ACTION = "unfollowMessageThread"
 
@@ -34506,8 +34550,53 @@ internal data class ThreadMessageMenuCapabilities(
      * botiverse/slock #11687: "Mark Thread as Unread" on every message of a followed reply thread
      * (web MessageItem in a thread panel, right after Save); the thread channel it marks, else null.
      */
-    val markThreadUnreadChannelId: String? = null
+    val markThreadUnreadChannelId: String? = null,
+    /**
+     * botiverse/slock #14222: "Mark channel/DM as unread" on a message in a channel's or DM's list
+     * (web messageMenuMarkUnread), labelled by the conversation's kind; null where there is none.
+     */
+    val markConversationUnread: ThreadMarkConversationUnreadKind? = null
 )
+
+/** Which conversation a message menu's "Mark … as unread" names (web `markChannelAsUnread` / `markDmAsUnread`). */
+internal enum class ThreadMarkConversationUnreadKind { Channel, DirectMessage }
+
+/**
+ * botiverse/slock #14222 (web useMessageMenuMarkUnread): a channel's or DM's own message list, not a
+ * thread (a reply thread or a task conversation, which web shows in its thread panel, where the
+ * menu acts on the thread instead).
+ */
+private fun ThreadTimelineSlice.isConversationList(): Boolean =
+    (surfaceKind == RaftThreadSurfaceKind.Channel || surfaceKind == RaftThreadSurfaceKind.DirectMessage) &&
+        channelKind.normalizedThreadChannelKind() != RaftTaskConversationChannelKind
+
+/**
+ * The conversation's Mark as Unread in its list (the sidebar row's): channels and DMs alike, never
+ * in a channel previewed without joining (the sidebar doesn't list it, so it has no unread).
+ */
+internal fun threadListMarkConversationUnreadKind(slice: ThreadTimelineSlice): ThreadMarkConversationUnreadKind? {
+    if (!slice.isConversationList() || !slice.joined) return null
+    return if (slice.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
+        ThreadMarkConversationUnreadKind.DirectMessage
+    } else {
+        ThreadMarkConversationUnreadKind.Channel
+    }
+}
+
+/**
+ * The thread a message's "Mark thread as unread" marks: in an open reply thread, that thread
+ * ([threadPanelMarkUnreadChannelId], #11687); in a channel's or DM's list, the message's own
+ * thread when the person follows it (#14222); else none.
+ */
+internal fun threadMessageMarkThreadUnreadChannelId(
+    slice: ThreadTimelineSlice,
+    replyMetadata: ThreadReplyMetadata,
+    originReplyMetadata: ThreadReplyMetadata?,
+): String? {
+    threadPanelMarkUnreadChannelId(slice.replyThreadSurface, originReplyMetadata)?.let { return it }
+    if (!slice.isConversationList() || !replyMetadata.isThreadFollowed) return null
+    return replyMetadata.threadChannelId?.trim()?.takeIf { it.isNotBlank() }
+}
 
 internal fun threadMessageMenuCapabilities(
     message: RaftThreadMessageItem,
@@ -34571,7 +34660,8 @@ internal fun threadMessageMenuCapabilities(
         deleteLocalSend = writeActionsEnabled && message.isFailedLocalSend(),
         createTaskFromMessage = taskV2Enabled,
         markThreadUnreadChannelId =
-            if (localSend) null else threadPanelMarkUnreadChannelId(slice.replyThreadSurface, originReplyMetadata)
+            if (localSend) null else threadMessageMarkThreadUnreadChannelId(slice, replyMetadata, originReplyMetadata),
+        markConversationUnread = if (localSend) null else threadListMarkConversationUnreadKind(slice)
     )
 }
 
@@ -34609,6 +34699,8 @@ internal fun threadMessageMenuActions(
     createTaskFromMessage: Boolean = false,
     /** botiverse/slock #11687: "Mark Thread as Unread", right after Save. */
     showMarkThreadUnreadAction: Boolean = false,
+    /** botiverse/slock #14222: the list's "Mark channel/DM as unread", last of the just-for-me section. */
+    markConversationUnread: ThreadMarkConversationUnreadKind? = null,
     /**
      * A right-click menu opened over selected text in the message: "Copy" copies it, first in the
      * copy group (web: the browser's own Copy). Null otherwise (long press, nothing selected).
@@ -34629,6 +34721,7 @@ internal fun threadMessageMenuActions(
     onTranslate: () -> Unit = {},
     onForward: () -> Unit = {},
     onMarkThreadUnread: () -> Unit = {},
+    onMarkConversationUnread: () -> Unit = {},
     /** Downloads the message's video ([threadMessageMenuDownloadVideoAttachmentId]); null hides it. */
     onDownloadVideo: (() -> Unit)? = null
 ): List<ThreadMessageMenuAction> =
@@ -34777,6 +34870,16 @@ internal fun threadMessageMenuActions(
                 )
             )
         }
+        if (markConversationUnread != null) {
+            add(
+                ThreadMessageMenuAction(
+                    label = markConversationUnread.menuLabel().desc(),
+                    icon = RaftLucideIconName.MessageSquareDot,
+                    group = "personal",
+                    onClick = onMarkConversationUnread
+                )
+            )
+        }
         if (showDeleteAction) {
             add(
                 ThreadMessageMenuAction(
@@ -34820,6 +34923,7 @@ private fun ThreadMessageActionMenu(
     showForwardAction: Boolean = false,
     showAddReactionAction: Boolean = false,
     showMarkThreadUnreadAction: Boolean = false,
+    markConversationUnread: ThreadMarkConversationUnreadKind? = null,
     onDismiss: () -> Unit,
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
@@ -34838,6 +34942,7 @@ private fun ThreadMessageActionMenu(
     onForward: () -> Unit = {},
     onAddReaction: () -> Unit = {},
     onMarkThreadUnread: () -> Unit = {},
+    onMarkConversationUnread: () -> Unit = {},
     onCopySelection: (() -> Unit)? = null,
     onDownloadVideo: (() -> Unit)? = null,
     diagnosticsLogger: (String) -> Unit = {}
@@ -34861,6 +34966,7 @@ private fun ThreadMessageActionMenu(
             translatePending,
             showForwardAction,
             showMarkThreadUnreadAction,
+            markConversationUnread,
             onReply,
             onCopyLink,
             onCopy,
@@ -34876,6 +34982,7 @@ private fun ThreadMessageActionMenu(
             onTranslate,
             onForward,
             onMarkThreadUnread,
+            onMarkConversationUnread,
             onCopySelection,
             onDownloadVideo
         ) {
@@ -34896,6 +35003,7 @@ private fun ThreadMessageActionMenu(
                 translatePending = translatePending,
                 showForwardAction = showForwardAction,
                 showMarkThreadUnreadAction = showMarkThreadUnreadAction,
+                markConversationUnread = markConversationUnread,
                 onCopySelection = onCopySelection,
                 onReply = onReply,
                 onCopyLink = onCopyLink,
@@ -34912,6 +35020,7 @@ private fun ThreadMessageActionMenu(
                 onTranslate = onTranslate,
                 onForward = onForward,
                 onMarkThreadUnread = onMarkThreadUnread,
+                onMarkConversationUnread = onMarkConversationUnread,
                 onDownloadVideo = onDownloadVideo
             )
         }

@@ -458,6 +458,8 @@
     <string name="thread_action_save_message">Salvar</string>
     <string name="thread_action_unfollow_thread">Deixar de seguir thread</string>
     <string name="thread_action_mark_thread_unread">Marcar thread como não lida</string>
+    <string name="thread_action_mark_channel_unread">Marcar canal como não lido</string>
+    <string name="thread_action_mark_dm_unread">Marcar mensagem direta como não lida</string>
     <string name="thread_action_follow_thread">Seguir thread</string>
     <string name="thread_action_reopen_task">Reabrir tarefa</string>
     <string name="thread_action_mark_done">Marcar como concluída</string>

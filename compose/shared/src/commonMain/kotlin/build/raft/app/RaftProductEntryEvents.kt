@@ -38,6 +38,8 @@ internal fun ThreadNewMessageMenuTool.productMessageAction(
         ThreadNewMessageMenuTool.SelectAll -> null
         // Web sends nothing for its thread menus' Mark Thread as Unread (#11687) either.
         ThreadNewMessageMenuTool.MarkThreadUnread -> null
+        // Nor for the list's Mark channel/DM as unread (#14222).
+        ThreadNewMessageMenuTool.MarkConversationUnread -> null
         // Only in a right-click menu, which is not the long-press menu (no `context_menu` surface).
         ThreadNewMessageMenuTool.CopySelection -> null
     }

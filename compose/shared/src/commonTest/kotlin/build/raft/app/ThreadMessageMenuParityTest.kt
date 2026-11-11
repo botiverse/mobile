@@ -377,7 +377,8 @@ class ThreadMessageMenuParityTest {
                 onConvertToTask = { routed += ThreadNewMessageMenuTool.ConvertToTask },
                 onSelectText = { routed += ThreadNewMessageMenuTool.SelectText },
                 onMarkThreadUnread = { routed += ThreadNewMessageMenuTool.MarkThreadUnread },
-                onCopySelection = { routed += ThreadNewMessageMenuTool.CopySelection }
+                onCopySelection = { routed += ThreadNewMessageMenuTool.CopySelection },
+                onMarkConversationUnread = { routed += ThreadNewMessageMenuTool.MarkConversationUnread }
             )
 
         ThreadNewMessageMenuSecondaryToolOrder.forEach { it.dispatch(callbacks) }

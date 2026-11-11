@@ -464,6 +464,8 @@
     <string name="thread_action_save_message">保存</string>
     <string name="thread_action_unfollow_thread">スレッドのフォローを解除</string>
     <string name="thread_action_mark_thread_unread">スレッドを未読にする</string>
+    <string name="thread_action_mark_channel_unread">チャンネルを未読にする</string>
+    <string name="thread_action_mark_dm_unread">DM を未読にする</string>
     <string name="thread_action_follow_thread">スレッドをフォロー</string>
     <string name="thread_action_reopen_task">タスクを再オープン</string>
     <string name="thread_action_mark_done">完了にする</string>

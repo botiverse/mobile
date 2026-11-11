@@ -458,6 +458,8 @@
     <string name="thread_action_save_message">Guardar</string>
     <string name="thread_action_unfollow_thread">Dejar de seguir hilo</string>
     <string name="thread_action_mark_thread_unread">Marcar hilo como no leído</string>
+    <string name="thread_action_mark_channel_unread">Marcar canal como no leído</string>
+    <string name="thread_action_mark_dm_unread">Marcar mensaje directo como no leído</string>
     <string name="thread_action_follow_thread">Seguir hilo</string>
     <string name="thread_action_reopen_task">Reabrir tarea</string>
     <string name="thread_action_mark_done">Marcar como hecha</string>
