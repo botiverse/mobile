@@ -31,7 +31,7 @@ class RaftFilePreviewDownloadStatusTest {
             download = "Download",
             install = "Install",
             open = "Open",
-            openWith = "Open with..."
+            openWith = "Open with"
         )
     private val englishVideoTerms =
         RaftFilePreviewVideoStateTerms(
@@ -1424,7 +1424,7 @@ class RaftFilePreviewDownloadStatusTest {
                 terms = englishActionTerms
             )
 
-        assertEquals("Open with...", label)
+        assertEquals("Open with", label)
     }
 
     @Test

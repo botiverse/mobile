@@ -27,6 +27,9 @@ compose/shared/src/commonMain/composeResources/values-ja/strings.xml
 - Placeholders: positional only (`%1$s`, `%2$d`), the same set in every locale
   (`ComposeResourcesCatalogParityTest` checks keys and placeholders).
 - Plain XML text: write `'` and `"` as is (no Android `\'` escapes); `\n` is a newline.
+- A label (button, menu item, tab) never ends with `…`, in any language: it says the action it
+  leads to (New section, 自定义). Only progress text (Loading…) and placeholders keep one
+  (Raft DS writing.md; `RaftLabelEllipsisTest` checks every catalog).
 
 ## 2. Use it
 

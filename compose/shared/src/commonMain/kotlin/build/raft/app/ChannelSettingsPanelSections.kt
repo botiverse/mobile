@@ -110,7 +110,7 @@ internal fun channelSectionMoves(state: ChannelSectionPlacement, next: ChannelSe
 
 /**
  * Web ChannelPreferencesSection's first row: "Move to section", its line, and the select of
- * [ChannelSectionPlacement.options] with "Create section…" last, which opens the sidebar's New
+ * [ChannelSectionPlacement.options] with "Create section" last, which opens the sidebar's New
  * section dialog and creates the section with this channel or DM in it. A DM's line says "this
  * conversation" and its home is Direct Messages.
  */
@@ -131,7 +131,7 @@ internal fun ChannelSectionSelectRow(
         }
     val pinnedLabel = stringResource(Res.string.home_section_pinned)
     val createLabel = stringResource(Res.string.channel_settings_section_create)
-    // null is the "Create section…" action at the end of the list.
+    // null is the "Create section" action at the end of the list.
     val options: List<ChannelSectionValue?> = state.options + null
     val labelOf: (ChannelSectionValue?) -> String = { value ->
         when (value) {

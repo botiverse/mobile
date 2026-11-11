@@ -426,7 +426,7 @@
     <string name="thread_action_forward">전달</string>
     <string name="thread_action_add_member">멤버 추가</string>
     <string name="thread_action_save_changes">저장</string>
-    <string name="thread_action_open_with">다른 앱으로 열기…</string>
+    <string name="thread_action_open_with">다른 앱으로 열기</string>
     <string name="thread_action_select_message">메시지 선택</string>
     <string name="thread_action_search">검색</string>
     <string name="thread_action_search_in_thread">스레드에서 검색</string>
@@ -783,7 +783,7 @@
     <string name="channel_settings_info_detail">워크스페이스 전체에 표시되는 이름과 설명이에요.</string>
     <string name="channel_settings_section_detail">이 채널을 사이드바의 어느 섹션에 표시할지 선택해요.</string>
     <string name="channel_settings_section_detail_dm">이 대화를 사이드바의 어느 섹션에 표시할지 선택해요.</string>
-    <string name="channel_settings_section_create">섹션 만들기…</string>
+    <string name="channel_settings_section_create">섹션 만들기</string>
     <string name="channel_settings_collapse_detail">미리보기 높이보다 긴 메시지를 접고 ‘더 보기’로 펼칠 수 있게 해요. 끄면 이 채널에서는 항상 메시지 전체를 보여줘요.</string>
     <string name="channel_settings_collapse_detail_dm">미리보기 높이보다 긴 메시지를 접고 ‘더 보기’로 펼칠 수 있게 해요. 끄면 이 대화에서는 항상 메시지 전체를 보여줘요.</string>
     <string name="channel_settings_actions">관리</string>
@@ -984,7 +984,7 @@
     <string name="thread_action_card_group_agent_reminder_write_summary">예약 리마인더 작성 (공식 앱 전용)</string>
     <string name="thread_action_card_error_load_computers">컴퓨터를 불러오지 못했어요: %1$s</string>
     <string name="thread_image_preview_title">이미지 미리보기</string>
-    <string name="thread_image_preview_open_with">다른 앱으로 열기…</string>
+    <string name="thread_image_preview_open_with">다른 앱으로 열기</string>
     <string name="thread_image_preview_save_to_photos">사진에 저장</string>
     <string name="thread_image_preview_saving_to_photos">사진에 저장하는 중…</string>
     <string name="thread_image_preview_retry_save_to_photos">사진에 다시 저장</string>
@@ -1782,7 +1782,7 @@
     <string name="file_preview_action_download">다운로드</string>
     <string name="file_preview_action_install">설치</string>
     <string name="file_preview_action_open">열기</string>
-    <string name="file_preview_action_open_with">다른 앱으로 열기…</string>
+    <string name="file_preview_action_open_with">다른 앱으로 열기</string>
     <string name="file_preview_action_save_to_files">저장</string>
     <string name="file_preview_action_open_in_browser">브라우저에서 열기</string>
     <string name="file_preview_action_open_in_other_app">다른 앱에서 열기</string>
@@ -2020,7 +2020,6 @@
     <string name="agent_create_label_key">키</string>
     <string name="agent_create_label_value">값</string>
     <string name="agent_create_label_environment_variables">환경 변수</string>
-    <string name="agent_create_label_custom_ellipsis">직접 설정…</string>
     <string name="agent_create_placeholder_name">예: Noel</string>
     <string name="agent_create_placeholder_select_computer">컴퓨터 선택</string>
     <string name="agent_create_placeholder_select_runtime">런타임 선택</string>
@@ -2227,10 +2226,10 @@
     <string name="home_sort_az">A-Z</string>
     <string name="home_section_move_to">섹션으로 이동</string>
     <string name="home_section_remove_from">섹션에서 빼기</string>
-    <string name="home_section_new_menu">새 섹션…</string>
+    <string name="home_section_new_menu">새 섹션</string>
     <string name="home_sidebar_row_menu_action">더 보기</string>
     <string name="home_sidebar_section_menu_action">%1$s 옵션</string>
-    <string name="home_section_rename">이름 / 아이콘 변경…</string>
+    <string name="home_section_rename">섹션 편집</string>
     <string name="home_section_delete">섹션 삭제</string>
     <string name="home_section_delete_confirm">섹션 삭제</string>
     <string name="home_section_delete_message">‘%1$s’ 섹션을 삭제할까요? 섹션 안의 대화는 기본 섹션으로 돌아가요.</string>
@@ -4017,7 +4016,7 @@
     <string name="rail_tab_order_save_failed">탭 순서를 저장하지 못했어요</string>
     <string name="settings_notifications_device_section">이 기기</string>
     <string name="settings_notifications_pause_section">일시 중지 및 일정</string>
-    <string name="settings_notifications_pause_custom">직접 설정…</string>
+    <string name="settings_notifications_pause_custom">직접 설정</string>
     <string name="settings_notifications_pause_custom_label">다시 켤 시간</string>
     <string name="settings_notifications_pause_apply">일시 중지</string>
     <string name="settings_notifications_quiet_hours_stored_zone">%1$s 기준으로 저장되어 있어요. 시간을 바꾸면 이 기기의 시간대로 저장돼요.</string>

@@ -84,7 +84,7 @@ internal fun settingsNotificationServers(session: StoredAuthSession?): List<Sett
     return rows.filter { it.current } + rows.filterNot { it.current }
 }
 
-/** The "Pause notifications" choices (web `PAUSE_PRESETS` plus Custom…). */
+/** The "Pause notifications" choices (web `PAUSE_PRESETS` plus Custom). */
 internal enum class SettingsNotificationPauseChoice(val preset: RaftNotificationPauseOption?) {
     Minutes30(RaftNotificationPauseOption.Minutes30),
     Hour1(RaftNotificationPauseOption.Hour1),

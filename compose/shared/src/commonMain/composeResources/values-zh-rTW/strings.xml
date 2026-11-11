@@ -426,7 +426,7 @@
     <string name="thread_action_forward">轉傳</string>
     <string name="thread_action_add_member">新增成員</string>
     <string name="thread_action_save_changes">儲存</string>
-    <string name="thread_action_open_with">開啟方式…</string>
+    <string name="thread_action_open_with">開啟方式</string>
     <string name="thread_action_select_message">選擇訊息</string>
     <string name="thread_action_search">搜尋</string>
     <string name="thread_action_search_in_thread">在討論串中搜尋</string>
@@ -783,7 +783,7 @@
     <string name="channel_settings_info_detail">在整個工作區中顯示的名稱和說明。</string>
     <string name="channel_settings_section_detail">選擇此頻道在側邊欄中所在的區段。</string>
     <string name="channel_settings_section_detail_dm">選擇此對話在側邊欄中所在的區段。</string>
-    <string name="channel_settings_section_create">新增區段…</string>
+    <string name="channel_settings_section_create">建立區段</string>
     <string name="channel_settings_collapse_detail">超過預覽高度的訊息會收合，需按「展開全文」才會完整顯示。關閉後，此頻道一律顯示完整訊息。</string>
     <string name="channel_settings_collapse_detail_dm">超過預覽高度的訊息會收合，需按「展開全文」才會完整顯示。關閉後，此對話一律顯示完整訊息。</string>
     <string name="channel_settings_actions">操作</string>
@@ -984,7 +984,7 @@
     <string name="thread_action_card_group_agent_reminder_write_summary">寫入到期提醒（僅限官方應用程式）</string>
     <string name="thread_action_card_error_load_computers">無法載入電腦：%1$s</string>
     <string name="thread_image_preview_title">圖片預覽</string>
-    <string name="thread_image_preview_open_with">開啟方式…</string>
+    <string name="thread_image_preview_open_with">開啟方式</string>
     <string name="thread_image_preview_save_to_photos">儲存到照片</string>
     <string name="thread_image_preview_saving_to_photos">正在儲存到照片…</string>
     <string name="thread_image_preview_retry_save_to_photos">重新儲存到照片</string>
@@ -1782,7 +1782,7 @@
     <string name="file_preview_action_download">下載</string>
     <string name="file_preview_action_install">安裝</string>
     <string name="file_preview_action_open">開啟</string>
-    <string name="file_preview_action_open_with">開啟方式…</string>
+    <string name="file_preview_action_open_with">開啟方式</string>
     <string name="file_preview_action_save_to_files">儲存</string>
     <string name="file_preview_action_open_in_browser">在瀏覽器中開啟</string>
     <string name="file_preview_action_open_in_other_app">在其他 App 中開啟</string>
@@ -2020,7 +2020,6 @@
     <string name="agent_create_label_key">鍵</string>
     <string name="agent_create_label_value">值</string>
     <string name="agent_create_label_environment_variables">環境變數</string>
-    <string name="agent_create_label_custom_ellipsis">自訂…</string>
     <string name="agent_create_placeholder_name">例如 Noel</string>
     <string name="agent_create_placeholder_select_computer">選擇電腦</string>
     <string name="agent_create_placeholder_select_runtime">選擇執行環境</string>
@@ -2227,10 +2226,10 @@
     <string name="home_sort_az">A-Z</string>
     <string name="home_section_move_to">移至區段</string>
     <string name="home_section_remove_from">從區段移除</string>
-    <string name="home_section_new_menu">新增區段…</string>
+    <string name="home_section_new_menu">新增區段</string>
     <string name="home_sidebar_row_menu_action">更多操作</string>
     <string name="home_sidebar_section_menu_action">%1$s選項</string>
-    <string name="home_section_rename">重新命名 / 更換圖示…</string>
+    <string name="home_section_rename">編輯區段</string>
     <string name="home_section_delete">刪除區段</string>
     <string name="home_section_delete_confirm">刪除區段</string>
     <string name="home_section_delete_message">要刪除「%1$s」嗎？其中的對話將回到預設區段。</string>
@@ -4017,7 +4016,7 @@
     <string name="rail_tab_order_save_failed">無法儲存分頁順序</string>
     <string name="settings_notifications_device_section">本機</string>
     <string name="settings_notifications_pause_section">暫停與時段</string>
-    <string name="settings_notifications_pause_custom">自訂…</string>
+    <string name="settings_notifications_pause_custom">自訂</string>
     <string name="settings_notifications_pause_custom_label">暫停到</string>
     <string name="settings_notifications_pause_apply">暫停</string>
     <string name="settings_notifications_quiet_hours_stored_zone">目前依 %1$s 儲存。修改時間後會改用這台裝置的時區。</string>

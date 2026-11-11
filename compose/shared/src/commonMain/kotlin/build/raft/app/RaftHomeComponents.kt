@@ -677,8 +677,8 @@ data class RaftHomeShellLabels(
     val pinnedSectionEmpty: String = "Long-press a channel or DM to pin it",
     val jointChannelsEmpty: String = "No joint channels yet",
     val removeFromSection: String = "Remove from section",
-    val newSectionMenu: String = "New section…",
-    val renameSection: String = "Rename / change icon…",
+    val newSectionMenu: String = "New section",
+    val renameSection: String = "Edit section",
     val deleteSection: String = "Delete section",
     val newSectionTitle: String = "New section",
     val editSectionTitle: String = "Edit section",
@@ -4489,7 +4489,7 @@ internal fun raftHomeMoveToSectionMenuItems(
         }
     }
 
-/** A "New section…" submission: the section, plus where it came from. */
+/** A "New section" submission: the section, plus where it came from. */
 data class RaftHomeSectionCreateRequest(
     val name: String,
     val emoji: String?,

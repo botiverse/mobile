@@ -426,7 +426,7 @@
     <string name="thread_action_forward">Encaminhar</string>
     <string name="thread_action_add_member">Adicionar membro</string>
     <string name="thread_action_save_changes">Salvar</string>
-    <string name="thread_action_open_with">Abrir com…</string>
+    <string name="thread_action_open_with">Abrir com</string>
     <string name="thread_action_select_message">Selecionar mensagem</string>
     <string name="thread_action_search">Pesquisar</string>
     <string name="thread_action_search_in_thread">Pesquisar na thread</string>
@@ -783,7 +783,7 @@
     <string name="channel_settings_info_detail">Nome e descrição exibidos em todo o espaço de trabalho.</string>
     <string name="channel_settings_section_detail">Escolha onde este canal aparece na sua barra lateral.</string>
     <string name="channel_settings_section_detail_dm">Escolha onde esta conversa aparece na sua barra lateral.</string>
-    <string name="channel_settings_section_create">Criar seção…</string>
+    <string name="channel_settings_section_create">Criar seção</string>
     <string name="channel_settings_collapse_detail">Mensagens mais altas que a área de pré-visualização ficam recolhidas atrás de um botão “Mostrar mais”. Desative para sempre exibir as mensagens completas neste canal.</string>
     <string name="channel_settings_collapse_detail_dm">Mensagens mais altas que a área de pré-visualização ficam recolhidas atrás de um botão “Mostrar mais”. Desative para sempre exibir as mensagens completas nesta conversa.</string>
     <string name="channel_settings_actions">Ações</string>
@@ -984,7 +984,7 @@
     <string name="thread_action_card_group_agent_reminder_write_summary">Gravar lembretes agendados (somente apps oficiais)</string>
     <string name="thread_action_card_error_load_computers">Não foi possível carregar os computadores: %1$s</string>
     <string name="thread_image_preview_title">Pré-visualização da imagem</string>
-    <string name="thread_image_preview_open_with">Abrir com…</string>
+    <string name="thread_image_preview_open_with">Abrir com</string>
     <string name="thread_image_preview_save_to_photos">Salvar em Fotos</string>
     <string name="thread_image_preview_saving_to_photos">Salvando em Fotos…</string>
     <string name="thread_image_preview_retry_save_to_photos">Tentar salvar em Fotos novamente</string>
@@ -1782,7 +1782,7 @@
     <string name="file_preview_action_download">Baixar</string>
     <string name="file_preview_action_install">Instalar</string>
     <string name="file_preview_action_open">Abrir</string>
-    <string name="file_preview_action_open_with">Abrir com…</string>
+    <string name="file_preview_action_open_with">Abrir com</string>
     <string name="file_preview_action_save_to_files">Salvar</string>
     <string name="file_preview_action_open_in_browser">Abrir no navegador</string>
     <string name="file_preview_action_open_in_other_app">Abrir em outro app</string>
@@ -2020,7 +2020,6 @@
     <string name="agent_create_label_key">Chave</string>
     <string name="agent_create_label_value">Valor</string>
     <string name="agent_create_label_environment_variables">Variáveis de ambiente</string>
-    <string name="agent_create_label_custom_ellipsis">Personalizado…</string>
     <string name="agent_create_placeholder_name">ex.: Noel</string>
     <string name="agent_create_placeholder_select_computer">Selecionar computador</string>
     <string name="agent_create_placeholder_select_runtime">Selecionar runtime</string>
@@ -2227,10 +2226,10 @@
     <string name="home_sort_az">A-Z</string>
     <string name="home_section_move_to">Mover para seção</string>
     <string name="home_section_remove_from">Remover da seção</string>
-    <string name="home_section_new_menu">Nova seção…</string>
+    <string name="home_section_new_menu">Nova seção</string>
     <string name="home_sidebar_row_menu_action">Mais ações</string>
     <string name="home_sidebar_section_menu_action">Opções de %1$s</string>
-    <string name="home_section_rename">Renomear / alterar ícone…</string>
+    <string name="home_section_rename">Editar seção</string>
     <string name="home_section_delete">Excluir seção</string>
     <string name="home_section_delete_confirm">Excluir seção</string>
     <string name="home_section_delete_message">Excluir “%1$s”? As conversas dela voltarão para as seções padrão.</string>
@@ -4017,7 +4016,7 @@
     <string name="rail_tab_order_save_failed">Não foi possível salvar a ordem das abas</string>
     <string name="settings_notifications_device_section">Este dispositivo</string>
     <string name="settings_notifications_pause_section">Pausa e horário</string>
-    <string name="settings_notifications_pause_custom">Personalizado…</string>
+    <string name="settings_notifications_pause_custom">Personalizado</string>
     <string name="settings_notifications_pause_custom_label">Pausar até</string>
     <string name="settings_notifications_pause_apply">Pausar</string>
     <string name="settings_notifications_quiet_hours_stored_zone">Salvo para %1$s. Ao mudar um horário, ele é salvo no fuso horário deste dispositivo.</string>

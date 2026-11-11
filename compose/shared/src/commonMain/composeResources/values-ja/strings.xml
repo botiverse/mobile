@@ -432,7 +432,7 @@
     <string name="thread_action_forward">転送</string>
     <string name="thread_action_add_member">メンバーを追加</string>
     <string name="thread_action_save_changes">保存</string>
-    <string name="thread_action_open_with">アプリで開く…</string>
+    <string name="thread_action_open_with">アプリで開く</string>
     <string name="thread_action_select_message">メッセージを選択</string>
     <string name="thread_action_search">検索</string>
     <string name="thread_action_search_in_thread">スレッド内を検索</string>
@@ -789,7 +789,7 @@
     <string name="channel_settings_info_detail">ワークスペース全体に表示される名前と説明です。</string>
     <string name="channel_settings_section_detail">このチャンネルをサイドバーのどのセクションに表示するかを選びます。</string>
     <string name="channel_settings_section_detail_dm">この会話をサイドバーのどのセクションに表示するかを選びます。</string>
-    <string name="channel_settings_section_create">セクションを作成…</string>
+    <string name="channel_settings_section_create">セクションを作成</string>
     <string name="channel_settings_collapse_detail">プレビューの高さを超えるメッセージを折りたたみ、「全文を表示」で展開できるようにします。オフにすると、このチャンネルでは常にメッセージ全体を表示します。</string>
     <string name="channel_settings_collapse_detail_dm">プレビューの高さを超えるメッセージを折りたたみ、「全文を表示」で展開できるようにします。オフにすると、この会話では常にメッセージ全体を表示します。</string>
     <string name="channel_settings_actions">アクション</string>
@@ -990,7 +990,7 @@
     <string name="thread_action_card_group_agent_reminder_write_summary">期日付きリマインダーの書き込み（公式アプリのみ）</string>
     <string name="thread_action_card_error_load_computers">コンピューターを読み込めませんでした: %1$s</string>
     <string name="thread_image_preview_title">画像プレビュー</string>
-    <string name="thread_image_preview_open_with">アプリで開く…</string>
+    <string name="thread_image_preview_open_with">アプリで開く</string>
     <string name="thread_image_preview_save_to_photos">写真に保存</string>
     <string name="thread_image_preview_saving_to_photos">写真に保存中…</string>
     <string name="thread_image_preview_retry_save_to_photos">写真への保存を再試行</string>
@@ -1791,7 +1791,7 @@
     <string name="file_preview_action_download">ダウンロード</string>
     <string name="file_preview_action_install">インストール</string>
     <string name="file_preview_action_open">開く</string>
-    <string name="file_preview_action_open_with">アプリで開く…</string>
+    <string name="file_preview_action_open_with">アプリで開く</string>
     <string name="file_preview_action_save_to_files">保存</string>
     <string name="file_preview_action_open_in_browser">ブラウザで開く</string>
     <string name="file_preview_action_open_in_other_app">他のアプリで開く</string>
@@ -2029,7 +2029,6 @@
     <string name="agent_create_label_key">キー</string>
     <string name="agent_create_label_value">値</string>
     <string name="agent_create_label_environment_variables">環境変数</string>
-    <string name="agent_create_label_custom_ellipsis">カスタム…</string>
     <string name="agent_create_placeholder_name">例: Noel</string>
     <string name="agent_create_placeholder_select_computer">コンピューターを選択</string>
     <string name="agent_create_placeholder_select_runtime">ランタイムを選択</string>
@@ -2236,10 +2235,10 @@
     <string name="home_sort_az">A-Z</string>
     <string name="home_section_move_to">セクションに移動</string>
     <string name="home_section_remove_from">セクションから外す</string>
-    <string name="home_section_new_menu">新規セクション…</string>
+    <string name="home_section_new_menu">新規セクション</string>
     <string name="home_sidebar_row_menu_action">その他の操作</string>
     <string name="home_sidebar_section_menu_action">%1$sのオプション</string>
-    <string name="home_section_rename">名前変更 / アイコン変更…</string>
+    <string name="home_section_rename">セクションを編集</string>
     <string name="home_section_delete">セクションを削除</string>
     <string name="home_section_delete_confirm">セクションを削除</string>
     <string name="home_section_delete_message">「%1$s」を削除しますか？含まれる会話はデフォルトのセクションに戻ります。</string>
@@ -4046,7 +4045,7 @@
     <string name="rail_tab_order_save_failed">タブの順序を保存できませんでした</string>
     <string name="settings_notifications_device_section">このデバイス</string>
     <string name="settings_notifications_pause_section">一時停止とスケジュール</string>
-    <string name="settings_notifications_pause_custom">カスタム…</string>
+    <string name="settings_notifications_pause_custom">カスタム</string>
     <string name="settings_notifications_pause_custom_label">再開する日時</string>
     <string name="settings_notifications_pause_apply">一時停止</string>
     <string name="settings_notifications_quiet_hours_stored_zone">%1$s で保存されています。時刻を変更すると、このデバイスのタイムゾーンで保存されます。</string>
