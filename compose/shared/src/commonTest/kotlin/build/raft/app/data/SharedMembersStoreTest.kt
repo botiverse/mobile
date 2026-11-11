@@ -23,7 +23,7 @@ class SharedMembersStoreTest {
         store.dispatch(SharedMembersIntent.EnsureChannelSuggestions)
 
         assertEquals(1, channelRepository.getChannelsCalls)
-        assertEquals(listOf(SharedMembersChannelSuggestion("general", "team")), store.state.value.channelSuggestions)
+        assertEquals(listOf(SharedMembersChannelSuggestion("general", "team", channelId = "channel-1")), store.state.value.channelSuggestions)
         assertEquals(SharedMembersLoadStatus.Loaded, store.state.value.channelStatus)
     }
 
@@ -37,7 +37,7 @@ class SharedMembersStoreTest {
         store.dispatch(SharedMembersIntent.RefreshChannelSuggestions)
 
         assertEquals(2, channelRepository.getChannelsCalls)
-        assertEquals(listOf(SharedMembersChannelSuggestion("random", "chat")), store.state.value.channelSuggestions)
+        assertEquals(listOf(SharedMembersChannelSuggestion("random", "chat", channelId = "channel-2")), store.state.value.channelSuggestions)
     }
 
     @Test
@@ -55,7 +55,7 @@ class SharedMembersStoreTest {
 
         store.dispatch(SharedMembersIntent.EnsureChannelSuggestions)
 
-        assertEquals(listOf(SharedMembersChannelSuggestion("general", "team")), store.state.value.channelSuggestions)
+        assertEquals(listOf(SharedMembersChannelSuggestion("general", "team", channelId = "channel-1")), store.state.value.channelSuggestions)
     }
 
     private fun store(channelRepository: FakeChannelRepository): SharedMembersStore =
