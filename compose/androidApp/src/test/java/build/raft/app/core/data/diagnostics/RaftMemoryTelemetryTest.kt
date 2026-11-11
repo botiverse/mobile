@@ -39,6 +39,23 @@ class RaftMemoryTelemetryTest {
     }
 
     @Test
+    fun theRecordedBuildRoundTripsEvenWithSeparatorsInItsName() {
+        val versioned = sample.copy(versionCode = 12400001L, versionName = "1.24.0 (alpha,1;x)")
+        assertEquals(versioned, MemoryTelemetrySnapshot.decode(versioned.encode()))
+        assertEquals(listOf(versioned), MemoryTelemetryRing.decode(MemoryTelemetryRing.encode(listOf(versioned))))
+    }
+
+    @Test
+    fun aRingWrittenByThePreviousBuildStillDecodesWithoutAVersion() {
+        // Encoding 2: the 19 numeric fields, no build.
+        val v2 = "2," + sample.encode().substringAfter(',').split(',').take(18).joinToString(",")
+        val decoded = MemoryTelemetrySnapshot.decode(v2)
+        assertEquals(sample, decoded)
+        assertEquals(-1L, decoded?.versionCode)
+        assertEquals("", decoded?.versionName)
+    }
+
+    @Test
     fun corruptOrOlderFormatValuesDecodeToNothing() {
         assertNull(MemoryTelemetrySnapshot.decode(null))
         assertNull(MemoryTelemetrySnapshot.decode(""))

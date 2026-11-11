@@ -15,7 +15,10 @@ import android.os.Process
 import android.os.SystemClock
 import android.system.Os
 import android.system.OsConstants
+import build.raft.app.BuildConfig
 import java.io.File
+import java.net.URLDecoder
+import java.net.URLEncoder
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
 
@@ -49,6 +52,13 @@ internal data class MemoryTelemetrySnapshot(
     /** The most recent `onTrimMemory` level; 0 when none. */
     val lastTrimLevel: Int = 0,
     val lastTrimAtMillis: Long = -1L,
+    /**
+     * The build this process ran (BuildConfig at its start); -1 / "" when unknown (written by a
+     * build before encoding 3). Lets a kill report name its version when the exit record's
+     * processStateSummary ([build.raft.app.shared.RaftBuildStamp]) came back empty.
+     */
+    val versionCode: Long = -1L,
+    val versionName: String = "",
 ) {
     fun encode(): String =
         listOf(
@@ -71,6 +81,9 @@ internal data class MemoryTelemetrySnapshot(
             maxTrimLevel,
             lastTrimLevel,
             lastTrimAtMillis,
+            versionCode,
+            // URL-encoded: the name may hold the ',' and ';' this and the ring are split on.
+            URLEncoder.encode(versionName, "UTF-8"),
         ).joinToString(",")
 
     /** `key=value` fields appended to `previous_process_exit`, relative to the exit time. */
@@ -94,15 +107,25 @@ internal data class MemoryTelemetrySnapshot(
             "trimAgeMs=${ageAt(exitTimestampMillis, lastTrimAtMillis)}"
 
     companion object {
-        private const val EncodingVersion = 2
-        private const val FieldCount = 19
+        private const val EncodingVersion = 3
+        private const val FieldCount = 21
+        /** Encoding 2 (no version), still read: the ring written by the previous build. */
+        private const val V2FieldCount = 19
 
         internal fun ageAt(nowMillis: Long, atMillis: Long): Long = if (atMillis >= 0L) nowMillis - atMillis else -1L
 
         fun decode(encoded: String?): MemoryTelemetrySnapshot? {
             val parts = encoded?.split(',') ?: return null
-            if (parts.size != FieldCount || parts[0].toIntOrNull() != EncodingVersion) return null
-            val n = parts.map { it.toLongOrNull() ?: return null }
+            val version = parts[0].toIntOrNull()
+            val versioned =
+                when {
+                    version == EncodingVersion && parts.size == FieldCount -> true
+                    version == 2 && parts.size == V2FieldCount -> false
+                    else -> return null
+                }
+            val n = parts.take(if (versioned) FieldCount - 1 else V2FieldCount).map { it.toLongOrNull() ?: return null }
+            val versionName =
+                if (versioned) runCatching { URLDecoder.decode(parts[FieldCount - 1], "UTF-8") }.getOrNull() ?: return null else ""
             return MemoryTelemetrySnapshot(
                 pid = n[1].toInt(),
                 processStartMillis = n[2],
@@ -122,6 +145,8 @@ internal data class MemoryTelemetrySnapshot(
                 maxTrimLevel = n[16].toInt(),
                 lastTrimLevel = n[17].toInt(),
                 lastTrimAtMillis = n[18],
+                versionCode = if (versioned) n[19] else -1L,
+                versionName = versionName,
             )
         }
     }
@@ -275,6 +300,8 @@ internal object RaftMemoryTelemetry {
                         writtenAtMillis = now,
                         foreground = false,
                         foregroundChangedAtMillis = now,
+                        versionCode = BuildConfig.VERSION_CODE.toLong(),
+                        versionName = BuildConfig.VERSION_NAME,
                     )
                 persist(MemoryTelemetryWriteGate.Cause.ForegroundChange)
             }
