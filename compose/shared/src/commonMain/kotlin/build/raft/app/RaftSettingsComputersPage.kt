@@ -3125,12 +3125,13 @@ private fun RaftComputerAgentStatus(live: RaftAgentStatusIndicatorState) {
 
 /**
  * An agent on this computer: its own avatar (pixel avatar or photo) in the agent sticker,
- * as the Members list draws it; the initials only while it has none (artin 2026-10-21).
+ * as the Members list draws it; an agent with none wears the default pixel robot, as web
+ * `AgentAvatar` does ([raftComputerAgentAvatarWireValue]).
  */
 @Composable
 private fun RaftComputerAgentAvatar(agent: SettingsComputerAgentSnapshot) {
     val size = RaftAvatarSize.Md
-    val avatarUrl = agent.avatarUrl?.takeIf { it.isNotBlank() }
+    val avatarUrl = agent.raftComputerAgentAvatarWireValue()
     RaftAvatar(
         type = RaftAvatarType.Agent,
         size = size,
