@@ -7603,28 +7603,20 @@ private fun SharedThreadRouteContentContent(
             lastAcceptedHeaderProjection = accepted
         }
     }
-    // The channel header icon's server facts: the public-page globe (publicPageLive from the session
-    // server list, canonical store state, never the route payload) and external_channels_v1 (the
-    // External glyph). One holder, not two locals (the route's lambdas are at the JVM capture limit).
-    val headerServerMarks =
-        ThreadHeaderServerMarks(
-            publicPageLive =
-                currentSession?.servers?.firstOrNull { it.id == headerProjectionServerId?.value }?.publicPageLive == true,
-            externalChannelsEnabled =
-                rememberServerFeatureLatched(sharedStores.serverFeatureFlags, headerProjectionServerId, EXTERNAL_CHANNELS_FEATURE_FLAG_KEY),
-        )
+    // Public-page globe on the channel header icon: the server's publicPageLive comes from
+    // the session server list (canonical store state), never from the route payload. The External
+    // glyph needs no server fact: it is not gated by external_channels_v1 (web plan §2a).
+    val headerServerPublicPageLive =
+        currentSession?.servers?.firstOrNull { it.id == headerProjectionServerId?.value }?.publicPageLive == true
     val headerDisplayModel =
-        remember(headerProjectionInput, stableHeaderProjection, payload, headerServerMarks, knownHeaderCandidate) {
+        remember(headerProjectionInput, stableHeaderProjection, payload, headerServerPublicPageLive, knownHeaderCandidate) {
             headerProjectionInput
                 .displayModelWithKnownCandidate(
                     projection = stableHeaderProjection,
                     contentPayload = payload,
                     knownCandidate = knownHeaderCandidate
                 )
-                .copy(
-                    serverPublicPageLive = headerServerMarks.publicPageLive,
-                    externalChannelsEnabled = headerServerMarks.externalChannelsEnabled,
-                )
+                .copy(serverPublicPageLive = headerServerPublicPageLive)
         }
     // Agent Lounge v0: a Lounge's mute is the Lounge's own (no Home list holds it), so its ⋯ Mute
     // and muted mark follow what the sidebar row's menu and other devices set.
@@ -13016,7 +13008,7 @@ private fun SharedThreadRouteContentContent(
             arrayOf(
                 // One channel-kind glyph per channel (forward targets, composer suggestions). Read
                 // from values this lambda already captures (see the JVM-limit note below).
-                LocalRaftChannelKinds provides rememberRaftChannelKindsState(sharedStores.serverFeatureFlags, sharedHomeStore.homeStateForPage()),
+                LocalRaftChannelKinds provides rememberRaftChannelKindsState(sharedHomeStore.homeStateForPage()),
                 LocalRaftMemberPreviewCardSource provides memberPreviewCardSource,
                 LocalThreadAppLinkPreviewHost provides appLinkPreviewHost,
                 LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,

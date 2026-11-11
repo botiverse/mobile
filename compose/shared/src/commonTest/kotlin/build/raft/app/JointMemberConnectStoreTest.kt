@@ -4,6 +4,8 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.JointChannelRole
 import build.raft.app.data.JointChannelServer
+import build.raft.app.data.JointSameAdminContext
+import build.raft.app.data.JointSameAdminServer
 import build.raft.app.data.MemberConnectResponse
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ServerConnectOutcome
@@ -303,6 +305,59 @@ class JointMemberConnectStoreTest {
         store.dispatch(JointChannelConnectionsIntent.SetExternalChannelsEnabled(false))
         assertNull(store.state.value.memberConnectSheet)
         assertIs<JointChannelConnectionsState>(store.state.value)
+        store.clear()
+    }
+
+    @Test
+    fun aFailedLoadDropsTheChannelButKeepsTheFlagAndTheAccount() = runTest {
+        val memory = MemberConnectedByYouMemory().apply { add("k", listOf("srv-zed")) }
+        val sameAdmin = JointSameAdminContext("current-co", "Current Co", "me", null, listOf(JointSameAdminServer("zed-co", "Zed Co", "owner")))
+        val dataSource = FakeJointConnectionsDataSource(connections = memberTestConnections())
+        val store = memberStore(dataSource, connectedByYou = MemberConnectedByYouSlot(memory, "k"))
+        store.dispatch(JointChannelConnectionsIntent.SetSameAdminContext(sameAdmin))
+        assertEquals(JointChannelConnectionsLoadStatus.Content, store.state.value.status)
+        assertNotNull(store.state.value.connections)
+
+        // Access lost on a refresh (404): nothing of the channel stays, the account facts do.
+        dataSource.loadResult = DataResult.Error(ScreenError(code = "joint_http_404", retryable = false))
+        store.dispatch(JointChannelConnectionsIntent.Refresh)
+        runCurrent()
+
+        val lost = store.state.value
+        assertEquals(JointChannelConnectionsLoadStatus.Error, lost.status)
+        assertEquals("joint_http_404", lost.loadFailure?.code)
+        assertNull(lost.connections)
+        assertFalse(lost.canFederate)
+        assertFalse(lost.refreshing)
+        assertEquals(emptyList(), lost.displayServers)
+        assertFalse(lost.memberConnectAvailable)
+        assertTrue(lost.externalChannelsEnabled)
+        assertEquals(memberTestAccount(), lost.memberConnectAccount)
+        assertEquals(sameAdmin, lost.sameAdminContext)
+        assertEquals(setOf("srv-zed"), lost.connectedByYou)
+
+        // The next load that answers paints with them, no re-dispatch needed.
+        dataSource.loadResult = DataResult.Content(JointChannelConnectionsSnapshot(memberTestConnections(), canFederate = false))
+        store.dispatch(JointChannelConnectionsIntent.Refresh)
+        runCurrent()
+        assertEquals(JointChannelConnectionsLoadStatus.Content, store.state.value.status)
+        assertTrue(store.state.value.memberConnectAvailable)
+        store.clear()
+    }
+
+    @Test
+    fun aFirstLoadThatFailsKeepsTheFlagAndTheAccount() = runTest {
+        val dataSource =
+            FakeJointConnectionsDataSource(
+                loadResult = DataResult.Error(ScreenError(code = "joint_http_500", retryable = true)),
+            )
+        val store = memberStore(dataSource)
+
+        val failed = store.state.value
+        assertEquals(JointChannelConnectionsLoadStatus.Error, failed.status)
+        assertNull(failed.connections)
+        assertTrue(failed.externalChannelsEnabled)
+        assertEquals(memberTestAccount(), failed.memberConnectAccount)
         store.clear()
     }
 

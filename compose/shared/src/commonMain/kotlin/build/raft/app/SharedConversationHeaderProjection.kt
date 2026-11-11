@@ -39,8 +39,6 @@ internal data class ThreadHeaderDisplayModel(
      * route payload). Applied by the Thread route after projection.
      */
     val serverPublicPageLive: Boolean = false,
-    /** The header's server `external_channels_v1`. Applied by the Thread route after projection. */
-    val externalChannelsEnabled: Boolean = false,
 ) {
     /** Web ChatPanel.tsx:1366: the channel header icon carries the public-page globe. */
     val channelOnPublicPage: Boolean
@@ -56,19 +54,13 @@ internal data class ThreadHeaderDisplayModel(
     /** The channel header's glyph, from the one chooser (web ChatPanel `ChannelIcon`). */
     val channelKindGlyph: RaftChannelKindGlyph
         get() =
-            raftChannelKindGlyph(
-                channelType = channelKind,
-                onPublicPage = channelOnPublicPage,
-                hasExternalRelation = surfaceKind == RaftThreadSurfaceKind.Channel && channelHasExternalRelation,
-                externalChannelsEnabled = surfaceKind == RaftThreadSurfaceKind.Channel && externalChannelsEnabled,
-            )
+            if (surfaceKind == RaftThreadSurfaceKind.Channel) {
+                raftChannelRecordKindGlyph(channelKind, channelOnPublicPage, channelHasExternalRelation)
+            } else {
+                // A reply thread's header is not the channel's: its type alone.
+                raftChannelKindGlyph(channelKind, channelOnPublicPage)
+            }
 }
-
-/** The header's server facts the channel glyph reads, applied after projection. */
-internal data class ThreadHeaderServerMarks(
-    val publicPageLive: Boolean,
-    val externalChannelsEnabled: Boolean,
-)
 
 internal sealed interface ThreadHeaderProjectionInput {
     // Order IS the contract (t432 family ③): implementations list ids that name the

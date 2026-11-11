@@ -264,6 +264,27 @@ class ChannelSettingsPageTest {
         )
 
     @Test
+    fun privateMemberConnectNeedsTheFlagAPrivateChannelTheViewerIsInAndAServerToConnect() {
+        // Web EditChannelDialog showPrivateConnectSection: private, not archived, memberConnect.available.
+        val account = memberTestAccount()
+        val private = row(name = "partners", type = "private")
+        assertTrue(channelSettingsOffersPrivateMemberConnect(private, externalChannelsEnabled = true, account = account))
+        // The flag gates it: off, the page is as before.
+        assertFalse(channelSettingsOffersPrivateMemberConnect(private, externalChannelsEnabled = false, account = account))
+        // Only a private channel: not a public one, not a joint one (its own Connected servers section).
+        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "partners"), externalChannelsEnabled = true, account = account))
+        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "partners", type = "joint"), externalChannelsEnabled = true, account = account))
+        // Never archived, never #all, only for a viewer in the channel.
+        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "partners", type = "private", archived = true), externalChannelsEnabled = true, account = account))
+        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "all", type = "private"), externalChannelsEnabled = true, account = account))
+        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "partners", type = "private", joined = false), externalChannelsEnabled = true, account = account))
+        // A server to connect: none known yet, or none the viewer owns or administers.
+        assertFalse(channelSettingsOffersPrivateMemberConnect(private, externalChannelsEnabled = true, account = null))
+        val memberOnly = account.copy(servers = account.servers.filter { it.role != "owner" && it.role != "admin" || it.slug == "community" || it.id == account.currentServerId })
+        assertFalse(channelSettingsOffersPrivateMemberConnect(private, externalChannelsEnabled = true, account = memberOnly))
+    }
+
+    @Test
     fun hostsJointCopyOffersArchiveOnlyWithExternalChannels() {
         val archiveLeave = listOf(ChannelSettingsActionRow.Archive, ChannelSettingsActionRow.Leave)
         val withDisconnect = archiveLeave + ChannelSettingsActionRow.Disconnect
