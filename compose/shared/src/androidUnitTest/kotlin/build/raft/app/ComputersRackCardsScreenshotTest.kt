@@ -67,11 +67,15 @@ import org.robolectric.annotation.GraphicsMode
  * this server's agents first, slock #13506), the laptop's restart command with its copy button;
  * gpu-rig (up to date, and the viewer may not manage it) has none. Under each card's facts, its
  * owner (Studio Mac's "Owner: Artin") or "Public (no owner)" (Computer owner v1, slock #13344).
- * List (`settings.computers.list`): the same computers as phone list rows (tile with its light,
- * name with the agent count and Low disk, facts, the owner line, description), no meters, no next step.
+ * List (`settings.computers.list`): the same computers as the web's phone list blocks between seam
+ * lines under the sticky runtime header (each runtime's mark and short name, then Other): the name
+ * with the agent count and Low disk and the version (or Offline) at the right, the owner line, the
+ * agents on one scrolling line (gpu-rig's fade at the end), the runtime cells under the header,
+ * and the next step; no Disk / Memory, no ⋯.
  * Toolbar (#proj-mobile:#60): every capture has it under the counts; the list is in Name order with
  * the offline laptop in its folded Offline section. `settings.computers.filtered`: Runtime Codex and
- * Sort by Codex remaining (both filled, Clear all's ×); `.grouped` (cards and list): Group by
+ * Sort by Codex remaining (both filled, Clear all's ×), each card's Codex line leading in bold
+ * (web `leadUsage`); `.sorted_memory`: Sort by Memory used, Memory before Disk in bold; `.grouped` (cards and list): Group by
  * Provider, AWS and Hetzner Cloud then Personal computers; `.no_match`: a search and Needs
  * attention matching nothing, with Clear all.
  * Agents carry no avatar image, so the capture draws initials without a fetch.
@@ -118,6 +122,9 @@ class ComputersRackCardsScreenshotTest {
     fun computersGroupedListLight() = capture("settings.computers.grouped.list", RaftAppAppearance.Light, ComputersRackView.List, groupedToolbar)
 
     @Test
+    fun computersSortedByMemoryLight() = capture("settings.computers.sorted_memory", RaftAppAppearance.Light, toolbar = memoryToolbar)
+
+    @Test
     fun computersNoMatchLight() = capture("settings.computers.no_match", RaftAppAppearance.Light, toolbar = noMatchToolbar)
 
     @Test
@@ -137,6 +144,13 @@ class ComputersRackCardsScreenshotTest {
                 serverId = "server-1",
                 filters = RaftComputersRackFilters(runtimes = listOf(RaftComputersRackRuntimeFilter.Codex)),
                 storedSort = ComputersRackSort(ComputersRackSortKey.Remaining(RuntimeAccountUsageProvider.Codex), ComputersRackSortDirection.Desc),
+            )
+
+        /** Sort: Memory used, most first: each card's Memory line leads, bold, above Disk. */
+        val memoryToolbar =
+            RaftComputersRackToolbarState(
+                serverId = "server-1",
+                storedSort = ComputersRackSort(ComputersRackSortKey.Memory, ComputersRackSortDirection.Desc),
             )
 
         /** Group: Provider (AWS, Hetzner Cloud, then Personal computers last); Group filled. */
@@ -396,13 +410,13 @@ private fun ComputersListVisualContent(
 }
 
 /**
- * The cards' usage reads: Studio normal + warning; build-box used up + stale; old-node nothing
+ * The cards' usage reads: Studio normal + warning; build-box used up ("Back in 3h") + stale; old-node nothing
  * read ("—") + an account needing attention ("—" with the pixel); gpu-rig normal. The offline
  * laptop has a read that must not show.
  */
 private fun rackUsageFixture(): Map<String, Map<RuntimeAccountUsageProvider, RuntimeAccountUsageLoad>> {
-    fun window(ratio: Double?, status: RuntimeAccountUsageWindowStatus = RuntimeAccountUsageWindowStatus.Ok) =
-        RuntimeAccountUsageWindow(id = "five_hour", label = "5h", status = status, usedRatio = ratio, resetsAt = null)
+    fun window(ratio: Double?, status: RuntimeAccountUsageWindowStatus = RuntimeAccountUsageWindowStatus.Ok, resetsAt: String? = null) =
+        RuntimeAccountUsageWindow(id = "five_hour", label = "5h", status = status, usedRatio = ratio, resetsAt = resetsAt)
     fun account(vararg windows: RuntimeAccountUsageWindow, health: RuntimeAccountUsageHealth = RuntimeAccountUsageHealth.Ok) =
         RuntimeAccountUsageAccount(accountKey = "acct", planLabel = "Max", identityLabel = null, health = health, windows = windows.toList())
     fun loaded(provider: String, account: RuntimeAccountUsageAccount, stale: Boolean = false) =
@@ -417,7 +431,9 @@ private fun rackUsageFixture(): Map<String, Map<RuntimeAccountUsageProvider, Run
             ),
         "m-build" to
             mapOf(
-                RuntimeAccountUsageProvider.Claude to loaded("claude", account(window(null, RuntimeAccountUsageWindowStatus.LimitReached))),
+                // Back in 3h (slock #14058): 3h 10m after the capture's clock, 2026-10-22T02:10Z.
+                RuntimeAccountUsageProvider.Claude to
+                    loaded("claude", account(window(null, RuntimeAccountUsageWindowStatus.LimitReached, resetsAt = "2026-10-22T05:20:00Z"))),
                 RuntimeAccountUsageProvider.Kimi to loaded("kimi", account(window(0.3)), stale = true),
             ),
         "m-old" to

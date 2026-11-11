@@ -70,6 +70,8 @@ internal object RaftComputersRackTags {
     const val EmptyClear = "computers-rack-empty-clear"
     const val GroupTitle = "rack-group"
     const val OfflineTitle = "rack-group-offline"
+    const val CardMeters = "rack-card-meters"
+    const val ListHeader = "computers-rack-header"
 }
 
 @Composable

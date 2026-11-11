@@ -9,13 +9,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftScrollbarSize
 import build.raft.designsystem.components.RaftScrollbarTrigger
+import build.raft.designsystem.components.raftMaskFadeX
 import build.raft.designsystem.components.raftScrollbar
+import build.raft.designsystem.tokens.RaftUiPalette
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
@@ -58,6 +64,34 @@ class ScrollAreaScreenshotTest {
                         state = list,
                     ) {
                         items(100) { RaftText("Item ${it + 1}", Modifier.padding(8.dp), style = RaftTheme.typography.callout) }
+                    }
+                }
+            }
+        }
+
+    /**
+     * raft-ui `mask-fade-x` on a sideways strip of dots, light and dark: at its start (the end
+     * fades), scrolled into its middle (both fade) and at its end (the start fades).
+     */
+    @Test
+    fun scrollAreaMaskFadeX() =
+        listOf(RaftAppearance.Light, RaftAppearance.Dark).forEach { appearance ->
+            RaftScreenshot.capture("scroll_area_mask_fade_x_${appearance.name.lowercase()}", appearance) {
+                val colors = RaftTheme.colors
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    listOf(0, 120, 10_000).forEach { start ->
+                        val scroll = rememberScrollState(start)
+                        Row(
+                            Modifier
+                                .width(220.dp)
+                                .background(colors.layerCard)
+                                .raftMaskFadeX(scroll)
+                                .horizontalScroll(scroll)
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            repeat(16) { Row(Modifier.size(28.dp).clip(CircleShape).background(RaftUiPalette.info)) {} }
+                        }
                     }
                 }
             }

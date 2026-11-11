@@ -18,6 +18,11 @@ import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MillisPerDay
+import build.raft.app.model.MillisPerHour
+import build.raft.app.model.MillisPerMinute
+import build.raft.app.model.RaftRelativeTimeUnit
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.MemberProfile
 import build.raft.app.data.ServerRuntimeCatalog
 import build.raft.app.data.RuntimeAccountUsageAccount
@@ -369,7 +374,11 @@ internal sealed interface RaftRackUsageCell {
     /** Nothing to read (not allowed, not read yet, missing, failed, or every account needs attention): "—". */
     data class Unavailable(override val column: RaftRackUsageColumn, override val attention: Boolean) : RaftRackUsageCell
 
-    /** The tightest account's share used: [warn] from 80%, [usedUp] at its limit, [stale] dimmed. */
+    /**
+     * The tightest account's share used: [warn] from 80%, [usedUp] at its limit, [stale] dimmed.
+     * Used up, [resetsAt] is when that account can be used again (null: not known) and [plan]
+     * its plan, for the line's words (web #14058).
+     */
     data class Value(
         override val column: RaftRackUsageColumn,
         val used: Int,
@@ -377,12 +386,51 @@ internal sealed interface RaftRackUsageCell {
         val usedUp: Boolean,
         val stale: Boolean,
         override val attention: Boolean,
+        val resetsAt: String? = null,
+        val plan: String? = null,
     ) : RaftRackUsageCell
+}
+
+/**
+ * Web `rackReset` (slock #14058): how long until a used-up allowance resets, as the rack counts
+ * it. Minutes under an hour, hours under 48 hours, then days; counted down (floor, at least 1):
+ * 3h 59m left reads 3h, the last minute 1m, 71h 2d. Null when [resetsAt] isn't known, doesn't
+ * parse, or has passed (the line then says "Used up").
+ */
+internal data class RaftRackReset(val unit: RaftRelativeTimeUnit, val count: Int)
+
+internal fun raftRackReset(resetsAt: String?, nowMillis: Long): RaftRackReset? {
+    val at = resetsAt?.takeIf { it.isNotBlank() }?.let { parseRaftTimestampEpochMillisOrNull(it, 0) } ?: return null
+    val left = at - nowMillis
+    if (left <= 0) return null
+    return when {
+        left < MillisPerHour -> RaftRackReset(RaftRelativeTimeUnit.Minute, (left / MillisPerMinute).toInt().coerceAtLeast(1))
+        left < 48 * MillisPerHour -> RaftRackReset(RaftRelativeTimeUnit.Hour, (left / MillisPerHour).toInt())
+        else -> RaftRackReset(RaftRelativeTimeUnit.Day, (left / MillisPerDay).toInt())
+    }
+}
+
+/**
+ * Web `usableAgainAt`: when an account whose windows are at their limit can be used again, the
+ * latest of their resets (with the weekly limit still reached, the 5-hour reset frees nothing).
+ * Null when any of them doesn't say when it resets.
+ */
+private fun raftRackUsableAgainAt(resets: List<String?>): String? {
+    var latest: String? = null
+    var latestMillis = Long.MIN_VALUE
+    resets.forEach { reset ->
+        val millis = reset?.takeIf { it.isNotBlank() }?.let { parseRaftTimestampEpochMillisOrNull(it, 0) } ?: return null
+        if (latest == null || millis > latestMillis) {
+            latest = reset
+            latestMillis = millis
+        }
+    }
+    return latest
 }
 
 /** Web `BulkRuntimeUsageSummary` of one account. */
 private sealed interface RaftRackAccountSummary {
-    data object Limit : RaftRackAccountSummary
+    data class Limit(val resetsAt: String?) : RaftRackAccountSummary
 
     data class Used(val percent: Int) : RaftRackAccountSummary
 
@@ -391,7 +439,8 @@ private sealed interface RaftRackAccountSummary {
 
 /** Web `summarizeRuntimeUsage` of a single account. */
 private fun RuntimeAccountUsageAccount.rackSummary(): RaftRackAccountSummary? {
-    if (windows.any { it.status == RuntimeAccountUsageWindowStatus.LimitReached }) return RaftRackAccountSummary.Limit
+    val limited = windows.filter { it.status == RuntimeAccountUsageWindowStatus.LimitReached }
+    if (limited.isNotEmpty()) return RaftRackAccountSummary.Limit(raftRackUsableAgainAt(limited.map { it.resetsAt }))
     if (health != RuntimeAccountUsageHealth.Ok) return RaftRackAccountSummary.Attention
     val ratios = windows.filter { it.status == RuntimeAccountUsageWindowStatus.Ok }.mapNotNull { it.usedRatio }
     if (ratios.isEmpty()) return null
@@ -407,22 +456,24 @@ internal fun raftRackUsageCell(column: RaftRackUsageColumn, load: RuntimeAccount
     val read = (load as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available
         ?: return RaftRackUsageCell.Unavailable(column, attention = false)
     var tightestUsed: Int? = null
-    var tightestLimit = false
+    var tightestLimit: RaftRackAccountSummary.Limit? = null
+    var tightestPlan: String? = null
     var attention = false
     read.snapshot.accounts.forEach { account ->
         val summary = account.rackSummary()
         if (summary == RaftRackAccountSummary.Attention) attention = true
         val used =
             when (summary) {
-                RaftRackAccountSummary.Limit -> 100
+                is RaftRackAccountSummary.Limit -> 100
                 is RaftRackAccountSummary.Used -> summary.percent
                 else -> null
             } ?: return@forEach
-        val limit = summary == RaftRackAccountSummary.Limit
+        val limit = summary as? RaftRackAccountSummary.Limit
         val current = tightestUsed
-        if (current == null || used > current || (used == current && limit)) {
+        if (current == null || used > current || (used == current && limit != null)) {
             tightestUsed = used
             tightestLimit = limit
+            tightestPlan = account.planLabel?.takeIf { it.isNotBlank() }
         }
     }
     val used = tightestUsed ?: return RaftRackUsageCell.Unavailable(column, attention)
@@ -430,9 +481,11 @@ internal fun raftRackUsageCell(column: RaftRackUsageColumn, load: RuntimeAccount
         column = column,
         used = used,
         warn = used >= RAFT_RACK_USAGE_WARN_PERCENT,
-        usedUp = tightestLimit,
+        usedUp = tightestLimit != null,
         stale = read.stale,
         attention = attention,
+        resetsAt = tightestLimit?.resetsAt,
+        plan = tightestPlan,
     )
 }
 
@@ -576,27 +629,6 @@ internal fun raftComputersCounts(
         online = rows.count { it.online },
         agents = rows.sumOf { agentsByMachine[it.id]?.size ?: 0 },
     )
-
-/**
- * A card's agents on exactly one line (cindyz, #triage): [visible] avatars, then "+[overflow]" in
- * the last slot when they don't all fit. The overflow takes one slot of its own, so it replaces
- * the last avatar that would have fit.
- */
-internal data class RaftComputerAgentStrip(val visible: Int, val overflow: Int)
-
-internal fun raftComputerAgentStrip(total: Int, capacity: Int): RaftComputerAgentStrip {
-    val count = total.coerceAtLeast(0)
-    val slots = capacity.coerceAtLeast(1)
-    if (count <= slots) return RaftComputerAgentStrip(visible = count, overflow = 0)
-    val visible = slots - 1
-    return RaftComputerAgentStrip(visible = visible, overflow = count - visible)
-}
-
-/** How many [slot]-wide slots, [gap] apart, fit in [width] (all in dp). */
-internal fun raftComputerAgentSlotCapacity(width: Float, slot: Float, gap: Float): Int {
-    if (width <= 0f || slot <= 0f) return 0
-    return ((width + gap) / (slot + gap)).toInt()
-}
 
 internal sealed interface RaftComputerDetailModel {
     data object Loading : RaftComputerDetailModel

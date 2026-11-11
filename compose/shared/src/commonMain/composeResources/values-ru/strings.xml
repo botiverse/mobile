@@ -2670,9 +2670,13 @@
     <string name="settings_computers_rack_agent_count_other">агентов: %1$d</string>
     <string name="settings_computers_rack_version">v%1$s</string>
     <string name="settings_computers_rack_last_seen">Последняя активность: %1$s.</string>
-    <string name="settings_computers_rack_agents_overflow">+%1$d</string>
     <string name="settings_computers_rack_percent_used">Использовано %1$s</string>
     <string name="settings_computers_rack_used_up">Исчерпано</string>
+    <string name="settings_computers_rack_resets_in_minutes">Сброс %1$dм</string>
+    <string name="settings_computers_rack_resets_in_hours">Сброс %1$dч</string>
+    <string name="settings_computers_rack_resets_in_days">Сброс %1$dд</string>
+    <string name="settings_computers_rack_used_up_resets">исчерпано, сброс %1$s</string>
+    <string name="settings_computers_rack_col_other">Другое</string>
     <string name="settings_computers_rack_other_runtimes">Другие среды выполнения</string>
     <string name="settings_computers_rack_usage_unavailable">%1$s: данные об использовании недоступны</string>
     <string name="settings_computers_rack_usage_meter">Аккаунт %1$s: %2$s</string>

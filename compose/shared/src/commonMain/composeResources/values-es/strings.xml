@@ -2673,9 +2673,13 @@
     <string name="settings_computers_rack_agent_count_other">%1$d agentes</string>
     <string name="settings_computers_rack_version">v%1$s</string>
     <string name="settings_computers_rack_last_seen">Última conexión %1$s.</string>
-    <string name="settings_computers_rack_agents_overflow">+%1$d</string>
     <string name="settings_computers_rack_percent_used">%1$s usado</string>
     <string name="settings_computers_rack_used_up">Agotado</string>
+    <string name="settings_computers_rack_resets_in_minutes">Renov. %1$dm</string>
+    <string name="settings_computers_rack_resets_in_hours">Renov. %1$dh</string>
+    <string name="settings_computers_rack_resets_in_days">Renov. %1$dd</string>
+    <string name="settings_computers_rack_used_up_resets">agotado, se restablece %1$s</string>
+    <string name="settings_computers_rack_col_other">Otros</string>
     <string name="settings_computers_rack_other_runtimes">Otros runtimes</string>
     <string name="settings_computers_rack_usage_unavailable">%1$s: uso no disponible</string>
     <string name="settings_computers_rack_usage_meter">Cuenta de %1$s: %2$s</string>

@@ -99,26 +99,6 @@ class RaftComputersRackCardsModelTest {
     }
 
     @Test
-    fun agentStripKeepsOneLineAndEndsWithTheOverflowCount() {
-        assertEquals(RaftComputerAgentStrip(visible = 0, overflow = 0), raftComputerAgentStrip(total = 0, capacity = 9))
-        assertEquals(RaftComputerAgentStrip(visible = 9, overflow = 0), raftComputerAgentStrip(total = 9, capacity = 9))
-        // One too many: the last slot becomes "+2" (the 9th and 10th agent).
-        assertEquals(RaftComputerAgentStrip(visible = 8, overflow = 2), raftComputerAgentStrip(total = 10, capacity = 9))
-        assertEquals(RaftComputerAgentStrip(visible = 8, overflow = 6), raftComputerAgentStrip(total = 14, capacity = 9))
-        // No room at all still shows the count.
-        assertEquals(RaftComputerAgentStrip(visible = 0, overflow = 3), raftComputerAgentStrip(total = 3, capacity = 0))
-    }
-
-    @Test
-    fun slotCapacityCountsWholeSlotsWithTheirGaps() {
-        // 27dp avatars 4dp apart: n slots take 31n - 4.
-        assertEquals(10, raftComputerAgentSlotCapacity(width = 306f, slot = 27f, gap = 4f))
-        assertEquals(9, raftComputerAgentSlotCapacity(width = 305f, slot = 27f, gap = 4f))
-        assertEquals(1, raftComputerAgentSlotCapacity(width = 27f, slot = 27f, gap = 4f))
-        assertEquals(0, raftComputerAgentSlotCapacity(width = 0f, slot = 27f, gap = 4f))
-    }
-
-    @Test
     fun agentsGroupByTheirComputerAndSkipDeletedHumansAndUnassigned() {
         val members =
             listOf(

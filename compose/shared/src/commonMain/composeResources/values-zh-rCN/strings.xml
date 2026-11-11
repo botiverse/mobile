@@ -2680,9 +2680,13 @@
     <string name="settings_computers_rack_agent_count_other">%1$d 个 Agent</string>
     <string name="settings_computers_rack_version">v%1$s</string>
     <string name="settings_computers_rack_last_seen">上次在线 %1$s。</string>
-    <string name="settings_computers_rack_agents_overflow">+%1$d</string>
     <string name="settings_computers_rack_percent_used">已用 %1$s</string>
     <string name="settings_computers_rack_used_up">已用完</string>
+    <string name="settings_computers_rack_resets_in_minutes">%1$dm 后重置</string>
+    <string name="settings_computers_rack_resets_in_hours">%1$dh 后重置</string>
+    <string name="settings_computers_rack_resets_in_days">%1$dd 后重置</string>
+    <string name="settings_computers_rack_used_up_resets">已用完，%1$s重置</string>
+    <string name="settings_computers_rack_col_other">其他</string>
     <string name="settings_computers_rack_other_runtimes">其他运行时</string>
     <string name="settings_computers_rack_usage_unavailable">%1$s：无法获取用量</string>
     <string name="settings_computers_rack_usage_meter">%1$s 账户：%2$s</string>

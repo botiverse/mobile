@@ -13,7 +13,12 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -242,3 +247,41 @@ private fun DrawScope.drawRaftThumb(
     val r = radius.coerceAtMost(thickness / 2f)
     drawRoundRect(color, topLeft = Offset(x, thumb.offset), size = Size(thickness, thumb.length), cornerRadius = CornerRadius(r, r))
 }
+
+/** raft-ui `mask-fade-x`: how far in from the edge the content fades out. */
+val RaftMaskFadeLength: Dp = 24.dp
+
+/**
+ * raft-ui `mask-fade-x` (with `data-overflow`): a sideways scroller's content fades out over
+ * [length] on each side that has more content beyond it, so a cut item reads as "more this way"
+ * rather than as clipped. [start] and [end] are the layout's start and end (RTL follows); with
+ * neither, nothing is drawn differently. Put it before the scroll modifier, on the scroller's box.
+ */
+fun Modifier.raftMaskFadeX(start: Boolean, end: Boolean, length: Dp = RaftMaskFadeLength): Modifier =
+    if (!start && !end) {
+        this
+    } else {
+        // Offscreen, so DstIn masks only this content, not what is under it.
+        graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                val fade = length.toPx().coerceAtMost(size.width / 2f)
+                if (fade <= 0f) return@drawWithContent
+                val rtl = layoutDirection == LayoutDirection.Rtl
+                val left = if (rtl) end else start
+                val right = if (rtl) start else end
+                if (left) {
+                    drawRect(Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), startX = 0f, endX = fade), blendMode = BlendMode.DstIn)
+                }
+                if (right) {
+                    drawRect(
+                        Brush.horizontalGradient(listOf(Color.Black, Color.Transparent), startX = size.width - fade, endX = size.width),
+                        blendMode = BlendMode.DstIn,
+                    )
+                }
+            }
+    }
+
+/** [raftMaskFadeX] for a [ScrollState] scrolled sideways: a fade on each side that has more. */
+fun Modifier.raftMaskFadeX(state: ScrollState, length: Dp = RaftMaskFadeLength): Modifier =
+    raftMaskFadeX(start = state.value > 0, end = state.value < state.maxValue, length = length)
