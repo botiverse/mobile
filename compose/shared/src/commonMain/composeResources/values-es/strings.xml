@@ -2505,7 +2505,6 @@
     <string name="settings_notifications_mode_none_detail">Nada de este espacio de trabajo, ni siquiera las menciones, salvo en canales o hilos configurados de otra forma.</string>
     <string name="settings_notifications_mode_unavailable">No se pudo cargar la configuración de notificaciones del espacio de trabajo. Podrás cambiarla cuando se cargue.</string>
     <string name="settings_computers_loading">Cargando computadoras</string>
-    <string name="settings_computers_loading_detail">Obteniendo las computadoras conectadas de este servidor.</string>
     <string name="settings_computers_error_load">No se pudieron cargar las computadoras</string>
     <string name="settings_computers_error_retry_detail">Desliza hacia abajo para actualizar o inténtalo de nuevo.</string>
     <string name="settings_computers_error_unavailable_detail">La configuración no puede cargar las computadoras conectadas en este momento.</string>

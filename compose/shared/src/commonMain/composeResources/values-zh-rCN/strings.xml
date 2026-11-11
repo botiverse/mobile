@@ -2512,7 +2512,6 @@
     <string name="settings_notifications_mode_none_detail">此工作空间什么都不通知，包括 @我；单独设置过的频道或线程除外。</string>
     <string name="settings_notifications_mode_unavailable">无法加载此工作空间的通知设置，加载完成后才能修改。</string>
     <string name="settings_computers_loading">正在加载计算机</string>
-    <string name="settings_computers_loading_detail">正在从此服务器获取已连接的计算机。</string>
     <string name="settings_computers_error_load">无法加载计算机</string>
     <string name="settings_computers_error_retry_detail">请下拉刷新或重试。</string>
     <string name="settings_computers_error_unavailable_detail">设置暂时无法加载已连接的计算机。</string>

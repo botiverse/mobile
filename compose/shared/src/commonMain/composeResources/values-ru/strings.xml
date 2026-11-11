@@ -2502,7 +2502,6 @@
     <string name="settings_notifications_mode_none_detail">Ничего из этого рабочего пространства, даже упоминания, если для канала или ветки не задано иное.</string>
     <string name="settings_notifications_mode_unavailable">Не удалось загрузить настройку уведомлений рабочего пространства. Изменить её можно будет после загрузки.</string>
     <string name="settings_computers_loading">Загрузка компьютеров…</string>
-    <string name="settings_computers_loading_detail">Загружаем подключённые компьютеры с этого сервера.</string>
     <string name="settings_computers_error_load">Не удалось загрузить компьютеры</string>
     <string name="settings_computers_error_retry_detail">Потяните вниз, чтобы обновить, или попробуйте ещё раз.</string>
     <string name="settings_computers_error_unavailable_detail">Сейчас не удаётся загрузить подключённые компьютеры.</string>

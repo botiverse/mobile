@@ -78,6 +78,8 @@ import org.robolectric.annotation.GraphicsMode
  * (web `leadUsage`); `.sorted_memory`: Sort by Memory used, Memory before Disk in bold; `.grouped` (cards and list): Group by
  * Provider, AWS and Hetzner Cloud then Personal computers; `.no_match`: a search and Needs
  * attention matching nothing, with Clear all.
+ * `settings.computers.loading`: no saved list yet, the toolbar over four card-shaped placeholders
+ * (web `ComputersSkeleton`), at rest.
  * Agents carry no avatar image, so the capture draws initials without a fetch.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -123,6 +125,12 @@ class ComputersRackCardsScreenshotTest {
 
     @Test
     fun computersSortedByMemoryLight() = capture("settings.computers.sorted_memory", RaftAppAppearance.Light, toolbar = memoryToolbar)
+
+    @Test
+    fun computersLoadingLight() = captureComputersRack(activities, "settings.computers.loading", RaftAppAppearance.Light, ComputersRackView.Cards, wide = false, loading = true)
+
+    @Test
+    fun computersLoadingDark() = captureComputersRack(activities, "settings.computers.loading.dark", RaftAppAppearance.Dark, ComputersRackView.Cards, wide = false, loading = true)
 
     @Test
     fun computersNoMatchLight() = capture("settings.computers.no_match", RaftAppAppearance.Light, toolbar = noMatchToolbar)
@@ -197,6 +205,7 @@ private fun captureComputersRack(
     view: ComputersRackView,
     wide: Boolean,
     toolbar: RaftComputersRackToolbarState = RaftComputersRackToolbarState(serverId = "server-1"),
+    loading: Boolean = false,
 ) {
     run {
         RaftAppThemeState.apply(appearance)
@@ -208,7 +217,7 @@ private fun captureComputersRack(
             }
         activity.setContent {
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftSettingsWideDetail provides wide) {
-                ComputersListVisualContent(appearance, view, wide, toolbar)
+                ComputersListVisualContent(appearance, view, wide, toolbar, loading)
             }
         }
         settle()
@@ -239,6 +248,7 @@ private fun ComputersListVisualContent(
     view: ComputersRackView,
     wide: Boolean = false,
     toolbar: RaftComputersRackToolbarState = RaftComputersRackToolbarState(serverId = "server-1"),
+    loading: Boolean = false,
 ) {
     val timeContext =
         RaftTimeContext(
@@ -382,16 +392,23 @@ private fun ComputersListVisualContent(
                     } else {
                         null
                     },
-                trailingContent = {
-                    androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
-                        RaftComputersRackViewToggle(view) {}
-                        if (wide) RaftComputersAddButton {}
-                    }
-                },
+                // The page shows the toggle once there are computers to lay out.
+                trailingContent =
+                    if (loading) {
+                        null
+                    } else {
+                        {
+                            androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                                RaftComputersRackViewToggle(view) {}
+                                if (wide) RaftComputersAddButton {}
+                            }
+                        }
+                    },
             ) {
                 RaftComputersTheme {
                     RaftSettingsComputersContent(
-                        model = raftComputersListModel(ScreenLoadState.Content(snapshot)),
+                        model = if (loading) RaftComputersListModel.Loading else raftComputersListModel(ScreenLoadState.Content(snapshot)),
+                        skeletonAnimated = false,
                         onRetry = {},
                         onAddComputer = {},
                         onOpenComputer = {},

@@ -78,6 +78,7 @@ internal object RaftComputersRackTags {
     const val UpgradeHint = "rack-upgrade-hint"
     const val ManualUpgrade = "rack-manual-upgrade"
     const val InstallSheet = "rack-install-sheet"
+    const val LoadingSkeleton = "computers-loading-skeleton"
 }
 
 @Composable
