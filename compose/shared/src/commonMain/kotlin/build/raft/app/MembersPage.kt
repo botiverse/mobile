@@ -78,6 +78,11 @@ import build.raft.app.data.isRaftHostVisible
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.raftProGateDecision
 import build.raft.app.data.AgentTurnStopFeedback
+import build.raft.app.data.AgentSubagentStopFeedback
+import build.raft.app.data.AgentSubagentStopIntent
+import build.raft.app.data.AgentSubagentStopState
+import build.raft.app.data.AgentSubagentStopStore
+import build.raft.app.data.canStopAgentSubagents
 import build.raft.app.data.AgentTurnStopIntent
 import build.raft.app.data.AgentTurnStopState
 import build.raft.app.data.AgentTurnStopStore
@@ -85,6 +90,8 @@ import build.raft.app.data.RaftAgentControlsApi
 import build.raft.app.data.canStopAgentTurn
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
+import build.raft.app.data.agentActivitySubagentRowPresence
+import build.raft.app.data.groupAgentActivitySubagents
 import build.raft.app.data.AgentActivityOverviewIntent
 import build.raft.app.data.agentMemoryLimitExit
 import build.raft.app.data.isAgentBackgroundOomActivityTitle
@@ -4152,6 +4159,10 @@ internal fun MemberDetailPageContent(
         remember(provider, routeScope) {
             provider.agentControlsApi?.let { api -> AgentTurnStopStore(api::interruptTurn, routeScope) }
         }
+    val agentSubagentStopStore =
+        remember(provider, routeScope) {
+            provider.agentControlsApi?.let { api -> AgentSubagentStopStore(api::interruptSubagent, routeScope) }
+        }
     val agentMigrationStore =
         remember(provider, routeScope) {
             provider.agentControlsApi?.let { api ->
@@ -4887,6 +4898,7 @@ internal fun MemberDetailPageContent(
                         remoteControls = MembersAgentRemoteControls(
                             serverRole = current.server.role,
                             turnStopStore = agentTurnStopStore,
+                            subagentStopStore = agentSubagentStopStore,
                             migration =
                                 agentMigrationStore?.let { store ->
                                     val flags = provider.serverFeatureFlags
@@ -6532,12 +6544,57 @@ private class MembersAgentDetailCallbacks(
     val onOpenFeedbackTicket: ((String) -> Unit)? = null
 )
 
+/** Web `stopSubagentWithFeedback`'s toasts, one per outcome. */
+internal class MembersAgentSubagentStopMessages(
+    private val interrupted: String,
+    private val notRunning: String,
+    private val unsupported: String,
+    private val upgradeRequired: String,
+    private val computerOffline: String,
+    private val failed: String
+) {
+    fun messageFor(feedback: AgentSubagentStopFeedback): String =
+        when (feedback) {
+            AgentSubagentStopFeedback.Interrupted -> interrupted
+            AgentSubagentStopFeedback.NotRunning -> notRunning
+            AgentSubagentStopFeedback.Unsupported -> unsupported
+            is AgentSubagentStopFeedback.UpgradeRequired -> upgradeRequired
+            is AgentSubagentStopFeedback.ComputerOffline -> computerOffline
+            is AgentSubagentStopFeedback.Failed -> failed
+        }
+}
+
+/** The failed request behind [this] feedback, for its trace ID; null for an answer. */
+internal fun AgentSubagentStopFeedback.serverError(): ScreenError? =
+    when (this) {
+        is AgentSubagentStopFeedback.UpgradeRequired -> error
+        is AgentSubagentStopFeedback.ComputerOffline -> error
+        is AgentSubagentStopFeedback.Failed -> error
+        AgentSubagentStopFeedback.Interrupted,
+        AgentSubagentStopFeedback.NotRunning,
+        AgentSubagentStopFeedback.Unsupported -> null
+    }
+
+@Composable
+private fun membersAgentSubagentStopMessages(): MembersAgentSubagentStopMessages =
+    MembersAgentSubagentStopMessages(
+        interrupted = stringResource(Res.string.member_activity_subagents_stop_interrupted),
+        notRunning = stringResource(Res.string.member_activity_subagents_stop_not_running),
+        unsupported = stringResource(Res.string.member_activity_subagents_stop_unsupported),
+        upgradeRequired = stringResource(Res.string.member_activity_subagents_stop_upgrade_required),
+        // Web: the stop-turn refusal's own words (`agent.detail.stopTurn.computerOffline`).
+        computerOffline = stringResource(Res.string.agent_stop_turn_computer_offline),
+        failed = stringResource(Res.string.member_activity_subagents_stop_failed)
+    )
+
 /** Agent remote controls the detail page offers beyond the lifecycle actions (web parity). */
 internal class MembersAgentRemoteControls(
     /** The viewer's role on the agent's server; mirrors the server capability matrix. */
     val serverRole: String?,
     val turnStopStore: AgentTurnStopStore?,
-    val migration: MembersAgentMigrationBinding? = null
+    val migration: MembersAgentMigrationBinding? = null,
+    /** Stop one running sub-agent from the Activity tab's Sub-agents view (web stopSubagent). */
+    val subagentStopStore: AgentSubagentStopStore? = null
 )
 
 /** The migration section's store and page-level inputs (web AgentMigrationSection). */
@@ -6778,6 +6835,39 @@ private fun MembersDetailContent(
             )
         ) {
             { turnStopStore.dispatch(AgentTurnStopIntent.Stop(member.id)) }
+        } else {
+            null
+        }
+    // Web AgentActivityLog (#proj-runtime:#41): Stop on a running sub-agent's page, for whoever
+    // has Stop turn's authority on a runtime that can stop one; one short toast says how it went.
+    val subagentStopStore = remoteControls?.subagentStopStore
+    val fallbackSubagentStopState = remember { MutableStateFlow(AgentSubagentStopState()) }
+    val subagentStopState by (subagentStopStore?.state ?: fallbackSubagentStopState).collectAsState()
+    val subagentStopMessages = membersAgentSubagentStopMessages()
+    LaunchedEffect(subagentStopState.feedback, subagentStopState.feedbackAgentId) {
+        val feedback = subagentStopState.feedback ?: return@LaunchedEffect
+        if (subagentStopState.feedbackAgentId == member.id) {
+            val message = subagentStopMessages.messageFor(feedback)
+            val error = feedback.serverError()
+            if (error != null && onAgentErrorToast != null) onAgentErrorToast(message, error) else onUnavailableAction(message)
+        }
+        subagentStopStore?.dispatch(AgentSubagentStopIntent.ConsumeFeedback)
+    }
+    val activitySubagentStop: MembersAgentSubagentStop? =
+        if (
+            member.kind == MemberKind.Agent &&
+            subagentStopStore != null &&
+            canStopAgentSubagents(
+                serverRole = remoteControls?.serverRole,
+                isCreator = currentUserId != null && detail?.summary?.creatorId == currentUserId,
+                isExternalAgent = isExternalAgent,
+                deleted = deleted,
+                runtime = detail?.summary?.runtime
+            )
+        ) {
+            MembersAgentSubagentStop(subagentStopState.inFlightTaskId) { taskId ->
+                subagentStopStore.dispatch(AgentSubagentStopIntent.Stop(member.id, taskId))
+            }
         } else {
             null
         }
@@ -7367,7 +7457,8 @@ private fun MembersDetailContent(
                             timeContext = timeContext,
                             onOpenUrl = onOpenUrl,
                             autoScrollToLatest = !stableVisualCapture,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            subagentStop = activitySubagentStop
                         )
                     } else {
                         LazyColumn(
@@ -13709,12 +13800,44 @@ private fun MembersAgentActivityTab(
     timeContext: RaftTimeContext,
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier,
-    autoScrollToLatest: Boolean = true
+    autoScrollToLatest: Boolean = true,
+    /** Stop one running sub-agent from its page; null: the viewer may not (web `canStopSubagents`). */
+    subagentStop: MembersAgentSubagentStop? = null
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val copySucceeded =
         diagnosticActionState?.actionKey == "copy" && diagnosticActionState.successLabel != null
-    var activityView by remember(detail?.agentId) { mutableStateOf(MembersAgentActivityView.Overview) }
+    var chosenActivityView by remember(detail?.agentId) { mutableStateOf(MembersAgentActivityView.Overview) }
+    // Without the Overview (its flag off or unresolved) the Overview choice reads as the raw log.
+    val activityView =
+        if (overview == null && chosenActivityView == MembersAgentActivityView.Overview) MembersAgentActivityView.Raw
+        else chosenActivityView
+    // The log oldest first, as the raw view shows it; the Sub-agents view folds it (web groupSubagents).
+    val activityLog =
+        remember(detail?.agentId, detail?.activity) {
+            detail?.activity.orEmpty()
+                .sortedWith(compareBy<AgentActivityEntry> { it.timestamp.membersActivitySortKey() }.thenBy { it.id })
+        }
+    val subagents = remember(activityLog) { groupAgentActivitySubagents(activityLog) }
+    var openSubagentKey by remember(detail?.agentId) { mutableStateOf<String?>(null) }
+    val subagentLink =
+        remember(activityLog, subagents) {
+            membersAgentActivitySubagentLink(activityLog, subagents) { key ->
+                openSubagentKey = key
+                chosenActivityView = MembersAgentActivityView.Subagents
+            }
+        }
+    val openSubagent = openSubagentKey?.let { key -> subagents.firstOrNull { it.key == key } }
+    // A sub-agent's page is transient: Back returns to the list first.
+    RaftBackHandler(enabled = activityView == MembersAgentActivityView.Subagents && openSubagent != null, label = "agent_subagent_detail") {
+        openSubagentKey = null
+    }
+    // Web: the Sub-agents segment appears once the agent has had one.
+    val showSubagents = subagents.isNotEmpty() || activityView == MembersAgentActivityView.Subagents
+    val changeView: (MembersAgentActivityView) -> Unit = { next ->
+        chosenActivityView = next
+        openSubagentKey = null
+    }
     if (overview != null && detail != null) {
         val agentId = detail.agentId
         LaunchedEffect(agentId) { overview.onIntent(AgentActivityOverviewIntent.Open(agentId)) }
@@ -13739,7 +13862,7 @@ private fun MembersAgentActivityTab(
             .background(RaftTheme.colors.layerCanvas),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        if (overview != null) {
+        if (overview != null || showSubagents) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -13750,17 +13873,27 @@ private fun MembersAgentActivityTab(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
             ) {
-                // Web AgentActivityLog behind activity_overview_web_v0: Overview / Raw Log.
-                MembersAgentActivityViewSwitch(view = activityView, onViewChange = { activityView = it })
-                Spacer(Modifier.weight(1f))
-                RaftButton(
-                    text = if (copySucceeded) stringResource(Res.string.common_done) else stringResource(Res.string.member_action_copy_info),
-                    onClick = onCopyDiagnostics,
-                    enabled = diagnosticActionState?.inProgress != true,
-                    leadingIcon = {
-                        RaftContentLucideIcon(if (copySucceeded) RaftLucideIconName.Check else RaftLucideIconName.Copy)
-                    }
-                )
+                // Web AgentActivityLog: Overview / Raw Log, and Subagents once the agent has had one.
+                // The switch takes what the button leaves; three segments scroll in their track.
+                Box(Modifier.weight(1f)) {
+                    MembersAgentActivityViewSwitch(
+                        view = activityView,
+                        onViewChange = changeView,
+                        showOverview = overview != null,
+                        subagentCount = if (showSubagents) subagents.size else null,
+                    )
+                }
+                // Copy info heads the tab with the Overview; without it, it lives in the profile.
+                if (overview != null) {
+                    RaftButton(
+                        text = if (copySucceeded) stringResource(Res.string.common_done) else stringResource(Res.string.member_action_copy_info),
+                        onClick = onCopyDiagnostics,
+                        enabled = diagnosticActionState?.inProgress != true,
+                        leadingIcon = {
+                            RaftContentLucideIcon(if (copySucceeded) RaftLucideIconName.Check else RaftLucideIconName.Copy)
+                        }
+                    )
+                }
             }
             MembersDetailSectionDivider()
         }
@@ -13787,7 +13920,7 @@ private fun MembersAgentActivityTab(
                 hasRawActivity = detail?.activity?.isNotEmpty() == true,
                 hasComputer = !summary?.machineId.isNullOrBlank(),
                 timeContext = timeContext,
-                onShowRaw = { activityView = MembersAgentActivityView.Raw },
+                onShowRaw = { changeView(MembersAgentActivityView.Raw) },
                 onOpenComputer = onOpenComputer,
                 onOpenUrl = onOpenUrl,
                 onOpenMessage = { channelId, messageId -> onOpenMessage(channelId, messageId.value) },
@@ -13795,11 +13928,33 @@ private fun MembersAgentActivityTab(
             )
             return@Column
         }
+        if (activityView == MembersAgentActivityView.Subagents) {
+            val contentModifier = Modifier.fillMaxWidth().weight(1f)
+            if (openSubagent != null) {
+                MembersAgentSubagentDetail(
+                    group = openSubagent,
+                    timeContext = timeContext,
+                    stop = subagentStop,
+                    onBack = { openSubagentKey = null },
+                    horizontalInset = MembersPageInset,
+                    modifier = contentModifier,
+                ) { _, entry, last ->
+                    MembersAgentActivityRow(entry, timeContext, onOpenUrl, last = last)
+                }
+            } else {
+                MembersAgentSubagentsList(
+                    groups = subagents,
+                    timeContext = timeContext,
+                    onOpen = { openSubagentKey = it },
+                    contentPadding = PaddingValues(start = MembersPageInset, end = MembersPageInset, bottom = RaftAppSpacing.Md),
+                    modifier = contentModifier,
+                )
+            }
+            return@Column
+        }
         val rows =
-            remember(detail?.agentId, detail?.activity) {
-                detail?.activity.orEmpty()
-                    .filterNot { it.type == "tool_start" && it.toolName?.normalizedMembersToolName() == "send_message" }
-                    .sortedWith(compareBy<AgentActivityEntry> { it.timestamp.membersActivitySortKey() }.thenBy { it.id })
+            remember(activityLog) {
+                activityLog.filterNot { it.type == "tool_start" && it.toolName?.normalizedMembersToolName() == "send_message" }
             }
         val hasRows = rows.isNotEmpty()
         if (hasRows && (loadState is MembersAgentActivityLoadState.Refreshing || loadState is MembersAgentActivityLoadState.Error)) {
@@ -13843,7 +13998,7 @@ private fun MembersAgentActivityTab(
                     .fillMaxWidth()
                     .weight(1f),
             ) { index, entry ->
-                MembersAgentActivityRow(entry, timeContext, onOpenUrl, last = index == rows.lastIndex)
+                MembersAgentActivityRow(entry, timeContext, onOpenUrl, last = index == rows.lastIndex, subagentLink = subagentLink)
             }
         }
     }
@@ -13874,11 +14029,13 @@ private fun MembersAgentActivityLoadNotice(
 }
 
 @Composable
-private fun MembersAgentActivityRow(
+internal fun MembersAgentActivityRow(
     activity: AgentActivityEntry,
     timeContext: RaftTimeContext,
     onOpenUrl: (String) -> Unit,
-    last: Boolean = false
+    last: Boolean = false,
+    /** The raw log's links into the Sub-agents view; null in a sub-agent's own page. */
+    subagentLink: MembersAgentActivitySubagentLink? = null
 ) {
     val key = activity.activityTimelineKey()
     var expanded by remember(key) { mutableStateOf(false) }
@@ -13902,8 +14059,10 @@ private fun MembersAgentActivityRow(
     // raft-ui Timeline as an activity log: presence-coloured pixels, title and detail in
     // Space Mono, the time on the right, a `subagent` tag on a subagent's step. The title is
     // web LOG_TITLE_CLASS: `text-foreground-muted wrap-anywhere`, wrapping instead of clipping.
+    // Web SystemEntry (#13383): a sub-agent's lifecycle system row reads as its state, not an error.
+    val subagentPresence = if (activity.type == "system") agentActivitySubagentRowPresence(activity.subagent) else null
     RaftTimelineItem(
-        color = (activity.statusActivity ?: activity.type).membersActivityAccentColor(),
+        color = (subagentPresence ?: activity.statusActivity ?: activity.type).membersActivityAccentColor(),
         last = last,
         time = activity.timestamp.membersActivityDisplayTime(timeContext),
         title = {
@@ -13930,8 +14089,16 @@ private fun MembersAgentActivityRow(
                         modifier = Modifier.weight(1f, fill = false)
                     )
                 }
-                activity.membersActivitySubagentBadgeLabel()?.let { subagentLabel ->
-                    RaftBadge(text = subagentLabel, appearance = RaftBadgeAppearance.Outline)
+                membersActivitySubagentBadgeLabel(activity)?.let { subagentLabel ->
+                    // Web SubagentBadge (#13029): the marker opens that sub-agent's own run.
+                    val openSubagent: (() -> Unit)? =
+                        subagentLink?.let { link -> link.keyOfRow(activity.subagent)?.let { key -> { link.open(key) } } }
+                    RaftBadge(
+                        text = subagentLabel,
+                        appearance = RaftBadgeAppearance.Outline,
+                        onClick = openSubagent,
+                        modifier = if (openSubagent != null) Modifier.testTag(MembersAgentActivitySubagentOpenTag) else Modifier
+                    )
                 }
             }
         }
@@ -13968,6 +14135,16 @@ private fun MembersAgentActivityRow(
                 text = if (expanded) stringResource(Res.string.member_label_show_less) else stringResource(Res.string.member_label_show_more),
                 onClick = { expanded = !expanded },
                 style = RaftTheme.typography.caption
+            )
+        }
+        // Web ToolStartEntry: the call that started a sub-agent opens it.
+        val spawnedKey = if (activity.type == "tool_start") subagentLink?.keyOfCall(activity.callId) else null
+        if (spawnedKey != null && subagentLink != null) {
+            RaftTextLink(
+                text = stringResource(Res.string.member_activity_subagents_open_from_log),
+                onClick = { subagentLink.open(spawnedKey) },
+                modifier = Modifier.testTag(MembersAgentActivitySubagentOpenTag),
+                style = RaftTheme.typography.monoMeta
             )
         }
     }
@@ -14585,7 +14762,7 @@ private fun MembersRemoteAgentSourceServerSection(serverName: String) {
 }
 
 @Composable
-private fun MembersDetailSectionDivider(modifier: Modifier = Modifier) {
+internal fun MembersDetailSectionDivider(modifier: Modifier = Modifier) {
     // raft-ui ProfilePanelSection: a `line-hairline` above each section.
     RaftSeparator(modifier)
 }
@@ -15437,9 +15614,16 @@ internal fun AgentActivityEntry.membersActivitySecondaryText(): String? =
             ?: details.firstOrNull()?.let { (_, value) -> value.takeIf { it.isNotBlank() } }
     }
 
-internal fun AgentActivityEntry.membersActivitySubagentBadgeLabel(): String? {
-    if (!isSubagent || (type != "tool_start" && type != "status")) return null
-    return subagentType?.takeIf { it.isNotBlank() }?.let { "Subagent: $it" } ?: "Subagent"
+/** Web SubagentBadge: a sub-agent's tool call, status or system row carries "Subagent" (and its type). */
+internal fun AgentActivityEntry.membersActivityHasSubagentBadge(): Boolean =
+    isSubagent && (type == "tool_start" || type == "status" || type == "system")
+
+@Composable
+private fun membersActivitySubagentBadgeLabel(activity: AgentActivityEntry): String? {
+    if (!activity.membersActivityHasSubagentBadge()) return null
+    return activity.subagentType?.takeIf { it.isNotBlank() }
+        ?.let { stringResource(Res.string.member_activity_log_subagent_with_type, it) }
+        ?: stringResource(Res.string.member_activity_log_subagent)
 }
 
 private fun AgentActivityEntry.activityPrimaryDetail(): String? =

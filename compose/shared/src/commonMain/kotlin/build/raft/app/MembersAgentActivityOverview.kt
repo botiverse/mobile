@@ -107,28 +107,44 @@ internal data class MembersAgentActivityOverviewBinding(
     val onIntent: (AgentActivityOverviewIntent) -> Unit,
 )
 
-internal enum class MembersAgentActivityView { Overview, Raw }
+internal enum class MembersAgentActivityView { Overview, Raw, Subagents }
 
-/** Web AgentActivityLog's SegmentedControl: Overview / Raw Log. */
+/**
+ * Web AgentActivityLog's SegmentedControl: Overview / Raw Log, and Subagents with its count once
+ * the agent has had one ([subagentCount] non-null). Without the Overview ([showOverview] false,
+ * its flag off) the switch is Raw Log / Subagents.
+ */
 @Composable
 internal fun MembersAgentActivityViewSwitch(
     view: MembersAgentActivityView,
     onViewChange: (MembersAgentActivityView) -> Unit,
     modifier: Modifier = Modifier,
+    showOverview: Boolean = true,
+    subagentCount: Int? = null,
 ) {
     // Web: the SegmentedControl's aria-label "Activity view".
     val groupLabel = stringResource(Res.string.member_activity_overview_view_label)
     RaftSegmentedControl(modifier = modifier.semantics { contentDescription = groupLabel }) {
-        RaftSegment(
-            text = stringResource(Res.string.member_activity_overview_view_overview),
-            selected = view == MembersAgentActivityView.Overview,
-            onClick = { onViewChange(MembersAgentActivityView.Overview) },
-        )
+        if (showOverview) {
+            RaftSegment(
+                text = stringResource(Res.string.member_activity_overview_view_overview),
+                selected = view == MembersAgentActivityView.Overview,
+                onClick = { onViewChange(MembersAgentActivityView.Overview) },
+            )
+        }
         RaftSegment(
             text = stringResource(Res.string.member_activity_overview_view_raw),
             selected = view == MembersAgentActivityView.Raw,
             onClick = { onViewChange(MembersAgentActivityView.Raw) },
         )
+        if (subagentCount != null) {
+            RaftSegment(
+                text = stringResource(Res.string.member_activity_overview_view_subagents),
+                selected = view == MembersAgentActivityView.Subagents,
+                onClick = { onViewChange(MembersAgentActivityView.Subagents) },
+                count = subagentCount.toString(),
+            )
+        }
     }
 }
 
@@ -1103,7 +1119,7 @@ internal fun membersActivityOverviewDurationParts(millis: Long): MembersActivity
 }
 
 @Composable
-private fun membersActivityOverviewDuration(millis: Long): String {
+internal fun membersActivityOverviewDuration(millis: Long): String {
     val parts = membersActivityOverviewDurationParts(millis)
     return when {
         parts.hours > 0 -> stringResource(Res.string.member_activity_overview_duration_hours, parts.hours, parts.minutes)

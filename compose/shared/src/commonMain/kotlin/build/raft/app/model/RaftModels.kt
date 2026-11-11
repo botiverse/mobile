@@ -1062,7 +1062,28 @@ data class RealtimeAgentActivityEntry(
     val isSubagent: Boolean = false,
     val subagentType: String? = null,
     val expandable: Boolean = false,
-    val refTextEnabled: Boolean = false
+    val refTextEnabled: Boolean = false,
+    /** Server `detailKind` of a status entry (`subagent_activity` marks a sub-agent's lifecycle row). */
+    val statusDetailKind: String? = null,
+    /** A `tool_start`'s call id; a sub-agent's lineage names the call that started it. */
+    val callId: String? = null,
+    /** The row's sub-agent lineage marker; null for the agent's own rows. */
+    val subagent: AgentActivitySubagentLineage? = null
+)
+
+/**
+ * slock `SubagentLineage.subagent` (packages/shared/src/index.ts): the explicit marker a
+ * sub-agent's activity rows carry. Every field is a bounded id or token, never content.
+ * [phase]: `started` / `progress` / `notification` / `active` / `ended`; [outcome]: `done` /
+ * `failed` / `stopped` / `ceiling`.
+ */
+@Serializable
+data class AgentActivitySubagentLineage(
+    val parentToolUseId: String? = null,
+    val subagentType: String? = null,
+    val taskId: String? = null,
+    val phase: String? = null,
+    val outcome: String? = null
 )
 
 @Serializable

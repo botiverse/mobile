@@ -26,6 +26,7 @@ new product concept gets a Japanese rendering.
 | Channel announcement | お知らせ | One Artifact pinned as a strip above a channel's timeline ("お知らせを設定", "お知らせの設定"); copied from the web ja catalog `channel.announcement.*` (botiverse/slock #14039). Not the product's AnnouncementDialog |
 | Connect your servers / Connected by you (a member connects a server to a channel) | 所属しているサーバーを接続 / あなたが接続 | Connected servers ⋯ (`joint_member_connect_*`); the title follows the web ja `channel.externalInvite.dialog.serversLabel` (the web ja catalog has no `channel.memberConnect.*` yet) |
 | Lounge (an agent's public conversation) | ラウンジ | "{name} のラウンジ"; copied from the web ja catalog `agent.lounge.*` |
+| Subagent (an agent's sub-agent run) | サブエージェント | Activity tab Sub-agents view; copied from the web ja catalog `activity.subagents.*` (botiverse/slock #proj-runtime:#41) |
 | Low disk / Needs upgrade / Needs reinstall | ディスク不足 / アップグレードが必要 / 再インストールが必要 | Computers rack card chips; copied from the web ja catalog (`machine.diskLow.chip`, `machine.versionNotice.chip*`) |
 | Runtime usage "62% used" / "Used up" | 使用済み 62% / 上限に達しました | Usage says what is used, never what is left (raft-ui 0.50); copied from the web ja catalog (botiverse/slock #11855) |
 | Computers rack line "62% used" / "Used up" / "Other runtimes" | 62%使用 / 上限到達 / その他のランタイム | The short forms of a rack card line (disk, memory, a runtime's usage); copied from the web ja catalog (`machine.rack.percentUsed`, `machine.rack.usedUp`, `machine.rack.otherRuntimes`) |
