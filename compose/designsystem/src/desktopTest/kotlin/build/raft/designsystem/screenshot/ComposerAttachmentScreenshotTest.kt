@@ -29,7 +29,7 @@ import kotlin.test.Test
  * raft-ui Composer > attachments: a file tile (short and truncated title) and an image tile at
  * rest; the web's overlays on both in every phase (checking, uploading at 42% and before the
  * first byte with the bar at its 4% floor, finishing with the sweeping bar, failed with the
- * mobile Retry), spinners and sweep held still; long CJK and Cyrillic labels on image tiles,
+ * mobile Retry), spinners and sweep held still; long Latin and Cyrillic labels on image tiles,
  * which stay inside the tile (artin 11-11); and the remove sticker at rest, pressed, focused and disabled.
  */
 class ComposerAttachmentScreenshotTest {
@@ -59,11 +59,13 @@ class ComposerAttachmentScreenshotTest {
                 PhaseRow(RaftComposerAttachmentPhase.Finishing, 99, "Finishing upload…")
                 Caption("Failed: file, image")
                 PhaseRow(RaftComposerAttachmentPhase.Failed, null, "Upload failed", action = "Retry")
-                Caption("Long labels stay inside: zh-CN, ja, ru")
+                // CJK labels are covered by :shared ThreadComposerUploadTileScreenshotTest (the
+                // desktop render has no CJK font).
+                Caption("Long labels stay inside: es, ru, de")
                 Tray {
-                    ImageTile(placeholder = false) { Overlay(RaftComposerAttachmentPhase.Finishing, 99, "正在完成上传…") }
-                    ImageTile(placeholder = false) { Overlay(RaftComposerAttachmentPhase.Finishing, 99, "アップロードの完了処理中…") }
-                    ImageTile(placeholder = false) { Overlay(RaftComposerAttachmentPhase.Checking, null, "正在检查文件…") }
+                    ImageTile(placeholder = false) { Overlay(RaftComposerAttachmentPhase.Finishing, 99, "Finalizando la subida…") }
+                    ImageTile(placeholder = false) { Overlay(RaftComposerAttachmentPhase.Finishing, 99, "Завершение загрузки…") }
+                    ImageTile(placeholder = false) { Overlay(RaftComposerAttachmentPhase.Checking, null, "Dateiüberprüfung…") }
                     ImageTile(placeholder = false) { Overlay(RaftComposerAttachmentPhase.Failed, null, "Не удалось загрузить", action = "Повторить") }
                 }
                 Caption("Remove: rest, pressed, focused, disabled")
