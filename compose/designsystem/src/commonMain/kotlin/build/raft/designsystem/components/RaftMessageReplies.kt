@@ -42,8 +42,8 @@ object RaftMessageRepliesDefaults {
     /** The block sits 8dp under the message body (`mt-2`). */
     val TopSpacing = 8.dp
 
-    /** At most 480dp wide (`max-w-[480px]`). */
-    val MaxWidth = 480.dp
+    /** At most a content card's 560dp (raft-ui 0.84.0 `MessageEmbed size="content"`, was 480dp). */
+    val MaxWidth = RaftMessageEmbedDefaults.ContentMaxWidth
 
     /** A reply's time: Space Mono `mono-meta`, tabular figures. */
     val TimeStyle: TextStyle
@@ -55,7 +55,7 @@ object RaftMessageRepliesDefaults {
 }
 
 /**
- * raft-ui `MessageReplies`: the thread summary under a message. Full width up to 480dp,
+ * raft-ui `MessageReplies`: the thread summary under a message. Full width up to 560dp,
  * `fill-muted` with no border, `rounded-container` (10), 10 x 8dp padding, the summary and
  * the [content] rows 4dp apart; a mouse hover lays `overlay-subtle` over it and a press
  * `overlay-medium`. The whole block is one button ([onClick] opens the thread); nothing

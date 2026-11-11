@@ -32,10 +32,26 @@ import build.raft.designsystem.tokens.RaftStroke
 // message-embed.recipe.ts): the card under a message for something its text links to
 // (`rounded-container border border-line-hairline bg-layer-card`), with a header, content and
 // footer slot (`px-3 py-2` each; the content slot has no padding).
+//
+// raft-ui 0.84.0 (cards in messages, stdrc 2026-11-10): every card in a message takes its frame and
+// one of two widths from here, and its parts from one recipe (`messageCard`): a 12dp inset, the
+// title in `text-subhead` bold (2 lines), at most two buttons. Change one card and the others follow.
 
 object RaftMessageEmbedDefaults {
-    /** web `ArtifactMessageCard`: `max-w-[440px]`. */
-    val MaxWidth: Dp = 440.dp
+    /**
+     * `size="item"`: a card that opens one thing (an app link, an Artifact, an action card), as
+     * wide as the item popover, at most 400dp (on the web the message's width below 768px).
+     */
+    val ItemMaxWidth: Dp = 400.dp
+
+    /** `size="content"`: a card that shows other messages (a forwarded bundle, replies), at most 560dp. */
+    val ContentMaxWidth: Dp = 560.dp
+
+    /** The card's inset (`messageCard` `inset` / `body`: `p-3`). */
+    val Inset: Dp = 12.dp
+
+    /** The Artifact card's width: an item card's ([ItemMaxWidth]; slock #14106, was 440dp). */
+    val MaxWidth: Dp = ItemMaxWidth
 
     /** `gap-2.5` between a header's glyph and its text. */
     val HeaderGap: Dp = 10.dp
