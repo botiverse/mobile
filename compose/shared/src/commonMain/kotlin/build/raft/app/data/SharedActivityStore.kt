@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.activityRowTimeValue
 import build.raft.app.shownAuthorName
 import build.raft.app.withKnownLatestDelegatedLabelsFrom
 import build.raft.app.SharedThreadContentGeneration
@@ -7,6 +8,7 @@ import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.SharedThreadSummaryFact
 import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ChannelId
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.InboxItemKind
@@ -71,11 +73,46 @@ private const val SharedActivityTailPrewarmDepthCap = 20
 private data class ActivityRealtimeHighWater(
     val marker: MessageId?,
     val replyCount: Int,
-    /** Channel/DM rows only: the `message:new` seq the row was patched to (thread rows keep null). */
+    /**
+     * The `message:new` seq the row was patched to. A thread row patched only by `thread:updated`
+     * has none.
+     */
     val seq: String? = null,
     /** Channel/DM rows only: the patch stops holding over older served rows after this time. */
     val holdUntilMillis: Long? = null
 )
+
+/**
+ * [served] (the server's order, newest first) with each [held] row (in the order shown now) put above
+ * the first served row older than it: a held row is the newest only until newer activity reaches
+ * other rows, so it never goes back above a newer one (web sorts every row by the time it shows,
+ * `sortInboxRowsByTime`). A served row with no readable time counts as older, like the web lists it
+ * last; a held row with no readable time stays on top, as it was held before. Held rows going to the
+ * same place keep their shown order unless their times disagree.
+ */
+internal fun activityRowsWithHeldRowsAtTheirTime(served: List<InboxItem>, held: List<InboxItem>): List<InboxItem> {
+    if (held.isEmpty()) return served
+    val servedTimes = served.map { item -> parseRaftTimestampEpochMillisOrNull(item.activityRowTimeValue()) }
+    val heldBySlot =
+        held
+            .map { item -> item to parseRaftTimestampEpochMillisOrNull(item.activityRowTimeValue()) }
+            .groupBy { (_, time) ->
+                if (time == null) {
+                    0
+                } else {
+                    servedTimes.indexOfFirst { servedTime -> servedTime == null || servedTime < time }
+                        .takeIf { it >= 0 } ?: served.size
+                }
+            }
+            .mapValues { (_, rows) -> rows.sortedByDescending { (_, time) -> time ?: Long.MAX_VALUE }.map { it.first } }
+    return buildList(served.size + held.size) {
+        served.forEachIndexed { index, item ->
+            heldBySlot[index]?.let(::addAll)
+            add(item)
+        }
+        heldBySlot[served.size]?.let(::addAll)
+    }
+}
 
 private data class ActivityRealtimeCatchUpTarget(val channelId: ChannelId, val seq: String)
 
@@ -1309,7 +1346,7 @@ class SharedActivityStore internal constructor(
                 readStateLatestActivitySeq = existing.advancedActivityFrontier(message.seq)
             ).withActivityFollowStateProjection()
         advanceReplyThreadContent(existing, patched)
-        rememberRealtimeHighWater(patched)
+        rememberRealtimeHighWater(patched, seq = incomingSeq)
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
         return true
     }
@@ -1494,13 +1531,15 @@ class SharedActivityStore internal constructor(
         )
     }
 
-    private fun rememberRealtimeHighWater(item: InboxItem) {
+    /** [seq] is the `message:new` seq of the patched reply; a `thread:updated` patch keeps the one it has. */
+    private fun rememberRealtimeHighWater(item: InboxItem, seq: String? = null) {
         val previous = realtimeHighWater[item.key]
         if (previous != null && item.replyCount < previous.replyCount) return
         realtimeHighWater[item.key] =
             ActivityRealtimeHighWater(
                 marker = item.latestActivityMessageId,
-                replyCount = item.replyCount
+                replyCount = item.replyCount,
+                seq = seq ?: previous?.seq?.takeIf { previous.marker == item.latestActivityMessageId }
             )
     }
 
@@ -3000,7 +3039,8 @@ class SharedActivityStore internal constructor(
                         canonical.replyCount == localVersion.replyCount &&
                             canonical.latestActivityMessageId == localVersion.marker
                         ) ||
-                    canonical.servesNewerActivityThan(current)
+                    canonical.servesNewerActivityThan(current) ||
+                    canonical.reachesRealtimeSeq(localVersion)
                 ) {
                     realtimeHighWater.remove(canonical.key)
                     return@map canonical
@@ -3042,13 +3082,17 @@ class SharedActivityStore internal constructor(
                     // Hands 62498f69: a thread row patched to the top dropped back under the old
                     // head on the lagging re-read and returned when the server caught up, so the
                     // first row alternated between the two.
+                    // A held row goes back above the served rows its time is newer than, not above
+                    // all of them: a row held after newer activity reached other rows sat over
+                    // them, older rows on top (artin, 1.23.0: three 25-60 min threads over
+                    // "just now" rows).
                     if (keptChannelKeys.isEmpty() && keptThreadKeys.isEmpty()) {
                         items
                     } else {
                         val shownOrder = _state.value.items.withIndex().associate { (index, item) -> item.key to index }
                         val heldKeys = keptChannelKeys + keptThreadKeys + missingCurrent.map(InboxItem::key)
                         val held = items.filter { it.key in heldKeys }.sortedBy { shownOrder[it.key] ?: Int.MAX_VALUE }
-                        held + items.filterNot { it.key in heldKeys }
+                        activityRowsWithHeldRowsAtTheirTime(served = items.filterNot { it.key in heldKeys }, held = held)
                     }
                 },
             preserveTotalUnreadFloor = preserveTotalUnreadFloor
@@ -3090,6 +3134,19 @@ class SharedActivityStore internal constructor(
             latestDelegatedBy = current.latestDelegatedBy,
             latestActivitySeq = current.latestActivitySeq
         )
+    }
+
+    /**
+     * This served row reached the reply a `message:new` patch showed: its seq is past it, or the
+     * same reply (web preserveNewerThreadActivity decides by seq when both sides carry one). The
+     * reply count does not decide then: a `thread:updated` counted before the `message:new` of the
+     * same reply counts it twice, and the higher local count held the row forever.
+     */
+    private fun InboxItem.reachesRealtimeSeq(localVersion: ActivityRealtimeHighWater): Boolean {
+        val local = localVersion.seq ?: return false
+        val served = latestActivitySeq ?: return false
+        val comparison = compareActivitySeq(served, local)
+        return comparison > 0 || (comparison == 0 && latestActivityMessageId == localVersion.marker)
     }
 
     /** Both rows carry a content frontier and this (served) one is strictly past the shown one. */
