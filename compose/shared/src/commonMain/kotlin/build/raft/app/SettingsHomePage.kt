@@ -25,6 +25,9 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.data.raftHostShowsContent
+import build.raft.app.data.raftProcessRealtimeOwnerGeneration
+import build.raft.app.data.raftShellOwnsProcessRealtime
+import build.raft.app.data.noteRaftShellRealtimeServer
 import build.raft.app.data.RaftNavDestination
 import build.raft.app.data.RaftNavSurface
 import build.raft.app.data.RaftProductEvents
@@ -4435,6 +4438,10 @@ private fun RaftAppShellReadyContent(
     var pendingRealtimeAuthRefreshReason by remember { mutableStateOf<String?>(null) }
     var pendingRealtimeAuthRefreshPreviousFamilyId by remember { mutableStateOf<String?>(null) }
     var realtimeAuthorityConnectTick by remember { mutableStateOf(0) }
+    // Bumped when this window comes to the foreground with workspaces in separate windows: the window
+    // in front takes the process realtime connection for its server (see raftShellOwnsProcessRealtime).
+    var realtimeShellForegroundTick by remember { mutableStateOf(0) }
+    var realtimeReconciledOwnerGeneration by remember { mutableStateOf(-1L) }
     var membersListRefreshKey by remember { mutableStateOf(0) }
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
     var membersListCachedContent by remember { mutableStateOf<SharedMembersUiState.Content?>(null) }
@@ -5323,8 +5330,24 @@ private fun RaftAppShellReadyContent(
         // effect only re-ran on auth-family/token/tick changes.
         canonicalFinalSelectedServerId,
         authoritativeHomeStartAllowed,
+        realtimeShellForegroundTick,
     ) {
         if (!authoritativeHomeStartAllowed) return@LaunchedEffect
+        if (!raftShellOwnsProcessRealtime(storeScope.shellInstanceId, raftMultiShellHostEnabled())) {
+            // A window behind another one never takes the connection away from the window in front.
+            bridge.log(
+                "app_shell_realtime_reconcile_skip reason=background_window " +
+                    "serverId=${canonicalFinalSelectedServerId.orEmpty()}"
+            )
+            pendingRealtimeAuthRefreshReason?.let { reason ->
+                pendingRealtimeAuthRefreshReason = null
+                pendingRealtimeAuthRefreshPreviousFamilyId = null
+                bridge.realtimeAuthRefreshFinished(reason, success = true)
+            }
+            return@LaunchedEffect
+        }
+        realtimeReconciledOwnerGeneration = raftProcessRealtimeOwnerGeneration()
+        noteRaftShellRealtimeServer(canonicalFinalSelectedServerId.takeIf { raftMultiShellHostEnabled() })
         val environment = sharedStores.apiEnvironmentStore.current()
         val desired =
             realtimeProcessDesiredSession(
@@ -6112,6 +6135,12 @@ private fun RaftAppShellReadyContent(
                                 event == RaftRealtimeNotifyContract.LifecycleVisibleShow
                         if (visibleLifecycleEvent) {
                             foregroundEpoch?.let(visibleRefreshGate::observeLifecycleForegroundEpoch)
+                            if (
+                                raftMultiShellHostEnabled() &&
+                                raftProcessRealtimeOwnerGeneration() != realtimeReconciledOwnerGeneration
+                            ) {
+                                realtimeShellForegroundTick += 1
+                            }
                             // Web: the reset notice is read again whenever the window comes back.
                             if (latestReadySession != null) {
                                 secondFactorRecoveryStore.dispatch(build.raft.app.data.SharedSecondFactorRecoveryIntent.Refresh)
