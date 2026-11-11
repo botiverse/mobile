@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -61,10 +59,13 @@ class ComputerRuntimeAuthScreenshotTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
 
+    // The four cards stacked: taller than a phone, so the capture is too.
     @Test
+    @Config(sdk = [34], qualifiers = "w520dp-h1400dp-xxhdpi")
     fun cardsLight() = capture("settings.computer.runtime_auth.cards", RaftAppAppearance.Light) { RuntimeAuthCards() }
 
     @Test
+    @Config(sdk = [34], qualifiers = "w520dp-h1400dp-xxhdpi")
     fun cardsDark() = capture("settings.computer.runtime_auth.cards.dark", RaftAppAppearance.Dark) { RuntimeAuthCards() }
 
     @Test
@@ -159,9 +160,8 @@ class ComputerRuntimeAuthScreenshotTest {
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
                 RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
                     RaftComputersTheme {
-                        Column(
-                            Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).verticalScroll(rememberScrollState()).padding(16.dp),
-                        ) { content() }
+                        // No scroll container: a dialog surface's body takes a weight, which an unbounded height collapses.
+                        Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp)) { content() }
                     }
                 }
             }
