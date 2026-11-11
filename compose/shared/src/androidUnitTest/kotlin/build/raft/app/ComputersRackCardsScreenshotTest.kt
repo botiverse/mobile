@@ -23,6 +23,10 @@ import build.raft.app.data.RuntimeAccountUsageSnapshot
 import build.raft.app.data.RuntimeAccountUsageWindow
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.ComputersRackGroupBy
+import build.raft.app.data.ComputersRackSort
+import build.raft.app.data.ComputersRackSortDirection
+import build.raft.app.data.ComputersRackSortKey
 import build.raft.app.data.ComputersRackView
 import build.raft.app.data.SettingsComputerBroadcastPolicySnapshot
 import build.raft.app.data.SettingsComputerCommandContext
@@ -65,6 +69,11 @@ import org.robolectric.annotation.GraphicsMode
  * owner (Studio Mac's "Owner: Artin") or "Public (no owner)" (Computer owner v1, slock #13344).
  * List (`settings.computers.list`): the same computers as phone list rows (tile with its light,
  * name with the agent count and Low disk, facts, the owner line, description), no meters, no next step.
+ * Toolbar (#proj-mobile:#60): every capture has it under the counts; the list is in Name order with
+ * the offline laptop in its folded Offline section. `settings.computers.filtered`: Runtime Codex and
+ * Sort by Codex remaining (both filled, Clear all's ×); `.grouped` (cards and list): Group by
+ * Provider, AWS and Hetzner Cloud then Personal computers; `.no_match`: a search and Needs
+ * attention matching nothing, with Clear all.
  * Agents carry no avatar image, so the capture draws initials without a fetch.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -93,8 +102,53 @@ class ComputersRackCardsScreenshotTest {
     @Test
     fun computersListDark() = capture("settings.computers.list.dark", RaftAppAppearance.Dark, ComputersRackView.List)
 
-    private fun capture(name: String, appearance: RaftAppAppearance, view: ComputersRackView = ComputersRackView.Cards) =
-        captureComputersRack(activities, name, appearance, view, wide = false)
+    @Test
+    fun computersFilteredLight() = capture("settings.computers.filtered", RaftAppAppearance.Light, toolbar = filteredToolbar)
+
+    @Test
+    fun computersFilteredDark() = capture("settings.computers.filtered.dark", RaftAppAppearance.Dark, toolbar = filteredToolbar)
+
+    @Test
+    fun computersGroupedLight() = capture("settings.computers.grouped", RaftAppAppearance.Light, toolbar = groupedToolbar)
+
+    @Test
+    fun computersGroupedDark() = capture("settings.computers.grouped.dark", RaftAppAppearance.Dark, toolbar = groupedToolbar)
+
+    @Test
+    fun computersGroupedListLight() = capture("settings.computers.grouped.list", RaftAppAppearance.Light, ComputersRackView.List, groupedToolbar)
+
+    @Test
+    fun computersNoMatchLight() = capture("settings.computers.no_match", RaftAppAppearance.Light, toolbar = noMatchToolbar)
+
+    @Test
+    fun computersNoMatchDark() = capture("settings.computers.no_match.dark", RaftAppAppearance.Dark, toolbar = noMatchToolbar)
+
+    private fun capture(
+        name: String,
+        appearance: RaftAppAppearance,
+        view: ComputersRackView = ComputersRackView.Cards,
+        toolbar: RaftComputersRackToolbarState = RaftComputersRackToolbarState(serverId = "server-1"),
+    ) = captureComputersRack(activities, name, appearance, view, wide = false, toolbar = toolbar)
+
+    private companion object {
+        /** Runtime: Codex, sorted by what Codex has left (most first): the Codex chip and Sort filled, × shown. */
+        val filteredToolbar =
+            RaftComputersRackToolbarState(
+                serverId = "server-1",
+                filters = RaftComputersRackFilters(runtimes = listOf(RaftComputersRackRuntimeFilter.Codex)),
+                storedSort = ComputersRackSort(ComputersRackSortKey.Remaining(RuntimeAccountUsageProvider.Codex), ComputersRackSortDirection.Desc),
+            )
+
+        /** Group: Provider (AWS, Hetzner Cloud, then Personal computers last); Group filled. */
+        val groupedToolbar = RaftComputersRackToolbarState(serverId = "server-1", groupBy = ComputersRackGroupBy.Provider)
+
+        /** A search and a Status that match nothing: the no-match state with Clear all. */
+        val noMatchToolbar =
+            RaftComputersRackToolbarState(
+                serverId = "server-1",
+                filters = RaftComputersRackFilters(query = "mainframe", status = RaftComputersRackStatusFilter.Attention),
+            )
+    }
 }
 
 /**
@@ -128,6 +182,7 @@ private fun captureComputersRack(
     appearance: RaftAppAppearance,
     view: ComputersRackView,
     wide: Boolean,
+    toolbar: RaftComputersRackToolbarState = RaftComputersRackToolbarState(serverId = "server-1"),
 ) {
     run {
         RaftAppThemeState.apply(appearance)
@@ -139,7 +194,7 @@ private fun captureComputersRack(
             }
         activity.setContent {
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftSettingsWideDetail provides wide) {
-                ComputersListVisualContent(appearance, view, wide)
+                ComputersListVisualContent(appearance, view, wide, toolbar)
             }
         }
         settle()
@@ -165,7 +220,12 @@ private fun findComposeRoot(view: View): View? {
 }
 
 @Composable
-private fun ComputersListVisualContent(appearance: RaftAppAppearance, view: ComputersRackView, wide: Boolean = false) {
+private fun ComputersListVisualContent(
+    appearance: RaftAppAppearance,
+    view: ComputersRackView,
+    wide: Boolean = false,
+    toolbar: RaftComputersRackToolbarState = RaftComputersRackToolbarState(serverId = "server-1"),
+) {
     val timeContext =
         RaftTimeContext(
             localOffsetMinutes = 8 * 60,
@@ -197,6 +257,7 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance, view: Comp
                     ),
                     SettingsComputerSnapshot(
                         id = "m-build",
+                        hostProvider = "hetzner",
                         name = "build-box",
                         daemonVersion = "",
                         computerVersion = "1.0.49",
@@ -217,6 +278,7 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance, view: Comp
                     ),
                     SettingsComputerSnapshot(
                         id = "m-old",
+                        hostProvider = "hetzner",
                         name = "old-node",
                         daemonVersion = "",
                         computerVersion = "1.0.46",
@@ -243,6 +305,7 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance, view: Comp
                     ),
                     SettingsComputerSnapshot(
                         id = "m-gpu",
+                        hostProvider = "aws",
                         name = "gpu-rig-with-a-rather-long-hostname",
                         daemonVersion = "",
                         computerVersion = "1.0.53",
@@ -321,6 +384,8 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance, view: Comp
                         agentsByMachine = agentsByMachine,
                         usageLoads = rackUsageFixture(),
                         rackView = view,
+                        toolbar = toolbar,
+                        serverId = "server-1",
                         summaryInHeader = wide,
                         computerControl = SettingsComputerControlState(restart = SettingsComputerRestartProgress(machineId = "m-studio")),
                     )

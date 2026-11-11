@@ -603,10 +603,39 @@ internal fun raftComputersRackToolbarModel(
     )
 }
 
+/** What the Computers page's toolbar asks of [RaftComputersRackToolbarStore] (the UI's only way in). */
+internal sealed interface RaftComputersRackToolbarIntent {
+    data class Search(val query: String) : RaftComputersRackToolbarIntent
+
+    data class SetStatus(val status: RaftComputersRackStatusFilter) : RaftComputersRackToolbarIntent
+
+    /** The Runtime sheet's checkbox, against the [options] the sheet offered. */
+    data class ToggleRuntime(
+        val runtime: RaftComputersRackRuntimeFilter,
+        val options: List<RaftComputersRackRuntimeFilter>,
+    ) : RaftComputersRackToolbarIntent
+
+    data object ClearFilters : RaftComputersRackToolbarIntent
+
+    data class SetGroupBy(val groupBy: ComputersRackGroupBy) : RaftComputersRackToolbarIntent
+
+    /** The sort sheet's key item, against the [current] (effective) sort. */
+    data class ChooseSortKey(val key: ComputersRackSortKey, val current: ComputersRackSort) : RaftComputersRackToolbarIntent
+
+    /** The sort sheet's direction item, against the [current] (effective) sort. */
+    data class ChooseSortDirection(val direction: ComputersRackSortDirection, val current: ComputersRackSort) : RaftComputersRackToolbarIntent
+
+    data class SetView(val view: ComputersRackView) : RaftComputersRackToolbarIntent
+}
+
 /**
  * Web `useComputersRackFilters` with `computersRackSortPreference` and the view preference: one
  * per app session, so the search and filters last while the app runs and Group, Sort and View
  * across launches. Call [onServer] whenever the current server is known or changes.
+ *
+ * Owned by the shell's store provider, one per shell window
+ * (`RaftSharedStoreProvider.computersRackToolbarStore`): it outlives the Computers page, as the
+ * web's zustand store outlives its panel, and goes with the window (or the account) that held it.
  */
 internal class RaftComputersRackToolbarStore(private val preferences: KeyValueComputersRackPreferenceRepository) {
     private val mutableState =
@@ -667,5 +696,19 @@ internal class RaftComputersRackToolbarStore(private val preferences: KeyValueCo
 
     fun setView(view: ComputersRackView) {
         mutableState.update { it.copy(view = preferences.selectComputersRackViewSync(view)) }
+    }
+
+    fun dispatch(intent: RaftComputersRackToolbarIntent) {
+        when (intent) {
+            is RaftComputersRackToolbarIntent.Search -> setQuery(intent.query)
+            is RaftComputersRackToolbarIntent.SetStatus -> setStatus(intent.status)
+            is RaftComputersRackToolbarIntent.ToggleRuntime -> toggleRuntime(intent.runtime, intent.options)
+            RaftComputersRackToolbarIntent.ClearFilters -> clearFilters()
+            // The same choice again writes nothing.
+            is RaftComputersRackToolbarIntent.SetGroupBy -> if (intent.groupBy != state.value.groupBy) setGroupBy(intent.groupBy)
+            is RaftComputersRackToolbarIntent.ChooseSortKey -> chooseSortKey(intent.key, intent.current)
+            is RaftComputersRackToolbarIntent.ChooseSortDirection -> chooseSortDirection(intent.direction, intent.current)
+            is RaftComputersRackToolbarIntent.SetView -> if (intent.view != state.value.view) setView(intent.view)
+        }
     }
 }
