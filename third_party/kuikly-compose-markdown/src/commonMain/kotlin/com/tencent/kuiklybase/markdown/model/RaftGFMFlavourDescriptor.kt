@@ -36,8 +36,14 @@ import org.intellij.markdown.parser.markerblocks.MarkerBlockProvider
  * [MarkdownLexer] retains the untouched original source, so AST offsets and
  * rendered text remain exact; the shadow exists only to let backtick parsing
  * claim code ranges before URL, email, HTML, or emphasis tokenization.
+ *
+ * [quoteEndsAtUnmarkedLine] false keeps CommonMark's lazy continuation (the
+ * parse the web's mention rule, raft-shared `drawnQuoteEnd`, starts from);
+ * rendering always ends a quote at an unmarked line.
  */
-class RaftGFMFlavourDescriptor : GFMFlavourDescriptor() {
+class RaftGFMFlavourDescriptor(
+    private val quoteEndsAtUnmarkedLine: Boolean = true,
+) : GFMFlavourDescriptor() {
     override val markerProcessorFactory: MarkerProcessorFactory =
         object : MarkerProcessorFactory {
             override fun createMarkerProcessor(productionHolder: ProductionHolder): MarkerProcessor<*> =
@@ -45,7 +51,8 @@ class RaftGFMFlavourDescriptor : GFMFlavourDescriptor() {
                     productionHolder = productionHolder,
                     constraintsBase = GFMConstraints.BASE,
                     tableMarkerProvider = RaftTableContinuationMarkerProvider(),
-                    paragraphLazyContinuationPolicy = ::raftBlockQuoteEndsAtUnmarkedLine,
+                    paragraphLazyContinuationPolicy =
+                        if (quoteEndsAtUnmarkedLine) ::raftBlockQuoteEndsAtUnmarkedLine else { _, _ -> true },
                 )
         }
 

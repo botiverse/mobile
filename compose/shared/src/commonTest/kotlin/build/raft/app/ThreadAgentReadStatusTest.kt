@@ -314,6 +314,12 @@ class ThreadAgentReadStatusTest {
         assertEquals(listOf("a-niko", "a-ray"), mine(3).copy(body = "Thanks @niko. And @ray-").threadAgentMentionIds(directory))
     }
 
+    @Test fun aQuotedHandleInTheBodyIsNotAMention() {
+        // slock #14349: quoting a message that names @ray does not mention ray again.
+        val directory = mapOf("niko" to MessageMention("agent", "a-niko", "niko"), "ray" to MessageMention("agent", "a-ray", "ray"))
+        assertEquals(listOf("a-niko"), mine(3).copy(body = "> @ray said so\n\n@niko agreed").threadAgentMentionIds(directory))
+    }
+
     @Test fun inAChannelAnAgentTypingInTheMessagesThreadHasIt() {
         val scope = PeerReadReceiptScope.Peers(listOf(PeerReadState(ReadReceiptPeerKind.Agent, "a-niko", 1, mutedChannel = true)))
         val messages = listOf(agent("a-niko", 1), mine(3))

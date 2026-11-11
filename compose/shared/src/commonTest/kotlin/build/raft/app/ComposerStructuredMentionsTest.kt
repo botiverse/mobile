@@ -40,6 +40,21 @@ class ComposerStructuredMentionsTest {
     }
 
     @Test
+    fun aMentionThatIsOnlyQuotedDoesNotAppear() {
+        // botiverse/slock #14349 (8b324501027a4f6050b2f8db49c259ae53dd18c9) raftRefs.test.ts
+        // "structuredRaftMentionStillAppears does not count a token that is only quoted".
+        listOf(
+            "> @Mona wrote this" to false,
+            "> quoted\n> @Mona" to false,
+            "> @Mona wrote this\n\n@Mona see above" to true,
+            "> <@Mona> and [x](<@Mona>)" to false,
+            "> first line\n@Mona after the quote" to true,
+        ).forEach { (text, expected) ->
+            assertEquals(expected, composerStructuredMentionStillAppears(text, "Mona"), "text=$text")
+        }
+    }
+
+    @Test
     fun slackParticipantsBecomeMentionSuggestionsWithTheWebToken() {
         val suggestions =
             listOf(

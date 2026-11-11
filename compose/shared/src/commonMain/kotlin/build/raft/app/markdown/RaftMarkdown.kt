@@ -654,9 +654,14 @@ private fun String.markdownInlineTokenInputs(
 ): MarkdownInlineTokenInputs {
     val inlineSyntax = parseMarkdownInlineSyntax(this)
     val inlineContentIdPrefix = inlineContentScope.toRaftMarkdownInlineContentIdPrefix()
+    // slock #14349: an `@handle` inside a block quote is someone else's words, drawn as text
+    // (the Server does not notify it). Other refs in a quote stay chips.
+    val quotes = if (inlineSyntax.raftRefs.isEmpty()) emptyList() else raftMarkdownQuoteRanges(this)
     val validatedTagMatches =
         inlineSyntax.raftRefs.mapNotNull { ref ->
-            ref.sourceText.toThreadMarkdownTagOrNull()?.let { tag ->
+            ref.sourceText.toThreadMarkdownTagOrNull()?.takeUnless { tag ->
+                tag.kind == ThreadMarkdownTagKind.UserMention && quotes.quotes(ref.startOffset, ref.endOffset)
+            }?.let { tag ->
                 val range = ref.startOffset until ref.endOffset
                 ThreadInlineTagMatch(
                     id = "$inlineContentIdPrefix:${baseOffset + range.first}",
