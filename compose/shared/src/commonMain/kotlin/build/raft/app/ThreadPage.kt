@@ -5498,13 +5498,20 @@ private fun ThreadMembersPageScreen() {
     var createAgentMode by remember(routeOwner) { mutableStateOf(MembersCreateAgentMode.Managed) }
     var canCreateAgents by remember(routeOwner) { mutableStateOf(false) }
     var serverPlan by remember(routeOwner) { mutableStateOf<String?>(null) }
+    // External invites (web ChannelMembers): the viewer's role and this server's name.
+    var viewerServerRole by remember(routeOwner) { mutableStateOf<String?>(null) }
+    var viewerServerName by remember(routeOwner) { mutableStateOf("") }
     LaunchedEffect(liveOwner, routeOwner) {
         canCreateAgents = false
+        viewerServerRole = null
         if (liveOwner == routeOwner) {
             val session = sharedStores.authStore(storeScope).readSession()
-            val server = session?.servers?.firstOrNull { it.id == routeOwner.serverId }?.toServerSummary()
+            val stored = session?.servers?.firstOrNull { it.id == routeOwner.serverId }
+            val server = stored?.toServerSummary()
             canCreateAgents = threadAddMemberCanCreateAgents(server?.permissions)
             serverPlan = server?.plan
+            viewerServerRole = stored?.role
+            viewerServerName = stored?.name.orEmpty()
         } else createAgentName = null
     }
     var addDialogVisible by remember { mutableStateOf(false) }
@@ -5522,6 +5529,39 @@ private fun ThreadMembersPageScreen() {
             ?.ifBlank { null }
             ?: route.channelId.value.trim().removePrefix("#")
     val authorityRejected = liveOwner != routeOwner
+    // Web useExternalInviteAccess / useExternalInviteManagement: external_channels_v1 for this server,
+    // its owner or admin, an invitable channel (the directory row: type, jointRole, archived).
+    val externalChannelsOn =
+        rememberServerFeatureLatched(sharedStores.serverFeatureFlags, route.serverId, EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)
+    val externalInviteChannel =
+        channelProjections[route.channelId.value]?.let { projection ->
+            ExternalInviteChannel(
+                type = projection.channelKind,
+                name = channelName,
+                archived = projection.archived,
+                jointRole = projection.jointRole,
+                hasExternalRelation = projection.hasExternalRelation,
+            )
+        }
+    val externalInviteAccessOn = !authorityRejected && externalInviteAccess(externalChannelsOn, viewerServerRole, externalInviteChannel)
+    val externalInviteManagementOn =
+        !authorityRejected && externalInviteManagement(externalChannelsOn, viewerServerRole, externalInviteChannel)
+    val externalInvitesStore =
+        remember(routeOwner, route.channelId) {
+            ExternalInvitesStore(memberScope, RealExternalInvitesDataSource(route.channelId, routeOwner, authorityGateway, bridge::log))
+        }
+    val externalInvitesState by externalInvitesStore.state.collectAsState()
+    val externalInviteJoint = externalInviteChannel?.type == "joint"
+    LaunchedEffect(externalInvitesStore, externalInviteManagementOn) {
+        if (externalInviteManagementOn) externalInvitesStore.dispatch(ExternalInvitesIntent.Load)
+    }
+    LaunchedEffect(externalInvitesState.effects) {
+        externalInvitesState.effects.forEach { effect ->
+            val text = externalInviteEffectDesc(effect, externalInviteJoint).resolve()
+            if (effect is ExternalInvitesEffect.Failed) bridge.errorToast(text, effect.failure.traceId) else bridge.toast(text)
+            externalInvitesStore.dispatch(ExternalInvitesIntent.ConsumeEffect(effect))
+        }
+    }
     val membersLoading =
         !authorityRejected &&
             members.isEmpty() &&
@@ -5720,11 +5760,27 @@ private fun ThreadMembersPageScreen() {
             membersFailed = membersFailed, membersLoading = membersLoading,
             refreshing = channelMembersSlice.status == SharedServerMembersLoadStatus.InFlight && members.isNotEmpty(),
             canAddMembers = canAddMembers, agentStatusResolver = agentStatusResolver, memberAvatarResolver = memberAvatarResolver,
-            onBack = { router.closePage() }, onRefresh = ::refreshMembers,
+            onBack = { router.closePage() },
+            onRefresh = {
+                refreshMembers()
+                if (externalInviteManagementOn) externalInvitesStore.dispatch(ExternalInvitesIntent.Load)
+            },
             onOpenMember = ::openMember, onRemoveMember = ::requestRemoveMember,
             canCreateAgents = canCreateAgents,
             localServerId = route.serverId.value,
             channelName = channelName,
+            externalInvites =
+                ExternalInvitesSection(
+                    state = externalInvitesState,
+                    access = externalInviteAccessOn,
+                    management = externalInviteManagementOn,
+                    serverName = viewerServerName,
+                    nowEpochMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis(),
+                    onRetry = { externalInvitesStore.dispatch(ExternalInvitesIntent.Load) },
+                    onResend = { externalInvitesStore.dispatch(ExternalInvitesIntent.Resend(it)) },
+                    onWithdraw = { externalInvitesStore.dispatch(ExternalInvitesIntent.RequestWithdraw(it)) },
+                    onOpenInvite = { if (externalInviteAccessOn) externalInvitesStore.dispatch(ExternalInvitesIntent.OpenDialog) },
+                ),
             // The two rows (web sidebar Agents "+" order: Create Agent, Create External Agent) open
             // that create dialog directly, the channel preselected.
             onCreateAgent = { name, mode ->
@@ -5777,6 +5833,40 @@ private fun ThreadMembersPageScreen() {
         )
         RaftBackHandler(enabled = addDialogVisible, label = "thread_members_inline_add") {
             if (addMemberStatus != "adding") addDialogVisible = false
+        }
+        externalInvitesState.dialog?.let { dialog ->
+            ExternalInviteSheet(
+                dialog = dialog,
+                serverName = viewerServerName,
+                // Web AddExternalMemberDialog `willBecomePrivate`: a public channel becomes private with the first invite.
+                willBecomePrivate = externalInviteChannel?.type == "channel",
+                joint = externalInviteJoint,
+                channelSlotsLeft = externalInvitesState.slotsLeft,
+                onDismiss = { externalInvitesStore.dispatch(ExternalInvitesIntent.CloseDialog) },
+                onTextChange = { externalInvitesStore.dispatch(ExternalInvitesIntent.SetText(it)) },
+                onNext = { externalInvitesStore.dispatch(ExternalInvitesIntent.Next) },
+                onBack = { externalInvitesStore.dispatch(ExternalInvitesIntent.Back) },
+                onSend = { externalInvitesStore.dispatch(ExternalInvitesIntent.Send(makePrivate = externalInviteChannel?.type == "channel")) },
+                onUpgrade = {
+                    externalInvitesStore.dispatch(ExternalInvitesIntent.CloseDialog)
+                    // Web openUpgradeDialog("external_channel_free_limit"); iOS view-only Billing: the plan page.
+                    if (settingsBillingOffersUpgrade()) {
+                        pager.openRaftUpgradeDialog(RaftUpgradeGate.ExternalChannelFreeLimit, storeScope)
+                    } else {
+                        pager.openSettingsBillingPage(storeScope)
+                    }
+                },
+            )
+        }
+        externalInvitesState.withdrawConfirm?.let { invite ->
+            ExternalInviteWithdrawDialog(
+                invite = invite,
+                busy = externalInvitesState.withdrawBusy,
+                failure = externalInvitesState.withdrawFailure,
+                joint = externalInviteJoint,
+                onDismiss = { externalInvitesStore.dispatch(ExternalInvitesIntent.DismissWithdraw) },
+                onConfirm = { externalInvitesStore.dispatch(ExternalInvitesIntent.ConfirmWithdraw) },
+            )
         }
         createAgentName?.let { initialName ->
             ChannelMembersCreateAgentDialog(
@@ -5866,6 +5956,7 @@ internal fun ThreadMembersPageContent(
     onCreateAgent: (String, MembersCreateAgentMode) -> Unit = { _, _ -> },
     localServerId: String? = null,
     channelName: String = "",
+    externalInvites: ExternalInvitesSection? = null,
 ) {
     val rosterListState = rememberLazyListState()
     // artin task #22: a pulled refresh shows the pull indicator only, not the header spinner too.
@@ -5902,6 +5993,16 @@ internal fun ThreadMembersPageContent(
                 addMemberErrorCode = addMemberErrorCode, bottomSafeArea = bottomSafeArea,
                 onSubmitBatch = onSubmit,
                 canCreateAgents = canCreateAgents, onCreateAgent = onCreateAgent,
+                externalInviteEntry =
+                    externalInvites?.takeIf { it.access }?.let { section ->
+                        {
+                            ExternalInviteEntryRow(
+                                serverName = section.serverName,
+                                enabled = addMemberStatus != "adding",
+                                onClick = section.onOpenInvite,
+                            )
+                        }
+                    },
             )
         } else {
         ChannelMembersSearchBar(query = rosterQuery, onQueryChange = onQueryChange)
@@ -5928,6 +6029,12 @@ internal fun ThreadMembersPageContent(
             modifier = Modifier.fillMaxSize().raftNativeNavBarPrimaryList(rosterListState),
             contentPadding = PaddingValues(bottom = 12.dp + if (canAddMembers && !membersLoading) 0.dp else bottomSafeArea),
         ) {
+            // Web design v5.0 A4: the invites couldn't be read and none is listed.
+            if (externalInvites?.loadFailedShown == true && !membersLoading) {
+                item(key = "external-invites:failed") {
+                    ExternalInvitesLoadFailedBanner(externalInvites.state.loadFailure?.traceId, externalInvites.onRetry)
+                }
+            }
             if (membersFailed) {
                 item {
                     ChannelMembersEmptyState(
@@ -5957,6 +6064,29 @@ internal fun ThreadMembersPageContent(
             } else {
                 val agents = filteredMembers.filter { it.kind.equals("agent", ignoreCase = true) }
                 val humans = filteredMembers.filterNot { it.kind.equals("agent", ignoreCase = true) }
+                // Web design v5.0 A4: open external invites first, above Humans, for who can manage them.
+                val invites = externalInvites?.visibleInvites(rosterQuery.text).orEmpty()
+                if (externalInvites != null && invites.isNotEmpty()) {
+                    item(key = "section:external-invites") {
+                        RaftSidebarSectionHeader(
+                            title = stringResource(Res.string.channel_external_invite_invited), count = invites.size,
+                            expanded = true, onExpandedChange = {},
+                            countSeparator = " · ",
+                        )
+                    }
+                    items(invites.size, key = { "external-invite:${invites[it].id}" }) { index ->
+                        val invite = invites[index]
+                        ExternalInviteRow(
+                            invite = invite,
+                            nowEpochMillis = externalInvites.nowEpochMillis,
+                            canResend = externalInvites.access,
+                            busy = invite.id in externalInvites.state.rowBusy,
+                            divider = index > 0,
+                            onResend = { externalInvites.onResend(invite.id) },
+                            onWithdraw = { externalInvites.onWithdraw(invite.id) },
+                        )
+                    }
+                }
                 // Humans first, then agents, then bridge participants (web member page order).
                 if (humans.isNotEmpty()) {
                     item(key = "section:humans") {
@@ -6037,7 +6167,8 @@ internal fun ThreadMembersPageContent(
         // Web: hidden while the roster loads, disabled when nobody is left to add.
         if (canAddMembers && !membersLoading) {
             ChannelMembersAddBar(
-                enabled = addMemberStatus != "adding" && candidates.isNotEmpty(),
+                // Invite people outside the server is in Add Member too, so it opens with nobody left to add.
+                enabled = addMemberStatus != "adding" && (candidates.isNotEmpty() || externalInvites?.access == true),
                 bottomSafeArea = bottomSafeArea,
                 onClick = { onAddVisibleChange(!addDialogVisible) },
             )
