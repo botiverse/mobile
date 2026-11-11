@@ -20,6 +20,23 @@ import kotlin.test.assertTrue
 class MembersAgentMachineGroupCollapseTest {
 
     @Test
+    fun theStandaloneMembersRouteShowsGuestsToOwnersAndAdminsOnly() {
+        // web MembersPage `showGuests` (slock #13127); the route's payload fails closed.
+        assertFalse(RaftMembersPayload().showGuests)
+        fun payloadFor(role: String?) =
+            RaftMembersPayload().forMembersRoute(
+                members = emptyList(),
+                agentPanelTabOrder = emptyList(),
+                server = role?.let { build.raft.app.model.ServerSummary(build.raft.app.model.ServerId("server-1"), "Raft", role = it) },
+            )
+        assertTrue(payloadFor("owner").showGuests)
+        assertTrue(payloadFor("admin").showGuests)
+        assertFalse(payloadFor("member").showGuests)
+        assertFalse(payloadFor("guest").showGuests)
+        assertFalse(payloadFor(null).showGuests)
+    }
+
+    @Test
     fun agentsAreUngroupedUntilTheReaderPicksAGroupingWhichIsKeptPerUser() {
         // slock #14068: No grouping is the default; a choice is kept (web localStorage
         // `raft_members_agents_grouping`; here per signed-in user).
@@ -31,14 +48,6 @@ class MembersAgentMachineGroupCollapseTest {
         assertEquals(MembersAgentsGrouping.None, store.agentsGrouping("user-2"))
         // A value this build does not know (the web's "creator") reads as the default.
         assertEquals(MembersAgentsGrouping.None, MembersAgentsGrouping.fromStorageValue("creator"))
-    }
-
-    @Test
-    fun anUngroupedListHasNoComputerRows() {
-        val agents = listOf(member("a1", "computer:Mac", "computer-id:m1"), member("a2", "computer:Box", "computer-id:m2"))
-        // Spacer, Agents head, two rows, Humans head, two humans, spacer.
-        assertEquals(8, membersLazyItemCount(agents, humansCount = 2, agentsExpanded = true, humansExpanded = true, agentsGrouping = MembersAgentsGrouping.None))
-        assertEquals(10, membersLazyItemCount(agents, humansCount = 2, agentsExpanded = true, humansExpanded = true, agentsGrouping = MembersAgentsGrouping.Computer))
     }
 
     @Test
@@ -142,39 +151,6 @@ class MembersAgentMachineGroupCollapseTest {
         store.setCollapsed("user-1", "", true)
         assertFalse(store.isCollapsed("", "machine-1"))
         assertFalse(store.isCollapsed("user-1", "machine-1"))
-    }
-
-    @Test
-    fun lazyItemCountKeepsCollapsedGroupHeaderButDropsItsRows() {
-        val agents =
-            listOf(
-                member("a1", "computer:mac", "computer-id:m1"),
-                member("a2", "computer:mac", "computer-id:m1"),
-                member("a3", "computer:linux", "computer-id:m2")
-            )
-        // All expanded: 3 fixed + 2 headers + 3 rows = 8.
-        assertEquals(
-            8,
-            membersLazyItemCount(
-                agents = agents,
-                humansCount = 0,
-                agentsExpanded = true,
-                humansExpanded = false,
-                showHumanDirectory = false
-            )
-        )
-        // Collapsing m1 drops its 2 member rows but keeps both headers: 6.
-        assertEquals(
-            6,
-            membersLazyItemCount(
-                agents = agents,
-                humansCount = 0,
-                agentsExpanded = true,
-                humansExpanded = false,
-                collapsedAgentGroupKeys = setOf("m1"),
-                showHumanDirectory = false
-            )
-        )
     }
 
     @Test

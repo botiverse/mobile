@@ -11310,7 +11310,7 @@ internal fun buildHostMembersPayload(
         // until the API exposes a dedicated capability.
         canCreateAgents = server.permissions.canManageSettings,
         canInviteHumans = server.permissions.canInviteMember,
-        showGuests = server.role == "owner" || server.role == "admin"
+        showGuests = membersShowGuests(server.role)
     )
 
 internal sealed interface SharedMembersUiState {

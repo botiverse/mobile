@@ -1763,8 +1763,11 @@ data class RaftMembersPayload(
     val canInviteHumans: Boolean = true,
     /** Server-wide human directory visibility; conversation member lists are separate. */
     val showHumanDirectory: Boolean = true,
-    /** Guests are listed among the Humans for server owners and admins only (web MembersPage `showGuests`). */
-    val showGuests: Boolean = true
+    /**
+     * Guests are listed among the Humans for server owners and admins only (web MembersPage
+     * `showGuests`); false until the host knows the reader is one ([membersShowGuests]).
+     */
+    val showGuests: Boolean = false
 )
 
 internal data class RaftMemberDetailPayload(
@@ -2662,14 +2665,7 @@ internal fun MembersPageContent(
             payload.agentPanelTabOrder
         }
 
-    val membersPayload =
-        payload.copy(
-            // botiverse/slock #11295: the directory keeps an App Bot removed from this server
-            // (`inMemberLists: false`) so its old messages resolve; the list leaves it out.
-            members = localMembers.filter { it.isListedInMembers() },
-            agentPanelTabOrder = agentPanelTabOrder,
-            showHumanDirectory = serverMembersEntry.server?.hidesHumanDirectoryForViewer() != true,
-        )
+    val membersPayload = payload.forMembersRoute(localMembers, agentPanelTabOrder, serverMembersEntry.server)
 
     // task #399 (Hands 3a56004f): the Members page has its own create path (createAgentSubmit
     // above), separate from ChannelMembersCreateAgentDialog used by the thread member panel.
@@ -6112,20 +6108,6 @@ internal fun MembersListContent(
             activeInviteHuman = false
         }
     }
-    val lazyItemCount =
-        membersLazyItemCount(
-            agents = agents,
-            humansCount = humans.size,
-            agentsExpanded = agentsExpanded,
-            humansExpanded = humansExpanded,
-            agentsGrouping = agentsGrouping,
-            collapsedAgentGroupKeys =
-                groupedAgentMembers(agents)
-                    .mapNotNull { group -> group.key.takeIf { isAgentGroupCollapsed(it) } }
-                    .toSet(),
-            showHumanDirectory = payload.showHumanDirectory
-        )
-
     val listState =
         rememberLazyListState(
             initialFirstVisibleItemIndex = initialListState.listPosition.firstVisibleItemIndex,
@@ -6460,35 +6442,6 @@ internal fun resolveAgentGroupCollapsed(
     overrides[groupKey]?.let { return it }
     if (userId.isBlank() || store == null) return false
     return store.isCollapsed(userId, groupKey)
-}
-
-internal fun membersLazyItemCount(
-    agents: List<MemberProfile>,
-    humansCount: Int,
-    agentsExpanded: Boolean,
-    humansExpanded: Boolean,
-    agentsGrouping: MembersAgentsGrouping = MembersAgentsGrouping.Computer,
-    collapsedAgentGroupKeys: Set<String> = emptySet(),
-    showHumanDirectory: Boolean = true
-): Int {
-    val fixedItems =
-        1 + // top spacer
-            1 + // agents header
-            (if (showHumanDirectory) 1 else 0) + // humans header
-            1 // bottom spacer
-    val agentItems =
-        if (agentsExpanded && agentsGrouping == MembersAgentsGrouping.None) {
-            agents.size
-        } else if (agentsExpanded) {
-            groupedAgentMembers(agents).sumOf { group ->
-                // Task #409: a collapsed machine group still renders its header
-                // row (computer name + count) but none of its member rows.
-                if (collapsedAgentGroupKeys.contains(group.key)) 1 else 1 + group.members.size
-            }
-        } else {
-            0
-        }
-    return fixedItems + agentItems + (if (showHumanDirectory && humansExpanded) humansCount else 0)
 }
 
 /**
@@ -14772,6 +14725,28 @@ private fun MembersAgentsGrouping.localizedLabel(): String =
         MembersAgentsGrouping.None -> stringResource(Res.string.members_group_none)
         MembersAgentsGrouping.Computer -> stringResource(Res.string.members_group_by_computer)
     }
+
+/**
+ * The standalone Members route's payload (`compose_members`): the roster [members] it lists, the
+ * agent panel's tab order, and what [server] (the reader's role there) lets it show. A server not
+ * known yet shows the people but not the guests (fail closed).
+ */
+internal fun RaftMembersPayload.forMembersRoute(
+    members: List<MemberProfile>,
+    agentPanelTabOrder: List<String>,
+    server: ServerSummary?,
+): RaftMembersPayload =
+    copy(
+        // botiverse/slock #11295: the directory keeps an App Bot removed from this server
+        // (`inMemberLists: false`) so its old messages resolve; the list leaves it out.
+        members = members.filter { it.isListedInMembers() },
+        agentPanelTabOrder = agentPanelTabOrder,
+        showHumanDirectory = server?.hidesHumanDirectoryForViewer() != true,
+        showGuests = membersShowGuests(server?.role),
+    )
+
+/** Web MembersPage `showGuests`: only a server owner or admin sees the guests (unknown role: not). */
+internal fun membersShowGuests(serverRole: String?): Boolean = serverRole == "owner" || serverRole == "admin"
 
 /** The Members page's tabs (web `MembersTab`, slock #13127): guests have no tab of their own, they are Humans. */
 internal enum class MembersTab { All, Humans, Agents }
