@@ -5,7 +5,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
@@ -112,13 +111,16 @@ class ExternalInvitesUiTest {
                     )
                 )
             )
-        show(source)
+        val store = show(source)
         assertTrue(shown("14 days left"))
         assertTrue(shown("Waiting for approval"))
         assertTrue(shown("Connecting a server"))
         assertEquals(3, count(ExternalInviteRowTag))
         assertEquals(1, count(ExternalInviteResendTag))
-        onAllNodes(hasTestTag(ExternalInviteWithdrawTag), useUnmergedTree = true)[2].assertIsNotEnabled()
+        // Not revocable while its conversion runs: a tap asks nothing.
+        onAllNodes(hasTestTag(ExternalInviteWithdrawTag), useUnmergedTree = true)[2].performClick()
+        waitForIdle()
+        assertEquals(null, store.state.value.withdrawConfirm)
 
         onNodeWithTag(ExternalInviteResendTag, useUnmergedTree = true).performClick()
         waitForIdle()
