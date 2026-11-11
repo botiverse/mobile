@@ -558,6 +558,7 @@ internal class RaftSharedStoreProvider private constructor(
     private val shellAgentDetailStores = RaftShellScopedStoreCache<SharedAgentDetailStore>()
     private val shellComputersStores = RaftShellScopedStoreCache<SharedComputersStore>()
     private val shellRuntimeAccountUsageStores = RaftShellScopedStoreCache<SharedRuntimeAccountUsageStore>()
+    private val shellChannelAnnouncementStores = RaftShellScopedStoreCache<SharedChannelAnnouncementStore>()
     private val shellMyAssistantStores = RaftShellScopedStoreCache<SharedMyAssistantStore>()
     private val shellComputersRackToolbarStores = RaftShellScopedStoreCache<RaftComputersRackToolbarStore>()
 
@@ -2198,6 +2199,19 @@ internal class RaftSharedStoreProvider private constructor(
             RaftComputersRackToolbarStore(KeyValueComputersRackPreferenceRepository(sharedPreferenceStore))
         }
 
+    /**
+     * Channel announcements of this shell scope (SharedChannelAnnouncementStore.kt): one store, so
+     * the conversation's strip and the channel details read and write the same slice.
+     */
+    internal fun channelAnnouncementStore(scope: RaftShellStoreScope): SharedChannelAnnouncementStore =
+        shellChannelAnnouncementStores.getOrPut(scope) {
+            SharedChannelAnnouncementStore(
+                repository = ChannelAnnouncementRepository(NetworkRaftChannelAnnouncementApi(networkClient(scope))),
+                scope = threadSendScope,
+                logger = sharedInfoLogger("SlockChannelAnnouncement", "shared_channel_announcement"),
+            )
+        }
+
     internal fun runtimeAccountUsageStore(scope: RaftShellStoreScope): SharedRuntimeAccountUsageStore =
         shellRuntimeAccountUsageStores.getOrPut(scope) {
             SharedRuntimeAccountUsageStore(
@@ -2868,6 +2882,7 @@ internal class RaftSharedStoreProvider private constructor(
         shellAgentDetailStores.remove(scope)
         shellComputersStores.remove(scope)?.dispatch(SharedComputersIntent.Clear)
         shellRuntimeAccountUsageStores.remove(scope)
+        shellChannelAnnouncementStores.remove(scope)?.dispatch(ChannelAnnouncementIntent.Reset)
         shellMyAssistantStores.remove(scope)
         shellComputersRackToolbarStores.remove(scope)
         shellCreateAgentFormOwnerJobs.remove(scope)?.cancel()

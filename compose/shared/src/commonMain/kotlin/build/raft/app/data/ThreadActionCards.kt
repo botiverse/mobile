@@ -328,7 +328,32 @@ internal data class WireActionCardMetadata(
     val expiresAt: String? = null,
     /** A person's request: [ThreadActionCard.requesterUserId]. */
     val requesterUserId: String? = null,
+    /*
+     * A channel announcement's change line (`kind: "channel-announcement"`, ChannelAnnouncementApi.kt):
+     * kept as JSON so a field of a type this client doesn't expect fails only the notice
+     * ([readChannelAnnouncementNotice]), never the whole message.
+     */
+    val change: JsonElement? = null,
+    val actor: JsonElement? = null,
+    val artifactId: JsonElement? = null,
+    val title: JsonElement? = null,
 )
+
+/** The channel announcement notice this `actionMetadata` carries, read as the web reads it; null for anything else. */
+internal fun WireActionCardMetadata.channelAnnouncementNotice(): ChannelAnnouncementNotice? {
+    if (kind != CHANNEL_ANNOUNCEMENT_NOTICE_KIND) return null
+    return readChannelAnnouncementNotice(
+        JsonObject(
+            buildMap {
+                put("kind", JsonPrimitive(CHANNEL_ANNOUNCEMENT_NOTICE_KIND))
+                change?.let { put("change", it) }
+                actor?.let { put("actor", it) }
+                artifactId?.let { put("artifactId", it) }
+                title?.let { put("title", it) }
+            }
+        )
+    )
+}
 
 @Serializable
 internal data class WireActionCardAction(
