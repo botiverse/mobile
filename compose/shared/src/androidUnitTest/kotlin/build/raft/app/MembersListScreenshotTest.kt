@@ -8,6 +8,8 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.app.data.MembersAgentMachineGroupCollapseStore
+import build.raft.app.data.MembersAgentsGrouping
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -22,7 +24,8 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * JVM screenshots of the server members list (`members.list`): the production
+ * JVM screenshots of the server members list (`members.list`, the All tab; `members.list.by-computer`, the
+ * Agents tab grouped By computer): the production
  * [MembersListContent] with agents on two computers (online, working, offline) and humans (the
  * viewer, an owner, a guest), light and dark. Reports land in `build/reports/home-screenshots/`
  * (uploaded by CI as `shared-home-screenshots`); verify / record as [RaftRobolectricScreenshot].
@@ -40,7 +43,11 @@ class MembersListScreenshotTest {
     @Test
     fun membersListDark() = capture("members.list.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) {
+    /** The Agents list grouped By computer, as the reader chose it (the default is No grouping, slock #14068). */
+    @Test
+    fun membersListByComputer() = capture("members.list.by-computer", RaftAppAppearance.Light, MembersAgentsGrouping.Computer, MembersTab.Agents)
+
+    private fun capture(name: String, appearance: RaftAppAppearance, grouping: MembersAgentsGrouping? = null, tab: MembersTab = MembersTab.All) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
                 remember {
@@ -48,7 +55,7 @@ class MembersListScreenshotTest {
                         pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
                     }
                 }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { MembersListVisualContent() }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { MembersListVisualContent(grouping, initialTab = tab) }
         }
     }
 }
@@ -73,13 +80,32 @@ private fun human(id: String, name: String, description: String? = null, serverR
         serverRole = serverRole,
     )
 
-/** A fixed roster and fixed agent statuses, so the capture is deterministic. */
+/** A store holding the reader's grouping choice; no group collapsed. */
+internal class MembersGroupingTestStore(var grouping: MembersAgentsGrouping?) : MembersAgentMachineGroupCollapseStore {
+    override fun isCollapsed(userId: String, machineKey: String): Boolean = false
+
+    override fun setCollapsed(userId: String, machineKey: String, collapsed: Boolean) {}
+
+    override fun agentsGrouping(userId: String): MembersAgentsGrouping = grouping ?: MembersAgentsGrouping.Default
+
+    override fun setAgentsGrouping(userId: String, grouping: MembersAgentsGrouping) {
+        this.grouping = grouping
+    }
+}
+
+/** A fixed roster and fixed agent statuses, so the capture is deterministic. [grouping] null: none chosen. */
 @Composable
-private fun MembersListVisualContent() {
+internal fun MembersListVisualContent(
+    grouping: MembersAgentsGrouping? = null,
+    store: MembersAgentMachineGroupCollapseStore? = remember(grouping) { grouping?.let(::MembersGroupingTestStore) },
+    initialTab: MembersTab = MembersTab.All,
+    showGuests: Boolean = true,
+) {
     val payload =
         remember {
             RaftMembersPayload(
                 instanceId = "members-list-screenshot",
+                showGuests = showGuests,
                 members =
                     listOf(
                         agent("agent-tenny", "Tenny", "Ships the mobile app", "machine-mbp", "MacBook Pro"),
@@ -118,5 +144,7 @@ private fun MembersListVisualContent() {
         canCreateAgents = true,
         inviteHuman = MembersInviteHumanInputs(inviteHumanDialog = {}),
         currentUserId = "human-artin",
+        agentGroupCollapseStore = store,
+        initialTab = initialTab,
     )
 }

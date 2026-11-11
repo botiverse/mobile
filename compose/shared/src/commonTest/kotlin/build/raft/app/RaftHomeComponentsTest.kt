@@ -2128,44 +2128,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun membersLazyItemCountIncludesAgentGroupsAndVisibleHumans() {
-        val agents =
-            listOf(
-                testMember("agent-1", MemberKind.Agent, permissionBadges = listOf("computer:mac")),
-                testMember("agent-2", MemberKind.Agent, permissionBadges = listOf("computer:mac")),
-                testMember("agent-3", MemberKind.Agent, permissionBadges = listOf("computer:linux"))
-            )
-        assertEquals(
-            11,
-            membersLazyItemCount(
-                agents = agents,
-                humansCount = 2,
-                agentsExpanded = true,
-                humansExpanded = true
-            )
-        )
-        assertEquals(
-            4,
-            membersLazyItemCount(
-                agents = agents,
-                humansCount = 2,
-                agentsExpanded = false,
-                humansExpanded = false
-            )
-        )
-        assertEquals(
-            3,
-            membersLazyItemCount(
-                agents = agents,
-                humansCount = 2,
-                agentsExpanded = false,
-                humansExpanded = true,
-                showHumanDirectory = false
-            )
-        )
-    }
-
-    @Test
     fun tasksLazyItemCountTracksCurrentModeAndErrors() {
         assertEquals(
             6,

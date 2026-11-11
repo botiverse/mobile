@@ -11331,7 +11331,8 @@ internal fun buildHostMembersPayload(
         // Product mapping for now: create-agent follows server admin/settings permission
         // until the API exposes a dedicated capability.
         canCreateAgents = server.permissions.canManageSettings,
-        canInviteHumans = server.permissions.canInviteMember
+        canInviteHumans = server.permissions.canInviteMember,
+        showGuests = membersShowGuests(server.role)
     )
 
 internal sealed interface SharedMembersUiState {
@@ -15766,6 +15767,7 @@ internal fun homeSearchEntityResults(
                         candidate.searchFields.map { field ->
                             ThreadComposerSuggestionSearchField(field.value, priority = field.priority)
                         },
+                    tier = candidate.tier,
                 )
             }
     return rankThreadComposerSuggestionEntries(query = trimmedQuery, entries = entries)
@@ -15776,7 +15778,28 @@ internal fun homeSearchEntityResults(
 internal data class HomeSearchEntityCandidate(
     val result: SearchEntityResult,
     val searchFields: List<HomeSearchEntitySearchField>,
+    /** [HomeSearchEntityTier]: live results, then live channels not joined, then archived channels. */
+    val tier: Int = HomeSearchEntityTier.Live,
 )
+
+/**
+ * The search ranker's tier ([ThreadComposerSuggestionSearchEntry.tier], web `SEARCH_ENTITY_TIER`,
+ * slock #14228): live results, then live channels the reader has not joined, then archived
+ * channels, among matches of comparable strength. An exact name still comes first whatever its tier.
+ */
+internal object HomeSearchEntityTier {
+    const val Live = 0
+    const val NotJoined = 1
+    const val Archived = 2
+
+    fun of(conversation: HomeConversationRow): Int =
+        when {
+            conversation.kind == ConversationKind.DirectMessage -> Live
+            conversation.archived -> Archived
+            !conversation.joined -> NotJoined
+            else -> Live
+        }
+}
 
 internal data class HomeSearchEntitySearchField(
     val value: String,
@@ -15843,7 +15866,8 @@ internal fun homeSearchEntityCandidates(
                         HomeSearchEntitySearchField(conversation.subtitle.orEmpty(), priority = 3),
                         HomeSearchEntitySearchField(conversation.channelId?.value.orEmpty(), priority = 5),
                         HomeSearchEntitySearchField(conversation.threadId.value, priority = 5),
-                    )
+                    ),
+                tier = HomeSearchEntityTier.of(conversation),
             )
         }
     val dmCandidatesByThreadId =

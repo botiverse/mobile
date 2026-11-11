@@ -37,6 +37,7 @@ import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftCard
+import build.raft.app.data.MembersAgentsGrouping
 import build.raft.designsystem.components.RaftCardVariant
 import build.raft.designsystem.components.RaftCheckbox
 import build.raft.designsystem.components.RaftButtonSize
@@ -220,6 +221,7 @@ import build.raft.app.model.toMemberProfile
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextFieldSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -1787,7 +1789,12 @@ data class RaftMembersPayload(
      */
     val canInviteHumans: Boolean = true,
     /** Server-wide human directory visibility; conversation member lists are separate. */
-    val showHumanDirectory: Boolean = true
+    val showHumanDirectory: Boolean = true,
+    /**
+     * Guests are listed among the Humans for server owners and admins only (web MembersPage
+     * `showGuests`); false until the host knows the reader is one ([membersShowGuests]).
+     */
+    val showGuests: Boolean = false
 )
 
 internal data class RaftMemberDetailPayload(
@@ -2691,14 +2698,7 @@ internal fun MembersPageContent(
             payload.agentPanelTabOrder
         }
 
-    val membersPayload =
-        payload.copy(
-            // botiverse/slock #11295: the directory keeps an App Bot removed from this server
-            // (`inMemberLists: false`) so its old messages resolve; the list leaves it out.
-            members = localMembers.filter { it.isListedInMembers() },
-            agentPanelTabOrder = agentPanelTabOrder,
-            showHumanDirectory = serverMembersEntry.server?.hidesHumanDirectoryForViewer() != true,
-        )
+    val membersPayload = payload.forMembersRoute(localMembers, agentPanelTabOrder, serverMembersEntry.server)
 
     // task #399 (Hands 3a56004f): the Members page has its own create path (createAgentSubmit
     // above), separate from ChannelMembersCreateAgentDialog used by the thread member panel.
@@ -6061,7 +6061,9 @@ internal fun MembersListContent(
     paneLayout: RaftAdaptivePaneLayout = RaftAdaptivePaneLayout.Compact,
     onRefresh: () -> Unit = {},
     currentUserId: String? = null,
-    agentGroupCollapseStore: build.raft.app.data.MembersAgentMachineGroupCollapseStore? = null
+    agentGroupCollapseStore: build.raft.app.data.MembersAgentMachineGroupCollapseStore? = null,
+    /** The tab the page opens on (screenshots); the reader's taps move it. */
+    initialTab: MembersTab = MembersTab.All,
 ) {
     val createAgentSubmit = createAgent.createAgentSubmit
     val createAgentMachines = createAgent.createAgentMachines
@@ -6102,10 +6104,23 @@ internal fun MembersListContent(
             }
         }
     }
-    val agents = groupedMembers[payload.labels.agents].orEmpty()
+    // slock #13127: the tabs (All, Humans, Agents) and the search filter one population, A-Z by name.
+    var membersTab by remember(payload.instanceId) { mutableStateOf(initialTab) }
+    var membersQuery by remember(payload.instanceId) { mutableStateOf("") }
+    val tabs = membersVisibleTabs(payload.showHumanDirectory)
+    val tab = membersTab.takeIf { it in tabs } ?: MembersTab.All
+    val allAgents = remember(groupedMembers) { membersByName(groupedMembers[payload.labels.agents].orEmpty()) }
+    // Only owners and admins see the guests, among the Humans (web MembersPage `showGuests`).
+    val allHumans =
+        remember(groupedMembers, payload.showGuests) {
+            membersByName(groupedMembers[payload.labels.humans].orEmpty().filter { payload.showGuests || it.serverRole != "guest" })
+        }
+    val agents = remember(allAgents, membersQuery) { allAgents.filter { membersMatchesSearch(it, membersQuery) } }
     // Web `layout.sidebar.noMachineGroupLabel`: external and cloud agents share this group.
     val noComputerGroupLabel = stringResource(Res.string.members_agent_group_no_computer)
-    val humans = groupedMembers[payload.labels.humans].orEmpty()
+    val humans = remember(allHumans, membersQuery) { allHumans.filter { membersMatchesSearch(it, membersQuery) } }
+    val showAgents = tab != MembersTab.Humans
+    val showHumans = payload.showHumanDirectory && tab != MembersTab.Agents
     var agentsExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.agentsExpanded) }
     var humansExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.humansExpanded) }
     val membersCurrentUserId = currentUserId?.trim().orEmpty()
@@ -6121,6 +6136,11 @@ internal fun MembersListContent(
     }
     fun isAgentGroupCollapsed(groupKey: String): Boolean =
         resolveAgentGroupCollapsed(groupKey, agentGroupCollapseOverrides, membersCurrentUserId, agentGroupCollapseStore)
+    // slock #14068: one list of agents by default; By computer once the reader picks it (kept per user).
+    var agentsGrouping by remember(membersCurrentUserId, agentGroupCollapseStore) {
+        mutableStateOf(agentGroupCollapseStore?.agentsGrouping(membersCurrentUserId) ?: MembersAgentsGrouping.Default)
+    }
+    var groupMenuOpen by remember(payload.instanceId) { mutableStateOf(false) }
     var activeCreateAgentMode by remember(payload.instanceId) { mutableStateOf<MembersCreateAgentMode?>(null) }
     var createAgentMenuOpen by remember(payload.instanceId) { mutableStateOf(false) }
     var createAgentSubmitting by remember { mutableStateOf(false) }
@@ -6141,19 +6161,6 @@ internal fun MembersListContent(
             activeInviteHuman = false
         }
     }
-    val lazyItemCount =
-        membersLazyItemCount(
-            agents = agents,
-            humansCount = humans.size,
-            agentsExpanded = agentsExpanded,
-            humansExpanded = humansExpanded,
-            collapsedAgentGroupKeys =
-                groupedAgentMembers(agents)
-                    .mapNotNull { group -> group.key.takeIf { isAgentGroupCollapsed(it) } }
-                    .toSet(),
-            showHumanDirectory = payload.showHumanDirectory
-        )
-
     val listState =
         rememberLazyListState(
             initialFirstVisibleItemIndex = initialListState.listPosition.firstVisibleItemIndex,
@@ -6202,6 +6209,53 @@ internal fun MembersListContent(
                 onBack = onBack
             )
         }
+        RaftDesignSystemTheme {
+            MembersToolbar(
+                tabs = tabs,
+                tab = tab,
+                counts = mapOf(MembersTab.All to (if (payload.showHumanDirectory) allHumans.size else 0) + allAgents.size, MembersTab.Humans to allHumans.size, MembersTab.Agents to allAgents.size),
+                onTab = { membersTab = it },
+                query = membersQuery,
+                onQuery = { membersQuery = it },
+                actions = {
+                    if (tab == MembersTab.Agents) {
+                        MembersAgentsGroupAction(
+                            grouping = agentsGrouping,
+                            menuOpen = groupMenuOpen,
+                            onOpenMenu = { groupMenuOpen = true },
+                            onDismissMenu = { groupMenuOpen = false },
+                            onSelect = { grouping ->
+                                groupMenuOpen = false
+                                agentsGrouping = grouping
+                                agentGroupCollapseStore?.setAgentsGrouping(membersCurrentUserId, grouping)
+                            },
+                        )
+                    }
+                    if (canInviteHumans && showHumans) {
+                        // A person's +, told apart from the agent's + beside it on the All tab.
+                        RaftSidebarSectionAction(
+                            tooltip = stringResource(Res.string.member_action_invite_human),
+                            onClick = { activeInviteHuman = true }
+                        ) {
+                            RaftLucideIcon(RaftLucideIconName.UserPlus, Modifier.size(14.dp), color = raftArgbHex(LocalRaftContentColor.current))
+                        }
+                    }
+                    if (canCreateAgents && showAgents) {
+                        MembersCreateAgentAction(
+                            menuOpen = createAgentMenuOpen && createAgentSubmit != null,
+                            onOpenMenu = { if (createAgentSubmit != null) createAgentMenuOpen = true },
+                            onDismissMenu = { createAgentMenuOpen = false },
+                            onSelect = { mode ->
+                                createAgentMenuOpen = false
+                                RaftProductEvents.agentCreateOpened(RaftAgentCreateEntry.MembersPage)
+                                activeCreateAgentMode = mode
+                                if (mode.requiresComputerSelection()) createAgentLoadMachines()
+                            }
+                        )
+                    }
+                },
+            )
+        }
         BoxWithConstraints(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.TopCenter,
@@ -6230,97 +6284,19 @@ internal fun MembersListContent(
             ) {
                 // `pt-2` with no head under the top bar.
                 item { Spacer(Modifier.height(if (underTopBar) RaftAppSpacing.Sm else RaftAppSpacing.Xs)) }
-                item {
-                    RaftSidebarSectionHeader(
-                        title = displayAgentsLabel,
-                        count = agents.size,
-                        expanded = agentsExpanded,
-                        onExpandedChange = { agentsExpanded = it },
-                        actions =
-                            if (canCreateAgents) {
-                                {
-                                    MembersCreateAgentAction(
-                                        menuOpen = createAgentMenuOpen && createAgentSubmit != null,
-                                        onOpenMenu = { if (createAgentSubmit != null) createAgentMenuOpen = true },
-                                        onDismissMenu = { createAgentMenuOpen = false },
-                                        onSelect = { mode ->
-                                            createAgentMenuOpen = false
-                                            RaftProductEvents.agentCreateOpened(RaftAgentCreateEntry.MembersPage)
-                                            activeCreateAgentMode = mode
-                                            if (mode.requiresComputerSelection()) createAgentLoadMachines()
-                                        }
-                                    )
-                                }
-                            } else {
-                                null
-                            }
-                    )
-                }
-                if (agentsExpanded) {
-                    groupedAgentMembers(
-                        agents,
-                        machineOrder = createAgentMachines.map { it.id },
-                        noComputerLabel = noComputerGroupLabel
-                    ) { machineId ->
-                        createAgentMachines.firstOrNull { it.id == machineId }?.name
-                    }.forEach { group ->
-                        item("group_${group.key}") {
-                            MembersListMachineGroupLabel(
-                                label = group.label,
-                                count = group.members.size,
-                                expanded = !isAgentGroupCollapsed(group.key),
-                                onToggle = {
-                                    // Slot stores *collapsed*; toggling writes !collapsed
-                                    // (writing !groupExpanded stored the old value and made the
-                                    // row a no-op — task #409 regression).
-                                    val collapseNow =
-                                        resolveAgentGroupCollapseToggle(isAgentGroupCollapsed(group.key))
-                                    agentGroupCollapseOverrides =
-                                        agentGroupCollapseOverrides + (group.key to collapseNow)
-                                    agentGroupCollapseStore?.setCollapsed(
-                                        membersCurrentUserId,
-                                        group.key,
-                                        collapseNow
-                                    )
-                                }
+                // The All tab heads each kind (Humans first, as on web); a kind's own tab lists it bare.
+                if (showHumans && humans.isNotEmpty()) {
+                    if (tab == MembersTab.All) {
+                        item {
+                            RaftSidebarSectionHeader(
+                                title = displayHumansLabel,
+                                count = humans.size,
+                                expanded = humansExpanded,
+                                onExpandedChange = { humansExpanded = it },
                             )
                         }
-                        if (!isAgentGroupCollapsed(group.key)) {
-                            items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
-                                val member = group.members[index]
-                                MembersListRow(
-                                    member = member,
-                                    selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
-                                    agentStatusResolver = agentStatusResolver,
-                                    memberAvatarResolver = memberAvatarResolver,
-                                    onClick = { onOpenMember(member) }
-                                )
-                            }
-                        }
                     }
-                }
-                if (payload.showHumanDirectory) {
-                    item {
-                        RaftSidebarSectionHeader(
-                            title = displayHumansLabel,
-                            count = humans.size,
-                            expanded = humansExpanded,
-                            onExpandedChange = { humansExpanded = it },
-                            actions =
-                                if (canInviteHumans) {
-                                    {
-                                        RaftSidebarSectionAction(
-                                            glyph = RaftGlyph.Plus,
-                                            tooltip = stringResource(Res.string.member_action_invite_human),
-                                            onClick = { activeInviteHuman = true }
-                                        )
-                                    }
-                                } else {
-                                    null
-                                }
-                        )
-                    }
-                    if (humansExpanded) {
+                    if (humansExpanded || tab != MembersTab.All) {
                         items(humans.size, key = { "human_${humans[it].id.value}" }) { index ->
                             val member = humans[index]
                             MembersListRow(
@@ -6332,6 +6308,85 @@ internal fun MembersListContent(
                                 onClick = { onOpenMember(member) }
                             )
                         }
+                    }
+                }
+                if (showAgents && agents.isNotEmpty()) {
+                    if (tab == MembersTab.All) {
+                        item {
+                            RaftSidebarSectionHeader(
+                                title = displayAgentsLabel,
+                                count = agents.size,
+                                expanded = agentsExpanded,
+                                onExpandedChange = { agentsExpanded = it },
+                            )
+                        }
+                    }
+                    val agentsShown = agentsExpanded || tab != MembersTab.All
+                    // Grouping is the Agents tab's choice; the All tab lists them by name.
+                    if (agentsShown && (tab != MembersTab.Agents || agentsGrouping == MembersAgentsGrouping.None)) {
+                        items(agents.size, key = { "agent_${agents[it].id.value}" }) { index ->
+                            val member = agents[index]
+                            MembersListRow(
+                                member = member,
+                                selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
+                                agentStatusResolver = agentStatusResolver,
+                                memberAvatarResolver = memberAvatarResolver,
+                                onClick = { onOpenMember(member) }
+                            )
+                        }
+                    }
+                    if (agentsShown && tab == MembersTab.Agents && agentsGrouping == MembersAgentsGrouping.Computer) {
+                        groupedAgentMembers(
+                            agents,
+                            machineOrder = createAgentMachines.map { it.id },
+                            noComputerLabel = noComputerGroupLabel
+                        ) { machineId ->
+                            createAgentMachines.firstOrNull { it.id == machineId }?.name
+                        }.forEach { group ->
+                            item("group_${group.key}") {
+                                MembersListMachineGroupLabel(
+                                    label = group.label,
+                                    count = group.members.size,
+                                    expanded = !isAgentGroupCollapsed(group.key),
+                                    onToggle = {
+                                        // Slot stores *collapsed*; toggling writes !collapsed
+                                        // (writing !groupExpanded stored the old value and made the
+                                        // row a no-op — task #409 regression).
+                                        val collapseNow =
+                                            resolveAgentGroupCollapseToggle(isAgentGroupCollapsed(group.key))
+                                        agentGroupCollapseOverrides =
+                                            agentGroupCollapseOverrides + (group.key to collapseNow)
+                                        agentGroupCollapseStore?.setCollapsed(
+                                            membersCurrentUserId,
+                                            group.key,
+                                            collapseNow
+                                        )
+                                    }
+                                )
+                            }
+                            if (!isAgentGroupCollapsed(group.key)) {
+                                items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
+                                    val member = group.members[index]
+                                    MembersListRow(
+                                        member = member,
+                                        selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
+                                        agentStatusResolver = agentStatusResolver,
+                                        memberAvatarResolver = memberAvatarResolver,
+                                        onClick = { onOpenMember(member) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                if (membersQuery.isNotBlank() && (!showHumans || humans.isEmpty()) && (!showAgents || agents.isEmpty())) {
+                    item {
+                        RaftText(
+                            stringResource(Res.string.members_no_matches, membersQuery.trim()),
+                            Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Md),
+                            style = RaftTheme.typography.callout,
+                            color = RaftTheme.colors.foregroundMuted,
+                        )
                     }
                 }
                 item { Spacer(Modifier.height(bottomContentPadding)) }
@@ -6440,32 +6495,6 @@ internal fun resolveAgentGroupCollapsed(
     overrides[groupKey]?.let { return it }
     if (userId.isBlank() || store == null) return false
     return store.isCollapsed(userId, groupKey)
-}
-
-internal fun membersLazyItemCount(
-    agents: List<MemberProfile>,
-    humansCount: Int,
-    agentsExpanded: Boolean,
-    humansExpanded: Boolean,
-    collapsedAgentGroupKeys: Set<String> = emptySet(),
-    showHumanDirectory: Boolean = true
-): Int {
-    val fixedItems =
-        1 + // top spacer
-            1 + // agents header
-            (if (showHumanDirectory) 1 else 0) + // humans header
-            1 // bottom spacer
-    val agentItems =
-        if (agentsExpanded) {
-            groupedAgentMembers(agents).sumOf { group ->
-                // Task #409: a collapsed machine group still renders its header
-                // row (computer name + count) but none of its member rows.
-                if (collapsedAgentGroupKeys.contains(group.key)) 1 else 1 + group.members.size
-            }
-        } else {
-            0
-        }
-    return fixedItems + agentItems + (if (showHumanDirectory && humansExpanded) humansCount else 0)
 }
 
 /**
@@ -14715,6 +14744,140 @@ private fun MembersCreateAgentAction(
                 onClick = { onSelect(MembersCreateAgentMode.External) }
             )
         }
+    }
+}
+
+/**
+ * The Agents list's Group menu (web Members `GroupSelect`, slock #14068): No grouping (the default)
+ * or By computer, the choice checked. Its control shows active once a grouping is chosen.
+ */
+@Composable
+private fun MembersAgentsGroupAction(
+    grouping: MembersAgentsGrouping,
+    menuOpen: Boolean,
+    onOpenMenu: () -> Unit,
+    onDismissMenu: () -> Unit,
+    onSelect: (MembersAgentsGrouping) -> Unit,
+) {
+    val label = grouping.localizedLabel()
+    Box {
+        RaftSidebarSectionAction(
+            tooltip = stringResource(Res.string.members_group_trigger_label, label),
+            onClick = onOpenMenu,
+            menuOpen = menuOpen || grouping != MembersAgentsGrouping.Default,
+            modifier = Modifier.testTag(MembersAgentsGroupActionTestTag),
+        ) {
+            RaftLucideIcon(RaftLucideIconName.Rows3, Modifier.size(14.dp), color = raftArgbHex(LocalRaftContentColor.current))
+        }
+        RaftDropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = onDismissMenu,
+            minWidth = MembersCreateAgentMenuMinWidth
+        ) {
+            MembersAgentsGrouping.entries.forEach { option ->
+                RaftMenuItem(
+                    text = option.localizedLabel(),
+                    checked = option == grouping,
+                    onClick = { onSelect(option) },
+                )
+            }
+        }
+    }
+}
+
+internal const val MembersAgentsGroupActionTestTag = "members-agents-group"
+
+@Composable
+private fun MembersAgentsGrouping.localizedLabel(): String =
+    when (this) {
+        MembersAgentsGrouping.None -> stringResource(Res.string.members_group_none)
+        MembersAgentsGrouping.Computer -> stringResource(Res.string.members_group_by_computer)
+    }
+
+/**
+ * The standalone Members route's payload (`compose_members`): the roster [members] it lists, the
+ * agent panel's tab order, and what [server] (the reader's role there) lets it show. A server not
+ * known yet shows the people but not the guests (fail closed).
+ */
+internal fun RaftMembersPayload.forMembersRoute(
+    members: List<MemberProfile>,
+    agentPanelTabOrder: List<String>,
+    server: ServerSummary?,
+): RaftMembersPayload =
+    copy(
+        // botiverse/slock #11295: the directory keeps an App Bot removed from this server
+        // (`inMemberLists: false`) so its old messages resolve; the list leaves it out.
+        members = members.filter { it.isListedInMembers() },
+        agentPanelTabOrder = agentPanelTabOrder,
+        showHumanDirectory = server?.hidesHumanDirectoryForViewer() != true,
+        showGuests = membersShowGuests(server?.role),
+    )
+
+/** Web MembersPage `showGuests`: only a server owner or admin sees the guests (unknown role: not). */
+internal fun membersShowGuests(serverRole: String?): Boolean = serverRole == "owner" || serverRole == "admin"
+
+/** The Members page's tabs (web `MembersTab`, slock #13127): guests have no tab of their own, they are Humans. */
+internal enum class MembersTab { All, Humans, Agents }
+
+/** Web `visibleTabs`: Humans goes where the server hides its people from this reader. */
+internal fun membersVisibleTabs(showHumans: Boolean): List<MembersTab> =
+    if (showHumans) listOf(MembersTab.All, MembersTab.Humans, MembersTab.Agents) else listOf(MembersTab.All, MembersTab.Agents)
+
+/** Web `matchesSearch`: the shown name or the handle, case-insensitively. */
+internal fun membersMatchesSearch(member: MemberProfile, query: String): Boolean {
+    val q = query.trim().lowercase()
+    if (q.isEmpty()) return true
+    return member.displayName.ifBlank { member.handle }.lowercase().contains(q) || member.handle.lowercase().contains(q)
+}
+
+/** Web `byName`: every tab and every group reads by name, A-Z, then by handle. */
+internal fun membersByName(members: List<MemberProfile>): List<MemberProfile> =
+    members.sortedWith(compareBy({ it.displayName.ifBlank { it.handle }.lowercase() }, { it.handle.lowercase() }))
+
+internal const val MembersSearchTestTag = "members-search"
+
+/**
+ * The tabs, the actions and the search over the list (web Members toolbar, slock #13127 / #14068): the
+ * tabs with their counts and the [actions] (the Agents tab's Group menu, Invite human, Create agent)
+ * on one row, the search under them.
+ */
+@Composable
+private fun MembersToolbar(
+    tabs: List<MembersTab>,
+    tab: MembersTab,
+    counts: Map<MembersTab, Int>,
+    onTab: (MembersTab) -> Unit,
+    query: String,
+    onQuery: (String) -> Unit,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    val labels =
+        mapOf(
+            MembersTab.All to stringResource(Res.string.members_tab_all),
+            MembersTab.Humans to stringResource(Res.string.members_section_humans),
+            MembersTab.Agents to stringResource(Res.string.members_section_agents),
+        )
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = MembersListContainerInset + RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            SegmentedControl(
+                selectedValue = tab.name,
+                options = tabs.map { SegmentedControlOption(value = it.name, label = labels.getValue(it), count = counts[it]) },
+                onValueSelected = { value -> MembersTab.entries.firstOrNull { it.name == value }?.let(onTab) },
+            )
+            Spacer(Modifier.weight(1f))
+            actions()
+        }
+        RaftTextField(
+            value = query,
+            onValueChange = onQuery,
+            modifier = Modifier.fillMaxWidth().testTag(MembersSearchTestTag),
+            placeholder = stringResource(Res.string.members_search_label),
+            leading = { RaftLucideIcon(RaftLucideIconName.Search, Modifier.size(14.dp), color = raftArgbHex(LocalRaftContentColor.current)) },
+            size = RaftTextFieldSize.Md,
+        )
     }
 }
 

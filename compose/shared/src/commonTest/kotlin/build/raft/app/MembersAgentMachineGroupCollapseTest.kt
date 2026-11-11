@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueMembersAgentMachineGroupCollapseStore
 import build.raft.app.data.MembersAgentMachineGroupNoMachineKey
+import build.raft.app.data.MembersAgentsGrouping
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -17,6 +18,37 @@ import kotlin.test.assertTrue
  * (`slock:sidebarCollapsed:<userId>:agent-machine-group:<machineKey>`).
  */
 class MembersAgentMachineGroupCollapseTest {
+
+    @Test
+    fun theStandaloneMembersRouteShowsGuestsToOwnersAndAdminsOnly() {
+        // web MembersPage `showGuests` (slock #13127); the route's payload fails closed.
+        assertFalse(RaftMembersPayload().showGuests)
+        fun payloadFor(role: String?) =
+            RaftMembersPayload().forMembersRoute(
+                members = emptyList(),
+                agentPanelTabOrder = emptyList(),
+                server = role?.let { build.raft.app.model.ServerSummary(build.raft.app.model.ServerId("server-1"), "Raft", role = it) },
+            )
+        assertTrue(payloadFor("owner").showGuests)
+        assertTrue(payloadFor("admin").showGuests)
+        assertFalse(payloadFor("member").showGuests)
+        assertFalse(payloadFor("guest").showGuests)
+        assertFalse(payloadFor(null).showGuests)
+    }
+
+    @Test
+    fun agentsAreUngroupedUntilTheReaderPicksAGroupingWhichIsKeptPerUser() {
+        // slock #14068: No grouping is the default; a choice is kept (web localStorage
+        // `raft_members_agents_grouping`; here per signed-in user).
+        val store = KeyValueMembersAgentMachineGroupCollapseStore(InMemoryRaftKeyValueStore())
+        assertEquals(MembersAgentsGrouping.None, store.agentsGrouping("user-1"))
+
+        store.setAgentsGrouping("user-1", MembersAgentsGrouping.Computer)
+        assertEquals(MembersAgentsGrouping.Computer, store.agentsGrouping("user-1"))
+        assertEquals(MembersAgentsGrouping.None, store.agentsGrouping("user-2"))
+        // A value this build does not know (the web's "creator") reads as the default.
+        assertEquals(MembersAgentsGrouping.None, MembersAgentsGrouping.fromStorageValue("creator"))
+    }
 
     @Test
     fun groupKeyPrefersComputerIdSoRenamesKeepTheCollapsedEntry() {
@@ -119,39 +151,6 @@ class MembersAgentMachineGroupCollapseTest {
         store.setCollapsed("user-1", "", true)
         assertFalse(store.isCollapsed("", "machine-1"))
         assertFalse(store.isCollapsed("user-1", "machine-1"))
-    }
-
-    @Test
-    fun lazyItemCountKeepsCollapsedGroupHeaderButDropsItsRows() {
-        val agents =
-            listOf(
-                member("a1", "computer:mac", "computer-id:m1"),
-                member("a2", "computer:mac", "computer-id:m1"),
-                member("a3", "computer:linux", "computer-id:m2")
-            )
-        // All expanded: 3 fixed + 2 headers + 3 rows = 8.
-        assertEquals(
-            8,
-            membersLazyItemCount(
-                agents = agents,
-                humansCount = 0,
-                agentsExpanded = true,
-                humansExpanded = false,
-                showHumanDirectory = false
-            )
-        )
-        // Collapsing m1 drops its 2 member rows but keeps both headers: 6.
-        assertEquals(
-            6,
-            membersLazyItemCount(
-                agents = agents,
-                humansCount = 0,
-                agentsExpanded = true,
-                humansExpanded = false,
-                collapsedAgentGroupKeys = setOf("m1"),
-                showHumanDirectory = false
-            )
-        )
     }
 
     @Test

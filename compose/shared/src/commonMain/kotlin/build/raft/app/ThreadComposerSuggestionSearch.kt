@@ -262,7 +262,14 @@ internal suspend fun rankThreadComposerChannelSuggestionEntriesCancellable(
 internal data class ThreadComposerSuggestionSearchEntry<T>(
     val index: Int,
     val suggestion: T,
-    val fields: List<ThreadComposerSuggestionSearchField>
+    val fields: List<ThreadComposerSuggestionSearchField>,
+    /**
+     * Ranked within a match band, lowest first (web `ComposerSuggestionSearchEntry.tier`, slock
+     * #14228): among the strong matches a lower tier comes first, but an exact name always leads and
+     * a loose fuzzy match always trails ([threadComposerMatchBand]). Search uses it so an archived
+     * channel never goes above a live one on a comparable match ([HomeSearchEntityTier]).
+     */
+    val tier: Int = 0,
 )
 
 private fun <T> rankThreadComposerSuggestions(
@@ -281,7 +288,7 @@ private fun <T> rankThreadComposerSuggestions(
                 .mapNotNull { field -> field.score(queryKey) }
                 .minOrNull()
                 ?: return@forEachIndexed
-        val ranked = ThreadComposerRankedSuggestion(index = entry.index, suggestion = entry.suggestion, score = score)
+        val ranked = ThreadComposerRankedSuggestion(index = entry.index, tier = entry.tier, suggestion = entry.suggestion, score = score)
         val insertionIndex =
             topSuggestions.binarySearch { current -> ThreadComposerRankedSuggestionComparator.compare(current, ranked) }
                 .let { index -> if (index >= 0) index else -index - 1 }
@@ -300,6 +307,8 @@ private val ThreadComposerRankedSuggestionComparator =
         compareValuesBy(
             left,
             right,
+            { ranked -> threadComposerMatchBand(ranked.score.rank) },
+            { ranked -> ranked.tier },
             { ranked -> ranked.score.rank },
             { ranked -> ranked.score.fieldPriority },
             { ranked -> ranked.score.position },
@@ -308,8 +317,22 @@ private val ThreadComposerRankedSuggestionComparator =
         )
     }
 
+/**
+ * How much a tier may outrank match quality (web `matchBand`, slock #14228): an exact name always
+ * comes first, then the strong matches (prefix, word starts, substrings, pinyin: ranks 1-5) by
+ * tier, then the loose fuzzy ones (6-7). So an archived channel or one the reader has not joined
+ * still wins on its exact name (the cap never drops it), and never loses to a loose match elsewhere.
+ */
+internal fun threadComposerMatchBand(rank: Int): Int =
+    when {
+        rank == 0 -> 0
+        rank <= 5 -> 1
+        else -> 2
+    }
+
 private data class ThreadComposerRankedSuggestion<T>(
     val index: Int,
+    val tier: Int,
     val suggestion: T,
     val score: ThreadComposerSuggestionScore
 )

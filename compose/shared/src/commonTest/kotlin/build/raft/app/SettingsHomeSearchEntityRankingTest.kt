@@ -117,6 +117,53 @@ class SettingsHomeSearchEntityRankingTest {
     }
 
     @Test
+    fun archivedChannelsRankBelowLiveOnesAndNotJoinedBelowJoinedWhateverTheMatch() {
+        // slock #14228 (xxchan, #triage:666d1506): "onboarding" put archived onboarding-<name>
+        // channels above wg-onboarding-v3.
+        fun channel(id: String, name: String, subtitle: String? = null, joined: Boolean = true, archived: Boolean = false) =
+            HomeChannelRow(threadId = ThreadId(id), channelId = ChannelId(id), name = name, subtitle = subtitle, joined = joined, archived = archived)
+        val keys =
+            resultsWithChannels(
+                "onboarding",
+                listOf(
+                    channel("a1", "onboarding-xxchan02", archived = true),
+                    channel("a2", "onboarding-qizhi-wang", joined = false, archived = true),
+                    channel("p1", "onboarding-zhiqiang-zhou", joined = false),
+                    channel("w1", "wg-onboarding-v3"),
+                    channel("t1", "team-management", subtitle = "Team organization and onboarding."),
+                ),
+            ).map { it.key }
+        // Joined and live (name before description), then live but not joined, then archived.
+        assertEquals(
+            listOf("conversation:w1", "conversation:t1", "conversation:p1", "conversation:a1", "conversation:a2"),
+            keys,
+        )
+
+        // An exact name still comes first whatever its tier (Enter goes to it), and a loose fuzzy
+        // match in a live channel still trails a strong one elsewhere.
+        val exact =
+            resultsWithChannels(
+                "design",
+                listOf(channel("j1", "dev-sign-off"), channel("u1", "design", joined = false, archived = true), channel("s1", "design-system", joined = false)),
+            ).map { it.key }
+        assertEquals(listOf("conversation:u1", "conversation:s1", "conversation:j1"), exact)
+    }
+
+    private fun resultsWithChannels(query: String, channels: List<HomeChannelRow>): List<SearchEntityResult> {
+        val content = entityHomeState.content as SharedHomeContentState.Content
+        return homeSearchEntityResults(
+            query = query,
+            homeState = entityHomeState.copy(content = content.copy(snapshot = content.snapshot.copy(channels = channels, directMessages = emptyList()))),
+            senderFilters = emptyList(),
+            channelLabel = "Channel",
+            dmLabel = "DM",
+            agentLabel = "Agent",
+            personLabel = "Person",
+            membersLabel = "Members",
+        )
+    }
+
+    @Test
     fun blankQueryReturnsBeforeHomeContentIsAvailable() {
         val results =
             homeSearchEntityResults(
