@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -40,8 +39,8 @@ import build.raft.designsystem.theme.RaftTheme
 // on a phone (below 768px); here the caller passes the cap it wants ([RaftAppLinkCardDefaults]).
 
 object RaftAppLinkCardDefaults {
-    /** The width on a wide layout (the hover card's `PreviewCardContent size="item"` width). */
-    val MaxWidth: Dp = 400.dp
+    /** The width on a wide layout: an item card's ([RaftMessageEmbedDefaults.ItemMaxWidth], `MessageEmbed size="item"`). */
+    val MaxWidth: Dp = RaftMessageEmbedDefaults.ItemMaxWidth
 
     /** The window width below which the web's card takes the message's full width (`max-md`). */
     val PhoneBelow: Dp = 768.dp
@@ -70,16 +69,13 @@ fun RaftAppLinkCard(
     RaftMessageEmbed(
         modifier = modifier.then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier),
         maxWidth = maxWidth,
-    ) {
-        content()
-        // `last:pb-4`: the last part's 12dp and 4dp more.
-        Spacer(Modifier.height(4.dp))
-    }
+        content = content,
+    )
 }
 
 /**
  * Raft's row at the top, under a hairline: [RaftAppLinkCardIcon], [RaftAppLinkCardName], then
- * [RaftAppLinkCardHost] (`px-4 py-2`, caption, `foreground-muted`). Required: it says whose card
+ * [RaftAppLinkCardHost] (`messageCard` `source`: `px-3 py-2`, caption, `foreground-muted`). Required: it says whose card
  * this is, and Raft draws it from what it stores for the App, never from the card's content.
  */
 @Composable
@@ -89,7 +85,7 @@ fun RaftAppLinkCardHeader(
 ) {
     Column(modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = RaftMessageEmbedDefaults.Inset, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
@@ -141,14 +137,14 @@ fun RaftAppLinkCardHost(
 fun raftAppLinkCardHostText(host: String, maxChars: Int = RaftAppLinkCardDefaults.HostMaxChars): String =
     if (host.length <= maxChars) host else "…" + host.takeLast((maxChars - 1).coerceAtLeast(1))
 
-/** The item, 16dp from the card's sides, 6dp between its parts: [RaftAppLinkCardEyebrow], [RaftAppLinkCardTitle], [RaftAppLinkCardMeta]. */
+/** The item (`messageCard` `body`), 12dp from the card's edges, 6dp between its parts: [RaftAppLinkCardEyebrow], [RaftAppLinkCardTitle], [RaftAppLinkCardMeta]. */
 @Composable
 fun RaftAppLinkCardBody(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
-        modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 12.dp),
+        modifier.fillMaxWidth().padding(RaftMessageEmbedDefaults.Inset),
         verticalArrangement = Arrangement.spacedBy(6.dp),
         content = content,
     )
@@ -162,7 +158,7 @@ fun RaftAppLinkCardEyebrow(
 ) = RaftPreviewCardEyebrow(text, modifier)
 
 /**
- * The App's title, headline bold in ink, up to [RaftPreviewCardDefaults.ItemTitleMaxLines] lines
+ * The App's title (`messageCard` `title`), `text-subhead` bold in ink, up to [RaftPreviewCardDefaults.ItemTitleMaxLines] lines
  * then an ellipsis; the whole title in a tooltip only when it is cut. The title opens the item
  * ([onClick]), so a plain Open link goes in the More menu: it keeps the title's ink, not link blue.
  */
@@ -183,7 +179,7 @@ fun RaftAppLinkCardTitle(
         ) {
             RaftText(
                 text = text,
-                style = RaftTheme.typography.headline,
+                style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.Bold),
                 color = RaftTheme.colors.foreground,
                 maxLines = RaftPreviewCardDefaults.ItemTitleMaxLines,
                 overflow = TextOverflow.Ellipsis,
@@ -237,26 +233,25 @@ fun RaftAppLinkCardPlaceholder(
     RaftMessageEmbed(modifier, maxWidth = maxWidth) {
         header?.invoke()
         Column(
-            Modifier.fillMaxWidth().clearAndSetSemantics { }.padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 12.dp),
+            Modifier.fillMaxWidth().clearAndSetSemantics { }.padding(RaftMessageEmbedDefaults.Inset),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             fun lineOf(style: androidx.compose.ui.text.TextStyle, fallback: Dp): Dp =
                 if (style.lineHeight.isSp) with(density) { style.lineHeight.toDp() } else fallback
             val eyebrow = lineOf(typography.monoMeta, 16.dp)
-            val headline = lineOf(typography.headline, 24.dp)
+            val title = lineOf(typography.subhead, 20.dp)
             val callout = lineOf(typography.callout, 20.dp)
             RaftAppLinkCardPlaceholderLine(eyebrow, Modifier.width(112.dp))
-            RaftAppLinkCardPlaceholderLine(headline, Modifier.fillMaxWidth())
-            RaftAppLinkCardPlaceholderLine(headline, Modifier.fillMaxWidth(0.66f))
+            RaftAppLinkCardPlaceholderLine(title, Modifier.fillMaxWidth())
+            RaftAppLinkCardPlaceholderLine(title, Modifier.fillMaxWidth(0.66f))
             RaftAppLinkCardPlaceholderLine(callout, Modifier.width(160.dp))
         }
         Row(
-            Modifier.fillMaxWidth().clearAndSetSemantics { }.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+            Modifier.fillMaxWidth().clearAndSetSemantics { }.padding(start = RaftMessageEmbedDefaults.Inset, end = RaftMessageEmbedDefaults.Inset, bottom = RaftMessageEmbedDefaults.Inset),
             horizontalArrangement = Arrangement.End,
         ) {
             RaftSkeleton(Modifier.width(112.dp).height(32.dp))
         }
-        Spacer(Modifier.height(4.dp))
     }
 }
 

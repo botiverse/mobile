@@ -302,9 +302,10 @@ internal fun settingsPickSaveResult(pick: SettingsLanguageRegionPick, actionStat
     }
 
 /**
- * The SaveStatus line of the control for [action]: empty while [pick] for it is on its way, "Saved"
- * for two seconds once it is stored, or what failed (the server's refusal, else [failureMessage],
- * as web `apiErrorText`) until the next pick. Each pick reports once.
+ * The SaveStatus line of the control for [action]: empty while [pick] for it is on its way and once
+ * it is stored (raft-ui 0.84: the control showing the pick is the confirmation), or what failed (the
+ * server's refusal, else [failureMessage], as web `apiErrorText`) until the next pick. Each pick
+ * reports once.
  */
 @Composable
 internal fun rememberSettingsPickSaveStatus(

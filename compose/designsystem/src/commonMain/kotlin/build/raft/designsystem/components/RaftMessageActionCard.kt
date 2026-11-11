@@ -77,8 +77,8 @@ import build.raft.designsystem.tokens.RaftUiPalette
 
 /** raft-ui MessageActionCard metrics. */
 object RaftMessageActionCardDefaults {
-    /** The card is never wider than this (raft-ui `max-w-[440px]`). */
-    val MaxWidth: Dp = 440.dp
+    /** The card is never wider than an item card (raft-ui 0.84.0 `MessageEmbed size="item"`, was 440dp). */
+    val MaxWidth: Dp = RaftMessageEmbedDefaults.ItemMaxWidth
 
     /** The header's icon tile, the line the title, status and toggle centre on (27px). */
     val HeaderIconSize: Dp = 27.dp
@@ -112,7 +112,7 @@ enum class RaftMessageActionCardStatusTone(internal val color: Color) {
 }
 
 /**
- * raft-ui `MessageActionCard`: a card inside the body of the agent's message, at most 440dp
+ * raft-ui `MessageActionCard`: a card inside the body of the agent's message, at most 400dp
  * wide, on `layer-card` with a `line-hairline` edge and the container radius.
  *
  * The header (top-aligned, so a wrapping title keeps the icon, status and toggle on its first
@@ -571,9 +571,10 @@ fun RaftMessageActionCardScope(
 
 /**
  * raft-ui `MessageActionCardActions`: the buttons, bottom right (they wrap when the card is
- * narrow), 8dp apart, with an optional [note] taking the room on their left (why they're
- * disabled, whom the card waits on). The confirm is a [RaftButton] at the default variant and
- * size, never pink: the screen's one pink button is the composer's send.
+ * narrow), 8dp apart. An optional [note] (why they're disabled, whom the card waits on) is a line
+ * of its own above them (raft-ui 0.84.0 `ActionsNote`: beside two buttons in a 400dp card it had
+ * about 150dp and pushed the second button onto a line of its own). The confirm is a [RaftButton]
+ * at the default variant and size, never pink: the screen's one pink button is the composer's send.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -583,21 +584,23 @@ fun RaftMessageActionCardActions(
     content: @Composable RowScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
-    FlowRow(
-        modifier.fillMaxWidth().padding(top = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        itemVerticalAlignment = Alignment.CenterVertically,
-    ) {
+    Column(modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (note != null) {
             RaftText(
                 note,
-                Modifier.weight(1f).widthIn(min = 160.dp),
+                Modifier.fillMaxWidth(),
                 style = RaftTheme.typography.footnote,
                 color = colors.foregroundMuted,
             )
         }
-        content()
+        FlowRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
+            content()
+        }
     }
 }
 

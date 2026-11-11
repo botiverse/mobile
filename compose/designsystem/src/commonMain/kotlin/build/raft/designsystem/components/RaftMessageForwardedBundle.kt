@@ -62,8 +62,8 @@ import build.raft.designsystem.tokens.RaftStroke
 // forwarded, built on MessageEmbed (`layer-card`, hairline, `rounded-container`).
 
 object RaftMessageForwardedBundleDefaults {
-    /** `max-w-[min(34rem,100%)]`. */
-    val MaxWidth = 544.dp
+    /** At most a content card's 560dp (raft-ui 0.84.0 `MessageEmbed size="content"`, was 544dp). */
+    val MaxWidth = RaftMessageEmbedDefaults.ContentMaxWidth
 
     /** The fold: the items' text past `foldLineLimit` (8) lines folds the list at 8 lines. */
     const val FoldLineLimit = 8
@@ -104,7 +104,7 @@ enum class RaftMessageForwardedBundleFooterMode {
 
 /**
  * raft-ui `MessageForwardedBundle`: the card (`layer-card`, `line-hairline`, `rounded-container`,
- * at most 544dp wide unless [fullWidth]).
+ * at most 560dp wide unless [fullWidth]).
  *
  * The header (12 x 8dp, wraps, items 8dp apart): a 14dp `forward` and [label] ("Forwarded",
  * `footnote` bold, `foreground-muted`, 4dp apart), [countLabel] ("3 messages", Space Mono

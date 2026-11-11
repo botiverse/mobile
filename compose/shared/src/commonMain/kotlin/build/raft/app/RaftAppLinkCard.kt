@@ -21,6 +21,7 @@ import build.raft.app.resources.*
 import build.raft.app.data.RaftAppLinkCard
 import build.raft.app.data.appLinkDomain
 import build.raft.app.markdown.raftAppLinkKeepEnd
+import build.raft.designsystem.components.RaftMessageEmbedDefaults
 import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.components.RaftPreviewCardBody
 import build.raft.designsystem.components.RaftPreviewCardButton
@@ -187,8 +188,9 @@ internal fun RaftAppLinkCardBody(
 }
 
 /**
- * PreviewCardFooter: a caption under a hairline, px-4 py-2: the App's name, then the link's
- * domain. The name gives way first; a domain too long loses its start, never its end.
+ * PreviewCardFooter (raft-ui 0.84.0 `messageCard` `sourceFooter`): a caption under a hairline,
+ * px-3 py-2: the App's name, then the link's domain. The name gives way first; a domain too long
+ * loses its start, never its end.
  */
 @Composable
 private fun RaftAppLinkCardFooter(appName: String, domain: String) {
@@ -196,7 +198,7 @@ private fun RaftAppLinkCardFooter(appName: String, domain: String) {
     val caption = RaftTheme.typography.caption
     RaftSeparator()
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().padding(horizontal = RaftMessageEmbedDefaults.Inset, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

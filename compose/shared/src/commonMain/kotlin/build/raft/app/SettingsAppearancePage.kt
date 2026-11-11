@@ -78,8 +78,10 @@ internal val LocalSettingsAppearanceVisualSwitches =
 /**
  * Settings > Appearance, in the Web's order (`AppearanceSection`): the way to this server's theme
  * ("Theme on <server>"), the "Appearance" header over the message font size card (title,
- * description, size, "Saved on this device." and a real message row as the preview), then the
- * device display switches. "Activity sender avatars" is the app's own and comes last.
+ * description, size and a real message row as the preview), then the device display switches,
+ * 12dp apart (raft-ui 0.84: groups by topic, `stack-y-3`). "Activity sender avatars" is the app's
+ * own and comes last. Where they are stored ("Saved on this device.") is said once, under the
+ * groups, not on every row (slock #14041).
  */
 @Composable
 internal fun SettingsAppearanceContent(
@@ -186,11 +188,13 @@ internal fun SettingsAppearanceContent(
                 }
         }
         item {
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
             SettingsAppearanceDisplaySwitches(
                 activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                 onActivitySenderAvatarsChange = onActivitySenderAvatarsChange
             )
+            Spacer(Modifier.height(12.dp))
+            SettingsAppearanceSavedOnDevice()
         }
         appPreferenceItems?.let { preferenceItems ->
             item { Spacer(Modifier.height(12.dp)) }
@@ -218,8 +222,24 @@ private fun SettingsAppearanceServerThemeLink(serverName: String, onClick: () ->
 }
 
 /**
- * The Web's device switches (`ListRowGroup` of plain rows: title, description, "Saved on this
- * device.", the switch its target) in the Web's order (Live agent activity, Show agent model, Hide
+ * Web `appearance-saved-on-device`: where Appearance's settings are stored, said once under its
+ * groups (`px-4 text-footnote text-foreground-hint`).
+ */
+@Composable
+private fun SettingsAppearanceSavedOnDevice() {
+    RaftDesignSystemTheme {
+        RaftText(
+            stringResource(Res.string.settings_appearance_saved_on_device),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            style = RaftTheme.typography.footnote,
+            color = RaftTheme.colors.foregroundHint
+        )
+    }
+}
+
+/**
+ * The Web's device switches (`ListRowGroup` of plain rows: title, description, the switch its
+ * target) in the Web's order (Live agent activity, Show agent model, Hide
  * empty sidebar sections), plus the app's Activity sender avatars last.
  */
 @Composable
@@ -267,7 +287,7 @@ private fun SettingsAppearanceDisplaySwitches(
     }
 }
 
-/** raft-ui ListRow `plain` (px 16, py 12, gap 12), its body with the "Saved on this device." line. */
+/** raft-ui ListRow `plain` (px 16, py 12, gap 12): the title and its description. */
 @Composable
 private fun SettingsAppearanceSwitchRow(
     title: String,
@@ -294,11 +314,6 @@ private fun SettingsAppearanceSwitchRow(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 RaftText(title, style = typography.body.copy(fontWeight = FontWeight.SemiBold), color = colors.foreground)
                 RaftText(description, style = typography.callout, color = colors.foregroundMuted)
-                RaftText(
-                    stringResource(Res.string.settings_appearance_saved_on_device),
-                    style = typography.caption,
-                    color = colors.foregroundHint
-                )
             }
             RaftSwitch(checked = checked, onCheckedChange = onCheckedChange, label = title)
         }
@@ -392,11 +407,6 @@ private fun SettingsAppearanceFontSizeCard(
                     if (actionState?.action == APPEARANCE_ACTION_MESSAGE_FONT_SIZE && actionState.errorCode != null) {
                         SettingsFormErrorText(actionState)
                     }
-                    RaftText(
-                        stringResource(Res.string.settings_appearance_saved_on_device),
-                        style = typography.caption,
-                        color = colors.foregroundHint
-                    )
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             stringResource(Res.string.settings_appearance_preview),

@@ -46,6 +46,7 @@ import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -635,8 +636,9 @@ fun RaftPreviewCardActions(
 // ([RaftPreviewCardItemActions]), and who says so (the footer: the app and the host).
 
 /**
- * raft-ui `PreviewCardBody` (`flex flex-col gap-1.5 px-4 pt-4 pb-3`): the id line, the title and
- * the details row, 16dp from the card's edges, 6dp apart.
+ * raft-ui `PreviewCardBody` (0.84.0: `messageCard` `body`, `flex flex-col gap-1.5 p-3`): the id
+ * line, the title and the details row, 12dp from the card's edges, 6dp apart, the same parts as
+ * a card in a message ([RaftAppLinkCardBody]).
  */
 @Composable
 fun RaftPreviewCardBody(
@@ -644,7 +646,7 @@ fun RaftPreviewCardBody(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
-        modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 12.dp),
+        modifier.fillMaxWidth().padding(RaftMessageEmbedDefaults.Inset),
         verticalArrangement = Arrangement.spacedBy(6.dp),
         content = content,
     )
@@ -667,7 +669,7 @@ fun RaftPreviewCardEyebrow(
 }
 
 /**
- * raft-ui `PreviewCardTitle` in `PreviewCardBody`: the app's title, `text-headline` bold in ink
+ * raft-ui `PreviewCardTitle` in `PreviewCardBody` (0.84.0: `messageCard` `title`): the app's title, `text-subhead` bold in ink
  * (never `foreground-link`: the card is not a link, its buttons and the chip are), up to
  * [RaftPreviewCardDefaults.ItemTitleMaxLines] lines, then an ellipsis. Only when it is cut off,
  * the whole title is in a [RaftTooltip] (a pointer resting on it; a long press on touch).
@@ -682,7 +684,7 @@ fun RaftPreviewCardItemTitle(
         RaftText(
             text = text,
             modifier = titleModifier,
-            style = RaftTheme.typography.headline,
+            style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.Bold),
             color = RaftTheme.colors.foreground,
             maxLines = RaftPreviewCardDefaults.ItemTitleMaxLines,
             overflow = TextOverflow.Ellipsis,
@@ -924,8 +926,9 @@ internal fun RaftPreviewCardLaidOutActions(
 ) {
     if (layout.row.isEmpty() && layout.more.isEmpty()) return
     val reason = layout.row.firstNotNullOfOrNull { it.disabledReason }
+    // `messageCard` `actions` (raft-ui 0.84.0): `px-3 pb-3`, a card's inset.
     Column(
-        modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+        modifier.fillMaxWidth().padding(start = RaftMessageEmbedDefaults.Inset, end = RaftMessageEmbedDefaults.Inset, bottom = RaftMessageEmbedDefaults.Inset),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(

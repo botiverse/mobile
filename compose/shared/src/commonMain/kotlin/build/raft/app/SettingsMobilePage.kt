@@ -512,7 +512,7 @@ internal fun SettingsAppLanguageCard(
     val preference = snapshot.localePreference
     val busy = actionState?.action == MOBILE_ACTION_LANGUAGE && actionState.inProgress
     // The app language applies when picked (web display language, slock #11858): its SaveStatus
-    // line says "Saved", or what failed while the control stays on the stored language.
+    // says only what failed, while the control stays on the stored language (raft-ui 0.84).
     val selectedLocale = preference.selectedKey.ifBlank { AppLocale.System.languageTag }
     var pick by remember { mutableStateOf<SettingsLanguageRegionPick?>(null, referentialEqualityPolicy()) }
     val saveStatus =

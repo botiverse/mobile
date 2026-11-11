@@ -20,16 +20,15 @@ import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 
 /**
- * [build.raft.designsystem.components.RaftSaveStatus] (raft-ui 0.54.0 SaveStatus,
+ * [build.raft.designsystem.components.RaftSaveStatus] (raft-ui 0.84.0 SaveStatus,
  * `save-status/compositions/preview` and `failed`), light and dark: under a select in a field
- * and under a settings row's description, idle (the empty reserved line), saved and failed.
+ * and under a settings row's description, idle (no line, no room) and failed.
  */
 class SaveStatusScreenshotTest {
     private val appearances = listOf(RaftAppearance.Light, RaftAppearance.Dark)
     private val states =
         listOf(
             "Idle" to RaftSaveStatusState.Idle,
-            "Saved" to RaftSaveStatusState.Saved,
             "Failed" to null,
         )
 
@@ -38,13 +37,13 @@ class SaveStatusScreenshotTest {
         appearances.forEach { appearance ->
             RaftScreenshot.capture("save_status_${appearance.name.lowercase()}", appearance) {
                 Column(Modifier.width(358.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    states.forEach { (name, idleOrSaved) ->
+                    states.forEach { (name, idle) ->
                         Caption("$name: field with a select")
                         Surface {
                             RaftField(
                                 label = "Time zone",
                                 description = "Used for times in messages.",
-                                saveStatus = idleOrSaved ?: RaftSaveStatusState.Failed("Couldn't change the time zone. Try again."),
+                                saveStatus = idle ?: RaftSaveStatusState.Failed("Couldn't change the time zone. Try again."),
                             ) {
                                 RaftSelectTrigger(value = "Asia/Shanghai", onClick = {})
                             }
@@ -55,7 +54,7 @@ class SaveStatusScreenshotTest {
                                 title = "Mute this server",
                                 variant = RaftListRowVariant.Plain,
                                 description = "No notifications from its channels.",
-                                saveStatus = idleOrSaved ?: RaftSaveStatusState.Failed("Couldn't mute this server. Try again."),
+                                saveStatus = idle ?: RaftSaveStatusState.Failed("Couldn't mute this server. Try again."),
                                 trailing = { RaftSwitch(checked = true, onCheckedChange = {}) },
                             )
                         }
