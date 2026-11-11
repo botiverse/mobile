@@ -25,6 +25,12 @@ internal enum class SystemKillDecision(val label: String, val report: Boolean) {
     SkipReportedElsewhere("reported_elsewhere", false),
     /** Killed while no activity was visible: routine memory/power management. */
     SkipNotImportant("not_important", false),
+    /**
+     * Not the main app process (a `:name` service process, or an isolated/sandboxed one such as a
+     * WebView renderer). It carries no build stamp or telemetry, the user does not see the app
+     * vanish when it dies, and WebView renderer deaths already reach `onRenderProcessGone`.
+     */
+    SkipSecondaryProcess("secondary_process", false),
 }
 
 private val UserInitiatedReasons =
@@ -99,6 +105,10 @@ internal data class SystemKillExit(
     val rssKb: Long,
     /** The build the exited process stamped ([RaftBuildStamp.stampProcess]); null if none. */
     val build: RaftBuildStamp.StampedBuild?,
+    /** [ApplicationExitInfo.getProcessName]; "" when the system gave none. */
+    val processName: String = "",
+    /** [ApplicationExitInfo.getDescription], as the system wrote it; null when none. */
+    val description: String? = null,
 ) {
     fun toSnapshot(): HistoricalProcessExitSnapshot =
         HistoricalProcessExitSnapshot(
@@ -149,6 +159,8 @@ internal fun planSystemKillReports(
     nowMillis: Long,
     perLaunchCap: Int,
     dailyCap: Int,
+    /** The main app process name; exits of any other process are [SystemKillDecision.SkipSecondaryProcess]. */
+    mainProcessName: String? = null,
 ): List<SystemKillPlanItem> {
     val floor = maxOf(cutoffMillis, watermarkMillis)
     val reportedToday = recentReportMillis.filter { nowMillis - it < DayMillis }.toMutableList()
@@ -160,7 +172,13 @@ internal fun planSystemKillReports(
         .sortedBy { it.timestampMillis }
         .map { exit ->
             val telemetry = MemoryTelemetryRing.match(snapshots, exit.pid, exit.timestampMillis)
-            val decision = classifySystemKill(exit.reasonCode, exit.importance, telemetry?.foreground, exit.status)
+            val decision =
+                // An exit without a process name is kept: nothing says it was another process.
+                if (mainProcessName != null && exit.processName.isNotEmpty() && exit.processName != mainProcessName) {
+                    SystemKillDecision.SkipSecondaryProcess
+                } else {
+                    classifySystemKill(exit.reasonCode, exit.importance, telemetry?.foreground, exit.status)
+                }
             val action =
                 when {
                     // Once deferred, everything after waits too: the watermark cannot skip over it.
@@ -183,6 +201,17 @@ internal fun planSystemKillReports(
 
 private const val DayMillis = 24L * 60 * 60 * 1000
 
+/** `crash_exit_description` is cut to this many characters. */
+internal const val MaxExitDescriptionChars = 200
+
+/**
+ * Whether the exit's own importance says an activity was on screen: foreground (100) or visible
+ * (200). Foreground service (125), perceptible (230), service (300), cached (400) and anything
+ * else are background. This is the system's view, sent as `crash_foreground`; Hands groups the
+ * `false` ones as `SystemKill@background`. The app's own view is `crash_telemetry_foreground`.
+ */
+internal fun exitImportanceForeground(importance: Int): Boolean = importance in VisibleImportances
+
 /** Ticket metadata (merged into Hands `metadata_json`), in the `crash_*` vocabulary ANR tickets use. */
 internal fun systemKillExtras(
     exit: SystemKillExit,
@@ -192,6 +221,18 @@ internal fun systemKillExtras(
         val reason = historicalProcessExitReasonLabel(exit.reasonCode)
         // The exited process's own build; nothing when it carried no stamp (never this install's).
         putAll(RaftBuildStamp.versionExtras(exit.build))
+        // Some OEM ROMs return an empty processStateSummary (Hands: version "unknown"). Then the
+        // build the same process (pid + start) recorded in its telemetry, still never this install's.
+        val fallbackVersion = telemetry?.takeIf { it.versionCode > 0L && it.versionName.isNotBlank() }
+        when {
+            exit.build != null -> put("crash_version_source", "process_state_summary")
+            fallbackVersion != null -> {
+                put("fallback_version_code", fallbackVersion.versionCode)
+                put("fallback_version_name", fallbackVersion.versionName)
+                put("crash_version_source", "last_process_state")
+            }
+            else -> put("crash_version_source", "unknown")
+        }
         put("crash_type", "system_kill")
         put("crash_reason", reason)
         put("crash_exception_class", "SystemKill")
@@ -206,12 +247,22 @@ internal fun systemKillExtras(
         put("crash_exit_pss", exit.pssKb)
         put("crash_exit_rss", exit.rssKb)
         put("crash_exit_timestamp", exit.timestampMillis)
+        put("crash_foreground", exitImportanceForeground(exit.importance))
+        put("crash_process_name", exit.processName)
+        exit.description?.trim()?.takeIf(String::isNotEmpty)?.let {
+            put("crash_exit_description", it.take(MaxExitDescriptionChars))
+        }
         put("crash_memory_sample", if (telemetry == null) "none" else "matched")
         if (telemetry != null) {
             val at = exit.timestampMillis
             put("crash_process_uptime_ms", at - telemetry.processStartMillis)
-            put("crash_foreground", telemetry.foreground)
+            put("crash_telemetry_foreground", telemetry.foreground)
             put("crash_foreground_change_age_ms", at - telemetry.foregroundChangedAtMillis)
+            // The app's last move to background (committed at once, see RaftMemoryTelemetry);
+            // unknown, so omitted, when it still saw itself in the foreground.
+            if (!telemetry.foreground) {
+                put("crash_background_duration_ms", (at - telemetry.foregroundChangedAtMillis).coerceAtLeast(0L))
+            }
             put("crash_memory_sample_age_ms", MemoryTelemetrySnapshot.ageAt(at, telemetry.sampledAtMillis))
             put("crash_memory_rss_kb", telemetry.rssKb)
             put("crash_memory_pss_kb", telemetry.pssKb)
@@ -317,6 +368,7 @@ internal object AndroidSystemKillReporter {
                 nowMillis = now,
                 perLaunchCap = MaxReportsPerLaunch,
                 dailyCap = MaxReportsPerDay,
+                mainProcessName = context.applicationInfo.processName ?: context.packageName,
             )
         for (item in plan) {
             val exit = item.exit
@@ -356,7 +408,7 @@ internal object AndroidSystemKillReporter {
             "system_kill_report action=${item.action.label} decision=${item.decision.label} " +
                 "timestampMillis=${item.exit.timestampMillis} reason=${historicalProcessExitReasonLabel(item.exit.reasonCode)} " +
                 "importance=${item.exit.importance} telemetry=${if (item.telemetry != null) "matched" else "none"} " +
-                "stamped=${item.exit.build != null} ticket=$ticket",
+                "stamped=${item.exit.build != null} process=${item.exit.processName} ticket=$ticket",
         )
     }
 
@@ -381,6 +433,8 @@ internal object AndroidSystemKillReporter {
             pssKb = pss,
             rssKb = rss,
             build = RaftBuildStamp.decodeStamp(processStateSummary),
+            processName = processName.orEmpty(),
+            description = description,
         )
 }
 

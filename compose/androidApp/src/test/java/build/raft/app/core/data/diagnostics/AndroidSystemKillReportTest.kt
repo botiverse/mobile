@@ -249,7 +249,12 @@ class AndroidSystemKillReportTest {
         assertEquals(10, extras["crash_trim_level"])
         assertEquals("running_low", extras["crash_trim"])
         assertEquals(5_000L, extras["crash_trim_age_ms"])
-        assertEquals(true, extras["crash_foreground"])
+        // The system's view (importance 400) is background; the app's telemetry still said foreground.
+        assertEquals(false, extras["crash_foreground"])
+        assertEquals(true, extras["crash_telemetry_foreground"])
+        assertFalse(extras.containsKey("crash_background_duration_ms"))
+        assertEquals("process_state_summary", extras["crash_version_source"])
+        assertFalse(extras.containsKey("fallback_version_code"))
 
         val message = systemKillMessage(huawei, telemetry)
         assertTrue(message, message.startsWith("System kill: other (reasonCode=13 status=0 importance=400)"))
@@ -280,7 +285,20 @@ class AndroidSystemKillReportTest {
         at: Long,
         reason: Int = ApplicationExitInfo.REASON_OTHER,
         importance: Int = foreground,
-    ) = SystemKillExit(pid, at, reason, status = 0, importance = importance, pssKb = 0L, rssKb = 0L, build = stamp)
+        processName: String = mainProcess,
+    ) = SystemKillExit(
+        pid,
+        at,
+        reason,
+        status = 0,
+        importance = importance,
+        pssKb = 0L,
+        rssKb = 0L,
+        build = stamp,
+        processName = processName,
+    )
+
+    private val mainProcess = "build.raft.app"
 
     private fun snapshot(pid: Int, start: Long, foreground: Boolean) =
         MemoryTelemetrySnapshot(pid, start, start + 10L, foreground, start + 5L)
@@ -294,7 +312,122 @@ class AndroidSystemKillReportTest {
         now: Long = 1_000_000L,
         perLaunchCap: Int = 3,
         dailyCap: Int = 5,
-    ) = planSystemKillReports(exits, snapshots, cutoff, watermark, recent, now, perLaunchCap, dailyCap)
+    ) = planSystemKillReports(exits, snapshots, cutoff, watermark, recent, now, perLaunchCap, dailyCap, mainProcess)
+
+    @Test
+    fun crashForegroundFollowsTheExitImportance() {
+        mapOf(
+            foreground to true,
+            visible to true,
+            foregroundService to false,
+            perceptible to false,
+            service to false,
+            cached to false,
+            1000 to false,
+        ).forEach { (importance, expected) ->
+            val extras = systemKillExtras(exit(pid = 1, at = 5L, importance = importance), null)
+            assertEquals("importance $importance", expected, extras["crash_foreground"])
+            assertFalse(extras.containsKey("crash_telemetry_foreground"))
+        }
+    }
+
+    @Test
+    fun backgroundDurationIsTheTimeSinceTheLastMoveToBackground() {
+        val telemetry = snapshot(pid = 7, start = 1_000L, foreground = false).copy(foregroundChangedAtMillis = 40_000L)
+
+        val extras = systemKillExtras(exit(pid = 7, at = 100_000L, importance = cached), telemetry)
+
+        assertEquals(60_000L, extras["crash_background_duration_ms"])
+        assertEquals(false, extras["crash_foreground"])
+        assertEquals(false, extras["crash_telemetry_foreground"])
+    }
+
+    @Test
+    fun backgroundDurationIsOmittedWithoutTelemetry() {
+        val extras = systemKillExtras(exit(pid = 7, at = 100_000L, importance = cached), null)
+
+        assertFalse(extras.containsKey("crash_background_duration_ms"))
+    }
+
+    @Test
+    fun anUnstampedExitFallsBackToTheVersionItsProcessRecorded() {
+        // The process ran an older install (1.23.0) than this one; its own record is what counts.
+        val telemetry =
+            snapshot(pid = 7, start = 1_000L, foreground = true).copy(versionCode = 12300004L, versionName = "1.23.0")
+
+        val extras = systemKillExtras(exit(pid = 7, at = 100_000L).copy(build = null), telemetry)
+
+        assertFalse(extras.containsKey("version_code"))
+        assertFalse(extras.containsKey("version_name"))
+        assertEquals(12300004L, extras["fallback_version_code"])
+        assertEquals("1.23.0", extras["fallback_version_name"])
+        assertEquals("last_process_state", extras["crash_version_source"])
+    }
+
+    @Test
+    fun aStampedExitUsesItsOwnVersionAndNoFallback() {
+        val telemetry =
+            snapshot(pid = 7, start = 1_000L, foreground = true).copy(versionCode = 12300004L, versionName = "1.23.0")
+
+        val extras = systemKillExtras(exit(pid = 7, at = 100_000L), telemetry)
+
+        assertEquals(12200001L, extras["version_code"])
+        assertEquals("process_state_summary", extras["crash_version_source"])
+        assertFalse(extras.containsKey("fallback_version_code"))
+        assertFalse(extras.containsKey("fallback_version_name"))
+    }
+
+    @Test
+    fun withNeitherStampNorRecordedVersionTheSourceIsUnknown() {
+        val unversionedTelemetry = snapshot(pid = 7, start = 1_000L, foreground = true)
+        listOf(null, unversionedTelemetry).forEach { telemetry ->
+            val extras = systemKillExtras(exit(pid = 7, at = 100_000L).copy(build = null), telemetry)
+
+            assertEquals("unknown", extras["crash_version_source"])
+            assertFalse(extras.containsKey("fallback_version_code"))
+            assertFalse(extras.containsKey("fallback_version_name"))
+        }
+    }
+
+    @Test
+    fun extrasCarryTheProcessNameAndTheDescriptionCutTo200Chars() {
+        val long = "x".repeat(250)
+        val extras = systemKillExtras(exit(pid = 7, at = 100_000L).copy(description = long), null)
+
+        assertEquals(mainProcess, extras["crash_process_name"])
+        assertEquals("x".repeat(200), extras["crash_exit_description"])
+
+        val withoutDescription = systemKillExtras(exit(pid = 7, at = 100_000L).copy(description = "  "), null)
+        assertFalse(withoutDescription.containsKey("crash_exit_description"))
+    }
+
+    @Test
+    fun exitsOfSecondaryProcessesAreSkippedAndPassTheWatermark() {
+        val items =
+            plan(
+                exits =
+                    listOf(
+                        exit(pid = 1, at = 10L, processName = "$mainProcess:keepalive"),
+                        exit(pid = 2, at = 20L, processName = "com.google.android.webview:sandboxed_process0"),
+                        exit(pid = 3, at = 30L),
+                        exit(pid = 4, at = 40L, processName = ""),
+                    ),
+            )
+
+        assertEquals(
+            listOf(
+                SystemKillDecision.SkipSecondaryProcess,
+                SystemKillDecision.SkipSecondaryProcess,
+                SystemKillDecision.Report,
+                SystemKillDecision.Report,
+            ),
+            items.map { it.decision },
+        )
+        assertEquals(
+            listOf(SystemKillAction.Skip, SystemKillAction.Skip, SystemKillAction.Submit, SystemKillAction.Submit),
+            items.map { it.action },
+        )
+    }
 
     @Test
     fun aSignaledExitWithACrashSignalIsLeftToHandsCrash() {
