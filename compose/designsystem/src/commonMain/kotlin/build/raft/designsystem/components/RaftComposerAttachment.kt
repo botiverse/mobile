@@ -1,5 +1,12 @@
 package build.raft.designsystem.components
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,6 +14,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -23,7 +31,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.layout
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -66,6 +82,11 @@ private val RemoveGlyph = 12.dp
 private val ProgressInset = 6.dp
 private val ProgressHeight = 4.dp
 private val ProgressRadius = 2.dp
+private val OverlayInset = 4.dp
+private val LabelBarGap = 2.dp
+private const val IndeterminateSegment = 0.4f
+private const val MaxLabelLines = 2
+private val MinLabelFontSize = 9.sp
 
 /**
  * raft-ui `ComposerAttachment`: one tile in the tray. Put a [RaftComposerAttachmentFile] or
@@ -162,6 +183,41 @@ private fun BoxScope.RaftComposerAttachmentProgressBar(progress: Int) {
 }
 
 /**
+ * The same 4dp bar while the upload finishes (the bytes are sent, the server is confirming):
+ * no percent to show, so a [IndeterminateSegment] wide `info` segment sweeps across the track
+ * every [RaftProgressBarIndeterminateMillis] (raft-ui Progress's indeterminate sweep). [still]
+ * holds it centred (screenshots).
+ */
+@Composable
+private fun BoxScope.RaftComposerAttachmentIndeterminateBar(still: Boolean) {
+    val track = RaftTheme.colors.layerCard
+    val sweep =
+        if (still) {
+            RaftProgressBarStillSweep
+        } else {
+            rememberInfiniteTransition(label = "composer-attachment-finishing").animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec =
+                    infiniteRepeatable(
+                        animation = tween(RaftProgressBarIndeterminateMillis, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart,
+                    ),
+                label = "composer-attachment-finishing-sweep",
+            ).value
+        }
+    Box(Modifier.matchParentSize().padding(start = ProgressInset, end = ProgressInset, bottom = ProgressInset)) {
+        Canvas(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(ProgressHeight)) {
+            val radius = CornerRadius(ProgressRadius.toPx())
+            drawRoundRect(color = track, cornerRadius = radius)
+            val segment = size.width * IndeterminateSegment
+            val start = -segment + (size.width + segment) * sweep
+            clipRect { drawRoundRect(color = RaftUiPalette.info, topLeft = Offset(start, 0f), size = Size(segment, size.height), cornerRadius = radius) }
+        }
+    }
+}
+
+/**
  * raft-ui `ComposerAttachmentImage`: a 64dp `fill-muted` square with a hairline edge and
  * control radius, clipping its [content] (the thumbnail, cropped to fill; or a placeholder
  * glyph while there is none). [onClick] opens a preview.
@@ -192,21 +248,31 @@ fun RaftComposerAttachmentImage(
 /**
  * The web's upload overlays on any tile, file or image (web MessageInput `SortableAttachment`
  * on raft-ui `ComposerAttachmentUploadingOverlay`, `ComposerAttachmentUploadProgressBar` and
- * `ComposerAttachmentFailedOverlay`). The tile keeps its own layout underneath.
+ * `ComposerAttachmentFailedOverlay`). The tile keeps its own layout and size underneath; the
+ * overlay never draws outside it.
  *
- * - [Checking][RaftComposerAttachmentPhase.Checking], [Uploading][RaftComposerAttachmentPhase.Uploading]
- *   and [Finishing][RaftComposerAttachmentPhase.Finishing]: `layer-card` at 80% over the whole
- *   tile, then centred a small spinner and 4dp under it [label] ("Checking file…", "Uploading",
- *   "42%", "Finishing upload…") in Space Mono meta bold `foreground`, wrapping between words
- *   (centred above the bar when there is one). A [percent] (the bar's
- *   value; null for no bar) runs the 4dp bar inset 6dp from the sides and bottom (2dp radius,
- *   `layer-card` track, `info` fill, at least 4% so it is visible from the start).
+ * - [Checking][RaftComposerAttachmentPhase.Checking] and [Uploading][RaftComposerAttachmentPhase.Uploading]:
+ *   `layer-card` at 80% over the whole tile, then centred a small spinner and 4dp under it
+ *   [label] ("Checking file…", "Uploading", "42%") in Space Mono meta bold `foreground`. A
+ *   [percent] (the bar's value; null for no bar) runs the 4dp bar inset 6dp from the sides
+ *   and bottom (2dp radius, `layer-card` track, `info` fill, at least 4% so it is visible from
+ *   the start), and the spinner and label centre above it.
+ * - [Finishing][RaftComposerAttachmentPhase.Finishing]: the same, "Finishing upload…", and the
+ *   bar sweeps (indeterminate) whatever [percent] says: the bytes are sent and the server has
+ *   not confirmed yet. The web holds its bar at 99%.
  * - [Failed][RaftComposerAttachmentPhase.Failed]: `layer-card` at 90% inside a 1dp
  *   `danger-strong` edge, [label] ("Upload failed") centred in caption 12/16 semibold
  *   `danger-strong`. Mobile adds the underlined [action] ("Retry") under it; tapping the tile
  *   does [onAction].
  *
- * [spinnerStillStep] freezes the spinner (screenshots).
+ * Every label stays inside the tile (artin 11-11, a 64dp image tile cut "正在完成上传…" at the
+ * screen edge): it wraps over at most two lines, between words or between CJK characters,
+ * fewer when the tile has no room for two, and ends in "…" when it is longer. A word wider
+ * than the tile ("Uploading", "Finishing" on an image tile) shrinks the label until it fits
+ * (not below 9sp) instead of being broken or spilling past the tile's edges.
+ *
+ * [spinnerStillStep] freezes the spinner and the finishing sweep (screenshots); so does
+ * [LocalRaftSpinnerStillStep].
  */
 @Composable
 fun BoxScope.RaftComposerAttachmentOverlay(
@@ -222,6 +288,7 @@ fun BoxScope.RaftComposerAttachmentOverlay(
     val shape = RoundedCornerShape(RaftRadius.Control)
     if (phase == RaftComposerAttachmentPhase.Failed) {
         val style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold)
+        val hasAction = !action.isNullOrBlank()
         Column(
             modifier =
                 modifier
@@ -230,60 +297,137 @@ fun BoxScope.RaftComposerAttachmentOverlay(
                     .background(colors.layerVeil)
                     .border(RaftStroke.Hairline, colors.dangerStrong, shape)
                     .tileClick(onAction, action)
-                    .padding(horizontal = 4.dp),
+                    .padding(horizontal = OverlayInset, vertical = OverlayInset),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            RaftText(text = label, style = style, color = colors.dangerStrong, textAlign = TextAlign.Center)
-            if (!action.isNullOrBlank()) {
-                RaftText(
-                    text = action,
-                    style = style.copy(textDecoration = TextDecoration.Underline),
-                    color = colors.dangerStrong,
-                    textAlign = TextAlign.Center,
+            RaftComposerAttachmentOverlayLabel(label, style, colors.dangerStrong, Modifier.weight(1f, fill = false))
+            if (hasAction) {
+                RaftComposerAttachmentOverlayLabel(
+                    action.orEmpty(),
+                    style.copy(textDecoration = TextDecoration.Underline),
+                    colors.dangerStrong,
+                    Modifier,
                     maxLines = 1,
                 )
             }
         }
         return
     }
+    val finishing = phase == RaftComposerAttachmentPhase.Finishing
+    val hasBar = finishing || percent != null
+    val stillStep = spinnerStillStep ?: LocalRaftSpinnerStillStep.current
     Column(
         modifier =
             modifier
                 .matchParentSize()
-                .background(colors.layerVeil, shape)
-                // Centred above the bar, so a two-line label on an image tile never runs into it.
-                .padding(start = 4.dp, end = 4.dp, bottom = if (percent != null) ProgressInset + ProgressHeight else 0.dp),
+                .clip(shape)
+                .background(colors.layerVeil)
+                // Centred above the bar, so a two-line label never runs into it.
+                .padding(
+                    start = OverlayInset,
+                    end = OverlayInset,
+                    top = OverlayInset,
+                    bottom = if (hasBar) ProgressInset + ProgressHeight + LabelBarGap else OverlayInset,
+                ),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        RaftSpinner(size = RaftSpinnerSize.Sm, color = colors.foreground, stillStep = spinnerStillStep)
-        // Like the web's span: it wraps between words ("Checking / file…" on a 64dp image
-        // tile), and a single word wider than the tile ("Uploading") stays whole, centred.
-        val style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Bold)
-        val measurer = rememberTextMeasurer()
-        val longestWord =
-            remember(label, style, measurer) {
-                label.split(' ').filter { it.isNotEmpty() }.maxOfOrNull { word ->
-                    measurer.measure(word, style, softWrap = false, maxLines = 1).size.width
-                } ?: 0
+        RaftSpinner(size = RaftSpinnerSize.Sm, color = colors.foreground, stillStep = stillStep)
+        RaftComposerAttachmentOverlayLabel(
+            label,
+            RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Bold),
+            colors.foreground,
+            Modifier.weight(1f, fill = false).padding(top = 4.dp),
+        )
+    }
+    when {
+        finishing -> RaftComposerAttachmentIndeterminateBar(still = stillStep != null)
+        percent != null -> RaftComposerAttachmentProgressBar(percent)
+    }
+}
+
+/**
+ * An overlay's [label], centred and held inside the room the tile leaves it: at most
+ * [maxLines] lines (fewer when the height holds fewer), "…" past the last, and shrunk
+ * (down to [MinLabelFontSize]) when one unbreakable run, a word or a CJK character, is wider
+ * than the tile.
+ */
+@Composable
+private fun RaftComposerAttachmentOverlayLabel(
+    label: String,
+    style: TextStyle,
+    color: Color,
+    modifier: Modifier,
+    maxLines: Int = MaxLabelLines,
+) {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        val maxWidth = constraints.maxWidth
+        val maxHeight = constraints.maxHeight
+        val fitted =
+            remember(label, style, maxWidth, maxHeight, maxLines, measurer, density) {
+                val widest =
+                    raftUnbreakableRuns(label).maxOfOrNull { run ->
+                        measurer.measure(run, style, softWrap = false, maxLines = 1, density = density).size.width
+                    } ?: 0
+                val fitStyle =
+                    if (widest <= maxWidth || widest == 0) {
+                        style
+                    } else {
+                        val size = maxOf(MinLabelFontSize.value, floorToHalf(style.fontSize.value * maxWidth / widest))
+                        val ratio = size / style.fontSize.value
+                        style.copy(fontSize = size.sp, lineHeight = (style.lineHeight.value * ratio).sp)
+                    }
+                val lineHeight = with(density) { fitStyle.lineHeight.toPx() }
+                val lines =
+                    if (maxHeight == Constraints.Infinity || lineHeight <= 0f) maxLines
+                    else (maxHeight / lineHeight).toInt().coerceIn(1, maxLines)
+                fitStyle to lines
             }
         RaftText(
             text = label,
-            modifier =
-                Modifier.padding(top = 4.dp).layout { measurable, constraints ->
-                    val placeable =
-                        measurable.measure(constraints.copy(minWidth = 0, maxWidth = maxOf(constraints.maxWidth, longestWord + 1)))
-                    val width = placeable.width.coerceAtMost(constraints.maxWidth)
-                    layout(width, placeable.height) { placeable.place((width - placeable.width) / 2, 0) }
-                },
-            style = style,
-            color = colors.foreground,
+            style = fitted.first,
+            color = color,
             textAlign = TextAlign.Center,
+            maxLines = fitted.second,
+            overflow = TextOverflow.Ellipsis,
         )
     }
-    if (percent != null) RaftComposerAttachmentProgressBar(percent)
 }
+
+private fun floorToHalf(value: Float): Float = kotlin.math.floor(value * 2f) / 2f
+
+/**
+ * The runs of [text] a line never breaks inside: words between spaces, and each CJK
+ * character (Han, kana, Hangul, full-width forms) on its own, as the line breaker may break
+ * before and after any of them.
+ */
+internal fun raftUnbreakableRuns(text: String): List<String> {
+    val runs = mutableListOf<String>()
+    val current = StringBuilder()
+    fun flush() {
+        if (current.isNotEmpty()) runs += current.toString()
+        current.clear()
+    }
+    text.forEach { char ->
+        when {
+            char.isWhitespace() -> flush()
+            char.isCjkBreakable() -> {
+                flush()
+                runs += char.toString()
+            }
+            else -> current.append(char)
+        }
+    }
+    flush()
+    return runs
+}
+
+private fun Char.isCjkBreakable(): Boolean =
+    this in '\u1100'..'\u11FF' || this in '\u2E80'..'\u9FFF' || this in '\uAC00'..'\uD7AF' ||
+        this in '\uF900'..'\uFAFF' || this in '\uFF00'..'\uFFEF'
 
 /**
  * raft-ui `ComposerAttachmentRemove`: a 20dp sticker-radius square on the tile's top-end

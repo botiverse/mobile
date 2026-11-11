@@ -28,8 +28,9 @@ import kotlin.test.Test
 /**
  * raft-ui Composer > attachments: a file tile (short and truncated title) and an image tile at
  * rest; the web's overlays on both in every phase (checking, uploading at 42% and before the
- * first byte with the bar at its 4% floor, finishing, failed with the mobile Retry), spinners
- * held still; and the remove sticker at rest, pressed, focused and disabled.
+ * first byte with the bar at its 4% floor, finishing with the sweeping bar, failed with the
+ * mobile Retry), spinners and sweep held still; long CJK and Cyrillic labels on image tiles,
+ * which stay inside the tile (artin 11-11); and the remove sticker at rest, pressed, focused and disabled.
  */
 class ComposerAttachmentScreenshotTest {
     private val appearances = listOf(RaftAppearance.Light, RaftAppearance.Dark)
@@ -54,10 +55,17 @@ class ComposerAttachmentScreenshotTest {
                 Caption("Uploading: 42%, first byte")
                 PhaseRow(RaftComposerAttachmentPhase.Uploading, 42, "42%")
                 PhaseRow(RaftComposerAttachmentPhase.Uploading, 0, "Uploading")
-                Caption("Finishing: file, image")
+                Caption("Finishing (sweep held): file, image")
                 PhaseRow(RaftComposerAttachmentPhase.Finishing, 99, "Finishing upload…")
                 Caption("Failed: file, image")
                 PhaseRow(RaftComposerAttachmentPhase.Failed, null, "Upload failed", action = "Retry")
+                Caption("Long labels stay inside: zh-CN, ja, ru")
+                Tray {
+                    ImageTile(placeholder = false) { Overlay(RaftComposerAttachmentPhase.Finishing, 99, "正在完成上传…") }
+                    ImageTile(placeholder = false) { Overlay(RaftComposerAttachmentPhase.Finishing, 99, "アップロードの完了処理中…") }
+                    ImageTile(placeholder = false) { Overlay(RaftComposerAttachmentPhase.Checking, null, "正在检查文件…") }
+                    ImageTile(placeholder = false) { Overlay(RaftComposerAttachmentPhase.Failed, null, "Не удалось загрузить", action = "Повторить") }
+                }
                 Caption("Remove: rest, pressed, focused, disabled")
                 Tray {
                     listOf("rest", "pressed", "focused", "disabled").forEach { state ->
@@ -85,20 +93,28 @@ class ComposerAttachmentScreenshotTest {
 
     @Composable
     private fun PhaseRow(phase: RaftComposerAttachmentPhase, percent: Int?, label: String, action: String? = null) {
-        val overlay: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {
-            RaftComposerAttachmentOverlay(
-                phase = phase,
-                percent = percent,
-                label = label,
-                action = action,
-                onAction = action?.let { { } },
-                spinnerStillStep = 0,
-            )
-        }
+        val overlay: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = { Overlay(phase, percent, label, action) }
         Tray {
             FileTile("ScreenRecording_10-24.mov", "video · 31 MB", overlay)
             ImageTile(placeholder = false, overlay = overlay)
         }
+    }
+
+    @Composable
+    private fun androidx.compose.foundation.layout.BoxScope.Overlay(
+        phase: RaftComposerAttachmentPhase,
+        percent: Int?,
+        label: String,
+        action: String? = null,
+    ) {
+        RaftComposerAttachmentOverlay(
+            phase = phase,
+            percent = percent,
+            label = label,
+            action = action,
+            onAction = action?.let { { } },
+            spinnerStillStep = 0,
+        )
     }
 
     @Composable

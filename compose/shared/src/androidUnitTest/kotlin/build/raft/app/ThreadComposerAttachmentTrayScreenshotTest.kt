@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
@@ -53,16 +55,22 @@ class ThreadComposerAttachmentTrayScreenshotTest {
     private fun capture(name: String, appearance: RaftAppAppearance) = captureComposerTray(activities, name, appearance, trayAttachments)
 }
 
-/** The tray at the composer's 321dp inside the design-system theme, spinners held still. */
+/** The tray at the composer's 321dp inside the design-system theme, spinners held still, at [fontScale]. */
 internal fun captureComposerTray(
     activities: RobolectricComposeActivityRule,
     name: String,
     appearance: RaftAppAppearance,
-    attachments: List<RaftPendingAttachmentItem>
+    attachments: List<RaftPendingAttachmentItem>,
+    fontScale: Float = 1f
 ) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftSpinnerStillStep provides 0) {
+            val density = LocalDensity.current
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalRaftSpinnerStillStep provides 0,
+                LocalDensity provides Density(density.density, fontScale = density.fontScale * fontScale)
+            ) {
                 RaftDesignSystemTheme {
                     Box(Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp)) {
                         Box(Modifier.width(321.dp)) {
