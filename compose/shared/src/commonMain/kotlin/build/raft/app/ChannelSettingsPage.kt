@@ -13,6 +13,8 @@ import build.raft.app.base.Utils
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ARCHIVED_NAME_COLLISION
 import build.raft.app.data.ArchivedNameCollision
+import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
+import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.ScreenError
 import build.raft.designsystem.components.RaftTextFieldDefaults
@@ -252,12 +254,21 @@ internal fun channelSettingsCanLeave(channel: HomeChannelRow): Boolean =
         !channelSettingsIsAllChannel(channel)
 
 /**
- * Web EditChannelDialog: a completed joint channel shows "Disconnect Channel" where other channels
+ * Web EditChannelDialog: a completed joint channel shows "Disconnect channel" where other channels
  * show Delete, hidden once archived. The route itself is gated on `federateChannels` (owner/admin),
  * which is the same role set as [ChannelSettingsState.canManage].
  */
 internal fun channelSettingsCanDisconnect(channel: HomeChannelRow): Boolean =
     channelSettingsIsJoint(channel) && !channel.archived
+
+/**
+ * Web EditChannelDialog `hostCannotDisconnect`: with `external_channels_v1` on, the host's copy of a
+ * joint channel (the server's `jointRole`) offers no Disconnect (the server refuses it,
+ * `host_cannot_disconnect`) and no Delete; Archive is what it has, and its confirm says it reaches
+ * every server.
+ */
+internal fun channelSettingsHostCannotDisconnect(channel: HomeChannelRow, externalChannelsEnabled: Boolean): Boolean =
+    externalChannelsEnabled && channelSettingsIsJoint(channel) && channel.jointRole == "host"
 
 /**
  * The channel-management capabilities the settings page gates on (web EditChannelDialog
@@ -467,10 +478,16 @@ private fun ChannelSettingsPageScreen() {
     // Web ChatPanel: the channel overflow offers "Stop All Agents" (SOS) to
     // joined members holding `controlAgentRuntime` (owner/admin/member).
     var viewerServerRole by remember(route) { mutableStateOf<String?>(null) }
+    // Web `currentServerName`: the "{server} disconnected from #{channel}" notice after Disconnect.
+    var viewerServerName by remember(route) { mutableStateOf<String?>(null) }
     LaunchedEffect(authStore, route) {
-        viewerServerRole =
-            authStore.readSession()?.servers?.firstOrNull { it.id == route.serverId.value }?.role
+        val server = authStore.readSession()?.servers?.firstOrNull { it.id == route.serverId.value }
+        viewerServerRole = server?.role
+        viewerServerName = server?.name
     }
+    // Web reads external_channels_v1 for the current server: the one whose copy is open.
+    val externalChannels =
+        rememberServerFeatureLatched(sharedStores.serverFeatureFlags, route.serverId, EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)
     var sosStore by remember(route) { mutableStateOf<ChannelSosStore?>(null) }
     val agentControlsApi = remember(sharedStores, storeScope) {
         RaftAgentControlsApi(sharedStores.networkClient(storeScope))
@@ -524,6 +541,12 @@ private fun ChannelSettingsPageScreen() {
                 confirm = null
                 if (settingsState.closedWithAccessLost) {
                     sharedStores.publishChannelAccessLost(storeScope, route.channelId)
+                }
+                if (externalChannels && settingsState.closedBy == ChannelSettingsAction.Disconnect) {
+                    channelSettingsDisconnectedToast(
+                        serverName = viewerServerName ?: (homeState?.content as? SharedHomeContentState.Content)?.snapshot?.server?.name,
+                        channelName = settingsState.channel?.name,
+                    )?.let(bridge::toast)
                 }
                 val landing = channelSettingsCloseLanding(settingsState.closedBy, settingsState.channel)
                 channelSettingsCloseHomeIntent(settingsState.closedBy, landing, route.channelId)?.let { intent -> homeStore?.dispatch(intent) }
@@ -585,6 +608,7 @@ private fun ChannelSettingsPageScreen() {
                                 profileCollision = settingsState.archivedCollisionFor(settingsStore),
                                 slackBridge = settingsState.slackBridge,
                                 section = section,
+                                externalChannelsEnabled = externalChannels,
                             ),
                         longMessageCollapseSetting = longMessageCollapseSetting,
                         agentStatusResolver = agentStatusResolver,
@@ -695,6 +719,7 @@ private fun ChannelSettingsPageScreen() {
                 confirm = activeConfirm,
                 channelName = channel.name.removePrefix("#"),
                 leaveVariant = leaveChannelConfirmVariant(channel, memberSlice),
+                hostArchiveHint = channelSettingsHostCannotDisconnect(channel, externalChannels),
                 busy = settingsState.actionInFlight == activeConfirm.action,
                 onDismiss = { if (settingsState.actionInFlight != activeConfirm.action) confirm = null },
                 onConfirm = { settingsStore.dispatch(activeConfirm.intent) },
@@ -754,6 +779,8 @@ internal data class ChannelSettingsUiModel(
     val slackBridge: ChannelSlackBridgeState? = null,
     /** Move to section (web ChannelSectionSelect, Pinned included); null keeps the Pin switch. */
     val section: ChannelSectionPlacement? = null,
+    /** `external_channels_v1` for this server: the host's joint copy then has no Disconnect. */
+    val externalChannelsEnabled: Boolean = false,
 )
 
 internal class ChannelSettingsCallbacks(
@@ -1000,7 +1027,10 @@ internal fun channelSettingsActionRows(model: ChannelSettingsUiModel): List<Chan
         }
         if (channelSettingsCanLeave(channel)) add(ChannelSettingsActionRow.Leave)
         if (model.canStopAllAgents) add(ChannelSettingsActionRow.StopAllAgents)
-        if (channelSettingsShowsDeleteAction(channel, permissions)) {
+        if (
+            channelSettingsShowsDeleteAction(channel, permissions) &&
+            !channelSettingsHostCannotDisconnect(channel, model.externalChannelsEnabled)
+        ) {
             when {
                 channelSettingsCanDisconnect(channel) -> add(ChannelSettingsActionRow.Disconnect)
                 channelSettingsCanDelete(channel) -> add(ChannelSettingsActionRow.Delete)
@@ -1764,6 +1794,8 @@ internal fun ChannelSettingsConfirmDialog(
     busy: Boolean,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
+    /** The host's joint copy ([channelSettingsHostCannotDisconnect]): Archive says it reaches every server. */
+    hostArchiveHint: Boolean = false,
 ) {
     if (confirm == ChannelSettingsConfirm.Leave) {
         LeaveChannelConfirmDialog(leaveVariant, channelName, busy, onDismiss, onConfirm)
@@ -1791,7 +1823,10 @@ internal fun ChannelSettingsConfirmDialog(
         }
         ChannelSettingsConfirm.Archive -> {
             title = stringResource(Res.string.thread_settings_archive_title)
-            description = stringResource(Res.string.channel_settings_archive_confirm, channelName)
+            val archiveConfirm = stringResource(Res.string.channel_settings_archive_confirm, channelName)
+            val hint = stringResource(Res.string.joint_host_archive_hint)
+            // Web: the hint is a second paragraph of the confirm (cindyz).
+            description = if (hostArchiveHint) "$archiveConfirm\n\n$hint" else archiveConfirm
             confirmLabel = stringResource(Res.string.thread_settings_archive_confirm)
             loadingLabel = stringResource(Res.string.channel_settings_archiving)
             variant = RaftButtonVariant.Warning
@@ -1840,6 +1875,16 @@ internal fun ChannelSettingsConfirmDialog(
             },
         )
     }
+}
+
+/**
+ * Web `channel.edit.disconnectedToast` after this server let go of a joint channel: "{server}
+ * disconnected from #{channel}", said before the page closes. Null without a server name.
+ */
+internal fun channelSettingsDisconnectedToast(serverName: String?, channelName: String?): String? {
+    val server = serverName?.trim()?.takeIf(String::isNotBlank) ?: return null
+    val channel = channelName?.trim()?.removePrefix("#")?.takeIf(String::isNotBlank) ?: return null
+    return Res.string.joint_disconnected_toast.format(server, channel).resolve()
 }
 
 /** Disconnect failures keep the server's reason (web shows the route's `error`), via the app error pipeline. */

@@ -249,6 +249,7 @@ enum class RaftLucideIconName(val wireName: String) {
     UnfollowArtifact("unfollow-artifact"),
     UnfollowThread("unfollow-thread"),
     Unlink("unlink"),
+    Unplug("unplug"),
     Upload("upload"),
     User("user"),
     UserMinus("user-minus"),

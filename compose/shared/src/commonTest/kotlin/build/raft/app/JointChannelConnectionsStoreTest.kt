@@ -335,7 +335,7 @@ internal fun jointTestConnections(
         hasCurrentServerPendingInvites = pendingFromCurrent,
     )
 
-private class FakeJointConnectionsDataSource(
+internal class FakeJointConnectionsDataSource(
     connections: JointChannelConnections = jointTestConnections(),
     canFederate: Boolean = true,
     var loadResult: DataResult<JointChannelConnectionsSnapshot> =
@@ -343,7 +343,11 @@ private class FakeJointConnectionsDataSource(
     private val inviteResult: DataResult<JointChannelConnections>? = null,
     private val inviteGate: CompletableDeferred<DataResult<JointChannelConnections>>? = null,
     private val resendResult: DataResult<Int> = DataResult.Content(1),
+    var disconnectResult: DataResult<Unit> = DataResult.Content(Unit),
 ) : JointChannelConnectionsDataSource {
+    /** When set, each per-row disconnect waits for it. */
+    var disconnectGate: CompletableDeferred<Unit>? = null
+    val disconnectedServerIds = mutableListOf<String>()
     /** When set, each load waits for it (pull-to-refresh in flight). */
     var loadGate: CompletableDeferred<Unit>? = null
     var loadCalls = 0
@@ -373,5 +377,11 @@ private class FakeJointConnectionsDataSource(
     override suspend fun resend(): DataResult<Int> {
         resendCalls += 1
         return resendResult
+    }
+
+    override suspend fun disconnectServer(serverId: String): DataResult<Unit> {
+        disconnectedServerIds += serverId
+        disconnectGate?.await()
+        return disconnectResult
     }
 }

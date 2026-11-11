@@ -260,6 +260,18 @@ const val SERVER_SSO_FEATURE_FLAG_KEY: String = "server_sso_v1"
  */
 const val CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY: String = "channel_announcement_v0"
 
+/**
+ * External channels (botiverse/slock `packages/shared/src/featureFlags.ts`
+ * `EXTERNAL_CHANNELS_FEATURE_FLAG_KEY`, web `serverFeatureFlags.ts` `externalChannels`): per server, default
+ * off, read for the server whose copy of the channel is open (web reads the current server). On, a joint
+ * channel's Connected servers drop the plan chips, the Active badge, the server-invite form and Resend,
+ * lead with the host under a Host badge and let the host's admins disconnect another server; the host's
+ * own copy offers Archive only (no Disconnect). Who may do either comes from the server
+ * (`jointRole`, `jointServers[].role`, `channelCapabilities.federateChannels`). Off (or unresolved),
+ * every joint surface is as before.
+ */
+const val EXTERNAL_CHANNELS_FEATURE_FLAG_KEY: String = "external_channels_v1"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -295,6 +307,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     PUBLIC_SERVER_FEATURE_FLAG_KEY,
     SERVER_SSO_FEATURE_FLAG_KEY,
     CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY,
+    EXTERNAL_CHANNELS_FEATURE_FLAG_KEY,
 )
 
 /**

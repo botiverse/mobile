@@ -2298,6 +2298,18 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M 19.0 16.0 L 22.0 16.0"),
                     ),
                 )
+            RaftLucideIconName.Unplug ->
+                RaftLucideIconSpec(
+                    "unplug",
+                    listOf(
+                        RaftLucidePathSpec("m19 5 3-3"),
+                        RaftLucidePathSpec("m2 22 3-3"),
+                        RaftLucidePathSpec("M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z"),
+                        RaftLucidePathSpec("M7.5 13.5 10 11"),
+                        RaftLucidePathSpec("M10.5 16.5 13 14"),
+                        RaftLucidePathSpec("m12 6 6 6 2.3-2.3a2.4 2.4 0 0 0 0-3.4l-2.6-2.6a2.4 2.4 0 0 0-3.4 0Z"),
+                    ),
+                )
             RaftLucideIconName.Upload ->
                 RaftLucideIconSpec(
                     "upload",

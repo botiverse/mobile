@@ -22,6 +22,15 @@ import kotlinx.serialization.json.Json
  *    (`{ error, code: joint_free_server_limit | joint_server_limit | joint_channel_free_limit_reached }`).
  *  - `POST channels/:id/joint-invite/resend` → `{ ok: true, resentCount }`; 409 `No pending …`.
  *  - `POST channels/:id/disconnect` → `{ ok: true }`.
+ *  - `POST channels/:id/joint-servers/:serverId/disconnect` (botiverse/slock `staging` @
+ *    f3c3905046d16cd4a7225a533a071f667b687647, `routes/channels.ts`): the host's owner/admin takes
+ *    another server out of the joint → `{ ok: true }`; 404 while `external_channels_v1` is off for
+ *    the host, 400 `not_joint_host` / `host_cannot_be_disconnected`, 403 `forbidden`, 404
+ *    `server_not_connected`, 409 `guests_present` (`routes/channels.jointHostDisconnect.api.test.ts`).
+ *  - The channel row's `jointRole` (`"host" | "participant" | null`), `jointServers[].role` (same
+ *    union, null on pending rows) and `channelCapabilities.federateChannels`
+ *    (`services/channelService.ts` `JointChannelMetadata` / `JointServerMetadata`,
+ *    `services/channelListItems.ts` `withHumanChannelAuthorization`), same SHA.
  *  - `GET channels/joint-invites` → `{ invites: [{ id, jointChannelId, fromServerId,
  *    fromServerName, fromServerSlug, channelName, channelDescription, invitedByUserId,
  *    invitedUserId, expiresAt, createdAt }] }` (`channelService.listPendingJointChannelInvites`).
@@ -94,12 +103,20 @@ private data class WireJointChannel(
     val name: String = "",
     val type: String,
     val archivedAt: String? = null,
+    val jointRole: String? = null,
+    val channelCapabilities: WireJointChannelCapabilities? = null,
     val jointPeerServerId: String? = null,
     val jointPeerServerName: String? = null,
     val jointPeerServerSlug: String? = null,
     val jointPeerStatus: String? = null,
     val jointServers: List<WireJointServer>? = null,
     val jointPendingInvites: List<WireJointPendingInvite>? = null,
+)
+
+/** Only the key the Connected servers page reads; the rest of `channelCapabilities` is ignored here. */
+@Serializable
+private data class WireJointChannelCapabilities(
+    val federateChannels: Boolean? = null,
 )
 
 @Serializable
@@ -313,6 +330,22 @@ internal fun StoredAuthSession.jointSameAdminContext(currentServerId: String?): 
 
 enum class JointChannelServerPlan { Free, Paid }
 
+/** `jointRole` / `jointServers[].role`: `"host" | "participant"`; null when the server sent neither. */
+enum class JointChannelRole {
+    Host,
+    Participant,
+    ;
+
+    companion object {
+        fun fromWire(value: String?): JointChannelRole? =
+            when (value) {
+                "host" -> Host
+                "participant" -> Participant
+                else -> null
+            }
+    }
+}
+
 data class JointChannelServer(
     val serverId: String,
     val name: String,
@@ -321,6 +354,8 @@ data class JointChannelServer(
     val isCurrentServer: Boolean,
     /** Null when the server omits it (older servers) — the web then shows no plan badge. */
     val plan: JointChannelServerPlan?,
+    /** Null on pending rows and on the legacy single-peer fallback. */
+    val role: JointChannelRole? = null,
 )
 
 data class JointChannelConnections(
@@ -332,6 +367,10 @@ data class JointChannelConnections(
     val servers: List<JointChannelServer>,
     /** Web `hasCurrentServerPendingJointInvites`: this server has invites it may resend. */
     val hasCurrentServerPendingInvites: Boolean,
+    /** This server's role in the joint (`jointRole`); null on a payload without it. */
+    val jointRole: JointChannelRole? = null,
+    /** The channel's own `channelCapabilities.federateChannels`; null when the payload has none. */
+    val federateChannels: Boolean? = null,
 ) {
     /** Web `jointServerLimitReached`: active + pending servers count toward the 30-server cap. */
     val serverLimitReached: Boolean
@@ -392,6 +431,8 @@ private fun WireJointChannel.toConnections(): JointChannelConnections? {
         archived = !archivedAt.isNullOrBlank(),
         servers = servers,
         hasCurrentServerPendingInvites = pendingFromCurrent,
+        jointRole = JointChannelRole.fromWire(jointRole),
+        federateChannels = channelCapabilities?.federateChannels,
     )
 }
 
@@ -409,6 +450,7 @@ private fun WireJointServer.toDomain(): JointChannelServer? {
                 "paid" -> JointChannelServerPlan.Paid
                 else -> null
             },
+        role = JointChannelRole.fromWire(role),
     )
 }
 
@@ -522,6 +564,19 @@ internal class RealJointChannelRepository(
                 networkClient.request(
                     priority = DataRequestPriority.Foreground,
                     path = "channels/${channelId.value}/disconnect",
+                    method = "POST",
+                )
+            },
+        ) { body -> Unit.takeIf { parseSharedJointDisconnectOk(body) } }
+
+    /** The host's admin takes [serverId] out of the joint (`POST channels/:id/joint-servers/:serverId/disconnect`). */
+    suspend fun disconnectServer(channelId: ChannelId, serverId: String): DataResult<Unit> =
+        execute(
+            "joint_server_disconnect",
+            {
+                networkClient.request(
+                    priority = DataRequestPriority.Foreground,
+                    path = "channels/${channelId.value}/joint-servers/${serverId.trim()}/disconnect",
                     method = "POST",
                 )
             },

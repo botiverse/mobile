@@ -186,6 +186,7 @@ import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.map
+import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
 import build.raft.app.data.ACTION_CARD_SPEC_FEATURE_FLAG_KEY
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.raftAppActionCardCapabilities
@@ -13161,6 +13162,9 @@ private fun SharedThreadRouteContentContent(
         val taskConversationFloat: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(TaskHeadPlacement.PullDown) } }
         val taskConversationHeadRow =
             rememberTaskConversationHeadRow(taskHeadScrollState) { taskConversationHeadRoute?.invoke(TaskHeadPlacement.FirstRow) }
+        // Web reads external_channels_v1 for the current server: the one whose copy is open.
+        val externalChannelsEnabled =
+            rememberServerFeatureLatched(sharedStores.serverFeatureFlags, threadMembersServerId, EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)
         // What the settings drawer (and the phone's settings page) do beyond the members strip and
         // the preferences: Info with the Slack pick, Guest access and every action through the
         // settings page's store, then what follows them. [onLeave] leaves the conversation after
@@ -13175,6 +13179,7 @@ private fun SharedThreadRouteContentContent(
             val homeServer = (homeContent as? SharedHomeContentState.Content)?.snapshot?.server
             val routeOwner = sharedStores.currentAuthenticatedRouteOwner(storeScope)
             return panel.copy(
+                externalChannelsEnabled = externalChannelsEnabled,
                 // The settings page's store: Info with the Slack pick, Guest access and every action.
                 storeFactory =
                     if (serverId != null && channelId != null && routeOwner != null && routeOwner.serverId == serverId.value) {
@@ -13198,6 +13203,10 @@ private fun SharedThreadRouteContentContent(
                 },
                 onChannelChanged = { sharedHomeStore?.dispatch(SharedHomeIntent.Refresh) },
                 onChannelClosed = { action, accessLost ->
+                    if (externalChannelsEnabled && action == ChannelSettingsAction.Disconnect) {
+                        // Web: say which server let go of which channel before moving the reader on.
+                        channelSettingsDisconnectedToast(homeServer?.name, panel.channel?.name)?.let(bridge::toast)
+                    }
                     if (accessLost) channelId?.let { sharedStores.publishChannelAccessLost(storeScope, it) }
                     sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
                     // Leaving, deleting or archiving takes the person out of the channel (the old drawer did too).
@@ -39727,6 +39736,7 @@ internal fun ThreadSettingsModal(
             canStopAllAgents = panel.canStopAllAgents && !row.archived,
             showGuestAccess = showGuestAccess,
             actionInFlight = actionInFlight,
+            externalChannelsEnabled = panel.externalChannelsEnabled,
         )
     val actionRows = if (known && permissions != null) channelSettingsActionRows(model) else emptyList()
     var confirm by remember { mutableStateOf<ChannelSettingsConfirm?>(null) }
@@ -39907,6 +39917,7 @@ internal fun ThreadSettingsModal(
             confirm = activeConfirm,
             channelName = channelName,
             leaveVariant = leaveChannelConfirmVariant(row, model.memberSlice),
+            hostArchiveHint = channelSettingsHostCannotDisconnect(row, panel.externalChannelsEnabled),
             busy = actionInFlight == activeConfirm.action,
             onDismiss = { if (actionInFlight != activeConfirm.action) confirm = null },
             onConfirm = {

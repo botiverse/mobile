@@ -25,6 +25,72 @@ import kotlin.test.assertTrue
  *    `sendJointInviteValidationError` for the error bodies.
  */
 class JointChannelsApiTest {
+    /**
+     * Roles and the channel's own capability, botiverse/slock `staging` @
+     * f3c3905046d16cd4a7225a533a071f667b687647: `JointChannelMetadata.jointRole` and
+     * `JointServerMetadata.role` are `"host" | "participant" | null` (pending rows `null`,
+     * `attachJointChannelMetadata`); `channelCapabilities` is every
+     * `CHANNEL_MANAGEMENT_CAPABILITIES` key (`withHumanChannelAuthorization`).
+     */
+    @Test
+    fun rolesAndChannelFederateCapabilityParseFromTheChannelRow() {
+        val host = assertNotNullValue(parseSharedJointChannelConnections(HOST_PROJECTION))
+        assertEquals(JointChannelRole.Host, host.jointRole)
+        assertEquals(listOf(JointChannelRole.Host, null), host.servers.map { it.role })
+        assertEquals(true, host.federateChannels)
+
+        val participant = assertNotNullValue(parseSharedJointChannelConnections(PARTICIPANT_PROJECTION))
+        assertEquals(JointChannelRole.Participant, participant.jointRole)
+        assertEquals(listOf(JointChannelRole.Host, JointChannelRole.Participant), participant.servers.map { it.role })
+        // No channelCapabilities on the payload: unknown, never a server-wide fallback.
+        assertNull(participant.federateChannels)
+
+        // A role the client does not know reads as none.
+        val unknown =
+            assertNotNullValue(
+                parseSharedJointChannelConnections(
+                    """{"id":"ch-1","name":"room","type":"joint","jointRole":"owner",
+                    |"channelCapabilities":{"federateChannels":false},
+                    |"jointServers":[{"serverId":"s1","serverName":"S","serverSlug":"s","role":"admin","status":"active","plan":"free"}]}""".trimMargin()
+                )
+            )
+        assertNull(unknown.jointRole)
+        assertNull(unknown.servers.single().role)
+        assertEquals(false, unknown.federateChannels)
+    }
+
+    @Test
+    fun hostDisconnectsAnotherServerThroughItsOwnRoute() = runTest {
+        val client = RecordingJointNetworkClient { _, _ -> HomeNetworkResponse(200, """{"ok":true}""") }
+
+        assertIs<DataResult.Content<Unit>>(RealJointChannelRepository(client).disconnectServer(ChannelId("ch-host"), " srv-target "))
+
+        assertEquals(
+            listOf(Triple("POST", "channels/ch-host/joint-servers/srv-target/disconnect", DataRequestPriority.Foreground)),
+            client.calls.map { Triple(it.method, it.path, it.priority) },
+        )
+        assertNull(client.calls.single().serverIdOverride)
+    }
+
+    @Test
+    fun hostDisconnectRefusalsKeepTheServerCode() = runTest {
+        // routes/channels.jointHostDisconnect.api.test.ts (same SHA): the codes the route answers with.
+        data class Case(val status: Int, val body: String, val code: String)
+        listOf(
+            Case(404, """{"error":"That server is not connected to this channel.","code":"server_not_connected"}""", "server_not_connected"),
+            Case(409, """{"error":"This channel has guests. Remove them before disconnecting this server.","code":"guests_present"}""", "guests_present"),
+            Case(400, """{"error":"The host server can't disconnect from its own channel. Archive the channel instead.","code":"host_cannot_be_disconnected"}""", "host_cannot_be_disconnected"),
+            Case(403, """{"error":"Only admins of the host server can disconnect another server.","code":"forbidden"}""", "forbidden"),
+            // Flag off for the host: the route answers as an unknown channel.
+            Case(404, """{"error":"Channel not found"}""", "joint_http_404"),
+        ).forEach { case ->
+            val result =
+                RealJointChannelRepository(RecordingJointNetworkClient { _, _ -> HomeNetworkResponse(case.status, case.body) })
+                    .disconnectServer(ChannelId("ch-host"), "srv-target")
+            assertEquals(case.code, result.jointFailureCode(), "status=${case.status}")
+        }
+    }
+
     @Test
     fun hostProjectionParsesConnectedAndPendingServersWithPlans() {
         val connections = assertNotNullValue(parseSharedJointChannelConnections(HOST_PROJECTION))
@@ -264,6 +330,10 @@ class JointChannelsApiTest {
                {"id":"inv-1","fromServerId":"srv-host","toServerId":"srv-target","serverName":"Target Co","serverSlug":"target-co","invitedUserId":"user-t","status":"pending"}
              ],
              "jointBillingLocked":false,"jointOverLimitGraceEndsAt":null,
+             "channelRole":null,"channelAdminBasis":"server_role",
+             "channelCapabilities":{"editChannelMetadata":true,"archiveChannels":true,"deleteChannels":true,
+               "changeChannelVisibility":true,"manageVisitorAccess":true,"federateChannels":true,
+               "addChannelMembers":true,"removeChannelMembers":true,"changeChannelMemberRoles":true},
              "jointInvites":[{"id":"inv-1"}],"jointInvite":{"id":"inv-1"}}
             """.trimIndent()
 

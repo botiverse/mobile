@@ -253,6 +253,8 @@ class JointChannelConnectionsCacheFirstTest {
             error("unused")
 
         override suspend fun resend(): DataResult<Int> = error("unused")
+
+        override suspend fun disconnectServer(serverId: String): DataResult<Unit> = error("unused")
     }
 
     private companion object {

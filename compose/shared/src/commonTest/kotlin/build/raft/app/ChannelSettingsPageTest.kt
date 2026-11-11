@@ -229,6 +229,7 @@ class ChannelSettingsPageTest {
         archived: Boolean = false,
         joined: Boolean = true,
         capabilities: ChannelCapabilities? = null,
+        jointRole: String? = null,
     ): HomeChannelRow =
         HomeChannelRow(
             threadId = ThreadId("c"),
@@ -239,9 +240,15 @@ class ChannelSettingsPageTest {
             archived = archived,
             joined = joined,
             channelCapabilities = capabilities,
+            jointRole = jointRole,
         )
 
-    private fun actions(channel: HomeChannelRow, canManage: Boolean = true, stopAgents: Boolean = false) =
+    private fun actions(
+        channel: HomeChannelRow,
+        canManage: Boolean = true,
+        stopAgents: Boolean = false,
+        externalChannels: Boolean = false,
+    ) =
         channelSettingsActionRows(
             ChannelSettingsUiModel(
                 channel = channel,
@@ -252,8 +259,23 @@ class ChannelSettingsPageTest {
                 writeActionsEnabled = true,
                 canStopAllAgents = stopAgents,
                 showGuestAccess = false,
+                externalChannelsEnabled = externalChannels,
             )
         )
+
+    @Test
+    fun hostsJointCopyOffersArchiveOnlyWithExternalChannels() {
+        val archiveLeave = listOf(ChannelSettingsActionRow.Archive, ChannelSettingsActionRow.Leave)
+        val withDisconnect = archiveLeave + ChannelSettingsActionRow.Disconnect
+        // Web hostCannotDisconnect: the server's jointRole, and the flag; off, as today.
+        assertEquals(archiveLeave, actions(row(type = "joint", jointRole = "host"), externalChannels = true))
+        assertEquals(withDisconnect, actions(row(type = "joint", jointRole = "host"), externalChannels = false))
+        assertEquals(withDisconnect, actions(row(type = "joint", jointRole = "participant"), externalChannels = true))
+        assertEquals(withDisconnect, actions(row(type = "joint"), externalChannels = true))
+        assertTrue(channelSettingsHostCannotDisconnect(row(type = "joint", jointRole = "host"), externalChannelsEnabled = true))
+        assertFalse(channelSettingsHostCannotDisconnect(row(type = "joint", jointRole = "host"), externalChannelsEnabled = false))
+        assertFalse(channelSettingsHostCannotDisconnect(row(jointRole = "host"), externalChannelsEnabled = true))
+    }
 
     @Test
     fun actionsFollowTheWebOrderAndDropWhatTheChannelCannotDo() {
