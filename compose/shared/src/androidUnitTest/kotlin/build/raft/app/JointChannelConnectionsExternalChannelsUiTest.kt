@@ -8,6 +8,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import build.raft.app.data.JointChannelRole
 import build.raft.app.components.RaftDesignSystemTheme
 import kotlin.test.Test
@@ -53,6 +54,7 @@ class JointChannelConnectionsExternalChannelsUiTest {
                     onSendInvite = {},
                     onResend = {},
                     onDisconnectServer = { store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer(it)) },
+                    bottomSafeArea = 0.dp,
                 )
                 state.disconnectConfirmServer?.let { server ->
                     JointServerDisconnectConfirmDialog(

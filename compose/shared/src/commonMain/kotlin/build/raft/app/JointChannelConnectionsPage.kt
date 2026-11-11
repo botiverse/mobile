@@ -286,9 +286,10 @@ internal fun JointConnectionsContent(
     onSendInvite: () -> Unit,
     onResend: () -> Unit,
     onDisconnectServer: (serverId: String) -> Unit = {},
+    // The page's bottom inset; a test composes the list without the pager host that provides it.
+    bottomSafeArea: androidx.compose.ui.unit.Dp = raftBottomSafeAreaPadding(),
 ) {
     val connections = state.connections ?: return
-    val bottomSafeArea = raftBottomSafeAreaPadding()
     LazyColumn(Modifier.fillMaxSize()) {
         item(key = "servers") {
             RaftSection(
@@ -393,6 +394,9 @@ private fun jointConnectionsReceiptText(receipt: JointChannelConnectionsEffect):
             } else {
                 stringResource(Res.string.joint_connections_resent_many, receipt.resentCount)
             }
+        // A toast, not the status line (never kept as [statusMessage]).
+        is JointChannelConnectionsEffect.ServerDisconnected ->
+            stringResource(Res.string.joint_server_disconnected_toast, receipt.serverName, receipt.channelName)
     }
 
 internal const val JointConnectionsServerListTag = "joint-connections-servers"
