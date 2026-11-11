@@ -813,7 +813,7 @@ private fun InviteProgressList(state: ExternalInviteState, values: InviteValues,
                                 text = stringResource(Res.string.external_invite_waiting_cancel),
                                 onClick = { onIntent(ExternalInviteIntent.AskCancel(requestId, row.approverName.orEmpty())) },
                                 variant = RaftButtonVariant.Default,
-                                size = RaftButtonSize.Sm,
+                                size = RaftButtonSize.Md,
                                 enabled = !state.busy,
                             )
                         }
