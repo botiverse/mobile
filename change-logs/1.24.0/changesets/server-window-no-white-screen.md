@@ -3,7 +3,7 @@ type: fixed
 area: app
 platforms:
   - android
-pull_request: TBD
+pull_request: 4573
 rollout: full
 ---
 
