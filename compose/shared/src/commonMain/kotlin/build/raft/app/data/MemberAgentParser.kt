@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.toRaftAvatarLabel
 import build.raft.app.model.isExternalAgent
+import build.raft.app.model.AgentActivitySubagentLineage
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AvatarReference
@@ -432,13 +433,28 @@ private data class WireActivityEntry(
     val message: String? = null,
     val title: String? = null,
     val text: String? = null,
+    val callId: String? = null,
     val subagent: WireSubagentLineage? = null,
 )
 
+/** slock `SubagentLineage.subagent` (packages/shared/src/index.ts); `reportChars` is not read. */
 @Serializable
 private data class WireSubagentLineage(
+    val parentToolUseId: String? = null,
     val subagentType: String? = null,
+    val taskId: String? = null,
+    val phase: String? = null,
+    val outcome: String? = null,
 )
+
+private fun WireSubagentLineage.toDomain(): AgentActivitySubagentLineage =
+    AgentActivitySubagentLineage(
+        parentToolUseId = parentToolUseId?.takeIf { it.isNotBlank() },
+        subagentType = subagentType?.takeIf { it.isNotBlank() },
+        taskId = taskId?.takeIf { it.isNotBlank() },
+        phase = phase?.takeIf { it.isNotBlank() },
+        outcome = outcome?.takeIf { it.isNotBlank() },
+    )
 
 fun parseSharedAgentActivity(
     bodyText: String,
@@ -504,6 +520,7 @@ private fun WireActivityLogEntry.toDomain(rowKey: String): AgentActivityEntry? =
                     ),
                     toolName = toolName.takeIf { it.isNotBlank() },
                     toolInput = input,
+                    callId = entry.callId?.takeIf { it.isNotBlank() },
                     isSubagent = entry.subagent != null,
                     subagentType = entry.subagent?.subagentType?.takeIf { it.isNotBlank() }
                 )
@@ -534,6 +551,8 @@ private fun WireActivityLogEntry.toDomain(rowKey: String): AgentActivityEntry? =
                 type = "system",
                 title = entry.title?.takeIf { it.isNotBlank() } ?: "System",
                 body = entry.text ?: entry.message,
+                isSubagent = entry.subagent != null,
+                subagentType = entry.subagent?.subagentType?.takeIf { it.isNotBlank() },
                 expandable = true,
                 refTextEnabled = true
             )
@@ -592,6 +611,7 @@ private fun WireActivityLogEntry.trajectoryEntry(
     statusActivity: String? = null,
     statusDetail: String? = null,
     statusDetailKind: String? = null,
+    callId: String? = null,
     isSubagent: Boolean = false,
     subagentType: String? = null,
     expandable: Boolean = false,
@@ -612,7 +632,9 @@ private fun WireActivityLogEntry.trajectoryEntry(
         isSubagent = isSubagent,
         subagentType = subagentType,
         expandable = expandable,
-        refTextEnabled = refTextEnabled
+        refTextEnabled = refTextEnabled,
+        callId = callId,
+        subagent = entry.subagent?.toDomain()
     )
 
 fun parseSharedCurrentAgentActivityEntries(
@@ -1054,30 +1076,17 @@ private fun resolveTrajectoryStatusDisplay(
     return primary to detail
 }
 
+/**
+ * Web `shouldHideToolStartInActivityLog`, and as before any namespaced `send_message`
+ * (`mcp__slock__send_message`): a send says nothing its message doesn't.
+ */
 private fun String.shouldHideToolStartInActivityLog(): Boolean =
-    normalizedToolName() == "send_message"
+    agentToolStartHiddenInActivityLog(trim()) ||
+        trim().substringAfterLast("__").substringAfterLast("/").substringAfterLast(".") == "send_message"
 
-private fun String.toToolLogLabel(): String {
-    val normalized = normalizedToolName()
-    return when (normalized) {
-        "read_file" -> "Read file"
-        "write_file" -> "Write file"
-        "upload_file" -> "Upload file"
-        "view_file" -> "View file"
-        "schedule_reminder" -> "Schedule reminder"
-        "list_reminders" -> "List reminders"
-        "cancel_reminder" -> "Cancel reminder"
-        "run_command" -> "Run command"
-        else -> normalized.toAgentActivityTitle()
-    }
-}
-
-private fun String.normalizedToolName(): String =
-    trim()
-        .substringAfterLast("__")
-        .substringAfterLast("/")
-        .substringAfterLast(".")
-        .ifBlank { trim() }
+/** Web `getToolLogLabel` ([agentToolLogLabel]); a nameless call keeps a generic title. */
+private fun String.toToolLogLabel(): String =
+    agentToolLogLabel(trim()).ifBlank { "Agent activity" }
 
 private fun JsonElement?.toToolInputPreview(): String? {
     if (this == null || this is JsonNull) return null

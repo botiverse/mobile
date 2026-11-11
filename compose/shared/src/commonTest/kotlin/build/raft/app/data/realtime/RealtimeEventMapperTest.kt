@@ -942,7 +942,7 @@ class RealtimeEventMapperTest {
         assertEquals(3, rows.size)
         assertEquals("realtime:agent-1:seq:44:0:tool_start", rows[0].id)
         assertEquals("tool_start", rows[0].type)
-        assertEquals("Run command", rows[0].title)
+        assertEquals("run_command", rows[0].title)
         assertEquals("Structured input: cmd", rows[0].body)
         assertEquals("run_command", rows[0].toolName)
         assertEquals(true, rows[0].isSubagent)

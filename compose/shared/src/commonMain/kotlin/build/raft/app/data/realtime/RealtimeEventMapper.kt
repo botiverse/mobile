@@ -1,10 +1,13 @@
 package build.raft.app.data.realtime
 
+import build.raft.app.model.AgentActivitySubagentLineage
 import build.raft.app.model.AvatarReference
 import build.raft.app.toRaftAvatarLabel
 import build.raft.app.MemberKindWireContract
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.data.ReplyPreviewWireSenderTypes
+import build.raft.app.data.agentToolLogLabel
+import build.raft.app.data.agentToolStartHiddenInActivityLog
 import build.raft.app.data.TaskSourceMessageIdAbsent
 import build.raft.app.data.reportedSourceMessageId
 import build.raft.app.data.SettingsServerSidebarPinnedItem
@@ -1514,6 +1517,8 @@ private fun JsonObject.toRealtimeAgentActivityEntry(
         toolInput: String? = null,
         statusActivity: String? = null,
         statusDetail: String? = null,
+        statusDetailKind: String? = null,
+        callId: String? = null,
         isSubagent: Boolean = false,
         subagentType: String? = null,
         expandable: Boolean = false,
@@ -1535,7 +1540,10 @@ private fun JsonObject.toRealtimeAgentActivityEntry(
             isSubagent = isSubagent,
             subagentType = subagentType,
             expandable = expandable,
-            refTextEnabled = refTextEnabled
+            refTextEnabled = refTextEnabled,
+            statusDetailKind = statusDetailKind,
+            callId = callId,
+            subagent = subagentLineage()
         )
     return when (normalizedKind) {
         "thinking" ->
@@ -1563,6 +1571,7 @@ private fun JsonObject.toRealtimeAgentActivityEntry(
                     ),
                     toolName = toolName.takeIf { it.isNotBlank() },
                     toolInput = input,
+                    callId = stringValue("callId")?.takeIf { it.isNotBlank() },
                     isSubagent = hasSubagentLineage(),
                     subagentType = subagentType()
                 )
@@ -1590,6 +1599,8 @@ private fun JsonObject.toRealtimeAgentActivityEntry(
                 type = "system",
                 title = stringValue("title")?.takeIf { it.isNotBlank() } ?: "System",
                 body = stringValue("text") ?: stringValue("message"),
+                isSubagent = hasSubagentLineage(),
+                subagentType = subagentType(),
                 expandable = true,
                 refTextEnabled = true
             )
@@ -1617,6 +1628,7 @@ private fun JsonObject.toRealtimeAgentActivityEntry(
                 body = display.second.takeIf { it.isNotBlank() },
                 statusActivity = activity,
                 statusDetail = stringValue("detail"),
+                statusDetailKind = stringValue("detailKind"),
                 isSubagent = hasSubagentLineage(),
                 subagentType = subagentType(),
                 refTextEnabled = true
@@ -1735,30 +1747,30 @@ private fun JsonObject.subagentType(): String? =
 private fun JsonObject.hasSubagentLineage(): Boolean =
     this["subagent"] is JsonObject
 
-private fun String.shouldHideToolStartInActivityLog(): Boolean =
-    normalizedToolName() == "send_message"
-
-private fun String.toToolLogLabel(): String {
-    val normalized = normalizedToolName()
-    return when (normalized) {
-        "read_file" -> "Read file"
-        "write_file" -> "Write file"
-        "upload_file" -> "Upload file"
-        "view_file" -> "View file"
-        "schedule_reminder" -> "Schedule reminder"
-        "list_reminders" -> "List reminders"
-        "cancel_reminder" -> "Cancel reminder"
-        "run_command" -> "Run command"
-        else -> normalized.toAgentActivityTitle()
-    }
+/** slock `SubagentLineage.subagent`: the bounded ids and tokens a sub-agent's row carries. */
+private fun JsonObject.subagentLineage(): AgentActivitySubagentLineage? {
+    val lineage = this["subagent"] as? JsonObject ?: return null
+    fun field(key: String) = lineage.stringValue(key)?.takeIf { it.isNotBlank() }
+    return AgentActivitySubagentLineage(
+        parentToolUseId = field("parentToolUseId"),
+        subagentType = field("subagentType"),
+        taskId = field("taskId"),
+        phase = field("phase"),
+        outcome = field("outcome")
+    )
 }
 
-private fun String.normalizedToolName(): String =
-    trim()
-        .substringAfterLast("__")
-        .substringAfterLast("/")
-        .substringAfterLast(".")
-        .ifBlank { trim() }
+/**
+ * Web `shouldHideToolStartInActivityLog`, and as before any namespaced `send_message`
+ * (`mcp__slock__send_message`): a send says nothing its message doesn't.
+ */
+private fun String.shouldHideToolStartInActivityLog(): Boolean =
+    agentToolStartHiddenInActivityLog(trim()) ||
+        trim().substringAfterLast("__").substringAfterLast("/").substringAfterLast(".") == "send_message"
+
+/** Web `getToolLogLabel` ([agentToolLogLabel]); a nameless call keeps a generic title. */
+private fun String.toToolLogLabel(): String =
+    agentToolLogLabel(trim()).ifBlank { "Agent activity" }
 
 private fun String.toAgentActivityTitle(): String =
     replace("_", " ")

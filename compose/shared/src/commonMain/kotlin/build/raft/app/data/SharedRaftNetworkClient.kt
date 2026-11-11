@@ -1733,7 +1733,7 @@ private fun List<MultipartFile>.networkDiagnosticsFileNameMeta(): String {
     return "named=${count { it.fileName.isNotBlank() }};ext=$extensions"
 }
 
-private fun String.percentEncode(): String {
+internal fun String.percentEncode(): String {
     val bytes = encodeToByteArray()
     val builder = StringBuilder(bytes.size)
     bytes.forEach { byte ->

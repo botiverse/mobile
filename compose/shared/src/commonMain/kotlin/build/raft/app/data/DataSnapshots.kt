@@ -1204,7 +1204,11 @@ data class AgentActivityEntry(
     val isSubagent: Boolean = false,
     val subagentType: String? = null,
     val expandable: Boolean = false,
-    val refTextEnabled: Boolean = false
+    val refTextEnabled: Boolean = false,
+    /** A `tool_start`'s call id (`callId`); a sub-agent's lineage names the call that started it. */
+    val callId: String? = null,
+    /** The row's sub-agent lineage marker (`subagent`); null for the agent's own rows. */
+    val subagent: build.raft.app.model.AgentActivitySubagentLineage? = null
 )
 
 data class ChannelMemberSnapshot(

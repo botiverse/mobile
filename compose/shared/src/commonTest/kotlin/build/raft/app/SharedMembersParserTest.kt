@@ -1566,7 +1566,7 @@ class SharedMembersParserTest {
         assertEquals(8, entries.size)
         assertTrue(entries.none { it.toolName == "mcp__slock__send_message" })
         assertEquals("Thinking", entries[0].title)
-        assertEquals("Read file", entries[1].title)
+        assertEquals("read_file", entries[1].title)
         assertEquals("Structured input: path", entries[1].body)
         assertEquals(true, entries[1].isSubagent)
         assertEquals("Explore", entries[1].subagentType)
@@ -1652,10 +1652,8 @@ class SharedMembersParserTest {
             )?.activity.orEmpty()
 
         assertEquals(true, entries.all { it.isSubagent })
-        assertEquals("Subagent", entries[0].membersActivitySubagentBadgeLabel())
-        assertEquals("Subagent: Plan", entries[1].membersActivitySubagentBadgeLabel())
-        assertEquals(null, entries[2].membersActivitySubagentBadgeLabel())
-        assertEquals(null, entries[3].membersActivitySubagentBadgeLabel())
+        assertEquals(listOf(true, true, false, false), entries.map { it.membersActivityHasSubagentBadge() })
+        assertEquals(listOf(null, "Plan", "Explore", "Explore"), entries.map { it.subagentType })
     }
 
     private fun seededAgentDetailState(member: MemberProfile): SharedAgentDetailState =

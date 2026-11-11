@@ -13,6 +13,10 @@ import kotlinx.serialization.json.Json
 //    packages/shared/src/index.ts; web packages/web/src/store/agentStore.ts
 //    `stopAgentTurn` + components/agent/stopAgentTurn.ts).
 //  - POST /channels/:id/stop-all-agents, /resume-all-agents  packages/server/src/routes/channels.ts
+//  - POST /agents/:id/subagents/:taskId/interrupt  packages/server/src/routes/agents.ts, verified
+//    against botiverse/slock 853c6998bcef45df5c25e63b1035e2388608721d
+//    (AGENT_SUBAGENT_INTERRUPT_OUTCOMES, SUBAGENT_TASK_ID_MAX_LENGTH in packages/shared/src/index.ts;
+//    web packages/web/src/components/agent/stopSubagent.ts).
 private val agentControlsJson = Json { ignoreUnknownKeys = true }
 
 /** What a stop-this-turn request reported; web `AgentTurnStopOutcome`. */
@@ -50,6 +54,34 @@ internal fun parseSharedAgentTurnInterruptOutcome(bodyText: String): AgentTurnSt
             else -> AgentTurnStopOutcome.NotRunning
         }
     }.getOrNull()
+
+/** What a stop-this-sub-agent request reported; web `SubagentStopOutcome` (`AgentSubagentInterruptOutcome`). */
+internal enum class AgentSubagentStopOutcome(val wireValue: String) {
+    Interrupted("interrupted"),
+    NotRunning("not_running"),
+    Unsupported("unsupported");
+}
+
+@Serializable
+private data class AgentSubagentInterruptResponseDto(
+    val outcome: String? = null
+)
+
+/**
+ * Parses a 2xx `POST /agents/:id/subagents/:taskId/interrupt` body. Like web `stopSubagent`,
+ * anything other than `interrupted`/`unsupported` reads as "it isn't running".
+ */
+internal fun parseSharedAgentSubagentInterruptOutcome(bodyText: String): AgentSubagentStopOutcome? =
+    runCatching {
+        when (agentControlsJson.decodeFromString(AgentSubagentInterruptResponseDto.serializer(), bodyText).outcome) {
+            AgentSubagentStopOutcome.Interrupted.wireValue -> AgentSubagentStopOutcome.Interrupted
+            AgentSubagentStopOutcome.Unsupported.wireValue -> AgentSubagentStopOutcome.Unsupported
+            else -> AgentSubagentStopOutcome.NotRunning
+        }
+    }.getOrNull()
+
+/** The longest sub-agent id a stop request may carry (`SUBAGENT_TASK_ID_MAX_LENGTH`). */
+internal const val AgentSubagentTaskIdMaxLength = 160
 
 /** Refusal codes the server explains for interrupt-turn (409/503/504). */
 internal object AgentControlErrorCodes {
@@ -193,6 +225,16 @@ internal class RaftAgentControlsApi(
             method = "POST",
             bodyText = "{}",
             parse = ::parseSharedAgentTurnInterruptOutcome
+        )
+
+    /** Stops one running sub-agent; the agent and its other sub-agents keep running. */
+    suspend fun interruptSubagent(agentId: MemberId, subagentTaskId: String): DataResult<AgentSubagentStopOutcome> =
+        send(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/subagents/${subagentTaskId.percentEncode()}/interrupt",
+            method = "POST",
+            bodyText = "{}",
+            parse = ::parseSharedAgentSubagentInterruptOutcome
         )
 
     override suspend fun migrationStatus(

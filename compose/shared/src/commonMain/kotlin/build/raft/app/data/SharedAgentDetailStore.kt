@@ -908,10 +908,13 @@ private fun RealtimeAgentActivityEntry.toAgentActivityEntry(
         toolInput = toolInput,
         statusActivity = statusActivity,
         statusDetail = statusDetail,
+        statusDetailKind = statusDetailKind,
         isSubagent = isSubagent,
         subagentType = subagentType,
         expandable = expandable,
-        refTextEnabled = refTextEnabled
+        refTextEnabled = refTextEnabled,
+        callId = callId,
+        subagent = subagent
     )
 }
 
