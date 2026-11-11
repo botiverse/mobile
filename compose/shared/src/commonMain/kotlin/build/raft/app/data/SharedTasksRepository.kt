@@ -61,6 +61,24 @@ interface SharedTasksRepository {
         expectedRevision: Long?
     ): DataResult<TaskActionResult>
 
+    /**
+     * Edit a task's title or description (`PATCH /tasks/:taskId`, TaskAmendApi.kt). [expectedRevision]
+     * is the OCC token; the default (fakes) refuses.
+     */
+    suspend fun amendTask(
+        serverId: ServerId,
+        taskId: TaskId,
+        patch: TaskAmendPatch,
+        expectedRevision: Long?
+    ): TaskAmendResult = TaskAmendResult.Failed(ScreenError(code = "tasks_amend_unsupported", retryable = false))
+
+    /**
+     * Delete a task (`DELETE /tasks/:taskId`: its creator, or someone holding `deleteAnyTask`; the
+     * server answers 403 otherwise). The default (fakes) refuses.
+     */
+    suspend fun deleteTask(serverId: ServerId, taskId: TaskId): DataResult<Unit> =
+        DataResult.Error(ScreenError(code = "tasks_delete_unsupported", retryable = false))
+
     suspend fun createTasks(serverId: ServerId, channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot>
 
     /** Task v2: every task starts in [status] (slock #12963); the default (fakes) drops the status. */
@@ -141,6 +159,22 @@ class SharedTasksDataRepository(
         return result
     }
 
+    override suspend fun amendTask(
+        serverId: ServerId,
+        taskId: TaskId,
+        patch: TaskAmendPatch,
+        expectedRevision: Long?
+    ): TaskAmendResult {
+        val result = remoteDataSource.amendTask(serverId, taskId, patch, expectedRevision)
+        if (result is TaskAmendResult.Saved) {
+            localDataSource.upsertTask(serverId, result.task)
+        }
+        return result
+    }
+
+    override suspend fun deleteTask(serverId: ServerId, taskId: TaskId): DataResult<Unit> =
+        remoteDataSource.deleteTask(serverId, taskId)
+
     override suspend fun createTasks(
         serverId: ServerId,
         channelId: ChannelId,
@@ -213,6 +247,24 @@ interface SharedTasksRemoteDataSource {
         assignee: MemberProfile?,
         expectedRevision: Long?
     ): DataResult<TaskActionResult>
+
+    /**
+     * Edit a task's title or description (`PATCH /tasks/:taskId`, TaskAmendApi.kt). [expectedRevision]
+     * is the OCC token; the default (fakes) refuses.
+     */
+    suspend fun amendTask(
+        serverId: ServerId,
+        taskId: TaskId,
+        patch: TaskAmendPatch,
+        expectedRevision: Long?
+    ): TaskAmendResult = TaskAmendResult.Failed(ScreenError(code = "tasks_amend_unsupported", retryable = false))
+
+    /**
+     * Delete a task (`DELETE /tasks/:taskId`: its creator, or someone holding `deleteAnyTask`; the
+     * server answers 403 otherwise). The default (fakes) refuses.
+     */
+    suspend fun deleteTask(serverId: ServerId, taskId: TaskId): DataResult<Unit> =
+        DataResult.Error(ScreenError(code = "tasks_delete_unsupported", retryable = false))
 
     suspend fun createTasks(serverId: ServerId, channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot>
 

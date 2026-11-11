@@ -91,6 +91,8 @@ import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.TaskConversationHeaderState
+import build.raft.app.data.TaskAmendPatch
+import build.raft.app.data.TaskAmendResult
 import build.raft.app.data.taskStatusPickAsksBacklogReason
 import build.raft.app.data.TaskDetailLoad
 import build.raft.app.data.TaskHistoryDetail
@@ -319,6 +321,15 @@ internal val TaskHeadPinnedMinWidth = 600.dp
  */
 @Stable
 internal class TaskHeadScrollState {
+    /**
+     * The title / description edit (slock #14114), kept with the page rather than the head's row, so
+     * it outlives the row leaving the message list while the keyboard is up.
+     */
+    internal val edit = TaskHeadEditState()
+
+    /** Delete task's confirmation is open (the ⋯ menu's Delete task, slock #14115). */
+    internal var deleteConfirming by mutableStateOf(false)
+
     /** The page is narrower than [TaskHeadPinnedMinWidth] ([updatePhone]). */
     var phone by mutableStateOf(false)
         private set
@@ -507,6 +518,8 @@ internal fun TaskConversationHead(
     initiallyDescriptionExpanded: Boolean = false,
     maxHeightFraction: Float = 0.45f,
     onRetryHistory: (() -> Unit)? = null,
+    /** Null: the title and description are plain text. */
+    editing: TaskHeadEditing? = null,
 ) {
     val colors = RaftTheme.colors
     BoxWithConstraints(modifier.fillMaxWidth().background(colors.layerCanvas)) {
@@ -538,6 +551,7 @@ internal fun TaskConversationHead(
                         initiallyHistoryOpen = initiallyHistoryOpen,
                         initiallyDescriptionExpanded = initiallyDescriptionExpanded,
                         onRetryHistory = onRetryHistory,
+                        editing = editing,
                     )
                 }
                 TaskHeadDivider()
@@ -570,46 +584,84 @@ internal fun TaskHeadContent(
     initiallyDescriptionExpanded: Boolean = false,
     /** Null: no Retry after a failed History read. */
     onRetryHistory: (() -> Unit)? = null,
+    /** Null: the title and description are plain text (no store to write to, or a read-only task). */
+    editing: TaskHeadEditing? = null,
 ) {
+    val editingField = editing?.state?.field
     Column {
-        TaskHeadTitleRow(model)
+        if (editing != null && editingField == TaskHeadEditField.Title) {
+            TaskHeadFieldEditor(editing)
+        } else {
+            TaskHeadTitleRow(model, editing?.takeIf { editingField == null })
+        }
         Column {
-            model.description?.let { TaskHeadDescription(it, initiallyDescriptionExpanded) }
+            when {
+                editing != null && editingField == TaskHeadEditField.Description -> TaskHeadFieldEditor(editing)
+                model.description != null ->
+                    TaskHeadDescription(
+                        model.description,
+                        initiallyDescriptionExpanded,
+                        editing?.takeIf { editingField == null && it.descriptionEditable },
+                    )
+                editing != null && editingField == null && editing.descriptionEditable ->
+                    Box(Modifier.offset(x = TaskHeadAddDescriptionHang).padding(bottom = 8.dp)) {
+                        TaskHeadAddDescriptionButton { editing.state.open(editing.task, TaskHeadEditField.Description) }
+                    }
+            }
             TaskHeadFacts(model, onSelectStatus, onOpenAssignee, onOpenSource, onOpenEarlierDiscussion, onOpenCreator)
             TaskHeadHistorySection(model.history, initiallyHistoryOpen, onRetryHistory)
         }
     }
 }
 
+/** "Add a description" hangs its padding outward, so its words line up with the title's (web `-ml-3`). */
+private val TaskHeadAddDescriptionHang = (-12).dp
+
 @Composable
-private fun TaskHeadTitleRow(model: TaskConversationHeadModel) {
+private fun TaskHeadTitleRow(model: TaskConversationHeadModel, editing: TaskHeadEditing? = null) {
     // Follow / Unfollow Task is the header More menu's, as on web (ThreadOverflowMenu).
-    RaftText(
-        model.title,
-        Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 8.dp).semantics { heading() },
-        style = RaftTheme.typography.headline.copy(fontWeight = FontWeight.SemiBold),
-        color = RaftTheme.colors.foreground,
-        maxLines = 3,
-        overflow = TextOverflow.Ellipsis,
-    )
+    Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftText(
+            model.title,
+            Modifier.weight(1f).semantics { heading() },
+            style = RaftTheme.typography.headline.copy(fontWeight = FontWeight.SemiBold),
+            color = RaftTheme.colors.foreground,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+        // The pencil beside the title (web: shown on hover or focus, always by touch).
+        if (editing != null) {
+            TaskHeadEditButton(stringResource(Res.string.task_amend_edit_title), TaskHeadTitleEditTestTag) {
+                editing.state.open(editing.task, TaskHeadEditField.Title)
+            }
+        }
+    }
 }
 
 @Composable
-private fun TaskHeadDescription(description: String, initiallyExpanded: Boolean) {
+private fun TaskHeadDescription(description: String, initiallyExpanded: Boolean, editing: TaskHeadEditing? = null) {
     var expanded by remember(description) { mutableStateOf(initiallyExpanded) }
     var collapsible by remember(description) { mutableStateOf(false) }
     // With a toggle, its 44dp target is the gap to the facts; without one, 12dp.
     Column(Modifier.padding(bottom = if (collapsible) 0.dp else 12.dp)) {
-        RaftText(
-            description,
-            style = RaftTheme.typography.subhead,
-            color = RaftTheme.colors.foregroundMuted,
-            maxLines = if (expanded) Int.MAX_VALUE else TaskHeadDescriptionCollapsedLines,
-            overflow = TextOverflow.Ellipsis,
-            onTextLayout = { layout ->
-                if (!expanded && layout.hasVisualOverflow) collapsible = true
-            },
-        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            RaftText(
+                description,
+                Modifier.weight(1f),
+                style = RaftTheme.typography.subhead,
+                color = RaftTheme.colors.foregroundMuted,
+                maxLines = if (expanded) Int.MAX_VALUE else TaskHeadDescriptionCollapsedLines,
+                overflow = TextOverflow.Ellipsis,
+                onTextLayout = { layout ->
+                    if (!expanded && layout.hasVisualOverflow) collapsible = true
+                },
+            )
+            if (editing != null) {
+                TaskHeadEditButton(stringResource(Res.string.task_amend_edit_description), TaskHeadDescriptionEditTestTag) {
+                    editing.state.open(editing.task, TaskHeadEditField.Description)
+                }
+            }
+        }
         if (collapsible) {
             val label = stringResource(if (expanded) Res.string.thread_long_message_show_less else Res.string.thread_long_message_show_more)
             TaskHeadToggleTarget(label = label, expanded = expanded, onToggle = { expanded = !expanded }) {
@@ -1027,6 +1079,13 @@ internal fun TaskConversationHeadRoute(
      * for none. Null: Backlog goes through [onUpdateStatus] without asking.
      */
     onMoveToBacklog: ((reason: String?) -> Unit)? = null,
+    /**
+     * Saves an edit of the title or description (`PATCH /tasks/:id` through the task channel's
+     * store, [build.raft.app.data.SharedTasksViewModel.amendTask]). Null: they are plain text.
+     */
+    onAmend: (suspend (TaskAmendPatch, Long?) -> TaskAmendResult)? = null,
+    /** Deletes the task once confirmed: null when deleted, else the refusal. Null: no Delete task. */
+    onDelete: (suspend () -> build.raft.app.data.ScreenError?)? = null,
 ) {
     var assigneeSheetOpen by remember(task.id) { mutableStateOf(false) }
     var backlogReasonOpen by remember(task.id) { mutableStateOf(false) }
@@ -1039,6 +1098,14 @@ internal fun TaskConversationHeadRoute(
     }
     var assigneeQuery by remember(task.id) { mutableStateOf("") }
     val model = task.taskConversationHeadModel(state, details, statusUpdating, assigneeCandidates, timeContext, editable, serverId)
+    // The pulled-down head closes when the keyboard comes up, so the text is edited in the head's
+    // row (a phone) or the pinned head (wider), not there.
+    val editing =
+        onAmend?.takeIf { editable && task.canAmendText() && placement != TaskHeadPlacement.PullDown }?.let { send ->
+            TaskHeadEditing(scrollState.edit, task, send)
+        }
+    // Another task in this page's head: an edit of the last one does not carry over (web keys it by task).
+    LaunchedEffect(task.id) { if (scrollState.edit.field != null && scrollState.edit.taskId != task.id) scrollState.edit.cancel() }
     val onOpenAssignee = {
         if (model.bar.assigneeEditable) {
             assigneeQuery = ""
@@ -1055,6 +1122,7 @@ internal fun TaskConversationHeadRoute(
                 onOpenEarlierDiscussion = onOpenEarlierDiscussion,
                 onOpenCreator = onOpenCreator,
                 onRetryHistory = onRetryHistory,
+                editing = editing,
             )
         }
         when (placement) {
@@ -1074,6 +1142,7 @@ internal fun TaskConversationHeadRoute(
                 scrollState = scrollState,
                 keyboardUp = keyboardUp,
                 onRetryHistory = onRetryHistory,
+                editing = editing,
             )
         }
         if (assigneeSheetOpen && model.bar.assigneeEditable) {
@@ -1088,6 +1157,14 @@ internal fun TaskConversationHeadRoute(
                     if (currentId != nextId) onAssign(member)
                 },
                 onDismiss = { assigneeSheetOpen = false },
+            )
+        }
+        // The page's own placement holds the confirmation (the ⋯ menu asks through [scrollState]).
+        if (placement == TaskHeadPlacement.Page && scrollState.deleteConfirming && onDelete != null) {
+            TaskDeleteConfirmDialog(
+                taskNumber = task.taskNumber,
+                onDismiss = { scrollState.deleteConfirming = false },
+                onConfirm = { onDelete().also { if (it == null) scrollState.deleteConfirming = false } },
             )
         }
         // Held by the placement whose menu asked (each placement is its own route), beside the assignee sheet.
@@ -1219,6 +1296,8 @@ internal data class TaskConversationHeaderChrome(
     val onToggleHeadFloat: () -> Unit,
     val onViewInChannel: () -> Unit,
     val onToggleFollow: () -> Unit,
+    /** Delete task (the ⋯ menu's last row); null for a reader who may not delete it. */
+    val onDeleteTask: (() -> Unit)? = null,
 )
 
 internal fun TaskSummary.taskConversationHeaderChrome(
@@ -1229,6 +1308,7 @@ internal fun TaskSummary.taskConversationHeaderChrome(
     onViewInChannel: () -> Unit,
     onToggleFollow: (currentlyFollowed: Boolean) -> Unit,
     serverId: String? = null,
+    onDeleteTask: (() -> Unit)? = null,
 ): TaskConversationHeaderChrome {
     val followed = state.followed(conversationFollowed)
     return TaskConversationHeaderChrome(
@@ -1246,6 +1326,7 @@ internal fun TaskSummary.taskConversationHeaderChrome(
         onToggleHeadFloat = onToggleHeadFloat,
         onViewInChannel = onViewInChannel,
         onToggleFollow = { followed?.let(onToggleFollow) },
+        onDeleteTask = onDeleteTask,
     )
 }
 

@@ -13094,6 +13094,15 @@ private fun SharedThreadRouteContentContent(
                     },
                     onToggleFollow = { followed -> taskConversationHeaderViewModel?.toggleFollow(followed) },
                     serverId = currentServerId,
+                    // Web #14115: the creator, or a server owner / admin (`deleteAnyTask`); asks first.
+                    onDeleteTask =
+                        { taskHeadScrollState.deleteConfirming = true }.takeIf {
+                            taskConversationTasksViewModel != null &&
+                                taskConversationTask.canBeDeletedBy(
+                                    currentSession?.user?.id,
+                                    currentSession?.servers?.firstOrNull { it.id == currentServerId }?.role,
+                                )
+                        },
                 )
             } else {
                 null
@@ -13153,6 +13162,12 @@ private fun SharedThreadRouteContentContent(
                         editable = taskConversationTasksState?.standIn != true,
                         placement = placement,
                         serverId = currentServerId,
+                        onAmend = taskConversationTasksViewModel.taskHeadAmend(taskConversationTask),
+                        // Once deleted the page closes, as on `task:deleted` (web closes the dialog).
+                        onDelete =
+                            taskConversationTasksViewModel.taskHeadDelete(taskConversationTask) {
+                                taskConversationHeaderViewModel?.onTaskDeleted(taskConversationTask.id, null)
+                            },
                     )
                 }
             } else {
@@ -19277,6 +19292,7 @@ internal fun ThreadPageHeader(
                         onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
                         sideCardToggles = sideCardToggles,
                         onOpenTimeline = onOpenTimeline,
+                        onDeleteTask = taskConversationChrome?.onDeleteTask,
                     )
                 } else {
                     emptyList()
@@ -19302,6 +19318,7 @@ internal fun ThreadPageHeader(
                 onMarkThreadUnread = onMarkThreadUnread,
                 onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
                 onOpenTimeline = onOpenTimeline,
+                onDeleteTask = taskConversationChrome?.onDeleteTask,
             )
         } else {
             emptyList()
@@ -19568,6 +19585,7 @@ internal fun ThreadPageHeader(
                             onTimeline = onOpenTimeline,
                             onViewInChannel = taskConversationChrome?.onViewInChannel.takeIf { taskConversation } ?: replyThreadViewInChannel,
                             taskFollowLabels = taskConversation,
+                            onDeleteTask = taskConversationChrome?.onDeleteTask.takeIf { taskConversation },
                             drawLocally = toggleFocus == null,
                             notificationLevelTargetInput = notificationLevelTarget,
                         )
@@ -19639,12 +19657,15 @@ private fun threadHeaderSideColumnActions(
     onViewTaskInChannel: (() -> Unit)?,
     sideCardToggles: ThreadHeaderSideCardToggles? = null,
     onOpenTimeline: (() -> Unit)? = null,
+    /** Task v2: Delete task, the ⋯ menu's last row (web #14115); null for a reader who may not. */
+    onDeleteTask: (() -> Unit)? = null,
 ): List<RaftSideAction> {
     val timelineLabel = stringResource(Res.string.thread_outline_list_title)
     val markUnreadLabel = stringResource(Res.string.home_action_mark_as_unread)
     val searchLabel = stringResource(Res.string.thread_action_search)
     val settingsLabel = stringResource(Res.string.settings_title)
     val viewInChannelLabel = stringResource(Res.string.task_conversation_view_in_channel)
+    val deleteTaskLabel = stringResource(Res.string.task_delete_action)
     val focusLabel =
         stringResource(if (focusModeActive) Res.string.thread_focus_mode_standard else Res.string.thread_focus_mode_focus)
     val searchInTaskLabel = stringResource(Res.string.task_conversation_search)
@@ -19741,6 +19762,9 @@ private fun threadHeaderSideColumnActions(
                     priority = -1,
                 )
             )
+        }
+        if (taskConversation && onDeleteTask != null) {
+            add(raftSideColumnLucideAction(DELETE_TASK_MENU_ITEM_ID, deleteTaskLabel, RaftLucideIconName.Trash2, onDeleteTask, priority = -1))
         }
     }
 }
@@ -20497,6 +20521,8 @@ private fun ThreadHeaderFocusModeMenu(
     onViewInChannel: (() -> Unit)? = null,
     /** Task v2: the follow row reads Follow / Unfollow Task. */
     taskFollowLabels: Boolean = false,
+    /** Task v2: Delete task after a separator, the menu's last row (web #14115); null: not offered. */
+    onDeleteTask: (() -> Unit)? = null,
     /**
      * Draw the menu here, as a dropdown under the button, instead of asking the shell. Only a host
      * with a side column has the shell overlay; on a phone the page is the whole window, so a
@@ -20603,6 +20629,18 @@ private fun ThreadHeaderFocusModeMenu(
                     )
                 )
             }
+            // Web: a separator, then Delete task (trash icon, no red in the menu).
+            if (onDeleteTask != null) {
+                add(
+                    RaftUiMenuItem(
+                        id = DELETE_TASK_MENU_ITEM_ID,
+                        label = stringResource(Res.string.task_delete_action),
+                        icon = RaftLucideIconName.Trash2,
+                        enabled = true,
+                        dividerBefore = true,
+                    )
+                )
+            }
         }
     // task #180: the menu is drawn by the SHELL, not here. This page is a Kuikly @Page whose visible
     // surface is only its own pane, so a Modal opened inside it is clipped to that pane (device
@@ -20646,6 +20684,7 @@ private fun ThreadHeaderFocusModeMenu(
                     SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
                     THREAD_TIMELINE_MENU_ITEM_ID -> onTimeline?.invoke()
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
+                    DELETE_TASK_MENU_ITEM_ID -> onDeleteTask?.invoke()
                     NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
                     else -> Unit // dismissed
                 }
@@ -20726,6 +20765,7 @@ private fun ThreadHeaderFocusModeMenu(
                     SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
                     THREAD_TIMELINE_MENU_ITEM_ID -> onTimeline?.invoke()
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
+                    DELETE_TASK_MENU_ITEM_ID -> onDeleteTask?.invoke()
                     NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
                 }
             },
@@ -20752,6 +20792,7 @@ internal const val FOLLOW_THREAD_MENU_ITEM_ID = "thread-toggle-follow"
 internal const val SEARCH_IN_TASK_MENU_ITEM_ID = "task-search"
 internal const val THREAD_TIMELINE_MENU_ITEM_ID = "thread-timeline"
 internal const val VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID = "task-view-in-channel"
+internal const val DELETE_TASK_MENU_ITEM_ID = "task-delete"
 internal const val NOTIFICATION_LEVEL_MENU_ITEM_ID = "thread-notification-level"
 
 @Composable

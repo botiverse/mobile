@@ -131,6 +131,29 @@ class SharedTasksDataSource(
             DataResult.Error(ScreenError(code = "tasks_assign_network", retryable = true))
         }
 
+    override suspend fun amendTask(
+        serverId: ServerId,
+        taskId: TaskId,
+        patch: TaskAmendPatch,
+        expectedRevision: Long?
+    ): TaskAmendResult =
+        try {
+            typedApi.amendTask(serverId, taskId, patch, expectedRevision)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            TaskAmendResult.Failed(ScreenError(code = "tasks_amend_network", retryable = true))
+        }
+
+    override suspend fun deleteTask(serverId: ServerId, taskId: TaskId): DataResult<Unit> =
+        try {
+            typedApi.deleteTask(serverId, taskId)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            DataResult.Error(ScreenError(code = "tasks_delete_network", retryable = true))
+        }
+
     /**
      * Batch-create channel tasks. Titles are passed through as-is here — the typed
      * client trims them when serializing — so an empty/blank title list will surface
@@ -532,6 +555,15 @@ internal class NetworkRaftTasksApi(
             serverIdOverride = serverId
         )
 
+    override suspend fun amendTask(serverId: ServerId, taskId: TaskId, bodyText: String): HomeNetworkResponse =
+        networkClient.request(
+            DataRequestPriority.Foreground,
+            "tasks/${taskId.value}",
+            method = "PATCH",
+            bodyText = bodyText,
+            serverIdOverride = serverId
+        )
+
     override suspend fun updateTaskStatus(
         serverId: ServerId,
         taskId: TaskId,
@@ -654,6 +686,9 @@ interface RaftTasksApi {
     suspend fun assignTask(taskId: TaskId, bodyText: String): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun assignTask(serverId: ServerId, taskId: TaskId, bodyText: String): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+    /** `PATCH /api/tasks/:taskId` (title / description), body from [buildSharedTaskAmendBody] (TaskAmendApi.kt). */
+    suspend fun amendTask(serverId: ServerId, taskId: TaskId, bodyText: String): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun deleteTask(taskId: TaskId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
@@ -998,6 +1033,16 @@ internal class RaftTasksApiClient(
                 buildSharedTaskAssignBody(assignee = assignee, expectedRevision = expectedRevision)
             )
             .toTaskAssignActionResult(diagnostics = diagnosticsLogger)
+
+    suspend fun amendTask(
+        serverId: ServerId,
+        taskId: TaskId,
+        patch: TaskAmendPatch,
+        expectedRevision: Long?
+    ): TaskAmendResult =
+        transport
+            .amendTask(serverId, taskId, buildSharedTaskAmendBody(patch, expectedRevision))
+            .toTaskAmendResult(diagnostics = diagnosticsLogger)
 
     suspend fun deleteTask(taskId: TaskId): DataResult<Unit> =
         transport.deleteTask(taskId).toTaskDeleteResult()
@@ -1437,6 +1482,7 @@ internal fun TaskWireDto.toTaskSummary(
         isLegacy = isLegacy == true,
         conversationFollowed = conversationFollowed,
         createdAt = createdAt?.trim()?.takeIf { it.isNotBlank() },
+        descriptionLoaded = description != null || hasDescription != true,
     )
 }
 
