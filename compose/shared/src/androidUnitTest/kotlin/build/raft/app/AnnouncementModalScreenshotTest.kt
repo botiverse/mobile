@@ -8,6 +8,7 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.AnnouncementCta
 import build.raft.app.data.AnnouncementItem
 import build.raft.app.data.AnnouncementPageItem
 import kotlin.test.Test
@@ -20,8 +21,9 @@ import org.robolectric.shadows.ShadowDialog
 
 /**
  * The announcement modal (web AnnouncementModal): one without its own label reads the default
- * "What's new" over its title (slock #12661); one with a label shows that label. Verify / record
- * as [RaftRobolectricScreenshot].
+ * "What's new" over its title (slock #12661); one with a label shows that label; one with an
+ * action shows only the action button, no Got it beside it (slock #13736). Verify / record as
+ * [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -39,7 +41,13 @@ class AnnouncementModalScreenshotTest {
     @Test
     fun ownLabelLight() = capture("announcement.modal.own-label", RaftAppAppearance.Light, label = "Release 1.19")
 
-    private fun capture(name: String, appearance: RaftAppAppearance, label: String?) =
+    @Test
+    fun actionOnlyLight() = capture("announcement.modal.action-only", RaftAppAppearance.Light, label = null, cta = visualCta)
+
+    @Test
+    fun actionOnlyDark() = capture("announcement.modal.action-only.dark", RaftAppAppearance.Dark, label = null, cta = visualCta)
+
+    private fun capture(name: String, appearance: RaftAppAppearance, label: String?, cta: AnnouncementCta? = null) =
         RaftRobolectricScreenshot.capture(
             name,
             appearance,
@@ -60,6 +68,7 @@ class AnnouncementModalScreenshotTest {
                                 title = "Raft 1.19",
                                 body = "",
                                 label = label,
+                                cta = cta,
                                 pages =
                                     listOf(
                                         AnnouncementPageItem(
@@ -96,3 +105,5 @@ class AnnouncementModalScreenshotTest {
         return null
     }
 }
+
+private val visualCta = AnnouncementCta(label = "Open settings", href = "https://raft.build/settings")

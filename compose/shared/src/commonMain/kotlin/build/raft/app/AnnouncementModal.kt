@@ -131,14 +131,8 @@ internal fun SharedAnnouncementModal(
                     )
                 }
                 val isLastPage = pageIndex >= pages.lastIndex
-                if (isLastPage && announcement.cta != null) {
-                    RaftButton(
-                        text = stringResource(Res.string.announcement_action_got_it),
-                        onClick = onDismiss,
-                        variant = RaftButtonVariant.Default,
-                        size = RaftButtonSize.Lg,
-                    )
-                }
+                // Web #13736: one button on the last page, the action or else Got it. With an
+                // action, closing the dialog already dismisses it, so no Got it beside it.
                 RaftButton(
                     text = announcement.cta?.takeIf { isLastPage }?.label
                         ?: stringResource(if (isLastPage) Res.string.announcement_action_got_it else Res.string.pagination_next),
