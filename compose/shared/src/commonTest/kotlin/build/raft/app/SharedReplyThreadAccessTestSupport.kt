@@ -129,6 +129,19 @@ internal class ReplyThreadAccessConversationRepositoryRecorder(
         return getReplyThread(parentChannelId, parentMessageId, includeFollowedSummaries, limit)
     }
 
+    /** `GET /channels/:id` answers by channel id; unscripted ids keep the interface default. */
+    val conversationDetailResults = mutableMapOf<String, DataResult<ConversationSummary>>()
+    val conversationDetailRequests = mutableListOf<ChannelId>()
+
+    override suspend fun getConversationDetail(
+        channelId: ChannelId,
+        priority: DataRequestPriority,
+    ): DataResult<ConversationSummary> {
+        conversationDetailRequests += channelId
+        return conversationDetailResults[channelId.value]
+            ?: DataResult.Error(ScreenError(code = "conversation_detail_unavailable", retryable = true))
+    }
+
     override suspend fun getMessageContext(
         messageId: MessageId,
         channelId: ChannelId?
