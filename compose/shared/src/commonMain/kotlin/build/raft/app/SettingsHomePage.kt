@@ -10088,6 +10088,15 @@ internal fun raftMultiShellHostEnabled(): Boolean =
         KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()).readMultiShellHostEnabledSync()
 
 /**
+ * Phase 3 multi-session realtime: every server with an open window keeps its own realtime session
+ * (see `RaftRealtimeSessionDemand`). Needs the multi-window setting; off by default, and while off the
+ * process keeps the single current-server session.
+ */
+internal fun raftMultiServerRealtimeEnabled(): Boolean =
+    raftMultiShellHostEnabled() &&
+        KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()).readMultiServerRealtimeEnabledSync()
+
+/**
  * A server picked inside a shell (server menu, wide top bar strip, Home switcher, drawer header):
  * with the multi-window setting on and a server other than the one this window shows NOW
  * ([currentServerId] — not the scope's launch-time server, which is null for a launcher-started

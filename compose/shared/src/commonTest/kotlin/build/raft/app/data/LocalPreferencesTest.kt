@@ -3,6 +3,7 @@ package build.raft.app.data
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class LocalPreferencesTest {
@@ -161,6 +162,23 @@ class LocalPreferencesTest {
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
         assertEquals(TranslationTargetLanguages.Browser, snapshot.translationTargetLanguage)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
+    }
+
+    @Test
+    fun multiServerRealtimeDefaultsOffAndPersistsExplicitOn() {
+        val store = InMemoryRaftKeyValueStore()
+
+        assertFalse(KeyValueChatLayoutPreferenceStore(store).readMultiServerRealtimeEnabledSync())
+
+        KeyValueChatLayoutPreferenceStore(store).saveMultiServerRealtimeEnabledSync(true)
+        assertTrue(KeyValueChatLayoutPreferenceStore(store).readMultiServerRealtimeEnabledSync())
+        assertFalse(
+            KeyValueChatLayoutPreferenceStore(store).readMultiShellHostEnabledSync(),
+            "the multi-session switch does not turn on separate windows",
+        )
+
+        KeyValueChatLayoutPreferenceStore(store).saveMultiServerRealtimeEnabledSync(false)
+        assertFalse(KeyValueChatLayoutPreferenceStore(store).readMultiServerRealtimeEnabledSync())
     }
 
     @Test
