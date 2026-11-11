@@ -3,9 +3,11 @@ package build.raft.app.data
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
@@ -77,6 +79,11 @@ data class FeedbackTicketDetailState(
 data class SettingsFeedbackTicketsState(
     val list: FeedbackTicketsListState = FeedbackTicketsListState(),
     val detail: FeedbackTicketDetailState? = null,
+    /**
+     * The list's "Did you know?" tip that any agent can draft feedback (web FeedbackAgentHint,
+     * slock #14053): shown until this person has sent an agent's draft (#14076).
+     */
+    val showAgentHint: Boolean = false,
 )
 
 /** An attachment read for the image viewer, handed to the page once. */
@@ -93,6 +100,11 @@ class SettingsFeedbackTicketsStore(
     private val logger: (String) -> Unit = {},
     private val newSubmissionId: () -> String = ::newFeedbackSubmissionId,
     private val degradedRetryMaxMillis: Long = FEEDBACK_DEGRADED_RETRY_MAX_MILLIS,
+    /**
+     * Whether this person has sent an agent-drafted feedback card ([RaftFeedbackAgentDraftSentRepository.sent]
+     * for the signed-in user); the agent tip shows while it says false. None: no tip.
+     */
+    private val agentDraftSent: Flow<Boolean> = flowOf(true),
 ) {
     private val mutableState = MutableStateFlow(SettingsFeedbackTicketsState())
     val state: StateFlow<SettingsFeedbackTicketsState> = mutableState.asStateFlow()
@@ -112,6 +124,11 @@ class SettingsFeedbackTicketsStore(
     fun start(initialTicketId: String? = null) {
         if (started) return
         started = true
+        scope.launch {
+            agentDraftSent.collect { sent ->
+                if (mutableState.value.showAgentHint == sent) mutableState.update { it.copy(showAgentHint = !sent) }
+            }
+        }
         loadList(mode = ListLoad.Initial)
         initialTicketId?.trim()?.takeIf { it.isNotEmpty() }?.let { openTicket(it) }
     }

@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.data.externalMessageAuthorOrFallback
 import build.raft.app.data.AttachmentUploadCapabilities
+import build.raft.app.data.RaftFeedbackAgentDraftSent
+import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.AttachmentUploadCapabilitiesCache
 import build.raft.app.data.DataResult
 import build.raft.app.data.rwRetryAfterMillis
@@ -4354,6 +4356,11 @@ internal class SharedThreadDataSource(
         return when (val result = actionsApi.executeActionCardSpec(MessageId(messageId), body)) {
             is DataResult.Content -> {
                 val outcome = result.data
+                // A feedback card sent through its form sheet: Settings › Feedback stops suggesting an
+                // agent's draft (web executeActionCard, slock #14076). The native form marks it too.
+                if (outcome is ActionCardExecuteOutcome.Executed && outcome.card?.let { it.isExecuted && it.isFeedbackSubmitAction() } == true) {
+                    RaftFeedbackAgentDraftSent.repository.markSent(readSession()?.user?.id)
+                }
                 if (outcome is ActionCardExecuteOutcome.Executed && outcome.card == null) {
                     DataResult.Content(ActionCardExecuteOutcome.Executed(card.copy(state = "executed")))
                 } else {

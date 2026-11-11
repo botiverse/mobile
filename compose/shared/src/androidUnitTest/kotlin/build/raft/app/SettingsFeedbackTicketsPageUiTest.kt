@@ -141,9 +141,14 @@ class SettingsFeedbackTicketsPageUiTest {
         )
 
     @Composable
-    private fun Page(repository: FakeRepository, onNewFeedback: () -> Unit = {}, onCopyTicketLink: ((String) -> Unit)? = null) {
+    private fun Page(
+        repository: FakeRepository,
+        onNewFeedback: () -> Unit = {},
+        onCopyTicketLink: ((String) -> Unit)? = null,
+        agentDraftSent: kotlinx.coroutines.flow.Flow<Boolean> = kotlinx.coroutines.flow.flowOf(true),
+    ) {
         val scope = rememberCoroutineScope()
-        val store = remember { SettingsFeedbackTicketsStore(repository, scope).also { it.start() } }
+        val store = remember { SettingsFeedbackTicketsStore(repository, scope, agentDraftSent = agentDraftSent).also { it.start() } }
         val state by store.state.collectAsState()
         Host {
             SettingsFeedbackTicketsScreen(
@@ -196,6 +201,33 @@ class SettingsFeedbackTicketsPageUiTest {
             waitForIdle()
             onNodeWithText("Dark mode for the composer").assertDoesNotExist()
             onNodeWithText("Crash on launch").assertIsDisplayed()
+        }
+
+    @Test
+    fun theAgentTipLeadsTheListUntilAnAgentsDraftIsSentAndNeverOnATicket() =
+        runRobolectricComposeUiTest {
+            // slock #14053 / #14076: one info line above New Feedback, no button, no ×.
+            val drafts = build.raft.app.data.RaftFeedbackAgentDraftSentRepository { null }
+            val repository = FakeRepository(pageOf(crash), mapOf(crash.id to crashDetail))
+            setContent { Page(repository, agentDraftSent = drafts.sent("user-1")) }
+            waitForIdle()
+            onNodeWithTag(SettingsFeedbackAgentHintTag).assertIsDisplayed()
+            onNodeWithText("Did you know? Any agent can draft your feedback. Just ask, and you’ll review it before it’s sent.").assertIsDisplayed()
+            onNode(hasContentDescription("Dismiss")).assertDoesNotExist()
+
+            // Not on a ticket.
+            onNodeWithText("Crash on launch").performClick()
+            waitForIdle()
+            onNodeWithTag(SettingsFeedbackAgentHintTag).assertDoesNotExist()
+            onNode(hasContentDescription("Back")).performClick()
+            waitForIdle()
+            onNodeWithTag(SettingsFeedbackAgentHintTag).assertIsDisplayed()
+
+            // An agent's draft sent (from a thread, while the list is open): gone for good.
+            runOnIdle { drafts.markSent("user-1") }
+            waitForIdle()
+            onNodeWithTag(SettingsFeedbackAgentHintTag).assertDoesNotExist()
+            onNodeWithText("New Feedback").assertIsDisplayed()
         }
 
     @Test

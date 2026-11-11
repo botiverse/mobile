@@ -81,6 +81,37 @@ class SettingsFeedbackTicketsStoreTest {
         SettingsFeedbackTicketsStore(repository, backgroundScope, newSubmissionId = { ids.next() })
 
     @Test
+    fun theAgentTipShowsUntilThisPersonSendsAnAgentsDraft() = runTest {
+        // slock #14053 / #14076: the list's tip, gone once an agent-drafted card is sent (here or
+        // from a thread while the list is open).
+        val drafts = RaftFeedbackAgentDraftSentRepository { SyncTestPreferences() }
+        val repository = FakeRepository()
+        repository.listAnswers += page(ticket("a"))
+        val store = SettingsFeedbackTicketsStore(repository, backgroundScope, agentDraftSent = drafts.sent("user-1"))
+        assertFalse(store.state.value.showAgentHint)
+        store.start()
+        runCurrent()
+        assertTrue(store.state.value.showAgentHint)
+
+        drafts.markSent("user-2")
+        runCurrent()
+        assertTrue(store.state.value.showAgentHint)
+        drafts.markSent("user-1")
+        runCurrent()
+        assertFalse(store.state.value.showAgentHint)
+
+        // Someone who already sent one never sees it; nor does a list with no flag source.
+        val sentStore = SettingsFeedbackTicketsStore(FakeRepository().also { it.listAnswers += page() }, backgroundScope, agentDraftSent = drafts.sent("user-1"))
+        sentStore.start()
+        runCurrent()
+        assertFalse(sentStore.state.value.showAgentHint)
+        val plain = store(FakeRepository().also { it.listAnswers += page() })
+        plain.start()
+        runCurrent()
+        assertFalse(plain.state.value.showAgentHint)
+    }
+
+    @Test
     fun theListLoadsThenFiltersByActiveAndEnded() = runTest {
         val repository = FakeRepository()
         repository.listAnswers += page(ticket("a"), ticket("b", FeedbackTicketStatus.InProgress), ticket("c", FeedbackTicketStatus.Resolved), ticket("d", FeedbackTicketStatus.Closed))

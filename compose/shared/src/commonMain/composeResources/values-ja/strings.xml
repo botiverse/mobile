@@ -4388,6 +4388,8 @@
     <string name="settings_computers_owner_dialog_saving">保存中…</string>
     <string name="settings_computers_owner_dialog_failed">オーナーは変更されませんでした。もう一度お試しください。</string>
     <string name="settings_feedback_tickets_new_feedback">新しいフィードバック</string>
+    <string name="settings_feedback_agent_hint_lead">ご存じですか？</string>
+    <string name="settings_feedback_agent_hint">%1$sどのエージェントでもフィードバックを下書きできます。頼むだけで、送信前にあなたが確認できます。</string>
     <string name="settings_feedback_tickets_filter_all">すべて</string>
     <string name="settings_feedback_tickets_filter_active">対応中</string>
     <string name="settings_feedback_tickets_filter_ended">終了</string>
