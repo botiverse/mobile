@@ -61,3 +61,20 @@ internal fun messageCardRowJson(
         """"randomId":null,"threadId":null,"createdAt":"2026-11-03T12:00:00.000Z","updatedAt":"$updatedAt",""" +
         """"attachments":[],"reactions":[],"mentions":[],""" +
         """"actionMetadata":${messageCardMetadataJson(messageCardUpdateTestCardJson(state), revision, updatedAt)}}"""
+
+/*
+ * A card whose Button carries `open: "beside"` (web preview, botiverse/slock #14133, staging
+ * 1e66a2f326ae6c208a1c68d987f156f239e91a2d): `beside` of
+ * `packages/server/src/routes/internalAgentApi.messageCards.test.ts:130-135`, which the Server
+ * stores and serves with `open` as sent (`messageCardButtonElement`, `packages/shared/src/messageCard.ts:152-161`).
+ */
+internal const val messageCardOpenBesideInputJson =
+    """{"version":1,"header":{"title":"Preview of the landing page"},"root":"go","elements":{""" +
+        """"go":{"type":"Button","props":{"label":"Open preview","action":{"kind":"navigate","url":"https://preview.example.com/"},"open":"beside"}}""" +
+        """}}"""
+
+/** [messageCardOpenBesideInputJson] as stored (`variant` defaulted; `open` has no default and stays as sent). */
+internal const val messageCardOpenBesideStoredJson =
+    """{"version":1,"header":{"title":"Preview of the landing page"},"root":"go","elements":{""" +
+        """"go":{"type":"Button","props":{"label":"Open preview","variant":"default","action":{"kind":"navigate","url":"https://preview.example.com/"},"open":"beside"}}""" +
+        """}}"""

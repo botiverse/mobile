@@ -160,7 +160,8 @@ data class RaftParsedMessageCard(
  * Reads a stored card as `messageCardSchema` does: strict `{ version: 1, header?, root, elements }`,
  * the link card v2 elements (Stack, Text, Badge, RelativeTime, Duration, Button) with their bounds
  * (16 elements, depth 4, one tree, 12 children a Stack, at most 4 Buttons), every Button a
- * `navigate` to a public HTTPS URL (any host: a card is not tied to a link's origin), and the v2.0
+ * `navigate` to a public HTTPS URL (any host: a card is not tied to a link's origin) with an
+ * optional `open` (`tab` or `beside`, botiverse/slock #14133; read, never acted on), and the v2.0
  * parts: the header ([readMessageCardHeader]; no element, so not one of the 16) and the
  * `Markdown`, `Fields` and `Divider` elements ([readMessageCardOwnElement]). An element type or a
  * key this client doesn't know refuses the whole card (the fallback text is drawn). Like the link
@@ -184,7 +185,7 @@ fun parseRaftMessageCard(element: JsonElement): RaftParsedMessageCard? {
         elements[id] =
             when ((raw as? JsonObject)?.get("type").cardString()) {
                 "Markdown", "Fields", "Divider" -> readMessageCardOwnElement(raw as JsonObject)
-                else -> readLinkCardV2Element(raw, ::readMessageCardButtonAction)
+                else -> readLinkCardV2Element(raw, buttonOpen = true, readAction = ::readMessageCardButtonAction)
             } ?: return null
     }
     if (checkCardBoundedTree(root, elements, RAFT_APP_LINK_CARD_MAX_ELEMENTS, RAFT_APP_LINK_CARD_MAX_DEPTH) != null) return null
