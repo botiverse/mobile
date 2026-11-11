@@ -13326,32 +13326,21 @@ private fun SharedThreadRouteContentContent(
         }
         // Channel announcements (channel_announcement_v0): the strip on a channel's own page (not a
         // thread, DM or task conversation), Announcement settings for who may change it.
-        val channelAnnouncementKey =
-            rememberChannelAnnouncementKey(
-                flags = sharedStores.serverFeatureFlags,
+        val channelAnnouncementStrip =
+            rememberThreadChannelAnnouncementStripSlot(
+                sharedStores = sharedStores,
+                storeScope = storeScope,
+                bridge = bridge,
                 serverId = threadMembersServerId?.value,
                 channelId = threadMembersChannelId?.value,
                 channelType =
                     directoryConversationProjection?.channelKind?.takeIf {
                         renderedThread.surfaceKind == RaftThreadSurfaceKind.Channel && !renderedThread.isTaskConversationSurface()
                     },
+                canEdit = directoryConversationProjection?.let { it.channelCapabilities?.editChannelMetadata == true && !it.archived } == true,
+                active = active && threadHostForeground,
+                onOpenSettings = { openSettingsPage() },
             )
-        val channelAnnouncementCanEdit =
-            directoryConversationProjection?.channelCapabilities?.editChannelMetadata == true &&
-                directoryConversationProjection?.archived != true
-        val channelAnnouncementStrip: (@Composable () -> Unit)? =
-            channelAnnouncementKey?.let { key ->
-                {
-                    ThreadChannelAnnouncementStrip(
-                        sharedStores = sharedStores,
-                        storeScope = storeScope,
-                        bridge = bridge,
-                        key = key,
-                        active = active && threadHostForeground,
-                        onOpenSettings = if (channelAnnouncementCanEdit) ({ openSettingsPage() }) else null,
-                    )
-                }
-            }
         // Agent Lounge v0: this page as (or inside) an agent's Lounge, and an agent DM's Lounge toggle.
         val loungeAssistantAnswers by
             remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) }.answers.collectAsState()

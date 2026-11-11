@@ -143,6 +143,40 @@ internal fun ThreadChannelAnnouncementStrip(
     )
 }
 
+/**
+ * The conversation page's strip as a slot, or null where none can show (the flag off, a DM,
+ * thread or task conversation). Kept out of the route composable, which is at its size limit.
+ */
+@Composable
+internal fun rememberThreadChannelAnnouncementStripSlot(
+    sharedStores: RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    bridge: BridgeModule,
+    serverId: String?,
+    channelId: String?,
+    channelType: String?,
+    canEdit: Boolean,
+    active: Boolean,
+    onOpenSettings: () -> Unit,
+): (@Composable () -> Unit)? {
+    val key = rememberChannelAnnouncementKey(sharedStores.serverFeatureFlags, serverId, channelId, channelType) ?: return null
+    val latestActive by rememberUpdatedState(active)
+    val latestCanEdit by rememberUpdatedState(canEdit)
+    val latestOpenSettings by rememberUpdatedState(onOpenSettings)
+    return remember(sharedStores, storeScope, bridge, key) {
+        {
+            ThreadChannelAnnouncementStrip(
+                sharedStores = sharedStores,
+                storeScope = storeScope,
+                bridge = bridge,
+                key = key,
+                active = latestActive,
+                onOpenSettings = if (latestCanEdit) ({ latestOpenSettings() }) else null,
+            )
+        }
+    }
+}
+
 /** Which dialog of the details' Announcement row is open (web `Step`). */
 private sealed interface ChannelAnnouncementStep {
     data object Idle : ChannelAnnouncementStep

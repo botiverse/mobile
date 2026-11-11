@@ -168,8 +168,10 @@ class ChannelAnnouncementUiTest {
                 )
             }
             onNodeWithTag(ChannelAnnouncementTestTags.StripOptions).performClick()
-            onNodeWithTag(ChannelAnnouncementTestTags.StripCopyLink).assertExists()
             onNodeWithTag(ChannelAnnouncementTestTags.StripSettings).assertDoesNotExist()
+            // Close the menu: a popup left open outlives the test's activity.
+            onNodeWithTag(ChannelAnnouncementTestTags.StripCopyLink).performClick()
+            onNodeWithTag(ChannelAnnouncementTestTags.StripCopyLink).assertDoesNotExist()
         }
 
     @Test
