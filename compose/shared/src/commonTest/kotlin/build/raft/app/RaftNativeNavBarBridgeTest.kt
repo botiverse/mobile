@@ -3,6 +3,9 @@ package build.raft.app
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 
 /** iOS native navigation: the bar's head stack and the trailing-button split. */
 class RaftNativeNavBarBridgeTest {
@@ -38,6 +41,8 @@ class RaftNativeNavBarBridgeTest {
         override fun onNativeNavBarScroll(offset: Double, contentHeight: Double, dragging: Boolean) = Unit
     }
 
+    private fun subtitleTap(extrasJson: String) = Json.parseToJsonElement(extrasJson).jsonObject["subtitleTap"]
+
     private fun head(title: String, onBack: (() -> Unit)? = null) =
         RaftNativeNavBarHead(title, null, emptyList(), RaftNativeNavBarTitleExtras(), onBack = onBack)
 
@@ -61,6 +66,27 @@ class RaftNativeNavBarBridgeTest {
         assertEquals("Settings", recorder.titles.last())
         bridge.deactivate(page)
         assertEquals(1, recorder.cleared)
+    }
+
+    @Test
+    fun aTappableSubtitleIsFlaggedToTheHostAndRunsItsHandler() {
+        val bridge = RaftNativeNavBarBridge()
+        val recorder = Recorder()
+        bridge.attachListener(recorder)
+        val page = RaftNativeNavBarBridge.Entry()
+        bridge.activate(page)
+        var opened = 0
+        val extras = RaftNativeNavBarTitleExtras()
+        bridge.publish(page, RaftNativeNavBarHead("@artin: hi", "@Lagoon · 3 replies", emptyList(), extras, onSubtitleClick = { opened += 1 }))
+        assertEquals(JsonPrimitive(true), subtitleTap(recorder.extras.last()))
+        assertTrue(bridge.actionTapped(RaftNativeNavBarSubtitleId))
+        assertEquals(1, opened)
+        // Without a subtitle line there is nothing to tap.
+        bridge.publish(page, RaftNativeNavBarHead("@artin: hi", null, emptyList(), extras, onSubtitleClick = { opened += 1 }))
+        assertEquals(null, subtitleTap(recorder.extras.last()))
+        bridge.publish(page, RaftNativeNavBarHead("@artin: hi", "@Lagoon", emptyList(), extras))
+        assertEquals(null, subtitleTap(recorder.extras.last()))
+        assertEquals(false, bridge.actionTapped(RaftNativeNavBarSubtitleId))
     }
 
     @Test

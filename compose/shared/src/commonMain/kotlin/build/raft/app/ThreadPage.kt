@@ -18137,7 +18137,12 @@ private fun ThreadPageContentContent(
                     payload = payload,
                     headerDisplay = headerDisplay,
                     originMessage = timelineSlice.originMessage,
-                    originReplyCount = threadHeaderOriginReplyCount(timelineSlice, replyMetadataByParentId),
+                    originReplyCount =
+                        threadHeaderReplyCount(
+                            timelineSlice,
+                            replyMetadataByParentId,
+                            hiddenHistoryCount = rememberThreadHiddenHistory(timelineSlice.historyChannelId)?.hiddenCount ?: 0
+                        ),
                     activityMutedIndicatorVisible = activityMutedIndicatorVisible,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
@@ -19089,7 +19094,8 @@ internal fun ThreadPageHeader(
     payload: RaftThreadScreenPayload,
     headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderFallbackDisplayModel(),
     originMessage: RaftThreadMessageItem? = payload.originMessage,
-    originReplyCount: Int = 0,
+    /** The reply count the header shows ([threadHeaderReplyCount]); null while it is unknown. */
+    originReplyCount: Int? = null,
     activityMutedIndicatorVisible: Boolean = payload.threadActivityMutedIndicatorVisible(null),
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
@@ -19152,7 +19158,7 @@ internal fun ThreadPageHeader(
         }
     val replyThreadReplyCountLabel =
         when {
-            headerDisplay.surfaceKind != RaftThreadSurfaceKind.ReplyThread || originReplyCount <= 0 -> null
+            headerDisplay.surfaceKind != RaftThreadSurfaceKind.ReplyThread || originReplyCount == null -> null
             originReplyCount == 1 -> stringResource(Res.string.thread_inline_reply_count_one)
             else -> stringResource(Res.string.thread_inline_reply_count_many, originReplyCount)
         }
@@ -19162,6 +19168,14 @@ internal fun ThreadPageHeader(
             headerLounge != null && headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread ->
                 replyThreadHeaderSubtitle(loungeTitle, replyThreadReplyCountLabel)
             else -> replyThreadHeaderSubtitle(headerDisplay.subtitle, replyThreadReplyCountLabel)
+        }
+    // Web ThreadPanelHeader (#10285): a reply thread's conversation name does what View in Channel
+    // does (the parent message in its channel or DM), on the Compose head and on the native bar.
+    val channelLinkLabel =
+        (loungeTitle ?: headerDisplay.subtitle)?.takeIf {
+            it.isNotBlank() &&
+                headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+                payload.threadHeaderOpenInParentActionVisible()
         }
     val localizedHeaderTitle =
         loungeTitle?.takeIf { loungeHeader != null } ?: replyThreadPreviewTitle ?: localizedThreadHeaderTitle(
@@ -19300,6 +19314,7 @@ internal fun ThreadPageHeader(
     RaftTopPageHeader(
         title = localizedHeaderTitle,
         nativeSubtitle = headerSubtitle,
+        nativeOnSubtitleClick = onOpenInChannel.takeIf { channelLinkLabel != null },
         nativeActions = nativeNavBarActions,
         // PROTOTYPE: the channel glyph / DM avatar and the refresh spinner in the host's title view.
         nativeTitleExtras =
@@ -19430,14 +19445,7 @@ internal fun ThreadPageHeader(
                         }
                     }
                 }
-                // Web #10285: a reply thread's channel name does what Open in Channel does (the
-                // parent message in its channel), under a View in Channel tooltip.
-                val channelLinkLabel =
-                    (loungeTitle ?: headerDisplay.subtitle)?.takeIf {
-                        it.isNotBlank() &&
-                            headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
-                            payload.threadHeaderOpenInParentActionVisible()
-                    }
+                // Web #10285: under a View in Channel tooltip.
                 if (channelLinkLabel != null) {
                     ThreadHeaderChannelLinkSubtitle(
                         channelLabel = channelLinkLabel,
