@@ -251,6 +251,15 @@ const val PUBLIC_SERVER_FEATURE_FLAG_KEY: String = "public_server_v0"
  */
 const val SERVER_SSO_FEATURE_FLAG_KEY: String = "server_sso_v1"
 
+/**
+ * Channel announcements (botiverse/slock `packages/shared/src/featureFlags.ts`
+ * `CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY`, web `serverFeatureFlags.ts` `channelAnnouncement`): per server,
+ * default off. On, a public, private or joint channel shows its announcement strip above the timeline and
+ * an Announcement row in its details (ChannelAnnouncementApi.kt). Off (or unresolved), neither shows and
+ * no announcement is read.
+ */
+const val CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY: String = "channel_announcement_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -285,6 +294,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     // Settings search: who finds Public access and Single sign-on.
     PUBLIC_SERVER_FEATURE_FLAG_KEY,
     SERVER_SSO_FEATURE_FLAG_KEY,
+    CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY,
 )
 
 /**
