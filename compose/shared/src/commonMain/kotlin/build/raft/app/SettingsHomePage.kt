@@ -2735,6 +2735,18 @@ private fun RaftAppShellReadyContent(
     // Preserve the cheap bootstrap-only path for signed-out/unknown sessions. A valid local
     // session is discovered by the effect above; once present, the Home graph is allowed to
     // materialize so its identity-bound durable snapshot can paint before remote auth settles.
+    // White-screen diagnostics: the shell's first frame of real content (not the restore splash /
+    // frame) and, when it has not come within a second, what it still waits on.
+    var appShellContentStage by remember { mutableStateOf<RaftWhiteScreenStage?>(RaftWhiteScreenStage.Session) }
+    RaftFirstContentWatch(
+        page = "app_shell",
+        stage =
+            if (authGateState == SharedAuthGateState.Restoring && cachedRestoreSession == null) {
+                RaftWhiteScreenStage.Session
+            } else {
+                appShellContentStage
+            },
+    )
     if (authGateState == SharedAuthGateState.Restoring && cachedRestoreSession == null) {
         if (suppressRestoreLanding) {
             AppShellNewWindowRestoreFrame(adaptivePane = adaptivePane, selectedTab = selectedTab)
@@ -4710,6 +4722,15 @@ private fun RaftAppShellReadyContent(
                 stringResource(Res.string.push_preview_sender_only_mention, RaftPushPreviewBannerStrings.SENDER_PLACEHOLDER)
         )
     )
+    SideEffect {
+        appShellContentStage =
+            appShellWhiteScreenStage(
+                restoring = authGateState == SharedAuthGateState.Restoring,
+                cachedHomePreview = cachedHomePreview,
+                selectedTab = selectedTab,
+                homeContentReady = homeState.content is SharedHomeContentState.Content,
+            )
+    }
     when (val gate = authGateState) {
         SharedAuthGateState.Restoring -> {
             if (cachedHomePreview) {

@@ -60,3 +60,13 @@ class RaftHostNewIntentRecreateTest {
         assertEquals(dark, raftHostWindowBackgroundArgb(dark = true, homeSplash = true, canvasArgb = dark, splashArgb = cream))
     }
 }
+
+class RaftHostWindowVisibleTest {
+    @Test
+    fun aWindowIsShownOnlyStartedWithItsDecorShown() {
+        assertTrue(raftHostWindowVisible(Lifecycle.State.STARTED, decorShown = true))
+        assertTrue(raftHostWindowVisible(Lifecycle.State.RESUMED, decorShown = true))
+        assertFalse(raftHostWindowVisible(Lifecycle.State.CREATED, decorShown = true))
+        assertFalse(raftHostWindowVisible(Lifecycle.State.RESUMED, decorShown = false))
+    }
+}

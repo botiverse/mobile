@@ -52,3 +52,7 @@ internal fun raftHostWindowBackgroundArgb(
     canvasArgb: Int,
     splashArgb: Int,
 ): Int = if (!dark && homeSplash) splashArgb else canvasArgb
+
+/** A host window counts as shown when it is started and its decor view is shown. */
+internal fun raftHostWindowVisible(state: Lifecycle.State, decorShown: Boolean): Boolean =
+    state.isAtLeast(Lifecycle.State.STARTED) && decorShown

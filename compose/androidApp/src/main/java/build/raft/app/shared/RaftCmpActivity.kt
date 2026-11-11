@@ -82,6 +82,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import build.raft.app.R
 import build.raft.app.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
+import build.raft.app.RAFT_WHITE_SCREEN_SUSPECT_MS
+import build.raft.app.RAFT_WHITE_SCREEN_TAG
+import build.raft.app.raftFirstFrameLine
+import build.raft.app.raftWhiteScreenStage
+import build.raft.app.raftWhiteScreenSuspectLine
 import build.raft.app.MainActivity
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.cmp.RaftCmpRoot
@@ -815,6 +820,11 @@ internal open class RaftCmpActivity :
     private var recreateOnResume = false
     /** The server-switch tap that opened this shell window (page data), for its first-frame line. */
     private var serverSwitchTapEpochMillis = 0L
+    /** White-screen diagnostics: when this window was created and whether its page has drawn. */
+    private var hostCreatedAtMillis = 0L
+    private var hostFirstFrameDrawn = false
+    private val whiteScreenHandler = Handler(Looper.getMainLooper())
+    private val whiteScreenWatch = Runnable { checkWindowWhiteScreen() }
     // Hands 1af517cc: the window's IME as dispatched by the platform, for pages to fall back on
     // when no IME animation drives Compose's WindowInsets.ime (see RaftHostImeInsets). API 30+
     // only, where the window is edge to edge and Compose owns the keyboard inset.
@@ -981,6 +991,8 @@ internal open class RaftCmpActivity :
         prepareScreenshotFeedbackObserver()
         registerAndroidShellWindow(intent)
         serverSwitchTapEpochMillis = pendingServerSwitchTapEpochMillis(intent)
+        hostCreatedAtMillis = SystemClock.elapsedRealtime()
+        whiteScreenHandler.postDelayed(whiteScreenWatch, RAFT_WHITE_SCREEN_SUSPECT_MS)
         setupImmersiveMode()
         setupImeInsetsRelayout()
         suppressVisualKeyboard()
@@ -1257,6 +1269,7 @@ internal open class RaftCmpActivity :
      */
     private fun onCmpFirstFrame() {
         if (isFinishing || isDestroyed) return
+        recordWindowFirstFrame()
         recordServerSwitchWindowFirstFrame()
         val now = SystemClock.elapsedRealtime()
         renderReadinessTopPageLoad = RaftLoadReadiness(succeeded = true, completedAtMillis = now)
@@ -1521,6 +1534,38 @@ internal open class RaftCmpActivity :
         return tap
     }
 
+    /** `first_frame page=.. ms=.. scope=window`: this window's page drew, ms after the window was created. */
+    private fun recordWindowFirstFrame() {
+        if (hostFirstFrameDrawn) return
+        hostFirstFrameDrawn = true
+        whiteScreenHandler.removeCallbacks(whiteScreenWatch)
+        RaftAndroidLocalDiagnostics.recordLog(
+            "info",
+            RAFT_WHITE_SCREEN_TAG,
+            raftFirstFrameLine("first_frame", pageName, SystemClock.elapsedRealtime() - hostCreatedAtMillis, scope = "window"),
+        )
+    }
+
+    /**
+     * A window whose page has not drawn [RAFT_WHITE_SCREEN_SUSPECT_MS] after it was created: a warn
+     * line with why (not shown, or shown but not drawing). Page routes and web pages have their own
+     * shared watches (RaftFirstContentWatch).
+     */
+    private fun checkWindowWhiteScreen() {
+        if (hostFirstFrameDrawn || isFinishing || isDestroyed) return
+        val stage =
+            raftWhiteScreenStage(
+                windowVisible = raftHostWindowVisible(lifecycle.currentState, window?.decorView?.isShown == true),
+                drawn = false,
+            ) ?: return
+        RaftAndroidLocalDiagnostics.recordLog(
+            "warn",
+            RAFT_WHITE_SCREEN_TAG,
+            raftWhiteScreenSuspectLine(pageName, SystemClock.elapsedRealtime() - hostCreatedAtMillis, stage, scope = "window") +
+                " lifecycle=${lifecycle.currentState} focus=${hasWindowFocus()} attached=$hostAttached",
+        )
+    }
+
     private fun recordServerSwitchWindowFirstFrame() {
         val tap = serverSwitchTapEpochMillis
         if (tap <= 0L) return
@@ -1571,6 +1616,7 @@ internal open class RaftCmpActivity :
         removeHomeColdStartFirstDrawListener()
         removeHomeColdStartNativeHold(reason = "destroy")
         removeCmpFirstFrameListener()
+        whiteScreenHandler.removeCallbacks(whiteScreenWatch)
         removeDatabaseLaunchDrawListener()
         if (adaptivePaneHostDelegate.isInitialized()) {
             adaptivePaneHost.stop()
