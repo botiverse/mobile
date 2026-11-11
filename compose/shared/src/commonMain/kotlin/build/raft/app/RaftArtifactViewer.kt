@@ -90,6 +90,12 @@ internal class RaftArtifactViewerCache(
     private val headers = LinkedHashMap<String, RaftArtifactViewerHeader>()
     private var keptDocument: RaftArtifactKeptDocument? = null
 
+    /**
+     * Which session the kept WebView last had ([raftArtifactViewerSessionMark] of its access token,
+     * never the token itself): the token it was booted or navigated with, or last synced while shown.
+     */
+    private var keptSessionMark: Int? = null
+
     fun header(scope: RaftArtifactViewerScope?, id: String): RaftArtifactViewerHeader? =
         if (scope == null || scope != this.scope) null else headers[id]
 
@@ -106,7 +112,12 @@ internal class RaftArtifactViewerCache(
      * kept) unless the URL is a top-level page of the scope's own web origin: never the content
      * domain, never anything carrying a frame ticket.
      */
-    fun rememberKeptDocument(scope: RaftArtifactViewerScope?, target: ArtifactLinkTarget, documentUrl: String): Boolean {
+    fun rememberKeptDocument(
+        scope: RaftArtifactViewerScope?,
+        target: ArtifactLinkTarget,
+        documentUrl: String,
+        accessToken: String,
+    ): Boolean {
         if (scope == null) return false
         adopt(scope)
         if (!raftArtifactViewerDocumentUrlIsKeepable(scope.webOrigin, documentUrl)) {
@@ -114,22 +125,37 @@ internal class RaftArtifactViewerCache(
             return false
         }
         keptDocument = RaftArtifactKeptDocument(target, documentUrl)
+        keptSessionMark = raftArtifactViewerSessionMark(accessToken)
         return true
     }
 
-    /** A WebView was prewarmed for [scope] on the viewer's route with no Artifact. */
-    fun markKeptWarm(scope: RaftArtifactViewerScope?) {
+    /** A WebView was prewarmed for [scope] on the viewer's route with no Artifact, signed in with [accessToken]. */
+    fun markKeptWarm(scope: RaftArtifactViewerScope?, accessToken: String) {
         if (scope == null) return
         adopt(scope)
         keptDocument = null
+        keptSessionMark = raftArtifactViewerSessionMark(accessToken)
+    }
+
+    /** The shown viewer's document got [accessToken] (a rotation synced while it is on screen). */
+    fun noteKeptSession(scope: RaftArtifactViewerScope?, accessToken: String) {
+        if (scope == null || scope != this.scope) return
+        keptSessionMark = raftArtifactViewerSessionMark(accessToken)
     }
 
     /** Whether the kept document shows exactly [target] for [scope] (show it at once): either id form. */
     fun keptDocumentShows(scope: RaftArtifactViewerScope?, target: ArtifactLinkTarget): Boolean =
         scope != null && scope == this.scope && keptDocument?.target?.key == target.key
 
-    /** Whether a kept document of [scope] may be reused for another Artifact (client-side navigation). */
-    fun keptDocumentUsable(scope: RaftArtifactViewerScope?): Boolean = scope != null && scope == this.scope
+    /**
+     * Whether a kept document of [scope] may be shown again (as it is, or routed to another
+     * Artifact): only with the session it was parked with. After a token refresh while it was
+     * parked, its web app may have lost its session (requests got 401) and route itself to `/`
+     * on reuse (Hands dd109a01), so a new document loads instead.
+     */
+    fun keptDocumentUsable(scope: RaftArtifactViewerScope?, accessToken: String): Boolean =
+        scope != null && scope == this.scope && keptSessionMark != null &&
+            keptSessionMark == raftArtifactViewerSessionMark(accessToken)
 
     /** 403/404 (the Artifact is gone or not theirs): its header and any kept document showing it go. */
     fun evict(scope: RaftArtifactViewerScope?, id: String) {
@@ -164,10 +190,14 @@ internal class RaftArtifactViewerCache(
 
     private fun dropKeptDocument() {
         keptDocument = null
+        keptSessionMark = null
         // Always tell the host: a WebView may be kept (prewarmed) with no document recorded yet.
         onKeptDocumentDropped()
     }
 }
+
+/** A fingerprint of [accessToken] to tell sessions apart in memory; never logged, never the token. */
+internal fun raftArtifactViewerSessionMark(accessToken: String): Int = accessToken.trim().hashCode()
 
 internal data class RaftArtifactKeptDocument(val target: ArtifactLinkTarget, val documentUrl: String)
 
@@ -389,7 +419,7 @@ internal fun raftArtifactViewerNavigation(url: String, webOrigin: String, artifa
     val origin = raftWebOriginOf(url) ?: return RaftArtifactViewerNavigation.Ignore
     if (origin != raftWebOriginOf(webOrigin)) return RaftArtifactViewerNavigation.SystemBrowser(url)
     // The page's own Back (`back=host`): it asks the App to close the viewer.
-    if (url.substringAfter('#', "") == RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT.removePrefix("#")) return RaftArtifactViewerNavigation.Close
+    if (raftArtifactViewerAsksHostClose(url)) return RaftArtifactViewerNavigation.Close
     val pathAndQuery = url.substringAfter("://").let { rest ->
         val start = rest.indexOfFirst { it == '/' || it == '?' || it == '#' }
         if (start < 0) "/" else rest.substring(start).substringBefore('#')
@@ -417,6 +447,58 @@ internal fun raftArtifactViewerNavigation(url: String, webOrigin: String, artifa
     }
     if (parseRaftMessageLink(url, configuredWebUrl = webOrigin) != null) return RaftArtifactViewerNavigation.OpenMessage(url)
     return RaftArtifactViewerNavigation.Close
+}
+
+/** Whether [url] carries the page's own Back (`#host=close`, [RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT]). */
+internal fun raftArtifactViewerAsksHostClose(url: String): Boolean =
+    url.substringAfter('#', "") == RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT.removePrefix("#")
+
+/** What the viewer does when its page's address leaves the Artifact. */
+internal enum class RaftArtifactViewerLeaveAction {
+    /** Close the viewer (and open the message / other Artifact the address is). */
+    Leave,
+
+    /** Drop the kept document and load the Artifact's page once in a new WebView. */
+    ReloadFresh,
+}
+
+/** How soon after a kept document is shown again its own wander off reads as the document's, not the user's. */
+internal const val RAFT_ARTIFACT_VIEWER_KEPT_SELF_NAVIGATION_WINDOW_MS = 5_000L
+
+/**
+ * A reused kept document that, right after it is shown again, routes itself somewhere that is no
+ * Artifact or message ([RaftArtifactViewerNavigation.Close] that is not the page's own Back,
+ * `#host=close`) did not do it for the user: its web app was parked for minutes, and may have lost
+ * its session meanwhile and gone to the web root (Hands dd109a01: the viewer closed 0.8 s after it
+ * opened). The viewer then loads the Artifact once in a fresh WebView ([reloadAvailable]: one per
+ * open) instead of closing; a fresh document that leaves again, or the page's own Back, closes it.
+ */
+internal fun raftArtifactViewerLeaveAction(
+    navigation: RaftArtifactViewerNavigation,
+    url: String,
+    reusedKept: Boolean,
+    sinceShownMs: Long,
+    reloadAvailable: Boolean,
+): RaftArtifactViewerLeaveAction =
+    if (
+        navigation == RaftArtifactViewerNavigation.Close && reusedKept && reloadAvailable &&
+        !raftArtifactViewerAsksHostClose(url) && sinceShownMs in 0..RAFT_ARTIFACT_VIEWER_KEPT_SELF_NAVIGATION_WINDOW_MS
+    ) {
+        RaftArtifactViewerLeaveAction.ReloadFresh
+    } else {
+        RaftArtifactViewerLeaveAction.Leave
+    }
+
+/**
+ * Where an address goes, for the viewer's logs: its path only (no query, no fragment: nothing
+ * secret a query may carry), or `#host=close` for the page's own Back.
+ */
+internal fun raftArtifactViewerLogDestination(url: String): String {
+    if (raftArtifactViewerAsksHostClose(url)) return RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT
+    val rest = url.substringAfter("://", "")
+    val start = rest.indexOfFirst { it == '/' || it == '?' || it == '#' }
+    val path = if (start < 0) "/" else rest.substring(start).substringBefore('#').substringBefore('?')
+    return path.filter { it.isLetterOrDigit() || it in "/-_." }.take(96).ifEmpty { "/" }
 }
 
 /** The positive integer value of the first `shown` query parameter in [query], else null. */

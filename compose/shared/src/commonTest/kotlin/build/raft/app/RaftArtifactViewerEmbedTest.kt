@@ -120,7 +120,7 @@ class RaftArtifactViewerEmbedTest {
         var drops = 0
         val cache = RaftArtifactViewerCache(onKeptDocumentDropped = { drops += 1 })
         val target = ArtifactLinkTarget(id)
-        assertTrue(cache.rememberKeptDocument(scope, target, raftArtifactViewerEmbeddedPageUrl(web, target)))
+        assertTrue(cache.rememberKeptDocument(scope, target, raftArtifactViewerEmbeddedPageUrl(web, target), "access-token-1"))
         // Another subject's leave touches nothing.
         cache.forgetKeptDocument(scope.copy(accountId = "user-other"))
         assertTrue(cache.keptDocumentShows(scope, target))
