@@ -96,8 +96,17 @@ sealed interface RaftLinkCardV2Element : CardElement {
         val variant: RaftLinkCardButtonVariant,
         val action: RaftLinkCardButtonAction,
         val disabledReason: String? = null,
+        /**
+         * A message card Button's `open` (`MESSAGE_CARD_BUTTON_OPEN`, botiverse/slock #14133): where the
+         * web opens the page (`beside`: its preview panel). Read only so such a card still reads; this
+         * client opens every Button the same way whatever it says. Always null on a link card.
+         */
+        val open: RaftCardButtonOpen? = null,
     ) : RaftLinkCardV2Element
 }
+
+/** `MESSAGE_CARD_BUTTON_OPEN`: `tab` or `beside` (web preview). The App opens either the same way. */
+enum class RaftCardButtonOpen { Tab, Beside }
 
 enum class RaftLinkCardTextTone { Default, Muted, Warning }
 
@@ -157,8 +166,14 @@ fun parseRaftAppLinkCardV2(element: JsonElement, origin: String): RaftAppLinkCar
 /**
  * One v2 element (strict, as `linkCardV2Schema`); a Button's action through [readAction], which
  * differs per catalog (a link card's navigate stays on its origin; a message card only navigates).
+ * [buttonOpen]: a Button may carry `open` (`tab` or `beside`), as `messageCardButtonElement` allows
+ * and `linkCardV2Schema` does not.
  */
-internal fun readLinkCardV2Element(raw: JsonElement, readAction: (JsonElement?) -> RaftLinkCardButtonAction?): CardElement? {
+internal fun readLinkCardV2Element(
+    raw: JsonElement,
+    buttonOpen: Boolean = false,
+    readAction: (JsonElement?) -> RaftLinkCardButtonAction?,
+): CardElement? {
     val obj = raw as? JsonObject ?: return null
     return when (obj["type"].cardString()) {
         "Stack" -> readCardStack(obj)
@@ -188,7 +203,8 @@ internal fun readLinkCardV2Element(raw: JsonElement, readAction: (JsonElement?) 
             RaftLinkCardV2Element.Badge(text, CardBadgeTone.fromWire(props["tone"].cardString()) ?: CardBadgeTone.Neutral)
         }
         "Button" -> {
-            val props = obj.elementProps(setOf("label", "variant", "action", "disabledReason")) ?: return null
+            val allowed = setOf("label", "variant", "action", "disabledReason")
+            val props = obj.elementProps(if (buttonOpen) allowed + "open" else allowed) ?: return null
             val label = props["label"].cardString()?.takeIf { isCardText(it, 1, 40) } ?: return null
             val variant =
                 if ("variant" in props) {
@@ -203,7 +219,17 @@ internal fun readLinkCardV2Element(raw: JsonElement, readAction: (JsonElement?) 
             val action = readAction(props["action"]) ?: return null
             val disabledReason =
                 if ("disabledReason" in props) props["disabledReason"].cardString()?.takeIf { isCardText(it, 1, 200) } ?: return null else null
-            RaftLinkCardV2Element.Button(label, variant, action, disabledReason)
+            val open =
+                if ("open" in props) {
+                    when (props["open"].cardString()) {
+                        "tab" -> RaftCardButtonOpen.Tab
+                        "beside" -> RaftCardButtonOpen.Beside
+                        else -> return null
+                    }
+                } else {
+                    null
+                }
+            RaftLinkCardV2Element.Button(label, variant, action, disabledReason, open)
         }
         else -> null
     }
