@@ -91,6 +91,8 @@ internal fun ThreadAddMemberPanel(
     onSubmitBatch: (List<RaftThreadMemberItem>) -> Unit,
     canCreateAgents: Boolean = false,
     onCreateAgent: (String, MembersCreateAgentMode) -> Unit = { _, _ -> },
+    /** Web `addExternalMemberRow`: Invite people outside {server}, under Create agent (host owners/admins). */
+    externalInviteEntry: (@Composable () -> Unit)? = null,
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     var query by remember { mutableStateOf("") }
@@ -211,13 +213,16 @@ internal fun ThreadAddMemberPanel(
             matchedValues = matchedKeys,
             fill = true,
             footer = {
-                ThreadAddMemberCreateAgentRows(
-                    canCreateAgents = canCreateAgents,
-                    createName = createName,
-                    channelName = channelName,
-                    enabled = !adding,
-                    onCreateAgent = onCreateAgent,
-                )
+                Column(Modifier.fillMaxWidth()) {
+                    ThreadAddMemberCreateAgentRows(
+                        canCreateAgents = canCreateAgents,
+                        createName = createName,
+                        channelName = channelName,
+                        enabled = !adding,
+                        onCreateAgent = onCreateAgent,
+                    )
+                    externalInviteEntry?.invoke()
+                }
             },
         )
         RaftButton(

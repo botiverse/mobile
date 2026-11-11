@@ -73,6 +73,8 @@ internal data class SharedConversationDirectoryProjection(
     val guestVisible: Boolean = false,
     /** Channel `hasExternalRelation` from the Home channel row; threads/DMs/inbox projections never carry it. */
     val hasExternalRelation: Boolean = false,
+    /** A joint channel's `jointRole` (`host`, ...) from the Home channel row; only channels carry one. */
+    val jointRole: String? = null,
     /** Agent Lounge v0: the agent this channel is the Lounge of (from its canonical row). */
     val loungeAgentId: String? = null
 ) {
@@ -641,6 +643,7 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         bridgeProvider = if (kind == ConversationKind.Thread) null else bridgeProvider,
         guestVisible = kind != ConversationKind.Thread && guestVisible,
         hasExternalRelation = kind != ConversationKind.Thread && kind != ConversationKind.DirectMessage && hasExternalRelation,
+        jointRole = if (kind == ConversationKind.Thread || kind == ConversationKind.DirectMessage) null else jointRole?.takeIf(String::isNotBlank),
         loungeAgentId = if (kind == ConversationKind.Channel) loungeAgentId?.takeIf { it.isNotBlank() } else null
     )
 }
