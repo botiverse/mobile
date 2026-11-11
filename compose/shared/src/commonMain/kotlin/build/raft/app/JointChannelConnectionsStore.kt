@@ -23,6 +23,8 @@ import build.raft.app.data.ScreenError
 import build.raft.app.data.JointChannelServer
 import build.raft.app.data.JointChannelServerPlan
 import build.raft.app.data.JointChannelRole
+import build.raft.app.data.MemberConnectResponse
+import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.jointServerSlugIssue
 import build.raft.app.data.parseJointInvitedPeopleText
@@ -81,6 +83,9 @@ internal enum class JointChannelConnectionsAction {
 
     /** The host's admin takes another server out (web JointServerDisconnectAction). */
     DisconnectServer,
+
+    /** A member connects servers they own or administer (web ConnectYourServersDialog). */
+    MemberConnect,
 }
 
 /** Client-side invite form rejection (web parity: checked before any request). */
@@ -106,6 +111,17 @@ internal sealed interface JointChannelConnectionsEffect {
 
     /** Web `channel.edit.disconnectedServerToast`: "Disconnected {server} from #{channel}". */
     data class ServerDisconnected(val serverName: String, val channelName: String) : JointChannelConnectionsEffect
+
+    /**
+     * Connect your servers closed with every chosen server answered well (web toasts): those
+     * [connected], those [connecting] (a private channel converted first), or only servers that
+     * were [alreadyConnected]. Names, in the order chosen.
+     */
+    data class MemberConnectFinished(
+        val connected: List<String> = emptyList(),
+        val connecting: List<String> = emptyList(),
+        val alreadyConnected: List<String> = emptyList(),
+    ) : JointChannelConnectionsEffect
 }
 
 internal data class JointChannelConnectionsSnapshot(
@@ -137,6 +153,12 @@ internal data class JointChannelConnectionsState(
     val disconnectConfirmServerId: String? = null,
     /** The confirm's failure: web keeps the dialog open with one line (and here the trace ID). */
     val disconnectFailure: JointChannelFailure? = null,
+    /** The account's servers and roles (`GET /api/servers`), for Connect your servers; null until known. */
+    val memberConnectAccount: MemberConnectAccount? = null,
+    /** The open Connect your servers sheet; null when closed. */
+    val memberConnectSheet: MemberConnectSheet? = null,
+    /** Servers the viewer connected to this channel while the app runs (web "Connected by you"). */
+    val connectedByYou: Set<String> = emptySet(),
 ) {
     /** Web EditChannelDialog `inviteSameAdminTarget` for the form's current slug and people. */
     fun sameAdminTarget(targetServerSlug: String, invitedPeopleText: String): JointSameAdminServer? =
@@ -157,9 +179,65 @@ internal data class JointChannelConnectionsState(
         get() {
             val servers = connections?.servers.orEmpty()
             if (!externalChannelsEnabled) return servers
+            privateHostRow?.let { return listOf(it) }
             val (host, rest) = servers.partition { it.role == JointChannelRole.Host }
             return host + rest
         }
+
+    /**
+     * Web `showPrivateConnectSection`: a private channel lists one row, this server as the host
+     * (a member may connect a server to it, which makes it joint).
+     */
+    private val privateHostRow: JointChannelServer?
+        get() {
+            val current = connections ?: return null
+            val account = memberConnectAccount ?: return null
+            if (!externalChannelsEnabled || current.isJoint || !current.isPrivate) return null
+            return JointChannelServer(
+                serverId = account.currentServerId,
+                name = account.currentServerName,
+                slug = account.currentServerSlug,
+                active = true,
+                isCurrentServer = true,
+                plan = null,
+                role = JointChannelRole.Host,
+            )
+        }
+
+    /** Web `useMemberConnectRows`: nothing while external channels are off. */
+    val memberConnectRows: List<MemberConnectRow>
+        get() =
+            if (!externalChannelsEnabled) emptyList() else memberConnectRows(connections?.memberConnectChannel(), memberConnectAccount)
+
+    /** Web `memberConnect.available`: the ⋯ with Connect your servers, only with a server to connect. */
+    val memberConnectAvailable: Boolean
+        get() = memberConnectRows.any { it.state == MemberConnectRowState.Eligible }
+
+    /** The connect is to a private channel: it becomes shared (web `channelType === "private"`). */
+    val memberConnectToPrivate: Boolean
+        get() = connections?.let { !it.isJoint && it.isPrivate } == true
+
+    /** Web `memberConnectHostName`: the host row's name, else this server's. */
+    val memberConnectHostName: String
+        get() =
+            displayServers.firstOrNull { it.role == JointChannelRole.Host }?.let { it.name.ifBlank { it.slug } }
+                ?: memberConnectAccount?.currentServerName.orEmpty()
+
+    /** Web `guest`: a Guest of the host bound to this channel; connecting ends that seat. */
+    val memberConnectGuest: Boolean
+        get() =
+            memberConnectAccount?.currentServerRole == "guest" &&
+                (memberConnectToPrivate || connections?.jointRole == JointChannelRole.Host)
+
+    /** A row of the sheet as it reads now: a refusal may have changed it. */
+    fun memberConnectRowState(row: MemberConnectRow): MemberConnectRowState =
+        memberConnectSheet?.rowStates?.get(row.server.id) ?: row.state
+
+    /** Web ChoiceList `disabled`: only an eligible row not connected yet, while the route is open. */
+    fun memberConnectRowSelectable(row: MemberConnectRow): Boolean {
+        val sheet = memberConnectSheet ?: return false
+        return !sheet.closed && row.server.id !in sheet.done && memberConnectRowState(row) == MemberConnectRowState.Eligible
+    }
 
     /** External channels on: the host row's Host badge. */
     fun showsHostBadge(server: JointChannelServer): Boolean =
@@ -207,6 +285,15 @@ internal sealed interface JointChannelConnectionsIntent {
     data class SetSameAdminContext(val context: JointSameAdminContext?) : JointChannelConnectionsIntent
     /** `external_channels_v1` as last read for this server. */
     data class SetExternalChannelsEnabled(val enabled: Boolean) : JointChannelConnectionsIntent
+    /** The account's servers and roles, as the stored session holds them. */
+    data class SetMemberConnectAccount(val account: MemberConnectAccount?) : JointChannelConnectionsIntent
+    /** Connected servers ⋯ > Connect your servers. */
+    data object OpenMemberConnect : JointChannelConnectionsIntent
+    /** The sheet's × / Cancel / Close (ignored while the request runs). */
+    data object DismissMemberConnect : JointChannelConnectionsIntent
+    data class SetMemberConnectSelection(val serverIds: Set<String>) : JointChannelConnectionsIntent
+    /** The sheet's Connect. */
+    data object SubmitMemberConnect : JointChannelConnectionsIntent
     /** A row's Disconnect: open its confirm. */
     data class ConfirmDisconnectServer(val serverId: String) : JointChannelConnectionsIntent
     /** The confirm's Cancel (ignored while the request runs). */
@@ -223,6 +310,7 @@ internal interface JointChannelConnectionsDataSource {
     suspend fun invite(targetServerSlug: String, invitedPeople: List<String>, sameAdmin: Boolean): DataResult<JointChannelConnections>
     suspend fun resend(): DataResult<Int>
     suspend fun disconnectServer(serverId: String): DataResult<Unit>
+    suspend fun connectMyServers(serverIds: List<String>): DataResult<MemberConnectResponse>
 }
 
 internal class RealJointChannelConnectionsDataSource(
@@ -262,6 +350,9 @@ internal class RealJointChannelConnectionsDataSource(
 
     override suspend fun disconnectServer(serverId: String): DataResult<Unit> =
         runner.run { _, networkClient -> repository(networkClient).disconnectServer(route.channelId, serverId) }
+
+    override suspend fun connectMyServers(serverIds: List<String>): DataResult<MemberConnectResponse> =
+        runner.run { _, networkClient -> repository(networkClient).connectMyServers(route.channelId, serverIds) }
 
     private fun repository(networkClient: build.raft.app.data.RaftNetworkClient) =
         RealJointChannelRepository(networkClient) { logger("joint_connections $it") }
@@ -306,11 +397,14 @@ internal class JointChannelConnectionsStore(
     private val dataSource: JointChannelConnectionsDataSource,
     private val scope: CoroutineScope,
     private val cacheSlot: JointChannelConnectionsCacheSlot? = null,
+    private val connectedByYouSlot: MemberConnectedByYouSlot? = null,
 ) {
     private val mutableState =
         MutableStateFlow(
-            cacheSlot?.cache?.peek(cacheSlot.key)?.let { cached -> JointChannelConnectionsState().withSnapshot(cached) }
-                ?: JointChannelConnectionsState()
+            (
+                cacheSlot?.cache?.peek(cacheSlot.key)?.let { cached -> JointChannelConnectionsState().withSnapshot(cached) }
+                    ?: JointChannelConnectionsState()
+            ).copy(connectedByYou = connectedByYouSlot?.let { it.memory.get(it.key) }.orEmpty())
         )
     val state: StateFlow<JointChannelConnectionsState> = mutableState.asStateFlow()
 
@@ -332,8 +426,36 @@ internal class JointChannelConnectionsStore(
                             // Off again: no per-row Disconnect, so no confirm either.
                             disconnectConfirmServerId = mutableState.value.disconnectConfirmServerId.takeIf { intent.enabled },
                             disconnectFailure = mutableState.value.disconnectFailure.takeIf { intent.enabled },
+                            // Off again: no Connect your servers either.
+                            memberConnectSheet = mutableState.value.memberConnectSheet.takeIf { intent.enabled },
                         )
                 }
+            is JointChannelConnectionsIntent.SetMemberConnectAccount ->
+                if (mutableState.value.memberConnectAccount != intent.account) {
+                    mutableState.value = mutableState.value.copy(memberConnectAccount = intent.account)
+                }
+            JointChannelConnectionsIntent.OpenMemberConnect -> {
+                val current = mutableState.value
+                if (current.memberConnectSheet == null && current.actionInFlight == null && current.memberConnectAvailable) {
+                    mutableState.value = current.copy(memberConnectSheet = MemberConnectSheet())
+                }
+            }
+            JointChannelConnectionsIntent.DismissMemberConnect -> {
+                val current = mutableState.value
+                if (current.memberConnectSheet != null && current.memberConnectSheet.busy.not()) {
+                    mutableState.value = current.copy(memberConnectSheet = null)
+                }
+            }
+            is JointChannelConnectionsIntent.SetMemberConnectSelection -> {
+                val current = mutableState.value
+                val sheet = current.memberConnectSheet
+                if (sheet != null && !sheet.busy) {
+                    val selectable = current.memberConnectRows.filter(current::memberConnectRowSelectable).map { it.server.id }.toSet()
+                    val next = intent.serverIds.filter { it in selectable }.toSet()
+                    if (next != sheet.selected) mutableState.value = current.copy(memberConnectSheet = sheet.copy(selected = next))
+                }
+            }
+            JointChannelConnectionsIntent.SubmitMemberConnect -> submitMemberConnect()
             is JointChannelConnectionsIntent.ConfirmDisconnectServer -> {
                 val current = mutableState.value
                 val server = current.connections?.servers?.firstOrNull { it.serverId == intent.serverId }
@@ -411,21 +533,13 @@ internal class JointChannelConnectionsStore(
                             val failure = result.toJointChannelFailure()
                             when {
                                 // Lost access (403 / 404): nothing cached may stay on screen.
-                                result.isJointConnectionsAccessLost() ->
-                                    JointChannelConnectionsState(
-                                        status = JointChannelConnectionsLoadStatus.Error,
-                                        loadFailure = failure,
-                                    )
+                                result.isJointConnectionsAccessLost() -> previous.loadErrorState(failure)
                                 // A token refresh / server switch overtook the request: the shown
                                 // list is still this account's, keep it without an error.
                                 previous.connections != null && failure?.code == AUTHENTICATED_ROUTE_AUTHORITY_CHANGED ->
                                     previous.copy(refreshing = false)
                                 previous.connections != null -> previous.copy(refreshing = false, loadFailure = failure)
-                                else ->
-                                    JointChannelConnectionsState(
-                                        status = JointChannelConnectionsLoadStatus.Error,
-                                        loadFailure = failure,
-                                    )
+                                else -> previous.loadErrorState(failure)
                             }
                         }
                     }
@@ -553,6 +667,115 @@ internal class JointChannelConnectionsStore(
         }
     }
 
+    /**
+     * Web ConnectYourServersDialog `submit`: every chosen server is answered on its own. All of
+     * them connected (or being connected): the sheet closes with a toast; all already connected:
+     * closes with that; otherwise it stays open with a line per server and its trace ID, a
+     * connected row reads "Connected just now", and only what can still be tried stays chosen.
+     * Whatever connected is marked "Connected by you" and the list is read again.
+     */
+    private fun submitMemberConnect() {
+        val current = mutableState.value
+        val sheet = current.memberConnectSheet ?: return
+        if (current.status != JointChannelConnectionsLoadStatus.Content || current.actionInFlight != null) return
+        if (sheet.busy || sheet.closed || sheet.selected.isEmpty()) return
+        val chosen = sheet.selected.toList()
+        val names = current.memberConnectRows.associate { it.server.id to it.server.name.ifBlank { it.server.slug } }
+        mutableState.value =
+            current.copy(
+                actionInFlight = JointChannelConnectionsAction.MemberConnect,
+                memberConnectSheet = sheet.copy(busy = true, lines = emptyList(), traceId = null),
+                effect = null,
+            )
+        launchAction {
+            val result = runCall { dataSource.connectMyServers(chosen) }
+            val previous = mutableState.value
+            val open = previous.memberConnectSheet ?: sheet
+            val answer = (result as? DataResult.Content)?.data
+            if (answer !is MemberConnectResponse.Answered) {
+                val refusal =
+                    when (answer) {
+                        is MemberConnectResponse.Refused -> memberConnectRequestRefusal(answer.status, answer.code)
+                        else -> memberConnectRequestRefusal(status = null, code = null)
+                    }
+                val traceId =
+                    when {
+                        answer is MemberConnectResponse.Refused -> answer.traceId
+                        result is DataResult.Error -> result.error.traceId
+                        result is DataResult.NoPermission -> result.blocker.traceId
+                        else -> null
+                    }
+                mutableState.value =
+                    previous.copy(
+                        actionInFlight = null,
+                        memberConnectSheet =
+                            open.copy(
+                                busy = false,
+                                lines = listOf(MemberConnectLine.Request(refusal.message)),
+                                traceId = traceId,
+                                closed = open.closed || refusal.closed,
+                            ),
+                    )
+                return@launchAction
+            }
+            val outcomes = answer.servers
+            val connected = outcomes.filterIsInstance<ServerConnectOutcome.Connected>().map { it.serverId }
+            val connecting = outcomes.filterIsInstance<ServerConnectOutcome.Connecting>().map { it.serverId }
+            val refused = outcomes.filterIsInstance<ServerConnectOutcome.Refused>()
+            val went = connected + connecting
+            val byYou =
+                if (went.isEmpty()) {
+                    previous.connectedByYou
+                } else {
+                    connectedByYouSlot?.let { it.memory.add(it.key, went) } ?: (previous.connectedByYou + went)
+                }
+            fun namesOf(ids: List<String>) = ids.map { names[it].orEmpty() }
+            val next =
+                when {
+                    refused.isEmpty() ->
+                        previous.copy(
+                            actionInFlight = null,
+                            memberConnectSheet = null,
+                            connectedByYou = byYou,
+                            effect = JointChannelConnectionsEffect.MemberConnectFinished(connected = namesOf(connected), connecting = namesOf(connecting)),
+                        )
+                    went.isEmpty() && refused.all { it.code == "already_connected" } ->
+                        previous.copy(
+                            actionInFlight = null,
+                            memberConnectSheet = null,
+                            effect = JointChannelConnectionsEffect.MemberConnectFinished(alreadyConnected = namesOf(refused.map { it.serverId })),
+                        )
+                    else -> {
+                        val lines =
+                            buildList {
+                                if (went.isNotEmpty()) add(MemberConnectLine.Connected(went))
+                                refused.forEach { add(MemberConnectLine.Refused(it.serverId, memberConnectRefusalMessage(it))) }
+                            }
+                        val rowStates =
+                            open.rowStates +
+                                refused.mapNotNull { outcome -> memberConnectRefusalRowState(outcome)?.let { outcome.serverId to it } }
+                        val retry = refused.filter { memberConnectRefusalRowState(it) == null }.map { it.serverId }.toSet()
+                        previous.copy(
+                            actionInFlight = null,
+                            connectedByYou = byYou,
+                            memberConnectSheet =
+                                open.copy(
+                                    busy = false,
+                                    done = open.done + went,
+                                    rowStates = rowStates,
+                                    lines = lines,
+                                    traceId = answer.traceId,
+                                    selected = open.selected.filter { it in retry }.toSet(),
+                                ),
+                        )
+                    }
+                }
+            mutableState.value = next
+            // The new rows come with the channel read again (web ensureChannel refresh).
+            if (went.isNotEmpty()) load(force = true)
+        }
+    }
+
     private fun launchAction(block: suspend () -> Unit) {
         loadGeneration += 1L
         loadJob?.cancel()
@@ -569,6 +792,20 @@ internal class JointChannelConnectionsStore(
         actionJob = null
     }
 }
+
+/**
+ * A load that ended in an error: nothing of the channel stays on screen, but what the page was
+ * told about the account and this server (flag, servers and roles, connected by you) does.
+ */
+private fun JointChannelConnectionsState.loadErrorState(failure: JointChannelFailure?): JointChannelConnectionsState =
+    JointChannelConnectionsState(
+        status = JointChannelConnectionsLoadStatus.Error,
+        loadFailure = failure,
+        sameAdminContext = sameAdminContext,
+        externalChannelsEnabled = externalChannelsEnabled,
+        memberConnectAccount = memberConnectAccount,
+        connectedByYou = connectedByYou,
+    )
 
 private fun DataResult<*>.jointFailureCodeOrNull(): String? = (this as? DataResult.Error)?.error?.code
 
@@ -603,6 +840,8 @@ internal data class RaftJointConnectionsDurableRecord(
     val canFederate: Boolean,
     val jointRole: String? = null,
     val federateChannels: Boolean? = null,
+    val isPrivate: Boolean = false,
+    val joined: Boolean? = null,
 )
 
 @Serializable
@@ -638,6 +877,8 @@ internal fun JointChannelConnectionsSnapshot.toJointConnectionsDurableRecord(): 
         canFederate = canFederate,
         jointRole = connections.jointRole?.name,
         federateChannels = connections.federateChannels,
+        isPrivate = connections.isPrivate,
+        joined = connections.joined,
     )
 
 internal fun RaftJointConnectionsDurableRecord.toJointConnectionsSnapshot(): JointChannelConnectionsSnapshot? {
@@ -664,6 +905,8 @@ internal fun RaftJointConnectionsDurableRecord.toJointConnectionsSnapshot(): Joi
                 hasCurrentServerPendingInvites = hasCurrentServerPendingInvites,
                 jointRole = JointChannelRole.entries.firstOrNull { it.name == jointRole },
                 federateChannels = federateChannels,
+                isPrivate = isPrivate,
+                joined = joined,
             ),
         canFederate = canFederate,
     )

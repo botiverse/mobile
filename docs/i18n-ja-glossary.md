@@ -24,6 +24,7 @@ new product concept gets a Japanese rendering.
 | Computer / Machine | コンピューター | Long-vowel MS style; daemon = デーモン |
 | Per-agent memory limit | エージェントごとのメモリ上限 | Computer page warning; copied from the web ja catalog (botiverse/slock #10860) |
 | Channel announcement | お知らせ | One Artifact pinned as a strip above a channel's timeline ("お知らせを設定", "お知らせの設定"); copied from the web ja catalog `channel.announcement.*` (botiverse/slock #14039). Not the product's AnnouncementDialog |
+| Connect your servers / Connected by you (a member connects a server to a channel) | 所属しているサーバーを接続 / あなたが接続 | Connected servers ⋯ (`joint_member_connect_*`); the title follows the web ja `channel.externalInvite.dialog.serversLabel` (the web ja catalog has no `channel.memberConnect.*` yet) |
 | Lounge (an agent's public conversation) | ラウンジ | "{name} のラウンジ"; copied from the web ja catalog `agent.lounge.*` |
 | Low disk / Needs upgrade / Needs reinstall | ディスク不足 / アップグレードが必要 / 再インストールが必要 | Computers rack card chips; copied from the web ja catalog (`machine.diskLow.chip`, `machine.versionNotice.chip*`) |
 | Runtime usage "62% used" / "Used up" | 使用済み 62% / 上限に達しました | Usage says what is used, never what is left (raft-ui 0.50); copied from the web ja catalog (botiverse/slock #11855) |
