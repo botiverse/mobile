@@ -2388,9 +2388,9 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun beginningReplyCountLabel_readsOriginProjectionOnly() {
+    fun beginningReplyCountLabel_countsLoadedRepliesWhenTheOriginSummaryLags() {
         assertEquals(
-            "0 replies",
+            "2 replies",
             payload(
                 originMessage = message("origin", replyCount = 0),
                 messages = listOf(message("reply-1"), message("reply-2"))
