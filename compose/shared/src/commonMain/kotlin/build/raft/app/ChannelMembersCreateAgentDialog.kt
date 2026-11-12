@@ -9,6 +9,8 @@ import build.raft.app.data.*
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import kotlinx.coroutines.launch
 
 /** Reuses the canonical create form and retains a created agent when joining fails. */
@@ -80,62 +82,61 @@ internal fun ChannelMembersCreateAgentDialog(
             try {
                 val receipt = authority.capture(owner)
                 if (receipt == null) { error = failedLabel; return@launch }
-                var agentId = joinState.createdAgentId
-                if (agentId == null) {
-                    if (request == null) { error = failedLabel; return@launch }
+                suspend fun createFrom(submitted: SharedCreateAgentDialogSubmit): DataResult<String> {
                     val client = authority.networkClient(receipt)
                     val coordinator = SharedCreateAgentCoordinator(
                         RaftAgentsApiClient(RaftAgentsNetworkApi(client)),
                         RaftComputersApiClient(RaftComputersNetworkApi(client)),
                     )
-                    val result = coordinator.createAgent(request.toCreateAgentRequest())
-                    if (!authority.isCurrent(receipt)) return@launch
-                    if (result !is DataResult.Content) {
-                        // The server's words when it gave a reason (a model no longer offered, one set by an admin).
-                        error = (result as? DataResult.Error)?.error?.let { createAgentFallbackErrorText(it, failedLabel) } ?: failedLabel
-                        return@launch
-                    }
-                    formStore.rememberCreatedAgent(owner.serverId, request)
-                    agentId = result.data.id
-                    joinState = joinState.created(agentId)
-                }
-                val joined = membersStore.addChannelMembersBatch(owner, createdAgentJoinRequest(channelId, agentId))
-                if (!authority.isCurrent(receipt)) return@launch
-                joinState = joinState.joinFinished(joined)
-                if (joined is DataResult.Content) {
-                    // task #5 (Hands 906abab9): ordering is the contract — see
-                    // createdAgentAfterJoinSteps. Opening the profile after the dismissal never
-                    // ran because the dismissal cancels this composable's scope.
-                    createdAgentAfterJoinSteps(mode, isExternalAgent = true).forEach { step ->
-                        when (step) {
-                            CreatedAgentAfterJoinStep.OpenProfile -> onCreated(MemberId(agentId))
-                            CreatedAgentAfterJoinStep.DismissDialog -> onJoined()
+                    return when (val result = coordinator.createAgent(submitted.toCreateAgentRequest())) {
+                        is DataResult.Content -> {
+                            formStore.rememberCreatedAgent(owner.serverId, submitted)
+                            DataResult.Content(result.data.id)
                         }
+                        is DataResult.Empty -> result
+                        is DataResult.Error -> result
+                        is DataResult.NoPermission -> result
                     }
-                } else {
-                    error = joinFailedLabel
+                }
+                val create: (suspend () -> DataResult<String>)? =
+                    request?.let { submitted -> suspend { createFrom(submitted) } }
+                val outcome = createThenJoinAgent(
+                    state = joinState,
+                    create = create,
+                    join = { agentId -> membersStore.addChannelMembersBatch(owner, createdAgentJoinRequest(channelId, agentId)) },
+                    isCurrent = { authority.isCurrent(receipt) },
+                    publish = { joinState = it },
+                )
+                when (outcome) {
+                    CreateThenJoinOutcome.NothingToCreate -> error = failedLabel
+                    CreateThenJoinOutcome.Stale -> Unit
+                    // The server's words when it gave a reason (a model no longer offered, one set by an admin).
+                    is CreateThenJoinOutcome.CreateFailed ->
+                        error = (outcome.result as? DataResult.Error)?.error?.let { createAgentFallbackErrorText(it, failedLabel) } ?: failedLabel
+                    CreateThenJoinOutcome.JoinFailed -> error = joinFailedLabel
+                    is CreateThenJoinOutcome.Joined ->
+                        // task #5 (Hands 906abab9): ordering is the contract — see
+                        // createdAgentAfterJoinSteps. Opening the profile after the dismissal never
+                        // ran because the dismissal cancels this composable's scope.
+                        createdAgentAfterJoinSteps(mode, isExternalAgent = true).forEach { step ->
+                            when (step) {
+                                CreatedAgentAfterJoinStep.OpenProfile -> onCreated(MemberId(outcome.agentId))
+                                CreatedAgentAfterJoinStep.DismissDialog -> onJoined()
+                            }
+                        }
                 }
             } finally {
                 submitting = false
             }
         }
     }
-    if (joinState.showsJoinRetry) {
-        RaftUnifiedDialog(title = stringResource(Res.string.thread_action_add_member),
-            onDismiss = onDismiss, dismissEnabled = !submitting) {
-            Text(error ?: joinFailedLabel, style = RaftType.Body)
-            RaftTraceIdNote(joinState.joinFailureTraceId)
-            RaftDialogFooter {
-                RaftButton(
-                    text = stringResource(Res.string.common_retry),
-                    enabled = !submitting,
-                    onClick = { submit(null) },
-                    variant = RaftButtonVariant.Ghost,
-                    size = RaftButtonSize.Lg
-                )
-            }
-        }
-    } else {
+    CreatedAgentJoinFaces(
+        joinState = joinState,
+        submitting = submitting,
+        message = error ?: joinFailedLabel,
+        onRetry = { submit(null) },
+        onDismiss = onDismiss,
+    ) {
         SharedCreateAgentDialog(
             external = mode == MembersCreateAgentMode.External,
             offersHosting = true,
@@ -155,6 +156,92 @@ internal fun ChannelMembersCreateAgentDialog(
             onDismiss = { if (!submitting) onDismiss() }, onSubmit = { submit(it) },
         )
     }
+}
+
+internal const val CreatedAgentJoinRetryMessageTestTag = "created-agent-join-retry-message"
+
+/**
+ * The dialog's two faces: the create form, or — only once a join has really failed — the
+ * "created, but joining failed" message with its trace id and Retry (#proj-mobile:#130).
+ */
+@Composable
+internal fun CreatedAgentJoinFaces(
+    joinState: CreatedAgentJoinState,
+    submitting: Boolean,
+    message: String,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+    createForm: @Composable () -> Unit,
+) {
+    if (joinState.showsJoinRetry) {
+        RaftUnifiedDialog(title = stringResource(Res.string.thread_action_add_member),
+            onDismiss = onDismiss, dismissEnabled = !submitting) {
+            Text(message, style = RaftType.Body, modifier = Modifier.testTag(CreatedAgentJoinRetryMessageTestTag))
+            RaftTraceIdNote(joinState.joinFailureTraceId)
+            RaftDialogFooter {
+                RaftButton(
+                    text = stringResource(Res.string.common_retry),
+                    enabled = !submitting,
+                    onClick = onRetry,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg
+                )
+            }
+        }
+    } else {
+        createForm()
+    }
+}
+
+/** How [createThenJoinAgent] ended. */
+internal sealed interface CreateThenJoinOutcome {
+    /** A retry with no created agent and no form to create one from. */
+    data object NothingToCreate : CreateThenJoinOutcome
+    /** The route's authority changed before any agent existed: nothing to keep. */
+    data object Stale : CreateThenJoinOutcome
+    data class CreateFailed(val result: DataResult<*>) : CreateThenJoinOutcome
+    /** The agent exists but is not known to be in the channel: the retry face shows. */
+    data object JoinFailed : CreateThenJoinOutcome
+    data class Joined(val agentId: String) : CreateThenJoinOutcome
+}
+
+/**
+ * The create → join sequence of [ChannelMembersCreateAgentDialog], without Compose so the dialog
+ * and its UI test run the same steps. [create] is null on a retry (the agent already exists in
+ * [state]). Every state change goes through [publish].
+ *
+ * Once an agent exists it is never forgotten: if the route's authority changed while creating or
+ * joining ([isCurrent] false), the join counts as failed, so the retry face shows and Retry joins
+ * that agent instead of the form creating a second one.
+ */
+internal suspend fun createThenJoinAgent(
+    state: CreatedAgentJoinState,
+    create: (suspend () -> DataResult<String>)?,
+    join: suspend (agentId: String) -> DataResult<*>,
+    isCurrent: () -> Boolean,
+    publish: (CreatedAgentJoinState) -> Unit,
+): CreateThenJoinOutcome {
+    var current = state
+    val agentId = current.createdAgentId ?: run {
+        val createAgent = create ?: return CreateThenJoinOutcome.NothingToCreate
+        val created = createAgent()
+        if (created is DataResult.Content) {
+            current = current.created(created.data)
+            publish(current)
+        }
+        if (!isCurrent()) {
+            if (current.createdAgentId == null) return CreateThenJoinOutcome.Stale
+            current = current.joinFinished(authenticatedRouteAuthorityChanged<Unit>())
+            publish(current)
+            return CreateThenJoinOutcome.JoinFailed
+        }
+        if (created !is DataResult.Content) return CreateThenJoinOutcome.CreateFailed(created)
+        created.data
+    }
+    val joined = join(agentId)
+    current = current.joinFinished(if (isCurrent()) joined else authenticatedRouteAuthorityChanged<Unit>())
+    publish(current)
+    return if (current.joinFailed) CreateThenJoinOutcome.JoinFailed else CreateThenJoinOutcome.Joined(agentId)
 }
 
 /**
@@ -180,7 +267,11 @@ internal data class CreatedAgentJoinState(
     fun joinFinished(result: DataResult<*>): CreatedAgentJoinState =
         when (result) {
             is DataResult.Content -> copy(joinFailed = false, joinFailureTraceId = null)
-            is DataResult.Error -> copy(joinFailed = true, joinFailureTraceId = result.error.traceId)
+            // A route-authority change is local (no request to trace), so it shows no trace id.
+            is DataResult.Error -> copy(
+                joinFailed = true,
+                joinFailureTraceId = result.error.traceId.takeUnless { result.error.code == AUTHENTICATED_ROUTE_AUTHORITY_CHANGED },
+            )
             is DataResult.NoPermission -> copy(joinFailed = true, joinFailureTraceId = result.blocker.traceId)
             is DataResult.Empty -> copy(joinFailed = true, joinFailureTraceId = null)
         }
