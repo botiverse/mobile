@@ -96,12 +96,9 @@ private fun List<GatedComputer>.toNotification(reinstall: Boolean, timeZone: Tim
         }
     val subject: Any = if (one) first.name else size
     val englishTitle =
-        when {
-            reinstall && one -> "${first.name} needs a reinstall: finish before $englishDate"
-            reinstall -> "$size Computers need a reinstall: finish before $englishDate"
-            one -> "${first.name} needs to upgrade before $englishDate"
-            else -> "$size Computers need to upgrade before $englishDate"
-        }
+        // Raft DS Status: one word for a version too old to run, whether an upgrade or a reinstall
+        // gets past it ("Update required"); the body and the detail say which.
+        if (one) "${first.name}: update required before $englishDate" else "$size Computers: update required before $englishDate"
     val englishBody =
         (if (one) "After that, agents on this computer stop running." else "After that, agents on these computers stop running.") +
             if (reinstall) " Your agents and files stay where they are." else ""

@@ -1574,7 +1574,7 @@
     <string name="member_label_command">命令</string>
     <string name="member_label_default">默认</string>
     <string name="member_label_fast">快速</string>
-    <string name="member_label_connected">已连接</string>
+    <string name="member_label_connected">在线</string>
     <string name="member_label_offline">离线</string>
     <string name="member_label_no_creator">未分配创建者</string>
     <string name="member_label_activity_only">仅动态</string>
@@ -2152,7 +2152,7 @@
     <string name="agent_create_error_no_machine_runtimes">所选计算机没有运行时数据。请刷新计算机列表或选择其他计算机。</string>
     <string name="agent_create_suffix_coming_soon">（即将推出）</string>
     <string name="agent_create_suffix_not_installed">（未安装）</string>
-    <string name="agent_create_suffix_offline">（离线）</string>
+    <string name="agent_create_suffix_offline">&#160;· 离线</string>
     <string name="agent_create_hint_provider">“默认”会保留 Claude Code 的提供方设置；“自定义”会为此 Agent 设置 ANTHROPIC_BASE_URL 和 ANTHROPIC_API_KEY。</string>
     <string name="agent_create_error_name_taken">该名字已被占用，请换一个名字。</string>
     <string name="agent_create_error_name_reserved">Agent 名称 @%1$s 已保留，请选择其他名称。</string>
@@ -2276,13 +2276,13 @@
     <string name="home_notification_machine_offline_title_many">%1$s 已离线</string>
     <string name="home_notification_machine_offline_body_one">这台计算机当前没有活跃的 Agent；下次需要时请重新连接。</string>
     <string name="home_notification_machine_offline_body_many">这些计算机当前没有活跃的 Agent；下次需要时请重新连接。</string>
-    <string name="home_notification_machine_outdated_title_one">%1$s 正在运行旧版守护进程</string>
-    <string name="home_notification_machine_outdated_title_many">%1$s 正在运行旧版守护进程</string>
-    <string name="home_notification_machine_outdated_body">请停止守护进程并重新连接以更新。</string>
-    <string name="home_notification_computer_upgrade_deadline_title_one">%1$s 需要在 %2$s 前升级</string>
-    <string name="home_notification_computer_upgrade_deadline_title_many">%1$d 台 Computer 需要在 %2$s 前升级</string>
-    <string name="home_notification_computer_reinstall_deadline_title_one">%1$s 需要重新安装，请在 %2$s 前完成</string>
-    <string name="home_notification_computer_reinstall_deadline_title_many">%1$d 台 Computer 需要重新安装，请在 %2$s 前完成</string>
+    <string name="home_notification_machine_outdated_title_one">%1$s 有可用更新</string>
+    <string name="home_notification_machine_outdated_title_many">%1$s 有可用更新</string>
+    <string name="home_notification_machine_outdated_body">停止后重新连接即可更新。</string>
+    <string name="home_notification_computer_upgrade_deadline_title_one">%1$s 需要在 %2$s 前更新</string>
+    <string name="home_notification_computer_upgrade_deadline_title_many">%1$d 台 Computer 需要在 %2$s 前更新</string>
+    <string name="home_notification_computer_reinstall_deadline_title_one">%1$s 需要在 %2$s 前更新</string>
+    <string name="home_notification_computer_reinstall_deadline_title_many">%1$d 台 Computer 需要在 %2$s 前更新</string>
     <string name="home_notification_computer_version_deadline_body_one">到期后，这台计算机上的 Agent 将停止运行。</string>
     <string name="home_notification_computer_version_deadline_body_many">到期后，这些计算机上的 Agent 将停止运行。</string>
     <string name="home_notification_computer_reinstall_deadline_body_one">到期后，这台计算机上的 Agent 将停止运行。你的 Agent 和文件都会保留在原处。</string>
@@ -2664,7 +2664,8 @@
     <string name="settings_computers_rack_no_attention_title">没有需要关注的计算机</string>
     <string name="settings_computers_rack_no_attention_description">所有已连接的 Computer 均为最新状态。</string>
     <string name="settings_computers_delete_busy">正在删除…</string>
-    <string name="settings_computers_status_connected">已连接</string>
+    <string name="settings_computers_status_connected">在线</string>
+    <string name="settings_computers_status_updating">更新中…</string>
     <string name="settings_computers_status_offline">离线</string>
     <string name="settings_computers_section_name">名称</string>
     <string name="settings_computers_label_name">计算机名称</string>
@@ -2704,7 +2705,7 @@
     <string name="settings_computers_runtime_usage_parse_unavailable">无法显示用量</string>
     <string name="settings_computers_runtime_usage_window_used">已用 %1$s · %2$s重置</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">已用 %1$s · 重置时间暂不可用</string>
-    <string name="settings_computers_runtime_usage_window_used_up">已用完 · %1$s重置</string>
+    <string name="settings_computers_runtime_usage_window_used_up">已用完 · %1$s恢复</string>
     <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">已用完 · 重置时间暂不可用</string>
     <string name="settings_computers_runtime_usage_later">稍后</string>
     <string name="settings_computers_runtime_usage_metadata">整个账户 · %1$s更新</string>
@@ -2886,6 +2887,7 @@
     <string name="settings_computers_create_agent_error_failed">创建 Agent 失败：%1$s</string>
     <string name="settings_computers_create_agent_error_forbidden">你没有创建 Agent 的权限。</string>
     <string name="settings_computers_update_available">有可用更新</string>
+    <string name="settings_computers_update_required">需要更新</string>
     <string name="settings_computers_last_seen">最后在线 %1$s</string>
     <string name="settings_computers_rack_computer_count_one">%1$d 台 Computer</string>
     <string name="settings_computers_rack_computer_count_other">%1$d 台 Computer</string>
@@ -2893,6 +2895,7 @@
     <string name="settings_computers_rack_agent_count_one">%1$d 个 Agent</string>
     <string name="settings_computers_rack_agent_count_other">%1$d 个 Agent</string>
     <string name="settings_computers_rack_version">v%1$s</string>
+    <string name="settings_computers_rack_updating_to">正在更新到 v%1$s</string>
     <string name="settings_computers_rack_last_seen">上次在线 %1$s。</string>
     <string name="settings_computers_rack_percent_used">已用 %1$s</string>
     <string name="settings_computers_rack_used_up">已用完</string>
@@ -2944,8 +2947,6 @@
     <string name="settings_computers_rack_no_match_title">没有匹配的 Computer</string>
     <string name="settings_computers_rack_no_match_description">换个关键词，或清除筛选。</string>
     <string name="settings_computers_disk_low">磁盘不足</string>
-    <string name="settings_computers_needs_upgrade">需要升级</string>
-    <string name="settings_computers_needs_reinstall">需要重装</string>
     <string name="settings_computers_workspace_status_active">活跃</string>
     <string name="settings_computers_workspace_status_orphan">已孤立</string>
     <string name="settings_computers_cannot_delete_message_one">这台 Computer 还有 %1$d 个 Agent。请先移除所有 Agent，再删除 Computer。</string>
@@ -2960,7 +2961,7 @@
     <string name="settings_computers_restart_timed_out">重启超时。请检查计算机是否在线后重试。</string>
     <string name="settings_computers_up_to_date">已是最新</string>
     <string name="settings_computers_upgrade_to_version">升级到 v%1$s</string>
-    <string name="settings_computers_upgrading">升级中…</string>
+    <string name="settings_computers_upgrading">更新中…</string>
     <string name="settings_computers_upgrade_status_reinstall">这个版本不能从网页升级，请用本页顶部的命令重新安装。</string>
     <string name="settings_computers_upgrade_status_reading">正在读取版本，稍后再看能否升级。</string>
     <string name="settings_computers_upgrade_status_cannot_check">暂时查不到新版本信息，稍后再看。</string>
@@ -3015,10 +3016,10 @@
     <string name="settings_computers_mac_linux">macOS / Linux</string>
     <string name="settings_computers_release_notes_open">查看更新内容</string>
     <string name="settings_computers_release_notes_title">v%1$s 更新内容</string>
-    <string name="settings_computers_version_notice_upgrade_title">请尽快升级</string>
-    <string name="settings_computers_version_notice_upgrade_title_scheduled">请尽快升级：从 %1$s 起，这台计算机上的 Agent 将停止运行</string>
-    <string name="settings_computers_version_notice_reinstall_title">这个版本需要重新安装</string>
-    <string name="settings_computers_version_notice_reinstall_title_scheduled">请尽快重新安装：从 %1$s 起，这台计算机上的 Agent 将停止运行</string>
+    <string name="settings_computers_version_notice_upgrade_title">需要更新</string>
+    <string name="settings_computers_version_notice_upgrade_title_scheduled">需要更新：从 %1$s 起，这台计算机上的 Agent 将停止运行</string>
+    <string name="settings_computers_version_notice_reinstall_title">需要更新</string>
+    <string name="settings_computers_version_notice_reinstall_title_scheduled">需要更新：从 %1$s 起，这台计算机上的 Agent 将停止运行</string>
     <string name="settings_computers_version_notice_enforced_title">这台计算机上的 Agent 没有在运行：版本太旧</string>
     <string name="settings_computers_version_notice_enforced_title_unknown">这台计算机上的 Agent 没有在运行：它未上报版本</string>
     <string name="settings_computers_version_notice_unknown_title">这台计算机未上报版本</string>
@@ -3439,8 +3440,8 @@
     <string name="member_row_status_disconnected">已断开</string>
     <string name="member_row_status_error">错误</string>
     <string name="member_row_status_external">外部</string>
-    <string name="member_row_status_working">工作中</string>
-    <string name="member_row_status_thinking">思考中</string>
+    <string name="member_row_status_working">工作中…</string>
+    <string name="member_row_status_thinking">思考中…</string>
     <string name="home_dm_agent_activity_thinking">思考中…</string>
     <string name="home_dm_agent_activity_working">工作中…</string>
     <string name="agent_activity_starting">启动中…</string>
@@ -4446,6 +4447,8 @@
     <string name="agent_status_credential_plan_default_model">套餐不包含这个模型</string>
     <string name="agent_status_credential_billing">服务商余额已用完</string>
     <string name="agent_status_computer_access_revoked">Computer 访问权限已撤销：请把 Agent 移到另一台 Computer（重新加入会新增一台 Computer）</string>
+    <string name="agent_status_computer_update_required">Computer 需要更新</string>
+    <string name="agent_status_open_computer">打开 Computer</string>
     <string name="agent_migration_place_from_revoked_computer_note">这个 Agent 所在的 Computer 已失去对服务器的访问权限，无法带走它的文件。它会移到你选择的 Computer，并在下次收到消息时在那里开始新的会话。</string>
     <string name="agent_status_model_unsupported">这个运行时的账号或套餐不包含模型「%1$s」。请更换模型，或登录包含该模型的账号</string>
     <string name="agent_status_model_unsupported_default">这个运行时的账号或套餐不包含这个 Agent 的模型。请更换模型，或登录包含该模型的账号</string>
@@ -4672,7 +4675,7 @@
     <string name="channel_announcement_picker_no_match">没有匹配的 Artifact</string>
     <string name="member_activity_overview_view_subagents">子 Agent</string>
     <string name="member_activity_subagents_open_from_log">查看这个子 Agent</string>
-    <string name="member_activity_subagents_state_running">工作中</string>
+    <string name="member_activity_subagents_state_running">工作中…</string>
     <string name="member_activity_subagents_state_done">完成</string>
     <string name="member_activity_subagents_state_failed">失败</string>
     <string name="member_activity_subagents_state_ceiling">达到上限</string>
@@ -4682,7 +4685,7 @@
     <string name="member_activity_subagents_steps_one">1 步</string>
     <string name="member_activity_subagents_steps_other">%1$d 步</string>
     <string name="member_activity_subagents_now">正在：%1$s</string>
-    <string name="member_activity_subagents_group_running">运行中</string>
+    <string name="member_activity_subagents_group_running">工作中</string>
     <string name="member_activity_subagents_group_ended">已结束</string>
     <string name="member_activity_subagents_recent_only">列出这个 Agent 最近动态里的子 Agent。</string>
     <string name="member_activity_subagents_empty_title">现在没有子 Agent</string>

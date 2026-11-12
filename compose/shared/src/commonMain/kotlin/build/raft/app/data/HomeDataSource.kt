@@ -551,11 +551,11 @@ private fun ComputerListSummary.toSharedHomeMachineNotifications(
     if (outdatedMachines.isNotEmpty()) {
         val sortedIds = outdatedMachines.map { it.id }.sorted()
         val names = outdatedMachines.joinToString(", ") { it.name }
-        val verb = if (outdatedMachines.size == 1) "is running an outdated daemon" else "are running outdated daemons"
+        // Raft DS Status: "Update available", never "outdated daemon".
         notifications += SharedHomeNotification(
             id = "machine-outdated:${latestDaemonVersion ?: "unknown"}:${sortedIds.joinToString(",")}",
-            title = "$names $verb",
-            body = "Stop the daemon and reconnect to update.",
+            title = "Update available for $names",
+            body = "Stop it and reconnect to update.",
             actionLabel = "View",
             titleDesc =
                 if (outdatedMachines.size == 1) {

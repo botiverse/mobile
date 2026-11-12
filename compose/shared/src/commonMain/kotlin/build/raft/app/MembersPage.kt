@@ -270,6 +270,7 @@ import build.raft.designsystem.components.RaftFitToolbarScope
 import build.raft.designsystem.components.RaftFitToolbarSearch
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftSidebarItem
+import build.raft.designsystem.components.RaftSidebarItemMeta
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftPanelNotice
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -291,6 +292,7 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftUiPalette
 import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftTextLinkVariant
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -10178,7 +10180,12 @@ internal fun MembersAgentProfileHeader(
      * the agent cannot run until someone restarts it ([agentNeedsManualRestart]).
      */
     onRetry: (() -> Unit)? = null,
-    retryInProgress: Boolean = false
+    retryInProgress: Boolean = false,
+    /**
+     * Opens the agent's Computer: the link beside "Computer update required" (raft-design
+     * identity-and-presence, the step links to the computer); null when there is none to open.
+     */
+    onOpenComputer: (() -> Unit)? = null
 ) {
     val appBot = !member.managedByAppInstallId.isNullOrBlank()
     // Web AgentDisplayState.blocked (botiverse/slock #13575): held agents say why, not their activity.
@@ -10235,9 +10242,12 @@ internal fun MembersAgentProfileHeader(
     )
     // SSOT audit: the badge words localize like every other live-status caption. A held agent's
     // sentence does not fit the one-line chip: the chip reads Error (its light) and the sentence
-    // follows under it ([AgentBlockedStatusNotice]).
+    // follows under it ([AgentBlockedStatusNotice]). "Computer update required" is already the
+    // short form (raft-design identity-and-presence): the chip says it, with no sentence under it.
     val statusLabel =
-        if (blocked != null) {
+        if (blocked == AgentBlockedState.ComputerUpdateRequired) {
+            AgentBlockedState.ComputerUpdateRequired.localizedStatusLabel()
+        } else if (blocked != null) {
             stringResource(Res.string.member_row_status_error)
         } else if (credentialReason != null) {
             if (showActivityDetail) {
@@ -10379,8 +10389,24 @@ internal fun MembersAgentProfileHeader(
                         }
                     )
                 }
+                val openComputer = onOpenComputer?.takeIf { blocked == AgentBlockedState.ComputerUpdateRequired }
                 if (!appBot) {
-                    if (showRetry && onRetry != null) {
+                    if (openComputer != null) {
+                        // The step is on the Computer: a quiet link to it right after the chip.
+                        Row(
+                            modifier = Modifier.padding(top = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            statusChip(Modifier.weight(1f, fill = false))
+                            RaftTextLink(
+                                text = stringResource(Res.string.agent_status_open_computer),
+                                onClick = openComputer,
+                                variant = RaftTextLinkVariant.Strong,
+                                style = RaftTheme.typography.footnote,
+                            )
+                        }
+                    } else if (showRetry && onRetry != null) {
                         // Web `flex items-center gap-1.5`: the quiet Retry right after the chip.
                         Row(
                             modifier = Modifier.padding(top = 6.dp),
@@ -10394,7 +10420,7 @@ internal fun MembersAgentProfileHeader(
                         statusChip(Modifier.padding(top = 6.dp))
                     }
                 }
-                if (blocked != null) {
+                if (blocked != null && blocked != AgentBlockedState.ComputerUpdateRequired) {
                     AgentBlockedStatusNotice(blocked = blocked, modifier = Modifier.padding(top = 6.dp))
                 }
                 // Web #10446: stuck on one tool call: its own lines under the status chip, so the
@@ -12073,7 +12099,8 @@ private fun MembersAgentProfileIdentity(
                 onChangeModel = lifecycle.onOpenModelSettings,
                 timeContext = lifecycle.timeContext,
                 onRetry = lifecycle.onRetryRestart,
-                retryInProgress = lifecycle.retryRestartInProgress
+                retryInProgress = lifecycle.retryRestartInProgress,
+                onOpenComputer = lifecycle.onOpenComputer
             )
         }
     )
@@ -15271,7 +15298,9 @@ private fun MembersListMachineGroupLabel(
  * phone size ([RaftSidebarItem]), led by the 19dp avatar. An agent's status is the light on
  * the avatar's corner (web `AvatarSlot badge={<SidebarAgentActivityBadge/>}`); an app-managed
  * bot has none. The name is followed by "(you)" on the viewer's own row and the outline Guest
- * badge for a guest; the description, when there is one, is the subtitle.
+ * badge for a guest; the description, when there is one, is the subtitle. An agent's row ends with
+ * its short status word (web `MembersAgentList` Status column: "Working…", "Offline", "Computer
+ * update required"), so the state never rests on the light's colour alone.
  */
 @Composable
 private fun MembersListRow(
@@ -15303,6 +15332,12 @@ private fun MembersListRow(
                 memberAvatarResolver = memberAvatarResolver
             )
         },
+        trailing =
+            if (member.membersListShowsAgentStatus()) {
+                { MembersListRowStatusWord(member = member, agentStatusResolver = agentStatusResolver) }
+            } else {
+                null
+            },
         titleTrailing =
             if (isSelf || isGuest || appBot != null) {
                 {
@@ -15329,6 +15364,35 @@ private fun MembersListRow(
     )
 }
 
+/** A managed agent's row shows its status (light and word); a human's or an App Bot's does not. */
+private fun MemberProfile.membersListShowsAgentStatus(): Boolean =
+    kind == MemberKind.Agent && managedByAppInstallId.isNullOrBlank()
+
+/**
+ * The row's short status word (web `MembersAgentList` `statusWord`): the coarse state, as the
+ * light on the avatar, in the row's quiet meta ([RaftSidebarItemMeta]). It reads the status on its
+ * own, like the avatar, so an agent:activity push recomposes only this. Nothing while the status
+ * is unknown (no light either).
+ */
+@Composable
+private fun MembersListRowStatusWord(
+    member: MemberProfile,
+    agentStatusResolver: RaftAgentStatusResolver
+) {
+    val status =
+        rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value)
+            ?.withoutActivityDetail()
+            ?: return
+    RaftSidebarItemMeta(
+        text = status.localizedMemberStatusLabel(),
+        modifier = Modifier.widthIn(max = MembersListStatusWordMaxWidth),
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+/** The status word gives way to the name: at most this wide, then it ends in an ellipsis. */
+private val MembersListStatusWordMaxWidth = 120.dp
+
 /**
  * The row's avatar. An agent's status light reads only here, so an agent:activity push
  * recomposes the avatar, not the row. Same contract as the detail header: an unresolved
@@ -15340,7 +15404,7 @@ private fun MembersListRowAvatar(
     agentStatusResolver: RaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver
 ) {
-    val showsStatus = member.kind == MemberKind.Agent && member.managedByAppInstallId.isNullOrBlank()
+    val showsStatus = member.membersListShowsAgentStatus()
     val status =
         // The Members tab does not subscribe to detailed agent:activity: coarse state only.
         rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value.takeIf { showsStatus })

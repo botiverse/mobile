@@ -65,7 +65,7 @@ class HomeComputerVersionGateNotificationsTest {
             val notice = notices(computer(version = version)).single()
 
             assertEquals("computer-version-gate:upgrade:$deadline:computer-1", notice.id, "version=$version")
-            assertEquals("Studio Mac needs to upgrade before Nov 10, 2026", notice.title)
+            assertEquals("Studio Mac: update required before Nov 10, 2026", notice.title)
             assertEquals("After that, agents on this computer stop running.", notice.body)
             assertEquals("computer-1", notice.targetId)
             assertEquals(SharedHomeNotificationKind.Warning, notice.kind)
@@ -77,7 +77,7 @@ class HomeComputerVersionGateNotificationsTest {
         val notice = notices(computer(version = "1.0.44")).single()
 
         assertEquals("computer-version-gate:reinstall:$deadline:computer-1", notice.id)
-        assertEquals("Studio Mac needs a reinstall: finish before Nov 10, 2026", notice.title)
+        assertEquals("Studio Mac: update required before Nov 10, 2026", notice.title)
         assertEquals(
             "After that, agents on this computer stop running. Your agents and files stay where they are.",
             notice.body,
@@ -124,7 +124,7 @@ class HomeComputerVersionGateNotificationsTest {
             result.map { it.id },
         )
         val upgrade = result[1]
-        assertEquals("2 Computers need to upgrade before Nov 20, 2026", upgrade.title)
+        assertEquals("2 Computers: update required before Nov 20, 2026", upgrade.title)
         assertEquals("early", upgrade.targetId)
     }
 

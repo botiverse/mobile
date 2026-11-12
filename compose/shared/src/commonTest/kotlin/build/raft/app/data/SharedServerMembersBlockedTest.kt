@@ -21,6 +21,10 @@ import kotlin.test.assertNull
  * key was revoked; the agent stays bound and gets no wakes). Web `resolveAgentDisplayState` reads it
  * before any activity: error orange, "Computer access revoked: move the agent…", never "Likely
  * online" nor its last activity. An unknown reason keeps the ordinary state.
+ *
+ * A Computer below the enforced version floor (`computer_version_unsupported` / `_unknown`, web
+ * `computer_too_old`) reads "Computer update required" the same way (raft-design patterns/status.md,
+ * #1233: the agent says the step is on its Computer).
  */
 class SharedServerMembersBlockedTest {
     private val serverId = ServerId("server-1")
@@ -69,10 +73,12 @@ class SharedServerMembersBlockedTest {
     }
 
     @Test
-    fun onlyARevokedComputerIsAHeldState() {
+    fun aRevokedOrTooOldComputerIsAHeldState() {
         assertEquals(AgentBlockedState.ComputerAccessRevoked, agentBlockedState("computer_access_revoked"))
-        // The app does not show "Computer too old" yet; an unknown reason keeps the ordinary state.
-        assertNull(agentBlockedState("computer_version_unsupported"))
+        assertEquals(AgentBlockedState.ComputerUpdateRequired, agentBlockedState("computer_version_unsupported"))
+        assertEquals(AgentBlockedState.ComputerUpdateRequired, agentBlockedState(" computer_version_unknown "))
+        assertEquals("Computer update required", AgentBlockedState.ComputerUpdateRequired.englishStatusLabel)
+        // An unknown reason keeps the ordinary state.
         assertNull(agentBlockedState("some_future_reason"))
         assertNull(agentBlockedState(null))
     }
@@ -112,11 +118,26 @@ class SharedServerMembersBlockedTest {
     }
 
     @Test
+    fun aTooOldComputersAgentReadsComputerUpdateRequiredInOrange() = runBlocking<Unit> {
+        val registry = ProcessMemberPresenceRegistry()
+        val store = store(registry)
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport)
+        store.refreshMembers(serverId, force = true, reason = "test")
+
+        val held = assertNotNull(store.currentMemberStatus(serverId, "agent-old"))
+        assertEquals(AgentBlockedState.ComputerUpdateRequired, held.blocked)
+        assertEquals(AgentStatus.Error, held.status)
+        val indicator = held.toRaftAgentStatusIndicatorState()
+        assertEquals(RaftColor.AccentOrange, indicator.color)
+        assertEquals("Computer update required", indicator.withoutActivityDetail().label)
+    }
+
+    @Test
     fun otherReasonsExternalAgentsAndAppBotsKeepTheirOrdinaryState() = runBlocking<Unit> {
         val registry = ProcessMemberPresenceRegistry()
         val store = store(registry)
         store.refreshMembers(serverId, force = true, reason = "test")
-        for (id in listOf("agent-old", "agent-future", "agent-ext", "agent-bot", "agent-plain")) {
+        for (id in listOf("agent-future", "agent-ext", "agent-bot", "agent-plain")) {
             assertNull(store.currentMemberStatus(serverId, id)?.blocked, id)
         }
     }

@@ -681,16 +681,18 @@ internal object RaftQuietUnreadDotMetrics {
 /**
  * Quiet text at the end of a sidebar row (`SidebarItemMeta` / `SidebarMenuCount`): Space
  * Mono 12 tabular in `foreground-hint` (`sticker-ink` on a selected row). Saved's count,
- * the unread number of a muted place.
+ * the unread number of a muted place, an agent's status word. [overflow]: how text wider than
+ * the [modifier] allows ends (a status word that gives way to the name ends in an ellipsis).
  */
 @Composable
-fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier) {
+fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier, overflow: TextOverflow = TextOverflow.Clip) {
     RaftText(
         text,
         modifier = modifier,
         style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Normal, fontFeatureSettings = "tnum"),
         color = LocalRaftSidebarItemHint.current ?: RaftTheme.colors.foregroundHint,
         maxLines = 1,
+        overflow = overflow,
     )
 }
 

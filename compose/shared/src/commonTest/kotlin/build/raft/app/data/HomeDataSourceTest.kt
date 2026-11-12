@@ -232,7 +232,7 @@ class HomeDataSourceTest {
 
         val notification = notifications.single()
         assertEquals("machine-outdated:1.0.17:raw-daemon", notification.id)
-        assertEquals("Raw daemon is running an outdated daemon", notification.title)
+        assertEquals("Update available for Raw daemon", notification.title)
         assertEquals("raw-daemon", notification.targetId)
     }
 

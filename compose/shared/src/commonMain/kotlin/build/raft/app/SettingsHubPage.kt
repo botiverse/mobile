@@ -491,7 +491,18 @@ private fun SettingsHubSidebarList(
                         trailing =
                             if (item.attentionDot || item.opensExternally) {
                                 {
-                                    if (item.attentionDot) RaftStatusDot(variant = RaftStatusVariant.Accent)
+                                    if (item.attentionDot) {
+                                        // A computer that needs attention is orange (raft-design
+                                        // patterns/status.md); pink stays for what is new.
+                                        RaftStatusDot(
+                                            variant =
+                                                if (item.key == RaftMoreAttention.Computers.settingsRowKey) {
+                                                    RaftStatusVariant.Warning
+                                                } else {
+                                                    RaftStatusVariant.Accent
+                                                },
+                                        )
+                                    }
                                     if (item.opensExternally) {
                                         RaftLucideIcon(
                                             RaftLucideIconName.ArrowUpRight,

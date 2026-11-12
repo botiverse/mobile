@@ -4,6 +4,7 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerBroadcastPolicySnapshot
 import build.raft.app.data.SettingsComputerSizeStatusSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
 import build.raft.app.data.SettingsComputerVersionGateSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.app.model.MemberId
@@ -52,7 +53,7 @@ class RaftComputersRackCardsModelTest {
     }
 
     @Test
-    fun belowTheVersionFloorSaysNeedsUpgradeOrReinstallBeforeTheArrow() {
+    fun belowTheVersionFloorSaysUpdateRequiredWhetherAnUpgradeOrAReinstall() {
         val gate = SettingsComputerVersionGateSnapshot(reason = "computer_version_unsupported", minVersion = "1.0.50")
         val upgrade = computer("m-1", computerVersion = "1.0.46", latest = "1.0.53", versionGate = gate).toRaftComputerRow()
         assertEquals(RaftComputerVersionNotice.BelowFloor(reinstall = false), upgrade.versionNotice)
@@ -76,11 +77,41 @@ class RaftComputersRackCardsModelTest {
     fun offlineFactsAreOfflineAndLastSeen() {
         val row = computer("m-1", online = false, computerVersion = "1.0.49", latest = "1.0.53", lastHeartbeat = "2026-10-20T12:00:00Z").toRaftComputerRow()
         assertEquals(RaftComputerCardFacts.Offline("2026-10-20T12:00:00Z"), row.cardFacts())
-        // An outdated offline Computer keeps the pink light, as on web.
+        // An outdated offline Computer keeps the orange needs-attention light.
         assertEquals(RaftComputerDot.Upgrade, row.dot)
         val current = computer("m-2", online = false, computerVersion = "1.0.53", latest = "1.0.53").toRaftComputerRow()
         assertEquals(RaftComputerDot.Offline, current.dot)
         assertEquals(RaftComputerCardFacts.Offline(null), current.cardFacts())
+    }
+
+    @Test
+    fun anUpdateInFlightIsUpdatingInPlaceNeverOffline() {
+        // raft-design patterns/status.md: the machines row's pending `upgradeRequest` (every viewer
+        // reads it) is in progress: the yellow light, "Updating to v…", and the computer stays in
+        // place while it restarts offline.
+        val pending = SettingsComputerUpgradeRequestSnapshot(id = "u1", targetVersion = "1.0.53", requestedAt = "2026-10-22T09:00:00Z", state = "pending")
+        val restarting =
+            computer("m-1", online = false, computerVersion = "1.0.49", latest = "1.0.53")
+                .copy(upgradeRequest = pending)
+        val row = restarting.toRaftComputerRow()
+        assertTrue(row.updating)
+        assertTrue(row.present)
+        assertEquals(RaftComputerDot.Updating, row.dot)
+        assertEquals(RaftComputerVersionNotice.Updating("1.0.53"), row.versionNotice)
+        assertEquals(RaftComputerVersionNotice.Updating("1.0.53"), assertIs<RaftComputerCardFacts.Online>(row.cardFacts()).notice)
+        assertFalse(raftRackNeedsAttention(restarting.copy(upgradeAvailable = false)), "a restart for an update is not an outage")
+        // Settled requests are not in flight; a daemon never updates from here.
+        assertFalse(restarting.copy(upgradeRequest = pending.copy(state = "done")).toRaftComputerRow().updating)
+        assertFalse(restarting.copy(upgradeRequest = pending.copy(state = "no_response")).toRaftComputerRow().updating)
+        assertFalse(restarting.copy(isComputer = false).toRaftComputerRow().updating)
+    }
+
+    @Test
+    fun updateAvailableAndUpdateRequiredBothNeedAttention() {
+        val gate = SettingsComputerVersionGateSnapshot(reason = "computer_version_unsupported", minVersion = "1.0.50")
+        assertTrue(raftRackNeedsAttention(computer("m-1", computerVersion = "1.0.46", latest = "1.0.53", versionGate = gate)))
+        assertTrue(raftRackNeedsAttention(computer("m-2", computerVersion = "1.0.49", latest = "1.0.53").copy(upgradeAvailable = true)))
+        assertFalse(raftRackNeedsAttention(computer("m-3", computerVersion = "1.0.53", latest = "1.0.53")))
     }
 
     @Test

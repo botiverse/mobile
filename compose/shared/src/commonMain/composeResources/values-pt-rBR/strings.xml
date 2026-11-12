@@ -1551,7 +1551,7 @@
     <string name="member_label_command">Comando</string>
     <string name="member_label_default">Padrão</string>
     <string name="member_label_fast">Rápido</string>
-    <string name="member_label_connected">Conectado</string>
+    <string name="member_label_connected">Online</string>
     <string name="member_label_offline">Offline</string>
     <string name="member_label_no_creator">Nenhum criador atribuído</string>
     <string name="member_label_activity_only">Somente atividade</string>
@@ -2129,7 +2129,7 @@
     <string name="agent_create_error_no_machine_runtimes">O computador selecionado não tem dados de runtime. Atualize os computadores ou escolha outro.</string>
     <string name="agent_create_suffix_coming_soon">&#160;(em breve)</string>
     <string name="agent_create_suffix_not_installed">&#160;(não instalado)</string>
-    <string name="agent_create_suffix_offline">&#160;(offline)</string>
+    <string name="agent_create_suffix_offline">&#160;· Offline</string>
     <string name="agent_create_hint_provider">A opção Padrão não altera as configurações de provedor do Claude Code. A opção Personalizado define ANTHROPIC_BASE_URL e ANTHROPIC_API_KEY para este agente.</string>
     <string name="agent_create_error_name_taken">Este nome já está em uso. Tente outro.</string>
     <string name="agent_create_error_name_reserved">O nome de agente @%1$s está reservado. Escolha outro.</string>
@@ -2251,9 +2251,9 @@
     <string name="home_notification_machine_offline_title_many">%1$s estão offline</string>
     <string name="home_notification_machine_offline_body_one">Nenhum agente está ativo neste computador agora — reconecte-o quando precisar dele de novo.</string>
     <string name="home_notification_machine_offline_body_many">Nenhum agente está ativo nestes computadores agora — reconecte-os quando precisar deles novamente.</string>
-    <string name="home_notification_machine_outdated_title_one">%1$s está executando um daemon desatualizado</string>
-    <string name="home_notification_machine_outdated_title_many">%1$s estão executando daemons desatualizados</string>
-    <string name="home_notification_machine_outdated_body">Pare o daemon e conecte novamente para atualizar.</string>
+    <string name="home_notification_machine_outdated_title_one">Atualização disponível para %1$s</string>
+    <string name="home_notification_machine_outdated_title_many">Atualização disponível para %1$s</string>
+    <string name="home_notification_machine_outdated_body">Pare e conecte novamente para atualizar.</string>
     <string name="home_notification_computer_upgrade_deadline_title_one">%1$s precisa ser atualizado antes de %2$s</string>
     <string name="home_notification_computer_upgrade_deadline_title_many">%1$d computadores precisam ser atualizados antes de %2$s</string>
     <string name="home_notification_computer_reinstall_deadline_title_one">%1$s precisa ser reinstalado: conclua antes de %2$s</string>
@@ -2639,7 +2639,8 @@
     <string name="settings_computers_rack_no_attention_title">Nenhum computador precisa de atenção</string>
     <string name="settings_computers_rack_no_attention_description">Todos os computadores conectados estão atualizados.</string>
     <string name="settings_computers_delete_busy">Excluindo…</string>
-    <string name="settings_computers_status_connected">Conectado</string>
+    <string name="settings_computers_status_connected">Online</string>
+    <string name="settings_computers_status_updating">Atualizando…</string>
     <string name="settings_computers_status_offline">Offline</string>
     <string name="settings_computers_section_name">Nome</string>
     <string name="settings_computers_label_name">Nome do computador</string>
@@ -2734,6 +2735,7 @@
     <string name="settings_computers_create_agent_error_failed">Não foi possível criar o agente: %1$s</string>
     <string name="settings_computers_create_agent_error_forbidden">Você não tem permissão para criar agentes.</string>
     <string name="settings_computers_update_available">Atualização disponível</string>
+    <string name="settings_computers_update_required">Atualização necessária</string>
     <string name="settings_computers_last_seen">Visto pela última vez %1$s</string>
     <string name="settings_computers_rack_computer_count_one">%1$d computador</string>
     <string name="settings_computers_rack_computer_count_other">%1$d computadores</string>
@@ -2741,6 +2743,7 @@
     <string name="settings_computers_rack_agent_count_one">%1$d agente</string>
     <string name="settings_computers_rack_agent_count_other">%1$d agentes</string>
     <string name="settings_computers_rack_version">v%1$s</string>
+    <string name="settings_computers_rack_updating_to">Atualizando para v%1$s</string>
     <string name="settings_computers_rack_last_seen">Visto pela última vez %1$s.</string>
     <string name="settings_computers_rack_percent_used">%1$s usado</string>
     <string name="settings_computers_rack_used_up">Esgotado</string>
@@ -2792,8 +2795,6 @@
     <string name="settings_computers_rack_no_match_title">Nenhum computador corresponde</string>
     <string name="settings_computers_rack_no_match_description">Tente outra busca ou limpe os filtros.</string>
     <string name="settings_computers_disk_low">Pouco espaço</string>
-    <string name="settings_computers_needs_upgrade">Requer atualização</string>
-    <string name="settings_computers_needs_reinstall">Requer reinstalação</string>
     <string name="settings_computers_workspace_status_active">Ativo</string>
     <string name="settings_computers_workspace_status_orphan">Órfão</string>
     <string name="settings_computers_cannot_delete_message_one">Este computador tem %1$d agente atribuído. Remova todos os agentes antes de excluir o computador.</string>
@@ -2863,10 +2864,10 @@
     <string name="settings_computers_mac_linux">macOS / Linux</string>
     <string name="settings_computers_release_notes_open">Ver novidades</string>
     <string name="settings_computers_release_notes_title">Novidades da v%1$s</string>
-    <string name="settings_computers_version_notice_upgrade_title">Atualize em breve</string>
-    <string name="settings_computers_version_notice_upgrade_title_scheduled">Atualize em breve: a partir de %1$s, os agentes deste computador deixarão de ser executados</string>
-    <string name="settings_computers_version_notice_reinstall_title">Esta versão precisa ser reinstalada</string>
-    <string name="settings_computers_version_notice_reinstall_title_scheduled">Reinstale em breve: a partir de %1$s, os agentes deste computador deixarão de ser executados</string>
+    <string name="settings_computers_version_notice_upgrade_title">Atualização necessária</string>
+    <string name="settings_computers_version_notice_upgrade_title_scheduled">Atualização necessária: a partir de %1$s, os agentes deste computador deixarão de ser executados</string>
+    <string name="settings_computers_version_notice_reinstall_title">Atualização necessária</string>
+    <string name="settings_computers_version_notice_reinstall_title_scheduled">Atualização necessária: a partir de %1$s, os agentes deste computador deixarão de ser executados</string>
     <string name="settings_computers_version_notice_enforced_title">Os agentes deste computador não estão em execução: a versão é antiga demais</string>
     <string name="settings_computers_version_notice_enforced_title_unknown">Os agentes deste computador não estão em execução: ele não informa a versão</string>
     <string name="settings_computers_version_notice_unknown_title">Este computador não informa a versão</string>
@@ -3284,8 +3285,8 @@
     <string name="member_row_status_disconnected">Desconectado</string>
     <string name="member_row_status_error">Erro</string>
     <string name="member_row_status_external">Externo</string>
-    <string name="member_row_status_working">Trabalhando</string>
-    <string name="member_row_status_thinking">Pensando</string>
+    <string name="member_row_status_working">Trabalhando…</string>
+    <string name="member_row_status_thinking">Pensando…</string>
     <string name="home_dm_agent_activity_thinking">Pensando…</string>
     <string name="home_dm_agent_activity_working">Processando…</string>
     <string name="agent_activity_starting">Iniciando…</string>
@@ -4188,6 +4189,8 @@
     <string name="agent_status_credential_plan_default_model">O plano não inclui este modelo</string>
     <string name="agent_status_credential_billing">Saldo do provedor esgotado</string>
     <string name="agent_status_computer_access_revoked">Acesso do computador revogado: mova o agente para outro computador (conectar de novo adiciona um novo)</string>
+    <string name="agent_status_computer_update_required">O computador precisa de atualização</string>
+    <string name="agent_status_open_computer">Abrir computador</string>
     <string name="agent_migration_place_from_revoked_computer_note">O computador deste agente perdeu o acesso ao servidor, então os arquivos dele não podem ser trazidos. Ele vai para o computador que você escolher e começa uma sessão nova lá na próxima vez que receber uma mensagem.</string>
     <string name="agent_status_model_unsupported">A conta ou o plano deste runtime não inclui “%1$s”. Troque o modelo ou entre com uma conta que o inclua</string>
     <string name="agent_status_model_unsupported_default">A conta ou o plano deste runtime não inclui o modelo deste agente. Troque o modelo ou entre com uma conta que o inclua</string>
@@ -4414,7 +4417,7 @@
     <string name="channel_announcement_picker_no_match">Nenhum Artifact corresponde</string>
     <string name="member_activity_overview_view_subagents">Subagentes</string>
     <string name="member_activity_subagents_open_from_log">Abrir subagente</string>
-    <string name="member_activity_subagents_state_running">Trabalhando</string>
+    <string name="member_activity_subagents_state_running">Trabalhando…</string>
     <string name="member_activity_subagents_state_done">Concluído</string>
     <string name="member_activity_subagents_state_failed">Falhou</string>
     <string name="member_activity_subagents_state_ceiling">Limite atingido</string>
@@ -4424,7 +4427,7 @@
     <string name="member_activity_subagents_steps_one">1 passo</string>
     <string name="member_activity_subagents_steps_other">%1$d passos</string>
     <string name="member_activity_subagents_now">agora: %1$s</string>
-    <string name="member_activity_subagents_group_running">Em andamento</string>
+    <string name="member_activity_subagents_group_running">Trabalhando</string>
     <string name="member_activity_subagents_group_ended">Encerrados</string>
     <string name="member_activity_subagents_recent_only">Mostra os subagentes da atividade recente deste agente.</string>
     <string name="member_activity_subagents_empty_title">Agora não há subagentes</string>

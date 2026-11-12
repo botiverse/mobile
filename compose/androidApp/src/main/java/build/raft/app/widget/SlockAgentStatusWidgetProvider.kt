@@ -5,6 +5,9 @@ import build.raft.app.MainActivity
 import build.raft.app.R
 import build.raft.app.RaftAgentStatusDotKind
 import build.raft.app.raftAgentStatusDotKind
+import build.raft.app.raftAgentWidgetStatusText
+import build.raft.app.resources.StringDesc
+import build.raft.app.resources.resolve
 import build.raft.app.model.ExternalAgentRuntimeId
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.RaftAppLog
@@ -168,8 +171,13 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
         private data class AgentWidgetSummary(
             val id: String,
             val name: String,
-            val detail: String,
+            /** The app's status words for this row, resolved in the app language when drawn. */
+            val detail: StringDesc,
+            /** The row says something beyond "Offline": a status, a hold, a runtime or a description. */
+            val hasDetail: Boolean,
             val status: AgentStatus?,
+            /** The agent list's `blockedReason`: a held agent's light is orange, as in the app. */
+            val blockedReason: String?,
             /** The wire value the status came from (`activity ?: status`), for the app's dot mapping. */
             val statusWireValue: String?,
             val external: Boolean,
@@ -179,7 +187,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
             val sourceIndex: Int
         ) {
             val hasSignal: Boolean
-                get() = status != null || detail != "Offline"
+                get() = status != null || hasDetail
 
             val sortKey: String
                 get() =
@@ -210,15 +218,21 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                                 ?.optJSONObject("current")
                                 ?.optString("runtime")
                                 ?.takeIf { it.isNotBlank() }
+                    val description = item.optString("description").takeIf { it.isNotBlank() }
+                    val blockedReason = item.optString("blockedReason").takeIf { it.isNotBlank() && it != "null" }
+                    val external = runtime == ExternalAgentRuntimeId || item.optBoolean("external", false)
+                    // The app's words (raft-design patterns/status.md): "Working…", "Computer update
+                    // required", the daemon's detail while it works; an unknown status says Offline,
+                    // as the gray light does (was "Online", which also made every agent count as live).
                     val detail =
-                        activityDetail
-                            ?: activity?.toAgentStatusLabel()
-                            ?: status?.label
-                            ?: runtime
-                            ?: item.optString("description").takeIf { it.isNotBlank() }
-                            // Unknown status: say so, as the gray dot does (was "Online", which
-                            // also made every agent count as live).
-                            ?: "Offline"
+                        raftAgentWidgetStatusText(
+                            statusWireValue = activity ?: statusValue,
+                            activityDetail = activityDetail,
+                            blockedReason = blockedReason,
+                            external = external,
+                            runtime = runtime,
+                            description = description,
+                        )
                     val latestAt =
                         item.optString("updatedAt").takeIf { it.isNotBlank() }
                             ?: item.optString("activityAt").takeIf { it.isNotBlank() }
@@ -230,9 +244,11 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                             id = id,
                             name = name,
                             detail = detail,
+                            hasDetail = blockedReason != null || runtime != null || description != null,
                             status = status,
+                            blockedReason = blockedReason,
                             statusWireValue = activity ?: statusValue,
-                            external = runtime == ExternalAgentRuntimeId || item.optBoolean("external", false),
+                            external = external,
                             lastSeenAt = item.optString("lastSeenAt").takeIf { it.isNotBlank() },
                             avatarWireValue = item.optString("avatarUrl").takeIf { it.isNotBlank() }
                                 ?: "pixel:robot",
@@ -268,12 +284,6 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                 AgentStatus.Offline, null -> 0
             }
 
-        private fun String.toAgentStatusLabel(): String =
-            split('_', '-', ' ')
-                .filter { it.isNotBlank() }
-                .joinToString(" ") { token -> token.replaceFirstChar { char -> char.uppercase() } }
-                .ifBlank { this }
-
         private suspend fun AgentWidgetSummary.toWidgetRow(context: Context): RaftAgentWidgetRow {
             // The app's dot mapping, so the widget never shows a colour the app would not.
             val tone =
@@ -282,6 +292,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                         external = external,
                         lastSeenAt = lastSeenAt,
                         nowEpochMillis = System.currentTimeMillis(),
+                        blockedReason = blockedReason,
                     )) {
                     RaftAgentStatusDotKind.Lime -> RaftAgentWidgetTone.Active
                     RaftAgentStatusDotKind.Yellow -> RaftAgentWidgetTone.Working
@@ -291,7 +302,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                 }
             return RaftAgentWidgetRow(
                 name = name,
-                detail = detail,
+                detail = detail.resolve(),
                 avatarLabel = name.take(1).uppercase().ifBlank { "A" },
                 statusTone = tone,
                 avatarImagePath = avatarWireValue?.let { context.cacheRaftWidgetAvatarPath(it) }

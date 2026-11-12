@@ -1576,7 +1576,7 @@
     <string name="member_label_command">Command</string>
     <string name="member_label_default">Default</string>
     <string name="member_label_fast">Fast</string>
-    <string name="member_label_connected">Connected</string>
+    <string name="member_label_connected">Online</string>
     <string name="member_label_offline">Offline</string>
     <string name="member_label_no_creator">No creator assigned</string>
     <string name="member_label_activity_only">Activity only</string>
@@ -2154,7 +2154,7 @@
     <string name="agent_create_error_no_machine_runtimes">Selected computer has no runtime data. Refresh computers or choose another computer.</string>
     <string name="agent_create_suffix_coming_soon">&#160;(coming soon)</string>
     <string name="agent_create_suffix_not_installed">&#160;(not installed)</string>
-    <string name="agent_create_suffix_offline">&#160;(offline)</string>
+    <string name="agent_create_suffix_offline">&#160;· Offline</string>
     <string name="agent_create_hint_provider">Default leaves Claude Code provider settings untouched. Custom sets ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY for this agent.</string>
     <string name="agent_create_error_name_taken">This name is already taken. Try a different name.</string>
     <string name="agent_create_error_name_reserved">Agent name @%1$s is reserved. Choose another name.</string>
@@ -2276,13 +2276,13 @@
     <string name="home_notification_machine_offline_title_many">%1$s are offline</string>
     <string name="home_notification_machine_offline_body_one">No agents are active on this computer right now — reconnect when you need it next.</string>
     <string name="home_notification_machine_offline_body_many">No agents are active on these computers right now — reconnect when you need them next.</string>
-    <string name="home_notification_machine_outdated_title_one">%1$s is running an outdated daemon</string>
-    <string name="home_notification_machine_outdated_title_many">%1$s are running outdated daemons</string>
-    <string name="home_notification_machine_outdated_body">Stop the daemon and reconnect to update.</string>
-    <string name="home_notification_computer_upgrade_deadline_title_one">%1$s needs to upgrade before %2$s</string>
-    <string name="home_notification_computer_upgrade_deadline_title_many">%1$d Computers need to upgrade before %2$s</string>
-    <string name="home_notification_computer_reinstall_deadline_title_one">%1$s needs a reinstall: finish before %2$s</string>
-    <string name="home_notification_computer_reinstall_deadline_title_many">%1$d Computers need a reinstall: finish before %2$s</string>
+    <string name="home_notification_machine_outdated_title_one">Update available for %1$s</string>
+    <string name="home_notification_machine_outdated_title_many">Update available for %1$s</string>
+    <string name="home_notification_machine_outdated_body">Stop it and reconnect to update.</string>
+    <string name="home_notification_computer_upgrade_deadline_title_one">%1$s: update required before %2$s</string>
+    <string name="home_notification_computer_upgrade_deadline_title_many">%1$d Computers: update required before %2$s</string>
+    <string name="home_notification_computer_reinstall_deadline_title_one">%1$s: update required before %2$s</string>
+    <string name="home_notification_computer_reinstall_deadline_title_many">%1$d Computers: update required before %2$s</string>
     <string name="home_notification_computer_version_deadline_body_one">After that, agents on this computer stop running.</string>
     <string name="home_notification_computer_version_deadline_body_many">After that, agents on these computers stop running.</string>
     <string name="home_notification_computer_reinstall_deadline_body_one">After that, agents on this computer stop running. Your agents and files stay where they are.</string>
@@ -2664,7 +2664,8 @@
     <string name="settings_computers_rack_no_attention_title">No computers need attention</string>
     <string name="settings_computers_rack_no_attention_description">All connected computers are up to date.</string>
     <string name="settings_computers_delete_busy">Deleting...</string>
-    <string name="settings_computers_status_connected">Connected</string>
+    <string name="settings_computers_status_connected">Online</string>
+    <string name="settings_computers_status_updating">Updating…</string>
     <string name="settings_computers_status_offline">Offline</string>
     <string name="settings_computers_section_name">Name</string>
     <string name="settings_computers_label_name">Computer name</string>
@@ -2704,7 +2705,7 @@
     <string name="settings_computers_runtime_usage_parse_unavailable">Usage unavailable</string>
     <string name="settings_computers_runtime_usage_window_used">%1$s used · resets %2$s</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">%1$s used · reset time unavailable</string>
-    <string name="settings_computers_runtime_usage_window_used_up">Used up · resets %1$s</string>
+    <string name="settings_computers_runtime_usage_window_used_up">Used up · back %1$s</string>
     <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">Used up · reset time unavailable</string>
     <string name="settings_computers_runtime_usage_later">later</string>
     <string name="settings_computers_runtime_usage_metadata">Account-wide · updated %1$s</string>
@@ -2741,7 +2742,7 @@
     <string name="settings_computers_runtime_usage_limit_reset_not_attached">This Computer has no owner, so its runtimes can't be signed in from here</string>
     <!-- Runtime sign-in from the Computer page (slock docs/contracts/runtime-auth.md; web machine.runtimeAuth.*) -->
     <string name="settings_computers_runtime_auth_not_signed_in_suffix">&#160;(not signed in)</string>
-    <string name="settings_computers_runtime_auth_not_signed_in">Not signed in</string>
+    <string name="settings_computers_runtime_auth_not_signed_in">Signed out</string>
     <string name="settings_computers_runtime_auth_signed_in">Signed in</string>
     <string name="settings_computers_runtime_auth_sign_in_action">Sign in</string>
     <string name="settings_computers_runtime_auth_sign_out_action">Sign out</string>
@@ -2886,6 +2887,7 @@
     <string name="settings_computers_create_agent_error_failed">Failed to create agent: %1$s</string>
     <string name="settings_computers_create_agent_error_forbidden">You do not have permission to create agents.</string>
     <string name="settings_computers_update_available">Update available</string>
+    <string name="settings_computers_update_required">Update required</string>
     <string name="settings_computers_last_seen">Last seen %1$s</string>
     <string name="settings_computers_rack_computer_count_one">%1$d computer</string>
     <string name="settings_computers_rack_computer_count_other">%1$d computers</string>
@@ -2893,6 +2895,7 @@
     <string name="settings_computers_rack_agent_count_one">%1$d agent</string>
     <string name="settings_computers_rack_agent_count_other">%1$d agents</string>
     <string name="settings_computers_rack_version">v%1$s</string>
+    <string name="settings_computers_rack_updating_to">Updating to v%1$s</string>
     <string name="settings_computers_rack_last_seen">Last seen %1$s.</string>
     <string name="settings_computers_rack_percent_used">%1$s used</string>
     <string name="settings_computers_rack_used_up">Used up</string>
@@ -2944,8 +2947,6 @@
     <string name="settings_computers_rack_no_match_title">No computers match</string>
     <string name="settings_computers_rack_no_match_description">Try another search, or clear the filters.</string>
     <string name="settings_computers_disk_low">Low disk</string>
-    <string name="settings_computers_needs_upgrade">Needs upgrade</string>
-    <string name="settings_computers_needs_reinstall">Needs reinstall</string>
     <string name="settings_computers_workspace_status_active">Active</string>
     <string name="settings_computers_workspace_status_orphan">Orphaned</string>
     <string name="settings_computers_cannot_delete_message_one">This computer has %1$d agent assigned. Remove all agents before deleting the computer.</string>
@@ -2960,7 +2961,7 @@
     <string name="settings_computers_restart_timed_out">Restart timed out. Check that the Computer is online and retry.</string>
     <string name="settings_computers_up_to_date">Up to date</string>
     <string name="settings_computers_upgrade_to_version">Upgrade to v%1$s</string>
-    <string name="settings_computers_upgrading">Upgrading…</string>
+    <string name="settings_computers_upgrading">Updating…</string>
     <string name="settings_computers_upgrade_status_reinstall">This version can't be upgraded from the web. Reinstall it with the command at the top of this page.</string>
     <string name="settings_computers_upgrade_status_reading">Reading the version; check back shortly.</string>
     <string name="settings_computers_upgrade_status_cannot_check">Can't check for a new version right now. Try again later.</string>
@@ -3015,10 +3016,10 @@
     <string name="settings_computers_mac_linux">macOS / Linux</string>
     <string name="settings_computers_release_notes_open">View what's new</string>
     <string name="settings_computers_release_notes_title">What's new in v%1$s</string>
-    <string name="settings_computers_version_notice_upgrade_title">Upgrade soon</string>
-    <string name="settings_computers_version_notice_upgrade_title_scheduled">Upgrade soon: from %1$s, agents on this computer stop running</string>
-    <string name="settings_computers_version_notice_reinstall_title">This version needs a reinstall</string>
-    <string name="settings_computers_version_notice_reinstall_title_scheduled">Reinstall soon: from %1$s, agents on this computer stop running</string>
+    <string name="settings_computers_version_notice_upgrade_title">Update required</string>
+    <string name="settings_computers_version_notice_upgrade_title_scheduled">Update required: from %1$s, agents on this computer stop running</string>
+    <string name="settings_computers_version_notice_reinstall_title">Update required</string>
+    <string name="settings_computers_version_notice_reinstall_title_scheduled">Update required: from %1$s, agents on this computer stop running</string>
     <string name="settings_computers_version_notice_enforced_title">Agents on this computer aren't running: the version is too old</string>
     <string name="settings_computers_version_notice_enforced_title_unknown">Agents on this computer aren't running: it doesn't report its version</string>
     <string name="settings_computers_version_notice_unknown_title">This computer doesn't report its version</string>
@@ -3439,8 +3440,8 @@
     <string name="member_row_status_disconnected">Disconnected</string>
     <string name="member_row_status_error">Error</string>
     <string name="member_row_status_external">External</string>
-    <string name="member_row_status_working">Working</string>
-    <string name="member_row_status_thinking">Thinking</string>
+    <string name="member_row_status_working">Working…</string>
+    <string name="member_row_status_thinking">Thinking…</string>
     <string name="home_dm_agent_activity_thinking">Thinking…</string>
     <string name="home_dm_agent_activity_working">Working…</string>
     <string name="agent_activity_starting">Starting…</string>
@@ -4446,6 +4447,8 @@
     <string name="agent_status_credential_plan_default_model">Plan doesn't include this model</string>
     <string name="agent_status_credential_billing">Provider balance exhausted</string>
     <string name="agent_status_computer_access_revoked">Computer access revoked: move the agent to another computer (re-attaching adds a new one)</string>
+    <string name="agent_status_computer_update_required">Computer update required</string>
+    <string name="agent_status_open_computer">Open computer</string>
     <string name="agent_migration_place_from_revoked_computer_note">This agent's Computer lost its access to the server, so its files can't be brought over. It moves to the computer you choose and starts a fresh session there the next time it gets a message.</string>
     <string name="agent_status_model_unsupported">This runtime's account or plan doesn't include "%1$s". Change the model, or sign in with an account that includes it</string>
     <string name="agent_status_model_unsupported_default">This runtime's account or plan doesn't include this agent's model. Change the model, or sign in with an account that includes it</string>
@@ -4672,7 +4675,7 @@
     <string name="channel_announcement_picker_no_match">No Artifacts match</string>
     <string name="member_activity_overview_view_subagents">Subagents</string>
     <string name="member_activity_subagents_open_from_log">Open subagent</string>
-    <string name="member_activity_subagents_state_running">Working</string>
+    <string name="member_activity_subagents_state_running">Working…</string>
     <string name="member_activity_subagents_state_done">Done</string>
     <string name="member_activity_subagents_state_failed">Failed</string>
     <string name="member_activity_subagents_state_ceiling">Limit reached</string>
@@ -4682,7 +4685,7 @@
     <string name="member_activity_subagents_steps_one">1 step</string>
     <string name="member_activity_subagents_steps_other">%1$d steps</string>
     <string name="member_activity_subagents_now">now: %1$s</string>
-    <string name="member_activity_subagents_group_running">Running</string>
+    <string name="member_activity_subagents_group_running">Working</string>
     <string name="member_activity_subagents_group_ended">Ended</string>
     <string name="member_activity_subagents_recent_only">Lists the subagents in this agent's recent activity.</string>
     <string name="member_activity_subagents_empty_title">No subagents right now</string>

@@ -1548,7 +1548,7 @@
     <string name="member_label_command">Команда</string>
     <string name="member_label_default">По умолчанию</string>
     <string name="member_label_fast">Быстрый</string>
-    <string name="member_label_connected">Подключён</string>
+    <string name="member_label_connected">В сети</string>
     <string name="member_label_offline">Не в сети</string>
     <string name="member_label_no_creator">Создатель не указан</string>
     <string name="member_label_activity_only">Только активность</string>
@@ -2126,7 +2126,7 @@
     <string name="agent_create_error_no_machine_runtimes">Для выбранного компьютера нет данных о средах выполнения. Обновите список компьютеров или выберите другой.</string>
     <string name="agent_create_suffix_coming_soon">&#160;(скоро)</string>
     <string name="agent_create_suffix_not_installed">&#160;(не установлено)</string>
-    <string name="agent_create_suffix_offline">&#160;(не в сети)</string>
+    <string name="agent_create_suffix_offline">&#160;· Не в сети</string>
     <string name="agent_create_hint_provider">Вариант «По умолчанию» не меняет настройки провайдера Claude Code. Вариант «Пользовательский» задаёт для этого агента ANTHROPIC_BASE_URL и ANTHROPIC_API_KEY.</string>
     <string name="agent_create_error_name_taken">Это имя уже занято. Выберите другое.</string>
     <string name="agent_create_error_name_reserved">Имя агента @%1$s зарезервировано. Выберите другое.</string>
@@ -2248,9 +2248,9 @@
     <string name="home_notification_machine_offline_title_many">Компьютеры не в сети: %1$s</string>
     <string name="home_notification_machine_offline_body_one">Сейчас на этом компьютере нет активных агентов — подключите его, когда он снова понадобится.</string>
     <string name="home_notification_machine_offline_body_many">Сейчас на этих компьютерах нет активных агентов — подключите их, когда они снова понадобятся.</string>
-    <string name="home_notification_machine_outdated_title_one">На компьютере %1$s устаревший демон</string>
-    <string name="home_notification_machine_outdated_title_many">Устаревший демон на компьютерах: %1$s</string>
-    <string name="home_notification_machine_outdated_body">Чтобы обновить демон, остановите его и подключите компьютер заново.</string>
+    <string name="home_notification_machine_outdated_title_one">Доступно обновление для %1$s</string>
+    <string name="home_notification_machine_outdated_title_many">Доступно обновление для %1$s</string>
+    <string name="home_notification_machine_outdated_body">Остановите и подключите заново, чтобы обновить.</string>
     <string name="home_notification_computer_upgrade_deadline_title_one">Компьютер %1$s нужно обновить не позднее %2$s</string>
     <string name="home_notification_computer_upgrade_deadline_title_many">Компьютеры (%1$d) нужно обновить не позднее %2$s</string>
     <string name="home_notification_computer_reinstall_deadline_title_one">Компьютер %1$s нужно переустановить не позднее %2$s</string>
@@ -2636,7 +2636,8 @@
     <string name="settings_computers_rack_no_attention_title">Нет компьютеров, требующих внимания</string>
     <string name="settings_computers_rack_no_attention_description">Все подключённые компьютеры обновлены.</string>
     <string name="settings_computers_delete_busy">Удаление…</string>
-    <string name="settings_computers_status_connected">Подключён</string>
+    <string name="settings_computers_status_connected">В сети</string>
+    <string name="settings_computers_status_updating">Обновление…</string>
     <string name="settings_computers_status_offline">Не в сети</string>
     <string name="settings_computers_section_name">Имя</string>
     <string name="settings_computers_label_name">Имя компьютера</string>
@@ -2731,6 +2732,7 @@
     <string name="settings_computers_create_agent_error_failed">Не удалось создать агента: %1$s</string>
     <string name="settings_computers_create_agent_error_forbidden">У вас нет прав на создание агентов.</string>
     <string name="settings_computers_update_available">Доступно обновление</string>
+    <string name="settings_computers_update_required">Требуется обновление</string>
     <string name="settings_computers_last_seen">Последняя активность: %1$s</string>
     <string name="settings_computers_rack_computer_count_one">%1$d компьютер</string>
     <string name="settings_computers_rack_computer_count_other">Компьютеров: %1$d</string>
@@ -2738,6 +2740,7 @@
     <string name="settings_computers_rack_agent_count_one">%1$d агент</string>
     <string name="settings_computers_rack_agent_count_other">агентов: %1$d</string>
     <string name="settings_computers_rack_version">v%1$s</string>
+    <string name="settings_computers_rack_updating_to">Обновление до v%1$s</string>
     <string name="settings_computers_rack_last_seen">Последняя активность: %1$s.</string>
     <string name="settings_computers_rack_percent_used">Использовано %1$s</string>
     <string name="settings_computers_rack_used_up">Исчерпано</string>
@@ -2789,8 +2792,6 @@
     <string name="settings_computers_rack_no_match_title">Нет подходящих Computer</string>
     <string name="settings_computers_rack_no_match_description">Измените запрос или сбросьте фильтры.</string>
     <string name="settings_computers_disk_low">Мало места</string>
-    <string name="settings_computers_needs_upgrade">Нужно обновление</string>
-    <string name="settings_computers_needs_reinstall">Нужна переустановка</string>
     <string name="settings_computers_workspace_status_active">Активно</string>
     <string name="settings_computers_workspace_status_orphan">Осиротевшее</string>
     <string name="settings_computers_cannot_delete_message_one">К этому компьютеру привязан %1$d агент. Удалите всех агентов, прежде чем удалять компьютер.</string>
@@ -2860,10 +2861,10 @@
     <string name="settings_computers_mac_linux">macOS / Linux</string>
     <string name="settings_computers_release_notes_open">Что нового</string>
     <string name="settings_computers_release_notes_title">Что нового в v%1$s</string>
-    <string name="settings_computers_version_notice_upgrade_title">Пора обновиться</string>
-    <string name="settings_computers_version_notice_upgrade_title_scheduled">Пора обновиться: с %1$s агенты на этом компьютере перестанут работать</string>
-    <string name="settings_computers_version_notice_reinstall_title">Эту версию нужно переустановить</string>
-    <string name="settings_computers_version_notice_reinstall_title_scheduled">Пора переустановить: с %1$s агенты на этом компьютере перестанут работать</string>
+    <string name="settings_computers_version_notice_upgrade_title">Требуется обновление</string>
+    <string name="settings_computers_version_notice_upgrade_title_scheduled">Требуется обновление: с %1$s агенты на этом компьютере перестанут работать</string>
+    <string name="settings_computers_version_notice_reinstall_title">Требуется обновление</string>
+    <string name="settings_computers_version_notice_reinstall_title_scheduled">Требуется обновление: с %1$s агенты на этом компьютере перестанут работать</string>
     <string name="settings_computers_version_notice_enforced_title">Агенты на этом компьютере не работают: версия слишком старая</string>
     <string name="settings_computers_version_notice_enforced_title_unknown">Агенты на этом компьютере не работают: он не сообщает свою версию</string>
     <string name="settings_computers_version_notice_unknown_title">Этот компьютер не сообщает свою версию</string>
@@ -3281,8 +3282,8 @@
     <string name="member_row_status_disconnected">Отключён</string>
     <string name="member_row_status_error">Ошибка</string>
     <string name="member_row_status_external">Внешний</string>
-    <string name="member_row_status_working">Работает</string>
-    <string name="member_row_status_thinking">Думает</string>
+    <string name="member_row_status_working">Работает…</string>
+    <string name="member_row_status_thinking">Думает…</string>
     <string name="home_dm_agent_activity_thinking">Думает…</string>
     <string name="home_dm_agent_activity_working">Работает…</string>
     <string name="agent_activity_starting">Запуск…</string>
@@ -4241,6 +4242,8 @@
     <string name="agent_status_credential_plan_default_model">Тариф не включает эту модель</string>
     <string name="agent_status_credential_billing">Баланс провайдера исчерпан</string>
     <string name="agent_status_computer_access_revoked">Доступ компьютера отозван: перенесите агента на другой компьютер (повторное подключение добавит новый компьютер)</string>
+    <string name="agent_status_computer_update_required">Требуется обновление компьютера</string>
+    <string name="agent_status_open_computer">Открыть компьютер</string>
     <string name="agent_migration_place_from_revoked_computer_note">Компьютер этого агента потерял доступ к серверу, поэтому его файлы перенести нельзя. Агент переедет на выбранный компьютер и начнёт там новый сеанс, когда получит следующее сообщение.</string>
     <string name="agent_status_model_unsupported">Аккаунт или тариф этой среды выполнения не включает «%1$s». Смените модель или войдите в аккаунт, где она есть</string>
     <string name="agent_status_model_unsupported_default">Аккаунт или тариф этой среды выполнения не включает модель этого агента. Смените модель или войдите в аккаунт, где она есть</string>
@@ -4491,7 +4494,7 @@
     <string name="channel_announcement_picker_no_match">Нет подходящих Artifacts</string>
     <string name="member_activity_overview_view_subagents">Субагенты</string>
     <string name="member_activity_subagents_open_from_log">Открыть субагента</string>
-    <string name="member_activity_subagents_state_running">Работает</string>
+    <string name="member_activity_subagents_state_running">Работает…</string>
     <string name="member_activity_subagents_state_done">Готово</string>
     <string name="member_activity_subagents_state_failed">Сбой</string>
     <string name="member_activity_subagents_state_ceiling">Достигнут лимит</string>
@@ -4501,7 +4504,7 @@
     <string name="member_activity_subagents_steps_one">1 шаг</string>
     <string name="member_activity_subagents_steps_other">Шагов: %1$d</string>
     <string name="member_activity_subagents_now">сейчас: %1$s</string>
-    <string name="member_activity_subagents_group_running">Активные</string>
+    <string name="member_activity_subagents_group_running">Работают</string>
     <string name="member_activity_subagents_group_ended">Завершённые</string>
     <string name="member_activity_subagents_recent_only">Здесь показаны субагенты из недавней активности этого агента.</string>
     <string name="member_activity_subagents_empty_title">Сейчас субагентов нет</string>

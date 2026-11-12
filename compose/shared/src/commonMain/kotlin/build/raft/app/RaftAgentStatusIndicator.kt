@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.resources.*
 import build.raft.app.data.AgentActivitySubscriptions
 import build.raft.app.data.AgentBlockedState
+import build.raft.app.data.statusLabelRes
 import build.raft.app.data.AgentRuntimeErrorCode
 import build.raft.app.data.LikelyOnlineAgentStatusLabel
 import build.raft.app.data.NeutralAgentStatusLabel
@@ -490,7 +491,4 @@ internal fun RaftAgentStatusIndicatorState.localizedMemberStatusLabel(): String 
 
 /** Web `formatAgentBlockedText`: the held state's status words in this locale. */
 @Composable
-internal fun AgentBlockedState.localizedStatusLabel(): String =
-    when (this) {
-        AgentBlockedState.ComputerAccessRevoked -> stringResource(Res.string.agent_status_computer_access_revoked)
-    }
+internal fun AgentBlockedState.localizedStatusLabel(): String = stringResource(statusLabelRes)

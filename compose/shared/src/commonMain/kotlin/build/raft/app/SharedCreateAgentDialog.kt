@@ -386,7 +386,7 @@ internal fun createAgentRuntimeAvailabilityError(
 internal fun createAgentMachineDropdownItems(
     machines: List<SharedCreateAgentMachineOption>,
     requiredComputer: String?,
-    offlineSuffix: String = " (offline)"
+    offlineSuffix: String = " · Offline"
 ): List<CreateAgentDropdownItem> =
     machines.map { machine ->
         val isOffline = machine.status != "online"

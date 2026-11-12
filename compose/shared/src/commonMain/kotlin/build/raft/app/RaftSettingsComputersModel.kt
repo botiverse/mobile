@@ -74,6 +74,12 @@ internal data class RaftComputerRowModel(
     val versionNotice: RaftComputerVersionNotice? = null,
     /** The light on the device icon's corner (web `ComputerRowStatusDot`). */
     val dot: RaftComputerDot = if (online) RaftComputerDot.Online else RaftComputerDot.Offline,
+    /**
+     * A web upgrade is in flight (the machines row's `upgradeRequest` is `pending`, which every viewer
+     * reads): the Computer is updating, in progress, even while it restarts offline (raft-design
+     * patterns/status.md: "Updating…", yellow, never "Offline").
+     */
+    val updating: Boolean = false,
     /** Online with less than 10% and under 20 GiB free (shared `isMachineDiskLow`): the "Low disk" badge. */
     val diskLow: Boolean = false,
     /** Web `liveDiskStatus` as the card's meter: online and reported only; warns when [diskLow]. */
@@ -103,17 +109,31 @@ internal fun SettingsComputerSizeStatusSnapshot.toRaftComputerResourceMeter(warn
     return RaftComputerResourceMeter(percentUsed = percent, warn = warn)
 }
 
-/** Web `ComputerRowVersionFact`: the version floor's chip, else the newer version to point at. */
+/**
+ * What follows the version on the facts line (raft-design patterns/status.md, one word for each
+ * state): the update in flight, the version floor, else a newer version.
+ */
 internal sealed interface RaftComputerVersionNotice {
-    /** `→ v{version}`. */
+    /** "Update available" ([version] is the newer one; the line no longer points at it with an arrow). */
     data class Available(val version: String) : RaftComputerVersionNotice
 
-    /** "Needs upgrade" (below the floor, web can upgrade it) or "Needs reinstall" (too old for that). */
+    /** "Update required": below the floor, whether an upgrade ([reinstall] false) or a reinstall gets past it. */
     data class BelowFloor(val reinstall: Boolean) : RaftComputerVersionNotice
+
+    /** "Updating to v{version}": a web upgrade to [version] is in flight. */
+    data class Updating(val version: String) : RaftComputerVersionNotice
 }
 
-/** Web `getComputerRowDotStatus`: pink while an upgrade waits, else the computer's presence. */
-internal enum class RaftComputerDot { Online, Offline, Upgrade }
+/**
+ * The device icon's light (raft-design patterns/status.md): yellow [Updating] while an update is
+ * in flight; orange [Upgrade] while Update available or Update required waits (both need
+ * attention, xxchan 2026-11-12); else the computer's presence.
+ */
+internal enum class RaftComputerDot { Online, Offline, Upgrade, Updating }
+
+/** Web `upgradeRequest.state === "pending"` on a managed Computer: an update is in flight. */
+internal fun SettingsComputerSnapshot.raftComputerUpdating(): Boolean =
+    isComputer && upgradeRequest?.state == "pending"
 
 /** Why a runtime the computer could run isn't detected on it (web `runtimeAvailabilitySuffix`). */
 internal enum class RaftComputerRuntimeAvailability {
@@ -263,8 +283,10 @@ internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel 
         }
     val availableVersion = raftComputerAvailableVersion(this)
     val tier = raftComputerVersionTier(this)
+    val updating = raftComputerUpdating()
     val versionNotice =
         when {
+            updating -> RaftComputerVersionNotice.Updating(upgradeRequest?.targetVersion.orEmpty())
             tier is RaftComputerVersionTier.Notice -> RaftComputerVersionNotice.BelowFloor(reinstall = tier.reinstall)
             availableVersion != null -> RaftComputerVersionNotice.Available(availableVersion)
             else -> null
@@ -287,6 +309,7 @@ internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel 
         versionNotice = versionNotice,
         dot =
             when {
+                updating -> RaftComputerDot.Updating
                 kind == RaftComputerKind.Computer && versionNotice != null -> RaftComputerDot.Upgrade
                 online -> RaftComputerDot.Online
                 else -> RaftComputerDot.Offline
@@ -296,6 +319,7 @@ internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel 
         memory = memoryStatus?.takeIf { online }?.toRaftComputerResourceMeter(warn = false),
         canViewRuntimeUsage = canViewRuntimeUsage,
         owner = raftComputerOwner(this),
+        updating = updating,
     )
 }
 
@@ -506,8 +530,11 @@ internal sealed interface RaftComputerCardFacts {
     data class Offline(val lastSeenAt: String?) : RaftComputerCardFacts
 }
 
+/** Online, or updating (an update's restart is in progress, not an outage): drawn as present. */
+internal val RaftComputerRowModel.present: Boolean get() = online || updating
+
 internal fun RaftComputerRowModel.cardFacts(): RaftComputerCardFacts =
-    if (online) {
+    if (present) {
         RaftComputerCardFacts.Online(osName = osName, kind = kind, version = version, notice = versionNotice)
     } else {
         RaftComputerCardFacts.Offline(lastSeenAt)
