@@ -2684,13 +2684,13 @@
     <string name="settings_computers_state_no_creator">作成者なし</string>
     <string name="settings_computers_creator_handle">@%1$s</string>
     <string name="settings_computers_label_runtimes">検出されたランタイム</string>
-    <string name="settings_computers_runtime_suffix_update_computer">（Raft Computer の更新が必要）</string>
+    <string name="settings_computers_runtime_suffix_update_computer">（アップデートが必要）</string>
     <string name="settings_computers_runtime_usage_title">%1$s の使用量</string>
     <string name="settings_computers_runtime_usage_version">バージョン %1$s</string>
     <string name="settings_computers_runtime_usage_version_unavailable">バージョン不明</string>
     <string name="settings_computers_runtime_usage_private">コンピューターの編集権限を持つユーザー、またはこのコンピューターを接続したユーザーにのみ表示されます</string>
     <string name="settings_computers_runtime_usage_health_ok">正常</string>
-    <string name="settings_computers_runtime_usage_health_rate_limited">レート制限中</string>
+    <string name="settings_computers_runtime_usage_health_rate_limited">上限到達</string>
     <string name="settings_computers_runtime_usage_health_reauth_required">再認証が必要</string>
     <string name="settings_computers_runtime_usage_health_unsupported">非対応</string>
     <string name="settings_computers_runtime_usage_health_error">エラー</string>
@@ -2705,8 +2705,8 @@
     <string name="settings_computers_runtime_usage_parse_unavailable">使用量を表示できません</string>
     <string name="settings_computers_runtime_usage_window_used">使用済み %1$s · リセット：%2$s</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">使用済み %1$s · リセット時刻不明</string>
-    <string name="settings_computers_runtime_usage_window_used_up">上限に達しました · リセット：%1$s</string>
-    <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">上限に達しました · リセット時刻不明</string>
+    <string name="settings_computers_runtime_usage_window_used_up">上限到達 · %1$sに回復</string>
+    <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">上限到達</string>
     <string name="settings_computers_runtime_usage_later">後ほど</string>
     <string name="settings_computers_runtime_usage_metadata">アカウント全体 · 更新：%1$s</string>
     <string name="settings_computers_runtime_usage_recently">先ほど</string>
@@ -2902,7 +2902,7 @@
     <string name="settings_computers_rack_resets_in_minutes">%1$dm で回復</string>
     <string name="settings_computers_rack_resets_in_hours">%1$dh で回復</string>
     <string name="settings_computers_rack_resets_in_days">%1$dd で回復</string>
-    <string name="settings_computers_rack_used_up_resets">上限到達、%1$sにリセット</string>
+    <string name="settings_computers_rack_used_up_resets">上限到達 · %1$sに回復</string>
     <string name="settings_computers_rack_col_other">その他</string>
     <string name="settings_computers_rack_other_runtimes">その他のランタイム</string>
     <string name="settings_computers_rack_usage_unavailable">%1$s: 使用量を取得できません</string>
@@ -3477,7 +3477,7 @@
     <string name="runtime_quota_window_five_hour">5 時間</string>
     <string name="runtime_quota_window_week">今週</string>
     <string name="runtime_quota_used">%1$s 使用済み %2$s</string>
-    <string name="runtime_quota_used_up">%1$s 上限に達しました（%2$sにリセット）</string>
+    <string name="runtime_quota_used_up">%1$s 上限到達 · %2$sに回復</string>
     <string name="runtime_quota_used_up_no_reset">%1$s 上限に達しました</string>
     <string name="runtime_quota_attention">%1$s · 対応が必要</string>
     <string name="runtime_picker_search">検索</string>
@@ -4448,6 +4448,7 @@
     <string name="agent_status_credential_billing">プロバイダーの残高がありません</string>
     <string name="agent_status_computer_access_revoked">コンピューターのアクセスが取り消されました。エージェントを別のコンピューターに移動してください（再接続すると新しいコンピューターとして追加されます）</string>
     <string name="agent_status_computer_update_required">コンピューターのアップデートが必要</string>
+    <string name="agent_status_computer_offline">コンピューターがオフライン</string>
     <string name="agent_status_open_computer">コンピューターを開く</string>
     <string name="agent_migration_place_from_revoked_computer_note">このエージェントのコンピューターはサーバーへのアクセスを失ったため、ファイルを移せません。選んだコンピューターに移動し、次にメッセージを受け取ったときにそこで新しいセッションを始めます。</string>
     <string name="agent_status_model_unsupported">このランタイムのアカウントまたはプランには「%1$s」が含まれていません。モデルを変更するか、このモデルを含むアカウントでログインしてください</string>

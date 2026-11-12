@@ -2656,13 +2656,13 @@
     <string name="settings_computers_state_no_creator">Создатель не указан</string>
     <string name="settings_computers_creator_handle">@%1$s</string>
     <string name="settings_computers_label_runtimes">Обнаруженные среды выполнения</string>
-    <string name="settings_computers_runtime_suffix_update_computer">&#160;(обновите Raft Computer)</string>
+    <string name="settings_computers_runtime_suffix_update_computer">&#160;(требуется обновление)</string>
     <string name="settings_computers_runtime_usage_title">%1$s: использование</string>
     <string name="settings_computers_runtime_usage_version">Версия %1$s</string>
     <string name="settings_computers_runtime_usage_version_unavailable">Версия неизвестна</string>
     <string name="settings_computers_runtime_usage_private">Видно тем, у кого есть право редактировать компьютер, и тому, кто его подключил</string>
     <string name="settings_computers_runtime_usage_health_ok">в норме</string>
-    <string name="settings_computers_runtime_usage_health_rate_limited">превышен лимит запросов</string>
+    <string name="settings_computers_runtime_usage_health_rate_limited">исчерпано</string>
     <string name="settings_computers_runtime_usage_health_reauth_required">нужен повторный вход</string>
     <string name="settings_computers_runtime_usage_health_unsupported">не поддерживается</string>
     <string name="settings_computers_runtime_usage_health_error">ошибка</string>
@@ -2677,8 +2677,8 @@
     <string name="settings_computers_runtime_usage_parse_unavailable">Данные недоступны</string>
     <string name="settings_computers_runtime_usage_window_used">Использовано %1$s · сброс %2$s</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">Использовано %1$s · время сброса неизвестно</string>
-    <string name="settings_computers_runtime_usage_window_used_up">Исчерпано · сброс %1$s</string>
-    <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">Исчерпано · время сброса неизвестно</string>
+    <string name="settings_computers_runtime_usage_window_used_up">Исчерпано · вернётся %1$s</string>
+    <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">Исчерпано</string>
     <string name="settings_computers_runtime_usage_later">позже</string>
     <string name="settings_computers_runtime_usage_metadata">Весь аккаунт · обновлено %1$s</string>
     <string name="settings_computers_runtime_usage_recently">недавно</string>
@@ -2747,7 +2747,7 @@
     <string name="settings_computers_rack_resets_in_minutes">Сброс %1$dм</string>
     <string name="settings_computers_rack_resets_in_hours">Сброс %1$dч</string>
     <string name="settings_computers_rack_resets_in_days">Сброс %1$dд</string>
-    <string name="settings_computers_rack_used_up_resets">исчерпано, сброс %1$s</string>
+    <string name="settings_computers_rack_used_up_resets">Исчерпано · вернётся %1$s</string>
     <string name="settings_computers_rack_col_other">Другое</string>
     <string name="settings_computers_rack_other_runtimes">Другие среды выполнения</string>
     <string name="settings_computers_rack_usage_unavailable">%1$s: данные об использовании недоступны</string>
@@ -3319,7 +3319,7 @@
     <string name="runtime_quota_window_five_hour">5 ч</string>
     <string name="runtime_quota_window_week">Неделя</string>
     <string name="runtime_quota_used">%1$s: использовано %2$s</string>
-    <string name="runtime_quota_used_up">%1$s: исчерпано, сброс %2$s</string>
+    <string name="runtime_quota_used_up">%1$s: исчерпано · вернётся %2$s</string>
     <string name="runtime_quota_used_up_no_reset">%1$s: исчерпано</string>
     <string name="runtime_quota_attention">%1$s · требует внимания</string>
     <string name="runtime_picker_search">Поиск</string>
@@ -4243,6 +4243,7 @@
     <string name="agent_status_credential_billing">Баланс провайдера исчерпан</string>
     <string name="agent_status_computer_access_revoked">Доступ компьютера отозван: перенесите агента на другой компьютер (повторное подключение добавит новый компьютер)</string>
     <string name="agent_status_computer_update_required">Требуется обновление компьютера</string>
+    <string name="agent_status_computer_offline">Компьютер не в сети</string>
     <string name="agent_status_open_computer">Открыть компьютер</string>
     <string name="agent_migration_place_from_revoked_computer_note">Компьютер этого агента потерял доступ к серверу, поэтому его файлы перенести нельзя. Агент переедет на выбранный компьютер и начнёт там новый сеанс, когда получит следующее сообщение.</string>
     <string name="agent_status_model_unsupported">Аккаунт или тариф этой среды выполнения не включает «%1$s». Смените модель или войдите в аккаунт, где она есть</string>
@@ -4717,4 +4718,5 @@
     <string name="external_invite_error_busy">Канал %1$s обновляется. Попробуйте ещё раз через минуту.</string>
     <string name="external_invite_error_too_many_attempts">Слишком много попыток. Подождите минуту и попробуйте ещё раз.</string>
     <string name="external_invite_error_generic">Что-то пошло не так. Попробуйте ещё раз.</string>
+    <string name="settings_computers_runtime_auth_not_signed_in">Вход не выполнен</string>
 </resources>

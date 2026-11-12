@@ -2728,8 +2728,14 @@ private fun RaftComputerRuntimeBadge(chip: RaftComputerRuntimeChip) {
         // Long press copies the runtime name without the "(not installed)" style suffix.
         modifier = Modifier.raftCopyable(chip.name),
         appearance = RaftBadgeAppearance.Soft,
+        // "(update required)" is orange like "(not signed in)": it won't run until someone updates
+        // the Computer (raft-design patterns/status.md; web #14585). Not installed stays muted.
         variant =
-            if (chip.availability == RaftComputerRuntimeAvailability.Detected) RaftBadgeVariant.Information else RaftBadgeVariant.Muted,
+            when (chip.availability) {
+                RaftComputerRuntimeAvailability.Detected -> RaftBadgeVariant.Information
+                RaftComputerRuntimeAvailability.UpdateComputer -> RaftBadgeVariant.Warning
+                RaftComputerRuntimeAvailability.NotInstalled -> RaftBadgeVariant.Muted
+            },
     )
 }
 

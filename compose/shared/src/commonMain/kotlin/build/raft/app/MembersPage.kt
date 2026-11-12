@@ -199,6 +199,7 @@ import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentStatus
+import build.raft.app.data.AgentActivityDetailKindWakeCrashLoopBlocked
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -292,7 +293,6 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftUiPalette
 import build.raft.designsystem.components.RaftTextLink
-import build.raft.designsystem.components.RaftTextLinkVariant
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -7455,6 +7455,15 @@ private fun MembersDetailContent(
                             detail = detail,
                             serverId = currentServerId,
                             agentStatusIndicatorState = agentStatusObservedState,
+                            heldByOfflineComputer =
+                                membersAgentHeldByOfflineComputer(
+                                    computerOffline =
+                                        (machineStatusRow(detail?.summary?.machineId) as? MembersMachineStatusRow.Machine)
+                                            ?.online == false,
+                                    indicator = agentStatusObservedState,
+                                    lifecycleStatus = detail?.summary?.status ?: member.agentLifecycleStatus,
+                                    external = member.isExternal || agentStatusObservedState?.external == true,
+                                ),
                             loadState = agentActivityLoadState,
                             overview = activityOverview,
                             onOpenComputer = onOpenComputer,
@@ -10019,6 +10028,41 @@ internal fun MembersMachineRunLabel.resource(): StringResource =
         MembersMachineRunLabel.DaemonOffline -> Res.string.member_machine_run_daemon_offline
     }
 
+/**
+ * Web `agentHeldByOfflineComputer` (#triage:#206): the agent's Computer is offline and it was not
+ * stopped by a person, is not in error and is not paused by the server for its own reasons, so it
+ * reads "Computer offline" (raft-design identity-and-presence). A held agent (its Computer revoked
+ * or too old) and an external agent keep their own words. Read from the profile's Computer row;
+ * the lists get it once the server's agent verdict carries it.
+ */
+internal fun membersAgentHeldByOfflineComputer(
+    computerOffline: Boolean,
+    indicator: RaftAgentStatusIndicatorState?,
+    lifecycleStatus: String?,
+    external: Boolean,
+): Boolean {
+    if (!computerOffline || external || indicator?.blocked != null) return false
+    if (lifecycleStatus?.trim()?.lowercase() == "stopped") return false
+    if (indicator?.status == AgentStatus.Error) return false
+    return indicator?.detailKind?.trim() !in MembersOwnOfflineDetailKinds
+}
+
+/** Web `OWN_OFFLINE_DETAIL_KINDS`: offline states the server paused, which keep their own words. */
+private val MembersOwnOfflineDetailKinds =
+    setOf(AgentActivityDetailKindWakeCrashLoopBlocked, AgentActivityDetailKindTerminalFailurePaused)
+
+/** The agent profile's Computer version row (web #14585): "v{version}" while online, else "—". */
+@Composable
+internal fun membersAgentComputerVersionText(runLabel: MembersMachineRunLabel): String {
+    val version =
+        when (runLabel) {
+            is MembersMachineRunLabel.ComputerVersion -> runLabel.version
+            is MembersMachineRunLabel.DaemonVersion -> runLabel.version
+            else -> null
+        } ?: return "—"
+    return stringResource(Res.string.settings_computers_rack_version, version.removePrefix("v"))
+}
+
 /** The single `%1$s` argument for the two version labels; null for the four argument-free ones. */
 internal fun MembersMachineRunLabel.formatArg(): String? =
     when (this) {
@@ -10392,20 +10436,17 @@ internal fun MembersAgentProfileHeader(
                 val openComputer = onOpenComputer?.takeIf { blocked == AgentBlockedState.ComputerUpdateRequired }
                 if (!appBot) {
                     if (openComputer != null) {
-                        // The step is on the Computer: a quiet link to it right after the chip.
-                        Row(
-                            modifier = Modifier.padding(top = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            statusChip(Modifier.weight(1f, fill = false))
-                            RaftTextLink(
-                                text = stringResource(Res.string.agent_status_open_computer),
-                                onClick = openComputer,
-                                variant = RaftTextLinkVariant.Strong,
-                                style = RaftTheme.typography.footnote,
-                            )
-                        }
+                        // The step is on the Computer: the chip itself opens it (web #14585
+                        // AgentStatusBadge `agent-status-computer-too-old`).
+                        statusChip(
+                            Modifier
+                                .padding(top = 6.dp)
+                                .raftClickable(
+                                    onClick = openComputer,
+                                    onClickLabel = stringResource(Res.string.agent_status_open_computer),
+                                    shape = RoundedCornerShape(RaftAppRadius.Control)
+                                )
+                        )
                     } else if (showRetry && onRetry != null) {
                         // Web `flex items-center gap-1.5`: the quiet Retry right after the chip.
                         Row(
@@ -11297,8 +11338,9 @@ internal fun MembersAgentComputerInfoRows(
                 )
             }
         }
-        // web `agent-computer-version`: <span class="font-mono"><MachineRunLabel/></span>.
-        val runLabel = statusRow.runLabel.localized()
+        // web `agent-computer-version` (#14585): the version only, "v1.0.53"; "—" while the
+        // Computer is offline or reports none. Whether it is online is the row above.
+        val runLabel = membersAgentComputerVersionText(statusRow.runLabel)
         MembersAgentInfoField(
             label = stringResource(Res.string.settings_computers_label_version),
             copyText = runLabel
@@ -13875,6 +13917,8 @@ private fun MembersAgentActivityTab(
     serverId: String?,
     /** The detail page's observed live status (null = not observed: no dot). */
     agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
+    /** The agent waits for its offline Computer ([membersAgentHeldByOfflineComputer]): "Computer offline". */
+    heldByOfflineComputer: Boolean = false,
     loadState: MembersAgentActivityLoadState,
     overview: MembersAgentActivityOverviewBinding? = null,
     onOpenComputer: (() -> Unit)? = null,
@@ -13986,14 +14030,25 @@ private fun MembersAgentActivityTab(
             MembersAgentActivityOverview(
                 binding = overview,
                 now = MembersAgentActivityNow(
-                    label = membersLiveAgentStatusLabel(
-                        indicatorState = agentStatusIndicatorState,
-                        summaryStatus = summary?.status,
-                        summaryActivity = summary?.activity,
-                        summaryActivityDetail = summary?.activityDetail,
-                        fallback = MembersUnknownAgentStatusLabel
-                    ),
-                    indicator = agentStatusIndicatorState,
+                    label =
+                        if (heldByOfflineComputer) {
+                            stringResource(Res.string.agent_status_computer_offline)
+                        } else {
+                            membersLiveAgentStatusLabel(
+                                indicatorState = agentStatusIndicatorState,
+                                summaryStatus = summary?.status,
+                                summaryActivity = summary?.activity,
+                                summaryActivityDetail = summary?.activityDetail,
+                                fallback = MembersUnknownAgentStatusLabel
+                            )
+                        },
+                    // Its Computer offline: the offline light, whatever its last activity (web #14585).
+                    indicator =
+                        if (heldByOfflineComputer) {
+                            raftAgentStatusIndicatorState(status = AgentStatus.Offline, presence = Presence.Offline, external = false)
+                        } else {
+                            agentStatusIndicatorState
+                        },
                     wakeCrashLoop =
                         membersAgentActivityWakeCrashLoop(
                             indicator = agentStatusIndicatorState,

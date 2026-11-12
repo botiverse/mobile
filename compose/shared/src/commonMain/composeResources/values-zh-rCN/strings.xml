@@ -2684,13 +2684,13 @@
     <string name="settings_computers_state_no_creator">没有创建者</string>
     <string name="settings_computers_creator_handle">@%1$s</string>
     <string name="settings_computers_label_runtimes">检测到的运行时</string>
-    <string name="settings_computers_runtime_suffix_update_computer">（需更新 Raft Computer）</string>
+    <string name="settings_computers_runtime_suffix_update_computer">（需要更新）</string>
     <string name="settings_computers_runtime_usage_title">%1$s 用量</string>
     <string name="settings_computers_runtime_usage_version">版本 %1$s</string>
     <string name="settings_computers_runtime_usage_version_unavailable">版本暂不可用</string>
     <string name="settings_computers_runtime_usage_private">拥有 Computer 编辑权限或挂载这台 Computer 的人可见</string>
     <string name="settings_computers_runtime_usage_health_ok">正常</string>
-    <string name="settings_computers_runtime_usage_health_rate_limited">已限流</string>
+    <string name="settings_computers_runtime_usage_health_rate_limited">已用完</string>
     <string name="settings_computers_runtime_usage_health_reauth_required">需重新登录</string>
     <string name="settings_computers_runtime_usage_health_unsupported">不支持</string>
     <string name="settings_computers_runtime_usage_health_error">错误</string>
@@ -2706,7 +2706,7 @@
     <string name="settings_computers_runtime_usage_window_used">已用 %1$s · %2$s重置</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">已用 %1$s · 重置时间暂不可用</string>
     <string name="settings_computers_runtime_usage_window_used_up">已用完 · %1$s恢复</string>
-    <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">已用完 · 重置时间暂不可用</string>
+    <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">已用完</string>
     <string name="settings_computers_runtime_usage_later">稍后</string>
     <string name="settings_computers_runtime_usage_metadata">整个账户 · %1$s更新</string>
     <string name="settings_computers_runtime_usage_recently">刚刚</string>
@@ -2902,7 +2902,7 @@
     <string name="settings_computers_rack_resets_in_minutes">%1$dm 后重置</string>
     <string name="settings_computers_rack_resets_in_hours">%1$dh 后重置</string>
     <string name="settings_computers_rack_resets_in_days">%1$dd 后重置</string>
-    <string name="settings_computers_rack_used_up_resets">已用完，%1$s重置</string>
+    <string name="settings_computers_rack_used_up_resets">已用完 · %1$s恢复</string>
     <string name="settings_computers_rack_col_other">其他</string>
     <string name="settings_computers_rack_other_runtimes">其他运行时</string>
     <string name="settings_computers_rack_usage_unavailable">%1$s：无法获取用量</string>
@@ -3477,7 +3477,7 @@
     <string name="runtime_quota_window_five_hour">5 小时</string>
     <string name="runtime_quota_window_week">本周</string>
     <string name="runtime_quota_used">%1$s 已用 %2$s</string>
-    <string name="runtime_quota_used_up">%1$s 已用完，%2$s恢复</string>
+    <string name="runtime_quota_used_up">%1$s 已用完 · %2$s恢复</string>
     <string name="runtime_quota_used_up_no_reset">%1$s 已用完</string>
     <string name="runtime_quota_attention">%1$s · 需要处理</string>
     <string name="runtime_picker_search">搜索</string>
@@ -4448,6 +4448,7 @@
     <string name="agent_status_credential_billing">服务商余额已用完</string>
     <string name="agent_status_computer_access_revoked">Computer 访问权限已撤销：请把 Agent 移到另一台 Computer（重新加入会新增一台 Computer）</string>
     <string name="agent_status_computer_update_required">Computer 需要更新</string>
+    <string name="agent_status_computer_offline">Computer 离线</string>
     <string name="agent_status_open_computer">打开 Computer</string>
     <string name="agent_migration_place_from_revoked_computer_note">这个 Agent 所在的 Computer 已失去对服务器的访问权限，无法带走它的文件。它会移到你选择的 Computer，并在下次收到消息时在那里开始新的会话。</string>
     <string name="agent_status_model_unsupported">这个运行时的账号或套餐不包含模型「%1$s」。请更换模型，或登录包含该模型的账号</string>

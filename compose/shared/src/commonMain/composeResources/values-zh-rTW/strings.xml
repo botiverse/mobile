@@ -2659,13 +2659,13 @@
     <string name="settings_computers_state_no_creator">沒有建立者</string>
     <string name="settings_computers_creator_handle">@%1$s</string>
     <string name="settings_computers_label_runtimes">偵測到的執行環境</string>
-    <string name="settings_computers_runtime_suffix_update_computer">（需更新 Raft Computer）</string>
+    <string name="settings_computers_runtime_suffix_update_computer">（需要更新）</string>
     <string name="settings_computers_runtime_usage_title">%1$s 用量</string>
     <string name="settings_computers_runtime_usage_version">版本 %1$s</string>
     <string name="settings_computers_runtime_usage_version_unavailable">無法取得版本</string>
     <string name="settings_computers_runtime_usage_private">擁有電腦編輯權限或連接這台電腦的人可見</string>
     <string name="settings_computers_runtime_usage_health_ok">正常</string>
-    <string name="settings_computers_runtime_usage_health_rate_limited">速率受限</string>
+    <string name="settings_computers_runtime_usage_health_rate_limited">已用完</string>
     <string name="settings_computers_runtime_usage_health_reauth_required">需要重新登入</string>
     <string name="settings_computers_runtime_usage_health_unsupported">不支援</string>
     <string name="settings_computers_runtime_usage_health_error">錯誤</string>
@@ -2681,7 +2681,7 @@
     <string name="settings_computers_runtime_usage_window_used">已用 %1$s · %2$s重設</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">已用 %1$s · 暫時無法取得重設時間</string>
     <string name="settings_computers_runtime_usage_window_used_up">已用完 · %1$s恢復</string>
-    <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">已用完 · 無法取得重設時間</string>
+    <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">已用完</string>
     <string name="settings_computers_runtime_usage_later">稍後</string>
     <string name="settings_computers_runtime_usage_metadata">整個帳號 · %1$s更新</string>
     <string name="settings_computers_runtime_usage_recently">剛剛</string>
@@ -2750,7 +2750,7 @@
     <string name="settings_computers_rack_resets_in_minutes">%1$dm 後重設</string>
     <string name="settings_computers_rack_resets_in_hours">%1$dh 後重設</string>
     <string name="settings_computers_rack_resets_in_days">%1$dd 後重設</string>
-    <string name="settings_computers_rack_used_up_resets">已用完，%1$s重設</string>
+    <string name="settings_computers_rack_used_up_resets">已用完 · %1$s恢復</string>
     <string name="settings_computers_rack_col_other">其他</string>
     <string name="settings_computers_rack_other_runtimes">其他執行環境</string>
     <string name="settings_computers_rack_usage_unavailable">%1$s：無法取得用量</string>
@@ -3322,7 +3322,7 @@
     <string name="runtime_quota_window_five_hour">5 小時</string>
     <string name="runtime_quota_window_week">本週</string>
     <string name="runtime_quota_used">%1$s 已用 %2$s</string>
-    <string name="runtime_quota_used_up">%1$s 已用完，%2$s恢復</string>
+    <string name="runtime_quota_used_up">%1$s 已用完 · %2$s恢復</string>
     <string name="runtime_quota_used_up_no_reset">%1$s 已用完</string>
     <string name="runtime_quota_attention">%1$s · 需要處理</string>
     <string name="runtime_picker_search">搜尋</string>
@@ -4190,6 +4190,7 @@
     <string name="agent_status_credential_billing">服務商餘額已用完</string>
     <string name="agent_status_computer_access_revoked">電腦的存取權已撤銷：請把 Agent 移到另一台電腦（重新加入會新增一台電腦）</string>
     <string name="agent_status_computer_update_required">電腦需要更新</string>
+    <string name="agent_status_computer_offline">電腦離線</string>
     <string name="agent_status_open_computer">開啟電腦</string>
     <string name="agent_migration_place_from_revoked_computer_note">這個 Agent 所在的電腦已失去伺服器的存取權，無法帶走它的檔案。它會移到你選擇的電腦，並在下次收到訊息時在那裡開始新的工作階段。</string>
     <string name="agent_status_model_unsupported">這個執行環境的帳號或方案不包含模型「%1$s」。請更換模型，或登入包含該模型的帳號</string>
@@ -4640,4 +4641,5 @@
     <string name="external_invite_error_busy">%1$s 正在更新，請過一分鐘再試。</string>
     <string name="external_invite_error_too_many_attempts">嘗試次數過多，請稍候一分鐘再試一次。</string>
     <string name="external_invite_error_generic">發生錯誤，請再試一次。</string>
+    <string name="settings_computers_runtime_auth_not_signed_in">未登入</string>
 </resources>

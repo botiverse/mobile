@@ -2684,13 +2684,13 @@
     <string name="settings_computers_state_no_creator">No creator</string>
     <string name="settings_computers_creator_handle">@%1$s</string>
     <string name="settings_computers_label_runtimes">Detected Runtimes</string>
-    <string name="settings_computers_runtime_suffix_update_computer">&#160;(update Raft Computer)</string>
+    <string name="settings_computers_runtime_suffix_update_computer">&#160;(update required)</string>
     <string name="settings_computers_runtime_usage_title">%1$s usage</string>
     <string name="settings_computers_runtime_usage_version">Version %1$s</string>
     <string name="settings_computers_runtime_usage_version_unavailable">Version unavailable</string>
     <string name="settings_computers_runtime_usage_private">Visible with Computer edit permission or to the person who attached this Computer</string>
     <string name="settings_computers_runtime_usage_health_ok">ok</string>
-    <string name="settings_computers_runtime_usage_health_rate_limited">rate limited</string>
+    <string name="settings_computers_runtime_usage_health_rate_limited">used up</string>
     <string name="settings_computers_runtime_usage_health_reauth_required">reauth required</string>
     <string name="settings_computers_runtime_usage_health_unsupported">unsupported</string>
     <string name="settings_computers_runtime_usage_health_error">error</string>
@@ -2706,7 +2706,7 @@
     <string name="settings_computers_runtime_usage_window_used">%1$s used · resets %2$s</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">%1$s used · reset time unavailable</string>
     <string name="settings_computers_runtime_usage_window_used_up">Used up · back %1$s</string>
-    <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">Used up · reset time unavailable</string>
+    <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">Used up</string>
     <string name="settings_computers_runtime_usage_later">later</string>
     <string name="settings_computers_runtime_usage_metadata">Account-wide · updated %1$s</string>
     <string name="settings_computers_runtime_usage_recently">recently</string>
@@ -2902,7 +2902,7 @@
     <string name="settings_computers_rack_resets_in_minutes">Back in %1$dm</string>
     <string name="settings_computers_rack_resets_in_hours">Back in %1$dh</string>
     <string name="settings_computers_rack_resets_in_days">Back in %1$dd</string>
-    <string name="settings_computers_rack_used_up_resets">used up, resets %1$s</string>
+    <string name="settings_computers_rack_used_up_resets">Used up · back %1$s</string>
     <string name="settings_computers_rack_col_other">Other</string>
     <string name="settings_computers_rack_other_runtimes">Other runtimes</string>
     <string name="settings_computers_rack_usage_unavailable">%1$s: usage unavailable</string>
@@ -3477,7 +3477,7 @@
     <string name="runtime_quota_window_five_hour">5h</string>
     <string name="runtime_quota_window_week">Week</string>
     <string name="runtime_quota_used">%1$s %2$s used</string>
-    <string name="runtime_quota_used_up">%1$s used up, resets %2$s</string>
+    <string name="runtime_quota_used_up">%1$s used up · back %2$s</string>
     <string name="runtime_quota_used_up_no_reset">%1$s used up</string>
     <string name="runtime_quota_attention">%1$s · needs attention</string>
     <string name="runtime_picker_search">Search</string>
@@ -4448,6 +4448,7 @@
     <string name="agent_status_credential_billing">Provider balance exhausted</string>
     <string name="agent_status_computer_access_revoked">Computer access revoked: move the agent to another computer (re-attaching adds a new one)</string>
     <string name="agent_status_computer_update_required">Computer update required</string>
+    <string name="agent_status_computer_offline">Computer offline</string>
     <string name="agent_status_open_computer">Open computer</string>
     <string name="agent_migration_place_from_revoked_computer_note">This agent's Computer lost its access to the server, so its files can't be brought over. It moves to the computer you choose and starts a fresh session there the next time it gets a message.</string>
     <string name="agent_status_model_unsupported">This runtime's account or plan doesn't include "%1$s". Change the model, or sign in with an account that includes it</string>

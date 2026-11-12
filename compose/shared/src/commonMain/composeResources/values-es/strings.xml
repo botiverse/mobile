@@ -2659,13 +2659,13 @@
     <string name="settings_computers_state_no_creator">Sin creador</string>
     <string name="settings_computers_creator_handle">@%1$s</string>
     <string name="settings_computers_label_runtimes">Runtimes detectados</string>
-    <string name="settings_computers_runtime_suffix_update_computer">&#160;(actualiza Raft Computer)</string>
+    <string name="settings_computers_runtime_suffix_update_computer">&#160;(requiere actualización)</string>
     <string name="settings_computers_runtime_usage_title">Uso de %1$s</string>
     <string name="settings_computers_runtime_usage_version">Versión %1$s</string>
     <string name="settings_computers_runtime_usage_version_unavailable">Versión no disponible</string>
     <string name="settings_computers_runtime_usage_private">Visible para quien tenga permiso de edición en la computadora o la haya conectado</string>
     <string name="settings_computers_runtime_usage_health_ok">correcto</string>
-    <string name="settings_computers_runtime_usage_health_rate_limited">límite alcanzado</string>
+    <string name="settings_computers_runtime_usage_health_rate_limited">agotado</string>
     <string name="settings_computers_runtime_usage_health_reauth_required">requiere reautenticación</string>
     <string name="settings_computers_runtime_usage_health_unsupported">no compatible</string>
     <string name="settings_computers_runtime_usage_health_error">error</string>
@@ -2680,8 +2680,8 @@
     <string name="settings_computers_runtime_usage_parse_unavailable">Uso no disponible</string>
     <string name="settings_computers_runtime_usage_window_used">%1$s usado · se restablece %2$s</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">%1$s usado · hora de restablecimiento no disponible</string>
-    <string name="settings_computers_runtime_usage_window_used_up">Agotado · se restablece %1$s</string>
-    <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">Agotado · hora de restablecimiento no disponible</string>
+    <string name="settings_computers_runtime_usage_window_used_up">Agotado · vuelve %1$s</string>
+    <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">Agotado</string>
     <string name="settings_computers_runtime_usage_later">más tarde</string>
     <string name="settings_computers_runtime_usage_metadata">Toda la cuenta · actualizado %1$s</string>
     <string name="settings_computers_runtime_usage_recently">recientemente</string>
@@ -2750,7 +2750,7 @@
     <string name="settings_computers_rack_resets_in_minutes">Renov. %1$dm</string>
     <string name="settings_computers_rack_resets_in_hours">Renov. %1$dh</string>
     <string name="settings_computers_rack_resets_in_days">Renov. %1$dd</string>
-    <string name="settings_computers_rack_used_up_resets">agotado, se restablece %1$s</string>
+    <string name="settings_computers_rack_used_up_resets">Agotado · vuelve %1$s</string>
     <string name="settings_computers_rack_col_other">Otros</string>
     <string name="settings_computers_rack_other_runtimes">Otros runtimes</string>
     <string name="settings_computers_rack_usage_unavailable">%1$s: uso no disponible</string>
@@ -3322,7 +3322,7 @@
     <string name="runtime_quota_window_five_hour">5 h</string>
     <string name="runtime_quota_window_week">Semana</string>
     <string name="runtime_quota_used">%1$s: %2$s usado</string>
-    <string name="runtime_quota_used_up">%1$s agotado, se restablece %2$s</string>
+    <string name="runtime_quota_used_up">%1$s: agotado · vuelve %2$s</string>
     <string name="runtime_quota_used_up_no_reset">%1$s agotado</string>
     <string name="runtime_quota_attention">%1$s · requiere atención</string>
     <string name="runtime_picker_search">Buscar</string>
@@ -4190,6 +4190,7 @@
     <string name="agent_status_credential_billing">Saldo del proveedor agotado</string>
     <string name="agent_status_computer_access_revoked">Acceso de la computadora revocado: mueve el agente a otra computadora (volver a conectarla añade una nueva)</string>
     <string name="agent_status_computer_update_required">La computadora requiere actualización</string>
+    <string name="agent_status_computer_offline">Computadora sin conexión</string>
     <string name="agent_status_open_computer">Abrir computadora</string>
     <string name="agent_migration_place_from_revoked_computer_note">La computadora de este agente perdió el acceso al servidor, así que sus archivos no se pueden traer. Se mueve a la computadora que elijas e inicia una sesión nueva allí la próxima vez que reciba un mensaje.</string>
     <string name="agent_status_model_unsupported">La cuenta o el plan de este runtime no incluye “%1$s”. Cambia el modelo o inicia sesión con una cuenta que lo incluya</string>
@@ -4640,4 +4641,5 @@
     <string name="external_invite_error_busy">%1$s se está actualizando. Inténtalo de nuevo en un minuto.</string>
     <string name="external_invite_error_too_many_attempts">Demasiados intentos. Espera un minuto e inténtalo de nuevo.</string>
     <string name="external_invite_error_generic">Algo salió mal. Inténtalo de nuevo.</string>
+    <string name="settings_computers_runtime_auth_not_signed_in">Sin sesión iniciada</string>
 </resources>
