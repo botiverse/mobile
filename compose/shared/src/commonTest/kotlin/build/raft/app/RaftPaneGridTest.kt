@@ -104,6 +104,10 @@ class RaftPaneGridTest {
         assertEquals(360f, RaftPaneGridStore { prefs }.savedWidthDp(RaftPaneGridColumns.Conversation))
         prefs.values["raftPaneGrid:width:conversation"] = "100"
         assertEquals(null, RaftPaneGridStore { prefs }.savedWidthDp(RaftPaneGridColumns.Conversation))
+        // The Tasks page's list keeps its own (PR #4661 review), so a task column's seam never sets the conversation's.
+        store.setWidth(RaftPaneGridColumns.TasksList, 520f)
+        assertEquals("520", prefs.values["raftPaneGrid:width:tasksList"])
+        assertEquals(360f, store.savedWidthDp(RaftPaneGridColumns.Conversation))
     }
 
     @Test

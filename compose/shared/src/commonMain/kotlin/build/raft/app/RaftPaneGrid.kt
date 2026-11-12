@@ -123,6 +123,13 @@ internal object RaftPaneGridColumns {
      * it is let go (then the plan gives it what the columns leave, at least 400), kept at least its content's 360.
      */
     val Conversation: RaftPaneGridColumnBounds = build.raft.designsystem.components.RaftPaneGridConversationBounds
+
+    /**
+     * The Tasks page's list, the main pane beside the task's column: its own kept width, so letting the task
+     * column's seam go never saves the list's width as the conversation's (PR #4661 review). Same rules as the
+     * conversation's: none kept until then, at least 360.
+     */
+    val TasksList = RaftPaneGridColumnBounds(id = "tasksList", defaultWidthDp = 400f, minWidthDp = 360f)
 }
 
 
@@ -249,6 +256,8 @@ internal fun RaftPaneGrid(
     topInset: Dp = 0.dp,
     leading: RaftPaneGridLeadingColumn? = null,
     mainTabLabel: String? = null,
+    /** Where the main pane's width is kept (the innermost grid naming it decides); null: the conversation's. */
+    mainBounds: RaftPaneGridColumnBounds? = null,
     main: @Composable () -> Unit,
 ) {
     // The main pane's tab where the row makes columns tabs in its head (#189 rule 4): the conversation, web "Chat".
@@ -261,6 +270,7 @@ internal fun RaftPaneGrid(
             topInset = topInset,
             leading = leading,
             mainTabLabel = mainTab,
+            mainBounds = mainBounds,
             main = main,
         )
     }

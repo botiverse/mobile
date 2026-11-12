@@ -3579,7 +3579,10 @@ private fun RaftAppShellReadyContent(
     }
     // task #36: when the row (or desktop mode) can no longer hold the side column, fold the side
     // thread into the main detail with the channel in Back history. #189 rule 3 decides it from the
-    // row plan (sideThreadColumnAvailable), not from fixed window and detail widths.
+    // row plan (sideThreadColumnAvailable), not from fixed window and detail widths. The fold is a
+    // page swap and one-way: once the thread is the main detail the channel's Tasks / Files leave the
+    // row, so the plan may then say "no fold" again; nothing unfolds on that (the way back out is #189
+    // step 3's). Not yet: the web's forceFold (a touch tablet in portrait under 1280 always folds).
     // task #37: the user's list column width (saved per device) and whether its divider is being
     // dragged. A drag that squeezes the detail below the column threshold folds the side thread
     // only when the finger lifts, so dragging across the threshold and back loses nothing.
@@ -8241,10 +8244,14 @@ private fun RaftAppShellReadyContent(
                                             .put(RAFT_ADAPTIVE_DETAIL_GENERATION, sideThread.generation)
                                     }
                                 val sideThreadPageData by rememberUpdatedState(sidePageData)
+                                // Read in the cell through state, not captured in the remembered column (PR #4661
+                                // review): captured, a tab switched away and back could leave the column's page
+                                // inactive and blank. The column object stays the same; the page follows the state.
+                                val sideThreadActive by rememberUpdatedState(childActive)
                                 val sideThreadResizeLabel = stringResource(Res.string.thread_side_thread_resize)
                                 // Its tab where the row is short of 160 per column (#189 rule 4; web RowTabs "Thread").
                                 val sideThreadTabLabel = stringResource(Res.string.thread_reply_title)
-                                remember(sideThreadResizeLabel, sideThreadTabLabel, childActive) {
+                                remember(sideThreadResizeLabel, sideThreadTabLabel) {
                                     RaftPaneGridColumn(
                                         bounds = RaftPaneGridColumns.Thread,
                                         resizeLabel = sideThreadResizeLabel,
@@ -8256,7 +8263,7 @@ private fun RaftAppShellReadyContent(
                                                         pageName = THREAD_PAGE,
                                                         pageData = sideThreadPageData,
                                                         modifier = Modifier.fillMaxSize(),
-                                                        active = childActive,
+                                                        active = sideThreadActive,
                                                     )
                                                 }
                                             ),

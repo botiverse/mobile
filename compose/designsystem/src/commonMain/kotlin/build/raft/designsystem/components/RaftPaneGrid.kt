@@ -462,6 +462,8 @@ internal class RaftPaneGridHandedUp(
     val fillColumn: String? = null,
     val topInset: Dp = 0.dp,
     val locals: CompositionLocalContext? = null,
+    /** Where the main pane's width is kept, where the declaring grid names it ([RaftPaneGrid]'s `mainBounds`). */
+    val mainBounds: RaftPaneGridColumnBounds? = null,
 ) {
     /**
      * What the outermost grid lays out and draws by, compared by value: the level, the fill, the inset, the locals
@@ -471,7 +473,7 @@ internal class RaftPaneGridHandedUp(
      * (rememberUpdatedState), so the cells recompose by themselves.
      */
     val shape: List<Any?> =
-        listOf(depth, fillColumn, topInset, locals) +
+        listOf(depth, fillColumn, topInset, locals, mainBounds) +
             columns.map { column ->
                 listOf(
                     column.bounds,
@@ -485,42 +487,67 @@ internal class RaftPaneGridHandedUp(
             }
 }
 
-/** A column where the outermost grid lays it out, with the top inset and locals of the grid that declared it. */
-internal class RaftPaneGridPlaced(val column: RaftPaneGridColumn, val topInset: Dp, val locals: CompositionLocalContext?)
+/**
+ * A column where the outermost grid lays it out, with the top inset and locals of the grid that declared it, and the
+ * [token] of that grid's hand-up (null for the outermost grid's own), by which it draws the latest cells.
+ */
+internal class RaftPaneGridPlaced(
+    val column: RaftPaneGridColumn,
+    val topInset: Dp,
+    val locals: CompositionLocalContext?,
+    val token: Any? = null,
+)
 
 /** The outermost grid, as the grids and pages in its main pane see it. */
 @Stable
 internal class RaftPaneGridHost internal constructor() {
-    /** Each nested grid's hand-up as the row is laid out by: written only when its [RaftPaneGridHandedUp.shape] changes. */
-    private val handedUp = mutableStateMapOf<Any, RaftPaneGridHandedUp>()
+    /**
+     * Each nested grid's hand-up as the row is laid out by: written only when its [RaftPaneGridHandedUp.shape]
+     * changes. Read by the outermost grid's row and by raftPaneGridFolds, so by the pages in the main pane.
+     */
+    internal val handedUp = mutableStateMapOf<Any, RaftPaneGridHandedUp>()
 
-    /** Each nested grid's latest hand-up, its cells' content and locals current; plain memory, never observed. */
-    private val latest = mutableMapOf<Any, RaftPaneGridHandedUp>()
+    /**
+     * Each nested grid's latest hand-up, written every time it hands up: the cells' content (new lambdas, with
+     * whatever they captured) and labels as they are now. Read only where a column is drawn ([freshColumn]), never by
+     * the row or a page, so a write recomposes the columns' drawing and nothing that hands up again.
+     */
+    internal val fresh = mutableStateMapOf<Any, RaftPaneGridHandedUp>()
 
     /**
      * [token]'s grid hands up [up] (null: nothing any more). A nested grid does so every time it composes, with new
-     * column objects; the row (snapshot state, read by the outermost grid and by raftPaneGridFolds) is written only
-     * where what it lays out by changed. Writing it every time made the outermost grid recompose, which recomposed
-     * the page that declared the nested grid, which handed up again: a loop every frame.
+     * column objects. The row ([handedUp]) is written only where what it lays out by changed: writing it every time
+     * made the outermost grid recompose, which recomposed the page that declared the nested grid, which handed up
+     * again, a loop every frame. The columns' drawing ([fresh]) always gets the latest, so a cell whose content
+     * changed with the same shape (a captured value) is drawn anew.
      */
     internal fun handUp(token: Any, up: RaftPaneGridHandedUp?) {
-        if (up == null || (up.columns.isEmpty() && up.fillColumn == null)) {
-            latest.remove(token)
+        if (up == null || (up.columns.isEmpty() && up.fillColumn == null && up.mainBounds == null)) {
+            if (token in fresh) fresh.remove(token)
             if (token in handedUp) handedUp.remove(token)
             return
         }
-        latest[token] = up
+        if (fresh[token] !== up) fresh[token] = up
         if (handedUp[token]?.shape != up.shape) handedUp[token] = up
     }
 
-    /** [token]'s hand-up as it last came, else as the row has it. */
-    private fun current(token: Any, up: RaftPaneGridHandedUp): RaftPaneGridHandedUp = latest[token] ?: up
+    /** The latest [id] column [token]'s grid handed up; null where it no longer does. Read where the column is drawn. */
+    internal fun freshColumn(token: Any, id: String): RaftPaneGridColumn? = fresh[token]?.columns?.firstOrNull { it.bounds.id == id }
 
     /** Left to right: the outermost grid's [own] columns, then the handed-up ones, outer levels first. */
     internal fun placed(own: List<RaftPaneGridColumn>, ownTopInset: Dp): List<RaftPaneGridPlaced> =
         own.map { RaftPaneGridPlaced(it, ownTopInset, null) } +
-            handedUp.entries.map { (token, up) -> current(token, up) }.sortedBy { it.depth }
-                .flatMap { up -> up.columns.map { RaftPaneGridPlaced(it, up.topInset, up.locals) } }
+            handedUp.entries.sortedBy { it.value.depth }.flatMap { (token, up) ->
+                up.columns.map { RaftPaneGridPlaced(it, up.topInset, up.locals, token) }
+            }
+
+    /**
+     * Where the main pane's width is kept: the innermost grid that names it (the page the main pane shows: the Tasks
+     * page's list), else the outermost's [own], else the conversation's. Each page keeps its own (PR #4661 review: the
+     * Tasks page's task column saved the list's width as the conversation's).
+     */
+    internal fun mainBounds(own: RaftPaneGridColumnBounds?): RaftPaneGridColumnBounds =
+        handedUp.values.filter { it.mainBounds != null }.maxByOrNull { it.depth }?.mainBounds ?: own ?: RaftPaneGridConversationBounds
 
     internal fun fillIds(ownFill: String?): Set<String> = (listOfNotNull(ownFill) + handedUp.values.mapNotNull { it.fillColumn }).toSet()
 
@@ -637,8 +664,9 @@ fun raftPaneGridFolds(bounds: RaftPaneGridColumnBounds, sizes: RaftPaneGridSizes
  * the rightmost become tabs, labelled by [RaftPaneGridColumn.tabLabel] and, for the main pane,
  * [mainTabLabel]).
  *
- * In the planned row the main pane has a saved width too, kept under [mainBounds] (the outermost
- * grid's; web `slock:conversationWidth`). Letting a seam go (a drag's release, a key, a screen
+ * In the planned row the main pane has a saved width too, kept under [mainBounds] (web
+ * `slock:conversationWidth`): the innermost grid that names it decides, so each page keeps its own
+ * (the conversation's by default, the Tasks page its list's). Letting a seam go (a drag's release, a key, a screen
  * reader's set) saves every shown column's width as shown and the main pane's (web rowSeams), so
  * the row stays exactly as it was let go.
  */
@@ -650,7 +678,7 @@ fun RaftPaneGrid(
     topInset: Dp = 0.dp,
     leading: RaftPaneGridLeadingColumn? = null,
     mainTabLabel: String? = null,
-    mainBounds: RaftPaneGridColumnBounds = RaftPaneGridConversationBounds,
+    mainBounds: RaftPaneGridColumnBounds? = null,
     main: @Composable () -> Unit,
 ) {
     val outer = LocalRaftPaneGridHost.current
@@ -658,7 +686,7 @@ fun RaftPaneGrid(
     if (outer != null) {
         val locals = currentCompositionLocalContext
         val token = remember { Any() }
-        SideEffect { outer.handUp(token, RaftPaneGridHandedUp(depth, columns, fillColumn, topInset, locals)) }
+        SideEffect { outer.handUp(token, RaftPaneGridHandedUp(depth, columns, fillColumn, topInset, locals, mainBounds)) }
         DisposableEffect(outer) { onDispose { outer.handUp(token, null) } }
     }
     val host = outer ?: remember { RaftPaneGridHost() }
@@ -671,6 +699,8 @@ fun RaftPaneGrid(
         // The outermost grid lays out its own columns and every column handed up, left to right.
         val placed = if (outer != null) emptyList() else host.placed(columns, topInset)
         val fillIds = if (outer != null) emptySet() else host.fillIds(fillColumn)
+        // Where the main pane's width is kept: the innermost page's that names it, else this grid's, else the conversation's.
+        val keptMain = if (outer != null) mainBounds ?: RaftPaneGridConversationBounds else host.mainBounds(mainBounds)
         val beside = leading?.mode == RaftPaneGridLeadingMode.Beside
         val leadingDp =
             when (leading?.mode) {
@@ -690,7 +720,7 @@ fun RaftPaneGrid(
                 raftPaneGridRowPlan(
                     roomDp = roomDp,
                     columns = placed.map { it.column.planColumn(store) },
-                    mainSavedDp = store.savedWidthDp(mainBounds),
+                    mainSavedDp = store.savedWidthDp(keptMain),
                 )
             }
         // A column holding tabs (rule 4): the unit it shows, by its first unit's key. Presentation only, never saved.
@@ -733,7 +763,7 @@ fun RaftPaneGrid(
                         bounds to if (bounds.id == changed.id) widthDp else fitted[i]
                     }
                 shown.forEach { (bounds, width) -> store.setWidth(bounds, width) }
-                if (!mainHidden) store.setWidth(mainBounds, maxOf(0f, roomDp - shown.sumOf { it.second.toDouble() }.toFloat()))
+                if (!mainHidden) store.setWidth(keptMain, maxOf(0f, roomDp - shown.sumOf { it.second.toDouble() }.toFloat()))
             }
         }
         // What the main pane's pages read of the row (raftPaneGridRoomDp, raftPaneGridFolds), from this frame; a
@@ -741,7 +771,7 @@ fun RaftPaneGrid(
         val row =
             if (outer != null) LocalRaftPaneGridRow.current
             else if (availableDp <= 0f) null
-            else RaftPaneGridRow(roomDp, columns.map { it.planColumn(store) }, fitted.take(columns.size).sum(), mainBounds)
+            else RaftPaneGridRow(roomDp, columns.map { it.planColumn(store) }, fitted.take(columns.size).sum(), keptMain)
         Row(Modifier.fillMaxSize()) {
             if (leading != null) RaftPaneGridLeadingView(leading)
             // Collapsed by width, never weight(0f) (Compose rejects it): see raftParentPaneLayout.
@@ -775,8 +805,11 @@ fun RaftPaneGrid(
                 val column = place.column
                 key(column.bounds.id) {
                     val draw: @Composable () -> Unit = {
+                        // The latest cells handed up (their content may have changed with the same shape): read here,
+                        // in the column's own scope, so only the column is drawn anew.
+                        val token = place.token
                         RaftPaneGridSideColumn(
-                            column = column,
+                            column = token?.let { host.freshColumn(it, column.bounds.id) } ?: column,
                             widthDp = fitted[index],
                             // A column's width includes its left seam (web), so the main pane has the rest.
                             mainWidthDp = maxOf(0f, roomDp - fitted.sum()),
@@ -828,7 +861,7 @@ private fun RowScope.RaftPaneGridLeadingView(leading: RaftPaneGridLeadingColumn)
  * 2: to 160) its content keeps the minimum and is clipped. [tabs] are its group's row tabs, drawn
  * on top of it (rule 4); [tabHidden] is a tab not shown: no width, no semantics, no focus (web
  * `inert`), still composed. [onCommitWidth] saves a width let go on its seam (the grid's: the whole
- * row as shown, rule 1); without it the column saves only its own.
+ * row as shown, rule 1); without it the column saves only its own. A double click resets only its own.
  */
 @Composable
 fun RowScope.RaftPaneGridSideColumn(
@@ -903,7 +936,8 @@ fun RowScope.RaftPaneGridSideColumn(
                 onStep = { step -> commit((width - step).coerceIn(bounds.minWidthDp, dragMax)) },
                 onHome = { commit(bounds.minWidthDp) },
                 onEnd = { commit(dragMax) },
-                onReset = { commit(bounds.defaultWidthDp) },
+                // Web resetColumnWidth: the column back to its default, nothing else saved (the plan shares the room).
+                onReset = { store.setWidth(bounds, bounds.defaultWidthDp) },
                 modifier = Modifier.offset(x = 0.5.dp - hit / 2),
             )
         }

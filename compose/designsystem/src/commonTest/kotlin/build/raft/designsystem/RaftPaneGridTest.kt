@@ -174,20 +174,36 @@ class RaftPaneGridTest {
         // outermost grid recompose, which recomposed the page, which handed up again: a loop every frame.
         val host = RaftPaneGridHost()
         host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(column(thread))))
-        var writes = 0
+        val written = mutableListOf<Any>()
         val again = column(thread)
-        val snapshot = Snapshot.takeMutableSnapshot(writeObserver = { writes++ })
+        val snapshot = Snapshot.takeMutableSnapshot(writeObserver = { written += it })
         try {
             snapshot.enter { host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(again))) }
-            assertEquals(0, writes, "the same shape again is no change")
-            // The latest columns are the ones laid out (their cells' content current).
-            assertTrue(snapshot.enter { host.placed(emptyList(), 0.dp).single().column } === again)
-            // A column more is.
+            assertFalse(written.any { it === host.handedUp }, "the same shape again leaves the row alone")
+            // Where the column is drawn it is the latest (its cells' content may have changed with the same shape).
+            assertTrue(written.any { it === host.fresh }, "the latest is kept for the column's drawing")
+            assertTrue(snapshot.enter { host.freshColumn("workspace", thread.id) } === again)
+            // A column more changes the row.
             snapshot.enter { host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(again, column(cards)))) }
-            assertTrue(writes > 0, "a new column is a change")
+            assertTrue(written.any { it === host.handedUp }, "a new column is a change to the row")
         } finally {
             snapshot.dispose()
         }
+    }
+
+    @Test
+    fun theMainPanesWidthIsKeptWhereTheInnermostPageNamesIt() {
+        val host = RaftPaneGridHost()
+        // Nobody names it: the conversation's (web slock:conversationWidth).
+        assertEquals(RaftPaneGridConversationBounds, host.mainBounds(null))
+        val list = RaftPaneGridColumnBounds(id = "tasksList", defaultWidthDp = 400f, minWidthDp = 360f)
+        val outer = RaftPaneGridColumnBounds(id = "outerMain", defaultWidthDp = 400f, minWidthDp = 360f)
+        assertEquals(outer, host.mainBounds(outer))
+        // A page in the main pane naming its own (the Tasks page's list) wins, even before its column opens.
+        host.handUp("tasks", RaftPaneGridHandedUp(depth = 1, columns = emptyList(), mainBounds = list))
+        assertEquals(list, host.mainBounds(outer))
+        host.handUp("tasks", null)
+        assertEquals(outer, host.mainBounds(outer))
     }
 
     @Test

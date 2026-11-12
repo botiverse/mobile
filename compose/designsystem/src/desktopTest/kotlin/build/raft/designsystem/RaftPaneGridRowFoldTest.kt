@@ -10,6 +10,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.pressKey
@@ -148,6 +150,30 @@ class RaftPaneGridRowFoldTest {
             near(401f, assertNotNull(sizes.savedWidthDp(RaftPaneGridConversationBounds)), "kept conversation")
         }
 
+    @Test
+    fun aPageNamingItsMainPaneKeepsItsWidthApartFromTheConversations() =
+        runComposeUiTest {
+            // PR #4661 review: the Tasks page's task column saved the list's width as the conversation's.
+            rowWidth = 1100f
+            val list = RaftPaneGridColumnBounds(id = "tasksList", defaultWidthDp = 400f, minWidthDp = 360f)
+            val sizes = RaftPaneGridMemorySizes()
+            setContent {
+                Frame(sizes) {
+                    // As in the shell: an outer grid, the page's own grid in its main pane naming its list.
+                    RaftPaneGrid(columns = emptyList()) {
+                        RaftPaneGrid(columns = listOf(column(cards, "task")), mainBounds = list) { Cell("list") }
+                    }
+                }
+            }
+            waitForIdle()
+            val seam = onNodeWithContentDescription("Resize cards")
+            seam.requestFocus()
+            seam.performKeyInput { pressKey(Key.DirectionRight) }
+            waitForIdle()
+            assertEquals(null, sizes.savedWidthDp(RaftPaneGridConversationBounds), "the conversation's width is not the list's")
+            near(1100f - sizes.widthDp(cards), assertNotNull(sizes.savedWidthDp(list), "the list's width is kept"), "kept list")
+        }
+
     /** Each focusable cell that has had focus. */
     private val focused = mutableSetOf<String>()
 
@@ -268,6 +294,42 @@ class RaftPaneGridRowFoldTest {
             waitForIdle()
             assertEquals(false, folds)
             assertSettled()
+        }
+
+    private var shown by mutableStateOf("first")
+
+    @Test
+    fun aHandedUpColumnWhoseContentChangesWithTheSameShapeIsDrawnAnew() =
+        runComposeUiTest {
+            // PR #4661 review: a page remembers its column keyed by a value its cell captures (the side thread's
+            // `active`); a new value is a new column of the same shape, which leaves the row alone. The outermost grid
+            // must still draw the new cell, not the one it was first handed.
+            rowWidth = 1100f
+            shown = "first"
+            val sizes = RaftPaneGridMemorySizes()
+            setContent {
+                Frame(sizes) {
+                    RaftPaneGrid(columns = emptyList()) {
+                        val value = shown
+                        val column =
+                            remember(value) {
+                                RaftPaneGridColumn(thread, "Resize thread", listOf(RaftPaneGridCell("thread") { RaftText("value $value") }))
+                            }
+                        RaftPaneGrid(columns = listOf(column)) { Cell("main") }
+                    }
+                }
+            }
+            waitForIdle()
+            onNodeWithText("value first", useUnmergedTree = true).assertExists()
+            shown = "second"
+            waitForIdle()
+            onNodeWithText("value second", useUnmergedTree = true).assertExists()
+            onNodeWithText("value first", useUnmergedTree = true).assertDoesNotExist()
+            // And back, as a tab switched away and back.
+            shown = "first"
+            waitForIdle()
+            onNodeWithText("value first", useUnmergedTree = true).assertExists()
+            onNodeWithText("value second", useUnmergedTree = true).assertDoesNotExist()
         }
 
     private companion object {

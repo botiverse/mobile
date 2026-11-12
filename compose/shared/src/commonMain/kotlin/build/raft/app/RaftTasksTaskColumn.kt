@@ -171,6 +171,8 @@ internal fun RaftTasksTaskColumnLayout(
         RaftPaneGrid(
             columns = if (open) listOf(column) else emptyList(),
             modifier = Modifier.fillMaxSize(),
+            // The list keeps its own width, not the conversation's.
+            mainBounds = RaftPaneGridColumns.TasksList,
             // Expanded, or no room beside the list: the task takes the row; the list stays composed.
             fillColumn = RaftPaneGridColumns.Detail.id.takeIf { open && (expandedShown || !beside) },
         ) {
