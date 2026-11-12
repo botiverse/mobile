@@ -15423,39 +15423,6 @@ private fun RaftThreadTaskItem.matchesAnyThreadTaskReference(
 private val MemberProfile.memberKey: String
     get() = "${kind.name}:${id.value}"
 
-private fun MemberProfile.toRaftThreadMemberItem(localServerId: ServerId?): RaftThreadMemberItem =
-    RaftThreadMemberItem(
-        id = id.value,
-        displayName = displayName,
-        handle = handle,
-        roleLabel =
-            roleDescription
-                ?: when (kind) {
-                    MemberKind.Agent -> "Agent"
-                    MemberKind.Human -> "Member"
-                    MemberKind.System -> "System"
-                    MemberKind.External -> "External"
-                },
-        description = normalizedThreadMemberDescription(description),
-        avatarUrl = avatarWireValueForAvatarSlot(),
-        avatarLabel = avatarLabel,
-        kind = kind.name.lowercase(),
-        sourceServerId = serverId?.value,
-        sourceServerLabel = remoteSourceServerLabel(localServerId),
-        canRemove = isLocalToServer(localServerId)
-    )
-
-private fun MemberProfile.isLocalToServer(localServerId: ServerId?): Boolean {
-    val sourceId = serverId?.value?.takeIf { it.isNotBlank() } ?: return true
-    val localId = localServerId?.value?.takeIf { it.isNotBlank() } ?: return true
-    return sourceId == localId
-}
-
-private fun MemberProfile.remoteSourceServerLabel(localServerId: ServerId?): String? {
-    if (isLocalToServer(localServerId)) return null
-    return serverName?.takeIf { it.isNotBlank() } ?: serverSlug?.takeIf { it.isNotBlank() }
-}
-
 private fun ChannelFilesSnapshot.toRaftThreadFilesPayload(
     basePayload: RaftThreadScreenPayload,
     currentPayload: RaftThreadFilesPayload?,

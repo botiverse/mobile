@@ -515,12 +515,26 @@ data class MemberProfile(
     val serverName: String? = null,
     val serverSlug: String? = null,
     /**
-     * A human profile read from a channel (`GET /servers/:id/members/:memberId/profile?channelId=`):
-     * the servers the person is from in that channel, as the server answers them, an empty list
-     * included (the channel lists them through no server). Null when the read named no channel
-     * (or an older server); then the single [serverId] / [serverName] / [serverSlug] stand.
+     * The servers the person is from in a channel, as the server answers them, an empty list
+     * included (the channel lists them through no server): a human profile read from a channel
+     * (`GET /servers/:id/members/:memberId/profile?channelId=`) or a joint channel roster row
+     * (`GET /channels/:id/members` humans). Null otherwise (or an older server); then the single
+     * [serverId] / [serverName] / [serverSlug] stand. Read through [build.raft.app.data.memberOrigin].
      */
     val servers: List<MemberServerRef>? = null,
+    /**
+     * Joint channel roster rows only (`GET /channels/:id/members`, slock `getChannelMembers`):
+     * the server's own answer to "is this one of the viewed server's members". Authoritative over
+     * [serverId], which on computed joint rows is only the person's first source. Null elsewhere
+     * and on older servers.
+     */
+    val inViewerServer: Boolean? = null,
+    /**
+     * Joint channel roster rows only (`buildChannelMembersView` `canRemoveFromChannel`, sent when
+     * the viewer has joint authority): whether the viewer may remove this member. Null elsewhere;
+     * then only the viewed server's own members are removable. Never stored offline.
+     */
+    val canRemoveFromChannel: Boolean? = null,
     /**
      * Channel-membership projection (web `channel_members` join row fields on
      * `useChannelMembers` results): the role the member effectively has inside

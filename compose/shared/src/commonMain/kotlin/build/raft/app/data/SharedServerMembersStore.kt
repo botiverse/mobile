@@ -4425,15 +4425,19 @@ private fun List<MemberProfile>.toServerMembersMemberSuggestions(
         val memberId = member.id.value.trim().takeIf { it.isNotBlank() } ?: continue
         val handle = member.serverMembersSuggestionHandle() ?: continue
         val avatar = member.avatarSlotResolution()
-        val sourceServerId = member.serverId?.value?.trim()?.takeIf { it.isNotBlank() } ?: localServerId
+        // Where they are from: one rule with the member list (memberOrigin); a computed joint row's
+        // `serverId` is only the person's first source.
+        val origin = memberOrigin(member, localServerId)
+        val rosterServerId = member.serverId?.value?.trim()?.takeIf { it.isNotBlank() }
+        val sourceServerId = if (origin.external) rosterServerId ?: localServerId else localServerId ?: rosterServerId
         val suggestion =
             SharedMembersMemberSuggestion(
                 displayName = member.displayName.trim().ifBlank { handle },
                 handle = handle,
                 inMentionChannel = inMentionChannelIds?.contains(member.id.value) ?: fallbackInMentionChannel,
                 sourceServerId = sourceServerId,
-                isLocalServer = localServerId == null || sourceServerId == null || sourceServerId == localServerId,
-                sourceServerLabel = member.serverMembersSourceServerLabel(localServerId),
+                isLocalServer = !origin.external,
+                sourceServerLabel = memberRowServerLabel(member, localServerId),
                 kind = member.kind,
                 description = member.description?.trim()?.takeIf { it.isNotBlank() },
                 avatarWireValue = avatar.effectiveAvatarWireValue,
@@ -4571,12 +4575,6 @@ private fun String?.preferServerMembersConcreteSuggestionAvatar(candidate: Strin
 private fun String?.isServerMembersAgentFallbackSuggestionAvatar(): Boolean =
     this?.equals("pixel:robot", ignoreCase = true) == true ||
         this?.startsWith("random:", ignoreCase = true) == true
-
-private fun MemberProfile.serverMembersSourceServerLabel(localServerId: String?): String? {
-    val sourceId = serverId?.value?.takeIf { it.isNotBlank() } ?: return null
-    if (localServerId != null && sourceId == localServerId) return null
-    return serverName?.takeIf { it.isNotBlank() } ?: serverSlug?.takeIf { it.isNotBlank() }
-}
 
 /** A loaded, non-empty roster stays `Loaded` while a Background-priority flight revalidates it. */
 internal fun SharedServerMembersEntry?.keepsLoadedStatusDuring(priority: DataRequestPriority): Boolean =

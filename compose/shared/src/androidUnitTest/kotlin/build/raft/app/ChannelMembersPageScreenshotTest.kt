@@ -16,7 +16,12 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.Presence
+import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
@@ -46,6 +51,13 @@ class ChannelMembersPageScreenshotTest {
 
     @Test
     fun channelMembersDark() = capture("channel.members.dark", RaftAppAppearance.Dark)
+
+    // A joint channel's computed roster (#wg-rbac:#46): a member of this server whose first source
+    // is another server stays local (Remove, its other server's tag); another server's people
+    // name every server they are from, are removable only when the server says so, never Guest.
+    @Test
+    fun channelMembersJointLight() =
+        capture("channel.members.joint", RaftAppAppearance.Light) { ChannelMembersVisualContent(jointVisualRoster()) }
 
     // Add Member (web ChannelMembers add view): nothing selected yet, as artin's web capture.
     @Test
@@ -84,10 +96,10 @@ class ChannelMembersPageScreenshotTest {
 
 /** Fixed roster and agent activity, so the capture is deterministic. */
 @Composable
-private fun ChannelMembersVisualContent() {
+private fun ChannelMembersVisualContent(roster: List<RaftThreadMemberItem>? = null) {
     val members =
         remember {
-            listOf(
+            roster ?: listOf(
                 RaftThreadMemberItem("human-artea", "Artea", handle = "artea", effectiveChannelRole = "admin"),
                 RaftThreadMemberItem("human-artin", "artin", handle = "artin", description = "产品负责人"),
                 RaftThreadMemberItem("human-cindyz", "cindyz", handle = "cindyz"),
@@ -180,4 +192,21 @@ private fun AddMemberSelectedContent() {
             )
         }
     }
+}
+
+/** A joint roster as `GET /channels/:id/members` sends it to a member of server-1 (slock ec13decd3). */
+private fun jointVisualRoster(): List<RaftThreadMemberItem> {
+    val local = ServerId("server-1")
+    val peer = MemberServerRef("server-peer", "Peer Labs", "peer-labs")
+    val acme = MemberServerRef("server-acme", "Acme", "acme")
+    fun human(id: String, name: String) =
+        MemberProfile(id = MemberId(id), displayName = name, handle = name.lowercase(), kind = MemberKind.Human)
+    return listOf(
+        human("human-artea", "Artea").copy(serverId = local, effectiveChannelRole = "admin", inViewerServer = true, canRemoveFromChannel = false),
+        human("human-ada", "Ada").copy(serverId = ServerId(peer.id), serverName = peer.name, servers = listOf(peer), inViewerServer = true, canRemoveFromChannel = true),
+        human("human-bo", "Bo").copy(serverId = ServerId(peer.id), serverName = peer.name, servers = listOf(peer, acme), inViewerServer = false, canRemoveFromChannel = true),
+        human("human-cy", "Cy").copy(serverId = ServerId(peer.id), serverName = peer.name, servers = listOf(peer), inViewerServer = false, effectiveChannelRole = "guest", canRemoveFromChannel = false),
+        MemberProfile(id = MemberId("agent-tenny"), displayName = "Tenny", handle = "tenny", kind = MemberKind.Agent, serverId = local, inViewerServer = true, canRemoveFromChannel = true),
+        MemberProfile(id = MemberId("agent-mira"), displayName = "Mira", handle = "mira", kind = MemberKind.Agent, serverId = ServerId(peer.id), serverName = peer.name, inViewerServer = false, canRemoveFromChannel = false),
+    ).map { it.toRaftThreadMemberItem(local) }
 }

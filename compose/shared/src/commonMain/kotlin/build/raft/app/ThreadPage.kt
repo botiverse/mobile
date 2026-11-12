@@ -84,6 +84,9 @@ import build.raft.app.downloads.RaftDownloadCenterProcess
 import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.KnownEntityScope
+import build.raft.app.data.memberOrigin
+import build.raft.app.data.memberRemovableFromChannel
+import build.raft.app.data.memberRowServerLabel
 import build.raft.app.data.homeStateForPage
 import build.raft.app.data.RaftKnownEntityResolver
 import build.raft.app.data.RaftRatingPrompt
@@ -3893,6 +3896,12 @@ internal data class RaftThreadMemberItem(
     val avatarLabel: String = displayName.toRaftAvatarLabel(),
     val kind: String = "human",
     val sourceServerId: String? = null,
+    /**
+     * The roster row's own `serverId` (the projection it came from; on a computed joint row the
+     * person's first source), when it differs from [sourceServerId]'s reading. Only for "already
+     * joined here" (web `isLocalProjectionMember`); null falls back to [sourceServerId].
+     */
+    val rosterServerId: String? = null,
     val sourceServerLabel: String? = null,
     val canRemove: Boolean = true,
     val effectiveChannelRole: String? = null
@@ -39869,8 +39878,17 @@ internal fun threadMembersProjection(
 private val MemberProfile.threadMemberKey: String
     get() = "${kind.name.lowercase()}:${id.value.trim()}"
 
-private fun MemberProfile.toRaftThreadMemberItem(localServerId: ServerId? = null): RaftThreadMemberItem =
-    RaftThreadMemberItem(
+/**
+ * A roster member as a thread member row. Where they are from is [memberOrigin] (one rule with
+ * the web, #wg-rbac:#46): a computed joint row's `serverId` is only the person's first source,
+ * so a viewed-server member whose first source is another server stays local here (opens the full
+ * profile, keeps Remove) and still names that server, as the web's tag does.
+ */
+internal fun MemberProfile.toRaftThreadMemberItem(localServerId: ServerId? = null): RaftThreadMemberItem {
+    val viewerServerId = localServerId?.value?.trim()?.takeIf { it.isNotBlank() }
+    val origin = memberOrigin(this, viewerServerId)
+    val rosterServerId = serverId?.value
+    return RaftThreadMemberItem(
         id = id.value,
         displayName = displayName,
         handle = handle,
@@ -39886,21 +39904,14 @@ private fun MemberProfile.toRaftThreadMemberItem(localServerId: ServerId? = null
         avatarUrl = avatarWireValueForAvatarSlot(),
         avatarLabel = avatarLabel,
         kind = kind.name.lowercase(),
-        sourceServerId = serverId?.value,
-        sourceServerLabel = remoteSourceServerLabel(localServerId),
-        canRemove = isLocalToServer(localServerId),
-        effectiveChannelRole = effectiveChannelRole
+        // The server whose profile this row opens: the viewed one unless the member is from another.
+        sourceServerId = if (origin.external || viewerServerId == null || rosterServerId == null) rosterServerId else viewerServerId,
+        rosterServerId = rosterServerId,
+        sourceServerLabel = memberRowServerLabel(this, viewerServerId),
+        canRemove = memberRemovableFromChannel(this, viewerServerId),
+        // A Guest label is a fact of the viewed server only (web `rosterRoleTag`).
+        effectiveChannelRole = if (origin.external && effectiveChannelRole == "guest") "member" else effectiveChannelRole
     )
-
-private fun MemberProfile.isLocalToServer(localServerId: ServerId?): Boolean {
-    val sourceId = serverId?.value?.takeIf { it.isNotBlank() } ?: return true
-    val localId = localServerId?.value?.takeIf { it.isNotBlank() } ?: return true
-    return sourceId == localId
-}
-
-private fun MemberProfile.remoteSourceServerLabel(localServerId: ServerId?): String? {
-    if (isLocalToServer(localServerId)) return null
-    return serverName?.takeIf { it.isNotBlank() } ?: serverSlug?.takeIf { it.isNotBlank() }
 }
 
 /** The member's own avatar; [RaftAppAvatar] of the member's kind supplies the default face. */
@@ -39946,7 +39957,7 @@ internal fun threadAddMemberJoinedKeys(
     val localId = localServerId?.trim().orEmpty()
     return members
         .filter { member ->
-            val sourceId = member.sourceServerId?.trim().orEmpty()
+            val sourceId = (member.rosterServerId ?: member.sourceServerId)?.trim().orEmpty()
             member.kind.equals("agent", ignoreCase = true) ||
                 localId.isEmpty() ||
                 sourceId.isEmpty() ||

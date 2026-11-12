@@ -18,7 +18,7 @@ import kotlinx.serialization.Serializable
 /**
  * A channel's (or a reply thread's, which is its own channel) member list as stored offline (artin:
  * everything fetched is stored locally): the rows only. Never stored: the slice's permission flags
- * (`canAddMembers` / `canRemoveMembers`), a member's `canChangeChannelRole`, presence and agent liveness
+ * (`canAddMembers` / `canRemoveMembers`), a member's `canChangeChannelRole` / `canRemoveFromChannel`, presence and agent liveness
  * (live facts), created-agent lists. A stand-in built from it grants no management action.
  */
 @Serializable
@@ -55,6 +55,7 @@ internal fun SharedServerChannelMembersSlice.toStoredChannelMembers(): StoredCha
                     presence = Presence.Offline,
                     agentStatus = null,
                     canChangeChannelRole = null,
+                    canRemoveFromChannel = null,
                     createdAgents = emptyList(),
                 )
             },
