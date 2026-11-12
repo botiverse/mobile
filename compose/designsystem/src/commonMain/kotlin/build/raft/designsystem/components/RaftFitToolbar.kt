@@ -112,6 +112,11 @@ class RaftFitToolbarSearch(
  * and tooltipped by [contentDescription]; in More it is [heading] over its options.
  * [icon] fills the box it is given, in [build.raft.designsystem.theme.LocalRaftContentColor].
  * [testTag] is on the trigger, each option `<testTag>-<key>`.
+ *
+ * [menu], when given, is the menu instead of [options]: a choice of several values (checkboxes,
+ * the menu staying open while picking) or of two values in one list (a sort's key and its
+ * direction, each in its own group). It closes the menu with `close` when it means to; in More it
+ * shows under [heading] the same way.
  */
 class RaftFitToolbarChoice(
     val text: String,
@@ -122,6 +127,30 @@ class RaftFitToolbarChoice(
     val heading: String? = null,
     val contentDescription: String = text,
     val applied: Boolean = false,
+    val testTag: String? = null,
+    val menu: (@Composable ColumnScope.(close: () -> Unit) -> Unit)? = null,
+)
+
+/** One view of a [RaftFitToolbarView]: [icon] (in a 16dp box, filling it) and [label], its name. */
+class RaftFitToolbarViewOption(
+    val key: String,
+    val label: String,
+    val icon: @Composable () -> Unit,
+)
+
+/**
+ * The view switch of a [RaftFitToolbar] (web `ListViewSwitch`: Cards / List), after the display
+ * controls and giving way with them: a [RaftSegmentedControl] of icons and words, its icons alone
+ * from the first step, and in More [heading] over the views. [label] is its accessible name
+ * ("Computers view"). [testTag] tags the control, each segment `<testTag>-<key>` and each More
+ * item `<testTag>-more-<key>`.
+ */
+class RaftFitToolbarView(
+    val options: List<RaftFitToolbarViewOption>,
+    val selectedKey: String,
+    val onSelect: (String) -> Unit,
+    val label: String,
+    val heading: String? = null,
     val testTag: String? = null,
 )
 
@@ -204,6 +233,11 @@ object RaftFitToolbarDefaults {
  *
  * Every part is optional; a toolbar with no search lets the line-one filters fill the rest, or
  * pins what follows the scope at the line's end. [moreLabel] names More ("More").
+ *
+ * [filtersEnd] is pinned after the filters while it is given (web Computers' Clear all): a ghost
+ * button with its words, its icon alone (its words its name and tooltip) once the filters show
+ * their icons or move to the second line. [view] follows the display controls (web Cards / List)
+ * and gives way with them.
  */
 @Composable
 fun RaftFitToolbar(
@@ -211,7 +245,9 @@ fun RaftFitToolbar(
     scope: RaftFitToolbarScope? = null,
     search: RaftFitToolbarSearch? = null,
     filters: List<RaftFitToolbarChoice> = emptyList(),
+    filtersEnd: RaftFitToolbarAction? = null,
     display: List<RaftFitToolbarChoice> = emptyList(),
+    view: RaftFitToolbarView? = null,
     secondary: List<RaftFitToolbarAction> = emptyList(),
     primary: RaftFitToolbarPrimary? = null,
     moreLabel: String = LocalRaftStrings.current.moreActions,
@@ -280,6 +316,16 @@ fun RaftFitToolbar(
                 val hintWidth = measurer.measure(hint, placeholderStyle, softWrap = false, maxLines = 1).size.width
                 minOf(hintWidth + searchChrome, RaftFitToolbarDefaults.SearchMaxLeast.roundToPx())
             }
+        val endWidths =
+            filtersEnd?.let { end ->
+                natural("measure-filters-end") { RaftFitToolbarFiltersEnd(end, false) } to
+                    natural("measure-filters-end-icon") { RaftFitToolbarFiltersEnd(end, true) }
+            }
+        val viewWidths =
+            view?.let { v ->
+                natural("measure-view") { RaftFitToolbarViewSwitch(v, false) } to
+                    natural("measure-view-icon") { RaftFitToolbarViewSwitch(v, true) }
+            }
         val widths =
             RaftFitToolbarWidths(
                 gap = gap,
@@ -287,10 +333,26 @@ fun RaftFitToolbar(
                 scopeSelect = scopeWidths?.second ?: 0,
                 searchMin = searchMin,
                 searchButton = if (search == null) 0 else lineHeight,
-                filters = group(filters.mapIndexed { i, c -> natural("measure-filter-$i") { RaftFitToolbarPicker(c, false, controlHeight) } }),
-                filterIcons = group(filters.mapIndexed { i, c -> natural("measure-filter-icon-$i") { RaftFitToolbarPicker(c, true, controlHeight) } }),
-                display = group(display.mapIndexed { i, c -> natural("measure-display-$i") { RaftFitToolbarPicker(c, false, controlHeight) } }),
-                displayIcons = group(display.mapIndexed { i, c -> natural("measure-display-icon-$i") { RaftFitToolbarPicker(c, true, controlHeight) } }),
+                filters =
+                    group(
+                        filters.mapIndexed { i, c -> natural("measure-filter-$i") { RaftFitToolbarPicker(c, false, controlHeight) } } +
+                            listOfNotNull(endWidths?.first),
+                    ),
+                filterIcons =
+                    group(
+                        filters.mapIndexed { i, c -> natural("measure-filter-icon-$i") { RaftFitToolbarPicker(c, true, controlHeight) } } +
+                            listOfNotNull(endWidths?.second),
+                    ),
+                display =
+                    group(
+                        display.mapIndexed { i, c -> natural("measure-display-$i") { RaftFitToolbarPicker(c, false, controlHeight) } } +
+                            listOfNotNull(viewWidths?.first),
+                    ),
+                displayIcons =
+                    group(
+                        display.mapIndexed { i, c -> natural("measure-display-icon-$i") { RaftFitToolbarPicker(c, true, controlHeight) } } +
+                            listOfNotNull(viewWidths?.second),
+                    ),
                 secondary = group(secondary.mapIndexed { i, a -> natural("measure-secondary-$i") { RaftFitToolbarActionButton(a, false) } }),
                 secondaryIcons = group(secondary.mapIndexed { i, a -> natural("measure-secondary-icon-$i") { RaftFitToolbarActionButton(a, true) } }),
                 more = lineHeight,
@@ -302,7 +364,8 @@ fun RaftFitToolbar(
         val searchOverScope = searchCollapsed && (searchOpen || search?.value?.isNotEmpty() == true)
         if (measuredCollapsed.value != searchCollapsed) measuredCollapsed.value = searchCollapsed
         if (measuredOverScope.value != searchOverScope) measuredOverScope.value = searchOverScope
-        val filtersOnFirstLine = filters.isNotEmpty() && !forms.filtersWrapped
+        val hasFilters = filters.isNotEmpty() || filtersEnd != null
+        val filtersOnFirstLine = hasFilters && !forms.filtersWrapped
 
         // The first line, in order; the filler takes what the others leave.
         val parts = ArrayList<RaftFitPart>(10)
@@ -337,21 +400,29 @@ fun RaftFitToolbar(
         parts += RaftFitPart(null, 0, filler = true)
         if (filtersOnFirstLine && fillerKind != RaftFitFiller.Filters) {
             // A scrolling row needs a bounded width: at most the line (the step chosen leaves it room).
-            parts += RaftFitPart(shown("filters", Constraints(maxWidth = available)) { RaftFitToolbarFilterRow(filters, forms.filterIcons, controlHeight) })
+            parts +=
+                RaftFitPart(
+                    shown("filters", Constraints(maxWidth = available)) {
+                        RaftFitToolbarFilterRow(filters, filtersEnd, forms.filterIcons, forms.filterIcons, controlHeight)
+                    },
+                )
         }
-        val folded = display.isNotEmpty() || secondary.isNotEmpty()
+        val folded = display.isNotEmpty() || view != null || secondary.isNotEmpty()
         if (forms.inMore) {
             if (folded) {
                 parts +=
                     RaftFitPart(
                         shown("more") {
-                            RaftFitToolbarMore(moreLabel, display, secondary)
+                            RaftFitToolbarMore(moreLabel, display, view, secondary)
                         },
                     )
             }
         } else {
             display.forEachIndexed { i, choice ->
                 parts += RaftFitPart(shown("display-$i") { RaftFitToolbarPicker(choice, forms.displayIcons, controlHeight) })
+            }
+            if (view != null) {
+                parts += RaftFitPart(shown("view") { RaftFitToolbarViewSwitch(view, forms.displayIcons) })
             }
             secondary.forEachIndexed { i, action ->
                 parts += RaftFitPart(shown("secondary-$i") { RaftFitToolbarActionButton(action, forms.secondaryIcons) })
@@ -377,7 +448,9 @@ fun RaftFitToolbar(
                         )
                     }
                 RaftFitFiller.Filters ->
-                    shown("filters", Constraints.fixedWidth(fillerWidth)) { RaftFitToolbarFilterRow(filters, forms.filterIcons, controlHeight) }
+                    shown("filters", Constraints.fixedWidth(fillerWidth)) {
+                        RaftFitToolbarFilterRow(filters, filtersEnd, forms.filterIcons, forms.filterIcons, controlHeight)
+                    }
                 RaftFitFiller.Space -> null
             }
         parts[fillerIndex] = RaftFitPart(filler, fillerWidth, filler = true)
@@ -407,7 +480,8 @@ fun RaftFitToolbar(
             }
         val secondLine =
             if (forms.filtersWrapped) {
-                shown("filters", Constraints(maxWidth = available)) { RaftFitToolbarFilterRow(filters, false, controlHeight) }
+                // Their words back on their own line; the end (Clear all) stays its icon.
+                shown("filters", Constraints(maxWidth = available)) { RaftFitToolbarFilterRow(filters, filtersEnd, false, true, controlHeight) }
             } else {
                 null
             }
@@ -601,9 +675,14 @@ private fun RaftFitToolbarPicker(choice: RaftFitToolbarChoice, iconsOnly: Boolea
     }
 }
 
-/** A choice's options as menu items, the chosen one checked. */
+/** A choice's options as menu items, the chosen one checked; or its own [RaftFitToolbarChoice.menu]. */
 @Composable
-private fun RaftFitToolbarChoiceItems(choice: RaftFitToolbarChoice, close: () -> Unit) {
+private fun ColumnScope.RaftFitToolbarChoiceItems(choice: RaftFitToolbarChoice, close: () -> Unit) {
+    val menu = choice.menu
+    if (menu != null) {
+        this.menu(close)
+        return
+    }
     choice.options.forEach { option ->
         RaftMenuItem(
             text = option.label,
@@ -617,15 +696,64 @@ private fun RaftFitToolbarChoiceItems(choice: RaftFitToolbarChoice, close: () ->
     }
 }
 
-/** The filters in one row that scrolls sideways when it has less room than they need. */
+/**
+ * The filters in one row that scrolls sideways when it has less room than they need, [end]
+ * (Clear all) pinned after them, its icon alone with [endIconOnly].
+ */
 @Composable
-private fun RaftFitToolbarFilterRow(filters: List<RaftFitToolbarChoice>, iconsOnly: Boolean, controlHeight: Dp) {
+private fun RaftFitToolbarFilterRow(
+    filters: List<RaftFitToolbarChoice>,
+    end: RaftFitToolbarAction?,
+    iconsOnly: Boolean,
+    endIconOnly: Boolean,
+    controlHeight: Dp,
+) {
     Row(
-        Modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(RaftFitToolbarDefaults.Gap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        filters.forEach { RaftFitToolbarPicker(it, iconsOnly, controlHeight) }
+        if (filters.isNotEmpty()) {
+            Row(
+                Modifier.weight(1f, fill = false).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(RaftFitToolbarDefaults.Gap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                filters.forEach { RaftFitToolbarPicker(it, iconsOnly, controlHeight) }
+            }
+        }
+        if (end != null) RaftFitToolbarFiltersEnd(end, endIconOnly)
+    }
+}
+
+/** What ends the filters (web Computers' Clear all): a `ghost` `md` button with its words, or its icon alone named by them. */
+@Composable
+private fun RaftFitToolbarFiltersEnd(action: RaftFitToolbarAction, iconOnly: Boolean) {
+    val modifier = Modifier.raftFitTag(action.testTag)
+    if (iconOnly) {
+        RaftIconButton(onClick = action.onClick, tooltip = action.text, modifier = modifier, variant = RaftButtonVariant.Ghost, size = RaftIconButtonSize.Md) {
+            action.icon()
+        }
+    } else {
+        RaftButton(text = action.text, onClick = action.onClick, modifier = modifier, variant = RaftButtonVariant.Ghost, size = RaftButtonSize.Md)
+    }
+}
+
+/** The view switch (web `ListViewSwitch`): a segmented control of icons and words, or of its icons alone. */
+@Composable
+private fun RaftFitToolbarViewSwitch(view: RaftFitToolbarView, iconsOnly: Boolean) {
+    RaftSegmentedControl(
+        modifier = Modifier.semantics { contentDescription = view.label }.raftFitTag(view.testTag),
+        iconsOnly = iconsOnly,
+    ) {
+        view.options.forEach { option ->
+            RaftSegment(
+                text = option.label,
+                selected = option.key == view.selectedKey,
+                onClick = { view.onSelect(option.key) },
+                modifier = Modifier.raftFitTag(view.testTag?.let { "$it-${option.key}" }),
+                icon = option.icon,
+            )
+        }
     }
 }
 
@@ -658,6 +786,7 @@ private fun RaftFitToolbarActionButton(action: RaftFitToolbarAction, iconsOnly: 
 private fun RaftFitToolbarMore(
     label: String,
     display: List<RaftFitToolbarChoice>,
+    view: RaftFitToolbarView?,
     secondary: List<RaftFitToolbarAction>,
 ) {
     // Its own state: More leaves the toolbar (and its menu closes) once it holds nothing.
@@ -673,7 +802,22 @@ private fun RaftFitToolbarMore(
                 choice.heading?.let { RaftMenuLabel(it) }
                 RaftFitToolbarChoiceItems(choice, close)
             }
-            if (display.isNotEmpty() && secondary.isNotEmpty()) RaftMenuSeparator()
+            if (view != null) {
+                if (display.isNotEmpty()) RaftMenuSeparator()
+                view.heading?.let { RaftMenuLabel(it) }
+                view.options.forEach { option ->
+                    RaftMenuItem(
+                        text = option.label,
+                        onClick = {
+                            close()
+                            view.onSelect(option.key)
+                        },
+                        modifier = Modifier.raftFitTag(view.testTag?.let { "$it-more-${option.key}" }),
+                        checked = option.key == view.selectedKey,
+                    )
+                }
+            }
+            if ((display.isNotEmpty() || view != null) && secondary.isNotEmpty()) RaftMenuSeparator()
             secondary.forEach { action ->
                 RaftMenuItem(
                     text = action.text,
