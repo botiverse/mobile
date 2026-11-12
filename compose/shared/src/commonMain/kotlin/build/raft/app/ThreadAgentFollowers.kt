@@ -410,7 +410,6 @@ internal fun ThreadAgentFollowersPanel(
                             RaftAvatarWithStatus(
                                 statusColor = indicator?.color,
                                 avatarSize = RaftAvatarSize.Md.edge,
-                                statusPulsing = indicator?.pulsing == true,
                                 cutoutColor = colors.layerPopover,
                             ) {
                                 RaftMemberAvatar(

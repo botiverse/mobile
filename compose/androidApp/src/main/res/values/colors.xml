@@ -5,12 +5,13 @@
     <color name="raft_surface_cream">#FFFFFAEF</color>
     <!-- Window / splash behind the first frame (dark: values-night). -->
     <color name="raft_window_background">#FFFFFAEF</color>
-    <!-- The app's agent status dot colours (raft-ui palette lime / yellow / cyan / orange, gray-400). -->
+    <!-- The app's agent status dot colours (raft-ui palette lime / yellow / cyan / orange; offline is
+         the design system's presenceOffline stone, as in the app and on web). -->
     <color name="raft_agent_active">#FFA9D877</color>
     <color name="raft_agent_working">#FFFFD441</color>
     <color name="raft_agent_external">#FF28CCF3</color>
     <color name="raft_agent_error">#FFF8A16F</color>
-    <color name="raft_agent_offline">#FF99A1AF</color>
+    <color name="raft_agent_offline">#FFC0B9B1</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 </resources>

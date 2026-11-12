@@ -24,7 +24,6 @@ import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * Task #20: the followers endpoint's `status` is the agents.status lifecycle column ("active"),
@@ -82,7 +81,6 @@ class ThreadFollowerLiveStatusTest {
 
         assertEquals(AgentStatus.Working, indicator?.status)
         assertEquals(RaftColor.BrandYellow, indicator?.color)
-        assertTrue(indicator?.pulsing == true, "a working follower pulses like its message avatar")
         assertEquals("Working", indicator?.label)
     }
 
@@ -116,7 +114,6 @@ class ThreadFollowerLiveStatusTest {
             store.pushStatus("lagoon", AgentStatus.Online, seq = 11L)
             val after = withTimeout(5_000) { row.filter { it?.status == AgentStatus.Online }.first() }
             assertEquals(RaftColor.AccentLime, after?.color)
-            assertEquals(false, after?.pulsing)
         } finally {
             held.cancel()
         }

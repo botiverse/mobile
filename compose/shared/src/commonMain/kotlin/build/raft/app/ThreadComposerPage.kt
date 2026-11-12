@@ -4171,8 +4171,6 @@ internal fun ComposerMemberSuggestionRow(
                 statusColor = agentStatus?.color,
                 avatarSize = ComposerMemberSuggestionAvatarSize,
                 statusSize = ComposerMemberSuggestionStatusSize,
-                // web StatusDot: "status dots mark ambient states and never animate".
-                statusPulsing = false
             ) {
                 RaftMemberAvatar(
                     identity = RaftMemberAvatarIdentity(member.kind, member.memberId, member.sourceServerId),

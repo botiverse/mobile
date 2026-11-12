@@ -1700,7 +1700,7 @@ private fun unknownMembersAgentStatusIndicatorState(): RaftAgentStatusIndicatorS
  *
  * Surfaces that paint a dot must use this, never [resolveMembersAgentStatusIndicatorState]:
  * that one substitutes [unknownMembersAgentStatusIndicatorState], whose colour maps through
- * `Presence.Offline` to StatusNeutralGray, so an unknown agent would render the same dot as
+ * `Presence.Offline` to PresenceOffline, so an unknown agent would render the same dot as
  * an offline one while its label reads "—" (task #256; @LiBai's review of PR #2325 caught the
  * first attempt fixing only the elvis-fallback spelling of this defect and missing this one).
  */
@@ -1731,7 +1731,6 @@ private fun RaftAgentStatusIndicatorState.toMembersAgentStatusDisplayState(): Me
     MembersAgentStatusDisplayState(
         status = status,
         color = color,
-        pulsing = pulsing,
         external = external
     )
 
@@ -6780,7 +6779,7 @@ private fun MembersDetailContent(
             managedAgentStatusIndicatorState
         }
     // task #256 x #1119: the no-manufactured-dot rule covers the MANAGED branch only. An
-    // external agent's tiers are cyan/green — never StatusNeutralGray — so that state is an
+    // external agent's tiers are cyan/green — never the offline stone — so that state is an
     // observation in its own right and must keep painting its dot. Suppressing it here would
     // silently undo #1119's setup/activity tiers, which is exactly what resolving this
     // conflict in favour of either side alone would have done.
@@ -9977,7 +9976,6 @@ private fun MembersHumanCreatedAgentRow(
                 RaftStatusIndicator(
                     color = observed.color,
                     size = 10.dp,
-                    pulsing = observed.pulsing
                 )
             }
         }
@@ -10349,7 +10347,7 @@ internal fun MembersAgentProfileHeader(
                         )
                     }
                 }
-                // A null resolution is Unknown/not-ready, and StatusNeutralGray is the
+                // A null resolution is Unknown/not-ready, and PresenceOffline is the
                 // Offline/Disconnected colour — falling back to it makes the dot claim
                 // offline while the label beside it says Unknown, the disagreement
                 // RaftAgentStatusIndicator's own contract forbids. Render no light until
@@ -10368,7 +10366,7 @@ internal fun MembersAgentProfileHeader(
                         icon = if (chipColor != null) {
                             {
                                 // raft-ui Status in a Badge (`lead-dot`): the 10dp light, never an animation.
-                                RaftStatusIndicator(color = chipColor, pulsing = false)
+                                RaftStatusIndicator(color = chipColor)
                             }
                         } else {
                             null
@@ -15338,8 +15336,6 @@ private fun MembersAvatar(
                 null
             },
         avatarSize = avatarSize,
-        // Web `SidebarAgentActivityBadge` (as Home's DM rows): an ambient state never loops.
-        statusPulsing = false
     ) {
         RaftAppAvatar(
             kind = raftAvatarKind(member.kind),
@@ -15355,7 +15351,6 @@ private fun MembersAvatar(
 internal data class MembersAgentStatusDisplayState(
     val status: AgentStatus?,
     val color: Color,
-    val pulsing: Boolean,
     val external: Boolean
 )
 
@@ -15363,7 +15358,6 @@ private val MembersUnknownAgentStatusDisplayState =
     MembersAgentStatusDisplayState(
         status = null,
         color = RaftColor.StatusNeutralGray,
-        pulsing = false,
         external = false
     )
 

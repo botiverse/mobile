@@ -1,12 +1,6 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -52,34 +46,14 @@ internal fun RaftStatusIndicator(
     shape: RaftStatusIndicatorShape = RaftStatusIndicatorTokens.Shape,
     borderColor: Color = RaftStatusIndicatorTokens.BorderColor,
     borderWidth: Dp = RaftStatusIndicatorTokens.BorderWidth,
-    pulsing: Boolean = false,
     // raft-ui status pixel: `rounded-[2px]`; the 6px Status xs takes `rounded-[1px]`.
     cornerRadius: Dp = if (size <= 6.dp) 1.dp else 2.dp
 ) {
-    val pulseAlphaState: State<Float>? =
-        if (pulsing) {
-            val transition = rememberInfiniteTransition(label = "slock-status-pulse")
-            transition.animateFloat(
-                initialValue = 1f,
-                targetValue = 0.5f,
-                animationSpec =
-                    infiniteRepeatable(
-                        animation = tween(durationMillis = 1000),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                label = "slock-status-pulse-alpha"
-            )
-        } else {
-            null
-        }
-    // Match React StatusDot's Tailwind `animate-pulse`: the whole dot breathes by opacity,
-    // while its layout footprint stays exactly `size` for row-end and avatar overlay anchors.
+    // raft-design identity-and-presence: a presence light is still. It never blinks, pulses
+    // or breathes, whatever the state (web StatusDot and the DS RaftStatusDot agree).
     Canvas(modifier = modifier.size(size)) {
-        // Read the animation state in the draw phase so pulsing only invalidates the Canvas draw,
-        // not the RaftStatusIndicator composable group every frame.
-        val pulseAlpha = pulseAlphaState?.value ?: 1f
-        val fillColor = color.copy(alpha = color.alpha * pulseAlpha)
-        val outlineColor = borderColor.copy(alpha = borderColor.alpha * pulseAlpha)
+        val fillColor = color
+        val outlineColor = borderColor
         val stroke = borderWidth.toPx()
         val halfStroke = stroke / 2f
         when (shape) {
@@ -134,7 +108,6 @@ internal fun RaftAvatarWithStatus(
     avatarSize: Dp,
     statusSize: Dp? = null,
     shape: RaftStatusIndicatorShape = RaftStatusIndicatorTokens.Shape,
-    statusPulsing: Boolean = false,
     cutoutColor: Color = RaftColor.Canvas,
     avatar: @Composable BoxScope.() -> Unit
 ) {
@@ -151,7 +124,6 @@ internal fun RaftAvatarWithStatus(
                 size = lightSize,
                 shape = shape,
                 borderWidth = if (square) step.badgeBorder else RaftStatusIndicatorTokens.BorderWidth,
-                pulsing = statusPulsing,
                 cornerRadius = radius,
                 modifier =
                     Modifier

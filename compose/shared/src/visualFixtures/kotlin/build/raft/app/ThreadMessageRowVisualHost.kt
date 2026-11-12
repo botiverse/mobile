@@ -1259,14 +1259,12 @@ private fun threadMessageVisualAgentStatusResolver(
             THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 -> AgentStatus.Online
             else -> return EmptyRaftAgentStatusResolver
         }
-    // Freeze the Working/Thinking pulse at its resting frame (opacity 1): a capture taken
-    // mid-breath paints the dot pale with a grey edge, while web's capture shows it solid.
     val cindyState =
         raftAgentStatusIndicatorState(
             status = cindyStatus,
             presence = cindyStatus.presence,
             external = false
-        ).copy(pulsing = false)
+        )
     return { memberId ->
         flowOf(cindyState.takeIf { memberId?.trim() == "agent-cindy" })
     }

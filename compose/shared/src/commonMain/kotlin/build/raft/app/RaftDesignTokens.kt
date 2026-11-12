@@ -61,7 +61,8 @@ internal object RaftColor {
     val AppBgLightBlue: Color get() = if (RaftAppThemeState.isDark) RaftAppThemeState.colors.infoSoft else Color(0xFFE6F8FF)
     // Neutral tile / disabled fill: dark `fill-strong`.
     val EmptyStateGray: Color get() = if (RaftAppThemeState.isDark) RaftAppThemeState.colors.fillStrong else Color(0xFFE7E7E7)
-    // Tailwind gray-400 (#99A1AF): the neutral / offline status-dot fill.
+    // Tailwind gray-400 (#99A1AF): a neutral (not-yet-set-up / unknown) fill. Offline is
+    // [PresenceOffline] (stone), as on web.
     // Not the same gray as EmptyStateGray (#E7E7E7).
     val StatusNeutralGray = RaftUiPalette.gray400
     // Themed tokens below read [RaftAppThemeState], so they follow light/dark at runtime.

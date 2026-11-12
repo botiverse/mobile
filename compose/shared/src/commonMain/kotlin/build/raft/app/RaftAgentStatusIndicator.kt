@@ -29,7 +29,6 @@ import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 internal data class RaftAgentStatusIndicatorState(
     val status: AgentStatus?,
     val color: Color,
-    val pulsing: Boolean,
     val label: String,
     /** External agents only: `lastSeenAt` carried through for presence resolution (task #410). */
     val lastSeenAt: String? = null,
@@ -220,14 +219,13 @@ internal fun raftAgentStatusIndicatorState(
         // React StatusDot parity: `external` overrides activity unconditionally
         // ("no managed liveness green/red"). The tier is no longer always
         // cyan: `lastSeenAt` inside the online window (web
-        // `EXTERNAL_AGENT_ONLINE_WINDOW_MS` = 120s) renders lime. Color,
-        // pulse and label move together so the dot can never disagree with
+        // `EXTERNAL_AGENT_ONLINE_WINDOW_MS` = 120s) renders lime. Color
+        // and label move together so the dot can never disagree with
         // the text beside it.
         val online = isExternalAgentSeenOnline(lastSeenAt, nowEpochMillis)
         return RaftAgentStatusIndicatorState(
             status = status,
             color = if (online) RaftColor.AccentLime else RaftColor.AccentCyan,
-            pulsing = false,
             label = ExternalAgentStatusLabel,
             external = true,
             lastSeenAt = lastSeenAt
@@ -242,17 +240,16 @@ internal fun raftAgentStatusIndicatorState(
                 AgentStatus.Thinking -> RaftColor.BrandYellow
                 AgentStatus.Idle -> RaftColor.AccentLime
                 AgentStatus.Disconnected,
-                AgentStatus.Offline -> RaftColor.StatusNeutralGray
+                AgentStatus.Offline -> RaftColor.PresenceOffline
                 AgentStatus.Error -> RaftColor.AccentOrange
                 null ->
                     when (presence) {
                         Presence.Active -> RaftColor.AccentLime
                         Presence.Away -> RaftColor.BrandYellow
-                        Presence.Offline -> RaftColor.StatusNeutralGray
+                        Presence.Offline -> RaftColor.PresenceOffline
                     }
             },
-        pulsing = status == AgentStatus.Working || status == AgentStatus.Thinking,
-        // Label derives from the same resolved status as color/pulse so a dot
+        // Label derives from the same resolved status as color so a dot
         // can never disagree with the text beside it (React
         // resolveAgentDisplayState parity, #198/#73).
         label = statusLabel?.takeIf { it.isNotBlank() } ?: status?.label ?: presence.name,

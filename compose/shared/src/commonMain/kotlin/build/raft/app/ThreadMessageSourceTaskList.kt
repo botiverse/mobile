@@ -83,7 +83,6 @@ private fun ThreadMessageSourceTaskAssignee(
             RaftAvatarWithStatus(
                 statusColor = agentStatus?.color,
                 avatarSize = avatarSize,
-                statusPulsing = agentStatus?.pulsing == true,
                 cutoutColor = RaftTheme.colors.layerCard,
             ) {
                 RaftMemberAvatar(

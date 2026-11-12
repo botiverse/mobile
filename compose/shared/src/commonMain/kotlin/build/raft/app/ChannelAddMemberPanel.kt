@@ -257,7 +257,6 @@ private fun ThreadAddMemberAvatar(
     RaftAvatarWithStatus(
         statusColor = status?.color,
         avatarSize = ThreadAddMemberAvatarSize,
-        statusPulsing = status?.pulsing == true,
         cutoutColor = RaftTheme.colors.layerCard,
     ) {
         RaftAppAvatar(

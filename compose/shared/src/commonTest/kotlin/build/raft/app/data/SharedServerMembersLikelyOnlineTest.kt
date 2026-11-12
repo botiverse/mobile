@@ -89,7 +89,6 @@ class SharedServerMembersLikelyOnlineTest {
             val indicator = status.toRaftAgentStatusIndicatorState()
             assertTrue(indicator.likelyOnline, shape)
             assertEquals(RaftColor.AccentLime, indicator.color, shape)
-            assertFalse(indicator.pulsing, shape)
             assertEquals(LikelyOnlineAgentStatusLabel, indicator.label, shape)
         }
 
@@ -99,7 +98,7 @@ class SharedServerMembersLikelyOnlineTest {
             val status = assertNotNull(store.currentMemberStatus(serverId, "agent-stopped"), shape)
             assertFalse(status.likelyOnline, shape)
             val indicator = status.toRaftAgentStatusIndicatorState()
-            assertEquals(RaftColor.StatusNeutralGray, indicator.color, shape)
+            assertEquals(RaftColor.PresenceOffline, indicator.color, shape)
             assertEquals(AgentStatus.Offline.label, indicator.label, shape)
         }
 

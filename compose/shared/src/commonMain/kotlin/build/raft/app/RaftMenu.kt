@@ -521,7 +521,6 @@ internal fun RaftTaskAssigneeMenuOverlay(
                                 avatarLabel = member.raftAvatarName(),
                                 avatarKind = raftAvatarKind(member.kind),
                                 statusColor = statusIndicatorState?.color,
-                                statusPulsing = statusIndicatorState?.pulsing == true,
                                 avatarSize = 26.dp,
                                 sourceBadgeLabel = null,
                                 enabled = true,

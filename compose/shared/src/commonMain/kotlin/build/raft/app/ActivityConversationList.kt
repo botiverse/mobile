@@ -1205,7 +1205,6 @@ internal fun ActivityConversationLeading(
                 statusColor = status?.color,
                 avatarSize = ConversationLeadingAvatar,
                 statusSize = 9.dp,
-                statusPulsing = status?.pulsing == true,
             ) {
                 ActivityMemberFace(
                     identity =

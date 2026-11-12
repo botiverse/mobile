@@ -543,9 +543,9 @@ def _native_test_sources(root: Path) -> dict[str, str]:
 
 # task #256: a null agent-status resolution means Unknown, but the label-facing
 # resolver substitutes a placeholder built with Presence.Offline, whose colour maps
-# to StatusNeutralGray. Feeding that to a dot makes an unknown agent look offline.
+# to PresenceOffline. Feeding that to a dot makes an unknown agent look offline.
 # The defect reappeared three times in one file with three different spellings
-# (elvis to StatusNeutralGray, constructing a grey-equivalent state, and reading
+# (elvis to the offline colour, constructing a grey-equivalent state, and reading
 # .color straight off the non-null resolver), so the contract in the resolver's
 # KDoc is not enough on its own: a comment is guarded by the same thing it failed
 # to guard, i.e. someone reading it.

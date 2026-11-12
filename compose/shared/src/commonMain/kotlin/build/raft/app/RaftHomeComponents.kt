@@ -8134,7 +8134,6 @@ private fun DirectMessageAvatar(
     RaftAvatarWithStatus(
         statusColor = status?.color,
         avatarSize = ChannelAvatarSize,
-        statusPulsing = false
     ) {
         RaftAppAvatar(
             kind = kind,
@@ -8452,7 +8451,7 @@ internal fun MemberProfile.raftAvatarName(): String =
         ?: avatarLabel
 
 private val RaftAppPresence.homeRowColor: Color
-    get() = when (this) { RaftAppPresence.Online -> RaftColor.AccentLime; RaftAppPresence.Offline -> RaftColor.StatusNeutralGray; RaftAppPresence.Unknown -> RaftColor.BrandYellow }
+    get() = when (this) { RaftAppPresence.Online -> RaftColor.AccentLime; RaftAppPresence.Offline -> RaftColor.PresenceOffline; RaftAppPresence.Unknown -> RaftColor.BrandYellow }
 
 internal fun pixelAvatarGridEdge(index: Int, extent: Float): Float =
     when {

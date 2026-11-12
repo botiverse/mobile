@@ -110,7 +110,7 @@ class SearchOverlayPanelScreenshotTest {
                             // Android Developer 4 is online: the lime square on its avatar (web AgentActivityDot).
                             agentStatusResolver = { id ->
                                 flowOf(
-                                    RaftAgentStatusIndicatorState(status = AgentStatus.Online, color = RaftColor.AccentLime, pulsing = false, label = "Online", external = false)
+                                    RaftAgentStatusIndicatorState(status = AgentStatus.Online, color = RaftColor.AccentLime, label = "Online", external = false)
                                         .takeIf { id == "agent-android-developer-4" }
                                 )
                             },

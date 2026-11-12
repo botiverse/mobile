@@ -6159,7 +6159,6 @@ internal fun ThreadMembersPageContent(
                             statusColor = member.lastSeenAt?.let { seen ->
                                 if (isExternalAgentSeenOnline(seen, now)) RaftColor.AccentLime else RaftColor.AccentCyan
                             },
-                            statusPulsing = false,
                             badges = listOfNotNull(
                                 member.provider?.takeIf { it.isNotBlank() }?.let { ChannelMemberBadge(it, ChannelMemberBadgeKind.Provider) }
                             ),
@@ -6700,7 +6699,6 @@ internal fun channelSettingsPanelVisualPanel(pinned: Boolean = false, serverId: 
                     RaftAgentStatusIndicatorState(
                         status = AgentStatus.Working,
                         color = RaftColor.BrandYellow,
-                        pulsing = false,
                         label = "Working",
                         external = false
                     )
@@ -6784,15 +6782,14 @@ internal fun DirectMessageSettingsPanelVisualScreen(
 @Composable
 internal fun ChannelAddMemberPanelVisualScreen() {
     val candidates = remember { channelPanelVisualCandidates() }
-    // fixtureData.json: every candidate agent is `active` / `working`; freeze the pulse at its
-    // resting frame so the dot is solid, as in the web capture.
+    // fixtureData.json: every candidate agent is `active` / `working`.
     val workingState =
         remember {
             raftAgentStatusIndicatorState(
                 status = AgentStatus.Working,
                 presence = AgentStatus.Working.presence,
                 external = false,
-            ).copy(pulsing = false)
+            )
         }
     val agentStatusResolver: RaftAgentStatusResolver =
         remember(workingState) {
@@ -20117,7 +20114,6 @@ private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState, modifier
         RaftStatusIndicator(
             color = state.color,
             size = ThreadHeaderDmAgentActivityDotSize,
-            pulsing = state.pulsing
         )
         Text(
             text = label,
@@ -30435,7 +30431,6 @@ private fun ThreadMessageCardContent(
                                 message.authorId
                             ),
                         status = agentStatus,
-                        statusPulsing = { !isMessageListScrolling() },
                         // web MessageItem: only an archived agent's face is dimmed (`grayscale opacity-dimmed`);
                         // a person who left or was removed keeps theirs.
                         muted = message.isDeletedThreadAuthor(),
@@ -31068,7 +31063,6 @@ private fun ThreadMessageCardContent(
                                 message.authorId
                             ),
                         status = agentStatus,
-                        statusPulsing = { !isMessageListScrolling() },
                         // web MessageItem: only an archived agent's face is dimmed (`grayscale opacity-dimmed`);
                         // a person who left or was removed keeps theirs.
                         muted = message.isDeletedThreadAuthor(),
@@ -36490,7 +36484,6 @@ private fun ThreadMessageAvatarSlot(
     avatarDiagnostics: RaftAvatarRowDiagnostics? = null,
     cacheSubject: build.raft.app.data.RaftAvatarCacheSubject? = null,
     status: RaftAgentStatusIndicatorState?,
-    statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
     delegatedBy: MessageDelegatedBy? = null,
     delegatedSurface: Color = RaftColor.Canvas,
@@ -36548,7 +36541,6 @@ private fun ThreadMessageAvatarSlot(
                             avatarDiagnostics = avatarDiagnostics,
                             cacheSubject = cacheSubject,
                             status = status,
-                            statusPulsing = statusPulsing,
                             muted = muted,
                             delegatedBy = delegatedBy,
                             delegatedSurface = delegatedSurface,
@@ -36612,7 +36604,6 @@ private fun ThreadMessageAvatar(
     avatarDiagnostics: RaftAvatarRowDiagnostics? = null,
     cacheSubject: build.raft.app.data.RaftAvatarCacheSubject? = null,
     status: RaftAgentStatusIndicatorState?,
-    statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
     delegatedBy: MessageDelegatedBy? = null,
     delegatedSurface: Color = RaftColor.Canvas,
@@ -36652,7 +36643,6 @@ private fun ThreadMessageAvatar(
                 // MessageItemDelegatedAvatar; only on a person's avatar).
                 statusColor = if (muted || delegatedBy != null) null else status?.color,
                 avatarSize = RaftAvatarSize.Md.edge,
-                statusPulsing = status?.pulsing == true && statusPulsing()
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     RaftAppAvatar(
@@ -39695,7 +39685,6 @@ internal fun ThreadMembersPagerRow(
         cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
         cacheServerId = member.sourceServerId,
         statusColor = status?.color,
-        statusPulsing = status?.pulsing == true,
         badges = listOfNotNull(serverBadge, roleBadge),
         titleBadge = appBot?.let { bot -> { RaftAppBotBadge(identity = bot, botName = member.displayName) } },
         divider = divider,

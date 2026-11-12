@@ -7,8 +7,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 
 /**
- * Roster shared by the member picker's ranking, selection and screenshot tests. No Working or
- * Thinking agent: their pulsing status dot never lets a Robolectric frame loop go idle.
+ * Roster shared by the member picker's ranking, selection and screenshot tests.
  */
 internal object MemberPickerTestFixtures {
     fun agent(id: String, displayName: String, handle: String, status: AgentStatus = AgentStatus.Idle, description: String? = null) =

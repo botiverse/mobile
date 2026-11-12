@@ -51,7 +51,7 @@ class MembersAgentActivityOverviewFormatTest {
         val disconnected = raftAgentStatusIndicatorState(AgentStatus.Disconnected, Presence.Offline, external = false)
         val external = raftAgentStatusIndicatorState(AgentStatus.Online, Presence.Active, external = true)
         assertEquals(RaftColor.BrandYellow, MembersAgentActivityNow("Working", working).dotColor())
-        assertEquals(RaftColor.StatusNeutralGray, MembersAgentActivityNow("Disconnected", disconnected).dotColor())
+        assertEquals(RaftColor.PresenceOffline, MembersAgentActivityNow("Disconnected", disconnected).dotColor())
         assertEquals(RaftColor.AccentCyan, MembersAgentActivityNow("External", external).dotColor())
     }
 

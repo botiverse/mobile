@@ -48,7 +48,6 @@ class ThreadAgentFollowersPanelScreenshotTest {
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
                 RaftDesignSystemTheme {
                     Column(Modifier.fillMaxSize().background(RaftColor.Canvas).padding(24.dp)) {
-                        // Online, not Working: a working light pulses forever and the capture never idles.
                         val resolver: RaftAgentStatusResolver =
                             remember {
                                 {
