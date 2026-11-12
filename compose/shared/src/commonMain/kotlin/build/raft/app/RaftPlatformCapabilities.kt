@@ -84,7 +84,7 @@ internal expect fun raftPlatformSupportsInAppBrowser(): Boolean
  */
 internal expect fun raftPlatformClipboardHasAttachments(): Boolean
 
-/** Blocking clipboard read (an image is written to a PNG); call off the UI thread. */
+/** Blocking clipboard read (desktop: an image is written to a PNG; iOS: JPEG, or PNG with alpha); call off the UI thread. */
 internal expect fun raftPlatformReadClipboardAttachments(): List<PlatformFile>
 
 /**
@@ -93,6 +93,12 @@ internal expect fun raftPlatformReadClipboardAttachments(): List<PlatformFile>
  * Null where a paste with an image is the paste shortcut's (desktop) or not offered yet (Android).
  */
 internal expect fun raftPlatformImagePasteClipEntry(): ClipEntry?
+
+/**
+ * Whether pasted images open in the composer's image editor first, as picked photos do (iOS,
+ * artin 2026-11-12). Desktop pastes straight into the tray, as the web composer does.
+ */
+internal expect fun raftPlatformPastedImagesOpenEditor(): Boolean
 
 /**
  * Least space under the conversation composer. Phones: 0 (their padding follows the safe area /
