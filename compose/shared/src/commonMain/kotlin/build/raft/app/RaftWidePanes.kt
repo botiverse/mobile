@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
@@ -28,6 +29,8 @@ import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.compat.pager.RaftPaneRole
 import build.raft.app.data.RAFT_SIDE_THREAD_DIVIDER_DP
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /*
  * Wide-layout pane roles (plan option C, artin 2026-10-29): on the wide layout a page whose
@@ -195,14 +198,40 @@ internal fun RaftPaneHost(
  */
 internal val LocalRaftPaneBackCloses = staticCompositionLocalOf { false }
 
-/** Web ChannelSettingsSheet: the drawer is at most 420 wide. */
-internal const val RAFT_SUPPORTING_PANE_MAX_DP = 420f
+/**
+ * What the shell's supporting pane shows, for the conversation beside it: [root] is the pane's
+ * first page while the pane is on screen (null otherwise), [close] closes the pane. The
+ * conversation's Settings toggle reads it (pressed while its details are open; pressed again, it
+ * closes them, as Tasks and Files do).
+ */
+internal class RaftSupportingPaneState(val root: RaftPaneEntry?, val close: () -> Unit)
+
+/** The supporting pane beside this detail; none outside the wide shell. */
+internal val LocalRaftSupportingPane = compositionLocalOf { RaftSupportingPaneState(root = null, close = {}) }
+
+/** Whether the pane shows the details of channel [channelId] at its root (pages pushed over them included). */
+internal fun RaftSupportingPaneState.showsChannelDetails(channelId: String?): Boolean {
+    val entry = root ?: return false
+    if (channelId.isNullOrBlank() || entry.pageName != CHANNEL_SETTINGS_PAGE) return false
+    return (entry.pageData["channelId"] as? JsonPrimitive)?.contentOrNull == channelId
+}
+
+/**
+ * Web channelSideLayout: the profile / details column is 400 wide by default, 320 at least
+ * (raft-design channel.md, "The channel details").
+ */
+internal const val RAFT_SUPPORTING_PANE_MAX_DP = 400f
 internal const val RAFT_SUPPORTING_PANE_MIN_DP = 320f
 
 /** The conversation beside the pane keeps the wide detail's minimum (RaftListPaneWidths). */
 internal const val RAFT_SUPPORTING_PANE_MIN_DETAIL_DP = 360f
 
-/** The supporting pane's width in a detail slot [availableDp] wide, and whether it sits [beside] the conversation or over its right edge. */
+/**
+ * The supporting pane's width in a detail slot [availableDp] wide, and whether it sits [beside] the
+ * conversation. Not beside, it takes the whole slot, as web folds a column over the conversation
+ * when the row has no room for both: a column over the conversation's right edge, with no scrim,
+ * hid part of it and left the rest under the pointer (raft-design channel.md).
+ */
 internal data class RaftSupportingPaneSize(val widthDp: Float, val beside: Boolean)
 
 internal fun raftSupportingPaneSize(availableDp: Float): RaftSupportingPaneSize {
@@ -211,13 +240,13 @@ internal fun raftSupportingPaneSize(availableDp: Float): RaftSupportingPaneSize 
     return if (besideWidth >= RAFT_SUPPORTING_PANE_MIN_DP) {
         RaftSupportingPaneSize(besideWidth, beside = true)
     } else {
-        RaftSupportingPaneSize(availableDp.coerceAtMost(RAFT_SUPPORTING_PANE_MAX_DP), beside = false)
+        RaftSupportingPaneSize(availableDp, beside = false)
     }
 }
 
 /**
  * The wide detail slot with a supporting pane on its right: [detail] narrows to make room when
- * [raftSupportingPaneSize] fits it beside, else the pane lies over its right edge. [detail] keeps
+ * [raftSupportingPaneSize] fits it beside, else the pane takes the whole slot over it. [detail] keeps
  * its place in the composition whether the pane is open or not, so the conversation never remounts.
  */
 @Composable

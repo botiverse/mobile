@@ -29,11 +29,12 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The channel settings page (web ChannelOverflowMenu + EditChannelDialog panel), light and dark,
- * as a manager of a public, guest-visible channel who may stop its agents: identity, the members
- * strip (summary, agent activity lights, the add tile), the inline Info form with its Slack
- * channel pick, Guest access,
- * Preferences and the Actions group. Fixed fixture data, no network faces. Reports land in
+ * The channel details on a phone (web ChannelDetailsSurface, raft-design channel.md), light and
+ * dark, as a manager of a public channel visible to visitors who may stop its agents: Back and
+ * Details, the identity with Edit and its description folded after three lines, the members card
+ * (summary, agent activity lights, the add tile), Channel settings (Public with Make private,
+ * Visible to visitors, Slack connected), Your preferences (the sidebar section under its title,
+ * Collapse long messages) and the actions as risk rows. Fixed fixture data, no network faces. Reports land in
  * `build/reports/home-screenshots/` (uploaded by CI as `shared-home-screenshots`); verify / record
  * as [RaftRobolectricScreenshot].
  */
@@ -132,6 +133,7 @@ internal fun ChannelSettingsVisualContent() {
                         ),
                     // Move to section (web parity): #triage is pinned.
                     section = ChannelSectionPlacement(customSections = emptyList(), pinned = true, placementSectionId = null),
+                    serverName = "Botiverse",
                 ),
             longMessageCollapseSetting =
                 RaftLongMessageCollapseConversationSetting(

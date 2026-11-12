@@ -23,6 +23,7 @@ import org.robolectric.annotation.Config
 /**
  * On a phone a conversation's settings are a pushed page: Back at the start of the head, named
  * Back for screen readers, closes it; there is no × (artin 2026-11-04: a single page is a push).
+ * The channel details in the wide column have Close at the end of the head instead.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -58,24 +59,35 @@ class ThreadSettingsPageUiTest {
             runOnIdle { assertEquals(1, closed) }
         }
 
+    // raft-design channel.md: on a phone the channel details are a pushed page whose head is Back and Details.
     @Test
-    fun theChannelSettingsPageHasBackAndNoClose() =
+    fun theChannelDetailsPageHasBackAndNoClose() =
+        runRobolectricComposeUiTest {
+            var closed = 0
+            setContent {
+                Host { ChannelSettingsScaffold(refreshing = false, onBack = { closed += 1 }) {} }
+            }
+            onNodeWithText("Details").assertIsDisplayed()
+            onNodeWithContentDescription("Close").assertDoesNotExist()
+            onNodeWithContentDescription("Back").assertIsDisplayed().performClick()
+            runOnIdle { assertEquals(1, closed) }
+        }
+
+    // On the wide layout they are a column beside the conversation whose head is Details and Close.
+    @Test
+    fun theChannelDetailsColumnHasCloseAndNoBack() =
         runRobolectricComposeUiTest {
             var closed = 0
             setContent {
                 Host {
-                    ThreadSettingsModal(
-                        channelName = "design",
-                        subtitle = null,
-                        panel = channelSettingsPanelVisualPanel(),
-                        onDismiss = { closed += 1 },
-                        asPage = true,
-                    )
+                    CompositionLocalProvider(LocalRaftPaneBackCloses provides true) {
+                        ChannelSettingsScaffold(refreshing = false, onBack = { closed += 1 }) {}
+                    }
                 }
             }
-            onNodeWithText("#design").assertIsDisplayed()
-            onNodeWithContentDescription("Close channel settings").assertDoesNotExist()
-            onNodeWithContentDescription("Back").assertIsDisplayed().performClick()
+            onNodeWithText("Details").assertIsDisplayed()
+            onNodeWithContentDescription("Back").assertDoesNotExist()
+            onNodeWithContentDescription("Close").assertIsDisplayed().performClick()
             runOnIdle { assertEquals(1, closed) }
         }
 }

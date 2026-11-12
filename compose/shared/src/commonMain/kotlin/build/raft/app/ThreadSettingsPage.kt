@@ -241,9 +241,9 @@ private fun ThreadSettingsPageScreen() {
 }
 
 /**
- * The page's body from [sources], as the conversation builds its drawer: the members strip, Info,
- * Guest access, Preferences and Actions of a channel ([ThreadSettingsModal]), or a DM's
- * Preferences ([ThreadDirectMessageSettingsDrawer]), each as a page.
+ * The page's body from [sources], as the conversation builds its drawer: a DM's Preferences
+ * ([ThreadDirectMessageSettingsDrawer]) as a page. A channel opens its details page instead
+ * ([CHANNEL_SETTINGS_PAGE]); a channel's sources close this page.
  */
 @Composable
 internal fun ThreadSettingsPageBody(sources: ThreadSettingsPageSources, onClose: () -> Unit) {
@@ -298,21 +298,7 @@ internal fun ThreadSettingsPageBody(sources: ThreadSettingsPageSources, onClose:
             asPage = true,
         )
     } else {
-        // The channel's name and description as Home has them now (a Save here updates Home).
-        val homeRow = panel?.channel
-        ThreadSettingsModal(
-            channelKind = sources.channelKind,
-            channelName = homeRow?.name?.removePrefix("#")?.takeIf { it.isNotBlank() } ?: sources.title,
-            subtitle = if (homeRow != null) homeRow.subtitle else sources.subtitle,
-            panel =
-                (panel ?: ThreadChannelSettingsPanel(longMessageCollapse = collapse)).copy(
-                    onOpenMembers = { sources.onOpenMembers(false) },
-                    onAddMember = { sources.onOpenMembers(true) },
-                ),
-            activityMuteState = drawerMuteState,
-            onDismiss = onClose,
-            onToggleActivityMute = onToggleActivityMute,
-            asPage = true,
-        )
+        // A channel's settings are its details page (ChannelSettingsPage.kt); this page is a DM's.
+        LaunchedEffect(Unit) { onClose() }
     }
 }

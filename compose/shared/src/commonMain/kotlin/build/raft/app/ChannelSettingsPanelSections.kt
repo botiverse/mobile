@@ -121,8 +121,40 @@ internal fun ChannelSectionSelectRow(
     onMove: (List<ChannelSectionMove>) -> Unit,
     onCreate: (name: String, emoji: String?) -> Unit,
 ) {
-    var creating by remember { mutableStateOf(false) }
     val title = stringResource(Res.string.home_section_move_to)
+    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            RaftText(
+                title,
+                style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.Medium),
+                color = RaftTheme.colors.foreground
+            )
+            RaftText(
+                stringResource(
+                    if (state.directMessage) Res.string.channel_settings_section_detail_dm else Res.string.channel_settings_section_detail
+                ),
+                style = RaftTheme.typography.footnote,
+                color = RaftTheme.colors.foregroundHint
+            )
+        }
+        ChannelSectionSelect(state = state, enabled = enabled, onMove = onMove, onCreate = onCreate, label = title)
+    }
+}
+
+/**
+ * Web ChannelSectionSelect: the select of [ChannelSectionPlacement.options] with "Create section"
+ * last, which opens the sidebar's New section dialog and creates the section with this channel or
+ * DM in it. [label] names it for assistive tech (the row's title).
+ */
+@Composable
+internal fun ChannelSectionSelect(
+    state: ChannelSectionPlacement,
+    enabled: Boolean,
+    onMove: (List<ChannelSectionMove>) -> Unit,
+    onCreate: (name: String, emoji: String?) -> Unit,
+    label: String,
+) {
+    var creating by remember { mutableStateOf(false) }
     val homeLabel =
         when {
             state.directMessage -> stringResource(Res.string.home_section_direct_messages)
@@ -142,36 +174,20 @@ internal fun ChannelSectionSelectRow(
                 state.customSections.firstOrNull { it.id == value.sectionId }?.sidebarSectionHeaderLabel().orEmpty()
         }
     }
-    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            RaftText(
-                title,
-                style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.Medium),
-                color = RaftTheme.colors.foreground
-            )
-            RaftText(
-                stringResource(
-                    if (state.directMessage) Res.string.channel_settings_section_detail_dm else Res.string.channel_settings_section_detail
-                ),
-                style = RaftTheme.typography.footnote,
-                color = RaftTheme.colors.foregroundHint
-            )
-        }
-        RaftSelect(
-            value = state.current,
-            options = options,
-            onValueChange = { picked ->
-                if (picked == null) {
-                    creating = true
-                } else {
-                    channelSectionMoves(state, picked).takeIf { it.isNotEmpty() }?.let(onMove)
-                }
-            },
-            optionLabel = labelOf,
-            enabled = enabled,
-            label = title,
-        )
-    }
+    RaftSelect(
+        value = state.current,
+        options = options,
+        onValueChange = { picked ->
+            if (picked == null) {
+                creating = true
+            } else {
+                channelSectionMoves(state, picked).takeIf { it.isNotEmpty() }?.let(onMove)
+            }
+        },
+        optionLabel = labelOf,
+        enabled = enabled,
+        label = label,
+    )
     if (creating) {
         RaftHomeSectionDialog(
             title = stringResource(Res.string.home_section_new_title),

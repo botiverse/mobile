@@ -8241,6 +8241,13 @@ private fun RaftAppShellReadyContent(
                         // first. Inside the list + detail split they all stand in its row. In Focus
                         // mode the thread takes the row (task #180: the conversation is collapsed by
                         // width and stays composed).
+                        // The pane beside the conversation, for its header's Settings toggle.
+                        val supportingPaneState =
+                            RaftSupportingPaneState(
+                                root = supportingPanes.entries.firstOrNull()?.takeIf { supportingOpen },
+                                close = { supportingPanes = supportingPanes.cleared() },
+                            )
+                        CompositionLocalProvider(LocalRaftSupportingPane provides supportingPaneState) {
                         RaftPaneGrid(
                             columns = listOfNotNull(sideThreadColumn),
                             modifier = detailModifier,
@@ -8268,6 +8275,7 @@ private fun RaftAppShellReadyContent(
                                     },
                                 )
                             }
+                        }
                         }
                         }
                         }

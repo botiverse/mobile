@@ -189,11 +189,26 @@ class RaftWidePanesTest {
     @Test
     fun paneSitsBesideWhenTheConversationKeepsItsMinimum() {
         // 1280 window: about 960 of detail beside the rail and the 240 sidebar.
-        assertEquals(RaftSupportingPaneSize(420f, beside = true), raftSupportingPaneSize(960f))
+        assertEquals(RaftSupportingPaneSize(400f, beside = true), raftSupportingPaneSize(960f))
         assertEquals(RaftSupportingPaneSize(352f, beside = true), raftSupportingPaneSize(712f))
         assertEquals(RaftSupportingPaneSize(320f, beside = true), raftSupportingPaneSize(680f))
-        // Narrower: a drawer over the conversation's right edge, as the web's.
-        assertEquals(RaftSupportingPaneSize(420f, beside = false), raftSupportingPaneSize(528f))
+        // Narrower: the column takes the slot over the conversation, never a drawer over its edge.
+        assertEquals(RaftSupportingPaneSize(528f, beside = false), raftSupportingPaneSize(528f))
         assertEquals(RaftSupportingPaneSize(400f, beside = false), raftSupportingPaneSize(400f))
+    }
+
+    // raft-design channel.md: the conversation's Settings toggle is pressed while its own details are the pane's root.
+    @Test
+    fun theSettingsToggleReadsTheChannelDetailsAtThePaneRoot() {
+        val details = RaftPaneStack().replace(CHANNEL_SETTINGS_PAGE, data)
+        assertTrue(RaftSupportingPaneState(details.entries.first()) {}.showsChannelDetails("c1"))
+        // Its member list pushed over the details: still open.
+        val members = details.push(THREAD_MEMBERS_PAGE, data)
+        assertTrue(RaftSupportingPaneState(members.entries.first()) {}.showsChannelDetails("c1"))
+        assertFalse(RaftSupportingPaneState(details.entries.first()) {}.showsChannelDetails("c2"))
+        assertFalse(RaftSupportingPaneState(details.entries.first()) {}.showsChannelDetails(null))
+        val profile = RaftPaneStack().replace(MEMBER_DETAIL_PAGE, data)
+        assertFalse(RaftSupportingPaneState(profile.entries.first()) {}.showsChannelDetails("c1"))
+        assertFalse(RaftSupportingPaneState(null) {}.showsChannelDetails("c1"))
     }
 }

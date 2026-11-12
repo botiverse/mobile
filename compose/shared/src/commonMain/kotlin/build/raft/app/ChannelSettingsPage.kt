@@ -97,6 +97,20 @@ import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftIconTile
+import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.RaftRiskTone
+import build.raft.designsystem.components.RaftSectionEyebrow
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.RaftPointerInput
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.font.FontWeight
 
 internal const val CHANNEL_SETTINGS_PAGE = "compose_channel_settings"
 
@@ -646,6 +660,9 @@ private fun ChannelSettingsPageScreen() {
                                 externalChannelsEnabled = externalChannels,
                                 privateMemberConnect =
                                     channelSettingsOffersPrivateMemberConnect(channel, externalChannels, memberConnectAccount),
+                                serverName =
+                                    viewerServerName
+                                        ?: (homeState?.content as? SharedHomeContentState.Content)?.snapshot?.server?.name,
                             ),
                         longMessageCollapseSetting = longMessageCollapseSetting,
                         agentStatusResolver = agentStatusResolver,
@@ -659,7 +676,8 @@ private fun ChannelSettingsPageScreen() {
                                         channelName = channel.name,
                                         canEdit = settingsState.permissions().editMetadata && !channel.archived && authorityAccepted,
                                         active = true,
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                                        // On the details' own inset, 24 from the sections around it.
+                                        modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
                             } else {
@@ -823,6 +841,8 @@ internal data class ChannelSettingsUiModel(
      * ([channelSettingsOffersPrivateMemberConnect]): it then lists Connected servers too.
      */
     val privateMemberConnect: Boolean = false,
+    /** The server's name: who a public channel reaches, and who sees its name and description. */
+    val serverName: String? = null,
 )
 
 internal class ChannelSettingsCallbacks(
@@ -915,9 +935,11 @@ internal fun channelSettingsFailureMessage(
 }
 
 /**
- * The page frame: the white top bar (Back, the page title, the refresh mark) over the
- * design-system canvas, mobile's settings-detail pattern ([SettingsDetailShell]), all inside
- * [RaftDesignSystemTheme].
+ * The details' frame (raft-design channel.md, "The channel details"): on a phone a pushed page
+ * whose head is Back and Details (the channel's name is the page's first line, so the head doesn't
+ * repeat it); on the wide layout the first page of the supporting pane, a column beside the
+ * conversation whose head is Details and Close (×), with no Expand. The panel head is 44 under a
+ * mouse or trackpad and 56 with a finger ([RaftPanelBackHeader]), over the canvas.
  */
 @Composable
 internal fun ChannelSettingsScaffold(
@@ -927,25 +949,48 @@ internal fun ChannelSettingsScaffold(
 ) {
     RaftDesignSystemTheme {
         Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
-            RaftTopPageHeader(
-                title = stringResource(Res.string.channel_settings_title),
-                iconName = RaftLucideIconName.Settings,
-                backgroundColor = RaftColor.SurfaceWhite,
-                refreshing = refreshing,
-                onBack = onBack
-            )
+            val title = stringResource(Res.string.channel_details_title)
+            if (LocalRaftPaneBackCloses.current) {
+                RaftPanelBackHeader(
+                    title = title,
+                    subtitle = null,
+                    onBack = null,
+                    topSafeArea = raftTopSafeAreaPadding(),
+                    refreshing = refreshing,
+                    trailingContent = {
+                        RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_close), glyph = RaftGlyph.X)
+                    },
+                )
+            } else {
+                RaftPanelBackHeader(
+                    title = title,
+                    subtitle = null,
+                    onBack = onBack,
+                    topSafeArea = raftTopSafeAreaPadding(),
+                    refreshing = refreshing,
+                )
+            }
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) { content() }
         }
     }
 }
 
+/** web `stack-y-6`: 24 between the details' sections. */
+private val ChannelDetailsSectionGap = 24.dp
+
+/** web `--surface-inset`: the details' side margin, 16 under a mouse or trackpad, 20 with a finger. */
+@Composable
+private fun channelDetailsSurfaceInset(): Dp =
+    if (RaftTheme.pointerInput == RaftPointerInput.Fine) 16.dp else 20.dp
+
 /**
- * Web channel settings (ChannelOverflowMenu + EditChannelDialog `presentation="panel"`), in
- * its order: the identity (name, visibility tag, description), the members strip, the
- * connected servers of a joint channel, Info (the inline name / description form), Guest
- * access, Preferences, then one Actions group — visibility, Archive / Unarchive, Leave, Stop All
- * Agents, and Delete / Disconnect last. Reversible actions are outlined; only the irreversible
- * one is red.
+ * The channel details' body (web EditChannelDialog in ChannelDetailsSurface, raft-design
+ * channel.md), the same on a phone and on the wide layout, in the web order: the channel's icon,
+ * name, tag and description (Edit turns them into fields in place), the members card, the
+ * announcement, the connected servers, Channel settings (Public or Private with Make private or
+ * Make public, Visible to visitors, Slack), Your preferences (Notifications or Mute, Sidebar
+ * section, Collapse long messages), then the actions as rows colored by their risk. The body sits
+ * on the surface inset, `py-4`, 24 between sections.
  */
 @Composable
 internal fun ChannelSettingsContent(
@@ -954,17 +999,23 @@ internal fun ChannelSettingsContent(
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     /** The channel's notification level row (design §4.3: "Notifications" next to Mute); null hides it. */
     notificationLevelTarget: RaftNotificationLevelTarget? = null,
+    /** Reload the server's notification levels when the select appears (off in fixtures). */
+    refreshNotificationLevels: Boolean = true,
     /** Channel announcements: the Announcement row after the members (ChannelSettingsAnnouncementSection); null hides it. */
     announcement: (@Composable () -> Unit)? = null,
     callbacks: ChannelSettingsCallbacks,
 ) {
     // task #177: standalone page; the last row clears the system navigation bar.
     val bottomSafeArea = raftBottomSafeAreaPadding()
+    val inset = channelDetailsSurfaceInset()
     val channel = model.channel
-    val permissions = model.permissions
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = inset, top = 16.dp, end = inset, bottom = 16.dp + bottomSafeArea),
+        verticalArrangement = Arrangement.spacedBy(ChannelDetailsSectionGap),
+    ) {
         item(key = "identity") {
-            ChannelIdentityHeader(channel = channel)
+            ChannelDetailsIdentitySection(model = model, callbacks = callbacks)
         }
         item(key = "members") {
             ChannelMembersSection(
@@ -984,30 +1035,9 @@ internal fun ChannelSettingsContent(
                 ChannelJointConnectionsEntry(onClick = callbacks.onOpenJointConnections)
             }
         }
-        if (channelSettingsShowsInfo(channel, permissions)) {
-            item(key = "info") {
-                ChannelInfoSection(
-                    channel = channel,
-                    nameEditable = permissions.editMetadata && !channelSettingsIsAllChannel(channel),
-                    enabled = model.writeActionsEnabled,
-                    status = model.profileStatus,
-                    errorCode = model.profileErrorCode,
-                    slackBridge = model.slackBridge?.takeIf { channelSettingsSlackBridgeApplies(channel, permissions) },
-                    onSave = callbacks.onSaveProfile,
-                    onClearStatus = callbacks.onClearProfileStatus,
-                    archivedCollision = model.profileCollision,
-                    errorMessage = model.profileErrorMessage,
-                )
-            }
-        }
-        if (model.showGuestAccess) {
-            item(key = "guest-access") {
-                ChannelGuestAccessSection(
-                    channel = channel,
-                    enabled = model.writeActionsEnabled && model.actionInFlight != ChannelSettingsAction.GuestAccess,
-                    onSetVisible = callbacks.onSetGuestVisible,
-                    onSetJoinable = callbacks.onSetGuestJoinable,
-                )
+        if (channelDetailsHasChannelSettings(model)) {
+            item(key = "channel-settings") {
+                ChannelDetailsChannelSettingsSection(model = model, callbacks = callbacks)
             }
         }
         item(key = "preferences") {
@@ -1021,12 +1051,13 @@ internal fun ChannelSettingsContent(
                 onToggleMute = callbacks.onToggleMute,
                 onTogglePin = callbacks.onTogglePin,
                 notificationLevelTargetInput = notificationLevelTarget,
+                refreshNotificationLevels = refreshNotificationLevels,
                 section = model.section,
                 onMoveSection = callbacks.onMoveSection,
                 onCreateSection = callbacks.onCreateSection,
             )
         }
-        val actions = channelSettingsActionRows(model)
+        val actions = channelSettingsActionRows(model).filterNot(::channelSettingsIsVisibilityAction)
         if (actions.isNotEmpty()) {
             item(key = "actions") {
                 ChannelActionsSection(
@@ -1037,11 +1068,10 @@ internal fun ChannelSettingsContent(
                 )
             }
         }
-        item(key = "bottom") { Spacer(Modifier.height(RaftAppSpacing.Lg + bottomSafeArea)) }
     }
 }
 
-/** One button of the Actions group, in the web order. */
+/** One action of the details, in the web order ([channelSettingsActionRows]). */
 internal enum class ChannelSettingsActionRow {
     MakePrivate,
     MakePublic,
@@ -1055,7 +1085,9 @@ internal enum class ChannelSettingsActionRow {
 
 /**
  * Web `channel-settings-action-zone`: visibility → Archive / Unarchive → Leave → Stop All Agents →
- * Delete (Disconnect on a joint channel). An archived channel offers only Unarchive.
+ * Delete (Disconnect on a joint channel). An archived channel offers only Unarchive. The visibility
+ * action is drawn in Channel settings' Public or Private row ([channelSettingsIsVisibilityAction]),
+ * the rest as the rows at the end of the details.
  */
 internal fun channelSettingsActionRows(model: ChannelSettingsUiModel): List<ChannelSettingsActionRow> {
     val channel = model.channel
@@ -1081,40 +1113,142 @@ internal fun channelSettingsActionRows(model: ChannelSettingsUiModel): List<Chan
     }
 }
 
+/** Make private and Make public: the Public or Private row's button, not an action at the end (raft-design channel.md). */
+internal fun channelSettingsIsVisibilityAction(row: ChannelSettingsActionRow): Boolean =
+    row == ChannelSettingsActionRow.MakePrivate || row == ChannelSettingsActionRow.MakePublic
+
+/** Whether the Channel settings group has a row: the visibility row, Visible to visitors or Slack. */
+internal fun channelDetailsHasChannelSettings(model: ChannelSettingsUiModel): Boolean =
+    channelSettingsActionRows(model).any(::channelSettingsIsVisibilityAction) ||
+        model.showGuestAccess ||
+        (model.slackBridge != null && channelSettingsSlackBridgeApplies(model.channel, model.permissions))
+
 /**
- * Web overflow header: `#name` with its visibility as a neutral outline tag, the description under it.
- * A long press copies the name or the description, as shown (`#name` with its `#`).
+ * The top of the details, read first (web ChannelDetailsIdentity): the channel's icon, name and
+ * tag, and its description folded after three lines with Show more. People who can edit the
+ * channel have Edit at the end of the name's line, which turns the block into the Name and
+ * Description fields in place ([ChannelInfoForm]); a save that goes through, or Cancel, turns it back.
  */
 @Composable
-private fun ChannelIdentityHeader(channel: HomeChannelRow) {
-    val colors = RaftTheme.colors
-    val description = channel.subtitle?.trim().takeUnless { it.isNullOrBlank() }
-    val shownName = channelSettingsHeaderName(channel.name)
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            RaftText(
-                text = shownName,
-                modifier = Modifier.weight(1f, fill = false).raftCopyable(shownName),
-                style = RaftTheme.typography.headline,
-                color = colors.foreground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            RaftBadge(text = channelSettingsStatusLabel(channel), appearance = RaftBadgeAppearance.Outline)
-        }
-        RaftText(
-            text = description ?: stringResource(Res.string.channel_settings_description_empty),
-            modifier = Modifier.raftCopyable(description),
-            style = RaftTheme.typography.callout,
-            color = if (description != null) colors.foregroundMuted else colors.foregroundHint,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis
+private fun ChannelDetailsIdentitySection(model: ChannelSettingsUiModel, callbacks: ChannelSettingsCallbacks) {
+    val channel = model.channel
+    val permissions = model.permissions
+    val canEdit = channelSettingsShowsInfo(channel, permissions)
+    var editing by remember(channel.channelId) { mutableStateOf(false) }
+    LaunchedEffect(model.profileStatus) {
+        if (model.profileStatus == ChannelProfileUpdateStatus.Succeeded && editing) editing = false
+    }
+    if (editing && canEdit) {
+        ChannelInfoForm(
+            channel = channel,
+            nameEditable = permissions.editMetadata && !channelSettingsIsAllChannel(channel),
+            enabled = model.writeActionsEnabled,
+            status = model.profileStatus,
+            errorCode = model.profileErrorCode,
+            slackBridge = null,
+            onSave = callbacks.onSaveProfile,
+            onClearStatus = callbacks.onClearProfileStatus,
+            archivedCollision = model.profileCollision,
+            errorMessage = model.profileErrorMessage,
+            whoSees = channelDetailsWhoSees(channel, model.serverName),
+            onCancel = { editing = false },
         )
+    } else {
+        ChannelDetailsIdentity(channel = channel, onEdit = if (canEdit) ({ editing = true }) else null)
     }
 }
+
+/** Web `whoSees`: who sees the name and description, under the fields. */
+@Composable
+private fun channelDetailsWhoSees(channel: HomeChannelRow, serverName: String?): String? =
+    when {
+        channelSettingsIsJoint(channel) || channel.hasExternalRelation -> stringResource(Res.string.channel_details_shown_external)
+        channelSettingsIsPrivate(channel) -> stringResource(Res.string.channel_details_shown_to_members)
+        !serverName.isNullOrBlank() -> stringResource(Res.string.channel_details_shown_to_server, serverName)
+        else -> null
+    }
+
+/**
+ * Web ChannelDetailsIdentity: the channel's icon tile (the one icon source, [raftChannelKindGlyph]),
+ * its name in bold, its tag (Public, Private or Joint Channel; and Archived), then Edit at the end
+ * of the line ([onEdit] null: none). The description is body text folded after three lines, with
+ * Show more and Show less. A long press copies the name or the description.
+ */
+@Composable
+private fun ChannelDetailsIdentity(channel: HomeChannelRow, onEdit: (() -> Unit)?) {
+    val colors = RaftTheme.colors
+    val description = channel.subtitle?.trim().takeUnless { it.isNullOrBlank() }
+    val name = channel.name.removePrefix("#")
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                RaftIconTile(size = RaftIconTileSize.Md) {
+                    RaftChannelKindIcon(
+                        channel.raftChannelKindGlyph(serverPublicPageLive = false),
+                        size = RaftIconTileSize.Md.icon,
+                        color = raftArgbHex(LocalRaftContentColor.current),
+                    )
+                }
+                RaftText(
+                    text = name,
+                    modifier = Modifier.weight(1f, fill = false).raftCopyable(name),
+                    style = RaftTheme.typography.headline.copy(fontWeight = FontWeight.Bold),
+                    color = colors.foreground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                RaftBadge(text = channelSettingsStatusLabel(channel), appearance = RaftBadgeAppearance.Outline)
+                if (channel.archived) {
+                    RaftBadge(
+                        text = stringResource(Res.string.channel_settings_status_archived),
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = RaftBadgeVariant.Muted,
+                    )
+                }
+            }
+            if (onEdit != null) {
+                RaftButton(
+                    text = stringResource(Res.string.common_edit),
+                    onClick = onEdit,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Md,
+                    leadingIcon = { RaftComputersIcon(RaftLucideIconName.Pencil) },
+                )
+            }
+        }
+        if (description != null) {
+            var expanded by remember(description) { mutableStateOf(false) }
+            var folded by remember(description) { mutableStateOf(false) }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                RaftText(
+                    text = description,
+                    modifier = Modifier.raftCopyable(description),
+                    style = RaftTheme.typography.callout,
+                    color = colors.foreground,
+                    maxLines = if (expanded) Int.MAX_VALUE else ChannelDetailsDescriptionLines,
+                    overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { layout ->
+                        if (!expanded && folded != layout.hasVisualOverflow) folded = layout.hasVisualOverflow
+                    },
+                )
+                if (folded || expanded) {
+                    RaftTextLink(
+                        text = stringResource(if (expanded) Res.string.channel_details_show_less else Res.string.channel_details_show_more),
+                        onClick = { expanded = !expanded },
+                        style = RaftTheme.typography.callout,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** raft-design channel.md: the description folds after three lines. */
+private const val ChannelDetailsDescriptionLines = 3
 
 /** The header's channel name, shown and copied as `#name` (one `#`, whatever the stored form). */
 internal fun channelSettingsHeaderName(name: String): String = "#${name.removePrefix("#")}"
@@ -1122,16 +1256,17 @@ internal fun channelSettingsHeaderName(name: String): String = "#${name.removePr
 @Composable
 private fun channelSettingsStatusLabel(channel: HomeChannelRow): String =
     when {
-        channel.archived -> stringResource(Res.string.channel_settings_status_archived)
         channelSettingsIsJoint(channel) -> stringResource(Res.string.channel_settings_status_joint)
         channelSettingsIsPrivate(channel) -> stringResource(Res.string.channel_settings_status_private)
         else -> stringResource(Res.string.channel_settings_status_public)
     }
 
 /**
- * Web members strip: the heading row ("Members", then "N humans · M agents" and a chevron) opens
- * the members page; up to three rows of 35dp faces (agents carry their live activity light), a
- * `+N` tile when they overflow and the dashed add tile, which opens Add Member directly.
+ * Web MembersStrip, a card (raft-design channel.md): its heading row ("Members", then "N humans ·
+ * M agents" and a chevron), then up to three rows of 35dp faces under it (agents carry their live
+ * activity light), a `+N` tile when they overflow and the dashed add tile, which opens Add Member
+ * directly. The whole card hovers and opens the member list as one (slock #14364); in the wide
+ * column the list opens in the same column, with Back.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -1142,54 +1277,54 @@ internal fun ChannelMembersSection(
     agentStatusResolver: RaftAgentStatusResolver,
     onOpen: () -> Unit,
     onAdd: () -> Unit,
-    separator: Boolean = true,
 ) {
     val members = slice.members.distinctBy { it.id }
     val loading = slice.status == SharedServerMembersLoadStatus.InFlight && members.isEmpty()
     val summary = channelSettingsMemberSummary(slice = slice, fallbackCount = fallbackCount)
-    RaftSection(
-        title = stringResource(Res.string.channel_settings_members),
-        modifier = Modifier.raftClickable(onClick = onOpen, tier = RaftHoverTier.Subtle),
-        separator = separator,
-        action = {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                RaftText(summary, style = RaftTheme.typography.caption, color = RaftTheme.colors.foregroundHint)
-                RaftListRowChevron()
-            }
-        },
-    ) {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val columns = channelSettingsMemberStripColumns(maxWidth)
-            val visible = channelSettingsMemberStripVisibleCount(members.size + slice.externalMembers.size, columns, canAdd)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(ChannelSettingsStripGap),
-                verticalArrangement = Arrangement.spacedBy(ChannelSettingsStripGap),
-            ) {
-                if (loading) {
-                    repeat(3) {
-                        RaftSkeleton(Modifier.size(ChannelSettingsStripTile), variant = RaftSkeletonVariant.Circle)
+    RaftListRowGroup(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().raftClickable(onClick = onOpen, tier = RaftHoverTier.Subtle)) {
+            RaftListRow(
+                title = stringResource(Res.string.channel_settings_members),
+                variant = RaftListRowVariant.Plain,
+                trailing = {
+                    RaftListRowValue(summary, maxWidth = 200.dp)
+                    RaftListRowChevron()
+                },
+            )
+            // A row that belongs to the heading (ListRow `attached`): no top inset, the row's 12 under it.
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                val columns = channelSettingsMemberStripColumns(maxWidth)
+                val visible = channelSettingsMemberStripVisibleCount(members.size + slice.externalMembers.size, columns, canAdd)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(ChannelSettingsStripGap),
+                    verticalArrangement = Arrangement.spacedBy(ChannelSettingsStripGap),
+                ) {
+                    if (loading) {
+                        repeat(3) {
+                            RaftSkeleton(Modifier.size(ChannelSettingsStripTile), variant = RaftSkeletonVariant.Circle)
+                        }
+                    } else {
+                        members.take(visible).forEach { member -> ChannelSettingsMemberAvatar(member, agentStatusResolver) }
+                        slice.externalMembers.take((visible - members.size).coerceAtLeast(0)).forEach { external ->
+                            RaftAppAvatar(
+                                // An external participant (web `type="app"`): their image, else initials.
+                                kind = RaftAvatarKind.Labeled,
+                                avatarWireValue = external.avatarUrl,
+                                label = external.displayName,
+                                avatarSize = ChannelSettingsStripTile,
+                            )
+                        }
+                        val overflow = members.size + slice.externalMembers.size - visible
+                        if (overflow > 0) RaftAvatarGroupCount(text = "+$overflow", size = RaftAvatarSize.Md)
                     }
-                } else {
-                    members.take(visible).forEach { member -> ChannelSettingsMemberAvatar(member, agentStatusResolver) }
-                    slice.externalMembers.take((visible - members.size).coerceAtLeast(0)).forEach { external ->
-                        RaftAppAvatar(
-                            // An external participant (web `type="app"`): their image, else initials.
-                            kind = RaftAvatarKind.Labeled,
-                            avatarWireValue = external.avatarUrl,
-                            label = external.displayName,
-                            avatarSize = ChannelSettingsStripTile,
+                    if (canAdd) {
+                        RaftAvatarEmpty(
+                            size = RaftAvatarSize.Md,
+                            contentDescription = stringResource(Res.string.thread_action_add_member),
+                            enabled = !loading,
+                            onClick = onAdd,
                         )
                     }
-                    val overflow = members.size + slice.externalMembers.size - visible
-                    if (overflow > 0) RaftAvatarGroupCount(text = "+$overflow", size = RaftAvatarSize.Md)
-                }
-                if (canAdd) {
-                    RaftAvatarEmpty(
-                        size = RaftAvatarSize.Md,
-                        contentDescription = stringResource(Res.string.thread_action_add_member),
-                        enabled = !loading,
-                        onClick = onAdd,
-                    )
                 }
             }
         }
@@ -1273,53 +1408,16 @@ private fun ChannelSettingsMemberAvatar(member: MemberProfile, agentStatusResolv
         statusColor = indicator?.color,
         avatarSize = ChannelSettingsStripTile,
         statusPulsing = false,
-        cutoutColor = RaftTheme.colors.layerCanvas,
+        // The face's cutout is the members card under it.
+        cutoutColor = RaftTheme.surfaceColor,
     ) { avatar() }
 }
 
 /**
- * Web Info section (EditChannelDialog panel form): Name and Description edited in place, with
- * Cancel and Save under them; Save stays off until something changed. `#all` keeps its name.
- */
-@Composable
-private fun ChannelInfoSection(
-    channel: HomeChannelRow,
-    nameEditable: Boolean,
-    enabled: Boolean,
-    status: ChannelProfileUpdateStatus,
-    errorCode: String?,
-    slackBridge: ChannelSlackBridgeState?,
-    onSave: (name: String, description: String, slackBridge: ChannelSlackBridgeSelection?) -> Unit,
-    onClearStatus: () -> Unit,
-    archivedCollision: ChannelInfoArchivedCollision?,
-    errorMessage: String?,
-) {
-    RaftSection(title = stringResource(Res.string.channel_settings_info)) {
-        RaftText(
-            stringResource(Res.string.channel_settings_info_detail),
-            modifier = Modifier.padding(bottom = 12.dp),
-            style = RaftTheme.typography.footnote,
-            color = RaftTheme.colors.foregroundHint,
-        )
-        ChannelInfoForm(
-            channel = channel,
-            nameEditable = nameEditable,
-            enabled = enabled,
-            status = status,
-            errorCode = errorCode,
-            slackBridge = slackBridge,
-            onSave = onSave,
-            onClearStatus = onClearStatus,
-            archivedCollision = archivedCollision,
-            errorMessage = errorMessage,
-        )
-    }
-}
-
-/**
- * The Info form itself (web EditChannelDialog panel form): Name and Description, the Slack pick
- * when given, the failure banner, then Cancel and Save on the right ("Changes saved" beside them
- * after a save). Shared by the settings page and the settings drawer.
+ * The Name and Description fields Edit opens in place (web EditChannelDialog identity form): the
+ * archived-name warning above the name when a rename hit one, Name, Description with who sees them
+ * under it ([whoSees]), the failure banner, then Save and Cancel at the start of the line. Save
+ * stays off until something changed; Cancel drops the draft and ends the edit ([onCancel]).
  */
 @Composable
 internal fun ChannelInfoForm(
@@ -1331,12 +1429,16 @@ internal fun ChannelInfoForm(
     slackBridge: ChannelSlackBridgeState?,
     onSave: (name: String, description: String, slackBridge: ChannelSlackBridgeSelection?) -> Unit,
     onClearStatus: () -> Unit,
-    /** Unsaved edits (the drawer keeps them on a tap beside it). */
+    /** Unsaved edits. */
     onDirtyChange: (Boolean) -> Unit = {},
     /** The rename's archived-name warning (web EditChannelDialog `archivedCollision`); null hides it. */
     archivedCollision: ChannelInfoArchivedCollision? = null,
     /** The server's reason for a failed Unarchive from that warning, shown in the failure banner. */
     errorMessage: String? = null,
+    /** Who sees the name and description (web `whoSees`), under the Description field; null shows none. */
+    whoSees: String? = null,
+    /** Cancel: the edit ends. */
+    onCancel: () -> Unit = {},
 ) {
     val savedSlack = slackBridge?.pairedSlackChannelId
     var slackPick by remember(channel.channelId, savedSlack) { mutableStateOf(savedSlack) }
@@ -1401,6 +1503,7 @@ internal fun ChannelInfoForm(
         }
         RaftField(
             label = stringResource(Res.string.thread_settings_description),
+            description = whoSees,
             optional = true,
             enabled = enabled && !saving,
         ) {
@@ -1441,32 +1544,12 @@ internal fun ChannelInfoForm(
                 size = RaftBannerSize.Sm,
             )
         }
+        // Web: Save, then Cancel, at the start of the line under the fields.
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (status == ChannelProfileUpdateStatus.Succeeded && !dirty) {
-                RaftText(
-                    stringResource(Res.string.channel_settings_save_success),
-                    modifier = Modifier.weight(1f),
-                    style = RaftTheme.typography.footnote,
-                    color = RaftTheme.colors.foregroundHint,
-                )
-            }
-            RaftButton(
-                text = stringResource(Res.string.common_cancel),
-                onClick = {
-                    name = savedName
-                    description = savedDescription
-                    slackPick = savedSlack
-                    clearStatusOnEdit()
-                    // Web `resetDraft` drops the warning too.
-                    archivedCollision?.onClear?.invoke()
-                },
-                variant = RaftButtonVariant.Ghost,
-                enabled = dirty && !saving,
-            )
             RaftButton(
                 text = stringResource(Res.string.common_save),
                 onClick = {
@@ -1481,15 +1564,27 @@ internal fun ChannelInfoForm(
                 loading = saving,
                 loadingLabel = stringResource(Res.string.thread_settings_saving),
             )
+            RaftButton(
+                text = stringResource(Res.string.common_cancel),
+                onClick = {
+                    name = savedName
+                    description = savedDescription
+                    slackPick = savedSlack
+                    clearStatusOnEdit()
+                    // Web `resetDraft` drops the warning too.
+                    archivedCollision?.onClear?.invoke()
+                    onCancel()
+                },
+                variant = RaftButtonVariant.Ghost,
+                enabled = !saving,
+            )
         }
     }
 }
 
 /**
- * Web ChannelSlackBridgeField: "Connect to Slack" with its line, and the Slack channel select —
- * "Do not connect to Slack" first, then the Slack channels of the channel's visibility; one the
- * Raft app is not in yet, or paired with another channel, is listed but can't be picked. Saved
- * with the Info form's Save, as on the web.
+ * Web ChannelSlackBridgeField: "Connect to Slack" with its line, and the Slack channel select
+ * ([ChannelSlackBridgeSelect]).
  */
 @Composable
 private fun ChannelSlackBridgeField(
@@ -1497,6 +1592,29 @@ private fun ChannelSlackBridgeField(
     selected: String?,
     enabled: Boolean,
     onSelect: (String?) -> Unit,
+) {
+    RaftField(
+        label = stringResource(Res.string.channel_settings_slack_title),
+        description = stringResource(Res.string.channel_settings_slack_detail),
+        enabled = enabled,
+        labelTrailing = { RaftBadge(text = stringResource(Res.string.channel_bridge_provider_slack), appearance = RaftBadgeAppearance.Outline) },
+    ) {
+        ChannelSlackBridgeSelect(state = state, selected = selected, enabled = enabled, onSelect = onSelect)
+    }
+}
+
+/**
+ * The Slack channel select: "Do not connect to Slack" first, then the Slack channels of the
+ * channel's visibility; one the Raft app is not in yet, or paired with another channel, is listed
+ * but can't be picked.
+ */
+@Composable
+private fun ChannelSlackBridgeSelect(
+    state: ChannelSlackBridgeState,
+    selected: String?,
+    enabled: Boolean,
+    onSelect: (String?) -> Unit,
+    label: String? = null,
 ) {
     val notConnected = stringResource(Res.string.channel_settings_slack_not_connected)
     val options: List<ChannelSlackBridgeOption?> = listOf(null) + state.options
@@ -1510,75 +1628,224 @@ private fun ChannelSlackBridgeField(
                 else -> stringResource(Res.string.channel_settings_slack_channel, option.name)
             }
         }
-    RaftField(
-        label = stringResource(Res.string.channel_settings_slack_title),
-        description = stringResource(Res.string.channel_settings_slack_detail),
+    RaftSelect(
+        value = options.firstOrNull { it?.slackChannelId == selected },
+        options = options,
+        onValueChange = { onSelect(it?.slackChannelId) },
+        optionLabel = { labels.getValue(it) },
         enabled = enabled,
-        labelTrailing = { RaftBadge(text = stringResource(Res.string.channel_bridge_provider_slack), appearance = RaftBadgeAppearance.Outline) },
-    ) {
-        RaftSelect(
-            value = options.firstOrNull { it?.slackChannelId == selected },
-            options = options,
-            onValueChange = { onSelect(it?.slackChannelId) },
-            optionLabel = { labels.getValue(it) },
-            optionEnabled = { option ->
-                option == null || (!option.membershipRequired && (!option.pairedElsewhere || option.slackChannelId == selected))
-            },
-        )
-    }
+        label = label,
+        optionEnabled = { option ->
+            option == null || (!option.membershipRequired && (!option.pairedElsewhere || option.slackChannelId == selected))
+        },
+    )
 }
 
 /** Server PATCH `/channels/:id`: "Description must be a string of at most 500 characters". */
 private const val ChannelSettingsDescriptionLimit = 500
 
 /**
- * Web Guest access section (`canManageGuestAccess`): Visible to Guests, then Allow Guests to
- * join (not on `#all`). Turning visibility off also stops joining; allowing joining also makes
- * the channel visible (the server requires it). The usage line is web's plan limit, unlimited
- * (`-1`) on every plan today, so it is not shown.
+ * Channel settings (web EditChannelDialog `channelSettingsSection`): the same for everyone in the
+ * channel, for who can manage it. Public or Private with Make private or Make public at its end
+ * (it keeps its confirmation), Visible to visitors, then Slack with Connect or Change, which opens
+ * a dialog of its own. Its heading carries no hint: its name says whom it reaches.
  */
 @Composable
-internal fun ChannelGuestAccessSection(
-    channel: HomeChannelRow,
-    enabled: Boolean,
-    onSetVisible: (Boolean) -> Unit,
-    onSetJoinable: (Boolean) -> Unit,
-    /** False inside the settings drawer, whose body already has the side padding. */
-    inset: Boolean = true,
-) {
-    ChannelSettingsSectionFrame(
-        title = stringResource(Res.string.channel_settings_guest_title),
-        description = stringResource(Res.string.channel_settings_guest_detail),
-        inset = inset,
+private fun ChannelDetailsChannelSettingsSection(model: ChannelSettingsUiModel, callbacks: ChannelSettingsCallbacks) {
+    val channel = model.channel
+    val visibility = channelSettingsActionRows(model).firstOrNull(::channelSettingsIsVisibilityAction)
+    val slack = model.slackBridge?.takeIf { channelSettingsSlackBridgeApplies(channel, model.permissions) }
+    var slackDialogOpen by remember(channel.channelId) { mutableStateOf(false) }
+    LaunchedEffect(model.profileStatus) {
+        if (model.profileStatus == ChannelProfileUpdateStatus.Succeeded && slackDialogOpen) slackDialogOpen = false
+    }
+    ChannelDetailsSection(
+        title = stringResource(Res.string.channel_details_channel_settings),
+        icon = RaftLucideIconName.SlidersHorizontal,
     ) {
-        RaftListRowGroup(Modifier.fillMaxWidth()) {
-            ChannelPreferenceRow(
-                title = stringResource(Res.string.channel_settings_guest_visible),
-                detail = stringResource(Res.string.channel_settings_guest_visible_detail),
-                checked = channel.guestVisible,
-                enabled = enabled,
-                divider = false,
-                onToggle = { onSetVisible(!channel.guestVisible) },
+        var rowAfterFirst = false
+        if (visibility != null) {
+            val makePublic = visibility == ChannelSettingsActionRow.MakePublic
+            val serverName = model.serverName?.takeIf { it.isNotBlank() }
+            RaftListRow(
+                title =
+                    stringResource(
+                        if (makePublic) Res.string.channel_settings_status_private else Res.string.channel_settings_status_public
+                    ),
+                variant = RaftListRowVariant.Plain,
+                description =
+                    when {
+                        makePublic -> stringResource(Res.string.channel_details_private_description)
+                        serverName != null -> stringResource(Res.string.channel_details_public_description, serverName)
+                        else -> null
+                    },
+                wrapDescription = true,
+                trailing = {
+                    RaftButton(
+                        text =
+                            stringResource(
+                                if (makePublic) Res.string.channel_settings_make_public else Res.string.thread_settings_make_private
+                            ),
+                        onClick = {
+                            callbacks.onConfirm(if (makePublic) ChannelSettingsConfirm.MakePublic else ChannelSettingsConfirm.MakePrivate)
+                        },
+                        size = RaftButtonSize.Md,
+                        enabled = model.writeActionsEnabled && model.actionInFlight == null,
+                    )
+                },
             )
-            if (!channelSettingsIsAllChannel(channel)) {
-                ChannelPreferenceRow(
-                    title = stringResource(Res.string.channel_settings_guest_joinable),
-                    detail = stringResource(Res.string.channel_settings_guest_joinable_detail),
-                    checked = channel.guestJoinable,
-                    enabled = enabled,
-                    divider = true,
-                    onToggle = { onSetJoinable(!channel.guestJoinable) },
+            rowAfterFirst = true
+        }
+        if (model.showGuestAccess) {
+            // Web ChannelVisitorVisibleField: the channel on the server's public page for signed-out
+            // visitors (`guestVisible`, the server's name for it before `visitorVisible`).
+            ChannelPreferenceRow(
+                title = stringResource(Res.string.channel_details_visitor_visible),
+                detail = stringResource(Res.string.channel_details_visitor_visible_detail),
+                checked = channel.guestVisible,
+                enabled = model.writeActionsEnabled && model.actionInFlight != ChannelSettingsAction.GuestAccess,
+                divider = rowAfterFirst,
+                onToggle = { callbacks.onSetGuestVisible(!channel.guestVisible) },
+            )
+            rowAfterFirst = true
+        }
+        if (slack != null) {
+            val paired = slack.options.firstOrNull { it.slackChannelId == slack.pairedSlackChannelId }
+            RaftListRow(
+                title = stringResource(Res.string.channel_details_slack_title),
+                variant = RaftListRowVariant.Plain,
+                divider = rowAfterFirst,
+                description =
+                    when {
+                        slack.pairedSlackChannelId == null -> stringResource(Res.string.channel_details_slack_not_connected)
+                        paired != null -> stringResource(Res.string.channel_details_slack_connected, paired.name)
+                        else -> stringResource(Res.string.channel_details_slack_connected_unnamed)
+                    },
+                wrapDescription = true,
+                trailing = {
+                    RaftButton(
+                        text =
+                            stringResource(
+                                if (slack.pairedSlackChannelId == null) Res.string.channel_details_slack_connect else Res.string.channel_details_slack_change
+                            ),
+                        onClick = { slackDialogOpen = true },
+                        size = RaftButtonSize.Md,
+                        enabled = model.writeActionsEnabled && model.actionInFlight == null,
+                    )
+                },
+            )
+        }
+    }
+    if (slack != null && slackDialogOpen) {
+        ChannelSlackBridgeDialog(
+            channel = channel,
+            state = slack,
+            saving = model.profileStatus == ChannelProfileUpdateStatus.InFlight,
+            failed = model.profileStatus == ChannelProfileUpdateStatus.Failed,
+            enabled = model.writeActionsEnabled,
+            onDismiss = {
+                if (model.profileStatus != ChannelProfileUpdateStatus.InFlight) {
+                    slackDialogOpen = false
+                    callbacks.onClearProfileStatus()
+                }
+            },
+            onSubmit = { pick ->
+                // Name and description unchanged: the Save sends the Slack pair alone.
+                callbacks.onSaveProfile(channel.name.removePrefix("#"), channel.subtitle.orEmpty(), ChannelSlackBridgeSelection(pick))
+            },
+        )
+    }
+}
+
+/**
+ * Web ChannelSlackBridgeRow's dialog: the Slack channel, with its line, submitted by the dialog's
+ * own Connect (Save when it changes a pair): connecting has a side effect, so it is a button that
+ * names it, never a part of another Save (raft-design channel.md).
+ */
+@Composable
+private fun ChannelSlackBridgeDialog(
+    channel: HomeChannelRow,
+    state: ChannelSlackBridgeState,
+    saving: Boolean,
+    failed: Boolean,
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (String?) -> Unit,
+) {
+    var pick by remember(state.pairedSlackChannelId) { mutableStateOf(state.pairedSlackChannelId) }
+    val title = stringResource(Res.string.channel_details_slack_dialog_title, channel.name.removePrefix("#"))
+    RaftDesignSystemTheme {
+        RaftDialog(
+            onDismissRequest = onDismiss,
+            title = title,
+            description = stringResource(Res.string.channel_details_slack_dialog_lead),
+            size = RaftDialogSize.Sm,
+            dismissOnClickOutside = !saving,
+            closeLabel = stringResource(Res.string.common_close),
+            footer = {
+                RaftButton(
+                    text = stringResource(Res.string.common_cancel),
+                    onClick = onDismiss,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg,
+                    enabled = !saving,
                 )
+                RaftButton(
+                    text =
+                        stringResource(
+                            if (state.pairedSlackChannelId == null) Res.string.channel_details_slack_connect else Res.string.common_save
+                        ),
+                    onClick = { onSubmit(pick) },
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg,
+                    enabled = enabled && pick != state.pairedSlackChannelId,
+                    loading = saving,
+                    loadingLabel = stringResource(Res.string.thread_settings_saving),
+                )
+            },
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ChannelSlackBridgeSelect(
+                    state = state,
+                    selected = pick,
+                    enabled = enabled && !saving,
+                    onSelect = { pick = it },
+                    label = stringResource(Res.string.channel_details_slack_title),
+                )
+                if (failed) {
+                    RaftBanner(
+                        description = stringResource(Res.string.channel_details_slack_failed),
+                        status = RaftBannerStatus.Warning,
+                        size = RaftBannerSize.Sm,
+                    )
+                }
             }
         }
     }
 }
 
 /**
- * Web ChannelPreferencesSection: Pin, Notifications (or Mute), Collapse long messages. A channel's
- * level and its mute are one Notifications choice, All / Only what involves me / Mute (slock
- * #12231, as in Slack), so it has no Mute switch; a DM, and a server without the unified API, keep
- * the switch.
+ * A group of the details (web SectionHeader + ListRowGroup, Forms "A setting's row"): the heading
+ * with its 16dp icon, then 12 under it the card of rows.
+ */
+@Composable
+private fun ChannelDetailsSection(
+    title: String,
+    icon: RaftLucideIconName,
+    rows: @Composable ColumnScope.() -> Unit,
+) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        RaftSectionEyebrow(text = title, icon = { RaftComputersIcon(icon, size = 16.dp) })
+        RaftListRowGroup(Modifier.fillMaxWidth(), content = rows)
+    }
+}
+
+/**
+ * Your preferences (web ChannelPreferencesSection in the details): only for the person.
+ * Notifications, a channel's level and its mute as one choice, All / Only what involves me / Mute
+ * (slock #12231, as in Slack), or a Mute switch where the server has no levels; Sidebar section
+ * (Pinned is one of its choices), or the Pin switch without the sidebar order; Collapse long
+ * messages. Each row is its title and its control; only Mute keeps a line.
  */
 @Composable
 private fun ChannelPreferencesSection(
@@ -1590,76 +1857,74 @@ private fun ChannelPreferencesSection(
     onToggleMute: () -> Unit,
     onTogglePin: () -> Unit,
     notificationLevelTargetInput: RaftNotificationLevelTarget? = null,
+    refreshNotificationLevels: Boolean = true,
     section: ChannelSectionPlacement? = null,
     onMoveSection: (List<ChannelSectionMove>) -> Unit = {},
     onCreateSection: (name: String, emoji: String?) -> Unit = { _, _ -> },
 ) {
-    // An older server without the unified API shows no Notifications row.
+    // An older server without the unified API shows the Mute switch instead.
     val notificationLevelTarget = notificationLevelTargetInput.whenLevelsSupported()
-    var notificationLevelDialogOpen by remember { mutableStateOf(false) }
-    if (notificationLevelDialogOpen && notificationLevelTarget != null) {
-        RaftNotificationLevelDialog(
-            target = notificationLevelTarget,
-            onDismiss = { notificationLevelDialogOpen = false },
-            onSetMuted = { next -> if (next != muted && muteSupported && enabled) onToggleMute() },
-        )
-    }
-    RaftSection(title = stringResource(Res.string.channel_settings_preferences)) {
-        // web ChannelPreferencesSection: Move to section (Pinned is one of its choices) comes first.
-        if (section != null) {
-            ChannelSectionSelectRow(state = section, enabled = enabled, onMove = onMoveSection, onCreate = onCreateSection)
-        }
-        RaftListRowGroup(Modifier.fillMaxWidth()) {
-            if (section == null) {
-                ChannelPreferenceRow(
-                    title = stringResource(Res.string.channel_settings_pin),
-                    detail = stringResource(Res.string.channel_settings_pin_detail),
-                    checked = pinned,
+    ChannelDetailsSection(
+        title = stringResource(Res.string.channel_details_your_preferences),
+        icon = RaftLucideIconName.User,
+    ) {
+        if (notificationLevelTarget != null) {
+            val title = stringResource(Res.string.notification_level_title)
+            ChannelDetailsSelectRow(title = title, divider = false) {
+                RaftNotificationLevelSelect(
+                    target = notificationLevelTarget,
                     enabled = enabled,
-                    divider = false,
-                    onToggle = onTogglePin
+                    refresh = refreshNotificationLevels,
+                    label = title,
+                    onSetMuted = { next -> if (next != muted && muteSupported && enabled) onToggleMute() },
                 )
             }
-            if (notificationLevelTarget == null) {
-                ChannelPreferenceRow(
-                    title = stringResource(Res.string.channel_settings_mute),
-                    detail = stringResource(Res.string.channel_settings_mute_detail),
-                    checked = muted,
-                    enabled = muteSupported && enabled,
-                    divider = true,
-                    onToggle = onToggleMute
-                )
-            } else {
-                RaftListRow(
-                    title = stringResource(Res.string.notification_level_title),
-                    variant = RaftListRowVariant.Plain,
-                    onClick = { notificationLevelDialogOpen = true },
-                    divider = true,
-                    description = rememberRaftNotificationLevelCurrentLabel(notificationLevelTarget),
-                    wrapDescription = true,
-                )
-            }
-            // Device-local display preference: available without write permission on the channel.
+        } else {
             ChannelPreferenceRow(
-                title = stringResource(Res.string.conversation_long_message_collapse),
-                detail = stringResource(Res.string.channel_settings_collapse_detail),
-                checked = longMessageCollapseSetting.effective,
-                enabled = longMessageCollapseSetting.available,
-                divider = true,
-                onToggle = { longMessageCollapseSetting.onSetEnabled(!longMessageCollapseSetting.effective) }
+                title = stringResource(Res.string.channel_settings_mute),
+                detail = stringResource(Res.string.channel_settings_mute_detail),
+                checked = muted,
+                enabled = muteSupported && enabled,
+                divider = false,
+                onToggle = onToggleMute,
             )
         }
+        if (section != null) {
+            val title = stringResource(Res.string.channel_details_sidebar_section)
+            ChannelDetailsSelectRow(title = title, divider = true) {
+                ChannelSectionSelect(state = section, enabled = enabled, onMove = onMoveSection, onCreate = onCreateSection, label = title)
+            }
+        } else {
+            ChannelPreferenceRow(
+                title = stringResource(Res.string.channel_settings_pin),
+                detail = stringResource(Res.string.channel_settings_pin_detail),
+                checked = pinned,
+                enabled = enabled,
+                divider = true,
+                onToggle = onTogglePin,
+            )
+        }
+        // Device-local display preference: available without write permission on the channel.
+        ChannelPreferenceRow(
+            title = stringResource(Res.string.conversation_long_message_collapse),
+            detail = null,
+            checked = longMessageCollapseSetting.effective,
+            enabled = longMessageCollapseSetting.available,
+            divider = true,
+            onToggle = { longMessageCollapseSetting.onSetEnabled(!longMessageCollapseSetting.effective) },
+        )
     }
 }
 
+/** A setting with a switch: its title and line, the switch at the row's end, on every width. */
 @Composable
 private fun ChannelPreferenceRow(
     title: String,
-    detail: String,
+    detail: String?,
     checked: Boolean,
     enabled: Boolean,
     divider: Boolean,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
 ) {
     RaftListRow(
         title = title,
@@ -1669,16 +1934,92 @@ private fun ChannelPreferenceRow(
         divider = divider,
         description = detail,
         wrapDescription = true,
+        titleMaxLines = 2,
         trailing = {
             RaftSwitch(checked = checked, onCheckedChange = { onToggle() }, enabled = enabled, label = title)
         },
     )
 }
 
+/** forms.md (raft-design #1204): a row this wide or wider has its select at its end. */
+internal val ChannelDetailsWideRowMinWidth = 512.dp
+
+/** A select at a wide row's end: as wide as its longest option, 11rem to 20rem. */
+private val ChannelDetailsEndSelectMinWidth = 176.dp
+private val ChannelDetailsEndSelectMaxWidth = 320.dp
+
+/** A select under a narrow row's title: `max-w-sm`. */
+private val ChannelDetailsUnderSelectMaxWidth = 384.dp
+
 /**
- * Web lifecycle group ("Actions"): full-width buttons in the web order. Reversible actions are
- * outlined; Delete / Disconnect, the irreversible one, is the only red one. Each asks first
- * (web `confirmDialogs`), except Unarchive and Stop All Agents (its own dialog).
+ * Where a settings row of [rowWidth] puts its select or segmented control (Forms, "A setting's
+ * row", raft-design #1204): at the row's end from 32rem of the row's own width, whatever its
+ * options say; under the title in a narrower row (on a phone, and in the 400 wide details column).
+ * A switch or a button stays at the end on every width.
+ */
+internal fun channelDetailsSelectAtRowEnd(rowWidth: Dp): Boolean = rowWidth >= ChannelDetailsWideRowMinWidth
+
+/**
+ * A setting whose control is a select (or a segmented control), laid out by its own width
+ * ([channelDetailsSelectAtRowEnd]): its title (and [description]) then the control under it, at most
+ * `max-w-sm` wide; or, in a row 32rem wide or wider, the control at the row's end, 11rem to 20rem.
+ * Kept here, not in the design system: [RaftListRow] has no slot under its text yet.
+ */
+@Composable
+private fun ChannelDetailsSelectRow(
+    title: String,
+    divider: Boolean,
+    description: String? = null,
+    control: @Composable () -> Unit,
+) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val atEnd = channelDetailsSelectAtRowEnd(maxWidth)
+        Column(Modifier.fillMaxWidth()) {
+            // ListRow `plain`'s hairline, from where the text starts.
+            if (divider) RaftSeparator(Modifier.padding(start = 16.dp))
+            if (atEnd) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ChannelDetailsRowText(title, description, Modifier.weight(1f))
+                    Box(Modifier.widthIn(min = ChannelDetailsEndSelectMinWidth, max = ChannelDetailsEndSelectMaxWidth)) { control() }
+                }
+            } else {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ChannelDetailsRowText(title, description)
+                    Box(Modifier.fillMaxWidth().widthIn(max = ChannelDetailsUnderSelectMaxWidth)) { control() }
+                }
+            }
+        }
+    }
+}
+
+/** A settings row's text as [RaftListRow] sets it: the title 16/24 semibold, its line 14/20 muted. */
+@Composable
+private fun ChannelDetailsRowText(title: String, description: String?, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        RaftText(
+            title,
+            style = RaftTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+            color = RaftTheme.colors.foreground,
+        )
+        if (description != null) {
+            RaftText(description, style = RaftTheme.typography.callout, color = RaftTheme.colors.foregroundMuted)
+        }
+    }
+}
+
+/**
+ * The actions at the end of the details (web EditChannelDialog `actionsSection`): a card of rows
+ * with no heading, colored by their risk (raft-ui ListRow `tone`): Archive, Leave and Stop all
+ * agents orange (they interrupt, but can be undone), Delete or Disconnect red (it can't be undone);
+ * Unarchive takes nothing back, so it stays neutral. Each asks first as before (web
+ * `confirmDialogs`), except Unarchive and Stop all agents (its own dialog).
  */
 @Composable
 internal fun ChannelActionsSection(
@@ -1686,141 +2027,111 @@ internal fun ChannelActionsSection(
     enabled: Boolean,
     actionInFlight: ChannelSettingsAction?,
     callbacks: ChannelSettingsCallbacks,
-    /** False inside the settings drawer, whose body already has the side padding. */
-    inset: Boolean = true,
 ) {
-    ChannelSettingsSectionFrame(title = stringResource(Res.string.channel_settings_actions), inset = inset) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            actions.forEach { row ->
-                val buttonEnabled = enabled && actionInFlight == null
-                when (row) {
-                    ChannelSettingsActionRow.MakePrivate ->
-                        ChannelActionButton(
-                            stringResource(Res.string.thread_settings_make_private),
-                            RaftLucideIconName.Lock,
-                            enabled = buttonEnabled,
-                        ) { callbacks.onConfirm(ChannelSettingsConfirm.MakePrivate) }
-                    ChannelSettingsActionRow.MakePublic ->
-                        ChannelActionButton(
-                            stringResource(Res.string.channel_settings_make_public),
-                            RaftLucideIconName.Hash,
-                            enabled = buttonEnabled,
-                        ) { callbacks.onConfirm(ChannelSettingsConfirm.MakePublic) }
-                    ChannelSettingsActionRow.Archive ->
-                        ChannelActionButton(
-                            stringResource(Res.string.thread_settings_archive),
-                            RaftLucideIconName.Archive,
-                            enabled = buttonEnabled,
-                        ) { callbacks.onConfirm(ChannelSettingsConfirm.Archive) }
-                    ChannelSettingsActionRow.Unarchive ->
-                        ChannelActionButton(
-                            stringResource(Res.string.channel_settings_unarchive),
-                            RaftLucideIconName.Archive,
-                            enabled = enabled && (actionInFlight == null || actionInFlight == ChannelSettingsAction.Unarchive),
-                            loading = actionInFlight == ChannelSettingsAction.Unarchive,
-                            loadingLabel = stringResource(Res.string.channel_settings_unarchiving),
-                            onClick = callbacks.onUnarchive,
-                        )
-                    ChannelSettingsActionRow.Leave ->
-                        ChannelActionButton(
-                            stringResource(Res.string.channel_settings_leave),
-                            RaftLucideIconName.LogOut,
-                            enabled = buttonEnabled,
-                        ) { callbacks.onConfirm(ChannelSettingsConfirm.Leave) }
-                    ChannelSettingsActionRow.StopAllAgents ->
-                        ChannelActionButton(
-                            stringResource(Res.string.channel_sos_entry),
-                            RaftLucideIconName.Square,
-                            onClick = callbacks.onStopAllAgents,
-                        )
-                    ChannelSettingsActionRow.Delete ->
-                        ChannelActionButton(
-                            stringResource(Res.string.thread_settings_delete),
-                            RaftLucideIconName.Trash2,
-                            variant = RaftButtonVariant.Danger,
-                            enabled = buttonEnabled,
-                        ) { callbacks.onConfirm(ChannelSettingsConfirm.Delete) }
-                    ChannelSettingsActionRow.Disconnect ->
-                        ChannelActionButton(
-                            stringResource(Res.string.joint_disconnect_channel),
-                            RaftLucideIconName.Unlink,
-                            variant = RaftButtonVariant.Danger,
-                            enabled = buttonEnabled,
-                        ) { callbacks.onConfirm(ChannelSettingsConfirm.Disconnect) }
-                }
+    val buttonEnabled = enabled && actionInFlight == null
+    RaftListRowGroup(Modifier.fillMaxWidth()) {
+        actions.forEachIndexed { index, row ->
+            val divider = index > 0
+            when (row) {
+                // Drawn in Channel settings' Public or Private row.
+                ChannelSettingsActionRow.MakePrivate,
+                ChannelSettingsActionRow.MakePublic -> Unit
+                ChannelSettingsActionRow.Archive ->
+                    ChannelActionRow(
+                        stringResource(Res.string.thread_settings_archive),
+                        RaftLucideIconName.Archive,
+                        risk = RaftRiskTone.Warning,
+                        enabled = buttonEnabled,
+                        divider = divider,
+                    ) { callbacks.onConfirm(ChannelSettingsConfirm.Archive) }
+                ChannelSettingsActionRow.Unarchive ->
+                    ChannelActionRow(
+                        stringResource(
+                            if (actionInFlight == ChannelSettingsAction.Unarchive) {
+                                Res.string.channel_settings_unarchiving
+                            } else {
+                                Res.string.channel_settings_unarchive
+                            }
+                        ),
+                        RaftLucideIconName.Archive,
+                        risk = null,
+                        enabled = buttonEnabled,
+                        divider = divider,
+                        onClick = callbacks.onUnarchive,
+                    )
+                ChannelSettingsActionRow.Leave ->
+                    ChannelActionRow(
+                        stringResource(Res.string.channel_settings_leave),
+                        RaftLucideIconName.LogOut,
+                        risk = RaftRiskTone.Warning,
+                        enabled = buttonEnabled,
+                        divider = divider,
+                    ) { callbacks.onConfirm(ChannelSettingsConfirm.Leave) }
+                ChannelSettingsActionRow.StopAllAgents ->
+                    ChannelActionRow(
+                        stringResource(Res.string.channel_sos_entry),
+                        RaftLucideIconName.Square,
+                        risk = RaftRiskTone.Warning,
+                        enabled = true,
+                        divider = divider,
+                        onClick = callbacks.onStopAllAgents,
+                    )
+                ChannelSettingsActionRow.Delete ->
+                    ChannelActionRow(
+                        stringResource(Res.string.thread_settings_delete),
+                        RaftLucideIconName.Trash2,
+                        risk = RaftRiskTone.Danger,
+                        enabled = buttonEnabled,
+                        divider = divider,
+                    ) { callbacks.onConfirm(ChannelSettingsConfirm.Delete) }
+                ChannelSettingsActionRow.Disconnect ->
+                    ChannelActionRow(
+                        stringResource(Res.string.joint_disconnect_channel),
+                        RaftLucideIconName.Unplug,
+                        risk = RaftRiskTone.Danger,
+                        enabled = buttonEnabled,
+                        divider = divider,
+                    ) { callbacks.onConfirm(ChannelSettingsConfirm.Disconnect) }
             }
         }
     }
 }
 
+/** One action row: its 20dp icon and its name, both in the risk's ink. */
 @Composable
-internal fun ChannelActionButton(
+private fun ChannelActionRow(
     text: String,
     icon: RaftLucideIconName,
-    variant: RaftButtonVariant = RaftButtonVariant.Default,
-    enabled: Boolean = true,
-    loading: Boolean = false,
-    loadingLabel: String? = null,
+    risk: RaftRiskTone?,
+    enabled: Boolean,
+    divider: Boolean,
     onClick: () -> Unit,
 ) {
-    RaftButton(
-        text = text,
+    RaftListRow(
+        title = text,
+        variant = RaftListRowVariant.Plain,
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        variant = variant,
-        size = RaftButtonSize.Lg,
+        risk = risk,
         enabled = enabled,
-        loading = loading,
-        loadingLabel = loadingLabel ?: text,
-        leadingIcon = { RaftComputersIcon(icon) },
+        divider = divider,
+        leading = { RaftComputersIcon(icon, size = 20.dp) },
     )
-}
-
-/**
- * A settings section: on the page a [RaftSection] (its own rule and side padding; the
- * description as a footnote under the title), in the drawer a [RaftFormSection] (the drawer
- * draws the rule and the padding).
- */
-@Composable
-private fun ChannelSettingsSectionFrame(
-    title: String,
-    inset: Boolean,
-    description: String? = null,
-    content: @Composable () -> Unit,
-) {
-    if (inset) {
-        RaftSection(title = title) {
-            if (description != null) {
-                RaftText(
-                    description,
-                    modifier = Modifier.padding(bottom = 12.dp),
-                    style = RaftTheme.typography.footnote,
-                    color = RaftTheme.colors.foregroundHint,
-                )
-            }
-            content()
-        }
-    } else {
-        RaftFormSection(title = title, description = description) { content() }
-    }
 }
 
 /** Joint channels: the entry to Connected servers (list, resend, invite another server). */
 @Composable
 private fun ChannelJointConnectionsEntry(onClick: () -> Unit) {
-    Column(Modifier.fillMaxWidth()) {
-        RaftSeparator()
-        RaftListRowGroup(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)) {
-            RaftListRow(
-                title = stringResource(Res.string.joint_connections_title),
-                onClick = onClick,
-                description = stringResource(Res.string.joint_connections_rule),
-                wrapDescription = true,
-                descriptionMaxLines = 2,
-                leading = { RaftComputersIcon(RaftLucideIconName.GitBranch, size = 20.dp) },
-                trailing = { RaftListRowChevron() },
-            )
-        }
+    RaftListRowGroup(Modifier.fillMaxWidth()) {
+        RaftListRow(
+            title = stringResource(Res.string.joint_connections_title),
+            onClick = onClick,
+            variant = RaftListRowVariant.Plain,
+            description = stringResource(Res.string.joint_connections_rule),
+            wrapDescription = true,
+            descriptionMaxLines = 2,
+            leading = { RaftComputersIcon(RaftLucideIconName.Server, size = 20.dp) },
+            trailing = { RaftListRowChevron() },
+        )
     }
 }
 
