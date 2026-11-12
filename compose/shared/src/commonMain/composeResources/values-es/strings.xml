@@ -3335,6 +3335,7 @@
     <string name="runtime_picker_show_all_supported">Mostrar todos los compatibles</string>
     <string name="runtime_picker_show_installed_only">Mostrar solo los instalados</string>
     <string name="runtime_suffix_deprecated">&#160;(obsoleto)</string>
+    <string name="member_runtime_deprecated_warning">Este agente usa un runtime obsoleto. Puede seguir ejecutándose, pero los agentes nuevos no pueden elegir este runtime.</string>
     <string name="runtime_suffix_experimental">&#160;(experimental)</string>
     <string name="runtime_badge_experimental">Experimental</string>
     <string name="auth_private_deployment_title">Servidor autoalojado</string>

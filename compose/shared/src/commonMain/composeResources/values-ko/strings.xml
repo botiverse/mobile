@@ -3335,6 +3335,7 @@
     <string name="runtime_picker_show_all_supported">지원되는 항목 모두 표시</string>
     <string name="runtime_picker_show_installed_only">설치된 항목만 표시</string>
     <string name="runtime_suffix_deprecated">&#160;(지원 중단)</string>
+    <string name="member_runtime_deprecated_warning">이 에이전트는 지원 중단된 런타임을 사용해요. 계속 실행할 수는 있지만 새 에이전트에서는 이 런타임을 선택할 수 없어요.</string>
     <string name="runtime_suffix_experimental">&#160;(실험적)</string>
     <string name="runtime_badge_experimental">실험적</string>
     <string name="auth_private_deployment_title">자체 호스팅 서버</string>

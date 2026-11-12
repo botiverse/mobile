@@ -3490,6 +3490,7 @@
     <string name="runtime_picker_show_all_supported">対応しているものをすべて表示</string>
     <string name="runtime_picker_show_installed_only">インストール済みのみ表示</string>
     <string name="runtime_suffix_deprecated">（非推奨）</string>
+    <string name="member_runtime_deprecated_warning">このエージェントは非推奨のランタイムを使用しています。引き続き実行できますが、新しいエージェントではこのランタイムを選択できません。</string>
     <string name="runtime_suffix_experimental">（試験的）</string>
     <string name="runtime_badge_experimental">試験的</string>
     <string name="auth_private_deployment_title">プライベートデプロイ</string>

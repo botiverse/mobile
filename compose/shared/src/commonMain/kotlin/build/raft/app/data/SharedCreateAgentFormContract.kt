@@ -61,6 +61,42 @@ internal data class SharedCreateAgentRuntimeOption(
                 !current
 }
 
+/**
+ * `GET agents/:id/runtime-options`: the runtimes an existing agent may switch to on this server, as
+ * the server decides them (a deprecated runtime it offers again included). [machineId] is null
+ * when the agent has no computer here.
+ */
+internal data class ExistingAgentRuntimeOptions(
+    val agentId: String,
+    val machineId: String?,
+    val options: List<SharedCreateAgentRuntimeOption>
+) {
+    /**
+     * The row of the agent's current runtime: `current` AND the same [runtimeId]. Rows read before a
+     * switch still mark the old runtime current, so a `current` row for another runtime says nothing
+     * about this one (web AgentProfileInfo, botiverse/slock #14584).
+     */
+    fun currentRow(runtimeId: String): SharedCreateAgentRuntimeOption? =
+        runtimeId.trim().takeIf { it.isNotBlank() }?.let { id -> options.firstOrNull { it.current && it.runtimeId == id } }
+}
+
+/** The server deprecated this runtime here (`admissionReason: "deprecated"`; a runtime it offers again is not). */
+internal val SharedCreateAgentRuntimeOption.deprecatedHere: Boolean
+    get() = admissionReason == "deprecated"
+
+/**
+ * Whether an agent's [runtimeId] is deprecated on this server, for its "(deprecated)" label and the
+ * profile's warning banner (web AgentProfileInfo `currentRuntimeDeprecated`, botiverse/slock #14584):
+ * the agent's own row ([ExistingAgentRuntimeOptions.currentRow], matched on the runtime id) says it;
+ * without that row (not loaded, refused, or read before a switch) the server catalog ([catalogDeprecated]:
+ * the server's answer, its cache, or the bundled table only when neither answers).
+ */
+internal fun runtimeDeprecatedForAgent(
+    runtimeId: String,
+    rows: ExistingAgentRuntimeOptions?,
+    catalogDeprecated: (String) -> Boolean = { runtimeCatalogIsDeprecated(it) }
+): Boolean = rows?.currentRow(runtimeId)?.deprecatedHere ?: catalogDeprecated(runtimeId)
+
 /** Whether the server has a runtime form v2 for a runtime, from the runtime-options rows. */
 internal enum class RuntimeFormV2Availability {
     /**

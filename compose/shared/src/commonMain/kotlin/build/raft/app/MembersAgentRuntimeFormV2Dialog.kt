@@ -16,6 +16,8 @@ import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.data.RuntimeFormV2Availability
 import build.raft.app.data.SharedCreateAgentRuntimeCatalog
+import build.raft.app.data.ExistingAgentRuntimeOptions
+import build.raft.app.data.SharedCreateAgentRuntimeOption
 import build.raft.app.data.currentRuntimeFormV2Availability
 import build.raft.app.data.runtimeFormV2Availability
 import build.raft.app.data.runtimeform.v2.RUNTIME_FORM_V2_FORM_REVISION_STALE
@@ -71,6 +73,12 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     onRuntimeSelected: () -> Unit,
     /** The computer's runtime-options rows (for the selected runtime's v2 marker), or null if unknown. */
     runtimeCatalog: suspend (machineId: String) -> SharedCreateAgentRuntimeCatalog?,
+    /**
+     * The agent's own runtime-options rows (`GET agents/:id/runtime-options`), or null while unknown:
+     * the switch list is these rows (a deprecated runtime this server offers again included), named
+     * from the server catalog; without them the catalog decides (#proj-runtime:#57).
+     */
+    agentRuntimeOptions: ExistingAgentRuntimeOptions? = null,
     /**
      * [newSession]: the change runs on a new session (a runtime switch, or a Codex model change),
      * so Restart now resets the session (web AgentProfileInfo `newSession`, botiverse/slock #13372).
@@ -215,7 +223,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                         quotaMachine = quotaMachine,
                         // The server catalog read in this process (the Members page warms it), else bundled.
                         catalog = RaftRuntimeCatalogNames.catalog(access.serverId.value) ?: BundledRuntimeCatalog,
-                        currentRuntimeId = runtimeId
+                        currentRuntimeId = runtimeId,
+                        options = membersRuntimeSwitchRows(agentRuntimeOptions, machineId)
                     ) {
                         if (load == MembersRuntimeFormV2EditLoad.Loading) {
                             Text(
@@ -318,6 +327,10 @@ internal fun membersRuntimeFormV2EditRuntimeSwitched(agentRuntimeId: String, sel
  */
 internal fun membersRuntimeFormV2EditRuntimeSelection(currentRuntimeId: String, picked: String): String? =
     picked.trim().takeIf { it.isNotBlank() && it != currentRuntimeId.trim() }
+
+/** The agent's rows for the switch list, while they are this computer's ([machineId]); else null. */
+internal fun membersRuntimeSwitchRows(rows: ExistingAgentRuntimeOptions?, machineId: String?): List<SharedCreateAgentRuntimeOption>? =
+    rows?.takeIf { it.machineId != null && it.machineId == machineId?.trim() }?.options
 
 /**
  * Loads the editor's form: the agent's own edit form while [selectedRuntimeId] is its saved

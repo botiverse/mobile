@@ -15,6 +15,8 @@ import build.raft.app.data.MobileRuntimeForms
 import build.raft.app.data.RuntimeCatalogEntry
 import build.raft.app.data.RuntimeCatalogForm
 import build.raft.app.data.ServerRuntimeCatalog
+import build.raft.app.data.SharedCreateAgentRuntimeOption
+import build.raft.app.data.deprecatedHere
 import build.raft.app.data.hasMobileForm
 import build.raft.app.data.runtimeCatalogDisplayName
 import build.raft.app.data.runtimeCatalogIsDeprecated
@@ -71,6 +73,13 @@ internal data class RuntimePickerRows(
  *   half form.
  * - Not installed rows show only with [showAll], or when nothing else would be listed, and the
  *   [selectedRuntimeId] always shows so the field never names a value its list lacks.
+ *
+ * With the server's runtime-options [options] (a computer's `new_agent` rows, or an agent's
+ * `existing_agent` rows), those rows ARE the list (botiverse/slock #14568 / #14584, #proj-runtime:#57):
+ * what is offered, installed and selectable is each row's answer, and "(deprecated)" its
+ * `admissionReason`; [catalog] only names them and says which forms this app knows. No
+ * `deprecated` flag of the catalog (let alone the bundled table) drops or blocks a row. Without
+ * rows (still loading, or the request failed) the picker falls back to [catalog] as above.
  */
 internal fun runtimePickerRows(
     catalog: ServerRuntimeCatalog,
@@ -79,47 +88,15 @@ internal fun runtimePickerRows(
     showAll: Boolean,
     currentRuntimeId: String? = null,
     serverSelectable: (String) -> Boolean? = { null },
-    isFormSupported: (RuntimeCatalogForm) -> Boolean = MobileRuntimeForms::supports
+    isFormSupported: (RuntimeCatalogForm) -> Boolean = MobileRuntimeForms::supports,
+    options: List<SharedCreateAgentRuntimeOption>? = null
 ): RuntimePickerRows {
-    val available = machineRuntimeIds.map { it.trim() }.filter { it.isNotBlank() }.toSet()
     val current = currentRuntimeId?.trim()?.takeIf { it.isNotBlank() }
-    val entries =
-        catalog.runtimes.filter { !it.deprecated || it.id == current }.let { listed ->
-            if (current == null || listed.any { it.id == current }) {
-                listed
-            } else {
-                // Rule 5: absent from the catalog (turned off) but this agent still runs it.
-                val fallback = BundledRuntimeCatalog.entry(current) ?: RuntimeCatalogEntry(id = current, displayName = current, forms = emptyList())
-                listOf(fallback) + listed
-            }
-        }
     val classified =
-        entries.map { entry ->
-            val suffix =
-                when {
-                    !entry.supported -> RuntimePickerSuffix.ComingSoon
-                    entry.id in available -> RuntimePickerSuffix.None
-                    entry.binary.isEmpty() -> RuntimePickerSuffix.UpdateComputer
-                    else -> RuntimePickerSuffix.NotInstalled
-                }
-            val group =
-                when {
-                    entry.id == current -> RuntimePickerGroup.Current
-                    !entry.hasMobileForm(isFormSupported) -> RuntimePickerGroup.NeedsAppUpdate
-                    suffix == RuntimePickerSuffix.None ->
-                        if (serverSelectable(entry.id) == false) RuntimePickerGroup.NotAvailable else RuntimePickerGroup.Ready
-                    suffix == RuntimePickerSuffix.UpdateComputer -> RuntimePickerGroup.NeedsComputerUpdate
-                    else -> RuntimePickerGroup.NotInstalled
-                }
-            RuntimePickerRow(
-                id = entry.id,
-                name = entry.displayName.ifBlank { runtimeCatalogDisplayName(entry.id) },
-                group = group,
-                enabled = group == RuntimePickerGroup.Current || group == RuntimePickerGroup.Ready,
-                suffix = suffix,
-                deprecated = entry.deprecated,
-                experimental = entry.experimental && !entry.deprecated
-            )
+        if (options != null) {
+            serverRowPickerRows(catalog, options, current, isFormSupported)
+        } else {
+            catalogPickerRows(catalog, machineRuntimeIds, current, serverSelectable, isFormSupported)
         }
     // Not offered here (rollout or admission): nothing to do about it, so not listed unless it is
     // the field's value, and it doesn't count toward "only not-installed rows" either.
@@ -134,9 +111,129 @@ internal fun runtimePickerRows(
     return RuntimePickerRows(rows = rows, canToggle = notInstalled > 0 && !onlyNotInstalled)
 }
 
-/** The runtime ids a new agent may be created with here (the create dialog's submit gate). */
-internal fun ServerRuntimeCatalog.creatableRuntimeIds(isFormSupported: (RuntimeCatalogForm) -> Boolean = MobileRuntimeForms::supports): Set<String> =
-    runtimes.filter { it.supported && !it.deprecated && it.hasMobileForm(isFormSupported) }.mapTo(linkedSetOf()) { it.id }
+/** The entry that names [runtimeId]: [catalog] (the server's, its cache, or the bundled table), else the bundled table. */
+private fun ServerRuntimeCatalog.namingEntry(runtimeId: String): RuntimeCatalogEntry? =
+    entry(runtimeId) ?: BundledRuntimeCatalog.entry(runtimeId)
+
+/**
+ * Whether this app can set up [row]'s runtime: a form it knows in the naming entry; a runtime no
+ * catalog names goes by the row's own v2 marker.
+ */
+internal fun ServerRuntimeCatalog.knowsFormFor(
+    row: SharedCreateAgentRuntimeOption,
+    isFormSupported: (RuntimeCatalogForm) -> Boolean = MobileRuntimeForms::supports
+): Boolean =
+    namingEntry(row.runtimeId)?.hasMobileForm(isFormSupported)
+        ?: (row.runtimeFormV2 && isFormSupported(RuntimeCatalogForm.V2))
+
+/** The rows of the server's runtime-options, in the server's order, named from [catalog]. */
+private fun serverRowPickerRows(
+    catalog: ServerRuntimeCatalog,
+    options: List<SharedCreateAgentRuntimeOption>,
+    current: String?,
+    isFormSupported: (RuntimeCatalogForm) -> Boolean
+): List<RuntimePickerRow> {
+    val rows =
+        options.map { row ->
+            val entry = catalog.namingEntry(row.runtimeId)
+            val suffix =
+                when (row.capabilityStatus) {
+                    "available" -> RuntimePickerSuffix.None
+                    "update_required" -> RuntimePickerSuffix.UpdateComputer
+                    else -> RuntimePickerSuffix.NotInstalled
+                }
+            // Current only for the agent's own runtime id: rows read before a switch mark the old one.
+            val isCurrent = row.runtimeId == current
+            val group =
+                when {
+                    isCurrent -> RuntimePickerGroup.Current
+                    !catalog.knowsFormFor(row, isFormSupported) -> RuntimePickerGroup.NeedsAppUpdate
+                    suffix == RuntimePickerSuffix.None ->
+                        if (row.canSelectInThisContext) RuntimePickerGroup.Ready else RuntimePickerGroup.NotAvailable
+                    suffix == RuntimePickerSuffix.UpdateComputer -> RuntimePickerGroup.NeedsComputerUpdate
+                    else -> RuntimePickerGroup.NotInstalled
+                }
+            val deprecated = isCurrent && row.current && row.deprecatedHere
+            RuntimePickerRow(
+                id = row.runtimeId,
+                name = entry?.displayName?.ifBlank { null } ?: runtimeCatalogDisplayName(row.runtimeId),
+                group = group,
+                enabled = group == RuntimePickerGroup.Current || group == RuntimePickerGroup.Ready,
+                suffix = suffix,
+                deprecated = deprecated,
+                experimental = entry?.experimental == true && !deprecated
+            )
+        }
+    if (current == null || rows.any { it.id == current }) return rows
+    // The server's rows always carry the agent's runtime; rows that lack it (read before a switch)
+    // still pin it first, named as the catalog fallback does.
+    return catalogPickerRows(catalog, emptyList(), current, { null }, isFormSupported).filter { it.id == current } + rows
+}
+
+/** The fallback without the server's rows: [catalog]'s runtimes, a deprecated one only as [current]. */
+private fun catalogPickerRows(
+    catalog: ServerRuntimeCatalog,
+    machineRuntimeIds: List<String>,
+    current: String?,
+    serverSelectable: (String) -> Boolean?,
+    isFormSupported: (RuntimeCatalogForm) -> Boolean
+): List<RuntimePickerRow> {
+    val available = machineRuntimeIds.map { it.trim() }.filter { it.isNotBlank() }.toSet()
+    val entries =
+        catalog.runtimes.filter { !it.deprecated || it.id == current }.let { listed ->
+            if (current == null || listed.any { it.id == current }) {
+                listed
+            } else {
+                // Rule 5: absent from the catalog (turned off) but this agent still runs it.
+                val fallback = BundledRuntimeCatalog.entry(current) ?: RuntimeCatalogEntry(id = current, displayName = current, forms = emptyList())
+                listOf(fallback) + listed
+            }
+        }
+    return entries.map { entry ->
+        val suffix =
+            when {
+                !entry.supported -> RuntimePickerSuffix.ComingSoon
+                entry.id in available -> RuntimePickerSuffix.None
+                entry.binary.isEmpty() -> RuntimePickerSuffix.UpdateComputer
+                else -> RuntimePickerSuffix.NotInstalled
+            }
+        val group =
+            when {
+                entry.id == current -> RuntimePickerGroup.Current
+                !entry.hasMobileForm(isFormSupported) -> RuntimePickerGroup.NeedsAppUpdate
+                suffix == RuntimePickerSuffix.None ->
+                    if (serverSelectable(entry.id) == false) RuntimePickerGroup.NotAvailable else RuntimePickerGroup.Ready
+                suffix == RuntimePickerSuffix.UpdateComputer -> RuntimePickerGroup.NeedsComputerUpdate
+                else -> RuntimePickerGroup.NotInstalled
+            }
+        RuntimePickerRow(
+            id = entry.id,
+            name = entry.displayName.ifBlank { runtimeCatalogDisplayName(entry.id) },
+            group = group,
+            enabled = group == RuntimePickerGroup.Current || group == RuntimePickerGroup.Ready,
+            suffix = suffix,
+            deprecated = entry.deprecated,
+            experimental = entry.experimental && !entry.deprecated
+        )
+    }
+}
+
+/**
+ * The runtime ids a new agent may be created with here (the create dialog's submit gate). With the
+ * computer's runtime-options [options], the rows the server lets this person pick
+ * (`canSelectInThisContext`) whose form this app knows, whatever the catalog's `deprecated` says
+ * (Antigravity where its OAR flag is on); without rows, the catalog's supported, not deprecated
+ * runtimes with a known form.
+ */
+internal fun ServerRuntimeCatalog.creatableRuntimeIds(
+    isFormSupported: (RuntimeCatalogForm) -> Boolean = MobileRuntimeForms::supports,
+    options: List<SharedCreateAgentRuntimeOption>? = null
+): Set<String> =
+    if (options != null) {
+        options.filter { it.canSelectInThisContext && knowsFormFor(it, isFormSupported) }.mapTo(linkedSetOf()) { it.runtimeId }
+    } else {
+        runtimes.filter { it.supported && !it.deprecated && it.hasMobileForm(isFormSupported) }.mapTo(linkedSetOf()) { it.id }
+    }
 
 /** The words of the runtime picker, resolved once per composition. */
 internal data class RuntimePickerCopy(
@@ -227,10 +324,15 @@ internal fun runtimeIdentityDisplayName(runtimeId: String, serverId: String? = n
  * (a runtime inside a sentence) uses the bare [runtimeCatalogDisplayName].
  */
 @Composable
-internal fun runtimeLabelWithStatus(runtimeId: String, serverId: String? = null): String {
+internal fun runtimeLabelWithStatus(
+    runtimeId: String,
+    serverId: String? = null,
+    /** The server's answer for this agent's runtime ([runtimeDeprecatedForAgent]); null: the catalog's. */
+    deprecated: Boolean? = null
+): String {
     val name = runtimeIdentityDisplayName(runtimeId, serverId)
     return when {
-        runtimeCatalogIsDeprecated(runtimeId, serverId) -> name + stringResource(Res.string.runtime_suffix_deprecated)
+        deprecated ?: runtimeCatalogIsDeprecated(runtimeId, serverId) -> name + stringResource(Res.string.runtime_suffix_deprecated)
         runtimeCatalogIsExperimental(runtimeId, serverId) -> name + stringResource(Res.string.runtime_suffix_experimental)
         else -> name
     }
