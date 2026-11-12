@@ -28,8 +28,8 @@ import kotlin.test.Test
 /**
  * raft-ui Composer > attachments: a file tile (short and truncated title) and an image tile at
  * rest; the web's overlays on both in every phase (checking, uploading at 42% and before the
- * first byte with the bar at its 4% floor, finishing with the sweeping bar, failed with the
- * mobile Retry), spinners and sweep held still; long Latin and Cyrillic labels on image tiles,
+ * first byte with the bar at its 4% floor, finishing with the bar held at 99%, failed with the
+ * mobile Retry), spinners held still; long Latin and Cyrillic labels on image tiles,
  * which stay inside the tile (artin 11-11); and the remove sticker at rest, pressed, focused and disabled.
  */
 class ComposerAttachmentScreenshotTest {
@@ -55,7 +55,7 @@ class ComposerAttachmentScreenshotTest {
                 Caption("Uploading: 42%, first byte")
                 PhaseRow(RaftComposerAttachmentPhase.Uploading, 42, "42%")
                 PhaseRow(RaftComposerAttachmentPhase.Uploading, 0, "Uploading")
-                Caption("Finishing (sweep held): file, image")
+                Caption("Finishing (99%): file, image")
                 PhaseRow(RaftComposerAttachmentPhase.Finishing, 99, "Finishing upload…")
                 Caption("Failed: file, image")
                 PhaseRow(RaftComposerAttachmentPhase.Failed, null, "Upload failed", action = "Retry")

@@ -10,7 +10,7 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The composer's pending image tile through an upload, as the tray draws it (64dp tiles, the
  * remove sticker on the top-end corner): done (no overlay), uploading at 42%, finishing (the
- * bar sweeps, held still here), failed with Retry (the design-system goldens cover the file tile). artin 11-11 (Android
+ * bar held filled at 99%), failed with Retry (the design-system goldens cover the file tile). artin 11-11 (Android
  * 1.23, dark, zh-CN): "正在完成上传…" spilled past the image tile, cut at the screen edge, over
  * the thumbnail. Every label must stay inside its tile, in English and Chinese, light and dark,
  * and at font scale 1.3. CJK goldens are recorded by CI. Verify / record as
