@@ -1,8 +1,12 @@
 import UIKit
 import XCTest
 
-@available(iOS 27.1, *)
 final class RaftIosSideActionItemsTests: XCTestCase {
+    override func setUpWithError() throws {
+        // Vertical bar items (`axisBehavior`) are iOS 27.1 API.
+        guard #available(iOS 27.1, *) else { throw XCTSkip("iOS 27.1 or later") }
+    }
+
     private let column = """
     {"version":1,
      "primary":[{"id":"back","label":"Back","systemSymbol":"chevron.backward","enabled":true,"attention":false}],
@@ -16,6 +20,7 @@ final class RaftIosSideActionItemsTests: XCTestCase {
      "overflowAttention":false}
     """
 
+    @available(iOS 27.1, *)
     func testBackLeadsAndTheActionsFollowInListedOrderWithTheOverflowLast() throws {
         let items = try XCTUnwrap(RaftIosSideActionItems.make(json: column, onTap: { _ in }))
 
@@ -42,6 +47,7 @@ final class RaftIosSideActionItemsTests: XCTestCase {
         }
     }
 
+    @available(iOS 27.1, *)
     func testNoOverflowNoEllipsisAndADisabledButtonStaysDisabled() throws {
         let json = """
         {"primary":[{"id":"back","label":"Back","systemSymbol":"chevron.backward","enabled":false}],
@@ -54,6 +60,7 @@ final class RaftIosSideActionItemsTests: XCTestCase {
         XCTAssertEqual(items.trailing.map(\.primaryAction?.identifier.rawValue), ["home-bell"])
     }
 
+    @available(iOS 27.1, *)
     func testAColumnThatIsNotJsonMakesNoItems() {
         XCTAssertNil(RaftIosSideActionItems.make(json: "not json", onTap: { _ in }))
     }
