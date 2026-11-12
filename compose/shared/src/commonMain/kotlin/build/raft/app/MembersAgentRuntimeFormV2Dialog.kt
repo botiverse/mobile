@@ -135,7 +135,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
         val submit =
             RuntimeFormV2SubmitBody(
                 runtimeId = submitting.form.runtimeId,
-                formValues = runtimeFormV2Submission(submitting.form, values, submitting.sources)
+                formValues = runtimeFormV2Submission(submitting.form, values, submitting.sources),
+                protocolVersion = submitting.form.protocolVersion
             )
         val newSession =
             membersRuntimeConfigSaveStartsNewSession(

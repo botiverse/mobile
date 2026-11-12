@@ -3395,6 +3395,7 @@
     <string name="runtime_form_v2_direct_providers">Direct setup</string>
     <string name="runtime_form_v2_connection_owned">Provided by “%1$s”</string>
     <string name="runtime_form_v2_saved_provider_unavailable">This saved provider is unavailable. Select another provider.</string>
+    <string name="runtime_form_v2_unavailable_group">Not available on this computer</string>
     <string name="thread_followers_title">Watching agents</string>
     <string name="thread_followers_count">%1$d watching</string>
     <string name="thread_followers_retry">Watching agents · Retry</string>

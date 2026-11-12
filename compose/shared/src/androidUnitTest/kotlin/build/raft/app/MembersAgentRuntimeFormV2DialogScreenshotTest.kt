@@ -11,6 +11,11 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftAgentsApi
 import build.raft.app.data.RaftComputersApi
+import build.raft.app.data.runtimeform.v2.CLAUDE_AUTH_TYPE_SOURCE_JSON
+import build.raft.app.data.runtimeform.v2.CLAUDE_MODEL_LIVE_SOURCE_JSON
+import build.raft.app.data.runtimeform.v2.CLAUDE_PROVIDER_SOURCE_JSON
+import build.raft.app.data.runtimeform.v2.CLAUDE_V3_EDIT_JSON
+import build.raft.app.data.runtimeform.v2.CLAUDE_V3_REASONING_EFFORT_SOURCE_JSON
 import build.raft.app.data.runtimeform.v2.GEMINI_V2_EDIT_JSON
 import build.raft.app.data.runtimeform.v2.GEMINI_V2_SOURCE_JSON
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
@@ -30,6 +35,9 @@ import org.robolectric.shadows.ShadowDialog
  * (`members.agent-runtime-form-v2`), light and dark: a Gemini agent's server-prefilled edit
  * form (slock fixtures gemini.edit / gemini.option-source), Cancel ghost and the primary lg
  * Save commit (disabled until a value changes), as web AgentDetailPanel's runtime editor.
+ * `members.agent-runtime-form-v3`: a Claude agent's protocol v3 edit form (slock #14471 fixtures
+ * claude.edit.v3 and its sources): fields shown by `uiSchema.rules` for the custom provider, and the
+ * reasoning effort as a dependent select on the model with the source's fallback status.
  * Verify / record as [RaftRobolectricScreenshot]; reports land in `build/reports/home-screenshots/`.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -40,12 +48,18 @@ class MembersAgentRuntimeFormV2DialogScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun editLight() = capture("members.agent-runtime-form-v2", RaftAppAppearance.Light)
+    fun editLight() = capture("members.agent-runtime-form-v2", RaftAppAppearance.Light, RuntimeFormV2DialogCase.GeminiV2)
 
     @Test
-    fun editDark() = capture("members.agent-runtime-form-v2.dark", RaftAppAppearance.Dark)
+    fun editDark() = capture("members.agent-runtime-form-v2.dark", RaftAppAppearance.Dark, RuntimeFormV2DialogCase.GeminiV2)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) =
+    @Test
+    fun editV3Light() = capture("members.agent-runtime-form-v3", RaftAppAppearance.Light, RuntimeFormV2DialogCase.ClaudeV3)
+
+    @Test
+    fun editV3Dark() = capture("members.agent-runtime-form-v3.dark", RaftAppAppearance.Dark, RuntimeFormV2DialogCase.ClaudeV3)
+
+    private fun capture(name: String, appearance: RaftAppAppearance, case: RuntimeFormV2DialogCase) =
         RaftRobolectricScreenshot.capture(
             name,
             appearance,
@@ -60,7 +74,7 @@ class MembersAgentRuntimeFormV2DialogScreenshotTest {
             val access =
                 remember {
                     RuntimeFormV2Access(
-                        loader = RuntimeFormV2Loader(RuntimeFormV2DialogComputersApi(), RuntimeFormV2DialogAgentsApi()),
+                        loader = RuntimeFormV2Loader(RuntimeFormV2DialogComputersApi(case), RuntimeFormV2DialogAgentsApi(case)),
                         serverId = ServerId("server-1"),
                     )
                 }
@@ -68,9 +82,9 @@ class MembersAgentRuntimeFormV2DialogScreenshotTest {
                 RaftDesignSystemTheme {
                     MembersAgentRuntimeFormV2Dialog(
                         access = access,
-                        agentId = MemberId("agent-gemini"),
+                        agentId = MemberId(case.agentId),
                         machineId = "m-1",
-                        runtimeId = "gemini",
+                        runtimeId = case.runtimeId,
                         machineRuntimeIds = listOf("gemini", "claude", "codex"),
                         activeAgent = false,
                         saving = false,
@@ -86,7 +100,23 @@ class MembersAgentRuntimeFormV2DialogScreenshotTest {
         }
 }
 
-private class RuntimeFormV2DialogComputersApi : RaftComputersApi {
+/** The edit form and option sources (by source id) the fake server answers with; all slock fixtures. */
+private enum class RuntimeFormV2DialogCase(val agentId: String, val runtimeId: String, val form: String, val sources: Map<String, String>) {
+    GeminiV2("agent-gemini", "gemini", GEMINI_V2_EDIT_JSON, mapOf("model" to GEMINI_V2_SOURCE_JSON)),
+    ClaudeV3(
+        "agent-claude",
+        "claude",
+        CLAUDE_V3_EDIT_JSON,
+        mapOf(
+            "provider" to CLAUDE_PROVIDER_SOURCE_JSON,
+            "authType" to CLAUDE_AUTH_TYPE_SOURCE_JSON,
+            "model" to CLAUDE_MODEL_LIVE_SOURCE_JSON,
+            "reasoningEffort" to CLAUDE_V3_REASONING_EFFORT_SOURCE_JSON
+        )
+    )
+}
+
+private class RuntimeFormV2DialogComputersApi(private val case: RuntimeFormV2DialogCase) : RaftComputersApi {
     override suspend fun runtimeFormV2OptionSource(
         serverId: ServerId,
         machineId: String,
@@ -94,7 +124,7 @@ private class RuntimeFormV2DialogComputersApi : RaftComputersApi {
         sourceId: String,
         refresh: Boolean,
         formRevision: String?,
-    ): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = GEMINI_V2_SOURCE_JSON)
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = case.sources.getValue(sourceId))
 
     override suspend fun machines(serverId: ServerId): HomeNetworkResponse = error("unused")
     override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("unused")
@@ -107,9 +137,9 @@ private class RuntimeFormV2DialogComputersApi : RaftComputersApi {
         error("unused")
 }
 
-private class RuntimeFormV2DialogAgentsApi : RaftAgentsApi {
+private class RuntimeFormV2DialogAgentsApi(private val case: RuntimeFormV2DialogCase) : RaftAgentsApi {
     override suspend fun agentRuntimeFormV2(agentId: MemberId): HomeNetworkResponse =
-        HomeNetworkResponse(code = 200, bodyText = GEMINI_V2_EDIT_JSON)
+        HomeNetworkResponse(code = 200, bodyText = case.form)
 
     override suspend fun agents(): HomeNetworkResponse = error("unused")
     override suspend fun agent(agentId: MemberId): HomeNetworkResponse = error("unused")

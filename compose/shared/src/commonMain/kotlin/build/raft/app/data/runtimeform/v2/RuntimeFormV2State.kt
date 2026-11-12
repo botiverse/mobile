@@ -73,7 +73,26 @@ internal data class RuntimeFormV2Source(
     val status: String? = null,
     /** Why the source is not live; may be a reason this client does not know. */
     val reason: String? = null,
-    val retryable: Boolean? = null
+    val retryable: Boolean? = null,
+    /**
+     * `OptionSource.unavailableOptions`: options that exist but cannot be picked now (models the
+     * Computer's runtime listed as disabled; on v3 also saved connections that are not selectable).
+     * Never in [options]; drawn disabled after the list. See [runtimeFormV2UnavailableSelection].
+     */
+    val unavailableOptions: List<RuntimeFormV2UnavailableChoice> = emptyList()
+)
+
+/**
+ * One `OptionSource.unavailableOptions` entry. [reason] is plain text (runtime text for a model,
+ * server copy in the request language for a saved connection); [connectionId] is set on a saved
+ * provider connection (v3); [group] is `saved` / `direct` when the server groups it.
+ */
+internal data class RuntimeFormV2UnavailableChoice(
+    val value: String,
+    val label: String,
+    val reason: String? = null,
+    val connectionId: String? = null,
+    val group: String? = null
 )
 
 /** A source that is not live (`option_source.status`). */
@@ -111,7 +130,13 @@ internal enum class RuntimeFormV2ErrorCode {
      * Edit: a blank secret that cannot keep the stored value because a field it is bound to changed
      * (`writeOnlyKeepRequiresUnchanged`); a new one is needed. Mirrors slock v2State `secret_reentry_required`.
      */
-    SecretReentryRequired
+    SecretReentryRequired,
+    /**
+     * The current value is an `OptionSource.unavailableOptions` entry (v3: e.g. a bound saved
+     * connection that is disabled) on a source that takes no typed value: shown
+     * selected-and-unavailable; pick something else to save. Mirrors slock v2State `option_unavailable`.
+     */
+    OptionUnavailable
 }
 
 /** Parses an option-sources response; null when it is not a usable source. */
@@ -144,9 +169,59 @@ internal fun parseRuntimeFormV2Source(value: JsonElement): RuntimeFormV2Source? 
         customValueAllowed = (root["customValueAllowed"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull,
         status = root["status"].stringOrNull(),
         reason = root["reason"].stringOrNull()?.takeIf { it.isNotEmpty() },
-        retryable = (root["retryable"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull
+        retryable = (root["retryable"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull,
+        unavailableOptions = (root["unavailableOptions"] as? JsonArray)?.mapNotNull { option ->
+            val obj = option as? JsonObject ?: return@mapNotNull null
+            val optionValue = obj["value"].stringOrNull() ?: return@mapNotNull null
+            RuntimeFormV2UnavailableChoice(
+                value = optionValue,
+                label = obj["label"].stringOrNull()?.takeIf { it.isNotEmpty() } ?: optionValue,
+                reason = obj["reason"].stringOrNull()?.takeIf { it.isNotBlank() },
+                connectionId = obj["connectionId"].stringOrNull()?.takeIf { it.isNotEmpty() },
+                group = obj["group"].stringOrNull()
+            )
+        }.orEmpty()
     )
 }
+
+/**
+ * The unavailable entries a field's list draws after its options (`OptionSource.unavailableOptions`);
+ * a derived select follows its parent and draws none.
+ */
+internal fun runtimeFormV2UnavailableChoices(
+    field: RuntimeFormV2Field,
+    sources: RuntimeFormV2Sources
+): List<RuntimeFormV2UnavailableChoice> =
+    if (field.kind == RuntimeFormV2FieldKind.DerivedSelect) emptyList()
+    else field.optionSourceId?.let { sources[it] }?.unavailableOptions.orEmpty()
+
+/**
+ * The option sources whose lists are keyed by [sourceId]'s field (a dependent_select's `dependsOn`), in
+ * form order: re-requested once their parent answers a refresh, so a v3 reasoning effort follows the
+ * re-probed model list. A source never follows itself.
+ */
+internal fun runtimeFormV2DependentSourceIds(form: ParsedRuntimeFormV2, sourceId: String): List<String> {
+    val key = form.optionSources[sourceId]?.key ?: return emptyList()
+    return form.optionSources.values.filter { it.dependsOn == key && it.sourceId != sourceId }.map { it.sourceId }
+}
+
+/** The `unavailableOptions` entry the field's current value names, if any (slock v2State). */
+internal fun runtimeFormV2UnavailableSelection(
+    field: RuntimeFormV2Field,
+    sources: RuntimeFormV2Sources,
+    values: RuntimeFormV2Values
+): RuntimeFormV2UnavailableChoice? {
+    val value = values.text(field.key).trim()
+    if (value.isEmpty()) return null
+    return field.optionSourceId?.let { sources[it] }?.unavailableOptions?.firstOrNull { it.value == value }
+}
+
+/**
+ * Whether the field is required under the current values: the unconditional `required`, or (v3) a
+ * `dataSchema.allOf` entry whose condition gives the branch that lists it. Mirrors slock v2State.
+ */
+internal fun isRuntimeFormV2FieldRequired(field: RuntimeFormV2Field, values: RuntimeFormV2Values): Boolean =
+    field.required || field.requiredWhen.any { evaluateRuntimeFormV3Schema(it.condition, JsonObject(values)) == it.whenResult }
 
 internal fun RuntimeFormV2Values.text(key: String?): String = this[key ?: ""].stringOrNull() ?: ""
 
@@ -298,8 +373,10 @@ internal fun runtimeFormV2ValuesAfterSourceReload(
         val current = next.text(field.key)
         if (current.isEmpty()) continue
         val choices = runtimeFormV2Choices(field, sources, next) as? RuntimeFormV2Choices.Select ?: continue
-        // A typed value (`select.custom_value`) is the user's own; a re-probe never replaces it.
+        // A typed value (`select.custom_value`) is the user's own; a re-probe never replaces it. Nor is a
+        // value the source lists as unavailable (a bound saved connection): it is never silently rewritten.
         if (choices.allowCustom || choices.options.any { it.value == current }) continue
+        if (runtimeFormV2UnavailableSelection(field, sources, next) != null) continue
         next = applyRuntimeFormV2Change(form, sources, next, field.key, defaultFor(field, sources, next))
     }
     return next
@@ -351,9 +428,20 @@ internal fun runtimeFormV2SourceStatus(field: RuntimeFormV2Field, sources: Runti
     return RuntimeFormV2SourceStatus(unavailable, source.reason, source.retryable == true)
 }
 
-/** An optional field whose source is unavailable is hidden; a required one stays to show why it blocks. */
-private fun hiddenAsUnavailable(field: RuntimeFormV2Field, sources: RuntimeFormV2Sources?): Boolean =
-    !field.required && sources != null && runtimeFormV2SourceStatus(field, sources)?.unavailable == true
+/**
+ * Hidden but kept: an optional field whose source is unavailable, or an optional dependent_select whose
+ * parent value has no key in its loaded source (v3 reasoning effort for a typed or effort-less model).
+ * Its value is kept: never reset, and on edit the stored one is submitted unchanged. A required one stays
+ * to show why it blocks. Mirrors slock v2State `hiddenAsUnavailable`.
+ */
+private fun hiddenAsUnavailable(field: RuntimeFormV2Field, values: RuntimeFormV2Values, sources: RuntimeFormV2Sources?): Boolean {
+    if (sources == null || isRuntimeFormV2FieldRequired(field, values)) return false
+    if (runtimeFormV2SourceStatus(field, sources)?.unavailable == true) return true
+    if (field.kind != RuntimeFormV2FieldKind.DependentSelect) return false
+    val source = field.optionSourceId?.let { sources[it] } ?: return false
+    val parent = values.text(field.dependsOn)
+    return source.optionsByValue?.containsKey(parent) != true && source.customValueAllowedByValue?.containsKey(parent) != true
+}
 
 /**
  * The values a visibility rule sees for [key]: the raw one, plus, when it holds a saved-connection
@@ -368,13 +456,19 @@ private fun visibilityValuesOf(key: String, values: RuntimeFormV2Values, sources
     return if (underlying != null) listOf(raw, underlying) else listOf(raw)
 }
 
-/** Visibility rules, plus (when [sources] is given) `option_source.status`: an optional field whose source is unavailable is hidden. */
+/**
+ * Visibility rules (v2 `visibility`, v3 `rules`), plus (when [sources] is given) `option_source.status`:
+ * an optional field whose source is unavailable is hidden, and so is an optional dependent_select whose
+ * parent value has no key in its source. A field hidden by a v3 rule is not validated, not required and
+ * not submitted.
+ */
 internal fun isRuntimeFormV2FieldVisible(
     field: RuntimeFormV2Field,
     values: RuntimeFormV2Values,
     sources: RuntimeFormV2Sources? = null
 ): Boolean =
-    !hiddenAsUnavailable(field, sources) &&
+    field.rule.let { rule -> rule == null || evaluateRuntimeFormV3Condition(rule.condition, values) == (rule.effect == RuntimeFormV3Effect.Show) } &&
+        !hiddenAsUnavailable(field, values, sources) &&
         field.visibleWhen.all { rule -> visibilityValuesOf(rule.key, values, sources).any { it in rule.values } }
 
 private val textLikeKinds = setOf(
@@ -397,8 +491,9 @@ internal fun validateRuntimeFormV2(
     val connectionActive = runtimeFormV2ConnectionActive(form, sources, values)
     for (field in form.fields) {
         if (!isRuntimeFormV2FieldVisible(field, values, sources)) continue
+        val required = isRuntimeFormV2FieldRequired(field, values)
         if (field.kind == RuntimeFormV2FieldKind.Unsupported) {
-            if (field.required) errors[field.key] = RuntimeFormV2ErrorCode.UnsupportedRequired
+            if (required) errors[field.key] = RuntimeFormV2ErrorCode.UnsupportedRequired
             continue
         }
         // A bound-but-unavailable connection stays visible and blocks the save: it is never silently rewritten.
@@ -406,8 +501,18 @@ internal fun validateRuntimeFormV2(
             errors[field.key] = RuntimeFormV2ErrorCode.ConnectionUnavailable
             continue
         }
-        if (field.required && runtimeFormV2SourceStatus(field, sources)?.unavailable == true) {
+        if (required && runtimeFormV2SourceStatus(field, sources)?.unavailable == true) {
             errors[field.key] = RuntimeFormV2ErrorCode.SourceUnavailable
+            continue
+        }
+        val choices = runtimeFormV2Choices(field, sources, values)
+        // A value that is an unavailable entry blocks, unless the source takes typed values: then it is
+        // accepted as typed, as before.
+        if (
+            choices is RuntimeFormV2Choices.Select && !choices.allowCustom &&
+            runtimeFormV2UnavailableSelection(field, sources, values) != null
+        ) {
+            errors[field.key] = RuntimeFormV2ErrorCode.OptionUnavailable
             continue
         }
         val text = values.text(field.key).trim()
@@ -424,14 +529,13 @@ internal fun validateRuntimeFormV2(
         // On edit a blank secret (writeOnly) field keeps the stored value. A field a selected saved
         // connection owns is not the user's to fill.
         val blankAllowed = (editing && field.kind == RuntimeFormV2FieldKind.Secret) || connectionOwnedNow
-        if (field.required && !blankAllowed && field.kind in textLikeKinds && text.isEmpty()) {
+        if (required && !blankAllowed && field.kind in textLikeKinds && text.isEmpty()) {
             errors[field.key] = RuntimeFormV2ErrorCode.Required
             continue
         }
         if (field.kind == RuntimeFormV2FieldKind.Url && text.isNotEmpty() && !httpUrl.containsMatchIn(text)) {
             errors[field.key] = RuntimeFormV2ErrorCode.InvalidUrl
         }
-        val choices = runtimeFormV2Choices(field, sources, values)
         // A derived list with nothing to offer (a model without an effort menu, or a typed custom model no
         // option describes) is not shown, so it cannot be corrected here: its value goes to the server
         // unchanged, which validates it. Mirrors slock v2State.
@@ -488,7 +592,7 @@ internal fun runtimeFormV2Submission(
         // Connection-owned fields never enter formValues while a saved connection is selected, not even
         // as empty strings: the server refuses any value for them on a connection submit.
         if (connectionActive && field.connectionOwned) continue
-        if (hiddenAsUnavailable(field, sources)) {
+        if (hiddenAsUnavailable(field, values, sources)) {
             form.values?.get(field.key)?.let { out[field.key] = it }
             continue
         }

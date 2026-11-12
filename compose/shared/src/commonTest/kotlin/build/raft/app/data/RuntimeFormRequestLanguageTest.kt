@@ -103,7 +103,8 @@ class RuntimeFormRequestLanguageTest {
         val advertised = "clientCapabilities=dependent_select.custom_value_with_options"
         val urls = executor.calls.map { it.first }
         assertEquals(4, urls.size, urls.toString())
-        urls.forEach { assertTrue(advertised in it, it) }
+        // runtime_form.v3 rides on the same requests (slock #14471): the server answers v3 shapes.
+        urls.forEach { assertTrue(advertised in it && "runtime_form.v3" in it, it) }
         assertTrue(urls.any { it.substringBefore('?').endsWith("/runtime-forms/v2/pi") }, urls.toString())
         assertTrue(urls.any { "/option-sources/model?" in it && "refresh=1" in it && "formRevision=rev-1" in it }, urls.toString())
         assertTrue(urls.any { it.substringBefore('?').endsWith("/agents/agent-1/runtime-form") }, urls.toString())

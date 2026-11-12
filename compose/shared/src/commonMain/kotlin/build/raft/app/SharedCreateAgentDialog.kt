@@ -225,7 +225,8 @@ internal fun createAgentDialogSubmit(
         runtimeFormV2 =
             RuntimeFormV2SubmitBody(
                 runtimeId = form.form.runtimeId.ifBlank { runtime },
-                formValues = runtimeFormV2Submission(form.form, values, form.sources)
+                formValues = runtimeFormV2Submission(form.form, values, form.sources),
+                protocolVersion = form.form.protocolVersion
             )
     )
 }
