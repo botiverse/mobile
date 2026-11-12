@@ -2925,6 +2925,7 @@ private fun RaftStructuralHomeShellContent(
                                                 onExpandedChange = { if (sidebarInteractionsEnabled) pinnedExpanded = it },
                                                 longPressIdentity = "$currentServerId:system:pinned",
                                                 menuOpen = activeSystemSectionMenu == RaftHomeSortSection.Pinned,
+                                                sortMenuOpen = activeSortMenu == RaftHomeSortSection.Pinned,
                                                 attention = pinnedSectionHasUnread,
                                                 sortLabel = "${labels.sortChannels} ${labels.pinned}",
                                                 onSortClick = { anchor ->
@@ -3090,6 +3091,7 @@ private fun RaftStructuralHomeShellContent(
                                                 onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
                                                 longPressIdentity = "$currentServerId:system:joint",
                                                 menuOpen = activeSystemSectionMenu == RaftHomeSortSection.JointChannels,
+                                                sortMenuOpen = activeSortMenu == RaftHomeSortSection.JointChannels,
                                                 attention = jointChannelSectionHasUnread,
                                                 sortLabel = "${labels.sortChannels} ${labels.jointChannels}",
                                                 onSortClick = { anchor ->
@@ -3166,6 +3168,7 @@ private fun RaftStructuralHomeShellContent(
                                                 onExpandedChange = { if (sidebarInteractionsEnabled) channelsExpanded = it },
                                                 longPressIdentity = "$currentServerId:system:channels",
                                                 menuOpen = activeSystemSectionMenu == RaftHomeSortSection.Channels,
+                                                sortMenuOpen = activeSortMenu == RaftHomeSortSection.Channels,
                                                 attention = channelSectionHasUnread,
                                                 sortLabel = "${labels.sortChannels} ${labels.channels}",
                                                 onSortClick = { anchor ->
@@ -3236,6 +3239,7 @@ private fun RaftStructuralHomeShellContent(
                                                 onExpandedChange = { if (sidebarInteractionsEnabled) directMessagesExpanded = it },
                                                 longPressIdentity = "$currentServerId:system:dms",
                                                 menuOpen = activeSystemSectionMenu == RaftHomeSortSection.DirectMessages,
+                                                sortMenuOpen = activeSortMenu == RaftHomeSortSection.DirectMessages,
                                                 attention = directMessageSectionHasUnread,
                                                 sortLabel = "${labels.sortChannels} ${labels.directMessages}",
                                                 onSortClick = { anchor ->
@@ -7551,6 +7555,7 @@ private fun HomeSidebarSectionHeader(
     onAddClick: (() -> Unit)? = null,
     addEnabled: Boolean = true,
     menuOpen: Boolean = false,
+    sortMenuOpen: Boolean = false,
     onLongPress: ((RaftPopoverAnchor) -> Unit)? = null
 ) {
     val hasSort = sortLabel != null && onSortClick != null
@@ -7570,7 +7575,7 @@ private fun HomeSidebarSectionHeader(
         actions =
             if (hasSort || hasAdd) {
                 {
-                    if (sortLabel != null && onSortClick != null) HomeSidebarSortAction(sortLabel, onSortClick)
+                    if (sortLabel != null && onSortClick != null) HomeSidebarSortAction(sortLabel, onSortClick, menuOpen = sortMenuOpen)
                     if (addLabel != null && onAddClick != null) {
                         RaftSidebarSectionAction(RaftGlyph.Plus, addLabel, onAddClick, enabled = addEnabled)
                     }
@@ -7596,13 +7601,14 @@ private val HomeSidebarEmptyListHeight = 28.dp
 
 /** The section's Sort control, `arrow-down-up` (icon standard: sort is ↓↑, as on web); the sort menu opens under it. */
 @Composable
-private fun HomeSidebarSortAction(label: String, onClick: (RaftPopoverAnchor) -> Unit) {
+private fun HomeSidebarSortAction(label: String, onClick: (RaftPopoverAnchor) -> Unit, menuOpen: Boolean = false) {
     val anchorRef = remember(label) { RaftLiveRootAnchorRef(identity = label) }
     RaftSidebarSectionAction(
         glyph = RaftGlyph.ArrowDownUp,
         tooltip = label,
         onClick = { anchorRef.resolve(RaftPopoverLocalPoint.BottomStart)?.let(onClick) },
-        modifier = Modifier.raftCaptureLiveRootAnchor(anchorRef)
+        modifier = Modifier.raftCaptureLiveRootAnchor(anchorRef),
+        menuOpen = menuOpen
     )
 }
 

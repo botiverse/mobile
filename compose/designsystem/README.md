@@ -570,8 +570,14 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
 - **Sidebar.** Only the phone size: the desktop 36dp / `text-subhead` row is not drawn. A
   group header's disclosure is a target as tall as the header (40dp; the web's is its 18dp
   line), and the header keeps `pb-1.5` with a mouse too (raft-ui drops it under
-  `pointer: fine`). Its controls follow raft-ui 0.57.1 (24dp, 14dp icon, hint ink at rest,
-  always shown, with a mouse too, after a collapsed group's attention pixel); a classic scrollbar's width is not given back
+  `pointer: fine`). Its controls follow raft-ui (24dp, 14dp icon, hint ink at rest, after a
+  collapsed group's attention pixel): always shown with a finger; with a mouse invisible in
+  their place until the header is hovered, holds keyboard focus or a control's menu is open
+  (web SidebarSectionControls). With a mouse the header, the group label and a row's content
+  start on the sidebar's 16dp glyph axis (`--sidebar-glyph-axis`) and a DM's name on the
+  40dp text axis; a channel's name lands at 43dp, as the app keeps the 19dp icon slot
+  (raft-ui: 16dp), and the header's chevron stays at the start (the web moves it after the
+  controls with a mouse, `chevronAtEnd`); a classic scrollbar's width is not given back
   (`--scrollbar-size`): Compose scrollbars take no layout width. A muted place with something unread shows the gray
   status pixel the web Home draws; raft-ui's quiet number is `RaftSidebarItemMeta`. The
   chevron leads the group title, as on the web Home (the docs composition puts it after).
