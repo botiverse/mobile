@@ -356,7 +356,11 @@ private fun RaftArtifactViewerScreen() {
     }
     // Open in browser: the page as the web shows it. The WebView: the same page under this title bar.
     val pageUrl = remember(webBaseUrl, target) { raftArtifactViewerPageUrl(webBaseUrl, target) }
-    val embeddedPageUrl = remember(webBaseUrl, target) { raftArtifactViewerEmbeddedPageUrl(webBaseUrl, target) }
+    // Desktop Mode's state for the page's own ⋯ (`hostDesktop`; null: not offered here).
+    val hostDesktop: Boolean? = desktopMode.takeIf { desktopModeOffered }
+    // With Desktop Mode's state at open; the App keeps it current in the address afterwards.
+    val embeddedPageUrl =
+        remember(webBaseUrl, target) { raftArtifactViewerWithHostDesktop(raftArtifactViewerEmbeddedPageUrl(webBaseUrl, target), hostDesktop) }
     // Paint the header at once: the opener's card (put in the cache on tap), else the last one seen,
     // in this scope only.
     var header by remember(params.toString()) { mutableStateOf(RaftArtifactViewerMemory.cache.header(scope, target.canonicalId)) }
@@ -372,6 +376,8 @@ private fun RaftArtifactViewerScreen() {
     // fresh load after a reused kept document wandered off ([RaftArtifactViewerBodyState.ReloadingFresh]).
     var webRetry by remember(params.toString()) { mutableStateOf(0) }
     var freshReloadUsed by remember(params.toString()) { mutableStateOf(false) }
+    // The page draws the only bar (`hostToolbar=1`, shown, no load error): this one is left out.
+    var pageDrawsBar by remember(params.toString()) { mutableStateOf(false) }
 
     // Revalidate (never trusting the cached header for access): a fresh summary; unavailable (403/404)
     // replaces the screen and drops the cached copy.
@@ -432,20 +438,29 @@ private fun RaftArtifactViewerScreen() {
     val shownLink = ArtifactLinkTarget(target.id, if (addressed != null) addressed?.version else target.version)
     val shownUrl = remember(webBaseUrl, shownLink) { raftArtifactViewerPageUrl(webBaseUrl, shownLink) }
     val downloadInBrowser = stringResource(Res.string.artifacts_viewer_download_in_browser)
-    // Two bars (owner decision 2026-11-10): this one has Back, the title and a ⋮ with only what the
-    // page's own toolbar and ⋯ (under it) cannot offer; nothing shows twice.
+    fun toggleDesktopMode(from: String) {
+        desktopModeChosen = !desktopModeChosen
+        desktopModePreference?.write(desktopModeChosen)
+        host.bridge.log("artifact_viewer_desktop_mode on=$desktopModeChosen from=$from")
+    }
+    fun openInBrowser(from: String, url: String = shownUrl) {
+        host.bridge.log("artifact_viewer_open_in_browser from=$from")
+        host.bridge.openUrl(url, inBrowser = true)
+    }
+    val viewing = bodyState == RaftArtifactViewerBodyState.Viewing
+    // One bar where the page draws it (`hostToolbar=1`, artin "双栏"): its toolbar has Back, the
+    // title and this bar's ⋮ items in its own ⋯. Otherwise (a web that does not, while loading, a
+    // load error, unavailable) this bar has Back, the title and a ⋮ with only what the page's own
+    // toolbar and ⋯ (under it) cannot offer; nothing shows twice.
     RaftArtifactViewerFrame(
         title = header?.title?.ifBlank { untitled } ?: untitled,
         onBack = ::closePage,
-        desktopMode = desktopMode.takeIf { desktopModeOffered && bodyState == RaftArtifactViewerBodyState.Viewing },
+        desktopMode = desktopMode.takeIf { desktopModeOffered && viewing },
+        pageDrawsBar = pageDrawsBar && viewing && scope != null,
         actions =
             RaftArtifactViewerBarActions(
-                onToggleDesktopMode = {
-                    desktopModeChosen = !desktopModeChosen
-                    desktopModePreference?.write(desktopModeChosen)
-                    host.bridge.log("artifact_viewer_desktop_mode on=$desktopModeChosen")
-                },
-                onOpenInBrowser = { host.bridge.openUrl(shownUrl, inBrowser = true) },
+                onToggleDesktopMode = { toggleDesktopMode("bar") },
+                onOpenInBrowser = { openInBrowser("bar") },
             ),
     ) {
         when (bodyState) {
@@ -469,6 +484,7 @@ private fun RaftArtifactViewerScreen() {
                             pageUrl = embeddedPageUrl,
                             controller = controller,
                             desktopMode = desktopMode,
+                            hostDesktop = hostDesktop,
                             retry = webRetry,
                             onRetry = { webRetry += 1 },
                             onStay = { next ->
@@ -482,6 +498,15 @@ private fun RaftArtifactViewerScreen() {
                                 host.bridge.toast(downloadInBrowser)
                                 host.bridge.openUrl(shownUrl, inBrowser = true)
                             },
+                            onHostAction = { action, version ->
+                                when (action) {
+                                    RaftArtifactViewerHostAction.DesktopMode -> if (desktopModeOffered) toggleDesktopMode("page")
+                                    // The version the page shows, from the address that asked (the web sends no payload).
+                                    RaftArtifactViewerHostAction.OpenInBrowser ->
+                                        openInBrowser("page", raftArtifactViewerPageUrl(webBaseUrl, ArtifactLinkTarget(target.id, version)))
+                                }
+                            },
+                            onPageDrawsBar = { pageDrawsBar = it },
                             freshReloadAvailable = !freshReloadUsed,
                             onLeave = { navigation, to -> bodyState = RaftArtifactViewerBodyState.Left(navigation, to) },
                             onReloadFresh = { to ->
@@ -503,10 +528,16 @@ private fun RaftArtifactViewerWebBody(
     pageUrl: String,
     controller: RaftWebViewController,
     desktopMode: Boolean,
+    /** `hostDesktop` the address keeps ([raftArtifactViewerHostDesktopScript]); null: not offered. */
+    hostDesktop: Boolean?,
     retry: Int,
     onRetry: () -> Unit,
     onStay: (RaftArtifactViewerNavigation.Stay) -> Unit,
     onDownload: () -> Unit,
+    /** An App item in the page's own ⋯ (`#host=<name>`), with the version its address shows (null: the latest). */
+    onHostAction: (action: RaftArtifactViewerHostAction, version: Int?) -> Unit,
+    /** Whether the page now draws the only bar (`hostToolbar=1`, shown, no load error). */
+    onPageDrawsBar: (Boolean) -> Unit,
     /** One fresh load per open may replace a close ([raftArtifactViewerLeaveAction]). */
     freshReloadAvailable: Boolean,
     onLeave: (navigation: RaftArtifactViewerNavigation, to: String) -> Unit,
@@ -573,10 +604,46 @@ private fun RaftArtifactViewerWebBody(
     val currentOnDownload by rememberUpdatedState(onDownload)
     val currentOnLeave by rememberUpdatedState(onLeave)
     val currentOnReloadFresh by rememberUpdatedState(onReloadFresh)
+    val currentOnHostAction by rememberUpdatedState(onHostAction)
+    // The page said once (this document) that its toolbar is the only bar: a web build does not
+    // change under a document, and the address may lose the marker for a moment while it routes.
+    var pageAcked by remember { mutableStateOf(false) }
+    // The last address seen (keeps `hostDesktop` current, takes a handled `#host=<name>` off).
+    var address by remember { mutableStateOf("") }
+    // A `#host=<name>` address being handled: its fragment is taken off first, then the App acts
+    // (Desktop Mode reloads the document on Android: at the address without it, never asking again).
+    var pendingHostAction by remember { mutableStateOf<Pair<RaftArtifactViewerHostAction, String>?>(null) }
+    // The last one handled: the same address again (a platform's second callback, or before it
+    // was taken off) is the same tap.
+    var handledHostActionUrl by remember { mutableStateOf<String?>(null) }
+    var handledHostActionAt by remember { mutableStateOf(kotlin.time.TimeSource.Monotonic.markNow()) }
+    var handledHostActionCleared by remember { mutableStateOf(true) }
     val currentFreshReloadAvailable by rememberUpdatedState(freshReloadAvailable)
     val attachedAt = remember { kotlin.time.TimeSource.Monotonic.markNow() }
     fun onAddress(url: String) {
         if (left) return
+        address = url
+        if (!pageAcked && raftArtifactViewerPageDrawsHostBar(url)) {
+            pageAcked = true
+            raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_page_bar on=true")
+        }
+        val hostAction = raftArtifactViewerHostAction(url)
+        if (hostAction == null) {
+            handledHostActionCleared = true
+        } else if (
+            pendingHostAction == null &&
+            raftArtifactViewerHostActionIsNew(
+                url = url,
+                handledUrl = handledHostActionUrl,
+                handledCleared = handledHostActionCleared,
+                sinceHandledMs = handledHostActionAt.elapsedNow().inWholeMilliseconds,
+            )
+        ) {
+            handledHostActionUrl = url
+            handledHostActionAt = kotlin.time.TimeSource.Monotonic.markNow()
+            handledHostActionCleared = false
+            pendingHostAction = hostAction to url
+        }
         when (val navigation = raftArtifactViewerNavigation(url, scope.webOrigin, target.id)) {
             is RaftArtifactViewerNavigation.Stay -> {
                 armed = true
@@ -622,6 +689,28 @@ private fun RaftArtifactViewerWebBody(
         }
     }
     LaunchedEffect(navigated) { if (navigated && kept != null) visible = true }
+    // `hostDesktop` in the page's address follows Desktop Mode (and comes back if a route dropped
+    // it); a handled `#host=<name>` is taken off.
+    LaunchedEffect(pendingHostAction) {
+        val (action, url) = pendingHostAction ?: return@LaunchedEffect
+        if (controller.evaluateJavaScript(raftArtifactViewerHostDesktopScript(scope.webOrigin, hostDesktop, clearHostAction = true))) {
+            handledHostActionCleared = true
+        }
+        host.bridge.log("artifact_viewer_host_action action=${action.wireName}")
+        val shown = raftArtifactViewerNavigation(url, scope.webOrigin, target.id) as? RaftArtifactViewerNavigation.Stay
+        currentOnHostAction(action, shown?.version)
+        pendingHostAction = null
+    }
+    LaunchedEffect(visible, address, hostDesktop) {
+        if (!visible || address.isBlank() || pendingHostAction != null) return@LaunchedEffect
+        if (raftArtifactViewerNavigation(address, scope.webOrigin, target.id) !is RaftArtifactViewerNavigation.Stay) return@LaunchedEffect
+        if (raftArtifactViewerAddressSaysDesktop(address, hostDesktop)) return@LaunchedEffect
+        controller.evaluateJavaScript(raftArtifactViewerHostDesktopScript(scope.webOrigin, hostDesktop))
+    }
+    val drawsBar = pageAcked && visible && !loadError
+    val currentOnPageDrawsBar by rememberUpdatedState(onPageDrawsBar)
+    LaunchedEffect(drawsBar) { currentOnPageDrawsBar(drawsBar) }
+    DisposableEffect(Unit) { onDispose { currentOnPageDrawsBar(false) } }
     // Diagnostics: a load still covered after a while, and what the page reached when it closes.
     val latestState by rememberUpdatedState(
         "kept=${kept != null} showsTarget=$showsTarget visible=$visible documentReady=$documentReady " +

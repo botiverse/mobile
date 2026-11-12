@@ -43,7 +43,7 @@ class RaftArtifactViewerKeptReloadTest {
 
     @Test
     fun thePagesOwnBackClosesImmediately() {
-        val back = "$web/artifacts/$id?embed=raft-settings-v1&shell=host&back=host$RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT"
+        val back = "$web/artifacts/$id?embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,open-in-browser$RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT"
         assertEquals(RaftArtifactViewerNavigation.Close, raftArtifactViewerNavigation(back, web, id))
         assertEquals(RaftArtifactViewerLeaveAction.Leave, action(back))
         assertEquals(RaftArtifactViewerLeaveAction.Leave, action("$web/$RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT", sinceShownMs = 0))

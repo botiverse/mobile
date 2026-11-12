@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 class RaftArtifactViewerEmbedTest {
     private val web = "https://raft-app-staging.botiverse.dev"
     private val id = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
-    private val embed = "embed=raft-settings-v1&shell=host&back=host"
+    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,open-in-browser"
 
     @Test
     fun theViewerOpensThePageUnderTheAppTitleBar() {
@@ -85,6 +85,60 @@ class RaftArtifactViewerEmbedTest {
                 "javascript:alert(1)" to RaftArtifactViewerNavigation.Ignore,
             )
         for ((url, expected) in cases) assertEquals(expected, raftArtifactViewerNavigation(url, web, id), url)
+    }
+
+    @Test
+    fun thePageOwnMenuAsksTheAppByItsAddress() {
+        val page = "$web/artifacts/$id/v/3?$embed&hostDesktop=off"
+        // An App item in the page's ⋯ (`#host=<name>`): still this Artifact, at the version shown.
+        assertEquals(RaftArtifactViewerHostAction.DesktopMode, raftArtifactViewerHostAction("$page#host=desktop-mode"))
+        assertEquals(RaftArtifactViewerHostAction.OpenInBrowser, raftArtifactViewerHostAction("$page#host=open-in-browser"))
+        assertEquals(RaftArtifactViewerNavigation.Stay(3), raftArtifactViewerNavigation("$page#host=open-in-browser", web, id))
+        // Back's `#host=close` still closes, and is no menu item; other fragments are none either.
+        assertEquals(null, raftArtifactViewerHostAction("$page#host=close"))
+        assertEquals(RaftArtifactViewerNavigation.Close, raftArtifactViewerNavigation("$page#host=close", web, id))
+        for (other in listOf(page, "$page#host=share", "$page#panel=comments", "$page#host=desktop-mode-x")) {
+            assertEquals(null, raftArtifactViewerHostAction(other), other)
+        }
+    }
+
+    @Test
+    fun oneTapIsOneAction() {
+        val tap = "$web/artifacts/$id?$embed#host=desktop-mode"
+        assertTrue(raftArtifactViewerHostActionIsNew(tap, handledUrl = null, handledCleared = true, sinceHandledMs = 0))
+        // The second address callback, or Android's Desktop Mode reload at that address before it was taken off.
+        assertEquals(false, raftArtifactViewerHostActionIsNew(tap, handledUrl = tap, handledCleared = false, sinceHandledMs = 60_000))
+        assertEquals(false, raftArtifactViewerHostActionIsNew(tap, handledUrl = tap, handledCleared = true, sinceHandledMs = 100))
+        // Taken off since: the page set it again, a new tap.
+        assertTrue(raftArtifactViewerHostActionIsNew(tap, handledUrl = tap, handledCleared = true, sinceHandledMs = RAFT_ARTIFACT_VIEWER_HOST_ACTION_REPEAT_MS))
+        assertTrue(raftArtifactViewerHostActionIsNew("$web/artifacts/$id?$embed#host=open-in-browser", handledUrl = tap, handledCleared = false, sinceHandledMs = 0))
+    }
+
+    @Test
+    fun onlyAPageThatSaysSoDrawsTheOnlyBar() {
+        val page = "$web/artifacts/$id?$embed"
+        assertEquals(false, raftArtifactViewerPageDrawsHostBar(page))
+        assertEquals(false, raftArtifactViewerPageDrawsHostBar("$page&hostToolbar=0"))
+        assertEquals(false, raftArtifactViewerPageDrawsHostBar("$page#hostToolbar=1"))
+        assertEquals(true, raftArtifactViewerPageDrawsHostBar("$page&hostToolbar=1"))
+        assertEquals(true, raftArtifactViewerPageDrawsHostBar("$web/artifacts/$id/v/2?hostToolbar=1&$embed#panel=files"))
+        // The App never asks for it itself: an address carrying it is opened without it.
+        assertEquals("$web/artifacts/$id?$embed", raftArtifactViewerEmbeddedUrl("$page&hostToolbar=1"))
+    }
+
+    @Test
+    fun desktopModeStateIsKeptInTheAddress() {
+        val page = "$web/artifacts/$id?$embed#panel=comments"
+        assertEquals("$web/artifacts/$id?$embed&hostDesktop=on#panel=comments", raftArtifactViewerWithHostDesktop(page, true))
+        assertEquals("$web/artifacts/$id?$embed&hostDesktop=off", raftArtifactViewerWithHostDesktop("$web/artifacts/$id?hostDesktop=on&$embed", false))
+        // Not offered here: absent.
+        assertEquals("$web/artifacts/$id", raftArtifactViewerWithHostDesktop("$web/artifacts/$id?hostDesktop=on", null))
+        assertEquals(true, raftArtifactViewerAddressSaysDesktop("$web/artifacts/$id?$embed&hostDesktop=on", true))
+        assertEquals(false, raftArtifactViewerAddressSaysDesktop("$web/artifacts/$id?$embed&hostDesktop=on", false))
+        assertEquals(false, raftArtifactViewerAddressSaysDesktop("$web/artifacts/$id?$embed", false))
+        assertEquals(true, raftArtifactViewerAddressSaysDesktop("$web/artifacts/$id?$embed", null))
+        val script = raftArtifactViewerHostDesktopScript(web, true, clearHostAction = true)
+        assertTrue("\"hostDesktop\"" in script && "\"on\"" in script && "raft:host-state" in script)
     }
 
     @Test
