@@ -2324,11 +2324,13 @@ internal fun ThreadComposerContent(
     )
     // Paste with only images on the clipboard attaches them (ThreadComposerImagePaste.kt).
     val platformClipboard = LocalClipboard.current
-    val imagePasteClipboard = remember(platformClipboard) { ThreadComposerImagePasteClipboard(platformClipboard) }
+    val composerClipboard = remember(platformClipboard) {
+        if (raftPlatformComposerUsesImagePasteClipboard()) ThreadComposerImagePasteClipboard(platformClipboard) else platformClipboard
+    }
     // The conversation composer's own focus never counts as another field's (RaftAutofocusGuard).
     CompositionLocalProvider(
         LocalRaftEditorIsConversationComposer provides true,
-        LocalClipboard provides imagePasteClipboard,
+        LocalClipboard provides composerClipboard,
     ) {
     ThreadComposerContentLeaf(
         surface = surface,

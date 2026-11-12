@@ -95,6 +95,13 @@ internal expect fun raftPlatformReadClipboardAttachments(): List<PlatformFile>
 internal expect fun raftPlatformImagePasteClipEntry(): ClipEntry?
 
 /**
+ * Whether the composer swaps in [ThreadComposerImagePasteClipboard] (iOS only). Android's text
+ * toolbar reads the native clipboard only from its own `AndroidClipboard`, so a wrapper there
+ * throws on selection (double-tap, Select all); the other platforms offer no placeholder anyway.
+ */
+internal expect fun raftPlatformComposerUsesImagePasteClipboard(): Boolean
+
+/**
  * Whether pasted images open in the composer's image editor first, as picked photos do (iOS,
  * artin 2026-11-12). Desktop pastes straight into the tray, as the web composer does.
  */

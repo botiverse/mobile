@@ -79,6 +79,8 @@ internal actual fun raftPlatformImagePasteClipEntry(): ClipEntry? =
 
 internal actual fun raftPlatformPastedImagesOpenEditor(): Boolean = true
 
+internal actual fun raftPlatformComposerUsesImagePasteClipboard(): Boolean = true
+
 internal actual fun raftPlatformComposerMinimumBottomPaddingDp(): Float = 0f
 
 internal actual fun raftPlatformSupportsAppleSignIn(): Boolean = true
