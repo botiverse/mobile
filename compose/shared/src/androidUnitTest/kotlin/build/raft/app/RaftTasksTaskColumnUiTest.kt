@@ -14,6 +14,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasAnyDescendant
@@ -93,6 +95,15 @@ class RaftTasksTaskColumnUiTest {
             openTaskId = null
             expanded = false
         }
+    }
+
+    /**
+     * An icon button's test tag sits on its tooltip box; its click is on the button inside (the
+     * same split RaftFitToolbarPartsTest found). Click the clickable node, tagged or inside the tag.
+     */
+    private fun ComposeUiTest.clickTagged(tag: String) {
+        onNode(hasClickAction() and (hasTestTag(tag) or hasAnyAncestor(hasTestTag(tag)))).performClick()
+        waitForIdle()
     }
 
     private class Back(val press: () -> Unit)
@@ -177,7 +188,7 @@ class RaftTasksTaskColumnUiTest {
         assertTrue(openCardShows(tasks[1].title))
         assertFalse(openCardShows(tasks[0].title), "the card of the task replaced no longer shows open")
 
-        onNodeWithTag(RaftTasksTaskColumnTags.Close).performClick()
+        clickTagged(RaftTasksTaskColumnTags.Close)
         waitForIdle()
         assertEquals(null, shell.openTaskId)
         assertFalse(has(RaftTasksTaskColumnTags.Column))
@@ -191,7 +202,7 @@ class RaftTasksTaskColumnUiTest {
         onNodeWithText(tasks[0].title).performClick()
         waitForIdle()
 
-        onNodeWithTag(RaftTasksTaskColumnTags.Expand).performClick()
+        clickTagged(RaftTasksTaskColumnTags.Expand)
         waitForIdle()
         assertTrue(shell.expanded)
         assertEquals(widthOf(ROOT), widthOf(RaftTasksTaskColumnTags.Column), 1.5f, "expanded, the task fills the row")
