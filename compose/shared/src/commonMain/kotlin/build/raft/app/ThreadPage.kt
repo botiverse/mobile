@@ -12890,7 +12890,9 @@ private fun SharedThreadRouteContentContent(
                             realtimeEvents.joinChannel(result.data.channelId.value, currentSession?.currentServerId)
                             bridge.toast(joinedChannelLabel)
                         }
-                        is DataResult.NoPermission -> if (!routeAuthRequired(result)) bridge.toast(unableToJoinChannelLabel)
+                        is DataResult.NoPermission ->
+                            if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
+                        is DataResult.Error -> bridge.errorToast(unableToJoinChannelLabel, result.error)
                         else -> bridge.toast(unableToJoinChannelLabel)
                     }
                 }
@@ -15225,34 +15227,33 @@ private fun SharedThreadRouteContentContent(
                     tasksViewModel.dispatch(intent)
                 }
                 action == "joinChannel" -> {
-                    val channelId = renderedThread.joinChannelTargetId()
-                    if (channelId == null) {
-                        bridge.toast(unableToJoinChannelLabel)
-                        return@ThreadPageContent
-                    }
                     coroutineScope.launch {
-                        when (val result = dataSource.joinChannel(channelId)) {
-                            is DataResult.Content -> {
-                                threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
+                        // A task conversation's Join joins its task channel, not the conversation.
+                        when (
+                            val outcome =
+                                renderedThread.joinThreadChannel(dataSource::loadTaskConversationRef, dataSource::joinChannel)
+                        ) {
+                            is ThreadJoinChannelOutcome.Joined -> {
+                                val joinedId = outcome.channel.joinedChannelId
+                                threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(outcome.channel.pageChannelId.value))
                                 currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
                                     // Now a member: closing this page must not leave the room (the
                                     // conversation directory may still list the channel as not joined).
-                                    realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
-                                    sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, result.data.channelId))
+                                    realtimeRoomLeaseRegistry.markJoinedByUser(serverId, joinedId.value)
+                                    sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, joinedId))
                                     sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
                                 }
-                                realtimeEvents.joinChannel(
-                                    result.data.channelId.value,
-                                    currentSession?.currentServerId
-                                )
+                                realtimeEvents.joinChannel(joinedId.value, currentSession?.currentServerId)
                                 bridge.toast(joinedChannelLabel)
                             }
-                            is DataResult.Empty,
-                            is DataResult.Error -> bridge.toast(unableToJoinChannelLabel)
-                            is DataResult.NoPermission -> {
-                                if (routeAuthRequired(result)) return@launch
-                                bridge.toast(unableToJoinChannelLabel)
-                            }
+                            ThreadJoinChannelOutcome.Unresolved -> bridge.toast(unableToJoinChannelLabel)
+                            is ThreadJoinChannelOutcome.Failed ->
+                                when (val result = outcome.result) {
+                                    is DataResult.NoPermission ->
+                                        if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
+                                    is DataResult.Error -> bridge.errorToast(unableToJoinChannelLabel, result.error)
+                                    else -> bridge.toast(unableToJoinChannelLabel)
+                                }
                         }
                     }
                 }
