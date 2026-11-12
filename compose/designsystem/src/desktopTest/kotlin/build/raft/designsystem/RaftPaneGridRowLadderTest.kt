@@ -12,6 +12,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ComposeUiTest
@@ -155,8 +158,61 @@ class RaftPaneGridRowLadderTest {
     private fun ComposeUiTest.onAllTabs(bounds: RaftPaneGridColumnBounds) =
         onAllNodes(hasTestTag(RAFT_PANE_GRID_TABS_TEST_TAG + bounds.id), useUnmergedTree = true).fetchSemanticsNodes()
 
+    /** Each cell's first placement, in dp: its left edge in the row and its width. */
+    private val firstPlaced = mutableMapOf<String, Pair<Float, Float>>()
+
     @Composable
     private fun Cell(name: String) {
-        Box(Modifier.fillMaxSize().testTag("cell-$name")) { RaftText(name) }
+        val density = LocalDensity.current.density
+        Box(
+            Modifier.fillMaxSize().testTag("cell-$name").onPlaced { coordinates ->
+                if (name !in firstPlaced) firstPlaced[name] = coordinates.positionInRoot().x / density to coordinates.size.width / density
+            }
+        ) { RaftText(name) }
     }
+
+    /** The row's units' widths, left to right as shown (a tab not shown is 0), and that they fill the row exactly. */
+    private fun ComposeUiTest.assertRow(expected: List<Float>, shown: List<RaftPaneGridColumnBounds>) {
+        val tags = listOf(RAFT_PANE_GRID_MAIN_TEST_TAG) + shown.map { column(it) }
+        tags.zip(expected).forEach { (tag, width) -> assertWidth(width, tag) }
+        val total = tags.sumOf { widthDp(it).toDouble() }.toFloat()
+        assertTrue(abs(total - rowWidth) <= 1f, "the shown columns fill the row: $total of $rowWidth")
+        tags.forEach { tag ->
+            val bounds = onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val right = with(density) { bounds.right.toDp().value }
+            assertTrue(right <= rowWidth + 1f, "$tag ends inside the row: $right of $rowWidth")
+        }
+    }
+
+    @Test
+    fun theFirstFrameIsAlreadyPlannedNothingStartsAtItsSavedWidthOrPastTheRow() =
+        runComposeUiTest {
+            // The pane_grid_clipped screenshot's row, which renders one frame: every cell's first placement counts.
+            rowWidth = 1160f
+            firstPlaced.clear()
+            showRow()
+            // Planned: thread 232, so its cell is laid out at its 360 less the seam and clipped (unplanned: 399).
+            val threadFirst = firstPlaced.getValue("thread").second
+            assertTrue(abs(threadFirst - 359f) <= 1f, "the thread's first width: $threadFirst")
+            // Unplanned, the columns stood at 400 + 360 + 480 and the profile started past the row's end (1240).
+            listOf("thread", "tasks", "artifact", "profile", "details").forEach { cell ->
+                val (x, _) = firstPlaced.getValue(cell)
+                assertTrue(x < rowWidth, "$cell first placed inside the row, at $x")
+            }
+            assertTrue(firstPlaced.getValue("main").first < 1f, "the main pane first placed at the row's start")
+        }
+
+    @Test
+    fun theScreenshotRowsArePlannedAsTheRulesSay() =
+        runComposeUiTest {
+            // 1160: 840 short of the saved widths and only 200 above the minimums: all five clip in proportion.
+            rowWidth = 1160f
+            showRow()
+            assertRow(listOf(232f, 232f, 180.4f, 309.3f, 206.2f), listOf(thread, cards, artifact, profile))
+            // 640: five columns of 160 don't fit, four do: the profile is a tab beside the Artifact, all at 160.
+            rowWidth = 640f
+            waitForIdle()
+            assertRow(listOf(160f, 160f, 160f, 160f), listOf(thread, cards, artifact))
+            onNodeWithTag(RAFT_PANE_GRID_TABS_TEST_TAG + artifact.id, useUnmergedTree = true).assertExists()
+        }
 }

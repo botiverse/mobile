@@ -55,7 +55,6 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
@@ -528,114 +527,118 @@ fun RaftPaneGrid(
     }
     val host = outer ?: remember { RaftPaneGridHost() }
     val store = LocalRaftPaneGridSizes.current
-    val density = LocalDensity.current.density
-    var availableDp by remember { mutableStateOf(0f) }
-    // The outermost grid lays out its own columns and every column handed up, left to right.
-    val placed = if (outer != null) emptyList() else host.placed(columns, topInset)
-    val fillIds = if (outer != null) emptySet() else host.fillIds(fillColumn)
-    val beside = leading?.mode == RaftPaneGridLeadingMode.Beside
-    val leadingDp =
-        when (leading?.mode) {
-            RaftPaneGridLeadingMode.Beside -> leading.widthDp + RaftStroke.Hairline.value
-            RaftPaneGridLeadingMode.Fill -> availableDp
-            else -> 0f
-        }
-    val roomDp = maxOf(0f, availableDp - leadingDp)
-    val filling = placed.any { it.column.bounds.id in fillIds }
-    val leadingFills = leading?.mode == RaftPaneGridLeadingMode.Fill
-    // The #189 row (raftPaneGridRowPlan) once measured; Focus mode and a list filling the row lay out as before.
-    val planned = availableDp > 0f && placed.isNotEmpty() && !filling && !leadingFills
-    val plan =
-        if (!planned) {
-            null
-        } else {
-            raftPaneGridRowPlan(
-                roomDp = roomDp,
-                columns =
-                    placed.map { place ->
-                        val column = place.column
-                        RaftRowPlanColumn(
-                            key = column.bounds.id,
-                            regions = column.cells.map { it.id }.ifEmpty { listOf(column.bounds.id) },
-                            mins = column.cells.map { column.bounds.minWidthDp }.ifEmpty { listOf(column.bounds.minWidthDp) },
-                            saved = store.widthDp(column.bounds),
+    // The row's width comes from its constraints, so the first frame is already planned. (Measured
+    // by onSizeChanged, the first frame had no plan: every column at its saved width, the main pane
+    // squeezed to nothing and the rightmost columns past the row's end.)
+    BoxWithConstraints(modifier) {
+        val availableDp = if (constraints.hasBoundedWidth) maxWidth.value else 0f
+        // The outermost grid lays out its own columns and every column handed up, left to right.
+        val placed = if (outer != null) emptyList() else host.placed(columns, topInset)
+        val fillIds = if (outer != null) emptySet() else host.fillIds(fillColumn)
+        val beside = leading?.mode == RaftPaneGridLeadingMode.Beside
+        val leadingDp =
+            when (leading?.mode) {
+                RaftPaneGridLeadingMode.Beside -> leading.widthDp + RaftStroke.Hairline.value
+                RaftPaneGridLeadingMode.Fill -> availableDp
+                else -> 0f
+            }
+        val roomDp = maxOf(0f, availableDp - leadingDp)
+        val filling = placed.any { it.column.bounds.id in fillIds }
+        val leadingFills = leading?.mode == RaftPaneGridLeadingMode.Fill
+        // The #189 row (raftPaneGridRowPlan) once measured; Focus mode and a list filling the row lay out as before.
+        val planned = availableDp > 0f && placed.isNotEmpty() && !filling && !leadingFills
+        val plan =
+            if (!planned) {
+                null
+            } else {
+                raftPaneGridRowPlan(
+                    roomDp = roomDp,
+                    columns =
+                        placed.map { place ->
+                            val column = place.column
+                            RaftRowPlanColumn(
+                                key = column.bounds.id,
+                                regions = column.cells.map { it.id }.ifEmpty { listOf(column.bounds.id) },
+                                mins = column.cells.map { column.bounds.minWidthDp }.ifEmpty { listOf(column.bounds.minWidthDp) },
+                                saved = store.widthDp(column.bounds),
+                            )
+                        },
+                )
+            }
+        // A column holding tabs (rule 4): the unit it shows, by its first unit's key. Presentation only, never saved.
+        var picked by remember { mutableStateOf(emptyMap<String, String>()) }
+        val unitWidths = plan?.let { p -> raftRowUnitWidths(p) { group -> raftPaneGridShownUnit(p, p.groups[group], picked) } }
+        val widthOf: Map<String, Float> = plan?.units?.mapIndexed { i, unit -> unit.key to unitWidths!![i] }?.toMap().orEmpty()
+        val fitted = placed.map { place -> if (plan != null) widthOf[place.column.bounds.id] ?: 0f else store.widthDp(place.column.bounds) }
+        // The tabs each shown unit's column carries where its group holds more than one (web RowTabs).
+        val tabsOf: Map<String, RaftPaneGridRowTabs> =
+            if (plan == null) {
+                emptyMap()
+            } else {
+                val labels =
+                    placed.associate { place ->
+                        place.column.bounds.id to (place.column.tabLabel ?: place.column.cells.joinToString(" · ") { it.id })
+                    } + (RAFT_ROW_CONVERSATION to (mainTabLabel ?: RAFT_ROW_CONVERSATION))
+                plan.groups.filter { it.size > 1 }.associate { group ->
+                    val first = plan.units[group.first()].key
+                    val shown = plan.units[raftPaneGridShownUnit(plan, group, picked)].key
+                    shown to
+                        RaftPaneGridRowTabs(
+                            tabs = group.map { plan.units[it].key }.map { it to (labels[it] ?: it) },
+                            selected = shown,
+                            onSelect = { unit -> picked = picked + (first to unit) },
                         )
-                    },
-            )
-        }
-    // A column holding tabs (rule 4): the unit it shows, by its first unit's key. Presentation only, never saved.
-    var picked by remember { mutableStateOf(emptyMap<String, String>()) }
-    val unitWidths = plan?.let { p -> raftRowUnitWidths(p) { group -> raftPaneGridShownUnit(p, p.groups[group], picked) } }
-    val widthOf: Map<String, Float> = plan?.units?.mapIndexed { i, unit -> unit.key to unitWidths!![i] }?.toMap().orEmpty()
-    val fitted = placed.map { place -> if (plan != null) widthOf[place.column.bounds.id] ?: 0f else store.widthDp(place.column.bounds) }
-    // The tabs each shown unit's column carries where its group holds more than one (web RowTabs).
-    val tabsOf: Map<String, RaftPaneGridRowTabs> =
-        if (plan == null) {
-            emptyMap()
-        } else {
-            val labels =
-                placed.associate { place ->
-                    place.column.bounds.id to (place.column.tabLabel ?: place.column.cells.joinToString(" · ") { it.id })
-                } + (RAFT_ROW_CONVERSATION to (mainTabLabel ?: RAFT_ROW_CONVERSATION))
-            plan.groups.filter { it.size > 1 }.associate { group ->
-                val first = plan.units[group.first()].key
-                val shown = plan.units[raftPaneGridShownUnit(plan, group, picked)].key
-                shown to
-                    RaftPaneGridRowTabs(
-                        tabs = group.map { plan.units[it].key }.map { it to (labels[it] ?: it) },
-                        selected = shown,
-                        onSelect = { unit -> picked = picked + (first to unit) },
-                    )
+                }
+            }
+        val mainHidden = plan != null && (unitWidths?.firstOrNull() ?: 1f) <= 0f
+        if (outer == null) {
+            SideEffect {
+                host.roomDp = roomDp.takeIf { availableDp > 0f }
+                host.ownMinsDp = columns.sumOf { it.bounds.minWidthDp.toDouble() }.toFloat()
+                host.ownWidthsDp = fitted.take(columns.size).sum()
             }
         }
-    val mainHidden = plan != null && (unitWidths?.firstOrNull() ?: 1f) <= 0f
-    if (outer == null) {
-        SideEffect {
-            host.roomDp = roomDp.takeIf { availableDp > 0f }
-            host.ownMinsDp = columns.sumOf { it.bounds.minWidthDp.toDouble() }.toFloat()
-            host.ownWidthsDp = fitted.take(columns.size).sum()
-        }
-    }
-    Row(modifier.onSizeChanged { availableDp = it.width / density }) {
-        if (leading != null) RaftPaneGridLeadingView(leading)
-        // Collapsed by width, never weight(0f) (Compose rejects it): see raftParentPaneLayout.
-        Box(
-            (if (filling || leadingFills || mainHidden) Modifier.width(0.dp) else Modifier.weight(1f))
-                .fillMaxHeight()
-                .testTag(RAFT_PANE_GRID_MAIN_TEST_TAG)
-                // Beside the leading column the main pane's start is away from the screen edge.
-                .then(if (beside) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.Start) else Modifier)
-        ) {
-            Column(Modifier.fillMaxSize()) {
-                // The row tabs at the pane's own width, so every tab stays in reach while the content clips.
-                val mainTabs = tabsOf[RAFT_ROW_CONVERSATION]
-                if (mainTabs != null) RaftPaneGridTabStrip(mainTabs, RAFT_PANE_GRID_TABS_TEST_TAG + RAFT_ROW_CONVERSATION)
-                // Rule 2: in the planned row the main pane's content keeps 360 and clips.
-                Box(Modifier.weight(1f).fillMaxWidth().then(if (plan != null) Modifier.clipToBounds() else Modifier)) {
-                    Box(Modifier.fillMaxSize().raftPaneGridContentMinWidth(if (plan != null) RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP else 0f)) {
-                        CompositionLocalProvider(LocalRaftPaneGridHost provides host, LocalRaftPaneGridDepth provides depth + 1) { main() }
+        Row(Modifier.fillMaxSize()) {
+            if (leading != null) RaftPaneGridLeadingView(leading)
+            // Collapsed by width, never weight(0f) (Compose rejects it): see raftParentPaneLayout.
+            Box(
+                (if (filling || leadingFills || mainHidden) Modifier.width(0.dp) else Modifier.weight(1f))
+                    .fillMaxHeight()
+                    .testTag(RAFT_PANE_GRID_MAIN_TEST_TAG)
+                    // Beside the leading column the main pane's start is away from the screen edge.
+                    .then(if (beside) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.Start) else Modifier)
+            ) {
+                Column(Modifier.fillMaxSize()) {
+                    // The row tabs at the pane's own width, so every tab stays in reach while the content clips.
+                    val mainTabs = tabsOf[RAFT_ROW_CONVERSATION]
+                    if (mainTabs != null) RaftPaneGridTabStrip(mainTabs, RAFT_PANE_GRID_TABS_TEST_TAG + RAFT_ROW_CONVERSATION)
+                    // Rule 2: in the planned row the main pane's content keeps 360 and clips.
+                    Box(Modifier.weight(1f).fillMaxWidth().then(if (plan != null) Modifier.clipToBounds() else Modifier)) {
+                        Box(Modifier.fillMaxSize().raftPaneGridContentMinWidth(if (plan != null) RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP else 0f)) {
+                            CompositionLocalProvider(LocalRaftPaneGridHost provides host, LocalRaftPaneGridDepth provides depth + 1) { main() }
+                        }
                     }
                 }
             }
-        }
-        placed.forEachIndexed { index, place ->
-            val column = place.column
-            key(column.bounds.id) {
-                val draw: @Composable () -> Unit = {
-                    RaftPaneGridSideColumn(
-                        column = column,
-                        widthDp = fitted[index],
-                        // A column's width includes its left seam (web), so the main pane has the rest.
-                        mainWidthDp = maxOf(0f, roomDp - fitted.sum()),
-                        fill = filling && column.bounds.id in fillIds,
-                        hidden = leadingFills || (filling && column.bounds.id !in fillIds),
-                        topInset = place.topInset,
-                        tabs = tabsOf[column.bounds.id],
-                        tabHidden = plan != null && fitted[index] <= 0f,
-                    )
+            placed.forEachIndexed { index, place ->
+                val column = place.column
+                key(column.bounds.id) {
+                    val draw: @Composable () -> Unit = {
+                        RaftPaneGridSideColumn(
+                            column = column,
+                            widthDp = fitted[index],
+                            // A column's width includes its left seam (web), so the main pane has the rest.
+                            mainWidthDp = maxOf(0f, roomDp - fitted.sum()),
+                            fill = filling && column.bounds.id in fillIds,
+                            hidden = leadingFills || (filling && column.bounds.id !in fillIds),
+                            topInset = place.topInset,
+                            tabs = tabsOf[column.bounds.id],
+                            tabHidden = plan != null && fitted[index] <= 0f,
+                        )
+                    }
+                    val locals = place.locals
+                    if (locals != null) CompositionLocalProvider(locals) { draw() } else draw()
                 }
-                val locals = place.locals
-                if (locals != null) CompositionLocalProvider(locals) { draw() } else draw()
             }
         }
     }
