@@ -64,6 +64,7 @@ States: building · draft · smoke · approved · distributed · superseded.
 - [ ] 6. Smoke on the exact carriers (who, device, link) — iOS
 - [ ] 6. Xcode/SDK changed? Tab bar on a regular iPhone, iOS 26 and iOS 27
 - [ ] 7. Android `preview` finalized
+- [ ] 7.2.1 Preview update test: previous preview → new via in-app prompt (device, from → to versionCode, pass/fail, screenshot or recording); a fail blocks `main`
 - [ ] 7. Google Play internal (receipt)
 - [ ] 7. TestFlight internal: `VALID`, Botiverse, `IN_BETA_TESTING`
 - [ ] 7. artin go: Android `main` finalized + `vX.Y.Z` tag + GitHub Release

@@ -471,6 +471,30 @@ which makes the GitHub Release: the published `main` APK (never an AAB, artin
 2026-10-29), the iOS TestFlight build number, an unsigned Apple-silicon macOS
 dmg and an iOS Simulator `.app` built from the tag.
 
+### 7.2.1 Preview update test (every train, artin 2026-11-12)
+
+Right after Hands `preview` is published and **before** `main` is published,
+test the in-app update path on a real device or emulator. That device must
+have the **previous** `preview` build installed and be signed in.
+
+1. Open the app. The update prompt must appear and show the new version.
+2. Tap update. The APK downloads and the system installer opens.
+3. After install, the app opens on the new versionCode (Settings › About).
+   It must still be signed in, with the same server and drafts.
+
+Record the following in the release issue:
+- the device
+- the from → to versionCodes
+- pass or fail, with a screenshot or recording of the prompt
+
+A fail blocks `main`. The fix is a new candidate (Hard rule 5): rebuild both
+platforms with higher build numbers, re-verify (§6) and republish `preview`.
+Then repeat this test, starting from the previous train's `preview` build:
+reinstall it if the device already took the failed one.
+
+Checking only the public update endpoint does not count; the finalize script
+already does that.
+
 ### 7.3 Google Play beyond internal
 
 Closed, open and production tracks each need artin's go:
