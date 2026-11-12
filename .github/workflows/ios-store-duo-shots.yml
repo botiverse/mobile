@@ -1,0 +1,195 @@
+# App Store iPhone Duo screenshots (1.24): build the Debug Simulator app with visual fixtures on
+# Xcode 27.1 (the only Xcode with the iPhone Duo simulator), boot an iPhone Duo simulator and
+# capture. Branch-only tooling (agent/lagoon/duo-store-shots): a push to that branch runs it.
+#
+# Phase 1 (probe): what the hosted Duo simulator offers (displays, orientations, folding) and how
+# the real app shell (fabricated capture backend) looks on it, side buttons included.
+name: iPhone Duo store screenshots
+
+on:
+  push:
+    branches: [agent/lagoon/duo-store-shots]
+    paths: [.github/workflows/ios-store-duo-shots.yml, compose/**, scripts/store-screenshots/**]
+  workflow_dispatch:
+    inputs:
+      real_walk:
+        description: "Also run the real-app walk (fake backend)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-store-duo-shots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    name: Capture on iPhone Duo (Xcode 27.1)
+    runs-on: xcode-27
+    timeout-minutes: 120
+    env:
+      SLOCK_VISUAL_FIXTURES: "true"
+      XCODE_APP_PATH: /Applications/Xcode_27.1.app
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pin Xcode
+        run: bash scripts/ci/select_ios_xcode.sh
+      - name: Probe the Duo simulator
+        run: |
+          set -uo pipefail
+          mkdir -p probe
+          {
+            xcodebuild -version
+            xcrun --sdk iphonesimulator --show-sdk-version
+            xcrun simctl list runtimes
+            xcrun simctl list devicetypes
+            echo "== simctl help"; xcrun simctl help
+            echo "== simctl io help"; xcrun simctl io 2>&1 | head -80
+            echo "== simctl ui help"; xcrun simctl ui 2>&1 | head -40
+          } > probe/toolchain.txt 2>&1
+          xcrun simctl list devicetypes -j > probe/devicetypes.json
+          xcrun simctl list devices -j > probe/devices.json
+          python3 - <<'PY' > probe/duo-devicetypes.txt
+          import json
+          for d in json.load(open("probe/devicetypes.json"))["devicetypes"]:
+              if "Duo" in d["name"] or "Fold" in d["name"]:
+                  print(json.dumps(d, indent=1))
+          PY
+          cat probe/duo-devicetypes.txt
+          simctl=$(xcrun -f simctl)
+          strings "$simctl" | grep -iE 'fold|hinge|posture|display|unfold|cover' | sort -u > probe/simctl-strings.txt || true
+          cs=/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/CoreSimulator
+          [ -f "$cs" ] && strings "$cs" | grep -iE 'fold|hinge|posture' | sort -u > probe/coresim-strings.txt || true
+          tail -c 20000 probe/toolchain.txt
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: ./.github/actions/gradle-cache-policy
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: ./.github/actions/ios-kn-gradle
+        with:
+          heap: 12g
+      - name: KSP incremental cache hygiene
+        run: rm -rf compose/shared/build/generated/ksp compose/shared/build/kotlin
+      - name: Generate shared framework placeholder
+        working-directory: compose
+        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain -PslockVisualFixtures=true
+      - name: Pod install
+        working-directory: compose/iosApp
+        run: pod install
+      - name: Sync shared framework (simulator arm64, fixtures)
+        working-directory: compose
+        run: |
+          ./gradlew :shared:syncFramework \
+            -Pkotlin.native.cocoapods.platform=iphonesimulator \
+            -Pkotlin.native.cocoapods.archs=arm64 \
+            -Pkotlin.native.cocoapods.configuration=Debug \
+            -PslockVisualFixtures=true --no-daemon --console=plain
+      - name: Create the iPhone Duo simulator
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import json, re, subprocess, sys
+          types = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devicetypes", "-j"]))["devicetypes"]
+          duo = [d for d in types if "Duo" in d["name"]]
+          if not duo:
+              sys.exit("no iPhone Duo device type on this runner")
+          rts = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "runtimes", "-j"]))["runtimes"]
+          ios = [r for r in rts if r.get("platform") == "iOS" and r.get("isAvailable")]
+          ios.sort(key=lambda r: tuple(int(x) for x in re.findall(r"\d+", r["version"])), reverse=True)
+          dt = duo[-1]
+          for r in ios:
+              ids = [s["identifier"] for s in r.get("supportedDeviceTypes", [])]
+              if dt["identifier"] in ids:
+                  print(f"DUO_TYPE={dt['identifier']}")
+                  print(f"DUO_NAME={dt['name']}")
+                  print(f"DUO_RUNTIME={r['identifier']}")
+                  break
+          else:
+              sys.exit("no runtime supports " + dt["identifier"])
+          PY
+          grep DUO_ "$GITHUB_ENV"
+          udid=$(xcrun simctl create "Store Duo" "$(grep '^DUO_TYPE=' "$GITHUB_ENV" | tail -1 | cut -d= -f2)" "$(grep '^DUO_RUNTIME=' "$GITHUB_ENV" | tail -1 | cut -d= -f2)")
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+          echo "udid=$udid"
+      - name: Build iOS app for simulator
+        working-directory: compose/iosApp
+        run: |
+          log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
+          set +e
+          xcodebuild -workspace iosApp.xcworkspace -scheme iosApp -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIM_UDID" \
+            -derivedDataPath build/DerivedData \
+            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
+            RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES build > "$log" 2>&1
+          status=$?
+          tail -40 "$log"
+          [ "$status" -eq 0 ] || grep -nE "(^|[[:space:]])e: |: error:|BUILD FAILED" "$log" | grep -v "Using response file" | tail -60
+          exit "$status"
+      - name: Boot, install, probe displays
+        run: |
+          set -uo pipefail
+          xcrun simctl boot "$SIM_UDID" || true
+          xcrun simctl bootstatus "$SIM_UDID" -b
+          xcrun simctl status_bar "$SIM_UDID" override --time "9:41" --dataNetwork wifi --wifiBars 3 --cellularBars 4 --batteryState charged --batteryLevel 100 || true
+          app=$(find compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+          xcrun simctl install "$SIM_UDID" "$app"
+          echo "BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")" >> "$GITHUB_ENV"
+          echo "APP_PATH=$app" >> "$GITHUB_ENV"
+          xcrun simctl io "$SIM_UDID" enumerate > probe/io-enumerate.txt 2>&1 || true
+          cat probe/io-enumerate.txt
+          sleep 5
+          for d in internal external; do
+            xcrun simctl io "$SIM_UDID" screenshot --display=$d "probe/springboard-$d.png" 2>&1 || true
+          done
+          xcrun simctl io "$SIM_UDID" screenshot "probe/springboard-default.png" 2>&1 || true
+          python3 -c "
+          import struct, glob
+          for p in sorted(glob.glob('probe/*.png')):
+              w, h = struct.unpack('>II', open(p, 'rb').read()[16:24]); print(p, w, h)
+          "
+      - name: Real app walk (fabricated backend)
+        if: ${{ github.event_name == 'push' || inputs.real_walk }}
+        run: |
+          set -uo pipefail
+          out=probe/real; mkdir -p "$out"
+          log="$out/real.log"
+          xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
+          SIMCTL_CHILD_RAFT_PROTO_FAKE_BACKEND=1 SIMCTL_CHILD_RAFT_PROTO_REAL_SCENE=walk SIMCTL_CHILD_RAFT_NATIVE_NAV=0 \
+            xcrun simctl launch --console-pty "$SIM_UDID" "$BUNDLE_ID" -RaftHideEnvironmentIndicator YES > "$log" 2>&1 &
+          seen=" "
+          for _ in $(seq 1 500); do
+            while read -r name dir; do
+              case "$seen" in
+                *" $name "*) ;;
+                *) xcrun simctl io "$SIM_UDID" screenshot "$out/$name.png" >/dev/null 2>&1
+                   touch "${dir}raft-shot-$name.done"
+                   seen="$seen$name "; echo "shot $name";;
+              esac
+            done < <(grep -ao "RAFT_PROTO_SHOT name=[a-z0-9]* dir=[^ ]*" "$log" | tr -d '\r' | sed -E 's/RAFT_PROTO_SHOT name=([a-z0-9]*) dir=(.*)/\1 \2/')
+            grep -aq "RAFT_PROTO_DONE scene=real" "$log" && break
+            sleep 0.4
+          done
+          xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
+          grep -aiE "adaptive|sideColumn|side_actions|duoInner|duoOuter|verticalBar|RAFT_PROTO_(REAL|WARN)" "$log" | sort | uniq -c | sort -rn | head -80 || true
+          python3 -c "
+          import struct, glob
+          for p in sorted(glob.glob('probe/real/*.png')):
+              w, h = struct.unpack('>II', open(p, 'rb').read()[16:24]); print(p, w, h)
+          "
+      - name: Clean up simulator
+        if: always()
+        run: |
+          xcrun simctl shutdown "${SIM_UDID:-none}" 2>/dev/null || true
+          xcrun simctl delete "${SIM_UDID:-none}" 2>/dev/null || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: duo-probe
+          path: |
+            probe/
+            xcodebuild-ios.log
+          if-no-files-found: warn
