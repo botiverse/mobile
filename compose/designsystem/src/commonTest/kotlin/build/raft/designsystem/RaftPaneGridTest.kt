@@ -1,5 +1,6 @@
 package build.raft.designsystem
 
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftPaneGridColumn
 import build.raft.designsystem.components.RaftPaneGridColumnBounds
@@ -165,6 +166,28 @@ class RaftPaneGridTest {
         val outer = RaftPaneGridColumnBounds(id = "outer", defaultWidthDp = 300f, minWidthDp = 300f)
         assertTrue(host.folds(row(1299f, listOf(column(outer))), depth = 1, bounds = thread, sizes = sizes))
         assertFalse(host.folds(row(1300f, listOf(column(outer))), depth = 1, bounds = thread, sizes = sizes))
+    }
+
+    @Test
+    fun handingUpTheSameColumnsAgainWritesNothingTheRowReads() {
+        // A nested grid hands up every time its page composes, with new objects. Writing the row each time made the
+        // outermost grid recompose, which recomposed the page, which handed up again: a loop every frame.
+        val host = RaftPaneGridHost()
+        host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(column(thread))))
+        var writes = 0
+        val again = column(thread)
+        val snapshot = Snapshot.takeMutableSnapshot(writeObserver = { writes++ })
+        try {
+            snapshot.enter { host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(again))) }
+            assertEquals(0, writes, "the same shape again is no change")
+            // The latest columns are the ones laid out (their cells' content current).
+            assertTrue(snapshot.enter { host.placed(emptyList(), 0.dp).single().column } === again)
+            // A column more is.
+            snapshot.enter { host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(again, column(cards)))) }
+            assertTrue(writes > 0, "a new column is a change")
+        } finally {
+            snapshot.dispose()
+        }
     }
 
     @Test

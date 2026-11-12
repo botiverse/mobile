@@ -462,7 +462,28 @@ internal class RaftPaneGridHandedUp(
     val fillColumn: String? = null,
     val topInset: Dp = 0.dp,
     val locals: CompositionLocalContext? = null,
-)
+) {
+    /**
+     * What the outermost grid lays out and draws by, compared by value: the level, the fill, the inset, the locals
+     * (CompositionLocalContext compares its map: equal while nothing provided above the declaring grid changed, so a
+     * theme change still reaches the columns) and each column's bounds, labels and cells. Not the cells' content,
+     * new lambdas every time the declaring page composes: pages read what changes in them through state
+     * (rememberUpdatedState), so the cells recompose by themselves.
+     */
+    val shape: List<Any?> =
+        listOf(depth, fillColumn, topInset, locals) +
+            columns.map { column ->
+                listOf(
+                    column.bounds,
+                    column.resizeLabel,
+                    column.splitLabel,
+                    column.tabLabel,
+                    column.shortShownCell,
+                    column.shortSwitch != null,
+                    column.cells.map { it.id to it.defaultShare },
+                )
+            }
+}
 
 /** A column where the outermost grid lays it out, with the top inset and locals of the grid that declared it. */
 internal class RaftPaneGridPlaced(val column: RaftPaneGridColumn, val topInset: Dp, val locals: CompositionLocalContext?)
@@ -470,17 +491,36 @@ internal class RaftPaneGridPlaced(val column: RaftPaneGridColumn, val topInset: 
 /** The outermost grid, as the grids and pages in its main pane see it. */
 @Stable
 internal class RaftPaneGridHost internal constructor() {
+    /** Each nested grid's hand-up as the row is laid out by: written only when its [RaftPaneGridHandedUp.shape] changes. */
     private val handedUp = mutableStateMapOf<Any, RaftPaneGridHandedUp>()
 
-    /** [token]'s grid hands up [up] (null: nothing any more). */
+    /** Each nested grid's latest hand-up, its cells' content and locals current; plain memory, never observed. */
+    private val latest = mutableMapOf<Any, RaftPaneGridHandedUp>()
+
+    /**
+     * [token]'s grid hands up [up] (null: nothing any more). A nested grid does so every time it composes, with new
+     * column objects; the row (snapshot state, read by the outermost grid and by raftPaneGridFolds) is written only
+     * where what it lays out by changed. Writing it every time made the outermost grid recompose, which recomposed
+     * the page that declared the nested grid, which handed up again: a loop every frame.
+     */
     internal fun handUp(token: Any, up: RaftPaneGridHandedUp?) {
-        if (up == null || (up.columns.isEmpty() && up.fillColumn == null)) handedUp.remove(token) else handedUp[token] = up
+        if (up == null || (up.columns.isEmpty() && up.fillColumn == null)) {
+            latest.remove(token)
+            if (token in handedUp) handedUp.remove(token)
+            return
+        }
+        latest[token] = up
+        if (handedUp[token]?.shape != up.shape) handedUp[token] = up
     }
+
+    /** [token]'s hand-up as it last came, else as the row has it. */
+    private fun current(token: Any, up: RaftPaneGridHandedUp): RaftPaneGridHandedUp = latest[token] ?: up
 
     /** Left to right: the outermost grid's [own] columns, then the handed-up ones, outer levels first. */
     internal fun placed(own: List<RaftPaneGridColumn>, ownTopInset: Dp): List<RaftPaneGridPlaced> =
         own.map { RaftPaneGridPlaced(it, ownTopInset, null) } +
-            handedUp.values.sortedBy { it.depth }.flatMap { up -> up.columns.map { RaftPaneGridPlaced(it, up.topInset, up.locals) } }
+            handedUp.entries.map { (token, up) -> current(token, up) }.sortedBy { it.depth }
+                .flatMap { up -> up.columns.map { RaftPaneGridPlaced(it, up.topInset, up.locals) } }
 
     internal fun fillIds(ownFill: String?): Set<String> = (listOfNotNull(ownFill) + handedUp.values.mapNotNull { it.fillColumn }).toSet()
 

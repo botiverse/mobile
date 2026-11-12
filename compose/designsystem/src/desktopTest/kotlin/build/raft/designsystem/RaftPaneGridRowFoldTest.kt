@@ -77,8 +77,15 @@ class RaftPaneGridRowFoldTest {
         }
     }
 
+    /** A column of [cells]; its stack's seam has a name of its own (the app's: "Resize Tasks and Files"), as the column's seam does. */
     private fun column(bounds: RaftPaneGridColumnBounds, vararg cells: String) =
-        RaftPaneGridColumn(bounds, "Resize ${bounds.id}", cells.map { cell -> RaftPaneGridCell(cell) { Cell(cell) } }, tabLabel = bounds.id)
+        RaftPaneGridColumn(
+            bounds,
+            "Resize ${bounds.id}",
+            cells.map { cell -> RaftPaneGridCell(cell) { Cell(cell) } },
+            splitLabel = "Split ${bounds.id}",
+            tabLabel = bounds.id,
+        )
 
     private fun ComposeUiTest.widthDp(tag: String): Float =
         with(density) { onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().size.width.toDp().value }
