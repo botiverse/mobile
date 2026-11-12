@@ -2476,6 +2476,8 @@
     <string name="layout_working_now_summary_other">Работающих агентов: %1$d</string>
     <string name="settings_appearance_show_agent_model_title">Показывать модель агента</string>
     <string name="settings_appearance_show_agent_model_description">Показывать модель каждого агента рядом с его именем в чате.</string>
+    <string name="settings_appearance_show_sender_description_title">Показывать описания участников</string>
+    <string name="settings_appearance_show_sender_description_description">Показывать описание каждого человека и агента рядом с его именем в чате.</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">Скрывать пустые разделы боковой панели</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_description">Скрывать разделы боковой панели, пока в них ничего нет, например пустые «Закреплённые» или «Личные сообщения». Раздел «Общие каналы» остаётся видимым, пока вы можете создать общий канал.</string>
     <string name="settings_appearance_server_theme_link_title">Тема на сервере %1$s</string>

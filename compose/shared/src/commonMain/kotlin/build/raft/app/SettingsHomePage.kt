@@ -18804,6 +18804,7 @@ internal fun SettingsRouteVisualScreen() {
             SettingsAppearanceVisualSwitches(
                 showLiveAgentActivity = true,
                 showAgentModelName = true,
+                showSenderDescription = true,
                 hideEmptySidebarSections = false,
                 showAppOnlyRows = false,
             ),

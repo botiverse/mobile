@@ -45,6 +45,23 @@ class RaftDisplayPreferenceRuntimeTest {
     }
 
     @Test
+    fun memberDescriptionsAreOnByDefaultAndSavedUnderTheWebKey() {
+        val store = MemoryStore()
+        RaftDisplayPreferenceRuntime.resetForTest(store)
+        assertTrue(RaftDisplayPreferenceRuntime.showSenderDescription)
+
+        RaftDisplayPreferenceRuntime.setShowSenderDescription(false)
+        assertEquals("false", store.values["slock_show_sender_description"])
+        RaftDisplayPreferenceRuntime.resetForTest(store)
+        assertFalse(RaftDisplayPreferenceRuntime.showSenderDescription)
+
+        // Nothing saved: on, the web default (`readStoredShowSenderDescription`).
+        store.values["slock_show_sender_description"] = null
+        RaftDisplayPreferenceRuntime.resetForTest(store)
+        assertTrue(RaftDisplayPreferenceRuntime.showSenderDescription)
+    }
+
+    @Test
     fun theHomeMenuChoiceIsTheSameValue() {
         val store = MemoryStore()
         KeyValueRaftSidebarHideEmptySectionsStore(store).write(false)

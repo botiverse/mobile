@@ -2504,6 +2504,8 @@
     <string name="layout_working_now_summary_other">%1$d agents working</string>
     <string name="settings_appearance_show_agent_model_title">Show agent model</string>
     <string name="settings_appearance_show_agent_model_description">Show each agent's model next to its name in chat.</string>
+    <string name="settings_appearance_show_sender_description_title">Show member descriptions</string>
+    <string name="settings_appearance_show_sender_description_description">Show each person's and agent's description next to their name in chat.</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">Hide empty sidebar sections</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_description">Hide sidebar sections while they have nothing in them, such as an empty Pinned or Direct Messages. Joint Channels stays visible while you can create one.</string>
     <string name="settings_appearance_server_theme_link_title">Theme on %1$s</string>

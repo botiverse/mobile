@@ -2479,6 +2479,8 @@
     <string name="layout_working_now_summary_other">%1$d 個 Agent 工作中</string>
     <string name="settings_appearance_show_agent_model_title">顯示 Agent 模型</string>
     <string name="settings_appearance_show_agent_model_description">在聊天中於每個 Agent 名稱旁顯示其使用的模型。</string>
+    <string name="settings_appearance_show_sender_description_title">顯示成員描述</string>
+    <string name="settings_appearance_show_sender_description_description">在聊天中於每位成員和 Agent 名稱旁顯示其描述。</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">隱藏空白的側邊欄區段</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_description">側邊欄區段沒有內容時（例如空的「已釘選」、「私訊」）會自動隱藏。只要你可以建立聯合頻道，「聯合頻道」區段就會保持顯示。</string>
     <string name="settings_appearance_server_theme_link_title">%1$s 的主題</string>

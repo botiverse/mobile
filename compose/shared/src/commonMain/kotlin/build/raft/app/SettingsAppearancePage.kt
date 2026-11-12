@@ -61,13 +61,14 @@ internal val LocalSettingsAppearancePreviewTimeLabel = staticCompositionLocalOf<
 
 /**
  * The screenshot host's device switches: the web case's fresh browser, where nothing is saved
- * yet (Live agent activity on, Show agent model on, Hide empty sidebar sections off, the web's
+ * yet (Live agent activity on, Show agent model on, Show member descriptions on, Hide empty sidebar sections off, the web's
  * own default) and the app's own Activity sender avatars row does not exist. Null: the saved
  * values and every row, as in the app.
  */
 internal class SettingsAppearanceVisualSwitches(
     val showLiveAgentActivity: Boolean,
     val showAgentModelName: Boolean,
+    val showSenderDescription: Boolean,
     val hideEmptySidebarSections: Boolean,
     val showAppOnlyRows: Boolean,
 )
@@ -239,8 +240,8 @@ private fun SettingsAppearanceSavedOnDevice() {
 
 /**
  * The Web's device switches (`ListRowGroup` of plain rows: title, description, the switch its
- * target) in the Web's order (Live agent activity, Show agent model, Hide
- * empty sidebar sections), plus the app's Activity sender avatars last.
+ * target) in the Web's order (Live agent activity, Show agent model, Show member descriptions,
+ * Hide empty sidebar sections), plus the app's Activity sender avatars last.
  */
 @Composable
 private fun SettingsAppearanceDisplaySwitches(
@@ -264,6 +265,14 @@ private fun SettingsAppearanceDisplaySwitches(
                 description = stringResource(Res.string.settings_appearance_show_agent_model_description),
                 checked = visual?.showAgentModelName ?: RaftDisplayPreferenceRuntime.showAgentModelName,
                 onCheckedChange = RaftDisplayPreferenceRuntime::setShowAgentModelName,
+                divider = true
+            )
+            SettingsAppearanceSwitchRow(
+                anchorId = "show-sender-description",
+                title = stringResource(Res.string.settings_appearance_show_sender_description_title),
+                description = stringResource(Res.string.settings_appearance_show_sender_description_description),
+                checked = visual?.showSenderDescription ?: RaftDisplayPreferenceRuntime.showSenderDescription,
+                onCheckedChange = RaftDisplayPreferenceRuntime::setShowSenderDescription,
                 divider = true
             )
             SettingsAppearanceSwitchRow(

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.RaftDisplayPreferenceRuntime
+import build.raft.app.data.memberOrigin
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.model.ServerId
@@ -122,11 +123,12 @@ internal fun build.raft.app.model.MemberProfile.authorFacts(viewerServerId: Serv
                 !isFromAnotherServer(viewerServerId),
     )
 
-private fun build.raft.app.model.MemberProfile.isFromAnotherServer(viewerServerId: ServerId?): Boolean {
-    val own = serverId?.value?.trim()?.takeIf { it.isNotEmpty() } ?: return false
-    val viewer = viewerServerId?.value?.trim()?.takeIf { it.isNotEmpty() } ?: return false
-    return own != viewer
-}
+/**
+ * The one "from another server" rule ([memberOrigin], #4656): a joint roster's `serverId` is only
+ * the person's first source, so `inViewerServer` decides when the server sent it.
+ */
+private fun build.raft.app.model.MemberProfile.isFromAnotherServer(viewerServerId: ServerId?): Boolean =
+    memberOrigin(this, viewerServerId?.value).external
 
 internal fun build.raft.app.model.MemberProfile.modelLabel(): String? {
     if (kind != build.raft.app.model.MemberKind.Agent) return null

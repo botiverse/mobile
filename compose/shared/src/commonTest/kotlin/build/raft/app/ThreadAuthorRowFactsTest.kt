@@ -44,6 +44,18 @@ class ThreadAuthorRowFactsTest {
     }
 
     @Test
+    fun aJointRosterDecidesAnotherServerByInViewerServerNotTheFirstSource() {
+        // #4656 memberOrigin: a computed joint roster's `serverId` is only the first source.
+        val peer = ServerId("server-peer")
+        // One of this server's members whose first source is the peer: model and Guest stay.
+        assertEquals("Claude Sonnet", agent.copy(serverId = peer, inViewerServer = true).authorRowModelLabel(server))
+        assertTrue(person.copy(serverRole = "guest", serverId = peer, inViewerServer = true).authorFacts(server).viewerServerGuest)
+        // Not in the viewed server, whatever `serverId` says: no model, no Guest.
+        assertNull(agent.copy(serverId = server, inViewerServer = false).authorRowModelLabel(server))
+        assertFalse(person.copy(serverRole = "guest", serverId = server, inViewerServer = false).authorFacts(server).viewerServerGuest)
+    }
+
+    @Test
     fun assistantOwnerIsReadFromTheAgentDirectory() {
         // botiverse/slock ec13decd3 routes/agents.ts GET /agents: the agent row's `assistantOwnerUserId`.
         val members =
@@ -84,6 +96,14 @@ class ThreadAuthorRowFactsTest {
         // A bridged sender keeps its provider.
         val slack = live.copy(authorKind = "external", authorDescription = "Slack", externalAuthor = ExternalMessageAuthor(displayName = "Al", provider = "slack", actorKind = "user"))
         assertEquals("Slack", threadAuthorRowDescription(slack, facts))
+
+        // Settings > Appearance "Show member descriptions" off (web #14653): none for an agent or
+        // a person, from the directory or the message; a bridged sender's provider stays.
+        assertNull(threadAuthorRowDescription(live.copy(authorDescription = "Old"), facts, showDescription = false))
+        val human = live.copy(authorId = "user-2", authorKind = "human", authorDescription = "Designs things")
+        assertNull(threadAuthorRowDescription(human, person.copy(description = "Designs").authorFacts(server), showDescription = false))
+        assertNull(threadAuthorRowDescription(human, null, showDescription = false))
+        assertEquals("Slack", threadAuthorRowDescription(slack, facts, showDescription = false))
         assertFalse(threadAuthorRowShowsGuest(slack, RaftMemberAuthorFacts(viewerServerGuest = true)))
         assertTrue(threadAuthorRowShowsGuest(live.copy(authorKind = "human"), RaftMemberAuthorFacts(viewerServerGuest = true)))
         assertFalse(threadAuthorRowShowsGuest(live.copy(authorKind = "human"), null))
