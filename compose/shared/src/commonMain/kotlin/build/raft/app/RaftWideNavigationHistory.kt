@@ -193,15 +193,15 @@ internal data class RaftWideNavHistories(
  *
  * The detail is what the surface actually draws: the Members tab its own member selection; the
  * shared conversation detail only on the surfaces that host it ([appShellSharedDetailSurfaceVisible];
- * on the DMs tab only a DM, [appShellDmsTabShowsDetail]). Settings and a Tasks board without its
- * task overlay have none.
+ * on the DMs tab only a DM, [appShellDmsTabShowsDetail]). Settings and a Tasks page without its
+ * task column have none.
  */
 internal fun raftWideNavEntryOf(
     serverId: String?,
     selectedTab: String,
     railInlineSecondaryDestination: String?,
     selectedHomeDestination: String?,
-    tasksDetailOverlayOpen: Boolean,
+    tasksDetailColumnOpen: Boolean,
     conversation: RaftAdaptiveDetailIdentity?,
     conversationRoute: WireThreadLaunchPayload?,
     member: MemberDetailIdentity?,
@@ -216,7 +216,7 @@ internal fun raftWideNavEntryOf(
             selectedTab = tab,
             selectedHomeDestination = selectedHomeDestination,
             railInlineSecondaryDestination = railInlineSecondaryDestination,
-            tasksDetailOverlayOpen = tasksDetailOverlayOpen,
+            tasksDetailColumnOpen = tasksDetailColumnOpen,
         ) &&
             (surface != "dms" || appShellDmsTabShowsDetail(conversation?.surfaceKind, conversationRoute?.parentSurfaceKind))
     val detail =

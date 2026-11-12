@@ -480,6 +480,10 @@
     <string name="thread_side_card_resize_column">Изменить ширину: %1$s</string>
     <string name="thread_side_card_tasks_and_files">Задачи и файлы</string>
     <string name="thread_side_thread_resize">Изменить ширину ветки</string>
+    <string name="tasks_task_column_expand">Развернуть</string>
+    <string name="tasks_task_column_restore">Восстановить размер</string>
+    <string name="tasks_task_column_close">Закрыть панель задачи</string>
+    <string name="tasks_task_column_resize">Изменить ширину панели</string>
     <string name="thread_state_loading">Загрузка…</string>
     <string name="thread_error_load">Не удалось загрузить ветку</string>
     <string name="thread_error_access_resolution">Не удалось проверить доступ к этой ветке или исходному сообщению. Проверьте подключение и попробуйте ещё раз.</string>

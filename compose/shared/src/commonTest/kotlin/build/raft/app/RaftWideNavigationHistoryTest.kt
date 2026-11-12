@@ -158,14 +158,14 @@ class RaftWideNavigationHistoryTest {
             route: WireThreadLaunchPayload? = channel,
             inline: String? = null,
             homeDestination: String? = null,
-            tasksOverlay: Boolean = false,
+            tasksColumn: Boolean = false,
             server: String? = "s1",
         ) = raftWideNavEntryOf(
             serverId = server,
             selectedTab = tab,
             railInlineSecondaryDestination = inline,
             selectedHomeDestination = homeDestination,
-            tasksDetailOverlayOpen = tasksOverlay,
+            tasksDetailColumnOpen = tasksColumn,
             conversation = route?.toRaftAdaptiveDetailIdentity("s1"),
             conversationRoute = route,
             member = memberIdentity,
@@ -178,7 +178,7 @@ class RaftWideNavigationHistoryTest {
         assertEquals(RaftWideNavEntry("s1", "members", RaftWideNavDetail.Member(memberIdentity)), entryOf("members"))
         assertEquals(RaftWideNavEntry("s1", "settings"), entryOf("settings"))
         assertEquals(RaftWideNavEntry("s1", "tasks"), entryOf("tasks"))
-        assertEquals(RaftWideNavEntry("s1", "tasks", conversation("c1")), entryOf("tasks", tasksOverlay = true))
+        assertEquals(RaftWideNavEntry("s1", "tasks", conversation("c1")), entryOf("tasks", tasksColumn = true))
         // The DMs tab draws a DM only; a channel kept from Home is not its detail.
         assertEquals(RaftWideNavEntry("s1", "dms"), entryOf("dms"))
         assertEquals(RaftWideNavEntry("s1", "dms", conversation("d1", kind = RaftThreadSurfaceKind.DirectMessage)), entryOf("dms", route = dm))

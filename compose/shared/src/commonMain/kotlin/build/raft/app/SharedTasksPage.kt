@@ -82,6 +82,8 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -119,6 +121,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.rotate
 import build.raft.designsystem.components.RaftGlyph
@@ -159,8 +162,11 @@ internal fun SharedTasksScreen(
     timeContext: RaftTimeContext? = null,
     taskV2Enabled: Boolean = false,
     /** The Tasks page's server query (Mine / All, search, status, sort); null: the projection's list. */
-    query: SharedTasksQueryBinding? = null
+    query: SharedTasksQueryBinding? = null,
+    /** The task open beside the list on the wide layout (RaftTasksTaskColumn.kt): its card shows it. */
+    openTaskId: String? = null,
 ) {
+    CompositionLocalProvider(LocalSharedTasksOpenTaskId provides openTaskId) {
     SharedTasksPanel(
         state = state,
         onIntent = onIntent,
@@ -178,7 +184,14 @@ internal fun SharedTasksScreen(
         timeContext = timeContext,
         taskV2Enabled = taskV2Enabled
     )
+    }
 }
+
+/**
+ * The task open beside the Tasks page's list, by id (web TaskCard `current`: the cell's selected
+ * fill); null everywhere else, the channel's Tasks card included.
+ */
+internal val LocalSharedTasksOpenTaskId = compositionLocalOf<String?> { null }
 
 /**
  * The Tasks page's server query (server scope, [build.raft.app.data.SharedTasksQueryStore]): its
@@ -1655,9 +1668,12 @@ private fun SharedTaskCard(
                 )
         )
     val description = task.description?.takeIf { it.isNotBlank() }
+    // The task open beside the list (web TaskCard `current`): the cell's selected fill.
+    val current = LocalSharedTasksOpenTaskId.current == task.id.value
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .then(if (current) Modifier.semantics { selected = true } else Modifier)
             .then(
                 if (captureLongPressAnchor) {
                     Modifier.raftCaptureLiveRootAnchor(rootAnchor)
@@ -1671,7 +1687,7 @@ private fun SharedTaskCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(RaftAppRadius.Container))
-                .raftCardSurface()
+                .raftCardSurface(fill = if (current) RaftTheme.colors.fillCellSelected else RaftColor.Card)
                 .raftGesturePointerInput(gestureOwner) { owner ->
                     var gesture: RaftGestureSession<SharedTaskCardGestureCallbacks>? = null
                     // tap = open task; long-press = open status menu. Wrapping both in the

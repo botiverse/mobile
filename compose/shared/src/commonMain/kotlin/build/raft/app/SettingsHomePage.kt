@@ -1187,7 +1187,7 @@ internal fun appShellSharedDetailSurfaceVisible(
     selectedTab: String,
     selectedHomeDestination: String?,
     railInlineSecondaryDestination: String?,
-    tasksDetailOverlayOpen: Boolean = false,
+    tasksDetailColumnOpen: Boolean = false,
 ): Boolean =
     pageVisible &&
         (
@@ -1195,9 +1195,9 @@ internal fun appShellSharedDetailSurfaceVisible(
                 retainedAppShellSelectedTab(selectedTab) == "activity" ||
                 // task #33: the Slack-nav DMs tab hosts the same list + detail split.
                 retainedAppShellSelectedTab(selectedTab) == "dms" ||
-                // task #34: the Tasks board hosts the detail in a bounded overlay while a task
-                // opened from the board is showing.
-                (retainedAppShellSelectedTab(selectedTab) == "tasks" && tasksDetailOverlayOpen) ||
+                // task #34: the Tasks page hosts the detail in its task column while a task
+                // opened from the page is showing.
+                (retainedAppShellSelectedTab(selectedTab) == "tasks" && tasksDetailColumnOpen) ||
                 appShellRailInlineListPane(railInlineSecondaryDestination)
         )
 
@@ -1219,39 +1219,39 @@ internal fun appShellRailSurfaceBackDismissesDetailFirst(
     selectedTab: String,
     railInlineSecondaryDestination: String?,
     selectionPresent: Boolean,
-    tasksDetailOverlayOpen: Boolean = false,
+    tasksDetailColumnOpen: Boolean = false,
 ): Boolean =
     selectionPresent &&
         (
             appShellRailInlineListPane(railInlineSecondaryDestination) ||
                 retainedAppShellSelectedTab(selectedTab) == "activity" ||
                 retainedAppShellSelectedTab(selectedTab) == "dms" ||
-                (retainedAppShellSelectedTab(selectedTab) == "tasks" && tasksDetailOverlayOpen)
+                (retainedAppShellSelectedTab(selectedTab) == "tasks" && tasksDetailColumnOpen)
         )
 
 /**
- * task #34: on a wide desktop-mode screen a task opened from the Tasks board shows its thread in
- * a bounded overlay above the board, so the board (filters, column scroll, selection) stays put.
- * [overlayActive] is set by a board open and kept while the user navigates inside the detail
- * (thread → parent channel advances the selection generation); it is cleared when the overlay
- * closes, the selection ends, the user leaves the Tasks tab, or the wide layout goes away — so a
- * conversation selected elsewhere (Home, Activity, Search) never pops up over the board.
+ * task #34: on a wide desktop-mode screen a task opened from the Tasks page shows its thread in a
+ * column beside the list (web TasksRoute), so the list (filters, scroll) stays put and in use.
+ * [columnActive] is set by an open from the page and kept while the user navigates inside the
+ * detail (thread → parent channel advances the selection generation); it is cleared when the
+ * column closes, the selection ends, the user leaves the Tasks tab, or the wide layout goes away
+ * — so a conversation selected elsewhere (Home, Activity, Search) never opens beside the list.
  */
-internal fun appShellTasksDetailOverlayOpen(
+internal fun appShellTasksDetailColumnOpen(
     desktopModeOnLargeScreen: Boolean,
     dualPane: Boolean,
     selectedTab: String,
     selectionPresent: Boolean,
-    overlayActive: Boolean,
+    columnActive: Boolean,
 ): Boolean =
     desktopModeOnLargeScreen &&
         dualPane &&
         retainedAppShellSelectedTab(selectedTab) == "tasks" &&
         selectionPresent &&
-        overlayActive
+        columnActive
 
-/** task #34: the overlay ownership ends once any of these no longer holds. */
-internal fun appShellTasksDetailOverlayStaysActive(
+/** task #34: the task column's ownership ends once any of these no longer holds. */
+internal fun appShellTasksDetailColumnStaysActive(
     desktopModeOnLargeScreen: Boolean,
     dualPane: Boolean,
     selectedTab: String,
@@ -2279,8 +2279,12 @@ private fun RaftAppShellReadyContent(
     val adaptiveWorkspaceSession by adaptiveWorkspaceStore.state.collectAsState()
     val adaptiveWorkspaceState = adaptiveWorkspaceSession.workspace
     val adaptiveDetailLaunchPayload = adaptiveWorkspaceSession.launchPayload
-    // task #34: a task opened from the Tasks board owns the bounded detail overlay.
-    var tasksDetailOverlayActive by remember { mutableStateOf(false) }
+    // task #34: a task opened from the Tasks page owns the task column beside the list (web
+    // TasksRoute: the task a column of the row, the list the conversation's). Expanded, it fills
+    // the row (web Expand, the thread's Focus mode). The id only marks the open task's card.
+    var tasksDetailColumnActive by remember { mutableStateOf(false) }
+    var tasksDetailColumnExpanded by remember { mutableStateOf(false) }
+    var tasksDetailColumnTaskId by remember { mutableStateOf<String?>(null) }
     rememberAuthRuntimeCapabilities(
         store = sharedStores.authRuntimeCapabilityStore,
         pageData = pager.pageData.params
@@ -3615,26 +3619,27 @@ private fun RaftAppShellReadyContent(
         if (!sideThreadFocusStale) return@LaunchedEffect
         adaptiveWorkspaceStore.update { it.normalizeSideThreadFocus(desktopModeOnLargeScreen) }
     }
-    val tasksDetailOverlayKeepsOwnership =
-        appShellTasksDetailOverlayStaysActive(
+    val tasksDetailColumnKeepsOwnership =
+        appShellTasksDetailColumnStaysActive(
             desktopModeOnLargeScreen = desktopModeOnLargeScreen,
             dualPane = adaptivePane.layout == RaftAdaptivePaneLayout.DualPane,
             selectedTab = selectedTab,
             selectionPresent = adaptiveWorkspaceState?.selection != null,
         )
-    LaunchedEffect(tasksDetailOverlayKeepsOwnership) {
-        if (!tasksDetailOverlayKeepsOwnership && tasksDetailOverlayActive) {
-            bridge.log("tasks_detail_overlay_release reason=surface_or_selection_changed")
-            tasksDetailOverlayActive = false
+    LaunchedEffect(tasksDetailColumnKeepsOwnership) {
+        if (!tasksDetailColumnKeepsOwnership && tasksDetailColumnActive) {
+            bridge.log("tasks_detail_column_release reason=surface_or_selection_changed")
+            tasksDetailColumnActive = false
+            tasksDetailColumnExpanded = false
         }
     }
-    val tasksDetailOverlayOpen =
-        appShellTasksDetailOverlayOpen(
+    val tasksDetailColumnOpen =
+        appShellTasksDetailColumnOpen(
             desktopModeOnLargeScreen = desktopModeOnLargeScreen,
             dualPane = adaptivePane.layout == RaftAdaptivePaneLayout.DualPane,
             selectedTab = selectedTab,
             selectionPresent = adaptiveWorkspaceState?.selection != null,
-            overlayActive = tasksDetailOverlayActive,
+            columnActive = tasksDetailColumnActive,
         )
     LaunchedEffect(
         desktopModeOnLargeScreen,
@@ -3646,7 +3651,7 @@ private fun RaftAppShellReadyContent(
         selectedHomeDestination,
         authoritativeHomeStartAllowed,
         railInlineSecondaryDestination,
-        tasksDetailOverlayOpen,
+        tasksDetailColumnOpen,
     ) {
         if (!authoritativeHomeStartAllowed) {
             releaseAdaptiveHandoffLease()
@@ -3689,7 +3694,7 @@ private fun RaftAppShellReadyContent(
                 selectedTab = selectedTab,
                 selectedHomeDestination = selectedHomeDestination,
                 railInlineSecondaryDestination = railInlineSecondaryDestination,
-                tasksDetailOverlayOpen = tasksDetailOverlayOpen,
+                tasksDetailColumnOpen = tasksDetailColumnOpen,
             )
         // Capture the dropped pending opens BEFORE the update so the reject/nack path
         // can still see them (they are cleared inside the update for the authority change).
@@ -5492,13 +5497,14 @@ private fun RaftAppShellReadyContent(
     }
 
     /**
-     * task #34: the task overlay's close button / scrim closes the whole detail, including any
-     * thread → channel navigation made inside it (Back still unwinds one level at a time).
+     * task #34: the task column's Close closes the whole detail, including any thread → channel
+     * navigation made inside it (Back still unwinds one level at a time).
      */
-    fun closeTasksDetailOverlay() {
+    fun closeTasksDetailColumn() {
         val selection = adaptiveWorkspaceStore.snapshot().workspace?.selection
-        bridge.log("tasks_detail_overlay_close selection=${selection?.identity?.key.orEmpty()}")
-        tasksDetailOverlayActive = false
+        bridge.log("tasks_detail_column_close selection=${selection?.identity?.key.orEmpty()}")
+        tasksDetailColumnActive = false
+        tasksDetailColumnExpanded = false
         RaftRatingPrompt.onTaskListShown()
         if (selection == null) return
         adaptiveWorkspaceStore.update { it.closeDetailCompletely() }
@@ -5522,15 +5528,21 @@ private fun RaftAppShellReadyContent(
             membersDetailSelection.value = null
             return true
         }
+        // Web parity (rowPlanStore's Escape): the task column's Expand is a step of its own, as the
+        // thread's Focus mode below; the next Back steps the column (RaftTasksTaskColumn.kt).
+        if (tasksDetailColumnOpen && tasksDetailColumnExpanded) {
+            tasksDetailColumnExpanded = false
+            return true
+        }
         // task #180 (web parity): Focus mode is one step of its own. Back leaves Focus and restores
         // the two columns; only the next Back closes the thread. Matches the web menu's model where
         // maximise is a reversible view state, not a new screen.
-        if (!tasksDetailOverlayOpen && adaptiveWorkspaceStore.snapshot().sideThreadFocusActive()) {
+        if (!tasksDetailColumnOpen && adaptiveWorkspaceStore.snapshot().sideThreadFocusActive()) {
             adaptiveWorkspaceStore.update { it.copy(sideThreadFocused = false) }
             return true
         }
         // task #36: an open side thread closes first; the main detail stays.
-        if (!tasksDetailOverlayOpen && adaptiveWorkspaceStore.snapshot().backClosesSideThreadFirst(desktopModeOnLargeScreen)) {
+        if (!tasksDetailColumnOpen && adaptiveWorkspaceStore.snapshot().backClosesSideThreadFirst(desktopModeOnLargeScreen)) {
             adaptiveWorkspaceStore.update { it.copy(sideThread = null) }
             return true
         }
@@ -5555,7 +5567,7 @@ private fun RaftAppShellReadyContent(
                                     )
                             )
                     },
-                tasksDetailOverlayOpen = tasksDetailOverlayOpen,
+                tasksDetailColumnOpen = tasksDetailColumnOpen,
             )
         ) {
             dismissAdaptiveDetailSelection()
@@ -6551,7 +6563,7 @@ private fun RaftAppShellReadyContent(
                 selectedTab = selectedTab,
                 railInlineSecondaryDestination = railInlineSecondaryDestination,
                 selectedHomeDestination = selectedHomeDestination,
-                tasksDetailOverlayOpen = tasksDetailOverlayOpen,
+                tasksDetailColumnOpen = tasksDetailColumnOpen,
                 conversation = adaptiveWorkspaceState?.selection?.identity,
                 conversationRoute = adaptiveDetailLaunchPayload,
                 member = membersDetailSelection.value?.identity,
@@ -6599,7 +6611,7 @@ private fun RaftAppShellReadyContent(
                     bridge.logWarn("wide_history_restore_open_refused detail=$detail")
                     return
                 }
-                if (entry.surface == "tasks") tasksDetailOverlayActive = true
+                if (entry.surface == "tasks") tasksDetailColumnActive = true
                 homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(session.detailListSelectionId()))
             }
             is RaftWideNavDetail.Member -> wideNavMemberOpenRequest = detail.identity
@@ -6607,7 +6619,7 @@ private fun RaftAppShellReadyContent(
                 when (entry.surface) {
                     "members" -> membersDetailSelection.value = null
                     "tasks" -> {
-                        tasksDetailOverlayActive = false
+                        tasksDetailColumnActive = false
                         RaftRatingPrompt.onTaskListShown()
                     }
                     "settings" -> Unit
@@ -6626,7 +6638,7 @@ private fun RaftAppShellReadyContent(
         if (!navRailActive) return
         if (
             direction == RaftWideNavDirection.Back &&
-            raftWideBackStep(supportingPanes, supportingPaneShown, overlayOpen = tasksDetailOverlayOpen) == RaftWideBackStep.PopSupportingPane
+            raftWideBackStep(supportingPanes, supportingPaneShown, overlayOpen = tasksDetailColumnOpen) == RaftWideBackStep.PopSupportingPane
         ) {
             bridge.log("wide_history_back source=$source pops=supporting_pane")
             supportingPanes = supportingPanes.pop()
@@ -8078,9 +8090,9 @@ private fun RaftAppShellReadyContent(
                         }
                     }
                     // task #34: the shared workspace detail child, hosted by the list + detail split
-                    // (Home, Activity, DMs, Search) and by the Tasks board overlay.
+                    // (Home, Activity, DMs, Search) and by the Tasks page's task column.
                     // task #36: the main detail plus, when it fits, the reply-thread side column.
-                    // [allowSideColumn] is false on hosts that cannot show one (the task overlay);
+                    // [allowSideColumn] is false on hosts that cannot show one (the task column);
                     // the active host reports its measured width for the column decision.
                     val adaptiveDetailPane: @Composable (Modifier, Boolean, Boolean, Boolean) -> Unit = { paneModifier, active, detailAccepted, allowSideColumn ->
                         val density = LocalDensity.current
@@ -8107,7 +8119,7 @@ private fun RaftAppShellReadyContent(
                         }
                         // Wide pane roles (RaftWidePanes.kt): a page the conversation opens with a
                         // Supporting role shows in the pane on the right; the conversation stays.
-                        // The task overlay has no room for one: its pages open as before.
+                        // The task column has no room for one: its pages open as before.
                         // Inside the list + detail split the detail's columns stand in the split's row,
                         // right of this pane: the width the side column decision reads is that of the
                         // pane and its columns together, as when they stood inside it.
@@ -8327,14 +8339,18 @@ private fun RaftAppShellReadyContent(
                             RaftProductEvents.recorder.markTaskThreadOpening(taskLaunchPayload.instanceId)
                             // Rating prompt (task_result_viewed): counts when the list shows again.
                             RaftRatingPrompt.onTaskOpened(task)
-                            // task #34: wide desktop mode keeps the board and opens the task's
-                            // thread in a bounded overlay; otherwise the full-page push stays.
-                            val overlaySelection = openLaunchPayloadInAdaptiveDetail(taskLaunchPayload)
-                            if (overlaySelection != null) {
-                                tasksDetailOverlayActive = true
+                            // task #34: wide desktop mode keeps the list and opens the task's thread
+                            // in the column beside it (web TasksRoute), replacing the task open there;
+                            // otherwise the full-page push stays.
+                            val columnSelection = openLaunchPayloadInAdaptiveDetail(taskLaunchPayload)
+                            if (columnSelection != null) {
+                                tasksDetailColumnActive = true
+                                tasksDetailColumnTaskId = task.id.value
+                                // Web tasksPageOpen: opened from the list, a task starts beside it.
+                                tasksDetailColumnExpanded = false
                                 bridge.log(
-                                    "tasks_detail_overlay_open task=${task.id} " +
-                                        "selection=${overlaySelection.identity.key} generation=${overlaySelection.generation}"
+                                    "tasks_detail_column_open task=${task.id} " +
+                                        "selection=${columnSelection.identity.key} generation=${columnSelection.generation}"
                                 )
                                 tasksOpenSurfaceFlow.finishHandOff()
                                 return
@@ -8408,7 +8424,32 @@ private fun RaftAppShellReadyContent(
                                 openTaskPage(arrived, null)
                             }
                         }
-                        Box(modifier = Modifier.fillMaxSize()) {
+                        // The task opened from the page stands in a column beside the list on the wide
+                        // layout (RaftTasksTaskColumn.kt; web TasksRoute), the list still in use.
+                        RaftTasksTaskColumnLayout(
+                            open = tasksDetailColumnOpen,
+                            expanded = tasksDetailColumnExpanded,
+                            active = active,
+                            onToggleExpand = { tasksDetailColumnExpanded = !tasksDetailColumnExpanded },
+                            onClose = ::closeTasksDetailColumn,
+                            // Back unwinds navigation made inside the column one level at a time, then closes it.
+                            onBack = {
+                                if (adaptiveWorkspaceStore.snapshot().hasVisibleDetailBackHistory()) {
+                                    dismissAdaptiveDetailSelection()
+                                } else {
+                                    closeTasksDetailColumn()
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                            task = {
+                                adaptiveDetailPane(
+                                    Modifier.padding(bottom = shellScope.embeddedChildBottomInset(showAppShellBottomTabs)),
+                                    active,
+                                    true,
+                                    false,
+                                )
+                            },
+                        ) {
                         key(tasksRoute) {
                         // The page's Mine / All, search, status and sort: read from the server's task query.
                         val tasksQueryStore = tasksViewModel.queryStore
@@ -8417,6 +8458,7 @@ private fun RaftAppShellReadyContent(
                         }
                         val tasksQueryState = tasksQueryStore?.let { store -> store.state.collectAsState().value }
                         SharedTasksScreen(
+                            openTaskId = tasksDetailColumnTaskId.takeIf { tasksDetailColumnOpen },
                             query =
                                 // A server without the board query (before slock v1.21.63): the app's own list.
                                 if (tasksQueryStore != null && tasksQueryState != null && !tasksQueryState.unsupported) {
@@ -8483,14 +8525,6 @@ private fun RaftAppShellReadyContent(
                                 }
                             }
                         )
-                        }
-                        if (tasksDetailOverlayOpen) {
-                            RaftTasksDetailOverlay(
-                                onDismiss = ::closeTasksDetailOverlay,
-                                bottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
-                            ) { modifier ->
-                                adaptiveDetailPane(modifier, active, true, false)
-                            }
                         }
                         }
                     }

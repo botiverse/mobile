@@ -95,7 +95,7 @@ class AppShellRailSurfaceVisibilityTest {
     }
 
     @Test
-    fun `tasks board hosts the detail only while its overlay is open`() {
+    fun `tasks page hosts the detail only while its task column is open`() {
         // task #34: the Tasks tab counts as a visible detail host only while a task opened
         // from the board is showing in the overlay; otherwise it still suspends the detail.
         assertTrue(
@@ -104,7 +104,7 @@ class AppShellRailSurfaceVisibilityTest {
                 selectedTab = "tasks",
                 selectedHomeDestination = null,
                 railInlineSecondaryDestination = null,
-                tasksDetailOverlayOpen = true,
+                tasksDetailColumnOpen = true,
             )
         )
         assertFalse(
@@ -113,7 +113,7 @@ class AppShellRailSurfaceVisibilityTest {
                 selectedTab = "tasks",
                 selectedHomeDestination = null,
                 railInlineSecondaryDestination = null,
-                tasksDetailOverlayOpen = false,
+                tasksDetailColumnOpen = false,
             )
         )
         assertTrue(
@@ -121,21 +121,21 @@ class AppShellRailSurfaceVisibilityTest {
                 selectedTab = "tasks",
                 railInlineSecondaryDestination = null,
                 selectionPresent = true,
-                tasksDetailOverlayOpen = true,
+                tasksDetailColumnOpen = true,
             )
         )
     }
 
 
     @Test
-    fun `tasks overlay shows only while the board owns the open detail on a wide desktop screen`() {
+    fun `tasks column shows only while the page owns the open detail on a wide desktop screen`() {
         fun open(
             desktop: Boolean = true,
             dualPane: Boolean = true,
             tab: String = "tasks",
             selection: Boolean = true,
             active: Boolean = true,
-        ) = appShellTasksDetailOverlayOpen(desktop, dualPane, tab, selection, active)
+        ) = appShellTasksDetailColumnOpen(desktop, dualPane, tab, selection, active)
 
         assertTrue(open())
         // Not opened from the board (e.g. a conversation selected on Home): no overlay.
@@ -148,15 +148,15 @@ class AppShellRailSurfaceVisibilityTest {
 
 
     @Test
-    fun `tasks overlay ownership survives in-detail navigation and ends when the surface changes`() {
+    fun `tasks column ownership survives in-detail navigation and ends when the surface changes`() {
         // Navigating inside the detail (thread -> parent channel) keeps a selection on the
         // Tasks tab, so ownership holds; leaving the tab, losing the wide layout, turning
         // desktop mode off, or ending the selection releases it.
-        assertTrue(appShellTasksDetailOverlayStaysActive(true, true, "tasks", true))
-        assertFalse(appShellTasksDetailOverlayStaysActive(true, true, "home", true))
-        assertFalse(appShellTasksDetailOverlayStaysActive(true, false, "tasks", true))
-        assertFalse(appShellTasksDetailOverlayStaysActive(false, true, "tasks", true))
-        assertFalse(appShellTasksDetailOverlayStaysActive(true, true, "tasks", false))
+        assertTrue(appShellTasksDetailColumnStaysActive(true, true, "tasks", true))
+        assertFalse(appShellTasksDetailColumnStaysActive(true, true, "home", true))
+        assertFalse(appShellTasksDetailColumnStaysActive(true, false, "tasks", true))
+        assertFalse(appShellTasksDetailColumnStaysActive(false, true, "tasks", true))
+        assertFalse(appShellTasksDetailColumnStaysActive(true, true, "tasks", false))
     }
 
 
