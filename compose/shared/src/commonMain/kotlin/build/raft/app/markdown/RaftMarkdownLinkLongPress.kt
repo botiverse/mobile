@@ -83,6 +83,8 @@ internal fun raftMarkdownPressedLinkAt(layout: TextLayoutResult, position: Offse
                         ?: text.getStringAnnotations(RaftAppLinkHoverTag, offset, offset + 1).firstOrNull()?.item
                 RaftMarkdownPressedLink(url = url?.takeIf { it.isNotBlank() })
             }
+            // LinkAnnotation is not sealed: any other kind is still a link, with no address we know.
+            else -> RaftMarkdownPressedLink(url = null)
         }
     }
     return null
