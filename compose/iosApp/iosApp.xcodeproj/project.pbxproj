@@ -12,6 +12,7 @@
 		A47400010000000000000001 /* RaftIosSideActionHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47400020000000000000001 /* RaftIosSideActionHost.swift */; };
 		A47400030000000000000001 /* RaftIosSideActionItems.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47400040000000000000001 /* RaftIosSideActionItems.swift */; };
 		A47400050000000000000001 /* RaftIosSideActionItems.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47400040000000000000001 /* RaftIosSideActionItems.swift */; };
+		A62600010000000000000001 /* RaftIosComposerPasteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A62600020000000000000001 /* RaftIosComposerPasteTests.swift */; };
 		A47400060000000000000001 /* RaftIosSideActionItemsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47400070000000000000001 /* RaftIosSideActionItemsTests.swift */; };
 		0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */ = {isa = PBXBuildFile; fileRef = 0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */; };
 		04E32B3E29F01975000A6BC5 /* RaftPageRouter.m in Sources */ = {isa = PBXBuildFile; fileRef = 04E32B3D29F01975000A6BC5 /* RaftPageRouter.m */; };
@@ -103,6 +104,7 @@
 		A51000020000000000000004 /* RaftPageControllerFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftPageControllerFactory.swift; sourceTree = "<group>"; };
 		A47400020000000000000001 /* RaftIosSideActionHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosSideActionHost.swift; sourceTree = "<group>"; };
 		A47400040000000000000001 /* RaftIosSideActionItems.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosSideActionItems.swift; sourceTree = "<group>"; };
+		A62600020000000000000001 /* RaftIosComposerPasteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosComposerPasteTests.swift; sourceTree = "<group>"; };
 		A47400070000000000000001 /* RaftIosSideActionItemsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosSideActionItemsTests.swift; sourceTree = "<group>"; };
 		0423580F44476A8BFD9068C7 /* Pods-iosApp-iosAppTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp-iosAppTests.debug.xcconfig"; path = "Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests.debug.xcconfig"; sourceTree = "<group>"; };
 		0474A3F129F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UINavigationController+FDFullscreenPopGesture.h"; sourceTree = "<group>"; };
@@ -379,6 +381,7 @@
 				A53100020000000000000003 /* RaftIosTabBarItemMappingTests.swift */,
 				A47400070000000000000001 /* RaftIosSideActionItemsTests.swift */,
 				A54100020000000000000002 /* RaftIosComposeScrollEdgeEffectsTests.swift */,
+				A62600020000000000000001 /* RaftIosComposerPasteTests.swift */,
 				A42700020000000000000001 /* RaftAdaptiveEditorSnapshotTests.m */,
 				J0NY00020000000000000001 /* RaftShareControllerFailureReasonTests.m */,
 				A19300020000000000000001 /* RaftInteractivePopGestureTests.m */,
@@ -847,6 +850,7 @@
 				A47400060000000000000001 /* RaftIosSideActionItemsTests.swift in Sources */,
 				A54100010000000000000002 /* RaftIosComposeScrollEdgeEffects.swift in Sources */,
 				A54100010000000000000003 /* RaftIosComposeScrollEdgeEffectsTests.swift in Sources */,
+				A62600010000000000000001 /* RaftIosComposerPasteTests.swift in Sources */,
 				J0NY00010000000000000001 /* RaftShareControllerFailureReasonTests.m in Sources */,
 				A19300010000000000000001 /* RaftInteractivePopGestureTests.m in Sources */,
 				A20500010000000000000001 /* RaftRouterLoginTransitionTests.m in Sources */,

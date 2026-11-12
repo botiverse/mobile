@@ -113,7 +113,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
@@ -2323,10 +2322,7 @@ internal fun ThreadComposerContent(
         onEvent = onEvent,
     )
     // Paste with only images on the clipboard attaches them (ThreadComposerImagePaste.kt).
-    val platformClipboard = LocalClipboard.current
-    val composerClipboard = remember(platformClipboard) {
-        if (raftPlatformComposerUsesImagePasteClipboard()) ThreadComposerImagePasteClipboard(platformClipboard) else platformClipboard
-    }
+    val composerClipboard = rememberThreadComposerClipboard()
     // The conversation composer's own focus never counts as another field's (RaftAutofocusGuard).
     CompositionLocalProvider(
         LocalRaftEditorIsConversationComposer provides true,
@@ -3308,9 +3304,7 @@ internal fun ThreadComposerContentLeaf(
                                     min = ThreadComposerTextFieldMinHeight,
                                     max = ThreadComposerTextFieldMaxHeight
                                 )
-                                .onFocusChanged {
-                                    ThreadComposerImagePasteRequests.editorFocusChanged(imagePasteFocusOwner, it.hasFocus)
-                                }
+                                .threadComposerImagePasteFocus(imagePasteFocusOwner)
                                 .threadComposerPasteAttachments {
                                     onEvent(ThreadComposerPasteAttachmentsAction, null, null, null)
                                 }
