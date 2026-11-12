@@ -3,7 +3,7 @@ type: improved
 area: navigation
 platforms:
   - ios
-pull_request: TBD
+pull_request: 4610
 rollout: full
 ---
 
