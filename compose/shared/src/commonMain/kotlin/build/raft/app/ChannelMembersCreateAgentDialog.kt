@@ -64,7 +64,7 @@ internal fun ChannelMembersCreateAgentDialog(
         )
     var submitting by remember(owner) { mutableStateOf(false) }
     var error by remember(owner) { mutableStateOf<String?>(null) }
-    var createdId by remember(owner) { mutableStateOf<String?>(null) }
+    var joinState by remember(owner) { mutableStateOf(CreatedAgentJoinState()) }
     val failedLabel = stringResource(Res.string.common_error)
     val joinFailedLabel = stringResource(Res.string.thread_members_created_join_failed)
     LaunchedEffect(owner, mode) {
@@ -80,7 +80,7 @@ internal fun ChannelMembersCreateAgentDialog(
             try {
                 val receipt = authority.capture(owner)
                 if (receipt == null) { error = failedLabel; return@launch }
-                var agentId = createdId
+                var agentId = joinState.createdAgentId
                 if (agentId == null) {
                     if (request == null) { error = failedLabel; return@launch }
                     val client = authority.networkClient(receipt)
@@ -97,10 +97,11 @@ internal fun ChannelMembersCreateAgentDialog(
                     }
                     formStore.rememberCreatedAgent(owner.serverId, request)
                     agentId = result.data.id
-                    createdId = agentId
+                    joinState = joinState.created(agentId)
                 }
                 val joined = membersStore.addChannelMembersBatch(owner, createdAgentJoinRequest(channelId, agentId))
                 if (!authority.isCurrent(receipt)) return@launch
+                joinState = joinState.joinFinished(joined)
                 if (joined is DataResult.Content) {
                     // task #5 (Hands 906abab9): ordering is the contract — see
                     // createdAgentAfterJoinSteps. Opening the profile after the dismissal never
@@ -119,10 +120,11 @@ internal fun ChannelMembersCreateAgentDialog(
             }
         }
     }
-    if (createdId != null) {
+    if (joinState.showsJoinRetry) {
         RaftUnifiedDialog(title = stringResource(Res.string.thread_action_add_member),
             onDismiss = onDismiss, dismissEnabled = !submitting) {
             Text(error ?: joinFailedLabel, style = RaftType.Body)
+            RaftTraceIdNote(joinState.joinFailureTraceId)
             RaftDialogFooter {
                 RaftButton(
                     text = stringResource(Res.string.common_retry),
@@ -153,6 +155,35 @@ internal fun ChannelMembersCreateAgentDialog(
             onDismiss = { if (!submitting) onDismiss() }, onSubmit = { submit(it) },
         )
     }
+}
+
+/**
+ * Where the create → join sequence of [ChannelMembersCreateAgentDialog] is.
+ *
+ * #proj-mobile:#130: the dialog used to switch to the "created, but couldn't join" face as soon as
+ * the agent existed, i.e. while the join request was still in flight, so every create from a
+ * channel flashed the failure before the join succeeded and the dialog closed. The failure face
+ * now shows only after a join request has really failed ([joinFailed]); a retry keeps it until
+ * that retry succeeds. [createdAgentId] still keeps a retry from creating a second agent.
+ */
+internal data class CreatedAgentJoinState(
+    val createdAgentId: String? = null,
+    val joinFailed: Boolean = false,
+    /** The failed join's `X-Trace-Id` (AGENTS.md "Errors carry the trace ID"). */
+    val joinFailureTraceId: String? = null,
+) {
+    val showsJoinRetry: Boolean get() = createdAgentId != null && joinFailed
+
+    fun created(agentId: String): CreatedAgentJoinState =
+        CreatedAgentJoinState(createdAgentId = agentId)
+
+    fun joinFinished(result: DataResult<*>): CreatedAgentJoinState =
+        when (result) {
+            is DataResult.Content -> copy(joinFailed = false, joinFailureTraceId = null)
+            is DataResult.Error -> copy(joinFailed = true, joinFailureTraceId = result.error.traceId)
+            is DataResult.NoPermission -> copy(joinFailed = true, joinFailureTraceId = result.blocker.traceId)
+            is DataResult.Empty -> copy(joinFailed = true, joinFailureTraceId = null)
+        }
 }
 
 /**
