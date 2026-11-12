@@ -53,6 +53,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -195,6 +197,14 @@ internal fun SharedHandsFeedbackContent(
     // Web NewFeedbackForm: Idea first and picked, then Bug.
     var feedbackType by remember(accountId) { mutableStateOf(card?.type ?: SettingsFeedbackType.Idea) }
     var keyboardInsetDp by remember { mutableStateOf(0f) }
+    // Picking or opening an image leaves the form for the picker and the image editor: the
+    // message field gives up focus first, so the keyboard does not stay up over the editor.
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    fun dismissFormKeyboard() {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+    }
     var visualAutoSubmitted by remember(accountId, visualFixture) { mutableStateOf(false) }
     // Native Hands SDK caps feedback submissions at maxAttachments=3 (one slot is
     // reserved for the attached log bundle); keep UI copy and merge in lockstep.
@@ -265,6 +275,7 @@ internal fun SharedHandsFeedbackContent(
             attachmentsState.value
                 .firstOrNull { it.feedbackComposerAttachmentId() == attachmentId }
                 ?: return
+        dismissFormKeyboard()
         // task #286: image previews reopen the shared editor so tapping a mounted image can
         // edit it in place; non-image previews stay read-only.
         val editRequest =
@@ -336,6 +347,7 @@ internal fun SharedHandsFeedbackContent(
         }
         busy = true
         error = null
+        dismissFormKeyboard()
         // A replacement picker supersedes any promotion already in flight. Keep its native
         // handoff alive until its finally cleanup, but make its draft commit stale immediately.
         feedbackDraftResetGeneration += 1L
