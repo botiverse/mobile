@@ -175,8 +175,12 @@ class ComputersRackFitToolbarUiTest {
     fun backClearsAGivenWaySearchThenLeavesBackAlone() = runRobolectricComposeUiTest {
         val store = store()
         // Narrow enough that the search gives way to its button: with text it stays drawn over the line.
-        val back = show(loaded, store, width = 220.dp)
+        val back = show(loaded, store, width = 150.dp)
         runOnIdle { store.dispatch(RaftComputersRackToolbarIntent.Search("alp")) }
+        // The measure reports the search over the line; its effect then turns the Back handler on.
+        mainClock.advanceTimeByFrame()
+        waitForIdle()
+        mainClock.advanceTimeByFrame()
         waitForIdle()
         back.press()
         assertEquals("", store.state.value.filters.query, "Back clears the text first")
