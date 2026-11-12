@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import build.raft.app.data.BundledRuntimeCatalog
 import build.raft.app.data.ServerRuntimeCatalog
+import build.raft.app.data.SharedCreateAgentRuntimeOption
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -609,7 +610,9 @@ internal fun rememberRuntimeFormV2SourceRefresh(
  * runtimes are [catalog]'s (the server catalog, its cache, or the bundled table), grouped by
  * what the selected computer runs ([runtimePickerRows]); [currentRuntimeId] is the agent's own
  * runtime when switching (null when creating), pinned first; [serverSelectable] is the
- * runtime-options row's `canSelectInThisContext` when known.
+ * runtime-options row's `canSelectInThisContext` when known. With the server's runtime-options
+ * [options] (create: the computer's rows; switch: the agent's rows) those rows are the list and
+ * [catalog] only names them.
  */
 @Composable
 internal fun RuntimeFormV2RuntimeSection(
@@ -623,6 +626,7 @@ internal fun RuntimeFormV2RuntimeSection(
     catalog: ServerRuntimeCatalog = BundledRuntimeCatalog,
     currentRuntimeId: String? = null,
     serverSelectable: (String) -> Boolean? = { null },
+    options: List<SharedCreateAgentRuntimeOption>? = null,
     content: @Composable () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
@@ -635,7 +639,8 @@ internal fun RuntimeFormV2RuntimeSection(
             selectedRuntimeId = runtime,
             showAll = showAll,
             currentRuntimeId = currentRuntimeId,
-            serverSelectable = serverSelectable
+            serverSelectable = serverSelectable,
+            options = options
         )
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         RaftFieldLabel(text = stringResource(Res.string.agent_create_label_runtime))

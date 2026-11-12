@@ -559,8 +559,8 @@ internal fun SharedCreateAgentDialog(
             if (it != serverRuntimeCatalog) serverRuntimeCatalog = it
         }
     }
-    val supportedRuntimeIds = remember(serverRuntimeCatalog) { serverRuntimeCatalog.creatableRuntimeIds() }
-    // The computer's runtime-options rows: which runtimes have a v2 form (`runtimeFormV2` marker) and
+    // The computer's runtime-options rows: what a new agent may run here (the server's verdict, each
+    // row's `canSelectInThisContext`), which runtimes have a v2 form (`runtimeFormV2` marker) and
     // whether Built-in is offered. Reloaded on every computer change; a failure leaves it unknown.
     var runtimeCatalogAttempt by remember { mutableStateOf(0) }
     var runtimeCatalog by remember(createAgentFormStore, cleanCreateAgentServerId, availableSelectedMachineId, skipsComputer) {
@@ -573,6 +573,11 @@ internal fun SharedCreateAgentDialog(
         val result = formStore.loadRuntimeCatalog(cleanCreateAgentServerId, machineId, force = true)
         runtimeCatalog = (result as? DataResult.Content)?.data
     }
+    // The selected computer's rows, once they are its own: the list and the submit gate follow them,
+    // never a catalog's `deprecated` (#proj-runtime:#57). Until then (or on failure) the catalog decides.
+    val runtimeOptionRows = runtimeCatalog?.takeIf { it.machineId == availableSelectedMachineId }?.options
+    val supportedRuntimeIds =
+        remember(serverRuntimeCatalog, runtimeOptionRows) { serverRuntimeCatalog.creatableRuntimeIds(options = runtimeOptionRows) }
     val builtInRuntimeEnabled = runtimeCatalog?.options?.any { it.runtimeId == "builtin" && it.selectable } == true
     // The default comes from the computer's runtime-options alone (installed and allowed here); the
     // catalog only names, groups and gives forms. The last create's runtime on this server wins while
@@ -924,7 +929,7 @@ internal fun SharedCreateAgentDialog(
                         RuntimeFormV2RuntimeSection(
                             runtime = runtime,
                             catalog = serverRuntimeCatalog,
-                            serverSelectable = { id -> runtimeCatalog?.options?.firstOrNull { it.runtimeId == id }?.canSelectInThisContext },
+                            options = runtimeOptionRows,
                             quotaMachine = selectedQuotaMachine,
                             onRuntimeChange = { newRuntime -> runtime = newRuntime },
                             machineRuntimeIds = selectedMachineRuntimeIds,

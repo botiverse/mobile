@@ -158,6 +158,26 @@ internal class SharedCreateAgentFormStore(
         return deferred.await()
     }
 
+    /**
+     * The rows an existing agent may switch to (`GET agents/:id/runtime-options`). Not cached: the
+     * caller reloads them whenever the agent's runtime changes, so a switch never reads stale rows.
+     */
+    suspend fun loadAgentRuntimeOptions(serverId: String, agentId: String): DataResult<ExistingAgentRuntimeOptions> {
+        ownerProvider() ?: return clearForMissingOwner("agent_runtime_options_owner_required")
+        val cleanServerId = serverId.trim()
+        if (cleanServerId.isBlank() || agentId.isBlank()) {
+            return DataResult.Error(ScreenError("agent_runtime_options_identity_required", retryable = false))
+        }
+        val result =
+            runCatchingPreservingCancellation {
+                computersApiClient.agentRuntimeOptions(ServerId(cleanServerId), agentId)
+            }.getOrElse {
+                DataResult.Error(ScreenError("agent_runtime_options_load_failed", retryable = true))
+            }
+        logResult("agent_runtime_options", cleanServerId, "agent:${agentId.trim()}", result)
+        return result
+    }
+
     private suspend fun publishRuntimeCatalog(
         owner: SharedCreateAgentFormOwner,
         key: SharedCreateAgentMachineFormKey,

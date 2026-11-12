@@ -3336,6 +3336,7 @@
     <string name="runtime_picker_show_all_supported">顯示所有支援的項目</string>
     <string name="runtime_picker_show_installed_only">只顯示已安裝的項目</string>
     <string name="runtime_suffix_deprecated">（已淘汰）</string>
+    <string name="member_runtime_deprecated_warning">這個 Agent 使用的執行環境已淘汰。它可以繼續執行，但新的 Agent 無法選擇這個執行環境。</string>
     <string name="runtime_suffix_experimental">（實驗性）</string>
     <string name="runtime_badge_experimental">實驗性</string>
     <string name="auth_private_deployment_title">自架伺服器</string>

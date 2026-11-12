@@ -3491,6 +3491,7 @@
     <string name="runtime_picker_show_all_supported">Show All Supported</string>
     <string name="runtime_picker_show_installed_only">Show Installed Only</string>
     <string name="runtime_suffix_deprecated">&#160;(deprecated)</string>
+    <string name="member_runtime_deprecated_warning">This agent uses a deprecated runtime. It can keep running, but new agents cannot select this runtime.</string>
     <string name="runtime_suffix_experimental">&#160;(experimental)</string>
     <string name="runtime_badge_experimental">Experimental</string>
     <string name="auth_private_deployment_title">Self-hosted server</string>

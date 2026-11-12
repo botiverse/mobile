@@ -174,6 +174,11 @@ import build.raft.app.data.selectComputerServerSlice
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedRuntimeAccountUsageStore
 import build.raft.app.data.SharedCreateAgentFormStore
+import build.raft.app.data.ExistingAgentRuntimeOptions
+import build.raft.app.data.runtimeDeprecatedForAgent
+import build.raft.app.components.RaftUiBanner
+import build.raft.app.components.RaftUiBannerSize
+import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.CREATE_AGENT_BUILTIN_RUNTIME_ID
@@ -351,6 +356,7 @@ import build.raft.app.compat.pager.IPagerEventObserver
 import org.jetbrains.compose.resources.StringResource
 import build.raft.app.data.AgentConfigApply
 import build.raft.app.data.runtimeCatalogDisplayName
+import build.raft.app.data.runtimeCatalogIsDeprecated
 import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftToastHostState
 import build.raft.designsystem.components.RaftToastIntent
@@ -11414,6 +11420,20 @@ private fun MembersAgentRuntimeConfigSection(
         canonicalRuntimeId?.let { onAgentRuntimeModelsRequest(it, false) }
     }
 
+    // The runtimes this agent may switch to, as this server decides (`GET agents/:id/runtime-options`):
+    // the switch picker's list and the "(deprecated)" label/warning of its runtime. Read again when its
+    // runtime changes (a switch); a failure leaves none, and the catalog decides.
+    val agentRuntimeOptionsServerId = agentProfileEditAuthority?.serverId?.value
+    var agentRuntimeOptions by remember(member.id.value, agentRuntimeOptionsServerId) {
+        mutableStateOf<ExistingAgentRuntimeOptions?>(null)
+    }
+    LaunchedEffect(createAgentFormStore, agentRuntimeOptionsServerId, member.id.value, canonicalRuntimeId) {
+        val store = createAgentFormStore ?: return@LaunchedEffect
+        val serverId = agentRuntimeOptionsServerId ?: return@LaunchedEffect
+        if (canonicalRuntimeId == null) return@LaunchedEffect
+        agentRuntimeOptions = (store.loadAgentRuntimeOptions(serverId, member.id.value) as? DataResult.Content)?.data
+    }
+
     // The one way an editing session ends: explicit close, save success, or a real close condition.
     fun closeRuntimeEditor() {
         editingRuntimeConfig = false
@@ -11618,6 +11638,7 @@ private fun MembersAgentRuntimeConfigSection(
             resolution = runtimeConfigResolution,
             runtimeModelsCatalog = runtimeModelsCatalog,
             machineId = summary?.machineId ?: member.membersComputerId,
+            runtimeDeprecated = canonicalRuntimeId?.let { runtimeDeprecatedForAgent(it, agentRuntimeOptions) },
             runningHint =
                 canonicalRuntimeConfig?.let { config ->
                     membersRuntimeRunningHint(
@@ -11689,6 +11710,7 @@ private fun MembersAgentRuntimeConfigSection(
                 val store = createAgentFormStore
                 (store?.loadRuntimeCatalog(session.authority.serverId.value, machineId) as? DataResult.Content)?.data
             },
+            agentRuntimeOptions = agentRuntimeOptions,
             onSave = ::saveRuntimeConfigV2
         )
     }
@@ -12175,6 +12197,8 @@ private fun MembersAgentActionButton(
     )
 }
 
+internal const val MEMBERS_RUNTIME_DEPRECATED_BANNER_TAG = "members-runtime-deprecated-banner"
+
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 internal fun MembersAgentRuntimeConfigRows(
@@ -12182,7 +12206,12 @@ internal fun MembersAgentRuntimeConfigRows(
     runtimeModelsCatalog: SharedCreateAgentRuntimeModelCatalog?,
     machineId: String?,
     /** What a running agent still runs until a saved change applies; null hides the line. */
-    runningHint: MembersRuntimeRunningHint? = null
+    runningHint: MembersRuntimeRunningHint? = null,
+    /**
+     * Whether this server deprecated the agent's runtime ([runtimeDeprecatedForAgent]: its own
+     * runtime-options row); null: the catalog's answer. Drives " (deprecated)" and the warning.
+     */
+    runtimeDeprecated: Boolean? = null
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val runtimeConfig = (resolution as? MembersAgentRuntimeConfigResolution.Content)?.config
@@ -12213,11 +12242,21 @@ internal fun MembersAgentRuntimeConfigRows(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(MembersInfoItemGap)
     ) {
+        val deprecated = runtimeDeprecated ?: runtimeCatalogIsDeprecated(runtimeId)
         MembersAgentInfoField(stringResource(Res.string.member_label_runtime)) {
             MembersAgentRuntimeUsageChip(
-                label = runtimeLabelWithStatus(runtimeId),
+                label = runtimeLabelWithStatus(runtimeId, deprecated = deprecated),
                 runtimeId = runtimeId,
                 machineId = machineId
+            )
+        }
+        // Web AgentProfileInfo: under the Runtime row while the agent's runtime is deprecated here.
+        if (deprecated) {
+            RaftUiBanner(
+                status = RaftUiBannerStatus.Warning,
+                description = stringResource(Res.string.member_runtime_deprecated_warning),
+                size = RaftUiBannerSize.Small,
+                modifier = Modifier.testTag(MEMBERS_RUNTIME_DEPRECATED_BANNER_TAG)
             )
         }
         if (modelLabel != null) {

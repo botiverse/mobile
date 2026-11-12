@@ -3333,6 +3333,7 @@
     <string name="runtime_picker_show_all_supported">Показать все поддерживаемые</string>
     <string name="runtime_picker_show_installed_only">Показать только установленные</string>
     <string name="runtime_suffix_deprecated">&#160;(устарело)</string>
+    <string name="member_runtime_deprecated_warning">Этот агент использует устаревшую среду выполнения. Он может продолжать работу, но для новых агентов её выбрать нельзя.</string>
     <string name="runtime_suffix_experimental">&#160;(экспериментально)</string>
     <string name="runtime_badge_experimental">Эксперимент</string>
     <string name="auth_private_deployment_title">Собственный сервер</string>

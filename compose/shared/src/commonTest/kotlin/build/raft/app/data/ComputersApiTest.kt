@@ -5,6 +5,8 @@ import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ComputersApiTest {
     @Test
@@ -419,6 +421,54 @@ class ComputersApiTest {
         assertEquals(false, catalog.options.single { it.runtimeId == "builtin" }.runtimeFormV2)
     }
 
+    @Test
+    fun agentRuntimeOptionsKeepTheServersRowsForAnExistingAgent() = runPortableCoroutineTest {
+        // slock d759141c94 runtimeAdmissionService.test.ts: a deprecated current runtime is
+        // `grandfathered_current` + `admissionReason: "deprecated"` and still selectable; a revived one
+        // (Antigravity, OAR flag on) is an ordinary available_for_new row; the current row of a runtime
+        // the server still offers is `current: true` and selectable.
+        val api = RecordingComputersApi(agentRuntimeOptionsBody = canonicalAgentRuntimeOptionsBody)
+        val options =
+            assertIs<DataResult.Content<ExistingAgentRuntimeOptions>>(
+                RaftComputersApiClient(api).agentRuntimeOptions(ServerId("server-1"), "agent-1")
+            ).data
+        assertEquals(listOf("GET agents/agent-1/runtime-options"), api.calls)
+        assertEquals("machine-1", options.machineId)
+        assertEquals(listOf("claude", "antigravity", "copilot"), options.options.map { it.runtimeId })
+        val copilot = options.options.single { it.runtimeId == "copilot" }
+        assertTrue(copilot.current && copilot.canSelectInThisContext && copilot.deprecatedHere)
+        assertEquals(copilot, options.currentRow("copilot"))
+        assertNull(options.currentRow("claude"), "claude's row is not current")
+        val antigravity = options.options.single { it.runtimeId == "antigravity" }
+        assertTrue(antigravity.canSelectInThisContext && !antigravity.deprecatedHere && antigravity.runtimeFormV2)
+
+        val onClaude =
+            canonicalAgentRuntimeOptionsBody
+                .replace("\"runtimeId\":\"claude\",\"capabilityStatus\":\"available\",\"admissionStatus\":\"available_for_new\",\"admissionReason\":null,\"current\":false", "\"runtimeId\":\"claude\",\"capabilityStatus\":\"available\",\"admissionStatus\":\"available_for_new\",\"admissionReason\":null,\"current\":true")
+        check(onClaude != canonicalAgentRuntimeOptionsBody)
+        val claude =
+            assertIs<DataResult.Content<ExistingAgentRuntimeOptions>>(
+                RaftComputersApiClient(RecordingComputersApi(agentRuntimeOptionsBody = onClaude)).agentRuntimeOptions(ServerId("server-1"), "agent-1")
+            ).data.currentRow("claude")
+        assertEquals(false, claude?.deprecatedHere)
+
+        // An agent without a computer here: `machineId: null`, rows still read.
+        val noComputer = canonicalAgentRuntimeOptionsBody.replace("\"machineId\":\"machine-1\"", "\"machineId\":null")
+        assertNull(
+            assertIs<DataResult.Content<ExistingAgentRuntimeOptions>>(
+                RaftComputersApiClient(RecordingComputersApi(agentRuntimeOptionsBody = noComputer)).agentRuntimeOptions(ServerId("server-1"), "agent-1")
+            ).data.machineId
+        )
+        // Another context's answer is not this agent's rows.
+        val wrongContext = canonicalAgentRuntimeOptionsBody.replace("\"existing_agent\"", "\"new_agent\"")
+        assertEquals(
+            "agent_runtime_options_contract_mismatch",
+            assertIs<DataResult.Error>(
+                RaftComputersApiClient(RecordingComputersApi(agentRuntimeOptionsBody = wrongContext)).agentRuntimeOptions(ServerId("server-1"), "agent-1")
+            ).error.code
+        )
+    }
+
     private class RecordingComputersApi(
         private val machinesBody: String =
             """{"machines":[{"id":"machine-1","name":"Maria Laptop","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"daemonVersion":"0.53.0","computerVersion":"0.0.61","isComputer":true,"hostname":"maria.local","os":"darwin","description":"Runs production agents","lastHeartbeat":"2026-06-14T02:00:00.000Z","createdAt":"2026-05-01T00:00:00.000Z"}],"latestDaemonVersion":"0.53.0","latestComputerVersion":"0.0.62"}""",
@@ -432,7 +482,8 @@ class ComputersApiTest {
             """[{"directoryName":"agent-live","totalSizeBytes":2048,"lastModified":"2026-05-26T00:00:00.000Z","fileCount":12,"status":"active","agentName":"Noel","agentStatus":"active"},{"directoryName":"agent-old","totalSizeBytes":1,"lastModified":"2026-05-25T00:00:00.000Z","fileCount":1,"status":"orphan","agentName":null,"agentStatus":null}]""",
         private val runtimeModelsBody: String =
             """{"models":[{"id":"sonnet","label":"Claude Sonnet","verified":"launchable","supportedReasoningEfforts":["low","medium","high","xhigh"],"defaultReasoningEffort":"medium"},{"id":"opus","label":"Claude Opus"}],"default":"sonnet"}""",
-        private val runtimeOptionsBody: String = canonicalRuntimeOptionsBody
+        private val runtimeOptionsBody: String = canonicalRuntimeOptionsBody,
+        private val agentRuntimeOptionsBody: String = canonicalAgentRuntimeOptionsBody
     ) : RaftComputersApi {
         var respond: ((Int) -> HomeNetworkResponse)? = null
         val calls = mutableListOf<String>()
@@ -477,6 +528,11 @@ class ComputersApiTest {
             return ok(runtimeOptionsBody)
         }
 
+        override suspend fun agentRuntimeOptions(serverId: ServerId, agentId: String): HomeNetworkResponse {
+            calls += "GET agents/$agentId/runtime-options"
+            return ok(agentRuntimeOptionsBody)
+        }
+
         override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse {
             calls += "DELETE servers/${serverId.value}/machines/$machineId/workspaces/$directoryName"
             return ok(commandBody)
@@ -494,6 +550,14 @@ class ComputersApiTest {
     )
 
     private companion object {
+        /** slock agents.ts `GET /agents/:id/runtime-options` rows as runtimeAdmissionService projects them at d759141c94. */
+        val canonicalAgentRuntimeOptionsBody =
+            """{"context":"existing_agent","machineId":"machine-1","options":[""" +
+                """{"runtimeId":"claude","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":false,"canSelectInThisContext":true,"runtimeFormV2":{"protocolVersion":2}},""" +
+                """{"runtimeId":"antigravity","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":false,"canSelectInThisContext":true,"runtimeFormV2":{"protocolVersion":2}},""" +
+                """{"runtimeId":"copilot","capabilityStatus":"available","admissionStatus":"grandfathered_current","admissionReason":"deprecated","current":true,"availableForNew":false,"manageableForCurrentAgent":true,"canSelectInThisContext":true,"runtimeFormV2":{"protocolVersion":2}}""" +
+                """]}"""
+
         val canonicalRuntimeOptionsBody =
             """{"context":"new_agent","machineId":"machine-1","options":[{"runtimeId":"codex","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":true,"canSelectInThisContext":true},{"runtimeId":"builtin","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":true,"canSelectInThisContext":true,"runtimeFormV2":{"protocolVersion":2}}]}"""
 

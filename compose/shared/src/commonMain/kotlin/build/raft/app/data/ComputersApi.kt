@@ -74,6 +74,9 @@ interface RaftComputersApi {
     suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse
     suspend fun runtimeOptions(serverId: ServerId, machineId: String): HomeNetworkResponse =
         error("runtimeOptions is not implemented")
+    /** `GET agents/:id/runtime-options`: the runtimes this agent may switch to (`existing_agent` rows). */
+    suspend fun agentRuntimeOptions(serverId: ServerId, agentId: String): HomeNetworkResponse =
+        error("agentRuntimeOptions is not implemented")
     /** `GET agent-runtime-providers/:kind`: the deployment has the provider and the server its flag. */
     suspend fun agentRuntimeProvider(serverId: ServerId, kind: String): HomeNetworkResponse =
         error("agentRuntimeProvider is not implemented")
@@ -255,6 +258,15 @@ internal class RaftComputersNetworkApi(
             // The server marks a row when the runtime has a v2 form and is available for new use or
             // current; a reply with no marked row at all is read as "unknown", not "no forms"
             // (runtimeFormV2Availability), so a dropped header cannot disable create.
+            headers = mapOf(RUNTIME_FORM_V2_MARKER_HEADER to "1"),
+            serverIdOverride = serverId
+        )
+
+    override suspend fun agentRuntimeOptions(serverId: ServerId, agentId: String): HomeNetworkResponse =
+        networkClient.requestWithHeaders(
+            priority = DataRequestPriority.Visible,
+            path = "agents/${agentId.trim()}/runtime-options",
+            // Same opt-in as the computer's rows: the `runtimeFormV2` marker on each row.
             headers = mapOf(RUNTIME_FORM_V2_MARKER_HEADER to "1"),
             serverIdOverride = serverId
         )
@@ -715,6 +727,24 @@ internal class RaftComputersApiClient(
             ComputerRuntimeSelectionCatalogDto.serializer(),
             runtimeFormListJson
         ) { wire -> wire.toDomain(normalizedMachineId) }
+    }
+
+    /**
+     * `GET agents/:id/runtime-options` (slock `packages/server/src/routes/agents.ts`
+     * `agentRouter.get("/:id/runtime-options")`, rows from runtimeAdmissionService
+     * `projectExistingAgentRuntimeOptions`): `{ context: "existing_agent", machineId: string | null,
+     * options: RuntimeSelectionOption[] }`. The rows are what this agent may switch to on this server,
+     * a deprecated runtime the server offers again included; its current runtime's row carries
+     * `current: true` and, when this server deprecated it, `admissionReason: "deprecated"`.
+     */
+    suspend fun agentRuntimeOptions(serverId: ServerId, agentId: String): DataResult<ExistingAgentRuntimeOptions> {
+        val cleanAgentId = agentId.trim()
+        if (cleanAgentId.isBlank()) return runtimeFormContractError("agent_runtime_options_agent_required")
+        return transport.agentRuntimeOptions(serverId, cleanAgentId).mapComputersBody(
+            "agent_runtime_options_contract_mismatch",
+            AgentRuntimeSelectionCatalogDto.serializer(),
+            runtimeFormListJson
+        ) { wire -> wire.toDomain(cleanAgentId) }
     }
 
     suspend fun agentRuntimeProviderAvailable(serverId: ServerId, kind: String): DataResult<Boolean> =
@@ -1439,19 +1469,39 @@ private fun ComputerRuntimeSelectionCatalogDto.toDomain(
     expectedMachineId: String
 ): SharedCreateAgentRuntimeCatalog? {
     if (context != "new_agent" || machineId.trim() != expectedMachineId) return null
-    // One row this client cannot read (missing field, wrong type, a new status value, an inconsistent
-    // row) is left out on its own; it must not take every other runtime down with it. The first row
-    // wins a duplicate id.
-    val mapped =
-        options
-            .mapNotNull { row ->
-                runCatching {
-                    runtimeFormListJson.decodeFromJsonElement(ComputerRuntimeSelectionOptionDto.serializer(), row)
-                }.getOrNull()?.toDomain()
-            }
-            .distinctBy { it.runtimeId }
-    return SharedCreateAgentRuntimeCatalog(machineId = expectedMachineId, options = mapped)
+    return SharedCreateAgentRuntimeCatalog(machineId = expectedMachineId, options = runtimeSelectionRows(options))
 }
+
+@Serializable
+private data class AgentRuntimeSelectionCatalogDto(
+    val context: String,
+    // Null when the agent has no computer on this server (slock agents.ts).
+    val machineId: String? = null,
+    val options: List<JsonElement>
+)
+
+private fun AgentRuntimeSelectionCatalogDto.toDomain(agentId: String): ExistingAgentRuntimeOptions? {
+    if (context != "existing_agent") return null
+    return ExistingAgentRuntimeOptions(
+        agentId = agentId,
+        machineId = machineId?.trim()?.takeIf { it.isNotBlank() },
+        options = runtimeSelectionRows(options)
+    )
+}
+
+/**
+ * One row this client cannot read (missing field, wrong type, a new status value, an inconsistent
+ * row) is left out on its own; it must not take every other runtime down with it. The first row
+ * wins a duplicate id.
+ */
+private fun runtimeSelectionRows(options: List<JsonElement>): List<SharedCreateAgentRuntimeOption> =
+    options
+        .mapNotNull { row ->
+            runCatching {
+                runtimeFormListJson.decodeFromJsonElement(ComputerRuntimeSelectionOptionDto.serializer(), row)
+            }.getOrNull()?.toDomain()
+        }
+        .distinctBy { it.runtimeId }
 
 private fun ComputerRuntimeSelectionOptionDto.toDomain(): SharedCreateAgentRuntimeOption? {
     val cleanRuntimeId = runtimeId.trim()
@@ -1463,12 +1513,12 @@ private fun ComputerRuntimeSelectionOptionDto.toDomain(): SharedCreateAgentRunti
     ) {
         return null
     }
-    val expectedSelectable =
-        capabilityStatus == "available" &&
-            admissionStatus == "available_for_new" &&
-            admissionReason == null &&
-            availableForNew &&
-            !current
+    // slock runtimeAdmissionService `projectRuntimeOption`: installed, and offered for new use or the
+    // agent's own grandfathered runtime. A new-agent row is never current, so there it is
+    // "available and available_for_new"; an existing agent's current row is selectable too.
+    val grandfathered = admissionStatus == "grandfathered_current"
+    if ((admissionReason == null) == grandfathered || availableForNew == grandfathered) return null
+    val expectedSelectable = capabilityStatus == "available" && (availableForNew || (current && grandfathered))
     if (canSelectInThisContext != expectedSelectable) return null
     return SharedCreateAgentRuntimeOption(
         runtimeId = cleanRuntimeId,
