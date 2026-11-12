@@ -1,4 +1,4 @@
-// Generated from packages/runtime-form/contract/runtime-form-v2.contract.json (sha256 4a01d19b20c2199f). Do not edit.
+// Generated from packages/runtime-form/contract/runtime-form-v2.contract.json (sha256 3cb5909f1162bb26). Do not edit.
 // Decode with Json { ignoreUnknownKeys = true }: every type is open.
 // Enumerated strings stay String so an unknown value never fails decoding.
 package build.raft.app.data.runtimeform.v2
@@ -99,7 +99,7 @@ data class RuntimeFormV2Rule(
     val condition: RuntimeFormV2Condition,
 )
 
-/** v3: `schema` is evaluated against the value at `scope` (`#` = the whole values object, `#/properties/<key>` = one field). Supported keywords: const, enum, pattern (ECMAScript, unanchored unless the pattern anchors), not, anyOf, allOf, properties. An absent value is evaluated as "". A schema using any other keyword is unsupported: the client treats the whole form as unavailable (new keywords need a required client capability). packages/runtime-form/fixtures/v3.conditions.conformance.json is the conformance table every client runs. */
+/** v3: `schema` is evaluated against the value at `scope` (`#` = the whole values object, `#/properties/<key>` = one field). Supported keywords: const, enum (structural equality: object key order does not count), pattern (a portable ECMAScript subset, unanchored unless the pattern anchors; see the package README), not, anyOf, allOf, properties. An absent value is evaluated as "". A schema using any other keyword, or a pattern outside the subset, is unsupported: the client treats the whole form as unavailable (new keywords need a required client capability). packages/runtime-form/fixtures/v3.conditions.conformance.json is the conformance table every client runs. */
 @Serializable
 data class RuntimeFormV2Condition(
     val scope: String,

@@ -54,7 +54,7 @@ internal fun isSupportedRuntimeFormV3Schema(schema: JsonElement?): Boolean {
         if (keyword !in RUNTIME_FORM_V3_KEYWORDS) return false
         val wellFormed = when (keyword) {
             "enum" -> operand is JsonArray
-            "pattern" -> operand.stringOrNull()?.let { isPortableRuntimeFormV3Pattern(it) && runtimeFormV3Regex(it) != null } == true
+            "pattern" -> operand.stringOrNull()?.let(::runtimeFormV3Regex) != null
             "not" -> isSupportedRuntimeFormV3Schema(operand)
             "anyOf", "allOf" -> operand is JsonArray && operand.isNotEmpty() && operand.all(::isSupportedRuntimeFormV3Schema)
             "properties" -> operand is JsonObject && operand.values.all(::isSupportedRuntimeFormV3Schema)
@@ -103,100 +103,183 @@ internal fun evaluateRuntimeFormV3Condition(condition: RuntimeFormV3Condition, v
     )
 
 /**
- * Whether [pattern] stays inside the portable regex subset every client evaluates the same way
- * (#wg-runtime-form:#20, Otter): `^`/`$` anchors, literals (a metacharacter escaped with `\`), character
- * classes incl. `[^…]` and ranges, `.`, the quantifiers `*` `+` `?` `{n}` `{n,}` `{n,m}`, groups `(…)` /
- * `(?:…)` and `|`. Anything else (lookaround, named groups, backreferences, `\d`/`\w`/`\p{…}` and other
- * escape classes, inline flags, lazy or possessive quantifiers, a stray `]`/`{`/`}`) is unsupported, so the
- * condition — and the whole form — is unavailable rather than evaluated differently per platform.
+ * Whether [pattern] stays inside the portable regex subset (slock README "Protocol v3", #14545): `^` / `$`;
+ * literals, with a backslash only before a syntax character `^ $ \ . * + ? ( ) [ ] { } | /` (and `-` inside
+ * a class); classes `[…]` / `[^…]` with ordered ranges (a literal `-` only first or last, no nested `[`, no
+ * `&&`, not empty); `.`; quantifiers `* + ? {m} {m,} {m,n}` (m <= n) directly after a literal, `.`, class or
+ * group; groups `( )`; `|`. Anything else (lookarounds and every `(?…)` group, backreferences,
+ * `\d`/`\w`/`\s`/`\b`/`\p{…}` and every other escape, lazy, possessive or stacked quantifiers, a bare `]`
+ * `{` `}`) is unsupported, so the condition and the whole form are unavailable. Port of slock
+ * `isPortableRuntimeFormV3Pattern`; walks code points as the TS does.
  */
-internal fun isPortableRuntimeFormV3Pattern(pattern: String): Boolean {
-    var i = 0
-    var depth = 0
-    // Whether the previous token can take a quantifier (an atom), and whether it was itself a quantifier.
-    var atom = false
-    while (i < pattern.length) {
-        val c = pattern[i]
-        when (c) {
-            '\\' -> {
-                if (i + 1 >= pattern.length || pattern[i + 1] !in RUNTIME_FORM_V3_ESCAPABLE) return false
-                i += 2
-                atom = true
-                continue
-            }
-            '[' -> {
-                i = runtimeFormV3ClassEnd(pattern, i + 1) ?: return false
-                atom = true
-                continue
-            }
-            '(' -> {
-                if (pattern.startsWith("(?", i)) {
-                    if (!pattern.startsWith("(?:", i)) return false
-                    i += 3
-                } else {
-                    i += 1
-                }
-                depth += 1
-                atom = false
-                continue
-            }
-            ')' -> {
-                if (depth == 0) return false
-                depth -= 1
-                atom = true
-            }
-            '|', '^', '$' -> atom = false
-            '*', '+', '?' -> {
-                if (!atom) return false
-                atom = false
-            }
-            '{' -> {
-                if (!atom) return false
-                val end = pattern.indexOf('}', i)
-                if (end < 0 || !RUNTIME_FORM_V3_BOUNDS.matches(pattern.substring(i + 1, end))) return false
-                i = end + 1
-                atom = false
-                continue
-            }
-            ']', '}' -> return false
-            else -> atom = true
-        }
-        i += 1
-    }
-    return depth == 0
-}
+internal fun isPortableRuntimeFormV3Pattern(pattern: String): Boolean = runtimeFormV3PortableSource(pattern) != null
 
-private const val RUNTIME_FORM_V3_ESCAPABLE = "\\^$.|?*+()[]{}/-"
-private val RUNTIME_FORM_V3_BOUNDS = Regex("""\d+(,\d*)?""")
+/**
+ * The pattern compiled with ECMAScript semantics on the Kotlin engines (JVM and Kotlin/Native), per the
+ * slock README: an unescaped `$` outside a class becomes `\z` (`$` also matches before a trailing newline
+ * there) and `.` becomes `[^\n\r\u2028\u2029]` (the JVM `.` also excludes U+0085). Null when the pattern is
+ * outside the portable subset or does not compile.
+ */
+internal fun runtimeFormV3Regex(pattern: String): Regex? =
+    runtimeFormV3PortableSource(pattern)?.let { source -> runCatching { Regex(source) }.getOrNull() }
 
-/** The index after the `]` closing a class whose body starts at [start]; null when it is not portable. */
-private fun runtimeFormV3ClassEnd(pattern: String, start: Int): Int? {
-    var i = start
-    if (i < pattern.length && pattern[i] == '^') i += 1
-    var members = 0
-    while (i < pattern.length) {
-        when (val c = pattern[i]) {
-            ']' -> return if (members > 0) i + 1 else null
-            '[' -> return null
-            '\\' -> {
-                if (i + 1 >= pattern.length || pattern[i + 1] !in RUNTIME_FORM_V3_ESCAPABLE) return null
+/** The `.` translation; U+2028 / U+2029 are inserted as the characters themselves. */
+internal const val RUNTIME_FORM_V3_ECMASCRIPT_DOT: String = "[^\\n\\r\u2028\u2029]"
+private const val RUNTIME_FORM_V3_SYNTAX_CHARACTERS = "^$\\.*+?()[]{}|/"
+private val RUNTIME_FORM_V3_BRACE_QUANTIFIER = Regex("""^\{([0-9]+)(,([0-9]*))?\}""")
+
+/** The pattern's code points with the UTF-16 offset each starts at (one extra offset: the length). */
+private class RuntimeFormV3CodePoints(private val text: String) {
+    private val codes = mutableListOf<Int>()
+    private val starts = mutableListOf<Int>()
+
+    init {
+        var i = 0
+        while (i < text.length) {
+            starts += i
+            val high = text[i]
+            if (high.isHighSurrogate() && i + 1 < text.length && text[i + 1].isLowSurrogate()) {
+                codes += ((high.code - 0xD800) shl 10) + (text[i + 1].code - 0xDC00) + 0x10000
                 i += 2
-            }
-            else -> {
-                if (c == '&' && pattern.startsWith("&&", i)) return null
+            } else {
+                codes += high.code
                 i += 1
             }
         }
-        members += 1
+        starts += text.length
     }
-    return null
+
+    val size: Int get() = codes.size
+    fun at(index: Int): Int? = codes.getOrNull(index)
+    fun slice(from: Int, to: Int): String = text.substring(starts[from], starts[to])
 }
 
-/**
- * The pattern as a regex (ECMAScript patterns are unanchored unless they anchor themselves, as
- * [Regex.containsMatchIn] is); null when it does not compile.
- */
-private fun runtimeFormV3Regex(pattern: String): Regex? = runCatching { Regex(pattern) }.getOrNull()
+private fun isRuntimeFormV3Syntax(code: Int?): Boolean =
+    code != null && code < 0x80 && code.toChar() in RUNTIME_FORM_V3_SYNTAX_CHARACTERS
+
+/** The Kotlin regex source for a portable [pattern] (translated as [runtimeFormV3Regex] says), or null. */
+private fun runtimeFormV3PortableSource(pattern: String): String? {
+    val chars = RuntimeFormV3CodePoints(pattern)
+    val out = StringBuilder()
+    var i = 0
+    var depth = 0
+    // Whether the previous token can take a quantifier (a literal, ., a class or a group).
+    var quantifiable = false
+
+    // An escaped syntax character (and `-` inside a class) at chars[i] == '\'; returns it or null.
+    fun escaped(inClass: Boolean): Int? {
+        val next = chars.at(i + 1)
+        if (next == null || !(isRuntimeFormV3Syntax(next) || (inClass && next == '-'.code))) return null
+        i += 2
+        return next
+    }
+
+    // One class member at chars[i]: its code point and whether it is an unescaped "-"; null when not portable.
+    fun classAtom(): Pair<Int, Boolean>? {
+        val char = chars.at(i) ?: return null
+        if (char == '['.code || char == ']'.code) return null
+        if (char == '\\'.code) return escaped(inClass = true)?.let { it to false }
+        if (char == '&'.code && chars.at(i + 1) == '&'.code) return null
+        i += 1
+        return char to (char == '-'.code)
+    }
+
+    // A class at chars[i] == '['; consumed and copied verbatim, false when outside the subset.
+    fun characterClass(): Boolean {
+        val from = i
+        i += 1
+        if (chars.at(i) == '^'.code) i += 1
+        var first = true
+        while (chars.at(i) != ']'.code) {
+            val start = classAtom() ?: return false
+            if (start.second) {
+                // A literal "-" only first or last, never a range endpoint.
+                if (!first && chars.at(i) != ']'.code) return false
+            } else if (chars.at(i) == '-'.code && chars.at(i + 1) != ']'.code) {
+                i += 1
+                val end = classAtom() ?: return false
+                if (end.second || end.first < start.first) return false
+            }
+            first = false
+        }
+        if (first) return false // [] and [^]
+        i += 1
+        out.append(chars.slice(from, i))
+        return true
+    }
+
+    // A brace quantifier at chars[i] == '{': {m}, {m,} or {m,n} with m <= n.
+    fun braceQuantifier(): Boolean {
+        val match = RUNTIME_FORM_V3_BRACE_QUANTIFIER.find(chars.slice(i, chars.size)) ?: return false
+        val min = match.groupValues[1].toLongOrNull() ?: return false
+        val max = match.groupValues[3]
+        if (max.isNotEmpty() && (max.toLongOrNull() ?: return false) < min) return false
+        out.append(match.value)
+        i += match.value.length // ASCII only: code points == chars
+        return true
+    }
+
+    while (i < chars.size) {
+        when (val char = chars.at(i)!!) {
+            '^'.code, '|'.code -> {
+                out.append(char.toChar())
+                i += 1
+                quantifiable = false
+            }
+            '$'.code -> {
+                out.append("\\z")
+                i += 1
+                quantifiable = false
+            }
+            '('.code -> {
+                if (chars.at(i + 1) == '?'.code) return null
+                out.append('(')
+                i += 1
+                depth += 1
+                quantifiable = false
+            }
+            ')'.code -> {
+                if (depth == 0) return null
+                out.append(')')
+                i += 1
+                depth -= 1
+                quantifiable = true
+            }
+            '*'.code, '+'.code, '?'.code, '{'.code -> {
+                if (!quantifiable) return null
+                if (char == '{'.code) {
+                    if (!braceQuantifier()) return null
+                } else {
+                    out.append(char.toChar())
+                    i += 1
+                }
+                quantifiable = false // no lazy (*?), possessive (*+) or stacked quantifiers
+            }
+            '['.code -> {
+                if (!characterClass()) return null
+                quantifiable = true
+            }
+            ']'.code, '}'.code -> return null
+            '\\'.code -> {
+                val from = i
+                escaped(inClass = false) ?: return null
+                out.append(chars.slice(from, i))
+                quantifiable = true
+            }
+            '.'.code -> {
+                out.append(RUNTIME_FORM_V3_ECMASCRIPT_DOT)
+                i += 1
+                quantifiable = true
+            }
+            else -> {
+                out.append(chars.slice(i, i + 1))
+                i += 1
+                quantifiable = true
+            }
+        }
+    }
+    return if (depth == 0) out.toString() else null
+}
 
 /**
  * JS `===` for primitives (a string never equals a boolean or number; numbers compare by value), and
