@@ -125,7 +125,8 @@ class RaftFitToolbarSearch(
  *
  * [onOpen], when given, is what the trigger does instead of opening a menu: a filter whose picker
  * the page draws itself (a searchable sheet of many people or channels). Such a choice belongs
- * with the filters, which never fold into More.
+ * with the filters, which never fold into More; a display control with one is a single row in
+ * More that calls it.
  */
 class RaftFitToolbarChoice(
     val text: String,
@@ -811,8 +812,22 @@ private fun RaftFitToolbarMore(
             val close = { open = false }
             display.forEachIndexed { index, choice ->
                 if (index > 0) RaftMenuSeparator()
-                choice.heading?.let { RaftMenuLabel(it) }
-                RaftFitToolbarChoiceItems(choice, close)
+                val opener = choice.onOpen
+                if (opener != null) {
+                    // A choice with its own picker is one row that opens it (review of #4632).
+                    RaftMenuItem(
+                        text = choice.text,
+                        onClick = {
+                            close()
+                            opener()
+                        },
+                        modifier = Modifier.raftFitTag(choice.testTag?.let { "$it-more" }),
+                        leadingIcon = choice.icon,
+                    )
+                } else {
+                    choice.heading?.let { RaftMenuLabel(it) }
+                    RaftFitToolbarChoiceItems(choice, close)
+                }
             }
             if (view != null) {
                 if (display.isNotEmpty()) RaftMenuSeparator()

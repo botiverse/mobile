@@ -29,7 +29,6 @@ import build.raft.designsystem.components.RaftFitToolbarViewOption
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -47,11 +46,6 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalTestApi::class)
 class RaftFitToolbarPartsTest {
-    // Quarantined, not removed (AGENTS.md: fix or quarantine visibly): it failed on CI run
-    // 43221658017 with no assertion message in the log, and this machine can't run desktop tests.
-    // RaftFitToolbarStepTest covers the step (Clear all's × with the filter icons); bring this
-    // back once its failing assertion is known (dm task #36).
-    @Ignore("Quarantined: failed on CI 43221658017 without a message; see the comment above")
     @Test
     fun clearAllHasItsWordsThenItsIconOnceTheFiltersGiveWay() =
         runComposeUiTest {
