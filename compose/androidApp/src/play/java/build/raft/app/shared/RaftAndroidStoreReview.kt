@@ -3,7 +3,6 @@ package build.raft.app.shared
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
-import build.raft.app.BuildConfig
 import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.data.RaftStoreReviewHost
 import build.raft.app.data.RaftStoreReviewRequester
@@ -12,9 +11,9 @@ import java.lang.ref.WeakReference
 
 /**
  * The Google Play In-App Review prompt behind the shared rating prompt
- * ([build.raft.app.data.RaftRatingPrompt] decides when, at most once per device). Installed only
- * in the `play` build type: a build Google Play did not install can never show it, so other builds
- * install nothing and never ask.
+ * ([build.raft.app.data.RaftRatingPrompt] decides when, at most once per device). This source set
+ * (and the Play In-App Review library) is in the `play` build type only: a build Google Play did not
+ * install can never show the prompt. Every other build type compiles the no-op in src/noPlay.
  *
  * [RaftStoreReviewRequester.requestReview] runs on the main thread; it starts the review flow over
  * the resumed activity and returns true, or returns false when no activity is resumed (nothing is
@@ -30,7 +29,6 @@ internal object RaftAndroidStoreReview {
     private var resumedActivity: WeakReference<Activity>? = null
 
     fun install(application: Application) {
-        if (!BuildConfig.PLAY_IN_APP_REVIEW_ENABLED) return
         synchronized(this) {
             if (installed) return
             installed = true
