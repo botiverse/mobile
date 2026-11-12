@@ -783,7 +783,7 @@
     <string name="channel_settings_members">멤버</string>
     <string name="channel_settings_preferences">내 채널 환경설정</string>
     <string name="channel_settings_mute">음소거</string>
-    <string name="channel_settings_mute_detail">멘션을 포함해 이 대화에서는 어떤 알림도 받지 않아요. 나에게만 적용돼요.</string>
+    <string name="channel_settings_mute_detail">멘션을 포함해 이 대화에서는 어떤 알림도 받지 않아요.</string>
     <string name="channel_settings_pin">채널 고정</string>
     <string name="channel_settings_pin_detail">홈의 고정됨 섹션에서 이 채널을 맨 위에 표시해요</string>
     <string name="channel_settings_status_joint">공동 채널</string>
@@ -3668,7 +3668,7 @@
     <string name="agent_stop_turn_not_running">실행 중인 턴이 없었어요.</string>
     <string name="agent_stop_turn_failed">현재 턴을 중지하지 못했어요.</string>
     <string name="agent_stop_turn_restarted">턴을 중지하려고 에이전트를 다시 시작했어요. 대화 맥락은 그대로 남아 있어요.</string>
-    <string name="agent_stop_turn_upgrade_required">이 에이전트의 컴퓨터는 턴만 중지하려면 업그레이드가 필요해요. 에이전트 전체를 중지할 수도 있어요.</string>
+    <string name="agent_stop_turn_upgrade_required">턴만 중지하려면 이 에이전트의 컴퓨터를 업그레이드하세요. 에이전트 전체를 중지할 수도 있어요.</string>
     <string name="agent_stop_turn_computer_offline">이 에이전트의 컴퓨터가 오프라인이에요.</string>
     <string name="channel_sos_entry">모든 에이전트 중지</string>
     <string name="channel_sos_entry_detail">이 채널의 모든 에이전트 중지</string>
@@ -4425,7 +4425,7 @@
     <string name="member_activity_subagents_stop_interrupted">서브에이전트에 중지를 요청했어요.</string>
     <string name="member_activity_subagents_stop_not_running">이 서브에이전트는 실행 중이 아니에요.</string>
     <string name="member_activity_subagents_stop_unsupported">이 서브에이전트는 따로 중지할 수 없어요.</string>
-    <string name="member_activity_subagents_stop_upgrade_required">서브에이전트를 하나만 중지하려면 이 에이전트의 컴퓨터를 업그레이드해야 해요.</string>
+    <string name="member_activity_subagents_stop_upgrade_required">서브에이전트를 하나만 중지하려면 이 에이전트의 컴퓨터를 업그레이드하세요.</string>
     <string name="member_activity_subagents_stop_failed">서브에이전트를 중지하지 못했어요.</string>
     <string name="member_activity_subagents_detail_type">유형</string>
     <string name="member_activity_subagents_detail_started">시작</string>

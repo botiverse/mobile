@@ -789,7 +789,7 @@
     <string name="channel_settings_members">メンバー</string>
     <string name="channel_settings_preferences">チャンネルの個人設定</string>
     <string name="channel_settings_mute">ミュート</string>
-    <string name="channel_settings_mute_detail">@メンションも含め、この会話からは何も通知されません。あなただけに適用されます。</string>
+    <string name="channel_settings_mute_detail">@メンションも含め、この会話からは何も通知されません。</string>
     <string name="channel_settings_pin">チャンネルをピン留め</string>
     <string name="channel_settings_pin_detail">ホームのピン留め欄で優先表示します</string>
     <string name="channel_settings_status_joint">共同チャンネル</string>
@@ -3822,7 +3822,7 @@
     <string name="agent_stop_turn_not_running">実行中の処理はありませんでした。</string>
     <string name="agent_stop_turn_failed">現在のターンを停止できませんでした。</string>
     <string name="agent_stop_turn_restarted">ターンを停止するため、エージェントを再起動しました。会話のコンテキストは保持されています。</string>
-    <string name="agent_stop_turn_upgrade_required">このエージェントのコンピューターは、ターンだけを停止するにはアップグレードが必要です。エージェント全体を停止することもできます。</string>
+    <string name="agent_stop_turn_upgrade_required">ターンだけを停止するには、このエージェントのコンピューターをアップグレードしてください。エージェント全体を停止することもできます。</string>
     <string name="agent_stop_turn_computer_offline">このエージェントのコンピューターはオフラインです。</string>
     <string name="channel_sos_entry">すべてのエージェントを停止</string>
     <string name="channel_sos_entry_detail">このチャンネルのすべてのエージェントを停止</string>
@@ -4682,7 +4682,7 @@
     <string name="member_activity_subagents_stop_interrupted">サブエージェントに停止を指示しました。</string>
     <string name="member_activity_subagents_stop_not_running">このサブエージェントは実行されていません。</string>
     <string name="member_activity_subagents_stop_unsupported">このサブエージェントは単独では停止できません。</string>
-    <string name="member_activity_subagents_stop_upgrade_required">サブエージェントを個別に停止するには、このエージェントのコンピューターのアップグレードが必要です。</string>
+    <string name="member_activity_subagents_stop_upgrade_required">サブエージェントを個別に停止するには、このエージェントのコンピューターをアップグレードしてください。</string>
     <string name="member_activity_subagents_stop_failed">サブエージェントを停止できませんでした。</string>
     <string name="member_activity_subagents_detail_type">種類</string>
     <string name="member_activity_subagents_detail_started">開始</string>

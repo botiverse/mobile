@@ -783,7 +783,7 @@
     <string name="channel_settings_members">成員</string>
     <string name="channel_settings_preferences">我的頻道偏好設定</string>
     <string name="channel_settings_mute">靜音</string>
-    <string name="channel_settings_mute_detail">這個對話裡的任何訊息都不會通知你，@你 也不會。只影響你。</string>
+    <string name="channel_settings_mute_detail">這個對話裡的任何訊息都不會通知你，@你 也不會。</string>
     <string name="channel_settings_pin">釘選頻道</string>
     <string name="channel_settings_pin_detail">在首頁的「已釘選」區塊優先顯示此頻道</string>
     <string name="channel_settings_status_joint">聯合頻道</string>
@@ -3668,7 +3668,7 @@
     <string name="agent_stop_turn_not_running">目前沒有在執行。</string>
     <string name="agent_stop_turn_failed">無法停止目前這一輪。</string>
     <string name="agent_stop_turn_restarted">為了停止這一輪，Agent 已重新啟動，對話上下文仍會保留。</string>
-    <string name="agent_stop_turn_upgrade_required">這個 Agent 所在的電腦需要更新才能只停止這一輪。你也可以停止整個 Agent。</string>
+    <string name="agent_stop_turn_upgrade_required">升級這個 Agent 所在的電腦，即可只停止這一輪。你也可以停止整個 Agent。</string>
     <string name="agent_stop_turn_computer_offline">這個 Agent 所在的電腦已離線。</string>
     <string name="channel_sos_entry">停止所有 Agent</string>
     <string name="channel_sos_entry_detail">停止此頻道中的所有 Agent</string>
@@ -4425,7 +4425,7 @@
     <string name="member_activity_subagents_stop_interrupted">已讓這個子 Agent 停下。</string>
     <string name="member_activity_subagents_stop_not_running">這個子 Agent 沒有在執行。</string>
     <string name="member_activity_subagents_stop_unsupported">這個子 Agent 不能單獨停止。</string>
-    <string name="member_activity_subagents_stop_upgrade_required">這個 Agent 的電腦需要升級，才能單獨停止一個子 Agent。</string>
+    <string name="member_activity_subagents_stop_upgrade_required">升級這個 Agent 的電腦，即可單獨停止一個子 Agent。</string>
     <string name="member_activity_subagents_stop_failed">無法停止這個子 Agent。</string>
     <string name="member_activity_subagents_detail_type">類型</string>
     <string name="member_activity_subagents_detail_started">開始於</string>

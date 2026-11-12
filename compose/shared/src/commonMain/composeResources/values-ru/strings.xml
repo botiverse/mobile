@@ -783,7 +783,7 @@
     <string name="channel_settings_members">Участники</string>
     <string name="channel_settings_preferences">Мои параметры канала</string>
     <string name="channel_settings_mute">Отключить уведомления</string>
-    <string name="channel_settings_mute_detail">Из этого чата не будет никаких уведомлений, даже об @-упоминаниях. Настройка действует только для вас.</string>
+    <string name="channel_settings_mute_detail">Из этого чата не будет никаких уведомлений, даже об @-упоминаниях.</string>
     <string name="channel_settings_pin">Закрепить канал</string>
     <string name="channel_settings_pin_detail">Показывать канал первым в разделе «Закреплённые» на главной</string>
     <string name="channel_settings_status_joint">Общий канал</string>
@@ -3665,7 +3665,7 @@
     <string name="agent_stop_turn_not_running">Ничего не выполнялось.</string>
     <string name="agent_stop_turn_failed">Не удалось остановить текущий ход.</string>
     <string name="agent_stop_turn_restarted">Чтобы остановить ход, агента пришлось перезапустить. Контекст разговора сохранён.</string>
-    <string name="agent_stop_turn_upgrade_required">Чтобы останавливать отдельный ход, нужно обновить компьютер этого агента. Вместо этого можно остановить агента целиком.</string>
+    <string name="agent_stop_turn_upgrade_required">Обновите компьютер этого агента, чтобы останавливать отдельный ход. Вместо этого можно остановить агента целиком.</string>
     <string name="agent_stop_turn_computer_offline">Компьютер этого агента не в сети.</string>
     <string name="channel_sos_entry">Остановить всех агентов</string>
     <string name="channel_sos_entry_detail">Остановить всех агентов в этом канале</string>
@@ -4502,7 +4502,7 @@
     <string name="member_activity_subagents_stop_interrupted">Субагенту отправлен запрос на остановку.</string>
     <string name="member_activity_subagents_stop_not_running">Этот субагент не запущен.</string>
     <string name="member_activity_subagents_stop_unsupported">Этого субагента нельзя остановить отдельно.</string>
-    <string name="member_activity_subagents_stop_upgrade_required">Чтобы останавливать отдельных субагентов, нужно обновить компьютер этого агента.</string>
+    <string name="member_activity_subagents_stop_upgrade_required">Обновите компьютер этого агента, чтобы останавливать отдельных субагентов.</string>
     <string name="member_activity_subagents_stop_failed">Не удалось остановить субагента.</string>
     <string name="member_activity_subagents_detail_type">Тип</string>
     <string name="member_activity_subagents_detail_started">Начало</string>

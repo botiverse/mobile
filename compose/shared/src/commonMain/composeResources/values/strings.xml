@@ -787,7 +787,7 @@
     <string name="channel_settings_members">Members</string>
     <string name="channel_settings_preferences">My Channel Preferences</string>
     <string name="channel_settings_mute">Mute</string>
-    <string name="channel_settings_mute_detail">Nothing in this conversation notifies you, not even @mentions. Only affects you.</string>
+    <string name="channel_settings_mute_detail">Nothing in this conversation notifies you, not even @mentions.</string>
     <string name="channel_settings_pin">Pin Channel</string>
     <string name="channel_settings_pin_detail">Show this channel first in Home’s Pinned section</string>
     <string name="channel_settings_status_joint">Joint Channel</string>
@@ -3822,7 +3822,7 @@
     <string name="agent_stop_turn_not_running">Nothing was running.</string>
     <string name="agent_stop_turn_failed">Couldn't stop the current turn.</string>
     <string name="agent_stop_turn_restarted">To stop the turn, the agent was restarted. Its conversation context is kept.</string>
-    <string name="agent_stop_turn_upgrade_required">This agent's Computer needs an upgrade to stop a single turn. You can stop the whole agent instead.</string>
+    <string name="agent_stop_turn_upgrade_required">Upgrade this agent's Computer to stop a single turn. You can stop the whole agent instead.</string>
     <string name="agent_stop_turn_computer_offline">This agent's Computer is offline.</string>
     <string name="channel_sos_entry">Stop All Agents</string>
     <string name="channel_sos_entry_detail">Stop all agents in this channel</string>
@@ -4682,7 +4682,7 @@
     <string name="member_activity_subagents_stop_interrupted">Asked the subagent to stop.</string>
     <string name="member_activity_subagents_stop_not_running">This subagent isn't running.</string>
     <string name="member_activity_subagents_stop_unsupported">This subagent can't be stopped on its own.</string>
-    <string name="member_activity_subagents_stop_upgrade_required">This agent's Computer needs an upgrade to stop a single subagent.</string>
+    <string name="member_activity_subagents_stop_upgrade_required">Upgrade this agent's Computer to stop a single subagent.</string>
     <string name="member_activity_subagents_stop_failed">Couldn't stop the subagent.</string>
     <string name="member_activity_subagents_detail_type">Type</string>
     <string name="member_activity_subagents_detail_started">Started</string>

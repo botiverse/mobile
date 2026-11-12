@@ -783,7 +783,7 @@
     <string name="channel_settings_members">Membros</string>
     <string name="channel_settings_preferences">Minhas preferências do canal</string>
     <string name="channel_settings_mute">Silenciar</string>
-    <string name="channel_settings_mute_detail">Nada desta conversa avisa você, nem as menções. Só afeta você.</string>
+    <string name="channel_settings_mute_detail">Nada desta conversa avisa você, nem as menções.</string>
     <string name="channel_settings_pin">Fixar canal</string>
     <string name="channel_settings_pin_detail">Mostra este canal primeiro na seção Fixados do Início</string>
     <string name="channel_settings_status_joint">Canal compartilhado</string>
@@ -3668,7 +3668,7 @@
     <string name="agent_stop_turn_not_running">Nada estava em execução.</string>
     <string name="agent_stop_turn_failed">Não foi possível parar o turno atual.</string>
     <string name="agent_stop_turn_restarted">Para parar o turno, o agente foi reiniciado. O contexto da conversa foi mantido.</string>
-    <string name="agent_stop_turn_upgrade_required">O computador deste agente precisa de uma atualização para parar só um turno. Em vez disso, você pode parar o agente inteiro.</string>
+    <string name="agent_stop_turn_upgrade_required">Atualize o computador deste agente para parar só um turno. Em vez disso, você pode parar o agente inteiro.</string>
     <string name="agent_stop_turn_computer_offline">O computador deste agente está offline.</string>
     <string name="channel_sos_entry">Parar todos os agentes</string>
     <string name="channel_sos_entry_detail">Parar todos os agentes deste canal</string>
@@ -4425,7 +4425,7 @@
     <string name="member_activity_subagents_stop_interrupted">Pedimos ao subagente que pare.</string>
     <string name="member_activity_subagents_stop_not_running">Este subagente não está em execução.</string>
     <string name="member_activity_subagents_stop_unsupported">Este subagente não pode ser parado separadamente.</string>
-    <string name="member_activity_subagents_stop_upgrade_required">O computador deste agente precisa de uma atualização para parar um único subagente.</string>
+    <string name="member_activity_subagents_stop_upgrade_required">Atualize o computador deste agente para parar um único subagente.</string>
     <string name="member_activity_subagents_stop_failed">Não foi possível parar o subagente.</string>
     <string name="member_activity_subagents_detail_type">Tipo</string>
     <string name="member_activity_subagents_detail_started">Início</string>

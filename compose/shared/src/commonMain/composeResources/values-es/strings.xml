@@ -783,7 +783,7 @@
     <string name="channel_settings_members">Miembros</string>
     <string name="channel_settings_preferences">Mis preferencias del canal</string>
     <string name="channel_settings_mute">Silenciar</string>
-    <string name="channel_settings_mute_detail">Nada de esta conversación te avisa, ni siquiera las menciones. Solo te afecta a ti.</string>
+    <string name="channel_settings_mute_detail">Nada de esta conversación te avisa, ni siquiera las menciones.</string>
     <string name="channel_settings_pin">Fijar canal</string>
     <string name="channel_settings_pin_detail">Muestra este canal primero en la sección Fijados de Inicio</string>
     <string name="channel_settings_status_joint">Canal compartido</string>
@@ -3668,7 +3668,7 @@
     <string name="agent_stop_turn_not_running">No había nada en ejecución.</string>
     <string name="agent_stop_turn_failed">No se pudo detener el turno actual.</string>
     <string name="agent_stop_turn_restarted">Para detener el turno, se reinició el agente. Conserva el contexto de la conversación.</string>
-    <string name="agent_stop_turn_upgrade_required">La computadora de este agente necesita una actualización para detener un solo turno. En su lugar, puedes detener todo el agente.</string>
+    <string name="agent_stop_turn_upgrade_required">Actualiza la computadora de este agente para detener un solo turno. En su lugar, puedes detener todo el agente.</string>
     <string name="agent_stop_turn_computer_offline">La computadora de este agente está sin conexión.</string>
     <string name="channel_sos_entry">Detener todos los agentes</string>
     <string name="channel_sos_entry_detail">Detener todos los agentes de este canal</string>
@@ -4425,7 +4425,7 @@
     <string name="member_activity_subagents_stop_interrupted">Se pidió al subagente que se detenga.</string>
     <string name="member_activity_subagents_stop_not_running">Este subagente no se está ejecutando.</string>
     <string name="member_activity_subagents_stop_unsupported">Este subagente no se puede detener por separado.</string>
-    <string name="member_activity_subagents_stop_upgrade_required">La computadora de este agente necesita una actualización para detener un solo subagente.</string>
+    <string name="member_activity_subagents_stop_upgrade_required">Actualiza la computadora de este agente para detener un solo subagente.</string>
     <string name="member_activity_subagents_stop_failed">No se pudo detener el subagente.</string>
     <string name="member_activity_subagents_detail_type">Tipo</string>
     <string name="member_activity_subagents_detail_started">Inicio</string>
