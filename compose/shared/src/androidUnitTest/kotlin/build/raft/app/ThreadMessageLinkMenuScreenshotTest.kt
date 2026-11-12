@@ -31,7 +31,8 @@ import org.robolectric.annotation.GraphicsMode
  * both menus, light and dark. The Compact menu (top) leads with the address on one line (cut in
  * the middle) and Open, Copy link, Share, Open in browser as tool buttons over a hairline; the
  * Classic menu (below) leads its header with the address and a row per action, over a separator.
- * An external link, so Open in browser shows. The menus are the real chrome, drawn in the page.
+ * An external link, so Open in browser shows. The message's own Copy Link reads "Copy Message
+ * Link" in both (artin, 1.25). The menus are the real chrome, drawn in the page.
  * Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -113,6 +114,7 @@ private fun LinkMenus() {
                     showCancelAction = false,
                     showDeleteAction = false,
                     showForwardAction = false,
+                    linkSection = true,
                     onReply = {},
                     onCopyLink = {},
                     onCopy = {},

@@ -448,6 +448,7 @@
     <string name="thread_action_quote">引用</string>
     <string name="thread_action_translate">翻訳</string>
     <string name="thread_action_copy_link">リンクをコピー</string>
+    <string name="thread_action_copy_message_link">メッセージのリンクをコピー</string>
     <string name="thread_link_menu_copy_link">リンクをコピー</string>
     <string name="thread_link_menu_open_in_browser">ブラウザーで開く</string>
     <string name="thread_action_copy_markdown">Markdown をコピー</string>

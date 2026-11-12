@@ -442,6 +442,7 @@
     <string name="thread_action_quote">引用</string>
     <string name="thread_action_translate">翻譯</string>
     <string name="thread_action_copy_link">複製連結</string>
+    <string name="thread_action_copy_message_link">複製訊息連結</string>
     <string name="thread_link_menu_copy_link">複製連結</string>
     <string name="thread_link_menu_open_in_browser">在瀏覽器中開啟</string>
     <string name="thread_action_copy_markdown">複製 Markdown</string>

@@ -884,7 +884,12 @@ internal data class ThreadNewMessageMenuActionAvailability(
     /** The in-place selection covers only part of the message: Copy reads "Copy selection" and Select All appears. */
     val partialSelection: Boolean = false,
     /** A right-click menu opened over selected text in the message: "Copy" copies that text. */
-    val copySelection: Boolean = false
+    val copySelection: Boolean = false,
+    /**
+     * A long press on a link opened the menu, so the link's own "Copy link" shows above: the
+     * message's Copy Link reads "Copy Message Link" (artin, 1.25).
+     */
+    val linkSection: Boolean = false
 ) {
     fun enabled(tool: ThreadNewMessageMenuTool): Boolean =
         when (tool) {
@@ -31254,7 +31259,9 @@ internal fun ThreadNewMessageMenuChrome(
             onCopySelection = onCopySelection,
             onMarkConversationUnread = onMarkConversationUnread
         )
-    val secondaryTools = availability.secondaryTools()
+    // The link section's "Copy link" sits above: the message's own reads "Copy Message Link".
+    val menuAvailability = if (link != null) availability.copy(linkSection = true) else availability
+    val secondaryTools = menuAvailability.secondaryTools()
     // raft-ui overlay: popover layer, seam ring and the float shadow (no offset box).
     Box(modifier = modifier) {
         Column(
@@ -31265,7 +31272,7 @@ internal fun ThreadNewMessageMenuChrome(
                     .padding(horizontal = 8.dp, vertical = ThreadNewMessageMenuVerticalPadding)
         ) {
             if (link != null) ThreadNewMessageMenuLinkSection(link)
-            if (availability.showsReactionRow()) {
+            if (menuAvailability.showsReactionRow()) {
                 ThreadMessageReactionRow(
                     reactionAtlasImage = LocalThreadReactionAtlasImage.current,
                     onReact = onReact,
@@ -31273,10 +31280,10 @@ internal fun ThreadNewMessageMenuChrome(
                     buttonSize = ThreadNewMessageMenuReactionButtonSize,
                     glyphSize = ThreadNewMessageMenuReactionGlyphSize,
                     horizontalPadding = ThreadNewMessageMenuReactionHorizontalPadding,
-                    enabled = availability.reactions,
+                    enabled = menuAvailability.reactions,
                     horizontalArrangement = Arrangement.SpaceBetween,
                     // Eight 34dp slots over the 294dp inner width: still fits with SpaceBetween.
-                    onAddReaction = if (availability.addReaction) callbacks.onAddReaction else null
+                    onAddReaction = if (menuAvailability.addReaction) callbacks.onAddReaction else null
                 )
                 Box(
                     modifier =
@@ -31287,27 +31294,35 @@ internal fun ThreadNewMessageMenuChrome(
                 )
             }
             ThreadNewMessageMenuToolRow(
-                tools = availability.primaryTools(),
+                tools = menuAvailability.primaryTools(),
                 callbacks = callbacks,
-                availability = availability
+                availability = menuAvailability
             )
             if (secondaryTools.isNotEmpty()) {
                 ThreadNewMessageMenuToolRow(
                     tools = secondaryTools,
                     callbacks = callbacks,
-                    availability = availability
+                    availability = menuAvailability
                 )
             }
             // A selection menu has no "More": its message actions are all on the two rows.
-            if (!availability.selectionContext) {
+            if (!menuAvailability.selectionContext) {
                 ThreadNewMessageMenuMoreOverlay(
-                    enabled = availability.more,
+                    enabled = menuAvailability.more,
                     onClick = onMore
                 )
             }
         }
     }
 }
+
+/**
+ * The message's own Copy Link label. With a link's section on top (a long press on a link) that
+ * section has its own "Copy link", so the message's reads "Copy Message Link" (artin, 1.25); a
+ * plain long press keeps "Copy Link".
+ */
+internal fun threadMessageCopyLinkLabel(linkSection: Boolean): StringResource =
+    if (linkSection) Res.string.thread_action_copy_message_link else Res.string.thread_action_copy_link
 
 @Composable
 private fun ThreadNewMessageMenuTool.compactLabel(availability: ThreadNewMessageMenuActionAvailability): String =
@@ -31340,7 +31355,7 @@ internal fun ThreadNewMessageMenuTool.compactLabelResource(
             }
         ThreadNewMessageMenuTool.Select -> Res.string.thread_action_select_message
         ThreadNewMessageMenuTool.AddReaction -> Res.string.thread_action_add_reaction
-        ThreadNewMessageMenuTool.CopyLink -> Res.string.thread_action_copy_link
+        ThreadNewMessageMenuTool.CopyLink -> threadMessageCopyLinkLabel(linkSection = availability.linkSection)
         ThreadNewMessageMenuTool.FollowThread ->
             if (availability.threadFollowed) {
                 Res.string.thread_action_unfollow_thread
@@ -35065,6 +35080,8 @@ internal fun threadMessageMenuActions(
      * copy group (web: the browser's own Copy). Null otherwise (long press, nothing selected).
      */
     onCopySelection: (() -> Unit)? = null,
+    /** A long press on a link opened the menu (its section on top): Copy Link reads "Copy Message Link". */
+    linkSection: Boolean = false,
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
     onCopy: () -> Unit,
@@ -35163,7 +35180,7 @@ internal fun threadMessageMenuActions(
         if (showCopyLinkAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = Res.string.thread_action_copy_link.desc(),
+                    label = threadMessageCopyLinkLabel(linkSection).desc(),
                     icon = RaftLucideIconName.Link,
                     group = "copy",
                     onClick = onCopyLink
@@ -35345,7 +35362,8 @@ private fun ThreadMessageActionMenu(
             onMarkThreadUnread,
             onMarkConversationUnread,
             onCopySelection,
-            onDownloadVideo
+            onDownloadVideo,
+            link != null
         ) {
             threadMessageMenuActions(
                 message = message,
@@ -35366,6 +35384,7 @@ private fun ThreadMessageActionMenu(
                 showMarkThreadUnreadAction = showMarkThreadUnreadAction,
                 markConversationUnread = markConversationUnread,
                 onCopySelection = onCopySelection,
+                linkSection = link != null,
                 onReply = onReply,
                 onCopyLink = onCopyLink,
                 onCopy = onCopy,

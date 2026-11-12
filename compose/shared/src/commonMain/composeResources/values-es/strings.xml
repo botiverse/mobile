@@ -442,6 +442,7 @@
     <string name="thread_action_quote">Citar</string>
     <string name="thread_action_translate">Traducir</string>
     <string name="thread_action_copy_link">Copiar enlace</string>
+    <string name="thread_action_copy_message_link">Copiar enlace del mensaje</string>
     <string name="thread_link_menu_copy_link">Copiar enlace</string>
     <string name="thread_link_menu_open_in_browser">Abrir en el navegador</string>
     <string name="thread_action_copy_markdown">Copiar Markdown</string>
