@@ -594,7 +594,6 @@
     <string name="thread_error_unfollow">Não foi possível deixar de seguir a thread</string>
     <string name="thread_error_search_unavailable">A pesquisa não está disponível para esta thread</string>
     <string name="thread_error_action_unavailable">Esta ação não está mais disponível</string>
-    <string name="thread_error_action_unsupported">Esta ação ainda não é compatível</string>
     <string name="thread_error_update_reaction">Não foi possível atualizar a reação</string>
     <string name="thread_reaction_reactor_you">Você</string>
     <string name="thread_reaction_hidden_more">e mais %1$d</string>
@@ -991,6 +990,7 @@
     <string name="thread_action_card_already_executed">Alguém já concluiu esta ação.</string>
     <string name="thread_action_card_frozen_closed">Este cartão está congelado enquanto o canal é convertido.</string>
     <string name="thread_action_card_open_in_web_failed">Não foi possível abrir esta mensagem na web.</string>
+    <string name="thread_action_card_open_on_web">Abrir na web</string>
     <string name="thread_action_card_permission_set_login_scopes">Escopos de login</string>
     <string name="thread_action_card_permission_set_data_access">Acesso a dados</string>
     <string name="thread_action_card_permission_set_none">Nenhum</string>
@@ -2534,9 +2534,9 @@
     <string name="settings_notifications_offline_computers_detail">Mostra um alerta no Início quando um computador registrado está offline. Desativado por padrão.</string>
     <string name="settings_notifications_test_title">Enviar uma notificação de teste</string>
     <string name="settings_notifications_test_detail">Envia uma notificação de teste local para verificar este dispositivo.</string>
+    <string name="settings_notifications_test_allow_permission">Permita as notificações do Raft para enviar um teste.</string>
     <string name="settings_notifications_test_sent_detail">Uma notificação de teste foi enviada.</string>
     <string name="settings_notifications_test_requested_detail">A solicitação de notificação de teste está sendo processada.</string>
-    <string name="settings_notifications_test_unavailable_detail">As notificações de teste não estão disponíveis nesta plataforma ou com as permissões atuais.</string>
     <string name="settings_notifications_test_error_detail">Não foi possível enviar a notificação de teste. Tente novamente.</string>
     <string name="settings_notifications_test_status_sent">Enviado</string>
     <string name="settings_notifications_test_status_requested">Solicitada</string>
@@ -2544,7 +2544,6 @@
     <string name="settings_notifications_permission_allowed_detail">O Raft pode enviar notificações neste dispositivo.</string>
     <string name="settings_notifications_permission_needed">É necessário acesso às notificações</string>
     <string name="settings_notifications_permission_open_settings">Abra as configurações do %1$s para revisar o acesso às notificações.</string>
-    <string name="settings_notifications_permission_unavailable_detail">Os controles de permissão de notificação não estão disponíveis nesta plataforma.</string>
     <string name="settings_notifications_request_permission">Solicitar permissão</string>
     <string name="settings_notifications_workspace">Espaço de trabalho</string>
     <string name="settings_notifications_mute_workspace">Silenciar este espaço de trabalho</string>
@@ -3044,7 +3043,7 @@
     <string name="settings_storage_detail">Cache local</string>
     <string name="settings_storage_refreshing">Atualizando armazenamento…</string>
     <string name="settings_storage_loading">Carregando armazenamento…</string>
-    <string name="settings_storage_unavailable">As informações de armazenamento não estão disponíveis nesta plataforma.</string>
+    <string name="settings_storage_empty">Nenhum detalhe de armazenamento</string>
     <string name="settings_storage_unavailable_detail">Armazenamento indisponível: %1$s</string>
     <string name="settings_storage_total_title">Armazenamento usado</string>
     <string name="settings_storage_refresh">Atualizar</string>

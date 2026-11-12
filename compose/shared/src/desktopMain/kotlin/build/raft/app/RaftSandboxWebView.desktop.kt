@@ -20,9 +20,9 @@ import kotlinx.coroutines.delay
  * as a native child view. Security rules: [RaftDesktopWebViewPolicy].
  *
  * Wry's engine has no switch to turn JavaScript off, so a surface that asks for no scripts keeps
- * the notice (fail closed). Any change to the policy inputs or the data store rebuilds the WebView.
+ * "Open in browser" (fail closed). Any change to the policy inputs or the data store rebuilds the WebView.
  *
- * Windows keeps the notice too for now: WebView2 injects the document-start script into every
+ * Windows offers "Open in browser" too for now: WebView2 injects the document-start script into every
  * frame, a path not yet verified on a Windows machine (Tenny, #3968); it ships separately.
  */
 @Composable
@@ -33,7 +33,9 @@ internal actual fun RaftSandboxWebViewHost(
     modifier: Modifier,
 ) {
     if (!config.allowScripts || RaftDesktopWebViewOnWindows) {
-        RaftDesktopUnsupportedNotice("Web content is not available on desktop yet.", modifier)
+        // The origin-locked surface (the Artifact viewer) loads an embed URL and has its own Open in
+        // browser in its top bar, so it gets no second button here.
+        RaftDesktopOpenInBrowser(config.url.takeIf { config.mainFrameOrigin == null }, kind = "web_content", modifier = modifier)
         return
     }
     val policy =

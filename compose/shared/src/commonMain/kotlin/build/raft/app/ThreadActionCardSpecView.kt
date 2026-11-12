@@ -78,7 +78,18 @@ internal data class ThreadActionCardSpecHost(
     val openFeedbackTicket: (ticketId: String?) -> Unit = {},
     /** iOS view-only Billing: "View your plan" opens the view-only Plan & Billing page. */
     val openPlan: () -> Unit = {},
+    /** The host's diagnostics log (the bridge log in the app). */
+    val log: (String) -> Unit = {},
 )
+
+/**
+ * A typed card this app can't run: open its message on the web (environment web URL), and trace
+ * which action type it was so the ones that need native support show up in the logs.
+ */
+internal fun ThreadActionCardSpecHost.openUnsupportedInWeb(messageId: String, actionType: String) {
+    log("thread_action_card_open_in_web_unsupported type=$actionType")
+    openInWeb(messageId)
+}
 
 internal val LocalThreadActionCardSpecHost = compositionLocalOf { ThreadActionCardSpecHost() }
 

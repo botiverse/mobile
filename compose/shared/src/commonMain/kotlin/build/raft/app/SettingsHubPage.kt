@@ -125,6 +125,7 @@ internal fun settingsHomeRowKeys(
     releaseNotes: Boolean = settingsReleaseNotesAvailable(),
     serverPanelPages: Boolean = false,
     guest: Boolean = false,
+    storage: Boolean = settingsStorageAvailable(),
 ): List<String> =
     listOfNotNull(
         SettingsDestinationAccount,
@@ -132,7 +133,7 @@ internal fun settingsHomeRowKeys(
         SettingsNativeDetailPage.Appearance.key,
         SettingsNativeDetailPage.Notifications.key,
         SettingsNativeDetailPage.Mobile.key.takeUnless { appPreferencesUnderAppearance },
-        SettingsDestinationStorage,
+        SettingsDestinationStorage.takeIf { storage },
         SettingsNativeDetailPage.Theme.key.takeIf { hasThemeServer },
         SettingsNativeDetailPage.ServerNotifications.key.takeIf { hasThemeServer },
         SettingsNativeDetailPage.Server.key,
@@ -152,6 +153,9 @@ internal fun settingsHomeRowKeys(
  * has a Hands app ([raftReleaseNotesAppSlug] not blank). The Compose desktop app has none yet.
  */
 internal fun settingsReleaseNotesAvailable(appSlug: String = raftReleaseNotesAppSlug()): Boolean = appSlug.isNotBlank()
+
+/** Settings › Storage shows only where the host reports local storage ([raftPlatformHasStorageInfo]). */
+internal fun settingsStorageAvailable(hasStorageInfo: Boolean = raftPlatformHasStorageInfo()): Boolean = hasStorageInfo
 
 /**
  * Whether the app preferences (message alignment, compact messages, composer key, ...) sit under

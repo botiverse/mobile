@@ -308,6 +308,7 @@ import build.raft.app.data.authLossTokenFingerprint
 import build.raft.app.data.canonicalServerMembersMentionHandle
 import build.raft.app.data.convertMessageToCanonicalTask
 import build.raft.app.data.isSupportedCommitAction
+import build.raft.app.data.runsInApp
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.isInstallMarketplaceAppAction
 import build.raft.app.data.InstallMarketplaceAppActionCardType
@@ -8639,7 +8640,6 @@ private fun SharedThreadRouteContentContent(
     val unableToUnfollowThreadLabel = stringResource(Res.string.thread_error_unfollow)
     val searchUnavailableLabel = stringResource(Res.string.thread_error_search_unavailable)
     val actionUnavailableLabel = stringResource(Res.string.thread_error_action_unavailable)
-    val actionUnsupportedLabel = stringResource(Res.string.thread_error_action_unsupported)
     val unableToUpdateReactionLabel = stringResource(Res.string.thread_error_update_reaction)
     val commentSourceUnavailableLabel = stringResource(Res.string.thread_error_comment_source)
     val memberNotFoundTemplate =
@@ -9803,6 +9803,7 @@ private fun SharedThreadRouteContentContent(
                     bridge.log("thread_view_plan_open")
                     pager.openSettingsBillingPage(storeScope)
                 },
+                log = { line -> bridge.log(line) },
             )
         }
 
@@ -14378,7 +14379,7 @@ private fun SharedThreadRouteContentContent(
                                 viewingServerId = currentServerId,
                             )
                         if (feedbackCardEntry == null) {
-                            bridge.toast(actionUnsupportedLabel)
+                            actionCardSpecHost.openUnsupportedInWeb(itemId, actionCard.type)
                         } else {
                             // The native form on the card's draft (the web page's card flow).
                             bridge.log("thread_feedback_card_open messageId=$itemId")
@@ -14391,7 +14392,8 @@ private fun SharedThreadRouteContentContent(
                         return@ThreadPageContent
                     }
                     if (!actionCard.isSupportedCommitAction()) {
-                        bridge.toast(actionUnsupportedLabel)
+                        // Not runnable in the app: its message on the web, traced by type.
+                        actionCardSpecHost.openUnsupportedInWeb(itemId, actionCard.type)
                         return@ThreadPageContent
                     }
                     if (actionCard.type.equals("agent:create", ignoreCase = true)) {
@@ -30675,6 +30677,7 @@ private fun ThreadMessageCardContent(
                                     commitEnabled = writeActionsEnabled,
                                     executedTimeLabel = data.actionCardExecutedTimeLabel,
                                     modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                                    onOpenInWeb = { specHost.openUnsupportedInWeb(message.id, shownActionCard.type) },
                                     onCommit = { onCommitActionCard(message.id) }
                                 )
                             }
@@ -31729,6 +31732,7 @@ internal fun ThreadActionCardView(
     commitEnabled: Boolean = true,
     executedTimeLabel: String? = null,
     modifier: Modifier = Modifier,
+    onOpenInWeb: () -> Unit = {},
     onCommit: () -> Unit
 ) {
     val title = card.localizedActionCardTitle()
@@ -31826,24 +31830,28 @@ internal fun ThreadActionCardView(
             // Web shows the button disabled beside the reason; with no reason to give (the
             // thread is read-only here) the card shows no button.
             if (!card.isExecuted && !ended && commitEnabled) {
+                // A card this app can't run opens on the web instead of showing a dead button.
+                val opensOnWeb = !card.isFrozen && blockedReason == null && !card.runsInApp(feedbackEntryEnabled)
                 RaftMessageActionCardActions(note = blockedReason?.takeUnless { foldsByDefault }) {
-                    RaftButton(
-                        text =
-                            when {
-                                card.isFrozen -> stringResource(Res.string.thread_action_card_frozen)
-                                card.needsReconfirmation -> stringResource(Res.string.thread_action_card_reconfirm)
-                                pending -> pendingLabel
-                                else -> verb
-                            },
-                        onClick = onCommit,
-                        enabled =
-                            !pending && !card.isFrozen && blockedReason == null &&
-                                (
-                                    card.needsReconfirmation ||
-                                        card.isSupportedCommitAction() ||
-                                        (feedbackEntryEnabled && card.opensFeedbackCardEntry())
-                                    ),
-                    )
+                    if (opensOnWeb) {
+                        RaftButton(
+                            text = stringResource(Res.string.thread_action_card_open_on_web),
+                            onClick = onOpenInWeb,
+                            trailingIcon = { RaftSlotIcon(RaftLucideIconName.ExternalLink) },
+                        )
+                    } else {
+                        RaftButton(
+                            text =
+                                when {
+                                    card.isFrozen -> stringResource(Res.string.thread_action_card_frozen)
+                                    card.needsReconfirmation -> stringResource(Res.string.thread_action_card_reconfirm)
+                                    pending -> pendingLabel
+                                    else -> verb
+                                },
+                            onClick = onCommit,
+                            enabled = !pending && !card.isFrozen && blockedReason == null,
+                        )
+                    }
                 }
             }
         }

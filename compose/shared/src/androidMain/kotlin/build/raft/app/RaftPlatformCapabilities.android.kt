@@ -89,6 +89,8 @@ internal actual fun raftPlatformPreservesEncodedFontWeightForFallback(): Boolean
 
 internal actual fun raftReleaseNotesAppSlug(): String = "raft-android"
 
+internal actual fun raftPlatformHasStorageInfo(): Boolean = true
+
 internal actual fun raftPlatformProductName(): String = "Android"
 
 // Android char-wraps ordinary background spans natively. Edge-only boxes

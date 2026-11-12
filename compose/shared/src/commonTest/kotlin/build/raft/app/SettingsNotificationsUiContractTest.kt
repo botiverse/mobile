@@ -31,15 +31,73 @@ class SettingsNotificationsUiContractTest {
     fun permissionCopyUsesSemanticStateInsteadOfRawPlatformDetail() {
         assertEquals(
             SettingsNotificationPermissionCopy.Allowed,
-            settingsNotificationPermissionCopy(permissionGranted = true, permissionAvailable = true)
+            settingsNotificationPermissionCopy(permissionGranted = true, permissionAvailable = true, settingsAvailable = true)
         )
         assertEquals(
             SettingsNotificationPermissionCopy.Needed,
-            settingsNotificationPermissionCopy(permissionGranted = false, permissionAvailable = true)
+            settingsNotificationPermissionCopy(permissionGranted = false, permissionAvailable = true, settingsAvailable = false)
+        )
+        // Denied (no more prompts) but the system settings open: the row stays with that step.
+        assertEquals(
+            SettingsNotificationPermissionCopy.Needed,
+            settingsNotificationPermissionCopy(permissionGranted = false, permissionAvailable = false, settingsAvailable = true)
+        )
+    }
+
+    @Test
+    fun permissionRowIsHiddenWhereThePlatformHasNoPermissionControl() {
+        assertNull(settingsNotificationPermissionCopy(permissionGranted = false, permissionAvailable = false, settingsAvailable = false))
+    }
+
+    @Test
+    fun testNotificationRowIsDisabledForMissingPermissionAndHiddenOtherwise() {
+        assertEquals(
+            SettingsTestNotificationRow.Shown,
+            settingsTestNotificationRow(statusLabel = "Send", available = true, permissionGranted = true)
         )
         assertEquals(
-            SettingsNotificationPermissionCopy.Unavailable,
-            settingsNotificationPermissionCopy(permissionGranted = false, permissionAvailable = false)
+            SettingsTestNotificationRow.Shown,
+            settingsTestNotificationRow(statusLabel = "Sent", available = true, permissionGranted = true)
+        )
+        assertEquals(
+            SettingsTestNotificationRow.NeedsPermission,
+            settingsTestNotificationRow(statusLabel = "Denied", available = true, permissionGranted = false)
+        )
+        assertEquals(
+            SettingsTestNotificationRow.NeedsPermission,
+            settingsTestNotificationRow(statusLabel = "Disabled", available = false, permissionGranted = false)
+        )
+        // After a send: Denied / Disabled keep the row as the disabled step while permission is missing,
+        // never hide it.
+        assertEquals(
+            SettingsTestNotificationRow.NeedsPermission,
+            settingsTestNotificationRow(statusLabel = "Disabled", available = true, permissionGranted = false)
+        )
+        // A blocked channel keeps the row the person just tapped, with the step and Retry.
+        assertEquals(
+            SettingsTestNotificationRow.BlockedRetry,
+            settingsTestNotificationRow(statusLabel = "Blocked", available = true, permissionGranted = true)
+        )
+        assertEquals(
+            SettingsTestNotificationRow.Hidden,
+            settingsTestNotificationRow(statusLabel = "Unsupported", available = false, permissionGranted = true)
+        )
+    }
+
+    @Test
+    fun aDeniedSendBecomesTappableOnceNotificationsAreAllowed() {
+        // Send -> Denied while permission is missing: the disabled step.
+        assertEquals(
+            SettingsTestNotificationRow.NeedsPermission,
+            settingsTestNotificationRow(statusLabel = "Denied", available = true, permissionGranted = false)
+        )
+        // The person allows notifications; the stored test result still says Denied: tappable again.
+        val afterAllow = settingsTestNotificationRow(statusLabel = "Denied", available = true, permissionGranted = true)
+        assertEquals(SettingsTestNotificationRow.Ready, afterAllow)
+        assertTrue(afterAllow != SettingsTestNotificationRow.NeedsPermission && afterAllow != SettingsTestNotificationRow.Hidden)
+        assertEquals(
+            SettingsTestNotificationRow.Ready,
+            settingsTestNotificationRow(statusLabel = "Disabled", available = true, permissionGranted = true)
         )
     }
 

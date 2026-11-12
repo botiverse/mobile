@@ -311,20 +311,32 @@ private fun SettingsPushStatusCard(
 ) {
     val anyActionBusy = actionState?.inProgress == true
     val permissionGranted = settingsNotificationPermissionGranted(snapshot.notificationPermission.statusLabel)
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SettingsNotificationsSectionHeader(RaftLucideIconName.Bell, stringResource(Res.string.settings_notifications_device_section))
-        SettingsNotificationPermissionBanner(
-            detail = settingsNotificationPermissionDetail(
-                permissionGranted = permissionGranted,
-                permissionAvailable = snapshot.notificationPermission.available
-            ),
+    val permissionCopy =
+        settingsNotificationPermissionCopy(
             permissionGranted = permissionGranted,
             permissionAvailable = snapshot.notificationPermission.available,
-            settingsAvailable = snapshot.notificationSettings.available,
-            busy = anyActionBusy,
-            onPermission = onPermission,
-            onSettings = onSettings
+            settingsAvailable = snapshot.notificationSettings.available
         )
+    val testRow =
+        settingsTestNotificationRow(
+            statusLabel = snapshot.testNotification.statusLabel,
+            available = snapshot.testNotification.available && snapshot.sendTestEnabled,
+            permissionGranted = permissionGranted
+        )
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SettingsNotificationsSectionHeader(RaftLucideIconName.Bell, stringResource(Res.string.settings_notifications_device_section))
+        // No permission control on this platform: no row (writing rule "What can't be done isn't explained").
+        if (permissionCopy != null) {
+            SettingsNotificationPermissionBanner(
+                detail = settingsNotificationPermissionDetail(permissionCopy),
+                permissionGranted = permissionGranted,
+                permissionAvailable = snapshot.notificationPermission.available,
+                settingsAvailable = snapshot.notificationSettings.available,
+                busy = anyActionBusy,
+                onPermission = onPermission,
+                onSettings = onSettings
+            )
+        }
         if (actionState?.action in setOf(MOBILE_ACTION_PERMISSION, MOBILE_ACTION_SETTINGS) && actionState?.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
@@ -381,13 +393,42 @@ private fun SettingsPushStatusCard(
                 enabled = snapshot.foregroundMessageBanners.available && !foregroundMessageBannersBusy,
                 onCheckedChange = onForegroundMessageBannersChange
             )
-            SettingsNotificationActionRow(
-                title = stringResource(Res.string.settings_notifications_test_title),
-                detail = snapshot.testNotification.localizedTestNotificationDetail(),
-                status = snapshot.testNotification.localizedTestNotificationStatus(),
-                enabled = snapshot.testNotification.available && snapshot.sendTestEnabled && !anyActionBusy,
-                onClick = onTest
-            )
+            when (testRow) {
+                SettingsTestNotificationRow.Shown ->
+                    SettingsNotificationActionRow(
+                        title = stringResource(Res.string.settings_notifications_test_title),
+                        detail = snapshot.testNotification.localizedTestNotificationDetail(),
+                        status = snapshot.testNotification.localizedTestNotificationStatus(),
+                        enabled = !anyActionBusy,
+                        onClick = onTest
+                    )
+                // Will work once notifications are allowed: disabled, with only that step.
+                SettingsTestNotificationRow.NeedsPermission ->
+                    SettingsNotificationActionRow(
+                        title = stringResource(Res.string.settings_notifications_test_title),
+                        detail = stringResource(Res.string.settings_notifications_test_allow_permission),
+                        status = null,
+                        enabled = false,
+                        onClick = onTest
+                    )
+                SettingsTestNotificationRow.Ready ->
+                    SettingsNotificationActionRow(
+                        title = stringResource(Res.string.settings_notifications_test_title),
+                        detail = stringResource(Res.string.settings_notifications_test_detail),
+                        status = stringResource(Res.string.settings_state_ready),
+                        enabled = !anyActionBusy,
+                        onClick = onTest
+                    )
+                SettingsTestNotificationRow.BlockedRetry ->
+                    SettingsNotificationActionRow(
+                        title = stringResource(Res.string.settings_notifications_test_title),
+                        detail = stringResource(Res.string.settings_notifications_test_allow_permission),
+                        status = stringResource(Res.string.settings_state_error),
+                        enabled = !anyActionBusy,
+                        onClick = onTest
+                    )
+                SettingsTestNotificationRow.Hidden -> Unit
+            }
         }
         if (actionState?.action in setOf(
                 MOBILE_ACTION_NOTIFICATION_PREFERENCE,
@@ -428,33 +469,75 @@ internal fun settingsNotificationPermissionGranted(status: String): Boolean =
 
 internal enum class SettingsNotificationPermissionCopy {
     Allowed,
-    Needed,
-    Unavailable
+    Needed
 }
 
+/**
+ * The permission row's state, or null when this platform has no permission control at all (neither
+ * a request nor the system settings): then the row is hidden rather than explained.
+ */
 internal fun settingsNotificationPermissionCopy(
     permissionGranted: Boolean,
-    permissionAvailable: Boolean
-): SettingsNotificationPermissionCopy =
+    permissionAvailable: Boolean,
+    settingsAvailable: Boolean
+): SettingsNotificationPermissionCopy? =
     when {
         permissionGranted -> SettingsNotificationPermissionCopy.Allowed
-        permissionAvailable -> SettingsNotificationPermissionCopy.Needed
-        else -> SettingsNotificationPermissionCopy.Unavailable
+        permissionAvailable || settingsAvailable -> SettingsNotificationPermissionCopy.Needed
+        else -> null
     }
 
 @Composable
-private fun settingsNotificationPermissionDetail(
-    permissionGranted: Boolean,
-    permissionAvailable: Boolean
-): String =
-    when (settingsNotificationPermissionCopy(permissionGranted, permissionAvailable)) {
+private fun settingsNotificationPermissionDetail(copy: SettingsNotificationPermissionCopy): String =
+    when (copy) {
         SettingsNotificationPermissionCopy.Allowed ->
             stringResource(Res.string.settings_notifications_permission_allowed_detail)
         SettingsNotificationPermissionCopy.Needed ->
             stringResource(Res.string.settings_notifications_permission_open_settings, raftPlatformProductName())
-        SettingsNotificationPermissionCopy.Unavailable ->
-            stringResource(Res.string.settings_notifications_permission_unavailable_detail)
     }
+
+internal enum class SettingsTestNotificationRow {
+    /** Sendable (or showing the last send's outcome). */
+    Shown,
+    /**
+     * The last send failed for permission (Denied / Disabled) but notifications are allowed now:
+     * sendable again, drawn as Ready rather than with that stale outcome.
+     */
+    Ready,
+    /** Can't send until notifications are allowed: disabled, with that one step. */
+    NeedsPermission,
+    /**
+     * The last send found Raft's notification channel blocked: the row the person just tapped
+     * stays, with the step and an error status, and can be tapped again once they allow it.
+     */
+    BlockedRetry,
+    /** Can't send here for any other reason: not shown. */
+    Hidden
+}
+
+/**
+ * The row starts from the platform's answer ([available]: this host can post a test). A host that
+ * can't, with notification permission missing, shows the step disabled; for any other reason no
+ * row. Once a send has run, its outcome keeps the row: Denied / Disabled turn it into the disabled
+ * step only while permission is still missing (allowing it makes the row Ready again, without
+ * reopening the page), a blocked channel into the step with Retry.
+ */
+internal fun settingsTestNotificationRow(
+    statusLabel: String,
+    available: Boolean,
+    permissionGranted: Boolean
+): SettingsTestNotificationRow {
+    val status = statusLabel.trim().lowercase()
+    return when {
+        available && status == "blocked" -> SettingsTestNotificationRow.BlockedRetry
+        available && (status == "denied" || status == "disabled") ->
+            if (permissionGranted) SettingsTestNotificationRow.Ready else SettingsTestNotificationRow.NeedsPermission
+        available && settingsTestNotificationCopy(statusLabel, available) != SettingsTestNotificationCopy.Unavailable ->
+            SettingsTestNotificationRow.Shown
+        !permissionGranted -> SettingsTestNotificationRow.NeedsPermission
+        else -> SettingsTestNotificationRow.Hidden
+    }
+}
 
 internal enum class SettingsTestNotificationCopy {
     Ready,
@@ -493,7 +576,7 @@ private fun build.raft.app.data.SettingsMobileActionSnapshot.localizedTestNotifi
         SettingsTestNotificationCopy.Ready -> stringResource(Res.string.settings_notifications_test_detail)
         SettingsTestNotificationCopy.Sent -> stringResource(Res.string.settings_notifications_test_sent_detail)
         SettingsTestNotificationCopy.Requested -> stringResource(Res.string.settings_notifications_test_requested_detail)
-        SettingsTestNotificationCopy.Unavailable -> stringResource(Res.string.settings_notifications_test_unavailable_detail)
+        SettingsTestNotificationCopy.Unavailable -> stringResource(Res.string.settings_notifications_test_allow_permission)
         SettingsTestNotificationCopy.Error -> stringResource(Res.string.settings_notifications_test_error_detail)
     }
 
@@ -586,7 +669,7 @@ private fun SettingsNotificationPreferenceGroup(content: @Composable ColumnScope
 private fun SettingsNotificationActionRow(
     title: String,
     detail: String,
-    status: String,
+    status: String?,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
@@ -600,7 +683,7 @@ private fun SettingsNotificationActionRow(
         enabled = enabled,
         onClick = onClick,
         trailing = {
-            RaftListRowValue(status)
+            if (status != null) RaftListRowValue(status)
             RaftLucideIcon(RaftLucideIconName.Send, modifier = Modifier.size(18.dp), color = raftArgbHex(RaftTheme.colors.foregroundHint))
         }
     )

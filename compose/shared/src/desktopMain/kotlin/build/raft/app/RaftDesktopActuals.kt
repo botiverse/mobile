@@ -19,7 +19,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.RaftDesktopPaths
 import build.raft.app.data.SharedAuthDataSource
+import java.awt.Desktop
 import java.io.File
+import java.net.URI
+import build.raft.app.components.RaftSlotIcon
+import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftButton
 import java.util.UUID
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
@@ -75,10 +80,46 @@ internal actual fun RaftPdfDocumentView(
     Box(modifier.fillMaxSize())
 }
 
+/**
+ * Content this desktop app can't show inline (a video it can't play, web content it can't host):
+ * no line on why, just "Open in browser" for that content ([target], a URL or a file). The case is
+ * logged ([kind]) so it shows up in diagnostics. With nothing to open, the area stays empty.
+ */
 @Composable
-internal fun RaftDesktopUnsupportedNotice(text: String, modifier: Modifier) {
-    Box(modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) { BasicText(text) }
+internal fun RaftDesktopOpenInBrowser(target: String?, kind: String, modifier: Modifier) {
+    val uri = remember(target) { raftDesktopBrowseUri(target) }
+    LaunchedEffect(kind, uri) {
+        raftLogInfo(RAFT_DESKTOP_OPEN_IN_BROWSER_TAG, "desktop_open_in_browser_offered kind=$kind hasTarget=${uri != null}")
+    }
+    Box(modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+        if (uri != null) {
+            RaftButton(
+                text = stringResource(Res.string.file_preview_action_open_in_browser),
+                onClick = {
+                    val opened =
+                        runCatching {
+                            val desktop = Desktop.getDesktop().takeIf { Desktop.isDesktopSupported() && it.isSupported(Desktop.Action.BROWSE) }
+                            desktop?.browse(uri) != null
+                        }.getOrDefault(false)
+                    raftLogInfo(RAFT_DESKTOP_OPEN_IN_BROWSER_TAG, "desktop_open_in_browser kind=$kind opened=$opened")
+                },
+                trailingIcon = { RaftSlotIcon(RaftLucideIconName.ExternalLink) },
+            )
+        }
+    }
 }
+
+private const val RAFT_DESKTOP_OPEN_IN_BROWSER_TAG = "RaftDesktop"
+
+/**
+ * What "Open in browser" opens for [target]: only an http(s) URL, the desktop openUrl policy's web
+ * links. A file, a plain path or any other scheme gets no button (null), never Desktop.browse.
+ */
+fun raftDesktopBrowseUri(target: String?): URI? =
+    runCatching {
+        val uri = URI(target?.trim().orEmpty())
+        uri.takeIf { (it.scheme.equals("http", ignoreCase = true) || it.scheme.equals("https", ignoreCase = true)) && !it.host.isNullOrBlank() }
+    }.getOrNull()
 
 @Composable
 internal actual fun rememberRaftPngFileWriter(): RaftPngFileWriter =

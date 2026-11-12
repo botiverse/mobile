@@ -92,6 +92,9 @@ internal actual fun raftPlatformPreservesEncodedFontWeightForFallback(): Boolean
 // (settingsReleaseNotesAvailable) until both exist.
 internal actual fun raftReleaseNotesAppSlug(): String = ""
 
+// RaftDesktopSettingsCapability answers loadStorage.
+internal actual fun raftPlatformHasStorageInfo(): Boolean = true
+
 internal actual fun raftPlatformProductName(): String = "Desktop"
 
 internal actual fun raftInlineCodeCharWrapBridgeThreshold(): Int? = null
