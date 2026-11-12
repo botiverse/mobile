@@ -6709,7 +6709,7 @@ private fun MembersDetailContent(
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     // #89: forwarded to the Permissions tab so it can call
     // `agentScopes` / `updateAgentScopes` / `resetAgentScopes`. When null
-    // the Permissions tab renders an "Agent API not available" error banner.
+    // the Permissions tab renders the "Failed to load agent permissions" error banner.
     agentsApiClient: build.raft.app.data.RaftAgentsApiClient? = null,
     externalSetupServerUrl: String? = null,
     remoteControls: MembersAgentRemoteControls? = null
@@ -14432,7 +14432,6 @@ internal fun MembersAgentPermissionsTab(
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val agentApiUnavailable = stringResource(Res.string.member_error_agent_api_unavailable)
     val loadPermissionsFailed = stringResource(Res.string.member_error_load_permissions)
     val noPermissionsData = stringResource(Res.string.member_state_no_permissions_data)
     val viewPermissionsForbidden = stringResource(Res.string.member_error_view_permissions)
@@ -14444,7 +14443,7 @@ internal fun MembersAgentPermissionsTab(
 
     suspend fun loadScopes() {
         if (agentsApiClient == null) {
-            error = agentApiUnavailable
+            error = loadPermissionsFailed
             loading = false
             return
         }

@@ -120,7 +120,6 @@
     <string name="settings_error_join_link_load_prefix">参加リンクを読み込めませんでした:&#160;</string>
     <string name="settings_billing_action_compare_plans">すべての機能を見てプランを比較</string>
     <string name="settings_pwa_install_title">アプリをインストール</string>
-    <string name="settings_pwa_install_native_detail">インストールの案内は、ネイティブビルド以外では Web PWA API が管理します。ネイティブビルドは各プラットフォームのアプリインストールフローを使用します。</string>
     <string name="channel_create_error_not_created">チャンネルは作成されませんでした。</string>
     <string name="common_error">エラー</string>
     <string name="common_empty">空です</string>
@@ -202,7 +201,7 @@
     <string name="settings_step_up_locked">間違ったコードが多すぎます。しばらくしてからもう一度お試しください。</string>
     <string name="settings_step_up_sign_in_again_message">このログインは確認できません。もう一度ログインしてから、再度お試しください。</string>
     <string name="settings_step_up_sign_in_again">再ログイン</string>
-    <string name="settings_step_up_passkey_only">このアカウントの確認にはパスキーが必要ですが、アプリではまだ使えません。Web 版の Raft で操作してください。</string>
+    <string name="settings_step_up_passkey_only">Web 版の Raft でこの変更を行い、パスキーで確認してください。</string>
     <string name="settings_step_up_failed">確認できませんでした。もう一度お試しください。</string>
     <string name="settings_account_delete_message">%1$d 日以内にアカウントと個人データ（プロフィール、メールアドレス、アバター、ログイン方法）を削除します。共有チャンネルで送信したメッセージは残り、「削除済みユーザー」と表示されます。完了したらメールでお知らせします。</string>
     <string name="settings_account_delete_confirm">削除を依頼</string>
@@ -589,13 +588,10 @@
     <string name="thread_error_file_source">ファイルソースを利用できません</string>
     <string name="thread_feedback_copied">コピーしました</string>
     <string name="thread_feedback_links_copied">リンクをコピーしました</string>
-    <string name="thread_forward_needs_api">%1$s から %2$s への転送には API サポートが必要です</string>
     <string name="thread_forward_completed">%1$s を %2$s に転送しました</string>
     <string name="thread_forward_view_in_chat">チャットで表示</string>
     <string name="thread_forward_success_banner">%1$s に転送しました。</string>
     <string name="thread_forward_join_first">転送する前に %1$s に参加してください</string>
-    <string name="thread_forward_group_unavailable">グループ作成による転送には API サポートが必要です</string>
-    <string name="thread_forward_multi_select_unavailable">複数選択の転送には API サポートが必要です</string>
     <string name="thread_error_copy_link">リンクをコピーできませんでした</string>
     <string name="thread_error_no_text_select">選択できるテキストがありません</string>
     <string name="thread_feedback_followed">スレッドをフォローしました</string>
@@ -614,7 +610,6 @@
     <string name="thread_error_add_member">メンバーを追加できませんでした</string>
     <string name="thread_feedback_member_removed">メンバーを削除しました</string>
     <string name="thread_error_remove_member">メンバーを削除できませんでした</string>
-    <string name="thread_error_visibility_not_wired">チャンネルの公開設定の更新はまだ利用できません</string>
     <string name="thread_feedback_channel_archived">チャンネルをアーカイブしました</string>
     <string name="thread_error_archive_channel">チャンネルをアーカイブできませんでした</string>
     <string name="thread_feedback_channel_deleted">チャンネルを削除しました</string>
@@ -961,8 +956,6 @@
     <string name="thread_action_card_failure_login">ログインを承認できませんでした</string>
     <string name="thread_action_card_failure_action">アクションを完了できませんでした</string>
     <string name="thread_action_card_error_agent_name_required">エージェント名は必須です。</string>
-    <string name="thread_action_card_error_agent_unavailable">このビルドではエージェントの作成は利用できません。</string>
-    <string name="thread_action_card_error_completion_unavailable">このビルドではアクションカードの完了処理は利用できません。</string>
     <string name="thread_action_card_error_mark_done">エージェントは作成されましたが、アクションカードを完了にできませんでした。このスレッドを更新してみてください。</string>
     <string name="thread_action_card_error_agent_not_created">エージェントは作成されませんでした。</string>
     <string name="thread_action_card_error_agent_create">エージェントを作成できませんでした: %1$s</string>
@@ -1414,7 +1407,6 @@
     <string name="member_state_loading_workspace">ワークスペースのファイルを読み込み中…</string>
     <string name="member_error_load_files">ファイルを読み込めませんでした</string>
     <string name="member_error_load_connected_apps">連携アプリを読み込めませんでした</string>
-    <string name="member_error_agent_api_unavailable">エージェント API を利用できません</string>
     <string name="member_error_load_permissions">エージェント権限を読み込めませんでした</string>
     <string name="member_state_no_permissions_data">権限データがありません</string>
     <string name="member_error_view_permissions">権限を表示する権限がありません。</string>
@@ -1725,7 +1717,6 @@
     <string name="member_error_apps_private">エージェントの連携はサーバーのオーナーと管理者のみ表示できます。</string>
     <string name="member_error_apps_load">連携アプリを読み込めませんでした: %1$s</string>
     <string name="member_label_connected_since">%1$s に連携</string>
-    <string name="member_error_permissions_api_unavailable">エージェント API を利用できません</string>
     <string name="member_error_permissions_load">エージェント権限を読み込めませんでした: %1$s</string>
     <string name="member_error_permissions_empty">権限データがありません</string>
     <string name="member_error_permissions_view">権限を表示する権限がありません。</string>
@@ -1801,7 +1792,7 @@
     <string name="file_preview_pdf">PDF プレビュー</string>
     <string name="file_preview_pdf_page_indicator">%1$s / %2$s</string>
     <string name="file_preview_pdf_password_title">この PDF はパスワードで保護されています</string>
-    <string name="file_preview_pdf_password_detail">パスワードで保護された PDF は Raft で表示できません。他のアプリで開いてパスワードを入力してください。</string>
+    <string name="file_preview_pdf_password_detail">他のアプリで開いてパスワードを入力してください。</string>
     <string name="file_preview_pdf_corrupt_title">この PDF を表示できません</string>
     <string name="file_preview_pdf_corrupt_detail">ファイルが破損しているか、有効な PDF ではない可能性があります。他のアプリで開いてみてください。</string>
     <string name="file_preview_document">ドキュメントプレビュー</string>
@@ -2553,7 +2544,7 @@
     <string name="settings_notifications_background_realtime_title">バックグラウンドのリアルタイム接続</string>
     <string name="settings_notifications_background_realtime_detail">バックグラウンドでもリアルタイム接続を維持します。%1$s が長時間のセッションを一時停止する場合があります。</string>
     <string name="settings_notifications_keep_connection_title">バックグラウンドで接続を維持</string>
-    <string name="settings_notifications_keep_connection_detail">このデバイスには Google Play 開発者サービスがないため、Raft はプッシュ通知を受信できません。Raft をバックグラウンドで接続したままにすると、メッセージ通知を引き続き受け取れます。「Raft がメッセージを受信中」という常駐通知が表示され、バッテリー消費が増えます。</string>
+    <string name="settings_notifications_keep_connection_detail">Raft をバックグラウンドで接続したままにすると、メッセージ通知を受け取れます。「Raft がメッセージを受信中」という常駐通知が表示され、バッテリー消費が増えます。</string>
     <string name="settings_notifications_battery_optimization_title">バックグラウンド実行を許可</string>
     <string name="settings_notifications_battery_optimization_detail">Raft の電池の最適化をオフにして、システムがバックグラウンド接続を停止しないようにします。機種によっては、アプリ起動やバックグラウンド動作の設定で Raft を許可する必要もあります。</string>
     <string name="settings_notifications_battery_optimization_allowed">許可済み</string>
@@ -3275,7 +3266,7 @@
     <string name="settings_developer_multi_server_realtime">すべてのウィンドウでリアルタイム更新</string>
     <string name="settings_developer_multi_server_realtime_detail">「複数のアプリウィンドウ」がオンのとき、各ウィンドウのワークスペースがそれぞれリアルタイム接続を保ちます（最大 3 つ）。後ろのウィンドウにも新しいメッセージが届きます。オフのときは最前面のワークスペースだけが接続されます。</string>
     <string name="settings_mobile_ios_native_nav">iOS ネイティブナビゲーション</string>
-    <string name="settings_mobile_ios_native_nav_detail">移行済みのページのタイトルとボタンをシステムのナビゲーションバーに表示し、システムのスワイプで戻ります（iPhone）。次回のアプリ起動時に反映されます。</string>
+    <string name="settings_mobile_ios_native_nav_detail">ページのタイトルとボタンをシステムのナビゲーションバーに表示し、システムのスワイプで戻ります。次回のアプリ起動時に反映されます。</string>
     <string name="settings_developer_presets">プリセット</string>
     <string name="settings_developer_presets_detail">プリセットを選択して環境フォームに反映し、保存して適用します。</string>
     <string name="settings_developer_presets_empty">このホストから利用できるプリセットはありません。</string>
@@ -3370,7 +3361,7 @@
     <string name="markdown_mermaid_fullscreen">全画面</string>
     <string name="markdown_mermaid_close_fullscreen">全画面を閉じる</string>
     <string name="runtime_form_v2_update_required">この設定を編集するにはアプリを更新してください。</string>
-    <string name="runtime_form_v2_update_required_blocking">このエージェントには、このバージョンのアプリでは編集できない必須設定があります。保存するにはアプリを更新してください。</string>
+    <string name="runtime_form_v2_update_required_blocking">このエージェントの変更を保存するにはアプリを更新してください。</string>
     <string name="runtime_form_v2_error_required">必須項目です</string>
     <string name="runtime_form_v2_error_invalid_url">http:// または https:// で始まる URL を入力してください</string>
     <string name="runtime_form_v2_error_not_a_choice">選択肢から選んでください</string>
@@ -4218,7 +4209,7 @@
     <string name="artifacts_viewer_open_in_browser">ブラウザで開く</string>
     <string name="artifacts_viewer_copy_link">リンクをコピー</string>
     <string name="artifacts_viewer_link_copied">リンクをコピーしました。</string>
-    <string name="artifacts_viewer_download_in_browser">アプリ内ではまだファイルを保存できません。ダウンロードするため、この Artifact をブラウザで開きます。</string>
+    <string name="artifacts_viewer_download_in_browser">ダウンロードするため、この Artifact をブラウザで開きます。</string>
     <string name="artifacts_viewer_follow">フォロー</string>
     <string name="artifacts_viewer_unfollow">フォロー解除</string>
     <string name="artifacts_viewer_version_history">バージョン履歴</string>

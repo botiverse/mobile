@@ -8626,12 +8626,6 @@ private fun SharedThreadRouteContentContent(
     val copiedLabel = stringResource(Res.string.thread_feedback_copied)
     val failureDetailsCopiedLabel = stringResource(Res.string.thread_send_failure_details_copied)
     val linksCopiedLabel = stringResource(Res.string.thread_feedback_links_copied)
-    val forwardNeedsApiTemplate =
-        stringResource(
-            Res.string.thread_forward_needs_api,
-            ThreadLocalizedFeedbackPlaceholder,
-            "__RAFT_TARGET__"
-        )
     val forwardCompletedTemplate =
         stringResource(
             Res.string.thread_forward_completed,
@@ -8640,8 +8634,6 @@ private fun SharedThreadRouteContentContent(
         )
     val forwardJoinFirstTemplate =
         stringResource(Res.string.thread_forward_join_first, ThreadLocalizedFeedbackPlaceholder)
-    val forwardGroupUnavailableLabel = stringResource(Res.string.thread_forward_group_unavailable)
-    val forwardMultiSelectUnavailableLabel = stringResource(Res.string.thread_forward_multi_select_unavailable)
     val unableToCopyLinkLabel = stringResource(Res.string.thread_error_copy_link)
     val noTextToSelectLabel = stringResource(Res.string.thread_error_no_text_select)
     val followedThreadLabel = stringResource(Res.string.thread_feedback_followed)
@@ -8659,7 +8651,6 @@ private fun SharedThreadRouteContentContent(
     val unableToAddMemberLabel = stringResource(Res.string.thread_error_add_member)
     val memberRemovedLabel = stringResource(Res.string.thread_feedback_member_removed)
     val unableToRemoveMemberLabel = stringResource(Res.string.thread_error_remove_member)
-    val visibilityNotWiredLabel = stringResource(Res.string.thread_error_visibility_not_wired)
     val channelArchivedLabel = stringResource(Res.string.thread_feedback_channel_archived)
     val unableToArchiveChannelLabel = stringResource(Res.string.thread_error_archive_channel)
     val channelDeletedLabel = stringResource(Res.string.thread_feedback_channel_deleted)
@@ -8712,10 +8703,6 @@ private fun SharedThreadRouteContentContent(
         } else {
             mergedForwardModeLabel
         }
-    fun localizedForwardNeedsApi(mode: String, target: String): String =
-        forwardNeedsApiTemplate
-            .replace(ThreadLocalizedFeedbackPlaceholder, mode)
-            .replace("__RAFT_TARGET__", target)
     fun localizedForwardCompleted(mode: String, target: String): String =
         forwardCompletedTemplate
             .replace(ThreadLocalizedFeedbackPlaceholder, mode)
@@ -14077,11 +14064,6 @@ private fun SharedThreadRouteContentContent(
                 action == "shareSelectionExportFailed" -> {
                     bridge.toast(unableToExportImageLabel)
                 }
-                action == "forwardTargetSelected" -> {
-                    val target = itemId?.takeIf { it.isNotBlank() } ?: "selected target"
-                    val modeLabel = localizedForwardModeLabel(tab)
-                    bridge.toast(localizedForwardNeedsApi(modeLabel, target))
-                }
                 action == "forwardMessagesSent" -> {
                     val target = itemId?.takeIf { it.isNotBlank() } ?: "selected target"
                     val modeLabel = localizedForwardModeLabel(tab)
@@ -14093,12 +14075,6 @@ private fun SharedThreadRouteContentContent(
                 action == "forwardJoinConfirmationRequired" -> {
                     val target = itemId?.takeIf { it.isNotBlank() } ?: "that channel"
                     bridge.toast(localizedForwardJoinFirst(target))
-                }
-                action == "forwardCreateGroupRequested" -> {
-                    bridge.toast(forwardGroupUnavailableLabel)
-                }
-                action == "forwardMultiSelectRequested" -> {
-                    bridge.toast(forwardMultiSelectUnavailableLabel)
                 }
                 action == "copyMessageLink" && !itemId.isNullOrBlank() -> {
                     val message =
@@ -15070,9 +15046,6 @@ private fun SharedThreadRouteContentContent(
                             }
                         }
                     }
-                }
-                action == "settingsAction" && itemId == "visibility" -> {
-                    bridge.toast(visibilityNotWiredLabel)
                 }
                 action == "settingsAction" && itemId == "archive" -> {
                     val previousPayload = renderedThread
@@ -32371,8 +32344,9 @@ private fun threadCreateAgentDialogErrorCopy(code: String, serverMessage: String
     when (code) {
         "agent_name_required",
         "action_card_agent_name_missing" -> stringResource(Res.string.thread_action_card_error_agent_name_required)
-        "action_card_agents_api_missing" -> stringResource(Res.string.thread_action_card_error_agent_unavailable)
-        "action_card_actions_api_missing" -> stringResource(Res.string.thread_action_card_error_completion_unavailable)
+        // The card's API is not wired in this host: nothing was created, so say that (no build detail).
+        "action_card_agents_api_missing",
+        "action_card_actions_api_missing" -> stringResource(Res.string.thread_action_card_error_agent_not_created)
         "action_card_mark_executed_empty",
         "action_mark_executed_contract_mismatch" -> stringResource(Res.string.thread_action_card_error_mark_done)
         "agent_create_empty" -> stringResource(Res.string.thread_action_card_error_agent_not_created)

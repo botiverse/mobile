@@ -120,7 +120,6 @@
     <string name="settings_error_join_link_load_prefix">Не удалось загрузить ссылку-приглашение:&#160;</string>
     <string name="settings_billing_action_compare_plans">Сравнить тарифы и все возможности</string>
     <string name="settings_pwa_install_title">Установить приложение</string>
-    <string name="settings_pwa_install_native_detail">Вне нативных сборок запросами на установку управляют веб-API PWA. Нативные сборки устанавливаются штатными средствами своей платформы.</string>
     <string name="channel_create_error_not_created">Канал не создан.</string>
     <string name="common_error">Ошибка</string>
     <string name="common_empty">Пусто</string>
@@ -202,7 +201,7 @@
     <string name="settings_step_up_locked">Слишком много неверных кодов. Попробуйте позже.</string>
     <string name="settings_step_up_sign_in_again_message">Не удалось проверить текущий вход. Войдите снова и повторите попытку.</string>
     <string name="settings_step_up_sign_in_again">Войти снова</string>
-    <string name="settings_step_up_passkey_only">Ваш аккаунт подтверждает это действие ключом доступа, а в приложении такой способ пока недоступен. Внесите изменение в веб-версии Raft.</string>
+    <string name="settings_step_up_passkey_only">Внесите изменение в веб-версии Raft и подтвердите его ключом доступа.</string>
     <string name="settings_step_up_failed">Не удалось подтвердить. Попробуйте ещё раз.</string>
     <string name="settings_account_delete_message">Мы удалим ваш аккаунт и личные данные (профиль, адрес электронной почты, аватар и способы входа) в течение %1$d дн. Сообщения, которые вы отправили в каналы, останутся, но вместо вашего имени будет показано «Удалённый пользователь». Когда удаление завершится, мы сообщим вам по электронной почте.</string>
     <string name="settings_account_delete_confirm">Запросить удаление</string>
@@ -583,13 +582,10 @@
     <string name="thread_error_file_source">Источник файлов недоступен</string>
     <string name="thread_feedback_copied">Скопировано</string>
     <string name="thread_feedback_links_copied">Ссылки скопированы</string>
-    <string name="thread_forward_needs_api">Для пересылки %1$s в чат %2$s нужна поддержка API</string>
     <string name="thread_forward_completed">Переслано %1$s: %2$s</string>
     <string name="thread_forward_view_in_chat">Открыть в чате</string>
     <string name="thread_forward_success_banner">Переслано: %1$s.</string>
     <string name="thread_forward_join_first">Чтобы переслать, сначала присоединитесь к каналу %1$s</string>
-    <string name="thread_forward_group_unavailable">Для пересылки с созданием группы нужна поддержка API</string>
-    <string name="thread_forward_multi_select_unavailable">Для пересылки нескольких выбранных сообщений нужна поддержка API</string>
     <string name="thread_error_copy_link">Не удалось скопировать ссылку</string>
     <string name="thread_error_no_text_select">Нет текста для выделения</string>
     <string name="thread_feedback_followed">Вы подписались на ветку</string>
@@ -608,7 +604,6 @@
     <string name="thread_error_add_member">Не удалось добавить участника</string>
     <string name="thread_feedback_member_removed">Участник удалён</string>
     <string name="thread_error_remove_member">Не удалось удалить участника</string>
-    <string name="thread_error_visibility_not_wired">Изменение видимости канала пока недоступно</string>
     <string name="thread_feedback_channel_archived">Канал в архиве</string>
     <string name="thread_error_archive_channel">Не удалось архивировать канал</string>
     <string name="thread_feedback_channel_deleted">Канал удалён</string>
@@ -955,8 +950,6 @@
     <string name="thread_action_card_failure_login">Не удалось одобрить вход</string>
     <string name="thread_action_card_failure_action">Не удалось выполнить действие</string>
     <string name="thread_action_card_error_agent_name_required">Укажите имя агента.</string>
-    <string name="thread_action_card_error_agent_unavailable">В этой версии приложения нельзя создавать агентов.</string>
-    <string name="thread_action_card_error_completion_unavailable">В этой версии приложения нельзя выполнять карточки действий.</string>
     <string name="thread_action_card_error_mark_done">Агент создан, но не удалось отметить карточку действия как выполненную. Попробуйте обновить эту ветку.</string>
     <string name="thread_action_card_error_agent_not_created">Агент не создан.</string>
     <string name="thread_action_card_error_agent_create">Не удалось создать агента: %1$s</string>
@@ -1398,7 +1391,6 @@
     <string name="member_state_loading_workspace">Загрузка файлов рабочего пространства…</string>
     <string name="member_error_load_files">Не удалось загрузить файлы</string>
     <string name="member_error_load_connected_apps">Не удалось загрузить подключённые приложения</string>
-    <string name="member_error_agent_api_unavailable">API агентов недоступен</string>
     <string name="member_error_load_permissions">Не удалось загрузить разрешения агента</string>
     <string name="member_state_no_permissions_data">Нет данных о разрешениях</string>
     <string name="member_error_view_permissions">Нет прав на просмотр разрешений.</string>
@@ -1695,7 +1687,6 @@
     <string name="member_error_apps_private">Интеграции агента могут просматривать только владельцы и администраторы сервера.</string>
     <string name="member_error_apps_load">Не удалось загрузить подключённые приложения: %1$s</string>
     <string name="member_label_connected_since">Подключено: %1$s</string>
-    <string name="member_error_permissions_api_unavailable">API агента недоступен</string>
     <string name="member_error_permissions_load">Не удалось загрузить разрешения агента: %1$s</string>
     <string name="member_error_permissions_empty">Нет данных о разрешениях</string>
     <string name="member_error_permissions_view">Нет прав на просмотр разрешений.</string>
@@ -1771,7 +1762,7 @@
     <string name="file_preview_pdf">Предпросмотр PDF</string>
     <string name="file_preview_pdf_page_indicator">%1$s / %2$s</string>
     <string name="file_preview_pdf_password_title">Этот PDF-файл защищён паролем</string>
-    <string name="file_preview_pdf_password_detail">Raft не может показывать PDF-файлы, защищённые паролем. Откройте файл в другом приложении, чтобы ввести пароль.</string>
+    <string name="file_preview_pdf_password_detail">Откройте файл в другом приложении, чтобы ввести пароль.</string>
     <string name="file_preview_pdf_corrupt_title">Не удаётся показать этот PDF-файл</string>
     <string name="file_preview_pdf_corrupt_detail">Возможно, файл повреждён или не является PDF-файлом. Попробуйте открыть его в другом приложении.</string>
     <string name="file_preview_document">Предпросмотр документа</string>
@@ -2525,7 +2516,7 @@
     <string name="settings_notifications_background_realtime_title">Связь в реальном времени в фоне</string>
     <string name="settings_notifications_background_realtime_detail">Поддерживать связь в реальном времени, пока приложение в фоне. %1$s всё равно может приостанавливать долгие сеансы.</string>
     <string name="settings_notifications_keep_connection_title">Поддерживать подключение в фоне</string>
-    <string name="settings_notifications_keep_connection_detail">На этом устройстве нет Сервисов Google Play, поэтому Raft не может получать push-уведомления. Чтобы уведомления о сообщениях всё равно приходили, оставьте Raft подключённым в фоне. При этом постоянно показывается уведомление «Raft получает сообщения» и быстрее расходуется батарея.</string>
+    <string name="settings_notifications_keep_connection_detail">Чтобы получать уведомления о сообщениях, оставьте Raft подключённым в фоне. При этом постоянно показывается уведомление «Raft получает сообщения» и быстрее расходуется батарея.</string>
     <string name="settings_notifications_battery_optimization_title">Разрешить работу в фоне</string>
     <string name="settings_notifications_battery_optimization_detail">Отключите для Raft оптимизацию батареи, чтобы система не прерывала фоновое подключение. На некоторых телефонах также нужно разрешить Raft в настройках автозапуска или фоновой активности.</string>
     <string name="settings_notifications_battery_optimization_allowed">Разрешено</string>
@@ -3118,7 +3109,7 @@
     <string name="settings_developer_multi_server_realtime">Обновления в реальном времени в каждом окне</string>
     <string name="settings_developer_multi_server_realtime_detail">Когда включено «Несколько окон приложения», рабочее пространство каждого окна держит своё подключение в реальном времени (до 3), и окно на заднем плане тоже получает новые сообщения. Выключено: подключено только рабочее пространство на переднем плане.</string>
     <string name="settings_mobile_ios_native_nav">Нативная навигация iOS</string>
-    <string name="settings_mobile_ios_native_nav_detail">Показывать заголовки и кнопки перенесённых страниц в системной панели навигации и использовать системный жест «назад» (iPhone). Вступит в силу при следующем запуске приложения.</string>
+    <string name="settings_mobile_ios_native_nav_detail">Показывать заголовки и кнопки страниц в системной панели навигации и использовать системный жест «назад». Вступит в силу при следующем запуске приложения.</string>
     <string name="settings_developer_presets">Пресеты</string>
     <string name="settings_developer_presets_detail">Выберите пресет для заполнения формы окружения и сохраните, чтобы применить его.</string>
     <string name="settings_developer_presets_empty">На этом хосте нет доступных пресетов.</string>
@@ -3213,7 +3204,7 @@
     <string name="markdown_mermaid_fullscreen">Во весь экран</string>
     <string name="markdown_mermaid_close_fullscreen">Выйти из полноэкранного режима</string>
     <string name="runtime_form_v2_update_required">Обновите приложение, чтобы изменить эту настройку.</string>
-    <string name="runtime_form_v2_update_required_blocking">У этого агента есть обязательная настройка, которую нельзя изменить в этой версии приложения. Обновите приложение, чтобы сохранить изменения.</string>
+    <string name="runtime_form_v2_update_required_blocking">Обновите приложение, чтобы сохранить изменения этого агента.</string>
     <string name="runtime_form_v2_error_required">Обязательное поле</string>
     <string name="runtime_form_v2_error_invalid_url">Введите URL, начинающийся с http:// или https://</string>
     <string name="runtime_form_v2_error_not_a_choice">Выберите один из вариантов</string>

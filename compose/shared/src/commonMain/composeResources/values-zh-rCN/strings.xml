@@ -120,7 +120,6 @@
     <string name="settings_error_join_link_load_prefix">无法加载加入链接：</string>
     <string name="settings_billing_action_compare_plans">查看全部功能并比较方案</string>
     <string name="settings_pwa_install_title">安装应用</string>
-    <string name="settings_pwa_install_native_detail">安装提示由网页端 PWA API 管理；原生版本使用各自平台的应用安装流程。</string>
     <string name="channel_create_error_not_created">频道未创建。</string>
     <string name="common_error">出错了</string>
     <string name="common_empty">暂无内容</string>
@@ -202,7 +201,7 @@
     <string name="settings_step_up_locked">验证码输错次数太多。请稍后再试。</string>
     <string name="settings_step_up_sign_in_again_message">无法验证当前登录。请重新登录后再试一次。</string>
     <string name="settings_step_up_sign_in_again">重新登录</string>
-    <string name="settings_step_up_passkey_only">你的账号需要用通行密钥验证，App 暂时还不支持。请在网页版 Raft 上操作。</string>
+    <string name="settings_step_up_passkey_only">请在网页版 Raft 上进行此更改，并用通行密钥确认。</string>
     <string name="settings_step_up_failed">验证失败，请重试。</string>
     <string name="settings_account_delete_message">我们会在 %1$d 天内删除你的账户和个人数据（个人资料、邮箱、头像和登录方式）。你在共享频道中发送的消息会保留，并显示为“已删除用户”。完成后我们会发邮件通知你。</string>
     <string name="settings_account_delete_confirm">申请删除</string>
@@ -587,13 +586,10 @@
     <string name="thread_error_file_source">文件来源不可用</string>
     <string name="thread_feedback_copied">已复制</string>
     <string name="thread_feedback_links_copied">链接已复制</string>
-    <string name="thread_forward_needs_api">将%1$s消息转发到 %2$s 需要 API 支持</string>
     <string name="thread_forward_completed">已将%1$s消息转发到 %2$s</string>
     <string name="thread_forward_view_in_chat">在聊天中查看</string>
     <string name="thread_forward_success_banner">已转发至 %1$s。</string>
     <string name="thread_forward_join_first">请先加入 %1$s 再转发</string>
-    <string name="thread_forward_group_unavailable">创建群组后转发尚需 API 支持</string>
-    <string name="thread_forward_multi_select_unavailable">多选转发尚需 API 支持</string>
     <string name="thread_error_copy_link">无法复制链接</string>
     <string name="thread_error_no_text_select">没有可选择的文本</string>
     <string name="thread_feedback_followed">已关注消息列</string>
@@ -612,7 +608,6 @@
     <string name="thread_error_add_member">无法添加成员</string>
     <string name="thread_feedback_member_removed">成员已移除</string>
     <string name="thread_error_remove_member">无法移除成员</string>
-    <string name="thread_error_visibility_not_wired">频道可见性更新暂不可用</string>
     <string name="thread_feedback_channel_archived">频道已归档</string>
     <string name="thread_error_archive_channel">无法归档频道</string>
     <string name="thread_feedback_channel_deleted">频道已删除</string>
@@ -959,8 +954,6 @@
     <string name="thread_action_card_failure_login">无法批准登录</string>
     <string name="thread_action_card_failure_action">无法完成操作</string>
     <string name="thread_action_card_error_agent_name_required">Agent 名称为必填项。</string>
-    <string name="thread_action_card_error_agent_unavailable">当前版本无法创建 Agent。</string>
-    <string name="thread_action_card_error_completion_unavailable">当前版本无法完成操作卡片。</string>
     <string name="thread_action_card_error_mark_done">Agent 已创建，但操作卡片无法标记完成。请刷新当前对话后重试。</string>
     <string name="thread_action_card_error_agent_not_created">Agent 未创建。</string>
     <string name="thread_action_card_error_agent_create">无法创建 Agent：%1$s</string>
@@ -1403,7 +1396,6 @@
     <string name="member_state_loading_workspace">正在加载工作区文件…</string>
     <string name="member_error_load_files">无法加载文件</string>
     <string name="member_error_load_connected_apps">无法加载已连接应用</string>
-    <string name="member_error_agent_api_unavailable">Agent API 不可用</string>
     <string name="member_error_load_permissions">无法加载 Agent 权限</string>
     <string name="member_state_no_permissions_data">没有权限数据</string>
     <string name="member_error_view_permissions">无权查看权限。</string>
@@ -1721,7 +1713,6 @@
     <string name="member_error_apps_private">只有服务器所有者和管理员可以查看 Agent 集成。</string>
     <string name="member_error_apps_load">加载已连接应用失败：%1$s</string>
     <string name="member_label_connected_since">连接于 %1$s</string>
-    <string name="member_error_permissions_api_unavailable">Agent API 不可用</string>
     <string name="member_error_permissions_load">加载 Agent 权限失败：%1$s</string>
     <string name="member_error_permissions_empty">暂无权限数据</string>
     <string name="member_error_permissions_view">没有查看权限的权限。</string>
@@ -1797,7 +1788,7 @@
     <string name="file_preview_pdf">PDF 预览</string>
     <string name="file_preview_pdf_page_indicator">%1$s / %2$s</string>
     <string name="file_preview_pdf_password_title">此 PDF 受密码保护</string>
-    <string name="file_preview_pdf_password_detail">Raft 无法显示受密码保护的 PDF。请在其他应用中打开并输入密码。</string>
+    <string name="file_preview_pdf_password_detail">请在其他应用中打开并输入密码。</string>
     <string name="file_preview_pdf_corrupt_title">无法显示此 PDF</string>
     <string name="file_preview_pdf_corrupt_detail">文件可能已损坏，或不是有效的 PDF。请尝试在其他应用中打开。</string>
     <string name="file_preview_document">文档预览</string>
@@ -2553,7 +2544,7 @@
     <string name="settings_notifications_background_realtime_title">后台实时连接</string>
     <string name="settings_notifications_background_realtime_detail">在后台保持实时连接。%1$s 仍可能暂停长时间运行的会话。</string>
     <string name="settings_notifications_keep_connection_title">后台保持连接</string>
-    <string name="settings_notifications_keep_connection_detail">此设备没有 Google Play 服务，Raft 无法接收推送通知。在后台保持 Raft 连接，即可继续收到消息通知。开启后会常驻一条“Raft 正在接收消息”通知，并增加耗电。</string>
+    <string name="settings_notifications_keep_connection_detail">在后台保持 Raft 连接，即可收到消息通知。开启后会常驻一条“Raft 正在接收消息”通知，并增加耗电。</string>
     <string name="settings_notifications_battery_optimization_title">允许后台运行</string>
     <string name="settings_notifications_battery_optimization_detail">为 Raft 关闭电池优化，避免系统中断后台连接。部分手机还需要在应用启动管理或后台活动设置中允许 Raft。</string>
     <string name="settings_notifications_battery_optimization_allowed">已允许</string>
@@ -3275,7 +3266,7 @@
     <string name="settings_developer_multi_server_realtime">每个窗口都实时更新</string>
     <string name="settings_developer_multi_server_realtime_detail">开启“多应用窗口”后，每个窗口的工作空间各自保持实时连接（最多 3 个），在后面的窗口也能收到新消息。关闭时只有最前面的工作空间保持连接。</string>
     <string name="settings_mobile_ios_native_nav">iOS 原生导航</string>
-    <string name="settings_mobile_ios_native_nav_detail">已迁移页面的标题和按钮显示在系统导航栏中，使用系统的滑动返回（iPhone）。下次启动应用时生效。</string>
+    <string name="settings_mobile_ios_native_nav_detail">页面的标题和按钮显示在系统导航栏中，使用系统的滑动返回。下次启动应用时生效。</string>
     <string name="settings_developer_presets">预设</string>
     <string name="settings_developer_presets_detail">选择预设填充环境表单，然后保存应用。</string>
     <string name="settings_developer_presets_empty">此宿主没有可用预设。</string>
@@ -3370,7 +3361,7 @@
     <string name="markdown_mermaid_fullscreen">全屏</string>
     <string name="markdown_mermaid_close_fullscreen">退出全屏</string>
     <string name="runtime_form_v2_update_required">请升级 App 以编辑此设置。</string>
-    <string name="runtime_form_v2_update_required_blocking">此 agent 有一项必填设置当前 App 版本无法编辑，请升级 App 后再保存。</string>
+    <string name="runtime_form_v2_update_required_blocking">请升级 App 后再保存对此 agent 的更改。</string>
     <string name="runtime_form_v2_error_required">必填</string>
     <string name="runtime_form_v2_error_invalid_url">请输入以 http:// 或 https:// 开头的网址</string>
     <string name="runtime_form_v2_error_not_a_choice">请从选项中选择</string>
@@ -4218,7 +4209,7 @@
     <string name="artifacts_viewer_open_in_browser">在浏览器中打开</string>
     <string name="artifacts_viewer_copy_link">复制链接</string>
     <string name="artifacts_viewer_link_copied">链接已复制。</string>
-    <string name="artifacts_viewer_download_in_browser">应用内暂时无法保存文件，正在浏览器中打开这个 Artifact 以便下载。</string>
+    <string name="artifacts_viewer_download_in_browser">正在浏览器中打开这个 Artifact 以便下载。</string>
     <string name="artifacts_viewer_follow">关注</string>
     <string name="artifacts_viewer_unfollow">取消关注</string>
     <string name="artifacts_viewer_version_history">版本历史</string>

@@ -120,7 +120,6 @@
     <string name="settings_error_join_link_load_prefix">Não foi possível carregar o link de convite:&#160;</string>
     <string name="settings_billing_action_compare_plans">Ver todos os recursos e comparar planos</string>
     <string name="settings_pwa_install_title">Instalar app</string>
-    <string name="settings_pwa_install_native_detail">Fora das versões nativas, os avisos de instalação são gerenciados pelas APIs de PWA da web. As versões nativas usam o fluxo de instalação de apps da própria plataforma.</string>
     <string name="channel_create_error_not_created">O canal não foi criado.</string>
     <string name="common_error">Erro</string>
     <string name="common_empty">Vazio</string>
@@ -202,7 +201,7 @@
     <string name="settings_step_up_locked">Muitos códigos incorretos. Tente novamente mais tarde.</string>
     <string name="settings_step_up_sign_in_again_message">Não foi possível verificar este login. Entre novamente e tente mais uma vez.</string>
     <string name="settings_step_up_sign_in_again">Entrar novamente</string>
-    <string name="settings_step_up_passkey_only">Sua conta confirma isso com uma chave de acesso, que o app ainda não pode usar. Faça essa alteração no Raft pela web.</string>
+    <string name="settings_step_up_passkey_only">Faça essa alteração no Raft pela web e confirme com sua chave de acesso.</string>
     <string name="settings_step_up_failed">Não foi possível verificar. Tente novamente.</string>
     <string name="settings_account_delete_message">Vamos excluir sua conta e seus dados pessoais (perfil, e-mail, avatar e métodos de login) em até %1$d dias. As mensagens que você enviou em canais compartilhados permanecem, exibidas como “Usuário excluído”. Enviaremos um e-mail quando terminarmos.</string>
     <string name="settings_account_delete_confirm">Solicitar exclusão</string>
@@ -583,13 +582,10 @@
     <string name="thread_error_file_source">A origem do arquivo não está disponível</string>
     <string name="thread_feedback_copied">Copiado</string>
     <string name="thread_feedback_links_copied">Links copiados</string>
-    <string name="thread_forward_needs_api">Encaminhar mensagens de %1$s para %2$s exige suporte da API</string>
     <string name="thread_forward_completed">Encaminhamento de %1$s para %2$s concluído</string>
     <string name="thread_forward_view_in_chat">Ver no chat</string>
     <string name="thread_forward_success_banner">Encaminhado para %1$s.</string>
     <string name="thread_forward_join_first">Entre em %1$s antes de encaminhar</string>
-    <string name="thread_forward_group_unavailable">Encaminhar criando um grupo exige suporte da API</string>
-    <string name="thread_forward_multi_select_unavailable">O encaminhamento com seleção múltipla exige suporte da API</string>
     <string name="thread_error_copy_link">Não foi possível copiar o link</string>
     <string name="thread_error_no_text_select">Não há texto para selecionar</string>
     <string name="thread_feedback_followed">Você está seguindo a thread</string>
@@ -608,7 +604,6 @@
     <string name="thread_error_add_member">Não foi possível adicionar o membro</string>
     <string name="thread_feedback_member_removed">Membro removido</string>
     <string name="thread_error_remove_member">Não foi possível remover o membro</string>
-    <string name="thread_error_visibility_not_wired">As alterações de visibilidade do canal ainda não estão disponíveis</string>
     <string name="thread_feedback_channel_archived">Canal arquivado</string>
     <string name="thread_error_archive_channel">Não foi possível arquivar o canal</string>
     <string name="thread_feedback_channel_deleted">Canal excluído</string>
@@ -955,8 +950,6 @@
     <string name="thread_action_card_failure_login">Não foi possível aprovar o login</string>
     <string name="thread_action_card_failure_action">Não foi possível concluir a ação</string>
     <string name="thread_action_card_error_agent_name_required">O nome do agente é obrigatório.</string>
-    <string name="thread_action_card_error_agent_unavailable">Criar agente não está disponível nesta versão.</string>
-    <string name="thread_action_card_error_completion_unavailable">Esta versão não permite concluir cartões de ação.</string>
     <string name="thread_action_card_error_mark_done">O agente foi criado, mas não foi possível marcar o cartão de ação como concluído. Tente atualizar esta thread.</string>
     <string name="thread_action_card_error_agent_not_created">O agente não foi criado.</string>
     <string name="thread_action_card_error_agent_create">Não foi possível criar o agente: %1$s</string>
@@ -1398,7 +1391,6 @@
     <string name="member_state_loading_workspace">Carregando arquivos do espaço de trabalho…</string>
     <string name="member_error_load_files">Não foi possível carregar os arquivos</string>
     <string name="member_error_load_connected_apps">Não foi possível carregar os apps conectados</string>
-    <string name="member_error_agent_api_unavailable">A API do agente não está disponível</string>
     <string name="member_error_load_permissions">Não foi possível carregar as permissões do agente</string>
     <string name="member_state_no_permissions_data">Nenhum dado de permissões</string>
     <string name="member_error_view_permissions">Você não tem permissão para ver as permissões.</string>
@@ -1698,7 +1690,6 @@
     <string name="member_error_apps_private">Somente proprietários e administradores do servidor podem ver as integrações do agente.</string>
     <string name="member_error_apps_load">Não foi possível carregar os apps conectados: %1$s</string>
     <string name="member_label_connected_since">Conectado %1$s</string>
-    <string name="member_error_permissions_api_unavailable">A API do agente não está disponível</string>
     <string name="member_error_permissions_load">Não foi possível carregar as permissões do agente: %1$s</string>
     <string name="member_error_permissions_empty">Nenhum dado de permissões</string>
     <string name="member_error_permissions_view">Você não tem permissão para ver as permissões.</string>
@@ -1774,7 +1765,7 @@
     <string name="file_preview_pdf">Pré-visualização de PDF</string>
     <string name="file_preview_pdf_page_indicator">%1$s / %2$s</string>
     <string name="file_preview_pdf_password_title">Este PDF está protegido por senha</string>
-    <string name="file_preview_pdf_password_detail">O Raft não consegue exibir PDFs protegidos por senha. Abra o arquivo em outro app para digitar a senha.</string>
+    <string name="file_preview_pdf_password_detail">Abra o arquivo em outro app para digitar a senha.</string>
     <string name="file_preview_pdf_corrupt_title">Não é possível exibir este PDF</string>
     <string name="file_preview_pdf_corrupt_detail">O arquivo pode estar danificado ou não ser um PDF válido. Tente abri-lo em outro app.</string>
     <string name="file_preview_document">Pré-visualização do documento</string>
@@ -2528,7 +2519,7 @@
     <string name="settings_notifications_background_realtime_title">Tempo real em segundo plano</string>
     <string name="settings_notifications_background_realtime_detail">Mantém a conexão em tempo real em segundo plano. O %1$s ainda pode pausar sessões longas.</string>
     <string name="settings_notifications_keep_connection_title">Manter a conexão em segundo plano</string>
-    <string name="settings_notifications_keep_connection_detail">Este dispositivo não tem os serviços do Google Play, então o Raft não pode receber notificações push. Mantenha o Raft conectado em segundo plano para continuar recebendo notificações de mensagens. Exibe uma notificação fixa “Raft está recebendo mensagens” e consome mais bateria.</string>
+    <string name="settings_notifications_keep_connection_detail">Mantenha o Raft conectado em segundo plano para receber notificações de mensagens. Exibe uma notificação fixa “Raft está recebendo mensagens” e consome mais bateria.</string>
     <string name="settings_notifications_battery_optimization_title">Permitir execução em segundo plano</string>
     <string name="settings_notifications_battery_optimization_detail">Desative a otimização de bateria para o Raft para que o sistema não interrompa a conexão em segundo plano. Em alguns celulares, também é preciso permitir o Raft nas configurações de inicialização de apps ou de atividade em segundo plano.</string>
     <string name="settings_notifications_battery_optimization_allowed">Permitidos</string>
@@ -3121,7 +3112,7 @@
     <string name="settings_developer_multi_server_realtime">Atualizações ao vivo em cada janela</string>
     <string name="settings_developer_multi_server_realtime_detail">Com Várias janelas do app ativado, o espaço de trabalho de cada janela mantém a própria conexão em tempo real (até 3), então uma janela em segundo plano continua recebendo novas mensagens. Desativado: só o espaço de trabalho em primeiro plano fica conectado.</string>
     <string name="settings_mobile_ios_native_nav">Navegação nativa do iOS</string>
-    <string name="settings_mobile_ios_native_nav_detail">Mostra os títulos e botões das páginas migradas na barra de navegação do sistema, com o gesto de deslizar para voltar do sistema (iPhone). Entra em vigor na próxima vez que o app for iniciado.</string>
+    <string name="settings_mobile_ios_native_nav_detail">Mostra os títulos e botões das páginas na barra de navegação do sistema, com o gesto de deslizar para voltar do sistema. Entra em vigor na próxima vez que o app for iniciado.</string>
     <string name="settings_developer_presets">Predefinições</string>
     <string name="settings_developer_presets_detail">Escolha uma predefinição para preencher o formulário do ambiente e salve para aplicá-la.</string>
     <string name="settings_developer_presets_empty">Nenhuma predefinição disponível neste host.</string>
@@ -3216,7 +3207,7 @@
     <string name="markdown_mermaid_fullscreen">Tela cheia</string>
     <string name="markdown_mermaid_close_fullscreen">Sair da tela cheia</string>
     <string name="runtime_form_v2_update_required">Atualize o app para editar esta configuração.</string>
-    <string name="runtime_form_v2_update_required_blocking">Este agente tem uma configuração obrigatória que esta versão do app não consegue editar. Atualize o app para salvar as alterações.</string>
+    <string name="runtime_form_v2_update_required_blocking">Atualize o app para salvar as alterações deste agente.</string>
     <string name="runtime_form_v2_error_required">Obrigatório</string>
     <string name="runtime_form_v2_error_invalid_url">Insira uma URL que comece com http:// ou https://</string>
     <string name="runtime_form_v2_error_not_a_choice">Escolha uma das opções</string>
