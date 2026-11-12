@@ -362,6 +362,42 @@ class InteractiveComponentScreenshotTest {
             }
         }
 
+    /**
+     * raft-ui DialogFooterNote in an `lg` dialog: one muted line at the start of the footer,
+     * the buttons (Cancel first, the commit last) at the end; in a narrow window the note goes
+     * above the buttons.
+     */
+    @Test
+    fun dialogFooterNote() =
+        capture("dialog_footer_note") {
+            Column(verticalArrangement = Arrangement.spacedBy(32.dp)) {
+                Box(Modifier.width(640.dp)) {
+                    RaftDialogSurface(
+                        title = "Invite People",
+                        size = RaftDialogSize.Lg,
+                        description = "They join as members of this server.",
+                        footerNote = "Billed $8 per member each month",
+                        footer = {
+                            RaftButton("Cancel", {}, variant = RaftButtonVariant.Ghost, size = RaftButtonSize.Lg)
+                            RaftButton("Send Invites", {}, variant = RaftButtonVariant.Primary, size = RaftButtonSize.Lg)
+                        },
+                    )
+                }
+                Box(Modifier.width(358.dp).padding(bottom = 24.dp)) {
+                    RaftDialogSurface(
+                        title = "Invite People",
+                        size = RaftDialogSize.Lg,
+                        description = "They join as members of this server.",
+                        footerNote = "Billed $8 per member each month",
+                        footer = {
+                            RaftButton("Cancel", {}, variant = RaftButtonVariant.Ghost, size = RaftButtonSize.Lg)
+                            RaftButton("Send Invites", {}, variant = RaftButtonVariant.Primary, size = RaftButtonSize.Lg)
+                        },
+                    )
+                }
+            }
+        }
+
     @Test
     fun checkbox() =
         capture("checkbox") {

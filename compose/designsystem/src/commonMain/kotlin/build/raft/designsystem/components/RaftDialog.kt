@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -40,6 +41,7 @@ import androidx.compose.ui.layout.Measured
 import androidx.compose.ui.layout.HorizontalAlignmentLine
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
@@ -47,23 +49,37 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.motion.RaftMotion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.LocalRaftMisuse
 import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftStrings
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 
-/** raft-ui Dialog `size`: the narrowest one the content fits. */
-enum class RaftDialogSize(internal val maxWidth: Dp) {
-    /** `max-w-sm`: a decision. */
-    Sm(384.dp),
+/**
+ * raft-ui Dialog `size` (dialog.recipe `size` variants): the narrowest one the content fits.
+ * Only [Lg] and [Wide] take a footer note.
+ */
+enum class RaftDialogSize(internal val maxWidth: Dp, internal val height: Dp? = null) {
+    /** `max-w-100` (raft-ui `decisionWidth`): a decision, the same 400dp as an AlertDialog. */
+    Sm(400.dp),
 
     /** `max-w-md` (default): 2 or 3 fields. */
     Md(448.dp),
 
-    /** `max-w-lg`. */
-    Lg(512.dp),
+    /** `max-w-160`: a longer form, a table of choices. */
+    Lg(640.dp),
+
+    /**
+     * `max-w-4xl h-[min(760px,calc(100dvh-2rem))]`: a settings-like dialog. It keeps that
+     * height (the window's, less 16dp above and below, when shorter), so its body scrolls and
+     * the footer stays at the bottom. raft-ui's `DialogNav` beside the body is not drawn.
+     */
+    Wide(896.dp, 760.dp),
 }
+
+/** raft-ui `DialogFooterNote`: at most this many characters, one line beside the buttons. */
+const val RaftDialogFooterNoteMaxLength: Int = 40
 
 /**
  * raft-ui 0.8.0 Dialog surface: the centred card of a dialog without the window behind it
@@ -80,10 +96,19 @@ enum class RaftDialogSize(internal val maxWidth: Dp) {
  *   `verticalScroll` or lazy list of its own. Inside the scroll the body's height is
  *   unbounded, and a weighted child gets none of it: it is measured 0dp tall and the body
  *   shows empty (Create Joint Channel, Android 1.15.3).
- * - [footer]: at most two buttons at the end, 8dp apart: a ghost Cancel that says what
- *   stays, then the confirm button (`Lg`). They stay in one row at every width and stack
- *   full width, the confirm on top, only when they don't fit (raft-ui 0.22 #673); stacked, a
- *   ghost Cancel takes the ink frame of `default` (0.23 #727, [LocalRaftButtonsStacked]).
+ * - [footer]: at most two buttons in one right-aligned row, 8dp apart, in markup order: a
+ *   ghost Cancel that says what stays first, the commit button (`Lg`) last (raft-ui
+ *   dialog.md, "The footer"). They stay in one row at every width and stack full width, the
+ *   commit on top, only when they don't fit (raft-ui 0.22 #673); stacked, a ghost Cancel
+ *   takes the ink frame of `default` (0.23 #727, [LocalRaftButtonsStacked]).
+ * - [footerNote] (raft-ui `DialogFooterNote`, [RaftDialogSize.Lg] and [RaftDialogSize.Wide]
+ *   only): one short line at the start of the footer that says what the commit will do, at
+ *   most [RaftDialogFooterNoteMaxLength] characters, in `text-footnote` `foreground-muted`.
+ *   One line beside the buttons, 8dp before them; above them, up to 2 lines, when they don't
+ *   fit beside it. Ignored (and reported to [LocalRaftMisuse]) in a smaller dialog: put the
+ *   sentence in the body there.
+ * - [size]: the card's maximum width; a [RaftDialogSize.Wide] card also keeps its height
+ *   (760dp, or what the window gives it), its body filling it.
  */
 @Composable
 fun RaftDialogSurface(
@@ -94,15 +119,29 @@ fun RaftDialogSurface(
     onClose: (() -> Unit)? = null,
     closeLabel: String = LocalRaftStrings.current.close,
     footer: (@Composable RowScope.() -> Unit)? = null,
+    footerNote: String? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
+    val misuse = LocalRaftMisuse.current
+    val note = footerNote?.takeIf { it.isNotBlank() }
+    val noteAllowed = size == RaftDialogSize.Lg || size == RaftDialogSize.Wide
+    if (note != null && !noteAllowed) {
+        misuse("RaftDialogSurface: a footer note fits beside the buttons only in a Lg or Wide dialog; put the sentence in the body of this $size dialog")
+    }
+    if (note != null && note.length > RaftDialogFooterNoteMaxLength) {
+        misuse("RaftDialogSurface: a footer note is at most $RaftDialogFooterNoteMaxLength characters; longer copy belongs in the body")
+    }
+    val fixedHeight = size.height
     CompositionLocalProvider(LocalRaftContentColor provides colors.foregroundMuted, LocalRaftSurfaceColor provides colors.layerPopover) {
         Column(
             modifier
                 .widthIn(max = size.maxWidth)
                 .fillMaxWidth()
+                // `h-[min(760px,calc(100dvh-2rem))]`: the window's room is already less 16dp
+                // above and below (RaftDialog's padding).
+                .then(if (fixedHeight != null) Modifier.heightIn(max = fixedHeight).fillMaxHeight() else Modifier)
                 .raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftRadius.Dialog),
         ) {
             RaftDialogHeader(title = title, onClose = onClose, closeLabel = closeLabel)
@@ -111,7 +150,8 @@ fun RaftDialogSurface(
                 val bodyScroll = rememberScrollState()
                 Column(
                     Modifier
-                        .weight(1f, fill = false)
+                        // A Wide card keeps its height: the body fills it, the footer at the bottom.
+                        .weight(1f, fill = fixedHeight != null)
                         // raft-ui 0.60 ScrollArea: the dialog body's overlay scrollbar.
                         .raftScrollbar(bodyScroll)
                         .verticalScroll(bodyScroll)
@@ -125,7 +165,8 @@ fun RaftDialogSurface(
             if (footer != null) {
                 RaftDialogFooter(
                     Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 20.dp, top = if (hasBody) 0.dp else 20.dp),
-                    footer,
+                    note = note?.takeIf { noteAllowed },
+                    footer = footer,
                 )
             } else if (!hasBody) {
                 Box(Modifier.padding(bottom = 20.dp))
@@ -211,6 +252,7 @@ fun RaftDialog(
     showClose: Boolean = true,
     closeLabel: String = LocalRaftStrings.current.close,
     footer: (@Composable RowScope.() -> Unit)? = null,
+    footerNote: String? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val dismiss by rememberUpdatedState(onDismissRequest)
@@ -232,6 +274,7 @@ fun RaftDialog(
                 onClose = if (showClose) onDismissRequest else null,
                 closeLabel = closeLabel,
                 footer = footer,
+                footerNote = footerNote,
                 content = content,
             )
         }
@@ -548,14 +591,21 @@ internal fun raftSheetConstraints(constraints: Constraints): Constraints =
 
 /**
  * raft-ui DialogFooter (#673): the buttons in one row at the end, 8dp apart, in markup order
- * (Cancel, then the confirm). The row is measured, never guessed from the window: only when
- * it doesn't fit does the footer stack, each button full width and 8dp apart, the confirm (the
+ * (Cancel, then the commit). The row is measured, never guessed from the window: only when
+ * it doesn't fit does the footer stack, each button full width and 8dp apart, the commit (the
  * last one) on top, with [LocalRaftButtonsStacked] set so a ghost Cancel is framed.
+ *
+ * [note] (`DialogFooterNote`, footer `start` variant): at the start, one line, 8dp before the
+ * buttons (`md:me-2`), which stay at the end; when the two don't fit on one line the note goes
+ * above the buttons (`flex-wrap`, 8dp apart) and may wrap to 2 lines.
  */
 @Composable
-private fun RaftDialogFooter(modifier: Modifier, footer: @Composable RowScope.() -> Unit) {
+private fun RaftDialogFooter(modifier: Modifier, note: String?, footer: @Composable RowScope.() -> Unit) {
+    val noteStyle = RaftTheme.typography.footnote
+    val noteInk = RaftTheme.colors.foregroundMuted
     SubcomposeLayout(modifier) { constraints ->
         val gap = 8.dp.roundToPx()
+        val width = constraints.maxWidth
         val rowItems =
             subcompose("row") {
                 CompositionLocalProvider(LocalRaftButtonsStacked provides false) { RaftFooterRowScope.footer() }
@@ -563,12 +613,40 @@ private fun RaftDialogFooter(modifier: Modifier, footer: @Composable RowScope.()
         val loose = Constraints(maxHeight = constraints.maxHeight)
         val inRow = rowItems.map { it.measure(loose) }
         val rowWidth = inRow.sumOf { it.width } + gap * (inRow.size - 1).coerceAtLeast(0)
-        if (rowWidth <= constraints.maxWidth) {
-            val height = inRow.maxOfOrNull { it.height } ?: 0
-            layout(constraints.maxWidth, height) {
-                var x = constraints.maxWidth - rowWidth
+        val noteLine =
+            note?.let {
+                subcompose("note") { RaftText(it, style = noteStyle, color = noteInk, maxLines = 1, softWrap = false) }
+                    .map { m -> m.measure(loose) }
+            }
+        val noteLineWidth = noteLine?.maxOfOrNull { it.width } ?: 0
+        if (noteLine != null && noteLineWidth + gap + rowWidth <= width) {
+            // The note and the buttons on one line: the note at the start, the buttons at the end.
+            val height = maxOf(inRow.maxOfOrNull { it.height } ?: 0, noteLine.maxOfOrNull { it.height } ?: 0)
+            return@SubcomposeLayout layout(width, height) {
+                noteLine.forEach { it.placeRelative(0, (height - it.height) / 2) }
+                var x = width - rowWidth
                 inRow.forEach { placeable ->
                     placeable.placeRelative(x, (height - placeable.height) / 2)
+                    x += placeable.width + gap
+                }
+            }
+        }
+        // The note (if any) on its own line above the buttons, up to 2 lines.
+        val noteAbove =
+            note?.let {
+                subcompose("note-above") {
+                    RaftText(it, style = noteStyle, color = noteInk, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }.map { m -> m.measure(Constraints(maxWidth = width, maxHeight = constraints.maxHeight)) }
+            }
+        val noteHeight = noteAbove?.maxOfOrNull { it.height } ?: 0
+        val top = if (noteAbove != null) noteHeight + gap else 0
+        if (rowWidth <= width) {
+            val rowHeight = inRow.maxOfOrNull { it.height } ?: 0
+            layout(width, top + rowHeight) {
+                noteAbove?.forEach { it.placeRelative(0, 0) }
+                var x = width - rowWidth
+                inRow.forEach { placeable ->
+                    placeable.placeRelative(x, top + (rowHeight - placeable.height) / 2)
                     x += placeable.width + gap
                 }
             }
@@ -577,12 +655,13 @@ private fun RaftDialogFooter(modifier: Modifier, footer: @Composable RowScope.()
                 subcompose("stacked") {
                     CompositionLocalProvider(LocalRaftButtonsStacked provides true) { RaftFooterRowScope.footer() }
                 }
-            val full = Constraints(minWidth = constraints.maxWidth, maxWidth = constraints.maxWidth, maxHeight = constraints.maxHeight)
-            // The confirm, written last, goes on top.
+            val full = Constraints(minWidth = width, maxWidth = width, maxHeight = constraints.maxHeight)
+            // The commit, written last, goes on top.
             val column = stacked.map { it.measure(full) }.asReversed()
-            val height = column.sumOf { it.height } + gap * (column.size - 1).coerceAtLeast(0)
-            layout(constraints.maxWidth, height) {
-                var y = 0
+            val columnHeight = column.sumOf { it.height } + gap * (column.size - 1).coerceAtLeast(0)
+            layout(width, top + columnHeight) {
+                noteAbove?.forEach { it.placeRelative(0, 0) }
+                var y = top
                 column.forEach { placeable ->
                     placeable.placeRelative(0, y)
                     y += placeable.height + gap
