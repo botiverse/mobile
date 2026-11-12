@@ -1881,6 +1881,7 @@
     <string name="tasks_action_new_task">Nova tarefa</string>
     <string name="tasks_view_board">Quadro</string>
     <string name="tasks_view_list">Lista</string>
+    <string name="tasks_view_label">Visualização de tarefas</string>
     <string name="tasks_chip_channel">Canal</string>
     <string name="tasks_chip_creator">Criado por</string>
     <string name="tasks_chip_assignee">Responsável</string>

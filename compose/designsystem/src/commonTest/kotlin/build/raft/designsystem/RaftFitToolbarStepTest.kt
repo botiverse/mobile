@@ -123,6 +123,59 @@ class RaftFitToolbarStepTest {
         assertFalse(forms.inMore || forms.searchButton)
     }
 
+
+    /**
+     * A view switch (web Cards / List) is measured with the display controls: alone it is the
+     * first part to give way (its icons), and it folds into More, which then takes its room.
+     */
+    @Test
+    fun aViewSwitchGivesWayFirstAndFoldsIntoMore() {
+        val computers =
+            RaftFitToolbarWidths(
+                gap = 8,
+                filters = 200,
+                filterIcons = 100,
+                // Cards / List with their words; as icons.
+                display = 150,
+                displayIcons = 70,
+                more = 32,
+                primary = 130,
+                primaryPlus = 32,
+            )
+        // 200 + 150 + 130 and two gaps.
+        assertEquals(RaftFitToolbarStep.None, step(computers, 496))
+        assertEquals(RaftFitToolbarStep.DisplayIcons, step(computers, 495))
+        val icons = raftFitToolbarForms(RaftFitToolbarStep.DisplayIcons, wrap = false)
+        assertTrue(icons.displayIcons)
+        assertFalse(icons.filterIcons || icons.primaryPlus || icons.inMore, "only the view gives way at the first step")
+        // 100 + 70 + 32 + 16 = 218: More not yet; 100 + 32 + 32 + 16 = 180 once the view is in More.
+        assertEquals(RaftFitToolbarStep.PrimaryPlus, step(computers, 218))
+        assertEquals(RaftFitToolbarStep.DisplayMore, step(computers, 217))
+        assertEquals(180, raftFitToolbarFirstLineWidth(computers, raftFitToolbarForms(RaftFitToolbarStep.DisplayMore, wrap = false)))
+    }
+
+    /**
+     * Clear all (`filtersEnd`) is measured with the filters, so it is enough for the filter steps:
+     * it shows its words until the filters give way, then its icon. On their own line the
+     * filters get their words back (Clear all stays ×, which the toolbar draws).
+     */
+    @Test
+    fun clearAllGivesWayWithTheFilters() {
+        // Clear all alone (its filters measured nothing): 70 with its words, 32 as ×.
+        val clearOnly = RaftFitToolbarWidths(gap = 8, filters = 70, filterIcons = 32, primary = 130, primaryPlus = 32)
+        assertEquals(RaftFitToolbarStep.None, step(clearOnly, 208))
+        assertEquals(RaftFitToolbarStep.FilterIcons, step(clearOnly, 207))
+        assertTrue(raftFitToolbarForms(RaftFitToolbarStep.FilterIcons, wrap = false).filterIcons)
+
+        val withSearch = clearOnly.copy(searchMin = 120, searchButton = 32, filters = 260, filterIcons = 120)
+        // 120 + 120 + 130 + 16 = 386 at FilterIcons; with wrap, 120 + 130 + 8 once they move down.
+        assertEquals(RaftFitToolbarStep.FilterIcons, step(withSearch, 386, wrap = true))
+        assertEquals(RaftFitToolbarStep.FiltersWrap, step(withSearch, 385, wrap = true))
+        val wrapped = raftFitToolbarForms(RaftFitToolbarStep.FiltersWrap, wrap = true)
+        assertTrue(wrapped.filtersWrapped)
+        assertFalse(wrapped.filterIcons, "the wrapped filters have their words back")
+    }
+
     @Test
     fun aLongPlaceholderIsCutAfterAWholeWordWithNoSpaceBeforeTheEllipsis() {
         // A character is 10 wide; room for 8.

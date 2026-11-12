@@ -1878,6 +1878,7 @@
     <string name="tasks_action_new_task">Создать задачу</string>
     <string name="tasks_view_board">Доска</string>
     <string name="tasks_view_list">Список</string>
+    <string name="tasks_view_label">Вид задач</string>
     <string name="tasks_chip_channel">Канал</string>
     <string name="tasks_chip_creator">Автор</string>
     <string name="tasks_chip_assignee">Исполнитель</string>

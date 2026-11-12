@@ -10,7 +10,6 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskStatus
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -56,42 +55,6 @@ class SharedTasksPageTest {
     fun serverWideEmptyTasksSkipsToolbarWithoutCreateAction() {
         assertEquals(false, sharedTasksEmptyToolbarVisible(createTasksChannelId = null))
         assertEquals(true, sharedTasksEmptyToolbarVisible(createTasksChannelId = ChannelId("channel-1")))
-    }
-
-    @Test
-    fun tasksToolbarActionRowKeepsCreateAndViewSwitchTogetherWhenTheyFit() {
-        assertEquals(
-            listOf(listOf(TasksToolbarActionControl.NewTask, TasksToolbarActionControl.ViewSwitch)),
-            tasksToolbarActionRows(
-                maxWidth = 728.dp,
-                showCreateButton = true
-            )
-        )
-    }
-
-    @Test
-    fun tasksToolbarActionRowWrapsViewSwitchAsGroupOnNarrowWidth() {
-        assertEquals(
-            listOf(
-                listOf(TasksToolbarActionControl.NewTask),
-                listOf(TasksToolbarActionControl.ViewSwitch)
-            ),
-            tasksToolbarActionRows(
-                maxWidth = 420.dp,
-                showCreateButton = true
-            )
-        )
-    }
-
-    @Test
-    fun tasksToolbarActionRowOnlyShowsViewSwitchWhenCreateIsUnavailable() {
-        assertEquals(
-            listOf(listOf(TasksToolbarActionControl.ViewSwitch)),
-            tasksToolbarActionRows(
-                maxWidth = 728.dp,
-                showCreateButton = false
-            )
-        )
     }
 
     @Test

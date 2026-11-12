@@ -122,6 +122,10 @@ class RaftFitToolbarSearch(
  * [key] names the choice across recompositions (default: [testTag], else [heading], else [text];
  * pass one when the text is the value and changes): its open
  * menu stays with it when the page reorders its choices (applied filters first).
+ *
+ * [onOpen], when given, is what the trigger does instead of opening a menu: a filter whose picker
+ * the page draws itself (a searchable sheet of many people or channels). Such a choice belongs
+ * with the filters, which never fold into More.
  */
 class RaftFitToolbarChoice(
     val text: String,
@@ -135,6 +139,7 @@ class RaftFitToolbarChoice(
     val testTag: String? = null,
     val menu: (@Composable ColumnScope.(close: () -> Unit) -> Unit)? = null,
     val key: String = testTag ?: heading ?: text,
+    val onOpen: (() -> Unit)? = null,
 )
 
 /** One view of a [RaftFitToolbarView]: [icon] (in a 16dp box, filling it) and [label], its name. */
@@ -664,7 +669,7 @@ private fun RaftFitToolbarPicker(choice: RaftFitToolbarChoice, iconsOnly: Boolea
             RaftPickerTriggerButton(
                 // No label: one gap between the icon and the chevron.
                 text = if (iconsOnly) "" else choice.text,
-                onClick = { open = true },
+                onClick = { choice.onOpen?.invoke() ?: run { open = true } },
                 modifier =
                     Modifier
                         .heightIn(min = controlHeight)
