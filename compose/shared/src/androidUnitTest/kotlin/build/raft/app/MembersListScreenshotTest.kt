@@ -25,7 +25,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * JVM screenshots of the server members list (`members.list`, the All tab; `members.list.by-computer`, the
- * Agents tab grouped By computer): the production
+ * Agents tab grouped By computer; `members.list.wide`, the Agents tab in a 1024dp window under the
+ * shell's top bar, with the head and its counts): the production
  * [MembersListContent] with agents on two computers (online, working, offline) and humans (the
  * viewer, an owner, a guest), light and dark. Reports land in `build/reports/home-screenshots/`
  * (uploaded by CI as `shared-home-screenshots`); verify / record as [RaftRobolectricScreenshot].
@@ -47,7 +48,26 @@ class MembersListScreenshotTest {
     @Test
     fun membersListByComputer() = capture("members.list.by-computer", RaftAppAppearance.Light, MembersAgentsGrouping.Computer, MembersTab.Agents)
 
-    private fun capture(name: String, appearance: RaftAppAppearance, grouping: MembersAgentsGrouping? = null, tab: MembersTab = MembersTab.All) {
+    /**
+     * Wide, under the app shell's top bar (a 1024dp window): the head with "Members" and its counts
+     * ("1 agent working · 6 members"), and the toolbar on one line with every label (the Agents tab:
+     * tabs, search, Group, Invite human, Create agent ▾).
+     */
+    @Test
+    @Config(qualifiers = "w1024dp-h640dp-mdpi")
+    fun membersListWide() = capture("members.list.wide", RaftAppAppearance.Light, tab = MembersTab.Agents, underTopBar = true)
+
+    @Test
+    @Config(qualifiers = "w1024dp-h640dp-mdpi")
+    fun membersListWideDark() = capture("members.list.wide.dark", RaftAppAppearance.Dark, tab = MembersTab.Agents, underTopBar = true)
+
+    private fun capture(
+        name: String,
+        appearance: RaftAppAppearance,
+        grouping: MembersAgentsGrouping? = null,
+        tab: MembersTab = MembersTab.All,
+        underTopBar: Boolean = false,
+    ) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
                 remember {
@@ -55,7 +75,10 @@ class MembersListScreenshotTest {
                         pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
                     }
                 }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { MembersListVisualContent(grouping, initialTab = tab) }
+            val topBar = remember(underTopBar) { if (underTopBar) RaftAppShellTopBarState() else null }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftAppShellTopBar provides topBar) {
+                MembersListVisualContent(grouping, initialTab = tab)
+            }
         }
     }
 }

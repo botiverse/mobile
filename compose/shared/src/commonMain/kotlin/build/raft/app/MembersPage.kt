@@ -228,7 +228,6 @@ import build.raft.app.model.toMemberProfile
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.RaftTextField
-import build.raft.designsystem.components.RaftTextFieldSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -258,10 +257,15 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftBadge
-import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftFitToolbar
+import build.raft.designsystem.components.RaftFitToolbarAction
+import build.raft.designsystem.components.RaftFitToolbarChoice
+import build.raft.designsystem.components.RaftFitToolbarOption
+import build.raft.designsystem.components.RaftFitToolbarPrimary
+import build.raft.designsystem.components.RaftFitToolbarScope
+import build.raft.designsystem.components.RaftFitToolbarSearch
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftSidebarItem
-import build.raft.designsystem.components.RaftSidebarSectionAction
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftPanelNotice
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -358,6 +362,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -6169,9 +6174,7 @@ internal fun MembersListContent(
     var agentsGrouping by remember(membersCurrentUserId, agentGroupCollapseStore) {
         mutableStateOf(agentGroupCollapseStore?.agentsGrouping(membersCurrentUserId) ?: MembersAgentsGrouping.Default)
     }
-    var groupMenuOpen by remember(payload.instanceId) { mutableStateOf(false) }
     var activeCreateAgentMode by remember(payload.instanceId) { mutableStateOf<MembersCreateAgentMode?>(null) }
-    var createAgentMenuOpen by remember(payload.instanceId) { mutableStateOf(false) }
     var createAgentSubmitting by remember { mutableStateOf(false) }
     var createAgentError by remember { mutableStateOf<String?>(null) }
     // Runtime form v2: fields a rejected create pointed at (`/formValues/<field>`).
@@ -6238,51 +6241,53 @@ internal fun MembersListContent(
                 onBack = onBack
             )
         }
+        // Web Members: no counts while the members load (the counts come with the members).
+        val membersLoaded = payload.members.isNotEmpty()
+        val allCount = (if (payload.showHumanDirectory) allHumans.size else 0) + allAgents.size
+        if (underTopBar) {
+            // Wide: the page's head, "Members" and its counts in the machine type (web PanelHeader + MembersCounts).
+            RaftDesignSystemTheme {
+                MembersWideHead(
+                    title = displayTitle,
+                    agents = allAgents,
+                    memberCount = allCount.takeIf { membersLoaded },
+                    agentStatusResolver = agentStatusResolver,
+                )
+            }
+        }
         RaftDesignSystemTheme {
             MembersToolbar(
                 tabs = tabs,
                 tab = tab,
-                counts = mapOf(MembersTab.All to (if (payload.showHumanDirectory) allHumans.size else 0) + allAgents.size, MembersTab.Humans to allHumans.size, MembersTab.Agents to allAgents.size),
+                counts =
+                    if (membersLoaded) {
+                        mapOf(MembersTab.All to allCount, MembersTab.Humans to allHumans.size, MembersTab.Agents to allAgents.size)
+                    } else {
+                        emptyMap()
+                    },
                 onTab = { membersTab = it },
                 query = membersQuery,
                 onQuery = { membersQuery = it },
-                actions = {
-                    if (tab == MembersTab.Agents) {
-                        MembersAgentsGroupAction(
-                            grouping = agentsGrouping,
-                            menuOpen = groupMenuOpen,
-                            onOpenMenu = { groupMenuOpen = true },
-                            onDismissMenu = { groupMenuOpen = false },
-                            onSelect = { grouping ->
-                                groupMenuOpen = false
-                                agentsGrouping = grouping
-                                agentGroupCollapseStore?.setAgentsGrouping(membersCurrentUserId, grouping)
-                            },
-                        )
-                    }
-                    if (canInviteHumans && showHumans) {
-                        // A person's +, told apart from the agent's + beside it on the All tab.
-                        RaftSidebarSectionAction(
-                            tooltip = stringResource(Res.string.member_action_invite_human),
-                            onClick = { activeInviteHuman = true }
-                        ) {
-                            RaftLucideIcon(RaftLucideIconName.UserPlus, Modifier.size(14.dp), color = raftArgbHex(LocalRaftContentColor.current))
-                        }
-                    }
-                    if (canCreateAgents && showAgents) {
-                        MembersCreateAgentAction(
-                            menuOpen = createAgentMenuOpen && createAgentSubmit != null,
-                            onOpenMenu = { if (createAgentSubmit != null) createAgentMenuOpen = true },
-                            onDismissMenu = { createAgentMenuOpen = false },
-                            onSelect = { mode ->
-                                createAgentMenuOpen = false
+                // The Group menu is the Agents tab's only (web `tab === "agents"`).
+                grouping = agentsGrouping.takeIf { tab == MembersTab.Agents },
+                onGrouping = { grouping ->
+                    agentsGrouping = grouping
+                    agentGroupCollapseStore?.setAgentsGrouping(membersCurrentUserId, grouping)
+                },
+                // Web: Invite human and Create agent end the toolbar on every tab, as the reader may.
+                onInviteHuman = if (canInviteHumans) ({ activeInviteHuman = true }) else null,
+                onCreateAgent =
+                    if (canCreateAgents) {
+                        { mode: MembersCreateAgentMode ->
+                            if (createAgentSubmit != null) {
                                 RaftProductEvents.agentCreateOpened(RaftAgentCreateEntry.MembersPage)
                                 activeCreateAgentMode = mode
                                 if (mode.requiresComputerSelection()) createAgentLoadMachines()
                             }
-                        )
-                    }
-                },
+                        }
+                    } else {
+                        null
+                    },
             )
         }
         BoxWithConstraints(
@@ -14924,90 +14929,7 @@ internal fun MembersPageHeader(
     )
 }
 
-/**
- * The agents section's "+" (web `renderAgentActionMenu`): a [RaftSidebarSectionAction] that
- * opens raft-ui's DropdownMenu under it (`min-w-[190px]`) with Create Agent and Create
- * External Agent.
- */
-@Composable
-private fun MembersCreateAgentAction(
-    menuOpen: Boolean,
-    onOpenMenu: () -> Unit,
-    onDismissMenu: () -> Unit,
-    onSelect: (MembersCreateAgentMode) -> Unit
-) {
-    Box {
-        RaftSidebarSectionAction(
-            glyph = RaftGlyph.Plus,
-            tooltip = stringResource(Res.string.agent_create_action_create),
-            onClick = onOpenMenu,
-            menuOpen = menuOpen
-        )
-        RaftDropdownMenu(
-            expanded = menuOpen,
-            onDismissRequest = onDismissMenu,
-            minWidth = MembersCreateAgentMenuMinWidth
-        ) {
-            RaftMenuItem(
-                text = stringResource(Res.string.agent_create_action_create),
-                leadingIcon = { MembersMenuIcon(RaftLucideIconName.Bot) },
-                onClick = { onSelect(MembersCreateAgentMode.Managed) }
-            )
-            RaftMenuItem(
-                text = stringResource(Res.string.agent_create_action_create_external),
-                leadingIcon = { MembersMenuIcon(RaftLucideIconName.Plug) },
-                onClick = { onSelect(MembersCreateAgentMode.External) }
-            )
-        }
-    }
-}
-
-/**
- * The Agents list's Group menu (web Members `GroupSelect`, slock #14068): No grouping (the default)
- * or By computer, the choice checked. Its control shows active once a grouping is chosen.
- */
-@Composable
-private fun MembersAgentsGroupAction(
-    grouping: MembersAgentsGrouping,
-    menuOpen: Boolean,
-    onOpenMenu: () -> Unit,
-    onDismissMenu: () -> Unit,
-    onSelect: (MembersAgentsGrouping) -> Unit,
-) {
-    val label = grouping.localizedLabel()
-    Box {
-        RaftSidebarSectionAction(
-            tooltip = stringResource(Res.string.members_group_trigger_label, label),
-            onClick = onOpenMenu,
-            menuOpen = menuOpen || grouping != MembersAgentsGrouping.Default,
-            modifier = Modifier.testTag(MembersAgentsGroupActionTestTag),
-        ) {
-            RaftLucideIcon(RaftLucideIconName.Rows3, Modifier.size(14.dp), color = raftArgbHex(LocalRaftContentColor.current))
-        }
-        RaftDropdownMenu(
-            expanded = menuOpen,
-            onDismissRequest = onDismissMenu,
-            minWidth = MembersCreateAgentMenuMinWidth
-        ) {
-            MembersAgentsGrouping.entries.forEach { option ->
-                RaftMenuItem(
-                    text = option.localizedLabel(),
-                    checked = option == grouping,
-                    onClick = { onSelect(option) },
-                )
-            }
-        }
-    }
-}
-
 internal const val MembersAgentsGroupActionTestTag = "members-agents-group"
-
-@Composable
-private fun MembersAgentsGrouping.localizedLabel(): String =
-    when (this) {
-        MembersAgentsGrouping.None -> stringResource(Res.string.members_group_none)
-        MembersAgentsGrouping.Computer -> stringResource(Res.string.members_group_by_computer)
-    }
 
 /**
  * The standalone Members route's payload (`compose_members`): the roster [members] it lists, the
@@ -15051,10 +14973,20 @@ internal fun membersByName(members: List<MemberProfile>): List<MemberProfile> =
 
 internal const val MembersSearchTestTag = "members-search"
 
+internal const val MembersScopeTestTag = "members-tabs"
+internal const val MembersInviteHumanTestTag = "members-invite-human"
+internal const val MembersCreateAgentTestTag = "members-create-agent"
+internal const val MembersCreateAgentMenuTestTag = "members-create-agent-more"
+
 /**
- * The tabs, the actions and the search over the list (web Members toolbar, slock #13127 / #14068): the
- * tabs with their counts and the [actions] (the Agents tab's Group menu, Invite human, Create agent)
- * on one row, the search under them.
+ * The toolbar over the list (web Members toolbar, slock #14149; raft-design members.md), one line
+ * on every width: the tabs with their counts, the search filling the line, the Agents tab's Group
+ * menu ([grouping] non-null), Invite human, ⋯ More while it holds anything, and Create agent, a
+ * split button whose ▾ offers Connect an external agent. As the line narrows it gives way as
+ * [RaftFitToolbar] does: the Group menu shows its icon, Invite human its icon, Create agent
+ * becomes +, the tabs become a Select, the Group menu and Invite human fold into More, and last
+ * an empty search becomes its button. The web's Take over a local session (the desktop app's
+ * hand-off) has no counterpart in the app.
  */
 @Composable
 private fun MembersToolbar(
@@ -15064,7 +14996,10 @@ private fun MembersToolbar(
     onTab: (MembersTab) -> Unit,
     query: String,
     onQuery: (String) -> Unit,
-    actions: @Composable RowScope.() -> Unit,
+    grouping: MembersAgentsGrouping?,
+    onGrouping: (MembersAgentsGrouping) -> Unit,
+    onInviteHuman: (() -> Unit)?,
+    onCreateAgent: ((MembersCreateAgentMode) -> Unit)?,
 ) {
     val labels =
         mapOf(
@@ -15072,28 +15007,193 @@ private fun MembersToolbar(
             MembersTab.Humans to stringResource(Res.string.members_section_humans),
             MembersTab.Agents to stringResource(Res.string.members_section_agents),
         )
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = MembersListContainerInset + RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
-    ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            SegmentedControl(
-                selectedValue = tab.name,
-                options = tabs.map { SegmentedControlOption(value = it.name, label = labels.getValue(it), count = counts[it]) },
-                onValueSelected = { value -> MembersTab.entries.firstOrNull { it.name == value }?.let(onTab) },
-            )
-            Spacer(Modifier.weight(1f))
-            actions()
-        }
-        RaftTextField(
-            value = query,
-            onValueChange = onQuery,
-            modifier = Modifier.fillMaxWidth().testTag(MembersSearchTestTag),
-            placeholder = stringResource(Res.string.members_search_label),
-            leading = { RaftLucideIcon(RaftLucideIconName.Search, Modifier.size(14.dp), color = raftArgbHex(LocalRaftContentColor.current)) },
-            size = RaftTextFieldSize.Md,
+    val groupingLabels =
+        mapOf(
+            MembersAgentsGrouping.None to stringResource(Res.string.members_group_none),
+            MembersAgentsGrouping.Computer to stringResource(Res.string.members_group_by_computer),
         )
+    val groupingLabel = groupingLabels.getValue(grouping ?: MembersAgentsGrouping.Default)
+    val groupingName = stringResource(Res.string.members_group_trigger_label, groupingLabel)
+    val groupHeading = stringResource(Res.string.list_toolbar_group)
+    val searchLabel = stringResource(Res.string.members_search_label)
+    val inviteLabel = stringResource(Res.string.member_action_invite_human)
+    val createLabel = stringResource(Res.string.members_create_agent)
+    val createMoreLabel = stringResource(Res.string.members_create_agent_more)
+    val externalLabel = stringResource(Res.string.members_create_agent_external)
+    // A search given way to a button, opened over the tabs: system Back closes it (AGENTS.md).
+    var searchOpen by remember { mutableStateOf(false) }
+    var searchOverTabs by remember { mutableStateOf(false) }
+    // As Esc: text first, then the search itself. Only while it covers the tabs, so Back is never
+    // swallowed by an inline search (a wide toolbar).
+    RaftBackHandler(enabled = searchOverTabs, label = "members_toolbar_search") {
+        if (query.isNotEmpty()) onQuery("") else searchOpen = false
     }
+    RaftFitToolbar(
+        scope =
+            RaftFitToolbarScope(
+                options = tabs.map { RaftFitToolbarOption(key = it.name, label = labels.getValue(it), count = counts[it]) },
+                selectedKey = tab.name,
+                onSelect = { key -> MembersTab.entries.firstOrNull { it.name == key }?.let(onTab) },
+                label = stringResource(Res.string.members_scope_label),
+                testTag = MembersScopeTestTag,
+            ),
+        search =
+            RaftFitToolbarSearch(
+                value = query,
+                onValueChange = onQuery,
+                label = searchLabel,
+                clearLabel = stringResource(Res.string.list_toolbar_clear_search),
+                testTag = MembersSearchTestTag,
+                open = searchOpen,
+                onOpenChange = { searchOpen = it },
+                onShownOverScopeChange = { searchOverTabs = it },
+            ),
+        display =
+            if (grouping == null) {
+                emptyList()
+            } else {
+                listOf(
+                    RaftFitToolbarChoice(
+                        text = groupingLabel,
+                        icon = { MembersToolbarIcon(RaftLucideIconName.Rows3) },
+                        options = MembersAgentsGrouping.entries.map { RaftFitToolbarOption(key = it.name, label = groupingLabels.getValue(it)) },
+                        selectedKey = grouping.name,
+                        onSelect = { key -> MembersAgentsGrouping.entries.firstOrNull { it.name == key }?.let(onGrouping) },
+                        heading = groupHeading,
+                        contentDescription = groupingName,
+                        // Filled `info-soft` while off its default, as an applied filter.
+                        applied = grouping != MembersAgentsGrouping.Default,
+                        testTag = MembersAgentsGroupActionTestTag,
+                    ),
+                )
+            },
+        secondary =
+            if (onInviteHuman == null) {
+                emptyList()
+            } else {
+                listOf(
+                    RaftFitToolbarAction(
+                        text = inviteLabel,
+                        icon = { MembersToolbarIcon(RaftLucideIconName.UserPlus) },
+                        onClick = onInviteHuman,
+                        testTag = MembersInviteHumanTestTag,
+                    ),
+                )
+            },
+        primary =
+            onCreateAgent?.let { create ->
+                RaftFitToolbarPrimary(
+                    text = createLabel,
+                    onClick = { create(MembersCreateAgentMode.Managed) },
+                    icon = { MembersToolbarIcon(RaftLucideIconName.Bot) },
+                    menuLabel = createMoreLabel,
+                    menu = { dismiss ->
+                        RaftMenuItem(
+                            text = externalLabel,
+                            leadingIcon = { MembersMenuIcon(RaftLucideIconName.Plug) },
+                            onClick = {
+                                dismiss()
+                                create(MembersCreateAgentMode.External)
+                            },
+                        )
+                    },
+                    testTag = MembersCreateAgentTestTag,
+                    menuTestTag = MembersCreateAgentMenuTestTag,
+                )
+            },
+        moreLabel = stringResource(Res.string.list_toolbar_more),
+        horizontalPadding = MembersListContainerInset + RaftAppSpacing.Sm,
+    )
+}
+
+/** A toolbar icon filling the box its control gives it, in the control's ink. */
+@Composable
+private fun MembersToolbarIcon(name: RaftLucideIconName) {
+    RaftLucideIcon(name, Modifier.fillMaxSize(), color = raftArgbHex(LocalRaftContentColor.current))
+}
+
+/**
+ * The page's head under the wide top bar (web Members `PanelHeader` with `MembersCounts`): the
+ * title, then "2 agents working · 17 members" in the machine type; no counts while the members
+ * load ([memberCount] null).
+ */
+@Composable
+private fun MembersWideHead(
+    title: String,
+    agents: List<MemberProfile>,
+    memberCount: Int?,
+    agentStatusResolver: RaftAgentStatusResolver,
+) {
+    val colors = RaftTheme.colors
+    val working = rememberMembersWorkingAgentCount(agents, agentStatusResolver)
+    val counts = membersCountsText(working = working, members = memberCount ?: 0)
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(RaftTheme.controls.headHeight - RaftStroke.Hairline)
+                .padding(horizontal = MembersListContainerInset + RaftAppSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RaftText(
+                text = title,
+                modifier = Modifier.semantics { heading() },
+                style = RaftTheme.typography.headline,
+                color = colors.foreground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (memberCount != null) {
+                Spacer(Modifier.width(RaftAppSpacing.Sm))
+                RaftText(
+                    text = counts,
+                    modifier = Modifier.weight(1f, fill = false).testTag(MembersCountsTestTag),
+                    style = RaftTheme.typography.monoMeta,
+                    color = colors.foregroundHint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam))
+    }
+}
+
+internal const val MembersCountsTestTag = "members-counts"
+
+/** Web `members.page.counts`: "1 agent working · 17 members". */
+@Composable
+private fun membersCountsText(working: Int, members: Int): String {
+    val workingText =
+        if (working == 1) {
+            stringResource(Res.string.members_counts_working_one, working)
+        } else {
+            stringResource(Res.string.members_counts_working_other, working)
+        }
+    val membersText =
+        if (members == 1) {
+            stringResource(Res.string.members_counts_members_one, members)
+        } else {
+            stringResource(Res.string.members_counts_members_other, members)
+        }
+    return "$workingText · $membersText"
+}
+
+/** How many of [agents] are working or thinking (web `selectWorkingAgentCount`), live. */
+@Composable
+private fun rememberMembersWorkingAgentCount(agents: List<MemberProfile>, agentStatusResolver: RaftAgentStatusResolver): Int {
+    val flow =
+        remember(agents, agentStatusResolver) {
+            if (agents.isEmpty()) {
+                flowOf(0)
+            } else {
+                combine(agents.map { agentStatusResolver(it.id.value) }) { states ->
+                    states.count { it?.status == AgentStatus.Working || it?.status == AgentStatus.Thinking }
+                }.distinctUntilChanged()
+            }
+        }
+    val count by flow.collectAsState(0)
+    return count
 }
 
 /** A menu row's 16dp icon in the row's icon ink. */

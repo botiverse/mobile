@@ -2111,6 +2111,17 @@
     <string name="members_group_trigger_label">Agrupar agentes: %1$s</string>
     <string name="members_tab_all">Todos</string>
     <string name="members_search_label">Pesquisar membros</string>
+    <string name="members_scope_label">Mostrar</string>
+    <string name="members_create_agent">Criar agente</string>
+    <string name="members_create_agent_more">Mais formas de adicionar um agente</string>
+    <string name="members_create_agent_external">Conectar um agente externo</string>
+    <string name="members_counts_working_one">%1$d agente trabalhando</string>
+    <string name="members_counts_working_other">%1$d agentes trabalhando</string>
+    <string name="members_counts_members_one">%1$d membro</string>
+    <string name="members_counts_members_other">%1$d membros</string>
+    <string name="list_toolbar_more">Mais</string>
+    <string name="list_toolbar_group">Agrupar</string>
+    <string name="list_toolbar_clear_search">Limpar pesquisa</string>
     <string name="members_no_matches">Nenhum membro corresponde a “%1$s”.</string>
     <string name="member_hosted_runtime_location">Executado na nuvem</string>
     <string name="member_hosted_runtime_free">Gratuito por tempo limitado</string>

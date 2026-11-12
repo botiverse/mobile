@@ -2111,6 +2111,17 @@
     <string name="members_group_trigger_label">에이전트 그룹: %1$s</string>
     <string name="members_tab_all">전체</string>
     <string name="members_search_label">멤버 검색</string>
+    <string name="members_scope_label">표시</string>
+    <string name="members_create_agent">에이전트 만들기</string>
+    <string name="members_create_agent_more">에이전트를 추가하는 다른 방법</string>
+    <string name="members_create_agent_external">외부 에이전트 연결</string>
+    <string name="members_counts_working_one">에이전트 %1$d개 작업 중</string>
+    <string name="members_counts_working_other">에이전트 %1$d개 작업 중</string>
+    <string name="members_counts_members_one">멤버 %1$d명</string>
+    <string name="members_counts_members_other">멤버 %1$d명</string>
+    <string name="list_toolbar_more">더 보기</string>
+    <string name="list_toolbar_group">그룹</string>
+    <string name="list_toolbar_clear_search">검색 지우기</string>
     <string name="members_no_matches">‘%1$s’에 해당하는 멤버가 없어요.</string>
     <string name="member_hosted_runtime_location">클라우드에서 실행</string>
     <string name="member_hosted_runtime_free">한시적 무료</string>

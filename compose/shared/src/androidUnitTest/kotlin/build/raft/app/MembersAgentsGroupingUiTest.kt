@@ -5,11 +5,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import build.raft.app.compat.json.JSONObject
@@ -71,6 +71,30 @@ class MembersAgentsGroupingUiTest {
         }
     }
 
+    /**
+     * The tabs, as the toolbar shows them at this width: the segmented control, or the Select it
+     * gives way to on a narrow phone (RaftFitToolbar step 6).
+     */
+    private fun androidx.compose.ui.test.ComposeUiTest.showTab(tab: MembersTab) {
+        val select = "$MembersScopeTestTag-select"
+        if (onAllNodesWithTag(select).fetchSemanticsNodes().isNotEmpty()) {
+            onNodeWithTag(select).performClick()
+            onNodeWithTag("$select-${tab.name}").performClick()
+        } else {
+            onNodeWithTag("$MembersScopeTestTag-${tab.name}").performClick()
+        }
+    }
+
+    /** The Group menu on the toolbar, or in ⋯ More once it has folded there (RaftFitToolbar step 7). */
+    private fun androidx.compose.ui.test.ComposeUiTest.pickGrouping(grouping: MembersAgentsGrouping) {
+        if (onAllNodesWithTag(MembersAgentsGroupActionTestTag).fetchSemanticsNodes().isNotEmpty()) {
+            onNodeWithTag(MembersAgentsGroupActionTestTag).performClick()
+        } else {
+            onNodeWithContentDescription("More").performClick()
+        }
+        onNodeWithTag("$MembersAgentsGroupActionTestTag-${grouping.name}").performClick()
+    }
+
     @Test
     fun agentsAreOneListUntilTheReaderGroupsThemByComputer() =
         runRobolectricComposeUiTest {
@@ -82,13 +106,12 @@ class MembersAgentsGroupingUiTest {
             onAllNodesWithTag(MembersAgentsGroupActionTestTag).assertCountEquals(0)
 
             // The Agents tab: No grouping until the reader picks one.
-            onAllNodesWithText("Agents", substring = true).onFirst().performClick()
+            showTab(MembersTab.Agents)
             onAllNodesWithText("artin").assertCountEquals(0)
             onNodeWithText("Volta").assertExists()
             onAllNodesWithText("MacBook Pro", substring = true).assertCountEquals(0)
 
-            onNodeWithTag(MembersAgentsGroupActionTestTag).performClick()
-            onNodeWithText("By computer").performClick()
+            pickGrouping(MembersAgentsGrouping.Computer)
 
             onAllNodesWithText("MacBook Pro", substring = true).assertCountEquals(1)
             onAllNodesWithText("daybed-earth", substring = true).assertCountEquals(1)
