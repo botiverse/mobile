@@ -93,6 +93,11 @@ data class PermissionBlocker(
      * reason wins over the generic localized permission sentence).
      */
     val serverMessage: String? = null,
+    /**
+     * The refusing body's own `code` / `errorCode`, when it has one (null: an uncoded refusal), so a
+     * caller can tell a coded 403 (device sessions, email verification...) from a plain one.
+     */
+    val serverCode: String? = null,
     /** Structured cleanup facts retained when a multi-step operation cannot retract all work. */
     val cleanupEvidence: String? = null,
     /** As [ScreenError.traceId]: the refusing response's server trace id. */

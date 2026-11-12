@@ -2570,7 +2570,8 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
                 PermissionBlocker(
                     code = "server_forbidden",
                     requiredCapability = "server_access",
-                    serverMessage = serverMessage
+                    serverMessage = serverMessage,
+                    serverCode = serverCode
                 )
             )
         in 500..599 ->

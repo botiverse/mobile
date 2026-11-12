@@ -512,6 +512,7 @@
     <string name="thread_reply_title_preview_image">[图片]</string>
     <string name="thread_reply_title_preview_file">[文件]</string>
     <string name="thread_channel_title">频道</string>
+    <string name="thread_channel_access_lost">你已不在这个频道中</string>
     <string name="thread_direct_message_title">私信</string>
     <string name="thread_state_no_replies">暂无回复</string>
     <string name="thread_inline_reply_count_one">1 条回复</string>

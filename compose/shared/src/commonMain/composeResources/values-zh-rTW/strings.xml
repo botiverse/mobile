@@ -508,6 +508,7 @@
     <string name="thread_reply_title_preview_image">[圖片]</string>
     <string name="thread_reply_title_preview_file">[檔案]</string>
     <string name="thread_channel_title">頻道</string>
+    <string name="thread_channel_access_lost">你已不在這個頻道中</string>
     <string name="thread_direct_message_title">私訊</string>
     <string name="thread_state_no_replies">還沒有回覆</string>
     <string name="thread_inline_reply_count_one">1 則回覆</string>

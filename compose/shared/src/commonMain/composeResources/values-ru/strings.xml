@@ -508,6 +508,7 @@
     <string name="thread_reply_title_preview_image">[Изображение]</string>
     <string name="thread_reply_title_preview_file">[Файл]</string>
     <string name="thread_channel_title">Канал</string>
+    <string name="thread_channel_access_lost">Вы больше не состоите в этом канале</string>
     <string name="thread_direct_message_title">Личный чат</string>
     <string name="thread_state_no_replies">Пока нет ответов</string>
     <string name="thread_inline_reply_count_one">1 ответ</string>

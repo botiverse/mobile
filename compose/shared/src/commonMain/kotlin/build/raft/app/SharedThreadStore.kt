@@ -7697,7 +7697,8 @@ private fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): Dat
                     PermissionBlocker(
                         code = contractCode ?: "thread_forbidden",
                         requiredCapability = "thread_access",
-                        serverMessage = projection.serverMessage
+                        serverMessage = projection.serverMessage,
+                        serverCode = contractCode ?: projection.errorCode.takeUnless { it == "http_$code" }
                     )
                 )
             else ->
@@ -7825,6 +7826,12 @@ internal data class SharedThreadState(
      */
     val conversationAccessLost: Boolean = false,
     /**
+     * With [conversationAccessLost]: the answer was web's channel denial ([isChannelAccessDenial],
+     * #12696), so a channel says "You're no longer in this channel" and drops its Activity rows; any
+     * other lost access keeps the generic notice.
+     */
+    val channelAccessDenied: Boolean = false,
+    /**
      * The unread-thread pill's parents of this channel's unread followed threads, by thread channel
      * id, resolved from the followed-threads list for parents the page has not loaded (web
      * `FollowedThread.parentMessageId`). Filled by [SharedThreadIntent.ResolveUnreadThreadParents].
@@ -7851,6 +7858,28 @@ internal data class SharedThreadState(
  * a non-auth 403 (removed / kicked / private) or a 404 (deleted). 401 is an auth-session problem
  * handled by the auth route, and an edge block is a network fact, not an access fact.
  */
+/**
+ * Web `isChannelAccessDenial` (botiverse/slock store/channelAccessLoss.ts, #12696): only the server's
+ * answers that mean "this channel, for this person" — `denyChannelAccess`'s 403 for an ex-member, the
+ * 404s otherwise — with no error code. Every other 403 / 404 (not a member of the server, email
+ * verification, device sessions, an unknown server) is not a removal. The realtime catch-up reads
+ * this one, so a heartbeat never leaves a conversation on another kind of refusal.
+ */
+internal fun DataResult<*>.isChannelAccessDenial(): Boolean =
+    when (this) {
+        is DataResult.NoPermission ->
+            blocker.serverCode == null && blocker.serverMessage?.trim() in ChannelAccessDenial403Messages
+        is DataResult.Error ->
+            error.serverCode == null &&
+                error.serverMessage?.trim() in ChannelAccessDenial404Messages &&
+                // The repository's uncoded 404; the thread API's uncoded 404 takes the caller's fallback.
+                (error.code == "http_404" || (error.code.startsWith("thread_") && error.code.endsWith("_network")))
+        else -> false
+    }
+
+private val ChannelAccessDenial403Messages = setOf("Access denied", "You do not have access to this channel")
+private val ChannelAccessDenial404Messages = setOf("Channel not found or not visible", "Channel not found")
+
 internal fun DataResult<*>.isConversationAccessLost(): Boolean =
     when (this) {
         is DataResult.NoPermission ->
@@ -9590,6 +9619,9 @@ internal class SharedThreadStore(
                                         conversationAccessLost =
                                             currentState.conversationAccessLost ||
                                                 (hasRenderableContent && result.isConversationAccessLost()),
+                                        channelAccessDenied =
+                                            currentState.channelAccessDenied ||
+                                                (hasRenderableContent && result.isChannelAccessDenial()),
                                         writeActionsEnabled =
                                             authorityProjectedPayload.hasWriteAuthorityForAccess(
                                                 accessResolution = projectedAccessResolution,
@@ -12269,6 +12301,9 @@ internal class SharedThreadStore(
          */
         launchCatchUp: Boolean = false,
     ) {
+        // The page is leaving: a catch-up already proved this account can no longer read it (web
+        // #12696 stops the heartbeat's sync for a channel it was removed from).
+        if (_state.value.conversationAccessLost) return
         val routeIdentity = initial.realtimeGapRouteIdentity()
         var requestSnapshot: RaftThreadScreenPayload? = null
         val recoveryId =
@@ -12413,6 +12448,10 @@ internal class SharedThreadStore(
         // Message storage Phase 2b: the durable write revision before the catch-up's fetch (its page's revAtRequest).
         var durableRevAtRequest: Long? = null
         var recoveryCompleted = false
+        // Set when the catch-up answered that this account lost the conversation (removed from the
+        // channel: web's exact denials, see [isChannelAccessDenial]); the page then leaves, as after refresh.
+        var accessLost = false
+        var accessProvenance: ReplyCacheProvenance? = null
         try {
             val requestPayload =
                 realtimeGapRecoveryMutex.withLock {
@@ -12436,6 +12475,7 @@ internal class SharedThreadStore(
                     }
                     requestSnapshot
                 } ?: return
+            accessProvenance = dataSource.currentReplyCacheProvenance()
             val anchorMessageId = requestPayload.gapCatchUpAnchorMessageId()
             val requestMessageIds = requestPayload.messages.mapTo(mutableSetOf()) { it.id }
             // Two steps, one outcome (nothing is committed before the decision is final): the cheap page
@@ -12603,22 +12643,38 @@ internal class SharedThreadStore(
                         }
                     }
                     is DataResult.Error -> {
-                        if (catchUpResult.error.retryable) gapCatchUpRetryableFailures += 1L
-                        reducePayloadPatch(cachePayload = true) { latestPayload ->
-                            latestPayload.copy(
-                                newerMessagesStatus = "error",
-                                errorCode = catchUpResult.error.code,
-                            )
+                        if (catchUpResult.isChannelAccessDenial()) {
+                            accessLost = true
+                            markConversationAccessLost(catchUpResult.error.code)
+                        } else {
+                            if (catchUpResult.error.retryable) gapCatchUpRetryableFailures += 1L
+                            reducePayloadPatch(cachePayload = true) { latestPayload ->
+                                latestPayload.copy(
+                                    newerMessagesStatus = "error",
+                                    errorCode = catchUpResult.error.code,
+                                )
+                            }
                         }
                     }
                     is DataResult.NoPermission -> {
-                        reducePayloadPatch(cachePayload = true) { latestPayload ->
-                            latestPayload.copy(
-                                newerMessagesStatus = "error",
-                                errorCode = catchUpResult.blocker.code,
-                            )
+                        if (catchUpResult.isChannelAccessDenial()) {
+                            accessLost = true
+                            markConversationAccessLost(catchUpResult.blocker.code)
+                        } else {
+                            reducePayloadPatch(cachePayload = true) { latestPayload ->
+                                latestPayload.copy(
+                                    newerMessagesStatus = "error",
+                                    errorCode = catchUpResult.blocker.code,
+                                )
+                            }
                         }
                     }
+                }
+                if (accessLost) {
+                    diagnosticsLogger?.invoke(
+                        "thread_gap_catchup_access_lost threadId=${initial.sourceThreadId.orEmpty()} " +
+                            "result=${catchUpResult.diagnosticsResultReason()}"
+                    )
                 }
             }
             recoveryCompleted = true
@@ -12652,6 +12708,11 @@ internal class SharedThreadStore(
             launchDurableLatestPageWrite(initial, offer, durableBaseline, durableRevAtRequest)
         } else {
             durableBaseline?.let { dataSource.abandonDurableLatestPageBaseline(it) }
+        }
+        if (accessLost) {
+            // Same as refresh: drop memory + durable cache for this conversation; no backfill follows.
+            accessProvenance?.let { provenance -> dataSource.evictLostConversationAccess(initial, provenance) }
+            return
         }
         if (!mergedNewArrivals && !backfillRequested) return
         val latest = _state.value.payload
@@ -13766,6 +13827,22 @@ internal class SharedThreadStore(
                 "currentParentMessageId=${currentPayload.parentMessageId.orEmpty()}"
         )
         return false
+    }
+
+    /**
+     * A catch-up proved this account lost the open conversation (see [isConversationAccessLost]): the
+     * page leaves ([SharedThreadState.conversationAccessLost]). The payload is not re-cached; the
+     * caller evicts it.
+     */
+    private fun markConversationAccessLost(errorCode: String) {
+        val current = _state.value
+        reduceState(
+            current.copy(
+                payload = current.payload.copy(newerMessagesStatus = "error", errorCode = errorCode),
+                conversationAccessLost = true,
+                channelAccessDenied = true,
+            )
+        )
     }
 
     private fun reducePayloadPatch(
