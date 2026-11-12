@@ -182,6 +182,8 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
                         val userId = sharedStores.authStore(storeScope).readSession()?.user?.id
                         emitAll(RaftFeedbackAgentDraftSent.repository.sent(userId))
                     },
+                // The Settings / Feedback dot follows what these reads answer (a reply read clears it).
+                onUnreadTotal = sharedStores.feedbackUnread::applyRead,
             )
         }
     val initialTicketId = remember(pager.pageData.params) { feedbackTicketIdOrNull(pager.pageData.params.optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID)) }

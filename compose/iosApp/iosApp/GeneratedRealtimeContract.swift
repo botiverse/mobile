@@ -93,6 +93,8 @@ enum GeneratedRealtimeContract {
         static let serverFeaturesChanged = "server:features-changed"
         static let appearanceUpdated = "appearance:updated"
         static let userProfileUpdated = "user:profile-updated"
+        static let productFeedbackUnread = "product_feedback:unread"
+        static let productFeedbackAppUnread = "product_feedback:app_unread"
         static let activityChanged = "activity:changed"
         static let announcementNew = "announcement:new"
         static let reminderFired = "reminder:fired"

@@ -219,6 +219,30 @@ class NetworkSettingsFeedbackTicketsRepository(
         }.decode("list", ::parseFeedbackTicketListRead)
     }
 
+    /**
+     * This app's unread total for the Settings / Feedback dot (the server spec "Unread replies": the
+     * first page's `unread_total` with `limit=1`, read on start and reconnect). Null: not known now
+     * (Hands slow or refusing: a `degraded` answer, whose `unread_total` is null, never 0).
+     */
+    suspend fun unreadTotal(): FeedbackResult<Int?> =
+        call("unread_total") {
+            networkClient.requestWithHeaders(
+                DataRequestPriority.Background,
+                "$FEEDBACK_ROUTE/tickets",
+                headers,
+                query = listOf("limit" to "1", "degraded_ok" to "1"),
+            )
+        }.decode("unread_total", ::parseFeedbackTicketListRead).let { result ->
+            when (result) {
+                is FeedbackResult.Failed -> result
+                is FeedbackResult.Ok ->
+                    when (val read = result.value) {
+                        is FeedbackTicketListRead.Page -> FeedbackResult.Ok(read.page.unreadTotal)
+                        is FeedbackTicketListRead.Degraded -> FeedbackResult.Ok(null)
+                    }
+            }
+        }
+
     override suspend fun ticket(ticketId: String, commentCursor: String?, commentLimit: Int): FeedbackResult<FeedbackTicketDetail> {
         val id = ticketId.feedbackPathSegmentOrNull() ?: return notFound()
         val query =

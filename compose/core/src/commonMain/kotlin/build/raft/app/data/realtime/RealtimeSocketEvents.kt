@@ -99,6 +99,15 @@ object RealtimeSocketEvents {
     const val ServerFeaturesChanged = GeneratedRealtimeContract.SocketEvent.ServerFeaturesChanged
     const val AppearanceUpdated = GeneratedRealtimeContract.SocketEvent.AppearanceUpdated
     const val UserProfileUpdated = GeneratedRealtimeContract.SocketEvent.UserProfileUpdated
+
+    /**
+     * The person's product-feedback unread total (botiverse/slock `packages/shared/src/productFeedbackUnread.ts`),
+     * to their own `user:<id>` room: `product_feedback:unread` `{ userId, unreadTotal }` is the web app's
+     * total (the desktop app's), `product_feedback:app_unread` `{ source, unreadTotal }` a mobile app's.
+     * Each client takes only its own (RaftFeedbackUnreadStore).
+     */
+    const val ProductFeedbackUnread = GeneratedRealtimeContract.SocketEvent.ProductFeedbackUnread
+    const val ProductFeedbackAppUnread = GeneratedRealtimeContract.SocketEvent.ProductFeedbackAppUnread
     const val ActivityChanged = GeneratedRealtimeContract.SocketEvent.ActivityChanged
     const val AnnouncementNew = GeneratedRealtimeContract.SocketEvent.AnnouncementNew
     const val ReminderFired = GeneratedRealtimeContract.SocketEvent.ReminderFired

@@ -46,7 +46,10 @@ internal data class SettingsHomePageLinkPayload(
     val iconName: RaftLucideIconName = RaftLucideIconName.Settings,
     val value: String? = null,
     val section: String? = null,
-    /** Attention dot on the row (the More tab's signals on the phone Settings root). */
+    /**
+     * Attention dot on the row (the More tab's signals on the phone Settings root; on the wide
+     * Settings list, Feedback's only: [settingsWideAttentionRowKeys]).
+     */
     val attentionDot: Boolean = false,
     /** The row leaves Raft for another app: a trailing ↗ (raft-ui 0.26 #758). */
     val opensExternally: Boolean = false,
@@ -55,7 +58,8 @@ internal data class SettingsHomePageLinkPayload(
 /**
  * The Settings page as the phone's pushed server page (raft-design #712, opened from the server
  * panel; app-shell tab key "more"): titled [title], the rows named in [attentionRowKeys] wear the
- * attention dot ([RaftMoreAttention.settingsRowKey]). The wide rail's Settings page has none.
+ * attention dot ([RaftMoreAttention.settingsRowKey]). The wide rail's Settings list dots only
+ * Feedback ([settingsWideAttentionRowKeys]).
  */
 internal data class SettingsMoreRoot(
     val title: String,
@@ -67,7 +71,15 @@ internal fun settingsHomeItemsForMoreRoot(
     items: List<SettingsHomePageLinkPayload>,
     moreRoot: SettingsMoreRoot?,
 ): List<SettingsHomePageLinkPayload> =
-    moreRoot?.let { root -> items.map { it.copy(attentionDot = it.key in root.attentionRowKeys) } } ?: items
+    moreRoot?.let { root -> items.withAttentionRows(root.attentionRowKeys) } ?: items
+
+/** [rowKeys] wear the attention dot, the other rows none. */
+internal fun List<SettingsHomePageLinkPayload>.withAttentionRows(rowKeys: Set<String>): List<SettingsHomePageLinkPayload> =
+    map { it.copy(attentionDot = it.key in rowKeys) }
+
+/** The Settings list with [rowKeys] dotted (the wide Settings list: [settingsWideAttentionRowKeys]). */
+internal fun RaftSettingsHomePayload.withAttentionRows(rowKeys: Set<String>): RaftSettingsHomePayload =
+    copy(items = items.withAttentionRows(rowKeys))
 
 @Composable
 internal fun SettingsAppShellHomeContent(

@@ -21,6 +21,8 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.components.RaftSidebarGroupLabel
 import build.raft.designsystem.components.RaftSidebarItem
+import build.raft.designsystem.components.RaftStatusDot
+import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.components.raftSidebarItemIconSize
 import androidx.compose.foundation.layout.size
 
@@ -249,15 +251,19 @@ internal fun SettingsWideSidebarList(
                         selected = row.key == selectedKey,
                         onClick = { onSelect(row.key) },
                         leading = { SettingsRowIcon(row.key, row.iconName) },
-                        // raft-ui 0.26 (#758): a row that leaves Raft (iOS Billing) ends in ↗.
+                        // raft-ui 0.26 (#758): a row that leaves Raft (iOS Billing) ends in ↗; a row
+                        // with something new (Feedback's unread reply, web FeedbackUnreadDot) ends in the dot.
                         trailing =
-                            if (row.opensExternally) {
+                            if (row.attentionDot || row.opensExternally) {
                                 {
-                                    RaftLucideIcon(
-                                        RaftLucideIconName.ArrowUpRight,
-                                        Modifier.size(raftSidebarItemIconSize()),
-                                        color = raftArgbHex(LocalRaftContentColor.current),
-                                    )
+                                    if (row.attentionDot) RaftStatusDot(variant = RaftStatusVariant.Accent)
+                                    if (row.opensExternally) {
+                                        RaftLucideIcon(
+                                            RaftLucideIconName.ArrowUpRight,
+                                            Modifier.size(raftSidebarItemIconSize()),
+                                            color = raftArgbHex(LocalRaftContentColor.current),
+                                        )
+                                    }
                                 }
                             } else {
                                 null

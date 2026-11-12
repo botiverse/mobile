@@ -1703,6 +1703,35 @@ class RaftAppShellTest {
     }
 
     @Test
+    fun anUnreadFeedbackReplyDotsSettingsAndItsFeedbackRow() {
+        // web useSettingsPageAttention / LeftRail Settings `showDot={feedbackUnread > 0}` /
+        // SettingsSidebarList FeedbackUnreadDot.
+        assertEquals(emptySet(), raftMoreAttention(emptyList(), feedbackUnreadTotal = 0))
+        val feedback = raftMoreAttention(emptyList(), feedbackUnreadTotal = 2)
+        assertEquals(setOf(RaftMoreAttention.FeedbackReplies), feedback)
+        assertEquals("hands-feedback", RaftMoreAttention.FeedbackReplies.settingsRowKey)
+        assertEquals(RaftServerMenuEntry.Settings, RaftMoreAttention.FeedbackReplies.serverMenuEntry())
+        // The phone: the server tab, and Settings in its panel.
+        assertTrue(appShellMoreTabShowsDot(feedback, selected = false))
+        // The wide rail: its Settings entry, never while Settings is open.
+        fun railDots(selectedTab: String) =
+            (appShellRailTabs(selectedTab, labelFor = { it }, moreAttention = feedback) +
+                appShellRailFooterTabs(selectedTab, labelFor = { it }, helpOpen = false, moreAttention = feedback))
+                .filter { it.attentionDot }
+                .map { it.key }
+        assertEquals(listOf("settings"), railDots("home"))
+        assertEquals(emptyList<String>(), railDots("settings"))
+        // The wide Settings list dots Feedback only (the web's wide list has no update dot).
+        assertEquals(setOf("hands-feedback"), settingsWideAttentionRowKeys(feedback + RaftMoreAttention.AppUpdate))
+        assertEquals(emptySet(), settingsWideAttentionRowKeys(setOf(RaftMoreAttention.AppUpdate, RaftMoreAttention.Computers)))
+        val rows =
+            RaftSettingsHomePayload(items = listOf(SettingsHomePageLinkPayload("about", "About"), SettingsHomePageLinkPayload("hands-feedback", "Feedback")))
+                .withAttentionRows(settingsWideAttentionRowKeys(feedback))
+                .items
+        assertEquals(listOf(false, true), rows.map { it.attentionDot })
+    }
+
+    @Test
     fun railFooterIsHelpThenSettings() {
         val footer = appShellRailFooterTabs("settings", labelFor = { it }, helpOpen = true)
         assertEquals(listOf("help", "settings"), footer.map { it.key })

@@ -27,6 +27,7 @@ class SettingsFeedbackTicketsApiTest {
         val query: List<Pair<String, String>>,
         val headers: Map<String, String>,
         val body: String?,
+        val priority: DataRequestPriority = DataRequestPriority.Foreground,
     )
 
     private class FakeNetwork(private val answer: (String) -> HomeNetworkResponse) : RaftNetworkClient {
@@ -52,7 +53,7 @@ class SettingsFeedbackTicketsApiTest {
             serverIdOverride: ServerId?,
             bodyText: String?,
         ): HomeNetworkResponse {
-            calls += Call(path, method, query, headers, bodyText)
+            calls += Call(path, method, query, headers, bodyText, priority)
             return answer(path)
         }
 
@@ -107,6 +108,34 @@ class SettingsFeedbackTicketsApiTest {
         assertEquals(2, ticket.newCount)
         assertEquals(1500L, ticket.activityAt)
         assertEquals(FeedbackLatestComment(FeedbackAuthorType.Staff, "**Fixed** in 1.23", 1500), ticket.latestComment)
+    }
+
+    @Test
+    fun unreadTotalReadsOneTicketInTheBackgroundWithTheClientKind() = runTest {
+        val network = FakeNetwork { HomeNetworkResponse(200, """{"tickets":[${ticketJson(unread = true, unreadCount = 3)}],"next_cursor":"c2","unread_total":4}""") }
+
+        val result = NetworkSettingsFeedbackTicketsRepository(network, clientKind = "ios").unreadTotal()
+
+        assertEquals(4, assertIs<FeedbackResult.Ok<Int?>>(result).value)
+        val call = network.calls.single()
+        assertEquals("product-feedback/tickets", call.path)
+        assertEquals(listOf("limit" to "1", "degraded_ok" to "1"), call.query)
+        assertEquals(mapOf("X-Raft-Client-Kind" to "ios"), call.headers)
+        assertEquals(DataRequestPriority.Background, call.priority)
+    }
+
+    @Test
+    fun unreadTotalIsUnknownWhenTheListIsDegradedAndAFailureWhenRefused() = runTest {
+        // slock productFeedback.ts: `unread_total: null` with `degraded: true` is "not known", never 0.
+        val degraded =
+            FakeNetwork {
+                HomeNetworkResponse(200, """{"tickets":[],"next_cursor":null,"unread_total":null,"degraded":true,"retry_after_seconds":5}""")
+            }
+        assertNull(assertIs<FeedbackResult.Ok<Int?>>(NetworkSettingsFeedbackTicketsRepository(degraded, "android").unreadTotal()).value)
+
+        val refused = FakeNetwork { HomeNetworkResponse(503, """{"code":"feedback_service_unavailable"}""") }
+        val failure = assertIs<FeedbackResult.Failed>(NetworkSettingsFeedbackTicketsRepository(refused, "android").unreadTotal()).failure
+        assertEquals(FeedbackErrorKind.Unavailable, failure.kind)
     }
 
     @Test

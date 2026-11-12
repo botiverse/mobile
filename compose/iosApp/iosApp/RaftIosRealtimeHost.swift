@@ -1092,6 +1092,8 @@ final class RaftIosRealtimeHost: NSObject {
         GeneratedRealtimeContract.SocketEvent.serverFeaturesChanged,
         GeneratedRealtimeContract.SocketEvent.appearanceUpdated,
         GeneratedRealtimeContract.SocketEvent.userProfileUpdated,
+        // The iOS app's feedback unread total; the web's (product_feedback:unread) is never this app's.
+        GeneratedRealtimeContract.SocketEvent.productFeedbackAppUnread,
         GeneratedRealtimeContract.SocketEvent.activityChanged,
         GeneratedRealtimeContract.SocketEvent.announcementNew,
         GeneratedRealtimeContract.SocketEvent.reminderFired,

@@ -962,6 +962,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is ActivityChanged -> "activity_changed"
     is ServerAppearanceUpdated -> "appearance_updated"
     is build.raft.app.model.UserProfileUpdated -> "user_profile_updated"
+    is build.raft.app.model.ProductFeedbackUnreadUpdated -> "product_feedback_unread"
     is ComputerRestartDone -> "computer_restart_done"
     is build.raft.app.model.RuntimeAuthUpdated -> "runtime_auth_updated"
     is build.raft.app.model.RuntimeAuthLoginEventPushed -> "runtime_auth_login_event"
