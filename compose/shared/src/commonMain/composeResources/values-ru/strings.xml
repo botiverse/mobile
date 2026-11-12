@@ -2106,6 +2106,17 @@
     <string name="members_group_trigger_label">Группировка агентов: %1$s</string>
     <string name="members_tab_all">Все</string>
     <string name="members_search_label">Поиск участников</string>
+    <string name="members_scope_label">Показать</string>
+    <string name="members_create_agent">Создать агента</string>
+    <string name="members_create_agent_more">Другие способы добавить агента</string>
+    <string name="members_create_agent_external">Подключить внешнего агента</string>
+    <string name="members_counts_working_one">%1$d агент работает</string>
+    <string name="members_counts_working_other">Работающих агентов: %1$d</string>
+    <string name="members_counts_members_one">%1$d участник</string>
+    <string name="members_counts_members_other">Участников: %1$d</string>
+    <string name="list_toolbar_more">Ещё</string>
+    <string name="list_toolbar_group">Группировка</string>
+    <string name="list_toolbar_clear_search">Очистить поиск</string>
     <string name="members_no_matches">Нет участников по запросу «%1$s».</string>
     <string name="member_hosted_runtime_location">Работает в облаке</string>
     <string name="member_hosted_runtime_free">Временно бесплатно</string>

@@ -2109,6 +2109,17 @@
     <string name="members_group_trigger_label">Agent 分組：%1$s</string>
     <string name="members_tab_all">全部</string>
     <string name="members_search_label">搜尋成員</string>
+    <string name="members_scope_label">顯示</string>
+    <string name="members_create_agent">建立 Agent</string>
+    <string name="members_create_agent_more">更多新增 Agent 的方式</string>
+    <string name="members_create_agent_external">連結外部 Agent</string>
+    <string name="members_counts_working_one">%1$d 個 Agent 工作中</string>
+    <string name="members_counts_working_other">%1$d 個 Agent 工作中</string>
+    <string name="members_counts_members_one">%1$d 位成員</string>
+    <string name="members_counts_members_other">%1$d 位成員</string>
+    <string name="list_toolbar_more">更多</string>
+    <string name="list_toolbar_group">分組</string>
+    <string name="list_toolbar_clear_search">清除搜尋</string>
     <string name="members_no_matches">沒有符合「%1$s」的成員。</string>
     <string name="member_hosted_runtime_location">在雲端執行</string>
     <string name="member_hosted_runtime_free">限時免費</string>
