@@ -44,7 +44,7 @@ import org.robolectric.annotation.GraphicsMode
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h260dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "w390dp-h300dp-xxhdpi")
 class JointConnectedServersScreenshotTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
