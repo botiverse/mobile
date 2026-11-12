@@ -31,7 +31,8 @@ class ThreadComposerImagePasteTest {
                 TextFieldValue("see ${placeholder}here", TextRange(4 + placeholder.length)),
             )
         )
-        val overSelection = TextFieldValue("see this here", TextRange(4, 9))
+        // "this" selected (4 until 8).
+        val overSelection = TextFieldValue("see this here", TextRange(4, 8))
         assertTrue(
             threadComposerIsImagePastePlaceholderEdit(
                 overSelection,
