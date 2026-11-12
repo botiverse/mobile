@@ -2778,6 +2778,7 @@
     <string name="settings_computers_rack_group_collapse">收合%1$s，%2$s</string>
     <string name="settings_computers_rack_group_expand">展開%1$s，%2$s</string>
     <string name="settings_computers_rack_sort_label">排序：%1$s</string>
+    <string name="settings_computers_rack_sort_default">我的優先</string>
     <string name="settings_computers_rack_sort_name">名稱</string>
     <string name="settings_computers_rack_sort_remaining">%1$s 餘量</string>
     <string name="settings_computers_rack_sort_disk">磁碟用量</string>

@@ -143,17 +143,33 @@ class SharedComputersStoreTest {
     }
 
     @Test
-    fun computerListsPutTheComputersIAttachedFirst() {
-        // artin task #53 (web orderSidebarMachineIds): mine first, then the rest, server order kept.
-        fun machine(id: String, mine: Boolean) =
+    fun computerListsPutMyComputersFirstAttachedOrOwned() {
+        // artin task #53 and #triage:#332 (web orderSidebarMachineIds / isMyComputer): mine (attached
+        // or owned) first, then the rest, server order kept; a Public Computer (no owner) is nobody's.
+        fun machine(id: String, attached: Boolean = false, owner: String? = null) =
             ComputerSummary(
                 id = id, name = id, status = ComputerStatus.Online, statusVersion = 0L, apiKeyPrefix = null,
                 runtimes = emptyList(), daemonVersion = null, computerVersion = null, isComputer = true,
                 hostname = null, os = null, description = null, lastHeartbeat = null, createdAt = null,
-                attachedByCurrentUser = mine,
+                attachedByCurrentUser = attached,
+                ownerUserId = owner,
             )
-        val ordered = listOf(machine("a", false), machine("b", true), machine("c", false), machine("d", true)).inComputerListOrder()
-        assertEquals(listOf("b", "d", "a", "c"), ordered.map { it.id })
+        val machines =
+            listOf(
+                machine("a"),
+                machine("b", attached = true),
+                machine("public"),
+                machine("owned", owner = "me"),
+                machine("theirs", owner = "someone"),
+                machine("d", attached = true, owner = "someone"),
+            )
+        val cases =
+            listOf(
+                "me" to listOf("b", "owned", "d", "a", "public", "theirs"),
+                "someone" to listOf("b", "theirs", "d", "a", "public", "owned"),
+                null to listOf("b", "d", "a", "public", "owned", "theirs"),
+            )
+        cases.forEach { (userId, expected) -> assertEquals(expected, machines.inComputerListOrder(userId).map { it.id }, "as $userId") }
     }
 
     @Test

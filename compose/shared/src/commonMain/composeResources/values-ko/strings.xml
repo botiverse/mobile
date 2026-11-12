@@ -2778,6 +2778,7 @@
     <string name="settings_computers_rack_group_collapse">%1$s, %2$s 접기</string>
     <string name="settings_computers_rack_group_expand">%1$s, %2$s 펼치기</string>
     <string name="settings_computers_rack_sort_label">정렬: %1$s</string>
+    <string name="settings_computers_rack_sort_default">내 컴퓨터 먼저</string>
     <string name="settings_computers_rack_sort_name">이름</string>
     <string name="settings_computers_rack_sort_remaining">%1$s 남은 사용량</string>
     <string name="settings_computers_rack_sort_disk">디스크 사용량</string>

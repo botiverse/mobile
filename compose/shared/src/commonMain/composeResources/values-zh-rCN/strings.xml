@@ -2930,6 +2930,7 @@
     <string name="settings_computers_rack_group_collapse">收起%1$s，%2$s</string>
     <string name="settings_computers_rack_group_expand">展开%1$s，%2$s</string>
     <string name="settings_computers_rack_sort_label">排序：%1$s</string>
+    <string name="settings_computers_rack_sort_default">我的优先</string>
     <string name="settings_computers_rack_sort_name">名称</string>
     <string name="settings_computers_rack_sort_remaining">%1$s 余量</string>
     <string name="settings_computers_rack_sort_disk">磁盘用量</string>

@@ -576,6 +576,8 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                 toolbar = toolbar,
                 onToolbarIntent = toolbarStore::dispatch,
                 serverId = currentServerId,
+                // Mine first: the signed-in person's own computers (attached or owned) lead.
+                currentUserId = routeOwner?.accountId,
                 agentsByMachine = agentsByMachine,
                 agentStatusResolver = agentStatusResolver,
                 usageLoads = usageLoads,
@@ -718,6 +720,8 @@ internal fun RaftSettingsComputersContent(
     onToolbarIntent: (RaftComputersRackToolbarIntent) -> Unit = {},
     /** The page's server: the folds hold on it only. */
     serverId: String? = null,
+    /** The signed-in person: with no sort chosen (Mine first) their computers, attached or owned, lead. */
+    currentUserId: String? = null,
     /** The loading skeleton pulses; screenshots draw its resting frame. */
     skeletonAnimated: Boolean = true,
 ) {
@@ -814,6 +818,7 @@ internal fun RaftSettingsComputersContent(
                         toolbar = toolbar,
                         onToolbarIntent = onToolbarIntent,
                         serverId = serverId,
+                        currentUserId = currentUserId,
                         nowMillis = nowMillis,
                     )
             }
@@ -823,7 +828,7 @@ internal fun RaftSettingsComputersContent(
 
 /**
  * The loaded page's list, under the toolbar ([RaftComputersRackToolbar]): the computers as the toolbar has them
- * ([raftComputersRackLayout]): filtered, sorted (Name A to Z by default), the online ones in
+ * ([raftComputersRackLayout]): filtered, sorted (Mine first by default: the viewer's own, then the rest), the online ones in
  * their groups under fold titles when grouped, the offline ones in one folded section at the end
  * (open when nothing else is online), or the no-match state with Clear all. Cards or List rows,
  * as the toolbar's view switch picks.
@@ -858,6 +863,7 @@ private fun RaftComputersRackBody(
     toolbar: RaftComputersRackToolbarState,
     onToolbarIntent: (RaftComputersRackToolbarIntent) -> Unit,
     serverId: String?,
+    currentUserId: String?,
     nowMillis: Long,
 ) {
     val groupLabels =
@@ -866,8 +872,8 @@ private fun RaftComputersRackBody(
             other = stringResource(Res.string.settings_computers_rack_group_other),
         )
     val layout =
-        remember(model.computers, toolbarModel, toolbar.groupBy, usageLoads, groupLabels) {
-            raftComputersRackLayout(model.computers, toolbarModel, toolbar.groupBy, usageLoads, groupLabels)
+        remember(model.computers, toolbarModel, toolbar.groupBy, usageLoads, groupLabels, currentUserId) {
+            raftComputersRackLayout(model.computers, toolbarModel, toolbar.groupBy, usageLoads, groupLabels, currentUserId)
         }
     val rowsById = remember(model.rows) { model.rows.associateBy { it.id } }
     val computersById = remember(model.computers) { model.computers.associateBy { it.id } }
@@ -948,7 +954,7 @@ private fun RaftComputersRackBody(
                     menu = menu,
                     onCreateAgent = { onCreateAgent?.invoke(row.id) },
                     onRestart = { onRestartComputer(row.id) },
-                    sortKey = toolbarModel.sort.key,
+                    sortKey = toolbarModel.sort?.key,
                     nowMillis = nowMillis,
                     onDelete = { onDeleteComputer(row.id) },
                     install = installOf(row),
@@ -1178,8 +1184,8 @@ private fun RaftComputerRackCard(
     menu: RaftComputerCardMenu? = null,
     onCreateAgent: () -> Unit = {},
     onRestart: () -> Unit = {},
-    /** What the list is sorted by: that metric's line leads the meters, bold (web `sortKey`). */
-    sortKey: ComputersRackSortKey = ComputersRackSortKey.Name,
+    /** What the list is sorted by: that metric's line leads the meters, bold (web `sortKey`); null: no sort (Mine first). */
+    sortKey: ComputersRackSortKey? = null,
     nowMillis: Long = 0L,
     onDelete: () -> Unit = {},
     install: RaftComputerRackInstall? = null,
@@ -1762,7 +1768,7 @@ private fun RaftComputerRackMeters(
     usageLoads: Map<RuntimeAccountUsageProvider, RuntimeAccountUsageLoad>,
     runtimeCatalog: ServerRuntimeCatalog,
     onOpenUsage: (RaftRackUsageColumn, String) -> Unit,
-    sortKey: ComputersRackSortKey,
+    sortKey: ComputersRackSortKey?,
     nowMillis: Long,
 ) {
     val diskLabel = stringResource(Res.string.agent_migration_target_disk)

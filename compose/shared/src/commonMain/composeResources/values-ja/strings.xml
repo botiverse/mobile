@@ -2930,6 +2930,7 @@
     <string name="settings_computers_rack_group_collapse">%1$s（%2$s）を折りたたむ</string>
     <string name="settings_computers_rack_group_expand">%1$s（%2$s）を展開</string>
     <string name="settings_computers_rack_sort_label">並べ替え: %1$s</string>
+    <string name="settings_computers_rack_sort_default">自分のものを先に</string>
     <string name="settings_computers_rack_sort_name">名前</string>
     <string name="settings_computers_rack_sort_remaining">%1$s の残量</string>
     <string name="settings_computers_rack_sort_disk">ディスク使用量</string>

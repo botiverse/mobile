@@ -107,11 +107,15 @@ internal class KeyValueComputersRackPreferenceRepository(
         runCatching { store.putString(KEY_GROUP, groupBy.storageKey) }
     }
 
-    /** The stored sort, or null for the default (Name A to Z, `raftRackEffectiveSort`). */
+    /**
+     * The stored sort, or null for the default: no sort, Mine first (`raftRackEffectiveSort`). A
+     * sort someone chose before Mine first became the default (Name A to Z included) is kept as is.
+     */
     fun readSort(): ComputersRackSort? = parseComputersRackSort(runCatching { store.getString(KEY_SORT) }.getOrNull())
 
-    fun writeSort(sort: ComputersRackSort) {
-        runCatching { store.putString(KEY_SORT, sort.toStorageValue()) }
+    /** Keeps [sort]; null (Mine first) forgets the choice (web `writeComputersRackSort(null)`). */
+    fun writeSort(sort: ComputersRackSort?) {
+        runCatching { store.putString(KEY_SORT, sort?.toStorageValue()) }
     }
 
     internal companion object {

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.raftMineFirst
 import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
 import androidx.compose.foundation.layout.Arrangement
@@ -113,7 +114,9 @@ internal data class AgentMigrationComputer(
     val diskStatus: ComputerSizeStatus? = null,
     val memoryStatus: ComputerSizeStatus? = null,
     val attachedByCurrentUser: Boolean = false,
-    val creatorUserId: String? = null
+    val creatorUserId: String? = null,
+    /** The viewer's own Computer (attached or owned, [build.raft.app.data.raftIsMyComputer]): listed first. */
+    val mine: Boolean = false
 )
 
 /** Everything the section needs besides the store state; built by the detail page. */
@@ -1010,8 +1013,9 @@ internal fun agentMigrationTargets(inputs: AgentMigrationSectionInputs): List<Ag
     inputs.computers
         .filter { it.isComputer && it.id != inputs.sourceMachineId }
         // The order of every computer list (`inComputerListOrder`, web `orderSidebarMachineIds`):
-        // the viewer's own computers first, each group keeping the server's order (artin 10-27).
-        .sortedBy { if (it.attachedByCurrentUser) 0 else 1 }
+        // the viewer's own computers (attached or owned) first, each group keeping the server's
+        // order (artin 10-27, #triage:#332).
+        .raftMineFirst { it.mine }
 
 /**
  * Web AgentMigrationDialog's pick: the [choice] if it is offered, else the first computer; the
