@@ -15640,15 +15640,26 @@ private fun SharedThreadRouteContentContent(
                     // by the host (2048 px / JPEG 82, as editor output on mobile) unless the
                     // draft asks for the original; Finder files stay their own bytes, as a File
                     // pick does on mobile.
+                    // iOS: pasted images open in the image editor, as picked photos do.
                     val pasteOriginalImage = currentDraftState.originalImage
+                    // Images the host already read inside its paste action (no clipboard read here).
+                    val hostPasted = ThreadComposerImagePasteRequests.takePending()
                     coroutineScope.launch {
                         if (composerSurface.sendChannelId == null) {
                             bridge.toast(attachmentPickerUnavailableLabel)
                             return@launch
                         }
-                        val files = withContext(Dispatchers.Default) { raftPlatformReadClipboardAttachments() }
-                        bridge.log("thread_attachment_paste files=${files.size}")
+                        val files =
+                            (hostPasted ?: withContext(Dispatchers.Default) { raftPlatformReadClipboardAttachments() })
+                                .take(ThreadComposerImagePasteMaxImages.takeIf { raftPlatformPastedImagesOpenEditor() } ?: Int.MAX_VALUE)
+                        bridge.log("thread_attachment_paste files=${files.size} host=${hostPasted != null}")
                         if (files.isEmpty()) return@launch
+                        if (raftPlatformPastedImagesOpenEditor() && raftComposerImagePickerFilesAreStrictImages(files)) {
+                            // The picked-photo path: the editor first, compressed after Done
+                            // unless the draft asks for the original.
+                            openComposerImageAnnotation(files)
+                            return@launch
+                        }
                         val prepared =
                             threadComposerCompressPastedImages(
                                 files = files,

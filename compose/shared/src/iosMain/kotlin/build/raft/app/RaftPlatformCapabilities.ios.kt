@@ -7,19 +7,9 @@ import platform.CoreFoundation.CFStringCreateWithCString
 import platform.CoreFoundation.CFStringGetRangeOfComposedCharactersAtIndex
 import platform.CoreFoundation.kCFAllocatorDefault
 import platform.CoreFoundation.kCFStringEncodingUTF8
-import platform.Foundation.NSCachesDirectory
-import platform.Foundation.NSFileManager
 import platform.Foundation.NSNumber
 import platform.Foundation.NSProcessInfo
-import platform.Foundation.NSSearchPathForDirectoriesInDomains
-import platform.Foundation.NSURL
-import platform.Foundation.NSUUID
-import platform.Foundation.NSUserDomainMask
 import platform.Foundation.valueForKey
-import platform.Foundation.writeToFile
-import platform.UIKit.UIImage
-import platform.UIKit.UIImagePNGRepresentation
-import platform.UIKit.UIPasteboard
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.platform.ClipEntry
 import androidx.lifecycle.Lifecycle
@@ -74,41 +64,20 @@ internal actual fun raftPlatformShortcutsUseCommand(): Boolean = true
 
 internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = true
 
-// An image on the clipboard (a screenshot's "Copy and Delete") pastes into the composer. Asking
-// does not read the image, so iOS shows no paste prompt for it.
-internal actual fun raftPlatformClipboardHasAttachments(): Boolean = UIPasteboard.generalPasteboard.hasImages
+// Images and no text on the clipboard (a screenshot's "Copy and Delete"): the one rule for the edit
+// menu, ⌘V and the composer's clipboard (raftIosClipboardHoldsOnlyImages). Asking does not read
+// the clipboard, so iOS shows no paste prompt for it.
+internal actual fun raftPlatformClipboardHasAttachments(): Boolean = raftIosClipboardHoldsOnlyImages()
 
-@OptIn(ExperimentalForeignApi::class)
-internal actual fun raftPlatformReadClipboardAttachments(): List<PlatformFile> {
-    val images = UIPasteboard.generalPasteboard.images.orEmpty().filterIsInstance<UIImage>()
-    if (images.isEmpty()) return emptyList()
-    // Where picked attachments go (HRBridgeModule: Caches/Slock/PickedAttachments), so compression
-    // and upload take the file as a picked one.
-    val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String
-        ?: return emptyList()
-    val directory = "$caches/Slock/PickedAttachments"
-    NSFileManager.defaultManager.createDirectoryAtPath(directory, true, null, null)
-    return images.mapNotNull { image ->
-        val data = UIImagePNGRepresentation(image) ?: return@mapNotNull null
-        val id = NSUUID().UUIDString
-        val path = "$directory/pasted-$id.png"
-        if (!data.writeToFile(path, true)) return@mapNotNull null
-        PlatformFile(
-            id = id,
-            fileName = "Pasted image.png",
-            mimeType = "image/png",
-            sizeBytes = data.length.toLong(),
-            fileRef = NSURL.fileURLWithPath(path).absoluteString,
-            source = ThreadComposerClipboardImageSource,
-        )
-    }
-}
+// Read, downscaled and encoded by the host (RaftIosImagePaste.swift); empty before it installs.
+internal actual fun raftPlatformReadClipboardAttachments(): List<PlatformFile> =
+    RaftIosComposerImagePasteHost.reader?.read().orEmpty().map { it.toPlatformFile() }
 
 @OptIn(ExperimentalComposeUiApi::class)
-internal actual fun raftPlatformImagePasteClipEntry(): ClipEntry? {
-    val board = UIPasteboard.generalPasteboard
-    return if (board.hasImages && !board.hasStrings) ClipEntry.withPlainText(ThreadComposerImagePastePlaceholder) else null
-}
+internal actual fun raftPlatformImagePasteClipEntry(): ClipEntry? =
+    if (raftIosClipboardHoldsOnlyImages()) ClipEntry.withPlainText(ThreadComposerImagePastePlaceholder) else null
+
+internal actual fun raftPlatformPastedImagesOpenEditor(): Boolean = true
 
 internal actual fun raftPlatformComposerMinimumBottomPaddingDp(): Float = 0f
 

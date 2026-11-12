@@ -47,6 +47,8 @@ internal actual fun raftPlatformReadClipboardAttachments(): List<PlatformFile> =
 // ⌘V with an image attaches it already (threadComposerPasteAttachments).
 internal actual fun raftPlatformImagePasteClipEntry(): ClipEntry? = null
 
+internal actual fun raftPlatformPastedImagesOpenEditor(): Boolean = false
+
 internal actual fun raftPlatformComposerMinimumBottomPaddingDp(): Float = 16f
 
 internal actual fun raftPlatformSupportsAppleSignIn(): Boolean = false

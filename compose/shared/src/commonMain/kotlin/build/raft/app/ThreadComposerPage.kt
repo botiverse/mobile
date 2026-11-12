@@ -113,6 +113,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
@@ -3170,25 +3171,38 @@ internal fun ThreadComposerContentLeaf(
                     // IME dismiss→reopen cycle on iOS.
                     key(state.instanceId) {
                         val sourceSessionId = editorSessionId
-                        // A system paste that found only images ([ThreadComposerImagePasteRequests]).
+                        // A host paste of images ([ThreadComposerImagePasteRequests]): only the
+                        // composer whose editor has focus takes it; it is dropped otherwise.
+                        val imagePasteFocusOwner = remember { Any() }
+                        DisposableEffect(imagePasteFocusOwner) {
+                            onDispose { ThreadComposerImagePasteRequests.editorFocusChanged(imagePasteFocusOwner, false) }
+                        }
                         val imagePasteRequests = ThreadComposerImagePasteRequests.count
                         var handledImagePasteRequests by remember { mutableIntStateOf(imagePasteRequests) }
                         LaunchedEffect(imagePasteRequests) {
                             if (imagePasteRequests == handledImagePasteRequests) return@LaunchedEffect
                             handledImagePasteRequests = imagePasteRequests
-                            if (focused) onEvent(ThreadComposerPasteAttachmentsAction, null, null, null)
+                            if (ThreadComposerImagePasteRequests.focusedOwner === imagePasteFocusOwner) {
+                                onEvent(ThreadComposerPasteAttachmentsAction, null, null, null)
+                            }
                         }
+                        val imagePasteClipboard = LocalClipboard.current as? ThreadComposerImagePasteClipboard
                         TextField(
                             value = fieldValue,
                             placeholder = localizedThreadComposerPlaceholder(state.placeholder),
                             autoFocus = shouldAutoFocus,
-                            onValueChange = onValueChange@ { changed ->
-                                // Paste with only images on the clipboard: they go to the tray, the
-                                // placeholder that offered Paste does not go into the text.
-                                val next =
-                                    threadComposerTakeImagePaste(changed)
-                                        ?.also { onEvent(ThreadComposerPasteAttachmentsAction, null, null, null) }
-                                        ?: changed
+                            onValueChange = onValueChange@ { next ->
+                                // Paste with only images on the clipboard: exactly the placeholder
+                                // that offered Paste, pasted over the selection. The text stays as it
+                                // was and the images open in the editor.
+                                if (imagePasteClipboard?.consumePlaceholderPaste() == true &&
+                                    threadComposerIsImagePastePlaceholderEdit(fieldValue, next)
+                                ) {
+                                    if (ThreadComposerImagePasteRequests.claim()) {
+                                        onEvent(ThreadComposerPasteAttachmentsAction, null, null, null)
+                                    }
+                                    return@onValueChange
+                                }
                                 if (submittedEchoFence.shouldIgnore(sourceSessionId, next)) {
                                     return@onValueChange
                                 }
@@ -3292,6 +3306,9 @@ internal fun ThreadComposerContentLeaf(
                                     min = ThreadComposerTextFieldMinHeight,
                                     max = ThreadComposerTextFieldMaxHeight
                                 )
+                                .onFocusChanged {
+                                    ThreadComposerImagePasteRequests.editorFocusChanged(imagePasteFocusOwner, it.hasFocus)
+                                }
                                 .threadComposerPasteAttachments {
                                     onEvent(ThreadComposerPasteAttachmentsAction, null, null, null)
                                 }
@@ -5546,6 +5563,7 @@ private fun Modifier.threadComposerPasteAttachments(onPaste: () -> Unit): Modifi
                 alt = event.isAltPressed,
             )
         if (!shortcut || !raftPlatformClipboardHasAttachments()) return@onPreviewKeyEvent false
-        onPaste()
+        // One paste per press: the system paste action may have taken this ⌘V already (iOS).
+        if (ThreadComposerImagePasteRequests.claim()) onPaste()
         true
     }
