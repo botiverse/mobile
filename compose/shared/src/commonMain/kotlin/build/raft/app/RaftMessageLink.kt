@@ -5,6 +5,7 @@ import build.raft.app.data.RaftAppLogin
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.SharedApiEnvironmentStore
+import build.raft.app.data.parseArtifactLinkTarget
 import build.raft.app.data.parseArtifactOpenAddress
 import build.raft.app.links.isRaftPermalinkChannelId
 import build.raft.app.links.isRaftPermalinkMessageId
