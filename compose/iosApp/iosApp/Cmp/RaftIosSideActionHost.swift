@@ -77,8 +77,8 @@ final class RaftIosSideActionHost: NSObject, RaftSideActionHostListener {
 
     /// A column the system cannot draw (not JSON, a symbol this system lacks, no vertical bar
     /// items) goes back to the page: the bridge is switched off, so the page draws its own column,
-    /// Back included, from its next frame, instead of keeping an empty one. Off the main run loop
-    /// turn: this is called from inside the page's present().
+    /// Back included, from its next frame, instead of keeping an empty one. Switched off on the next
+    /// main-queue turn, because this is called from inside the page's present().
     private func handBackToPage(reason: String) {
         onSideActionColumnCleared()
         RaftIosDiagnosticsRecord("warn", "SlockCmpHost", "side_actions_page_drawn reason=\(reason)")
