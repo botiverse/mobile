@@ -9,6 +9,8 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -20,6 +22,12 @@ private val computersApiJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
     coerceInputValues = true
+}
+// Runtime-auth request bodies leave an absent field out: the server refuses a `region` or `providerId`
+// that is present (even null) on a runtime that takes none (slock runtimeAuthLoginRegionFits).
+private val runtimeAuthBodyJson = Json {
+    encodeDefaults = false
+    explicitNulls = false
 }
 // Runtime-options and option-source lists are additive on the server side: a new field must not
 // break shipped clients (Hands c453ba5f — slock #8600 added `runtimeFormV2` and strict decoding
@@ -114,6 +122,29 @@ interface RaftComputersApi {
      */
     suspend fun runtimeAuth(serverId: ServerId, machineId: String): HomeNetworkResponse =
         error("runtimeAuth is not implemented")
+    /** `POST …/runtime-auth/:runtime/login` with `{region?, providerId?}` (RuntimeAuth.kt). */
+    suspend fun startRuntimeLogin(serverId: ServerId, machineId: String, runtime: String, body: String): HomeNetworkResponse =
+        error("startRuntimeLogin is not implemented")
+    /** `POST …/runtime-auth/:runtime/login/:loginId/code` with `{code}`. Never log [body]. */
+    suspend fun submitRuntimeLoginCode(
+        serverId: ServerId,
+        machineId: String,
+        runtime: String,
+        loginId: String,
+        body: String
+    ): HomeNetworkResponse = error("submitRuntimeLoginCode is not implemented")
+    /** `POST …/runtime-auth/:runtime/login/:loginId/cancel`. */
+    suspend fun cancelRuntimeLogin(serverId: ServerId, machineId: String, runtime: String, loginId: String): HomeNetworkResponse =
+        error("cancelRuntimeLogin is not implemented")
+    /** `POST …/runtime-auth/:runtime/logout` with `{providerId?}`. */
+    suspend fun logoutRuntime(serverId: ServerId, machineId: String, runtime: String, body: String): HomeNetworkResponse =
+        error("logoutRuntime is not implemented")
+    /** `GET …/runtime-auth/:runtime/providers`. */
+    suspend fun runtimeAuthProviders(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse =
+        error("runtimeAuthProviders is not implemented")
+    /** `POST …/runtime-auth/:runtime/connect-provider` with `{providerId, apiKey}`. Never log [body]. */
+    suspend fun connectRuntimeProvider(serverId: ServerId, machineId: String, runtime: String, body: String): HomeNetworkResponse =
+        error("connectRuntimeProvider is not implemented")
     /**
      * `POST …/runtime-account-usage/:provider/limit-reset` with body `{idempotencyKey}` (slock #13504,
      * packages/server/src/routes/runtimeAuthRoutes.ts): spends one of the account's limit resets.
@@ -313,6 +344,68 @@ internal class RaftComputersNetworkApi(
             serverIdOverride = serverId
         )
 
+    private fun runtimeAuthPath(serverId: ServerId, machineId: String, runtime: String): String =
+        "servers/${serverId.value}/machines/${machineId.trim()}/runtime-auth/${runtime.trim()}"
+
+    override suspend fun startRuntimeLogin(serverId: ServerId, machineId: String, runtime: String, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "${runtimeAuthPath(serverId, machineId, runtime)}/login",
+            method = "POST",
+            serverIdOverride = serverId,
+            bodyText = body
+        )
+
+    override suspend fun submitRuntimeLoginCode(
+        serverId: ServerId,
+        machineId: String,
+        runtime: String,
+        loginId: String,
+        body: String
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "${runtimeAuthPath(serverId, machineId, runtime)}/login/${loginId.trim()}/code",
+            method = "POST",
+            serverIdOverride = serverId,
+            bodyText = body
+        )
+
+    override suspend fun cancelRuntimeLogin(serverId: ServerId, machineId: String, runtime: String, loginId: String): HomeNetworkResponse =
+        networkClient.request(
+            // Fire-and-forget after the dialog closed: nothing waits on it.
+            priority = DataRequestPriority.Visible,
+            path = "${runtimeAuthPath(serverId, machineId, runtime)}/login/${loginId.trim()}/cancel",
+            method = "POST",
+            serverIdOverride = serverId,
+            bodyText = "{}"
+        )
+
+    override suspend fun logoutRuntime(serverId: ServerId, machineId: String, runtime: String, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "${runtimeAuthPath(serverId, machineId, runtime)}/logout",
+            method = "POST",
+            serverIdOverride = serverId,
+            bodyText = body
+        )
+
+    override suspend fun runtimeAuthProviders(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "${runtimeAuthPath(serverId, machineId, runtime)}/providers",
+            serverIdOverride = serverId
+        )
+
+    override suspend fun connectRuntimeProvider(serverId: ServerId, machineId: String, runtime: String, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "${runtimeAuthPath(serverId, machineId, runtime)}/connect-provider",
+            method = "POST",
+            serverIdOverride = serverId,
+            bodyText = body
+        )
+
     override suspend fun redeemRuntimeLimitReset(
         serverId: ServerId,
         machineId: String,
@@ -507,6 +600,78 @@ internal class RaftComputersApiClient(
             "computer_runtime_auth_contract_mismatch",
             JsonElement.serializer()
         ) { wire -> wire.toRuntimeAuthView() }
+
+    /**
+     * Starts a login on the Computer (web `RuntimeAuthClient.startLogin`): the login id, checked
+     * before anyone may use it. [region] for Kimi, [providerId] for Pi.
+     */
+    suspend fun startRuntimeLogin(
+        serverId: ServerId,
+        machineId: String,
+        runtime: RuntimeAuthRuntime,
+        region: RuntimeAuthLoginRegion? = null,
+        providerId: String? = null,
+        oauthMethod: String? = null,
+    ): RuntimeAuthCall<String> {
+        val body =
+            runtimeAuthBodyJson.encodeToString(RuntimeAuthLoginStartBody.serializer(), RuntimeAuthLoginStartBody(region?.wire, providerId, oauthMethod))
+        val response = transport.startRuntimeLogin(serverId, machineId, runtime.wire, body)
+        return response.runtimeAuthCall { wire ->
+            ((wire as? JsonObject)?.get("loginId") as? JsonPrimitive)
+                ?.takeIf { it.isString }?.contentOrNull?.takeIf(::isRuntimeAuthLoginId)
+        }
+    }
+
+    /** Sends the pasted code to that Computer's login (web `submitCode`). Never log [code]. */
+    suspend fun submitRuntimeLoginCode(
+        serverId: ServerId,
+        machineId: String,
+        runtime: RuntimeAuthRuntime,
+        loginId: String,
+        code: String,
+    ): RuntimeAuthCall<Unit> {
+        val body = runtimeAuthBodyJson.encodeToString(RuntimeAuthLoginCodeBody.serializer(), RuntimeAuthLoginCodeBody(code))
+        val response = transport.submitRuntimeLoginCode(serverId, machineId, runtime.wire, loginId, body)
+        return if (response.isSuccessful) RuntimeAuthCall.Done(Unit) else RuntimeAuthCall.Refused(response.runtimeAuthRequestError())
+    }
+
+    /** Cancels a running login; its answer is not read (web `cancelLogin().catch(() => undefined)`). */
+    suspend fun cancelRuntimeLogin(serverId: ServerId, machineId: String, runtime: RuntimeAuthRuntime, loginId: String) {
+        transport.cancelRuntimeLogin(serverId, machineId, runtime.wire, loginId)
+    }
+
+    /** Signs the runtime out (Pi: [providerId]'s sign-in only). */
+    suspend fun logoutRuntime(
+        serverId: ServerId,
+        machineId: String,
+        runtime: RuntimeAuthRuntime,
+        providerId: String? = null,
+    ): RuntimeAuthCall<RuntimeAuthLogoutResult> {
+        val body = runtimeAuthBodyJson.encodeToString(RuntimeAuthLogoutBody.serializer(), RuntimeAuthLogoutBody(providerId))
+        return transport.logoutRuntime(serverId, machineId, runtime.wire, body).runtimeAuthCall { wire ->
+            (wire as? JsonObject)?.get("result")?.toRuntimeAuthLogoutResult()
+        }
+    }
+
+    /** The providers the runtime lists on the Computer (Pi's `/login` list), read there. */
+    suspend fun runtimeAuthProviders(serverId: ServerId, machineId: String, runtime: RuntimeAuthRuntime): RuntimeAuthCall<RuntimeAuthProvidersResult> =
+        transport.runtimeAuthProviders(serverId, machineId, runtime.wire).runtimeAuthCall { wire ->
+            (wire as? JsonObject)?.get("result")?.toRuntimeAuthProvidersResult()
+        }
+
+    /** Saves a provider's API key on the Computer (Pi). The key goes into this one request body; never log it. */
+    suspend fun connectRuntimeProvider(
+        serverId: ServerId,
+        machineId: String,
+        runtime: RuntimeAuthRuntime,
+        providerId: String,
+        apiKey: String,
+    ): RuntimeAuthCall<RuntimeAuthProviderConnectResult> {
+        val body = runtimeAuthBodyJson.encodeToString(RuntimeAuthConnectProviderBody.serializer(), RuntimeAuthConnectProviderBody(providerId, apiKey))
+        return transport.connectRuntimeProvider(serverId, machineId, runtime.wire, body).runtimeAuthCall { wire ->
+            (wire as? JsonObject)?.get("result")?.toRuntimeAuthProviderConnectResult()
+        }
+    }
 
     /**
      * Spends one of the account's limit resets (web `RuntimeAuthClient.redeemLimitReset`). Any
@@ -767,6 +932,19 @@ private fun <T> HomeNetworkResponse.toComputersDataError(): DataResult<T> {
 private data class ComputersRouteErrorDto(val error: String? = null, val code: String? = null)
 
 /** The route's machine-readable `code` (`computer_offline`, …), when its error body has one. */
+/** A runtime-auth answer: [read] its body, or the refusal with its status, `code` and trace id. */
+private inline fun <T> HomeNetworkResponse.runtimeAuthCall(read: (JsonElement) -> T?): RuntimeAuthCall<T> {
+    if (!isSuccessful) return RuntimeAuthCall.Refused(runtimeAuthRequestError())
+    val value =
+        bodyText?.takeIf { it.isNotBlank() }?.let { body -> runCatching { computersApiJson.parseToJsonElement(body) }.getOrNull() }?.let(read)
+    return value?.let { RuntimeAuthCall.Done(it) }
+        ?: RuntimeAuthCall.Refused(RuntimeAuthRequestError(status = code, code = "malformed_response", traceId = traceId))
+}
+
+/** Only the status, the route's `code` and the trace id are read: never the request. */
+private fun HomeNetworkResponse.runtimeAuthRequestError(): RuntimeAuthRequestError =
+    RuntimeAuthRequestError(status = code.takeIf { it > 0 }, code = computersRouteErrorCodeOrNull(), traceId = traceId)
+
 private fun HomeNetworkResponse.computersRouteErrorCodeOrNull(): String? {
     val payload = bodyText?.takeIf { it.isNotBlank() }
         ?: errorBodyText?.takeIf { it.isNotBlank() }

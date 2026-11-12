@@ -7,7 +7,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 
 /*
@@ -137,48 +136,15 @@ internal sealed interface RuntimeLimitResetLoad {
     data object Superseded : RuntimeLimitResetLoad
 }
 
-/** slock `RuntimeAuthAvailability` of the runtime-auth read. */
-internal enum class RuntimeAuthAvailability(val wire: String) {
-    Ok("ok"),
-    ComputerOffline("computer_offline"),
-    ComputerUpgradeRequired("computer_upgrade_required"),
-    ComputerNotAttached("computer_not_attached");
-
-    companion object {
-        fun fromWire(value: String?): RuntimeAuthAvailability? = entries.firstOrNull { it.wire == value }
-    }
-}
-
-/**
- * The part of `GET …/runtime-auth` (web `RuntimeAuthView`) the limit-reset action needs: whether
- * this person may act on the Computer's runtimes, whether it can be reached, and each runtime's
- * sign-in `kind` (`logged_in`, `logged_out`, `unknown`, `unavailable`).
- */
-internal data class RuntimeAuthView(
-    val canAct: Boolean,
-    val availability: RuntimeAuthAvailability,
-    val statusKinds: Map<String, String> = emptyMap()
-)
-
-/** Null when the answer has no boolean `canAct` or no known `availability`. */
-internal fun JsonElement.toRuntimeAuthView(): RuntimeAuthView? {
-    val envelope = this as? JsonObject ?: return null
-    val canAct = (envelope["canAct"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: return null
-    val availability = RuntimeAuthAvailability.fromWire(envelope.plainString("availability")) ?: return null
-    val runtimes = ((envelope["status"] as? JsonObject)?.get("runtimes") as? JsonObject).orEmpty()
-    val kinds =
-        runtimes.mapNotNull { (runtime, status) -> (status as? JsonObject)?.plainString("kind")?.let { runtime to it } }.toMap()
-    return RuntimeAuthView(canAct = canAct, availability = availability, statusKinds = kinds)
-}
-
-/** slock `runtimeAuthRuntimeFor` for the usage providers: Grok has no sign-in from the web, so no runtime-auth view. */
-internal val RuntimeAccountUsageProvider.authRuntime: String?
+/** slock `runtimeAuthRuntimeFor` for the usage providers. */
+internal val RuntimeAccountUsageProvider.authRuntime: RuntimeAuthRuntime
     get() =
         when (this) {
-            RuntimeAccountUsageProvider.Claude -> "claude"
-            RuntimeAccountUsageProvider.Codex -> "codex"
-            RuntimeAccountUsageProvider.Kimi -> "kimi"
-            RuntimeAccountUsageProvider.Grok -> null
+            RuntimeAccountUsageProvider.Claude -> RuntimeAuthRuntime.Claude
+            RuntimeAccountUsageProvider.Codex -> RuntimeAuthRuntime.Codex
+            RuntimeAccountUsageProvider.Kimi -> RuntimeAuthRuntime.Kimi
+            // Grok Build signs in from the web since slock #14343.
+            RuntimeAccountUsageProvider.Grok -> RuntimeAuthRuntime.Grok
         }
 
 private fun JsonObject.plainString(key: String): String? {

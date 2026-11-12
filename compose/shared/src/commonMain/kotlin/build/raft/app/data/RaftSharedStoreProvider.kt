@@ -2218,7 +2218,8 @@ internal class RaftSharedStoreProvider private constructor(
         shellRuntimeAccountUsageStores.getOrPut(scope) {
             SharedRuntimeAccountUsageStore(
                 client = RaftComputersApiClient(RaftComputersNetworkApi(networkClient(scope))),
-                currentIdentity = { computersOwner(scope) }
+                currentIdentity = { computersOwner(scope) },
+                detachedScope = threadSendScope,
             )
         }
 

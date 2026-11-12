@@ -102,9 +102,12 @@ class RaftChoiceListGroup(val value: String, val label: String)
  *   nothing else matching, [noMatchLabel] sits under them. Back to 5 items or fewer, the field
  *   goes and its text with it.
  * - No items: [emptyLabel] in the frame, no rows and no search.
+ * - [groups]: each item names its group; rows come under their group's heading in the groups'
+ *   order, as in [RaftMultiChoiceList] (raft-ui ChoiceList `groups`: Pi's "Sign in with an
+ *   account" / "Use an API key"), items of no known group last with no heading.
  *
  * raft-ui holds no copy: every word is the caller's. Deviation: the touch sizes always apply
- * (a phone app). Several choices, groups, a footer and `fill`: [RaftMultiChoiceList].
+ * (a phone app). Several choices, a footer and `fill`: [RaftMultiChoiceList].
  */
 @Composable
 fun <T> RaftChoiceList(
@@ -119,6 +122,7 @@ fun <T> RaftChoiceList(
     enabled: Boolean = LocalRaftFieldState.current.enabled,
     initialQuery: String = "",
     action: (@Composable (RaftChoiceListItem<T>) -> Unit)? = null,
+    groups: List<RaftChoiceListGroup> = emptyList(),
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -169,15 +173,22 @@ fun <T> RaftChoiceList(
                 ChoiceListNote(emptyLabel)
             } else {
                 Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    visible.forEach { item ->
-                        ChoiceListRow(
-                            item = item,
-                            selected = item.value == value,
-                            enabled = enabled && item.enabled,
-                            multiple = false,
-                            onClick = { if (item.value != value) onValueChange(item.value) },
-                            action = action,
-                        )
+                    // The rows in the search's order, under their groups' headings when there are groups.
+                    raftMultiChoiceListEntries(visible, emptySet(), "", null, groups).forEach { entry ->
+                        when (entry) {
+                            is RaftChoiceListEntry.Heading -> ChoiceListHeading(entry.group.label)
+                            is RaftChoiceListEntry.Row -> {
+                                val item = entry.item
+                                ChoiceListRow(
+                                    item = item,
+                                    selected = item.value == value,
+                                    enabled = enabled && item.enabled,
+                                    multiple = false,
+                                    onClick = { if (item.value != value) onValueChange(item.value) },
+                                    action = action,
+                                )
+                            }
+                        }
                     }
                 }
                 if (noMatches) ChoiceListNote(noMatchLabel)

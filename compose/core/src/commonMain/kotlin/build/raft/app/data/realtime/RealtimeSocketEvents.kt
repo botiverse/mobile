@@ -85,6 +85,9 @@ object RealtimeSocketEvents {
     const val ComputerUpgradeDone = GeneratedRealtimeContract.SocketEvent.ComputerUpgradeDone
     const val MachineUpgradeRequest = GeneratedRealtimeContract.SocketEvent.MachineUpgradeRequest
     const val ComputerRestartDone = GeneratedRealtimeContract.SocketEvent.ComputerRestartDone
+    const val MachineRuntimeAuthUpdated = GeneratedRealtimeContract.SocketEvent.MachineRuntimeAuthUpdated
+    const val RuntimeAuthLoginEvent = GeneratedRealtimeContract.SocketEvent.RuntimeAuthLoginEvent
+    const val RuntimeAuthLoginResult = GeneratedRealtimeContract.SocketEvent.RuntimeAuthLoginResult
     const val DaemonStatus = GeneratedRealtimeContract.SocketEvent.DaemonStatus
     const val ServerMemberAdded = GeneratedRealtimeContract.SocketEvent.ServerMemberAdded
     const val ServerMemberUpdated = GeneratedRealtimeContract.SocketEvent.ServerMemberUpdated

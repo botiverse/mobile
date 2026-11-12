@@ -44,6 +44,14 @@ class SettingsAccountScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
 
+    // The provider icons (`assets://` SVGs) and the avatar's placeholder need Raft's image loader.
+    // Without it they drew blank or not depending on whether an earlier test in the same JVM
+    // fork had created a page host (which installs it), so the goldens followed fork layout.
+    @org.junit.Before
+    fun installImageLoader() {
+        runCatching { build.raft.app.image.raftInstallImageLoader() }
+    }
+
     @Test
     fun accountLight() = capture("settings.account", RaftAppAppearance.Light)
 

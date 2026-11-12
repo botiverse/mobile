@@ -19,6 +19,7 @@ import build.raft.app.data.RuntimeAccountUsageProvider
 import build.raft.app.data.RuntimeAccountUsageRead
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.RuntimeAuthAvailability
+import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthView
 import build.raft.app.data.RuntimeLimitResetIdempotencyKey
 import build.raft.app.data.RuntimeLimitResetRefusal
@@ -55,8 +56,7 @@ internal fun RuntimeAccountUsageLoad?.limitResetAccount(): RuntimeAccountUsageAc
 /**
  * Web `surfaceLimitReset`: offered only while the account holds a reset, to a person who may act
  * on the Computer's runtimes (`canAct`, the human who attached it or a server owner/admin) while
- * the Computer can be reached (`availability` ok), and not while the runtime is signed out. A
- * runtime with no sign-in from the web (Grok) has no runtime-auth view, so no action.
+ * the Computer can be reached (`availability` ok), and not while the runtime is signed out.
  */
 internal fun computerRuntimeLimitResetOffer(
     load: RuntimeAccountUsageLoad?,
@@ -64,9 +64,8 @@ internal fun computerRuntimeLimitResetOffer(
     provider: RuntimeAccountUsageProvider,
 ): ComputerRuntimeLimitResetOffer? {
     val account = load.limitResetAccount() ?: return null
-    val authRuntime = provider.authRuntime ?: return null
     if (authView == null || !authView.canAct || authView.availability != RuntimeAuthAvailability.Ok) return null
-    if (authView.statusKinds[authRuntime] == "logged_out") return null
+    if (authView.statusOf(provider.authRuntime) == RuntimeAuthStatus.LoggedOut) return null
     return ComputerRuntimeLimitResetOffer(
         primary =
             account.health == RuntimeAccountUsageHealth.RateLimited ||
