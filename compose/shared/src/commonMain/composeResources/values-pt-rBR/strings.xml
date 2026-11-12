@@ -65,6 +65,7 @@
     <string name="release_notes_error_title">Não foi possível carregar as notas da versão</string>
     <string name="release_notes_error_body">Verifique sua conexão e tente novamente.</string>
     <string name="thread_composer_insert_newline">Inserir quebra de linha</string>
+    <string name="thread_composer_paste_image">Colar imagem</string>
     <string name="settings_invite_by_email">Convidar por e-mail</string>
     <string name="settings_delete_server">Excluir servidor</string>
     <string name="common_done">Concluir</string>
