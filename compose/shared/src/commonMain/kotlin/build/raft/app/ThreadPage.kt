@@ -86,6 +86,7 @@ import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.KnownEntityScope
 import build.raft.app.data.homeStateForPage
 import build.raft.app.data.RaftKnownEntityResolver
+import build.raft.app.data.RaftRatingPrompt
 import build.raft.app.data.RaftAgentCreateEntry
 import build.raft.app.data.RaftMessageAction
 import build.raft.app.data.RaftAgentReadProgressConversation
@@ -9734,6 +9735,7 @@ private fun SharedThreadRouteContentContent(
                     bridge.log("thread_action_card_open_in_web")
                     bridge.hostCapabilities.openUrlInBrowser(url)
                 },
+                onApproved = RaftRatingPrompt::onActionCardApproved,
             )
         }
     // The page reads only the open confirm / form; each card reads its own slice (ThreadActionCardSpecView).

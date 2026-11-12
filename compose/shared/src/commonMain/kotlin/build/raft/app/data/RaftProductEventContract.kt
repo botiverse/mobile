@@ -63,6 +63,14 @@ const val RAFT_PRODUCT_ENTRY_EVENTS_BASE_SLOCK_SHA: String = "3e959613eeeaa80607
 const val RAFT_PRODUCT_EVENTS_GATED_FEATURES_SLOCK_SHA: String = "a5a145f9fe3ce4da49cba8e7d2ec39293c1f1270"
 
 /**
+ * botiverse/slock #14522 (merged on staging as this commit): `app_rating_prompt_requested` with one
+ * required property `trigger` (`task_result_viewed` | `action_card_approved`), sources `ios` and
+ * `android`. The server validates names and values strictly; a build that sends it must not ship
+ * before a server with #14522 is in production.
+ */
+const val RAFT_PRODUCT_EVENTS_APP_RATING_SLOCK_SHA: String = "9da0de7879d8c8290363e6ab3719d73f2d7bb483"
+
+/**
  * botiverse/slock #10790 head, where `clientEventBatchSchema` gained the optional batch-level
  * `device_class: "phone" | "tablet"` (`packages/server/src/services/productEventIngest.ts`).
  */
@@ -289,6 +297,20 @@ enum class RaftAgentReadProgressConversation(val wire: String) {
     @SerialName("thread") Thread("thread"),
 }
 
+/** `app_rating_prompt_requested.trigger`: the moment after which the app asked for a store rating. */
+@Serializable
+enum class RaftAppRatingPromptTrigger(val wire: String) {
+    /** The person went back to the list from a finished task they had given to an agent. */
+    @SerialName("task_result_viewed") TaskResultViewed("task_result_viewed"),
+    /** The person approved / confirmed an agent's action card and it ran. */
+    @SerialName("action_card_approved") ActionCardApproved("action_card_approved"),
+}
+
+@Serializable
+data class RaftAppRatingPromptRequestedProperties(
+    val trigger: RaftAppRatingPromptTrigger,
+)
+
 @Serializable
 data class RaftDraftsPageViewedProperties(
     val drafts: RaftDraftCountBucket,
@@ -387,6 +409,12 @@ sealed class RaftProductEvent<P>(val name: String, private val serializer: KSeri
 
     data class AgentReadProgressShown(override val properties: RaftAgentReadProgressShownProperties) :
         RaftProductEvent<RaftAgentReadProgressShownProperties>("agent_read_progress_shown", RaftAgentReadProgressShownProperties.serializer())
+
+    data class AppRatingPromptRequested(override val properties: RaftAppRatingPromptRequestedProperties) :
+        RaftProductEvent<RaftAppRatingPromptRequestedProperties>(
+            "app_rating_prompt_requested",
+            RaftAppRatingPromptRequestedProperties.serializer(),
+        )
 
     data class AppOpened(override val properties: RaftAppOpenedProperties) :
         RaftProductEvent<RaftAppOpenedProperties>("app_opened", RaftAppOpenedProperties.serializer())

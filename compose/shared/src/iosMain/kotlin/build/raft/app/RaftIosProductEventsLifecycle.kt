@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.RaftAppOpenSignal
 import build.raft.app.data.RaftProductEvents
+import build.raft.app.data.RaftRatingPrompt
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
@@ -29,9 +30,12 @@ internal fun installRaftIosProductEventsLifecycle() {
             RaftProductEvents.onDefaultAppOpenSignal(RaftAppOpenSignal.Launcher)
         }
         RaftProductEvents.onAppForeground()
+        // Rating prompt: today is an active day (counted once per local day).
+        RaftRatingPrompt.onAppForeground()
     }
     center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) { _ ->
         RaftProductEvents.onAppBackground()
+        RaftRatingPrompt.onAppBackground()
     }
 }
 

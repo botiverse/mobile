@@ -4,6 +4,7 @@ import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.data.externalMessageAuthorOrFallback
 import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.RaftFeedbackAgentDraftSent
+import build.raft.app.data.RaftRatingPrompt
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.AttachmentUploadCapabilitiesCache
 import build.raft.app.data.DataResult
@@ -4273,7 +4274,7 @@ internal class SharedThreadDataSource(
         card: ThreadActionCard,
         onChannelCreated: (HomeChannelRow) -> Unit = {},
     ): DataResult<ThreadActionCard> {
-        return when {
+        val result: DataResult<ThreadActionCard> = when {
             // web ActionCard: a frozen card runs nothing; a reconfirm card's button reconfirms it.
             card.isFrozen ->
                 DataResult.Error(ScreenError(code = "action_card_frozen", retryable = false))
@@ -4298,6 +4299,14 @@ internal class SharedThreadDataSource(
             else ->
                 DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
         }
+        // A reconfirm only re-arms the card; it has not run.
+        if (!card.needsReconfirmation) noteActionCardApproved(result)
+        return result
+    }
+
+    /** The rating prompt's `action_card_approved`: the card the person approved has run. */
+    private fun noteActionCardApproved(result: DataResult<ThreadActionCard>) {
+        if ((result as? DataResult.Content)?.data?.isExecuted == true) RaftRatingPrompt.onActionCardApproved()
     }
 
     /**
@@ -4332,7 +4341,7 @@ internal class SharedThreadDataSource(
                 DataResult.Error(ScreenError(code = "action_card_frozen", retryable = false))
             !card.installSetBound ->
                 DataResult.Error(ScreenError(code = "action_card_install_unbound", retryable = false))
-            else -> executeInlineThreadActionCard(messageId, card)
+            else -> executeInlineThreadActionCard(messageId, card).also(::noteActionCardApproved)
         }
 
     /**

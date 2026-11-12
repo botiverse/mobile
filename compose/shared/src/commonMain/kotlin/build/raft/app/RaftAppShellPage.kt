@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.data.RaftRatingPrompt
 
 @Page(RAFT_APP_SHELL_PAGE, supportInLocal = true)
 internal class ComposeRaftAppShellPage : build.raft.app.base.BasePager() {
@@ -48,6 +49,10 @@ internal class ComposeRaftAppShellPage : build.raft.app.base.BasePager() {
     override fun onRaftPageDidAppear(isInitialAppearance: Boolean) {
         if (isInitialAppearance) {
             initialAuthRestoreTick += 1
+        } else {
+            // Back on the shell (its tasks list) from a pushed page: a finished task opened from
+            // the list may ask for a store rating now (RaftRatingPrompt, task_result_viewed).
+            RaftRatingPrompt.onTaskListShown()
         }
     }
 

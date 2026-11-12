@@ -640,6 +640,9 @@ android {
         buildConfigField("Boolean", "SCREENSHOT_FEEDBACK_ENABLED", "false")
         buildConfigField("Boolean", "HANDS_APK_UPDATE_ENABLED", "true")
         buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "false")
+        // The Google Play rating prompt (RaftAndroidStoreReview): only a build Google Play installs can
+        // show it, so only the `play` build type calls it; every other build never asks.
+        buildConfigField("Boolean", "PLAY_IN_APP_REVIEW_ENABLED", "false")
         // RaftNav3StackFlag's build default: the Navigation 3 page stack, on for everyone from 1.19.1
         // (artin 11-03). The developer switch can still turn it off on a device.
         buildConfigField("Boolean", "NAV3_STACK_DEFAULT_ON", "true")
@@ -707,6 +710,7 @@ android {
         create("play") {
             initWith(getByName("release"))
             buildConfigField("Boolean", "HANDS_APK_UPDATE_ENABLED", "false")
+            buildConfigField("Boolean", "PLAY_IN_APP_REVIEW_ENABLED", "true")
             matchingFallbacks += listOf("release")
         }
         configureEach {
@@ -892,6 +896,8 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.installations)
+    // Google Play In-App Review: the store rating prompt (RaftAndroidStoreReview).
+    implementation(libs.play.review)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     // Builds real notifications in JVM unit tests.

@@ -118,6 +118,11 @@ object RaftProductEvents {
         recorder.agentReadProgressShown(scopeId, conversation, faces, notReachingLine)
     }
 
+    /** See [RaftProductEventsRecorder.appRatingPromptRequested]. */
+    fun appRatingPromptRequested(trigger: RaftAppRatingPromptTrigger) {
+        recorder.appRatingPromptRequested(trigger)
+    }
+
     fun navEntrySelected(destination: RaftNavDestination?, surface: RaftNavSurface, wasActive: Boolean) {
         if (destination == null) return
         recorder.navEntrySelected(destination, surface, wasActive)
