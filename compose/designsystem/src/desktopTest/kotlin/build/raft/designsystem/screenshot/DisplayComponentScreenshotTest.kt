@@ -38,6 +38,7 @@ import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.components.RaftConversationKindIcon
+import build.raft.designsystem.components.RaftRiskTone
 import build.raft.designsystem.components.RaftInboxItemLeadingDefaults
 import build.raft.designsystem.components.RaftInboxItemLeadingBadge
 import build.raft.designsystem.components.RaftInboxItemLeading
@@ -1058,6 +1059,57 @@ class DisplayComponentScreenshotTest {
                     RaftListRow("Acme", variant = RaftListRowVariant.Plain, divider = true, onClick = {}, trailing = { RaftListRowValue("All messages"); RaftListRowChevron() })
                     RaftListRow("#ops", variant = RaftListRowVariant.Plain, divider = true, attached = true, onClick = {}, trailing = { RaftListRowValue("Mentions"); RaftListRowChevron() })
                     RaftListRow("Language", variant = RaftListRowVariant.Plain, divider = true, onClick = {}, trailing = { RaftListRowValue("English"); RaftListRowChevron() })
+                }
+            }
+        }
+
+    /**
+     * raft-ui 0.87.0 ListRow risk: a channel's danger zone. Archive and Leave (can be undone) in
+     * `warning-strong`, Delete (cannot) in `danger-strong`, title and icon only; the description and
+     * chevron stay ink-2 / ink-3. A disabled Delete greys it.
+     */
+    @Test
+    fun listRowRisk() =
+        capture("list_row_risk") {
+            Column(Modifier.width(360.dp)) {
+                RaftListRowGroup {
+                    RaftListRow(
+                        "Archive channel",
+                        variant = RaftListRowVariant.Plain,
+                        risk = RaftRiskTone.Warning,
+                        onClick = {},
+                        leading = { RaftGlyphIcon(RaftGlyph.Clock, size = 20.dp) },
+                        description = "Read-only for everyone; you can unarchive it.",
+                        wrapDescription = true,
+                        trailing = { RaftListRowChevron() },
+                    )
+                    RaftListRow(
+                        "Leave channel",
+                        variant = RaftListRowVariant.Plain,
+                        risk = RaftRiskTone.Warning,
+                        divider = true,
+                        onClick = {},
+                        leading = { RaftGlyphIcon(RaftGlyph.ArrowUpRight, size = 20.dp) },
+                    )
+                    RaftListRow(
+                        "Delete channel",
+                        variant = RaftListRowVariant.Plain,
+                        risk = RaftRiskTone.Danger,
+                        divider = true,
+                        onClick = {},
+                        leading = { RaftGlyphIcon(RaftGlyph.OctagonAlert, size = 20.dp) },
+                        description = "Removes every message. This can't be undone.",
+                        wrapDescription = true,
+                    )
+                    RaftListRow(
+                        "Delete channel",
+                        variant = RaftListRowVariant.Plain,
+                        risk = RaftRiskTone.Danger,
+                        divider = true,
+                        enabled = false,
+                        onClick = {},
+                        leading = { RaftGlyphIcon(RaftGlyph.OctagonAlert, size = 20.dp) },
+                    )
                 }
             }
         }

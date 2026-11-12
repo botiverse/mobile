@@ -89,6 +89,19 @@ enum class RaftRowTone {
     Away,
 }
 
+/**
+ * An action's risk (raft-ui 0.87.0 `RiskTone`): an action row in a danger zone (Archive, Leave,
+ * Delete at the end of a channel's details) colors its title and its leading icon. Nothing else
+ * changes: the description, the value, the chevron and the hover and press fills stay as on any row.
+ */
+enum class RaftRiskTone {
+    /** It interrupts but can be undone: `warning-strong`. */
+    Warning,
+
+    /** It cannot be undone: `danger-strong`. */
+    Danger,
+}
+
 /** The row's three inks (`--list-row-ink*`), decided once on the row and read by its parts. */
 @Immutable
 data class RaftListRowInks(
@@ -99,21 +112,39 @@ data class RaftListRowInks(
     /** Meta, subtitle, value, icons, chevron. */
     val ink3: Color,
     val titleWeight: FontWeight,
+    /** An action's risk ink ([RaftRiskTone]): the title and the leading icon; null on a row without one. */
+    val riskInk: Color? = null,
 )
 
-/** A disabled row ignores its tone: everything is `foreground-disabled`. */
-internal fun raftListRowInks(tone: RaftRowTone, enabled: Boolean, colors: RaftUiThemeColors): RaftListRowInks {
+/**
+ * A disabled row ignores its tone and risk: everything is `foreground-disabled`. Only an
+ * [interactive] row takes a [risk] (a display-only row has no action, so no risk).
+ */
+internal fun raftListRowInks(
+    tone: RaftRowTone,
+    enabled: Boolean,
+    colors: RaftUiThemeColors,
+    risk: RaftRiskTone? = null,
+    interactive: Boolean = true,
+): RaftListRowInks {
     if (!enabled) {
         val d = colors.foregroundDisabled
         return RaftListRowInks(d, d, d, FontWeight.SemiBold)
     }
     val base = RaftListRowInks(colors.foreground, colors.foregroundMuted, colors.foregroundHint, FontWeight.SemiBold)
-    return when (tone) {
+    val toned = when (tone) {
         RaftRowTone.Default -> base
         RaftRowTone.Unread -> base.copy(ink2 = colors.foreground, titleWeight = FontWeight.Bold)
         RaftRowTone.Muted -> base.copy(ink = colors.foregroundMuted)
         RaftRowTone.Away -> base.copy(ink = colors.foregroundHint, ink2 = colors.foregroundHint)
     }
+    val riskInk =
+        when (risk.takeIf { interactive }) {
+            RaftRiskTone.Warning -> colors.warningStrong
+            RaftRiskTone.Danger -> colors.dangerStrong
+            null -> null
+        }
+    return if (riskInk == null) toned else toned.copy(ink = riskInk, riskInk = riskInk)
 }
 
 /** The inks of the enclosing [RaftListRow], for parts placed in its slots. */
@@ -179,6 +210,10 @@ fun RaftListRowGroup(
  *   sits between them. An interactive one keeps the control height as its least, so it stays a
  *   44dp target. The row above keeps its height; the row after draws its hairline as usual.
  *
+ * [risk] (raft-ui 0.87.0): an action row's risk colors its title and its [leading] icon
+ * `warning-strong` (it can be undone) or `danger-strong` (it cannot); only an interactive row
+ * takes it, and a disabled row greys it as every tone.
+ *
  * [text]: [RaftListRowText.Member] sets the title and subtitle as the web members page does.
  *
  * [titleMaxLines]: a setting's title wraps to this many lines before it truncates (a long
@@ -205,6 +240,7 @@ fun RaftListRow(
     onClick: (() -> Unit)? = null,
     variant: RaftListRowVariant = RaftListRowVariant.Default,
     tone: RaftRowTone = RaftRowTone.Default,
+    risk: RaftRiskTone? = null,
     selected: Boolean = false,
     enabled: Boolean = true,
     divider: Boolean = false,
@@ -234,9 +270,9 @@ fun RaftListRow(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val inks = raftListRowInks(tone, enabled, colors)
-    val source = interactionSource ?: remember { MutableInteractionSource() }
     val interactive = onClick != null
+    val inks = raftListRowInks(tone, enabled, colors, risk, interactive)
+    val source = interactionSource ?: remember { MutableInteractionSource() }
     // Hover lays the subtle tier, press the medium tier; a selected, disabled or display-only
     // row takes neither. An open menu keeps the hover fill (`fill-row-open` = `fill-subtle`).
     val overlay =
@@ -288,7 +324,12 @@ fun RaftListRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = align,
         ) {
-            if (leading != null) Box(contentAlignment = Alignment.Center) { leading() }
+            if (leading != null) {
+                Box(contentAlignment = Alignment.Center) {
+                    // A risk colors the leading icon too (`--list-row-risk-ink`); an avatar ignores it.
+                    CompositionLocalProvider(LocalRaftContentColor provides (inks.riskInk ?: inks.ink3)) { leading() }
+                }
+            }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (alignTop) 4.dp else 2.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     val titleStyle = (if (text == RaftListRowText.Member) typography.subhead else typography.body).copy(fontWeight = inks.titleWeight)
