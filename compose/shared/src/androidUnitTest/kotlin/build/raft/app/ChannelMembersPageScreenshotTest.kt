@@ -47,6 +47,11 @@ class ChannelMembersPageScreenshotTest {
     @Test
     fun channelMembersDark() = capture("channel.members.dark", RaftAppAppearance.Dark)
 
+    // BEFORE (main 8c94eb27): the same joint roster as the old mapping turned it into rows.
+    @Test
+    fun channelMembersJointLight() =
+        capture("channel.members.joint", RaftAppAppearance.Light) { ChannelMembersVisualContent(jointVisualRoster()) }
+
     // Add Member (web ChannelMembers add view): nothing selected yet, as artin's web capture.
     @Test
     fun channelMembersAddLight() = capture("channel.members.add", RaftAppAppearance.Light) { ChannelAddMemberPanelVisualScreen() }
@@ -84,10 +89,10 @@ class ChannelMembersPageScreenshotTest {
 
 /** Fixed roster and agent activity, so the capture is deterministic. */
 @Composable
-private fun ChannelMembersVisualContent() {
+private fun ChannelMembersVisualContent(roster: List<RaftThreadMemberItem>? = null) {
     val members =
         remember {
-            listOf(
+            roster ?: listOf(
                 RaftThreadMemberItem("human-artea", "Artea", handle = "artea", effectiveChannelRole = "admin"),
                 RaftThreadMemberItem("human-artin", "artin", handle = "artin", description = "产品负责人"),
                 RaftThreadMemberItem("human-cindyz", "cindyz", handle = "cindyz"),
@@ -181,3 +186,14 @@ private fun AddMemberSelectedContent() {
         }
     }
 }
+
+/** What main's `toRaftThreadMemberItem` (serverId only) made of the joint roster. */
+private fun jointVisualRoster(): List<RaftThreadMemberItem> =
+    listOf(
+        RaftThreadMemberItem("human-artea", "Artea", handle = "artea", sourceServerId = "server-1", canRemove = true, effectiveChannelRole = "admin"),
+        RaftThreadMemberItem("human-ada", "Ada", handle = "ada", sourceServerId = "server-peer", sourceServerLabel = "Peer Labs", canRemove = false),
+        RaftThreadMemberItem("human-bo", "Bo", handle = "bo", sourceServerId = "server-peer", sourceServerLabel = "Peer Labs", canRemove = false),
+        RaftThreadMemberItem("human-cy", "Cy", handle = "cy", sourceServerId = "server-peer", sourceServerLabel = "Peer Labs", canRemove = false, effectiveChannelRole = "guest"),
+        RaftThreadMemberItem("agent-tenny", "Tenny", handle = "tenny", kind = "agent", sourceServerId = "server-1", canRemove = true),
+        RaftThreadMemberItem("agent-mira", "Mira", handle = "mira", kind = "agent", sourceServerId = "server-peer", sourceServerLabel = "Peer Labs", canRemove = false),
+    )
