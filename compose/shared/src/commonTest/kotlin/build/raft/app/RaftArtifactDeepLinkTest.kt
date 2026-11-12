@@ -41,10 +41,15 @@ class RaftArtifactDeepLinkTest {
             ArtifactLinkTarget(short, 2),
             parseRaftArtifactDeepLink("https://raft.example/s/hq/artifacts?artifact=$short&version=2", appHosts = setOf("raft.example")),
         )
+        // The share address people send (CLI push, Copy link), with and without a version.
+        assertEquals(ArtifactLinkTarget("pt_abc123"), parseRaftArtifactDeepLink("https://app.raft.build/artifacts/pt_abc123"))
+        assertEquals(ArtifactLinkTarget("pt_abc123", 2), parseRaftArtifactDeepLink("https://open.raft.build/artifacts/pt_abc123/v/2"))
+        assertEquals(ArtifactLinkTarget(short), parseRaftArtifactDeepLink("https://app.raft.build/s/hq/artifacts/$short"))
         for (url in listOf(
             "https://evil.example/s/hq/artifacts?artifact=$short",
             "$staging/s/hq/artifacts?artifact=$short",
-            "https://app.raft.build/s/hq/artifacts/$short",
+            "https://evil.example/artifacts/pt_abc123",
+            "https://app.raft.build/artifacts",
             "https://app.raft.build/s/hq/artifacts?artifact=nope",
         )) {
             assertNull(parseRaftArtifactDeepLink(url), url)
