@@ -3035,6 +3035,7 @@
     <string name="settings_storage_detail">Локальный кэш</string>
     <string name="settings_storage_refreshing">Обновление данных о хранилище…</string>
     <string name="settings_storage_loading">Загрузка данных о хранилище…</string>
+    <string name="settings_storage_empty">Нет сведений о хранилище</string>
     <string name="settings_storage_unavailable_detail">Хранилище недоступно: %1$s</string>
     <string name="settings_storage_total_title">Занято места</string>
     <string name="settings_storage_refresh">Обновить</string>

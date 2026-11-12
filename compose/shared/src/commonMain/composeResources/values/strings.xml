@@ -3190,6 +3190,7 @@
     <string name="settings_storage_detail">Local cache</string>
     <string name="settings_storage_refreshing">Refreshing storage...</string>
     <string name="settings_storage_loading">Loading storage...</string>
+    <string name="settings_storage_empty">No storage details</string>
     <string name="settings_storage_unavailable_detail">Storage unavailable: %1$s</string>
     <string name="settings_storage_total_title">Storage used</string>
     <string name="settings_storage_refresh">Refresh</string>

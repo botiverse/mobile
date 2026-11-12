@@ -67,6 +67,16 @@ class SettingsNotificationsUiContractTest {
             SettingsTestNotificationRow.NeedsPermission,
             settingsTestNotificationRow(statusLabel = "Disabled", available = false, permissionGranted = false)
         )
+        // After a send: Denied / Disabled keep the row as the disabled step, never hide it.
+        assertEquals(
+            SettingsTestNotificationRow.NeedsPermission,
+            settingsTestNotificationRow(statusLabel = "Disabled", available = true, permissionGranted = true)
+        )
+        // A blocked channel keeps the row the person just tapped, with the step and Retry.
+        assertEquals(
+            SettingsTestNotificationRow.BlockedRetry,
+            settingsTestNotificationRow(statusLabel = "Blocked", available = true, permissionGranted = true)
+        )
         assertEquals(
             SettingsTestNotificationRow.Hidden,
             settingsTestNotificationRow(statusLabel = "Unsupported", available = false, permissionGranted = true)

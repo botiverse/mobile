@@ -3038,6 +3038,7 @@
     <string name="settings_storage_detail">本機快取</string>
     <string name="settings_storage_refreshing">正在重新整理儲存空間資訊…</string>
     <string name="settings_storage_loading">正在載入儲存空間資訊…</string>
+    <string name="settings_storage_empty">尚無儲存空間詳細資料</string>
     <string name="settings_storage_unavailable_detail">無法使用儲存空間：%1$s</string>
     <string name="settings_storage_total_title">已使用的儲存空間</string>
     <string name="settings_storage_refresh">重新整理</string>

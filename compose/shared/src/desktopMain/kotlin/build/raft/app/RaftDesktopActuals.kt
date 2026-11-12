@@ -111,18 +111,14 @@ internal fun RaftDesktopOpenInBrowser(target: String?, kind: String, modifier: M
 
 private const val RAFT_DESKTOP_OPEN_IN_BROWSER_TAG = "RaftDesktop"
 
-/** What "Open in browser" opens for [target]: an http(s) or file URL as is, a plain path as a file URL. */
+/**
+ * What "Open in browser" opens for [target]: only an http(s) URL, the desktop openUrl policy's web
+ * links. A file, a plain path or any other scheme gets no button (null), never Desktop.browse.
+ */
 fun raftDesktopBrowseUri(target: String?): URI? =
     runCatching {
-        val trimmed = target?.trim().orEmpty()
-        when {
-            trimmed.isEmpty() -> null
-            trimmed.startsWith("http://", ignoreCase = true) ||
-                trimmed.startsWith("https://", ignoreCase = true) ||
-                trimmed.startsWith("file:", ignoreCase = true) -> URI(trimmed)
-            "://" in trimmed -> null
-            else -> File(trimmed).toURI()
-        }
+        val uri = URI(target?.trim().orEmpty())
+        uri.takeIf { (it.scheme.equals("http", ignoreCase = true) || it.scheme.equals("https", ignoreCase = true)) && !it.host.isNullOrBlank() }
     }.getOrNull()
 
 @Composable

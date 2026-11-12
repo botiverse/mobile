@@ -3038,6 +3038,7 @@
     <string name="settings_storage_detail">로컬 캐시</string>
     <string name="settings_storage_refreshing">저장 공간 새로고침 중…</string>
     <string name="settings_storage_loading">저장 공간 불러오는 중…</string>
+    <string name="settings_storage_empty">저장 공간 정보가 없어요</string>
     <string name="settings_storage_unavailable_detail">저장 공간을 사용할 수 없어요: %1$s</string>
     <string name="settings_storage_total_title">사용 중인 저장 공간</string>
     <string name="settings_storage_refresh">새로고침</string>

@@ -33,7 +33,9 @@ internal actual fun RaftSandboxWebViewHost(
     modifier: Modifier,
 ) {
     if (!config.allowScripts || RaftDesktopWebViewOnWindows) {
-        RaftDesktopOpenInBrowser(config.url, kind = "web_content", modifier = modifier)
+        // The origin-locked surface (the Artifact viewer) loads an embed URL and has its own Open in
+        // browser in its top bar, so it gets no second button here.
+        RaftDesktopOpenInBrowser(config.url.takeIf { config.mainFrameOrigin == null }, kind = "web_content", modifier = modifier)
         return
     }
     val policy =

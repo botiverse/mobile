@@ -3038,6 +3038,7 @@
     <string name="settings_storage_detail">Caché local</string>
     <string name="settings_storage_refreshing">Actualizando almacenamiento…</string>
     <string name="settings_storage_loading">Cargando almacenamiento…</string>
+    <string name="settings_storage_empty">No hay detalles de almacenamiento</string>
     <string name="settings_storage_unavailable_detail">Almacenamiento no disponible: %1$s</string>
     <string name="settings_storage_total_title">Almacenamiento usado</string>
     <string name="settings_storage_refresh">Actualizar</string>

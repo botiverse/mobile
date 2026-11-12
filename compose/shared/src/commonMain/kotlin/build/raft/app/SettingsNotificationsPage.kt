@@ -411,6 +411,14 @@ private fun SettingsPushStatusCard(
                         enabled = false,
                         onClick = onTest
                     )
+                SettingsTestNotificationRow.BlockedRetry ->
+                    SettingsNotificationActionRow(
+                        title = stringResource(Res.string.settings_notifications_test_title),
+                        detail = stringResource(Res.string.settings_notifications_test_allow_permission),
+                        status = stringResource(Res.string.settings_state_error),
+                        enabled = !anyActionBusy,
+                        onClick = onTest
+                    )
                 SettingsTestNotificationRow.Hidden -> Unit
             }
         }
@@ -485,21 +493,36 @@ internal enum class SettingsTestNotificationRow {
     Shown,
     /** Can't send until notifications are allowed: disabled, with that one step. */
     NeedsPermission,
+    /**
+     * The last send found Raft's notification channel blocked: the row the person just tapped
+     * stays, with the step and an error status, and can be tapped again once they allow it.
+     */
+    BlockedRetry,
     /** Can't send here for any other reason: not shown. */
     Hidden
 }
 
+/**
+ * The row starts from the platform's answer ([available]: this host can post a test). A host that
+ * can't, with notification permission missing, shows the step disabled; for any other reason no
+ * row. Once a send has run, its outcome keeps the row: Denied / Disabled turn it into the disabled
+ * step, a blocked channel into the step with Retry.
+ */
 internal fun settingsTestNotificationRow(
     statusLabel: String,
     available: Boolean,
     permissionGranted: Boolean
-): SettingsTestNotificationRow =
-    when {
+): SettingsTestNotificationRow {
+    val status = statusLabel.trim().lowercase()
+    return when {
+        available && status == "blocked" -> SettingsTestNotificationRow.BlockedRetry
+        available && (status == "denied" || status == "disabled") -> SettingsTestNotificationRow.NeedsPermission
         available && settingsTestNotificationCopy(statusLabel, available) != SettingsTestNotificationCopy.Unavailable ->
             SettingsTestNotificationRow.Shown
         !permissionGranted -> SettingsTestNotificationRow.NeedsPermission
         else -> SettingsTestNotificationRow.Hidden
     }
+}
 
 internal enum class SettingsTestNotificationCopy {
     Ready,

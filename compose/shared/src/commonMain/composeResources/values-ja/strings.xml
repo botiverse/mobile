@@ -3190,6 +3190,7 @@
     <string name="settings_storage_detail">ローカルキャッシュ</string>
     <string name="settings_storage_refreshing">ストレージを更新中...</string>
     <string name="settings_storage_loading">ストレージを読み込み中...</string>
+    <string name="settings_storage_empty">ストレージの詳細はありません</string>
     <string name="settings_storage_unavailable_detail">ストレージを利用できません: %1$s</string>
     <string name="settings_storage_total_title">使用中のストレージ</string>
     <string name="settings_storage_refresh">更新</string>

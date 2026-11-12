@@ -3190,6 +3190,7 @@
     <string name="settings_storage_detail">本地缓存</string>
     <string name="settings_storage_refreshing">正在刷新存储信息…</string>
     <string name="settings_storage_loading">正在加载存储信息…</string>
+    <string name="settings_storage_empty">暂无存储详情</string>
     <string name="settings_storage_unavailable_detail">存储不可用：%1$s</string>
     <string name="settings_storage_total_title">已用存储空间</string>
     <string name="settings_storage_refresh">刷新</string>
