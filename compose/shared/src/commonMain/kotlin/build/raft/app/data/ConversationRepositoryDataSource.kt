@@ -805,6 +805,20 @@ class RealConversationRepository private constructor(
         priority: DataRequestPriority
     ): DataResult<ThreadSnapshot> = loadMessageContext(messageId, channelId, priority, includeConversationDetail = true)
 
+    override suspend fun getMessageContextInConversation(
+        messageId: MessageId,
+        channelId: ChannelId?,
+        expectedConversationId: ChannelId,
+        priority: DataRequestPriority,
+    ): DataResult<ThreadSnapshot> =
+        loadMessageContext(
+            messageId = messageId,
+            channelId = channelId,
+            priority = priority,
+            includeConversationDetail = true,
+            expectedConversationId = expectedConversationId.takeIf { it.value.isNotBlank() },
+        )
+
     override suspend fun resolveMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> =
         loadMessageContext(messageId, channelId, DataRequestPriority.Foreground, includeConversationDetail = false)
 
@@ -813,8 +827,18 @@ class RealConversationRepository private constructor(
         channelId: ChannelId?,
         priority: DataRequestPriority,
         includeConversationDetail: Boolean,
-    ): DataResult<ThreadSnapshot> {
-        val context = currentContext() ?: return authRequired()
+        /** See [ConversationRepository.getMessageContextInConversation]: its detail is read beside the context. */
+        expectedConversationId: ChannelId? = null,
+    ): DataResult<ThreadSnapshot> = coroutineScope {
+        val context = currentContext() ?: return@coroutineScope authRequired()
+        // artin 11-12 (Activity opens slowly): the page already names its conversation, so its header detail
+        // does not wait for the context round trip. Dropped below when the context lands elsewhere.
+        val earlyDetail =
+            expectedConversationId
+                ?.takeIf { includeConversationDetail }
+                ?.let { expected ->
+                    expected to async { loadConversationDetail(expected, priority, context.server.id) }
+                }
         var canonicalTargetKind: String? = null
         val result = executeConversation(
             emptyReason = EmptyReason.NoMessages,
@@ -845,11 +869,27 @@ class RealConversationRepository private constructor(
                 ).copy(rawMessagePage = rawMessagePageWitness(bodyText, requestedLimit = 0))
             }
         )
-        if (!includeConversationDetail) return result
-        val snapshot = (result as? DataResult.Content)?.data ?: return result
-        val detailChannelId = snapshot.conversation.channelId ?: channelId ?: return result
-        val detail = loadConversationDetail(detailChannelId, priority, context.server.id)
-        return DataResult.Content(
+        if (!includeConversationDetail) return@coroutineScope result
+        val snapshot =
+            (result as? DataResult.Content)?.data
+                ?: run {
+                    earlyDetail?.second?.cancel()
+                    return@coroutineScope result
+                }
+        val detailChannelId =
+            snapshot.conversation.channelId ?: channelId
+                ?: run {
+                    earlyDetail?.second?.cancel()
+                    return@coroutineScope result
+                }
+        val detail =
+            if (earlyDetail != null && earlyDetail.first == detailChannelId) {
+                earlyDetail.second.await()
+            } else {
+                earlyDetail?.second?.cancel()
+                loadConversationDetail(detailChannelId, priority, context.server.id)
+            }
+        DataResult.Content(
             snapshot.withConversationDetail(
                 detail = detail,
                 canonicalReplyThread = canonicalTargetKind == RaftThreadSurfaceKind.ReplyThread

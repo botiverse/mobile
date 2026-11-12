@@ -231,6 +231,19 @@ interface ConversationRepository {
         priority: DataRequestPriority
     ): DataResult<ThreadSnapshot> = getMessageContext(messageId, channelId)
     /**
+     * [getMessageContext] for a page that already knows which conversation it opens
+     * ([expectedConversationId], the route's own timeline id): the `channels/{id}` header detail is
+     * requested beside `messages/context` instead of after it, so a focused open (every Activity tap)
+     * waits for one round trip, not two in a row. When the context lands in another conversation the
+     * early detail is dropped and that conversation's detail is read afterwards, as before.
+     */
+    suspend fun getMessageContextInConversation(
+        messageId: MessageId,
+        channelId: ChannelId?,
+        expectedConversationId: ChannelId,
+        priority: DataRequestPriority = DataRequestPriority.Foreground,
+    ): DataResult<ThreadSnapshot> = getMessageContext(messageId, channelId, priority)
+    /**
      * A message's context for resolving a reference (a `#channel:shortid` chip) before opening it:
      * only `messages/context`, without [getMessageContext]'s follow-up `channels/{id}` request, whose
      * header detail the opened page loads itself. One round trip instead of two while the chip waits.

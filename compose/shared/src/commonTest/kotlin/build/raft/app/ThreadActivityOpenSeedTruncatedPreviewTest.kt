@@ -109,6 +109,28 @@ class ThreadActivityOpenSeedTruncatedPreviewTest {
         assertEquals(listOf("y".repeat(400) to false), frame.messages.map { it.body to it.activityPreviewTruncated })
     }
 
+    /** artin 11-12: a superseded canonical answer already holds the tapped message's full text. */
+    @Test
+    fun aSupersededCanonicalAnswerFillsOnlyTheCutSeedOfTheSameStream() {
+        val cut = seed(channelRow(preview = "v".repeat(140) + "…"), channelRoute()).single()
+        val older = cut.copy(id = "m0", body = "older, already on the frame", activityPreviewTruncated = false)
+        val frame = channelRoute().copy(status = "content", messages = listOf(older, cut))
+        val canonicalFull = cut.copy(body = "v".repeat(400), activityPreviewTruncated = false, seq = 9)
+        val canonicalOlder = older.copy(body = "older, edited since")
+        val superseded = channelRoute().copy(status = "content", messages = listOf(canonicalOlder, canonicalFull))
+
+        val filled = frame.withActivitySeedBodiesFrom(superseded)
+        assertEquals(
+            listOf("older, already on the frame" to false, "v".repeat(400) to false),
+            filled.messages.map { it.body to it.activityPreviewTruncated },
+            "only the cut seed changes",
+        )
+
+        val otherStream = superseded.copy(sourceThreadId = "channel-2", instanceId = "shared-shell-thread-channel-2")
+        assertTrue(frame.withActivitySeedBodiesFrom(otherStream) === frame, "another stream fills nothing")
+        assertTrue(filled.withActivitySeedBodiesFrom(superseded) === filled, "nothing cut, nothing to do")
+    }
+
     @Test
     fun aRealtimeUpdateWithABodyClearsTheFlagAndASparseOneKeepsIt() {
         val cut = seed(channelRow(preview = "z".repeat(140) + "…"), channelRoute()).single()

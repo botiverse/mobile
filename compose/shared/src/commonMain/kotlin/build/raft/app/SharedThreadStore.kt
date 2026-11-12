@@ -6924,7 +6924,12 @@ internal class SharedThreadDataSource(
                 fallbackCode = "thread_focused_context",
                 expectedProvenance = replyResolutionScope.provenance
             ) { repository ->
-                repository.getMessageContext(MessageId(focusedMessageId), focusedContextChannelId)
+                // The route names the conversation, so its header detail is read beside the context.
+                repository.getMessageContextInConversation(
+                    messageId = MessageId(focusedMessageId),
+                    channelId = focusedContextChannelId,
+                    expectedConversationId = ChannelId(routeThreadId.value),
+                )
             }
         val context = (contextResult as? DataResult.Content)?.data ?: return null
         if (!context.matchesFocusedThreadRoute(routeThreadId, focusedMessageId)) {
@@ -9417,6 +9422,7 @@ internal class SharedThreadStore(
                     onEnteredPage = onEnteredPage,
                     onSupersededCanonicalResult = { superseded ->
                         applySupersededCanonicalAccess(basePayload, staleToken, refreshProvenance, superseded)
+                        applySupersededActivitySeedBodies(basePayload, staleToken, refreshProvenance, superseded)
                     },
                     onCanonicalRefetchCapped = { refetchCapped = true },
                 )
@@ -10316,6 +10322,38 @@ internal class SharedThreadStore(
                             ),
                     )
                 )
+            }
+        }
+    }
+
+    /**
+     * artin 11-12: a cut Activity seed (the tapped message, with a loading indicator under it) takes its
+     * full text from the first canonical result even when that result is superseded and fetched again;
+     * see [withActivitySeedBodiesFrom]. Nothing is cached, and the final result replaces the timeline.
+     */
+    private suspend fun applySupersededActivitySeedBodies(
+        routePayload: RaftThreadScreenPayload,
+        staleToken: MviStaleToken,
+        refreshProvenance: ReplyCacheProvenance,
+        result: DataResult<RaftThreadScreenPayload>,
+    ) {
+        val canonical = (result as? DataResult.Content)?.data ?: return
+        initialAccessStateMutex.withLock {
+            dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
+                val currentPayload = _state.value.payload
+                if (
+                    !staleTokenStillCurrent(staleToken, "thread_superseded_seed", "apply", routePayload, currentPayload) ||
+                    !routeStillCurrent(routePayload, "thread_superseded_seed", "apply", currentPayload)
+                ) {
+                    return@withCurrentReplyCacheProvenanceForLocalSend
+                }
+                val filled = currentPayload.withActivitySeedBodiesFrom(canonical)
+                if (filled === currentPayload) return@withCurrentReplyCacheProvenanceForLocalSend
+                diagnosticsLogger?.invoke(
+                    "thread_superseded_activity_seed_bodies threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                        "stillCut=${filled.messages.count { it.activityPreviewTruncated }}"
+                )
+                reduceState(_state.value.copy(payload = filled))
             }
         }
     }
