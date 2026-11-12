@@ -130,7 +130,8 @@ private fun AuthChooseServerPageContent() {
                     },
                     onSignIn = { pager.openLoginReplacingCurrentPage() },
                     onOpenDiagnostics = { pager.openAppShellDeveloper() },
-                    onBack = closeChooser.takeIf { fromShell }
+                    onBack = closeChooser.takeIf { fromShell },
+                    topBanner = { SignedOutAppUpdateBanner(pager, bridge) }
                 )
             }
         }
