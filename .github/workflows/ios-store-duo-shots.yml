@@ -139,16 +139,40 @@ jobs:
           xcrun simctl install "$SIM_UDID" "$app"
           echo "BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")" >> "$GITHUB_ENV"
           echo "APP_PATH=$app" >> "$GITHUB_ENV"
-          xcrun simctl io "$SIM_UDID" enumerate > probe/io-enumerate.txt 2>&1 || true
-          cat probe/io-enumerate.txt
           sleep 5
-          for d in internal external; do
-            xcrun simctl io "$SIM_UDID" screenshot --display=$d "probe/springboard-$d.png" 2>&1 || true
-          done
-          xcrun simctl io "$SIM_UDID" screenshot "probe/springboard-default.png" 2>&1 || true
+          # The Duo simulator has two screens: --display=1 LCD (primary) 1398x2034 = outer,
+          # --display=3 LCD-1 (primary-1) 2007x2853 = inner.
+          for d in 1 3; do xcrun simctl io "$SIM_UDID" screenshot --display=$d "probe/springboard-d$d.png" 2>&1; done
+          xcrun simctl io "$SIM_UDID" enumerate 2>&1 | grep -E "Name: LCD|Power state|Pixel Size|UI Orientation" > probe/io-before.txt
+      - name: Probe fold states with a fixture page
+        run: |
+          set +e
+          out=probe/fold; mkdir -p "$out"
+          page=compose_store_ipad_visual
+          shoot() { # name
+            for d in 1 3; do xcrun simctl io "$SIM_UDID" screenshot --display=$d "$out/$1-d$d.png" >/dev/null 2>&1 || echo "no shot $1 d$d"; done
+          }
+          launch() { # name
+            xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null
+            log="$out/$1.log"
+            SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_STATUS_BAR=1 \
+            SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE="$page" \
+            SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE_DATA="{\"pageName\":\"$page\",\"scene\":\"01-chat\",\"lang\":\"en\"}" \
+              xcrun simctl launch --console-pty "$SIM_UDID" "$BUNDLE_ID" > "$log" 2>&1 &
+            for _ in $(seq 1 60); do grep -q "SLOCK_VISUAL_FIXTURE_READY" "$log" && break; sleep 1; done
+            sleep 6
+            shoot "$1"
+            grep -a "RAFT_WINDOW_FACTS\|RAFT_SIDE_ACTIONS\|side_actions" "$log" | sed -E 's/^.*(RAFT_[A-Z_]+)/\1/' | sort | uniq -c
+            echo "== io after $1"; xcrun simctl io "$SIM_UDID" enumerate 2>&1 | grep -E "Name: LCD|Power state: |UI Orientation" | head -12
+          }
+          echo "### both screens on"; launch both
+          echo "### outer (1) off"; xcrun simctl io "$SIM_UDID" screenConfig --display=1 power off; sleep 5; launch inner-only
+          echo "### inner (3) off, outer on"; xcrun simctl io "$SIM_UDID" screenConfig --display=1 power on; xcrun simctl io "$SIM_UDID" screenConfig --display=3 power off; sleep 5; launch outer-only
+          xcrun simctl io "$SIM_UDID" screenConfig --display=3 power on; sleep 3
+          xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null
           python3 -c "
           import struct, glob
-          for p in sorted(glob.glob('probe/*.png')):
+          for p in sorted(glob.glob('probe/**/*.png', recursive=True)):
               w, h = struct.unpack('>II', open(p, 'rb').read()[16:24]); print(p, w, h)
           "
       - name: Real app walk (fabricated backend)
@@ -157,6 +181,7 @@ jobs:
           set +e
           out=probe/real; mkdir -p "$out"
           log="$out/real.log"
+          xcrun simctl io "$SIM_UDID" screenConfig --display=1 power off; sleep 5
           xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
           SIMCTL_CHILD_RAFT_PROTO_FAKE_BACKEND=1 SIMCTL_CHILD_RAFT_PROTO_REAL_SCENE=walk SIMCTL_CHILD_RAFT_NATIVE_NAV=0 \
             xcrun simctl launch --console-pty "$SIM_UDID" "$BUNDLE_ID" -RaftHideEnvironmentIndicator YES > "$log" 2>&1 &
@@ -165,7 +190,7 @@ jobs:
             while read -r name dir; do
               case "$seen" in
                 *" $name "*) ;;
-                *) xcrun simctl io "$SIM_UDID" screenshot "$out/$name.png" >/dev/null 2>&1
+                *) for d in 1 3; do xcrun simctl io "$SIM_UDID" screenshot --display=$d "$out/$name-d$d.png" >/dev/null 2>&1; done
                    touch "${dir}raft-shot-$name.done"
                    seen="$seen$name "; echo "shot $name";;
               esac
@@ -174,12 +199,7 @@ jobs:
             sleep 0.4
           done
           xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
-          grep -aiE "adaptive|sideColumn|side_actions|duoInner|duoOuter|verticalBar|RAFT_PROTO_(REAL|WARN)" "$log" | sort | uniq -c | sort -rn | head -80 || true
-          python3 -c "
-          import struct, glob
-          for p in sorted(glob.glob('probe/real/*.png')):
-              w, h = struct.unpack('>II', open(p, 'rb').read()[16:24]); print(p, w, h)
-          "
+          grep -a "RAFT_WINDOW_FACTS\|RAFT_SIDE_ACTIONS\|RAFT_PROTO_WARN" "$log" | sed -E 's/^.*(RAFT_[A-Z_]+)/\1/' | sort | uniq -c | sort -rn | head -40
       - name: Clean up simulator
         if: always()
         run: |

@@ -64,6 +64,7 @@ final class RaftIosSideActionHost: NSObject, RaftSideActionHostListener {
         // rightBarButtonItems run from the trailing edge in: reversed, they read in listed order.
         navigationItem.rightBarButtonItems = items.trailing.reversed()
         controller.raftSideActionsShown = true
+        NSLog("RAFT_SIDE_ACTIONS shown leading=\(items.leading.count) trailing=\(items.trailing.count)")
     }
 
     func onSideActionColumnCleared() {

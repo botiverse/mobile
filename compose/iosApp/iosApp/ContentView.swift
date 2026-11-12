@@ -31,7 +31,9 @@ struct ContentView: View {
                 // a VC embedded via a representable never gets consulted. The home
                 // indicator has no SwiftUI control before iOS 16 (deployment target
                 // is 14.1); left visible for now (fixed bottom bar, low diff impact).
-                .statusBar(hidden: true)
+                // Store screenshots (agent/lagoon/duo-store-shots): SLOCK_VISUAL_FIXTURE_STATUS_BAR=1
+                // keeps the system status bar (the simulator's 9:41 override).
+                .statusBar(hidden: ProcessInfo.processInfo.environment["SLOCK_VISUAL_FIXTURE_STATUS_BAR"] != "1")
                 .onAppear {
                     // Settle signal for the capture job: it reads this line via
                     // `simctl launch --console` (+ a small buffer) before taking

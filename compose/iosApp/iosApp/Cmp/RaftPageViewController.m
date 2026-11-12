@@ -541,6 +541,8 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
             payload[@"display"],
             reason ?: @"unknown"];
     RaftIosDiagnosticsRecord(@"info", @"SlockAdaptivePane", message);
+    // Store screenshot tooling (agent/lagoon/duo-store-shots only): the facts on the console.
+    NSLog(@"RAFT_WINDOW_FACTS %@", message);
 }
 
 /**
