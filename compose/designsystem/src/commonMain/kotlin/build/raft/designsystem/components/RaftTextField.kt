@@ -66,7 +66,7 @@ object RaftTextFieldDefaults {
      */
     val Height: Dp = 44.dp
 
-    /** [RaftTextFieldSize.Md]: `h-8`, a [RaftPickerTriggerButton]'s height. */
+    /** [RaftTextFieldSize.Md] with a finger: `h-8`, a [RaftPickerTriggerButton]'s height (the 34dp control height under a mouse or trackpad). */
     val HeightMd: Dp = 32.dp
 
     /** `min-h-24`: a textarea is never shorter than 96dp. */
@@ -613,7 +613,8 @@ private fun RaftInputBox(
         Modifier
             .fillMaxWidth()
             // A minimum, so text at a large font scale grows the box instead of clipping.
-            .heightIn(min = if (size == RaftTextFieldSize.Md) RaftTextFieldDefaults.HeightMd else RaftTheme.controls.height)
+            // `md`: `h-8`, and `md:pointer-fine:h-control` (34) under a mouse or trackpad (raft-ui 0.94).
+            .heightIn(min = if (size == RaftTextFieldSize.Md) RaftTheme.controls.rowHeight ?: RaftTextFieldDefaults.HeightMd else RaftTheme.controls.height)
             // A container cell runs the box's full height (`self-stretch`).
             .then(if (container) Modifier.height(IntrinsicSize.Min) else Modifier)
             .raftFieldChrome(look, focused)
