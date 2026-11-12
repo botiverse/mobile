@@ -787,7 +787,7 @@ private fun SharedTasksLoadedBodyContent(
                 state.statusUpdateErrorCode?.let { code ->
                     SharedTasksNotice(stringResource(Res.string.tasks_error_update_status), code, modifier = Modifier.padding(RaftAppSpacing.Md))
                 }
-                queryState?.error?.let { error ->
+                (queryState?.error ?: queryState?.countsError)?.let { error ->
                     // The rows already shown stay; the failed read's trace id can be copied.
                     Column(modifier = Modifier.padding(RaftAppSpacing.Md)) {
                         SharedTasksNotice(stringResource(Res.string.tasks_error_load), error.code)

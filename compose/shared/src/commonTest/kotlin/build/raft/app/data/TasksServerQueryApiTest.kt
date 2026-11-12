@@ -69,6 +69,25 @@ class TasksServerQueryApiTest {
         assertEquals(TaskStatus.InProgress, task.status)
         assertEquals(MemberKind.Agent, task.assignee?.kind)
         assertEquals(false, task.descriptionLoaded)
+        // The summary says who sent the source message (here: none), so from_my_message is decided.
+        assertEquals(true, task.sourceSenderReported)
+        assertNull(task.sourceSenderType)
+    }
+
+    @Test
+    fun summaryRowSourceSenderIsParsedAndAFullRowLeavesItUnknown() {
+        val fromMe =
+            canonicalSummaryPage
+                .replace("\"sourceSenderType\":null", "\"sourceSenderType\":\"user\"")
+                .replace("\"sourceSenderId\":null", "\"sourceSenderId\":\"2f1e3d4c-5b6a-4798-8a9b-0c1d2e3f4a5b\"")
+        val task = parseSharedServerTasksPagePayload(fromMe)!!.tasks.single()
+        assertEquals("user", task.sourceSenderType)
+        assertEquals("2f1e3d4c-5b6a-4798-8a9b-0c1d2e3f4a5b", task.sourceSenderId)
+        val fullRow =
+            canonicalSummaryPage
+                .replace("\"sourceSenderType\":null,", "")
+                .replace("\"sourceSenderId\":null,", "")
+        assertEquals(false, parseSharedServerTasksPagePayload(fullRow)!!.tasks.single().sourceSenderReported)
     }
 
     @Test

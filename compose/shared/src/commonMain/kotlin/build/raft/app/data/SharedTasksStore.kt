@@ -358,7 +358,8 @@ internal class SharedTasksViewModel(
             preferences = queryPreferences,
             // The page's rows join the shared projection, so status and assignee writes find them.
             onPageRows = { serverId, rows ->
-                sharedTasksDataStore?.let { shared -> rows.forEach { shared.upsertTaskForCurrentServer(serverId.value, it) } }
+                // One fold and one projection emission per page.
+                sharedTasksDataStore?.upsertTasksForCurrentServer(serverId.value, rows)
             },
             diagnosticsLogger = diagnosticsLogger,
         ).also { query ->

@@ -1488,6 +1488,10 @@ internal data class TaskWireDto(
     // `activityAt` = lastActivityAt ?? updatedAt, what `GET /tasks/server?sort=activity` orders by.
     val lastActivityAt: String? = null,
     val activityAt: String? = null,
+    // `detail=summary` only (slock taskService.ts `ServerTaskSummary`): who sent the source message.
+    // The default marks a row without the field; an explicit null decodes as null.
+    val sourceSenderType: String? = TaskSourceMessageIdAbsent,
+    val sourceSenderId: String? = null,
     val readOnlyReason: String? = null,
     // Task v2 conversations (slock `taskService.ts` task projection). `hostMessageId` is the real
     // `tasks.message_id` (null for a v2 task, whose `messageId` is only the task id as a pre-v2
@@ -1574,6 +1578,9 @@ internal fun TaskWireDto.toTaskSummary(
         createdAt = createdAt?.trim()?.takeIf { it.isNotBlank() },
         descriptionLoaded = description != null || hasDescription != true,
         activityAt = (activityAt ?: lastActivityAt ?: updatedAt)?.trim()?.takeIf { it.isNotBlank() },
+        sourceSenderType = sourceSenderType?.takeIf { it != TaskSourceMessageIdAbsent && it.isNotBlank() },
+        sourceSenderId = sourceSenderId?.takeIf { sourceSenderType != TaskSourceMessageIdAbsent && it.isNotBlank() },
+        sourceSenderReported = sourceSenderType != TaskSourceMessageIdAbsent,
     )
 }
 

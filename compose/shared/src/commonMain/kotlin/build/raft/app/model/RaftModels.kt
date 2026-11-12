@@ -914,6 +914,15 @@ data class TaskSummary(
      * page's `sort=activity` orders by; null from a source without it.
      */
     val activityAt: String? = null,
+    /**
+     * Who sent the task v2 source message (slock `ServerTaskSummary.sourceSenderType` /
+     * `sourceSenderId`: `user` / `agent` / `external_projection`, null for none or a deleted one),
+     * what the Tasks page's `from_my_message` relation reads. Only `detail=summary` rows carry it:
+     * [sourceSenderReported] false means unknown (a socket frame, a full row).
+     */
+    val sourceSenderType: String? = null,
+    val sourceSenderId: String? = null,
+    val sourceSenderReported: Boolean = false,
 )
 
 // Inbox Models

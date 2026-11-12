@@ -173,11 +173,32 @@ class SharedTasksQueryStoreTest {
         runCurrent()
         assertEquals(reads, repository.pageCalls.size, "nothing new to place: no read")
 
-        // A new Todo task the lane doesn't list: the lane reads its rows again, in the background.
-        store.onProjection(listOf(task("a", title = "Renamed", revision = 2), task("b", status = TaskStatus.Done, revision = 2), task("c")), bulk = false)
+        // A new Todo task the row says matches: it joins where the sort places it, no read.
+        store.onProjection(
+            listOf(task("a", title = "Renamed", revision = 2), task("b", status = TaskStatus.Done, revision = 2), task("c", activityAt = "2026-11-02T00:00:00.000Z")),
+            bulk = false,
+        )
         advanceTimeBy(SharedTasksQueryStore.LiveRereadDelayMs + 1)
         runCurrent()
-        assertEquals(DataRequestPriority.Background, repository.pageCalls.drop(reads).single().priority)
+        assertEquals(listOf("c", "a"), store.state.value.rowIds())
+        assertEquals(reads, repository.pageCalls.size)
+    }
+
+    @Test
+    fun aRowWhoseRelationTheRowCannotTellMakesTheLaneRead() = runTest {
+        val repository = FakeTasksQueryRepository()
+        val store = store(repository)
+        store.start()
+        runCurrent()
+        store.onProjection(emptyList(), bulk = false)
+        val reads = repository.pageCalls.size
+        // Someone else's task from a message: only the server knows who sent it.
+        store.onProjection(listOf(task("x", creator = person("someone-else"))), bulk = false)
+        advanceTimeBy(SharedTasksQueryStore.LiveRereadDelayMs + 1)
+        runCurrent()
+        val reread = repository.pageCalls.drop(reads).single()
+        assertEquals(ServerTaskRelation.FromMyMessage, reread.filters.relation)
+        assertEquals(DataRequestPriority.Background, reread.priority)
     }
 
     @Test
@@ -195,7 +216,6 @@ class SharedTasksQueryStoreTest {
         val doneSince = "2026-11-11T00:00:00Z"
         val query = TasksPageQuery(scope = TasksPageScope.Mine)
         val lanes = tasksQueryLanes(query, doneSince)
-        val me = person(ViewerId)
         val created = lanes[1]
         val fromMessage = lanes[2]
         val state =
@@ -209,23 +229,38 @@ class SharedTasksQueryStoreTest {
                     mapOf(
                         lanes[0].key to TasksLaneState(loaded = true),
                         // created_by_me: two rows, more to read after 10:00.
-                        created.key to TasksLaneState(ids = listOf("c1", "c2"), nextCursor = "more", loaded = true),
-                        fromMessage.key to TasksLaneState(ids = listOf("m1", "m2"), loaded = true),
+                        created.key to readLane(listOf(c1, c2), nextCursor = "more"),
+                        fromMessage.key to readLane(listOf(m1, m2), nextCursor = null),
                     ),
-                tasks =
-                    mapOf(
-                        "c1" to task("c1", activityAt = "2026-11-12T12:00:00.000Z", creator = me),
-                        "c2" to task("c2", activityAt = "2026-11-12T10:00:00.000Z", creator = me),
-                        "m1" to task("m1", activityAt = "2026-11-12T11:00:00.000Z"),
-                        "m2" to task("m2", activityAt = "2026-11-12T09:00:00.000Z"),
-                    ),
+                tasks = listOf(c1, c2, m1, m2).associateBy { it.id.value },
             )
         val started = state.sections().single { it.section == TasksQuerySection.Started }
         // m2 (09:00) waits: a page of created_by_me still to come may hold rows above it.
         assertEquals(listOf("c1", "m1", "c2"), started.rows.map { it.id.value })
         assertTrue(started.hasMore)
         assertNull(started.total)
+
+        // A live change moves the page end's row to the top: the cut stays where the server's rows ended.
+        val patched = state.copy(tasks = state.tasks + ("c2" to c2.copy(activityAt = "2026-11-12T14:00:00.000Z", revision = 2)))
+        val afterPatch = patched.sections().single { it.section == TasksQuerySection.Started }
+        assertEquals(listOf("c2", "c1", "m1"), afterPatch.rows.map { it.id.value })
     }
+
+    private val me = person(ViewerId)
+    private val c1 = task("c1", activityAt = "2026-11-12T12:00:00.000Z", creator = me)
+    private val c2 = task("c2", activityAt = "2026-11-12T10:00:00.000Z", creator = me)
+    private val m1 = task("m1", activityAt = "2026-11-12T11:00:00.000Z")
+    private val m2 = task("m2", activityAt = "2026-11-12T09:00:00.000Z")
+
+    /** A lane as a page read leaves it: ids, keys and page end as read. */
+    private fun readLane(rows: List<build.raft.app.model.TaskSummary>, nextCursor: String?): TasksLaneState =
+        TasksLaneState(
+            ids = rows.map { it.id.value },
+            keys = rows.associate { it.id.value to tasksSortKey(ServerTaskSort.Activity, it) },
+            frontier = rows.last(),
+            nextCursor = nextCursor,
+            loaded = true,
+        )
 
     @Test
     fun theHeadSaysTheViewOfTheScopeWhenNarrowed() {
@@ -241,5 +276,133 @@ class SharedTasksQueryStoreTest {
         assertEquals("4 / 10", state.headNumber())
         assertEquals(10, state.scopeCounts()[TasksPageScope.All])
         assertNull(state.scopeCounts()[TasksPageScope.Mine], "Mine's counts are not read yet")
+    }
+
+    @Test
+    fun aRowLeavingTheProjectionIsReadAgainNotDropped() = runTest {
+        val repository = FakeTasksQueryRepository(page = { TasksPageResult.Page(listOf(task("a"), task("b")), null) })
+        val store = store(repository, InMemoryTasksPageQueryPreferences(savedScope = TasksPageScope.All))
+        store.start()
+        runCurrent()
+        store.onProjection(listOf(task("a"), task("b")), bulk = false)
+        val reads = repository.pageCalls.size
+
+        // A list read replaced the projection with fewer rows: b is no longer held, not deleted.
+        store.onProjection(listOf(task("a")), bulk = false)
+        assertEquals(listOf("a", "b"), store.state.value.rowIds())
+        // The server says what is left.
+        repository.page = { TasksPageResult.Page(listOf(task("a")), null) }
+        advanceTimeBy(SharedTasksQueryStore.LiveRereadDelayMs + 1)
+        runCurrent()
+        assertEquals(DataRequestPriority.Background, repository.pageCalls.drop(reads).single().priority)
+        assertEquals(listOf("a"), store.state.value.rowIds())
+    }
+
+    @Test
+    fun liveRereadsFireWhileChangesKeepComing() = runTest {
+        val repository = FakeTasksQueryRepository(page = { TasksPageResult.Page(listOf(task("a"), task("b")), null) })
+        val store = store(repository, InMemoryTasksPageQueryPreferences(savedScope = TasksPageScope.All))
+        store.start()
+        runCurrent()
+        store.onProjection(listOf(task("a"), task("b")), bulk = false)
+        val reads = repository.pageCalls.size
+        // b leaves and comes back every 400 ms: a trailing debounce would never fire.
+        repeat(3) {
+            store.onProjection(listOf(task("a")), bulk = false)
+            advanceTimeBy(400)
+            store.onProjection(listOf(task("a"), task("b")), bulk = false)
+            advanceTimeBy(400)
+        }
+        runCurrent()
+        assertTrue(repository.pageCalls.size > reads, "the first change's wait is not put off by later ones")
+    }
+
+    @Test
+    fun aMovedRowIsPlacedAgainInASingleLane() = runTest {
+        val a = task("a", activityAt = "2026-11-12T12:00:00.000Z")
+        val b = task("b", activityAt = "2026-11-12T11:00:00.000Z")
+        val repository = FakeTasksQueryRepository(page = { TasksPageResult.Page(listOf(a, b), null) })
+        val store = store(repository, InMemoryTasksPageQueryPreferences(savedScope = TasksPageScope.All))
+        store.start()
+        runCurrent()
+        store.onProjection(listOf(a, b), bulk = false)
+        store.onProjection(listOf(a, b.copy(activityAt = "2026-11-12T13:00:00.000Z", revision = 2)), bulk = false)
+        assertEquals(listOf("b", "a"), store.state.value.rowIds())
+    }
+
+    @Test
+    fun anUnknownServerOrReaderIsResolvedAgainOnTheNextRead() = runTest {
+        var server: ServerId? = null
+        var viewer: String? = null
+        val repository =
+            FakeTasksQueryRepository(page = { call ->
+                // The server listed it as assigned to me; the app does not know who "me" is yet.
+                if (call.filters.relation == ServerTaskRelation.AssignedToMe) {
+                    TasksPageResult.Page(listOf(task("mine", assignee = person(ViewerId))), null)
+                } else {
+                    TasksPageResult.Page(emptyList(), null)
+                }
+            })
+        val store =
+            SharedTasksQueryStore(
+                scope = backgroundScope,
+                repository = repository,
+                serverId = { server },
+                viewerId = { viewer },
+                nowEpochMillis = { 1_794_000_000_000L },
+            )
+        store.start()
+        runCurrent()
+        assertEquals("selected_server_missing", store.state.value.error?.code)
+        assertTrue(repository.pageCalls.isEmpty())
+
+        server = ServerId(TasksQueryTestFixtures.ServerUuid)
+        store.dispatch(TasksQueryIntent.Refresh)
+        runCurrent()
+        // Unknown reader: the server's rows stay rather than every relation lane reading empty.
+        assertEquals(listOf("mine"), store.state.value.rowIds())
+
+        viewer = ViewerId
+        store.dispatch(TasksQueryIntent.Refresh)
+        runCurrent()
+        assertEquals(ViewerId, store.state.value.viewerId)
+        assertEquals(listOf("mine"), store.state.value.rowIds())
+    }
+
+    @Test
+    fun aCountShownAgainIsReadAgain() = runTest {
+        val repository = FakeTasksQueryRepository()
+        val store = store(repository, InMemoryTasksPageQueryPreferences(savedScope = TasksPageScope.All))
+        store.start()
+        runCurrent()
+        store.dispatch(TasksQueryIntent.ToggleStatus(TaskStatus.Done))
+        runCurrent()
+        store.dispatch(TasksQueryIntent.ToggleStatus(TaskStatus.Done))
+        runCurrent()
+        store.dispatch(TasksQueryIntent.ToggleStatus(TaskStatus.Done))
+        runCurrent()
+        val doneReads = repository.countCalls.count { it.statuses == listOf(TaskStatus.Done) }
+        assertEquals(2, doneReads)
+    }
+
+    @Test
+    fun aServerWithoutTheBoardQueryIsUnsupported() = runTest {
+        val repository = FakeTasksQueryRepository(counts = { ServerTaskCountsResult.Error(code = "tasks_counts_http_404") })
+        val store = store(repository)
+        store.start()
+        runCurrent()
+        assertTrue(store.state.value.unsupported)
+    }
+
+    @Test
+    fun fromMyMessageReadsTheSourceSenderASummaryRowCarries() {
+        val filters = ServerTaskBoardFilters(relation = ServerTaskRelation.FromMyMessage)
+        val fromMe = task("t").copy(sourceSenderType = "user", sourceSenderId = ViewerId, sourceSenderReported = true)
+        assertEquals(true, fromMe.matchesTasksQueryLane(filters, ViewerId))
+        assertEquals(false, fromMe.copy(sourceSenderId = "someone-else").matchesTasksQueryLane(filters, ViewerId))
+        // A socket frame does not say: unknown, unless the page's row did.
+        val frame = task("t")
+        assertNull(frame.matchesTasksQueryLane(filters, ViewerId))
+        assertEquals(true, frame.withKnownSourceSender(fromMe).matchesTasksQueryLane(filters, ViewerId))
     }
 }

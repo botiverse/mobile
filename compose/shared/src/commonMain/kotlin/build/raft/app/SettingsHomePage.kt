@@ -8409,7 +8409,8 @@ private fun RaftAppShellReadyContent(
                         val tasksQueryState = tasksQueryStore?.let { store -> store.state.collectAsState().value }
                         SharedTasksScreen(
                             query =
-                                if (tasksQueryStore != null && tasksQueryState != null) {
+                                // A server without the board query (before slock v1.21.63): the app's own list.
+                                if (tasksQueryStore != null && tasksQueryState != null && !tasksQueryState.unsupported) {
                                     SharedTasksQueryBinding(tasksQueryState) { intent ->
                                         prewarmAdmissionGate.invalidate("tasks_query_intent:${intent::class.simpleName}")
                                         tasksQueryStore.dispatch(intent)

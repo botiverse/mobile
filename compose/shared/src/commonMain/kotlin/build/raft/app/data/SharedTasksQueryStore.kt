@@ -36,10 +36,15 @@ import kotlin.time.Instant
  * - **Failure** keeps the rows already shown and sets [TasksQueryState.error] with the failed
  *   response's trace id.
  * - **Live changes** ([onProjection]): the app's canonical task projection (realtime `task:*`
- *   frames and the app's own writes fold into it) patches the rows the lanes list; a row that no
- *   longer matches its lane (as far as the row tells) leaves it; a changed task the lanes don't
- *   list that may match makes that lane read its loaded rows again (debounced, Background). The
- *   counts are read again after live changes (debounced).
+ *   frames and the app's own writes fold into it) patches the rows the lanes list, and a row whose
+ *   sort key moved is placed again by the sort; a row that no longer matches its lane (as far as
+ *   the row tells) leaves it; a changed task that matches joins where the sort places it, within
+ *   the rows read (cut at the page end as read, web `LaneReadState.frontier`); one whose match the
+ *   row can't tell, or a row that left the projection (not a deletion signal), makes the lane read
+ *   its loaded rows again (throttled, Background). The counts are read again after live changes
+ *   (throttled).
+ * - **Old servers.** A counts read answering 404 means the server has no board query (slock
+ *   before v1.21.63): [TasksQueryState.unsupported], and the page shows the app's own list.
  */
 class SharedTasksQueryStore(
     private val scope: CoroutineScope,
@@ -65,7 +70,6 @@ class SharedTasksQueryStore(
     val state: StateFlow<TasksQueryState> = mutableState.asStateFlow()
 
     private var startRequested = false
-    private var resolvedServerId: ServerId? = null
     private var queryGeneration = 0L
     private var laneSequence = 0L
     private val laneJobs = mutableMapOf<String, Job>()
@@ -74,15 +78,18 @@ class SharedTasksQueryStore(
     private var searchJob: Job? = null
     private var liveRefreshJob: Job? = null
     private var countsRefreshJob: Job? = null
-    private var pendingLiveLanes = mutableSetOf<String>()
+    private val pendingLiveLanes = mutableSetOf<String>()
     private var lastProjection: Map<String, TaskSummary>? = null
 
-    /** Resolves the server and the reader, then reads the current query (no-op once asked). */
+    /**
+     * Reads the current query (no-op once asked). The server and the reader are resolved again
+     * for every read, so a session that was not ready yet (a server switch, a cached restore) is
+     * picked up by the next read or Refresh instead of sticking as missing.
+     */
     fun start() {
         if (startRequested) return
         startRequested = true
         scope.launch {
-            resolvedServerId = serverId()
             val viewer = viewerId()
             mutableState.value = state.value.copy(started = true, viewerId = viewer, doneSince = doneSinceNow())
             applyQuery(state.value.query, force = true)
@@ -136,7 +143,8 @@ class SharedTasksQueryStore(
     /**
      * Makes [next] the query. Equal to the current one: nothing (unless [force]). Otherwise every
      * lane read in flight is dropped, the new lanes keep the rows their predecessors showed until
-     * their first page lands, and the counts the new query needs are read.
+     * their first page lands, the rows and counts no lane needs any more are let go, and the
+     * counts the new query needs are read.
      */
     private fun applyQuery(next: TasksPageQuery, force: Boolean = false) {
         val current = state.value
@@ -154,15 +162,22 @@ class SharedTasksQueryStore(
         val previousBySection = current.lanes.groupBy { it.section }
         val nextLanes =
             lanes.map { lane ->
-                // Its rows stay on screen until the new first page lands; their cursor (maybe another sort's) does not.
+                // Its rows stay on screen until the new first page lands; their cursor and page end
+                // (maybe another sort's) do not.
                 val previous = current.laneStates[lane.key] ?: previousBySection[lane.section]?.firstOrNull()?.let { current.laneStates[it.key] }
-                lane to (previous?.copy(nextCursor = null, loaded = false, error = null) ?: TasksLaneState())
+                lane to (previous?.copy(nextCursor = null, frontier = null, loaded = false, error = null) ?: TasksLaneState())
             }
+        val laneStates = nextLanes.associate { (lane, laneState) -> lane.key to laneState.copy(loading = false) }
+        val listed = laneStates.values.flatMapTo(mutableSetOf()) { it.ids }
+        val neededCounts = tasksQueryCountFilters(next, current.doneSince).mapTo(mutableSetOf()) { tasksCountsKey(it) }
         mutableState.value =
             current.copy(
                 query = next,
                 lanes = lanes,
-                laneStates = nextLanes.associate { (lane, laneState) -> lane.key to laneState.copy(loading = false) },
+                laneStates = laneStates,
+                tasks = current.tasks.filterKeys { it in listed },
+                // A count the view no longer shows is read again when it is shown again.
+                counts = current.counts.filterKeys { it in neededCounts },
                 error = null,
             )
         diagnosticsLogger(
@@ -177,13 +192,23 @@ class SharedTasksQueryStore(
     private fun refresh() {
         val current = state.value
         if (!current.started) return
+        // Started by you's day of Done moves with the clock: a new bound is a new query.
+        val doneSince = doneSinceNow()
+        if (doneSince != current.doneSince) {
+            mutableState.value = current.copy(doneSince = doneSince, error = null, countsError = null)
+            applyQuery(current.query, force = true)
+            return
+        }
         // A pulled refresh re-reads every lane's loaded rows and the counts; the rows stay meanwhile.
         mutableState.value = current.copy(error = null, countsError = null)
-        current.lanes.forEach { lane ->
-            val loaded = current.laneStates[lane.key]?.ids?.size ?: 0
-            readLane(lane, cursor = null, limit = loaded.coerceIn(TasksQueryPageSize, TasksQueryMaxPageSize), priority = DataRequestPriority.Visible, force = true)
-        }
+        current.lanes.forEach { lane -> rereadLoaded(lane, DataRequestPriority.Visible) }
         loadCounts(DataRequestPriority.Visible, force = true)
+    }
+
+    /** Reads a lane's loaded rows again from its head, in one read (at most [TasksQueryMaxPageSize]). */
+    private fun rereadLoaded(lane: TasksQueryLane, priority: DataRequestPriority) {
+        val loaded = state.value.laneStates[lane.key]?.ids?.size ?: 0
+        readLane(lane, cursor = null, limit = loaded.coerceIn(TasksQueryPageSize, TasksQueryMaxPageSize), priority = priority, force = true)
     }
 
     private fun loadMore() {
@@ -212,7 +237,10 @@ class SharedTasksQueryStore(
         updateLane(lane.key) { it.copy(loading = true) }
         laneJobs[lane.key] =
             scope.launch {
-                val server = resolvedServerId
+                val server = serverId()
+                if (state.value.viewerId == null) {
+                    viewerId()?.let { viewer -> mutableState.value = state.value.copy(viewerId = viewer) }
+                }
                 val result =
                     if (server == null) {
                         TasksPageResult.Error(code = "selected_server_missing")
@@ -229,11 +257,30 @@ class SharedTasksQueryStore(
                         val current = state.value
                         val rows = result.tasks.associateBy { it.id.value }
                         val laneState = current.laneStates[lane.key] ?: TasksLaneState()
-                        val ids = if (cursor == null) result.tasks.map { it.id.value } else (laneState.ids + result.tasks.map { it.id.value }).distinct()
+                        val pageIds = result.tasks.map { it.id.value }
+                        val pageKeys = result.tasks.associate { it.id.value to tasksSortKey(sort, it) }
+                        // A later page names where the server places a row now (a row placed live moves there).
+                        val ids = if (cursor == null) pageIds else laneState.ids.filterNot { it in rows } + pageIds
+                        val keys = if (cursor == null) pageKeys else laneState.keys + pageKeys
+                        // Where the rows read end, as read (web LaneReadState.frontier): live changes never move it.
+                        val frontier = result.tasks.lastOrNull() ?: if (cursor == null) null else laneState.frontier
                         mutableState.value =
                             current.copy(
                                 tasks = current.tasks + rows,
-                                laneStates = current.laneStates + (lane.key to laneState.copy(ids = ids, nextCursor = result.nextCursor, loaded = true, loading = false, error = null)),
+                                laneStates =
+                                    current.laneStates +
+                                        (
+                                            lane.key to
+                                                laneState.copy(
+                                                    ids = ids,
+                                                    keys = keys,
+                                                    frontier = frontier,
+                                                    nextCursor = result.nextCursor,
+                                                    loaded = true,
+                                                    loading = false,
+                                                    error = null,
+                                                )
+                                        ),
                                 error = if (current.laneStates.values.any { it !== laneState && it.error != null }) current.error else null,
                             )
                         // After the rows are the lane's, so the projection echoing them is no live change.
@@ -273,7 +320,7 @@ class SharedTasksQueryStore(
             }
             countJobs[key] =
                 scope.launch {
-                    val server = resolvedServerId
+                    val server = serverId()
                     val result =
                         if (server == null) {
                             ServerTaskCountsResult.Error(code = "selected_server_missing")
@@ -289,9 +336,18 @@ class SharedTasksQueryStore(
                                 mutableState.value = current.copy(countsError = null)
                             }
                         }
-                        // The numbers already shown stay; the error carries the trace id.
-                        is ServerTaskCountsResult.Error ->
-                            mutableState.value = state.value.copy(countsError = ScreenError(code = result.code, retryable = true, traceId = result.traceId))
+                        is ServerTaskCountsResult.Error -> {
+                            // A server from before the board query (slock v1.21.63) has no counts route:
+                            // the page goes back to the list the app filters itself.
+                            val unsupported = result.code in TasksQueryUnsupportedCodes
+                            if (unsupported) diagnosticsLogger("tasks_query_unsupported code=${result.code}")
+                            // The numbers already shown stay; the error carries the trace id.
+                            mutableState.value =
+                                state.value.copy(
+                                    countsError = ScreenError(code = result.code, retryable = true, traceId = result.traceId),
+                                    unsupported = state.value.unsupported || unsupported,
+                                )
+                        }
                     }
                 }
         }
@@ -300,6 +356,10 @@ class SharedTasksQueryStore(
     /**
      * The app's canonical task projection changed ([projection]: every task it holds for this
      * server). [bulk]: a list read landed (not a live change): only patch the rows shown.
+     *
+     * A row that leaves the projection is not taken as deleted: the projection also lets rows go
+     * when a list read replaces it, a channel read narrows it, or a fact conflicts. The lanes
+     * listing it read their rows again instead, and the server says whether it is still there.
      */
     fun onProjection(projection: List<TaskSummary>, bulk: Boolean) {
         val byId = projection.associateBy { it.id.value }
@@ -307,75 +367,87 @@ class SharedTasksQueryStore(
         lastProjection = byId
         val current = state.value
         if (!current.started) return
-        // Patch the rows the lanes list.
+        // Patch the rows the lanes list (never with an older revision, never losing a known source sender).
         var tasks = current.tasks
         current.tasks.forEach { (id, row) ->
-            val fresh = byId[id] ?: return@forEach
-            // Never an older revision over the row a page brought.
+            val fresh = byId[id]?.withKnownSourceSender(row) ?: return@forEach
             val older = fresh.revision != null && row.revision != null && fresh.revision < row.revision
             if (fresh != row && !older) tasks = tasks + (id to fresh)
         }
-        if (previous == null || bulk) {
+        if (previous == null) {
             if (tasks != current.tasks) mutableState.value = current.copy(tasks = tasks)
             return
         }
-        val removed = previous.keys - byId.keys
+        val left = previous.keys - byId.keys
+        val reread = mutableSetOf<String>()
+        current.lanes.forEach { lane ->
+            if (current.laneStates[lane.key]?.ids?.any { it in left } == true) reread += lane.key
+        }
         val changed =
             byId.values.filter { task ->
                 val id = task.id.value
                 previous[id] != task && current.tasks[id] != task
             }
-        // Many at once is a list read replacing the projection (rows it no longer holds were not deleted).
-        if (changed.size + removed.size > LiveBatchLimit) {
-            if (tasks != current.tasks) mutableState.value = current.copy(tasks = tasks)
-            return
-        }
         var laneStates = current.laneStates
-        val reread = mutableSetOf<String>()
-        val compare = tasksQueryComparator(current.query.sort)
-        current.lanes.forEach { lane ->
-            val laneState = laneStates[lane.key] ?: return@forEach
-            var ids = laneState.ids.filterNot { it in removed }
-            // The last row read: a task sorting after it while more pages remain arrives with them.
-            val frontier = laneState.ids.lastOrNull()?.let { tasks[it] }
-            changed.forEach { task ->
-                val id = task.id.value
-                val listed = id in ids
-                when (task.matchesTasksQueryLane(lane.filters, current.viewerId)) {
-                    false -> if (listed) ids = ids - id
-                    true, null -> {
-                        val withinRead = laneState.nextCursor == null || frontier == null || compare.compare(task, frontier) <= 0
-                        if (!listed && laneState.loaded && withinRead) reread += lane.key
+        // Many at once is a list read landing, not live edits: patch only.
+        if (!bulk && changed.size <= LiveBatchLimit) {
+            val compare = tasksQueryComparator(current.query.sort)
+            current.lanes.forEach { lane ->
+                val laneState = laneStates[lane.key] ?: return@forEach
+                var ids = laneState.ids
+                changed.forEach { change ->
+                    val task = tasks[change.id.value] ?: change
+                    val id = task.id.value
+                    val listed = id in ids
+                    // A task sorting after the rows read, while more pages remain, arrives with them.
+                    val frontier = laneState.frontier
+                    val withinRead = laneState.nextCursor == null || frontier == null || compare.compare(task, frontier) <= 0
+                    val matches = task.matchesTasksQueryLane(lane.filters, current.viewerId)
+                    if (matches == false) {
+                        if (listed) ids = ids - id
+                    } else if (!listed && laneState.loaded && withinRead) {
+                        if (matches == true) {
+                            // It joins where the sort places it (no key as read: placed by the sort).
+                            ids = ids + id
+                            tasks = tasks + (id to task)
+                        } else {
+                            // The row lacks a fact the lane hinges on: the server decides.
+                            reread += lane.key
+                        }
                     }
                 }
+                if (ids != laneState.ids) laneStates = laneStates + (lane.key to laneState.copy(ids = ids))
             }
-            if (ids != laneState.ids) laneStates = laneStates + (lane.key to laneState.copy(ids = ids))
         }
         val next = current.copy(tasks = tasks, laneStates = laneStates)
         if (next != current) mutableState.value = next
-        if (changed.isNotEmpty() || removed.isNotEmpty()) scheduleCountsRefresh()
+        if (changed.isNotEmpty() || left.isNotEmpty()) scheduleCountsRefresh()
         if (reread.isNotEmpty()) scheduleLiveReread(reread)
     }
 
+    /**
+     * Lanes to read again after live changes: the first change starts the wait, later ones join it,
+     * so a busy server cannot put the read off for ever (a throttle, not a trailing debounce).
+     */
     private fun scheduleLiveReread(keys: Set<String>) {
         pendingLiveLanes += keys
-        liveRefreshJob?.cancel()
+        if (liveRefreshJob?.isActive == true) return
         liveRefreshJob =
             scope.launch {
                 delay(LiveRereadDelayMs)
-                val current = state.value
                 val pending = pendingLiveLanes.toSet()
                 pendingLiveLanes.clear()
-                current.lanes.filter { it.key in pending }.forEach { lane ->
-                    val loaded = current.laneStates[lane.key]?.ids?.size ?: 0
-                    diagnosticsLogger("tasks_query_live_reread lane=${lane.section.name} rows=$loaded")
-                    readLane(lane, cursor = null, limit = loaded.coerceIn(TasksQueryPageSize, TasksQueryMaxPageSize), priority = DataRequestPriority.Background)
+                state.value.lanes.filter { it.key in pending }.forEach { lane ->
+                    diagnosticsLogger("tasks_query_live_reread lane=${lane.section.name}")
+                    // A page being loaded is superseded: this read covers it.
+                    rereadLoaded(lane, DataRequestPriority.Background)
                 }
             }
     }
 
+    /** The counts after live changes, at most one read per [CountsRefreshDelayMs] (throttled). */
     private fun scheduleCountsRefresh() {
-        countsRefreshJob?.cancel()
+        if (countsRefreshJob?.isActive == true) return
         countsRefreshJob =
             scope.launch {
                 delay(CountsRefreshDelayMs)
@@ -405,6 +477,13 @@ const val TasksQueryPageSize: Int = 50
 
 /** The most a lane reads again at once (the server's limit is 500). */
 const val TasksQueryMaxPageSize: Int = 500
+
+/**
+ * A counts read failing with one of these means the server has no board query (slock before
+ * v1.21.63: no `/api/tasks/server/counts`, and `GET /api/tasks/server` ignores relation, q and
+ * sort): [TasksQueryState.unsupported].
+ */
+internal val TasksQueryUnsupportedCodes: Set<String> = setOf("tasks_counts_http_404", "tasks_counts_http_405")
 
 enum class TasksPageScope(val storageKey: String) {
     Mine("mine"),
@@ -460,8 +539,12 @@ data class TasksQueryLane(
 )
 
 data class TasksLaneState(
-    /** Task ids in the server's order. */
+    /** Task ids in the server's order (a row that joined live is appended; the sort places it). */
     val ids: List<String> = emptyList(),
+    /** Each row's sort key as the server read it ([tasksSortKey]): a row whose key moved since is placed again by the sort. */
+    val keys: Map<String, String> = emptyMap(),
+    /** The last row of the last page as it was read: where the rows read end while more pages remain. */
+    val frontier: TaskSummary? = null,
     val nextCursor: String? = null,
     val loaded: Boolean = false,
     val loading: Boolean = false,
@@ -502,6 +585,8 @@ data class TasksQueryState(
     /** The last failed page read; the rows shown stay. */
     val error: ScreenError? = null,
     val countsError: ScreenError? = null,
+    /** The server has no board query ([TasksQueryUnsupportedCodes]): the page shows the app's own list instead. */
+    val unsupported: Boolean = false,
 )
 
 /** One section of the list as shown. [total]: the server's count, null while unread or searching. */
@@ -613,19 +698,19 @@ fun TasksQueryState.headNumber(): String? {
     return if (query.narrowed && scopeTotal != null) "$shown / $scopeTotal" else shown.toString()
 }
 
+/**
+ * A group's rows (web tasksPageModel.ts `mergedLaneRows`): each lane's rows that still match, the
+ * server's own in its order, merged across lanes by the sort; rows whose sort key moved since the
+ * read (or that joined live) are placed by the sort. Nothing sorting after the earliest page end
+ * as read among the lanes with more to read shows, except that lane's own server-placed rows.
+ */
 private fun TasksQueryState.mergedLaneRows(sectionLanes: List<TasksQueryLane>, states: List<TasksLaneState>): List<TaskSummary> {
-    val laneRows =
-        sectionLanes.mapIndexed { index, lane ->
-            states[index].ids.mapNotNull { id -> tasks[id] }.filter { it.matchesTasksQueryLane(lane.filters, viewerId) != false }
-        }
-    if (laneRows.size == 1) return laneRows.first()
-    val compare = tasksQueryComparator(query.sort)
-    // The earliest page end among the lanes with more to read: nothing that sorts after it shows
-    // (a row of a page still to come could belong above it), except that lane's own rows.
+    val sort = query.sort
+    val compare = tasksQueryComparator(sort)
     var bound: TaskSummary? = null
     var cutLane = -1
     for (index in states.indices) {
-        val frontier = laneRows[index].lastOrNull() ?: continue
+        val frontier = states[index].frontier ?: continue
         if (states[index].nextCursor == null) continue
         val current = bound
         if (current == null || compare.compare(frontier, current) < 0) {
@@ -633,19 +718,60 @@ private fun TasksQueryState.mergedLaneRows(sectionLanes: List<TasksQueryLane>, s
             cutLane = index
         }
     }
-    return laneRows
-        .flatMapIndexed { index, rows ->
-            val cut = bound
-            if (cut == null || index == cutLane) rows else rows.filter { compare.compare(it, cut) <= 0 }
+    val cut = bound
+    val placed = mutableSetOf<String>()
+    var ordered = emptyList<TaskSummary>()
+    val moved = mutableListOf<TaskSummary>()
+    sectionLanes.forEachIndexed { index, lane ->
+        val laneState = states[index]
+        val serverRows = mutableListOf<TaskSummary>()
+        for (id in laneState.ids) {
+            val task = tasks[id] ?: continue
+            if (id in placed || task.matchesTasksQueryLane(lane.filters, viewerId) == false) continue
+            val asRead = laneState.keys[id] == tasksSortKey(sort, task)
+            if (asRead) {
+                if (index != cutLane && cut != null && compare.compare(task, cut) > 0) continue
+                serverRows += task
+            } else {
+                if (cut != null && compare.compare(task, cut) > 0) continue
+                moved += task
+            }
+            placed += id
         }
-        .distinctBy { it.id.value }
-        .sortedWith(compare)
+        ordered = if (index == 0) serverRows else mergeOrderedRows(ordered, serverRows, compare)
+    }
+    return mergeOrderedRows(ordered, moved.sortedWith(compare), compare)
 }
+
+/** Two lists each in order, merged; ties keep the first list's row first. */
+private fun mergeOrderedRows(a: List<TaskSummary>, b: List<TaskSummary>, compare: Comparator<TaskSummary>): List<TaskSummary> {
+    val out = ArrayList<TaskSummary>(a.size + b.size)
+    var i = 0
+    var j = 0
+    while (i < a.size && j < b.size) {
+        if (compare.compare(b[j], a[i]) < 0) out += b[j++] else out += a[i++]
+    }
+    while (i < a.size) out += a[i++]
+    while (j < b.size) out += b[j++]
+    return out
+}
+
+/** The value [sort] orders by (web `sortKeyOf`). */
+internal fun tasksSortKey(sort: ServerTaskSort, task: TaskSummary): String =
+    if (sort == ServerTaskSort.Created) task.createdAt.orEmpty() else task.tasksActivityKey()
+
+/** A live copy without the source message's sender (a socket frame) keeps the one a page read, for the same source. */
+internal fun TaskSummary.withKnownSourceSender(read: TaskSummary): TaskSummary =
+    if (!sourceSenderReported && read.sourceSenderReported && sourceMessageId == read.sourceMessageId) {
+        copy(sourceSenderType = read.sourceSenderType, sourceSenderId = read.sourceSenderId, sourceSenderReported = true)
+    } else {
+        this
+    }
 
 /** The server's order for [sort] (newest first, ties by id descending; activity_asc the exact reverse). */
 fun tasksQueryComparator(sort: ServerTaskSort): Comparator<TaskSummary> {
     val newestFirst =
-        compareByDescending<TaskSummary> { if (sort == ServerTaskSort.Created) it.createdAt.orEmpty() else it.tasksActivityKey() }
+        compareByDescending<TaskSummary> { tasksSortKey(sort, it) }
             .thenByDescending { it.id.value }
     return if (sort == ServerTaskSort.ActivityAsc) newestFirst.reversed() else newestFirst
 }
@@ -655,7 +781,8 @@ internal fun TaskSummary.tasksActivityKey(): String = activityAt ?: updatedAtLab
 
 /**
  * Whether a row belongs to a lane as far as the row tells (web tasksPageModel.ts `matchLane`):
- * true, false, or null when it hinges on a fact the row lacks (who sent a task's source message).
+ * true, false, or null when it hinges on a fact the row lacks (who sent a task's source message,
+ * or who reads).
  * `completed_since` is the server's to judge (rows carry no completion time).
  */
 fun TaskSummary.matchesTasksQueryLane(filters: ServerTaskBoardFilters, viewerId: String?): Boolean? {
@@ -673,7 +800,8 @@ fun TaskSummary.matchesTasksQueryLane(filters: ServerTaskBoardFilters, viewerId:
     }
     if (filters.query.isNotEmpty() && !matchesTasksQuerySearch(filters.query)) return false
     val relation = filters.relation ?: return true
-    val viewer = viewerId ?: return false
+    // Not known yet who reads: the server's word stands.
+    val viewer = viewerId ?: return null
     val claimedByMe = assignee?.kind == MemberKind.Human && assignee.id.value == viewer
     val createdByMe = creator?.kind == MemberKind.Human && creator.id.value == viewer
     return when (relation) {
@@ -683,6 +811,8 @@ fun TaskSummary.matchesTasksQueryLane(filters: ServerTaskBoardFilters, viewerId:
             when {
                 claimedByMe || createdByMe -> false
                 sourceMessageReported && sourceMessageId == null -> false
+                // Summary rows say who sent the source message (null: none, or deleted); socket frames don't.
+                sourceSenderReported -> sourceSenderType == "user" && sourceSenderId == viewer
                 else -> null
             }
     }
