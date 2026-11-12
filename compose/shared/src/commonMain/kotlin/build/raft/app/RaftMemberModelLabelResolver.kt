@@ -27,12 +27,29 @@ import kotlinx.coroutines.flow.map
  */
 internal class RaftMemberModelLabelResolver(
     private val currentLabel: (String?) -> String?,
-    private val labelFlow: (String?) -> Flow<String?>
+    private val labelFlow: (String?) -> Flow<String?>,
+    private val currentAuthorFacts: (String?) -> RaftMemberAuthorFacts? = { null },
+    private val authorFactsFlow: (String?) -> Flow<RaftMemberAuthorFacts?> = { flowOf(null) },
 ) {
     fun current(memberId: String?): String? = currentLabel(memberId)
 
     operator fun invoke(memberId: String?): Flow<String?> = labelFlow(memberId)
+
+    fun currentFacts(memberId: String?): RaftMemberAuthorFacts? = currentAuthorFacts(memberId)
+
+    fun facts(memberId: String?): Flow<RaftMemberAuthorFacts?> = authorFactsFlow(memberId)
 }
+
+/**
+ * What the message author row reads about its sender from the members directory besides the model
+ * (dm:@artin:#120, web MessageItem botiverse/slock #14629): the description (directory first, so a
+ * live `message:new`, which omits `senderDescription`, shows it too) and whether the sender is a
+ * Guest of the viewed server.
+ */
+internal data class RaftMemberAuthorFacts(
+    val description: String? = null,
+    val viewerServerGuest: Boolean = false,
+)
 
 internal val EmptyRaftMemberModelLabelResolver =
     RaftMemberModelLabelResolver(
@@ -59,17 +76,57 @@ internal fun raftMemberModelLabelResolver(
             } else {
                 serverMembersStore
                     .memberProfileFlow(cleanServerId, memberId)
-                    .map { profile -> profile?.modelLabel() }
+                    .map { profile -> profile?.authorRowModelLabel(cleanServerId) }
                     .distinctUntilChanged()
             }
-        }
+        },
+        currentAuthorFacts = { memberId ->
+            serverMembersStore?.state?.value?.memberProfile(cleanServerId, memberId)?.authorFacts(cleanServerId)
+        },
+        authorFactsFlow = { memberId ->
+            if (serverMembersStore == null) {
+                flowOf(null)
+            } else {
+                serverMembersStore
+                    .memberProfileFlow(cleanServerId, memberId)
+                    .map { profile -> profile?.authorFacts(cleanServerId) }
+                    .distinctUntilChanged()
+            }
+        },
     )
 }
 
 internal fun SharedServerMembersState.currentMemberModelLabel(
     serverId: ServerId?,
     memberId: String?
-): String? = memberProfile(serverId, memberId)?.modelLabel()
+): String? = memberProfile(serverId, memberId)?.authorRowModelLabel(serverId)
+
+/**
+ * The model the message author row names (web MessageItem `agentModelLabelText`): this server's
+ * agents only, never a personal assistant's (nor an App Bot's, [modelLabel]).
+ */
+internal fun build.raft.app.model.MemberProfile.authorRowModelLabel(viewerServerId: ServerId?): String? {
+    if (!assistantOwnerUserId.isNullOrBlank()) return null
+    if (isFromAnotherServer(viewerServerId)) return null
+    return modelLabel()
+}
+
+/** The author row's directory facts about [this] sender, as seen from [viewerServerId]. */
+internal fun build.raft.app.model.MemberProfile.authorFacts(viewerServerId: ServerId?): RaftMemberAuthorFacts =
+    RaftMemberAuthorFacts(
+        description = description?.trim()?.takeIf { it.isNotEmpty() },
+        // web `isViewerServerGuest`: a Guest label is a fact of the viewed server only.
+        viewerServerGuest =
+            kind == build.raft.app.model.MemberKind.Human &&
+                (serverRole ?: effectiveChannelRole)?.trim()?.lowercase() == "guest" &&
+                !isFromAnotherServer(viewerServerId),
+    )
+
+private fun build.raft.app.model.MemberProfile.isFromAnotherServer(viewerServerId: ServerId?): Boolean {
+    val own = serverId?.value?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    val viewer = viewerServerId?.value?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    return own != viewer
+}
 
 internal fun build.raft.app.model.MemberProfile.modelLabel(): String? {
     if (kind != build.raft.app.model.MemberKind.Agent) return null
@@ -93,4 +150,16 @@ internal fun rememberRaftMemberModelLabel(
     val label by labelFlowValue.collectAsState(initialLabel)
     // Settings > Appearance "Show agent model" (Web MessageItem `showAgentModelName`).
     return label.takeIf { RaftDisplayPreferenceRuntime.showAgentModelName }
+}
+
+/** [RaftMemberAuthorFacts] of [memberId], live from the directory; null while nothing knows them. */
+@Composable
+internal fun rememberRaftMemberAuthorFacts(
+    resolver: RaftMemberModelLabelResolver,
+    memberId: String?
+): RaftMemberAuthorFacts? {
+    val factsFlow = remember(resolver, memberId) { resolver.facts(memberId) }
+    val initialFacts = remember(resolver, memberId) { resolver.currentFacts(memberId) }
+    val facts by factsFlow.collectAsState(initialFacts)
+    return facts
 }

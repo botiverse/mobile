@@ -493,6 +493,12 @@ data class MemberProfile(
      */
     val assistantPausedByName: String? = null,
     /**
+     * A personal assistant's owner (`assistantOwnerUserId` on `GET /agents`); null for every other
+     * agent and on payloads without it. The message author row shows no model for one (web
+     * MessageItem `isPersonalAssistantSender`).
+     */
+    val assistantOwnerUserId: String? = null,
+    /**
      * App-managed bot (botiverse/slock `agents.managed_by_app_install_id`, sent as
      * `managedByAppInstallId` on `GET /agents` and `GET /agents/:id` for non-guests). Web hides
      * the read_receipts_v0 mention badge for these (`MentionLink.tsx` `isManagedBot`).
