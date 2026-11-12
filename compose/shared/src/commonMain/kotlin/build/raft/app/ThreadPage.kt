@@ -25893,6 +25893,7 @@ private fun ThreadMessagesListContent(
                                         taskStatusMenuAnchor = anchor
                                     },
                                     onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
+                                    onToggleSave = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
                                     showReactionReactors = true,
                                     onShowAuthorDescription = { description, anchor ->
                                         authorDescriptionPopover =
@@ -29564,6 +29565,8 @@ private class ThreadMessageCardCallbacks(
     val onOpenTask: (String) -> Unit,
     val onOpenTaskStatusMenu: (RaftPopoverAnchor) -> Unit,
     val onToggleReaction: (String) -> Unit,
+    /** The "Saved" chip removes the message from Saved (web `handleSavedIndicatorClick`); null keeps it a label. */
+    val onToggleSave: (() -> Unit)? = null,
     /** Reaction chips name who reacted (long press / hover). */
     val showReactionReactors: Boolean,
     val onOpenCommentHost: (RaftThreadMessageCommentRef) -> Unit,
@@ -29631,6 +29634,7 @@ fun ThreadMessageCard(
     onOpenTask: (String) -> Unit,
     onOpenTaskStatusMenu: (RaftPopoverAnchor) -> Unit,
     onToggleReaction: (String) -> Unit,
+    onToggleSave: (() -> Unit)? = null,
     showReactionReactors: Boolean = false,
     onOpenCommentHost: (RaftThreadMessageCommentRef) -> Unit = {},
     onOpenAttachment: (String) -> Unit,
@@ -29739,6 +29743,7 @@ fun ThreadMessageCard(
                 onOpenTask = onOpenTask,
                 onOpenTaskStatusMenu = onOpenTaskStatusMenu,
                 onToggleReaction = onToggleReaction,
+                onToggleSave = if (retracted) null else onToggleSave,
                 showReactionReactors = showReactionReactors,
                 onOpenCommentHost = onOpenCommentHost,
                 onOpenAttachment = onOpenAttachment,
@@ -29810,6 +29815,7 @@ private fun ThreadMessageCardContent(
     val onOpenTask = callbacks.onOpenTask
     val onOpenTaskStatusMenu = callbacks.onOpenTaskStatusMenu
     val onToggleReaction = callbacks.onToggleReaction
+    val onToggleSave = callbacks.onToggleSave
     val showReactionReactors = callbacks.showReactionReactors
     val onOpenCommentHost = callbacks.onOpenCommentHost
     val onOpenAttachment = callbacks.onOpenAttachment
@@ -30939,6 +30945,7 @@ private fun ThreadMessageCardContent(
                                             onShowActions = onShowActions,
                                             onOpenTaskStatusMenu = onOpenTaskStatusMenu,
                                             showSavedBadge = showSavedBadge,
+                                            onToggleSave = onToggleSave,
                                             repliesBadge = repliesBadge,
                                             onOpenReplies = { onOpenThread(message.id) },
                                             showReactionAddAction = showReactionAddAction,
@@ -34097,6 +34104,7 @@ internal fun ThreadMessageFooterMeta(
     onShowActions: (RaftPopoverAnchor) -> Unit,
     onOpenTaskStatusMenu: (RaftPopoverAnchor) -> Unit,
     showSavedBadge: Boolean = false,
+    onToggleSave: (() -> Unit)? = null,
     repliesBadge: ThreadRepliesBadgeSpec? = null,
     onOpenReplies: (() -> Unit)? = null,
     showReactionAddAction: Boolean = false,
@@ -34179,8 +34187,11 @@ internal fun ThreadMessageFooterMeta(
         }
         if (showSavedBadge) {
             // raft-ui MessageItemSavedIndicator (gap 23): `fill-muted`, an ink bookmark, muted label.
+            // A tap removes the message from Saved, as on the web.
             build.raft.designsystem.components.RaftMessageSavedIndicator(
                 label = stringResource(Res.string.thread_label_saved),
+                onClick = onToggleSave,
+                onClickLabel = stringResource(Res.string.thread_action_remove_from_saved),
             )
         }
         repliesBadge?.let { badge -> ThreadRepliesBadge(badge, onClick = onOpenReplies) }
@@ -36197,6 +36208,7 @@ private fun ThreadOriginCard(
                                 onOpenTask = { onThreadEvent("openTask", it, null, null) },
                                 onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
                                 onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
+                                onToggleSave = { onThreadEvent("toggleMessageSaved", origin.id, null, null) },
                                 showReactionReactors = showReactionReactors,
                                 onShowAuthorDescription = onShowAuthorDescription,
                                 showReactionAddAction = timelineSlice.showReactionActions && contentExtrasVisible,
