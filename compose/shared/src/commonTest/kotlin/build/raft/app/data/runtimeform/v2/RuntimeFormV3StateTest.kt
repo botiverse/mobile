@@ -2,6 +2,8 @@ package build.raft.app.data.runtimeform.v2
 
 import build.raft.app.runtimeFormV2ShownErrors
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
@@ -138,6 +140,45 @@ class RuntimeFormV3StateTest {
 
         val preview = applyRuntimeFormV2Change(codex, codexSources, values, "model", JsonPrimitive("gpt-7-preview"))
         assertEquals("high", preview.text("reasoningEffort"), "a new model resets the effort to its own default")
+    }
+
+    @Test
+    fun onEditAStoredNullOrAbsentEffortStaysDefaultCreateAndAModelChangeTakeTheModelsDefault() {
+        // slock #14569 (c4172b9f) v3State.test.ts "v3 effort on edit…", on the Codex v3 form.
+        val withDefault = listOf(RuntimeFormV2Choice("", "Default"), RuntimeFormV2Choice("low", "low"), RuntimeFormV2Choice("high", "high"))
+        val src = codexSources + (
+            "reasoningEffort" to RuntimeFormV2Source(
+                sourceId = "reasoningEffort",
+                kind = RuntimeFormV2SourceKind.DependentSelect,
+                pointer = "/reasoningEffort",
+                dependsOn = "/model",
+                optionsByValue = mapOf("gpt-5.6-sol" to withDefault, "gpt-7-preview" to withDefault),
+                defaultValueByValue = mapOf("gpt-5.6-sol" to "high", "gpt-7-preview" to "low")
+            )
+        )
+        val create = initialRuntimeFormV2Values(codex, src)
+        assertEquals("gpt-5.6-sol", create.text("model"))
+        assertEquals("high", create.text("reasoningEffort"), "create starts at the model's default")
+        val effort = codex.field("reasoningEffort")
+        for (stored in listOf<Map<String, JsonElement>>(mapOf("reasoningEffort" to JsonNull), emptyMap())) {
+            val edit = codex.copy(values = JsonObject(mapOf("model" to JsonPrimitive("gpt-5.6-sol")) + stored))
+            val values = initialRuntimeFormV2Values(edit, src)
+            assertEquals(JsonPrimitive(""), values["reasoningEffort"], "$stored: the server's Default, not defaultValueByValue")
+            assertTrue(isRuntimeFormV2FieldVisible(effort, values, src), "$stored")
+            assertEquals(emptyMap(), validateRuntimeFormV2(edit, src, values, editing = true), "$stored")
+            assertEquals(JsonPrimitive(""), runtimeFormV2Submission(edit, values, src)["reasoningEffort"], "$stored: saved untouched, still Default")
+            assertEquals(
+                "low",
+                applyRuntimeFormV2Change(edit, src, values, "model", JsonPrimitive("gpt-7-preview")).text("reasoningEffort"),
+                "$stored: a model change takes the new model's default"
+            )
+        }
+        val explicit = codex.copy(values = JsonObject(mapOf("model" to JsonPrimitive("gpt-5.6-sol"), "reasoningEffort" to JsonPrimitive("low"))))
+        assertEquals("low", initialRuntimeFormV2Values(explicit, src).text("reasoningEffort"), "a stored effort is kept")
+        // A branch the saved agent is not on (no stored model, e.g. Pi's "configured" model while it uses a
+        // provider): the effort there does not apply, so it starts as on create, not at Default.
+        val offBranch = codex.copy(values = JsonObject(mapOf("envVars" to JsonObject(emptyMap()))))
+        assertEquals(create.text("reasoningEffort"), initialRuntimeFormV2Values(offBranch, src).text("reasoningEffort"))
     }
 
     @Test
