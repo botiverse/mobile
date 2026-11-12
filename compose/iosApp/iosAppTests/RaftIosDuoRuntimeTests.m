@@ -41,4 +41,20 @@
     XCTAssertEqualObjects(RaftIosReservedRegionsForKind(nil, [NSObject new]), @[]);
 }
 
+// The 27.1-only `axisBehavior` is compiled behind an SDK guard (Xcode 27.0 / 26.6 still build):
+// where it is supported every item is marked, elsewhere nothing is touched and the host is told.
+- (void)testVerticalPreferredMarksEveryItemOnlyWhereSupported {
+    UIBarButtonItem *back = [[UIBarButtonItem alloc] initWithTitle:@"Back" style:UIBarButtonItemStylePlain target:nil action:nil];
+    UIBarButtonItem *search = [[UIBarButtonItem alloc] initWithTitle:@"Search" style:UIBarButtonItemStylePlain target:nil action:nil];
+    BOOL supported = RaftIosVerticalBarItemsSupported();
+
+    XCTAssertEqual(RaftIosMakeBarButtonItemsVerticalPreferred(@[ back, search ]), supported);
+    XCTAssertEqual(RaftIosBarButtonItemIsVerticalPreferred(back), supported);
+    XCTAssertEqual(RaftIosBarButtonItemIsVerticalPreferred(search), supported);
+    if (@available(iOS 27.1, *)) {
+    } else {
+        XCTAssertFalse(supported, @"vertical bar items need iOS 27.1 at run time");
+    }
+}
+
 @end

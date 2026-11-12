@@ -3,8 +3,9 @@ import UIKit
 /// A page's iPhone Duo side column, as `RaftSideActionHostBridge` publishes it (wire version 1), made
 /// into navigation bar items for the system's vertical bar (RaftIosSideActionHost): Back's group
 /// (`primary`), then the visible actions and the ⋯ (`ellipsis`, a `UIMenu` of the overflowed ones),
-/// in listed order. Every item has `axisBehavior = .verticalPreferred`; each action's `UIAction`
-/// carries its id as identifier and reports it to `onTap`.
+/// in listed order; each action's `UIAction` carries its id as identifier and reports it to `onTap`.
+/// The host puts them in the vertical bar (`RaftIosMakeBarButtonItemsVerticalPreferred`: the
+/// 27.1-only `axisBehavior`, behind an SDK guard in RaftIosDuoRuntime.m).
 @available(iOS 27.1, *)
 enum RaftIosSideActionItems {
     static func make(
@@ -43,7 +44,6 @@ enum RaftIosSideActionItems {
             if column["overflowAttention"] as? Bool == true { more.badge = MainActor.assumeIsolated { .indicator() } }
             trailing.append(more)
         }
-        (leading + trailing).forEach { $0.axisBehavior = .verticalPreferred }
         return (leading, trailing)
     }
 }
