@@ -10,7 +10,7 @@ rollout: full
 
 ## zh-CN
 
-创建或编辑使用 Built-in Pi + OpenRouter 的 Agent 时，模型既可以从列表中选择，也可以直接输入任意 OpenRouter 模型 ID；还可以选填上下文窗口和最大输出长度。需要将电脑更新到新版本。
+创建或编辑使用 Built-in Pi + OpenRouter 的 Agent 时，模型既可以从列表中选择，也可以直接输入任意 OpenRouter 模型 ID；还可以选填上下文窗口和最大输出长度。需要将计算机更新到新版本。
 
 ## en
 
