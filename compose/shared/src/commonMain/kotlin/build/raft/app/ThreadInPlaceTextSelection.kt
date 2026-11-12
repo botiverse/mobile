@@ -141,6 +141,16 @@ internal class ThreadInPlaceTextSelectionHost(
     internal fun contextMenuCopyFor(messageId: String, anchor: RaftPopoverAnchor): String? =
         contextMenuSelectionCopy?.takeIf { it.messageId == messageId && it.anchor === anchor }?.text
 
+    /**
+     * The link a finger's long press opened a message menu on (artin, 1.24): the menu shows it in a
+     * link section on top. Keyed to that menu's anchor like [contextMenuSelectionCopy].
+     */
+    var contextMenuLink by mutableStateOf<ThreadContextMenuLink?>(null)
+
+    /** The link for the message menu of [messageId] opened at [anchor], when a long press on a link opened it. */
+    internal fun contextMenuLinkFor(messageId: String, anchor: RaftPopoverAnchor): String? =
+        contextMenuLink?.takeIf { it.messageId == messageId && it.anchor === anchor }?.url
+
     internal fun activate(target: ThreadInPlaceSelectionTarget) {
         val previous = active
         if (previous != null && previous !== target) previous.clear()
@@ -178,6 +188,17 @@ internal class ThreadContextMenuSelectionCopy(
     val messageId: String,
     val anchor: RaftPopoverAnchor,
     val text: String,
+)
+
+/**
+ * What a long press on a link in a message landed on: the menu it opened at [anchor] (identity:
+ * any other way of opening the menu has its own anchor, so it never picks this up) shows [url] in
+ * its link section.
+ */
+internal class ThreadContextMenuLink(
+    val messageId: String,
+    val anchor: RaftPopoverAnchor,
+    val url: String,
 )
 
 /**
@@ -456,6 +477,13 @@ internal class ThreadInPlaceSelectionController(
      */
     internal var lastPointerDownFromTouch = true
 
+    /**
+     * Set when a long press on a link in this body opened the message menu (artin, 1.24): that
+     * press is the menu's, so a selection it would also start is dropped, and no selection toolbar
+     * shows. Reset at the row's next pointer DOWN.
+     */
+    internal var linkLongPressOwnsGesture = false
+
     val menuRequested: Boolean
         get() = menuRectInBody != null || menuDataProvider != null
 
@@ -530,6 +558,7 @@ internal class ThreadInPlaceSelectionController(
 
     /** Legacy TextToolbar path: [rootRect] is in root coordinates; store it body-relative. */
     internal fun showMenuAtRootRect(rootRect: Rect) {
+        if (linkLongPressOwnsGesture) return
         val body = bodyCoordinates?.takeIf { it.isAttached } ?: return
         val topLeft = body.localPositionOf(body.findRootCoordinates(), rootRect.topLeft)
         menuDataProvider = null
@@ -539,6 +568,7 @@ internal class ThreadInPlaceSelectionController(
 
     /** New context-menu path (Android default): keep the live provider and re-query each frame. */
     internal fun showMenuFromProvider(dataProvider: TextContextMenuDataProvider): Boolean {
+        if (linkLongPressOwnsGesture) return false
         if (bodyCoordinates?.isAttached != true) return false
         menuRectInBody = null
         menuDataProvider = dataProvider
@@ -718,6 +748,12 @@ internal fun ThreadInPlaceSelectableBody(
     // moved its anchor to the message start for the rest of the drag (artin, 2026-10-29).
     val hasSelection = controller.hasSelection
     LaunchedEffect(controller, hasSelection) {
+        if (hasSelection && controller.linkLongPressOwnsGesture) {
+            // A long press on a link opened the message menu; the selection it also started is dropped.
+            diagnosticsLogger("thread_in_place_selection_link_long_press_clear messageId=${controller.messageId}")
+            controller.clear()
+            return@LaunchedEffect
+        }
         if (
             hasSelection &&
                 threadInPlaceSelectionWidensToWholeMessage(

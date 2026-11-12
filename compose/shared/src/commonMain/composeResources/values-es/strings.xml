@@ -443,6 +443,8 @@
     <string name="thread_action_quote">Citar</string>
     <string name="thread_action_translate">Traducir</string>
     <string name="thread_action_copy_link">Copiar enlace</string>
+    <string name="thread_link_menu_copy_link">Copiar enlace</string>
+    <string name="thread_link_menu_open_in_browser">Abrir en el navegador</string>
     <string name="thread_action_copy_markdown">Copiar Markdown</string>
     <string name="thread_action_select_text">Seleccionar texto</string>
     <string name="thread_select_text_hint">Mantén pulsado para seleccionar texto.</string>

@@ -6358,6 +6358,17 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_share_diagnostics");
         return @{ @"status" : @"ok" };
     }
+    if ([action isEqualToString:@"shareText"]) {
+        // A message link's Share (the thread's link menu): the share sheet with the address, as a
+        // URL when it parses as one (so targets offer it as a link), else as text.
+        NSString *text = RaftBridgeString(params[@"text"]);
+        if (text.length == 0) {
+            return @{ @"status" : @"failed" };
+        }
+        NSURL *url = [NSURL URLWithString:text];
+        [self raft_shareItems:@[ (url.scheme.length > 0 ? (id)url : (id)text) ]];
+        return @{ @"status" : @"ok" };
+    }
     if ([action isEqualToString:@"clearDiagnostics"]) {
         RaftDiagnosticsClear();
         RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_logs_cleared");

@@ -1620,6 +1620,16 @@ private object RaftMarkdownTextProvider : TextProvider {
             linkDrag?.let { (selection, entry) ->
                 Modifier.raftMarkdownLinkDragSelect(selection, entry, hasLinks = resolvedText.hasLinkAnnotations(0, resolvedText.length))
             } ?: Modifier
+        // In a message row, a finger's long press on a link opens the message's menu with the link
+        // (RaftMarkdownLinkLongPress.kt); elsewhere links keep only their own click.
+        val linkLongPress = LocalRaftMarkdownLinkLongPress.current
+        val linkLongPressText = remember { RaftMarkdownLinkLongPressText() }
+        val linkLongPressModifier =
+            if (linkLongPress != null && resolvedText.hasLinkAnnotations(0, resolvedText.length)) {
+                Modifier.raftMarkdownLinkLongPress(linkLongPress, linkLongPressText)
+            } else {
+                Modifier
+            }
         // Screen readers and node finders read the source's characters, not the layout-only ones.
         val semanticsModifier = remember(resolvedText) { Modifier.raftMarkdownReadableSemantics(resolvedText) }
         val text: @Composable (Modifier) -> Unit = { textModifier ->
@@ -1631,6 +1641,7 @@ private object RaftMarkdownTextProvider : TextProvider {
                         .then(hoverModifier)
                         .then(linkHoverStatusModifier)
                         .then(linkDragModifier)
+                        .then(linkLongPressModifier)
                         .raftInlineDecorations(inlineDecorations, hovered = { hoveredLink?.let { it to hoverInk } }) { decorationLayout },
                 color = color,
                 fontSize = fontSize,
@@ -1652,6 +1663,7 @@ private object RaftMarkdownTextProvider : TextProvider {
                     appLinkCards?.layout = result
                     linkHoverStatus?.layout = result
                     linkDrag?.second?.layout = result
+                    linkLongPressText.layout = result
                     resolvedOnTextLayout(result)
                 },
                 style = layoutStyle
@@ -2245,7 +2257,7 @@ private val RaftMarkdownListItemBottom = 2.dp
 internal val RaftMarkdownTaskCheckboxFirstLineOffset =
     ((RaftTextSize.ContentLineHeight.value.dp - RaftMarkdownTaskCheckboxSize) / 2).coerceAtLeast(0.dp)
 internal const val RaftMarkdownPendingActionIndicator = " …"
-private const val RaftMarkdownBodyClickTag = "slock-markdown-body-click"
+internal const val RaftMarkdownBodyClickTag = "slock-markdown-body-click"
 private val LocalRaftMarkdownBodyClick = compositionLocalOf<(() -> Unit)?> { null }
 
 @Composable

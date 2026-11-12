@@ -5263,6 +5263,16 @@ internal class RaftBridgeModule(
                             RaftAppLog.record("SlockDiagnostics", "shared_share_diagnostics")
                             mapOf("status" to "ok")
                         }
+                        // A message link's Share (the thread's link menu): the system share sheet with the address.
+                        "shareText" -> {
+                            val text = request.optString("text")
+                            if (text.isBlank()) {
+                                mapOf("status" to "failed")
+                            } else {
+                                shareText(subject = null, text = text)
+                                mapOf("status" to "ok")
+                            }
+                        }
                         "clearDiagnostics" -> {
                             RaftAndroidLocalDiagnostics.clearLocalDiagnosticsFiles(appContext)
                             RaftAppLog.record("SlockDiagnostics", "shared_logs_cleared")
@@ -7302,11 +7312,11 @@ internal class RaftBridgeModule(
     private fun Map<String, Any>.stringValue(key: String): String =
             this[key]?.toString().orEmpty()
 
-    private fun shareText(subject: String, text: String) {
+    private fun shareText(subject: String?, text: String) {
         val intent =
                 Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
-                    putExtra(Intent.EXTRA_SUBJECT, subject)
+                    if (subject != null) putExtra(Intent.EXTRA_SUBJECT, subject)
                     putExtra(Intent.EXTRA_TEXT, text)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
