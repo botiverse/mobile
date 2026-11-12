@@ -126,6 +126,34 @@ A missing changeset blocks scope lock.
 At scope lock, remove candidates lacking terminal checks on their exact head,
 independent review, required evidence, dependencies, or a complete changeset.
 
+### 1.1 Open PRs and issues check (before every cut)
+
+artin, 2026-11-12: every release starts by going through what is still open, so
+nothing ready is left behind and nothing half-done slips in. Before §3:
+
+```bash
+stamp pr list --repo botiverse/mobile        # every open PR, any author
+stamp issue list --repo botiverse/mobile     # open issues (bugs, release-targeted)
+```
+
+- **Every open PR** gets one outcome, recorded in the release issue's scope
+  table: **merge now** (review on the exact head, terminal checks green,
+  changeset for this version, then merge before the cut), **defer** (name the
+  version and the reason, e.g. a known blocker), or **close**. External PRs
+  are read for workflow, script, build-file and dependency changes before
+  their CI is run. Dependency bumps (dependabot) are merged when green or
+  closed with the reason.
+- **Every open issue** that targets this version, or is a crash or regression,
+  is either fixed in scope or moved to a named later version in the release
+  issue. Nothing stays "open, no decision".
+- **Merged PRs on the cut commit without a changeset**: add one (user-visible)
+  or note why none is needed. The cut commit must match the scope table
+  exactly; a PR that merged early for a later version is either accepted into
+  this version (move its changeset) or reverted on the release branch, by the
+  release owner's decision.
+
+The cut waits until this list is empty of undecided items.
+
 ## 2. Version and bump rules
 
 Pick the smallest bump that is honest (artin, 2026-11-02):
@@ -668,6 +696,7 @@ process defect. The reminder authorizes nothing.
 ## Abort rules
 
 - No real date or unaccepted scope: don't cut the branch.
+- An open PR or issue without a recorded outcome (§1.1): don't cut the branch.
 - Release head moved: all evidence stale; supersede and rebuild both
   platforms with higher builds. Never move the branch back.
 - Revision, scope, group or source mismatch: stop and fresh-read.

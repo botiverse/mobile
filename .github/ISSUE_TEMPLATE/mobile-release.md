@@ -54,6 +54,7 @@ States: building · draft · smoke · approved · distributed · superseded.
 
 - [ ] 0. Issue opened before branch/dispatch
 - [ ] 1. Every accepted item has a changeset with its real PR; scope locked
+- [ ] 1.1 Open PRs and issues checked: each merged, deferred (version + reason) or closed; recorded in the scope table
 - [ ] 3. Branch cut and recorded; `test.yml scope=full` on it
 - [ ] 4. Notes `android/` and `ios/` {zh-CN,en,ja} reviewed; artin approved (Play ≤500 chars/language)
 - [ ] 5. Drafts built: Android preview, Android main, Play AAB, iOS
