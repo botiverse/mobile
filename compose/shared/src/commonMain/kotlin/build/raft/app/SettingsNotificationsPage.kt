@@ -411,6 +411,14 @@ private fun SettingsPushStatusCard(
                         enabled = false,
                         onClick = onTest
                     )
+                SettingsTestNotificationRow.Ready ->
+                    SettingsNotificationActionRow(
+                        title = stringResource(Res.string.settings_notifications_test_title),
+                        detail = stringResource(Res.string.settings_notifications_test_detail),
+                        status = stringResource(Res.string.settings_state_ready),
+                        enabled = !anyActionBusy,
+                        onClick = onTest
+                    )
                 SettingsTestNotificationRow.BlockedRetry ->
                     SettingsNotificationActionRow(
                         title = stringResource(Res.string.settings_notifications_test_title),
@@ -491,6 +499,11 @@ private fun settingsNotificationPermissionDetail(copy: SettingsNotificationPermi
 internal enum class SettingsTestNotificationRow {
     /** Sendable (or showing the last send's outcome). */
     Shown,
+    /**
+     * The last send failed for permission (Denied / Disabled) but notifications are allowed now:
+     * sendable again, drawn as Ready rather than with that stale outcome.
+     */
+    Ready,
     /** Can't send until notifications are allowed: disabled, with that one step. */
     NeedsPermission,
     /**
@@ -506,7 +519,8 @@ internal enum class SettingsTestNotificationRow {
  * The row starts from the platform's answer ([available]: this host can post a test). A host that
  * can't, with notification permission missing, shows the step disabled; for any other reason no
  * row. Once a send has run, its outcome keeps the row: Denied / Disabled turn it into the disabled
- * step, a blocked channel into the step with Retry.
+ * step only while permission is still missing (allowing it makes the row Ready again, without
+ * reopening the page), a blocked channel into the step with Retry.
  */
 internal fun settingsTestNotificationRow(
     statusLabel: String,
@@ -516,7 +530,8 @@ internal fun settingsTestNotificationRow(
     val status = statusLabel.trim().lowercase()
     return when {
         available && status == "blocked" -> SettingsTestNotificationRow.BlockedRetry
-        available && (status == "denied" || status == "disabled") -> SettingsTestNotificationRow.NeedsPermission
+        available && (status == "denied" || status == "disabled") ->
+            if (permissionGranted) SettingsTestNotificationRow.Ready else SettingsTestNotificationRow.NeedsPermission
         available && settingsTestNotificationCopy(statusLabel, available) != SettingsTestNotificationCopy.Unavailable ->
             SettingsTestNotificationRow.Shown
         !permissionGranted -> SettingsTestNotificationRow.NeedsPermission

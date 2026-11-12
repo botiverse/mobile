@@ -3360,7 +3360,7 @@
     <string name="markdown_mermaid_fullscreen">全屏</string>
     <string name="markdown_mermaid_close_fullscreen">退出全屏</string>
     <string name="runtime_form_v2_update_required">请升级 App 以编辑此设置。</string>
-    <string name="runtime_form_v2_update_required_blocking">请升级 App 后再保存对此 Agent 的更改。</string>
+    <string name="runtime_form_v2_update_required_blocking">请升级 App 后再保存对此 agent 的更改。</string>
     <string name="runtime_form_v2_error_required">必填</string>
     <string name="runtime_form_v2_error_invalid_url">请输入以 http:// 或 https:// 开头的网址</string>
     <string name="runtime_form_v2_error_not_a_choice">请从选项中选择</string>

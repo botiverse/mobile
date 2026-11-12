@@ -67,10 +67,11 @@ class SettingsNotificationsUiContractTest {
             SettingsTestNotificationRow.NeedsPermission,
             settingsTestNotificationRow(statusLabel = "Disabled", available = false, permissionGranted = false)
         )
-        // After a send: Denied / Disabled keep the row as the disabled step, never hide it.
+        // After a send: Denied / Disabled keep the row as the disabled step while permission is missing,
+        // never hide it.
         assertEquals(
             SettingsTestNotificationRow.NeedsPermission,
-            settingsTestNotificationRow(statusLabel = "Disabled", available = true, permissionGranted = true)
+            settingsTestNotificationRow(statusLabel = "Disabled", available = true, permissionGranted = false)
         )
         // A blocked channel keeps the row the person just tapped, with the step and Retry.
         assertEquals(
@@ -80,6 +81,23 @@ class SettingsNotificationsUiContractTest {
         assertEquals(
             SettingsTestNotificationRow.Hidden,
             settingsTestNotificationRow(statusLabel = "Unsupported", available = false, permissionGranted = true)
+        )
+    }
+
+    @Test
+    fun aDeniedSendBecomesTappableOnceNotificationsAreAllowed() {
+        // Send -> Denied while permission is missing: the disabled step.
+        assertEquals(
+            SettingsTestNotificationRow.NeedsPermission,
+            settingsTestNotificationRow(statusLabel = "Denied", available = true, permissionGranted = false)
+        )
+        // The person allows notifications; the stored test result still says Denied: tappable again.
+        val afterAllow = settingsTestNotificationRow(statusLabel = "Denied", available = true, permissionGranted = true)
+        assertEquals(SettingsTestNotificationRow.Ready, afterAllow)
+        assertTrue(afterAllow != SettingsTestNotificationRow.NeedsPermission && afterAllow != SettingsTestNotificationRow.Hidden)
+        assertEquals(
+            SettingsTestNotificationRow.Ready,
+            settingsTestNotificationRow(statusLabel = "Disabled", available = true, permissionGranted = true)
         )
     }
 
