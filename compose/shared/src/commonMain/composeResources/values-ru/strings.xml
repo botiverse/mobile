@@ -2148,6 +2148,9 @@
     <string name="agent_create_reasoning_extra_high">Extra High</string>
     <string name="agent_create_reasoning_max">Max</string>
     <string name="agent_create_reasoning_ultra">Ultra</string>
+    <string name="agent_create_created_toast_title">Агент %1$s создан</string>
+    <string name="agent_create_created_toast_view">Открыть</string>
+    <string name="agent_create_created_toast_open_failed">Не удалось открыть чат с %1$s. Попробуйте ещё раз.</string>
     <string name="agent_invite_title">Пригласить человека</string>
     <string name="agent_invite_label_emails">Адреса</string>
     <string name="agent_invite_placeholder_email">teammate@example.com</string>

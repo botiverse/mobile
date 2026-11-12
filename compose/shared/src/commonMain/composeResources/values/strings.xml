@@ -2176,6 +2176,9 @@
     <string name="agent_create_reasoning_extra_high">Extra High</string>
     <string name="agent_create_reasoning_max">Max</string>
     <string name="agent_create_reasoning_ultra">Ultra</string>
+    <string name="agent_create_created_toast_title">Created %1$s</string>
+    <string name="agent_create_created_toast_view">View</string>
+    <string name="agent_create_created_toast_open_failed">Couldn't open your conversation with %1$s. Try again.</string>
     <string name="agent_invite_title">Invite Human</string>
     <string name="agent_invite_label_emails">Emails</string>
     <string name="agent_invite_placeholder_email">teammate@example.com</string>

@@ -10908,10 +10908,10 @@ private fun SharedMembersScreen(
         mutableStateOf<SharedMembersUiState>(initialContent ?: SharedMembersUiState.Loading)
     }
     var refreshing by remember { mutableStateOf(false) }
-    // Hands afae9ebb: the agent just created here, until its profile is opened (see the effect
-    // beside MembersAdaptiveWorkspace). The app shell's Members (Settings and the server menu)
-    // creates through this screen, not MembersPage, so task #399's jump never reached it.
-    var createdAgentToOpen by remember(currentServerId) { mutableStateOf<MemberProfile?>(null) }
+    // The agent just created here, until it lands (see the effect beside MembersAdaptiveWorkspace):
+    // the app shell's Members (Settings and the server menu) creates through this screen, not
+    // MembersPage (Hands afae9ebb). Same landing as MembersPage ([CreatedAgentLanding]).
+    var pendingCreatedAgent by remember(currentServerId) { mutableStateOf<CreatedAgentLanding?>(null) }
     val pager = LocalActivity.current.getPager() as Pager
     val routeScope = rememberCoroutineScope()
     val agentPanelTabOrderState by agentPanelTabOrderStore.state.collectAsState()
@@ -11157,9 +11157,9 @@ private fun SharedMembersScreen(
                         }
                     state = nextState
                     (nextState as? SharedMembersUiState.Content)?.let(onContentLoaded)
-                    // Stage the jump inside submit, before the dialog's teardown cancels this
+                    // Stage the landing inside submit, before the dialog's teardown cancels this
                     // coroutine (the same ordering as MembersPage, task #399 / #3140).
-                    createdAgentToOpen = profile
+                    pendingCreatedAgent = createdAgentLanding(submit, profile)
                     // The row above is only a stand-in: replace it with the server's record. Re-entering
                     // the page seeds the store from this cached content, so without a forced refresh the
                     // stand-in was served as a cache hit indefinitely (task #148, HuaTuo 23bc896b).
@@ -11250,14 +11250,23 @@ private fun SharedMembersScreen(
                     }
                 }
             }
-            // Hands afae9ebb: land on the just-created agent's profile, as MembersPage and the thread
-            // member panel do. Runs after the stand-in row is in state; cleared at once so returning
-            // to the list does not reopen it.
-            LaunchedEffect(createdAgentToOpen) {
-                val created = createdAgentToOpen ?: return@LaunchedEffect
-                createdAgentToOpen = null
-                bridge.log("members_create_agent_open_profile memberId=${created.id.value} source=app_shell")
-                openMemberDetail(created)
+            val createdAgentReceipt =
+                rememberRaftCreatedAgentReceipt(
+                    pager = pager,
+                    bridge = bridge,
+                    storeScope = storeScope,
+                    openSetupGuide = openMemberDetail,
+                    openInShell = openDirectMessageInShell,
+                    timeContext = timeContext,
+                )
+            // Land the just-created agent as MembersPage does: an external agent's profile, else
+            // the "Created <name>" toast whose View opens its DM. Runs after the stand-in row is in
+            // state; cleared at once so returning to the list does not land it again.
+            LaunchedEffect(pendingCreatedAgent) {
+                val landing = pendingCreatedAgent ?: return@LaunchedEffect
+                pendingCreatedAgent = null
+                bridge.log("members_create_agent_landing memberId=${landing.agent.id.value} source=app_shell")
+                createdAgentReceipt.land(landing)
             }
             MembersAdaptiveWorkspace(
                 split = showMemberSplit,

@@ -362,6 +362,31 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
     val createAgentOwner = routeOwner?.takeIf { currentServerId != null && it.serverId == currentServerId }
     var createAgentMachineId by remember { mutableStateOf<String?>(null) }
     var createAgentServerPlan by remember { mutableStateOf<String?>(null) }
+    fun openAgentProfile(agentId: String) {
+        val pageData =
+            RaftMembersPayload(instanceId = "settings-computers-agent").toMemberDetailPageData(
+                MemberDetailIdentity(MemberId(agentId), MemberKind.Agent, currentServerId?.let(::ServerId))
+            )
+        if (pageData == null) {
+            bridge.log("settings_computers_open_agent_skip reason=invalid_agent")
+        } else {
+            pager.openRaftPage(
+                pageName = MEMBER_DETAIL_PAGE,
+                pageData = pageData,
+                storeScopeOverride = environment.storeScope,
+                onMissingScope = { bridge.log("settings_computers_open_agent_skip reason=missing_shell_scope") },
+            )
+        }
+    }
+    // A created agent stays on this page with a "Created <name>" toast whose View opens its DM; an
+    // external agent opens its profile (setup guide), as web CreateAgentDialog (slock #14482).
+    val createdAgentReceipt =
+        rememberRaftCreatedAgentReceipt(
+            pager = pager,
+            bridge = bridge,
+            storeScope = environment.storeScope,
+            openSetupGuide = { agent -> openAgentProfile(agent.id.value) },
+        )
     LaunchedEffect(createAgentOwner) {
         if (createAgentOwner == null) createAgentMachineId = null
         createAgentServerPlan =
@@ -627,22 +652,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                             )
                     }
                 },
-                onOpenAgent = { agent ->
-                    val pageData =
-                        RaftMembersPayload(instanceId = "settings-computers-agent").toMemberDetailPageData(
-                            MemberDetailIdentity(MemberId(agent.id), MemberKind.Agent, currentServerId?.let(::ServerId))
-                        )
-                    if (pageData == null) {
-                        bridge.log("settings_computers_open_agent_skip reason=invalid_agent")
-                    } else {
-                        pager.openRaftPage(
-                            pageName = MEMBER_DETAIL_PAGE,
-                            pageData = pageData,
-                            storeScopeOverride = environment.storeScope,
-                            onMissingScope = { bridge.log("settings_computers_open_agent_skip reason=missing_shell_scope") },
-                        )
-                    }
-                },
+                onOpenAgent = { agent -> openAgentProfile(agent.id) },
             )
           }
         }
@@ -699,9 +709,10 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
             formStore = remember(sharedStores, environment.storeScope) { sharedStores.createAgentFormStore(environment.storeScope) },
             membersStore = environment.serverMembersStore,
             onDismiss = { createAgentMachineId = null },
-            onCreated = { agentId ->
-                bridge.log("settings_computers_create_agent_done agentId=$agentId")
+            onCreated = { landing ->
+                bridge.log("settings_computers_create_agent_done agentId=${landing.agent.id.value}")
                 createAgentMachineId = null
+                createdAgentReceipt.land(landing)
                 // The new agent joins its computer's card: the roster and the machine rows.
                 usageScope.launch { environment.serverMembersStore.refreshAgents(ServerId(createAgentOwner.serverId), "computer_card_create_agent") }
                 settingsViewModel.dispatch(SharedSettingsIntent.RefreshComputers)
