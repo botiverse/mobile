@@ -600,7 +600,6 @@
     <string name="thread_error_unfollow">スレッドのフォローを解除できませんでした</string>
     <string name="thread_error_search_unavailable">このスレッドでは検索を利用できません</string>
     <string name="thread_error_action_unavailable">このアクションは利用できなくなりました</string>
-    <string name="thread_error_action_unsupported">このアクションはまだサポートされていません</string>
     <string name="thread_error_update_reaction">リアクションを更新できませんでした</string>
     <string name="thread_reaction_reactor_you">あなた</string>
     <string name="thread_reaction_hidden_more">ほか %1$d 人</string>
@@ -997,6 +996,7 @@
     <string name="thread_action_card_already_executed">すでに他のメンバーが完了しました。</string>
     <string name="thread_action_card_frozen_closed">チャンネルの変換中のため、このカードは凍結されています。</string>
     <string name="thread_action_card_open_in_web_failed">このメッセージをウェブで開けませんでした。</string>
+    <string name="thread_action_card_open_on_web">Web 版で開く</string>
     <string name="thread_action_card_permission_set_login_scopes">ログインのスコープ</string>
     <string name="thread_action_card_permission_set_data_access">データアクセス</string>
     <string name="thread_action_card_permission_set_none">なし</string>
@@ -2555,9 +2555,9 @@
     <string name="settings_notifications_offline_computers_detail">登録済みのコンピューターがオフラインのとき、ホームに通知を表示します。デフォルトではオフです。</string>
     <string name="settings_notifications_test_title">テスト通知を送信</string>
     <string name="settings_notifications_test_detail">このデバイスを確認するため、ローカルのテスト通知を送信します。</string>
+    <string name="settings_notifications_test_allow_permission">テストを送信するには、Raft の通知を許可してください。</string>
     <string name="settings_notifications_test_sent_detail">テスト通知を送信しました。</string>
     <string name="settings_notifications_test_requested_detail">テスト通知のリクエストを処理しています。</string>
-    <string name="settings_notifications_test_unavailable_detail">現在のプラットフォームまたは権限の状態では、テスト通知を利用できません。</string>
     <string name="settings_notifications_test_error_detail">テスト通知を送信できませんでした。もう一度お試しください。</string>
     <string name="settings_notifications_test_status_sent">送信済み</string>
     <string name="settings_notifications_test_status_requested">リクエスト済み</string>
@@ -2565,7 +2565,6 @@
     <string name="settings_notifications_permission_allowed_detail">Raft はこのデバイスに通知を送信できます。</string>
     <string name="settings_notifications_permission_needed">通知へのアクセスが必要です</string>
     <string name="settings_notifications_permission_open_settings">%1$s の設定を開いて、通知へのアクセスを確認してください。</string>
-    <string name="settings_notifications_permission_unavailable_detail">このプラットフォームでは通知権限の操作を利用できません。</string>
     <string name="settings_notifications_request_permission">権限をリクエスト</string>
     <string name="settings_notifications_workspace">ワークスペース</string>
     <string name="settings_notifications_mute_workspace">このワークスペースをミュート</string>
@@ -3191,7 +3190,6 @@
     <string name="settings_storage_detail">ローカルキャッシュ</string>
     <string name="settings_storage_refreshing">ストレージを更新中...</string>
     <string name="settings_storage_loading">ストレージを読み込み中...</string>
-    <string name="settings_storage_unavailable">このプラットフォームではストレージ情報を利用できません。</string>
     <string name="settings_storage_unavailable_detail">ストレージを利用できません: %1$s</string>
     <string name="settings_storage_total_title">使用中のストレージ</string>
     <string name="settings_storage_refresh">更新</string>

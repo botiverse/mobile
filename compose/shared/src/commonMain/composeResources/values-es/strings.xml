@@ -594,7 +594,6 @@
     <string name="thread_error_unfollow">No se pudo dejar de seguir el hilo</string>
     <string name="thread_error_search_unavailable">La búsqueda no está disponible para este hilo</string>
     <string name="thread_error_action_unavailable">Esta acción ya no está disponible</string>
-    <string name="thread_error_action_unsupported">Esta acción aún no es compatible</string>
     <string name="thread_error_update_reaction">No se pudo actualizar la reacción</string>
     <string name="thread_reaction_reactor_you">Tú</string>
     <string name="thread_reaction_hidden_more">+%1$d más</string>
@@ -991,6 +990,7 @@
     <string name="thread_action_card_already_executed">Alguien ya completó esta acción.</string>
     <string name="thread_action_card_frozen_closed">Esta tarjeta está congelada mientras se convierte su canal.</string>
     <string name="thread_action_card_open_in_web_failed">No se pudo abrir este mensaje en la web.</string>
+    <string name="thread_action_card_open_on_web">Abrir en la web</string>
     <string name="thread_action_card_permission_set_login_scopes">Permisos de inicio de sesión</string>
     <string name="thread_action_card_permission_set_data_access">Acceso a datos</string>
     <string name="thread_action_card_permission_set_none">Ninguno</string>
@@ -2530,9 +2530,9 @@
     <string name="settings_notifications_offline_computers_detail">Muestra una alerta en Inicio cuando una computadora registrada está sin conexión. Desactivado de forma predeterminada.</string>
     <string name="settings_notifications_test_title">Enviar una notificación de prueba</string>
     <string name="settings_notifications_test_detail">Envía una notificación de prueba local para comprobar este dispositivo.</string>
+    <string name="settings_notifications_test_allow_permission">Permite las notificaciones de Raft para enviar una prueba.</string>
     <string name="settings_notifications_test_sent_detail">Se envió una notificación de prueba.</string>
     <string name="settings_notifications_test_requested_detail">Se está procesando la solicitud de notificación de prueba.</string>
-    <string name="settings_notifications_test_unavailable_detail">Las notificaciones de prueba no están disponibles en esta plataforma o con los permisos actuales.</string>
     <string name="settings_notifications_test_error_detail">No se pudo enviar la notificación de prueba. Inténtalo de nuevo.</string>
     <string name="settings_notifications_test_status_sent">Enviado</string>
     <string name="settings_notifications_test_status_requested">Solicitada</string>
@@ -2540,7 +2540,6 @@
     <string name="settings_notifications_permission_allowed_detail">Raft puede enviar notificaciones en este dispositivo.</string>
     <string name="settings_notifications_permission_needed">Se necesita acceso a notificaciones</string>
     <string name="settings_notifications_permission_open_settings">Abre la configuración de %1$s para revisar el acceso a notificaciones.</string>
-    <string name="settings_notifications_permission_unavailable_detail">Los controles de permisos de notificación no están disponibles en esta plataforma.</string>
     <string name="settings_notifications_request_permission">Solicitar permiso</string>
     <string name="settings_notifications_workspace">Espacio de trabajo</string>
     <string name="settings_notifications_mute_workspace">Silenciar este espacio de trabajo</string>
@@ -3039,7 +3038,6 @@
     <string name="settings_storage_detail">Caché local</string>
     <string name="settings_storage_refreshing">Actualizando almacenamiento…</string>
     <string name="settings_storage_loading">Cargando almacenamiento…</string>
-    <string name="settings_storage_unavailable">La información de almacenamiento no está disponible en esta plataforma.</string>
     <string name="settings_storage_unavailable_detail">Almacenamiento no disponible: %1$s</string>
     <string name="settings_storage_total_title">Almacenamiento usado</string>
     <string name="settings_storage_refresh">Actualizar</string>

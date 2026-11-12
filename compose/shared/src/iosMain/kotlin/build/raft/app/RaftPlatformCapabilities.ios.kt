@@ -132,6 +132,8 @@ internal actual fun raftPlatformPreservesEncodedFontWeightForFallback(): Boolean
 
 internal actual fun raftReleaseNotesAppSlug(): String = "raft-ios"
 
+internal actual fun raftPlatformHasStorageInfo(): Boolean = true
+
 internal actual fun raftPlatformProductName(): String = "iOS"
 
 // The current semantic metadata deliberately avoids Kuikly's legacy inline-code

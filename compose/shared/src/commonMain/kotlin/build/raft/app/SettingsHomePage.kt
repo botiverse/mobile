@@ -9928,7 +9928,8 @@ internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
     val statusText =
         when (this) {
             ScreenLoadState.Loading -> if (refreshing) stringResource(Res.string.settings_storage_refreshing) else stringResource(Res.string.settings_storage_loading)
-            is ScreenLoadState.Empty -> stringResource(Res.string.settings_storage_unavailable)
+            // No storage info on this host: the entry isn't listed there (settingsStorageAvailable); no line on why.
+            is ScreenLoadState.Empty -> ""
             is ScreenLoadState.Error -> Res.string.settings_storage_unavailable_detail.format(listOf(this.error.localizedUserFacingMessage())).localized()
             is ScreenLoadState.NoPermission -> Res.string.settings_storage_unavailable_detail.format(listOf(this.blocker.localizedUserFacingMessage())).localized()
             is ScreenLoadState.Content ->

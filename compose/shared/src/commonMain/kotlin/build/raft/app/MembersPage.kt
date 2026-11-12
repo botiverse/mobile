@@ -14443,6 +14443,8 @@ internal fun MembersAgentPermissionsTab(
 
     suspend fun loadScopes() {
         if (agentsApiClient == null) {
+            // Rare: this host wired no agents API client. Simple UX ("Failed to load"), but traced.
+            raftLogWarn("RaftMembers", "members_agent_permissions_load_failed reason=no_agents_api_client agentId=${member.id}")
             error = loadPermissionsFailed
             loading = false
             return

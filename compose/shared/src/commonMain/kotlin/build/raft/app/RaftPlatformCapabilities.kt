@@ -205,6 +205,12 @@ internal expect fun raftPlatformPreservesEncodedFontWeightForFallback(): Boolean
 internal expect fun raftReleaseNotesAppSlug(): String
 
 /**
+ * Whether this host reports local storage (the `loadStorage` settings capability). Settings ›
+ * Storage is listed only where it does ([settingsStorageAvailable]); a host without it has no row.
+ */
+internal expect fun raftPlatformHasStorageInfo(): Boolean
+
+/**
  * Product name used in shared settings copy that describes the installed host.
  * The copy stays localized in common resources while the platform name is
  * supplied by the concrete Android or iOS host.

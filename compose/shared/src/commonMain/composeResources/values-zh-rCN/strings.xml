@@ -598,7 +598,6 @@
     <string name="thread_error_unfollow">无法取消关注消息列</string>
     <string name="thread_error_search_unavailable">当前消息列无法搜索</string>
     <string name="thread_error_action_unavailable">此操作已不可用</string>
-    <string name="thread_error_action_unsupported">暂不支持此操作</string>
     <string name="thread_error_update_reaction">无法更新回应</string>
     <string name="thread_reaction_reactor_you">你</string>
     <string name="thread_reaction_hidden_more">等 %1$d 人</string>
@@ -995,6 +994,7 @@
     <string name="thread_action_card_already_executed">已有人完成此操作。</string>
     <string name="thread_action_card_frozen_closed">频道转换期间，此卡片已冻结。</string>
     <string name="thread_action_card_open_in_web_failed">无法在网页打开此消息。</string>
+    <string name="thread_action_card_open_on_web">在网页版中打开</string>
     <string name="thread_action_card_permission_set_login_scopes">登录权限</string>
     <string name="thread_action_card_permission_set_data_access">数据访问</string>
     <string name="thread_action_card_permission_set_none">无</string>
@@ -2555,9 +2555,9 @@
     <string name="settings_notifications_offline_computers_detail">当已注册的计算机离线时，在首页显示提醒。默认关闭。</string>
     <string name="settings_notifications_test_title">发送测试通知</string>
     <string name="settings_notifications_test_detail">发送一条本地测试通知，验证此设备的通知能力。</string>
+    <string name="settings_notifications_test_allow_permission">允许 Raft 发送通知后，即可发送测试。</string>
     <string name="settings_notifications_test_sent_detail">测试通知已发送。</string>
     <string name="settings_notifications_test_requested_detail">正在处理测试通知请求。</string>
-    <string name="settings_notifications_test_unavailable_detail">当前平台或权限状态下无法发送测试通知。</string>
     <string name="settings_notifications_test_error_detail">无法发送测试通知，请重试。</string>
     <string name="settings_notifications_test_status_sent">已发送</string>
     <string name="settings_notifications_test_status_requested">已请求</string>
@@ -2565,7 +2565,6 @@
     <string name="settings_notifications_permission_allowed_detail">Raft 可以在此设备上发送通知。</string>
     <string name="settings_notifications_permission_needed">需要通知访问权限</string>
     <string name="settings_notifications_permission_open_settings">打开 %1$s 设置以查看通知权限。</string>
-    <string name="settings_notifications_permission_unavailable_detail">当前平台不支持通知权限控制。</string>
     <string name="settings_notifications_request_permission">请求权限</string>
     <string name="settings_notifications_workspace">工作空间</string>
     <string name="settings_notifications_mute_workspace">静音此工作空间</string>
@@ -3191,7 +3190,6 @@
     <string name="settings_storage_detail">本地缓存</string>
     <string name="settings_storage_refreshing">正在刷新存储信息…</string>
     <string name="settings_storage_loading">正在加载存储信息…</string>
-    <string name="settings_storage_unavailable">此平台不提供存储信息。</string>
     <string name="settings_storage_unavailable_detail">存储不可用：%1$s</string>
     <string name="settings_storage_total_title">已用存储空间</string>
     <string name="settings_storage_refresh">刷新</string>
@@ -3361,7 +3359,7 @@
     <string name="markdown_mermaid_fullscreen">全屏</string>
     <string name="markdown_mermaid_close_fullscreen">退出全屏</string>
     <string name="runtime_form_v2_update_required">请升级 App 以编辑此设置。</string>
-    <string name="runtime_form_v2_update_required_blocking">请升级 App 后再保存对此 agent 的更改。</string>
+    <string name="runtime_form_v2_update_required_blocking">请升级 App 后再保存对此 Agent 的更改。</string>
     <string name="runtime_form_v2_error_required">必填</string>
     <string name="runtime_form_v2_error_invalid_url">请输入以 http:// 或 https:// 开头的网址</string>
     <string name="runtime_form_v2_error_not_a_choice">请从选项中选择</string>

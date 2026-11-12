@@ -710,6 +710,13 @@ internal fun ThreadActionCard.isSupportedCommitAction(): Boolean =
         isInstallMarketplaceAppAction() ||
         isGenericInlineCommitAction()
 
+/**
+ * Whether this app can act on the card's button itself: reconfirm it, run it, or open the native
+ * feedback form ([feedbackEntryEnabled]). Otherwise the card offers "Open on the web".
+ */
+internal fun ThreadActionCard.runsInApp(feedbackEntryEnabled: Boolean): Boolean =
+    needsReconfirmation || isSupportedCommitAction() || (feedbackEntryEnabled && isFeedbackSubmitAction() && !isExecuted)
+
 internal const val InstallMarketplaceAppActionCardType = "integration:install_marketplace_app"
 
 /**

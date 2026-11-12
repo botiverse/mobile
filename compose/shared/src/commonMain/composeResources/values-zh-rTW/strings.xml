@@ -594,7 +594,6 @@
     <string name="thread_error_unfollow">無法取消追蹤討論串</string>
     <string name="thread_error_search_unavailable">無法在此討論串中搜尋</string>
     <string name="thread_error_action_unavailable">此操作已無法使用</string>
-    <string name="thread_error_action_unsupported">尚不支援此操作</string>
     <string name="thread_error_update_reaction">無法更新回應</string>
     <string name="thread_reaction_reactor_you">你</string>
     <string name="thread_reaction_hidden_more">及其他 %1$d 人</string>
@@ -991,6 +990,7 @@
     <string name="thread_action_card_already_executed">已有人完成此操作。</string>
     <string name="thread_action_card_frozen_closed">頻道轉換期間，此卡片已凍結。</string>
     <string name="thread_action_card_open_in_web_failed">無法在網頁版開啟此訊息。</string>
+    <string name="thread_action_card_open_on_web">在網頁版中開啟</string>
     <string name="thread_action_card_permission_set_login_scopes">登入權限範圍</string>
     <string name="thread_action_card_permission_set_data_access">資料存取</string>
     <string name="thread_action_card_permission_set_none">無</string>
@@ -2530,9 +2530,9 @@
     <string name="settings_notifications_offline_computers_detail">已註冊的電腦離線時，在首頁顯示提醒。預設為關閉。</string>
     <string name="settings_notifications_test_title">傳送測試通知</string>
     <string name="settings_notifications_test_detail">傳送一則本機測試通知，確認這台裝置能否收到通知。</string>
+    <string name="settings_notifications_test_allow_permission">允許 Raft 傳送通知後，即可傳送測試。</string>
     <string name="settings_notifications_test_sent_detail">已傳送測試通知。</string>
     <string name="settings_notifications_test_requested_detail">正在處理測試通知要求。</string>
-    <string name="settings_notifications_test_unavailable_detail">目前的平台或權限狀態無法傳送測試通知。</string>
     <string name="settings_notifications_test_error_detail">無法傳送測試通知，請再試一次。</string>
     <string name="settings_notifications_test_status_sent">已傳送</string>
     <string name="settings_notifications_test_status_requested">已要求</string>
@@ -2540,7 +2540,6 @@
     <string name="settings_notifications_permission_allowed_detail">Raft 可以在這台裝置上傳送通知。</string>
     <string name="settings_notifications_permission_needed">需要通知存取權限</string>
     <string name="settings_notifications_permission_open_settings">開啟 %1$s 設定以檢查通知權限。</string>
-    <string name="settings_notifications_permission_unavailable_detail">目前的平台不支援通知權限控制。</string>
     <string name="settings_notifications_request_permission">要求權限</string>
     <string name="settings_notifications_workspace">工作區</string>
     <string name="settings_notifications_mute_workspace">將此工作區靜音</string>
@@ -3039,7 +3038,6 @@
     <string name="settings_storage_detail">本機快取</string>
     <string name="settings_storage_refreshing">正在重新整理儲存空間資訊…</string>
     <string name="settings_storage_loading">正在載入儲存空間資訊…</string>
-    <string name="settings_storage_unavailable">此平台不提供儲存空間資訊。</string>
     <string name="settings_storage_unavailable_detail">無法使用儲存空間：%1$s</string>
     <string name="settings_storage_total_title">已使用的儲存空間</string>
     <string name="settings_storage_refresh">重新整理</string>

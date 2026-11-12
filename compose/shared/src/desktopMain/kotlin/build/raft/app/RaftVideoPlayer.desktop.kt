@@ -91,7 +91,7 @@ internal actual fun RaftVideoPlayer(
 ) {
     val audioOnly = LocalRaftVideoPlayerAudioOnly.current
     if (RaftDesktopVideoSupport.route(source, audioOnly) == RaftDesktopMediaRoute.NotAvailableNotice) {
-        RaftDesktopVideoNotAvailable(modifier)
+        RaftDesktopVideoNotAvailable(source, modifier)
         return
     }
     val stateCallback by rememberUpdatedState(onPlayStateChanged)
@@ -137,7 +137,7 @@ internal actual fun RaftVideoPlayer(
         LaunchedEffect(controller, rate) { controller.setRate(rate) }
         // A source with no video track (audio-only behind a video name or MIME) gets the notice.
         if (controller.noVideoTrack) {
-            RaftDesktopVideoNotAvailable(modifier)
+            RaftDesktopVideoNotAvailable(source, modifier)
         } else {
             VideoPlayerSurface(
                 playerState = playerState,
@@ -190,10 +190,10 @@ private class RaftComposeMediaPlayerEngine(private val state: VideoPlayerState) 
     override fun release() = state.dispose()
 }
 
-/** Desktop's notice from before it had a video player, unchanged (audio still cannot play). */
+/** Media this player can't play here (audio-only, no video track): "Open in browser" for [source]. */
 @Composable
-private fun RaftDesktopVideoNotAvailable(modifier: Modifier) {
-    RaftDesktopUnsupportedNotice("Video playback is not available on desktop yet.", modifier)
+private fun RaftDesktopVideoNotAvailable(source: String, modifier: Modifier) {
+    RaftDesktopOpenInBrowser(source, kind = "video", modifier = modifier)
 }
 
 // ComposeMediaPlayer 0.11.4 (MacVideoPlayerState.openUriInternal) reports media whose video size

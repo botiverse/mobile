@@ -167,6 +167,17 @@ class ThreadActionCardsTest {
     }
 
     @Test
+    fun aCardThisAppCantRunOpensOnTheWebInsteadOfADeadButton() {
+        // Retired / unknown types: not runnable here, so the card offers "Open on the web".
+        assertFalse(ThreadActionCard(type = "integration:update_app_registration").runsInApp(feedbackEntryEnabled = true))
+        // Runnable here: the card keeps its own verb.
+        assertTrue(ThreadActionCard(type = "channel:create").runsInApp(feedbackEntryEnabled = false))
+        // Feedback cards run in the app only where the native feedback form is available.
+        assertTrue(ThreadActionCard(type = FeedbackSubmitActionCardType).runsInApp(feedbackEntryEnabled = true))
+        assertFalse(ThreadActionCard(type = FeedbackSubmitActionCardType).runsInApp(feedbackEntryEnabled = false))
+    }
+
+    @Test
     fun genericLabelsRemainReadable() {
         assertEquals("Return URL", build.raft.app.humanizeActionCardMetadataKey("returnURL"))
         assertEquals("Unsafe demo URL override", build.raft.app.humanizeActionCardMetadataKey("unsafeDemoUrlOverride"))

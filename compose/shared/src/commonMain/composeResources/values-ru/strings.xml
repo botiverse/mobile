@@ -594,7 +594,6 @@
     <string name="thread_error_unfollow">Не удалось отписаться от ветки</string>
     <string name="thread_error_search_unavailable">Поиск по этой ветке недоступен</string>
     <string name="thread_error_action_unavailable">Действие больше недоступно</string>
-    <string name="thread_error_action_unsupported">Это действие пока не поддерживается</string>
     <string name="thread_error_update_reaction">Не удалось обновить реакцию</string>
     <string name="thread_reaction_reactor_you">Вы</string>
     <string name="thread_reaction_hidden_more">и ещё %1$d</string>
@@ -991,6 +990,7 @@
     <string name="thread_action_card_already_executed">Кто-то уже выполнил это действие.</string>
     <string name="thread_action_card_frozen_closed">Карточка заморожена на время преобразования канала.</string>
     <string name="thread_action_card_open_in_web_failed">Не удалось открыть это сообщение в веб-версии.</string>
+    <string name="thread_action_card_open_on_web">Открыть в веб-версии</string>
     <string name="thread_action_card_permission_set_login_scopes">Области доступа для входа</string>
     <string name="thread_action_card_permission_set_data_access">Доступ к данным</string>
     <string name="thread_action_card_permission_set_none">Нет</string>
@@ -2527,9 +2527,9 @@
     <string name="settings_notifications_offline_computers_detail">Показывать оповещение на «Главной», когда зарегистрированный компьютер не в сети. По умолчанию выключено.</string>
     <string name="settings_notifications_test_title">Отправить тестовое уведомление</string>
     <string name="settings_notifications_test_detail">Отправьте локальное тестовое уведомление, чтобы проверить это устройство.</string>
+    <string name="settings_notifications_test_allow_permission">Разрешите уведомления Raft, чтобы отправить тестовое уведомление.</string>
     <string name="settings_notifications_test_sent_detail">Тестовое уведомление отправлено.</string>
     <string name="settings_notifications_test_requested_detail">Запрос на тестовое уведомление обрабатывается.</string>
-    <string name="settings_notifications_test_unavailable_detail">Тестовые уведомления недоступны на этой платформе или при текущих разрешениях.</string>
     <string name="settings_notifications_test_error_detail">Не удалось отправить тестовое уведомление. Попробуйте ещё раз.</string>
     <string name="settings_notifications_test_status_sent">Отправлено</string>
     <string name="settings_notifications_test_status_requested">Запрошено</string>
@@ -2537,7 +2537,6 @@
     <string name="settings_notifications_permission_allowed_detail">Raft может показывать уведомления на этом устройстве.</string>
     <string name="settings_notifications_permission_needed">Нужен доступ к уведомлениям</string>
     <string name="settings_notifications_permission_open_settings">Откройте настройки %1$s, чтобы проверить доступ к уведомлениям.</string>
-    <string name="settings_notifications_permission_unavailable_detail">На этой платформе нельзя управлять разрешением на уведомления.</string>
     <string name="settings_notifications_request_permission">Запросить разрешение</string>
     <string name="settings_notifications_workspace">Рабочее пространство</string>
     <string name="settings_notifications_mute_workspace">Отключить уведомления для этого рабочего пространства</string>
@@ -3036,7 +3035,6 @@
     <string name="settings_storage_detail">Локальный кэш</string>
     <string name="settings_storage_refreshing">Обновление данных о хранилище…</string>
     <string name="settings_storage_loading">Загрузка данных о хранилище…</string>
-    <string name="settings_storage_unavailable">На этой платформе сведения о хранилище недоступны.</string>
     <string name="settings_storage_unavailable_detail">Хранилище недоступно: %1$s</string>
     <string name="settings_storage_total_title">Занято места</string>
     <string name="settings_storage_refresh">Обновить</string>
