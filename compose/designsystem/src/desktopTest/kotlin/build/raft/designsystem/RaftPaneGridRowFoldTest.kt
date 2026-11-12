@@ -16,6 +16,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -87,8 +88,9 @@ class RaftPaneGridRowFoldTest {
             tabLabel = bounds.id,
         )
 
+    /** The outermost node with [tag]: the nested grids' own main panes carry the same tag inside it. */
     private fun ComposeUiTest.widthDp(tag: String): Float =
-        with(density) { onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().size.width.toDp().value }
+        with(density) { onAllNodesWithTag(tag, useUnmergedTree = true)[0].fetchSemanticsNode().size.width.toDp().value }
 
     private fun near(expected: Float, actual: Float, what: String) = assertTrue(abs(expected - actual) <= 1f, "$what: expected $expected, was $actual")
 
