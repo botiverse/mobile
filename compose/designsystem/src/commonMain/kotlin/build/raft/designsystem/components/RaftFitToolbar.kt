@@ -89,6 +89,13 @@ class RaftFitToolbarSearch(
     val placeholder: String = label,
     val clearLabel: String? = null,
     val testTag: String? = null,
+    /**
+     * Whether a search given way to a button is open over the scope, when the page holds it (so a
+     * page can close it on system Back with a RaftBackHandler); null [onOpenChange]: the toolbar
+     * holds it itself.
+     */
+    val open: Boolean = false,
+    val onOpenChange: ((Boolean) -> Unit)? = null,
 )
 
 /**
@@ -213,7 +220,9 @@ fun RaftFitToolbar(
     val seam = RaftTheme.colors.lineSeam
     val placeholderStyle = RaftTheme.typography.field
     val measurer = rememberTextMeasurer()
-    var searchOpen by remember { mutableStateOf(false) }
+    var ownSearchOpen by remember { mutableStateOf(false) }
+    val searchOpen = if (search?.onOpenChange != null) search.open else ownSearchOpen
+    val setSearchOpen: (Boolean) -> Unit = { open -> search?.onOpenChange?.invoke(open) ?: run { ownSearchOpen = open } }
     SubcomposeLayout(
         modifier
             .fillMaxWidth()
@@ -282,7 +291,7 @@ fun RaftFitToolbar(
                 if (searchOverScope) {
                     RaftFitPart(null, widths.searchButton)
                 } else {
-                    RaftFitPart(shown("search-button") { RaftFitToolbarSearchButton(search!!) { searchOpen = true } })
+                    RaftFitPart(shown("search-button") { RaftFitToolbarSearchButton(search!!) { setSearchOpen(true) } })
                 }
         }
         if (scope != null) {
@@ -344,7 +353,7 @@ fun RaftFitToolbar(
                             search!!,
                             raftFitSearchHint(search, fillerWidth - searchChrome, measurer, placeholderStyle),
                             collapsed = false,
-                            onClose = { searchOpen = false },
+                            onClose = { setSearchOpen(false) },
                         )
                     }
                 RaftFitFiller.Filters ->
@@ -370,7 +379,7 @@ fun RaftFitToolbar(
                         search,
                         raftFitSearchHint(search, width - searchChrome, measurer, placeholderStyle),
                         collapsed = true,
-                        onClose = { searchOpen = false },
+                        onClose = { setSearchOpen(false) },
                     )
                 }
             } else {

@@ -15020,6 +15020,9 @@ private fun MembersToolbar(
     val createLabel = stringResource(Res.string.members_create_agent)
     val createMoreLabel = stringResource(Res.string.members_create_agent_more)
     val externalLabel = stringResource(Res.string.members_create_agent_external)
+    // A search given way to a button, opened over the tabs: system Back closes it (AGENTS.md).
+    var searchOpen by remember { mutableStateOf(false) }
+    RaftBackHandler(enabled = searchOpen, label = "members_toolbar_search") { searchOpen = false }
     RaftFitToolbar(
         scope =
             RaftFitToolbarScope(
@@ -15036,6 +15039,8 @@ private fun MembersToolbar(
                 label = searchLabel,
                 clearLabel = stringResource(Res.string.list_toolbar_clear_search),
                 testTag = MembersSearchTestTag,
+                open = searchOpen,
+                onOpenChange = { searchOpen = it },
             ),
         display =
             if (grouping == null) {
