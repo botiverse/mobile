@@ -17,7 +17,6 @@
 1 build/raft/app/RaftSettingsComputersPage.kt
 1 build/raft/app/RaftTabBar.kt
 1 build/raft/app/RaftTabPagerProbePage.kt
-1 build/raft/app/RaftTasksDetailOverlay.kt
 2 build/raft/app/RaftWorkingNowSummary.kt
 1 build/raft/app/SettingsAccountPage.kt
 1 build/raft/app/SettingsFormParts.kt

@@ -36,6 +36,30 @@ internal fun raftTasksTaskColumnBeside(roomDp: Float): Boolean =
     roomDp >= RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP + RaftPaneGridColumns.Detail.minWidthDp
 
 /**
+ * Which task each detail the task column opened showed, by [RaftAdaptiveDetailIdentity.key], so
+ * Back / Forward through the wide history ([RaftWideNavHistory]) marks the card of the task it
+ * reopens. Keeps the [cap] most recent.
+ */
+@Immutable
+internal class RaftTasksColumnTaskIds(
+    private val byDetailKey: Map<String, String> = emptyMap(),
+    private val cap: Int = RaftWideNavHistoryCap,
+) {
+    /** [taskId] opened in the column as the detail [detailKey]. */
+    fun opened(detailKey: String, taskId: String): RaftTasksColumnTaskIds {
+        val next = (byDetailKey - detailKey) + (detailKey to taskId)
+        val kept = if (next.size > cap) next.entries.drop(next.size - cap).associate { it.key to it.value } else next
+        return RaftTasksColumnTaskIds(kept, cap)
+    }
+
+    /**
+     * The task to mark once the history reopened [detailKey] in the column: its task, or [current]
+     * for a detail the column reached by navigating inside it (a channel from the task's thread).
+     */
+    fun restored(detailKey: String, current: String?): String? = byDetailKey[detailKey] ?: current
+}
+
+/**
  * The task column's head actions, given to the page in the column (web TaskFocusContext + the
  * slot's close): [onToggleExpand] is null where the column already has the row to itself.
  */
@@ -112,8 +136,10 @@ internal fun RaftTasksTaskColumnLayout(
         RaftBackHandler(
             enabled = active && open,
             label = "tasks_task_column",
-            // The column is page state beside the list, as the Members split's detail: no swipe block.
-            blocksBackSwipe = false,
+            // Beside the list the column is page state, as the Members split's detail: no swipe block.
+            // Taking the row (no room beside the list) it stands as a pushed page over the list: the
+            // host's page swipe must not pop the shell under it; Back returns to the list.
+            blocksBackSwipe = !beside,
         ) {
             if (expandedShown) onToggleExpand() else onBack()
         }

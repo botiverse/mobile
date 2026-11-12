@@ -45,6 +45,8 @@ import build.raft.app.data.TasksViewMode
 import build.raft.app.data.summaryCounts
 import build.raft.app.data.toTaskSummary
 import build.raft.app.model.TaskSummary
+import build.raft.designsystem.gesture.LocalRaftBackSwipeRegions
+import build.raft.designsystem.gesture.RaftBackSwipeRegions
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -109,7 +111,7 @@ class RaftTasksTaskColumnUiTest {
 
     private class Back(val press: () -> Unit)
 
-    private fun ComposeUiTest.show(shell: Shell, widthDp: Int? = null): Back {
+    private fun ComposeUiTest.show(shell: Shell, widthDp: Int? = null, swipe: RaftBackSwipeRegions? = null): Back {
         var dispatcher: OnBackPressedDispatcher? = null
         setContent {
             dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
@@ -117,7 +119,11 @@ class RaftTasksTaskColumnUiTest {
             RaftBackHandler(enabled = true, label = "test_page") { shell.pageBacks++ }
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
             val grid = remember { RaftPaneGridStore() }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftPaneGridStore provides grid) {
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalRaftPaneGridStore provides grid,
+                LocalRaftBackSwipeRegions provides swipe,
+            ) {
                 RaftDesignSystemTheme {
                     RaftTasksTaskColumnLayout(
                         open = shell.openTaskId != null,
@@ -170,7 +176,8 @@ class RaftTasksTaskColumnUiTest {
     @Test
     fun aTaskOpensBesideTheListWhichStaysInUseAndAnotherReplacesIt() = runRobolectricComposeUiTest {
         val shell = Shell()
-        show(shell)
+        val swipe = RaftBackSwipeRegions()
+        show(shell, swipe = swipe)
         assertFalse(has(RaftTasksTaskColumnTags.Column), "nothing open: the list has the row")
 
         onNodeWithText(tasks[0].title).performClick()
@@ -183,6 +190,9 @@ class RaftTasksTaskColumnUiTest {
         assertEquals(399f, column, 1.5f, "the task column's default width")
         assertEquals(root - 400f, widthOf(RaftTasksTaskColumnTags.List), 1.5f, "the list keeps the rest of the row")
         assertTrue(openCardShows(tasks[0].title), "the open task's card shows it")
+        runOnIdle {
+            assertFalse(swipe.contentConsumesBackSwipeAt(200f, 500f), "beside the list the column keeps the page's back swipe")
+        }
 
         // Non-modal: the list beside it still takes taps, and another row replaces the task.
         onNodeWithText(tasks[1].title).performClick()
@@ -229,15 +239,19 @@ class RaftTasksTaskColumnUiTest {
     @Test
     fun withoutRoomBesideTheListTheTaskTakesTheRow() = runRobolectricComposeUiTest {
         val shell = Shell()
-        val back = show(shell, widthDp = 640)
+        val swipe = RaftBackSwipeRegions()
+        val back = show(shell, widthDp = 640, swipe = swipe)
+        runOnIdle { assertFalse(swipe.contentConsumesBackSwipeAt(320f, 500f), "the list alone keeps the page's back swipe") }
         onNodeWithText(tasks[0].title).performClick()
         waitForIdle()
+        runOnIdle { assertTrue(swipe.contentConsumesBackSwipeAt(320f, 500f), "taking the row, the task blocks the back swipe as a pushed page") }
         assertEquals(widthOf(ROOT), widthOf(RaftTasksTaskColumnTags.Column), 1.5f, "under 360 + 320 the task has the row")
         assertFalse(has(RaftTasksTaskColumnTags.Expand), "nothing to expand into")
         onNodeWithTag(RaftTasksTaskColumnTags.Close).assertExists()
 
         back.press()
         assertEquals(null, shell.openTaskId, "Back returns to the list")
+        runOnIdle { assertFalse(swipe.contentConsumesBackSwipeAt(320f, 500f), "closed, the swipe is the page's again") }
         assertEquals(widthOf(ROOT), widthOf(RaftTasksTaskColumnTags.List), 1.5f)
         assertEquals(0, shell.pageBacks)
     }
