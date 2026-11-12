@@ -15,6 +15,8 @@ import build.raft.designsystem.components.RaftFitToolbarOption
 import build.raft.designsystem.components.RaftFitToolbarPrimary
 import build.raft.designsystem.components.RaftFitToolbarScope
 import build.raft.designsystem.components.RaftFitToolbarSearch
+import build.raft.designsystem.components.RaftFitToolbarView
+import build.raft.designsystem.components.RaftFitToolbarViewOption
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftMenuItem
@@ -35,6 +37,10 @@ import kotlin.test.Test
  * - `fit_toolbar_members_fine_*`: the same with a mouse (34dp controls, a 44dp line).
  * - `fit_toolbar_filters_*`: a list toolbar with `wrap` (scope, search, three filters, Sort,
  *   New task): the filters go icon-only, then move to a scrolling second line with their labels.
+ * - `fit_toolbar_filters_end_view_*`: the Computers toolbar with `wrap` (search, Status applied,
+ *   Runtime, Clear all, Sort, Cards / List, Add computer): at 1024 every label; Clear all becomes
+ *   × with the filters' icons and stays × beside them on their second line; Cards / List shows
+ *   its icons from the first step and folds into ⋯ More with Sort.
  * Goldens are recorded in CI.
  */
 class FitToolbarScreenshotTest {
@@ -67,6 +73,14 @@ class FitToolbarScreenshotTest {
         appearances.forEach { appearance ->
             RaftScreenshot.capture("fit_toolbar_filters_${appearance.name.lowercase()}", appearance) {
                 Widths { typed -> FiltersToolbar(typed) }
+            }
+        }
+
+    @Test
+    fun filtersEndAndView() =
+        appearances.forEach { appearance ->
+            RaftScreenshot.capture("fit_toolbar_filters_end_view_${appearance.name.lowercase()}", appearance) {
+                Widths { typed -> FiltersEndViewToolbar(typed) }
             }
         }
 
@@ -163,6 +177,51 @@ class FitToolbarScreenshotTest {
                     ),
                 ),
             primary = RaftFitToolbarPrimary(text = "New task", onClick = {}, icon = { RaftGlyphIcon(RaftGlyph.Plus, size = 16.dp) }),
+            moreLabel = "More",
+            wrap = true,
+        )
+    }
+
+    @Composable
+    private fun FiltersEndViewToolbar(typed: Boolean = false) {
+        fun filter(text: String, glyph: RaftGlyph, applied: Boolean = false) =
+            RaftFitToolbarChoice(
+                text = text,
+                icon = { RaftGlyphIcon(glyph, size = 14.dp) },
+                options = listOf(RaftFitToolbarOption("any", "Any")),
+                selectedKey = "any",
+                onSelect = {},
+                applied = applied,
+            )
+        RaftFitToolbar(
+            search = RaftFitToolbarSearch(value = if (typed) "gpu" else "", onValueChange = {}, label = "Search computers", clearLabel = "Clear search"),
+            filters = listOf(filter("Online", RaftGlyph.CircleCheck, applied = true), filter("Runtime", RaftGlyph.Cpu)),
+            filtersEnd = RaftFitToolbarAction("Clear all", icon = { RaftGlyphIcon(RaftGlyph.X, size = 16.dp) }, onClick = {}),
+            display =
+                listOf(
+                    RaftFitToolbarChoice(
+                        text = "Sort: Name",
+                        icon = { RaftGlyphIcon(RaftGlyph.ArrowDownUp, size = 14.dp) },
+                        options = listOf(RaftFitToolbarOption("name", "Name"), RaftFitToolbarOption("memory", "Memory")),
+                        selectedKey = "name",
+                        onSelect = {},
+                        heading = "Sort",
+                        contentDescription = "Sort: Name, A to Z",
+                    ),
+                ),
+            view =
+                RaftFitToolbarView(
+                    options =
+                        listOf(
+                            RaftFitToolbarViewOption("cards", "Cards") { RaftGlyphIcon(RaftGlyph.Cpu, size = 16.dp) },
+                            RaftFitToolbarViewOption("list", "List") { RaftGlyphIcon(RaftGlyph.Thread, size = 16.dp) },
+                        ),
+                    selectedKey = "cards",
+                    onSelect = {},
+                    label = "Computers view",
+                    heading = "View as",
+                ),
+            primary = RaftFitToolbarPrimary(text = "Add computer", onClick = {}, icon = { RaftGlyphIcon(RaftGlyph.Plus, size = 16.dp) }),
             moreLabel = "More",
             wrap = true,
         )
