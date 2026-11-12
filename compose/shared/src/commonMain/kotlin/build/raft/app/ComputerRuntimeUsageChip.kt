@@ -966,15 +966,11 @@ internal fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccoun
             )
         }
         when (account.health) {
-            RuntimeAccountUsageHealth.Unsupported, RuntimeAccountUsageHealth.Error ->
+            // Unsupported: the badge alone, as on the web (#14543); no line on why.
+            RuntimeAccountUsageHealth.Unsupported -> Unit
+            RuntimeAccountUsageHealth.Error ->
                 RaftText(
-                    stringResource(
-                        if (account.health == RuntimeAccountUsageHealth.Unsupported) {
-                            Res.string.settings_computers_runtime_usage_unsupported_description
-                        } else {
-                            Res.string.settings_computers_runtime_usage_read_failed
-                        }
-                    ),
+                    stringResource(Res.string.settings_computers_runtime_usage_read_failed),
                     style = typography.footnote,
                     color = colors.foregroundMuted,
                 )

@@ -64,8 +64,9 @@ internal data class RuntimePickerRows(
  *   [currentRuntimeId]; the current runtime is always listed, even when the catalog lacks it
  *   (the server turned it off), named through the bundled table or its id.
  * - [machineRuntimeIds]: what the computer reports. A runtime it runs that the server does not
- *   let the person pick here ([serverSelectable] = false, from the runtime-options rows) is
- *   Not available on this server.
+ *   let the person pick here ([serverSelectable] = false, from the runtime-options rows) is not
+ *   listed: only as the field's [selectedRuntimeId] does it show, under Not available on this
+ *   server (web #14543, slock f553f366).
  * - A runtime with no form this app knows ([isFormSupported]) is Needs an app update, never a
  *   half form.
  * - Not installed rows show only with [showAll], or when nothing else would be listed, and the
@@ -120,11 +121,14 @@ internal fun runtimePickerRows(
                 experimental = entry.experimental && !entry.deprecated
             )
         }
-    val notInstalled = classified.count { it.group == RuntimePickerGroup.NotInstalled }
-    val onlyNotInstalled = classified.isNotEmpty() && notInstalled == classified.size
+    // Not offered here (rollout or admission): nothing to do about it, so not listed unless it is
+    // the field's value, and it doesn't count toward "only not-installed rows" either.
+    val listable = classified.filter { it.group != RuntimePickerGroup.NotAvailable || it.id == selectedRuntimeId }
+    val notInstalled = listable.count { it.group == RuntimePickerGroup.NotInstalled }
+    val onlyNotInstalled = listable.isNotEmpty() && notInstalled == listable.size
     val showNotInstalled = showAll || onlyNotInstalled
     val rows =
-        classified
+        listable
             .filter { it.group != RuntimePickerGroup.NotInstalled || showNotInstalled || it.id == selectedRuntimeId }
             .sortedBy { it.group.ordinal }
     return RuntimePickerRows(rows = rows, canToggle = notInstalled > 0 && !onlyNotInstalled)

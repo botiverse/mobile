@@ -378,7 +378,6 @@ private fun AddComputerConnectedStep(
     }
     RaftField(
         label = stringResource(Res.string.settings_computers_label_name),
-        description = stringResource(Res.string.settings_computers_name_hint),
         enabled = !state.saving,
     ) {
         RaftTextField(

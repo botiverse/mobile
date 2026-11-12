@@ -120,7 +120,6 @@
     <string name="settings_error_join_link_load_prefix">無法載入邀請連結：</string>
     <string name="settings_billing_action_compare_plans">查看所有功能並比較方案</string>
     <string name="settings_pwa_install_title">安裝應用程式</string>
-    <string name="settings_pwa_install_native_detail">非原生版本的安裝提示由網頁 PWA API 管理；原生版本則使用各平台的 App 安裝流程。</string>
     <string name="channel_create_error_not_created">頻道未建立。</string>
     <string name="common_error">錯誤</string>
     <string name="common_empty">空白檔案</string>
@@ -202,7 +201,7 @@
     <string name="settings_step_up_locked">驗證碼輸入錯誤次數過多。請稍後再試。</string>
     <string name="settings_step_up_sign_in_again_message">無法驗證目前的登入。請重新登入，然後再試一次。</string>
     <string name="settings_step_up_sign_in_again">重新登入</string>
-    <string name="settings_step_up_passkey_only">你的帳號需要用通行密鑰驗證，但 App 目前還不支援。請在網頁版 Raft 上操作。</string>
+    <string name="settings_step_up_passkey_only">請在網頁版 Raft 上進行此變更，並用通行密鑰確認。</string>
     <string name="settings_step_up_failed">驗證失敗，請再試一次。</string>
     <string name="settings_account_delete_message">我們會在 %1$d 天內刪除你的帳號和個人資料（個人檔案、電子郵件、大頭貼和登入方式）。你在共享頻道中傳送的訊息會保留，並顯示為「已刪除的使用者」。完成後我們會寄電子郵件通知你。</string>
     <string name="settings_account_delete_confirm">申請刪除</string>
@@ -583,13 +582,10 @@
     <string name="thread_error_file_source">無法使用檔案來源</string>
     <string name="thread_feedback_copied">已複製</string>
     <string name="thread_feedback_links_copied">已複製連結</string>
-    <string name="thread_forward_needs_api">將%1$s訊息轉傳到 %2$s 需要 API 支援</string>
     <string name="thread_forward_completed">已將%1$s訊息轉傳到 %2$s</string>
     <string name="thread_forward_view_in_chat">在聊天中檢視</string>
     <string name="thread_forward_success_banner">已轉傳到 %1$s。</string>
     <string name="thread_forward_join_first">請先加入 %1$s 再轉傳</string>
-    <string name="thread_forward_group_unavailable">建立群組後轉傳尚需 API 支援</string>
-    <string name="thread_forward_multi_select_unavailable">多選轉傳尚需 API 支援</string>
     <string name="thread_error_copy_link">無法複製連結</string>
     <string name="thread_error_no_text_select">沒有可選取的文字</string>
     <string name="thread_feedback_followed">已追蹤討論串</string>
@@ -608,7 +604,6 @@
     <string name="thread_error_add_member">無法新增成員</string>
     <string name="thread_feedback_member_removed">成員已移除</string>
     <string name="thread_error_remove_member">無法移除成員</string>
-    <string name="thread_error_visibility_not_wired">目前尚無法更新頻道可見性</string>
     <string name="thread_feedback_channel_archived">頻道已封存</string>
     <string name="thread_error_archive_channel">無法封存頻道</string>
     <string name="thread_feedback_channel_deleted">已刪除頻道</string>
@@ -788,7 +783,7 @@
     <string name="channel_settings_members">成員</string>
     <string name="channel_settings_preferences">我的頻道偏好設定</string>
     <string name="channel_settings_mute">靜音</string>
-    <string name="channel_settings_mute_detail">這個對話裡的任何訊息都不會通知你，@你 也不會。只影響你。</string>
+    <string name="channel_settings_mute_detail">這個對話裡的任何訊息都不會通知你，@你 也不會。</string>
     <string name="channel_settings_pin">釘選頻道</string>
     <string name="channel_settings_pin_detail">在首頁的「已釘選」區塊優先顯示此頻道</string>
     <string name="channel_settings_status_joint">聯合頻道</string>
@@ -955,8 +950,6 @@
     <string name="thread_action_card_failure_login">無法核准登入</string>
     <string name="thread_action_card_failure_action">無法完成操作</string>
     <string name="thread_action_card_error_agent_name_required">Agent 名稱為必填。</string>
-    <string name="thread_action_card_error_agent_unavailable">目前的版本無法建立 Agent。</string>
-    <string name="thread_action_card_error_completion_unavailable">目前的版本無法完成操作卡片。</string>
     <string name="thread_action_card_error_mark_done">已建立 Agent，但無法將操作卡片標示為完成。請重新整理此討論串。</string>
     <string name="thread_action_card_error_agent_not_created">未建立 Agent。</string>
     <string name="thread_action_card_error_agent_create">無法建立 Agent：%1$s</string>
@@ -1398,7 +1391,6 @@
     <string name="member_state_loading_workspace">正在載入工作區檔案…</string>
     <string name="member_error_load_files">無法載入檔案</string>
     <string name="member_error_load_connected_apps">無法載入已連結的應用程式</string>
-    <string name="member_error_agent_api_unavailable">無法使用 Agent API</string>
     <string name="member_error_load_permissions">無法載入 Agent 權限</string>
     <string name="member_state_no_permissions_data">沒有權限資料</string>
     <string name="member_error_view_permissions">你沒有查看權限的權限。</string>
@@ -1698,7 +1690,6 @@
     <string name="member_error_apps_private">只有伺服器擁有者和管理員可以查看 Agent 的整合。</string>
     <string name="member_error_apps_load">無法載入已連結的應用程式：%1$s</string>
     <string name="member_label_connected_since">連結於 %1$s</string>
-    <string name="member_error_permissions_api_unavailable">無法使用 Agent API</string>
     <string name="member_error_permissions_load">無法載入 Agent 權限：%1$s</string>
     <string name="member_error_permissions_empty">沒有權限資料</string>
     <string name="member_error_permissions_view">你沒有權限查看權限設定。</string>
@@ -1774,7 +1765,7 @@
     <string name="file_preview_pdf">PDF 預覽</string>
     <string name="file_preview_pdf_page_indicator">%1$s / %2$s</string>
     <string name="file_preview_pdf_password_title">此 PDF 受密碼保護</string>
-    <string name="file_preview_pdf_password_detail">Raft 無法顯示受密碼保護的 PDF，請在其他 App 中開啟並輸入密碼。</string>
+    <string name="file_preview_pdf_password_detail">請在其他 App 中開啟並輸入密碼。</string>
     <string name="file_preview_pdf_corrupt_title">無法顯示此 PDF</string>
     <string name="file_preview_pdf_corrupt_detail">檔案可能已損毀，或不是有效的 PDF。請試著在其他 App 中開啟。</string>
     <string name="file_preview_document">文件預覽</string>
@@ -2530,7 +2521,7 @@
     <string name="settings_notifications_background_realtime_title">背景即時連線</string>
     <string name="settings_notifications_background_realtime_detail">在背景保持即時連線。%1$s 仍可能暫停長時間執行的工作階段。</string>
     <string name="settings_notifications_keep_connection_title">在背景保持連線</string>
-    <string name="settings_notifications_keep_connection_detail">這台裝置沒有 Google Play 服務，Raft 無法接收推播通知。在背景保持 Raft 連線，即可繼續收到訊息通知。開啟後會常駐一則「Raft 正在接收訊息」通知，並增加耗電。</string>
+    <string name="settings_notifications_keep_connection_detail">在背景保持 Raft 連線，即可收到訊息通知。開啟後會常駐一則「Raft 正在接收訊息」通知，並增加耗電。</string>
     <string name="settings_notifications_battery_optimization_title">允許在背景執行</string>
     <string name="settings_notifications_battery_optimization_detail">為 Raft 關閉電池最佳化，避免系統中斷背景連線。部分手機還需要在應用程式啟動管理或背景活動設定中允許 Raft。</string>
     <string name="settings_notifications_battery_optimization_allowed">已允許</string>
@@ -2610,7 +2601,6 @@
     <string name="settings_computers_already_installed">這台電腦已經安裝過 Raft Computer？</string>
     <string name="settings_computers_connect_only_description">略過安裝，只將它連接到這個伺服器。如果找不到 raft-computer，請改用 ~/.local/bin/raft-computer 執行。</string>
     <string name="settings_computers_still_waiting_hint">還在等嗎？請查看你執行指令的終端機。如果顯示 Raft Computer 已在執行中，或安裝失敗，請使用上方的「這台電腦已經安裝過 Raft Computer？」。</string>
-    <string name="settings_computers_name_hint">為這台電腦取個好記的名稱。</string>
     <string name="settings_computers_confirm_match">這是我剛才設定的電腦%1$s。</string>
     <string name="settings_computers_connected_success">電腦已成功連接！</string>
     <string name="settings_computers_placeholder_name">我的 Mac</string>
@@ -2676,14 +2666,13 @@
     <string name="settings_computers_runtime_usage_health_error">錯誤</string>
     <string name="settings_computers_runtime_usage_health_unknown">未知</string>
     <string name="settings_computers_runtime_usage_reading">正在讀取快取快照…</string>
-    <string name="settings_computers_runtime_usage_unsupported_description">此執行環境或登入方式不支援查詢帳號用量。</string>
     <string name="settings_computers_runtime_usage_read_failed">無法讀取快取的用量。</string>
     <string name="settings_computers_runtime_usage_no_snapshot">還沒有快照</string>
-    <string name="settings_computers_runtime_usage_no_snapshot_description">已向這台電腦要求一次有限度的重新整理。供應商憑證絕不會離開這台電腦。</string>
+    <string name="settings_computers_runtime_usage_no_snapshot_description">這台電腦回報用量後會顯示在這裡。供應商憑證絕不會離開這台電腦。</string>
     <string name="settings_computers_runtime_usage_stale">快照已過時 · 以下數值皆為最後已知的值</string>
     <string name="settings_computers_runtime_usage_account_fallback">執行環境帳號</string>
     <string name="settings_computers_runtime_usage_reauth_description">請在這台電腦上重新登入。在供應商完成驗證之前，會先隱藏最後已知的百分比。</string>
-    <string name="settings_computers_runtime_usage_parse_unavailable">無法解析用量格式</string>
+    <string name="settings_computers_runtime_usage_parse_unavailable">無法顯示用量</string>
     <string name="settings_computers_runtime_usage_window_used">已用 %1$s · %2$s重設</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">已用 %1$s · 暫時無法取得重設時間</string>
     <string name="settings_computers_runtime_usage_window_used_up">已用完 · %1$s重設</string>
@@ -3123,7 +3112,7 @@
     <string name="settings_developer_multi_server_realtime">每個視窗都即時更新</string>
     <string name="settings_developer_multi_server_realtime_detail">開啟「多個應用程式視窗」後，每個視窗的工作空間各自保持即時連線（最多 3 個），在後面的視窗也能收到新訊息。關閉時只有最前面的工作空間保持連線。</string>
     <string name="settings_mobile_ios_native_nav">iOS 原生導覽</string>
-    <string name="settings_mobile_ios_native_nav_detail">已遷移頁面的標題和按鈕會顯示在系統導覽列中，並使用系統的滑動返回（iPhone）。下次啟動 App 時生效。</string>
+    <string name="settings_mobile_ios_native_nav_detail">頁面的標題和按鈕會顯示在系統導覽列中，並使用系統的滑動返回。下次啟動 App 時生效。</string>
     <string name="settings_developer_presets">預設組合</string>
     <string name="settings_developer_presets_detail">選擇預設組合以填入環境表單，再儲存即可套用。</string>
     <string name="settings_developer_presets_empty">此主機沒有可用的預設組合。</string>
@@ -3218,7 +3207,7 @@
     <string name="markdown_mermaid_fullscreen">全螢幕</string>
     <string name="markdown_mermaid_close_fullscreen">結束全螢幕</string>
     <string name="runtime_form_v2_update_required">請更新 App 以編輯此設定。</string>
-    <string name="runtime_form_v2_update_required_blocking">此 Agent 有一項必填設定是目前的 App 版本無法編輯的。請更新 App 後再儲存變更。</string>
+    <string name="runtime_form_v2_update_required_blocking">請更新 App 後再儲存此 Agent 的變更。</string>
     <string name="runtime_form_v2_error_required">必填</string>
     <string name="runtime_form_v2_error_invalid_url">請輸入以 http:// 或 https:// 開頭的網址</string>
     <string name="runtime_form_v2_error_not_a_choice">請從選項中選擇一項</string>
@@ -3457,7 +3446,7 @@
     <string name="member_activity_overview_reply_loading">正在載入回覆…</string>
     <string name="member_activity_overview_reply_unavailable">這則回覆位於你無法查看的對話中。</string>
     <string name="member_activity_overview_empty_title">還沒有概覽</string>
-    <string name="member_activity_overview_empty_upgrade_desc">概覽會為每個完成的輪次顯示一行。此 Agent 所在電腦上的 Raft 必須是最新版本才會記錄輪次；如果版本較舊，請到該電腦的頁面升級，之後新的輪次就會顯示在這裡。</string>
+    <string name="member_activity_overview_empty_upgrade_desc">每完成一個輪次，這裡就會顯示一行。如果新的輪次沒有出現，請到該電腦的頁面更新此 Agent 所在電腦上的 Raft。</string>
     <string name="member_activity_overview_empty_external_desc">概覽會為每個完成的輪次顯示一行。此 Agent 還沒有回報任何已完成的輪次。</string>
     <string name="member_activity_overview_empty_open_computer">開啟電腦頁面以升級</string>
     <string name="member_activity_overview_empty_show_raw">顯示原始記錄</string>
@@ -3681,7 +3670,7 @@
     <string name="agent_stop_turn_not_running">目前沒有在執行。</string>
     <string name="agent_stop_turn_failed">無法停止目前這一輪。</string>
     <string name="agent_stop_turn_restarted">為了停止這一輪，Agent 已重新啟動，對話上下文仍會保留。</string>
-    <string name="agent_stop_turn_upgrade_required">這個 Agent 所在的電腦需要更新才能只停止這一輪。你也可以停止整個 Agent。</string>
+    <string name="agent_stop_turn_upgrade_required">升級這個 Agent 所在的電腦，即可只停止這一輪。你也可以停止整個 Agent。</string>
     <string name="agent_stop_turn_computer_offline">這個 Agent 所在的電腦已離線。</string>
     <string name="channel_sos_entry">停止所有 Agent</string>
     <string name="channel_sos_entry_detail">停止此頻道中的所有 Agent</string>
@@ -4438,7 +4427,7 @@
     <string name="member_activity_subagents_stop_interrupted">已讓這個子 Agent 停下。</string>
     <string name="member_activity_subagents_stop_not_running">這個子 Agent 沒有在執行。</string>
     <string name="member_activity_subagents_stop_unsupported">這個子 Agent 不能單獨停止。</string>
-    <string name="member_activity_subagents_stop_upgrade_required">這個 Agent 的電腦需要升級，才能單獨停止一個子 Agent。</string>
+    <string name="member_activity_subagents_stop_upgrade_required">升級這個 Agent 的電腦，即可單獨停止一個子 Agent。</string>
     <string name="member_activity_subagents_stop_failed">無法停止這個子 Agent。</string>
     <string name="member_activity_subagents_detail_type">類型</string>
     <string name="member_activity_subagents_detail_started">開始於</string>

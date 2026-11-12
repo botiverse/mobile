@@ -138,7 +138,6 @@ class KmmResourceI18nTest {
             Res.string.settings_error_join_link_load_prefix,
             Res.string.settings_billing_action_compare_plans,
             Res.string.settings_pwa_install_title,
-            Res.string.settings_pwa_install_native_detail,
             Res.string.channel_create_error_not_created,
             Res.string.members_page_title,
             Res.string.members_section_agents,

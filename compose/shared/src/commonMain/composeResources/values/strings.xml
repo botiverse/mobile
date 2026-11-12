@@ -120,7 +120,6 @@
     <string name="settings_error_join_link_load_prefix">Failed to load join link:&#160;</string>
     <string name="settings_billing_action_compare_plans">See all features and compare plans</string>
     <string name="settings_pwa_install_title">Install app</string>
-    <string name="settings_pwa_install_native_detail">Install prompts are managed by web PWA APIs outside native builds. Native builds use their platform app install flow.</string>
     <string name="channel_create_error_not_created">Channel was not created.</string>
     <string name="common_error">Error</string>
     <string name="common_empty">Empty</string>
@@ -202,7 +201,7 @@
     <string name="settings_step_up_locked">Too many wrong codes. Try again later.</string>
     <string name="settings_step_up_sign_in_again_message">This sign-in can't be verified. Sign in again, then try once more.</string>
     <string name="settings_step_up_sign_in_again">Sign In Again</string>
-    <string name="settings_step_up_passkey_only">Your account confirms this with a passkey, which the app can't use yet. Make this change in Raft on the web.</string>
+    <string name="settings_step_up_passkey_only">Make this change in Raft on the web and confirm it with your passkey.</string>
     <string name="settings_step_up_failed">Couldn't verify. Try again.</string>
     <string name="settings_account_delete_message">We'll delete your account and personal data (profile, email, avatar and sign-in methods) within %1$d days. Messages you sent in shared channels stay, shown as “Deleted user”. We'll email you when it's done.</string>
     <string name="settings_account_delete_confirm">Request deletion</string>
@@ -587,13 +586,10 @@
     <string name="thread_error_file_source">File source unavailable</string>
     <string name="thread_feedback_copied">Copied</string>
     <string name="thread_feedback_links_copied">Links copied</string>
-    <string name="thread_forward_needs_api">%1$s forwarding to %2$s needs API support</string>
     <string name="thread_forward_completed">%1$s forwarded to %2$s</string>
     <string name="thread_forward_view_in_chat">View in chat</string>
     <string name="thread_forward_success_banner">Forwarded to %1$s.</string>
     <string name="thread_forward_join_first">Join %1$s before forwarding</string>
-    <string name="thread_forward_group_unavailable">Create group forwarding needs API support</string>
-    <string name="thread_forward_multi_select_unavailable">Multi-select forwarding needs API support</string>
     <string name="thread_error_copy_link">Unable to copy link</string>
     <string name="thread_error_no_text_select">No text to select</string>
     <string name="thread_feedback_followed">Followed thread</string>
@@ -612,7 +608,6 @@
     <string name="thread_error_add_member">Unable to add member</string>
     <string name="thread_feedback_member_removed">Member removed</string>
     <string name="thread_error_remove_member">Unable to remove member</string>
-    <string name="thread_error_visibility_not_wired">Channel visibility updates are not available yet</string>
     <string name="thread_feedback_channel_archived">Channel archived</string>
     <string name="thread_error_archive_channel">Unable to archive channel</string>
     <string name="thread_feedback_channel_deleted">Channel deleted</string>
@@ -792,7 +787,7 @@
     <string name="channel_settings_members">Members</string>
     <string name="channel_settings_preferences">My Channel Preferences</string>
     <string name="channel_settings_mute">Mute</string>
-    <string name="channel_settings_mute_detail">Nothing in this conversation notifies you, not even @mentions. Only affects you.</string>
+    <string name="channel_settings_mute_detail">Nothing in this conversation notifies you, not even @mentions.</string>
     <string name="channel_settings_pin">Pin Channel</string>
     <string name="channel_settings_pin_detail">Show this channel first in Home’s Pinned section</string>
     <string name="channel_settings_status_joint">Joint Channel</string>
@@ -959,8 +954,6 @@
     <string name="thread_action_card_failure_login">Unable to approve login</string>
     <string name="thread_action_card_failure_action">Unable to complete action</string>
     <string name="thread_action_card_error_agent_name_required">Agent name is required.</string>
-    <string name="thread_action_card_error_agent_unavailable">Create Agent is not available on this build.</string>
-    <string name="thread_action_card_error_completion_unavailable">Action card completion is not available on this build.</string>
     <string name="thread_action_card_error_mark_done">Agent was created, but the action card could not be marked done. Try refreshing this thread.</string>
     <string name="thread_action_card_error_agent_not_created">Agent was not created.</string>
     <string name="thread_action_card_error_agent_create">Unable to create agent: %1$s</string>
@@ -1405,7 +1398,6 @@
     <string name="member_state_loading_workspace">Loading workspace files…</string>
     <string name="member_error_load_files">Failed to load files</string>
     <string name="member_error_load_connected_apps">Failed to load connected apps</string>
-    <string name="member_error_agent_api_unavailable">Agent API not available</string>
     <string name="member_error_load_permissions">Failed to load agent permissions</string>
     <string name="member_state_no_permissions_data">No permissions data</string>
     <string name="member_error_view_permissions">No permission to view permissions.</string>
@@ -1723,7 +1715,6 @@
     <string name="member_error_apps_private">Only server owners and admins can view agent integrations.</string>
     <string name="member_error_apps_load">Failed to load connected apps: %1$s</string>
     <string name="member_label_connected_since">Connected %1$s</string>
-    <string name="member_error_permissions_api_unavailable">Agent API not available</string>
     <string name="member_error_permissions_load">Failed to load agent permissions: %1$s</string>
     <string name="member_error_permissions_empty">No permissions data</string>
     <string name="member_error_permissions_view">No permission to view permissions.</string>
@@ -1799,7 +1790,7 @@
     <string name="file_preview_pdf">PDF preview</string>
     <string name="file_preview_pdf_page_indicator">%1$s / %2$s</string>
     <string name="file_preview_pdf_password_title">This PDF is password protected</string>
-    <string name="file_preview_pdf_password_detail">Raft can't show password-protected PDFs. Open it in another app to enter the password.</string>
+    <string name="file_preview_pdf_password_detail">Open it in another app to enter the password.</string>
     <string name="file_preview_pdf_corrupt_title">This PDF can't be shown</string>
     <string name="file_preview_pdf_corrupt_detail">The file may be damaged or not a valid PDF. Try opening it in another app.</string>
     <string name="file_preview_document">Document preview</string>
@@ -2555,7 +2546,7 @@
     <string name="settings_notifications_background_realtime_title">Background realtime</string>
     <string name="settings_notifications_background_realtime_detail">Keep realtime connected in the background. %1$s may still pause long-running sessions.</string>
     <string name="settings_notifications_keep_connection_title">Keep connection in background</string>
-    <string name="settings_notifications_keep_connection_detail">This device has no Google Play services, so Raft cannot receive push notifications. Keep Raft connected in the background to still get message notifications. Shows a persistent “Raft is receiving messages” notification and uses more battery.</string>
+    <string name="settings_notifications_keep_connection_detail">Keep Raft connected in the background to get message notifications. Shows a persistent “Raft is receiving messages” notification and uses more battery.</string>
     <string name="settings_notifications_battery_optimization_title">Allow running in background</string>
     <string name="settings_notifications_battery_optimization_detail">Turn off battery optimization for Raft so the system does not stop the background connection. Some phones also need Raft allowed under app launch or background activity settings.</string>
     <string name="settings_notifications_battery_optimization_allowed">Allowed</string>
@@ -2635,7 +2626,6 @@
     <string name="settings_computers_already_installed">Already have Raft Computer on this machine?</string>
     <string name="settings_computers_connect_only_description">Skip the install and only connect it to this server. If raft-computer is not found, run it as ~/.local/bin/raft-computer.</string>
     <string name="settings_computers_still_waiting_hint">Still waiting? Check the terminal where you ran the command. If it says Raft Computer is already running, or the install failed, use “Already have Raft Computer on this machine?” above.</string>
-    <string name="settings_computers_name_hint">A friendly name for this computer.</string>
     <string name="settings_computers_confirm_match">This is the computer I just set up%1$s.</string>
     <string name="settings_computers_connected_success">Computer connected successfully!</string>
     <string name="settings_computers_placeholder_name">My Mac</string>
@@ -2701,14 +2691,13 @@
     <string name="settings_computers_runtime_usage_health_error">error</string>
     <string name="settings_computers_runtime_usage_health_unknown">unknown</string>
     <string name="settings_computers_runtime_usage_reading">Reading cached snapshot…</string>
-    <string name="settings_computers_runtime_usage_unsupported_description">Account usage is unavailable for this runtime or sign-in method.</string>
     <string name="settings_computers_runtime_usage_read_failed">Cached usage could not be read.</string>
     <string name="settings_computers_runtime_usage_no_snapshot">No snapshot yet</string>
-    <string name="settings_computers_runtime_usage_no_snapshot_description">A bounded refresh was requested from this Computer. Provider credentials never leave it.</string>
+    <string name="settings_computers_runtime_usage_no_snapshot_description">Usage shows here once this Computer reports it. Provider credentials never leave it.</string>
     <string name="settings_computers_runtime_usage_stale">Stale snapshot · every value below is last known</string>
     <string name="settings_computers_runtime_usage_account_fallback">Runtime account</string>
     <string name="settings_computers_runtime_usage_reauth_description">Sign in again on this Computer. Last-known percentages are hidden until the provider authenticates.</string>
-    <string name="settings_computers_runtime_usage_parse_unavailable">Usage format unavailable</string>
+    <string name="settings_computers_runtime_usage_parse_unavailable">Usage unavailable</string>
     <string name="settings_computers_runtime_usage_window_used">%1$s used · resets %2$s</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">%1$s used · reset time unavailable</string>
     <string name="settings_computers_runtime_usage_window_used_up">Used up · resets %1$s</string>
@@ -2753,10 +2742,10 @@
     <string name="settings_computers_runtime_auth_sign_in_action">Sign in</string>
     <string name="settings_computers_runtime_auth_sign_out_action">Sign out</string>
     <string name="settings_computers_runtime_auth_upgrade_required">Upgrade this Computer to sign in from here</string>
-    <string name="settings_computers_runtime_auth_unavailable_not_installed">Signing in from here needs this runtime's own command-line tool on the Computer. Install it there, then use Rescan runtimes on the Computer's page.</string>
+    <string name="settings_computers_runtime_auth_unavailable_not_installed">Install this runtime's command-line tool on the Computer, then use Rescan runtimes on the Computer's page.</string>
     <string name="settings_computers_runtime_auth_unavailable_install_on">On macOS or Linux:</string>
-    <string name="settings_computers_runtime_auth_unavailable_version_unsupported">Signing in from here needs a newer version of this runtime's command-line tool on the Computer. Update it there, then use Rescan runtimes on the Computer's page.</string>
-    <string name="settings_computers_runtime_auth_unavailable_unsupported_installation">This runtime's installation on the Computer can't be signed in from here. Sign in on the Computer itself.</string>
+    <string name="settings_computers_runtime_auth_unavailable_version_unsupported">Update this runtime's command-line tool on the Computer, then use Rescan runtimes on the Computer's page.</string>
+    <string name="settings_computers_runtime_auth_unavailable_unsupported_installation">Sign in to this runtime on the Computer itself.</string>
     <string name="settings_computers_runtime_auth_not_attached">This Computer has no owner, so its runtimes can't be signed in from here</string>
     <string name="settings_computers_runtime_auth_this_computer">this Computer</string>
     <string name="settings_computers_runtime_auth_sign_in_title">Sign in to %1$s</string>
@@ -2864,7 +2853,7 @@
     <string name="settings_computers_runtime_auth_pi_paste_address_hint">After signing in, your browser lands on a page that won't load. Paste the full address from the address bar here.</string>
     <string name="settings_computers_runtime_auth_pi_paste_code_hint">After signing in, the page shows a code like abc…#xyz. Paste all of it.</string>
     <string name="settings_computers_runtime_auth_pi_error_busy">Another Pi sign-in is in progress on this Computer, for this or another provider. Finish or cancel it, then try again.</string>
-    <string name="settings_computers_runtime_auth_opencode_version_unsupported">Signing in from here needs OpenCode 2. Upgrade OpenCode on the Computer to 2.x, then use Rescan runtimes on the Computer's page.</string>
+    <string name="settings_computers_runtime_auth_opencode_version_unsupported">Upgrade OpenCode on the Computer to 2.x, then use Rescan runtimes on the Computer's page.</string>
     <string name="settings_computers_runtime_auth_opencode_flow_link">Sign in on the provider's page</string>
     <string name="settings_computers_runtime_auth_opencode_method_label">%1$s · %2$s</string>
     <string name="settings_computers_runtime_auth_opencode_key_refused">OpenCode can't take this as a key. Paste the key itself, not a reference to an environment variable or a file.</string>
@@ -3277,7 +3266,7 @@
     <string name="settings_developer_multi_server_realtime">Live updates in every window</string>
     <string name="settings_developer_multi_server_realtime_detail">With Multiple app windows on, each window's workspace keeps its own realtime connection (up to 3), so a window in the back still gets new messages. Off: only the workspace in front stays connected.</string>
     <string name="settings_mobile_ios_native_nav">iOS native navigation</string>
-    <string name="settings_mobile_ios_native_nav_detail">Show the migrated pages' titles and buttons in the system navigation bar, with the system swipe back (iPhone). Takes effect on the next app start.</string>
+    <string name="settings_mobile_ios_native_nav_detail">Show page titles and buttons in the system navigation bar, with the system swipe back. Takes effect on the next app start.</string>
     <string name="settings_developer_presets">Presets</string>
     <string name="settings_developer_presets_detail">Choose a preset to fill the environment form, then save to apply it.</string>
     <string name="settings_developer_presets_empty">No presets are available from this host.</string>
@@ -3372,7 +3361,7 @@
     <string name="markdown_mermaid_fullscreen">Full screen</string>
     <string name="markdown_mermaid_close_fullscreen">Close full screen</string>
     <string name="runtime_form_v2_update_required">Update the app to edit this setting.</string>
-    <string name="runtime_form_v2_update_required_blocking">This agent has a required setting this app version cannot edit. Update the app to save changes.</string>
+    <string name="runtime_form_v2_update_required_blocking">Update the app to save changes to this agent.</string>
     <string name="runtime_form_v2_error_required">Required</string>
     <string name="runtime_form_v2_error_invalid_url">Enter a URL that starts with http:// or https://</string>
     <string name="runtime_form_v2_error_not_a_choice">Choose one of the options</string>
@@ -3612,7 +3601,7 @@
     <string name="member_activity_overview_reply_loading">Loading the reply…</string>
     <string name="member_activity_overview_reply_unavailable">The reply is in a conversation you can't see.</string>
     <string name="member_activity_overview_empty_title">No overview yet</string>
-    <string name="member_activity_overview_empty_upgrade_desc">The overview shows one line per finished turn. The Raft on this agent's computer records turns from the latest version on; if it is older, upgrade it on the computer's page and new turns will show up here.</string>
+    <string name="member_activity_overview_empty_upgrade_desc">Each finished turn shows here as one line. If new turns don't show up, update Raft on this agent's computer from the computer's page.</string>
     <string name="member_activity_overview_empty_external_desc">The overview shows one line per finished turn. This agent hasn't reported a finished turn yet.</string>
     <string name="member_activity_overview_empty_open_computer">Open the Computer to Upgrade</string>
     <string name="member_activity_overview_empty_show_raw">Show Raw Log</string>
@@ -3836,7 +3825,7 @@
     <string name="agent_stop_turn_not_running">Nothing was running.</string>
     <string name="agent_stop_turn_failed">Couldn't stop the current turn.</string>
     <string name="agent_stop_turn_restarted">To stop the turn, the agent was restarted. Its conversation context is kept.</string>
-    <string name="agent_stop_turn_upgrade_required">This agent's Computer needs an upgrade to stop a single turn. You can stop the whole agent instead.</string>
+    <string name="agent_stop_turn_upgrade_required">Upgrade this agent's Computer to stop a single turn. You can stop the whole agent instead.</string>
     <string name="agent_stop_turn_computer_offline">This agent's Computer is offline.</string>
     <string name="channel_sos_entry">Stop All Agents</string>
     <string name="channel_sos_entry_detail">Stop all agents in this channel</string>
@@ -4221,7 +4210,7 @@
     <string name="artifacts_viewer_open_in_browser">Open in Browser</string>
     <string name="artifacts_viewer_copy_link">Copy Link</string>
     <string name="artifacts_viewer_link_copied">Link copied.</string>
-    <string name="artifacts_viewer_download_in_browser">Files can't be saved in the app yet. Opening this Artifact in your browser to download it.</string>
+    <string name="artifacts_viewer_download_in_browser">Opening this Artifact in your browser to download it.</string>
     <string name="artifacts_viewer_follow">Follow</string>
     <string name="artifacts_viewer_unfollow">Unfollow</string>
     <string name="artifacts_viewer_version_history">Version History</string>
@@ -4696,7 +4685,7 @@
     <string name="member_activity_subagents_stop_interrupted">Asked the subagent to stop.</string>
     <string name="member_activity_subagents_stop_not_running">This subagent isn't running.</string>
     <string name="member_activity_subagents_stop_unsupported">This subagent can't be stopped on its own.</string>
-    <string name="member_activity_subagents_stop_upgrade_required">This agent's Computer needs an upgrade to stop a single subagent.</string>
+    <string name="member_activity_subagents_stop_upgrade_required">Upgrade this agent's Computer to stop a single subagent.</string>
     <string name="member_activity_subagents_stop_failed">Couldn't stop the subagent.</string>
     <string name="member_activity_subagents_detail_type">Type</string>
     <string name="member_activity_subagents_detail_started">Started</string>
