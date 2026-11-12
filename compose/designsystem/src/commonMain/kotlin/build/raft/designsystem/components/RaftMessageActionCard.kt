@@ -306,6 +306,26 @@ fun RaftMessageActionCardHeaderDescription(
 }
 
 /**
+ * raft-ui `MessageActionCardHeaderMeta`: the time on a card, as a line of its own under the
+ * title, in Space Mono at the hint tier (`font-mono text-mono-meta font-normal tabular-nums
+ * text-foreground-hint`, `mt-0.5`; the 2dp step is the caller's, as the header's description
+ * slot already puts it under the title). It stays visible while the card is folded.
+ */
+@Composable
+fun RaftMessageActionCardHeaderMeta(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    RaftText(
+        text,
+        modifier,
+        style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Normal, fontFeatureSettings = "tnum"),
+        color = RaftTheme.colors.foregroundHint,
+        maxLines = 1,
+    )
+}
+
+/**
  * raft-ui `MessageActionCardNotice`: a standing note from Raft about consequences or
  * permissions, at most one, before the properties. A `fill-muted` block with an optional 14dp
  * [icon], `text-footnote` `foreground-muted`. Neutral, never a warning colour.
