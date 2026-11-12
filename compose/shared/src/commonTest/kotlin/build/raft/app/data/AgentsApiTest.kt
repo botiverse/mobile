@@ -381,6 +381,42 @@ class AgentsApiTest {
     }
 
     @Test
+    fun agentDetailCarriesTheRuntimeErrorCodes() = runPortableCoroutineTest {
+        // botiverse/slock #13949 `withRuntimeErrorProjection`, as a member reads it: the kept error
+        // and the error activity come with their code and the code's sentence, never the text.
+        val sentence =
+            "The agent's model provider usage limit has been reached. Wait for the limit to reset, or ask the agent's owner to switch it to another model or account."
+        val coded =
+            """{"id":"agent-1","name":"Agent One","status":"active","activity":"error",""" +
+                """"activityDetail":"$sentence","activityDetailKind":"runtime_error","activityErrorCode":"usage_limit",""" +
+                """"lastRuntimeError":{"message":"$sentence","code":"usage_limit","at":"2026-11-10T00:00:00Z","actionRequired":false}}"""
+        val detail =
+            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = coded)).agent(MemberId("agent-1")))
+                .data.toAgentDetailSummary()
+        assertEquals(AgentRuntimeErrorCode.UsageLimit, detail.activityErrorCode)
+        assertEquals(AgentRuntimeErrorCode.UsageLimit, detail.lastRuntimeErrorCode)
+
+        // The activity's code only while the activity is an error (web activityTypedCarriers).
+        val offline = coded.replace(""""activity":"error"""", """"activity":"offline"""")
+        val offlineDetail =
+            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = offline)).agent(MemberId("agent-1"))).data
+        assertEquals(null, offlineDetail.activityErrorCode)
+        assertEquals(AgentRuntimeErrorCode.UsageLimit, offlineDetail.lastRuntimeErrorCode)
+
+        // An older server (no code) and a newer server's unknown code: none.
+        val older = coded.replace(""","activityErrorCode":"usage_limit"""", "").replace(""","code":"usage_limit"""", "")
+        val olderDetail =
+            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = older)).agent(MemberId("agent-1"))).data
+        assertEquals(null, olderDetail.activityErrorCode)
+        assertEquals(null, olderDetail.lastRuntimeErrorCode)
+        val unknown = coded.replace("usage_limit", "quota_galaxy")
+        val unknownDetail =
+            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = unknown)).agent(MemberId("agent-1"))).data
+        assertEquals(null, unknownDetail.activityErrorCode)
+        assertEquals(null, unknownDetail.lastRuntimeErrorCode)
+    }
+
+    @Test
     fun agentDetailCarriesTheFailedStartAndTheKeptRuntimeError() = runPortableCoroutineTest {
         // GET /agents/:id: a failed start leaves the agent offline with `activityDetailKind`
         // runtime_unavailable and the shared SpawnFailureActivityDiagnostic; `lastRuntimeError`

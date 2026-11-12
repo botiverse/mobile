@@ -349,6 +349,8 @@ data class SharedServerMemberStatus(
     val wakeCrashLoop: AgentWakeCrashLoop? = null,
     /** The agent is stuck on one tool call (latest agent:activity frame); null when not. */
     val toolStuck: AgentToolStuck? = null,
+    /** The code of the runtime error [status] Error shows (web `activityErrorCode`, #13985); null otherwise. */
+    val errorCode: AgentRuntimeErrorCode? = null,
     /** The agent's runtime id (profile `roleDescription` for agents); null for humans/unknown. */
     val runtime: String? = null,
     /**
@@ -510,6 +512,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             activityToolName = presenceFact.activityToolName,
             wakeCrashLoop = presenceFact.wakeCrashLoop,
             toolStuck = presenceFact.toolStuck,
+            errorCode = presenceFact.errorCode,
             runtime = this?.agentRuntimeOrNull(),
             // A presence fact never carries external-ness; it comes from the
             // authoritative profile and must survive every liveness update.

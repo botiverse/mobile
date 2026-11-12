@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.resources.*
 import build.raft.app.data.AgentActivitySubscriptions
 import build.raft.app.data.AgentBlockedState
+import build.raft.app.data.AgentRuntimeErrorCode
 import build.raft.app.data.LikelyOnlineAgentStatusLabel
 import build.raft.app.data.NeutralAgentStatusLabel
 import build.raft.app.data.SharedServerMemberStatus
@@ -44,6 +45,11 @@ internal data class RaftAgentStatusIndicatorState(
     val wakeCrashLoop: AgentWakeCrashLoop? = null,
     /** The agent is stuck on one tool call (latest agent:activity frame); null when not. */
     val toolStuck: AgentToolStuck? = null,
+    /**
+     * The code of the runtime error an Error [status] shows (web `activityErrorCode`, #13985): its
+     * title is catalog copy every viewer reads, so it survives [withoutActivityDetail].
+     */
+    val errorCode: AgentRuntimeErrorCode? = null,
     /**
      * A guess, not a fact: no presence fact, lifecycle `active` (see
      * [build.raft.app.data.likelyOnlineMemberStatusOrNull]). Green, labelled "Likely online";
@@ -186,6 +192,7 @@ internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(): RaftAge
         runtime = runtime,
         wakeCrashLoop = wakeCrashLoop,
         toolStuck = toolStuck,
+        errorCode = errorCode,
         likelyOnline = likelyOnline,
         blocked = blocked
     )
@@ -460,6 +467,10 @@ internal fun RaftAgentActivityDetailText.localizedText(): String =
 internal fun RaftAgentStatusIndicatorState.localizedMemberStatusLabel(): String {
     // Web formatAgentDisplayStateText: a held agent reads why before anything else.
     blocked?.let { return it.localizedStatusLabel() }
+    // Web #13985: a coded runtime error reads its title; the server's generic member line, ours.
+    if (status == AgentStatus.Error && !external) {
+        agentErrorStatusCopy(errorCode, label)?.let { return stringResource(it) }
+    }
     // Server-kind and client-built details localize the same way the Home DM row does.
     workingActivityDetailText()
         ?.takeIf { it !is RaftAgentActivityDetailText.Raw }

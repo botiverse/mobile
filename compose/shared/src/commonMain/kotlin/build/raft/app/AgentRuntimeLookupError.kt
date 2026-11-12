@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import build.raft.app.data.AgentRuntimeErrorCode
 import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.resources.*
 
@@ -79,6 +80,13 @@ internal sealed interface AgentRuntimeErrorDisplay {
 
     /** Anything else: "Error: [detail]", or "Error" without one (web `formatActivityText(..., "error", raw)`). */
     data class Raw(val detail: String) : AgentRuntimeErrorDisplay
+
+    /**
+     * A runtime error with a code (web #13985 `AgentRuntimeErrorNotice`): the code's sentence for
+     * every viewer, the managers' wording for whoever may see details ([forManager]), with the
+     * error's own [detail] under it (empty for a member, who is sent no error text).
+     */
+    data class Coded(val code: AgentRuntimeErrorCode, val forManager: Boolean, val detail: String) : AgentRuntimeErrorDisplay
 }
 
 /** The agent stopped on a typed BillingError (web `runtimeErrorKind === "billingExhausted"`): the billing banner. */
@@ -96,10 +104,24 @@ internal fun agentRuntimeErrorDisplay(
     typedErrorReason: String?,
     spawnFailure: AgentSpawnFailure?,
     runtimeName: String?,
+    /** The error's code (web #13985), sent to every viewer; null without one. */
+    errorCode: AgentRuntimeErrorCode? = null,
+    /** The viewer may see the agent's details (web `canViewPrivateAgentSurfaces`). */
+    canViewDetails: Boolean = true,
 ): AgentRuntimeErrorDisplay {
+    val typedKind = agentTypedRuntimeErrorKind(typedErrorClass, typedErrorReason)
+    // The billing banner is unchanged (web: `runtimeErrorKind === "billingExhausted"` still wins).
+    if (errorCode != null && typedKind != AgentRuntimeErrorKind.BillingExhausted) {
+        return AgentRuntimeErrorDisplay.Coded(
+            code = errorCode,
+            forManager = canViewDetails,
+            detail = if (canViewDetails) membersAgentActivityErrorDisplayDetail(runtimeError) else "",
+        )
+    }
+    // Text patterns only for a viewer the server sends the text to, and only without a code.
     val kind =
-        agentTypedRuntimeErrorKind(typedErrorClass, typedErrorReason)
-            ?: runtimeError.takeIf { it.isNotBlank() }?.let(::agentClassifyRuntimeError)
+        typedKind
+            ?: runtimeError.takeIf { it.isNotBlank() && canViewDetails }?.let(::agentClassifyRuntimeError)
     if (kind == AgentRuntimeErrorKind.NotInstalled && runtimeName != null) {
         val lookup =
             agentRuntimeLookupDisplayForReason(spawnFailure?.takeIf { it.reason == "runtime_not_found" }?.lookupReason)
@@ -123,6 +145,8 @@ internal fun agentRuntimeErrorDisplayText(display: AgentRuntimeErrorDisplay): St
                 // The billing banner's title; the banner adds its body and one action.
                 AgentRuntimeErrorKind.BillingExhausted -> stringResource(Res.string.agent_runtime_error_billing_exhausted)
             }
+        is AgentRuntimeErrorDisplay.Coded ->
+            stringResource(if (display.forManager) display.code.messages.manager else display.code.messages.member)
         is AgentRuntimeErrorDisplay.Raw ->
             if (display.detail.isBlank()) {
                 stringResource(Res.string.agent_activity_error)

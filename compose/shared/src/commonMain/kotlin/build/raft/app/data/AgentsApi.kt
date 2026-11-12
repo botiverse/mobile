@@ -731,6 +731,10 @@ internal data class AgentSummary(
     val lastRuntimeErrorReason: String? = null,
     /** `lastRuntimeError.requiredAction`: what the owner must do about the kept error (botiverse/slock #13276). */
     val lastRuntimeErrorRequiredAction: AgentCredentialHoldReason? = null,
+    /** `lastRuntimeError.code` (web #13985): the kept error's code, for every viewer; null when none or unknown. */
+    val lastRuntimeErrorCode: AgentRuntimeErrorCode? = null,
+    /** `activityErrorCode` (web #13985): the code of the error [activity] shows; only while it is `error`. */
+    val activityErrorCode: AgentRuntimeErrorCode? = null,
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
     val toolStuck: AgentToolStuck? = null,
     /** Why the daemon holds the agent for an unusable sign-in, with [activityDetailKind] `idle`. */
@@ -783,6 +787,8 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         lastRuntimeErrorClass = lastRuntimeErrorClass,
         lastRuntimeErrorReason = lastRuntimeErrorReason,
         lastRuntimeErrorRequiredAction = lastRuntimeErrorRequiredAction,
+        lastRuntimeErrorCode = lastRuntimeErrorCode,
+        activityErrorCode = activityErrorCode,
         toolStuck = toolStuck,
         credentialHold = credentialHold,
         modelLimitsDefaultsReported = modelLimitsDefaultsReported,
@@ -1009,6 +1015,11 @@ private data class AgentWireDto(
     val spawnFailure: SpawnFailureDto? = null,
     /** Shared `AgentRuntimeErrorState`: the runtime error the server kept (web `agent.lastRuntimeError`). */
     val lastRuntimeError: AgentLastRuntimeErrorWireDto? = null,
+    /**
+     * #wg-rbac:#57 (server #13949 `withRuntimeErrorProjection`): the code of the runtime error the
+     * activity detail shows, sent to every viewer; a member's detail is only the code's sentence.
+     */
+    val activityErrorCode: String? = null,
     /** Shared `ToolStuckActivityDiagnostic`, served with any activity while the agent is stuck. */
     val toolStuck: ToolStuckDto? = null,
     /** Shared `CredentialHoldActivityDiagnostic`, sent with `activityDetailKind` `idle` (botiverse/slock #13276). */
@@ -1039,6 +1050,8 @@ private data class AgentLastRuntimeErrorWireDto(
      * #13276): what the owner must do; absent for errors that need no action and older servers.
      */
     val requiredAction: String? = null,
+    /** #wg-rbac:#57: the error's code (shared `RuntimeErrorCode`), sent to every viewer; absent without one. */
+    val code: String? = null,
 )
 
 /** Shared `RUNTIME_ERROR_REQUIRED_ACTIONS`: only `user_reauth` and `user_model_access`; anything else is none. */
@@ -1104,6 +1117,9 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         lastRuntimeErrorClass = lastRuntimeError?.errorClass?.trim()?.takeIf { it.isNotEmpty() },
         lastRuntimeErrorReason = lastRuntimeError?.errorReason?.trim()?.takeIf { it.isNotEmpty() },
         lastRuntimeErrorRequiredAction = lastRuntimeError?.requiredAction.toRuntimeErrorRequiredAction(),
+        lastRuntimeErrorCode = AgentRuntimeErrorCode.fromWire(lastRuntimeError?.code),
+        // Web activityTypedCarriers: the code rides only an error.
+        activityErrorCode = AgentRuntimeErrorCode.fromWire(activityErrorCode).takeIf { activity?.trim() == "error" },
         toolStuck = toolStuck.toAgentToolStuck(),
         credentialHold = credentialHold.toAgentCredentialHold(activityDetailKind),
         modelLimitsDefaultsReported = modelLimits?.defaultsReported == true,
