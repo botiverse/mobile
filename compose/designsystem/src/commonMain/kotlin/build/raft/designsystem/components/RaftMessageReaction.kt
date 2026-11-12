@@ -222,6 +222,8 @@ fun RaftMessageSavedIndicator(
     label: String,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    /** What a tap does, for screen readers (web `aria-label` "Remove from Saved"). */
+    onClickLabel: String? = null,
     interactionSource: MutableInteractionSource? = null,
 ) {
     val colors = RaftTheme.colors
@@ -240,7 +242,7 @@ fun RaftMessageSavedIndicator(
                 .raftPointerHover(source)
                 .then(
                     if (onClick != null) {
-                        Modifier.clickable(source, indication = null, role = Role.Button, onClick = onClick)
+                        Modifier.clickable(source, indication = null, onClickLabel = onClickLabel, role = Role.Button, onClick = onClick)
                     } else {
                         Modifier
                     },
