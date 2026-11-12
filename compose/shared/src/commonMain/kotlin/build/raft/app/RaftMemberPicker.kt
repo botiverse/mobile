@@ -267,7 +267,6 @@ private fun RaftMemberPickerRow(
             avatarWireValue = member.avatarWireValueForAvatarSlot(),
             avatarLabel = member.raftAvatarName(),
             statusColor = status?.color,
-            statusPulsing = status?.pulsing == true,
             avatarSize = 28.dp,
             sourceBadgeLabel = null,
             enabled = enabled,

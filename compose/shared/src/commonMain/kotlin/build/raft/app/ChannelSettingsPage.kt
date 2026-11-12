@@ -1407,7 +1407,6 @@ private fun ChannelSettingsMemberAvatar(member: MemberProfile, agentStatusResolv
     RaftAvatarWithStatus(
         statusColor = indicator?.color,
         avatarSize = ChannelSettingsStripTile,
-        statusPulsing = false,
         // The face's cutout is the members card under it.
         cutoutColor = RaftTheme.surfaceColor,
     ) { avatar() }

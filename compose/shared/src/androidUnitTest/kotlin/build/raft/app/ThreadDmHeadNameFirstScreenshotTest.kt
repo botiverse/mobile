@@ -58,14 +58,11 @@ class ThreadDmHeadNameFirstScreenshotTest {
 @Composable
 private fun DmHead(title: String, status: String) {
     val identity = remember(title) { MemberDetailIdentity(MemberId("agent-$title"), MemberKind.Agent) }
-    // Not pulsing: a Working dot animates forever, so the capture never goes idle (as the other
-    // screenshot tests build their state).
     val state =
         remember(status) {
             RaftAgentStatusIndicatorState(
                 status = AgentStatus.Working,
                 color = RaftColor.AccentLime,
-                pulsing = false,
                 label = status,
                 external = false,
             )

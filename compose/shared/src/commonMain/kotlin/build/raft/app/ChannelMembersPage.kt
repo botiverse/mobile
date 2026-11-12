@@ -140,7 +140,6 @@ internal fun ChannelMembersRow(
     cacheSubject: RaftAvatarCacheSubject?,
     cacheServerId: String?,
     statusColor: Color?,
-    statusPulsing: Boolean,
     badges: List<ChannelMemberBadge>,
     divider: Boolean,
     removing: Boolean = false,
@@ -164,7 +163,6 @@ internal fun ChannelMembersRow(
             RaftAvatarWithStatus(
                 statusColor = statusColor,
                 avatarSize = ChannelMembersAvatarSize,
-                statusPulsing = statusPulsing,
                 cutoutColor = RaftTheme.colors.layerCanvas,
             ) {
                 RaftAppAvatar(

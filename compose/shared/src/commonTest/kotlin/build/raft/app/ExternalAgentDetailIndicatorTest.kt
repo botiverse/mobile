@@ -4,7 +4,6 @@ import build.raft.app.data.ExternalAgentSetupState
 import build.raft.app.data.ExternalAgentStatusSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -151,7 +150,6 @@ class ExternalAgentDetailIndicatorTest {
         assertEquals(RaftColor.AccentCyan, result.state.color)
         assertEquals(ExternalAgentDetailCaption.External, result.caption)
         assertTrue(result.state.external)
-        assertFalse(result.state.pulsing)
         assertNull(result.state.status)
     }
 

@@ -800,7 +800,6 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                 RaftAvatarWithStatus(
                     statusColor = status?.color,
                     avatarSize = RaftSearchMetrics.EntityLeading,
-                    statusPulsing = status?.pulsing == true
                 ) {
                     RaftAppAvatar(
                         // web EntityResultRow: an agent's face (else the robot), a person's stored

@@ -22,11 +22,10 @@ class RaftAgentStatusIndicatorTest {
 
         assertEquals(AgentStatus.Working, state.status)
         assertEquals(RaftColor.BrandYellow, state.color)
-        assertTrue(state.pulsing)
     }
 
     @Test
-    fun activePresenceWithoutStatusUsesOnlineColorButDoesNotPulse() {
+    fun activePresenceWithoutStatusUsesOnlineColor() {
         val state =
             raftAgentStatusIndicatorState(
                 status = null,
@@ -36,7 +35,6 @@ class RaftAgentStatusIndicatorTest {
 
         assertEquals(null, state.status)
         assertEquals(RaftColor.AccentLime, state.color)
-        assertFalse(state.pulsing)
     }
 
     @Test
@@ -57,7 +55,7 @@ class RaftAgentStatusIndicatorTest {
 
     // task #1119: external agents have no managed liveness. React StatusDot renders
     // `external` unconditionally as the cyan token; the mobile mapping must do the same
-    // for every managed status, and color / pulse / label must move together.
+    // for every managed status, and color / label must move together.
     @Test
     fun externalAgentRendersExternalTokenForEveryManagedStatus() {
         val inputs: List<AgentStatus?> = AgentStatus.values().toList() + null
@@ -70,7 +68,6 @@ class RaftAgentStatusIndicatorTest {
                 )
             assertEquals(status, state.status, "status is preserved for $status")
             assertEquals(RaftColor.AccentCyan, state.color, "external color for $status")
-            assertFalse(state.pulsing, "external never pulses ($status)")
             assertEquals(ExternalAgentStatusLabel, state.label, "external label for $status")
             assertTrue(state.external)
         }
@@ -112,7 +109,6 @@ class RaftAgentStatusIndicatorTest {
                 external = true
             ).toRaftAgentStatusIndicatorState()
         assertEquals(RaftColor.AccentCyan, live.color)
-        assertFalse(live.pulsing)
         assertEquals(ExternalAgentStatusLabel, live.label)
 
         val managed =
@@ -123,7 +119,6 @@ class RaftAgentStatusIndicatorTest {
                 external = false
             ).toRaftAgentStatusIndicatorState()
         assertEquals(RaftColor.BrandYellow, managed.color)
-        assertTrue(managed.pulsing)
         assertEquals("Working", managed.label)
     }
 }

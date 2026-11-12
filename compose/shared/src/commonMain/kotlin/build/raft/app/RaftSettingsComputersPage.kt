@@ -2162,7 +2162,6 @@ private fun RaftComputerCardAgentSlot(
     RaftAvatarWithStatus(
         statusColor = live?.color,
         avatarSize = size.edge,
-        statusPulsing = live?.pulsing == true,
         cutoutColor = LocalRaftSurfaceColor.current,
         modifier =
             Modifier
@@ -3020,7 +3019,7 @@ internal fun raftComputerAgentStatusIndicator(
 @Composable
 private fun RaftComputerAgentStatus(live: RaftAgentStatusIndicatorState) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        RaftStatusIndicator(color = live.color, size = 10.dp, pulsing = live.pulsing)
+        RaftStatusIndicator(color = live.color, size = 10.dp)
         val text = live.localizedMemberStatusLabel()
         RaftText(
             text,

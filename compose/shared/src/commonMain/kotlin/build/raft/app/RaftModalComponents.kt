@@ -1220,7 +1220,6 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
     avatarWireValue: String?,
     avatarLabel: String,
     statusColor: Color?,
-    statusPulsing: Boolean,
     avatarSize: Dp,
     sourceBadgeLabel: String?,
     enabled: Boolean,
@@ -1240,7 +1239,6 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
     RaftAvatarWithStatus(
         statusColor = statusColor,
             avatarSize = avatarSize,
-            statusPulsing = statusPulsing
         ) {
             RaftAppAvatar(
                 kind = avatarKind,

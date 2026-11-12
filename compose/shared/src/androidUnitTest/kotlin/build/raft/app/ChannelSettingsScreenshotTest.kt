@@ -103,9 +103,9 @@ private val visualAgentStatusResolver: RaftAgentStatusResolver = { memberId ->
         when ((index / 3) % 3) {
             0 -> AgentStatus.Working to RaftColor.BrandYellow
             1 -> AgentStatus.Online to RaftColor.AccentLime
-            else -> AgentStatus.Offline to RaftColor.StatusNeutralGray
+            else -> AgentStatus.Offline to RaftColor.PresenceOffline
         }
-    flowOf(RaftAgentStatusIndicatorState(status = status, color = color, pulsing = false, label = status.name, external = false))
+    flowOf(RaftAgentStatusIndicatorState(status = status, color = color, label = status.name, external = false))
 }
 
 @Composable

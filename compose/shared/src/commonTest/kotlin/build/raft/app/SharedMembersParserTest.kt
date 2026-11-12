@@ -1318,7 +1318,7 @@ class SharedMembersParserTest {
     }
 
     @Test
-    fun agentStatusDisplayStateUsesActivityForColorAndPulse() {
+    fun agentStatusDisplayStateUsesActivityForColor() {
         val member =
             MemberProfile(
                 id = MemberId("agent-1"),
@@ -1336,7 +1336,6 @@ class SharedMembersParserTest {
 
         assertEquals(AgentStatus.Working, displayState.status)
         assertEquals(RaftColor.BrandYellow, displayState.color)
-        assertEquals(true, displayState.pulsing)
     }
 
     @Test
@@ -1360,7 +1359,7 @@ class SharedMembersParserTest {
     }
 
     @Test
-    fun agentStatusDisplayStateUsesOrangeForErrorWithoutPulse() {
+    fun agentStatusDisplayStateUsesOrangeForError() {
         val member =
             MemberProfile(
                 id = MemberId("agent-1"),
@@ -1378,7 +1377,6 @@ class SharedMembersParserTest {
 
         assertEquals(AgentStatus.Error, displayState.status)
         assertEquals(RaftColor.AccentOrange, displayState.color)
-        assertEquals(false, displayState.pulsing)
     }
 
     @Test
@@ -1397,8 +1395,7 @@ class SharedMembersParserTest {
             member.membersAgentStatusDisplayState(summaryStatus = "active")
 
         assertEquals(null, displayState.status)
-        assertEquals(RaftColor.StatusNeutralGray, displayState.color)
-        assertEquals(false, displayState.pulsing)
+        assertEquals(RaftColor.PresenceOffline, displayState.color)
     }
 
     @Test
@@ -1449,10 +1446,8 @@ class SharedMembersParserTest {
 
         assertEquals(AgentStatus.Online, agentDisplayState.status)
         assertEquals(RaftColor.AccentLime, agentDisplayState.color)
-        assertEquals(false, agentDisplayState.pulsing)
         assertEquals(null, humanDisplayState.status)
         assertEquals(RaftColor.BrandYellow, humanDisplayState.color)
-        assertEquals(false, humanDisplayState.pulsing)
     }
 
     @Test

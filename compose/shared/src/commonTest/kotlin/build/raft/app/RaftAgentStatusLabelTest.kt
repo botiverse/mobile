@@ -4,21 +4,17 @@ import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class RaftAgentStatusLabelTest {
     @Test
-    fun indicatorStateDerivesLabelFromSameResolvedStatusAsColorAndPulse() {
+    fun indicatorStateDerivesLabelFromSameResolvedStatusAsColor() {
         val working = raftAgentStatusIndicatorState(AgentStatus.Working, Presence.Active, external = false)
         assertEquals("Working", working.label)
         assertEquals(RaftColor.BrandYellow, working.color)
-        assertTrue(working.pulsing)
 
         val online = raftAgentStatusIndicatorState(AgentStatus.Online, Presence.Active, external = false)
         assertEquals("Online", online.label)
         assertEquals(RaftColor.AccentLime, online.color)
-        assertFalse(online.pulsing)
 
         val presenceOnly = raftAgentStatusIndicatorState(status = null, presence = Presence.Away, external = false)
         assertEquals("Away", presenceOnly.label)
@@ -34,7 +30,6 @@ class RaftAgentStatusLabelTest {
         val coarse = detailed.withoutActivityDetail()
         assertEquals("Working", coarse.label)
         assertEquals(detailed.color, coarse.color)
-        assertEquals(detailed.pulsing, coarse.pulsing)
         assertEquals(AgentStatus.Working, coarse.status)
         assertEquals(null, coarse.detailKind)
         assertEquals(null, coarse.activityToolName)
@@ -77,7 +72,7 @@ class RaftAgentStatusLabelTest {
 
     @Test
     fun staleSummaryDetailCannotCaptionALiveDotWithADifferentState() {
-        // Live store says Online (green, no pulse); stale summary still says
+        // Live store says Online (green); stale summary still says
         // Working with free-text detail. The label must follow the live dot.
         val live = raftAgentStatusIndicatorState(AgentStatus.Online, Presence.Active, external = false)
 
@@ -154,15 +149,14 @@ class RaftAgentStatusLabelTest {
             )
         )
         assertEquals(null, unknown.status)
-        assertEquals(RaftColor.StatusNeutralGray, unknown.color)
-        assertFalse(unknown.pulsing)
+        assertEquals(RaftColor.PresenceOffline, unknown.color)
     }
 
     @Test
     fun observedResolutionIsNullWhenOnlyTheUnknownPlaceholderWouldApply() {
         // The dot must come from this function, not from the label-facing one: that one
         // substitutes the unknown placeholder, whose colour maps through Presence.Offline to
-        // StatusNeutralGray, so an unknown agent would paint the same dot as an offline one
+        // PresenceOffline, so an unknown agent would paint the same dot as an offline one
         // (task #256).
         assertEquals(
             null,
@@ -175,7 +169,7 @@ class RaftAgentStatusLabelTest {
         // ...while the label-facing resolution still yields a non-null placeholder, because an
         // explicit unknown has to outrank a stale summary caption.
         assertEquals(
-            RaftColor.StatusNeutralGray,
+            RaftColor.PresenceOffline,
             resolveMembersAgentStatusIndicatorState(
                 canonicalState = null,
                 fixtureFallback = null,
@@ -268,6 +262,5 @@ class RaftAgentStatusLabelTest {
             )
         assertEquals(ExternalAgentStatusLabel, external.label)
         assertEquals(RaftColor.AccentCyan, external.color)
-        assertFalse(external.pulsing)
     }
 }
