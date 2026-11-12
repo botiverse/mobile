@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.ui.platform.ClipEntry
 import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
@@ -77,13 +78,21 @@ internal expect fun raftPlatformShortcutsUseCommand(): Boolean
 internal expect fun raftPlatformSupportsInAppBrowser(): Boolean
 
 /**
- * Desktop paste into the composer (web MessageInput `handlePaste`): whether the system clipboard
- * holds files or an image, and those as attachments. Phones paste text only (false / empty).
+ * Paste into the composer (web MessageInput `handlePaste`): whether the system clipboard holds
+ * files or an image, and those as attachments. Desktop: files or an image; iOS: images; Android
+ * pastes text only (false / empty).
  */
 internal expect fun raftPlatformClipboardHasAttachments(): Boolean
 
 /** Blocking clipboard read (an image is written to a PNG); call off the UI thread. */
 internal expect fun raftPlatformReadClipboardAttachments(): List<PlatformFile>
+
+/**
+ * The composer's clipboard entry while the system clipboard holds images and no text (iOS):
+ * [ThreadComposerImagePastePlaceholder], so the text field offers Paste ([ThreadComposerImagePasteClipboard]).
+ * Null where a paste with an image is the paste shortcut's (desktop) or not offered yet (Android).
+ */
+internal expect fun raftPlatformImagePasteClipEntry(): ClipEntry?
 
 /**
  * Least space under the conversation composer. Phones: 0 (their padding follows the safe area /

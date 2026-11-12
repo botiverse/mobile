@@ -3,6 +3,7 @@ package build.raft.app
 import android.os.Build
 import java.text.BreakIterator
 import java.util.Locale
+import androidx.compose.ui.platform.ClipEntry
 import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
@@ -42,6 +43,8 @@ internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = true
 internal actual fun raftPlatformClipboardHasAttachments(): Boolean = false
 
 internal actual fun raftPlatformReadClipboardAttachments(): List<PlatformFile> = emptyList()
+
+internal actual fun raftPlatformImagePasteClipEntry(): ClipEntry? = null
 
 internal actual fun raftPlatformComposerMinimumBottomPaddingDp(): Float = 0f
 

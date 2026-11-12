@@ -56,6 +56,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.referentialEqualityPolicy
@@ -113,6 +114,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.focus.FocusRequester
 import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -2313,8 +2315,14 @@ internal fun ThreadComposerContent(
         owner = editorOwner,
         onEvent = onEvent,
     )
+    // Paste with only images on the clipboard attaches them (ThreadComposerImagePaste.kt).
+    val platformClipboard = LocalClipboard.current
+    val imagePasteClipboard = remember(platformClipboard) { ThreadComposerImagePasteClipboard(platformClipboard) }
     // The conversation composer's own focus never counts as another field's (RaftAutofocusGuard).
-    CompositionLocalProvider(LocalRaftEditorIsConversationComposer provides true) {
+    CompositionLocalProvider(
+        LocalRaftEditorIsConversationComposer provides true,
+        LocalClipboard provides imagePasteClipboard,
+    ) {
     ThreadComposerContentLeaf(
         surface = surface,
         state = state,
@@ -3156,11 +3164,25 @@ internal fun ThreadComposerContentLeaf(
                     // IME dismiss→reopen cycle on iOS.
                     key(state.instanceId) {
                         val sourceSessionId = editorSessionId
+                        // A system paste that found only images ([ThreadComposerImagePasteRequests]).
+                        val imagePasteRequests = ThreadComposerImagePasteRequests.count
+                        var handledImagePasteRequests by remember { mutableIntStateOf(imagePasteRequests) }
+                        LaunchedEffect(imagePasteRequests) {
+                            if (imagePasteRequests == handledImagePasteRequests) return@LaunchedEffect
+                            handledImagePasteRequests = imagePasteRequests
+                            if (focused) onEvent(ThreadComposerPasteAttachmentsAction, null, null, null)
+                        }
                         TextField(
                             value = fieldValue,
                             placeholder = localizedThreadComposerPlaceholder(state.placeholder),
                             autoFocus = shouldAutoFocus,
-                            onValueChange = onValueChange@ { next ->
+                            onValueChange = onValueChange@ { changed ->
+                                // Paste with only images on the clipboard: they go to the tray, the
+                                // placeholder that offered Paste does not go into the text.
+                                val next =
+                                    threadComposerTakeImagePaste(changed)
+                                        ?.also { onEvent(ThreadComposerPasteAttachmentsAction, null, null, null) }
+                                        ?: changed
                                 if (submittedEchoFence.shouldIgnore(sourceSessionId, next)) {
                                     return@onValueChange
                                 }
@@ -5502,9 +5524,9 @@ internal fun threadComposerIsPasteShortcut(
 ): Boolean = keyDown && key == Key.V && (meta || ctrl) && !shift && !alt
 
 /**
- * Desktop paste of files / an image (web MessageInput `handlePaste`): when the clipboard holds
+ * Paste of files / an image by shortcut (web MessageInput `handlePaste`): when the clipboard holds
  * them, the paste shortcut attaches them ([onPaste]) instead of pasting text. Plain text, and
- * every phone ([raftPlatformClipboardHasAttachments] is false there), paste as before.
+ * Android ([raftPlatformClipboardHasAttachments] is false there), paste as before.
  */
 private fun Modifier.threadComposerPasteAttachments(onPaste: () -> Unit): Modifier =
     onPreviewKeyEvent { event ->
