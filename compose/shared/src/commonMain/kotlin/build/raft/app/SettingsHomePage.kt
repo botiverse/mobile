@@ -11159,7 +11159,7 @@ private fun SharedMembersScreen(
                     (nextState as? SharedMembersUiState.Content)?.let(onContentLoaded)
                     // Stage the landing inside submit, before the dialog's teardown cancels this
                     // coroutine (the same ordering as MembersPage, task #399 / #3140).
-                    pendingCreatedAgent = createdAgentLanding(submit, profile)
+                    pendingCreatedAgent = createdAgentLanding(submit, profile.inCreatingServer(serverId))
                     // The row above is only a stand-in: replace it with the server's record. Re-entering
                     // the page seeds the store from this cached content, so without a forced refresh the
                     // stand-in was served as a cache hit indefinitely (task #148, HuaTuo 23bc896b).

@@ -1,8 +1,10 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.ChannelRepository
@@ -25,7 +27,11 @@ import build.raft.app.resources.*
 import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftToastHostState
 import build.raft.designsystem.components.RaftToastIntent
+import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.update
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
@@ -56,8 +62,15 @@ internal fun createdAgentLanding(submit: SharedCreateAgentDialogSubmit, agent: M
         CreatedAgentLanding.CreatedToast(agent)
     }
 
-/** `agent.create.createdToast.*` (web), resolved once in composition. */
-internal class RaftCreatedAgentToastCopy(
+/**
+ * The created agent stamped with the server it was created on, so View can tell the session moved
+ * to another server since (web `onServer()`); a blank [serverId] leaves it as it was.
+ */
+internal fun MemberProfile.inCreatingServer(serverId: String): MemberProfile =
+    serverId.trim().takeIf { it.isNotBlank() }?.let { copy(serverId = ServerId(it)) } ?: this
+
+/** `agent.create.createdToast.*` (web), resolved once in composition (equal while the language is). */
+internal data class RaftCreatedAgentToastCopy(
     private val titleTemplate: String,
     val view: String,
     private val openFailedTemplate: String,
@@ -142,10 +155,21 @@ internal suspend fun openMemberDirectMessage(
 }
 
 /**
+ * Runs View's DM request: the process, not the page, so a request a tap started finishes even
+ * if the page's composition goes first (its result is then dropped, see [RaftCreatedAgentReceipt]).
+ */
+private val raftCreatedAgentViewScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+/**
  * Lands a created agent ([CreatedAgentLanding]): [openSetupGuide] for an external agent, else the
  * "Created <name>" toast on [toastHost] whose View fetches the DM ([openDirectMessage]) in [scope]
  * and opens it ([showDirectMessage]). Without a toast host (no window) the title alone goes to
  * [fallbackToast].
+ *
+ * The toast lives on the window, the DM opens through the page that created the agent. So when
+ * that page leaves ([dispose]) its toast closes with it (View is never offered when nothing can
+ * open the DM), and a View already under way opens nothing once the page has gone or the
+ * session moved to another server (web `viewCreatedAgent`'s `onServer()`): the person went on.
  */
 internal class RaftCreatedAgentReceipt(
     private val scope: CoroutineScope,
@@ -155,10 +179,19 @@ internal class RaftCreatedAgentReceipt(
     private val openDirectMessage: suspend (MemberProfile) -> DataResult<OpenDirectMessageResult>?,
     private val showDirectMessage: (DataResult<OpenDirectMessageResult>, MemberProfile) -> Unit,
     private val fallbackToast: (String) -> Unit,
+    /** The session's current server id; null when unknown (no session read). */
+    private val currentServerId: suspend () -> String? = { null },
     private val log: (String) -> Unit = {},
 ) {
+    private val disposed = atomic(false)
+    private val shownToastIds = atomic(emptySet<Long>())
+
     fun land(landing: CreatedAgentLanding) {
         val agent = landing.agent
+        if (disposed.value) {
+            log("create_agent_landing_skip reason=page_gone memberId=${agent.id.value}")
+            return
+        }
         when (landing) {
             is CreatedAgentLanding.SetupGuide -> {
                 log("create_agent_landing kind=setup_guide memberId=${agent.id.value}")
@@ -170,7 +203,8 @@ internal class RaftCreatedAgentReceipt(
                 if (host == null) {
                     fallbackToast(copy.title(agent.displayName))
                 } else {
-                    showCreatedAgentToast(host, agent, copy, ::view)
+                    val id = showCreatedAgentToast(host, agent, copy, ::view)
+                    shownToastIds.update { it + id }
                 }
             }
         }
@@ -178,18 +212,113 @@ internal class RaftCreatedAgentReceipt(
 
     /** View on the toast: the agent's DM, as the profile's Message opens it. */
     fun view(agent: MemberProfile) {
+        if (disposed.value) {
+            log("create_agent_toast_view_skip reason=page_gone memberId=${agent.id.value}")
+            return
+        }
         log("create_agent_toast_view memberId=${agent.id.value}")
         scope.launch {
+            val agentServerId = agent.serverId?.value?.trim()?.takeIf { it.isNotBlank() }
+            if (agentServerId != null) {
+                val current = currentServerId()?.trim()
+                if (current != agentServerId) {
+                    log("create_agent_toast_view_skip reason=server_changed memberId=${agent.id.value}")
+                    return@launch
+                }
+            }
             val result = openDirectMessage(agent) ?: return@launch
+            if (disposed.value) {
+                log("create_agent_toast_view_skip reason=page_gone_during_open memberId=${agent.id.value}")
+                return@launch
+            }
             showDirectMessage(result, agent)
         }
+    }
+
+    /** The page that created the agent left: its toast closes, and a View under way opens nothing. */
+    fun dispose() {
+        if (disposed.getAndSet(true)) return
+        val host = toastHost ?: return
+        shownToastIds.getAndSet(emptySet()).forEach(host::dismiss)
     }
 }
 
 /**
+ * [RaftCreatedAgentReceipt] for one composition: built once per toast host, with the latest
+ * callbacks, and [RaftCreatedAgentReceipt.dispose]d when the composition leaves.
+ */
+@Composable
+internal fun rememberCreatedAgentReceipt(
+    toastHost: RaftToastHostState?,
+    copy: RaftCreatedAgentToastCopy,
+    openSetupGuide: (MemberProfile) -> Unit,
+    openDirectMessage: suspend (MemberProfile) -> DataResult<OpenDirectMessageResult>?,
+    showDirectMessage: (DataResult<OpenDirectMessageResult>, MemberProfile) -> Unit,
+    fallbackToast: (String) -> Unit,
+    currentServerId: suspend () -> String?,
+    log: (String) -> Unit = {},
+    scope: CoroutineScope = raftCreatedAgentViewScope,
+): RaftCreatedAgentReceipt {
+    val latestOpenSetupGuide by rememberUpdatedState(openSetupGuide)
+    val latestOpenDirectMessage by rememberUpdatedState(openDirectMessage)
+    val latestShowDirectMessage by rememberUpdatedState(showDirectMessage)
+    val latestFallbackToast by rememberUpdatedState(fallbackToast)
+    val latestCurrentServerId by rememberUpdatedState(currentServerId)
+    val latestLog by rememberUpdatedState(log)
+    val receipt =
+        remember(toastHost, scope, copy) {
+            RaftCreatedAgentReceipt(
+                scope = scope,
+                toastHost = toastHost,
+                copy = copy,
+                openSetupGuide = { latestOpenSetupGuide(it) },
+                openDirectMessage = { latestOpenDirectMessage(it) },
+                showDirectMessage = { result, agent -> latestShowDirectMessage(result, agent) },
+                fallbackToast = { latestFallbackToast(it) },
+                currentServerId = { latestCurrentServerId() },
+                log = { latestLog(it) },
+            )
+        }
+    DisposableEffect(receipt) { onDispose { receipt.dispose() } }
+    return receipt
+}
+
+/**
+ * Opens a View's DM result like the profile's Message ([openMembersDirectMessageResult]): in the
+ * app shell's Chat when [openInShell] takes it, else a thread page from [pager]; "Couldn't open
+ * your conversation with <name>" ([toast]) when there is nothing to open, and an error toast with
+ * the failed request's trace id ([errorToast]) for a server error or refusal.
+ */
+internal fun DataResult<OpenDirectMessageResult>.openCreatedAgentDirectMessage(
+    agent: MemberProfile,
+    pager: Pager,
+    storeScope: RaftShellStoreScope,
+    openInShell: ((ThreadLaunchConversationIdentity) -> Boolean)?,
+    timeContext: RaftTimeContext?,
+    copy: RaftCreatedAgentToastCopy,
+    errorTemplate: String,
+    permissionMessage: String,
+    errorStrings: ErrorPresentationStrings,
+    toast: (String) -> Unit,
+    errorToast: (message: String, traceId: String?) -> Unit,
+) = openMembersDirectMessageResult(
+    pager = pager,
+    storeScope = storeScope,
+    openInShell = openInShell,
+    member = agent,
+    timeContext = timeContext,
+    unavailableMessage = copy.openFailed(agent.displayName),
+    errorTemplate = errorTemplate,
+    permissionMessage = permissionMessage,
+    errorStrings = errorStrings,
+    onUnavailableAction = toast,
+    onErrorAction = errorToast,
+)
+
+/**
  * [RaftCreatedAgentReceipt] for a page: the window's toast host, the DM opened like the profile's
- * Message ([openMembersDirectMessageResult]; [openInShell] opens it in the app shell's Chat when it
- * can), "Couldn't open your conversation with <name>" when it cannot be opened.
+ * Message ([openCreatedAgentDirectMessage]; [openInShell] opens it in the app shell's Chat when it
+ * can).
  */
 @Composable
 internal fun rememberRaftCreatedAgentReceipt(
@@ -200,7 +329,6 @@ internal fun rememberRaftCreatedAgentReceipt(
     openInShell: ((ThreadLaunchConversationIdentity) -> Boolean)? = null,
     timeContext: RaftTimeContext? = null,
 ): RaftCreatedAgentReceipt {
-    val scope = rememberCoroutineScope()
     val toastHost = LocalRaftToastHostState.current
     val copy = raftCreatedAgentToastCopy()
     val errorStrings = localizedErrorPresentationStrings()
@@ -220,28 +348,28 @@ internal fun rememberRaftCreatedAgentReceipt(
                 warningLogger = { message -> bridge.log("created_agent_channel_repository $message") }
             )
         }
-    return RaftCreatedAgentReceipt(
-        scope = scope,
+    return rememberCreatedAgentReceipt(
         toastHost = toastHost,
         copy = copy,
         openSetupGuide = openSetupGuide,
         openDirectMessage = { agent -> openMemberDirectMessage(agent, authStore, channelRepository, sharedHomeStore) },
         showDirectMessage = { result, agent ->
-            result.openMembersDirectMessageResult(
+            result.openCreatedAgentDirectMessage(
+                agent = agent,
                 pager = pager,
                 storeScope = storeScope,
                 openInShell = openInShell,
-                member = agent,
                 timeContext = timeContext,
-                unavailableMessage = copy.openFailed(agent.displayName),
+                copy = copy,
                 errorTemplate = errorTemplate,
                 permissionMessage = permissionMessage,
                 errorStrings = errorStrings,
-                onUnavailableAction = { bridge.toast(it) },
-                onErrorAction = { message, traceId -> bridge.errorToast(message, traceId) }
+                toast = { bridge.toast(it) },
+                errorToast = { message, traceId -> bridge.errorToast(message, traceId) },
             )
         },
         fallbackToast = { bridge.toast(it) },
+        currentServerId = { authStore.readSession()?.currentServerId },
         log = { bridge.log(it) },
     )
 }

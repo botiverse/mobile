@@ -2625,7 +2625,7 @@ internal fun MembersPageContent(
                     // AFTER submit() returns. Staging the landing inside submit — before that
                     // teardown — is what makes the write survive (the #3140 bug: the dismissal
                     // came first and cancelled it).
-                    pendingCreatedAgent = createdAgentLanding(submit, profile)
+                    pendingCreatedAgent = createdAgentLanding(submit, profile.inCreatingServer(serverId))
                     serverId.trim().takeIf { it.isNotBlank() }?.let { cleanServerId ->
                         serverMembersStore.refreshMembers(
                             ServerId(cleanServerId),

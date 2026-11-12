@@ -10,6 +10,8 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.OpenDirectMessageResult
+import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.ScreenError
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
@@ -19,8 +21,10 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.designsystem.components.RaftToastHostState
 import build.raft.designsystem.components.RaftToastIntent
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
@@ -64,6 +68,8 @@ class RaftCreatedAgentReceiptTest {
         host: RaftToastHostState?,
         recorder: Recorder,
         dmResult: DataResult<OpenDirectMessageResult>? = dm,
+        currentServerId: String? = "server-1",
+        awaitDm: CompletableDeferred<Unit>? = null,
         showDirectMessage: (DataResult<OpenDirectMessageResult>, MemberProfile) -> Unit = { result, member ->
             recorder.shownDms += result to member
         },
@@ -74,11 +80,50 @@ class RaftCreatedAgentReceiptTest {
         openSetupGuide = { recorder.setupGuides += it },
         openDirectMessage = { member ->
             recorder.dmFetches += member
+            awaitDm?.await()
             dmResult
         },
         showDirectMessage = showDirectMessage,
         fallbackToast = { recorder.fallbackToasts += it },
+        currentServerId = { currentServerId },
     )
+
+    private fun shellPager(opened: MutableList<String>): Pager {
+        val transport = HostBridgeTransport { _, _, _ -> }
+        val navigator =
+            object : RaftCmpNavigator {
+                override fun openPage(pageName: String, pageData: JsonObject) {
+                    opened += pageName
+                }
+
+                override fun closePage() = Unit
+            }
+        return object : Pager() {}.also {
+            it.pagerId = "created-agent-toast-test"
+            it.pageData = PageData(JSONObject())
+            it.host = RaftCmpHost(BridgeWireHostCapabilities(transport), navigator, bridgeTransport = transport)
+        }
+    }
+
+    private class Toasts {
+        val plain = mutableListOf<String>()
+        val errors = mutableListOf<Pair<String, String?>>()
+    }
+
+    private fun DataResult<OpenDirectMessageResult>.openForTest(opened: MutableList<String>, toasts: Toasts) =
+        openCreatedAgentDirectMessage(
+            agent = agent,
+            pager = shellPager(opened),
+            storeScope = RaftShellStoreScope.create("shell-created-agent", "server-1"),
+            openInShell = null,
+            timeContext = null,
+            copy = copy,
+            errorTemplate = "Couldn't open: %1\$s",
+            permissionMessage = "You can't message this agent.",
+            errorStrings = englishErrorPresentationStringsForTest(),
+            toast = { toasts.plain += it },
+            errorToast = { message, traceId -> toasts.errors += message to traceId },
+        )
 
     @Test
     fun landingIsTheToastExceptForAnExternalAgent() {
@@ -131,44 +176,84 @@ class RaftCreatedAgentReceiptTest {
     @Test
     fun viewRoutesTheDirectMessageToTheThreadPageAsMessageDoes() = runTest {
         val opened = mutableListOf<String>()
-        val unavailable = mutableListOf<String>()
-        val transport = HostBridgeTransport { _, _, _ -> }
-        val navigator =
-            object : RaftCmpNavigator {
-                override fun openPage(pageName: String, pageData: JsonObject) {
-                    opened += pageName
-                }
-
-                override fun closePage() = Unit
-            }
-        val pager =
-            object : Pager() {}.also {
-                it.pagerId = "created-agent-toast-test"
-                it.pageData = PageData(JSONObject())
-                it.host = RaftCmpHost(BridgeWireHostCapabilities(transport), navigator, bridgeTransport = transport)
-            }
+        val toasts = Toasts()
         val host = RaftToastHostState()
         val recorder = Recorder()
-        receipt(this, host, recorder) { result, member ->
-            result.openMembersDirectMessageResult(
-                pager = pager,
-                storeScope = RaftShellStoreScope.create("shell-created-agent", "server-1"),
-                openInShell = null,
-                member = member,
-                timeContext = null,
-                unavailableMessage = copy.openFailed(member.displayName),
-                errorTemplate = "%1\$s",
-                permissionMessage = "no permission",
-                errorStrings = englishErrorPresentationStringsForTest(),
-                onUnavailableAction = { unavailable += it },
-            )
-        }.land(createdAgentLanding(submit(), agent))
+        receipt(this, host, recorder) { result, _ -> result.openForTest(opened, toasts) }
+            .land(createdAgentLanding(submit(), agent))
 
         checkNotNull(host.visible.single().onAction).invoke()
         advanceUntilIdle()
 
-        assertEquals(emptyList(), unavailable)
+        assertEquals(emptyList(), toasts.plain)
+        assertEquals(emptyList(), toasts.errors)
         assertEquals(listOf(THREAD_PAGE), opened)
+    }
+
+    @Test
+    fun aDirectMessageErrorOrRefusalShowsAnErrorToastWithItsTraceId() {
+        val traceId = "0123456789abcdef0123456789abcdef"
+        val opened = mutableListOf<String>()
+        val toasts = Toasts()
+
+        DataResult.Error(ScreenError(code = "dm_open_failed", traceId = traceId)).openForTest(opened, toasts)
+        DataResult.NoPermission(PermissionBlocker(code = "forbidden", traceId = traceId)).openForTest(opened, toasts)
+
+        assertEquals(listOf<String?>(traceId, traceId), toasts.errors.map { it.second })
+        assertTrue(toasts.errors[0].first.startsWith("Couldn't open: "), "the error names what failed: ${toasts.errors[0]}")
+        assertEquals("You can't message this agent.", toasts.errors[1].first)
+        assertEquals(emptyList(), toasts.plain)
+        assertEquals(emptyList(), opened)
+    }
+
+    @Test
+    fun anEmptyResultSaysTheConversationCouldNotBeOpened() {
+        val toasts = Toasts()
+        DataResult.Empty(build.raft.app.data.EmptyReason.NoMembers).openForTest(mutableListOf(), toasts)
+        assertEquals(listOf("Couldn't open your conversation with Reef. Try again."), toasts.plain)
+    }
+
+    @Test
+    fun viewAfterTheSessionMovedToAnotherServerRequestsNothing() = runTest {
+        val recorder = Recorder()
+        receipt(this, RaftToastHostState(), recorder, currentServerId = "server-2").view(agent)
+        advanceUntilIdle()
+
+        assertTrue(recorder.dmFetches.isEmpty(), "no DM is requested on the wrong server")
+        assertTrue(recorder.shownDms.isEmpty())
+    }
+
+    @Test
+    fun theCreatingPageLeavingClosesTheToastAndViewOpensNothing() = runTest {
+        val host = RaftToastHostState()
+        val recorder = Recorder()
+        val receipt = receipt(this, host, recorder)
+        receipt.land(createdAgentLanding(submit(), agent))
+        val view = checkNotNull(host.visible.single().onAction)
+
+        receipt.dispose()
+        view()
+        advanceUntilIdle()
+
+        assertTrue(host.visible.isEmpty(), "the toast closes with the page that would open the DM")
+        assertTrue(recorder.dmFetches.isEmpty())
+        assertTrue(recorder.shownDms.isEmpty())
+    }
+
+    @Test
+    fun aViewUnderWayWhenThePageLeavesOpensNothing() = runTest {
+        val recorder = Recorder()
+        val answer = CompletableDeferred<Unit>()
+        val receipt = receipt(this, RaftToastHostState(), recorder, awaitDm = answer)
+        receipt.view(agent)
+        runCurrent()
+        assertEquals(listOf(agent), recorder.dmFetches)
+
+        receipt.dispose()
+        answer.complete(Unit)
+        advanceUntilIdle()
+
+        assertTrue(recorder.shownDms.isEmpty(), "the person went on: no page opens over where they are")
     }
 
     @Test
