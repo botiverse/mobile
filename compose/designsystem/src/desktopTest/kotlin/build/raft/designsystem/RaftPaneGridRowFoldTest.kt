@@ -81,13 +81,14 @@ class RaftPaneGridRowFoldTest {
     }
 
     /** A column of [cells]; its stack's seam has a name of its own (the app's: "Resize Tasks and Files"), as the column's seam does. */
-    private fun column(bounds: RaftPaneGridColumnBounds, vararg cells: String) =
+    private fun column(bounds: RaftPaneGridColumnBounds, vararg cells: String, trailing: Boolean = false) =
         RaftPaneGridColumn(
             bounds,
             "Resize ${bounds.id}",
             cells.map { cell -> RaftPaneGridCell(cell) { Cell(cell) } },
             splitLabel = "Split ${bounds.id}",
             tabLabel = bounds.id,
+            trailing = trailing,
         )
 
     /** The outermost node with [tag]: the nested grids' own main panes carry the same tag inside it. */
@@ -330,6 +331,43 @@ class RaftPaneGridRowFoldTest {
             waitForIdle()
             onNodeWithText("value first", useUnmergedTree = true).assertExists()
             onNodeWithText("value second", useUnmergedTree = true).assertDoesNotExist()
+        }
+
+    private fun ComposeUiTest.leftDp(tag: String): Float =
+        with(density) { onAllNodesWithTag(tag, useUnmergedTree = true)[0].fetchSemanticsNode().boundsInRoot.left.toDp().value }
+
+    /**
+     * The app's profile / details column (#189 step 3) is declared by the detail, one level in, with the thread; Tasks /
+     * Files come from the conversation two levels in. As on the web's default layout the profile column stands last.
+     */
+    @Test
+    fun aTrailingColumnStandsLastWhicheverGridDeclaredIt() =
+        runComposeUiTest {
+            rowWidth = 1600f
+            val sizes = RaftPaneGridMemorySizes()
+            detailCompositions = 0
+            conversationCompositions = 0
+            setContent {
+                Frame(sizes) {
+                    RaftPaneGrid(columns = emptyList()) {
+                        detailCompositions = counted(detailCompositions, "detail")
+                        RaftPaneGrid(columns = listOf(column(thread, "thread"), column(profile, "profile", "details", trailing = true))) {
+                            conversationCompositions = counted(conversationCompositions, "conversation")
+                            raftPaneGridRoomDp()
+                            RaftPaneGrid(columns = listOf(column(cards, "tasks", "files"))) { Cell("main") }
+                        }
+                    }
+                }
+            }
+            waitForIdle()
+            val threadAt = leftDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + thread.id)
+            val cardsAt = leftDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + cards.id)
+            val profileAt = leftDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + profile.id)
+            assertTrue(threadAt < cardsAt && cardsAt < profileAt, "thread $threadAt, then Tasks / Files $cardsAt, then the profile $profileAt")
+            // 1600 holds the columns' 400 + 360 + 400 and the conversation's 440 (what they leave): each at its own width.
+            near(400f, widthDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + profile.id), "profile")
+            near(1600f - 400f, profileAt, "the profile at the row's end")
+            assertSettled()
         }
 
     private companion object {

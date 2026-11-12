@@ -427,6 +427,11 @@ class RaftPaneGridColumn(
     val shortSwitch: (@Composable () -> Unit)? = null,
     /** Its tab's label where the row makes it a tab (#189 rule 4; web RowTabs): its sections' titles, ` · ` between. */
     val tabLabel: String? = null,
+    /**
+     * It stands after every column without it, whichever grid declared it (web DEFAULT_CHANNEL_SIDE_LAYOUT: the
+     * profile / context / details column is the row's last, right of Tasks / Files a page declares further in).
+     */
+    val trailing: Boolean = false,
 )
 
 // ---------------------------------------------------------------- the leading column
@@ -482,6 +487,7 @@ internal class RaftPaneGridHandedUp(
                     column.tabLabel,
                     column.shortShownCell,
                     column.shortSwitch != null,
+                    column.trailing,
                     column.cells.map { it.id to it.defaultShare },
                 )
             }
@@ -534,12 +540,17 @@ internal class RaftPaneGridHost internal constructor() {
     /** The latest [id] column [token]'s grid handed up; null where it no longer does. Read where the column is drawn. */
     internal fun freshColumn(token: Any, id: String): RaftPaneGridColumn? = fresh[token]?.columns?.firstOrNull { it.bounds.id == id }
 
-    /** Left to right: the outermost grid's [own] columns, then the handed-up ones, outer levels first. */
+    /**
+     * Left to right: the outermost grid's [own] columns, then the handed-up ones, outer levels first; the
+     * [RaftPaneGridColumn.trailing] ones after all the others, in the same order among themselves.
+     */
     internal fun placed(own: List<RaftPaneGridColumn>, ownTopInset: Dp): List<RaftPaneGridPlaced> =
-        own.map { RaftPaneGridPlaced(it, ownTopInset, null) } +
-            handedUp.entries.sortedBy { it.value.depth }.flatMap { (token, up) ->
-                up.columns.map { RaftPaneGridPlaced(it, up.topInset, up.locals, token) }
-            }
+        (
+            own.map { RaftPaneGridPlaced(it, ownTopInset, null) } +
+                handedUp.entries.sortedBy { it.value.depth }.flatMap { (token, up) ->
+                    up.columns.map { RaftPaneGridPlaced(it, up.topInset, up.locals, token) }
+                }
+        ).sortedBy { it.column.trailing }
 
     /**
      * Where the main pane's width is kept: the innermost grid that names it (the page the main pane shows: the Tasks
@@ -771,7 +782,11 @@ fun RaftPaneGrid(
         val row =
             if (outer != null) LocalRaftPaneGridRow.current
             else if (availableDp <= 0f) null
-            else RaftPaneGridRow(roomDp, columns.map { it.planColumn(store) }, fitted.take(columns.size).sum(), keptMain)
+            else {
+                // The own columns' widths wherever they stand (a trailing one stands after the handed-up ones).
+                val ownWidthsDp = placed.indices.filter { placed[it].token == null && placed[it].column in columns }.sumOf { fitted[it].toDouble() }.toFloat()
+                RaftPaneGridRow(roomDp, columns.map { it.planColumn(store) }, ownWidthsDp, keptMain)
+            }
         Row(Modifier.fillMaxSize()) {
             if (leading != null) RaftPaneGridLeadingView(leading)
             // Collapsed by width, never weight(0f) (Compose rejects it): see raftParentPaneLayout.

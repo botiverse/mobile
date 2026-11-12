@@ -118,6 +118,24 @@ class RaftPaneGridTest {
         assertEquals(emptyList(), host.placed(emptyList(), 0.dp))
     }
 
+    // #189 step 3: the app's profile / details column, declared with the thread one level in, stands after Tasks / Files.
+    @Test
+    fun aTrailingColumnStandsAfterEveryOtherWhereverItIsDeclared() {
+        val host = RaftPaneGridHost()
+        val profile = RaftPaneGridColumnBounds(id = "profile", defaultWidthDp = 400f, minWidthDp = 320f)
+        val trailing = RaftPaneGridColumn(bounds = profile, resizeLabel = "profile", cells = emptyList(), trailing = true)
+        host.handUp("conversation", RaftPaneGridHandedUp(depth = 2, columns = listOf(column(cards))))
+        host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(column(thread), trailing)))
+        assertEquals(listOf("thread", "sideCards", "profile"), host.placed(emptyList(), 0.dp).map { it.column.bounds.id })
+        // An outermost grid's own trailing column too.
+        val own = RaftPaneGridHost()
+        own.handUp("conversation", RaftPaneGridHandedUp(depth = 1, columns = listOf(column(cards))))
+        assertEquals(listOf("thread", "sideCards", "profile"), own.placed(listOf(column(thread), trailing), 0.dp).map { it.column.bounds.id })
+        // Whether it trails is part of what the row is laid out by: a change re-lays the row.
+        val plain = RaftPaneGridColumn(bounds = profile, resizeLabel = "profile", cells = emptyList())
+        assertTrue(RaftPaneGridHandedUp(depth = 1, columns = listOf(plain)).shape != RaftPaneGridHandedUp(depth = 1, columns = listOf(trailing)).shape)
+    }
+
     private fun row(roomDp: Float, own: List<RaftPaneGridColumn> = emptyList()) =
         RaftPaneGridRow(
             roomDp = roomDp,
