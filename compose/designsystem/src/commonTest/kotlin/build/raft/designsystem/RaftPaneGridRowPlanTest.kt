@@ -32,9 +32,22 @@ class RaftPaneGridRowPlanTest {
         val plan = raftPaneGridRowPlan(2400f, columns)
         assertEquals(listOf("conversation", "thread", "sideCards", "artifact", "profile"), plan.units.map { it.key })
         assertEquals(listOf(760, 400, 360, 480, 400), rounded(plan.widths))
-        // Never measured narrower than what the columns leave: at least 360 (the grid saves no main width yet).
-        assertEquals(listOf(360, 400, 360, 480, 400), rounded(raftPaneGridRowPlan(2000f, columns).widths))
-        assertFalse(plan.fold, "the grid plans no thread fold: that stays the app's")
+        // With no width kept the conversation is what the columns leave, at least 400 (web CONVERSATION_DEFAULT_WIDTH):
+        // in 2000 that is 40 short, which every column gives in proportion above its minimum.
+        assertEquals(listOf(393, 393, 347, 480, 387), rounded(raftPaneGridRowPlan(2000f, columns).widths))
+        assertFalse(plan.fold, "the grid plans no thread fold: the page that declares the thread decides it")
+    }
+
+    @Test
+    fun aKeptConversationWidthIsPlannedLikeAColumns() {
+        // The row as a seam was let go (every shown width saved, the conversation's too): planned back exactly.
+        val saved = listOf(
+            RaftRowPlanColumn("thread", listOf("thread"), listOf(360f), 385f),
+            RaftRowPlanColumn("sideCards", listOf("tasks", "files"), listOf(280f, 280f), 317f),
+        )
+        assertEquals(listOf(398, 385, 317), rounded(raftPaneGridRowPlan(1100f, saved, mainSavedDp = 398f).widths))
+        // Without it the conversation's 400 default takes its share: the row would not be the one let go.
+        assertEquals(listOf(399, 385, 316), rounded(raftPaneGridRowPlan(1100f, saved).widths))
     }
 
     @Test
