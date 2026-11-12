@@ -38,7 +38,7 @@ jobs:
         run: bash scripts/ci/select_ios_xcode.sh
       - name: Probe the Duo simulator
         run: |
-          set -uo pipefail
+          set +e
           mkdir -p probe
           {
             xcodebuild -version
@@ -131,7 +131,7 @@ jobs:
           exit "$status"
       - name: Boot, install, probe displays
         run: |
-          set -uo pipefail
+          set +e
           xcrun simctl boot "$SIM_UDID" || true
           xcrun simctl bootstatus "$SIM_UDID" -b
           xcrun simctl status_bar "$SIM_UDID" override --time "9:41" --dataNetwork wifi --wifiBars 3 --cellularBars 4 --batteryState charged --batteryLevel 100 || true
@@ -154,7 +154,7 @@ jobs:
       - name: Real app walk (fabricated backend)
         if: ${{ github.event_name == 'push' || inputs.real_walk }}
         run: |
-          set -uo pipefail
+          set +e
           out=probe/real; mkdir -p "$out"
           log="$out/real.log"
           xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
