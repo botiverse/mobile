@@ -1906,6 +1906,7 @@
     <string name="tasks_action_new_task">New Task</string>
     <string name="tasks_view_board">Board</string>
     <string name="tasks_view_list">List</string>
+    <string name="tasks_view_label">Task view</string>
     <string name="tasks_chip_channel">Channel</string>
     <string name="tasks_chip_creator">Creator</string>
     <string name="tasks_chip_assignee">Assignee</string>

@@ -1904,6 +1904,7 @@
     <string name="tasks_action_new_task">新建任务</string>
     <string name="tasks_view_board">看板</string>
     <string name="tasks_view_list">列表</string>
+    <string name="tasks_view_label">任务视图</string>
     <string name="tasks_chip_channel">频道</string>
     <string name="tasks_chip_creator">创建者</string>
     <string name="tasks_chip_assignee">负责人</string>

@@ -4,6 +4,14 @@ import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftPickerTriggerButton
+import build.raft.designsystem.components.RaftFitToolbar
+import build.raft.designsystem.components.RaftFitToolbarAction
+import build.raft.designsystem.components.RaftFitToolbarChoice
+import build.raft.designsystem.components.RaftFitToolbarPrimary
+import build.raft.designsystem.components.RaftFitToolbarView
+import build.raft.designsystem.components.RaftFitToolbarViewOption
+import build.raft.designsystem.theme.LocalRaftContentColor
+import androidx.compose.ui.platform.testTag
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
@@ -20,8 +28,6 @@ import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import androidx.compose.ui.draw.clip
 import build.raft.app.components.raftCardSurface
-import build.raft.app.components.SegmentedControl
-import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.RaftAnchorPlacement
 import build.raft.app.components.RaftAnchoredMetaChip
 import build.raft.app.designtokens.RaftUiPalette
@@ -31,7 +37,6 @@ import build.raft.app.markdown.raftTaskStatusColor
 import build.raft.app.markdown.raftTaskStatusSoft
 import build.raft.app.markdown.raftTaskStatusOutline
 import build.raft.app.markdown.raftTaskStatusPixelStyle
-import build.raft.app.components.RaftAnchoredPickerTrigger
 import build.raft.app.data.KeyValueTasksViewPreferenceRepository
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedTasksRouteIntent
@@ -686,7 +691,7 @@ private fun SharedTasksLoadedBodyContent(
                     SharedTasksNotice(stringResource(Res.string.tasks_error_update_status), code, modifier = Modifier.padding(RaftAppSpacing.Md))
                 }
                 SharedTasksToolbar(
-                    channelOptions = visibleContent.channelOptions,
+                    channelMode = !showChannelFilter,
                     selectedChannels = visibleContent.selectedChannelNames,
                     selectedCreatorIds = visibleContent.selectedCreatorIds,
                     selectedAssigneeIds = visibleContent.selectedAssigneeIds,
@@ -698,27 +703,11 @@ private fun SharedTasksLoadedBodyContent(
                         viewModeRepository.selectTasksViewModeSync(mode)
                         presentationState = presentationState.reduce(TasksPresentationIntent.SelectMode(mode))
                     },
-                    onChannelChipClick = { _ ->
+                    onFilterClick = { id ->
                         presentationState =
                             presentationState.reduce(
                                 TasksPresentationIntent.SetOpenFilter(
-                                    if (presentationState.openFilterId == "channel") null else "channel"
-                                )
-                            )
-                    },
-                    onCreatorChipClick = { _ ->
-                        presentationState =
-                            presentationState.reduce(
-                                TasksPresentationIntent.SetOpenFilter(
-                                    if (presentationState.openFilterId == "creator") null else "creator"
-                                )
-                            )
-                    },
-                    onAssigneeChipClick = { _ ->
-                        presentationState =
-                            presentationState.reduce(
-                                TasksPresentationIntent.SetOpenFilter(
-                                    if (presentationState.openFilterId == "assignee") null else "assignee"
+                                    if (presentationState.openFilterId == id) null else id
                                 )
                             )
                     },
@@ -1127,9 +1116,36 @@ internal fun shouldRequestNextTasksPage(
 private fun defaultTasksViewMode(maxWidth: Dp): TasksViewMode =
     if (maxWidth < 768.dp) TasksViewMode.List else TasksViewMode.Board
 
+/** Test tags of the Tasks toolbar (web `tasks-page-*` / channel `tasks-toolbar-*` data-testids). */
+internal object SharedTasksToolbarTags {
+    const val Toolbar = "tasks-toolbar"
+    const val Channel = "tasks-filter-channel"
+    const val Creator = "tasks-filter-creator"
+    const val Assignee = "tasks-filter-assignee"
+    const val Clear = "tasks-clear-filters"
+    /** The view switch; its segments are `tasks-view-list` / `tasks-view-board`. */
+    const val View = "tasks-view"
+    const val NewTask = "tasks-new-task"
+}
+
+/**
+ * The toolbar over the tasks, on [RaftFitToolbar] (raft-design responsive.md › The toolbar over a
+ * list; slock staging b76fbb9ea1):
+ *
+ * - The Tasks page (web `TasksPageToolbar`, [channelMode] false), wrapping:
+ *   `[Channel] [Creator] [Assignee] [Clear all] [List | Board] [⋯]`.
+ * - A channel's Tasks (web `TasksPanel` in channel mode, [channelMode] true), one line:
+ *   `[Creator] [Assignee] [Clear all] [Board | List] [⋯] [New Task]`.
+ *
+ * The applied filters come first and are filled; Clear all ends them while any is applied. Each
+ * filter opens its searchable sheet ([onFilterClick] with its id: `channel`, `creator`,
+ * `assignee`). As the toolbar narrows the view switch shows its icons, then the filters theirs
+ * (on the page they then move to a scrolling second line with their words back), New Task becomes
+ * +, and the view switch folds into ⋯.
+ */
 @Composable
 private fun SharedTasksToolbar(
-    channelOptions: List<String>,
+    channelMode: Boolean,
     selectedChannels: Set<String>,
     selectedCreatorIds: Set<String>,
     selectedAssigneeIds: Set<String>,
@@ -1138,9 +1154,7 @@ private fun SharedTasksToolbar(
     openFilterId: String?,
     showCreateButton: Boolean,
     onModeSelected: (TasksViewMode) -> Unit,
-    onChannelChipClick: (RaftPopoverAnchor) -> Unit,
-    onCreatorChipClick: (RaftPopoverAnchor) -> Unit,
-    onAssigneeChipClick: (RaftPopoverAnchor) -> Unit,
+    onFilterClick: (String) -> Unit,
     onClearAll: () -> Unit,
     onCreateClick: () -> Unit
 ) {
@@ -1148,154 +1162,97 @@ private fun SharedTasksToolbar(
     val channelLabel = stringResource(Res.string.tasks_chip_channel)
     val creatorLabel = stringResource(Res.string.tasks_chip_creator)
     val assigneeLabel = stringResource(Res.string.tasks_chip_assignee)
-    val channelChip: @Composable () -> Unit = {
-        RaftAnchoredPickerTrigger(
-            label = if (selectedChannels.isEmpty()) channelLabel else "$channelLabel · ${selectedChannels.size}",
-            anchorIdentity = "tasks_filter:channel",
-            iconName = RaftLucideIconName.Hash,
-            hasValue = openFilterId == "channel" || selectedChannels.isNotEmpty(),
-            enabled = channelOptions.isNotEmpty(),
-            onClick = onChannelChipClick
+    val boardLabel = stringResource(Res.string.tasks_view_board)
+    val listLabel = stringResource(Res.string.tasks_view_list)
+    // A filter's trigger: its name, and how many it has chosen once applied (web "Assignee 1").
+    fun filterChoice(id: String, label: String, icon: RaftLucideIconName, selected: Set<String>, tag: String): Pair<RaftFitToolbarChoice, Boolean> =
+        RaftFitToolbarChoice(
+            text = if (selected.isEmpty()) label else "$label ${selected.size}",
+            icon = { SharedTasksToolbarIcon(icon) },
+            options = emptyList(),
+            selectedKey = null,
+            onSelect = {},
+            // Filled while applied, and while its sheet is open.
+            applied = selected.isNotEmpty() || openFilterId == id,
+            testTag = tag,
+            onOpen = { onFilterClick(id) },
+        ) to selected.isNotEmpty()
+    // Web: the applied filters first, so they are in view before any scrolling.
+    val filters =
+        listOfNotNull(
+            if (showChannelFilter) filterChoice("channel", channelLabel, RaftLucideIconName.Hash, selectedChannels, SharedTasksToolbarTags.Channel) else null,
+            filterChoice("creator", creatorLabel, RaftLucideIconName.CircleUser, selectedCreatorIds, SharedTasksToolbarTags.Creator),
+            filterChoice("assignee", assigneeLabel, RaftLucideIconName.User, selectedAssigneeIds, SharedTasksToolbarTags.Assignee),
         )
-    }
-    val creatorChip: @Composable () -> Unit = {
-        RaftAnchoredPickerTrigger(
-            label = if (selectedCreatorIds.isEmpty()) creatorLabel else "$creatorLabel · ${selectedCreatorIds.size}",
-            anchorIdentity = "tasks_filter:creator",
-            iconName = RaftLucideIconName.CircleUser,
-            hasValue = openFilterId == "creator" || selectedCreatorIds.isNotEmpty(),
-            // Web leaves identity filters interactive while their server directory is
-            // loading; the popover can open empty and populate without changing chips.
-            enabled = true,
-            onClick = onCreatorChipClick
+            .sortedByDescending { (_, applied) -> applied }
+            .map { it.first }
+    // The page lists first (web TasksPageToolbar); a channel's Tasks shows its board first (web TasksPanel).
+    val modes = if (channelMode) listOf(TasksViewMode.Board, TasksViewMode.List) else listOf(TasksViewMode.List, TasksViewMode.Board)
+    val view =
+        RaftFitToolbarView(
+            options =
+                modes.map { mode ->
+                    RaftFitToolbarViewOption(
+                        key = mode.name.lowercase(),
+                        label = if (mode == TasksViewMode.Board) boardLabel else listLabel,
+                        icon = {
+                            SharedTasksToolbarIcon(if (mode == TasksViewMode.Board) RaftLucideIconName.Columns3 else RaftLucideIconName.LayoutList)
+                        },
+                    )
+                },
+            selectedKey = selectedMode.name.lowercase(),
+            onSelect = { key -> TasksViewMode.entries.firstOrNull { it.name.lowercase() == key }?.let(onModeSelected) },
+            label = stringResource(Res.string.tasks_view_label),
+            heading = stringResource(Res.string.list_toolbar_view),
+            testTag = SharedTasksToolbarTags.View,
         )
-    }
-    val assigneeChip: @Composable () -> Unit = {
-        RaftAnchoredPickerTrigger(
-            label = if (selectedAssigneeIds.isEmpty()) assigneeLabel else "$assigneeLabel · ${selectedAssigneeIds.size}",
-            anchorIdentity = "tasks_filter:assignee",
-            iconName = RaftLucideIconName.User,
-            hasValue = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
-            // Web always exposes the localized Unassigned sentinel, even when the
-            // currently loaded task set contains no member identities.
-            enabled = true,
-            onClick = onAssigneeChipClick
-        )
-    }
-    val clearAllChip: @Composable () -> Unit = {
-        RaftPickerTriggerButton(
-            text = stringResource(Res.string.tasks_action_clear_all),
-            onClick = onClearAll,
-            showIndicator = false,
-            leadingIcon = { RaftSlotIcon(RaftLucideIconName.X) }
-        )
-    }
-    val newTaskButton: @Composable () -> Unit = {
-        RaftButton(
-            text = stringResource(Res.string.tasks_action_new_task),
-            leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) },
-            onClick = onCreateClick,
-            variant = RaftButtonVariant.Primary
-        )
-    }
-    val viewSwitch: @Composable () -> Unit = {
-        SharedTasksSegmentedControl(
-            selectedMode = selectedMode,
-            onModeSelected = onModeSelected
-        )
-    }
-    val filterControls =
-        buildList {
-            if (showChannelFilter) add("channel")
-            add("creator")
-            add("assignee")
-            if (anyFilterActive) add("clear")
+    val clearAll =
+        if (anyFilterActive) {
+            RaftFitToolbarAction(
+                text = stringResource(Res.string.tasks_action_clear_all),
+                icon = { SharedTasksToolbarIcon(RaftLucideIconName.X) },
+                onClick = onClearAll,
+                testTag = SharedTasksToolbarTags.Clear,
+            )
+        } else {
+            null
         }
-    Column(
+    val newTask =
+        if (showCreateButton) {
+            RaftFitToolbarPrimary(
+                text = stringResource(Res.string.tasks_action_new_task),
+                onClick = onCreateClick,
+                icon = { SharedTasksToolbarIcon(RaftLucideIconName.Plus) },
+                testTag = SharedTasksToolbarTags.NewTask,
+            )
+        } else {
+            null
+        }
+    Box(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .background(RaftColor.SurfaceWhite)
+                .raftSafeAreaHorizontalPadding()
+                .testTag(SharedTasksToolbarTags.Toolbar)
     ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .raftSafeAreaHorizontalPadding()
-                    .padding(horizontal = RaftAppSpacing.Md, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-        ) {
-            val backSwipeRowState = rememberLazyListState()
-            val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
-            LazyRow(
-                state = backSwipeRowState,
-                userScrollEnabled = backSwipeRow.userScrollEnabled,
-                modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-            ) {
-                items(filterControls.size, key = { index -> "tasks-filter-${filterControls[index]}" }) { index ->
-                    when (filterControls[index]) {
-                        "channel" -> channelChip()
-                        "creator" -> creatorChip()
-                        "assignee" -> assigneeChip()
-                        "clear" -> clearAllChip()
-                    }
-                }
-            }
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                tasksToolbarActionRows(maxWidth = maxWidth, showCreateButton = showCreateButton).forEach { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement =
-                            if (row.size == 1 && row.first() == TasksToolbarActionControl.ViewSwitch) {
-                                Arrangement.End
-                            } else {
-                                Arrangement.spacedBy(RaftAppSpacing.Sm)
-                            },
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        row.forEachIndexed { index, control ->
-                            if (control == TasksToolbarActionControl.ViewSwitch && index > 0) {
-                                Spacer(Modifier.weight(1f))
-                            }
-                            when (control) {
-                                TasksToolbarActionControl.NewTask -> newTaskButton()
-                                TasksToolbarActionControl.ViewSwitch -> viewSwitch()
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(RaftAppStroke.Thin)
-                    .background(RaftColor.BorderSeam)
+        RaftFitToolbar(
+            filters = filters,
+            filtersEnd = clearAll,
+            view = view,
+            primary = newTask,
+            moreLabel = stringResource(Res.string.list_toolbar_more),
+            // The page's filters may move to a second line; a channel's Tasks keeps one line (web).
+            wrap = !channelMode,
         )
     }
 }
 
-internal enum class TasksToolbarActionControl {
-    NewTask,
-    ViewSwitch
+/** A toolbar icon filling the box its control gives it, in the control's ink. */
+@Composable
+private fun SharedTasksToolbarIcon(name: RaftLucideIconName) {
+    RaftLucideIcon(name, Modifier.fillMaxSize(), color = raftArgbHex(LocalRaftContentColor.current))
 }
-
-internal fun tasksToolbarActionRows(
-    maxWidth: Dp,
-    showCreateButton: Boolean
-): List<List<TasksToolbarActionControl>> =
-    if (!showCreateButton) {
-        listOf(listOf(TasksToolbarActionControl.ViewSwitch))
-    } else if (maxWidth >= 480.dp) {
-        listOf(listOf(TasksToolbarActionControl.NewTask, TasksToolbarActionControl.ViewSwitch))
-    } else {
-        listOf(
-            listOf(TasksToolbarActionControl.NewTask),
-            listOf(TasksToolbarActionControl.ViewSwitch)
-        )
-    }
 
 /** Vertical board column. Header is always visible (so collapsed columns can re-expand). */
 @Composable
@@ -1740,27 +1697,6 @@ internal fun tasksAssigneeChipClickIdentity(taskId: String): String =
     "tasks-assignee:$taskId"
 
 internal fun tasksStatusMenuOwnerIdentity(taskId: String): String = "task:$taskId"
-
-@Composable
-private fun SharedTasksSegmentedControl(
-    selectedMode: TasksViewMode,
-    onModeSelected: (TasksViewMode) -> Unit
-) {
-    SegmentedControl(
-        selectedValue = selectedMode.name,
-        options =
-            listOf(
-                SegmentedControlOption(value = TasksViewMode.Board.name, label = stringResource(Res.string.tasks_view_board), iconName = RaftLucideIconName.Columns3),
-                SegmentedControlOption(value = TasksViewMode.List.name, label = stringResource(Res.string.tasks_view_list), iconName = RaftLucideIconName.LayoutList)
-            ),
-        onValueSelected = { value ->
-            when (value) {
-                TasksViewMode.Board.name -> onModeSelected(TasksViewMode.Board)
-                TasksViewMode.List.name -> onModeSelected(TasksViewMode.List)
-            }
-        }
-    )
-}
 
 @Composable
 private fun SharedTasksNotice(
