@@ -7,6 +7,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasContentDescription
@@ -69,7 +71,7 @@ class SharedTasksQueryToolbarUiTest {
 
     private class Harness(val press: () -> Unit, val pageBacks: () -> Int, val intents: List<TasksQueryIntent>, val state: () -> TasksQueryState)
 
-    private fun ComposeUiTest.show(): Harness {
+    private fun ComposeUiTest.show(width: androidx.compose.ui.unit.Dp? = null): Harness {
         var dispatcher: OnBackPressedDispatcher? = null
         var pageBacks = 0
         val intents = mutableListOf<TasksQueryIntent>()
@@ -81,6 +83,9 @@ class SharedTasksQueryToolbarUiTest {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
                 RaftDesignSystemTheme {
+                    androidx.compose.foundation.layout.Box(
+                        if (width == null) androidx.compose.ui.Modifier else androidx.compose.ui.Modifier.width(width),
+                    ) {
                     SharedTasksQueryToolbar(
                         state = state,
                         scopeCounts = mapOf(TasksPageScope.Mine to 3, TasksPageScope.All to 12),
@@ -94,6 +99,7 @@ class SharedTasksQueryToolbarUiTest {
                         openFilterId = null,
                         onFilterClick = {},
                     )
+                    }
                 }
             }
         }
@@ -148,9 +154,10 @@ class SharedTasksQueryToolbarUiTest {
     }
 
     @Test
-    @Config(qualifiers = "w320dp-h700dp")
     fun aSearchOverTheScopeTakesBackTextFirstThenItself() = runRobolectricComposeUiTest {
-        val harness = show()
+        // Narrow enough that even the search's least width doesn't fit (320dp still did, CI run
+        // 43246137178); Computers' same case gives way at 150dp.
+        val harness = show(width = 150.dp)
         assertFalse(has(SharedTasksQueryToolbarTags.Search), "a narrow toolbar gives the search way to its button")
         onAllNodes(hasContentDescription("Search tasks")).onFirst().performClick()
         waitForIdle()
