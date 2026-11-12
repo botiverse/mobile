@@ -35,22 +35,25 @@ only on the nightly schedule and `release-*` pushes (planner output
 pushes or any dispatch scope. 27.1-only SDK breakage surfaces in the nightly
 and in `ios-release.yml`'s 27.1 build.
 
-So an ordinary PR never proves the iOS build. When your change can break
-Kotlin/Native or Swift (commonMain APIs, expect/actual, `compose/iosApp/**`,
-the realtime Swift list), dispatch the iOS-only tier on your branch **once,
-right before merge** (not after every push; re-run only if a later push touches
-iOS or shared Kotlin code that could break the iOS build). It runs the plan job
-and the Blacksmith `iOS compile` only — Android is already covered by the PR run:
-```bash
-bin/stamp workflow run test.yml --repo botiverse/mobile --ref <branch> -f scope=ios
-gh run list --repo botiverse/mobile --workflow test.yml --branch <branch> --limit 3
-```
-Stamp's ready-to-merge check dispatches `-f scope=premerge -f base_ref=<PR base>`
-on the PR head: same path classification as a pull_request against the
-merge-base with `origin/<base_ref>`, iOS compile only when the diff can affect
-iOS, no Android rerun. The plan prints `reason=workflow_dispatch-premerge:ios`,
+So an ordinary PR never proves the iOS build, and that is intended
+(wg-cost, 2026-11-12: about $1 per iOS compile; 76 a day was 5x the budget).
+Do not dispatch `scope=ios` by hand before merge. Stamp's ready-to-merge check
+dispatches `-f scope=premerge -f base_ref=<PR base>` on the PR head: same path
+classification as a pull_request against the merge-base with
+`origin/<base_ref>`, no Android rerun, and iOS compile only when the diff
+touches iOS-specific source (`compose/iosApp/**`, `iosMain`, `iosTest`,
+`nativeMain`, `nativeInterop`) or CI control — the main-push rule
+(`change_keeps_ios`). Ordinary `commonMain` changes are covered by the
+nightly iOS readback and the main merge hold (red `Test` on main stops merges
+until a `fix-red` PR lands). The plan prints `reason=workflow_dispatch-premerge:ios`,
 `:no-ios`, `:release-full` or `:diff-unavailable-fail-closed`; with no iOS the
 run is plan + `CI gate` only.
+`scope=ios` stays for a deliberate one-off check (a risky expect/actual or
+Kotlin/Native change): at most once, on the head you are about to merge, never
+after a rebase alone:
+```bash
+bin/stamp workflow run test.yml --repo botiverse/mobile --ref <branch> -f scope=ios
+```
 `scope=full` (Android device/emulator suite, canonical-final, attachment legs)
 is only for release candidates or a deliberate full readback — never just to
 check that iOS compiles.

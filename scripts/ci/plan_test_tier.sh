@@ -321,6 +321,13 @@ emit_plan() {
                   ;;
                 *)
                   run_android=false
+                  # wg-cost (Tenny 2026-11-12): premerge compiles iOS only for
+                  # iOS-specific source or CI-control paths, like main pushes
+                  # (change_keeps_ios). Ordinary commonMain PRs rely on the
+                  # nightly iOS readback plus the main merge hold.
+                  if test "$run_ios" = true && ! change_keeps_ios "$changed_paths_file"; then
+                    run_ios=false
+                  fi
                   if test "$run_ios" = true; then
                     reason="workflow_dispatch-premerge:ios"
                   else
