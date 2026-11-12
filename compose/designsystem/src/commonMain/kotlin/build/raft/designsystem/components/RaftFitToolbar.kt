@@ -409,9 +409,12 @@ fun RaftFitToolbar(
             } else {
                 null
             }
-        // A line is the control height, or its tallest part's when large text makes one taller.
-        val firstLine = maxOf(lineHeight, parts.maxOfOrNull { it.placeable?.height ?: 0 } ?: 0, overScope?.height ?: 0)
-        val secondLineHeight = secondLine?.let { maxOf(lineHeight, it.height) } ?: 0
+        // A line is the control height, or taller when large text makes a part taller; a part may
+        // hang 3dp into the air above and below (the segmented track), as it does at any size.
+        val hang = 2 * 3.dp.roundToPx()
+        fun lineFor(tallest: Int): Int = maxOf(lineHeight, tallest - hang)
+        val firstLine = lineFor(maxOf(parts.maxOfOrNull { it.placeable?.height ?: 0 } ?: 0, overScope?.height ?: 0))
+        val secondLineHeight = secondLine?.let { lineFor(it.height) } ?: 0
         val height = if (secondLine != null) firstLine + gap + secondLineHeight else firstLine
         layout(available, height) {
             parts.forEachIndexed { i, part ->
