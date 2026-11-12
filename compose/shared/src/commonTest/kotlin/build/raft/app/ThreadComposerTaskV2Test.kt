@@ -4,10 +4,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Task v2 hides the composer's "As Task" (slock staging 2618da4f
- * `packages/web/src/components/message/ChatPanel.tsx` `showTaskButton={supportsChannelTasks &&
- * allowTasks && !taskV2}`, `asTaskShortcutDisabled={taskV2}`; ThreadPanel the same): a message is
- * sent as a message and the task is created from it. With the flag off nothing changes.
+ * Task v2 keeps "As task" in a channel's and a DM's composer (slock #13996, ChatPanel
+ * `showTaskButton={supportsChannelTasks && allowTasks}`) and drops it elsewhere (a reply thread, a
+ * task's conversation). With the flag off nothing changes.
  */
 class ThreadComposerTaskV2Test {
     @Test
@@ -17,9 +16,10 @@ class ThreadComposerTaskV2Test {
         val cases =
             listOf(
                 Case(RaftThreadSurfaceKind.Channel, supportsTasks = true, taskV2 = false, shown = true, sends = true),
-                Case(RaftThreadSurfaceKind.Channel, supportsTasks = true, taskV2 = true, shown = false, sends = false),
+                Case(RaftThreadSurfaceKind.Channel, supportsTasks = true, taskV2 = true, shown = true, sends = true),
+                Case(RaftThreadSurfaceKind.DirectMessage, supportsTasks = true, taskV2 = true, shown = true, sends = true),
                 Case(RaftThreadSurfaceKind.Channel, supportsTasks = false, taskV2 = false, shown = false, sends = true),
-                Case(RaftThreadSurfaceKind.Channel, supportsTasks = false, taskV2 = true, shown = false, sends = false),
+                Case(RaftThreadSurfaceKind.Channel, supportsTasks = false, taskV2 = true, shown = false, sends = true),
                 Case(RaftThreadSurfaceKind.ReplyThread, supportsTasks = false, taskV2 = false, shown = false, sends = true),
                 Case(RaftThreadSurfaceKind.ReplyThread, supportsTasks = false, taskV2 = true, shown = false, sends = false),
             )
@@ -31,7 +31,7 @@ class ThreadComposerTaskV2Test {
             assertEquals(case.shown to case.sends, surface.showTaskButton to surface.sendsAsTask, case.toString())
             // The draft is the same draft either way: the flag never moves it to another key.
             assertEquals(base.threadComposerDraftKey(), surface.threadComposerDraftKey(), case.toString())
-            if (!case.taskV2) assertEquals(base, surface, "flag off leaves the surface as it was: $case")
+            if (!case.taskV2 || case.kind != RaftThreadSurfaceKind.ReplyThread) assertEquals(base, surface, "only a reply thread changes: $case")
         }
     }
 }
