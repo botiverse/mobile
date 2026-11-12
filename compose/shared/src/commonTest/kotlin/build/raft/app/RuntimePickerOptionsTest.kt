@@ -73,7 +73,8 @@ class RuntimePickerOptionsTest {
     }
 
     @Test
-    fun aRuntimeTheServerKeepsOffHereIsNotAvailableOnThisServer() {
+    fun aRuntimeTheServerKeepsOffHereIsListedOnlyAsTheFieldsValue() {
+        // web #14543 (slock f553f366): a runtime this server doesn't offer is not listed...
         val picker =
             runtimePickerRows(
                 catalog,
@@ -82,7 +83,17 @@ class RuntimePickerOptionsTest {
                 showAll = false,
                 serverSelectable = { id -> if (id == "qwen") false else null }
             )
-        val qwen = picker.rows.single { it.id == "qwen" }
+        assertTrue(picker.rows.none { it.id == "qwen" })
+        // ...unless it is the field's value: then it shows, disabled, under Not available on this server.
+        val selected =
+            runtimePickerRows(
+                catalog,
+                machineRuntimeIds = listOf("claude", "qwen"),
+                selectedRuntimeId = "qwen",
+                showAll = false,
+                serverSelectable = { id -> if (id == "qwen") false else null }
+            )
+        val qwen = selected.rows.single { it.id == "qwen" }
         assertEquals(RuntimePickerGroup.NotAvailable, qwen.group)
         assertFalse(qwen.enabled)
     }

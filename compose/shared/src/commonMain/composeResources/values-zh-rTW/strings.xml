@@ -2599,7 +2599,6 @@
     <string name="settings_computers_already_installed">這台電腦已經安裝過 Raft Computer？</string>
     <string name="settings_computers_connect_only_description">略過安裝，只將它連接到這個伺服器。如果找不到 raft-computer，請改用 ~/.local/bin/raft-computer 執行。</string>
     <string name="settings_computers_still_waiting_hint">還在等嗎？請查看你執行指令的終端機。如果顯示 Raft Computer 已在執行中，或安裝失敗，請使用上方的「這台電腦已經安裝過 Raft Computer？」。</string>
-    <string name="settings_computers_name_hint">為這台電腦取個好記的名稱。</string>
     <string name="settings_computers_confirm_match">這是我剛才設定的電腦%1$s。</string>
     <string name="settings_computers_connected_success">電腦已成功連接！</string>
     <string name="settings_computers_placeholder_name">我的 Mac</string>
@@ -2665,14 +2664,13 @@
     <string name="settings_computers_runtime_usage_health_error">錯誤</string>
     <string name="settings_computers_runtime_usage_health_unknown">未知</string>
     <string name="settings_computers_runtime_usage_reading">正在讀取快取快照…</string>
-    <string name="settings_computers_runtime_usage_unsupported_description">此執行環境或登入方式不支援查詢帳號用量。</string>
     <string name="settings_computers_runtime_usage_read_failed">無法讀取快取的用量。</string>
     <string name="settings_computers_runtime_usage_no_snapshot">還沒有快照</string>
-    <string name="settings_computers_runtime_usage_no_snapshot_description">已向這台電腦要求一次有限度的重新整理。供應商憑證絕不會離開這台電腦。</string>
+    <string name="settings_computers_runtime_usage_no_snapshot_description">這台電腦回報用量後會顯示在這裡。供應商憑證絕不會離開這台電腦。</string>
     <string name="settings_computers_runtime_usage_stale">快照已過時 · 以下數值皆為最後已知的值</string>
     <string name="settings_computers_runtime_usage_account_fallback">執行環境帳號</string>
     <string name="settings_computers_runtime_usage_reauth_description">請在這台電腦上重新登入。在供應商完成驗證之前，會先隱藏最後已知的百分比。</string>
-    <string name="settings_computers_runtime_usage_parse_unavailable">無法解析用量格式</string>
+    <string name="settings_computers_runtime_usage_parse_unavailable">無法顯示用量</string>
     <string name="settings_computers_runtime_usage_window_used">已用 %1$s · %2$s重設</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">已用 %1$s · 暫時無法取得重設時間</string>
     <string name="settings_computers_runtime_usage_window_used_up">已用完 · %1$s重設</string>
@@ -3446,7 +3444,7 @@
     <string name="member_activity_overview_reply_loading">正在載入回覆…</string>
     <string name="member_activity_overview_reply_unavailable">這則回覆位於你無法查看的對話中。</string>
     <string name="member_activity_overview_empty_title">還沒有概覽</string>
-    <string name="member_activity_overview_empty_upgrade_desc">概覽會為每個完成的輪次顯示一行。此 Agent 所在電腦上的 Raft 必須是最新版本才會記錄輪次；如果版本較舊，請到該電腦的頁面升級，之後新的輪次就會顯示在這裡。</string>
+    <string name="member_activity_overview_empty_upgrade_desc">每完成一個輪次，這裡就會顯示一行。如果新的輪次沒有出現，請到該電腦的頁面更新此 Agent 所在電腦上的 Raft。</string>
     <string name="member_activity_overview_empty_external_desc">概覽會為每個完成的輪次顯示一行。此 Agent 還沒有回報任何已完成的輪次。</string>
     <string name="member_activity_overview_empty_open_computer">開啟電腦頁面以升級</string>
     <string name="member_activity_overview_empty_show_raw">顯示原始記錄</string>

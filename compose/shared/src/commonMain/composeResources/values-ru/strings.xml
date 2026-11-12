@@ -2596,7 +2596,6 @@
     <string name="settings_computers_already_installed">Raft Computer уже установлен на этом компьютере?</string>
     <string name="settings_computers_connect_only_description">Пропустите установку и просто подключите его к этому серверу. Если команда raft-computer не найдена, запустите её как ~/.local/bin/raft-computer.</string>
     <string name="settings_computers_still_waiting_hint">Всё ещё ждёте? Проверьте терминал, в котором вы выполнили команду. Если там сказано, что Raft Computer уже запущен, или установка не удалась, воспользуйтесь пунктом «Raft Computer уже установлен на этом компьютере?» выше.</string>
-    <string name="settings_computers_name_hint">Понятное имя, по которому вы узнаете этот компьютер.</string>
     <string name="settings_computers_confirm_match">Это только что настроенный мной компьютер%1$s.</string>
     <string name="settings_computers_connected_success">Компьютер успешно подключён!</string>
     <string name="settings_computers_placeholder_name">Мой Mac</string>
@@ -2662,14 +2661,13 @@
     <string name="settings_computers_runtime_usage_health_error">ошибка</string>
     <string name="settings_computers_runtime_usage_health_unknown">неизвестно</string>
     <string name="settings_computers_runtime_usage_reading">Чтение кэшированного снимка…</string>
-    <string name="settings_computers_runtime_usage_unsupported_description">Данные об использовании аккаунта недоступны для этой среды выполнения или способа входа.</string>
     <string name="settings_computers_runtime_usage_read_failed">Не удалось прочитать кэшированные данные об использовании.</string>
     <string name="settings_computers_runtime_usage_no_snapshot">Снимка пока нет</string>
-    <string name="settings_computers_runtime_usage_no_snapshot_description">Этому компьютеру отправлен запрос на ограниченное обновление. Учётные данные провайдера никогда не покидают его.</string>
+    <string name="settings_computers_runtime_usage_no_snapshot_description">Данные появятся здесь, когда компьютер их передаст. Учётные данные провайдера никогда не покидают его.</string>
     <string name="settings_computers_runtime_usage_stale">Снимок устарел · ниже указаны последние известные значения</string>
     <string name="settings_computers_runtime_usage_account_fallback">Аккаунт среды выполнения</string>
     <string name="settings_computers_runtime_usage_reauth_description">Войдите снова на этом компьютере. Последние известные проценты скрыты до повторной аутентификации у провайдера.</string>
-    <string name="settings_computers_runtime_usage_parse_unavailable">Формат данных не распознан</string>
+    <string name="settings_computers_runtime_usage_parse_unavailable">Данные недоступны</string>
     <string name="settings_computers_runtime_usage_window_used">Использовано %1$s · сброс %2$s</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">Использовано %1$s · время сброса неизвестно</string>
     <string name="settings_computers_runtime_usage_window_used_up">Исчерпано · сброс %1$s</string>
@@ -3443,7 +3441,7 @@
     <string name="member_activity_overview_reply_loading">Загрузка ответа…</string>
     <string name="member_activity_overview_reply_unavailable">Ответ — в чате, к которому у вас нет доступа.</string>
     <string name="member_activity_overview_empty_title">Обзора пока нет</string>
-    <string name="member_activity_overview_empty_upgrade_desc">В обзоре — по строке на каждый завершённый ход. Raft на компьютере этого агента записывает ходы начиная с последней версии; если версия более старая, обновите её на странице компьютера, и новые ходы появятся здесь.</string>
+    <string name="member_activity_overview_empty_upgrade_desc">Здесь появляется по строке на каждый завершённый ход. Если новые ходы не появляются, обновите Raft на компьютере этого агента на странице компьютера.</string>
     <string name="member_activity_overview_empty_external_desc">В обзоре — по строке на каждый завершённый ход. Этот агент пока не сообщил ни об одном завершённом ходе.</string>
     <string name="member_activity_overview_empty_open_computer">Открыть страницу компьютера</string>
     <string name="member_activity_overview_empty_show_raw">Показать подробный журнал</string>

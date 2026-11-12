@@ -2599,7 +2599,6 @@
     <string name="settings_computers_already_installed">이 컴퓨터에 이미 Raft Computer가 있나요?</string>
     <string name="settings_computers_connect_only_description">설치는 건너뛰고 이 서버에 연결만 하세요. raft-computer를 찾을 수 없다고 나오면 ~/.local/bin/raft-computer로 실행하세요.</string>
     <string name="settings_computers_still_waiting_hint">아직 연결되지 않았나요? 명령을 실행한 터미널을 확인해 보세요. Raft Computer가 이미 실행 중이라고 나오거나 설치에 실패했다면 위의 ‘이 컴퓨터에 이미 Raft Computer가 있나요?’ 항목을 이용하세요.</string>
-    <string name="settings_computers_name_hint">이 컴퓨터에 알아보기 쉬운 이름을 붙여 주세요.</string>
     <string name="settings_computers_confirm_match">방금 설정한 컴퓨터%1$s가 맞아요.</string>
     <string name="settings_computers_connected_success">컴퓨터가 연결됐어요.</string>
     <string name="settings_computers_placeholder_name">내 Mac</string>
@@ -2665,14 +2664,13 @@
     <string name="settings_computers_runtime_usage_health_error">오류</string>
     <string name="settings_computers_runtime_usage_health_unknown">알 수 없음</string>
     <string name="settings_computers_runtime_usage_reading">캐시된 스냅샷 읽는 중…</string>
-    <string name="settings_computers_runtime_usage_unsupported_description">이 런타임이나 로그인 방식에서는 계정 사용량을 확인할 수 없어요.</string>
     <string name="settings_computers_runtime_usage_read_failed">캐시된 사용량을 읽지 못했어요.</string>
     <string name="settings_computers_runtime_usage_no_snapshot">아직 스냅샷이 없어요</string>
-    <string name="settings_computers_runtime_usage_no_snapshot_description">이 컴퓨터에 제한된 새로고침을 1회 요청했어요. 제공업체 자격 증명은 이 컴퓨터 밖으로 나가지 않아요.</string>
+    <string name="settings_computers_runtime_usage_no_snapshot_description">이 컴퓨터가 사용량을 보고하면 여기에 표시돼요. 제공업체 자격 증명은 이 컴퓨터 밖으로 나가지 않아요.</string>
     <string name="settings_computers_runtime_usage_stale">오래된 스냅샷 · 아래 값은 모두 마지막으로 확인된 값이에요</string>
     <string name="settings_computers_runtime_usage_account_fallback">런타임 계정</string>
     <string name="settings_computers_runtime_usage_reauth_description">이 컴퓨터에서 다시 로그인해 주세요. 제공업체 인증이 완료될 때까지 마지막으로 확인된 사용률은 숨겨져요.</string>
-    <string name="settings_computers_runtime_usage_parse_unavailable">사용량 형식을 해석할 수 없음</string>
+    <string name="settings_computers_runtime_usage_parse_unavailable">사용량을 표시할 수 없음</string>
     <string name="settings_computers_runtime_usage_window_used">%1$s 사용 · %2$s 초기화</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">%1$s 사용 · 초기화 시간 알 수 없음</string>
     <string name="settings_computers_runtime_usage_window_used_up">모두 사용 · %1$s 초기화</string>
@@ -3446,7 +3444,7 @@
     <string name="member_activity_overview_reply_loading">답장 불러오는 중…</string>
     <string name="member_activity_overview_reply_unavailable">이 답장은 볼 수 없는 대화에 있어요.</string>
     <string name="member_activity_overview_empty_title">아직 개요가 없어요</string>
-    <string name="member_activity_overview_empty_upgrade_desc">개요에는 완료된 턴마다 한 줄씩 표시돼요. 이 에이전트가 실행되는 컴퓨터의 Raft가 최신 버전이어야 턴이 기록돼요. 버전이 오래됐다면 컴퓨터 페이지에서 업그레이드하세요. 그러면 새 턴이 여기에 표시돼요.</string>
+    <string name="member_activity_overview_empty_upgrade_desc">완료된 턴마다 여기에 한 줄씩 표시돼요. 새 턴이 표시되지 않으면 컴퓨터 페이지에서 이 에이전트가 실행되는 컴퓨터의 Raft를 업데이트하세요.</string>
     <string name="member_activity_overview_empty_external_desc">개요에는 완료된 턴마다 한 줄씩 표시돼요. 이 에이전트는 아직 완료된 턴을 보고하지 않았어요.</string>
     <string name="member_activity_overview_empty_open_computer">컴퓨터 페이지에서 업그레이드</string>
     <string name="member_activity_overview_empty_show_raw">원시 로그 보기</string>

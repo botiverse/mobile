@@ -2599,7 +2599,6 @@
     <string name="settings_computers_already_installed">Já tem o Raft Computer nesta máquina?</string>
     <string name="settings_computers_connect_only_description">Pule a instalação e apenas conecte a máquina a este servidor. Se raft-computer não for encontrado, execute-o como ~/.local/bin/raft-computer.</string>
     <string name="settings_computers_still_waiting_hint">Ainda aguardando? Verifique o terminal onde você executou o comando. Se ele informar que o Raft Computer já está em execução ou que a instalação falhou, use “Já tem o Raft Computer nesta máquina?” acima.</string>
-    <string name="settings_computers_name_hint">Um nome fácil de reconhecer para este computador.</string>
     <string name="settings_computers_confirm_match">Este é o computador que acabei de configurar%1$s.</string>
     <string name="settings_computers_connected_success">Computador conectado com sucesso!</string>
     <string name="settings_computers_placeholder_name">Meu Mac</string>
@@ -2665,14 +2664,13 @@
     <string name="settings_computers_runtime_usage_health_error">erro</string>
     <string name="settings_computers_runtime_usage_health_unknown">desconhecido</string>
     <string name="settings_computers_runtime_usage_reading">Lendo snapshot em cache…</string>
-    <string name="settings_computers_runtime_usage_unsupported_description">O uso da conta não está disponível para este runtime ou método de login.</string>
     <string name="settings_computers_runtime_usage_read_failed">Não foi possível ler o uso em cache.</string>
     <string name="settings_computers_runtime_usage_no_snapshot">Nenhum snapshot ainda</string>
-    <string name="settings_computers_runtime_usage_no_snapshot_description">Uma atualização limitada foi solicitada a este computador. As credenciais do provedor nunca saem dele.</string>
+    <string name="settings_computers_runtime_usage_no_snapshot_description">O uso aparece aqui quando este computador o informar. As credenciais do provedor nunca saem dele.</string>
     <string name="settings_computers_runtime_usage_stale">Snapshot desatualizado · todos os valores abaixo são os últimos conhecidos</string>
     <string name="settings_computers_runtime_usage_account_fallback">Conta do runtime</string>
     <string name="settings_computers_runtime_usage_reauth_description">Entre novamente neste computador. Os últimos percentuais conhecidos ficam ocultos até que o provedor autentique.</string>
-    <string name="settings_computers_runtime_usage_parse_unavailable">Formato de uso indisponível</string>
+    <string name="settings_computers_runtime_usage_parse_unavailable">Uso indisponível</string>
     <string name="settings_computers_runtime_usage_window_used">%1$s usado · redefinição %2$s</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">%1$s usado · horário de redefinição indisponível</string>
     <string name="settings_computers_runtime_usage_window_used_up">Esgotado · redefinição %1$s</string>
@@ -3446,7 +3444,7 @@
     <string name="member_activity_overview_reply_loading">Carregando a resposta…</string>
     <string name="member_activity_overview_reply_unavailable">A resposta está em uma conversa que você não pode ver.</string>
     <string name="member_activity_overview_empty_title">Nenhuma visão geral ainda</string>
-    <string name="member_activity_overview_empty_upgrade_desc">A visão geral mostra uma linha por turno concluído. O Raft no computador deste agente registra turnos a partir da versão mais recente; se a versão for mais antiga, atualize-o na página do computador e os novos turnos vão aparecer aqui.</string>
+    <string name="member_activity_overview_empty_upgrade_desc">Cada turno concluído aparece aqui como uma linha. Se os novos turnos não aparecerem, atualize o Raft no computador deste agente pela página do computador.</string>
     <string name="member_activity_overview_empty_external_desc">A visão geral mostra uma linha por turno concluído. Este agente ainda não informou nenhum turno concluído.</string>
     <string name="member_activity_overview_empty_open_computer">Abrir página do computador para atualizar</string>
     <string name="member_activity_overview_empty_show_raw">Mostrar registro bruto</string>
