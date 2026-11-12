@@ -24,7 +24,7 @@
 		7555FF83242A565900829871 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF82242A565900829871 /* ContentView.swift */; };
 		A47100010000000000000001 /* RaftIosSceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47100020000000000000001 /* RaftIosSceneDelegate.swift */; };
 		A47300010000000000000001 /* RaftIosImagePaste.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47300020000000000000001 /* RaftIosImagePaste.swift */; };
-		A47400010000000000000001 /* RaftIosStoreReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47400020000000000000001 /* RaftIosStoreReview.swift */; };
+		B7A1E0010000000000000125 /* RaftIosStoreReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A1E0020000000000000125 /* RaftIosStoreReview.swift */; };
 		A47200010000000000000001 /* RaftIosShellWindowContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47200020000000000000001 /* RaftIosShellWindowContract.swift */; };
 		8DFBDFF355CB77B1EFE78055 /* Pods_iosApp_iosAppTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E6FE20F52F0830F7F4E65579 /* Pods_iosApp_iosAppTests.framework */; };
 		A12900010000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift */; };
@@ -116,7 +116,7 @@
 		2152FB032600AC8F00CF470E /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
 		A47100020000000000000001 /* RaftIosSceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosSceneDelegate.swift; sourceTree = "<group>"; };
 		A47300020000000000000001 /* RaftIosImagePaste.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosImagePaste.swift; sourceTree = "<group>"; };
-		A47400020000000000000001 /* RaftIosStoreReview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosStoreReview.swift; sourceTree = "<group>"; };
+		B7A1E0020000000000000125 /* RaftIosStoreReview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosStoreReview.swift; sourceTree = "<group>"; };
 		A47200020000000000000001 /* RaftIosShellWindowContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosShellWindowContract.swift; sourceTree = "<group>"; };
 		28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_iosApp.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		312F0DBEF95A91A72E5FCBFA /* Pods-iosApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.debug.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.debug.xcconfig"; sourceTree = "<group>"; };
@@ -344,7 +344,7 @@
 				7555FF82242A565900829871 /* ContentView.swift */,
 				A47100020000000000000001 /* RaftIosSceneDelegate.swift */,
 				A47300020000000000000001 /* RaftIosImagePaste.swift */,
-				A47400020000000000000001 /* RaftIosStoreReview.swift */,
+				B7A1E0020000000000000125 /* RaftIosStoreReview.swift */,
 				A47200020000000000000001 /* RaftIosShellWindowContract.swift */,
 				7555FF8C242A565B00829871 /* Info.plist */,
 				A39600020000000000000001 /* InfoPlist.strings */,
@@ -818,7 +818,7 @@
 				7555FF83242A565900829871 /* ContentView.swift in Sources */,
 				A47100010000000000000001 /* RaftIosSceneDelegate.swift in Sources */,
 				A47300010000000000000001 /* RaftIosImagePaste.swift in Sources */,
-				A47400010000000000000001 /* RaftIosStoreReview.swift in Sources */,
+				B7A1E0010000000000000125 /* RaftIosStoreReview.swift in Sources */,
 				A47200010000000000000001 /* RaftIosShellWindowContract.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
