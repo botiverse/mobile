@@ -4,6 +4,7 @@ import build.raft.app.resources.*
 import androidx.compose.runtime.*
 import build.raft.app.data.*
 import build.raft.app.model.MemberKind
+import build.raft.app.model.ServerId
 import kotlinx.coroutines.launch
 
 /**
@@ -11,8 +12,9 @@ import kotlinx.coroutines.launch
  * the canonical create form with [machineId] preselected (the card offers it only while the computer
  * is online; should it drop offline meanwhile, the form picks as usual). The user may change the
  * computer. Built like
- * [ChannelMembersCreateAgentDialog] without the channel join: [onCreated] gets the new agent's id
- * after the create succeeded (the caller closes the dialog and refreshes).
+ * [ChannelMembersCreateAgentDialog] without the channel join: [onCreated] gets where the new agent
+ * lands ([CreatedAgentLanding]) after the create succeeded (the caller closes the dialog, refreshes
+ * and lands it).
  */
 @Composable
 internal fun RaftComputerCreateAgentDialog(
@@ -23,7 +25,7 @@ internal fun RaftComputerCreateAgentDialog(
     formStore: SharedCreateAgentFormStore,
     membersStore: SharedServerMembersStore,
     onDismiss: () -> Unit,
-    onCreated: (agentId: String) -> Unit,
+    onCreated: (CreatedAgentLanding) -> Unit,
     /** The no-computer dialog's "Add Computer"; null hides it. */
     onAddComputer: (() -> Unit)? = null,
     /** The server's plan from the session, for the agent limit when billing can't be read. */
@@ -82,8 +84,11 @@ internal fun RaftComputerCreateAgentDialog(
                     return@launch
                 }
                 formStore.rememberCreatedAgent(owner.serverId, request)
+                val profile =
+                    createdAgentMemberProfile(result.data, request, picker.machines)
+                        .copy(serverId = ServerId(owner.serverId))
                 // Last: the caller's dismissal cancels this scope.
-                onCreated(result.data.id)
+                onCreated(createdAgentLanding(request, profile))
             } finally {
                 submitting = false
             }

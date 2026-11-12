@@ -138,7 +138,6 @@ import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.MemberRepository
 import build.raft.app.data.OpenDirectMessageResult
-import build.raft.app.data.OpenedDirectMessageAuthority
 import build.raft.app.data.SharedAgentDetailActions
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedAgentDetailLoadStatus
@@ -2441,10 +2440,10 @@ internal fun MembersPageContent(
     var createAgentBilling by remember { mutableStateOf<build.raft.app.data.CreateAgentBilling?>(null) }
     var createAgentServerPlan by remember { mutableStateOf<String?>(null) }
     var optimisticMembers by remember { mutableStateOf<List<MemberProfile>>(emptyList()) }
-    // task #399 (Hands 3a56004f): the Members page is a *separate* create path from the thread
-    // member panel. #3132/#3140 only fixed ChannelMembersCreateAgentDialog, so creating from here
-    // still dropped the user back on the list. The created row is staged here and opened below.
-    var createdAgentToOpen by remember { mutableStateOf<MemberProfile?>(null) }
+    // The agent just created here, staged until the dialog has closed: an external agent opens its
+    // profile (setup guide), any other stays on the list with a "Created <name>" toast whose View
+    // opens its DM (botiverse/slock #14482; cindyz #triage f4835750, superseding task #399's jump).
+    var pendingCreatedAgent by remember { mutableStateOf<CreatedAgentLanding?>(null) }
     // Derive the active serverId from the auth session. Replaces the prior
     // `readCurrentServerId()` stub (fixed QA-3): machines load + plan limit
     // checks now use the real selected server.
@@ -2619,15 +2618,14 @@ internal fun MembersPageContent(
                     createAgentFormStore.rememberCreatedAgent(serverId, submit)
                     val profile = createdAgentMemberProfile(result.data, submit, computersSlice.machines)
                     optimisticMembers = optimisticMembers + profile
-                    // task #399: hand the created agent to the detail opener below so the user
-                    // lands on its profile instead of the refreshed member list.
+                    // Hand the created agent to the landing below ([CreatedAgentLanding]).
                     //
                     // Ordering matters here and must not be changed: this runs inside the dialog's
                     // submit coroutine, which the caller cancels by clearing activeCreateAgentMode
-                    // AFTER submit() returns. Staging the profile inside submit — before that
-                    // teardown — is what makes the write survive; that is the opposite of the
-                    // #3140 bug, where the dismissal came first and cancelled the navigation.
-                    createdAgentToOpen = profile
+                    // AFTER submit() returns. Staging the landing inside submit — before that
+                    // teardown — is what makes the write survive (the #3140 bug: the dismissal
+                    // came first and cancelled it).
+                    pendingCreatedAgent = createdAgentLanding(submit, profile.inCreatingServer(serverId))
                     serverId.trim().takeIf { it.isNotBlank() }?.let { cleanServerId ->
                         serverMembersStore.refreshMembers(
                             ServerId(cleanServerId),
@@ -2761,14 +2759,22 @@ internal fun MembersPageContent(
         }
     }
 
-    // task #399: open the profile of a just-created agent. Runs after localMembers merged the
-    // optimistic row, so the created agent is addressable. Cleared immediately so re-entry does
-    // not reopen it on recomposition.
-    LaunchedEffect(createdAgentToOpen) {
-        val created = createdAgentToOpen ?: return@LaunchedEffect
-        createdAgentToOpen = null
-        bridge.log("members_create_agent_open_profile memberId=${created.id.value} instanceId=${payload.instanceId}")
-        openMemberDetail(created)
+    val createdAgentReceipt =
+        rememberRaftCreatedAgentReceipt(
+            pager = pager,
+            bridge = bridge,
+            storeScope = storeScope,
+            openSetupGuide = ::openMemberDetail,
+            timeContext = payload.toRaftTimeContext(),
+        )
+    // Lands a just-created agent once the dialog has closed (no toast with an action over a modal,
+    // Raft DS › Toast). Runs after localMembers merged the optimistic row, so an external agent's
+    // profile is addressable. Cleared immediately so recomposition does not land it again.
+    LaunchedEffect(pendingCreatedAgent) {
+        val landing = pendingCreatedAgent ?: return@LaunchedEffect
+        pendingCreatedAgent = null
+        bridge.log("members_create_agent_landing memberId=${landing.agent.id.value} instanceId=${payload.instanceId}")
+        createdAgentReceipt.land(landing)
     }
 
     MembersRouteContent(
@@ -3766,37 +3772,8 @@ private class MemberDetailRouteProvider(
      * The DM to open, or null while an earlier tap is still opening it (that tap opens the page).
      * A DM Home already lists opens without waiting on the server.
      */
-    suspend fun openDirectMessage(member: MemberProfile): DataResult<OpenDirectMessageResult>? {
-        val session = authStore.readSession()
-        val authority =
-            session?.let {
-                val serverId = session.currentServerId ?: return@let null
-                OpenedDirectMessageAuthority(
-                    serverId = ServerId(serverId),
-                    accountId = MemberId(session.user.id)
-                )
-            }
-        val result =
-            when (member.kind) {
-                MemberKind.Agent, MemberKind.Human ->
-                    directMessageOpens.open(
-                        channelRepository = channelRepository,
-                        serverId = authority?.serverId,
-                        peerKind = member.kind,
-                        peerId = member.id,
-                        homeSnapshot = authority?.let { sharedHomeStore?.snapshotFor(it.serverId) }
-                    ) ?: return null
-                MemberKind.System -> DataResult.Empty(EmptyReason.NoMembers)
-                MemberKind.External -> DataResult.Empty(EmptyReason.NoMembers)
-            }
-        if (result is DataResult.Content && authority != null) {
-            sharedHomeStore?.supplementOpenedDirectMessage(
-                authority = authority,
-                conversation = result.data.conversation
-            )
-        }
-        return result
-    }
+    suspend fun openDirectMessage(member: MemberProfile): DataResult<OpenDirectMessageResult>? =
+        openMemberDirectMessage(member, authStore, channelRepository, sharedHomeStore, directMessageOpens)
 
     suspend fun uploadAgentAvatar(
         serverId: ServerId,
@@ -5771,7 +5748,7 @@ internal fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
     storeScope: RaftShellStoreScope,
     openInShell: ((ThreadLaunchConversationIdentity) -> Boolean)?,
     member: MemberProfile,
-    timeContext: RaftTimeContext,
+    timeContext: RaftTimeContext?,
     unavailableMessage: String,
     errorTemplate: String,
     permissionMessage: String,
@@ -5836,7 +5813,7 @@ internal fun membersDirectMessageConversationIdentity(
 internal fun buildMembersDirectMessageThreadLaunchPayload(
     member: MemberProfile,
     conversation: HomeDirectMessageRow,
-    timeContext: RaftTimeContext
+    timeContext: RaftTimeContext?
 ): WireThreadLaunchPayload? {
     val identity = membersDirectMessageConversationIdentity(member, conversation) ?: return null
     return buildStandaloneConversationThreadLaunchPayload(

@@ -15,12 +15,13 @@ import kotlin.test.assertTrue
  * The diagnostic bundle proved it: zero `thread_member_profile_*` lines, `agent_create` 200,
  * and `selectedTab=members` at the create instant. Nothing exercised the Members-page branch.
  *
- * Scope: these pin only the helper contract the navigation depends on — the freshly created
+ * Since botiverse/slock #14482 only an external agent still lands on its profile (setup guide);
+ * any other shows "Created <name>" with View (RaftCreatedAgentReceiptTest).
+ *
+ * Scope: these pin only the helper contract that landing depends on — the freshly created
  * profile must carry a usable id and kind, because `openMemberDetail` builds the detail route
- * from them. They do NOT cover the navigation itself: removing `createdAgentToOpen = profile`
- * in MembersPage would leave them green. The post-create navigation timing (stage inside the
- * submit coroutine, consume in `LaunchedEffect`) is NOT COVERED here and is accepted only on a
- * device: Members tab create and thread member panel "+" create must each land on the profile.
+ * (and View the DM) from them. The post-create timing (stage inside the submit coroutine,
+ * consume in `LaunchedEffect`) is NOT COVERED here and is accepted only on a device.
  */
 class MembersPageCreatedAgentProfileContractTest {
     private fun created(

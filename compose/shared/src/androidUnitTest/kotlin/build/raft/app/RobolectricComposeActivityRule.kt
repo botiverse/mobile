@@ -3,6 +3,7 @@ package build.raft.app
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.platform.AndroidUiDispatcher
+import build.raft.designsystem.theme.RaftScale
 import org.junit.rules.ExternalResource
 import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
@@ -32,7 +33,10 @@ import kotlin.coroutines.EmptyCoroutineContext
  *   manager among it) runs. Compose has no public reset, so this reads its private fields and
  *   fails loudly if they change.
  * - [after]: stop and destroy each launched activity, so its window Recomposer stops asking for
- *   frames, and drain the main looper for a frame so this test leaves nothing in flight.
+ *   frames, and drain the main looper for a frame so this test leaves nothing in flight. * - [before] also puts the app's type scale ([RaftAppTypeScale], process-wide, written by
+ *   `RaftDesignSystemTheme` from the window width) back to Compact: a test drawn in a wide window
+ *   left it Wide, and a later capture in the same sandbox drew its `RaftType` text (headline 16/24
+ *   instead of 17/22) off its golden, depending on which fork the classes landed in (#4621).
  */
 class RobolectricComposeActivityRule : ExternalResource() {
     private val controllers = mutableListOf<ActivityController<ComponentActivity>>()
@@ -41,6 +45,7 @@ class RobolectricComposeActivityRule : ExternalResource() {
         Robolectric.buildActivity(ComponentActivity::class.java).setup().also { controllers += it }.get()
 
     override fun before() {
+        if (RaftAppTypeScale.scale != RaftScale.Compact) RaftAppTypeScale.scale = RaftScale.Compact
         reviveWedgedComposeDispatcher()
     }
 

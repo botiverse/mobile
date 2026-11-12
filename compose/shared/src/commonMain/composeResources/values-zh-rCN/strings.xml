@@ -2167,6 +2167,9 @@
     <string name="agent_create_reasoning_extra_high">Extra High</string>
     <string name="agent_create_reasoning_max">Max</string>
     <string name="agent_create_reasoning_ultra">Ultra</string>
+    <string name="agent_create_created_toast_title">已创建 %1$s</string>
+    <string name="agent_create_created_toast_view">查看</string>
+    <string name="agent_create_created_toast_open_failed">没能打开你和 %1$s 的对话，请重试。</string>
     <string name="agent_invite_title">邀请人类</string>
     <string name="agent_invite_label_emails">邮箱</string>
     <string name="agent_invite_placeholder_email">teammate@example.com</string>

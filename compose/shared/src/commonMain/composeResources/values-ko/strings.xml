@@ -2144,6 +2144,9 @@
     <string name="agent_create_reasoning_extra_high">Extra High</string>
     <string name="agent_create_reasoning_max">Max</string>
     <string name="agent_create_reasoning_ultra">Ultra</string>
+    <string name="agent_create_created_toast_title">%1$s을(를) 만들었어요</string>
+    <string name="agent_create_created_toast_view">보기</string>
+    <string name="agent_create_created_toast_open_failed">%1$s와(과)의 대화를 열지 못했어요. 다시 시도해 주세요.</string>
     <string name="agent_invite_title">사람 초대</string>
     <string name="agent_invite_label_emails">이메일</string>
     <string name="agent_invite_placeholder_email">teammate@example.com</string>
