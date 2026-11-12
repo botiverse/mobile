@@ -28,19 +28,23 @@ internal data class RuntimeFormV2Loaded(
     val sources: RuntimeFormV2Sources
 )
 
-/** The runtime-form part of a v2 create (POST) or edit (PATCH) request. */
+/**
+ * The runtime-form part of a v2 create (POST) or edit (PATCH) request. [protocolVersion] is the
+ * rendered form's (2, or 3 for `runtime_form.v3`); formValues mean the same on both.
+ */
 data class RuntimeFormV2SubmitBody(
     val runtimeId: String,
-    val formValues: JsonObject
+    val formValues: JsonObject,
+    val protocolVersion: Int = RUNTIME_FORM_V2_PROTOCOL_VERSION
 ) {
     internal fun formDefinitionRefJson(): JsonObject =
         buildJsonObject {
-            put("protocolVersion", RUNTIME_FORM_V2_PROTOCOL_VERSION)
+            put("protocolVersion", protocolVersion)
             put("runtimeId", runtimeId)
         }
 }
 
-/** Adds `formDefinitionRef {protocolVersion:2, runtimeId}` and `formValues` to a request body. */
+/** Adds `formDefinitionRef {protocolVersion, runtimeId}` and `formValues` to a request body. */
 internal fun JsonObject.withRuntimeFormV2(submit: RuntimeFormV2SubmitBody): JsonObject =
     JsonObject(
         this + mapOf(
@@ -103,18 +107,21 @@ internal class RuntimeFormV2Loader(
      * answering from its cache; a source without the capability ignores it. The form and every
      * other source stay as they are; a failure leaves the caller's current options in place, except
      * [RUNTIME_FORM_V2_FORM_REVISION_STALE], after which the caller must reload the whole form.
+     * [refresh] false: a dependent source following its refreshed parent (v3 reasoning effort after the
+     * model list), answered from the server's fresh cache without probing the Computer again.
      */
     suspend fun reloadSource(
         serverId: ServerId,
         machineId: String,
         runtimeId: String,
         sourceId: String,
-        formRevision: String? = null
+        formRevision: String? = null,
+        refresh: Boolean = true
     ): DataResult<RuntimeFormV2Source> {
         val result =
             if (machineId.isBlank() || runtimeId.isBlank()) failure("runtime_form_v2_ref_missing")
-            else fetchSource(serverId, machineId, runtimeId, sourceId, refresh = true, formRevision = formRevision)
-        log("source_refresh", serverId, machineId, "runtimeId=$runtimeId sourceId=$sourceId", result)
+            else fetchSource(serverId, machineId, runtimeId, sourceId, refresh = refresh, formRevision = formRevision)
+        log(if (refresh) "source_refresh" else "source_follow", serverId, machineId, "runtimeId=$runtimeId sourceId=$sourceId", result)
         return result
     }
 

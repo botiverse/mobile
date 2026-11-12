@@ -736,7 +736,7 @@ class MemberRepositoryDataSourceTest {
                 formValues = kotlinx.serialization.json.JsonObject(emptyMap())
             )
         )
-        for ((request, expected) in listOf(v2 to "dependent_select.custom_value_with_options", plain to null)) {
+        for ((request, expected) in listOf(v2 to "dependent_select.custom_value_with_options,runtime_form.v3", plain to null)) {
             network.requests.clear()
             assertTrue(repository.updateAgentProfile(DataRequestPriority.Foreground, request) is DataResult.Content)
             val patch = network.requests.single { it.method == "PATCH" && it.path == "agents/agent-1" }

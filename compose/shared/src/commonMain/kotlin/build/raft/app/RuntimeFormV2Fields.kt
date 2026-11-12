@@ -35,10 +35,14 @@ import build.raft.app.data.runtimeform.v2.RuntimeFormV2SourceStatus
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Values
 import build.raft.app.data.runtimeform.v2.booleanValue
 import build.raft.app.data.runtimeform.v2.isFormRevisionStale
+import build.raft.app.data.runtimeform.v2.isRuntimeFormV2FieldRequired
 import build.raft.app.data.runtimeform.v2.isRuntimeFormV2FieldVisible
 import build.raft.app.data.runtimeform.v2.runtimeFormV2Choices
+import build.raft.app.data.runtimeform.v2.runtimeFormV2DependentSourceIds
 import build.raft.app.data.runtimeform.v2.runtimeFormV2SelectedConnection
 import build.raft.app.data.runtimeform.v2.runtimeFormV2SourceStatus
+import build.raft.app.data.runtimeform.v2.runtimeFormV2UnavailableChoices
+import build.raft.app.data.runtimeform.v2.runtimeFormV2UnavailableSelection
 import build.raft.app.data.runtimeform.v2.stringMapValue
 import build.raft.app.data.runtimeform.v2.text
 import androidx.compose.foundation.layout.Arrangement
@@ -87,7 +91,7 @@ internal fun RuntimeFormV2Fields(
 ) {
     val focusManager = LocalFocusManager.current
     val visible = loaded.form.fields.filter {
-        it.kind != RuntimeFormV2FieldKind.Unsupported || it.required
+        it.kind != RuntimeFormV2FieldKind.Unsupported || isRuntimeFormV2FieldRequired(it, values)
     }.filter { isRuntimeFormV2FieldVisible(it, values, loaded.sources) }
     // Hidden choices (a derived select with nothing to pick) are not drawn.
     val drawn = visible.filterNot { field ->
@@ -112,7 +116,7 @@ internal fun RuntimeFormV2Fields(
         }
         primary.forEach { field ->
             key(field.key) {
-                RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint) {
+                RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, loaded, values, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint) {
                     focusManager.clearFocus(force = true)
                 }
             }
@@ -127,7 +131,7 @@ internal fun RuntimeFormV2Fields(
             if (advancedOpen || forcedOpen) {
                 advanced.forEach { field ->
                     key(field.key) {
-                        RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint) {
+                        RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, loaded, values, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint) {
                             focusManager.clearFocus(force = true)
                         }
                     }
@@ -147,9 +151,10 @@ internal fun runtimeFormV2ComboboxValue(current: String, options: List<RaftCombo
 
 /**
  * Errors to show: those of fields the user touched or the server pointed at, plus the ones that block
- * the save before the field itself is touched: an unavailable saved connection (`provider.saved_connection`)
- * and a blank secret whose bound fields changed (`writeOnlyKeepRequiresUnchanged`; slock web shows it
- * without a submit attempt).
+ * the save before the field itself is touched: an unavailable saved connection (`provider.saved_connection`),
+ * a current value that is an `unavailableOptions` entry (v3, shown selected-and-unavailable) and a blank
+ * secret whose bound fields changed (`writeOnlyKeepRequiresUnchanged`; slock web shows it without a
+ * submit attempt).
  */
 internal fun runtimeFormV2ShownErrors(
     errors: Map<String, RuntimeFormV2ErrorCode>,
@@ -158,6 +163,7 @@ internal fun runtimeFormV2ShownErrors(
     errors.filter { (key, code) ->
         key in shownKeys ||
             code == RuntimeFormV2ErrorCode.ConnectionUnavailable ||
+            code == RuntimeFormV2ErrorCode.OptionUnavailable ||
             code == RuntimeFormV2ErrorCode.SecretReentryRequired
     }
 
@@ -174,6 +180,8 @@ private fun runtimeFormV2FieldEditing(
 @Composable
 private fun runtimeFormV2ErrorText(
     field: RuntimeFormV2Field,
+    loaded: RuntimeFormV2Loaded,
+    values: RuntimeFormV2Values,
     errors: Map<String, RuntimeFormV2ErrorCode>,
     serverErrorKeys: Set<String>,
     serverMessage: String?
@@ -190,6 +198,14 @@ private fun runtimeFormV2ErrorText(
             RuntimeFormV2ErrorCode.SourceUnavailable -> null
             RuntimeFormV2ErrorCode.ConnectionUnavailable -> stringResource(Res.string.runtime_form_v2_saved_provider_unavailable)
             RuntimeFormV2ErrorCode.SecretReentryRequired -> stringResource(Res.string.runtime_form_v2_error_secret_reentry_required)
+            // v3: the value is an unavailable entry: a saved connection says so, a model asks for another pick
+            // (slock web RuntimeConfigFields `option_unavailable`).
+            RuntimeFormV2ErrorCode.OptionUnavailable ->
+                if (runtimeFormV2UnavailableSelection(field, loaded.sources, values)?.connectionId != null) {
+                    stringResource(Res.string.runtime_form_v2_saved_provider_unavailable)
+                } else {
+                    stringResource(Res.string.runtime_form_v2_error_not_a_choice)
+                }
             null -> null
         }
     }
@@ -211,7 +227,7 @@ private fun RuntimeFormV2FieldRow(
     // Owned by the selected saved connection: shown disabled with "Provided by …" instead of its own hint.
     val connectionOwned = managedHint != null && field.connectionOwned
     val fieldEnabled = enabled && !connectionOwned
-    val required = field.required && !connectionOwned
+    val required = isRuntimeFormV2FieldRequired(field, values) && !connectionOwned
     val hint = if (connectionOwned) managedHint else field.hint
     when (field.kind) {
         RuntimeFormV2FieldKind.Text, RuntimeFormV2FieldKind.Url ->
@@ -313,12 +329,20 @@ private fun RuntimeFormV2FieldRow(
                     val defaultLabel = stringResource(Res.string.runtime_form_v2_option_default)
                     val savedGroupLabel = stringResource(Res.string.runtime_form_v2_saved_providers)
                     val directGroupLabel = stringResource(Res.string.runtime_form_v2_direct_providers)
+                    val unavailableGroupLabel = stringResource(Res.string.runtime_form_v2_unavailable_group)
                     val noMatches = stringResource(Res.string.common_no_matches)
                     val searchLabel = stringResource(Res.string.search_filter_search)
                     val useCustomLabel = stringResource(Res.string.runtime_form_v2_use_custom, "%1\$s")
                     // `provider.saved_connection`: headings only when the list mixes saved and direct choices.
                     val grouped = choices.options.mapNotNull { it.group }.distinct().size > 1
                     val unlisted = current.isNotEmpty() && choices.options.none { it.value == current }
+                    // `OptionSource.unavailableOptions`: drawn disabled after the list, by `group` when the
+                    // server sends one, else "Not available on this computer"; the reason is plain text.
+                    val unavailableChoices = runtimeFormV2UnavailableChoices(field, loaded.sources)
+                    // The current value is one of them (v3: a bound saved connection that is disabled): shown
+                    // selected by its own label and reason, never rewritten; validation blocks the save.
+                    val unavailableSelected =
+                        if (unlisted) unavailableChoices.firstOrNull { it.value == current.trim() } else null
                     // One option list for both pickers; "" is the runtime default.
                     val options = buildList {
                         if (choices.allowEmpty) add(RaftComboboxOption("", defaultLabel))
@@ -333,6 +357,23 @@ private fun RuntimeFormV2FieldRow(
                                 )
                             )
                         }
+                        unavailableChoices
+                            .filter { entry -> entry.value != current && choices.options.none { it.value == entry.value } }
+                            .forEach { entry ->
+                                add(
+                                    RaftComboboxOption(
+                                        value = entry.value,
+                                        label = entry.label,
+                                        description = entry.reason,
+                                        group = when (entry.group) {
+                                            "saved" -> savedGroupLabel
+                                            "direct" -> directGroupLabel
+                                            else -> unavailableGroupLabel
+                                        },
+                                        enabled = false
+                                    )
+                                )
+                            }
                     }
                     // `option_source.status`: a source that is not live says why.
                     val sourceStatus = runtimeFormV2SourceStatus(field, loaded.sources)
@@ -388,7 +429,16 @@ private fun RuntimeFormV2FieldRow(
                             RaftCombobox(
                                 value = runtimeFormV2ComboboxValue(current, options),
                                 options =
-                                    if (unlisted) {
+                                    if (unavailableSelected != null) {
+                                        listOf(
+                                            RaftComboboxOption(
+                                                value = current,
+                                                label = unavailableSelected.label,
+                                                description = unavailableSelected.reason,
+                                                enabled = false
+                                            )
+                                        ) + options
+                                    } else if (unlisted) {
                                         options + RaftComboboxOption(current, current, enabled = false)
                                     } else {
                                         options
@@ -509,27 +559,44 @@ internal fun rememberRuntimeFormV2SourceRefresh(
     val scope = rememberCoroutineScope()
     if (loaded == null || access == null || machineId.isNullOrBlank()) return loaded to null
     val effective = if (overrides.isEmpty()) loaded else loaded.copy(sources = loaded.sources + overrides)
+    // One source answers; then the sources keyed by its field follow (v3: a reasoning effort keyed by
+    // model), without `refresh=1`: the parent's fresh answer is cached server-side (slock web
+    // useRuntimeFormV2 `dependentsOf`). Returns false when the whole form went stale.
+    val form: RuntimeFormV2Loaded = loaded
+    val loader: RuntimeFormV2Access = access
+    val machine: String = machineId
+    suspend fun reload(sourceId: String, refresh: Boolean): Boolean {
+        val result = loader.loader.reloadSource(
+            loader.serverId,
+            machine,
+            form.form.runtimeId,
+            sourceId,
+            form.form.revision,
+            refresh = refresh
+        )
+        when {
+            result is DataResult.Content -> {
+                overrides = overrides + (sourceId to result.data)
+                onSourceReloaded(form.copy(sources = form.sources + overrides), sourceId)
+                for (dependent in runtimeFormV2DependentSourceIds(form.form, sourceId)) {
+                    if (!reload(dependent, refresh = false)) return false
+                }
+            }
+            result.isFormRevisionStale() -> {
+                onFormStale()
+                return false
+            }
+            else -> failed = failed + sourceId
+        }
+        return true
+    }
     val refresh =
         RuntimeFormV2SourceRefresh(refreshing = refreshing, failed = failed) { sourceId ->
             if (sourceId !in refreshing) {
                 refreshing = refreshing + sourceId
                 failed = failed - sourceId
                 scope.launch {
-                    val result = access.loader.reloadSource(
-                        access.serverId,
-                        machineId,
-                        loaded.form.runtimeId,
-                        sourceId,
-                        loaded.form.revision
-                    )
-                    when {
-                        result is DataResult.Content -> {
-                            overrides = overrides + (sourceId to result.data)
-                            onSourceReloaded(loaded.copy(sources = loaded.sources + overrides), sourceId)
-                        }
-                        result.isFormRevisionStale() -> onFormStale()
-                        else -> failed = failed + sourceId
-                    }
+                    reload(sourceId, refresh = true)
                     refreshing = refreshing - sourceId
                 }
             }

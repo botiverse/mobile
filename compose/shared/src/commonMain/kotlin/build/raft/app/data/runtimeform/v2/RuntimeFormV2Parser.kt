@@ -17,6 +17,11 @@ import kotlinx.serialization.json.intOrNull
  * is tolerant by contract: unknown keys anywhere are ignored and an unknown field
  * kind becomes [RuntimeFormV2FieldKind.Unsupported] instead of rejecting the form.
  *
+ * Protocol v3 (slock README "Protocol v3", requested with `runtime_form.v3`) is read by the same parser:
+ * `uiSchema.rules` and `dataSchema.allOf` (see RuntimeFormV3Rules.kt) instead of `visibility` and
+ * `x-connectionOwned`, a reasoning effort as an `x-optionSource` dependent_select instead of
+ * `x-optionsFrom`, and unavailable choices only in `OptionSource.unavailableOptions`.
+ *
  * The body is walked as raw JSON rather than decoded through the generated
  * [RuntimeFormV2Definition]: a generated class fails on a value shape it does not
  * declare (for example `additionalProperties: false`), which would drop the form.
@@ -109,7 +114,11 @@ internal data class RuntimeFormV2Field(
      * `x-connectionOwned` (`provider.saved_connection`): while a saved connection is selected this
      * field is disabled, not required and kept out of formValues; see [runtimeFormV2ConnectionActive].
      */
-    val connectionOwned: Boolean = false
+    val connectionOwned: Boolean = false,
+    /** v3 `uiSchema.rules` entry for this field (SHOW/HIDE on a condition); null on v2. */
+    val rule: RuntimeFormV3Rule? = null,
+    /** v3 `dataSchema.allOf`: required while a condition holds (or fails), besides [required]. */
+    val requiredWhen: List<RuntimeFormV3RequiredWhen> = emptyList()
 )
 
 internal data class RuntimeFormV2OptionSourceKey(
@@ -142,7 +151,12 @@ internal data class ParsedRuntimeFormV2(
      * non-secret keys and bound keys that are not fields of this form are dropped (slock v2.ts
      * `keepRequiresUnchanged`). Empty when the form does not carry it.
      */
-    val writeOnlyKeepRequiresUnchanged: Map<String, List<String>> = emptyMap()
+    val writeOnlyKeepRequiresUnchanged: Map<String, List<String>> = emptyMap(),
+    /**
+     * The wire protocolVersion: 2, or 3 when the request advertised `runtime_form.v3` (README "Protocol
+     * v3"). A submit echoes it in `formDefinitionRef`; formValues mean the same on both.
+     */
+    val protocolVersion: Int = RUNTIME_FORM_V2_PROTOCOL_VERSION
 )
 
 private val runtimeFormV2Json = Json { ignoreUnknownKeys = true }
@@ -151,10 +165,17 @@ private val runtimeFormV2Json = Json { ignoreUnknownKeys = true }
 internal fun parseRuntimeFormV2(body: String): ParsedRuntimeFormV2? =
     runCatching { runtimeFormV2Json.parseToJsonElement(body) }.getOrNull()?.let(::parseRuntimeFormV2)
 
-/** Returns null only when the value is not a v2 form at all. */
+/**
+ * Returns null when the value is not a v2/v3 form at all, or one this client must not render: a required
+ * client capability it lacks, or (v3) a rule or conditional required it cannot evaluate (an unknown
+ * effect, scope or condition keyword, or a second rule for one field). A null form is
+ * `runtime_form_v2_contract_mismatch`; it is never rendered with a rule silently ignored.
+ */
 internal fun parseRuntimeFormV2(value: JsonElement): ParsedRuntimeFormV2? {
     val root = value as? JsonObject ?: return null
-    if (root["protocolVersion"].jsonNumberOrNull() != RUNTIME_FORM_V2_PROTOCOL_VERSION) return null
+    val protocolVersion = root["protocolVersion"].jsonNumberOrNull()
+    if (protocolVersion != RUNTIME_FORM_V2_PROTOCOL_VERSION && protocolVersion != RUNTIME_FORM_V3_PROTOCOL_VERSION) return null
+    val v3 = protocolVersion == RUNTIME_FORM_V3_PROTOCOL_VERSION
     if (!clientMeetsRequiredCapabilities(root["requiredClientCapabilities"])) return null
     val dataSchema = root["dataSchema"] as? JsonObject ?: return null
     val properties = dataSchema["properties"] as? JsonObject ?: return null
@@ -188,6 +209,28 @@ internal fun parseRuntimeFormV2(value: JsonElement): ParsedRuntimeFormV2? {
         visibility.getOrPut(key) { mutableListOf() } += RuntimeFormV2VisibleWhen(on, condition["in"].stringList())
     }
 
+    // v3 rules and conditional required; anything this client cannot evaluate refuses the form.
+    val rules = linkedMapOf<String, RuntimeFormV3Rule>()
+    val requiredWhen = linkedMapOf<String, MutableList<RuntimeFormV3RequiredWhen>>()
+    if (v3) {
+        (uiSchema["rules"] as? JsonArray)?.forEach { rule ->
+            val parsed = runtimeFormV3Rule(rule) ?: return null
+            if (rules.put(parsed.first, parsed.second) != null) return null
+        }
+        (dataSchema["allOf"] as? JsonArray)?.forEach { entry ->
+            val clauses = entry as? JsonObject ?: return null
+            val condition = clauses["if"] as? JsonObject
+            if (!isSupportedRuntimeFormV3Schema(condition)) return null
+            for ((branch, whenResult) in listOf("then" to true, "else" to false)) {
+                val clause = clauses[branch] ?: continue
+                val keys = ((clause as? JsonObject)?.get("required") as? JsonArray) ?: return null
+                keys.stringList().forEach { key ->
+                    requiredWhen.getOrPut(key) { mutableListOf() } += RuntimeFormV3RequiredWhen(condition!!, whenResult)
+                }
+            }
+        }
+    }
+
     val declaredOrder = uiSchema["order"].stringList().filter { it in properties }
     val order = LinkedHashSet(declaredOrder + properties.keys)
 
@@ -209,7 +252,9 @@ internal fun parseRuntimeFormV2(value: JsonElement): ParsedRuntimeFormV2? {
             derivedFrom = derived,
             visibleWhen = visibility[key].orEmpty(),
             choices = choiceCopy(copy["choices"]),
-            connectionOwned = schema[RUNTIME_FORM_V2_CONNECTION_OWNED_KEY].booleanOrNullStrict() == true
+            connectionOwned = schema[RUNTIME_FORM_V2_CONNECTION_OWNED_KEY].booleanOrNullStrict() == true,
+            rule = rules[key],
+            requiredWhen = requiredWhen[key].orEmpty()
         )
     }
 
@@ -221,8 +266,25 @@ internal fun parseRuntimeFormV2(value: JsonElement): ParsedRuntimeFormV2? {
         blockingFieldKeys = fields.filter { it.kind == RuntimeFormV2FieldKind.Unsupported && it.required }.map { it.key },
         values = root["values"] as? JsonObject,
         revision = root["revision"].stringOrNull()?.takeIf { it.isNotEmpty() },
-        writeOnlyKeepRequiresUnchanged = keepRequiresUnchanged(root["writeOnlyKeepRequiresUnchanged"], fields)
+        writeOnlyKeepRequiresUnchanged = keepRequiresUnchanged(root["writeOnlyKeepRequiresUnchanged"], fields),
+        protocolVersion = if (v3) RUNTIME_FORM_V3_PROTOCOL_VERSION else RUNTIME_FORM_V2_PROTOCOL_VERSION
     )
+}
+
+/** One v3 `uiSchema.rules` entry as (field key, rule); null when any part of it is unsupported. */
+private fun runtimeFormV3Rule(value: JsonElement): Pair<String, RuntimeFormV3Rule>? {
+    val rule = value as? JsonObject ?: return null
+    val key = runtimeFormV3Scope(rule["scope"].stringOrNull())?.key ?: return null
+    val effect = when (rule["effect"].stringOrNull()) {
+        "SHOW" -> RuntimeFormV3Effect.Show
+        "HIDE" -> RuntimeFormV3Effect.Hide
+        else -> return null
+    }
+    val condition = rule["condition"] as? JsonObject ?: return null
+    val scope = runtimeFormV3Scope(condition["scope"].stringOrNull()) ?: return null
+    val schema = condition["schema"] as? JsonObject
+    if (!isSupportedRuntimeFormV3Schema(schema)) return null
+    return key to RuntimeFormV3Rule(effect, RuntimeFormV3Condition(scope, schema!!))
 }
 
 /** `writeOnlyKeepRequiresUnchanged` by field key; anything malformed is ignored (tolerant, like slock v2.ts). */
