@@ -127,7 +127,9 @@ internal fun CreateJointChannelDialog(
         RaftDialog(
             onDismissRequest = onDismiss,
             title = title,
-            size = RaftDialogSize.Lg,
+            // The web's DialogCard is `max-w-lg` (512, off raft-ui's sizes); the nearest raft-ui
+            // size is md (448). raft-ui lg is now 640, too wide for this short form.
+            size = RaftDialogSize.Md,
             dismissOnClickOutside = false,
             closeLabel = stringResource(Res.string.common_close),
             footer = {

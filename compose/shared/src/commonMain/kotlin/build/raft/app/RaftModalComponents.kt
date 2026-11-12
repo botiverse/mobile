@@ -478,7 +478,8 @@ internal fun RaftUnifiedDialog(
     dismissOnOutsideTap: Boolean = true,
     overlayAlpha: Float = 0.60f,
     minWidth: Dp = 312.dp,
-    maxWidth: Dp = 408.dp,
+    // raft-ui Dialog `md` (448), the web DialogCard's default `max-w-md`; was 408, off raft-ui's sizes.
+    maxWidth: Dp = RaftDialogSheetDefaults.CenteredWidth,
     outerPadding: Dp = RaftAppSpacing.Md,
     // Web dialogs (raft-ui Dialog / DialogCard) use p-6 and an 18px bold uppercase
     // title; these defaults follow them so call sites only override deliberately.

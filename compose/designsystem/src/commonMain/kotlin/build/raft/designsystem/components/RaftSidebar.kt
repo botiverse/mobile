@@ -15,18 +15,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -44,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
@@ -81,6 +91,15 @@ internal object RaftSidebarItemMetrics {
 
     /** `--cell-pad-x` (12dp from the shape's edge), inside the 1.5dp border. */
     val PaddingEnd = 10.5.dp
+
+    /**
+     * Under a fine pointer `--cell-pad-x` is the 16dp page inset less the list's 8dp
+     * (`--cell-inset-x`): 8dp from the shape's edge, inside the 1.5dp border, at both ends.
+     */
+    val PointerPaddingX = 6.5.dp
+
+    /** Under a fine pointer a row's avatar pulls the name 3dp closer (`mr-[-3px]`). */
+    val PointerAvatarPull = 3.dp
 
     /** `gap-2` between icon, text and aside. */
     val Gap = 8.dp
@@ -140,7 +159,9 @@ enum class RaftSidebarItemVariant(
  * - Box: at least 44dp tall (it grows with the font scale), the content 12dp inside the
  *   shape at both ends (10.5dp inside a 1.5dp edge that is always there, transparent at
  *   rest), control radius, gap 8, 1dp above and below, so rows stand 2dp apart (raft-ui
- *   0.49 list cells, `gap-0.5`). The row fills the width it is given.
+ *   0.49 list cells, `gap-0.5`). The row fills the width it is given. With a mouse or
+ *   trackpad the content is 8dp inside the shape, on the sidebar's 16dp glyph axis, and a
+ *   [RaftSidebarItemVariant.Peer] row's avatar pulls the name 3dp in, onto the 40dp text axis.
  * - [leading]: a 19dp slot for a 16dp icon ([RaftSidebarItemIcon]) or a 19dp avatar, drawn
  *   in `foreground-hint` ([LocalRaftContentColor]), 8dp from the name. [variant]
  *   [RaftSidebarItemVariant.Entry] (Home's Search / Activity / Saved) makes it a 20dp icon
@@ -336,6 +357,14 @@ private fun RaftSidebarItemLayout(
     val edge = RaftStroke.Control
     val pointerRow = RaftTheme.controls.rowHeight
     val padY = if (pointerRow != null) RaftSidebarItemMetrics.PointerPaddingVertical else RaftSidebarItemMetrics.PaddingVertical
+    // With a mouse or trackpad the content sits on the sidebar's axes (raft-ui list-cell
+    // `md:pointer-fine:[--cell-pad-x:calc(var(--page-inset)-var(--cell-inset-x))]`): 8dp inside
+    // the shape, so a glyph starts on the 16dp glyph axis and, after a 16dp icon (or a 19dp
+    // avatar pulled 3dp in) and the 8dp gap, the name on the 40dp text axis. The app keeps the
+    // 19dp icon slot, so a channel's name lands 3dp past it (43dp).
+    val fine = RaftTheme.pointerInput == RaftPointerInput.Fine
+    val padX = if (fine) RaftSidebarItemMetrics.PointerPaddingX else RaftSidebarItemMetrics.PaddingStart
+    val padXEnd = if (fine) RaftSidebarItemMetrics.PointerPaddingX else RaftSidebarItemMetrics.PaddingEnd
     CompositionLocalProvider(
         LocalRaftContentColor provides hintInk,
         LocalRaftSidebarItemHint provides hintInk,
@@ -378,8 +407,8 @@ private fun RaftSidebarItemLayout(
                 )
                 .then(if (selected) Modifier.semantics { this.selected = true } else Modifier)
                 .padding(
-                    start = RaftSidebarItemMetrics.PaddingStart + edge,
-                    end = RaftSidebarItemMetrics.PaddingEnd + edge,
+                    start = padX + edge,
+                    end = padXEnd + edge,
                     top = padY + edge,
                     bottom = padY + edge,
                 ),
@@ -390,6 +419,11 @@ private fun RaftSidebarItemLayout(
                 Box(
                     Modifier
                         .padding(end = variant.leadingGap - RaftSidebarItemMetrics.Gap)
+                        // `md:pointer-fine:*:data-[slot=avatar]:mr-[-3px]`: a DM's avatar pulls
+                        // the name onto the text axis. (raft-ui's icon slot also drops to 16dp
+                        // there; the app keeps the 19dp slot, as a Default row can hold an
+                        // avatar the slot would squeeze.)
+                        .then(if (fine && variant == RaftSidebarItemVariant.Peer) Modifier.hangEnd(RaftSidebarItemMetrics.PointerAvatarPull) else Modifier)
                         .size(variant.leadingBox),
                     contentAlignment = Alignment.Center,
                 ) { leading() }
@@ -704,7 +738,9 @@ fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier) {
  */
 @Composable
 fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
-    RaftSectionEyebrow(title, modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 12.dp, end = 12.dp, top = 16.dp))
+    // With a mouse or trackpad on the glyph axis (`md:pointer-fine:px-(--sidebar-glyph-axis)`).
+    val inset = if (RaftTheme.pointerInput == RaftPointerInput.Fine) RaftSidebarPointerGlyphInset else 12.dp
+    RaftSectionEyebrow(title, modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = inset, end = inset, top = 16.dp))
 }
 
 /**
@@ -712,7 +748,9 @@ fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
  * collapsible group of rows (Pinned, Channels, a custom group).
  *
  * - `px-5 pt-4` (20dp from the list's edges with the page's 8dp), gap 8: 40dp tall at the
- *   default font scale.
+ *   default font scale. With a mouse or trackpad it starts on the sidebar's glyph axis (16dp
+ *   from the edge with the page's 8dp) and ends 18dp from it (raft-ui
+ *   `md:pointer-fine:pl-(--sidebar-glyph-axis)`).
  * - The disclosure: a 14dp `chevron-right` (turned down when [expanded]; `size-3.5`),
  *   an optional [icon] (a custom group's emoji), the [title] in `text-footnote` 700 and
  *   [count] in Space Mono 12 tabular, all `foreground-hint`, 6dp apart. The whole header is
@@ -729,10 +767,13 @@ fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
  *   growing the header (`-my-1`), and the last one's icon box, not its button, ends on the
  *   header's line: the row of them hangs 5dp past it (`-mr-icon-inset`, 0.56 #922), as the
  *   chevron starts on the other end. Pass only [RaftSidebarSectionAction]s.
- *   They always show, after the attention pixel, with a mouse or trackpad as with a finger
- *   (raft-ui 0.57.1, #942, stdrc 2026-11-02: shown only on hover they hid what the header
- *   can do and changed a long title's room as the pointer passed), so a long title truncates
- *   before them.
+ *   With a finger they always show, after the attention pixel. With a mouse or trackpad
+ *   ([RaftPointerInput.Fine]) they show only while the header is hovered, holds keyboard
+ *   focus (its own or a control's) or a control's menu is open (its `menuOpen`) or the
+ *   header's [menuOpen] (web SidebarSectionControls on raft-ui 0.95: "show on section hover,
+ *   keyboard focus or an open menu, always on touch"). Hidden they are transparent but keep
+ *   their room, so a long title truncates before them either way and nothing moves as the
+ *   pointer passes; they stay in the focus order and the accessibility tree.
  * - Press: the header lights up the whole row with the attention pixel and the controls,
  *   with `fill-medium` on the control radius (States: a text button lights up its hit
  *   area when pressed): its line with 6dp above and below, so the words sit in the middle
@@ -769,6 +810,17 @@ fun RaftSidebarSectionHeader(
     val isPressed = raftIsPressed(source)
     val pressed = interactive && (isPressed || menuOpen)
     val showAttention = attention && !expanded
+    // The controls with a mouse or trackpad show only while the header is hovered, holds
+    // keyboard focus or one of them has its menu open; with a finger always (web
+    // SidebarSectionControls, raft-ui 0.95). Hidden, they keep their room and stay in the
+    // accessibility tree and the focus order: focus on one shows them.
+    val fine = RaftTheme.pointerInput == RaftPointerInput.Fine
+    val hoverSource = remember { MutableInteractionSource() }
+    val hovered = raftIsHovered(hoverSource)
+    var focusWithin by remember { mutableStateOf(false) }
+    val keyboard = LocalInputModeManager.current.inputMode == InputMode.Keyboard
+    val openMenus = remember { RaftSidebarSectionOpenMenus() }
+    val actionsShown = !fine || hovered || (focusWithin && keyboard) || menuOpen || openMenus.count > 0
     val hint = colors.foregroundHint
     val lineHeight = 18.dp
     // The whole header is the disclosure's target, and its press fill and focus ring cover it
@@ -783,6 +835,9 @@ fun RaftSidebarSectionHeader(
         modifier
             .fillMaxWidth()
             .raftSafeAreaHorizontalPadding()
+            .raftPointerHover(hoverSource)
+            // Focus on the header's button or on any control in it (`:focus-within`).
+            .onFocusChanged { focusWithin = it.hasFocus }
             .then(
                 if (onExpandedChange != null) {
                     val toggle = { onExpandedChange(!expanded) }
@@ -822,8 +877,16 @@ fun RaftSidebarSectionHeader(
             .raftFocusRing(focused, RaftRadius.Control, colors)
             .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Control)
             // `px-5` (raft-ui 0.49, #815): the words 12dp inside the fill, 20dp from the list's
-            // edges with the page's 8dp, on the rows' content edge.
-            .padding(horizontal = 12.dp, vertical = RaftSidebarSectionHeaderInset),
+            // edges with the page's 8dp, on the rows' content edge. With a mouse or trackpad
+            // the start is the sidebar's glyph axis (`pl-(--sidebar-glyph-axis)`: the 16dp page
+            // inset, 8dp inside the page's 8dp), and the end 18dp from the edge (`pr-[...+10px]`
+            // with no classic scrollbar).
+            .padding(
+                start = if (fine) RaftSidebarPointerGlyphInset else 12.dp,
+                end = if (fine) RaftSidebarSectionHeaderPointerEnd else 12.dp,
+                top = RaftSidebarSectionHeaderInset,
+                bottom = RaftSidebarSectionHeaderInset,
+            ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -874,12 +937,17 @@ fun RaftSidebarSectionHeader(
             ) {
                 if (showAttention) RaftStatusDot(variant = RaftStatusVariant.Accent, size = RaftStatusSize.Md)
                 if (actions != null) {
-                    Row(
-                        Modifier.hangEnd(RaftSidebarSectionActionIconInset),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        content = actions,
-                    )
+                    CompositionLocalProvider(LocalRaftSidebarSectionOpenMenus provides openMenus) {
+                        Row(
+                            Modifier
+                                .hangEnd(RaftSidebarSectionActionIconInset)
+                                .alpha(if (actionsShown) 1f else 0f)
+                                .semantics { this[RaftSidebarSectionActionsShown] = actionsShown },
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            content = actions,
+                        )
+                    }
                 }
             }
         }
@@ -891,6 +959,30 @@ private val RaftSidebarSectionHeaderInset = 6.dp
 
 /** The rest of `pt-4` (16dp) above the fill: the gap between sections, tappable but unpainted. */
 private val RaftSidebarSectionHeaderGap = 16.dp - RaftSidebarSectionHeaderInset
+
+/**
+ * With a mouse or trackpad, from the page's 8dp to the sidebar's glyph axis
+ * (`--sidebar-glyph-axis`: the 16dp `--page-inset` from the sidebar's edge, styles.css).
+ */
+private val RaftSidebarPointerGlyphInset = 8.dp
+
+/**
+ * With a mouse or trackpad, from the page's 8dp to a header's end: raft-ui
+ * `md:pointer-fine:pr-[calc(max(0px,calc(8px-var(--scrollbar-size,0px)))+10px)]`, 18dp from the
+ * sidebar's edge with no classic scrollbar.
+ */
+private val RaftSidebarSectionHeaderPointerEnd = 10.dp
+
+/** How many of a header's controls have their menu open: the header keeps them shown meanwhile. */
+private class RaftSidebarSectionOpenMenus {
+    var count by mutableStateOf(0)
+}
+
+/** The [RaftSidebarSectionOpenMenus] of the header around a [RaftSidebarSectionAction]. */
+private val LocalRaftSidebarSectionOpenMenus = staticCompositionLocalOf<RaftSidebarSectionOpenMenus?> { null }
+
+/** Whether a header's controls are shown (tests); hidden they keep their room and their semantics. */
+internal val RaftSidebarSectionActionsShown = SemanticsPropertyKey<Boolean>("RaftSidebarSectionActionsShown")
 
 /**
  * A group header's control (`SidebarSectionControl`: ghost, `h-6 min-w-6`, raft-ui 0.55 #916):
@@ -940,6 +1032,14 @@ fun RaftSidebarSectionAction(
     val pressed = raftIsPressed(source)
     val focused = raftIsFocused(source)
     val active = hovered || pressed || focused || menuOpen
+    // An open menu keeps the header's controls shown with a mouse, after the pointer has left.
+    val openMenus = LocalRaftSidebarSectionOpenMenus.current
+    if (menuOpen && openMenus != null) {
+        DisposableEffect(openMenus) {
+            openMenus.count += 1
+            onDispose { openMenus.count -= 1 }
+        }
+    }
     RaftSizedIconButton(
         onClick = onClick,
         tooltip = tooltip,
