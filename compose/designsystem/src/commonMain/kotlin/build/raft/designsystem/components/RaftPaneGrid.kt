@@ -627,6 +627,13 @@ internal val LocalRaftPaneGridRow = compositionLocalOf<RaftPaneGridRow?> { null 
 
 internal val LocalRaftPaneGridHost = compositionLocalOf<RaftPaneGridHost?> { null }
 
+/**
+ * Whether the column a cell stands in is on screen: false while it is a row tab not shown (#189 rule 4) or out of
+ * sight because another column fills the row (Focus mode). Its pages stay composed; what acts on what the person sees
+ * (Back, a page's foreground work) goes by this. True outside any column.
+ */
+val LocalRaftPaneGridColumnShown = compositionLocalOf { true }
+
 /** How many grids' main panes enclose this point (0: none). */
 private val LocalRaftPaneGridDepth = compositionLocalOf { 0 }
 
@@ -918,9 +925,10 @@ fun RowScope.RaftPaneGridSideColumn(
             .fillMaxHeight()
             .testTag(RAFT_PANE_GRID_COLUMN_TEST_TAG + column.bounds.id)
             .background(RaftTheme.colors.layerCanvas)
-            // A tab not shown is out of reach (web `inert`): no semantics, no focus.
-            .then(if (tabHidden) Modifier.clearAndSetSemantics {} else Modifier)
-            .raftPaneGridInert(tabHidden)
+            // A tab not shown, or a column out of sight while another fills the row (Focus), is out of reach (web
+            // `inert`): no semantics, no focus.
+            .then(if (gone) Modifier.clearAndSetSemantics {} else Modifier)
+            .raftPaneGridInert(gone)
     ) {
         val seam = if (fill) 0.dp else RaftStroke.Hairline
         Column(Modifier.fillMaxSize()) {
@@ -935,7 +943,7 @@ fun RowScope.RaftPaneGridSideColumn(
                 Row(Modifier.fillMaxSize().raftPaneGridContentMinWidth(if (fill) 0f else minWidth)) {
                     Spacer(Modifier.width(seam).fillMaxHeight())
                     // A page in a cell is not in the main pane: a grid it declares is its own.
-                    CompositionLocalProvider(LocalRaftPaneGridHost provides null) {
+                    CompositionLocalProvider(LocalRaftPaneGridHost provides null, LocalRaftPaneGridColumnShown provides !gone) {
                         RaftPaneGridStackView(column, Modifier.weight(1f).fillMaxHeight())
                     }
                 }
