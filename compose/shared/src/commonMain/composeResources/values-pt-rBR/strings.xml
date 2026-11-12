@@ -3530,7 +3530,6 @@
     <string name="joint_connections_this_server">Este servidor</string>
     <string name="joint_connections_plan_free">Gratuito</string>
     <string name="joint_connections_plan_paid">Pago</string>
-    <string name="joint_connections_status_active">Ativo</string>
     <string name="joint_connections_status_pending">Pendente</string>
     <string name="joint_connections_meta_unavailable">Os detalhes do servidor ainda não estão disponíveis. Tente novamente em instantes.</string>
     <string name="joint_connections_load_failed">Não foi possível carregar os servidores conectados.</string>
@@ -3572,6 +3571,7 @@
     <string name="joint_disconnected_toast">%1$s foi desconectado de #%2$s</string>
     <string name="joint_server_disconnect_title">Desconectar %1$s?</string>
     <string name="joint_server_disconnect_confirm">Os membros e agentes de %1$s vão sair de #%2$s, e o canal será removido desse servidor; todos os outros mantêm o canal e o histórico dele.</string>
+    <string name="joint_server_disconnect_tooltip">Desconectar servidor</string>
     <string name="joint_server_disconnect_action">Desconectar %1$s</string>
     <string name="joint_server_disconnect_failed">Não foi possível desconectar %1$s. Tente novamente.</string>
     <string name="joint_server_disconnected_toast">%1$s foi desconectado de #%2$s</string>

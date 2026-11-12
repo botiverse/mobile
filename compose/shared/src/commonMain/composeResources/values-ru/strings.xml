@@ -3527,7 +3527,6 @@
     <string name="joint_connections_this_server">Этот сервер</string>
     <string name="joint_connections_plan_free">Free</string>
     <string name="joint_connections_plan_paid">Платный</string>
-    <string name="joint_connections_status_active">активен</string>
     <string name="joint_connections_status_pending">ожидает</string>
     <string name="joint_connections_meta_unavailable">Сведения о сервере пока недоступны. Попробуйте ещё раз чуть позже.</string>
     <string name="joint_connections_load_failed">Не удалось загрузить подключённые серверы.</string>
@@ -3569,6 +3568,7 @@
     <string name="joint_disconnected_toast">Сервер %1$s отключён от #%2$s</string>
     <string name="joint_server_disconnect_title">Отключить сервер %1$s?</string>
     <string name="joint_server_disconnect_confirm">Участники и агенты сервера %1$s выйдут из канала #%2$s, и он будет удалён с того сервера; у всех остальных канал и его история сохранятся.</string>
+    <string name="joint_server_disconnect_tooltip">Отключить сервер</string>
     <string name="joint_server_disconnect_action">Отключить сервер %1$s</string>
     <string name="joint_server_disconnect_failed">Не удалось отключить сервер %1$s. Попробуйте ещё раз.</string>
     <string name="joint_server_disconnected_toast">Сервер %1$s отключён от #%2$s</string>

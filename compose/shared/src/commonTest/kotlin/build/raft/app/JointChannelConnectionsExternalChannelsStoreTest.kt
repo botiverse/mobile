@@ -31,11 +31,12 @@ class JointChannelConnectionsExternalChannelsStoreTest {
         val store = loadedStore(dataSource, externalChannels = false)
         val state = store.state.value
 
-        // The server's order, every row badged, plan chips, invite and Resend, no per-row Disconnect.
-        assertEquals(listOf("srv-active", "srv-host", "srv-pending"), state.displayServers.map { it.serverId })
-        assertTrue(state.displayServers.all(state::showsStatusBadge))
+        // As the web: the host first under its Host badge, only the pending row badged; off, plan
+        // chips, invite and Resend stay, and no per-row Disconnect.
+        assertEquals(listOf("srv-host", "srv-active", "srv-pending"), state.displayServers.map { it.serverId })
+        assertEquals(listOf("srv-pending"), state.displayServers.filter(state::showsStatusBadge).map { it.serverId })
         assertTrue(state.displayServers.all(state::showsPlanBadge))
-        assertFalse(state.displayServers.any(state::showsHostBadge))
+        assertEquals(listOf("srv-host"), state.displayServers.filter(state::showsHostBadge).map { it.serverId })
         assertTrue(state.canManageConnections)
         assertTrue(state.canResend)
         assertFalse(state.displayServers.any(state::canDisconnectServer))

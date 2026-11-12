@@ -1,7 +1,6 @@
 package build.raft.app.compat.pager
 
 import build.raft.app.CHANNEL_SETTINGS_PAGE
-import build.raft.app.JOINT_CHANNEL_CONNECTIONS_PAGE
 import build.raft.app.MEMBER_DETAIL_PAGE
 import build.raft.app.THREAD_MEMBERS_PAGE
 
@@ -30,10 +29,9 @@ enum class RaftPaneRole {
 internal val raftPagePaneRoles: Map<String, RaftPaneRole> =
     mapOf(
         // Web ChannelDetailsSurface: the channel details are a column right of the chat, with no
-        // scrim; the member list and the joint connections open inside it, with Back.
+        // scrim; the member list opens inside it, with Back.
         CHANNEL_SETTINGS_PAGE to RaftPaneRole.Supporting,
         THREAD_MEMBERS_PAGE to RaftPaneRole.Supporting,
-        JOINT_CHANNEL_CONNECTIONS_PAGE to RaftPaneRole.Supporting,
         // Web ProfilePanel / AgentDetailPanel: the profile opened from a chat (avatar, mention,
         // channel members) is a column right of the conversation. The Members rail root shows its
         // own inline detail (MembersAdaptiveWorkspace) and does not go through a pane.

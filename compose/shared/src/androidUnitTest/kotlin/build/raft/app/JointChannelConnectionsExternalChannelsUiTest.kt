@@ -8,7 +8,6 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.dp
 import build.raft.app.data.JointChannelRole
 import build.raft.app.components.RaftDesignSystemTheme
 import kotlin.test.Test
@@ -23,9 +22,10 @@ import org.robolectric.annotation.Config
 
 /**
  * Connected servers on a real composition, wired as the page wires it (the store's state into
- * [JointConnectionsContent], its confirm into [JointServerDisconnectConfirmDialog]): with
- * `external_channels_v1` on, the host's Host badge, no plan chips / Active badge / invite form /
- * Resend, and the host's per-row Disconnect asking first; off, the page as before.
+ * [JointConnectedServersSection], its confirm into [JointServerDisconnectConfirmDialog]): with
+ * `external_channels_v1` on, no plan chips / invite form / Resend, and the host's per-row
+ * Disconnect asking first; off, plan chips, the invite form and Resend. The Host badge and the
+ * pending badge either way (web).
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -42,7 +42,7 @@ class JointChannelConnectionsExternalChannelsUiTest {
         setContent {
             val state by store.state.collectAsState()
             RaftDesignSystemTheme {
-                JointConnectionsContent(
+                JointConnectedServersSection(
                     state = state,
                     slug = "",
                     people = "",
@@ -54,7 +54,6 @@ class JointChannelConnectionsExternalChannelsUiTest {
                     onSendInvite = {},
                     onResend = {},
                     onDisconnectServer = { store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer(it)) },
-                    bottomSafeArea = 0.dp,
                 )
                 state.disconnectConfirmServer?.let { server ->
                     JointServerDisconnectConfirmDialog(
@@ -92,12 +91,13 @@ class JointChannelConnectionsExternalChannelsUiTest {
     }
 
     @Test
-    fun flagOffKeepsPlanChipsStatusBadgesInviteAndResend() = runRobolectricComposeUiTest {
+    fun flagOffKeepsPlanChipsInviteAndResend() = runRobolectricComposeUiTest {
         show(externalChannels = false)
 
-        assertEquals(0, count(JointConnectionsHostBadgeTag))
+        // The host's Host badge and the pending row's badge, as the web; the plan chips stay.
+        assertEquals(1, count(JointConnectionsHostBadgeTag))
         assertEquals(3, count(JointConnectionsPlanBadgeTag))
-        assertEquals(3, count(JointConnectionsStatusBadgeTag))
+        assertEquals(1, count(JointConnectionsStatusBadgeTag))
         assertEquals(1, count(JointConnectionsInviteTag))
         assertEquals(1, count(JointConnectionsResendTag))
         assertEquals(0, count(JointConnectionsDisconnectTag))

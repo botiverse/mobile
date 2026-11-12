@@ -17,7 +17,6 @@ internal enum class AuthenticatedProductRoute(val pageName: String) {
     ThreadMembers(THREAD_MEMBERS_PAGE),
     ChannelSettings(CHANNEL_SETTINGS_PAGE),
     ThreadSettings(THREAD_SETTINGS_PAGE),
-    JointChannelConnections(JOINT_CHANNEL_CONNECTIONS_PAGE),
     ThreadForwardBundle(THREAD_FORWARD_BUNDLE_PAGE),
     HomeSearch(HOME_SEARCH_PAGE),
     HomeSaved(HOME_SAVED_PAGE),
