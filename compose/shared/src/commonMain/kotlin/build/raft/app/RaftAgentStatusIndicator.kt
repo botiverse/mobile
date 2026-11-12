@@ -285,7 +285,7 @@ internal fun projectHomeAgentStatusIndicatorState(
 
 /** Caption for an external agent's detail-page status (React AgentDetailPanel `AgentStatusBadge` parity). */
 internal sealed interface ExternalAgentDetailCaption {
-    /** `waiting_for_login`: gray dot; copy tells the user to finish setup on the web app. */
+    /** `waiting_for_login`: orange dot (a sign-in step needs action); copy tells the user to finish setup on the web app. */
     data object SetupRequired : ExternalAgentDetailCaption
     /** `lastSeenAt` within the online window (task #410): lime dot, "Online". */
     data object Online : ExternalAgentDetailCaption
@@ -314,11 +314,13 @@ internal fun parseExternalAgentTimestampOrNull(iso: String?): Long? =
 /**
  * Detail-page tone for an external agent, mirroring web `AgentStatusBadge`
  * (slock@2676dab22) with one deliberate difference:
- *  - `waiting_for_login`      → gray, "Setup required" — evaluated FIRST. Web
+ *  - `waiting_for_login`      → orange, "Setup required" — evaluated FIRST. Web
  *    checks activity tiers before the setup state, which can pair a lime dot
  *    with a "setup required" caption (an agent that ran and then lost its
- *    credential). Product rule (@artin): not signed in ⇒ gray, and this file's
- *    invariant is that the dot never disagrees with the text beside it.
+ *    credential). Product rule (@artin): not signed in reads as such, and this
+ *    file's invariant is that the dot never disagrees with the text beside it.
+ *    Orange, not gray (raft-design patterns/status.md): signing in is a step
+ *    someone has to take (needs action); stone gray is only offline.
  *  - activity within 5 min    → lime, "Active"
  *  - any older activity       → cyan, "Last activity …"
  *  - no activity              → cyan, "No Raft activity" / "Not configured"
@@ -349,7 +351,7 @@ internal fun externalAgentDetailIndicator(
      * The online tier (120s) is the presence signal; the `lastActivityAt`
      * tiers below are the setup/activity detail. Web `AgentStatusBadge`
      * parity: Online wins over a stale relative time; `waiting_for_login`
-     * stays gray-first per the existing KDoc divergence.
+     * stays first (orange) per the existing KDoc divergence.
      */
     lastSeenAt: String? = null
 ): ExternalAgentDetailIndicator {
@@ -380,7 +382,7 @@ internal fun externalAgentDetailIndicator(
     // waiting-first: see the KDoc on the two-tier divergence from web before adding a tier.
     val color =
         when {
-            waiting -> RaftColor.StatusNeutralGray
+            waiting -> RaftColor.AccentOrange
             seenOnline -> RaftColor.AccentLime
             ageMs != null && ageMs < ExternalAgentActiveThresholdMillis -> RaftColor.AccentLime
             else -> RaftColor.AccentCyan
