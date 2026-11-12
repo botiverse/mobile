@@ -58,12 +58,12 @@ class RaftWidePanesTest {
     @Test
     fun pagesOpenedFromThePaneGoByTheWeb() {
         // The profile's Message: the conversation becomes the main detail (web closeProfile + navigate).
-        assertEquals(RaftPaneRole.Detail, raftSupportingPaneRole(THREAD_PAGE))
+        assertEquals(RaftPaneRole.Detail, raftProfileColumnRole(THREAD_PAGE))
         // Channel members -> a profile, a profile -> a created agent's profile: pushed in the pane.
-        assertEquals(RaftPaneRole.Supporting, raftSupportingPaneRole(MEMBER_DETAIL_PAGE))
-        assertEquals(RaftPaneRole.Supporting, raftSupportingPaneRole(THREAD_MEMBERS_PAGE))
+        assertEquals(RaftPaneRole.Supporting, raftProfileColumnRole(MEMBER_DETAIL_PAGE))
+        assertEquals(RaftPaneRole.Supporting, raftProfileColumnRole(THREAD_MEMBERS_PAGE))
         // Everything else (the profile's Computers link) opens as it did.
-        assertEquals(RaftPaneRole.Window, raftSupportingPaneRole(SETTINGS_COMPUTERS_PAGE))
+        assertEquals(RaftPaneRole.Window, raftProfileColumnRole(SETTINGS_COMPUTERS_PAGE))
     }
 
     @Test
@@ -75,7 +75,7 @@ class RaftWidePanesTest {
                 platform = platform,
                 wide = { true },
                 openInPane = { role, name, _ -> panes += role to name },
-                roleOf = ::raftSupportingPaneRole,
+                roleOf = ::raftProfileColumnRole,
             )
         navigator.openPage(THREAD_PAGE, data)
         navigator.openPage(MEMBER_DETAIL_PAGE, data)
@@ -177,8 +177,8 @@ class RaftWidePanesTest {
     @Test
     fun backClosesTheProfileColumnsLastPageBeforeAnythingElse() {
         val open = RaftProfileColumnPanes().open(CHANNEL_SETTINGS_PAGE, data).openFrom(RaftProfileColumnCell.Details, THREAD_MEMBERS_PAGE, data)
-        assertEquals(RaftWideBackStep.PopSupportingPane, raftWideBackStep(open, shown = true))
-        assertEquals(RaftWideBackStep.PopSupportingPane, raftWideBackStep(open.back(), shown = true))
+        assertEquals(RaftWideBackStep.PopProfileColumn, raftWideBackStep(open, shown = true))
+        assertEquals(RaftWideBackStep.PopProfileColumn, raftWideBackStep(open.back(), shown = true))
         assertEquals(RaftWideBackStep.Existing, raftWideBackStep(open.back().back(), shown = true))
         assertEquals(RaftWideBackStep.Existing, raftWideBackStep(RaftProfileColumnPanes(), shown = true))
         // Pages kept in the column while it isn't declared (e.g. under the task overlay): Back
@@ -227,6 +227,27 @@ class RaftWidePanesTest {
         assertEquals(2, next.profile.entries.size)
         // Every page, the details' first, for reopening on the platform stack when the window narrows.
         assertEquals(listOf(CHANNEL_SETTINGS_PAGE, THREAD_MEMBERS_PAGE, MEMBER_DETAIL_PAGE, MEMBER_DETAIL_PAGE), next.pages.map { it.pageName })
+        // The details opened last: they go on top, so Back on the phone goes through them first, as in the column.
+        val detailsLast = RaftProfileColumnPanes().open(MEMBER_DETAIL_PAGE, data).open(CHANNEL_SETTINGS_PAGE, data)
+        assertEquals(listOf(MEMBER_DETAIL_PAGE, CHANNEL_SETTINGS_PAGE), detailsLast.pages.map { it.pageName })
+    }
+
+    // PR #4664 review: a page opened into the column leaves the thread's Focus mode; closing one doesn't.
+    @Test
+    fun openedSinceIsAPageOpenedNotOneClosed() {
+        val none = RaftProfileColumnPanes()
+        val details = none.open(CHANNEL_SETTINGS_PAGE, data)
+        assertTrue(details.openedSince(none))
+        val members = details.openFrom(RaftProfileColumnCell.Details, THREAD_MEMBERS_PAGE, data)
+        assertTrue(members.openedSince(details), "a page pushed")
+        val profile = members.openFrom(RaftProfileColumnCell.Details, MEMBER_DETAIL_PAGE, data)
+        assertTrue(profile.openedSince(members), "the other cell")
+        // A profile replaced by another (the same cell starting over) is a page opened too.
+        assertTrue(profile.open(MEMBER_DETAIL_PAGE, data).openedSince(profile))
+        assertFalse(profile.back().openedSince(profile), "Back")
+        assertFalse(profile.closeCell(RaftProfileColumnCell.Details).openedSince(profile), "a cell closed")
+        assertFalse(profile.cleared().openedSince(profile))
+        assertFalse(profile.openedSince(profile), "nothing changed")
     }
 
     @Test

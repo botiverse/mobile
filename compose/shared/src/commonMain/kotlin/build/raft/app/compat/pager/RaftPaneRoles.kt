@@ -22,7 +22,7 @@ enum class RaftPaneRole {
 
     /**
      * The main conversation slot. No registry entry has it: only a page opened from inside the
-     * profile column is routed there (raftSupportingPaneRole), as the web's profile Message
+     * profile column is routed there (raftProfileColumnRole), as the web's profile Message
      * closes the panel and opens the conversation.
      */
     Detail,

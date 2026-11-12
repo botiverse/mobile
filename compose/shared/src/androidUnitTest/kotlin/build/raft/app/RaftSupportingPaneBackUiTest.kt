@@ -42,7 +42,7 @@ class RaftSupportingPaneBackUiTest {
         var historyBacks = 0
 
         fun back() {
-            if (raftWideBackStep(panes, paneShown, overlayOpen = overlayOpen) == RaftWideBackStep.PopSupportingPane) {
+            if (raftWideBackStep(panes, paneShown, overlayOpen = overlayOpen) == RaftWideBackStep.PopProfileColumn) {
                 panes = panes.back()
             } else {
                 historyBacks++
@@ -53,11 +53,11 @@ class RaftSupportingPaneBackUiTest {
     /** SettingsHomePage's `adaptiveDetailPane` reduced to the pane's host / shown wiring (navRailActive, detail accepted). */
     @Composable
     private fun DetailPane(shell: Shell, allowSideColumn: Boolean, tag: String) {
-        val supportingPaneHost = allowSideColumn
-        val supportingOpen = supportingPaneHost && shell.panes.isOpen
-        RaftSupportingPaneShownReport(host = supportingPaneHost, shown = supportingOpen) { shell.paneShown = it }
+        val profileColumnHost = allowSideColumn
+        val profileColumnOpen = profileColumnHost && shell.panes.isOpen
+        RaftSupportingPaneShownReport(host = profileColumnHost, shown = profileColumnOpen) { shell.paneShown = it }
         Box(Modifier.testTag(tag)) {
-            if (supportingOpen) Box(Modifier.testTag(PANE))
+            if (profileColumnOpen) Box(Modifier.testTag(PANE))
         }
     }
 

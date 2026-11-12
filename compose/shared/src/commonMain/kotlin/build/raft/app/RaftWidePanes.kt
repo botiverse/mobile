@@ -21,6 +21,7 @@ import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.compat.pager.RaftPaneRole
 import build.raft.app.resources.*
+import build.raft.designsystem.components.LocalRaftPaneGridColumnShown
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -45,7 +46,7 @@ internal fun raftPaneRoute(
  * Where a page opened from inside the profile column goes: a conversation becomes the main detail
  * (web: the profile's Message closes the panel and navigates to the DM); the rest by [roleOf].
  */
-internal fun raftSupportingPaneRole(
+internal fun raftProfileColumnRole(
     pageName: String,
     roleOf: (String) -> RaftPaneRole = RaftPageRegistry::paneRole,
 ): RaftPaneRole = if (pageName == THREAD_PAGE) RaftPaneRole.Detail else roleOf(pageName)
@@ -74,14 +75,14 @@ internal data class RaftPaneStack(val entries: List<RaftPaneEntry> = emptyList()
 }
 
 /** What a wide Back (system Back, Esc, Cmd+[, the top bar's Back) does first. */
-internal enum class RaftWideBackStep { PopSupportingPane, Existing }
+internal enum class RaftWideBackStep { PopProfileColumn, Existing }
 
 /**
  * [shown] is whether the profile column is on screen (the same condition that declares it). Pages can sit in it
  * while it isn't, e.g. while the Tasks page's task column shows; Back must not spend a press closing it unseen.
  */
 internal fun raftWideBackStep(column: RaftProfileColumnPanes, shown: Boolean): RaftWideBackStep =
-    if (shown && column.isOpen) RaftWideBackStep.PopSupportingPane else RaftWideBackStep.Existing
+    if (shown && column.isOpen) RaftWideBackStep.PopProfileColumn else RaftWideBackStep.Existing
 
 /**
  * The shell's wide Back: an open profile column is the topmost thing, so Back closes its last page before
@@ -227,8 +228,19 @@ internal data class RaftProfileColumnPanes(
     /** The cells with a page, top to bottom: the column's cells. None: no column. */
     val cells: List<RaftProfileColumnCell> get() = RaftProfileColumnCell.entries.filter { stack(it).isOpen }
 
-    /** Every page in it, the details' first: the order they reopen in on the platform stack when the window narrows. */
-    val pages: List<RaftPaneEntry> get() = details.entries + profile.entries
+    /**
+     * Every page in it, in the order they reopen in on the platform stack when the window narrows: the cell opened
+     * into last on top, so Back goes through them as it did in the column.
+     */
+    val pages: List<RaftPaneEntry>
+        get() = if (backCell == RaftProfileColumnCell.Details) profile.entries + details.entries else details.entries + profile.entries
+
+    /** Whether this has a page [before] hadn't (one opened, not one closed): the column must show (it leaves Focus). */
+    fun openedSince(before: RaftProfileColumnPanes): Boolean =
+        RaftProfileColumnCell.entries.any { cell ->
+            val had = before.stack(cell).entries.map { it.id }.toSet()
+            stack(cell).entries.any { it.id !in had }
+        }
 
     /** The cell Back closes a page of: the one opened into last, else the other one open; null when none is. */
     val backCell: RaftProfileColumnCell? get() = last?.takeIf { stack(it).isOpen } ?: cells.lastOrNull()
@@ -333,13 +345,16 @@ internal fun raftProfileColumn(
  * goes to [openDetail] (the main detail; false: it could not, and the page opens on the platform stack); other pages
  * without a role open on the platform stack. Pages under the top stay composed and inactive, so going back finds
  * them as they were. Back closes the last page opened in the column first ([RaftProfileColumnPanes.backCell]: only
- * that cell's handler is on); handlers inside the page (a dialog) are composed after it and win. [page] draws an
- * entry: the page itself ([RaftChildPage]); a test's fixture.
+ * that cell's handler is on), and only while the column is on screen ([LocalRaftPaneGridColumnShown]: not while it is
+ * a row tab not shown or out of sight in Focus mode, where its pages are inactive too); handlers inside the page (a
+ * dialog) are composed after it and win. [panes] is read when it is needed, so two Backs in a row each act on the
+ * pages as they are, not as they were drawn. [page] draws an entry: the page itself ([RaftChildPage]); a test's
+ * fixture.
  */
 @Composable
 internal fun RaftProfileColumnCellStack(
     cell: RaftProfileColumnCell,
-    panes: RaftProfileColumnPanes,
+    panes: () -> RaftProfileColumnPanes,
     active: Boolean,
     onChange: (RaftProfileColumnPanes) -> Unit,
     openDetail: (String, JsonObject) -> Boolean = { _, _ -> false },
@@ -352,10 +367,12 @@ internal fun RaftProfileColumnCellStack(
     val currentOnChange by rememberUpdatedState(onChange)
     val currentOpenDetail by rememberUpdatedState(openDetail)
     val platform = LocalRaftHost.current.navigator
-    RaftBackHandler(enabled = active && panes.backCell == cell, label = "wide_profile_column", blocksBackSwipe = false) {
-        currentOnChange(currentPanes.back())
+    val shown = LocalRaftPaneGridColumnShown.current
+    val now = panes()
+    RaftBackHandler(enabled = active && shown && now.backCell == cell, label = "wide_profile_column", blocksBackSwipe = false) {
+        currentOnChange(currentPanes().back())
     }
-    val stack = panes.stack(cell)
+    val stack = now.stack(cell)
     val first = stack.entries.firstOrNull()
     val top = stack.entries.lastOrNull()
     Box(Modifier.fillMaxSize()) {
@@ -366,17 +383,104 @@ internal fun RaftProfileColumnCellStack(
                     openInPane = { role, name, data ->
                         when (role) {
                             RaftPaneRole.Detail -> if (!currentOpenDetail(name, data)) platform.openPage(name, data)
-                            else -> currentOnChange(currentPanes.openFrom(cell, name, data))
+                            else -> currentOnChange(currentPanes().openFrom(cell, name, data))
                         }
                     },
-                    close = { currentOnChange(currentPanes.close(cell, entry.id)) },
-                    roleOf = ::raftSupportingPaneRole,
+                    close = { currentOnChange(currentPanes().close(cell, entry.id)) },
+                    roleOf = ::raftProfileColumnRole,
                 ) {
                     CompositionLocalProvider(LocalRaftPaneBackCloses provides (entry == first)) {
-                        page(entry, active && entry == top)
+                        page(entry, active && shown && entry == top)
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * The wide workspace detail's row (SettingsHomePage `adaptiveDetailPane`; composed as is by RaftProfileColumnUiTest):
+ * the conversation ([main]) as the grid's main pane, the side thread's column ([sideThreadColumn]) and the profile
+ * column, under the conversation's host, which opens the pages with the Supporting role in the column where [wide]
+ * (else on the platform stack as before), with the column's state for the conversation's Settings toggle
+ * ([LocalRaftProfileColumn]). [columnOpen]: the column may show here and has pages (the shell's `profileColumnOpen`);
+ * only the selected tab's pane ([tabSelected]) declares it, as the side thread. [reportHost] / [onShown]: see
+ * [RaftSupportingPaneShownReport].
+ *
+ * Focus mode ([threadFocused]: the side thread fills the row) and the column (PR #4664 review):
+ * - a page opened in the column while the thread fills the row leaves Focus ([onLeaveFocus]) so that it shows (web
+ *   rowLayout `useRowPlan`: a region opening into an expanded row calls `restoreRowExpand`);
+ * - Focus entered with the column open puts it out of sight: its pages stay, inert and inactive, the shell's Back
+ *   does not count it as shown and its own Back is off, so Back leaves Focus first and the column comes back.
+ *
+ * [panes] is read where it is needed (the shell's state), so two Backs in a row each act on the pages as they are.
+ */
+@Composable
+internal fun RaftWorkspaceDetailGrid(
+    modifier: Modifier,
+    wide: Boolean,
+    panes: () -> RaftProfileColumnPanes,
+    onPanesChange: (RaftProfileColumnPanes) -> Unit,
+    columnOpen: Boolean,
+    tabSelected: Boolean,
+    active: Boolean,
+    sideThreadColumn: RaftPaneGridColumn?,
+    threadFocused: Boolean,
+    onLeaveFocus: () -> Unit,
+    reportHost: Boolean,
+    onShown: (Boolean) -> Unit,
+    openDetail: (String, JsonObject) -> Boolean = { _, _ -> false },
+    page: @Composable (entry: RaftPaneEntry, active: Boolean) -> Unit = { entry, pageActive ->
+        val pageData = remember(entry) { entry.pageData.toKuiklyJson() }
+        RaftChildPage(pageName = entry.pageName, pageData = pageData, modifier = Modifier.fillMaxSize(), active = pageActive)
+    },
+    main: @Composable () -> Unit,
+) {
+    val filling = threadFocused && sideThreadColumn != null
+    // Only the main detail pane reports whether the column is shown; out of sight in Focus it isn't.
+    RaftSupportingPaneShownReport(host = reportHost, shown = columnOpen && !filling, report = onShown)
+    val currentPanes by rememberUpdatedState(panes)
+    val currentOnPanesChange by rememberUpdatedState(onPanesChange)
+    val currentFilling by rememberUpdatedState(filling)
+    val currentOnLeaveFocus by rememberUpdatedState(onLeaveFocus)
+    // Every change to the column's pages goes through here: one that opens a page while the thread fills the row
+    // leaves Focus first.
+    val change: (RaftProfileColumnPanes) -> Unit =
+        remember {
+            { next: RaftProfileColumnPanes ->
+                if (currentFilling && next.openedSince(currentPanes())) currentOnLeaveFocus()
+                currentOnPanesChange(next)
+            }
+        }
+    // The column's pages are the shell's, not the conversation's: they get this host, not the pane wrapper below.
+    val shellHost = LocalRaftHost.current
+    val now = panes()
+    // A new column object each composition: the grid draws its latest cells (each grid's `fresh` state).
+    val profileColumn =
+        if (columnOpen && tabSelected) {
+            raftProfileColumn(now.cells) { cell ->
+                CompositionLocalProvider(LocalRaftHost provides shellHost) {
+                    RaftProfileColumnCellStack(cell = cell, panes = panes, active = active, onChange = change, openDetail = openDetail, page = page)
+                }
+            }
+        } else {
+            null
+        }
+    // For the conversation's Settings toggle; kept while the details' first page is, so the conversation only
+    // recomposes when it changes.
+    val details = now.details.entries.firstOrNull()?.takeIf { columnOpen }
+    val state =
+        remember(details) {
+            RaftProfileColumnState(details = details, closeDetails = { change(currentPanes().closeCell(RaftProfileColumnCell.Details)) })
+        }
+    RaftPaneHost(wide = wide, openInPane = { _, pageName, pageData -> change(currentPanes().open(pageName, pageData)) }) {
+        CompositionLocalProvider(LocalRaftProfileColumn provides state) {
+            RaftPaneGrid(
+                columns = listOfNotNull(sideThreadColumn, profileColumn),
+                modifier = modifier,
+                fillColumn = RaftPaneGridColumns.Thread.id.takeIf { filling },
+                main = main,
+            )
         }
     }
 }

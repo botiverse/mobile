@@ -53,16 +53,18 @@ import org.robolectric.annotation.Config
 
 /**
  * The profile column (#189 step 3; web channelSideLayout's profile / details column) on a real composition, in the
- * workspace's shape: the split's grid, the detail's grid one level in declaring the thread (only while the plan
- * doesn't fold it, as SettingsHomePage does) and the profile column ([raftProfileColumn] with
- * [RaftProfileColumnCellStack], the pages fixtures), the conversation in its main pane with the header's Settings
+ * workspace's shape: the split's grid and, one level in, the shell's own [RaftWorkspaceDetailGrid] as
+ * SettingsHomePage composes it (the thread declared only while the plan doesn't fold it, the profile column, Focus
+ * mode; the pages are fixtures), the conversation in its main pane with the header's Settings
  * toggle (as ThreadPage's, through [LocalRaftProfileColumn]) and a member avatar, both opening pages through the
  * host navigator as the pages do ([RaftPaneHost] routes them by role):
  * - the channel details and a member's profile open into the column, the profile over the details; the Settings
  *   toggle opens and closes the details; a page's Close closes its cell;
  * - Back closes the column's last page first, then the other cell's, before the page's own Back;
  * - the conversation and the thread give way to it by the row plan (in proportion, then the thread folds) instead
- *   of it covering them.
+ *   of it covering them;
+ * - Focus mode (PR #4664 review): a page opened in the column leaves it; entered with the column open, the column is
+ *   out of sight and inert, and Back leaves Focus before it closes anything.
  * Every scenario checks the row settles (no recomposition loop: the lesson of #4661).
  */
 @OptIn(ExperimentalTestApi::class)
@@ -78,6 +80,9 @@ class RaftProfileColumnUiTest {
     private var threadOpen by mutableStateOf(false)
     private var rowWidth by mutableStateOf(1280f)
     private var folds: Boolean? = null
+    /** The side thread's Focus mode (the shell's `sideThreadFocused`) and what the column last reported as shown. */
+    private var focused by mutableStateOf(false)
+    private var columnShown = false
     private var pageBacks = 0
     private val platformOpened = mutableListOf<String>()
 
@@ -94,6 +99,8 @@ class RaftProfileColumnUiTest {
 
     private fun ComposeUiTest.showWorkspace(): Back {
         panes = RaftProfileColumnPanes()
+        focused = false
+        columnShown = false
         folds = null
         pageBacks = 0
         platformOpened.clear()
@@ -112,8 +119,9 @@ class RaftProfileColumnUiTest {
         val host = RaftCmpHost(BridgeWireHostCapabilities(transport), platform, bridgeTransport = transport)
         setContent {
             dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-            // The page's own Back, composed before the column: it only gets what the column leaves.
-            RaftBackHandler(enabled = true, label = "test_page") { pageBacks++ }
+            // The shell's own Back (SettingsHomePage `popMainRoute`), composed before the column: it only gets what the
+            // column leaves. Focus is a step of its own there: Back leaves it first.
+            RaftBackHandler(enabled = true, label = "test_page") { if (focused) focused = false else pageBacks++ }
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
             val grid = remember { RaftPaneGridStore() }
             CompositionLocalProvider(
@@ -136,46 +144,55 @@ class RaftProfileColumnUiTest {
         }
     }
 
-    /** SettingsHomePage's `adaptiveDetailPane` reduced to the row: the thread's column and the profile column. */
+    /**
+     * SettingsHomePage's `adaptiveDetailPane`: the split's grid, the thread declared only while the plan doesn't fold
+     * it, and the production [RaftWorkspaceDetailGrid] (the conversation's host, the thread's and the profile column,
+     * Focus) with fixture pages.
+     */
     @Composable
     private fun Workspace() {
         RaftPaneGrid(columns = emptyList()) {
             detailCompositions = counted(detailCompositions, "detail")
             val threadFolds = raftPaneGridFolds(RaftPaneGridColumns.Thread)
             folds = threadFolds
-            val shellHost = LocalRaftHost.current
-            val profileColumn =
-                raftProfileColumn(panes.cells) { cell ->
-                    CompositionLocalProvider(LocalRaftHost provides shellHost) {
-                        RaftProfileColumnCellStack(cell = cell, panes = panes, active = true, onChange = { panes = it }) { entry, _ ->
-                            FixturePage(entry)
-                        }
-                    }
-                }
             val threadColumn =
                 if (threadOpen && threadFolds == false) {
                     RaftPaneGridColumn(
                         bounds = RaftPaneGridColumns.Thread,
                         resizeLabel = "Resize thread",
-                        cells = listOf(RaftPaneGridCell(id = "thread") { Box(Modifier.fillMaxSize().testTag("thread")) }),
+                        cells = listOf(RaftPaneGridCell(id = "thread") { FixtureThread() }),
                         tabLabel = "Thread",
                     )
                 } else {
                     null
                 }
-            val details = panes.details.entries.firstOrNull()
-            val state =
-                remember(details) {
-                    RaftProfileColumnState(details = details, closeDetails = { panes = panes.closeCell(RaftProfileColumnCell.Details) })
-                }
-            RaftPaneHost(wide = true, openInPane = { _, name, pageData -> panes = panes.open(name, pageData) }) {
-                CompositionLocalProvider(LocalRaftProfileColumn provides state) {
-                    RaftPaneGrid(columns = listOfNotNull(threadColumn, profileColumn)) {
-                        conversationCompositions = counted(conversationCompositions, "conversation")
-                        FixtureConversation()
-                    }
-                }
+            RaftWorkspaceDetailGrid(
+                modifier = Modifier.fillMaxSize(),
+                wide = true,
+                panes = { panes },
+                onPanesChange = { panes = it },
+                columnOpen = panes.isOpen,
+                tabSelected = true,
+                active = true,
+                sideThreadColumn = threadColumn,
+                threadFocused = focused,
+                onLeaveFocus = { focused = false },
+                reportHost = true,
+                onShown = { columnShown = it },
+                page = { entry, _ -> FixturePage(entry) },
+            ) {
+                conversationCompositions = counted(conversationCompositions, "conversation")
+                FixtureConversation()
             }
+        }
+    }
+
+    /** The side thread: a message author, opening their profile through the host as the thread page does. */
+    @Composable
+    private fun FixtureThread() {
+        val navigator = LocalRaftHost.current.navigator
+        Column(Modifier.fillMaxSize().testTag("thread")) {
+            Button("thread-author") { navigator.openPage(MEMBER_DETAIL_PAGE, data) }
         }
     }
 
@@ -369,6 +386,80 @@ class RaftProfileColumnUiTest {
             click("gear-pressed")
             assertEquals(false, folds)
             onNodeWithTag("thread", useUnmergedTree = true).assertExists()
+            assertSettled()
+            threadOpen = false
+        }
+
+    private val threadTag = RAFT_PANE_GRID_COLUMN_TEST_TAG + RaftPaneGridColumns.Thread.id
+
+    // PR #4664 review, A: in Focus a profile opened from the thread used to go to a column of no width, and the next
+    // Back closed it unseen. Opening a page in the column leaves Focus (web restoreRowExpand), so it shows.
+    @Test
+    fun aPageOpenedInTheColumnWhileTheThreadFillsTheRowLeavesFocus() =
+        runRobolectricComposeUiTest {
+            threadOpen = true
+            rowWidth = 1280f
+            val back = showWorkspace()
+            runOnIdle { focused = true }
+            waitForIdle()
+            near(1280f, widthDp(threadTag), "the thread fills the row in Focus")
+            assertSettled()
+            click("thread-author")
+            assertEquals(listOf(RaftProfileColumnCell.Profile), panes.cells)
+            assertFalse(focused, "opening the profile left Focus")
+            // The row as without Focus: the conversation, the thread and the profile, all in sight.
+            near(480f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "the conversation")
+            near(400f, widthDp(threadTag), "the thread")
+            near(400f, widthDp(column), "the profile")
+            onNodeWithTag("close:$MEMBER_DETAIL_PAGE", useUnmergedTree = true).assertExists()
+            assertTrue(columnShown, "the shell counts the column as shown")
+            assertSettled()
+            // Back closes the profile it shows, then it is the shell's.
+            back.press()
+            assertFalse(panes.isOpen)
+            assertEquals(0, pageBacks)
+            back.press()
+            assertEquals(1, pageBacks)
+            assertSettled()
+            threadOpen = false
+        }
+
+    // PR #4664 review, B: Focus entered with the column open puts it out of sight. It must be inert, not counted as
+    // shown, and Back must leave Focus first, not close its pages unseen.
+    @Test
+    fun focusEnteredWithTheColumnOpenHidesItAndBackLeavesFocusFirst() =
+        runRobolectricComposeUiTest {
+            threadOpen = true
+            rowWidth = 1280f
+            val back = showWorkspace()
+            click("avatar")
+            click("gear")
+            assertEquals(listOf(RaftProfileColumnCell.Profile, RaftProfileColumnCell.Details), panes.cells)
+            assertTrue(columnShown)
+            runOnIdle { focused = true }
+            waitForIdle()
+            // Out of sight: no width, nothing a screen reader or the keyboard can reach, not counted as shown.
+            near(0f, widthDp(column), "the column in Focus")
+            near(1280f, widthDp(threadTag), "the thread fills the row")
+            onNodeWithTag("page:$MEMBER_DETAIL_PAGE", useUnmergedTree = true).assertDoesNotExist()
+            onNodeWithTag("page:$CHANNEL_SETTINGS_PAGE", useUnmergedTree = true).assertDoesNotExist()
+            assertFalse(columnShown, "the shell's Back step must not count a column out of sight")
+            assertSettled()
+            // Back leaves Focus; the pages are as they were and show again.
+            back.press()
+            assertFalse(focused, "Back left Focus")
+            assertEquals(listOf(RaftProfileColumnCell.Profile, RaftProfileColumnCell.Details), panes.cells, "nothing closed unseen")
+            near(400f, widthDp(column), "the column back in sight")
+            onNodeWithTag("page:$MEMBER_DETAIL_PAGE", useUnmergedTree = true).assertExists()
+            assertTrue(columnShown)
+            // Then Back is the column's: the details (opened last), then the profile, then the shell's.
+            back.press()
+            assertEquals(listOf(RaftProfileColumnCell.Profile), panes.cells)
+            back.press()
+            assertFalse(panes.isOpen)
+            assertEquals(0, pageBacks)
+            back.press()
+            assertEquals(1, pageBacks)
             assertSettled()
             threadOpen = false
         }
