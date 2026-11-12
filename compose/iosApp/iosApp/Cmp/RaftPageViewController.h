@@ -38,6 +38,13 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL raftNativeNavBarHeadHidden;
 /** PROTOTYPE: keeps the Swift RaftNativeNavBarHost alive with the page. */
 @property (nonatomic, strong, nullable) id raftNativeNavBarHost;
+/**
+ * The page's iPhone Duo side column is its navigation bar buttons, drawn by the system in the
+ * vertical bar (RaftIosSideActionHost): the navigation bar shows while it holds them.
+ */
+@property (nonatomic, assign) BOOL raftSideActionsShown;
+/** Keeps the Swift RaftIosSideActionHost alive with the page. */
+@property (nonatomic, strong, nullable) id raftSideActionHost;
 /** PROTOTYPE: called after layout / appearance (reason), for the large-title scroll mirror. */
 @property (nonatomic, copy, nullable) void (^raftNativeNavBarLayoutHook)(NSString *reason);
 

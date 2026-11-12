@@ -289,9 +289,22 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
                                              animated:self.raftUsesNativeNavBar ? animated : NO];
 }
 
-/// PROTOTYPE: the real bar shows for a native-bar page while one of its heads publishes.
+/// PROTOTYPE: the real bar shows for a native-bar page while one of its heads publishes. It also
+/// shows while it holds the Duo side column's buttons (RaftIosSideActionHost).
 - (BOOL)raftShowsNativeNavBar {
-    return self.raftUsesNativeNavBar && !self.raftNativeNavBarHeadHidden;
+    return (self.raftUsesNativeNavBar && !self.raftNativeNavBarHeadHidden) || self.raftSideActionsShown;
+}
+
+- (void)setRaftSideActionsShown:(BOOL)raftSideActionsShown {
+    if (_raftSideActionsShown == raftSideActionsShown) {
+        return;
+    }
+    _raftSideActionsShown = raftSideActionsShown;
+    self.fd_prefersNavigationBarHidden = ![self raftShowsNativeNavBar];
+    if (self.navigationController.topViewController == self) {
+        [self.navigationController setNavigationBarHidden:![self raftShowsNativeNavBar] animated:NO];
+    }
+    [self raftPublishWindowInsets];
 }
 
 - (void)setRaftNativeNavBarHeadHidden:(BOOL)raftNativeNavBarHeadHidden {
@@ -554,7 +567,11 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
         presented.presentationController.presentedView != nil &&
         !CGRectEqualToRect(presented.presentationController.presentedView.frame, window.bounds) &&
         [RaftIosWindowInsetsPublisher isSheetStyle:presented.modalPresentationStyle];
-    NSDictionary *payload = [_raftWindowInsetsPublisher nextPayloadWithInsets:view.safeAreaInsets
+    // The bar that holds the Duo side column's buttons draws them in the vertical bar; its top
+    // band is not the page's, so the page keeps the navigation controller's safe area.
+    UIEdgeInsets insets = self.raftSideActionsShown && self.navigationController != nil
+        ? self.navigationController.view.safeAreaInsets : view.safeAreaInsets;
+    NSDictionary *payload = [_raftWindowInsetsPublisher nextPayloadWithInsets:insets
                                                                         scale:scale
                                                               statusBarHidden:statusBarHidden
                                                              presentedAsSheet:presentedAsSheet

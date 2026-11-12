@@ -19508,10 +19508,7 @@ internal fun ThreadPageHeader(
         raftSideColumnControls(
             back =
                 if (showsBack) {
-                    raftSideColumnBackAction(
-                        onBack,
-                        systemSymbol = RaftSideColumnBackSystemSymbol.takeIf { threadHeaderSideColumnSystemSymbols(headerDisplay.surfaceKind) },
-                    )
+                    raftSideColumnBackAction(onBack)
                 } else {
                     null
                 },
@@ -19926,9 +19923,6 @@ private fun threadHeaderSideColumnActions(
                 }
             )
         }
-    // The iOS host's SF Symbols, on the channel page only (the 1.17.1 prototype): every other
-    // surface keeps a column drawn by us.
-    val systemSymbols = threadHeaderSideColumnSystemSymbols(surfaceKind)
     val sideCardLabels =
         ConversationSideCard.entries.associateWith { card ->
             conversationSideCardToggleLabel(card, sideCardToggles?.cards?.isOpen(card) == true)
@@ -19941,7 +19935,6 @@ private fun threadHeaderSideColumnActions(
                     searchLabel,
                     RaftLucideIconName.Search,
                     onOpenSearch,
-                    systemSymbol = "magnifyingglass".takeIf { systemSymbols },
                 )
             )
         }
@@ -19953,8 +19946,6 @@ private fun threadHeaderSideColumnActions(
                         sideCardLabels.getValue(card),
                         card.icon,
                         { toggles.onToggle(card) },
-                        systemSymbol =
-                            (if (card == ConversationSideCard.Tasks) "checklist" else "paperclip").takeIf { systemSymbols },
                     )
                 )
             }
@@ -19966,7 +19957,6 @@ private fun threadHeaderSideColumnActions(
                     settingsLabel,
                     RaftLucideIconName.Settings,
                     onShowSettings,
-                    systemSymbol = "gearshape".takeIf { systemSymbols },
                 )
             )
         }
@@ -27599,14 +27589,6 @@ private fun ThreadLazyWindowStats.toDiagnosticsString(result: String): String =
  * Deleting `!originMeasured ||` collapses this back to the intermittent form; see
  * `ThreadMenuShellHostPredicateTest`.
  */
-/**
- * Whether this surface's side-column buttons carry SF Symbols, so the iOS host may draw the Duo
- * column with system bar buttons (RaftSideActionHost): the channel page only for now. An action
- * without one (focus mode, a reply thread's follow) keeps the whole column ours.
- */
-internal fun threadHeaderSideColumnSystemSymbols(surfaceKind: String): Boolean =
-    surfaceKind == RaftThreadSurfaceKind.Channel
-
 /**
  * Back in a conversation header. A channel / DM that is the detail pane of a split has the list on
  * its left and nothing to go back to (web desktop has no Back there); a reply thread keeps it (it

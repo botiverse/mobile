@@ -4,6 +4,7 @@ import build.raft.designsystem.components.RaftSideActionHostColumn
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -167,9 +168,26 @@ class RaftSideActionHostBridgeTest {
     }
 
     @Test
-    fun onlyTheChannelPageCarriesSystemSymbols() {
-        assertTrue(threadHeaderSideColumnSystemSymbols(RaftThreadSurfaceKind.Channel))
-        assertFalse(threadHeaderSideColumnSystemSymbols(RaftThreadSurfaceKind.DirectMessage))
-        assertFalse(threadHeaderSideColumnSystemSymbols(RaftThreadSurfaceKind.ReplyThread))
+    fun everyIconAConversationsColumnHoldsHasASystemSymbol() {
+        // threadHeaderSideColumnActions and Home's bell: a reply thread's Timeline, focus mode and
+        // follow included, so no conversation falls back to a column drawn by the page.
+        val icons =
+            listOf(
+                RaftLucideIconName.Search,
+                RaftLucideIconName.Settings,
+                RaftLucideIconName.List,
+                RaftLucideIconName.MapPin,
+                RaftLucideIconName.Maximize2,
+                RaftLucideIconName.Square,
+                RaftLucideIconName.MessageSquareDot,
+                threadFollowMenuIcon(isFollowed = false),
+                threadFollowMenuIcon(isFollowed = true),
+                RaftLucideIconName.Trash2,
+                RaftLucideIconName.Bell,
+            ) + ConversationSideCard.entries.map { it.icon }
+        for (icon in icons) {
+            assertNotNull(raftSideColumnLucideAction("a", "A", icon, {}).systemSymbol, icon.wireName)
+        }
+        assertEquals("list.bullet", raftSideColumnLucideAction("timeline", "Timeline", RaftLucideIconName.List, {}).systemSymbol)
     }
 }
