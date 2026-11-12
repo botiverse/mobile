@@ -33,6 +33,7 @@ import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftMessageActionCard
 import build.raft.designsystem.components.RaftMessageActionCardHeaderDescription
+import build.raft.designsystem.components.RaftMessageActionCardHeaderMeta
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 
@@ -144,7 +145,12 @@ internal fun ThreadTaskHandoffCard(
                     toHandle = toHandle,
                     style = typography.subhead.copy(fontWeight = FontWeight.Bold),
                 )
-                if (meta.isNotBlank()) RaftMessageActionCardHeaderDescription(meta, Modifier.testTag(TaskHandoffCardMetaTag))
+                when {
+                    meta.isBlank() -> Unit
+                    // Waiting: the time alone, in Space Mono at the hint tier (web MessageActionCardHeaderMeta).
+                    returned == null -> RaftMessageActionCardHeaderMeta(meta, Modifier.testTag(TaskHandoffCardMetaTag))
+                    else -> RaftMessageActionCardHeaderDescription(meta, Modifier.testTag(TaskHandoffCardMetaTag))
+                }
             }
         },
     ) {

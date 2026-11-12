@@ -14,6 +14,7 @@ import build.raft.designsystem.components.RaftMessageActionCard
 import build.raft.designsystem.components.RaftMessageActionCardActions
 import build.raft.designsystem.components.RaftMessageActionCardDefaults
 import build.raft.designsystem.components.RaftMessageActionCardHeaderDescription
+import build.raft.designsystem.components.RaftMessageActionCardHeaderMeta
 import build.raft.designsystem.components.RaftMessageActionCardHint
 import build.raft.designsystem.components.RaftMessageActionCardNotice
 import build.raft.designsystem.components.RaftMessageActionCardProperties
@@ -66,6 +67,26 @@ class MessageActionCardScreenshotTest {
                 FoldedChannelCard("Done", RaftMessageActionCardStatusTone.Success, "Created by Ada · 10:51 → #release-review", check = true)
                 FoldedChannelCard("Declined", RaftMessageActionCardStatusTone.Neutral, "Declined by Ada. Nothing was changed.")
                 FoldedChannelCard("View only", RaftMessageActionCardStatusTone.Neutral, "Join this channel to act on this card.")
+            }
+        }
+
+    /** raft-ui `MessageActionCardHeaderMeta`: a slim card's time on a line of its own under the title (web TaskHandoffCard). */
+    @Test
+    fun messageActionCardHeaderMeta() =
+        capture("message_action_card_header_meta") {
+            Column(Modifier.width(360.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Caption("Slim card: title, its time, the body")
+                RaftMessageActionCard(
+                    title = "@otter → @xxchan",
+                    showIcon = false,
+                    description = { RaftMessageActionCardHeaderMeta("10:51") },
+                ) {
+                    RaftText(
+                        "Your call: ship Friday or Monday? The numbers are in the sheet.",
+                        style = RaftTheme.typography.callout,
+                        color = RaftTheme.colors.foreground,
+                    )
+                }
             }
         }
 
