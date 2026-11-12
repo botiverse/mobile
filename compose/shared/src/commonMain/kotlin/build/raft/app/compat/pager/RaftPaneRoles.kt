@@ -29,8 +29,8 @@ enum class RaftPaneRole {
 /** The pages that do not open as a [RaftPaneRole.Window]; every other page does. */
 internal val raftPagePaneRoles: Map<String, RaftPaneRole> =
     mapOf(
-        // Web ChannelSettingsSheet: a drawer right of the chat; members and joint connections are
-        // views inside it (ChannelOverflowMenu).
+        // Web ChannelDetailsSurface: the channel details are a column right of the chat, with no
+        // scrim; the member list and the joint connections open inside it, with Back.
         CHANNEL_SETTINGS_PAGE to RaftPaneRole.Supporting,
         THREAD_MEMBERS_PAGE to RaftPaneRole.Supporting,
         JOINT_CHANNEL_CONNECTIONS_PAGE to RaftPaneRole.Supporting,

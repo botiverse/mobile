@@ -6619,21 +6619,42 @@ private fun ThreadReactionAtlasImagePreview() {
 }
 
 /**
- * `components.channel.settings.panel` (and `.pinned-panel`): the #design settings drawer as the web
- * capture shows it (ChatPanel settings drawer, 390x844): the members strip (one person, one
- * working agent), Info with name and description unchanged, Preferences with #design in
- * Channels (Pinned for [pinned]), Notifications on All new messages and Collapse long messages
- * off, then an owner's actions: Make Private, Archive, Leave, Stop All Agents, Delete.
+ * `components.channel.settings.panel` (and `.pinned-panel`): the #design channel details as the
+ * web shows them (ChannelDetailsSurface): the identity, the members card (one person, one working
+ * agent), Channel settings (Public with Make private), Your preferences (Notifications, the sidebar
+ * section, Channels or Pinned for [pinned], Collapse long messages off), then an owner's actions:
+ * Archive, Leave, Stop all agents, Delete.
  */
 @Composable
-internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false, asPage: Boolean = rememberThreadSettingsOpensAsPage()) {
-    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-        ThreadSettingsModal(
-            channelName = "design",
-            subtitle = stringResource(Res.string.channel_description_design),
-            panel = channelSettingsPanelVisualPanel(pinned),
-            onDismiss = {},
-            asPage = asPage,
+internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false) {
+    val panel = channelSettingsPanelVisualPanel(pinned)
+    val channel = panel.channel ?: return
+    ChannelSettingsScaffold(refreshing = false, onBack = {}) {
+        ChannelSettingsContent(
+            model =
+                ChannelSettingsUiModel(
+                    channel = channel,
+                    memberSlice = panel.members ?: SharedServerChannelMembersSlice(channelId = channel.channelId.value),
+                    pinned = pinned,
+                    muted = false,
+                    permissions = panel.permissions ?: ChannelSettingsPermissions(),
+                    writeActionsEnabled = true,
+                    canStopAllAgents = panel.canStopAllAgents,
+                    showGuestAccess = false,
+                    section = panel.section,
+                    serverName = "Botiverse",
+                ),
+            longMessageCollapseSetting =
+                panel.longMessageCollapse
+                    ?: RaftLongMessageCollapseConversationSetting(
+                        preference = build.raft.app.data.RaftLongMessageCollapseConversationPreference(globalEnabled = false, channelOverride = null),
+                        available = true,
+                        onSetEnabled = {},
+                    ),
+            agentStatusResolver = panel.agentStatusResolver,
+            notificationLevelTarget = panel.notificationLevelTarget,
+            refreshNotificationLevels = panel.refreshNotificationLevels,
+            callbacks = ChannelSettingsCallbacks(),
         )
     }
 }
@@ -13553,7 +13574,12 @@ private fun SharedThreadRouteContentContent(
         val openSettingsPage: () -> Boolean = {
             val serverId = threadMembersServerId
             val channelId = threadMembersChannelId
-            serverId != null && channelId != null &&
+            if (serverId != null && channelId != null && renderedThread.surfaceKind == RaftThreadSurfaceKind.Channel) {
+                // A channel's settings are its details now (the old settings page only closes for a
+                // channel): the announcement bar's settings open them the way the header does.
+                onOpenChannelSettings(serverId, channelId, storeScope, settingsPageLinkKey)
+                true
+            } else serverId != null && channelId != null &&
                 pager.openRaftPage(
                     pageName = THREAD_SETTINGS_PAGE,
                     pageData = threadSettingsPageData(settingsPageLinkKey, serverId, channelId),
@@ -18396,6 +18422,27 @@ private fun ThreadPageContentContent(
                         replyThreadSurface = timelineSlice.replyThreadSurface && data.taskConversationChrome == null,
                         originReplyMetadata = originReplyMetadata
                     )
+                // The channel details (raft-design channel.md): on the wide layout a column beside the
+                // conversation, whose Settings toggle is pressed while they are open and closes them
+                // when pressed again; on a phone a pushed page. A DM keeps its settings page or drawer,
+                // a Lounge its drawer.
+                val supportingPane = LocalRaftSupportingPane.current
+                val channelDetailsOpen =
+                    conversationLounge == null &&
+                        payload.surfaceKind != RaftThreadSurfaceKind.DirectMessage &&
+                        supportingPane.showsChannelDetails(payload.sourceThreadId?.trim())
+                val showSettings: () -> Unit = {
+                    if (conversationLounge != null) {
+                        activeModal = "settings"
+                    } else if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
+                        // A wide window, or a page that could not open: the drawer.
+                        if (!(settingsOpensAsPage && onOpenSettingsPage?.invoke() == true)) activeModal = "settings"
+                    } else if (channelDetailsOpen) {
+                        supportingPane.close()
+                    } else {
+                        onThreadEvent("openChannelSettings", null, null, null)
+                    }
+                }
                 ThreadPageHeader(
                     onOpenTimeline =
                         threadOutline?.openTimelineAction(
@@ -18442,19 +18489,18 @@ private fun ThreadPageContentContent(
                         onThreadEvent("openMembersPager", null, null, null)
                     },
                     lounge = data.lounge,
-                    onShowSettings = {
-                        if (conversationLounge != null) {
-                            activeModal = "settings"
-                        } else if (threadSettingsUsesStandalonePage(payload.surfaceKind, newDesignSettingsEnabled())) {
-                            onThreadEvent("openChannelSettings", null, null, null)
-                        } else if (!(settingsOpensAsPage && onOpenSettingsPage?.invoke() == true)) {
-                            // A wide window, or a page that could not open: the drawer.
-                            activeModal = "settings"
-                        }
-                    },
+                    onShowSettings = showSettings,
+                    settingsOpen = channelDetailsOpen,
                     onTitleClick =
                         if (threadHeaderScrollToTopEnabled(payload.surfaceKind, selectedTab.wireValue)) {
                             { threadHeaderScrollToTopRequest += 1 }
+                        } else if (
+                            conversationLounge == null &&
+                            payload.surfaceKind == RaftThreadSurfaceKind.Channel &&
+                            threadHeaderSettingsActionVisible(payload.showSettingsAction, payload.surfaceKind)
+                        ) {
+                            // raft-design channel.md: the channel's name opens its details, as in other chat apps.
+                            showSettings
                         } else {
                             null
                         },
@@ -19232,50 +19278,21 @@ private fun ThreadPageContentContent(
         }
         when (activeModal) {
             "settings" -> {
+                // Only a DM and a Lounge open here (a channel opens its details page, ChannelSettingsPage.kt).
                 // Agent Lounge v0: a Lounge's overflow is the DM's (mute, section, collapse): no
                 // members, settings or edit (the server refuses rename, visibility and other agents).
-                if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage || conversationLounge != null) {
-                    ThreadDirectMessageSettingsDrawer(
-                        name = conversationLounge?.let { agentLoungeTitle(it.displayAgentName) } ?: headerDisplay.title,
-                        directMessageTag = conversationLounge == null,
-                        activityMuteState = activityMuteState,
-                        section = channelSettingsPanel?.section,
-                        sectionEnabled = channelSettingsPanel?.writeActionsEnabled == true,
-                        longMessageCollapseSetting = longMessageCollapseConversationSetting,
-                        onDismiss = { activeModal = null },
-                        onToggleActivityMute = onToggleActivityMute,
-                        onMoveSection = { moves -> channelSettingsPanel?.onMoveSection?.invoke(moves) },
-                        onCreateSection = { name, emoji -> channelSettingsPanel?.onCreateSection?.invoke(name, emoji) },
-                    )
-                } else {
-                    ThreadSettingsModal(
-                        channelKind = headerDisplay.channelKind,
-                        channelName = headerDisplay.title,
-                        subtitle = headerDisplay.subtitle,
-                        panel =
-                            (channelSettingsPanel ?: ThreadChannelSettingsPanel(longMessageCollapse = longMessageCollapseConversationSetting))
-                                .copy(
-                                    onOpenMembers = { onThreadEvent("openMembersPager", null, null, null) },
-                                    onAddMember = { onThreadEvent("openMembersPager", "add", null, null) },
-                                ),
-                        activityMuteState = activityMuteState,
-                        updateStatus = channelProfileUpdateStatus,
-                        updateErrorCode = channelProfileUpdateErrorCode,
-                        onDismiss = {
-                            if (channelProfileUpdateStatus != ChannelProfileUpdateStatus.InFlight) {
-                                activeModal = null
-                                onClearChannelProfileUpdateStatus()
-                            }
-                        },
-                        onSave = { originalName, originalDescription, name, description ->
-                            payload.resolveThreadRouteIdentity().timelineChannelId?.let { channelId ->
-                                onUpdateChannelProfile(channelId, originalName, originalDescription, name, description)
-                            }
-                        },
-                        onClearUpdateStatus = onClearChannelProfileUpdateStatus,
-                        onToggleActivityMute = onToggleActivityMute,
-                    )
-                }
+                ThreadDirectMessageSettingsDrawer(
+                    name = conversationLounge?.let { agentLoungeTitle(it.displayAgentName) } ?: headerDisplay.title,
+                    directMessageTag = conversationLounge == null,
+                    activityMuteState = activityMuteState,
+                    section = channelSettingsPanel?.section,
+                    sectionEnabled = channelSettingsPanel?.writeActionsEnabled == true,
+                    longMessageCollapseSetting = longMessageCollapseConversationSetting,
+                    onDismiss = { activeModal = null },
+                    onToggleActivityMute = onToggleActivityMute,
+                    onMoveSection = { moves -> channelSettingsPanel?.onMoveSection?.invoke(moves) },
+                    onCreateSection = { name, emoji -> channelSettingsPanel?.onCreateSection?.invoke(name, emoji) },
+                )
             }
             "sharePreview" ->
                 ThreadSharePreviewModal(
@@ -19381,6 +19398,8 @@ internal fun ThreadPageHeader(
     onOpenSearch: () -> Unit,
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit,
+    /** The channel details are open beside the conversation: Settings is a pressed toggle (raft-design channel.md). */
+    settingsOpen: Boolean = false,
     onTitleClick: (() -> Unit)? = null,
     /**
      * task #180: web parity (#9172/#9335). Null when this host cannot host a side column, which is
@@ -19777,7 +19796,16 @@ internal fun ThreadPageHeader(
                         }
                     }
                     if (threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind)) {
-                        ThreadHeaderIconButton(icon = RaftLucideIconName.Settings, onClick = onShowSettings)
+                        // web PanelToggleAction: pressed while the details are open, named Close then.
+                        ConversationHeaderToggle(
+                            icon = RaftLucideIconName.Settings,
+                            selected = settingsOpen,
+                            label =
+                                stringResource(
+                                    if (settingsOpen) Res.string.channel_details_close else Res.string.channel_details_open
+                                ),
+                            onClick = onShowSettings,
+                        )
                     }
                     if (!replyThreadMenu && payload.threadHeaderOpenInParentActionVisible()) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.MapPin, onClick = onOpenInChannel)
@@ -40004,278 +40032,8 @@ internal fun ThreadDirectMessageSettingsDrawer(
     }
 }
 
-/**
- * The channel settings: the web's channel Settings drawer (ChannelOverflowMenu with the
- * EditChannelDialog panel inside, raft-ui Drawer from the right), as [RaftUnifiedSideDrawer].
- * Head: ONE line (stdrc 2026-11-03): on a phone "Settings · #name", on a wide window, where the
- * drawer is a panel beside the page, the channel's own "#name", with × at the end.
- *
- * Body, in the web order: the Members strip (summary, faces, the add tile), Info (Name and
- * Description with their own Cancel and Save; read only for people who can't edit), Preferences
- * (Move to section, Notifications, Collapse long messages), then Actions. No footer: Info saves
- * in place, every preference applies at once. A tap beside the drawer keeps unsaved edits; a
- * danger action asks first in a centred confirm over the drawer (web ConfirmDialog `layer={1}`).
- */
 /** web inline Save: how long "Changes saved" shows before the form is idle again. */
 private const val ThreadSettingsSavedNoticeMillis = 1500L
-
-/**
- * The channel settings: the web's channel Settings drawer (ChannelOverflowMenu with the
- * EditChannelDialog panel inside, raft-ui Drawer from the right), as [RaftUnifiedSideDrawer].
- * Head: ONE line (stdrc 2026-11-03): on a phone "Settings · #name", on a wide window, where the
- * drawer is a panel beside the page, the channel's own "#name", with × at the end.
- *
- * Body, in the web order: the Members strip (summary, faces, the add tile; hidden on #all where
- * the server hides people from members), Info (Name, Description and the Slack pick with their
- * own Cancel and Save; read only for people who can't edit), Guest access, Preferences (Move to
- * section, Notifications, Collapse long messages), then Actions (Make Private / Public, Archive /
- * Unarchive, Leave, Stop All Agents, Delete / Disconnect, each with the web's gate and confirm).
- * Info, Guest access and the actions run through the settings page's store
- * ([ThreadChannelSettingsPanel.storeFactory]), so the drawer and the page are one implementation.
- */
-@Composable
-internal fun ThreadSettingsModal(
-    // The conversation's channel kind: the wide head's visibility tag (web ChannelDrawerTitle).
-    channelKind: String? = null,
-    channelName: String,
-    subtitle: String?,
-    panel: ThreadChannelSettingsPanel = ThreadChannelSettingsPanel(),
-    activityMuteState: ThreadActivityMuteUiState? = null,
-    updateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
-    updateErrorCode: String? = null,
-    onDismiss: () -> Unit,
-    onSave: (String, String, String, String) -> Unit = { _, _, _, _ -> },
-    onClearUpdateStatus: () -> Unit = {},
-    onToggleActivityMute: (() -> Unit)? = null,
-    // A phone: a pushed page with Back in place of the drawer's × (ThreadSettingsPage.kt).
-    asPage: Boolean = false,
-) {
-    val scope = rememberCoroutineScope()
-    val store = remember(panel.storeFactory != null) { panel.storeFactory?.invoke(scope) }
-    val storeStateFlow = remember(store) { store?.state ?: MutableStateFlow<ChannelSettingsState?>(null) }
-    val storeState by storeStateFlow.collectAsState()
-    LaunchedEffect(store) { store?.dispatch(ChannelSettingsIntent.Refresh) }
-    val loaded = storeState?.channel != null
-    val row =
-        (storeState?.channel ?: panel.channel)?.copy(name = channelName, subtitle = subtitle)
-            ?: HomeChannelRow(threadId = ThreadId(channelName), channelId = ChannelId(channelName), name = channelName, subtitle = subtitle)
-    val known = loaded || panel.channel != null
-    val permissions = if (loaded) storeState!!.permissions() else panel.permissions
-    val gate = panel.copy(channel = row.takeIf { known }, permissions = permissions)
-    val writeEnabled = if (store != null) storeState?.writeActionsEnabled == true else panel.writeActionsEnabled
-    val actionInFlight = storeState?.actionInFlight
-    val profileStatus = if (store != null) storeState?.profileStatus ?: ChannelProfileUpdateStatus.Idle else updateStatus
-    val profileError = if (store != null) storeState?.profileErrorCode else updateErrorCode
-    val slackBridge =
-        (if (store != null) storeState?.slackBridge else panel.slackBridge)
-            ?.takeIf { permissions != null && channelSettingsSlackBridgeApplies(row, permissions) }
-    val showGuestAccess = if (store != null) storeState?.showsGuestAccess() == true else panel.showGuestAccess
-    val model =
-        ChannelSettingsUiModel(
-            channel = row,
-            memberSlice = panel.members ?: SharedServerChannelMembersSlice(channelId = row.channelId.value),
-            pinned = false,
-            muted = activityMuteState?.muted == true,
-            permissions = permissions ?: ChannelSettingsPermissions(),
-            writeActionsEnabled = writeEnabled,
-            canStopAllAgents = panel.canStopAllAgents && !row.archived,
-            showGuestAccess = showGuestAccess,
-            actionInFlight = actionInFlight,
-            externalChannelsEnabled = panel.externalChannelsEnabled,
-        )
-    val actionRows = if (known && permissions != null) channelSettingsActionRows(model) else emptyList()
-    var confirm by remember { mutableStateOf<ChannelSettingsConfirm?>(null) }
-    var lastAction by remember { mutableStateOf<ChannelSettingsAction?>(null) }
-    var sosStore by remember { mutableStateOf<ChannelSosStore?>(null) }
-    // The drawer only learns about unsaved edits from the form; a tap beside it keeps them.
-    var infoDirty by remember(channelName, subtitle) { mutableStateOf(false) }
-    val profileSaving = profileStatus == ChannelProfileUpdateStatus.InFlight
-    val failureLabels = channelSettingsFailureLabels()
-    val errorStrings = localizedErrorPresentationStrings()
-    LaunchedEffect(storeState?.effect) {
-        val state = storeState ?: return@LaunchedEffect
-        when (val effect = state.effect) {
-            ChannelSettingsEffect.ProfileSaved ->
-                state.channel?.let { saved -> panel.onProfileSaved(saved.name.removePrefix("#"), saved.subtitle) }
-            is ChannelSettingsEffect.Updated -> {
-                confirm = null
-                panel.onChannelChanged()
-            }
-            is ChannelSettingsEffect.Failure -> {
-                confirm = null
-                if (effect.action != ChannelSettingsAction.Profile) {
-                    panel.onActionFailed(channelSettingsFailureMessage(effect, failureLabels, errorStrings))
-                }
-            }
-            ChannelSettingsEffect.Close -> {
-                confirm = null
-                onDismiss()
-                panel.onChannelClosed(lastAction, state.closedWithAccessLost)
-            }
-            // Web ArchivedNameCollisionBanner: the drawer closes, then the archived channel opens.
-            is ChannelSettingsEffect.OpenChannel -> {
-                confirm = null
-                onDismiss()
-                panel.onOpenChannel(effect.conversation, effect.unarchived)
-            }
-            null -> Unit
-        }
-        if (state.effect != null) store?.dispatch(ChannelSettingsIntent.ConsumeEffect)
-    }
-    // web inline Save: "Changes saved" shows for a moment, then the form is idle again.
-    LaunchedEffect(profileStatus) {
-        if (store != null && profileStatus == ChannelProfileUpdateStatus.Succeeded) {
-            delay(ThreadSettingsSavedNoticeMillis)
-            store.dispatch(ChannelSettingsIntent.ClearProfileStatus)
-        }
-    }
-    val callbacks =
-        ChannelSettingsCallbacks(
-            onConfirm = { confirm = it },
-            onUnarchive = {
-                lastAction = ChannelSettingsAction.Unarchive
-                store?.dispatch(ChannelSettingsIntent.Unarchive)
-            },
-            onStopAllAgents = {
-                panel.agentControlsApi?.let { api ->
-                    sosStore = ChannelSosStore(channelId = row.channelId, channelName = channelName, dataSource = api, scope = scope)
-                }
-            },
-            onSetGuestVisible = { store?.dispatch(ChannelSettingsIntent.SetGuestVisible(it)) },
-            onSetGuestJoinable = { store?.dispatch(ChannelSettingsIntent.SetGuestJoinable(it)) },
-        )
-    // The drawer fills a phone; past its max width it is a panel beside the page.
-    val wideWindow =
-        with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() } > RaftSideDrawerDefaults.MaxWidth
-    ThreadSettingsSurface(
-        asPage = asPage,
-        title =
-            if (wideWindow) {
-                "#$channelName"
-            } else {
-                stringResource(Res.string.thread_settings_panel_title)
-            },
-        titleTrailing = if (wideWindow) threadSettingsVisibilityTag(channelKind) else { { ThreadSettingsPanelChannelRef(channelName) } },
-        closeLabel = stringResource(Res.string.thread_settings_panel_close),
-        dismissOnOutsideTap = !infoDirty && !profileSaving && actionInFlight == null,
-        onDismiss = onDismiss
-    ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            contentPadding = PaddingValues(bottom = 16.dp)
-        ) {
-            val members = panel.members?.takeUnless { panel.hideMembersStrip }
-            members?.let { slice ->
-                item(key = "members") {
-                    ChannelMembersSection(
-                        slice = slice,
-                        fallbackCount = row.memberCount,
-                        canAdd = panel.canAddMembers && !row.archived,
-                        agentStatusResolver = panel.agentStatusResolver,
-                        onOpen = panel.onOpenMembers,
-                        onAdd = panel.onAddMember,
-                        separator = false,
-                    )
-                }
-            }
-            item(key = "panel") {
-                // web `channel-settings-panel`: `border-t px-4 pt-3` under the members strip.
-                Column(Modifier.fillMaxWidth()) {
-                    if (members != null) RaftSeparator()
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
-                        var sectionAfterFirst = false
-                        val description = row.subtitle?.trim().orEmpty()
-                        if (gate.showsInfoForm()) {
-                            RaftFormSection(
-                                title = stringResource(Res.string.channel_settings_info),
-                                description = stringResource(Res.string.channel_settings_info_detail),
-                            ) {
-                                ChannelInfoForm(
-                                    channel = row,
-                                    nameEditable = gate.nameEditable(),
-                                    enabled = writeEnabled && !row.archived,
-                                    status = profileStatus,
-                                    errorCode = profileError,
-                                    slackBridge = slackBridge,
-                                    onSave = { name, newDescription, slack ->
-                                        if (store != null) {
-                                            store.dispatch(ChannelSettingsIntent.UpdateProfile(name, newDescription, slack))
-                                        } else {
-                                            onSave(channelName, subtitle.orEmpty(), name, newDescription)
-                                        }
-                                    },
-                                    onClearStatus = {
-                                        if (store != null) store.dispatch(ChannelSettingsIntent.ClearProfileStatus) else onClearUpdateStatus()
-                                    },
-                                    onDirtyChange = { infoDirty = it },
-                                    archivedCollision = store?.let { storeState?.archivedCollisionFor(it) },
-                                    errorMessage = storeState?.profileErrorMessage,
-                                )
-                            }
-                            sectionAfterFirst = true
-                        } else if (description.isNotEmpty()) {
-                            // web `channel-settings-info-readonly`: the description as text.
-                            RaftFormSection(title = stringResource(Res.string.channel_settings_info)) {
-                                RaftText(
-                                    description,
-                                    style = RaftTheme.typography.subhead,
-                                    color = RaftTheme.colors.foreground
-                                )
-                            }
-                            sectionAfterFirst = true
-                        }
-                        if (showGuestAccess) {
-                            if (sectionAfterFirst) RaftSeparator()
-                            ChannelGuestAccessSection(
-                                channel = row,
-                                enabled = writeEnabled && actionInFlight != ChannelSettingsAction.GuestAccess,
-                                onSetVisible = callbacks.onSetGuestVisible,
-                                onSetJoinable = callbacks.onSetGuestJoinable,
-                                inset = false,
-                            )
-                            sectionAfterFirst = true
-                        }
-                        ThreadSettingsPreferencesSection(
-                            panel = panel,
-                            activityMuteState = activityMuteState,
-                            onToggleActivityMute = onToggleActivityMute,
-                            separator = sectionAfterFirst,
-                        )
-                        if (actionRows.isNotEmpty()) {
-                            RaftSeparator()
-                            ChannelActionsSection(
-                                actions = actionRows,
-                                enabled = writeEnabled,
-                                actionInFlight = actionInFlight,
-                                callbacks = callbacks,
-                                inset = false,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-    val activeConfirm = confirm
-    if (activeConfirm != null) {
-        ChannelSettingsConfirmDialog(
-            confirm = activeConfirm,
-            channelName = channelName,
-            leaveVariant = leaveChannelConfirmVariant(row, model.memberSlice),
-            hostArchiveHint = channelSettingsHostCannotDisconnect(row, panel.externalChannelsEnabled),
-            busy = actionInFlight == activeConfirm.action,
-            onDismiss = { if (actionInFlight != activeConfirm.action) confirm = null },
-            onConfirm = {
-                lastAction = activeConfirm.action
-                store?.dispatch(activeConfirm.intent)
-            },
-        )
-    }
-    val activeSosStore = sosStore
-    if (activeSosStore != null) {
-        ChannelSosDialog(channelName = channelName, store = activeSosStore, onClose = { sosStore = null })
-    }
-}
 
 /**
  * web ChannelPreferencesSection (`isPanel`): Move to section; Notifications, the channel's level
@@ -40349,34 +40107,6 @@ private fun ThreadSettingsPreferencesSection(
             }
         }
     }
-}
-
-/**
- * The phone drawer head's same-line secondary item after "Settings": a muted `·`, then the
- * `#name` in mono, ellipsized (web DrawerDescription). Assistive tech hears "Channel #name".
- */
-@Composable
-private fun RowScope.ThreadSettingsPanelChannelRef(channelName: String) {
-    val colors = RaftTheme.colors
-    val channelLabel = stringResource(Res.string.thread_settings_panel_eyebrow)
-    RaftText(
-        "·",
-        Modifier.alignByBaseline().clearAndSetSemantics {},
-        style = RaftTheme.typography.monoMeta,
-        color = colors.foregroundHint,
-        maxLines = 1
-    )
-    RaftText(
-        "#$channelName",
-        Modifier
-            .alignByBaseline()
-            .weight(1f, fill = false)
-            .semantics { contentDescription = "$channelLabel #$channelName" },
-        style = RaftTheme.typography.monoMeta,
-        color = colors.foregroundHint,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis
-    )
 }
 
 /**

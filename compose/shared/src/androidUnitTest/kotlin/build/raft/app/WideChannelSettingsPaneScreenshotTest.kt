@@ -30,10 +30,10 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Wide pane roles (artin 2026-10-29): channel settings, and a member's profile, opened from a
- * conversation on the wide layout (and Add Member, the members page's add view) are a supporting
- * pane right of it (web ChannelSettingsSheet /
- * ProfilePanel, at most 420 wide), the rail, the sidebar and the conversation staying. The
+ * Wide pane roles (artin 2026-10-29): the channel details, and a member's profile, opened from a
+ * conversation on the wide layout (and Add Member, the members page's add view) are a column
+ * right of it (web ChannelDetailsSurface / ProfilePanel, 400 wide, no scrim; the details' head is
+ * Details and Close), the rail, the sidebar and the conversation staying. The
  * conversation is a fixture; the panes are the channel settings fixture of
  * [ChannelSettingsScreenshotTest] and the agent profile visual fixture. Verify / record as
  * [RaftRobolectricScreenshot].
@@ -143,7 +143,7 @@ class WideChannelSettingsPaneScreenshotTest {
 
     private val ChannelSettingsPane =
         PaneFixture(
-            "Ada: the channel settings now open beside the conversation" to "Linus: and the chat stays where it was",
+            "Ada: the channel details now open beside the conversation" to "Linus: and the chat stays where it was",
         ) { ChannelSettingsVisualContent() }
 
     private val AddMemberPane =

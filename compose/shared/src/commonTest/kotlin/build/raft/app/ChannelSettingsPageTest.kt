@@ -403,4 +403,24 @@ class ChannelSettingsPageTest {
         ThreadSettingsPageLinks.unregister(key, under)
         assertNull(ThreadSettingsPageLinks.get(key))
     }
+
+    // Forms "A setting's row" (raft-design #1204): by the row's own width, not the window's.
+    @Test
+    fun aSelectGoesToTheRowEndOnlyFrom32remOfTheRowsOwnWidth() {
+        assertTrue(channelDetailsSelectAtRowEnd(512.dp))
+        assertTrue(channelDetailsSelectAtRowEnd(720.dp))
+        assertFalse(channelDetailsSelectAtRowEnd(511.dp))
+        // The 400 wide details column, inset: under the title on a wide window too.
+        assertFalse(channelDetailsSelectAtRowEnd(366.dp))
+    }
+
+    // raft-design channel.md: Make private and Make public are the Public or Private row's button.
+    @Test
+    fun theVisibilityActionIsAChannelSettingsRowNotAnActionAtTheEnd() {
+        assertTrue(channelSettingsIsVisibilityAction(ChannelSettingsActionRow.MakePrivate))
+        assertTrue(channelSettingsIsVisibilityAction(ChannelSettingsActionRow.MakePublic))
+        ChannelSettingsActionRow.entries
+            .filterNot { it == ChannelSettingsActionRow.MakePrivate || it == ChannelSettingsActionRow.MakePublic }
+            .forEach { assertFalse(channelSettingsIsVisibilityAction(it)) }
+    }
 }

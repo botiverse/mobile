@@ -483,7 +483,6 @@ class KmmResourceI18nTest {
                 Res.string.thread_composer_members_this_channel,
                 Res.string.thread_members_agents,
                 Res.string.thread_add_member_all_added,
-                Res.string.thread_settings_panel_title,
                 Res.string.thread_action_card_create_channel,
                 Res.string.thread_action_card_scope_identity,
                 Res.string.thread_comments_title,
