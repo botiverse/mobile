@@ -98,8 +98,10 @@ internal fun ChannelMembersCreateAgentDialog(
                         is DataResult.NoPermission -> result
                     }
                 }
-                val create: (suspend () -> DataResult<String>)? =
-                    request?.let { submitted -> suspend { createFrom(submitted) } }
+                val create: (suspend () -> DataResult<String>)? = request?.let { submitted ->
+                    val block: suspend () -> DataResult<String> = { createFrom(submitted) }
+                    block
+                }
                 val outcome = createThenJoinAgent(
                     state = joinState,
                     create = create,
