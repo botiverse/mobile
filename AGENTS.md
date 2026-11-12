@@ -591,20 +591,21 @@ The canonical flow is (Stamp commands, run from a Stamp checkout):
    ones that were skipped or not run (for example, iOS compile for ordinary
    `commonMain` changes runs only in the nightly `Test` schedule).
 
-   To check iOS before merge, dispatch
-   `bin/stamp workflow run test.yml --repo botiverse/mobile --ref <branch> -f scope=ios`
-   (plan + Blacksmith `iOS compile` only). Run it once per PR, right before
-   merge — not after every push; re-run only if a later push touches iOS or
-   shared Kotlin code that could break the iOS build. `scope=full` is only for
-   release candidates or a deliberate full readback (it adds the Android
+   iOS compile before merge (wg-cost, 2026-11-12): do not dispatch it by
+   hand for ordinary PRs. Stamp's ready-to-merge check dispatches
+   `scope=premerge` (with `-f base_ref=<PR base branch>`) on the PR head; it
+   diffs against the merge-base, never reruns Android, and compiles iOS only
+   when the diff touches iOS-specific source (`compose/iosApp/**`, `iosMain`,
+   `iosTest`, `nativeMain`, `nativeInterop`) or CI control, the same rule as
+   main pushes (`change_keeps_ios`). Ordinary `commonMain` changes rely on the
+   nightly iOS readback and the main merge hold (a red `Test` on main stops
+   merges until a `fix-red` PR lands). `scope=ios` is still there for a
+   deliberate one-off check, e.g. a risky expect/actual change; run it at most
+   once, on the head you are about to merge. `scope=full` is only for release
+   candidates or a deliberate full readback (it adds the Android
    emulator/device suite and canonical-final). The `iOS compile (Xcode 27.1)`
-   lane runs only in the nightly schedule and on `release-*` pushes.
-   `scope=premerge` (with `-f base_ref=<PR base branch>`, default `main`) is
-   Stamp's ready-to-merge check on the PR head: it diffs against the merge-base
-   with `base_ref`, runs the Blacksmith `iOS compile` only when the diff can
-   affect iOS (shared `compose/**` such as `commonMain`, iOS/native paths, CI
-   control; an unavailable diff selects every platform), never reruns Android,
-   and runs the `scope=full` tier when `base_ref` is `release/*`. The plan's
+   lane runs only in the nightly schedule and on `release-*` pushes. With
+   `base_ref` `release/*`, premerge runs the `scope=full` tier. The plan's
    `reason=workflow_dispatch-premerge:<ios|no-ios|release-full|...>` says
    which. Details: skill `raft-ci-validation`.
 

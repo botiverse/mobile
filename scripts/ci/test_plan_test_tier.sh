@@ -96,8 +96,9 @@ expect "dispatch scope=pr"          "true false false [] false false []"        
 expect "dispatch scope=ios"         "false true false $B false false []"        -- workflow_dispatch "$empty" false feature ios
 expect "dispatch scope=ios xcode"   "false true false $B false false []"        -- workflow_dispatch "$empty" false feature ios /Applications/Xcode_27.1.app
 expect "dispatch scope=full (no 27.1)" "true true false $B true true [29,31,34]" -- workflow_dispatch "$empty" false feature full
-expect "premerge commonMain"        "false true false $B false false []"        -- workflow_dispatch "$common" false feature premerge "" main
+expect "premerge commonMain"        "false false false [] false false []"        -- workflow_dispatch "$common" false feature premerge "" main
 expect "premerge iosApp"            "false true false $B false false []"        -- workflow_dispatch "$ios_app" false feature premerge "" main
+expect "premerge iosMain"            "false true false $B false false []"        -- workflow_dispatch "$ios_main" false feature premerge "" main
 expect "premerge android-only"      "false false false [] false false []"       -- workflow_dispatch "$android_only" false feature premerge "" main
 expect "premerge docs-only"         "false false false [] false false []"       -- workflow_dispatch "$docs" false feature premerge "" main
 expect "premerge ci-control"        "false true false $B false false []"        -- workflow_dispatch "$ci_control" false feature premerge "" main
@@ -105,8 +106,9 @@ expect "premerge diff unknown"      "true true false $B false false []"         
 expect "premerge release/ base"     "true true false $B true true [29,31,34]"   -- workflow_dispatch "$android_only" false feature premerge "" release/1.20.0
 expect "premerge release- base"     "true true false $B true true [29,31,34]"   -- workflow_dispatch "$docs" false feature premerge "" release-1.20.0
 expect "premerge iosApp xcode"      "false true false $B false false []"        -- workflow_dispatch "$ios_app" false feature premerge /Applications/Xcode_27.1.app main
-expect_reason "premerge reason ios"     "workflow_dispatch-premerge:ios"          -- workflow_dispatch "$common" false feature premerge "" main
+expect_reason "premerge reason ios"     "workflow_dispatch-premerge:ios"          -- workflow_dispatch "$ios_main" false feature premerge "" main
 expect_reason "premerge reason no-ios"  "workflow_dispatch-premerge:no-ios"       -- workflow_dispatch "$android_only" false feature premerge "" main
+expect_reason "premerge reason common"  "workflow_dispatch-premerge:no-ios"       -- workflow_dispatch "$common" false feature premerge "" main
 expect_reason "premerge reason release" "workflow_dispatch-premerge:release-full" -- workflow_dispatch "$common" false feature premerge "" release/1.20.0
 expect_reason "premerge reason unknown" "workflow_dispatch-premerge:diff-unavailable-fail-closed" -- workflow_dispatch "$unknown" false feature premerge "" main
 

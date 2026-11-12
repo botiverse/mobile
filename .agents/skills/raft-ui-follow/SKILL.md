@@ -112,11 +112,10 @@ Without this, the next person to sync "fixes" it back.
 
 - One theme per PR (a token bump, one component, a sizing rule), each with its
   goldens and images; Lagoon reviews design-system PRs.
-- Before merging a `compose/designsystem` change, run the iOS compile once (PR CI
-  skips it):
-  `stamp workflow run test.yml --repo botiverse/mobile --ref <branch> -f scope=ios`,
-  and `visual-testing.yml` with `include_ios=true` to compare iOS and Android with
-  Web (goldens only cover Android rendering).
+- `compose/designsystem` changes rely on the nightly iOS compile (PR CI and
+  premerge skip it, see `raft-ci-validation`). Run `visual-testing.yml` with
+  `include_ios=true` when the change can look different on iOS, to compare iOS
+  and Android with Web (goldens only cover Android rendering).
 - User-visible changes need a changeset (`raft-release-changeset`) once
   `change-logs/<version>/` exists; until then write "needs changeset" in the PR.
 - When done, bump nothing else silently: the PR description lists every

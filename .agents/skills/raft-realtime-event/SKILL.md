@@ -62,9 +62,8 @@ never received.
 
 ## 4. Validate
 
-- Ordinary PRs do not compile iOS. Run the iOS tier on your branch once before
-  merge (`bin/stamp workflow run test.yml --repo botiverse/mobile --ref <branch> -f scope=ios`, see
-  `raft-ci-validation`) so the Swift list and the androidApp `when` both
-  compile.
+- Ordinary PRs do not compile iOS. The Swift event list lives under
+  `compose/iosApp/**`, so Stamp's premerge check compiles iOS for this PR on
+  its own (see `raft-ci-validation`); the androidApp `when`s compile in PR CI.
 - Runtime evidence: Android logcat/diagnostics show `realtime_domain_accept*`
   for the event (see `raft-feedback-diagnostics` for the log format).
