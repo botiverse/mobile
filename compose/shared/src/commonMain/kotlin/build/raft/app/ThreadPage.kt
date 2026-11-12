@@ -13535,7 +13535,12 @@ private fun SharedThreadRouteContentContent(
         val openSettingsPage: () -> Boolean = {
             val serverId = threadMembersServerId
             val channelId = threadMembersChannelId
-            serverId != null && channelId != null &&
+            if (serverId != null && channelId != null && renderedThread.surfaceKind == RaftThreadSurfaceKind.Channel) {
+                // A channel's settings are its details now (the old settings page only closes for a
+                // channel): the announcement bar's settings open them the way the header does.
+                onOpenChannelSettings(serverId, channelId, storeScope, settingsPageLinkKey)
+                true
+            } else serverId != null && channelId != null &&
                 pager.openRaftPage(
                     pageName = THREAD_SETTINGS_PAGE,
                     pageData = threadSettingsPageData(settingsPageLinkKey, serverId, channelId),

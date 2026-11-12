@@ -746,8 +746,6 @@
     <string name="thread_quoted_permalink_attachments">%1$d 個附件</string>
     <string name="thread_member_role_member">成員</string>
     <string name="thread_member_role_system">系統</string>
-    <string name="thread_settings_panel_title">設定</string>
-    <string name="thread_settings_panel_eyebrow">頻道</string>
     <string name="thread_settings_panel_close">關閉頻道設定</string>
     <string name="thread_settings_preferences">偏好設定</string>
     <string name="thread_settings_pin_title">釘選頻道</string>

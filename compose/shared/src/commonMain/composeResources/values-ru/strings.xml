@@ -746,8 +746,6 @@
     <string name="thread_quoted_permalink_attachments">Вложений: %1$d</string>
     <string name="thread_member_role_member">Участник</string>
     <string name="thread_member_role_system">Система</string>
-    <string name="thread_settings_panel_title">Настройки</string>
-    <string name="thread_settings_panel_eyebrow">Канал</string>
     <string name="thread_settings_panel_close">Закрыть настройки канала</string>
     <string name="thread_settings_preferences">Параметры</string>
     <string name="thread_settings_pin_title">Закрепить канал</string>

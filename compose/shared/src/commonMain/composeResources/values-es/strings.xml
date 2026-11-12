@@ -746,8 +746,6 @@
     <string name="thread_quoted_permalink_attachments">%1$d archivos adjuntos</string>
     <string name="thread_member_role_member">Miembro</string>
     <string name="thread_member_role_system">Sistema</string>
-    <string name="thread_settings_panel_title">Configuración</string>
-    <string name="thread_settings_panel_eyebrow">Canal</string>
     <string name="thread_settings_panel_close">Cerrar la configuración del canal</string>
     <string name="thread_settings_preferences">Preferencias</string>
     <string name="thread_settings_pin_title">Fijar canal</string>

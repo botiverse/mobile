@@ -746,8 +746,6 @@
     <string name="thread_quoted_permalink_attachments">첨부 파일 %1$d개</string>
     <string name="thread_member_role_member">멤버</string>
     <string name="thread_member_role_system">시스템</string>
-    <string name="thread_settings_panel_title">설정</string>
-    <string name="thread_settings_panel_eyebrow">채널</string>
     <string name="thread_settings_panel_close">채널 설정 닫기</string>
     <string name="thread_settings_preferences">환경설정</string>
     <string name="thread_settings_pin_title">채널 고정</string>

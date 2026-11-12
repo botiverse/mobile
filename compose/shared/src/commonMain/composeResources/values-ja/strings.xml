@@ -752,8 +752,6 @@
     <string name="thread_quoted_permalink_attachments">添付ファイル %1$d 件</string>
     <string name="thread_member_role_member">メンバー</string>
     <string name="thread_member_role_system">システム</string>
-    <string name="thread_settings_panel_title">設定</string>
-    <string name="thread_settings_panel_eyebrow">チャンネル</string>
     <string name="thread_settings_panel_close">チャンネル設定を閉じる</string>
     <string name="thread_settings_preferences">個人設定</string>
     <string name="thread_settings_pin_title">チャンネルをピン留め</string>

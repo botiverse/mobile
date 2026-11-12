@@ -750,8 +750,6 @@
     <string name="thread_quoted_permalink_attachments">%1$d attachments</string>
     <string name="thread_member_role_member">Member</string>
     <string name="thread_member_role_system">System</string>
-    <string name="thread_settings_panel_title">Settings</string>
-    <string name="thread_settings_panel_eyebrow">Channel</string>
     <string name="thread_settings_panel_close">Close channel settings</string>
     <string name="thread_settings_preferences">Preferences</string>
     <string name="thread_settings_pin_title">Pin channel</string>
