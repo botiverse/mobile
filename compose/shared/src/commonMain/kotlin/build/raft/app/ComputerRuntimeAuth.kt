@@ -30,6 +30,8 @@ import build.raft.app.model.RuntimeAuthLoginResultPushed
 import build.raft.app.model.RuntimeAuthLoginStep
 import build.raft.app.model.RuntimeAuthUpdated
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /*
@@ -66,7 +68,11 @@ internal interface ComputerRuntimeAuthOps {
 
     suspend fun submitCode(runtime: RuntimeAuthRuntime, loginId: String, code: String): RuntimeAuthCall<Unit>
 
-    suspend fun cancelLogin(runtime: RuntimeAuthRuntime, loginId: String)
+    /**
+     * Ends a running login on the Computer from a scope that outlives the card (the store's): the
+     * card's own scope may already be cancelled when it asks (it is leaving composition).
+     */
+    fun cancelLogin(runtime: RuntimeAuthRuntime, loginId: String)
 
     suspend fun logout(runtime: RuntimeAuthRuntime, providerId: String?): RuntimeAuthCall<RuntimeAuthLogoutResult>
 
@@ -91,8 +97,8 @@ internal class StoreComputerRuntimeAuthOps(
     override suspend fun submitCode(runtime: RuntimeAuthRuntime, loginId: String, code: String) =
         store.submitRuntimeLoginCode(owner, serverId, machineId, runtime, loginId, code)
 
-    override suspend fun cancelLogin(runtime: RuntimeAuthRuntime, loginId: String) =
-        store.cancelRuntimeLogin(owner, serverId, machineId, runtime, loginId)
+    override fun cancelLogin(runtime: RuntimeAuthRuntime, loginId: String) =
+        store.cancelRuntimeLoginDetached(owner, serverId, machineId, runtime, loginId)
 
     override suspend fun logout(runtime: RuntimeAuthRuntime, providerId: String?) =
         store.logoutRuntime(owner, serverId, machineId, runtime, providerId)
@@ -430,8 +436,11 @@ internal class ComputerRuntimeSignInSession(
         val current = ++attempt
         shown = null
         early = mutableListOf()
-        scope.launch {
+        // Not cancelled with the card: the start finishes even if the card leaves meanwhile, so a
+        // login it began is ended once its id arrives (below), not left to its 20 min TTL.
+        scope.launch(NonCancellable) {
             val result = ops.startLogin(runtime, region, provider?.id, provider?.oauthMethod)
+            if (!scope.isActive) closed = true
             if (attempt != current) return@launch
             val pending = early.orEmpty()
             early = null
@@ -541,7 +550,7 @@ internal class ComputerRuntimeSignInSession(
         val login = shown
         if (login != null && login.running) {
             login.running = false
-            scope.launch { ops.cancelLogin(runtime, login.id) }
+            ops.cancelLogin(runtime, login.id)
         }
     }
 }

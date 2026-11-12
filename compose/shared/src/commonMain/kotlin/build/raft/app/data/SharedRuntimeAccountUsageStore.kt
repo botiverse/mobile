@@ -3,6 +3,9 @@ package build.raft.app.data
 import build.raft.app.model.ServerId
 import kotlin.time.Clock
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -76,7 +79,13 @@ internal class SharedRuntimeAccountUsageStore(
     private val clock: RaftEpochMillisSource = RaftEpochMillisSource { Clock.System.now().toEpochMilliseconds() },
     private val cacheMillis: Long = RUNTIME_ACCOUNT_USAGE_CACHE_MILLIS,
     private val refreshCooldownMillis: Long = RUNTIME_ACCOUNT_USAGE_REFRESH_COOLDOWN_MILLIS,
-    maxConcurrentReads: Int = RUNTIME_ACCOUNT_USAGE_MAX_CONCURRENT_READS
+    maxConcurrentReads: Int = RUNTIME_ACCOUNT_USAGE_MAX_CONCURRENT_READS,
+    /**
+     * Outlives every card: a sign-in's cancel is sent from here, so leaving the page (an account or
+     * server switch, an activity recreated, the card scrolled away) still ends the login on the
+     * Computer instead of holding its runtime for the login's 20 min TTL.
+     */
+    private val detachedScope: CoroutineScope = CoroutineScope(SupervisorJob()),
 ) {
     private val readLimiter = Semaphore(maxConcurrentReads.coerceAtLeast(1))
 
@@ -187,6 +196,14 @@ internal class SharedRuntimeAccountUsageStore(
         } catch (_: Exception) {
             // The Computer's own bound ends the login.
         }
+    }
+
+    /**
+     * [cancelRuntimeLogin] on [detachedScope], not the caller's: the card that asks may be leaving
+     * composition, and its scope is cancelled right after.
+     */
+    fun cancelRuntimeLoginDetached(owner: SharedComputersOwner, serverId: String, machineId: String, runtime: RuntimeAuthRuntime, loginId: String) {
+        detachedScope.launch(NonCancellable) { cancelRuntimeLogin(owner, serverId, machineId, runtime, loginId) }
     }
 
     /** Signs the runtime out; the cached view of the Computer goes either way (web `finally invalidate`). */

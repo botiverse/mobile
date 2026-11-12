@@ -23,6 +23,9 @@ import build.raft.app.model.RuntimeAuthLoginResultPushed
 import build.raft.app.model.RuntimeAuthLoginStep
 import build.raft.app.model.RuntimeAuthUpdated
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -85,6 +88,47 @@ class ComputerRuntimeAuthSessionTest {
         late.start.complete(RuntimeAuthCall.Done(LOGIN))
         runCurrent()
         assertEquals("cancel claude $LOGIN", late.calls.last(), "closed while starting: the login began anyway, so it ends")
+    }
+
+    /**
+     * The card's scope is cancelled as it leaves composition (an account or server switch, the
+     * activity recreated, the card scrolled away): the login still ends on the Computer, whether it
+     * was running or still starting, instead of holding the runtime for the login's 20 min TTL.
+     */
+    @Test
+    fun leavingThePageEndsTheLoginOnTheComputer() = runTest {
+        val running = FakeAuthOps()
+        val runningCard = CoroutineScope(coroutineContext + Job())
+        val runningSession = ComputerRuntimeSignInSession("s1", "m1", RuntimeAuthRuntime.Codex, provider = null, ops = running, scope = runningCard)
+        runningSession.open()
+        running.start.complete(RuntimeAuthCall.Done(LOGIN))
+        runCurrent()
+        runningCard.cancel()
+        runningSession.close()
+        runCurrent()
+        assertEquals("cancel codex $LOGIN", running.calls.last(), "a running login")
+
+        val starting = FakeAuthOps()
+        val startingCard = CoroutineScope(coroutineContext + Job())
+        val startingSession = ComputerRuntimeSignInSession("s1", "m1", RuntimeAuthRuntime.Codex, provider = null, ops = starting, scope = startingCard)
+        startingSession.open()
+        runCurrent()
+        startingCard.cancel()
+        startingSession.close()
+        starting.start.complete(RuntimeAuthCall.Done(LOGIN))
+        runCurrent()
+        assertEquals("cancel codex $LOGIN", starting.calls.last(), "a login whose id arrives after the card left")
+
+        val disposed = FakeAuthOps()
+        val disposedCard = CoroutineScope(coroutineContext + Job())
+        val controller = ComputerRuntimeAuthController("s1", "m1", "grok", RuntimeAuthRuntime.Grok, disposed, disposedCard)
+        controller.openSignIn()
+        disposed.start.complete(RuntimeAuthCall.Done(LOGIN))
+        runCurrent()
+        disposedCard.cancel()
+        controller.dispose()
+        runCurrent()
+        assertEquals("cancel grok $LOGIN", disposed.calls.last(), "the controller's dispose")
     }
 
     @Test
@@ -366,7 +410,7 @@ class ComputerRuntimeAuthSessionTest {
             return this.code
         }
 
-        override suspend fun cancelLogin(runtime: RuntimeAuthRuntime, loginId: String) {
+        override fun cancelLogin(runtime: RuntimeAuthRuntime, loginId: String) {
             calls += "cancel ${runtime.wire} $loginId"
         }
 

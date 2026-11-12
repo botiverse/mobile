@@ -235,6 +235,18 @@ class RuntimeAuthContractTest {
         assertEquals("malformed_response", assertIs<RuntimeAuthCall.Refused>(malformed.startRuntimeLogin(ServerId("s1"), "m1", RuntimeAuthRuntime.Claude)).error.code)
     }
 
+    /** The store sends a sign-in's cancel from its own scope, so a caller that is going away can ask for it. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun aDetachedCancelIsSentFromTheStoresScope() = kotlinx.coroutines.test.runTest {
+        val api = RecordingRuntimeAuthApi()
+        val owner = SharedComputersOwner(environmentId = "https://api.example", accountId = "u1", sessionGeneration = "g1")
+        val store = SharedRuntimeAccountUsageStore(RaftComputersApiClient(api), currentIdentity = { owner }, detachedScope = backgroundScope)
+        store.cancelRuntimeLoginDetached(owner, "s1", "m1", RuntimeAuthRuntime.Claude, "rtl_abcdefghijklmnop12")
+        testScheduler.runCurrent()
+        assertEquals(listOf("cancel" to "claude"), api.calls.map { (route, runtime, _) -> route to runtime })
+    }
+
     @Test
     fun realtimePushesMapToTheirEvents() {
         assertTrue(RealtimeSocketEvents.RuntimeAuthLoginEvent in RealtimeSocketEvents.ServerWireEvents)
@@ -269,6 +281,11 @@ class RuntimeAuthContractTest {
         override suspend fun startRuntimeLogin(serverId: ServerId, machineId: String, runtime: String, body: String): HomeNetworkResponse {
             calls += Triple("login", runtime, Json.parseToJsonElement(body).jsonObject)
             return answer
+        }
+
+        override suspend fun cancelRuntimeLogin(serverId: ServerId, machineId: String, runtime: String, loginId: String): HomeNetworkResponse {
+            calls += Triple("cancel", runtime, JsonObject(emptyMap()))
+            return HomeNetworkResponse(202, """{"accepted":true}""")
         }
 
         override suspend fun logoutRuntime(serverId: ServerId, machineId: String, runtime: String, body: String): HomeNetworkResponse {

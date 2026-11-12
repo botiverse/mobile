@@ -532,7 +532,9 @@ private fun ComputerRuntimeUsageChip(
     LaunchedEffect(controller) { controller?.start() }
     // Web: the card reads the Computer's sign-in state on mount, so a signed-out chip says so at rest.
     val auth = rememberComputerRuntimeAuthController(access, machineId, runtimeId, readNow = true)
-    val authBinding = auth?.takeIf { it.offered }?.let { ComputerRuntimeAuthBinding(it, runtimeName, computerName, agents, access?.auth?.openUrl ?: {}) }
+    // An open dialog stays with its session even if the Computer drops offline meanwhile (Antigravity's
+    // card is offered only while the server lists it for an online Computer).
+    val authBinding = auth?.takeIf { it.offered || it.dialog != null }?.let { ComputerRuntimeAuthBinding(it, runtimeName, computerName, agents, access?.auth?.openUrl ?: {}) }
     // A runtime with neither usage nor a sign-in offered here has no card (Antigravity where the server does not revive it).
     if (controller == null && authBinding == null) {
         plain()
