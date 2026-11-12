@@ -137,6 +137,12 @@ internal enum class RaftMoreAttention(val settingsRowKey: String) {
 
     /** A computer entered an offline / outdated state not yet seen: the Computers row. */
     Computers(SettingsDestinationComputers),
+
+    /**
+     * A feedback ticket has a reply not read yet (this app's unread total, RaftFeedbackUnreadStore):
+     * the Feedback row (web `useSettingsPageAttention` / SettingsSidebarList `FeedbackUnreadDot`).
+     */
+    FeedbackReplies(SettingsDestinationHandsFeedback),
 }
 
 /**
@@ -145,19 +151,31 @@ internal enum class RaftMoreAttention(val settingsRowKey: String) {
  * - [RaftMoreAttention.Computers]: a computer the offline-computer or outdated-daemon notice
  *   names is in a state not yet seen ([computersSeen]; raft-design #620 "Attention dots": the
  *   dot marks an unseen change, opening Computers sees it — see data/RaftComputerAttentionSeen.kt).
+ * - [RaftMoreAttention.FeedbackReplies]: [feedbackUnreadTotal] (this app's unread feedback replies)
+ *   is above 0; reading them clears it.
  * Members has no unread signal today. The More tab dot reads this same set
  * ([appShellMoreTabShowsDot]), so the tab and its rows light and clear together.
  */
 internal fun raftMoreAttention(
     homeNotificationIds: List<String>,
     computersSeen: Set<String> = emptySet(),
+    feedbackUnreadTotal: Int = 0,
 ): Set<RaftMoreAttention> =
     buildSet {
         if (homeNotificationIds.any { it.isAppUpdateHomeNotificationId() }) add(RaftMoreAttention.AppUpdate)
         if (raftComputerAttentionUnseen(raftComputerAttentionPairs(homeNotificationIds), computersSeen)) {
             add(RaftMoreAttention.Computers)
         }
+        if (feedbackUnreadTotal > 0) add(RaftMoreAttention.FeedbackReplies)
     }
+
+/**
+ * The rows that wear a dot on the wide rail's Settings list: only Feedback, as on the web, whose
+ * SettingsSidebarList (the wide Settings list) dots its Feedback row (`FeedbackUnreadDot`) and no
+ * other. The phone Settings root dots every [RaftMoreAttention.settingsRowKey].
+ */
+internal fun settingsWideAttentionRowKeys(attention: Set<RaftMoreAttention>): Set<String> =
+    if (RaftMoreAttention.FeedbackReplies in attention) setOf(RaftMoreAttention.FeedbackReplies.settingsRowKey) else emptySet()
 
 /**
  * The More tab wears the same dot as Activity when Settings has something new
@@ -282,12 +300,13 @@ internal enum class RaftServerMenuEntry(val key: String) {
 
 /**
  * The More dot moves to the menu row behind it (nav spec §4, D1a): an available app update is
- * read in Settings > About, so it lights Settings; an unseen offline/outdated computer lights
+ * read in Settings > About and a feedback reply in Settings > Feedback, so they light Settings
+ * (web MobileServerTab `useSettingsPageAttention`); an unseen offline/outdated computer lights
  * Computers.
  */
 internal fun RaftMoreAttention.serverMenuEntry(): RaftServerMenuEntry =
     when (this) {
-        RaftMoreAttention.AppUpdate -> RaftServerMenuEntry.Settings
+        RaftMoreAttention.AppUpdate, RaftMoreAttention.FeedbackReplies -> RaftServerMenuEntry.Settings
         RaftMoreAttention.Computers -> RaftServerMenuEntry.Computers
     }
 

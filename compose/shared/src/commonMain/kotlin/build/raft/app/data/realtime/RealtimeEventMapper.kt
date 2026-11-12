@@ -97,6 +97,7 @@ import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.ServerAppearanceUpdated
 import build.raft.app.model.UserProfileUpdated
+import build.raft.app.model.ProductFeedbackUnreadUpdated
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.SyncResumeResponse
@@ -378,6 +379,10 @@ class RealtimeEventMapper(
                     ?.let { ServerAppearanceUpdated(ServerId(it.serverId), it.theme, it.themeDecor) }
             RealtimeSocketEvents.UserProfileUpdated ->
                 decodeOrNull(UserProfileUpdatedDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.ProductFeedbackUnread ->
+                decodeOrNull(ProductFeedbackUnreadDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.ProductFeedbackAppUnread ->
+                decodeOrNull(ProductFeedbackAppUnreadDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.ServerFeaturesChanged ->
                 decodeOrNull(ServerFeaturesChangedDto.serializer(), element)
                     ?.takeIf { it.serverId.isNotBlank() }
@@ -1021,6 +1026,32 @@ private data class UserProfileUpdatedDto(
             avatarUrl = avatarUrl,
             gravatarHash = gravatarHash,
         )
+    }
+}
+
+/** `product_feedback:unread` (botiverse/slock f0f773995 `ProductFeedbackUnreadEvent`): the web app's total. */
+@Serializable
+private data class ProductFeedbackUnreadDto(
+    val userId: String,
+    val unreadTotal: Int,
+) {
+    fun toDomain(): ProductFeedbackUnreadUpdated? {
+        val user = userId.trim().takeIf { it.isNotEmpty() } ?: return null
+        if (unreadTotal < 0) return null
+        return ProductFeedbackUnreadUpdated(ProductFeedbackUnreadUpdated.WebSource, user, unreadTotal)
+    }
+}
+
+/** `product_feedback:app_unread` (botiverse/slock f0f773995 `ProductFeedbackAppUnreadEvent`): a mobile app's total. */
+@Serializable
+private data class ProductFeedbackAppUnreadDto(
+    val source: String,
+    val unreadTotal: Int,
+) {
+    fun toDomain(): ProductFeedbackUnreadUpdated? {
+        val app = source.trim().takeIf { it.isNotEmpty() && it != ProductFeedbackUnreadUpdated.WebSource } ?: return null
+        if (unreadTotal < 0) return null
+        return ProductFeedbackUnreadUpdated(app, userId = null, unreadTotal = unreadTotal)
     }
 }
 

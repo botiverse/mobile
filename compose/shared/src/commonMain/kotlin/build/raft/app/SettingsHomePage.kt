@@ -6735,10 +6735,11 @@ private fun RaftAppShellReadyContent(
     }
     val openComputersPage: () -> Unit = { openComputersPageWith(false) }
     // Something new in More / Settings (app update -> About; an offline/outdated machine not yet
-    // seen -> Computers); it dots the More tab and the matching Settings rows from this one set,
-    // so tab and rows light and clear together.
-    val moreAttention = remember(homeState.notifications, computerAttentionSeen) {
-        raftMoreAttention(homeState.notifications.map { it.id }, computerAttentionSeen)
+    // seen -> Computers; a feedback reply not read yet -> Feedback); it dots the More tab and the
+    // matching Settings rows from this one set, so tab and rows light and clear together.
+    val feedbackUnreadTotal by sharedStores.feedbackUnread.unreadTotal.collectAsState()
+    val moreAttention = remember(homeState.notifications, computerAttentionSeen, feedbackUnreadTotal) {
+        raftMoreAttention(homeState.notifications.map { it.id }, computerAttentionSeen, feedbackUnreadTotal)
     }
     // D1a: the current-server tab and its menu, from the Home switcher's own items.
     val serverMenuContent = homeState.content as? SharedHomeContentState.Content
@@ -9004,7 +9005,9 @@ private fun RaftAppShellReadyContent(
                             // artin 2026-10-29: the wide Settings is list + detail like the web's; the
                             // section opens beside the list (SettingsWideSplit.kt). Feedback is pushed.
                             SettingsWideListDetail(
-                                payload = appShellSettingsHomePayload(settingsSession, imBridgesEnabled = imBridgesEnabled),
+                                payload =
+                                    appShellSettingsHomePayload(settingsSession, imBridgesEnabled = imBridgesEnabled)
+                                        .withAttentionRows(settingsWideAttentionRowKeys(moreAttention)),
                                 widths = adaptiveListPaneWidths,
                                 active = active,
                                 picked = settingsWidePicked,
@@ -17401,6 +17404,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is ActivityChanged -> "activity_changed"
         is ServerAppearanceUpdated -> "appearance_updated"
         is build.raft.app.model.UserProfileUpdated -> "user_profile_updated"
+        is build.raft.app.model.ProductFeedbackUnreadUpdated -> "product_feedback_unread"
         is ComputerRestartDone -> "computer_restart_done"
         is build.raft.app.model.RuntimeAuthUpdated -> "runtime_auth_updated"
         is build.raft.app.model.RuntimeAuthLoginEventPushed -> "runtime_auth_login_event"
@@ -17454,7 +17458,8 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is ServerNotificationPreferencesChanged,
         is PerReceiverPinnedChanged,
         is build.raft.app.model.NotificationLevelChanged,
-        is build.raft.app.model.NotificationAccountSettingsChanged -> "realtime_content_apply"
+        is build.raft.app.model.NotificationAccountSettingsChanged,
+        is build.raft.app.model.ProductFeedbackUnreadUpdated -> "realtime_content_apply"
         is NotificationPushReceived,
         is build.raft.app.model.NotificationNoticeReceived,
         is build.raft.app.model.NotificationRetracted -> "realtime_notification_apply"

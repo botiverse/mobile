@@ -1328,6 +1328,29 @@ data class UserProfileUpdated(
 ) : RealtimeEvent
 
 /**
+ * The person's product-feedback unread total (unread public replies on their own tickets) in one
+ * Hands app (botiverse/slock f0f773995 `packages/shared/src/productFeedbackUnread.ts`, sent by
+ * `services/productFeedbackUnreadRealtime.ts` to their own `user:<id>` room):
+ * - `product_feedback:unread` `{ userId, unreadTotal }`: the web app's total ([source] [WebSource],
+ *   [userId] set). The desktop app files into the web app, so it is the desktop app's.
+ * - `product_feedback:app_unread` `{ source, unreadTotal }`: a mobile app's ([source] `android`,
+ *   `ios` or `ohos`; [userId] null: the room says whose).
+ * Always the whole total, never a change. Every connection of the person receives every one; a
+ * client takes only its own app's (build.raft.app.data.feedbackUnreadEventIsOwn).
+ */
+@Serializable
+data class ProductFeedbackUnreadUpdated(
+    val source: String,
+    val userId: String?,
+    val unreadTotal: Int,
+) : RealtimeEvent {
+    companion object {
+        /** [source] of `product_feedback:unread` (the web app's Hands source name). */
+        const val WebSource = "web"
+    }
+}
+
+/**
  * `server:features-changed` (botiverse/slock `packages/shared/src/featuresChanged.ts`
  * `ServerFeaturesChangedEvent`, sent by `services/featureFlagChangeNotifier.ts`): this Server's
  * feature flags may have changed. A refetch signal, not values: [keys] is only a hint (never

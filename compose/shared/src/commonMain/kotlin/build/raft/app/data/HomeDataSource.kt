@@ -361,6 +361,8 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         // A person's new name / avatar is patched into the member directory (and the signed-in user's
         // own record) in place; Home rows read their faces and names from there, so no reload.
         is build.raft.app.model.UserProfileUpdated -> false
+        // The feedback unread total lights the Settings / Feedback dots (RaftFeedbackUnreadStore); no Home row.
+        is build.raft.app.model.ProductFeedbackUnreadUpdated -> false
         // Notification levels, account settings and retractions change no Home row; the notification
         // level store and the platform tray handle them.
         is build.raft.app.model.NotificationLevelChanged,

@@ -4,6 +4,7 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.TaskWireDto
 import build.raft.app.data.toTaskSummary
 import build.raft.app.model.AgentActivitySubscribed
+import build.raft.app.model.ProductFeedbackUnreadUpdated
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ComputerRestartDone
@@ -1046,6 +1047,32 @@ class RealtimeEventMapperTest {
             )
 
         assertNull(event)
+    }
+
+    @Test
+    fun productFeedbackUnreadEventsMapWithTheirApp() {
+        // botiverse/slock f0f773995 packages/shared/src/productFeedbackUnread.ts: both are subscribed.
+        assertTrue(RealtimeSocketEvents.ProductFeedbackUnread in RealtimeSocketEvents.ServerWireEvents)
+        assertTrue(RealtimeSocketEvents.ProductFeedbackAppUnread in RealtimeSocketEvents.ServerWireEvents)
+        val mapper = RealtimeEventMapper()
+
+        assertEquals(
+            ProductFeedbackUnreadUpdated(source = "android", userId = null, unreadTotal = 3),
+            mapper.map("product_feedback:app_unread", """{"source":"android","unreadTotal":3}"""),
+        )
+        assertEquals(
+            ProductFeedbackUnreadUpdated(source = "web", userId = "user-1", unreadTotal = 0),
+            mapper.map("product_feedback:unread", """{"userId":"user-1","unreadTotal":0}"""),
+        )
+        // Not a total: dropped.
+        listOf(
+            "product_feedback:app_unread" to """{"source":"ios","unreadTotal":-1}""",
+            "product_feedback:app_unread" to """{"source":"","unreadTotal":1}""",
+            "product_feedback:app_unread" to """{"source":"web","unreadTotal":1}""",
+            "product_feedback:app_unread" to """{"source":"ios"}""",
+            "product_feedback:unread" to """{"userId":" ","unreadTotal":1}""",
+            "product_feedback:unread" to """{"unreadTotal":1}""",
+        ).forEach { (name, payload) -> assertNull(mapper.map(name, payload), "$name $payload") }
     }
 
     @Test

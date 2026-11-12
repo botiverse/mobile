@@ -57,6 +57,7 @@ import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.ServerAppearanceUpdated
 import build.raft.app.model.UserProfileUpdated
+import build.raft.app.model.ProductFeedbackUnreadUpdated
 import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.RaftServerThemeLook
 import build.raft.app.model.SyncResumeResponse
@@ -1362,6 +1363,22 @@ internal class RaftSharedStoreProvider private constructor(
         }
 
     /**
+     * The signed-in person's unread feedback replies in this app's Hands app: the Settings and
+     * Feedback row dot. Read on start / sign-in and on every realtime (re)connect, then pushed.
+     */
+    internal val feedbackUnread: RaftFeedbackUnreadStore by lazy {
+        val logger = sharedInfoLogger("SlockFeedbackUnread")
+        val clientKind = build.raft.app.raftFeedbackWebViewClientKind()
+        val repository = NetworkSettingsFeedbackTicketsRepository(networkClient, clientKind, logger)
+        RaftFeedbackUnreadStore(
+            clientKind = clientKind,
+            scope = threadSendScope,
+            readTotal = repository::unreadTotal,
+            logger = logger,
+        )
+    }
+
+    /**
      * Missed `appearance:updated` notices are not replayed: every socket (re)connect and every
      * return to the foreground reads the server's appearance again ([ServerAppearanceCatchUp]).
      */
@@ -1497,6 +1514,10 @@ internal class RaftSharedStoreProvider private constructor(
         railTabOrderStore.followAppLifecycle(RaftStaleReadRecoverySignals.foreground)
         // App start: read this environment's client config (and again on each environment change).
         clientConfigStore.start()
+        // The feedback unread dot: read for whoever is signed in (now and after each sign-in); none signed out.
+        feedbackUnread.follow(
+            raftStoredSessionFlow(authStore.authSessionEvents) { authStore.readSession() }.map { it?.user?.id }
+        )
         // Attach canonical/reaction shadow mutation to the dedicated process
         // owner. Shell owners are projection-only and never repeat this work.
         realtimeDomainEventOwner.installMessageShadowFoldLane(buildMessageShadowFoldLane())
@@ -1568,6 +1589,8 @@ internal class RaftSharedStoreProvider private constructor(
                     serverFeatureFlagChangeRefresher.onReconnected(ServerId(grant.serverId))
                     // Nor are `appearance:updated` ones: a theme changed elsewhere while offline.
                     serverAppearanceCatchUp.onReconnected(ServerId(grant.serverId))
+                    // Nor are the feedback unread totals: read this app's again.
+                    feedbackUnread.onReconnected()
                     // Reads made offline go out now.
                     processReadReceiptCoordinator().replayPendingReads()
                 }
@@ -3739,6 +3762,9 @@ internal class RaftSharedStoreProvider private constructor(
                         owner.installUserProfileUpdatedSink { principalId, event ->
                             provider.applyUserProfileUpdated(principalId, event)
                         }
+                        owner.installFeedbackUnreadSink { principalId, event ->
+                            provider.feedbackUnread.applyRealtime(principalId, event)
+                        }
                         owner.installAgentActivitySubscribedSink { serverId, event ->
                             provider.agentActivitySubscriptions.onSubscribed(serverId, event.agentIds)
                         }
@@ -4095,6 +4121,14 @@ internal class SharedRealtimeDomainEventOwner(
         userProfileUpdatedSink = sink
     }
 
+    // `product_feedback:unread` / `product_feedback:app_unread`: the person's feedback unread total, sent to
+    // their user room (no server); the sink keeps only this app's and the grant's account's. Process entry only.
+    private var feedbackUnreadSink: ((principalId: String, event: ProductFeedbackUnreadUpdated) -> Unit)? = null
+
+    fun installFeedbackUnreadSink(sink: (principalId: String, event: ProductFeedbackUnreadUpdated) -> Unit) {
+        feedbackUnreadSink = sink
+    }
+
     // `agent:activity:subscribed` answers this process's own subscribe on the grant's server socket.
     private var agentActivitySubscribedSink: ((serverId: String, event: AgentActivitySubscribed) -> Unit)? = null
 
@@ -4241,6 +4275,9 @@ internal class SharedRealtimeDomainEventOwner(
             // Sent per server room: it names the connection's server.
             if (acceptedEvent is UserProfileUpdated && acceptedEvent.serverId.value == serverId) {
                 userProfileUpdatedSink?.invoke(grant.principalId, acceptedEvent)
+            }
+            if (acceptedEvent is ProductFeedbackUnreadUpdated) {
+                feedbackUnreadSink?.invoke(grant.principalId, acceptedEvent)
             }
             // Unified notification levels and account settings (slock docs/contracts/notifications.md
             // §2.3): the process stores the channel / thread menus, the badge and the settings page read.

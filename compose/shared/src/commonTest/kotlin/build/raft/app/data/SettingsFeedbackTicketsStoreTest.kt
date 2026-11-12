@@ -255,6 +255,34 @@ class SettingsFeedbackTicketsStoreTest {
     }
 
     @Test
+    fun theListAndAnOpenedTicketHandTheirUnreadTotalToTheDot() = runTest {
+        // The Settings / Feedback dot follows these reads: opening the ticket with the new reply
+        // (its read moves the receipt) clears it at once, not at the next start or reconnect.
+        val repository = FakeRepository()
+        val unread = ticket("a", unread = true, comments = 1)
+        repository.listAnswers += FeedbackResult.Ok(FeedbackTicketListRead.Degraded(5))
+        repository.listAnswers += FeedbackResult.Ok(FeedbackTicketListRead.Page(FeedbackTicketPage(listOf(unread), null, unreadTotal = 1)))
+        repository.ticketAnswers += FeedbackResult.Ok(FeedbackTicketDetail(unread.copy(unread = false, unreadCount = 0), emptyList(), emptyList(), null, unreadTotal = 0))
+        repository.ticketAnswers += failed(FeedbackErrorKind.Unavailable)
+        val totals = mutableListOf<Int>()
+        val store = SettingsFeedbackTicketsStore(repository, backgroundScope, onUnreadTotal = { totals += it })
+        store.start()
+        runCurrent()
+        // A degraded page knows no total: nothing is handed on.
+        assertEquals(emptyList<Int>(), totals)
+        advanceTimeBy(5_001)
+        assertEquals(listOf(1), totals)
+
+        store.openTicket("a")
+        runCurrent()
+        assertEquals(listOf(1, 0), totals)
+        // A failed read hands nothing on.
+        store.refreshTicket()
+        runCurrent()
+        assertEquals(listOf(1, 0), totals)
+    }
+
+    @Test
     fun startingOnATicketOpensItOverTheList() = runTest {
         val repository = FakeRepository()
         repository.listAnswers += page(ticket("a"))

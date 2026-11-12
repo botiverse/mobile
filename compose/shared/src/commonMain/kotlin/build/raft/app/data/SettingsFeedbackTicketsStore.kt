@@ -105,6 +105,12 @@ class SettingsFeedbackTicketsStore(
      * for the signed-in user); the agent tip shows while it says false. None: no tip.
      */
     private val agentDraftSent: Flow<Boolean> = flowOf(true),
+    /**
+     * This app's unread feedback total as a list page or a ticket read answered it (`unread_total`;
+     * a ticket read moves the read receipt first): the Settings / Feedback dot
+     * ([RaftFeedbackUnreadStore.applyRead]), so a reply read here clears it at once.
+     */
+    private val onUnreadTotal: (Int) -> Unit = {},
 ) {
     private val mutableState = MutableStateFlow(SettingsFeedbackTicketsState())
     val state: StateFlow<SettingsFeedbackTicketsState> = mutableState.asStateFlow()
@@ -211,6 +217,7 @@ class SettingsFeedbackTicketsStore(
                                                 )
                                         )
                                     }
+                                    onUnreadTotal(read.page.unreadTotal)
                                     logger("settings_feedback_tickets_list_ready count=${read.page.tickets.size} more=${read.page.nextCursor != null}")
                                     return@launch
                                 }
@@ -343,6 +350,7 @@ class SettingsFeedbackTicketsStore(
                                 list = state.list.copy(tickets = state.list.tickets.updatedWith(read.ticket, markRead = cursor == null)),
                             )
                         }
+                        onUnreadTotal(read.unreadTotal)
                         logger("settings_feedback_tickets_detail_ready comments=${read.comments.size} more=${read.nextCommentCursor != null}")
                     }
                     is FeedbackResult.Failed -> {

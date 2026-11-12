@@ -629,7 +629,7 @@ private fun raftNavRailAttentionDescriptions(): (String) -> String {
     val activity = stringResource(Res.string.tab_activity_unread_dot)
     return { key ->
         when (RaftAppDestination.fromId(key)?.badge) {
-            RaftNavBadgeSource.ServerPages, RaftNavBadgeSource.AppUpdate -> more
+            RaftNavBadgeSource.ServerPages, RaftNavBadgeSource.SettingsAttention -> more
             RaftNavBadgeSource.ComputersAttention, RaftNavBadgeSource.AppsReview -> row
             else -> activity
         }

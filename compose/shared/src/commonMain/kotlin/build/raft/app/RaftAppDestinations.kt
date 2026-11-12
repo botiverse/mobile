@@ -37,8 +37,12 @@ internal enum class RaftNavBadgeSource {
     /** An unseen offline/outdated computer ([RaftMoreAttention.Computers]). */
     ComputersAttention,
 
-    /** An app update, read in Settings > About ([RaftMoreAttention.AppUpdate]). */
-    AppUpdate,
+    /**
+     * Something new inside Settings: an app update, read in Settings > About
+     * ([RaftMoreAttention.AppUpdate]), or a feedback reply not read yet, read in Settings > Feedback
+     * ([RaftMoreAttention.FeedbackReplies]; web LeftRail's Settings `showDot={feedbackUnread > 0}`).
+     */
+    SettingsAttention,
 
     /**
      * An App waiting for an owner/admin review (web `useAppsPageAttention`: `needsAdminReview` of
@@ -174,7 +178,7 @@ internal enum class RaftAppDestination(
         id = "settings",
         label = Res.string.tab_settings,
         icon = RaftNavIcon.Lucide(RaftLucideIconName.Settings),
-        badge = RaftNavBadgeSource.AppUpdate,
+        badge = RaftNavBadgeSource.SettingsAttention,
         route = RaftNavRoute.ShellTab,
         navEvent = RaftNavDestination.Settings,
     ),
@@ -248,7 +252,8 @@ internal fun raftNavShowsBadge(destination: RaftAppDestination, inputs: RaftNavB
         RaftNavBadgeSource.ActivityUnread -> appShellActivityTabShowsDot(inputs.activityUnreadCount, selected)
         RaftNavBadgeSource.ServerPages -> appShellMoreTabShowsDot(inputs.moreAttention, selected)
         RaftNavBadgeSource.ComputersAttention -> !selected && RaftMoreAttention.Computers in inputs.moreAttention
-        RaftNavBadgeSource.AppUpdate -> !selected && RaftMoreAttention.AppUpdate in inputs.moreAttention
+        RaftNavBadgeSource.SettingsAttention ->
+            !selected && inputs.moreAttention.any { it.serverMenuEntry() == RaftServerMenuEntry.Settings }
     }
 
 /** The count behind the dot for the iOS system bar (it has no small dot): Activity's unread, else 0. */
