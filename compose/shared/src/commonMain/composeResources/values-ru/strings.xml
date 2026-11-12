@@ -65,6 +65,7 @@
     <string name="release_notes_error_title">Не удалось загрузить список изменений</string>
     <string name="release_notes_error_body">Проверьте подключение и попробуйте ещё раз.</string>
     <string name="thread_composer_insert_newline">Новая строка</string>
+    <string name="thread_composer_paste_image">Вставить изображение</string>
     <string name="settings_invite_by_email">Пригласить по электронной почте</string>
     <string name="settings_delete_server">Удалить сервер</string>
     <string name="common_done">Готово</string>
