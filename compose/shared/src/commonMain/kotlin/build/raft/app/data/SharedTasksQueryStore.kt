@@ -79,6 +79,8 @@ class SharedTasksQueryStore(
     private var liveRefreshJob: Job? = null
     private var countsRefreshJob: Job? = null
     private val pendingLiveLanes = mutableSetOf<String>()
+    /** Lanes whose live re-read waits for the read in flight to land (one queued after it, never cancelling it). */
+    private val queuedLiveRereads = mutableSetOf<String>()
     private var lastProjection: Map<String, TaskSummary>? = null
 
     /**
@@ -154,6 +156,7 @@ class SharedTasksQueryStore(
             return
         }
         queryGeneration++
+        queuedLiveRereads.clear()
         laneJobs.values.forEach { it.cancel() }
         laneJobs.clear()
         laneTokens.clear()
@@ -235,7 +238,7 @@ class SharedTasksQueryStore(
         laneTokens[lane.key] = token
         val sort = state.value.query.sort
         updateLane(lane.key) { it.copy(loading = true) }
-        laneJobs[lane.key] =
+        val job =
             scope.launch {
                 val server = serverId()
                 if (state.value.viewerId == null) {
@@ -299,6 +302,8 @@ class SharedTasksQueryStore(
                     }
                 }
             }
+        laneJobs[lane.key] = job
+        job.invokeOnCompletion { onLaneReadEnded(lane.key) }
     }
 
     private fun updateLane(key: String, transform: (TasksLaneState) -> TasksLaneState) {
@@ -310,6 +315,8 @@ class SharedTasksQueryStore(
 
     /** Reads every filter set the counts need that is not read (or every one, [force]). */
     private fun loadCounts(priority: DataRequestPriority, force: Boolean = false) {
+        // A server without the board query answers every counts read 404 again: stop asking.
+        if (state.value.unsupported) return
         val needed = tasksQueryCountFilters(state.value.query, state.value.doneSince)
         needed.forEach { filters ->
             val key = tasksCountsKey(filters)
@@ -366,7 +373,8 @@ class SharedTasksQueryStore(
         val previous = lastProjection
         lastProjection = byId
         val current = state.value
-        if (!current.started) return
+        // Unsupported: the page shows the app's own list; nothing here is shown or worth a read.
+        if (!current.started || current.unsupported) return
         // Patch the rows the lanes list (never with an older revision, never losing a known source sender).
         var tasks = current.tasks
         current.tasks.forEach { (id, row) ->
@@ -439,10 +447,30 @@ class SharedTasksQueryStore(
                 pendingLiveLanes.clear()
                 state.value.lanes.filter { it.key in pending }.forEach { lane ->
                     diagnosticsLogger("tasks_query_live_reread lane=${lane.section.name}")
-                    // A page being loaded is superseded: this read covers it.
-                    rereadLoaded(lane, DataRequestPriority.Background)
+                    requestLiveReread(lane)
                 }
             }
+    }
+
+    /**
+     * A live re-read never cancels or downgrades the lane's read in flight (a first page, a pull, a
+     * page, an earlier live re-read): it waits for that read to land and runs once after it.
+     */
+    private fun requestLiveReread(lane: TasksQueryLane) {
+        if (laneJobs[lane.key]?.isActive == true) {
+            queuedLiveRereads += lane.key
+            return
+        }
+        rereadLoaded(lane, DataRequestPriority.Background)
+    }
+
+    /** A lane's read ended (landed, failed or cancelled): run the live re-read queued behind it. */
+    private fun onLaneReadEnded(key: String) {
+        // Later, so a read that replaced this one (a pull, a query change) is the one waited for.
+        scope.launch {
+            if (!queuedLiveRereads.remove(key)) return@launch
+            state.value.lanes.firstOrNull { it.key == key }?.let(::requestLiveReread)
+        }
     }
 
     /** The counts after live changes, at most one read per [CountsRefreshDelayMs] (throttled). */
@@ -783,11 +811,18 @@ internal fun TaskSummary.tasksActivityKey(): String = activityAt ?: updatedAtLab
  * Whether a row belongs to a lane as far as the row tells (web tasksPageModel.ts `matchLane`):
  * true, false, or null when it hinges on a fact the row lacks (who sent a task's source message,
  * or who reads).
- * `completed_since` is the server's to judge (rows carry no completion time).
+ * `completed_since` is read from the row's completion time (unknown without one).
  */
 fun TaskSummary.matchesTasksQueryLane(filters: ServerTaskBoardFilters, viewerId: String?): Boolean? {
     val boardStatus = if (status == TaskStatus.InReview) TaskStatus.InProgress else status
     if (filters.statuses.isNotEmpty() && boardStatus !in filters.statuses) return false
+    // `completed_since` bounds Done only (web matchLane): a row without its completion time is the server's to judge.
+    val completedSince = filters.completedSince
+    if (completedSince != null && boardStatus == TaskStatus.Done) {
+        val done = completedAt?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return null
+        val bound = runCatching { Instant.parse(completedSince) }.getOrNull() ?: return null
+        if (done < bound) return false
+    }
     if (filters.channelIds.isNotEmpty() && channelId?.value !in filters.channelIds) return false
     if (filters.creators.isNotEmpty() && creator?.tasksQueryIdentity() !in filters.creators) return false
     if (filters.assignees.isNotEmpty()) {

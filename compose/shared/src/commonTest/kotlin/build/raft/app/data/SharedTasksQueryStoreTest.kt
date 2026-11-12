@@ -405,4 +405,110 @@ class SharedTasksQueryStoreTest {
         assertNull(frame.matchesTasksQueryLane(filters, ViewerId))
         assertEquals(true, frame.withKnownSourceSender(fromMe).matchesTasksQueryLane(filters, ViewerId))
     }
+
+    @Test
+    fun anOldDoneTaskEditedLiveStaysOutOfStartedByYou() = runTest {
+        val repository = FakeTasksQueryRepository()
+        val store = store(repository)
+        store.start()
+        runCurrent()
+        store.onProjection(emptyList(), bulk = false)
+        val reads = repository.pageCalls.size
+        // Started by you keeps Done since doneSince (2026-11-05T21:20Z here); this one was done the week before.
+        val oldDone =
+            task("old", status = TaskStatus.Done, creator = me, activityAt = "2026-11-06T20:00:00.000Z")
+                .copy(completedAt = "2026-10-29T00:00:00.000Z")
+        store.onProjection(listOf(oldDone), bulk = false)
+        advanceTimeBy(SharedTasksQueryStore.LiveRereadDelayMs + 1)
+        runCurrent()
+        assertTrue(store.state.value.rowIds().isEmpty(), "the server's completed_since leaves it out")
+        assertEquals(reads, repository.pageCalls.size)
+
+        // Done within the day: it joins. Done without a completion time: the server decides.
+        val recentDone = task("recent", status = TaskStatus.Done, creator = me).copy(completedAt = "2026-11-06T10:00:00.000Z")
+        store.onProjection(listOf(oldDone, recentDone), bulk = false)
+        assertEquals(listOf("recent"), store.state.value.rowIds())
+        store.onProjection(listOf(oldDone, recentDone, task("unknown", status = TaskStatus.Done, creator = me)), bulk = false)
+        advanceTimeBy(SharedTasksQueryStore.LiveRereadDelayMs + 1)
+        runCurrent()
+        // Both Started lanes bound Done by completed_since; neither can tell without the time.
+        assertEquals(
+            setOf(ServerTaskRelation.CreatedByMe, ServerTaskRelation.FromMyMessage),
+            repository.pageCalls.drop(reads).map { it.filters.relation }.toSet(),
+        )
+    }
+
+    @Test
+    fun aLiveRereadWaitsForTheReadInFlightInsteadOfCancellingIt() = runTest {
+        val gate = CompletableDeferred<TasksPageResult>()
+        var liveReads = 0
+        val repository = FakeTasksQueryRepository(page = { TasksPageResult.Page(listOf(task("a"), task("b")), null) })
+        val store = store(repository, InMemoryTasksPageQueryPreferences(savedScope = TasksPageScope.All))
+        store.start()
+        runCurrent()
+        store.onProjection(listOf(task("a"), task("b")), bulk = false)
+        val reads = repository.pageCalls.size
+        repository.page = {
+            liveReads++
+            if (liveReads == 1) gate.await() else TasksPageResult.Page(listOf(task("a"), task("c")), null)
+        }
+
+        // b leaves: a live re-read starts and is slow.
+        store.onProjection(listOf(task("a")), bulk = false)
+        advanceTimeBy(SharedTasksQueryStore.LiveRereadDelayMs + 1)
+        runCurrent()
+        assertEquals(reads + 1, repository.pageCalls.size)
+        // b comes and goes again: the next live re-read queues behind the first, which keeps going.
+        store.onProjection(listOf(task("a"), task("b")), bulk = false)
+        store.onProjection(listOf(task("a")), bulk = false)
+        advanceTimeBy(SharedTasksQueryStore.LiveRereadDelayMs + 1)
+        runCurrent()
+        assertEquals(reads + 1, repository.pageCalls.size, "the read in flight is not cancelled and replaced")
+
+        gate.complete(TasksPageResult.Page(listOf(task("a")), null))
+        runCurrent()
+        assertEquals(reads + 2, repository.pageCalls.size, "the queued re-read runs once the first lands")
+        assertEquals(listOf("a", "c"), store.state.value.rowIds())
+        assertTrue(repository.pageCalls.drop(reads).all { it.priority == DataRequestPriority.Background })
+    }
+
+    @Test
+    fun aLiveRereadNeverDowngradesAVisibleRead() = runTest {
+        val gate = CompletableDeferred<TasksPageResult>()
+        val repository = FakeTasksQueryRepository(page = { TasksPageResult.Page(listOf(task("a"), task("b")), null) })
+        val store = store(repository, InMemoryTasksPageQueryPreferences(savedScope = TasksPageScope.All))
+        store.start()
+        runCurrent()
+        store.onProjection(listOf(task("a"), task("b")), bulk = false)
+        val reads = repository.pageCalls.size
+        repository.page = { call -> if (call.priority == DataRequestPriority.Visible) gate.await() else TasksPageResult.Page(listOf(task("a")), null) }
+
+        store.dispatch(TasksQueryIntent.Refresh)
+        runCurrent()
+        store.onProjection(listOf(task("a")), bulk = false)
+        advanceTimeBy(SharedTasksQueryStore.LiveRereadDelayMs + 1)
+        runCurrent()
+        assertEquals(listOf(DataRequestPriority.Visible), repository.pageCalls.drop(reads).map { it.priority })
+
+        gate.complete(TasksPageResult.Page(listOf(task("a"), task("b")), null))
+        runCurrent()
+        assertEquals(listOf(DataRequestPriority.Visible, DataRequestPriority.Background), repository.pageCalls.drop(reads).map { it.priority })
+    }
+
+    @Test
+    fun anUnsupportedServerIsNotAskedForCountsAgain() = runTest {
+        val repository = FakeTasksQueryRepository(counts = { ServerTaskCountsResult.Error(code = "tasks_counts_http_405") })
+        val store = store(repository)
+        store.start()
+        runCurrent()
+        assertTrue(store.state.value.unsupported)
+        val counts = repository.countCalls.size
+        store.dispatch(TasksQueryIntent.Refresh)
+        store.dispatch(TasksQueryIntent.ToggleStatus(TaskStatus.Todo))
+        store.onProjection(listOf(task("x")), bulk = false)
+        store.onProjection(emptyList(), bulk = false)
+        advanceTimeBy(SharedTasksQueryStore.CountsRefreshDelayMs + 1)
+        runCurrent()
+        assertEquals(counts, repository.countCalls.size)
+    }
 }

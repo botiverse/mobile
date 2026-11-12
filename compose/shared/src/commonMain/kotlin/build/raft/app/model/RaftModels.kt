@@ -923,6 +923,11 @@ data class TaskSummary(
     val sourceSenderType: String? = null,
     val sourceSenderId: String? = null,
     val sourceSenderReported: Boolean = false,
+    /**
+     * When the task was done (slock `completedAt`, ISO; set only while it is done), what the Tasks
+     * page's `completed_since` bound reads; null from a source without it.
+     */
+    val completedAt: String? = null,
 )
 
 // Inbox Models

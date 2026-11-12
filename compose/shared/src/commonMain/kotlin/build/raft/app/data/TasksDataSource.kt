@@ -1581,6 +1581,7 @@ internal fun TaskWireDto.toTaskSummary(
         sourceSenderType = sourceSenderType?.takeIf { it != TaskSourceMessageIdAbsent && it.isNotBlank() },
         sourceSenderId = sourceSenderId?.takeIf { sourceSenderType != TaskSourceMessageIdAbsent && it.isNotBlank() },
         sourceSenderReported = sourceSenderType != TaskSourceMessageIdAbsent,
+        completedAt = completedAt?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 
