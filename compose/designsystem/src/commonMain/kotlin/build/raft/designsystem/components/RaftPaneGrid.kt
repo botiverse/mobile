@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -514,11 +515,14 @@ internal class RaftPaneGridHost internal constructor() {
     internal val handedUp = mutableStateMapOf<Any, RaftPaneGridHandedUp>()
 
     /**
-     * Each nested grid's latest hand-up, written every time it hands up: the cells' content (new lambdas, with
-     * whatever they captured) and labels as they are now. Read only where a column is drawn ([freshColumn]), never by
-     * the row or a page, so a write recomposes the columns' drawing and nothing that hands up again.
+     * Each nested grid's latest hand-up, one state per grid: the cells' content (new lambdas, with whatever they
+     * captured) and labels as they are now. Read only where a column is drawn ([freshColumn]), never by the row or a
+     * page, so a write recomposes the columns' drawing and nothing that hands up again. One state per grid, not one
+     * map: a map is observed whole, so the conversation's grid handing up (every time it composes) redrew the thread's
+     * and the profile's columns too (Lagoon, #4661). Plain memory holds the states; each is created before its grid
+     * enters [handedUp], so a column is never drawn before its state exists.
      */
-    internal val fresh = mutableStateMapOf<Any, RaftPaneGridHandedUp>()
+    private val fresh = mutableMapOf<Any, MutableState<RaftPaneGridHandedUp?>>()
 
     /**
      * [token]'s grid hands up [up] (null: nothing any more). A nested grid does so every time it composes, with new
@@ -529,16 +533,24 @@ internal class RaftPaneGridHost internal constructor() {
      */
     internal fun handUp(token: Any, up: RaftPaneGridHandedUp?) {
         if (up == null || (up.columns.isEmpty() && up.fillColumn == null && up.mainBounds == null)) {
-            if (token in fresh) fresh.remove(token)
+            fresh.remove(token)?.let { if (it.value != null) it.value = null }
             if (token in handedUp) handedUp.remove(token)
             return
         }
-        if (fresh[token] !== up) fresh[token] = up
+        val latest = fresh.getOrPut(token) { mutableStateOf(null) }
+        // The same column objects handed up again (a page that remembers its columns): nothing to draw anew.
+        if (!latest.value.sameColumns(up)) latest.value = up
         if (handedUp[token]?.shape != up.shape) handedUp[token] = up
     }
 
+    private fun RaftPaneGridHandedUp?.sameColumns(other: RaftPaneGridHandedUp): Boolean =
+        this != null && columns.size == other.columns.size && columns.indices.all { columns[it] === other.columns[it] }
+
+    /** [token]'s state of [fresh], for tests: what a hand-up writes. */
+    internal fun freshState(token: Any): Any? = fresh[token]
+
     /** The latest [id] column [token]'s grid handed up; null where it no longer does. Read where the column is drawn. */
-    internal fun freshColumn(token: Any, id: String): RaftPaneGridColumn? = fresh[token]?.columns?.firstOrNull { it.bounds.id == id }
+    internal fun freshColumn(token: Any, id: String): RaftPaneGridColumn? = fresh[token]?.value?.columns?.firstOrNull { it.bounds.id == id }
 
     /**
      * Left to right: the outermost grid's [own] columns, then the handed-up ones, outer levels first; the
