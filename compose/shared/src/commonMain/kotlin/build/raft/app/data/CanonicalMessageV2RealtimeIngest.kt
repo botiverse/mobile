@@ -404,7 +404,7 @@ internal class CanonicalMessageV2RealtimeIngest(
         } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
             // A stored header naming another parent, or a stored row this frame cannot merge with.
             try {
-                onConversationPoisoned(partition, row.channelId, poisoned.cause)
+                onConversationPoisoned(partition, row.channelId, poisoned.poisonCause)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Throwable) {

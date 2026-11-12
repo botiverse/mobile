@@ -611,11 +611,11 @@ class CanonicalMessageV2ScopePoisoned(
      * Which check refused the scope (Hands 7e198cab: a realtime write logged only `reason=poisoned`, so nobody
      * could tell a stored row it cannot merge with from a frame naming another scope). A stable snake_case code.
      */
-    val cause: String = "unspecified",
-) : RuntimeException("$CANONICAL_MESSAGE_V2_SCOPE_POISONED at $scope cause=$cause fact=${factId.orEmpty()}")
+    val poisonCause: String = "unspecified",
+) : RuntimeException("$CANONICAL_MESSAGE_V2_SCOPE_POISONED at $scope cause=$poisonCause fact=${factId.orEmpty()}")
 
 /** `fact=<id> cause=<code>`: what every `poisoned` diagnostics line names. */
-fun CanonicalMessageV2ScopePoisoned.diagnosticsLabel(): String = "fact=${factId.orEmpty()} cause=$cause"
+fun CanonicalMessageV2ScopePoisoned.diagnosticsLabel(): String = "fact=${factId.orEmpty()} cause=$poisonCause"
 
 /**
  * Existing message/cursor tables, but a disjoint V2 consumer partition and a strict full-v6 row codec.
@@ -679,7 +679,7 @@ internal class SqlDelightCanonicalMessageV2Store(
                 (storedParent.parentScopeId != threadParent.parentScopeId || storedParent.rootMessageId != threadParent.rootMessageId)
             ) {
                 // Never re-parented: a thread under another parent channel or root is another thread.
-                throw CanonicalMessageV2ScopePoisoned(scope, cause = "thread_reparented")
+                throw CanonicalMessageV2ScopePoisoned(scope, poisonCause = "thread_reparented")
             }
             // The same parent whose kind changed on the server (e.g. a channel made private): a user-driven page
             // writer's server-confirmed kind wins, as a snapshot's cursor used to. A realtime (not user-driven)
@@ -945,7 +945,7 @@ internal class SqlDelightCanonicalMessageV2Store(
                 scopeKind = scope.scopeKind,
                 channelId = scope.scopeId,
             ).executeAsOne() != 1L
-        ) throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id, cause = "fact_not_in_scope")
+        ) throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id, poisonCause = "fact_not_in_scope")
         val completed = CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES.filter { it in storedUnknown && it !in unknown }
         if (completed.isNotEmpty()) {
             factLogger(
@@ -968,7 +968,7 @@ internal class SqlDelightCanonicalMessageV2Store(
         val envelopes = rows.map { row ->
             val accepted = decodeCanonicalMessageV2(row.canonicalFactJson, scope.serverId)
                 as? CanonicalMessageV2DecodeResult.Accepted
-                ?: throw CanonicalMessageV2ScopePoisoned(scope, row.id, cause = "stored_fact_undecodable")
+                ?: throw CanonicalMessageV2ScopePoisoned(scope, row.id, poisonCause = "stored_fact_undecodable")
             val envelope = accepted.envelope
             if (
                 row.id != envelope.fact.id ||
@@ -977,7 +977,7 @@ internal class SqlDelightCanonicalMessageV2Store(
                 row.createdAt != envelope.fact.createdAt ||
                 row.channelId != scope.scopeId ||
                 row.scopeKind != scope.scopeKind
-            ) throw CanonicalMessageV2ScopePoisoned(scope, row.id, cause = "stored_row_mismatch")
+            ) throw CanonicalMessageV2ScopePoisoned(scope, row.id, poisonCause = "stored_row_mismatch")
             requireEnvelopeMatchesScope(scope, envelope)
             envelope
         }
@@ -985,7 +985,7 @@ internal class SqlDelightCanonicalMessageV2Store(
             decodeUnknownFields(scope, row.id, row.unknownFields).takeIf { it.isNotEmpty() }?.let { row.id to it }
         }.toMap()
         val cursor = selectCursor(scope)
-        if (envelopes.isNotEmpty() && cursor == null) throw CanonicalMessageV2ScopePoisoned(scope, cause = "cursor_missing")
+        if (envelopes.isNotEmpty() && cursor == null) throw CanonicalMessageV2ScopePoisoned(scope, poisonCause = "cursor_missing")
         return RestoredCanonicalMessageV2Scope(envelopes = envelopes, cursor = cursor, unknownFieldsByFactId = unknownFieldsByFactId)
     }
 
@@ -1005,17 +1005,17 @@ internal class SqlDelightCanonicalMessageV2Store(
     private fun decodeStoredFact(scope: SyncScopeKey, id: String, bytes: String): CanonicalMessageEnvelopeV2 =
         (decodeCanonicalMessageV2(bytes, scope.serverId) as? CanonicalMessageV2DecodeResult.Accepted)
             ?.envelope?.takeIf { it.fact.id == id }
-            ?: throw CanonicalMessageV2ScopePoisoned(scope, id, cause = "stored_fact_undecodable")
+            ?: throw CanonicalMessageV2ScopePoisoned(scope, id, poisonCause = "stored_fact_undecodable")
 
     /** The stored marker: only names of the allowed set, each once, in canonical order; else poisoned. */
     private fun decodeUnknownFields(scope: SyncScopeKey, id: String, encoded: String?): Set<MessageAggregateField> {
         if (encoded == null) return emptySet()
         val fields = encoded.split(",").map { name ->
             CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES.firstOrNull { it.name == name }
-                ?: throw CanonicalMessageV2ScopePoisoned(scope, id, cause = "unknown_fields_invalid")
+                ?: throw CanonicalMessageV2ScopePoisoned(scope, id, poisonCause = "unknown_fields_invalid")
         }
         if (encodeUnknownFields(fields.toSet()) != encoded) {
-            throw CanonicalMessageV2ScopePoisoned(scope, id, cause = "unknown_fields_invalid")
+            throw CanonicalMessageV2ScopePoisoned(scope, id, poisonCause = "unknown_fields_invalid")
         }
         return fields.toSet()
     }
@@ -1123,7 +1123,7 @@ internal class SqlDelightCanonicalMessageV2Store(
         ).executeAsList().map { row ->
             val source = CanonicalMessageV2SegmentSource.fromWire(row.source)
             if (source == null || row.lowSeq < 0L || row.lowSeq > row.highSeq) {
-                throw CanonicalMessageV2ScopePoisoned(scope, cause = "segment_invalid")
+                throw CanonicalMessageV2ScopePoisoned(scope, poisonCause = "segment_invalid")
             }
             CanonicalMessageV2Segment(
                 lowSeq = row.lowSeq,
@@ -1135,7 +1135,7 @@ internal class SqlDelightCanonicalMessageV2Store(
             )
         }.also {
             if (!CanonicalMessageV2SegmentAlgebra.isNormalized(it)) {
-                throw CanonicalMessageV2ScopePoisoned(scope, cause = "segments_not_normalized")
+                throw CanonicalMessageV2ScopePoisoned(scope, poisonCause = "segments_not_normalized")
             }
         }
 
@@ -1850,14 +1850,14 @@ internal fun PersistedCursor.threadParent(): CanonicalMessageV2ThreadParent? {
 
 private fun requireEnvelopeMatchesScope(scope: SyncScopeKey, envelope: CanonicalMessageEnvelopeV2) {
     val diagnostic = validateCanonicalMessageV2(envelope, scope.serverId)
-    if (diagnostic != null) throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id, cause = "invalid_fact")
+    if (diagnostic != null) throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id, poisonCause = "invalid_fact")
     val matches = when (val context = envelope.context) {
         is CanonicalConversationContextV2.TopLevel ->
             context.scope.scopeId == scope.scopeId && context.scope.scopeKind == scope.scopeKind
         is CanonicalConversationContextV2.Thread ->
             context.replyScope.scopeId == scope.scopeId && scope.scopeKind == "thread"
     }
-    if (!matches) throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id, cause = "fact_names_another_scope")
+    if (!matches) throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id, poisonCause = "fact_names_another_scope")
 }
 
 private fun requireCursorMatchesScope(
@@ -1869,24 +1869,24 @@ private fun requireCursorMatchesScope(
 ) {
     if (scope.scopeKind != "thread") {
         if (cursor.parentScopeKind != null || cursor.parentScopeId != null || cursor.rootMessageId != null) {
-            throw CanonicalMessageV2ScopePoisoned(scope, cause = "top_level_cursor_names_parent")
+            throw CanonicalMessageV2ScopePoisoned(scope, poisonCause = "top_level_cursor_names_parent")
         }
         return
     }
     val parentKind = cursor.parentScopeKind?.takeIf { it in setOf("channel", "private", "dm", "joint") }
-        ?: throw CanonicalMessageV2ScopePoisoned(scope, cause = "thread_cursor_without_parent")
+        ?: throw CanonicalMessageV2ScopePoisoned(scope, poisonCause = "thread_cursor_without_parent")
     val parentScopeId = cursor.parentScopeId?.takeIf { it.isNotBlank() }
-        ?: throw CanonicalMessageV2ScopePoisoned(scope, cause = "thread_cursor_without_parent")
+        ?: throw CanonicalMessageV2ScopePoisoned(scope, poisonCause = "thread_cursor_without_parent")
     val rootMessageId = cursor.rootMessageId?.takeIf { it.isNotBlank() }
-        ?: throw CanonicalMessageV2ScopePoisoned(scope, cause = "thread_cursor_without_parent")
+        ?: throw CanonicalMessageV2ScopePoisoned(scope, poisonCause = "thread_cursor_without_parent")
     envelopes.forEach { envelope ->
         val context = envelope.context as? CanonicalConversationContextV2.Thread
-            ?: throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id, cause = "thread_fact_not_a_reply")
+            ?: throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id, poisonCause = "thread_fact_not_a_reply")
         if (
             (checkParentKind && context.parentTopLevelScope.scopeKind != parentKind) ||
             context.parentTopLevelScope.scopeId != parentScopeId ||
             context.rootMessageRef.messageId != rootMessageId
-        ) throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id, cause = "thread_fact_parent_mismatch")
+        ) throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id, poisonCause = "thread_fact_parent_mismatch")
     }
 }
 
