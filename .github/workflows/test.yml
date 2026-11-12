@@ -1294,6 +1294,7 @@ jobs:
             RaftIosRealtimeLifecyclePolicyTests \
             RaftIosOpenAttachmentTests \
             RaftIosNotificationRetractionTests \
+            RaftIosWeakSideActionListenerTests \
             RaftShareControllerFailureReasonTests
 
       # The UI-test bundle is only compiled here; its one case (QaAcceptanceLoopTests) is a

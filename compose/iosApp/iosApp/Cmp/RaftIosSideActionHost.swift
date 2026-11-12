@@ -10,6 +10,13 @@ import shared
 /// The navigation bar is shown while it holds the buttons (`raftSideActionsShown`): the system
 /// draws no vertical bar items of a hidden bar. Its top band is not the page's, so the page keeps
 /// the navigation controller's safe area (RaftPageViewController `raftPublishWindowInsets`).
+///
+/// Lifetime: the page controller owns the host (`raftSideActionHost`); the bridge, which stays in
+/// the global RaftSideActionHostRegistry until this host's deinit unregisters it, reaches the host
+/// only weakly (RaftIosWeakSideActionListener), so the page's teardown frees both.
+///
+/// Not used on a native-nav-bar prototype page (RaftPageControllerFactory): that page's
+/// RaftNativeNavBarHost owns the same navigationItem's bar buttons.
 @available(iOS 27.1, *)
 final class RaftIosSideActionHost: NSObject, RaftSideActionHostListener {
     private weak var controller: RaftPageViewController?
@@ -30,7 +37,7 @@ final class RaftIosSideActionHost: NSObject, RaftSideActionHostListener {
         self.bridge = bridge
         self.hostId = hostId
         super.init()
-        bridge.attachListener(listener: self)
+        bridge.attachListener(listener: RaftIosWeakSideActionListener(self))
         // Only where the build's SDK and the system have vertical bar items; else the page keeps
         // drawing its own column.
         bridge.setAvailable(available: RaftIosVerticalBarItemsSupported())
@@ -42,10 +49,15 @@ final class RaftIosSideActionHost: NSObject, RaftSideActionHostListener {
     }
 
     func onSideActionColumnChanged(json: String) {
-        guard let controller,
-              let items = RaftIosSideActionItems.make(json: json, onTap: { [weak self] id in _ = self?.bridge.sideActionTapped(id: id) })
-        else { return }
-        guard RaftIosMakeBarButtonItemsVerticalPreferred(items.leading + items.trailing) else { return }
+        guard let controller else { return }
+        guard let items = RaftIosSideActionItems.make(json: json, onTap: { [weak self] id in _ = self?.bridge.sideActionTapped(id: id) }) else {
+            handBackToPage(reason: "unreadable_column_or_symbol")
+            return
+        }
+        guard RaftIosMakeBarButtonItemsVerticalPreferred(items.leading + items.trailing) else {
+            handBackToPage(reason: "no_vertical_bar_items")
+            return
+        }
         let navigationItem = controller.navigationItem
         navigationItem.hidesBackButton = true
         navigationItem.leftBarButtonItems = items.leading
@@ -55,10 +67,21 @@ final class RaftIosSideActionHost: NSObject, RaftSideActionHostListener {
     }
 
     func onSideActionColumnCleared() {
-        guard let controller else { return }
+        // Only take down what this host put up (the replay on attach clears too).
+        guard let controller, controller.raftSideActionsShown else { return }
         controller.navigationItem.leftBarButtonItems = nil
         controller.navigationItem.rightBarButtonItems = nil
         controller.navigationItem.hidesBackButton = false
         controller.raftSideActionsShown = false
+    }
+
+    /// A column the system cannot draw (not JSON, a symbol this system lacks, no vertical bar
+    /// items) goes back to the page: the bridge is switched off, so the page draws its own column,
+    /// Back included, from its next frame, instead of keeping an empty one. Off the main run loop
+    /// turn: this is called from inside the page's present().
+    private func handBackToPage(reason: String) {
+        onSideActionColumnCleared()
+        RaftIosDiagnosticsRecord("warn", "SlockCmpHost", "side_actions_page_drawn reason=\(reason)")
+        DispatchQueue.main.async { [bridge] in bridge.setAvailable(available: false) }
     }
 }
