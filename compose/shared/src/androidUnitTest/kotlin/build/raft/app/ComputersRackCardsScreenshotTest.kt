@@ -8,7 +8,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ViewRootForTest
-import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -56,8 +55,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * JVM screenshots of the Computers page, light and dark, with its header and the List / Cards
- * toggle. Cards (`settings.computers`): web ComputersRack cards for an online computer, one with
+ * JVM screenshots of the Computers page, light and dark, with its header, the counts and the
+ * toolbar (search, Status, Runtime, Group, Sort, Cards / List, Add Computer on RaftFitToolbar,
+ * given way to the phone's width as the web's FitToolbar does). Cards (`settings.computers`): web ComputersRack cards for an online computer, one with
  * an upgrade, one below the version floor, one with low disk and more agents than one line holds,
  * and an offline one (dimmed agents, no meters). The online cards carry Disk / Memory meters
  * (normal, low-disk warning, "—" when not reported) and runtime usage lines: normal, warning from
@@ -72,7 +72,8 @@ import org.robolectric.annotation.GraphicsMode
  * with the agent count and Low disk and the version (or Offline) at the right, the owner line, the
  * agents on one scrolling line (gpu-rig's fade at the end), the runtime cells under the header,
  * and the next step; no Disk / Memory, no ⋯.
- * Toolbar (#proj-mobile:#60): every capture has it under the counts; the list is in Name order with
+ * Toolbar (#proj-mobile:#60): every capture has it under the counts, Cards / List and Add Computer
+ * at its end (web ComputersRackToolbar, slock #14149); the list is in Name order with
  * the offline laptop in its folded Offline section. `settings.computers.filtered`: Runtime Codex and
  * Sort by Codex remaining (both filled, Clear all's ×), each card's Codex line leading in bold
  * (web `leadUsage`); `.sorted_memory`: Sort by Memory used, Memory before Disk in bold; `.grouped` (cards and list): Group by
@@ -175,7 +176,8 @@ class ComputersRackCardsScreenshotTest {
 
 /**
  * The wide Computers page (Compose desktop's content area beside the rail, artin 11-01): the web's
- * desktop head (title with the counts, List / Cards, Add Computer) and the cards in a grid of
+ * desktop head (the title with the counts only), the toolbar on one line ending in Cards / List
+ * and Add Computer (web ComputersRackOverview, slock #14149), and the cards in a grid of
  * cards at least 250dp wide (`repeat(auto-fill, minmax(250px, 1fr))`): four columns at 1280dp,
  * the short second row keeping the card width.
  */
@@ -391,18 +393,6 @@ private fun ComputersListVisualContent(
                         }
                     } else {
                         null
-                    },
-                // The page shows the toggle once there are computers to lay out.
-                trailingContent =
-                    if (loading) {
-                        null
-                    } else {
-                        {
-                            androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
-                                RaftComputersRackViewToggle(view) {}
-                                if (wide) RaftComputersAddButton {}
-                            }
-                        }
                     },
             ) {
                 RaftComputersTheme {

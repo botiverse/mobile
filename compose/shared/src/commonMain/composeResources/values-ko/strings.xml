@@ -2122,6 +2122,8 @@
     <string name="list_toolbar_more">더 보기</string>
     <string name="list_toolbar_group">그룹</string>
     <string name="list_toolbar_clear_search">검색 지우기</string>
+    <string name="list_toolbar_sort">정렬</string>
+    <string name="list_toolbar_view">보기</string>
     <string name="members_no_matches">‘%1$s’에 해당하는 멤버가 없어요.</string>
     <string name="member_hosted_runtime_location">클라우드에서 실행</string>
     <string name="member_hosted_runtime_free">한시적 무료</string>

@@ -2145,6 +2145,8 @@
     <string name="list_toolbar_more">更多</string>
     <string name="list_toolbar_group">分组</string>
     <string name="list_toolbar_clear_search">清除搜索</string>
+    <string name="list_toolbar_sort">排序</string>
+    <string name="list_toolbar_view">视图</string>
     <string name="members_no_matches">没有符合「%1$s」的成员。</string>
     <string name="member_hosted_runtime_location">在云端运行</string>
     <string name="member_hosted_runtime_free">限时免费</string>

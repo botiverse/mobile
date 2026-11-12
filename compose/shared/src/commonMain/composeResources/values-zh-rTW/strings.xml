@@ -2122,6 +2122,8 @@
     <string name="list_toolbar_more">更多</string>
     <string name="list_toolbar_group">分組</string>
     <string name="list_toolbar_clear_search">清除搜尋</string>
+    <string name="list_toolbar_sort">排序</string>
+    <string name="list_toolbar_view">檢視</string>
     <string name="members_no_matches">沒有符合「%1$s」的成員。</string>
     <string name="member_hosted_runtime_location">在雲端執行</string>
     <string name="member_hosted_runtime_free">限時免費</string>

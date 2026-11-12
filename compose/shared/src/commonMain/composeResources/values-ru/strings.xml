@@ -2119,6 +2119,8 @@
     <string name="list_toolbar_more">Ещё</string>
     <string name="list_toolbar_group">Группировка</string>
     <string name="list_toolbar_clear_search">Очистить поиск</string>
+    <string name="list_toolbar_sort">Сортировка</string>
+    <string name="list_toolbar_view">Вид</string>
     <string name="members_no_matches">Нет участников по запросу «%1$s».</string>
     <string name="member_hosted_runtime_location">Работает в облаке</string>
     <string name="member_hosted_runtime_free">Временно бесплатно</string>
