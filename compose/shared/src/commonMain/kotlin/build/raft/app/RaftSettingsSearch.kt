@@ -5,7 +5,7 @@ package build.raft.app
  * app's own index (artin, #proj-raft-ui:#204, option A) and its matching, pure.
  *
  * The web keeps its index in botiverse/slock packages/shared/src/settingsSearch.v1.json (copied
- * here at 99ba05ae). This one lists only what the app has, with the same id for the same setting,
+ * here at b36482a1). This one lists only what the app has, with the same id for the same setting,
  * so `/settings/<page>#<id>` names the same row on the web and in the app. The words a setting is
  * shown with (name, description, section) are the app's own strings, the ones its row shows
  * ([RaftSettingsSearchCopy] in SettingsSearchUi.kt); this file holds where a setting is, who sees
