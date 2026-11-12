@@ -744,15 +744,6 @@ android {
         getByName("connectedTest") {
             res.srcDir("src/connectedTest/res")
         }
-        // The Google Play rating prompt (RaftAndroidStoreReview) exists only in the `play` build type
-        // (src/play, with the Play In-App Review library as playImplementation): only a build Google
-        // Play installs can show it. Every other build type gets the no-op from src/noPlay and does
-        // not carry the library.
-        for (buildType in listOf("debug", "alpha", "connectedTest", "release")) {
-            getByName(buildType) {
-                java.srcDir("src/noPlay/java")
-            }
-        }
     }
 }
 

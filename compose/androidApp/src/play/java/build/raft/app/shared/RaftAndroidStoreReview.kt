@@ -13,7 +13,8 @@ import java.lang.ref.WeakReference
  * The Google Play In-App Review prompt behind the shared rating prompt
  * ([build.raft.app.data.RaftRatingPrompt] decides when, at most once per device). This source set
  * (and the Play In-App Review library) is in the `play` build type only: a build Google Play did not
- * install can never show the prompt. Every other build type compiles the no-op in src/noPlay.
+ * install can never show the prompt. Every other build type compiles its own no-op copy
+ * (src/debug, src/alpha, src/connectedTest, src/release).
  *
  * [RaftStoreReviewRequester.requestReview] runs on the main thread; it starts the review flow over
  * the resumed activity and returns true, or returns false when no activity is resumed (nothing is
