@@ -325,8 +325,11 @@ internal sealed interface ActionCardExecuteOutcome {
     /** 200: run (or the same person's same values again); [card] is the card the answer carries. */
     data class Executed(val card: ThreadActionCard?) : ActionCardExecuteOutcome
 
-    /** 422 `FORM_INVALID`: what is wrong, under a field or (field null) for the whole form. */
-    data class FormInvalid(val issues: List<ActionCardFormIssue>, val serverMessage: String?) : ActionCardExecuteOutcome
+    /**
+     * 422 `FORM_INVALID`: what is wrong, under a field or (field null) for the whole form. [traceId]
+     * is the refusal's `X-Trace-Id` (AGENTS.md "Errors carry the trace ID"), shown once under the issues.
+     */
+    data class FormInvalid(val issues: List<ActionCardFormIssue>, val serverMessage: String?, val traceId: String? = null) : ActionCardExecuteOutcome
 
     /** 422 `FORM_REQUIRED`: the card takes a form this request did not send (the card changed). */
     data class FormRequired(val serverMessage: String?) : ActionCardExecuteOutcome
@@ -421,7 +424,7 @@ private fun HomeNetworkResponse.actionCardFormRefusalOrNull(): ActionCardExecute
     val message = envelope.error?.takeIf { it.isNotBlank() }
     return when {
         code == 422 && envelope.errorCode == "FORM_INVALID" ->
-            ActionCardExecuteOutcome.FormInvalid(envelope.issues.orEmpty().map { it.toActionCardFormIssue() }, message)
+            ActionCardExecuteOutcome.FormInvalid(envelope.issues.orEmpty().map { it.toActionCardFormIssue() }, message, traceId)
         code == 422 && envelope.errorCode == "FORM_REQUIRED" -> ActionCardExecuteOutcome.FormRequired(message)
         code == 409 && envelope.errorCode == "ALREADY_EXECUTED" ->
             ActionCardExecuteOutcome.AlreadyExecuted(envelope.metadata.toThreadActionCard(), message)

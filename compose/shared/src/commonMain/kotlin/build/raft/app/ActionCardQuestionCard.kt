@@ -233,6 +233,11 @@ internal fun ActionCardSpecTree.withoutSlimQuestionRows(singleQuestion: Boolean)
  * who isn't asked sees the buttons disabled ([canSubmit] false) and "Waiting for Maya to answer".
  * Answered, the buttons give way to one line, "✓ Maya answered **Postgres**" ([answeredLine],
  * [QuestionStatusLine]).
+ *
+ * A question of one option is a confirm ([isConfirm], slock #14497): its one button, with no Other,
+ * is checked once pressed ([ActionCardConfirmButton]) and answers as any option does; an optional
+ * one pressed again is taken back. Answered, it gives way to the same one line as any answer.
+ * A 422's [serverIssuesTraceId] shows once under its issue ([RaftTraceIdNote]).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -250,6 +255,7 @@ internal fun ActionCardQuestionButtonRow(
     displayLocale: String,
     onSend: (Map<String, ActionCardFormValue>) -> Unit,
     modifier: Modifier = Modifier,
+    serverIssuesTraceId: String? = null,
 ) {
     RaftDesignSystemTheme {
         Column(
@@ -267,6 +273,7 @@ internal fun ActionCardQuestionButtonRow(
                         values = values,
                         onValuesChange = onValuesChange,
                         serverIssues = serverIssues,
+                        serverIssuesTraceId = serverIssuesTraceId,
                         canSubmit = canSubmit,
                         submitting = submitting,
                         hint = hint,
@@ -328,6 +335,7 @@ private fun QuestionButtons(
     values: Map<String, ActionCardFormValue>,
     onValuesChange: (Map<String, ActionCardFormValue>) -> Unit,
     serverIssues: List<ActionCardFormIssue>,
+    serverIssuesTraceId: String?,
     canSubmit: Boolean,
     submitting: Boolean,
     hint: String?,
@@ -359,15 +367,48 @@ private fun QuestionButtons(
         }
     }
 
-    serverIssues.filter { it.field == null || it.field != field.name }.map { renderActionCardMsgText(it.message, displayLocale) }.distinct().forEach {
+    val banners = serverIssues.filter { it.field == null || it.field != field.name }.map { renderActionCardMsgText(it.message, displayLocale) }.distinct()
+    banners.forEach {
         RaftBanner(description = it, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
     }
+    val traceSpot =
+        actionCardTraceIdSpot(serverIssuesTraceId, banners.isNotEmpty(), listOf(field.name)) { name ->
+            clientIssues.none { it.field == name } && serverIssues.any { it.field == name }
+        }
+    if (traceSpot == ActionCardTraceIdSpot.UnderBanners) RaftTraceIdNote(serverIssuesTraceId)
     FlowRow(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        field.options.forEach { option ->
+        if (field.isConfirm) {
+            val option = field.options.single()
+            val chosen = option.value in value.selected
+            ActionCardConfirmButton(
+                label = renderActionCardMsgText(option.label, displayLocale),
+                chosen = chosen,
+                onClick = {
+                    if (canSubmit && !busy) {
+                        val pressed = field.confirmPressed(value)
+                        val next = latestValues + (field.name to (pressed ?: value))
+                        clientIssues = emptyList()
+                        if (pressed != null) onValuesChange(next)
+                        pickJob?.cancel()
+                        // Taken back (optional): nothing is sent. Else, as a tapped option: shown checked, then the undoable submit.
+                        if (pressed == null || pressed.selected.isNotEmpty()) {
+                            pickJob =
+                                scope.launch {
+                                    delay(QUESTION_CHOICE_PICK_HIGHLIGHT_MS)
+                                    submit(next)
+                                }
+                        }
+                    }
+                },
+                enabled = canSubmit && (!busy || chosen),
+                loading = submitting && chosen,
+            )
+        }
+        if (!field.isConfirm) field.options.forEach { option ->
             val chosen = !otherChosen && option.value in value.selected
             RaftButton(
                 text = renderActionCardMsgText(option.label, displayLocale),
@@ -434,8 +475,10 @@ private fun QuestionButtons(
     val issue = clientIssues.firstOrNull { it.field == field.name } ?: serverIssues.firstOrNull { it.field == field.name }
     val pending = if (pendingShown && issue == null && canSubmit) actionCardChoicePending(value) else null
     when {
-        issue != null ->
+        issue != null -> {
             RaftText(renderActionCardMsgText(issue.message, displayLocale), style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold), color = RaftTheme.colors.dangerStrong)
+            if (traceSpot == ActionCardTraceIdSpot.UnderField(field.name)) RaftTraceIdNote(serverIssuesTraceId)
+        }
         pending != null ->
             RaftText(
                 stringResource(if (pending == ActionCardChoicePending.Write) Res.string.action_card_question_write_first else Res.string.action_card_question_choose_first),

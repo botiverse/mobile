@@ -321,6 +321,7 @@ internal fun ThreadActionCardSpecView(
             displayLocale = displayLocale,
             onSend = { values -> inline?.let { send(it)(values) } },
             modifier = modifier,
+            serverIssuesTraceId = slice.inlineIssuesTraceId,
         )
         return
     }
@@ -369,6 +370,7 @@ internal fun ThreadActionCardSpecView(
                         submitting = slice.busy == form.buttonId,
                         displayLocale = displayLocale,
                         onSend = send(form),
+                        serverIssuesTraceId = slice.inlineIssuesTraceId,
                     )
                 }
             },

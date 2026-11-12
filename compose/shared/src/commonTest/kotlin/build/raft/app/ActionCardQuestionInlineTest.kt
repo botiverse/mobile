@@ -5,6 +5,7 @@ import build.raft.app.data.ActionCardFormIssueCode
 import build.raft.app.data.ActionCardFormValue
 import build.raft.app.data.ActionCardSpecButton
 import build.raft.app.data.ActionCardSpecCard
+import build.raft.app.data.ActionCardSpecChoiceField
 import build.raft.app.data.CardStack
 import build.raft.app.data.DataResult
 import build.raft.app.data.ExecuteActionFormBody
@@ -221,14 +222,57 @@ class ActionCardQuestionInlineTest {
     }
 
     @Test
-    fun aRefusedInlineAnswerPutsTheIssueUnderItsQuestionUntilItIsEdited() = runTest {
+    fun aRefusedInlineAnswerPutsTheIssueAndItsTraceIdUnderItsQuestionUntilItIsEdited() = runTest {
         val issue = actionCardFormIssue("db", ActionCardFormIssueCode.InvalidOption)
-        val harness = Harness(this, DataResult.Content(ActionCardExecuteOutcome.FormInvalid(listOf(issue), null)))
+        val harness = Harness(this, DataResult.Content(ActionCardExecuteOutcome.FormInvalid(listOf(issue), null, TRACE_ID)))
         harness.store.dispatch(ThreadActionCardSpecIntent.SubmitInlineForm("m-q", card(), "answers", "answer", postgres))
         runCurrent()
         assertEquals(listOf(issue), harness.store.state.value.slice("m-q").inlineIssues)
+        assertEquals(TRACE_ID, harness.store.state.value.slice("m-q").inlineIssuesTraceId, "the 422's trace id goes with its issues")
         assertNull(harness.store.state.value.slice("m-q").busy)
         harness.store.dispatch(ThreadActionCardSpecIntent.InlineValuesChanged("m-q", mapOf("db" to ActionCardFormValue.Choice(listOf("sqlite")))))
         assertEquals(emptyList(), harness.store.state.value.slice("m-q").inlineIssues)
+        assertNull(harness.store.state.value.slice("m-q").inlineIssuesTraceId, "no issue left, no trace id")
+    }
+
+    /** slock #14497: a question of one option comes as a single Choice of that option without Other… (shared `questionField`). */
+    private fun confirmField(required: Boolean = true, multiple: Boolean = false, other: Boolean = false): ActionCardSpecChoiceField {
+        val otherJson = if (other) ""","other":{"label":{"key":"actionCard.question.other","text":{"en":"Other…"}},"maxLength":500}""" else ""
+        val field = """{"type":"Choice","name":"ack","label":${raw("Read the runbook?")},"required":$required,"multiple":$multiple,"options":[{"value":"ok","label":${raw("Got it")}}]$otherJson}"""
+        return assertNotNull(card(json = questionCardJson(fields = listOf("ack" to field))).spec().inlineQuestionForm()).fields.single()
+    }
+
+    @Test
+    fun aChoiceOfOneOptionWithoutOtherIsAConfirm() {
+        assertTrue(confirmField().isConfirm)
+        assertTrue(actionCardLoneConfirm(listOf(confirmField())))
+        // web isConfirmChoice: a multiple one, or one with Other…, is drawn as before.
+        assertFalse(confirmField(multiple = true).isConfirm)
+        assertFalse(confirmField(other = true).isConfirm)
+        assertFalse(actionCardLoneConfirm(listOf(confirmField(), confirmField())))
+    }
+
+    @Test
+    fun pressingAConfirmChoosesItAndPressingAnOptionalOneAgainTakesItBack() {
+        val none = ActionCardFormValue.Choice(emptyList())
+        val chosen = ActionCardFormValue.Choice(listOf("ok"))
+        assertEquals(chosen, confirmField().confirmPressed(none))
+        assertNull(confirmField().confirmPressed(chosen), "a required one stays chosen")
+        assertEquals(none, confirmField(required = false).confirmPressed(chosen))
+    }
+
+    @Test
+    fun aRefusedFormsTraceIdShowsOnceUnderItsBannersElseUnderTheFirstIssue() {
+        val shown = setOf("b", "c")
+        assertEquals(ActionCardTraceIdSpot.UnderBanners, actionCardTraceIdSpot(TRACE_ID, bannerShown = true, listOf("a", "b", "c")) { it in shown })
+        assertEquals(ActionCardTraceIdSpot.UnderField("b"), actionCardTraceIdSpot(TRACE_ID, bannerShown = false, listOf("a", "b", "c")) { it in shown })
+        // Every issue edited away, or no (valid) trace id: no note.
+        assertNull(actionCardTraceIdSpot(TRACE_ID, bannerShown = false, listOf("a", "b", "c")) { false })
+        assertNull(actionCardTraceIdSpot(null, bannerShown = true, listOf("a")) { true })
+        assertNull(actionCardTraceIdSpot("not-a-trace", bannerShown = true, listOf("a")) { true })
+    }
+
+    private companion object {
+        const val TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
     }
 }

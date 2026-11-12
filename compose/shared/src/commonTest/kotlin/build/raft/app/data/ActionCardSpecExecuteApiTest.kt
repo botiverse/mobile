@@ -100,10 +100,13 @@ class ActionCardSpecExecuteApiTest {
                         """{"error":"Invalid form","errorCode":"FORM_INVALID","issues":[
                           {"field":"message","code":"too_long","message":{"key":"actionCard.form.issue.too_long","text":{"en":"Use 5 characters or fewer."}}},
                           {"field":null,"code":"brand_new_code","message":{"bad":true}}]}""",
+                        mapOf("X-Trace-Id" to listOf("4BF92F3577B34DA6A3CE929D0E0E4736")),
                     ),
                 ).data,
             )
         assertEquals("Invalid form", invalid.serverMessage)
+        // The refusal's own trace id (AGENTS.md "Errors carry the trace ID"), validated and lower-cased.
+        assertEquals("4bf92f3577b34da6a3ce929d0e0e4736", invalid.traceId)
         assertEquals(
             listOf("message" to ActionCardFormIssueCode.TooLong, null to ActionCardFormIssueCode.InvalidFormat),
             invalid.issues.map { it.field to it.code },

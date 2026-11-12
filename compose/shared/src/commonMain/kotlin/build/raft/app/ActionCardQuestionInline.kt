@@ -139,6 +139,60 @@ internal fun ActionCardSpecTree.withoutElements(drop: (id: String, node: ActionC
 }
 
 /**
+ * Whether [this] Choice is a confirm (web `isConfirmChoice`, slock #14497): a single one of exactly
+ * one option and no Other. A question card's one-option question comes as this, single or multiple
+ * alike (shared `isQuestionAskConfirm` / `questionField`). There is nothing to choose between, so it
+ * is drawn as one bordered button with the option's label ([ActionCardConfirmButton]), not a list of
+ * one row; its answer is that option, as any choice's.
+ */
+internal val ActionCardSpecChoiceField.isConfirm: Boolean
+    get() = !multiple && options.size == 1 && other == null
+
+/** Whether [fields] is a lone confirm: the card's one question, whose button stands where the card's own submit would. */
+internal fun actionCardLoneConfirm(fields: List<ActionCardSpecChoiceField>): Boolean = fields.singleOrNull()?.isConfirm == true
+
+/**
+ * What pressing a confirm does to its [value] (web `ChoiceFieldControl` `pressConfirm`): not chosen,
+ * it chooses the option; chosen and optional, it takes it back (nothing else on the form could
+ * unchoose it); chosen and required, it stays chosen. Null: the value stays as it is.
+ */
+internal fun ActionCardSpecChoiceField.confirmPressed(value: ActionCardFormValue.Choice): ActionCardFormValue.Choice? {
+    val option = options.singleOrNull()?.value ?: return null
+    val chosen = option in value.selected
+    return when {
+        !chosen -> ActionCardFormValue.Choice(listOf(option))
+        required != true -> ActionCardFormValue.Choice(emptyList())
+        else -> null
+    }
+}
+
+/** Where a card's or sheet's one trace id note goes ([actionCardTraceIdSpot]). */
+internal sealed interface ActionCardTraceIdSpot {
+    /** Under the server's banners (an issue for no field shows). */
+    data object UnderBanners : ActionCardTraceIdSpot
+
+    /** Under the first field whose server issue shows. */
+    data class UnderField(val name: String) : ActionCardTraceIdSpot
+}
+
+/**
+ * Where a refused form's trace id goes (AGENTS.md "Errors carry the trace ID"): once per card or
+ * sheet, under the server's banners when [bannerShown], else under the first of [fieldNames] whose
+ * server issue still shows ([serverIssueShown]: not edited away, not covered by the client's own).
+ * Null without a valid [traceId] or once no server issue shows.
+ */
+internal fun actionCardTraceIdSpot(
+    traceId: String?,
+    bannerShown: Boolean,
+    fieldNames: List<String>,
+    serverIssueShown: (String) -> Boolean,
+): ActionCardTraceIdSpot? {
+    if (build.raft.app.network.raftValidTraceIdOrNull(traceId) == null) return null
+    if (bannerShown) return ActionCardTraceIdSpot.UnderBanners
+    return fieldNames.firstOrNull(serverIssueShown)?.let { ActionCardTraceIdSpot.UnderField(it) }
+}
+
+/**
  * Whether tapping an option answers the whole form (web `tapSubmitsForm`, spec §5.10): its one
  * question is a single Choice and Other… isn't chosen. Such a form shows no submit button.
  */
@@ -232,9 +286,14 @@ internal fun rememberQuestionUndoableSubmit(
  * or an Other… answer submits with the button. A submit runs the client checks (required, lengths),
  * then waits [QUESTION_SUBMIT_UNDO_MS] with "Submitted · Undo" before [onSend].
  *
+ * A question of one option is a confirm ([isConfirm], slock #14497): one bordered button with the
+ * option's label, in the card's actions row when it is the card's only question (where the submit
+ * would be; pressing it answers), else under its question (pressing it moves on as a tapped radio
+ * does, the card's submit sends the form).
+ *
  * [values]: the choices so far (the store's, so they outlive a scroll away); [serverIssues]: the
- * last 422's. [canSubmit]: this viewer may answer now (else the options are disabled, and while
- * an answer waits no Undo shows); [showSubmit]: whether the button is drawn at all; [submitting]:
+ * last 422's, and [serverIssuesTraceId] its trace id, shown once under them. [canSubmit]: this
+ * viewer may answer now (else the options are disabled, and while an answer waits no Undo shows); [showSubmit]: whether the button is drawn at all; [submitting]:
  * the answer is in flight.
  */
 @Composable
@@ -248,6 +307,7 @@ internal fun ActionCardQuestionInlineForm(
     submitting: Boolean,
     displayLocale: String,
     onSend: (Map<String, ActionCardFormValue>) -> Unit,
+    serverIssuesTraceId: String? = null,
 ) {
     val scope = rememberCoroutineScope()
     // Leaving (the card scrolled away, another page) or the app going to the background sends at once.
@@ -259,6 +319,8 @@ internal fun ActionCardQuestionInlineForm(
     // The submit tried with a required question unanswered: only then does each say what it lacks.
     var pendingShown by remember(inline.formId) { mutableStateOf(false) }
     val tapSubmits = actionCardTapSubmitsForm(inline.fields, values)
+    // The card's one question is a confirm: its button is the card's button, and shows the send's wait itself.
+    val loneConfirm = actionCardLoneConfirm(inline.fields)
     val fieldNames = inline.fields.map { it.name }
 
     val submit = submit@{
@@ -286,9 +348,15 @@ internal fun ActionCardQuestionInlineForm(
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         val names = fieldNames.toSet()
-        serverIssues.filter { it.field == null || it.field !in names }.map { renderActionCardMsgText(it.message, displayLocale) }.distinct().forEach {
+        val banners = serverIssues.filter { it.field == null || it.field !in names }.map { renderActionCardMsgText(it.message, displayLocale) }.distinct()
+        banners.forEach {
             RaftBanner(description = it, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
         }
+        val traceSpot =
+            actionCardTraceIdSpot(serverIssuesTraceId, banners.isNotEmpty(), fieldNames) { name ->
+                clientIssues.none { it.field == name } && serverIssues.any { it.field == name }
+            }
+        if (traceSpot == ActionCardTraceIdSpot.UnderBanners) RaftTraceIdNote(serverIssuesTraceId)
         inline.fields.forEachIndexed { index, field ->
             val issue = clientIssues.firstOrNull { it.field == field.name } ?: serverIssues.firstOrNull { it.field == field.name }
             ActionCardChoiceField(
@@ -309,7 +377,10 @@ internal fun ActionCardQuestionInlineForm(
                 showPending = pendingShown,
                 // One question: the slim card's title is the question, so no label (and no asterisk) repeats it.
                 showLabel = inline.fields.size > 1,
+                confirmInActions = loneConfirm,
+                confirmLoading = loneConfirm && submitting,
             )
+            if (traceSpot == ActionCardTraceIdSpot.UnderField(field.name)) RaftTraceIdNote(serverIssuesTraceId)
         }
         when {
             showSubmit && waiting && canSubmit ->
@@ -325,7 +396,7 @@ internal fun ActionCardQuestionInlineForm(
                         variant = RaftButtonVariant.Ghost,
                     )
                 }
-            showSubmit && !waiting && (!tapSubmits || submitting) ->
+            showSubmit && !waiting && !loneConfirm && (!tapSubmits || submitting) ->
                 RaftMessageActionCardActions {
                     RaftButton(
                         text = renderActionCardMsgText(inline.buttonLabel, displayLocale),

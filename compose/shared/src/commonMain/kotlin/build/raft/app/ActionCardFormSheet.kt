@@ -25,6 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -60,6 +62,11 @@ import build.raft.app.data.currentSystemLanguageTag
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftMessageActionCardActions
 import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftRadioGroup
 import build.raft.designsystem.components.RaftRadioRow
@@ -126,7 +133,9 @@ internal data class ActionCardFormCandidates(
  * checks only `required` and length on submit ([checkActionCardFormValues]); when they pass it
  * calls [onSubmit] with the values. [fieldErrors] are the server's issues (a 422 `FORM_INVALID`):
  * each shows under its field until that field is edited, and one without a field (or naming no
- * field of the form) shows in a banner at the top with [formError] (any other failure). While
+ * field of the form) shows in a banner at the top with [formError] (any other failure). That 422's
+ * [fieldErrorsTraceId] shows once ([RaftTraceIdNote]): under the banners, else under the first
+ * field whose server issue still shows ([actionCardTraceIdSpot]). While
  * [submitting] the inputs are disabled, the commit is busy, × is disabled (web `closeDisabled`)
  * and the sheet does not close.
  */
@@ -142,6 +151,7 @@ internal fun RaftActionCardFormSheet(
     candidates: ActionCardFormCandidates = ActionCardFormCandidates(),
     formError: String? = null,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    fieldErrorsTraceId: String? = null,
 ) {
     RaftDesignSystemTheme {
         val locale = rememberActionCardFormDisplayLocale()
@@ -161,7 +171,7 @@ internal fun RaftActionCardFormSheet(
             onBack = if (state.page > 0) ({ state.back() }) else null,
             backLabel = stringResource(Res.string.action_card_question_back),
         ) {
-            ActionCardFormBody(form, values, onValuesChange, state, submitting, candidates, formError, locale, agentStatusResolver) {
+            ActionCardFormBody(form, values, onValuesChange, state, submitting, candidates, formError, locale, agentStatusResolver, fieldErrorsTraceId) {
                 state.commit(values, submitting, onSubmit)
             }
         }
@@ -183,6 +193,7 @@ internal fun RaftActionCardFormSheetSurfaceForFixture(
     page: Int = 0,
     /** Next or the submit already tried on that page: a required Choice unanswered says what it lacks. */
     tried: Boolean = false,
+    fieldErrorsTraceId: String? = null,
 ) {
     val state = rememberActionCardFormSheetState(form, fieldErrors, initialPage = page, initialTried = tried)
     val nextLabel = stringResource(Res.string.action_card_question_next)
@@ -198,7 +209,7 @@ internal fun RaftActionCardFormSheetSurfaceForFixture(
         onBack = if (state.page > 0) ({}) else null,
         backLabel = stringResource(Res.string.action_card_question_back),
     ) {
-        ActionCardFormBody(form, values, {}, state, submitting, candidates, formError, displayLocale, EmptyRaftAgentStatusResolver) {}
+        ActionCardFormBody(form, values, {}, state, submitting, candidates, formError, displayLocale, EmptyRaftAgentStatusResolver, fieldErrorsTraceId) {}
     }
 }
 
@@ -285,6 +296,10 @@ private class ActionCardFormSheetState(
         clientIssues.firstOrNull { it.field == name }
             ?: serverIssues.firstOrNull { it.field == name }?.takeIf { name !in editedSinceServer }
 
+    /** Whether [name]'s server issue shows under it: not edited since, and not covered by the client's own. */
+    fun serverIssueShown(name: String): Boolean =
+        clientIssues.none { it.field == name } && name !in editedSinceServer && serverIssues.any { it.field == name }
+
     /** Server issues for no field, or for a name the form does not have: shown at the top. */
     fun formIssues(): List<ActionCardFormIssue> {
         val names = form.fields.mapTo(HashSet()) { it.name }
@@ -317,6 +332,7 @@ private fun ColumnScope.ActionCardFormBody(
     formError: String?,
     locale: String,
     agentStatusResolver: RaftAgentStatusResolver,
+    issuesTraceId: String?,
     onEnter: () -> Unit,
 ) {
     val enabled = !submitting
@@ -336,8 +352,12 @@ private fun ColumnScope.ActionCardFormBody(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        val banners = listOfNotNull(formError?.takeIf { it.isNotBlank() }) + state.formIssues().map { it.message.render(locale) }
+        val issueBanners = state.formIssues().map { it.message.render(locale) }
+        val banners = listOfNotNull(formError?.takeIf { it.isNotBlank() }) + issueBanners
         banners.distinct().forEach { RaftBanner(description = it, status = RaftBannerStatus.Warning) }
+        // The 422's trace id, once: under its banners, else under the first field it put an issue under.
+        val traceSpot = actionCardTraceIdSpot(issuesTraceId, issueBanners.isNotEmpty(), state.pageFields.map { it.name }, state::serverIssueShown)
+        if (traceSpot == ActionCardTraceIdSpot.UnderBanners) RaftTraceIdNote(issuesTraceId)
         if (state.paged) {
             RaftText(
                 stringResource(Res.string.action_card_question_page, state.page + 1, state.pages.size),
@@ -355,6 +375,7 @@ private fun ColumnScope.ActionCardFormBody(
         state.pageFields.forEach { field ->
             val error = state.issueFor(field.name)?.message?.render(locale)
             ActionCardFormField(field, values[field.name], { update(field.name, it) }, error, enabled, candidates, locale, agentStatusResolver, onEnter, state.pendingShown)
+            if (traceSpot == ActionCardTraceIdSpot.UnderField(field.name)) RaftTraceIdNote(issuesTraceId)
         }
     }
 }
@@ -485,6 +506,12 @@ private fun ActionCardFormField(
  * [onPicked] hears a single option tapped (not Other…), which moves the form on (spec §5.10).
  * [showLabel] false draws no label (nor its asterisk): a slim card whose title is its one question.
  * Other reads the app's "Other" when the server sent its known key ([questionOtherLabel]).
+ *
+ * A confirm ([isConfirm]: one option, no Other; slock #14497) is not a list of one row but one
+ * bordered button with the option's label ([ActionCardConfirmButton]), checked once chosen.
+ * Pressing it chooses the option and moves on ([onPicked]); pressed again, an optional one is
+ * taken back ([confirmPressed]). [confirmInActions]: it stands in the card's actions row (the
+ * card's only question), and [confirmLoading] shows the send it started.
  */
 @Composable
 internal fun ActionCardChoiceField(
@@ -499,6 +526,8 @@ internal fun ActionCardChoiceField(
     onPicked: (() -> Unit)? = null,
     showPending: Boolean = false,
     showLabel: Boolean = true,
+    confirmInActions: Boolean = false,
+    confirmLoading: Boolean = false,
 ) {
     val other = field.other
     val otherLabel = other?.let { questionOtherLabel(it.label, locale) }
@@ -519,7 +548,25 @@ internal fun ActionCardChoiceField(
         optional = showLabel && field.required != true,
     ) {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (field.multiple) {
+            if (field.isConfirm) {
+                val option = field.options.single()
+                val press = {
+                    val next = field.confirmPressed(value)
+                    if (next != null) onValueChange(next)
+                    // Taken back: nothing to move on to.
+                    if (next == null || next.selected.isNotEmpty()) onPicked?.invoke()
+                }
+                val button = @Composable {
+                    ActionCardConfirmButton(
+                        label = option.label.render(locale),
+                        chosen = option.value in value.selected,
+                        onClick = { if (enabled && !confirmLoading) press() },
+                        enabled = enabled || confirmLoading,
+                        loading = confirmLoading,
+                    )
+                }
+                if (confirmInActions) RaftMessageActionCardActions { button() } else button()
+            } else if (field.multiple) {
                 field.options.forEach { option ->
                     RaftCheckboxRow(
                         label = option.label.render(locale),
@@ -600,6 +647,31 @@ internal fun ActionCardChoiceField(
             }
         }
     }
+}
+
+/**
+ * A confirm's one button (web `ChoiceFieldControl` confirm, slock #14497): the card's bordered
+ * button ([RaftButtonVariant.Default], as its own submit; never the pink one on a card) with the
+ * option's label, a check before the label once [chosen] (pressed). The same on a question card's
+ * button row (C), a slim card (B) and the sheet.
+ */
+@Composable
+internal fun ActionCardConfirmButton(
+    label: String,
+    chosen: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    loading: Boolean = false,
+) {
+    RaftButton(
+        text = label,
+        onClick = onClick,
+        modifier = Modifier.semantics { selected = chosen },
+        variant = RaftButtonVariant.Default,
+        enabled = enabled,
+        loading = loading,
+        leadingIcon = if (chosen) ({ RaftGlyphIcon(RaftGlyph.Check, size = 16.dp, color = RaftTheme.colors.foreground) }) else null,
+    )
 }
 
 /**
