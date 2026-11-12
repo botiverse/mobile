@@ -446,6 +446,7 @@
     <string name="thread_action_quote">Quote</string>
     <string name="thread_action_translate">Translate</string>
     <string name="thread_action_copy_link">Copy Link</string>
+    <string name="thread_action_copy_message_link">Copy Message Link</string>
     <string name="thread_link_menu_copy_link">Copy link</string>
     <string name="thread_link_menu_open_in_browser">Open in browser</string>
     <string name="thread_action_copy_markdown">Copy Markdown</string>

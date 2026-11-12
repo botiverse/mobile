@@ -72,4 +72,62 @@ class ThreadMessageLinkMenuTest {
             ThreadMessageLinkMenuAction.entries.map { it.label() },
         )
     }
+
+    @Test
+    fun theMessagesCopyLinkSaysCopyMessageLinkOnlyUnderALinkSection() {
+        // artin, 1.25: with a link's section on top its "Copy link" copies the link, so the
+        // message's own reads "Copy Message Link"; a plain long press keeps "Copy Link".
+        // (link section shown) -> the message's Copy Link label, Compact then Classic.
+        listOf(
+            false to Res.string.thread_action_copy_link,
+            true to Res.string.thread_action_copy_message_link,
+        ).forEach { (linkSection, expected) ->
+            assertEquals(
+                expected,
+                ThreadNewMessageMenuTool.CopyLink.compactLabelResource(
+                    ThreadNewMessageMenuActionAvailability(copyLink = true, linkSection = linkSection)
+                ),
+                "compact, linkSection=$linkSection",
+            )
+            val classicCopyLink =
+                threadMessageMenuActions(
+                    message = message,
+                    showReplyAction = true,
+                    showSaveAction = true,
+                    showFollowAction = false,
+                    showTaskStatusAction = false,
+                    showConvertToTaskAction = false,
+                    showCopyLinkAction = true,
+                    showShareMessagesAction = false,
+                    showCancelAction = false,
+                    showDeleteAction = false,
+                    linkSection = linkSection,
+                    onReply = {},
+                    onCopyLink = {},
+                    onCopy = {},
+                    onSelectText = {},
+                    onShareMessages = {},
+                    onSave = {},
+                    onFollowThread = {},
+                    onUnfollowThread = {},
+                    onTaskStatusChange = {},
+                    onConvertToTask = {},
+                    onCancel = {},
+                    onDelete = {},
+                ).filter { it.icon == RaftLucideIconName.Link }.map { it.label }
+            assertEquals(listOf(expected.desc()), classicCopyLink, "classic, linkSection=$linkSection")
+        }
+        // The link section's own Copy link is unchanged.
+        assertEquals(Res.string.thread_link_menu_copy_link, ThreadMessageLinkMenuAction.CopyLink.label())
+    }
+
+    private val message =
+        RaftThreadMessageItem(
+            id = "message-1",
+            authorId = "member-1",
+            authorName = "Lagoon",
+            messageType = "Chat",
+            body = "Read the docs before the launch review.",
+            deliveryState = ThreadMessageDeliverySent,
+        )
 }

@@ -442,6 +442,7 @@
     <string name="thread_action_quote">인용</string>
     <string name="thread_action_translate">번역</string>
     <string name="thread_action_copy_link">링크 복사</string>
+    <string name="thread_action_copy_message_link">메시지 링크 복사</string>
     <string name="thread_link_menu_copy_link">링크 복사</string>
     <string name="thread_link_menu_open_in_browser">브라우저에서 열기</string>
     <string name="thread_action_copy_markdown">Markdown 복사</string>
