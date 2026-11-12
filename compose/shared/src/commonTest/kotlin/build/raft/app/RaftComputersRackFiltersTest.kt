@@ -36,6 +36,7 @@ import kotlin.test.assertTrue
  * fleets and the same expected orders, as tables.
  */
 class RaftComputersRackFiltersTest {
+    private val nameAToZ = ComputersRackSort(ComputersRackSortKey.Name, Asc)
     private val catalog = listOf("claude", "codex", "kimi-sdk", "kimi", "grok", "cursor")
     private val labels = RaftRackGroupLabels(personal = "Personal computers", other = "Other")
     private val half = SettingsComputerSizeStatusSnapshot(availableBytes = 50.0, totalBytes = 100.0)
@@ -145,13 +146,14 @@ class RaftComputersRackFiltersTest {
         val state = RaftComputersRackToolbarState(filters = RaftComputersRackFilters(runtimes = listOf(Runtime.Kimi)))
         val withKimi = toolbarFleet + computer("kim", "kimi-box", runtimes = listOf("kimi-sdk"))
         val applied = raftComputersRackToolbarModel(state, raftRackFleetRuntimeColumns(withKimi, catalog))
-        assertEquals(listOf("kim"), rows(raftComputersRackLayout(withKimi, applied, ComputersRackGroupBy.None, emptyMap(), labels)))
+        assertEquals(listOf("kim"), rows(raftComputersRackLayout(withKimi, applied, ComputersRackGroupBy.None, emptyMap(), labels, userId = null)))
         assertTrue(applied.filtered)
 
         val gone = raftComputersRackToolbarModel(state, raftRackFleetRuntimeColumns(toolbarFleet, catalog))
         assertEquals(emptyList(), gone.filters.runtimes)
         assertFalse(gone.filtered, "Clear all hides")
-        assertEquals(listOf("gpu", "ax1", "ax2", "mac", "old"), rows(raftComputersRackLayout(toolbarFleet, gone, ComputersRackGroupBy.None, emptyMap(), labels)))
+        // No sort chosen and none of them the viewer's: the list's own order.
+        assertEquals(listOf("ax1", "ax2", "mac", "gpu", "old"), rows(raftComputersRackLayout(toolbarFleet, gone, ComputersRackGroupBy.None, emptyMap(), labels, userId = "user-1")))
     }
 
     @Test
@@ -173,7 +175,7 @@ class RaftComputersRackFiltersTest {
     fun theToolbarFleetRowsUnderEachSearchStatusAndRuntime() {
         val cases =
             listOf(
-                // Name A to Z: gpu-box, hetzner-ax42-1, hetzner-ax42-2, mac-studio; old-laptop in the Offline section.
+                // Under Name A to Z: gpu-box, hetzner-ax42-1, hetzner-ax42-2, mac-studio; old-laptop in the Offline section.
                 RaftComputersRackFilters() to listOf("gpu", "ax1", "ax2", "mac", "old"),
                 RaftComputersRackFilters(query = "AX42") to listOf("ax1", "ax2"),
                 RaftComputersRackFilters(query = "gpu.local") to listOf("gpu"),
@@ -185,7 +187,7 @@ class RaftComputersRackFiltersTest {
                 RaftComputersRackFilters(runtimes = listOf(Runtime.Codex, Runtime.Other)) to listOf("gpu", "ax1", "mac"),
             )
         cases.forEach { (filters, expected) ->
-            val layout = layout(toolbarFleet, RaftComputersRackToolbarState(filters = filters))
+            val layout = layout(toolbarFleet, RaftComputersRackToolbarState(filters = filters, storedSort = nameAToZ))
             assertEquals(expected, rows(layout), "$filters")
             assertEquals(expected.isEmpty(), layout.empty)
         }
@@ -368,8 +370,8 @@ class RaftComputersRackFiltersTest {
 
     @Test
     fun underTheNameSortGroupsHaveNoRank() {
-        assertNull(raftRackGroupRank(fleet, RAFT_RACK_DEFAULT_SORT, emptyMap()))
-        val rank = raftRackGroupRank(fleet, ComputersRackSort(ComputersRackSortKey.Disk, Desc), emptyMap())
+        assertNull(raftRackGroupRank(fleet, nameAToZ, emptyMap(), userId = "u-me"))
+        val rank = raftRackGroupRank(fleet, ComputersRackSort(ComputersRackSortKey.Disk, Desc), emptyMap(), userId = "u-me")
         // No disk report: no rank.
         assertNull(rank?.invoke(fleet.first()))
     }
@@ -474,22 +476,23 @@ class RaftComputersRackFiltersTest {
     @Test
     fun theNameSortFallsBackToTheHostnameAndTiesKeepTheListsOrder() {
         val computers = listOf(computer("b", " ", hostname = "Beta"), computer("a2", "Alpha"), computer("a1", "alpha"), computer("none", " ", hostname = null))
-        assertEquals(listOf("a2", "a1", "b", "none"), ids(raftSortRackComputers(computers, RAFT_RACK_DEFAULT_SORT, emptyMap())))
+        assertEquals(listOf("a2", "a1", "b", "none"), ids(raftSortRackComputers(computers, nameAToZ, emptyMap())))
         assertEquals(listOf("b", "a2", "a1", "none"), ids(raftSortRackComputers(computers, ComputersRackSort(ComputersRackSortKey.Name, Desc), emptyMap())))
     }
 
     @Test
-    fun theDefaultSortIsNameAToZAndAStoredRuntimeSortWhoseRuntimeIsGoneFallsBack() {
+    fun theDefaultIsNoSortMineFirstAndAStoredRuntimeSortWhoseRuntimeIsGoneFallsBackToIt() {
+        // web computersRackFilter.behavior.test.ts (#14479): no sort is the default; a chosen Name A to Z is kept.
         val columns = RaftRackRuntimeColumns(usage = listOf(RaftRackUsageColumn(RuntimeAccountUsageProvider.Claude, "claude")), other = emptyList())
         val claudeAsc = ComputersRackSort(ComputersRackSortKey.Remaining(RuntimeAccountUsageProvider.Claude), Asc)
         val cases =
             listOf(
-                null to RAFT_RACK_DEFAULT_SORT,
-                ComputersRackSort(ComputersRackSortKey.Remaining(RuntimeAccountUsageProvider.Codex), Desc) to RAFT_RACK_DEFAULT_SORT,
+                null to null,
+                ComputersRackSort(ComputersRackSortKey.Remaining(RuntimeAccountUsageProvider.Codex), Desc) to null,
+                nameAToZ to nameAToZ,
                 claudeAsc to claudeAsc,
                 ComputersRackSort(ComputersRackSortKey.Disk, Asc) to ComputersRackSort(ComputersRackSortKey.Disk, Asc),
             )
-        assertEquals(ComputersRackSort(ComputersRackSortKey.Name, Asc), RAFT_RACK_DEFAULT_SORT)
         cases.forEach { (stored, expected) -> assertEquals(expected, raftRackEffectiveSort(stored, columns), "$stored") }
     }
 
@@ -499,7 +502,7 @@ class RaftComputersRackFiltersTest {
         val claude = ComputersRackSortKey.Remaining(RuntimeAccountUsageProvider.Claude)
         val codex = ComputersRackSortKey.Remaining(RuntimeAccountUsageProvider.Codex)
         assertEquals(
-            listOf(listOf(ComputersRackSortKey.Name), listOf(claude, codex), listOf(ComputersRackSortKey.Disk, ComputersRackSortKey.Memory)),
+            listOf(listOf(null, ComputersRackSortKey.Name), listOf(claude, codex), listOf(ComputersRackSortKey.Disk, ComputersRackSortKey.Memory)),
             raftRackSortMenuSections(columns),
         )
         // No usage runtime: the section goes.
@@ -519,6 +522,7 @@ class RaftComputersRackFiltersTest {
             assertEquals(expected, directions.map { raftRackSortDirectionCopy(key, it) }, "$key")
             assertEquals(ComputersRackSort(key, directions.first()), raftRackChooseSortKey(key))
         }
+        assertNull(raftRackChooseSortKey(null), "Mine first is no sort")
     }
 
     @Test
@@ -541,6 +545,66 @@ class RaftComputersRackFiltersTest {
             assertEquals(expected, raftRackCompareText(a, b), "$a vs $b")
             assertEquals(-expected, raftRackCompareText(b, a), "$b vs $a")
         }
+    }
+
+    // ---- Mine first (web #14479, artin #triage:#332) ----
+
+    // web computersRackSort.behavior.test.tsx `mixed`: names run against the server's order. Mine
+    // (user-1): yankee (owned), mike (attached); xray is Public (no owner), nobody's.
+    private val mixed =
+        listOf(
+            computer("zulu", "zulu-box", owner = owner("user-2", "stdrc")),
+            computer("yankee", "yankee-box", owner = owner("user-1", "artin")),
+            computer("xray", "xray-box"),
+            computer("mike", "mike-box", attached = true),
+            computer("lima", "lima-box", owner = owner("user-2", "stdrc")),
+        )
+
+    @Test
+    fun withNoSortChosenTheViewersOwnComputersLeadEachPartInTheListsOrder() {
+        val cases =
+            listOf(
+                // Attached or owned leads; the rest, the Public one included, keep the server's order.
+                Triple(RaftComputersRackToolbarState(), "user-1", listOf("yankee", "mike", "zulu", "xray", "lima")),
+                Triple(RaftComputersRackToolbarState(), "user-2", listOf("zulu", "mike", "lima", "yankee", "xray")),
+                // Signed out: only the attach flag counts, never a Public Computer's null owner.
+                Triple(RaftComputersRackToolbarState(), null, listOf("mike", "zulu", "yankee", "xray", "lima")),
+                // A sort someone chose is followed, mine or not.
+                Triple(RaftComputersRackToolbarState(storedSort = nameAToZ), "user-1", listOf("lima", "mike", "xray", "yankee", "zulu")),
+            )
+        cases.forEach { (state, userId, expected) ->
+            assertEquals(expected, rows(layout(mixed, state, emptyMap(), userId)), "${state.storedSort} as $userId")
+        }
+    }
+
+    @Test
+    fun withNoSortAnOfflineComputerOfMineStillWaitsInTheOfflineSectionLast() {
+        val fleet = mixed.map { if (it.id == "yankee") it.copy(online = false) else it }
+        val result = layout(fleet, RaftComputersRackToolbarState(), emptyMap(), "user-1")
+        assertEquals(listOf("mike", "zulu", "xray", "lima"), ids(result.groups.single().computers))
+        assertEquals(listOf("yankee"), ids(result.offline))
+    }
+
+    @Test
+    fun groupedWithNoSortTheGroupsHoldingMyComputersComeFirstAndOfflineStaysLast() {
+        val fleet =
+            listOf(
+                computer("aws-1", hostProvider = "aws"),
+                computer("vultr-1", hostProvider = "vultr"),
+                computer("hetzner-1", hostProvider = "hetzner"),
+                computer("hetzner-2", hostProvider = "hetzner", owner = owner("user-1", "artin")),
+                computer("laptop", attached = true),
+                computer("old", hostProvider = "exoscale", attached = true, online = false),
+            )
+        val result = layout(fleet, RaftComputersRackToolbarState(groupBy = ComputersRackGroupBy.Provider), emptyMap(), "user-1")
+        // Hetzner holds one of mine: first. The rest A to Z; Personal computers (a fallback) last
+        // though it holds my laptop; the offline Computer of mine in the Offline section.
+        assertEquals(listOf("Hetzner Cloud", "AWS", "Vultr", "Personal computers"), result.groups.map { it.title })
+        assertEquals(listOf("hetzner-2", "hetzner-1"), ids(result.groups.first().computers))
+        assertEquals(listOf("old"), ids(result.offline))
+        // Under Name, the groups go A to Z again.
+        val byName = layout(fleet, RaftComputersRackToolbarState(groupBy = ComputersRackGroupBy.Provider, storedSort = nameAToZ), emptyMap(), "user-1")
+        assertEquals(listOf("AWS", "Hetzner Cloud", "Vultr", "Personal computers"), byName.groups.map { it.title })
     }
 
     // ---- Toolbar state and persistence ----
@@ -599,7 +663,7 @@ class RaftComputersRackFiltersTest {
     fun groupSortAndViewAreKeptOnThisDeviceAndComeBackOnTheNextVisit() {
         val backing = InMemoryRaftKeyValueStore()
         val first = RaftComputersRackToolbarStore(KeyValueComputersRackPreferenceRepository(backing))
-        assertEquals(RaftComputersRackToolbarState(), first.state.value, "defaults: no grouping, Name A to Z, cards")
+        assertEquals(RaftComputersRackToolbarState(), first.state.value, "defaults: no grouping, no sort (Mine first), cards")
         first.setGroupBy(ComputersRackGroupBy.Provider)
         first.setSort(ComputersRackSort(ComputersRackSortKey.Disk, Asc))
         first.setView(ComputersRackView.List)
@@ -620,8 +684,11 @@ class RaftComputersRackFiltersTest {
         assertFalse(raftComputersRackToolbarModel(toolbar.state.value, columns).sortApplied)
 
         val claude = ComputersRackSortKey.Remaining(RuntimeAccountUsageProvider.Claude)
-        val steps: List<Pair<() -> Unit, ComputersRackSort>> =
+        val steps: List<Pair<() -> Unit, ComputersRackSort?>> =
             listOf(
+                // Mine first has no direction: a direction picked under it changes nothing.
+                { toolbar.chooseSortDirection(Desc, sort()) } to null,
+                { toolbar.chooseSortKey(null, sort()) } to null,
                 { toolbar.chooseSortKey(ComputersRackSortKey.Disk, sort()) } to ComputersRackSort(ComputersRackSortKey.Disk, Desc),
                 { toolbar.chooseSortDirection(Asc, sort()) } to ComputersRackSort(ComputersRackSortKey.Disk, Asc),
                 // The key picked again changes nothing.
@@ -629,11 +696,13 @@ class RaftComputersRackFiltersTest {
                 { toolbar.chooseSortKey(claude, sort()) } to ComputersRackSort(claude, Desc),
                 { toolbar.chooseSortKey(ComputersRackSortKey.Name, sort()) } to ComputersRackSort(ComputersRackSortKey.Name, Asc),
                 { toolbar.chooseSortDirection(Desc, sort()) } to ComputersRackSort(ComputersRackSortKey.Name, Desc),
+                // Back to Mine first: no sort, Sort no longer filled.
+                { toolbar.chooseSortKey(null, sort()) } to null,
             )
         steps.forEachIndexed { index, (step, expected) ->
             step()
             assertEquals(expected, sort(), "step $index")
-            assertEquals(expected != RAFT_RACK_DEFAULT_SORT, raftComputersRackToolbarModel(toolbar.state.value, columns).sortApplied)
+            assertEquals(expected != null, raftComputersRackToolbarModel(toolbar.state.value, columns).sortApplied, "step $index")
         }
     }
 
@@ -664,6 +733,7 @@ class RaftComputersRackFiltersTest {
         computers: List<SettingsComputerSnapshot>,
         state: RaftComputersRackToolbarState,
         usage: RaftRackUsageLoads = toolbarUsage,
+        userId: String? = null,
     ): RaftComputersRackLayout =
         raftComputersRackLayout(
             computers,
@@ -671,6 +741,7 @@ class RaftComputersRackFiltersTest {
             state.groupBy,
             usage,
             labels,
+            userId,
         )
 
     /** The rows top to bottom: the groups, then the Offline section unfolded. */
@@ -690,6 +761,7 @@ class RaftComputersRackFiltersTest {
         owner: SettingsComputerCreatorSnapshot? = null,
         ownerUserId: String? = owner?.id,
         isComputer: Boolean = true,
+        attached: Boolean = false,
         upgradeAvailable: Boolean = false,
         disk: SettingsComputerSizeStatusSnapshot? = null,
         memory: SettingsComputerSizeStatusSnapshot? = null,
@@ -699,6 +771,7 @@ class RaftComputersRackFiltersTest {
         daemonVersion = "",
         computerVersion = "1.0.53",
         isComputer = isComputer,
+        attachedByCurrentUser = attached,
         online = online,
         hostname = hostname,
         runtimes = runtimes,

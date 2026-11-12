@@ -2775,6 +2775,7 @@
     <string name="settings_computers_rack_group_collapse">Свернуть: %1$s, %2$s</string>
     <string name="settings_computers_rack_group_expand">Развернуть: %1$s, %2$s</string>
     <string name="settings_computers_rack_sort_label">Сортировка: %1$s</string>
+    <string name="settings_computers_rack_sort_default">Сначала мои</string>
     <string name="settings_computers_rack_sort_name">Имя</string>
     <string name="settings_computers_rack_sort_remaining">%1$s: остаток</string>
     <string name="settings_computers_rack_sort_disk">Занято на диске</string>

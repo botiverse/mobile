@@ -2930,6 +2930,7 @@
     <string name="settings_computers_rack_group_collapse">Collapse %1$s, %2$s</string>
     <string name="settings_computers_rack_group_expand">Expand %1$s, %2$s</string>
     <string name="settings_computers_rack_sort_label">Sort: %1$s</string>
+    <string name="settings_computers_rack_sort_default">Mine first</string>
     <string name="settings_computers_rack_sort_name">Name</string>
     <string name="settings_computers_rack_sort_remaining">%1$s remaining</string>
     <string name="settings_computers_rack_sort_disk">Disk used</string>

@@ -127,7 +127,7 @@ internal fun SharedComputersState.selectComputerServerSlice(serverId: String?): 
 internal fun SharedComputersState.selectComputerPickerSlice(serverId: String?): SharedComputersPickerSlice {
     val slice = selectComputerServerSlice(serverId)
     return SharedComputersPickerSlice(
-        machines = slice.machines.inComputerListOrder().toCreateAgentMachineOptions(),
+        machines = slice.machines.inComputerListOrder(owner?.accountId).toCreateAgentMachineOptions(owner?.accountId),
         status = slice.status,
         hasSnapshot = slice.hasSnapshot,
         refreshing = slice.refreshing,
@@ -190,6 +190,7 @@ class SharedComputersStore internal constructor(
     internal fun migrationComputersFlow(serverId: String?): Flow<List<build.raft.app.AgentMigrationComputer>> =
         state
             .map { state ->
+                val userId = state.owner?.accountId
                 state.selectComputerServerSlice(serverId).machines.map {
                     build.raft.app.AgentMigrationComputer(
                         id = it.id,
@@ -202,7 +203,8 @@ class SharedComputersStore internal constructor(
                         diskStatus = it.diskStatus,
                         memoryStatus = it.memoryStatus,
                         attachedByCurrentUser = it.attachedByCurrentUser,
-                        creatorUserId = it.creatorUserId
+                        creatorUserId = it.creatorUserId,
+                        mine = it.isMyComputer(userId)
                     )
                 }
             }
@@ -252,7 +254,8 @@ class SharedComputersStore internal constructor(
             force = force,
             priority = DataRequestPriority.Visible
         )
-        return _state.value.selectComputerServerSlice(normalizedServerId).toSettingsComputersResult()
+        val state = _state.value
+        return state.selectComputerServerSlice(normalizedServerId).toSettingsComputersResult(state.owner?.accountId)
     }
 
     override suspend fun loadSettingsComputerSnapshotForServer(
@@ -484,7 +487,7 @@ class SharedComputersStore internal constructor(
                 val kept = current.machines.filterNot { it.id in deletes }
                 val nextMachines =
                     (kept.map { incoming[it.id] ?: it } + incoming.values.filter { new -> kept.none { it.id == new.id } })
-                        .inComputerListOrder()
+                        .inComputerListOrder(owner.accountId)
                 if (nextMachines == current.machines) return@withLock null
                 // A load already in flight read the list without these rows: its answer is dropped.
                 val superseded = supersedeLoadLocked(key)
@@ -567,14 +570,15 @@ class SharedComputersStore internal constructor(
             if (currentOwner != owner) return@withLock null
             _state.value.selectComputerServerSlice(normalizedServerId)
                 .takeIf { it.hasSnapshot }
-                ?.toSettingsComputersResult()
+                ?.toSettingsComputersResult(owner.accountId)
         }
     }
 
     /** Synchronous first-frame read: the machine list currently held in memory for [serverId]. */
     internal fun currentSettingsComputers(serverId: String?): SettingsComputersSnapshot? {
-        val slice = _state.value.selectComputerServerSlice(serverId).takeIf { it.hasSnapshot } ?: return null
-        return (slice.toSettingsComputersResult() as? DataResult.Content)?.data?.let { snapshot ->
+        val state = _state.value
+        val slice = state.selectComputerServerSlice(serverId).takeIf { it.hasSnapshot } ?: return null
+        return (slice.toSettingsComputersResult(state.owner?.accountId) as? DataResult.Content)?.data?.let { snapshot ->
             val canAdd = slice.canAddComputer ?: false
             snapshot.copy(
                 canAddComputer = canAdd,
@@ -893,15 +897,16 @@ private fun String?.normalizedComputerServerId(): String? =
     this?.trim()?.takeIf { it.isNotBlank() }
 
 /**
- * The order of every computer list (web `orderSidebarMachineIds`, artin task #53): the computers
- * the current user attached first, then everyone else's, each keeping the server's order. A phone
- * is never a computer itself, so unlike the desktop it pins none. The Members page orders its
- * agent groups by this list too ([build.raft.app.groupedAgentMembers]).
+ * The order of every computer list (web `orderSidebarMachineIds`, artin task #53, #triage:#332):
+ * the viewer's own computers ([isMyComputer]: attached by [userId] or owned by them) first, then
+ * everyone else's, each keeping the server's order. A phone is never a computer itself, so unlike
+ * the desktop it pins none. The Members page orders its agent groups by this list too
+ * ([build.raft.app.groupedAgentMembers]).
  */
-internal fun List<ComputerSummary>.inComputerListOrder(): List<ComputerSummary> =
-    sortedBy { if (it.attachedByCurrentUser) 0 else 1 }
+internal fun List<ComputerSummary>.inComputerListOrder(userId: String?): List<ComputerSummary> =
+    raftMineFirst { it.isMyComputer(userId) }
 
-private fun List<ComputerSummary>.toCreateAgentMachineOptions(): List<SharedCreateAgentMachineOption> =
+private fun List<ComputerSummary>.toCreateAgentMachineOptions(userId: String?): List<SharedCreateAgentMachineOption> =
     map { machine ->
         SharedCreateAgentMachineOption(
             id = machine.id,
@@ -915,15 +920,16 @@ private fun List<ComputerSummary>.toCreateAgentMachineOptions(): List<SharedCrea
             runtimes = machine.runtimes,
             attachedByCurrentUser = machine.attachedByCurrentUser,
             creatorId = machine.creator?.id,
-            usageFactsKnown = true
+            usageFactsKnown = true,
+            mine = machine.isMyComputer(userId)
         )
     }
 
-private fun SharedComputersServerSlice.toSettingsComputersResult(): DataResult<SettingsComputersSnapshot> =
+private fun SharedComputersServerSlice.toSettingsComputersResult(userId: String?): DataResult<SettingsComputersSnapshot> =
     if (hasSnapshot) {
         DataResult.Content(
             SettingsComputersSnapshot(
-                computers = machines.inComputerListOrder().map { it.toSettingsComputerSnapshot() },
+                computers = machines.inComputerListOrder(userId).map { it.toSettingsComputerSnapshot() },
                 canAddComputer = false,
                 addComputerUnavailableReason = null,
                 latestDaemonVersion = latestDaemonVersion,
@@ -942,7 +948,7 @@ private fun SharedComputersServerSlice.toSettingsComputersResult(): DataResult<S
     }
 
 private fun SharedComputersServerSlice.toSettingsComputerSnapshotResult(machineId: String): DataResult<SettingsComputerSnapshot> =
-    when (val result = toSettingsComputersResult()) {
+    when (val result = toSettingsComputersResult(userId = null)) {
         is DataResult.Content ->
             result.data.computers.firstOrNull { it.id == machineId }
                 ?.let { DataResult.Content(it) }

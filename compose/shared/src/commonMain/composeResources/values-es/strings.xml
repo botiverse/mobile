@@ -2778,6 +2778,7 @@
     <string name="settings_computers_rack_group_collapse">Contraer %1$s, %2$s</string>
     <string name="settings_computers_rack_group_expand">Expandir %1$s, %2$s</string>
     <string name="settings_computers_rack_sort_label">Ordenar: %1$s</string>
+    <string name="settings_computers_rack_sort_default">Los míos primero</string>
     <string name="settings_computers_rack_sort_name">Nombre</string>
     <string name="settings_computers_rack_sort_remaining">%1$s: restante</string>
     <string name="settings_computers_rack_sort_disk">Disco usado</string>

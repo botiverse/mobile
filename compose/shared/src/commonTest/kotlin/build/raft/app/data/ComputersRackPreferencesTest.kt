@@ -44,6 +44,19 @@ class ComputersRackPreferencesTest {
     }
 
     @Test
+    fun aSortChosenBeforeMineFirstIsKeptAndMineFirstForgetsTheChoice() {
+        // Mine first became the default (web #14479): only the default changed. Someone who chose
+        // Name A to Z keeps it; choosing Mine first removes the kept value, as the web does.
+        val key = KeyValueComputersRackPreferenceRepository.KEY_SORT
+        val backing = InMemoryRaftKeyValueStore(mapOf(key to """{"key":"name","direction":"asc"}"""))
+        val repository = KeyValueComputersRackPreferenceRepository(backing)
+        assertEquals(ComputersRackSort(ComputersRackSortKey.Name, ComputersRackSortDirection.Asc), repository.readSort())
+        repository.writeSort(null)
+        assertNull(backing.getString(key), "nothing kept")
+        assertNull(KeyValueComputersRackPreferenceRepository(backing).readSort(), "the default again")
+    }
+
+    @Test
     fun aStoredSortThisBuildCannotReadIsTheDefault() {
         val unreadable =
             listOf(

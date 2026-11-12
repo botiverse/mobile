@@ -157,6 +157,27 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
+    fun theDefaultComputerIsAnOnlineOneOfMineBeforeAnyOther() {
+        // Web pickFallbackMachine (#14479): the person creating the agent usually means their own
+        // computer (attached or owned); offline ones are skipped; none of mine: the first online one.
+        fun machine(id: String, status: String = "online", mine: Boolean = false) = SharedCreateAgentMachineOption(id, id, status, mine = mine)
+        val cases =
+            listOf(
+                listOf(machine("teammate"), machine("mine", mine = true)) to "mine",
+                listOf(machine("teammate"), machine("mine", status = "offline", mine = true)) to "teammate",
+                listOf(machine("public"), machine("theirs")) to "public",
+                listOf(machine("asleep", status = "offline")) to null,
+            )
+        cases.forEach { (machines, expected) ->
+            assertEquals(expected, createAgentInitialMachineSelection(machines, requiredComputer = null, suggestedComputer = null), machines.joinToString { it.id })
+        }
+        // A suggestion or the card's computer still comes first.
+        val mixed = listOf(machine("teammate"), machine("mine", mine = true))
+        assertEquals("teammate", createAgentInitialMachineSelection(mixed, requiredComputer = null, suggestedComputer = "teammate"))
+        assertEquals("teammate", createAgentInitialMachineSelection(mixed, requiredComputer = null, suggestedComputer = null, initialComputer = "teammate"))
+    }
+
+    @Test
     fun initialComputerFromAComputerCardIsPreselectedWhileOnline() {
         val machines =
             listOf(

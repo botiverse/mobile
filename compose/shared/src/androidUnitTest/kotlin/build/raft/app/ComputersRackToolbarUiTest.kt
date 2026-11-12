@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.ComputersRackSortKey
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.ComposeUiTest
@@ -29,7 +30,7 @@ import org.robolectric.annotation.Config
 /**
  * The Computers page's toolbar and list on a real composition, driven through the real toolbar
  * store (web features/computer/tests/computersRackToolbar.behavior.test.tsx, phone): the default
- * Name order with the offline computers folded away at the end, the search and Status narrowing
+ * Mine first order (web #14479) and a chosen Name sort, with the offline computers folded away at the end, the search and Status narrowing
  * the list, Clear all and the no-match state, and Group's fold titles.
  */
 @OptIn(ExperimentalTestApi::class)
@@ -39,7 +40,7 @@ class ComputersRackToolbarUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
 
-    private fun computer(id: String, name: String, online: Boolean = true) =
+    private fun computer(id: String, name: String, online: Boolean = true, owner: String? = null) =
         SettingsComputerSnapshot(
             id = id,
             name = name,
@@ -48,15 +49,16 @@ class ComputersRackToolbarUiTest {
             isComputer = true,
             online = online,
             latestComputerVersion = "1.0.53",
+            ownerUserId = owner,
         )
 
-    // Server order on purpose: the list sorts them by name.
+    // Server order on purpose: alpha-1 is the viewer's (owned), last in the server's order.
     private val fleet =
         listOf(
             computer("m-beta", "beta"),
             computer("m-a2", "alpha-2"),
             computer("m-zeta", "zeta", online = false),
-            computer("m-a1", "alpha-1"),
+            computer("m-a1", "alpha-1", owner = "user-1"),
         )
 
     private fun ComposeUiTest.show(view: ComputersRackView = ComputersRackView.Cards): RaftComputersRackToolbarStore {
@@ -76,6 +78,7 @@ class ComputersRackToolbarUiTest {
                         toolbar = toolbar,
                         onToolbarIntent = store::dispatch,
                         serverId = "server-1",
+                        currentUserId = "user-1",
                     )
                 }
             }
@@ -89,8 +92,11 @@ class ComputersRackToolbarUiTest {
     private fun ComposeUiTest.top(name: String): Float = onNodeWithText(name).fetchSemanticsNode().boundsInRoot.top
 
     @Test
-    fun theListIsInNameOrderAndOfflineComputersWaitFoldedAtTheEnd() = runRobolectricComposeUiTest {
-        show()
+    fun theListPutsMineFirstUntilANameSortIsChosenAndOfflineComputersWaitFoldedAtTheEnd() = runRobolectricComposeUiTest {
+        val store = show()
+        assertTrue(top("alpha-1") < top("beta") && top("beta") < top("alpha-2"), "Mine first, then the server's order")
+        runOnIdle { store.dispatch(RaftComputersRackToolbarIntent.ChooseSortKey(ComputersRackSortKey.Name, null)) }
+        waitForIdle()
         assertTrue(top("alpha-1") < top("alpha-2") && top("alpha-2") < top("beta"), "Name, A to Z")
         assertTrue(!shown("zeta"), "an offline computer is folded away while others are online")
         onNodeWithTag(RaftComputersRackTags.OfflineTitle).assertIsDisplayed().performClick()

@@ -13,6 +13,8 @@ import build.raft.app.data.RuntimeAccountUsageRead
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.SettingsComputerSizeStatusSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.app.data.isMyComputer
+import build.raft.app.data.raftMineFirst
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -212,30 +214,40 @@ private fun Char.rackFold(): Char {
 // ---------------------------------------------------------------------------------------------
 // Sort
 
-/** Web `DEFAULT_RACK_SORT`: Name, A to Z. */
-internal val RAFT_RACK_DEFAULT_SORT = ComputersRackSort(ComputersRackSortKey.Name, ComputersRackSortDirection.Asc)
-
-/** Web `isDefaultRackSort`: Sort is outlined at the default, filled otherwise. */
-internal fun ComputersRackSort.isDefaultRackSort(): Boolean = this == RAFT_RACK_DEFAULT_SORT
+/*
+ * No sort chosen (null; web #14479, artin #triage:#332) is the default, the Sort's "Mine first":
+ * the list keeps the Computers list's own order, the viewer's own computers (attached or owned,
+ * `isMyComputer`) first, then the rest, each in the server's order; grouped, the groups holding
+ * the viewer's own lead. A sort someone chose (Name, Disk, what a runtime has left) stays theirs.
+ */
 
 /** Web `firstSortDirection`: text starts A to Z, numbers high to low. */
 internal fun raftRackFirstSortDirection(key: ComputersRackSortKey): ComputersRackSortDirection =
     if (key == ComputersRackSortKey.Name) ComputersRackSortDirection.Asc else ComputersRackSortDirection.Desc
 
-/** Web `chooseRackSortKey`: a new key starts at its own first direction. */
-internal fun raftRackChooseSortKey(key: ComputersRackSortKey): ComputersRackSort = ComputersRackSort(key, raftRackFirstSortDirection(key))
+/**
+ * Web `chooseRackSortKey`: a new key starts at its own first direction; null (Mine first, web
+ * `"default"`) is no sort.
+ */
+internal fun raftRackChooseSortKey(key: ComputersRackSortKey?): ComputersRackSort? = key?.let { ComputersRackSort(it, raftRackFirstSortDirection(it)) }
 
-/** Web `effectiveRackSort`: the stored sort while these computers still have its runtime, else the default. */
-internal fun raftRackEffectiveSort(sort: ComputersRackSort?, columns: RaftRackRuntimeColumns): ComputersRackSort {
-    if (sort == null) return RAFT_RACK_DEFAULT_SORT
+/**
+ * Web `effectiveRackSort`: the stored sort while these computers still have its runtime, else null,
+ * no sort (Mine first).
+ */
+internal fun raftRackEffectiveSort(sort: ComputersRackSort?, columns: RaftRackRuntimeColumns): ComputersRackSort? {
+    if (sort == null) return null
     val key = sort.key as? ComputersRackSortKey.Remaining ?: return sort
-    return if (columns.usage.any { it.provider == key.provider }) sort else RAFT_RACK_DEFAULT_SORT
+    return if (columns.usage.any { it.provider == key.provider }) sort else null
 }
 
-/** Web `sortMenuSections`: Name; what each runtime these computers have has left; Disk, Memory. Empty sections dropped. */
-internal fun raftRackSortMenuSections(columns: RaftRackRuntimeColumns): List<List<ComputersRackSortKey>> =
+/**
+ * Web `sortMenuSections`: Mine first (null, the default) and Name; what each runtime these
+ * computers have has left; Disk, Memory. Empty sections dropped.
+ */
+internal fun raftRackSortMenuSections(columns: RaftRackRuntimeColumns): List<List<ComputersRackSortKey?>> =
     listOf(
-        listOf(ComputersRackSortKey.Name),
+        listOf(null, ComputersRackSortKey.Name),
         columns.usage.map { ComputersRackSortKey.Remaining(it.provider) },
         listOf(ComputersRackSortKey.Disk, ComputersRackSortKey.Memory),
     ).filter { it.isNotEmpty() }
@@ -505,13 +517,17 @@ internal fun raftGroupRackComputers(
 
 /**
  * Web `ComputersRackList` `rank`: under a sort by a number, a group goes by its best member (its
- * place in [sorted]); a member with no value has no rank. Null under the Name sort: A to Z.
+ * place in [sorted]); a member with no value has no rank. With no sort (Mine first) the groups
+ * holding the viewer's own computers ([userId], attached or owned) come first. Null under the Name
+ * sort: A to Z.
  */
 internal fun raftRackGroupRank(
     sorted: List<SettingsComputerSnapshot>,
-    sort: ComputersRackSort,
+    sort: ComputersRackSort?,
     usage: RaftRackUsageLoads,
+    userId: String?,
 ): ((SettingsComputerSnapshot) -> Int?)? {
+    if (sort == null) return { computer -> if (computer.isMyComputer(userId)) 0 else null }
     if (sort.key == ComputersRackSortKey.Name) return null
     val rankOf = sorted.withIndex().associate { (index, computer) -> computer.id to index }
     return { computer -> if (raftRackSortValue(computer, sort.key, usage) == null) null else rankOf[computer.id] }
@@ -533,9 +549,11 @@ internal data class RaftComputersRackLayout(
 }
 
 /**
- * Web `ComputersRackList` (phone, no "This device"): filter, sort, then the offline computers apart
- * in one section at the end (whatever the grouping and the sort; with Status: Offline they are the
- * list itself), then the online ones grouped, groups ranked by the sort.
+ * Web `ComputersRackList` (phone, no "This device"): filter, sort (with no sort chosen, Mine first:
+ * the viewer's own computers, [userId] attached or owns, then the rest, each in the list's order),
+ * then the offline computers apart in one section at the end (whatever the grouping and the sort;
+ * with Status: Offline they are the list itself), then the online ones grouped, groups ranked by
+ * the sort.
  */
 internal fun raftComputersRackLayout(
     computers: List<SettingsComputerSnapshot>,
@@ -543,12 +561,15 @@ internal fun raftComputersRackLayout(
     groupBy: ComputersRackGroupBy,
     usage: RaftRackUsageLoads,
     labels: RaftRackGroupLabels,
+    userId: String?,
 ): RaftComputersRackLayout {
-    val sorted = raftSortRackComputers(raftFilterRackComputers(computers, model.filters), model.sort, usage)
+    val filtered = raftFilterRackComputers(computers, model.filters)
+    val sort = model.sort
+    val sorted = if (sort != null) raftSortRackComputers(filtered, sort, usage) else filtered.raftMineFirst { it.isMyComputer(userId) }
     val offlineSection = model.filters.status != RaftComputersRackStatusFilter.Offline
     val online = if (offlineSection) sorted.filter { it.online } else sorted
     val offline = if (offlineSection) sorted.filter { !it.online } else emptyList()
-    val groups = raftGroupRackComputers(online, groupBy, labels, raftRackGroupRank(online, model.sort, usage))
+    val groups = raftGroupRackComputers(online, groupBy, labels, raftRackGroupRank(online, sort, usage, userId))
     return RaftComputersRackLayout(groups, offline)
 }
 
@@ -580,14 +601,16 @@ internal data class RaftComputersRackToolbarModel(
     val runtimeOptions: List<RaftComputersRackRuntimeFilter>,
     /** The filters as they apply (Runtime without runtimes the computers no longer have). */
     val filters: RaftComputersRackFilters,
-    val sort: ComputersRackSort,
-    val sortMenuSections: List<List<ComputersRackSortKey>>,
+    /** The sort as it applies; null is none, the default (Mine first). */
+    val sort: ComputersRackSort?,
+    /** The Sort's choices in sections; null is Mine first. */
+    val sortMenuSections: List<List<ComputersRackSortKey?>>,
 ) {
     /** Clear all shows. */
     val filtered: Boolean get() = filters.active
 
-    /** Sort is filled. */
-    val sortApplied: Boolean get() = !sort.isDefaultRackSort()
+    /** Sort is filled: a sort is chosen (web `applied={sort !== null}`). */
+    val sortApplied: Boolean get() = sort != null
 }
 
 internal fun raftComputersRackToolbarModel(
@@ -619,11 +642,11 @@ internal sealed interface RaftComputersRackToolbarIntent {
 
     data class SetGroupBy(val groupBy: ComputersRackGroupBy) : RaftComputersRackToolbarIntent
 
-    /** The sort sheet's key item, against the [current] (effective) sort. */
-    data class ChooseSortKey(val key: ComputersRackSortKey, val current: ComputersRackSort) : RaftComputersRackToolbarIntent
+    /** The sort sheet's key item ([key] null: Mine first), against the [current] (effective) sort. */
+    data class ChooseSortKey(val key: ComputersRackSortKey?, val current: ComputersRackSort?) : RaftComputersRackToolbarIntent
 
     /** The sort sheet's direction item, against the [current] (effective) sort. */
-    data class ChooseSortDirection(val direction: ComputersRackSortDirection, val current: ComputersRackSort) : RaftComputersRackToolbarIntent
+    data class ChooseSortDirection(val direction: ComputersRackSortDirection, val current: ComputersRackSort?) : RaftComputersRackToolbarIntent
 
     data class SetView(val view: ComputersRackView) : RaftComputersRackToolbarIntent
 }
@@ -676,22 +699,24 @@ internal class RaftComputersRackToolbarStore(private val preferences: KeyValueCo
         preferences.writeGroupBy(groupBy)
     }
 
-    fun setSort(sort: ComputersRackSort) {
+    /** Keeps [sort]; null goes back to the default (Mine first), forgetting the choice. */
+    fun setSort(sort: ComputersRackSort?) {
         mutableState.update { it.copy(storedSort = sort) }
         preferences.writeSort(sort)
     }
 
     /**
-     * The sort sheet's key item (web `RackSortSelect`): a new key starts at its own first direction;
-     * the [current] (effective) key picked again changes nothing.
+     * The sort sheet's key item (web `RackSortSelect`): a new key starts at its own first direction,
+     * Mine first ([key] null) is no sort; the [current] (effective) choice picked again changes
+     * nothing.
      */
-    fun chooseSortKey(key: ComputersRackSortKey, current: ComputersRackSort) {
-        if (key != current.key) setSort(raftRackChooseSortKey(key))
+    fun chooseSortKey(key: ComputersRackSortKey?, current: ComputersRackSort?) {
+        if (key != current?.key) setSort(raftRackChooseSortKey(key))
     }
 
-    /** The sort sheet's direction item: keeps the [current] (effective) key. */
-    fun chooseSortDirection(direction: ComputersRackSortDirection, current: ComputersRackSort) {
-        if (direction != current.direction) setSort(current.copy(direction = direction))
+    /** The sort sheet's direction item: keeps the [current] (effective) key; Mine first has none. */
+    fun chooseSortDirection(direction: ComputersRackSortDirection, current: ComputersRackSort?) {
+        if (current != null && direction != current.direction) setSort(current.copy(direction = direction))
     }
 
     fun setView(view: ComputersRackView) {

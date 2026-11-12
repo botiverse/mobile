@@ -115,7 +115,7 @@ class AgentMigrationSectionStepsTest {
         val computers =
             listOf(
                 AgentMigrationComputer("m-other", "Someone else's", isComputer = true, online = true),
-                AgentMigrationComputer("m-mine", "Mine", isComputer = true, online = true, attachedByCurrentUser = true),
+                AgentMigrationComputer("m-mine", "Mine", isComputer = true, online = true, attachedByCurrentUser = true, mine = true),
                 AgentMigrationComputer("m-other2", "Another", isComputer = true, online = true)
             )
         val targets = agentMigrationTargets(inputs(computers))

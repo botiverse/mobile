@@ -269,10 +269,11 @@ private fun raftRackGroupChoice(
 }
 
 /**
- * Web `RackSortSelect`: "Sort: Name", named with its direction too. Its list holds the keys (Name;
- * what each runtime has left; Disk, Memory), then the direction in its own group, each checked.
- * A new key starts at its own first direction; the list stays open while choosing. Filled once it
- * is not Name, A to Z.
+ * Web `RackSortSelect`: "Sort: Name", named with its direction too. Its list holds the choices
+ * (Mine first, Name; what each runtime has left; Disk, Memory), then, under a sort, the direction
+ * in its own group, each checked. A new key starts at its own first direction; Mine first (the
+ * default, no sort: the viewer's own computers first) has no direction. The list stays open while
+ * choosing. Filled once a sort is chosen.
  */
 @Composable
 private fun raftRackSortChoice(
@@ -280,8 +281,8 @@ private fun raftRackSortChoice(
     onIntent: (RaftComputersRackToolbarIntent) -> Unit,
 ): RaftFitToolbarChoice {
     val sort = model.sort
-    val label = stringResource(Res.string.settings_computers_rack_sort_label, raftRackSortKeyLabel(sort.key))
-    val name = label + ", " + raftRackSortDirectionLabel(sort)
+    val label = stringResource(Res.string.settings_computers_rack_sort_label, raftRackSortKeyLabel(sort?.key))
+    val name = if (sort != null) label + ", " + raftRackSortDirectionLabel(sort) else label
     return RaftFitToolbarChoice(
         text = label,
         icon = { RaftRackToolbarIcon(RaftLucideIconName.ArrowDownUp) },
@@ -296,7 +297,7 @@ private fun raftRackSortChoice(
     )
 }
 
-/** The Sort list: the key sections, then the directions the key has, each checked. */
+/** The Sort list: the choice sections, then (under a sort) the directions the key has, each checked. */
 @Composable
 private fun RaftRackSortMenuItems(model: RaftComputersRackToolbarModel, onIntent: (RaftComputersRackToolbarIntent) -> Unit) {
     val sort = model.sort
@@ -305,12 +306,13 @@ private fun RaftRackSortMenuItems(model: RaftComputersRackToolbarModel, onIntent
         keys.forEach { key ->
             RaftMenuItem(
                 text = raftRackSortKeyLabel(key),
-                checked = key == sort.key,
-                modifier = Modifier.testTag("${RaftComputersRackTags.Sort}-${key.wire}"),
+                checked = key == sort?.key,
+                modifier = Modifier.testTag("${RaftComputersRackTags.Sort}-${key?.wire ?: RAFT_RACK_SORT_MINE_FIRST_WIRE}"),
                 onClick = { onIntent(RaftComputersRackToolbarIntent.ChooseSortKey(key, sort)) },
             )
         }
     }
+    if (sort == null) return
     RaftMenuSeparator()
     raftRackSortDirections(sort.key).forEach { direction ->
         RaftMenuItem(
@@ -429,9 +431,14 @@ internal fun raftRackGroupByLabel(groupBy: ComputersRackGroupBy): String =
         },
     )
 
+/** Mine first's test tag suffix, web `key:default`. */
+internal const val RAFT_RACK_SORT_MINE_FIRST_WIRE = "default"
+
+/** "Mine first" (null, no sort), "Name", "Disk used", "Claude Code remaining". */
 @Composable
-internal fun raftRackSortKeyLabel(key: ComputersRackSortKey): String =
+internal fun raftRackSortKeyLabel(key: ComputersRackSortKey?): String =
     when (key) {
+        null -> stringResource(Res.string.settings_computers_rack_sort_default)
         ComputersRackSortKey.Name -> stringResource(Res.string.settings_computers_rack_sort_name)
         ComputersRackSortKey.Disk -> stringResource(Res.string.settings_computers_rack_sort_disk)
         ComputersRackSortKey.Memory -> stringResource(Res.string.settings_computers_rack_sort_memory)

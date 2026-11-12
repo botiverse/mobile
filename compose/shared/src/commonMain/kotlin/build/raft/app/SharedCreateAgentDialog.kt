@@ -321,7 +321,9 @@ internal data class SharedCreateAgentMachineOption(
     val attachedByCurrentUser: Boolean = false,
     val creatorId: String? = null,
     /** False when the option came without the machine list (route params): the server decides. */
-    val usageFactsKnown: Boolean = false
+    val usageFactsKnown: Boolean = false,
+    /** The viewer's own Computer (attached or owned, [build.raft.app.data.raftIsMyComputer]): the default prefers it. */
+    val mine: Boolean = false
 )
 
 /** Each computer's quota line: the usage of [runtimeId] (the runtime being picked) on it. */
@@ -399,8 +401,9 @@ internal fun createAgentMachineDropdownItems(
 /**
  * The computer the form opens on: the [requiredComputer] (or none while it is offline), else the
  * [initialComputer] the entry opened it for (a Computer card's Create agent), else the
- * [suggestedComputer], else the first online one. An offline [initialComputer] falls through, so the
- * user picks another as usual.
+ * [suggestedComputer], else the first online one of the viewer's own (web `pickFallbackMachine`:
+ * the person creating the agent usually means their own computer), else the first online one. An
+ * offline [initialComputer] falls through, so the user picks another as usual.
  */
 internal fun createAgentInitialMachineSelection(
     machines: List<SharedCreateAgentMachineOption>,
@@ -413,7 +416,10 @@ internal fun createAgentInitialMachineSelection(
     if (!requiredComputer.isNullOrBlank()) {
         return online(requiredComputer)
     }
-    return online(initialComputer) ?: online(suggestedComputer) ?: machines.firstOrNull { it.status == "online" }?.id
+    return online(initialComputer)
+        ?: online(suggestedComputer)
+        ?: machines.firstOrNull { it.status == "online" && it.mine }?.id
+        ?: machines.firstOrNull { it.status == "online" }?.id
 }
 
 internal fun createAgentAvailableMachineId(
