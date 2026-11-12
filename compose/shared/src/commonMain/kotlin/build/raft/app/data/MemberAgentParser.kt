@@ -102,6 +102,12 @@ private data class WireChannelHuman(
     val channelAdminBasis: String? = null,
     val canChangeChannelRole: Boolean? = null,
     val serverRole: String? = null,
+    /** Joint rosters only (`ChannelMembers.humans`): every server the person takes part through. */
+    val servers: List<WireMemberServer>? = null,
+    /** Joint rosters only: whether the person is a member of the viewed server (authoritative over [serverId]). */
+    val inViewerServer: Boolean? = null,
+    /** Joint rosters only (`buildChannelMembersView`, joint authority): may the viewer remove them. */
+    val canRemoveFromChannel: Boolean? = null,
 )
 
 @Serializable
@@ -135,6 +141,10 @@ private data class WireAgent(
     val channelRole: String? = null,
     val channelAdminBasis: String? = null,
     val canChangeChannelRole: Boolean? = null,
+    /** Joint rosters only (`ChannelMembers.agents`): whether the agent is the viewed server's. */
+    val inViewerServer: Boolean? = null,
+    /** Joint rosters only (`buildChannelMembersView`, joint authority): may the viewer remove it. */
+    val canRemoveFromChannel: Boolean? = null,
     val model: String? = null,
     val reasoningEffort: String? = null,
     val executionMode: String? = null,
@@ -908,7 +918,7 @@ private fun WireServerMember.toMemberProfile(): MemberProfile {
         membershipStatus = membershipStatus?.takeIf { it.isNotBlank() }
             ?: joinedAt?.let { "active" },
         createdAgents = createdAgents.filterNot { it.isDeletedAgent }.map { it.toAgentProfile() },
-        servers = servers?.map { server -> MemberServerRef(id = server.id, name = server.name.orEmpty(), slug = server.slug.orEmpty()) },
+        servers = servers?.map { it.toMemberServerRef() },
     )
 }
 
@@ -933,6 +943,9 @@ private fun WireChannelHuman.toMemberProfile(): MemberProfile {
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.toRaftAvatarLabel(),
         presence = Presence.Offline,
+        servers = servers?.map { it.toMemberServerRef() },
+        inViewerServer = inViewerServer,
+        canRemoveFromChannel = canRemoveFromChannel,
     )
 }
 
@@ -955,6 +968,8 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         channelRole = channelRole?.takeIf { it.isNotBlank() },
         channelAdminBasis = channelAdminBasis?.takeIf { it.isNotBlank() },
         canChangeChannelRole = canChangeChannelRole,
+        inViewerServer = inViewerServer,
+        canRemoveFromChannel = canRemoveFromChannel,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.toRaftAvatarLabel(),
         presence =
@@ -985,6 +1000,9 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         ),
     )
 }
+
+private fun WireMemberServer.toMemberServerRef(): MemberServerRef =
+    MemberServerRef(id = id, name = name.orEmpty(), slug = slug.orEmpty())
 
 private fun String?.toServerIdOrNull(): ServerId? =
     this?.takeIf { it.isNotBlank() }?.let(::ServerId)

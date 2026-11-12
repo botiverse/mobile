@@ -213,7 +213,6 @@ import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.model.MessageId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
-import build.raft.app.model.MemberServerRef
 import build.raft.app.model.Presence
 import build.raft.app.model.supportsRuntimeFastMode
 import build.raft.app.model.supportsRuntimeReasoningEffort
@@ -1013,17 +1012,7 @@ internal const val MemberDetailProfileChannelIdKey = "profileChannelId"
  * server fields.
  */
 internal fun membersHumanSourceServerLabel(member: MemberProfile, viewerServerId: String?): String? {
-    val viewer = viewerServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
-    val servers =
-        member.servers
-            ?: member.serverId?.value?.takeIf { it.isNotBlank() }?.let { id ->
-                listOf(MemberServerRef(id = id, name = member.serverName.orEmpty(), slug = member.serverSlug.orEmpty()))
-            }
-            ?: emptyList()
-    if (servers.all { it.id == viewer }) return null
-    return servers
-        .map { server -> server.name.ifBlank { server.slug } }
-        .filter { it.isNotEmpty() }
+    return build.raft.app.data.memberServerBadgeLabels(member, viewerServerId)
         .joinToString(", ")
         .ifEmpty { null }
 }
