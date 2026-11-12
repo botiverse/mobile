@@ -29,6 +29,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import build.raft.designsystem.components.RaftEmptyState
+import build.raft.designsystem.components.RaftEmptyStateDefaults
 
 /**
  * artin task #20: the wide list + detail split ([RaftAdaptiveListDetailSplit]) beside the rail at
@@ -173,7 +175,7 @@ class AdaptiveListDetailSplitScreenshotTest {
             RaftEmptyState(
                 title = "Select a conversation",
                 modifier = modifier.fillMaxSize(),
-                iconName = RaftLucideIconName.MessageSquare,
+                icon = { RaftContentLucideIcon(RaftLucideIconName.MessageSquare, size = RaftEmptyStateDefaults.IconSize) },
             )
         }
     }

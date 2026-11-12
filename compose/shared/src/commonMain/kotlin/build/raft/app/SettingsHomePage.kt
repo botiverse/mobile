@@ -508,6 +508,8 @@ import kotlin.time.TimeSource
 import build.raft.app.model.isExternalAgent
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftEmptyState
+import build.raft.designsystem.components.RaftEmptyStateDefaults
 
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_ROUTE_VISUAL_PAGE = "compose_settings_route_visual"
@@ -8265,7 +8267,7 @@ private fun RaftAppShellReadyContent(
                                 RaftEmptyState(
                                     title = adaptiveEmptyLabel,
                                     modifier = Modifier.fillMaxSize(),
-                                    iconName = RaftLucideIconName.MessageSquare,
+                                    icon = { RaftContentLucideIcon(RaftLucideIconName.MessageSquare, size = RaftEmptyStateDefaults.IconSize) },
                                 )
                             } else {
                                 RaftChildPage(
@@ -14213,8 +14215,8 @@ internal fun InboxItem.sharedHomeSavedMarkdownContent(): String =
 private fun SharedHomeSavedEmptyState() {
     RaftEmptyState(
         title = stringResource(Res.string.saved_empty_title),
-        detail = stringResource(Res.string.saved_empty_detail),
-        iconName = RaftLucideIconName.Bookmark,
+        description = stringResource(Res.string.saved_empty_detail),
+        icon = { RaftContentLucideIcon(RaftLucideIconName.Bookmark, size = RaftEmptyStateDefaults.IconSize) },
         modifier =
             Modifier
                 .fillMaxWidth()
