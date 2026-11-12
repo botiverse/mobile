@@ -20,7 +20,7 @@
 - Artifact share links open in the app, and the page's Back closes the viewer.
 - "As task" is back in the message box of channels and DMs.
 - In-app web pages open faster.
-- Feedback is smoother: agent feedback cards open in the app, images can be marked up, and tickets have Copy link.
+- Feedback: cards open in the app, images can be marked up, and copied ticket links let agents find them.
 - External channels show the same external channel icon everywhere.
 - A thread's header shows its channel and reply count; tap it to jump to the original message.
 - The otter on the message box naps when it's quiet and waves when your assistant writes.
