@@ -29,7 +29,7 @@ import kotlin.test.Test
  * RaftPaneGrid at rest, light and dark: a main pane, a thread column (400) and a column of two
  * stacked cells (360, split 60/40), each column behind its `line-seam`; then the same with the
  * lower cell folded to its 56dp head at the bottom, no seam under it. Splitters draw nothing at
- * rest. The cells here are stand-ins: a page fills them with its own heads and bodies.
+ * rest. Then the #189 ladder: four side columns clipped, and past that a row tab. The cells here are stand-ins: a page fills them with its own heads and bodies.
  */
 class PaneGridScreenshotTest {
     private val appearances = listOf(RaftAppearance.Light, RaftAppearance.Dark)
@@ -67,6 +67,52 @@ class PaneGridScreenshotTest {
 
     @Test
     fun paneGridFolded() = capture("pane_grid_folded", foldFiles = true)
+
+    private val artifact = RaftPaneGridColumnBounds(id = "artifact", defaultWidthDp = 480f, minWidthDp = 480f)
+    private val profile = RaftPaneGridColumnBounds(id = "profile", defaultWidthDp = 400f, minWidthDp = 320f)
+
+    /**
+     * The #189 default four side columns (thread, Tasks over Files, Artifact, profile over details)
+     * in a row [widthDp] wide: short of their minimums every column clips in proportion, its
+     * content kept at its minimum and cut at its edge; past five times 160 the rightmost becomes
+     * a tab in its neighbour's column, under the row-tab strip.
+     */
+    private fun captureRow(name: String, widthDp: Int) =
+        appearances.forEach { appearance ->
+            RaftScreenshot.capture("${name}_${appearance.name.lowercase()}", appearance) {
+                val sizes = remember { RaftPaneGridMemorySizes() }
+                CompositionLocalProvider(LocalRaftPaneGridSizes provides sizes) {
+                    Box(Modifier.size(widthDp.dp, 420.dp)) {
+                        RaftPaneGrid(
+                            columns =
+                                listOf(
+                                    RaftPaneGridColumn(thread, "Resize thread", listOf(RaftPaneGridCell("thread") { Stand("Thread") }), tabLabel = "Thread"),
+                                    RaftPaneGridColumn(
+                                        side,
+                                        "Resize cards",
+                                        listOf(RaftPaneGridCell("tasks", 0.6f) { Stand("Tasks") }, RaftPaneGridCell("files", 0.4f) { Stand("Files") }),
+                                        tabLabel = "Tasks · Files",
+                                    ),
+                                    RaftPaneGridColumn(artifact, "Resize artifact", listOf(RaftPaneGridCell("artifact") { Stand("Artifact") }), tabLabel = "Artifact"),
+                                    RaftPaneGridColumn(
+                                        profile,
+                                        "Resize profile",
+                                        listOf(RaftPaneGridCell("profile", 0.5f) { Stand("Profile") }, RaftPaneGridCell("details", 0.5f) { Stand("Details") }),
+                                        tabLabel = "Profile · Details",
+                                    ),
+                                ),
+                            mainTabLabel = "Chat",
+                        ) { MainStand("Main") }
+                    }
+                }
+            }
+        }
+
+    @Test
+    fun paneGridClipped() = captureRow("pane_grid_clipped", widthDp = 1160)
+
+    @Test
+    fun paneGridTabs() = captureRow("pane_grid_tabs", widthDp = 640)
 }
 
 /** A cell stand-in: its 56dp head line, folded or not, and the body under it. */

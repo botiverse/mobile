@@ -8219,10 +8219,13 @@ private fun RaftAppShellReadyContent(
                                     }
                                 val sideThreadPageData by rememberUpdatedState(sidePageData)
                                 val sideThreadResizeLabel = stringResource(Res.string.thread_side_thread_resize)
-                                remember(sideThreadResizeLabel, childActive) {
+                                // Its tab where the row is short of 160 per column (#189 rule 4; web RowTabs "Thread").
+                                val sideThreadTabLabel = stringResource(Res.string.thread_reply_title)
+                                remember(sideThreadResizeLabel, sideThreadTabLabel, childActive) {
                                     RaftPaneGridColumn(
                                         bounds = RaftPaneGridColumns.Thread,
                                         resizeLabel = sideThreadResizeLabel,
+                                        tabLabel = sideThreadTabLabel,
                                         cells =
                                             listOf(
                                                 RaftPaneGridCell(id = "thread") {

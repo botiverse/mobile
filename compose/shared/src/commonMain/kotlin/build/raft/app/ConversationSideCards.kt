@@ -341,5 +341,7 @@ internal fun conversationSideCardsColumn(
             },
         shortShownCell = shown.paneCellId,
         shortSwitch = { ConversationSideCardsSwitch(open, shown, onPick) },
+        // Its tab where the row is short of 160 per column (#189 rule 4): web RowTabs joins its sections' titles.
+        tabLabel = open.joinToString(" · ") { titles.getValue(it) },
     )
 }

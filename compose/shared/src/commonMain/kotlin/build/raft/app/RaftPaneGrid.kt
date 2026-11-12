@@ -229,10 +229,21 @@ internal fun RaftPaneGrid(
     fillColumn: String? = null,
     topInset: Dp = 0.dp,
     leading: RaftPaneGridLeadingColumn? = null,
+    mainTabLabel: String? = null,
     main: @Composable () -> Unit,
 ) {
+    // The main pane's tab where the row makes columns tabs in its head (#189 rule 4): the conversation, web "Chat".
+    val mainTab = mainTabLabel ?: stringResource(Res.string.thread_tab_chat)
     RaftPaneGridAppLocals {
-        DsRaftPaneGrid(columns, modifier, fillColumn, topInset, leading, main)
+        DsRaftPaneGrid(
+            columns = columns,
+            modifier = modifier,
+            fillColumn = fillColumn,
+            topInset = topInset,
+            leading = leading,
+            mainTabLabel = mainTab,
+            main = main,
+        )
     }
 }
 
@@ -246,7 +257,9 @@ internal fun RowScope.RaftPaneGridSideColumn(
     hidden: Boolean = false,
     topInset: Dp = 0.dp,
 ) {
-    RaftPaneGridAppLocals { DsRaftPaneGridSideColumn(column, widthDp, mainWidthDp, fill, hidden, topInset) }
+    RaftPaneGridAppLocals {
+        DsRaftPaneGridSideColumn(column = column, widthDp = widthDp, mainWidthDp = mainWidthDp, fill = fill, hidden = hidden, topInset = topInset)
+    }
 }
 
 @Composable

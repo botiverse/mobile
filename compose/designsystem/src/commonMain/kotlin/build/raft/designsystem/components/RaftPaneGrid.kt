@@ -53,9 +53,12 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
@@ -84,7 +87,9 @@ import kotlin.math.roundToInt
  * [RaftPaneGridLeadingColumn]; its host puts the splitter on its seam). Grids nest the way pages
  * do: one declared in another's main pane hands its columns to the outermost grid, so the window
  * has one row, left to right list | main | the outer levels' columns | the inner levels' (web:
- * sidebar | conversation | thread | Tasks / Files), and the rightmost gives way first.
+ * sidebar | conversation | thread | Tasks / Files), laid out by the #189 row plan
+ * ([raftPaneGridRowPlan], RaftRowPlan.kt): short of room every column gives way in proportion,
+ * then clips down to 160, then the rightmost become tabs.
  */
 
 /** Web `MAIN_COLUMN_MIN_WIDTH`: the main pane never renders narrower than this beside a column. */
@@ -208,6 +213,82 @@ fun raftPaneGridMoveSeam(
     return out
 }
 
+/**
+ * The grid's row by the #189 rules ([raftRowPlan]; web rowLayout `useRowPlan`): the main pane (the conversation)
+ * and [columns] in [roomDp]. The main pane's saved width is [mainSavedDp], else what the columns leave, at least
+ * [mainDefaultDp]; its content keeps 360. Short of room every column gives way in proportion above its minimum, then
+ * clips down to 160, then the rightmost become tabs ([RaftRowPlan.groups]).
+ *
+ * Web's default is 400 (`CONVERSATION_DEFAULT_WIDTH`), with the conversation's own width saved by a seam drag. The
+ * grid saves no main-pane width yet, so it defaults to 360: a column dragged until the main pane is at 360 then stays
+ * where it was let go instead of springing back by what 400 would take. The thread's fold (rule 3) is still the app's,
+ * so no thread is planned here.
+ */
+fun raftPaneGridRowPlan(
+    roomDp: Float,
+    columns: List<RaftRowPlanColumn>,
+    mainSavedDp: Float? = null,
+    mainDefaultDp: Float = RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP,
+): RaftRowPlan =
+    raftRowPlan(
+        RaftRowPlanInput(
+            available = roomDp,
+            conversation =
+                RaftRowPlanSize(
+                    saved = mainSavedDp ?: maxOf(mainDefaultDp, roomDp - columns.sumOf { it.saved.toDouble() }.toFloat()),
+                    contentMin = RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP,
+                ),
+            thread = null,
+            columns = columns,
+        )
+    )
+
+/**
+ * The unit a group of [plan] shows (web rowPlanStore `activeUnit`): the one [picked] for it (by the key of its first
+ * unit), else the first. An index into [RaftRowPlan.units].
+ */
+fun raftPaneGridShownUnit(plan: RaftRowPlan, group: List<Int>, picked: Map<String, String>): Int {
+    val keys = group.map { plan.units[it].key }
+    val choice = picked[keys.first()]
+    val at = if (choice != null) keys.indexOf(choice) else -1
+    return if (at >= 0) group[at] else group.first()
+}
+
+/** A column's (or the main pane's) row tabs (#189 rule 4): every unit of its group by key and label, the one shown. */
+@Immutable
+class RaftPaneGridRowTabs(val tabs: List<Pair<String, String>>, val selected: String, val onSelect: (String) -> Unit)
+
+/** Test tags: the main pane, each column (`+ bounds.id`), each row-tab strip (`+` the id of the column showing it, or `conversation`). */
+const val RAFT_PANE_GRID_MAIN_TEST_TAG = "raftPaneGridMain"
+const val RAFT_PANE_GRID_COLUMN_TEST_TAG = "raftPaneGridColumn:"
+const val RAFT_PANE_GRID_TABS_TEST_TAG = "raftPaneGridTabs:"
+
+/**
+ * Rule 2's clip: the content is laid out at least [minDp] wide and stands at the start; a parent clips what is past
+ * the column's edge. 0 lays it out at the column's width.
+ */
+private fun Modifier.raftPaneGridContentMinWidth(minDp: Float): Modifier =
+    layout { measurable, constraints ->
+        val min = minDp.dp.roundToPx()
+        if (!constraints.hasBoundedWidth || min <= constraints.maxWidth) {
+            val placeable = measurable.measure(constraints)
+            layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
+        } else {
+            val placeable = measurable.measure(constraints.copy(minWidth = min, maxWidth = min))
+            layout(constraints.maxWidth, placeable.height) { placeable.placeRelative(0, 0) }
+        }
+    }
+
+/** A row-tab strip (web RowTabs) on top of the column it shows, which keeps its own head under it. */
+@Composable
+private fun RaftPaneGridTabStrip(tabs: RaftPaneGridRowTabs, tag: String) {
+    RaftTabStrip(Modifier.testTag(tag)) {
+        tabs.tabs.forEach { (key, label) ->
+            RaftTab(text = label, selected = key == tabs.selected, onClick = { tabs.onSelect(key) })
+        }
+    }
+}
+
 
 // ---------------------------------------------------------------- what is kept
 
@@ -312,6 +393,8 @@ class RaftPaneGridColumn(
     val splitLabel: String? = null,
     val shortShownCell: String? = null,
     val shortSwitch: (@Composable () -> Unit)? = null,
+    /** Its tab's label where the row makes it a tab (#189 rule 4; web RowTabs): its sections' titles, ` · ` between. */
+    val tabLabel: String? = null,
 )
 
 // ---------------------------------------------------------------- the leading column
@@ -420,7 +503,9 @@ fun raftPaneGridRoomDp(): Float? = LocalRaftPaneGridHost.current?.let { host -> 
  * A grid declared inside another grid's main pane draws only its main pane: its columns (and
  * [fillColumn], [topInset]) go to the outermost grid, after that grid's own columns and those of
  * the levels between, so every column of the window shares one row and one set of width rules
- * (the rightmost gives way first; the main pane keeps 360).
+ * ([raftPaneGridRowPlan], #189: short of room all give way in proportion, then clip to 160, then
+ * the rightmost become tabs, labelled by [RaftPaneGridColumn.tabLabel] and, for the main pane,
+ * [mainTabLabel]).
  */
 @Composable
 fun RaftPaneGrid(
@@ -429,6 +514,7 @@ fun RaftPaneGrid(
     fillColumn: String? = null,
     topInset: Dp = 0.dp,
     leading: RaftPaneGridLeadingColumn? = null,
+    mainTabLabel: String? = null,
     main: @Composable () -> Unit,
 ) {
     val outer = LocalRaftPaneGridHost.current
@@ -454,12 +540,54 @@ fun RaftPaneGrid(
             else -> 0f
         }
     val roomDp = maxOf(0f, availableDp - leadingDp)
-    val fitted =
-        raftPaneGridFitWidths(
-            availableDp = roomDp.takeIf { availableDp > 0f } ?: Float.MAX_VALUE,
-            columns = placed.map { store.widthDp(it.column.bounds) to it.column.bounds.minWidthDp },
-        )
     val filling = placed.any { it.column.bounds.id in fillIds }
+    val leadingFills = leading?.mode == RaftPaneGridLeadingMode.Fill
+    // The #189 row (raftPaneGridRowPlan) once measured; Focus mode and a list filling the row lay out as before.
+    val planned = availableDp > 0f && placed.isNotEmpty() && !filling && !leadingFills
+    val plan =
+        if (!planned) {
+            null
+        } else {
+            raftPaneGridRowPlan(
+                roomDp = roomDp,
+                columns =
+                    placed.map { place ->
+                        val column = place.column
+                        RaftRowPlanColumn(
+                            key = column.bounds.id,
+                            regions = column.cells.map { it.id }.ifEmpty { listOf(column.bounds.id) },
+                            mins = column.cells.map { column.bounds.minWidthDp }.ifEmpty { listOf(column.bounds.minWidthDp) },
+                            saved = store.widthDp(column.bounds),
+                        )
+                    },
+            )
+        }
+    // A column holding tabs (rule 4): the unit it shows, by its first unit's key. Presentation only, never saved.
+    var picked by remember { mutableStateOf(emptyMap<String, String>()) }
+    val unitWidths = plan?.let { p -> raftRowUnitWidths(p) { group -> raftPaneGridShownUnit(p, p.groups[group], picked) } }
+    val widthOf: Map<String, Float> = plan?.units?.mapIndexed { i, unit -> unit.key to unitWidths!![i] }?.toMap().orEmpty()
+    val fitted = placed.map { place -> if (plan != null) widthOf[place.column.bounds.id] ?: 0f else store.widthDp(place.column.bounds) }
+    // The tabs each shown unit's column carries where its group holds more than one (web RowTabs).
+    val tabsOf: Map<String, RaftPaneGridRowTabs> =
+        if (plan == null) {
+            emptyMap()
+        } else {
+            val labels =
+                placed.associate { place ->
+                    place.column.bounds.id to (place.column.tabLabel ?: place.column.cells.joinToString(" · ") { it.id })
+                } + (RAFT_ROW_CONVERSATION to (mainTabLabel ?: RAFT_ROW_CONVERSATION))
+            plan.groups.filter { it.size > 1 }.associate { group ->
+                val first = plan.units[group.first()].key
+                val shown = plan.units[raftPaneGridShownUnit(plan, group, picked)].key
+                shown to
+                    RaftPaneGridRowTabs(
+                        tabs = group.map { plan.units[it].key }.map { it to (labels[it] ?: it) },
+                        selected = shown,
+                        onSelect = { unit -> picked = picked + (first to unit) },
+                    )
+            }
+        }
+    val mainHidden = plan != null && (unitWidths?.firstOrNull() ?: 1f) <= 0f
     if (outer == null) {
         SideEffect {
             host.roomDp = roomDp.takeIf { availableDp > 0f }
@@ -467,17 +595,25 @@ fun RaftPaneGrid(
             host.ownWidthsDp = fitted.take(columns.size).sum()
         }
     }
-    val leadingFills = leading?.mode == RaftPaneGridLeadingMode.Fill
     Row(modifier.onSizeChanged { availableDp = it.width / density }) {
         if (leading != null) RaftPaneGridLeadingView(leading)
         // Collapsed by width, never weight(0f) (Compose rejects it): see raftParentPaneLayout.
         Box(
-            (if (filling || leadingFills) Modifier.width(0.dp) else Modifier.weight(1f))
+            (if (filling || leadingFills || mainHidden) Modifier.width(0.dp) else Modifier.weight(1f))
                 .fillMaxHeight()
+                .testTag(RAFT_PANE_GRID_MAIN_TEST_TAG)
                 // Beside the leading column the main pane's start is away from the screen edge.
                 .then(if (beside) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.Start) else Modifier)
+                // Rule 2: in the planned row the main pane's content keeps 360 and clips.
+                .then(if (plan != null) Modifier.clipToBounds() else Modifier)
         ) {
-            CompositionLocalProvider(LocalRaftPaneGridHost provides host, LocalRaftPaneGridDepth provides depth + 1) { main() }
+            Column(Modifier.fillMaxSize().raftPaneGridContentMinWidth(if (plan != null) RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP else 0f)) {
+                val mainTabs = tabsOf[RAFT_ROW_CONVERSATION]
+                if (mainTabs != null) RaftPaneGridTabStrip(mainTabs, RAFT_PANE_GRID_TABS_TEST_TAG + RAFT_ROW_CONVERSATION)
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    CompositionLocalProvider(LocalRaftPaneGridHost provides host, LocalRaftPaneGridDepth provides depth + 1) { main() }
+                }
+            }
         }
         placed.forEachIndexed { index, place ->
             val column = place.column
@@ -491,6 +627,8 @@ fun RaftPaneGrid(
                         fill = filling && column.bounds.id in fillIds,
                         hidden = leadingFills || (filling && column.bounds.id !in fillIds),
                         topInset = place.topInset,
+                        tabs = tabsOf[column.bounds.id],
+                        tabHidden = plan != null && fitted[index] <= 0f,
                     )
                 }
                 val locals = place.locals
@@ -527,8 +665,10 @@ private fun RowScope.RaftPaneGridLeadingView(leading: RaftPaneGridLeadingColumn)
 
 /**
  * One column of the grid in a row whose main pane takes the weight: for a host that lays out its
- * own main pane ([RaftPaneGrid] does the rest). [widthDp] is its fitted width, [mainWidthDp] the
- * main pane's beside it, which a drag may take down to 360.
+ * own main pane ([RaftPaneGrid] does the rest). [widthDp] is its planned width, [mainWidthDp] the
+ * main pane's beside it, which a drag may take down to 360. Narrower than its minimum (#189 rule
+ * 2: to 160) its content keeps the minimum and is clipped. [tabs] are its group's row tabs, drawn
+ * on top of it (rule 4); [tabHidden] is a tab not shown: no width, out of reach, still composed.
  */
 @Composable
 fun RowScope.RaftPaneGridSideColumn(
@@ -538,30 +678,42 @@ fun RowScope.RaftPaneGridSideColumn(
     fill: Boolean = false,
     hidden: Boolean = false,
     topInset: Dp = 0.dp,
+    tabs: RaftPaneGridRowTabs? = null,
+    tabHidden: Boolean = false,
 ) {
     val store = LocalRaftPaneGridSizes.current
     var liveWidth by remember { mutableStateOf<Float?>(null) }
-    val dragMax = raftPaneGridDragMaxDp(column.bounds.minWidthDp, widthDp, mainWidthDp)
-    val width = (liveWidth ?: widthDp).coerceIn(column.bounds.minWidthDp, maxOf(column.bounds.minWidthDp, dragMax))
+    val minWidth = column.bounds.minWidthDp
+    val dragMax = raftPaneGridDragMaxDp(minWidth, widthDp, mainWidthDp)
+    // Planned under its minimum it shows clipped there; a drag may start from there and saves at least the minimum.
+    val dragFloor = minOf(minWidth, widthDp)
+    val width = liveWidth?.coerceIn(dragFloor, maxOf(minWidth, dragMax)) ?: widthDp
+    val gone = hidden || tabHidden
     val fine = LocalRaftPaneGridPlatform.current.finePointer
     val hit = if (fine) 12.dp else 24.dp
     Box(
-        (if (fill) Modifier.weight(1f) else Modifier.width(if (hidden) 0.dp else width.dp))
+        (if (fill) Modifier.weight(1f) else Modifier.width(if (gone) 0.dp else width.dp))
             .fillMaxHeight()
+            .testTag(RAFT_PANE_GRID_COLUMN_TEST_TAG + column.bounds.id)
             .background(RaftTheme.colors.layerCanvas)
+            // A tab not shown is out of reach (web `inert`).
+            .then(if (tabHidden) Modifier.clearAndSetSemantics {} else Modifier)
     ) {
-        Row(Modifier.fillMaxSize()) {
-            // The column's left seam (web `border-l border-line-seam`); in Focus mode the column is the row.
-            if (!fill) Box(Modifier.width(RaftStroke.Hairline).fillMaxHeight().background(RaftTheme.colors.lineSeam))
-            Column(Modifier.weight(1f).fillMaxHeight()) {
-                if (topInset > 0.dp) Spacer(Modifier.fillMaxWidth().height(topInset))
-                // A page in a cell is not in the main pane: a grid it declares is its own.
-                CompositionLocalProvider(LocalRaftPaneGridHost provides null) {
-                    RaftPaneGridStackView(column, Modifier.weight(1f).fillMaxWidth())
+        Box(Modifier.fillMaxSize().clipToBounds()) {
+            Row(Modifier.fillMaxSize().raftPaneGridContentMinWidth(if (fill) 0f else minWidth)) {
+                // The column's left seam (web `border-l border-line-seam`); in Focus mode the column is the row.
+                if (!fill) Box(Modifier.width(RaftStroke.Hairline).fillMaxHeight().background(RaftTheme.colors.lineSeam))
+                Column(Modifier.weight(1f).fillMaxHeight()) {
+                    if (topInset > 0.dp) Spacer(Modifier.fillMaxWidth().height(topInset))
+                    if (tabs != null) RaftPaneGridTabStrip(tabs, RAFT_PANE_GRID_TABS_TEST_TAG + column.bounds.id)
+                    // A page in a cell is not in the main pane: a grid it declares is its own.
+                    CompositionLocalProvider(LocalRaftPaneGridHost provides null) {
+                        RaftPaneGridStackView(column, Modifier.weight(1f).fillMaxWidth())
+                    }
                 }
             }
         }
-        if (!fill && !hidden) {
+        if (!fill && !gone) {
             var dragStart by remember { mutableStateOf(width) }
             val currentWidth by rememberUpdatedState(width)
             val bounds = column.bounds
@@ -573,7 +725,7 @@ fun RowScope.RaftPaneGridSideColumn(
                 onSet = { store.setWidth(bounds, it.coerceIn(bounds.minWidthDp, dragMax)) },
                 onDragStart = { dragStart = currentWidth },
                 // The seam is the column's left edge: dragging left widens it.
-                onDrag = { total -> liveWidth = (dragStart - total).coerceIn(bounds.minWidthDp, maxOf(bounds.minWidthDp, dragMax)) },
+                onDrag = { total -> liveWidth = (dragStart - total).coerceIn(dragFloor, maxOf(bounds.minWidthDp, dragMax)) },
                 onDragEnd = {
                     liveWidth?.let { store.setWidth(bounds, it) }
                     liveWidth = null
