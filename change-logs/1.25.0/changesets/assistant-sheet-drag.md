@@ -4,7 +4,7 @@ area: assistant
 platforms:
   - android
   - ios
-pull_request: PR_NUMBER
+pull_request: https://github.com/botiverse/mobile/pull/4662
 rollout: full
 ---
 
