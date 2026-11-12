@@ -19,7 +19,8 @@ internal class SharedTasksRouteSession(
     authStore: RaftAuthSessionStore,
     dataSource: SharedTasksDataSource,
     sharedTasksDataStore: SharedTasksDataStore,
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
+    queryPreferences: TasksPageQueryPreferenceRepository? = null
 ) {
     private val scope = CoroutineScope(
         parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job])
@@ -36,7 +37,8 @@ internal class SharedTasksRouteSession(
         dataSource = dataSource,
         sharedTasksDataStore = sharedTasksDataStore,
         diagnosticsLogger = diagnosticsLogger,
-        runtimeScopeOverride = scope
+        runtimeScopeOverride = scope,
+        queryPreferences = queryPreferences
     )
 
     fun start() {

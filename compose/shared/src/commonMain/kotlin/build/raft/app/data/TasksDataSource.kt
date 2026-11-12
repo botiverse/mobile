@@ -69,6 +69,35 @@ class SharedTasksDataSource(
             TasksPageResult.Error(code = "tasks_page_network")
         }
 
+    override suspend fun loadServerTaskQueryPage(
+        serverId: ServerId,
+        filters: ServerTaskBoardFilters,
+        sort: ServerTaskSort,
+        limit: Int,
+        cursor: String?,
+        priority: DataRequestPriority
+    ): TasksPageResult =
+        try {
+            typedApi.serverTasksQueryPage(serverId, priority, filters, sort, limit, cursor)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            TasksPageResult.Error(code = "tasks_page_network")
+        }
+
+    override suspend fun loadServerTaskCounts(
+        serverId: ServerId,
+        filters: ServerTaskBoardFilters,
+        priority: DataRequestPriority
+    ): ServerTaskCountsResult =
+        try {
+            typedApi.serverTaskCounts(serverId, priority, filters)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            ServerTaskCountsResult.Error(code = "tasks_counts_network")
+        }
+
     override suspend fun loadChannelTasks(
         serverId: ServerId,
         channelId: ChannelId,
@@ -421,6 +450,20 @@ internal class NetworkRaftTasksApi(
     ): HomeNetworkResponse =
         networkClient.serverTasksPage(priority, serverId, detail, limit, cursor, status)
 
+    override suspend fun serverTasksQuery(
+        serverId: ServerId,
+        priority: DataRequestPriority,
+        query: List<Pair<String, String>>,
+    ): HomeNetworkResponse =
+        networkClient.request(priority, "tasks/server", serverIdOverride = serverId, query = query)
+
+    override suspend fun serverTaskCounts(
+        serverId: ServerId,
+        priority: DataRequestPriority,
+        query: List<Pair<String, String>>,
+    ): HomeNetworkResponse =
+        networkClient.request(priority, "tasks/server/counts", serverIdOverride = serverId, query = query)
+
     override suspend fun channelTasks(channelId: ChannelId, priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.request(priority, "tasks/channel/${channelId.value}")
 
@@ -618,6 +661,22 @@ interface RaftTasksApi {
         limit: Int?,
         cursor: String?,
         status: String? = null,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+    /**
+     * The Tasks page's filtered, sorted read of `GET /api/tasks/server` ([query] from
+     * [serverTaskPageQuery]: board filters, `sort`, `limit`, `detail=summary`, `cursor`).
+     * The default keeps fakes compiling; the network transport sends it.
+     */
+    suspend fun serverTasksQuery(
+        serverId: ServerId,
+        priority: DataRequestPriority,
+        query: List<Pair<String, String>>,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+    /** `GET /api/tasks/server/counts` with the board filters of [serverTaskFilterQuery]. */
+    suspend fun serverTaskCounts(
+        serverId: ServerId,
+        priority: DataRequestPriority,
+        query: List<Pair<String, String>>,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun channelTasks(channelId: ChannelId, priority: DataRequestPriority): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
@@ -911,6 +970,33 @@ internal class RaftTasksApiClient(
             status = status
         ).toTasksPageResult(source = "tasks_server_page", diagnosticsLogger = diagnosticsLogger)
 
+    /** One page of the Tasks page's query ([serverTaskPageQuery]); same page parser as [serverTasksPage]. */
+    suspend fun serverTasksQueryPage(
+        serverId: ServerId,
+        priority: DataRequestPriority,
+        filters: ServerTaskBoardFilters,
+        sort: ServerTaskSort,
+        limit: Int,
+        cursor: String?,
+    ): TasksPageResult =
+        transport.serverTasksQuery(
+            serverId = serverId,
+            priority = priority,
+            query = serverTaskPageQuery(filters, sort, limit, cursor),
+        ).toTasksPageResult(source = "tasks_server_query", diagnosticsLogger = diagnosticsLogger)
+
+    /** The counts of one filter set ([serverTaskFilterQuery]). */
+    suspend fun serverTaskCounts(
+        serverId: ServerId,
+        priority: DataRequestPriority,
+        filters: ServerTaskBoardFilters,
+    ): ServerTaskCountsResult =
+        transport.serverTaskCounts(
+            serverId = serverId,
+            priority = priority,
+            query = serverTaskFilterQuery(filters),
+        ).toServerTaskCountsResult()
+
     suspend fun channelTasks(
         channelId: ChannelId,
         priority: DataRequestPriority,
@@ -1123,8 +1209,8 @@ sealed interface TasksPageResult {
     /** The server rejected the cursor (400 `Invalid cursor`): refresh from head. */
     data object InvalidCursor : TasksPageResult
 
-    /** Transient failure: keep what is loaded and allow a retry. */
-    data class Error(val code: String) : TasksPageResult
+    /** Transient failure: keep what is loaded and allow a retry. [traceId]: the failed response's `X-Trace-Id`. */
+    data class Error(val code: String, val traceId: String? = null) : TasksPageResult
 }
 
 /**
@@ -1145,7 +1231,7 @@ internal fun HomeNetworkResponse.toTasksPageResult(
         return if (code == 400 && errorText == "Invalid cursor") {
             TasksPageResult.InvalidCursor
         } else {
-            TasksPageResult.Error(code = errorText?.let { "tasks_page_$it" } ?: "tasks_page_http_$code")
+            TasksPageResult.Error(code = errorText?.let { "tasks_page_$it" } ?: "tasks_page_http_$code", traceId = traceId)
         }
     }
     val body = bodyText ?: return TasksPageResult.Error(code = "tasks_page_empty_body")
@@ -1398,6 +1484,14 @@ internal data class TaskWireDto(
     val completedAt: String? = null,
     val createdAt: String? = null,
     val updatedAt: String? = null,
+    // slock taskService.ts: the stored last activity (null on a row written before it existed) and
+    // `activityAt` = lastActivityAt ?? updatedAt, what `GET /tasks/server?sort=activity` orders by.
+    val lastActivityAt: String? = null,
+    val activityAt: String? = null,
+    // `detail=summary` only (slock taskService.ts `ServerTaskSummary`): who sent the source message.
+    // The default marks a row without the field; an explicit null decodes as null.
+    val sourceSenderType: String? = TaskSourceMessageIdAbsent,
+    val sourceSenderId: String? = null,
     val readOnlyReason: String? = null,
     // Task v2 conversations (slock `taskService.ts` task projection). `hostMessageId` is the real
     // `tasks.message_id` (null for a v2 task, whose `messageId` is only the task id as a pre-v2
@@ -1483,6 +1577,11 @@ internal fun TaskWireDto.toTaskSummary(
         conversationFollowed = conversationFollowed,
         createdAt = createdAt?.trim()?.takeIf { it.isNotBlank() },
         descriptionLoaded = description != null || hasDescription != true,
+        activityAt = (activityAt ?: lastActivityAt ?: updatedAt)?.trim()?.takeIf { it.isNotBlank() },
+        sourceSenderType = sourceSenderType?.takeIf { it != TaskSourceMessageIdAbsent && it.isNotBlank() },
+        sourceSenderId = sourceSenderId?.takeIf { sourceSenderType != TaskSourceMessageIdAbsent && it.isNotBlank() },
+        sourceSenderReported = sourceSenderType != TaskSourceMessageIdAbsent,
+        completedAt = completedAt?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 

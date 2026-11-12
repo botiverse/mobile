@@ -211,10 +211,14 @@ private fun SharedTasksDataStoreState.foldCanonicalTask(
             revisionOrder == 0 &&
             currentFact.conversationChannelId == null &&
             incomingFact.conversationChannelId != null
+    // The same revision with its description, over a summary row that left it out: take the fuller copy.
+    val gainsDescription =
+        currentFact != null && revisionOrder == 0 && !currentFact.descriptionLoaded && incomingFact.descriptionLoaded
     val acceptsIncoming =
         currentFact == null ||
             revisionOrder > 0 ||
             gainsConversation ||
+            gainsDescription ||
             (currentFact.revision == null && incomingFact.revision == null && currentServerHasRoute) ||
             (authoritativeRefresh && currentlyConflicted && revisionOrder == 0)
     if (currentlyConflicted && !acceptsIncoming) {
@@ -305,7 +309,9 @@ private fun TaskSummary.hasSameCanonicalTaskFact(other: TaskSummary): Boolean =
         isThreadTask == other.isThreadTask &&
         assignee.taskPrincipalIdentity() == other.assignee.taskPrincipalIdentity() &&
         creator.taskPrincipalIdentity() == other.creator.taskPrincipalIdentity() &&
-        description == other.description &&
+        // A `detail=summary` row leaves the description out (descriptionLoaded false): that is not a
+        // different description, so it never makes a conflict with the full fact of its revision.
+        (description == other.description || !descriptionLoaded || !other.descriptionLoaded) &&
         revision == other.revision
 
 private fun MemberProfile?.taskPrincipalIdentity(): Pair<MemberKind, String>? =
@@ -1098,6 +1104,31 @@ internal class SharedTasksDataStore(
             val upsert = state.value.upsertTaskState(normalizedServerId, task, supersedeStatusMutation = true)
             state.value = upsert.state
             upsert.outcome
+        }
+    }
+
+    /**
+     * [upsertTaskForCurrentServer] for a page of rows, folded in order and published once (one
+     * projection emission per page, not one per row). Null when [serverId] is no longer current.
+     */
+    suspend fun upsertTasksForCurrentServer(
+        serverId: String,
+        tasks: List<TaskSummary>
+    ): List<SharedTaskFactFoldOutcome>? {
+        if (tasks.isEmpty()) return emptyList()
+        bindCurrentOwnerIdentity()
+        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return null
+        return loadMutex.withLock {
+            if (!isCurrentServerLocked(normalizedServerId)) return@withLock null
+            var next = state.value
+            val outcomes =
+                tasks.map { task ->
+                    val upsert = next.upsertTaskState(normalizedServerId, task, supersedeStatusMutation = true)
+                    next = upsert.state
+                    upsert.outcome
+                }
+            state.value = next
+            outcomes
         }
     }
 

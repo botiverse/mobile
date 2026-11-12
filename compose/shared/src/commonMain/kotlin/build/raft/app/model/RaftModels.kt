@@ -909,6 +909,25 @@ data class TaskSummary(
      * offer to add one over it (web TaskModalHead `descriptionLoaded`).
      */
     val descriptionLoaded: Boolean = true,
+    /**
+     * When the task last moved (slock `activityAt`: lastActivityAt ?? updatedAt), what the Tasks
+     * page's `sort=activity` orders by; null from a source without it.
+     */
+    val activityAt: String? = null,
+    /**
+     * Who sent the task v2 source message (slock `ServerTaskSummary.sourceSenderType` /
+     * `sourceSenderId`: `user` / `agent` / `external_projection`, null for none or a deleted one),
+     * what the Tasks page's `from_my_message` relation reads. Only `detail=summary` rows carry it:
+     * [sourceSenderReported] false means unknown (a socket frame, a full row).
+     */
+    val sourceSenderType: String? = null,
+    val sourceSenderId: String? = null,
+    val sourceSenderReported: Boolean = false,
+    /**
+     * When the task was done (slock `completedAt`, ISO; set only while it is done), what the Tasks
+     * page's `completed_since` bound reads; null from a source without it.
+     */
+    val completedAt: String? = null,
 )
 
 // Inbox Models

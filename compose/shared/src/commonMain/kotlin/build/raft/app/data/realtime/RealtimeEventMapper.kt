@@ -756,6 +756,12 @@ private data class TaskInfoWireDto(
     val claimedByName: String? = null,
     val createdAt: String? = null,
     val updatedAt: String? = null,
+    // The same projection's last activity (`activityAt` = lastActivityAt ?? updatedAt), so a
+    // realtime fold places the row where the Tasks page's server sort does, as an HTTP read does.
+    val lastActivityAt: String? = null,
+    val activityAt: String? = null,
+    // When it was done (set only while done), what the Tasks page's `completed_since` bound reads.
+    val completedAt: String? = null,
     // slock `taskService.ts` task projection (`task:updated` carries the full projected DTO,
     // `projectTaskCreated` the same v2 fields): without them a realtime fold turned a v2 task back
     // into a pre-v2 one (its id as a message id, no conversation, no reply count).
@@ -1440,6 +1446,8 @@ private fun TaskInfoWireDto.toDomain(
         conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,
         isLegacy = isLegacy == true,
         createdAt = createdAt?.trim()?.takeIf { it.isNotBlank() },
+        activityAt = (activityAt ?: lastActivityAt ?: updatedAt)?.trim()?.takeIf { it.isNotBlank() },
+        completedAt = completedAt?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 

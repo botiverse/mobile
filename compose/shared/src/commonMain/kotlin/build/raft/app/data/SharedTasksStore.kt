@@ -328,6 +328,8 @@ internal class SharedTasksViewModel(
     private val diagnosticsLogger: (String) -> Unit = {},
     private val staleWindowMs: Long = 15_000L,
     private val runtimeScopeOverride: CoroutineScope? = null,
+    /** Where the Tasks page keeps its scope and sort (server scope); null keeps them for the session only. */
+    private val queryPreferences: TasksPageQueryPreferenceRepository? = null,
     private val useCase: SharedTasksUseCase =
         SharedTasksUseCase(
             authStore = authStore,
@@ -343,6 +345,40 @@ internal class SharedTasksViewModel(
         SharedTasksStore(scope = runtimeScope)
     }
     private val events = MviEffectEmitter<SharedTasksEvent>()
+
+    // Pure dependencies of the Tasks page's query store, kept from the constructor.
+    private val queryRepository: SharedTasksRepository = SharedTasksDataRepository(remoteDataSource = dataSource)
+    private val queryAuthStore: RaftAuthSessionStore = authStore
+    private val queryStoreDelegate = lazy {
+        SharedTasksQueryStore(
+            scope = runtimeScope,
+            repository = queryRepository,
+            serverId = { useCase.currentServerId() },
+            viewerId = { queryAuthStore.readSession()?.user?.id },
+            preferences = queryPreferences,
+            // The page's rows join the shared projection, so status and assignee writes find them.
+            onPageRows = { serverId, rows ->
+                // One fold and one projection emission per page.
+                sharedTasksDataStore?.upsertTasksForCurrentServer(serverId.value, rows)
+            },
+            diagnosticsLogger = diagnosticsLogger,
+        ).also { query ->
+            // Live changes reach the page through the projection this ViewModel holds.
+            runtimeScope.launch {
+                store.state.collect { tasksState ->
+                    val tasks = (tasksState.loadState as? ScreenLoadState.Content)?.data?.tasks ?: return@collect
+                    query.onProjection(tasks, bulk = tasksState.refreshing || tasksState.loadingMore)
+                }
+            }
+        }
+    }
+
+    /**
+     * The Tasks page's server-side query (Mine / All, search, status, sort; [SharedTasksQueryStore]).
+     * Server scope only: a channel's Tasks keeps its own list. Created on first use, after composition.
+     */
+    val queryStore: SharedTasksQueryStore?
+        get() = if (scope == SharedTasksScope.Server) queryStoreDelegate.value else null
 
     override val uiState: StateFlow<TasksUiState>
         get() = store.state
@@ -620,6 +656,10 @@ internal class SharedTasksViewModel(
     }
 
     override fun dispatch(action: SharedTasksRouteIntent) {
+        // A pull or a catch-up after a gap reads the page's query again too.
+        if ((action == SharedTasksRouteIntent.Refresh || action == SharedTasksRouteIntent.CatchUp) && queryStoreDelegate.isInitialized()) {
+            queryStoreDelegate.value.dispatch(TasksQueryIntent.Refresh)
+        }
         when (action) {
             SharedTasksRouteIntent.Start,
             SharedTasksRouteIntent.StartBackground,
@@ -641,6 +681,7 @@ internal class SharedTasksViewModel(
                 statusJob?.cancel()
                 statusJob =
                     runtimeScope.launch {
+                        ensureQueryRowInProjection(action.task)
                         updateStatus(action.task, action.status, action.reason)
                     }
             }
@@ -657,6 +698,7 @@ internal class SharedTasksViewModel(
                 assignJob?.cancel()
                 assignJob =
                     runtimeScope.launch {
+                        ensureQueryRowInProjection(action.task)
                         assignTask(action.task, action.assignee)
                     }
             }
@@ -714,6 +756,18 @@ internal class SharedTasksViewModel(
                 }
             }
         }
+    }
+
+    /**
+     * A row the page's query listed may be one the projection does not hold (a later page, or a
+     * projection read since): it joins first, so the write finds its task. Stale or conflicting
+     * rows are refused by the projection's own revision gate.
+     */
+    private suspend fun ensureQueryRowInProjection(task: TaskSummary) {
+        if (!queryStoreDelegate.isInitialized() || state.value.currentTaskSummary(task.id.value) != null) return
+        val sharedStore = sharedTasksDataStore ?: return
+        val serverId = useCase.currentServerId()?.value ?: return
+        sharedStore.upsertTaskForCurrentServer(serverId, task)
     }
 
     /** A mutation against the stored stand-in (not yet confirmed by the network) is not sent. */

@@ -30,6 +30,7 @@ new product concept gets a Japanese rendering.
 | Low disk / Needs upgrade / Needs reinstall | ディスク不足 / アップグレードが必要 / 再インストールが必要 | Computers rack card chips; copied from the web ja catalog (`machine.diskLow.chip`, `machine.versionNotice.chip*`) |
 | Runtime usage "62% used" / "Used up" | 使用済み 62% / 上限に達しました | Usage says what is used, never what is left (raft-ui 0.50); copied from the web ja catalog (botiverse/slock #11855) |
 | Computers rack line "62% used" / "Used up" / "Other runtimes" | 62%使用 / 上限到達 / その他のランタイム | The short forms of a rack card line (disk, memory, a runtime's usage); copied from the web ja catalog (`machine.rack.percentUsed`, `machine.rack.usedUp`, `machine.rack.otherRuntimes`) |
+| Tasks page Mine / All, sections Assigned / Started by you, sort Recently updated / Least recently updated / Recently created | 自分 / すべて、あなたの担当 / あなたが依頼、更新が新しい順 / 更新が古い順 / 作成が新しい順 | The Tasks page toolbar and list; copied from the web ja catalog (`task.page.tab.mine`, `task.filter.tabAll`, `task.page.section.*`, `task.page.sort.*`, slock staging c6580f2f41a6) |
 | Computers view List / Cards | コンピューターの表示: リスト / カード | The Computers page header toggle; copied from the web ja catalog (`machine.rack.viewAria`, `machine.rack.viewList`, `machine.rack.viewCards`) |
 | Workspace | ワークスペース | |
 | Attachment | 添付ファイル | |

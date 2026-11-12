@@ -918,6 +918,35 @@ class KeyValueTasksViewPreferenceRepository(
 }
 
 /**
+ * The Tasks page's scope (Mine / All) and sort, kept per device beside its view mode
+ * (`tasks:viewMode`). The web keeps the tab per server and person and the sort in the address;
+ * the app has no address, so both follow the view mode's rule.
+ */
+interface TasksPageQueryPreferenceRepository {
+    fun scope(): TasksPageScope?
+    fun saveScope(scope: TasksPageScope)
+    fun sort(): ServerTaskSort?
+    fun saveSort(sort: ServerTaskSort)
+}
+
+class KeyValueTasksPageQueryPreferenceRepository(
+    private val store: SharedPreferenceStore
+) : TasksPageQueryPreferenceRepository {
+    override fun scope(): TasksPageScope? = TasksPageScope.fromStorageKey(store.getString(KEY_TASKS_PAGE_SCOPE))
+
+    override fun saveScope(scope: TasksPageScope) = store.putString(KEY_TASKS_PAGE_SCOPE, scope.storageKey)
+
+    override fun sort(): ServerTaskSort? = ServerTaskSort.fromWire(store.getString(KEY_TASKS_PAGE_SORT))
+
+    override fun saveSort(sort: ServerTaskSort) = store.putString(KEY_TASKS_PAGE_SORT, sort.wire)
+
+    private companion object {
+        const val KEY_TASKS_PAGE_SCOPE = "tasks:pageScope"
+        const val KEY_TASKS_PAGE_SORT = "tasks:pageSort"
+    }
+}
+
+/**
  * How the Computers page lays out its computers on this device (web
  * `computersRackViewPreference`): [Cards] (the default) or [List]. Like the web, the choice is
  * kept per device, not per account or server.

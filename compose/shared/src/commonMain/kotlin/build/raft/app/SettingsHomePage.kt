@@ -8402,7 +8402,23 @@ private fun RaftAppShellReadyContent(
                         }
                         Box(modifier = Modifier.fillMaxSize()) {
                         key(tasksRoute) {
+                        // The page's Mine / All, search, status and sort: read from the server's task query.
+                        val tasksQueryStore = tasksViewModel.queryStore
+                        LaunchedEffect(tasksQueryStore, active) {
+                            if (active) tasksQueryStore?.start()
+                        }
+                        val tasksQueryState = tasksQueryStore?.let { store -> store.state.collectAsState().value }
                         SharedTasksScreen(
+                            query =
+                                // A server without the board query (before slock v1.21.63): the app's own list.
+                                if (tasksQueryStore != null && tasksQueryState != null && !tasksQueryState.unsupported) {
+                                    SharedTasksQueryBinding(tasksQueryState) { intent ->
+                                        prewarmAdmissionGate.invalidate("tasks_query_intent:${intent::class.simpleName}")
+                                        tasksQueryStore.dispatch(intent)
+                                    }
+                                } else {
+                                    null
+                                },
                             state = tasksState,
                             onIntent = { intent ->
                                 prewarmAdmissionGate.invalidate("tasks_intent:${intent::class.simpleName}")

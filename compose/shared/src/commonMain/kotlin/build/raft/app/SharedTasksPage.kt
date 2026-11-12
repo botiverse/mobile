@@ -51,6 +51,18 @@ import build.raft.app.data.TasksUiState
 import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.TasksVisibleContent
 import build.raft.app.data.TasksViewMode
+import build.raft.app.data.ServerTaskBoardStatuses
+import build.raft.app.data.TasksBoardColumn
+import build.raft.app.data.TasksPageScope
+import build.raft.app.data.TasksQueryIntent
+import build.raft.app.data.TasksQuerySection
+import build.raft.app.data.TasksQuerySectionRows
+import build.raft.app.data.TasksQueryState
+import build.raft.app.data.headNumber
+import build.raft.app.data.scopeCounts
+import build.raft.app.data.sections
+import build.raft.app.data.shownRows
+import build.raft.app.data.viewStatusCounts
 import build.raft.app.data.hasCompletedTasksSnapshot
 import build.raft.app.data.boardColumns
 import build.raft.app.data.inConversationSectionOrder
@@ -145,7 +157,9 @@ internal fun SharedTasksScreen(
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {},
     identityOptions: List<MemberProfile> = emptyList(),
     timeContext: RaftTimeContext? = null,
-    taskV2Enabled: Boolean = false
+    taskV2Enabled: Boolean = false,
+    /** The Tasks page's server query (Mine / All, search, status, sort); null: the projection's list. */
+    query: SharedTasksQueryBinding? = null
 ) {
     SharedTasksPanel(
         state = state,
@@ -154,6 +168,7 @@ internal fun SharedTasksScreen(
         modifier = modifier,
         showHeader = true,
         showChannelFilter = true,
+        query = query,
         onOpenTask = onOpenTask,
         bottomContentPadding = bottomContentPadding,
         draftProjection = draftProjection,
@@ -164,6 +179,16 @@ internal fun SharedTasksScreen(
         taskV2Enabled = taskV2Enabled
     )
 }
+
+/**
+ * The Tasks page's server query (server scope, [build.raft.app.data.SharedTasksQueryStore]): its
+ * state and where its intents go. With one, the page shows what the server listed for the query
+ * instead of filtering the projection on the device.
+ */
+internal class SharedTasksQueryBinding(
+    val state: TasksQueryState,
+    val onIntent: (TasksQueryIntent) -> Unit,
+)
 
 @Composable
 internal fun SharedTasksPanel(
@@ -190,7 +215,8 @@ internal fun SharedTasksPanel(
     identityOptions: List<MemberProfile> = emptyList(),
     timeContext: RaftTimeContext? = null,
     /** The server's `task_v2_conversations_v0`: In Review is retired for its v2 tasks (web slock #12884). */
-    taskV2Enabled: Boolean = false
+    taskV2Enabled: Boolean = false,
+    query: SharedTasksQueryBinding? = null
 ) {
     var lastContent by remember { mutableStateOf<TasksContent?>(null) }
     val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
@@ -209,7 +235,28 @@ internal fun SharedTasksPanel(
             .fillMaxSize()
             .background(RaftColor.SurfaceWhite)
     ) {
-        when (val loadState = displayState) {
+        if (query != null) {
+            // The page's rows are the query's: the projection's own load state does not gate them.
+            SharedTasksLoadedBody(
+                state = state,
+                content = currentContent ?: lastContent ?: TasksContent(summaryCounts = emptyMap(), tasks = emptyList()),
+                showHeader = showHeader,
+                showChannelFilter = showChannelFilter,
+                createTasksChannelId = createTasksChannelId,
+                onOpenTask = onOpenTask,
+                onIntent = onIntent,
+                scrollToTopRequest = scrollToTopRequest,
+                bottomContentPadding = bottomContentPadding,
+                draftProjection = draftProjection,
+                initialListPosition = initialListPosition,
+                onListPositionSnapshot = onListPositionSnapshot,
+                initialPresentationOverride = initialPresentationOverride,
+                identityOptions = identityOptions,
+                timeContext = timeContext,
+                taskV2Enabled = taskV2Enabled,
+                query = query
+            )
+        } else when (val loadState = displayState) {
             ScreenLoadState.Loading -> {
                 if (showHeader) {
                     SharedTasksHeader(refreshing = state.refreshing)
@@ -391,7 +438,8 @@ private fun SharedTasksLoadedBody(
     initialPresentationOverride: TasksPresentationState?,
     identityOptions: List<MemberProfile>,
     timeContext: RaftTimeContext?,
-    taskV2Enabled: Boolean
+    taskV2Enabled: Boolean,
+    query: SharedTasksQueryBinding? = null
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         SharedTasksLoadedBodyContent(
@@ -411,7 +459,8 @@ private fun SharedTasksLoadedBody(
             initialPresentationOverride = initialPresentationOverride,
             identityOptions = identityOptions,
             timeContext = timeContext,
-            taskV2Enabled = taskV2Enabled
+            taskV2Enabled = taskV2Enabled,
+            query = query
         )
     }
 }
@@ -456,7 +505,8 @@ private fun SharedTasksLoadedBodyContent(
     initialPresentationOverride: TasksPresentationState?,
     identityOptions: List<MemberProfile>,
     timeContext: RaftTimeContext?,
-    taskV2Enabled: Boolean
+    taskV2Enabled: Boolean,
+    query: SharedTasksQueryBinding?
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val viewModeRepository =
@@ -564,7 +614,9 @@ private fun SharedTasksLoadedBodyContent(
     // the end and another page is available, ask the host for it. Keyed on the
     // list state and the current page's total/loading flags so it re-arms after
     // each page lands; `shouldRequestNextTasksPage` is pure and unit-tested.
-    LaunchedEffect(listModeListState, listColumns, state.hasMore, state.loadingMore) {
+    LaunchedEffect(listModeListState, listColumns, state.hasMore, state.loadingMore, query != null) {
+        // The page's query pages its own lanes (below).
+        if (query != null) return@LaunchedEffect
         val totalItems = listColumns.sumOf { if (it.status in collapsedStatuses) 0 else it.tasks.size }
         snapshotFlow { listModeListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
             .distinctUntilChanged()
@@ -581,6 +633,46 @@ private fun SharedTasksLoadedBodyContent(
                 }
             }
     }
+
+    // The page's query (server scope): what the server listed, by section, and the board's columns.
+    val queryState = query?.state
+    val querySections = remember(queryState) { queryState?.sections().orEmpty() }
+    val queryHasMore = querySections.any { it.hasMore }
+    val queryLoading = querySections.any { it.loading }
+    val queryBoardColumns =
+        remember(queryState) {
+            queryState?.let { current ->
+                val rows = current.shownRows()
+                val statusCounts = current.viewStatusCounts()
+                val statuses = if (current.query.statuses.isEmpty()) ServerTaskBoardStatuses else ServerTaskBoardStatuses.filter { it in current.query.statuses }
+                statuses.map { status ->
+                    val tasks = rows.filter { (if (it.status == TaskStatus.InReview) TaskStatus.InProgress else it.status) == status }
+                    TasksBoardColumn(status = status, totalCount = statusCounts?.get(status) ?: tasks.size, tasks = tasks)
+                }
+            }.orEmpty()
+        }
+    val queryListItemCount = querySections.sumOf { it.rows.size + 1 }
+    // Paging the query's lanes as the list nears its end (each lane reads one page at a time).
+    LaunchedEffect(listModeListState, queryListItemCount, queryHasMore, queryLoading) {
+        val onQueryIntent = query?.onIntent ?: return@LaunchedEffect
+        snapshotFlow { listModeListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .distinctUntilChanged()
+            .collect { lastVisibleIndex ->
+                if (shouldRequestNextTasksPage(totalItems = queryListItemCount, lastVisibleIndex = lastVisibleIndex, hasMore = queryHasMore, loadingMore = queryLoading)) {
+                    onQueryIntent(TasksQueryIntent.LoadMore)
+                }
+            }
+    }
+    // The channel filter's choices on the page: every channel a task the app holds is in, by id.
+    val queryChannelOptions =
+        remember(content.tasks, queryState?.tasks) {
+            (content.tasks.asSequence() + queryState?.tasks?.values.orEmpty().asSequence())
+                .mapNotNull { task -> task.channelId?.value?.let { id -> id to (task.channelName ?: id) } }
+                .distinctBy { it.first }
+                .sortedBy { it.second.lowercase() }
+                .map { (id, name) -> RaftFilterOption(id = id, label = name, icon = RaftLucideIconName.Hash) }
+                .toList()
+        }
 
     // Filter popover anchors. Resolved from each chip's live coordinates when opened.
     // Caller-local editing snapshots for the filter search inputs. The durable
@@ -675,10 +767,15 @@ private fun SharedTasksLoadedBodyContent(
         if (showHeader) {
             SharedTasksHeader(
                 subtitle =
-                    localizedTasksHeaderSubtitle(
-                        totalTasks = content.tasks.size,
-                        visibleTasks = visibleContent.filteredTasks.size
-                    ),
+                    if (queryState != null) {
+                        // Web TasksPage head: the view's count, "N / total" when narrowed.
+                        queryState.headNumber().orEmpty()
+                    } else {
+                        localizedTasksHeaderSubtitle(
+                            totalTasks = content.tasks.size,
+                            visibleTasks = visibleContent.filteredTasks.size
+                        )
+                    },
                 refreshing = tasksPullState.headerRefreshing(state.refreshing)
             )
         }
@@ -690,7 +787,34 @@ private fun SharedTasksLoadedBodyContent(
                 state.statusUpdateErrorCode?.let { code ->
                     SharedTasksNotice(stringResource(Res.string.tasks_error_update_status), code, modifier = Modifier.padding(RaftAppSpacing.Md))
                 }
-                SharedTasksToolbar(
+                (queryState?.error ?: queryState?.countsError)?.let { error ->
+                    // The rows already shown stay; the failed read's trace id can be copied.
+                    Column(modifier = Modifier.padding(RaftAppSpacing.Md)) {
+                        SharedTasksNotice(stringResource(Res.string.tasks_error_load), error.code)
+                        RaftTraceIdNote(error.traceId)
+                    }
+                }
+                if (query != null && queryState != null) {
+                    SharedTasksQueryToolbar(
+                        state = queryState,
+                        scopeCounts = queryState.scopeCounts(),
+                        onIntent = query.onIntent,
+                        selectedMode = presentationState.selectedMode,
+                        onModeSelected = { mode ->
+                            viewModeRepository.selectTasksViewModeSync(mode)
+                            presentationState = presentationState.reduce(TasksPresentationIntent.SelectMode(mode))
+                        },
+                        openFilterId = presentationState.openFilterId,
+                        onFilterClick = { id ->
+                            presentationState =
+                                presentationState.reduce(
+                                    TasksPresentationIntent.SetOpenFilter(
+                                        if (presentationState.openFilterId == id) null else id
+                                    )
+                                )
+                        },
+                    )
+                } else SharedTasksToolbar(
                     channelMode = !showChannelFilter,
                     selectedChannels = visibleContent.selectedChannelNames,
                     selectedCreatorIds = visibleContent.selectedCreatorIds,
@@ -725,8 +849,10 @@ private fun SharedTasksLoadedBodyContent(
                 // (its rows AND cursor) once it becomes the active view. List mode
                 // never dispatches this, so the global walk issues no extra
                 // requests and the #345 path stays byte-identical.
-                LaunchedEffect(presentationState.selectedMode, state.hasCompletedTasksSnapshot()) {
-                    if (presentationState.selectedMode == TasksViewMode.Board &&
+                LaunchedEffect(presentationState.selectedMode, state.hasCompletedTasksSnapshot(), query != null) {
+                    // The page's query board reads its rows through the query, not the per-status walk.
+                    if (query == null &&
+                        presentationState.selectedMode == TasksViewMode.Board &&
                         state.hasCompletedTasksSnapshot()
                     ) {
                         onIntent(SharedTasksRouteIntent.EnterBoard)
@@ -754,8 +880,10 @@ private fun SharedTasksLoadedBodyContent(
                             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
                             contentPadding = PaddingValues(RaftAppSpacing.Md)
                         ) {
-                            items(boardColumns.size, key = { i -> "board-col-${boardColumns[i].status}" }) { index ->
-                                val column = boardColumns[index]
+                            // The page's query: its rows grouped by status (the board keeps its status columns).
+                            val shownBoardColumns = if (query != null) queryBoardColumns else boardColumns
+                            items(shownBoardColumns.size, key = { i -> "board-col-${shownBoardColumns[i].status}" }) { index ->
+                                val column = shownBoardColumns[index]
                                 SharedTasksBoardColumn(
                                     status = column.status,
                                     totalCount = column.totalCount,
@@ -781,7 +909,12 @@ private fun SharedTasksLoadedBodyContent(
                                         statusMenuTask = task
                                         statusMenuAnchor = anchor
                                     },
-                                    onReachedEnd = { columnStatus ->
+                                    onReachedEnd = onReachedEnd@{ columnStatus ->
+                                        if (query != null) {
+                                            // The query's lanes page together; each reads one page at a time.
+                                            if (queryHasMore) query.onIntent(TasksQueryIntent.LoadMore)
+                                            return@onReachedEnd
+                                        }
                                         // task #363: per-status pagination is the
                                         // ONLY walk for a Board column. A column
                                         // advances its own cursor (single-flight
@@ -804,7 +937,26 @@ private fun SharedTasksLoadedBodyContent(
                             }
                         }
                     }
-                    TasksViewMode.List -> {
+                    TasksViewMode.List -> if (query != null && queryState != null) {
+                        SharedTasksQueryList(
+                            state = queryState,
+                            sections = querySections,
+                            listState = listModeListState,
+                            bottomContentPadding = bottomContentPadding,
+                            draftProjection = draftProjection,
+                            timeContext = timeContext,
+                            onOpenTask = onOpenTask,
+                            onStatusMenu = { task, anchor ->
+                                statusMenuTask = task
+                                statusMenuAnchor = anchor
+                            },
+                            onAssigneeMenu = { task, anchor ->
+                                assigneeMenuTask = task
+                                assigneeMenuAnchor = anchor
+                            },
+                            onRetry = { query.onIntent(TasksQueryIntent.Refresh) },
+                        )
+                    } else {
                         if (visibleContent.filteredTasks.isEmpty()) {
                             val emptyCopy =
                                 localizedSharedTasksEmptyStateCopy(
@@ -895,10 +1047,22 @@ private fun SharedTasksLoadedBodyContent(
                     searchPlaceholder = stringResource(Res.string.tasks_search_channels),
                     searchText = channelSearchValue.text,
                     onSearchChange = { channelSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetChannelSearch(it)) },
-                    options = channelFilterOptions,
-                    selectedIds = visibleContent.selectedChannelNames,
-                    onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleChannel(id)) },
-                    onClear = { presentationState = presentationState.reduce(TasksPresentationIntent.ClearChannels) },
+                    options = if (query != null) queryChannelOptions else channelFilterOptions,
+                    selectedIds = queryState?.query?.channelIds ?: visibleContent.selectedChannelNames,
+                    onToggle = { id ->
+                        if (query != null) {
+                            query.onIntent(TasksQueryIntent.ToggleChannel(id))
+                        } else {
+                            presentationState = presentationState.reduce(TasksPresentationIntent.ToggleChannel(id))
+                        }
+                    },
+                    onClear = {
+                        if (query != null) {
+                            query.onIntent(TasksQueryIntent.ClearChannels)
+                        } else {
+                            presentationState = presentationState.reduce(TasksPresentationIntent.ClearChannels)
+                        }
+                    },
                     onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
                 )
             "creator" ->
@@ -907,10 +1071,23 @@ private fun SharedTasksLoadedBodyContent(
                     searchPlaceholder = stringResource(Res.string.tasks_search_creators),
                     searchText = creatorSearchValue.text,
                     onSearchChange = { creatorSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetCreatorSearch(it)) },
-                    options = creatorFilterOptions,
-                    selectedIds = visibleContent.selectedCreatorIds,
-                    onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleCreator(id)) },
-                    onClear = { presentationState = presentationState.reduce(TasksPresentationIntent.ClearCreators) },
+                    // The server takes people and agents (`user:` / `agent:`).
+                    options = if (query != null) creatorFilterOptions.filter { it.id.isTasksQueryIdentity() } else creatorFilterOptions,
+                    selectedIds = queryState?.query?.creators ?: visibleContent.selectedCreatorIds,
+                    onToggle = { id ->
+                        if (query != null) {
+                            query.onIntent(TasksQueryIntent.ToggleCreator(id))
+                        } else {
+                            presentationState = presentationState.reduce(TasksPresentationIntent.ToggleCreator(id))
+                        }
+                    },
+                    onClear = {
+                        if (query != null) {
+                            query.onIntent(TasksQueryIntent.ClearCreators)
+                        } else {
+                            presentationState = presentationState.reduce(TasksPresentationIntent.ClearCreators)
+                        }
+                    },
                     onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
                 )
             "assignee" ->
@@ -919,10 +1096,27 @@ private fun SharedTasksLoadedBodyContent(
                     searchPlaceholder = stringResource(Res.string.tasks_search_assignees),
                     searchText = assigneeSearchValue.text,
                     onSearchChange = { assigneeSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetAssigneeSearch(it)) },
-                    options = assigneeFilterOptions,
-                    selectedIds = visibleContent.selectedAssigneeIds,
-                    onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleAssignee(id)) },
-                    onClear = { presentationState = presentationState.reduce(TasksPresentationIntent.ClearAssignees) },
+                    options =
+                        if (query != null) {
+                            assigneeFilterOptions.filter { it.id == TasksUnassignedAssigneeFilterId || it.id.isTasksQueryIdentity() }
+                        } else {
+                            assigneeFilterOptions
+                        },
+                    selectedIds = queryState?.query?.assignees ?: visibleContent.selectedAssigneeIds,
+                    onToggle = { id ->
+                        if (query != null) {
+                            query.onIntent(TasksQueryIntent.ToggleAssignee(id))
+                        } else {
+                            presentationState = presentationState.reduce(TasksPresentationIntent.ToggleAssignee(id))
+                        }
+                    },
+                    onClear = {
+                        if (query != null) {
+                            query.onIntent(TasksQueryIntent.ClearAssignees)
+                        } else {
+                            presentationState = presentationState.reduce(TasksPresentationIntent.ClearAssignees)
+                        }
+                    },
                     onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
                 )
             else -> Unit
@@ -1989,6 +2183,138 @@ internal fun TasksCreateDialog(
                 onClick = { onSubmit(titles, status.takeIf { statusField }) },
                 variant = RaftButtonVariant.Primary,
                 size = RaftButtonSize.Lg
+            )
+        }
+    }
+}
+
+/** Whether a filter id is one the server's `creator` / `assignee` take (`user:<id>` / `agent:<id>`). */
+internal fun String.isTasksQueryIdentity(): Boolean = startsWith("user:") || startsWith("agent:")
+
+/** Test tags of the Tasks page's list (web `tasks-page-*` data-testids). */
+internal object SharedTasksQueryListTags {
+    const val List = "tasks-page-list"
+    fun section(section: TasksQuerySection): String = "tasks-page-section-${section.name.lowercase()}"
+    fun sectionCount(section: TasksQuerySection): String = "tasks-page-section-count-${section.name.lowercase()}"
+}
+
+/**
+ * The Tasks page as a list (web `TasksListView`): Mine in two sections, Assigned and Started by
+ * you, each headed with its server total ("No tasks" under an empty one); All as one flat list.
+ * The rows are the server's for the query, in its order; an empty narrowed view says no task
+ * matches (the toolbar's Clear all and the search's × undo it).
+ */
+@Composable
+private fun SharedTasksQueryList(
+    state: TasksQueryState,
+    sections: List<TasksQuerySectionRows>,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    bottomContentPadding: Dp,
+    draftProjection: SharedThreadComposerDraftProjection,
+    timeContext: RaftTimeContext?,
+    onOpenTask: ((TaskSummary) -> Unit)?,
+    onStatusMenu: (TaskSummary, RaftPopoverAnchor) -> Unit,
+    onAssigneeMenu: (TaskSummary, RaftPopoverAnchor) -> Unit,
+    onRetry: () -> Unit,
+) {
+    val anyRows = sections.any { it.rows.isNotEmpty() }
+    val allLoaded = sections.all { it.loaded }
+    val error = state.error
+    when {
+        // Nothing to keep on screen: the failure takes the list's place, with a retry (its trace id is above).
+        !anyRows && !allLoaded && error != null ->
+            SharedTasksStateBody(
+                title = stringResource(Res.string.tasks_error_load),
+                detail = error.code,
+                actionLabel = stringResource(Res.string.common_retry),
+                onAction = onRetry
+            )
+        !anyRows && !allLoaded ->
+            SharedTasksStateBody(title = stringResource(Res.string.common_loading), detail = "", loading = true)
+        !anyRows && (state.query.narrowed || state.query.scope == TasksPageScope.All) ->
+            SharedTasksStateBody(
+                title = stringResource(if (state.query.narrowed) Res.string.tasks_no_match else Res.string.tasks_empty),
+                detail = null,
+                iconName = if (state.query.narrowed) RaftLucideIconName.SearchX else RaftLucideIconName.ListTodo
+            )
+        else -> {
+            val sectioned = state.query.scope == TasksPageScope.Mine
+            LazyColumn(
+                state = listState,
+                // Task cards on the canvas: the list keeps out of the safe area.
+                modifier = Modifier.fillMaxSize().raftSafeAreaHorizontalPadding().testTag(SharedTasksQueryListTags.List),
+                contentPadding =
+                    PaddingValues(
+                        start = RaftAppSpacing.Md,
+                        top = RaftAppSpacing.Md,
+                        end = RaftAppSpacing.Md,
+                        bottom = bottomContentPadding
+                    ),
+            ) {
+                sections.forEachIndexed { sectionIndex, section ->
+                    item(key = "query-header-${section.section.name}") {
+                        if (sectioned) {
+                            SharedTasksQuerySectionHeader(
+                                section = section,
+                                modifier = Modifier.padding(top = if (sectionIndex == 0) 0.dp else SharedTasksListSectionGap)
+                            )
+                        }
+                    }
+                    if (sectioned && section.loaded && section.rows.isEmpty()) {
+                        item(key = "query-empty-${section.section.name}") {
+                            Text(
+                                text = stringResource(Res.string.tasks_section_empty),
+                                style = RaftType.SectionLabel,
+                                color = RaftColor.ForegroundHint,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = SharedTasksListItemGap)
+                            )
+                        }
+                    }
+                    items(section.rows.size, key = { index -> "query-card-${section.section.name}-${section.rows[index].id.value}" }) { index ->
+                        val task = section.rows[index]
+                        SharedTaskCard(
+                            modifier = Modifier.padding(top = SharedTasksListItemGap),
+                            task = task,
+                            hasDraft = draftProjection.hasDraftForTask(task),
+                            captureLongPressAnchor = !listState.isScrollInProgress,
+                            timeContext = timeContext,
+                            onClick = { onOpenTask?.invoke(task) },
+                            onStatusBadgeClick = { anchor -> onStatusMenu(task, anchor) },
+                            onAssigneeBadgeClick = { anchor -> onAssigneeMenu(task, anchor) },
+                            onLongPress = { anchor -> onStatusMenu(task, anchor) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A Mine section's head: its name and the server's total for it (none while searching). */
+@Composable
+private fun SharedTasksQuerySectionHeader(section: TasksQuerySectionRows, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth().height(32.dp).padding(horizontal = 8.dp).testTag(SharedTasksQueryListTags.section(section.section)),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text =
+                stringResource(
+                    if (section.section == TasksQuerySection.Assigned) Res.string.tasks_section_assigned else Res.string.tasks_section_started
+                ),
+            style = RaftType.SectionLabel,
+            color = RaftColor.ForegroundHint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        section.total?.let { total ->
+            Text(
+                text = total.toString(),
+                style = SharedTaskMonoMetaStyle,
+                color = RaftColor.ForegroundHint,
+                maxLines = 1,
+                modifier = Modifier.testTag(SharedTasksQueryListTags.sectionCount(section.section))
             )
         }
     }
