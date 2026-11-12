@@ -108,4 +108,9 @@ tasks.named<Test>("desktopTest") {
     systemProperty("raft.screenshot.goldenDir", screenshotGoldenDir.asFile.absolutePath)
     systemProperty("raft.screenshot.reportDir", screenshotReportDir.get().asFile.absolutePath)
     systemProperty("java.awt.headless", "true")
+    // A failure's assertion message and stack in the CI log, not only "AssertionError at
+    // Assert.java" (a FitToolbar UI case failed on CI with its reason uncollected, #4632).
+    testLogging {
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }

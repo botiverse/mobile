@@ -10,6 +10,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -29,7 +31,6 @@ import build.raft.designsystem.components.RaftFitToolbarViewOption
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -47,11 +48,6 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalTestApi::class)
 class RaftFitToolbarPartsTest {
-    // Quarantined, not removed (AGENTS.md: fix or quarantine visibly): it failed on CI run
-    // 43221658017 with no assertion message in the log, and this machine can't run desktop tests.
-    // RaftFitToolbarStepTest covers the step (Clear all's × with the filter icons); bring this
-    // back once its failing assertion is known (dm task #36).
-    @Ignore("Quarantined: failed on CI 43221658017 without a message; see the comment above")
     @Test
     fun clearAllHasItsWordsThenItsIconOnceTheFiltersGiveWay() =
         runComposeUiTest {
@@ -73,8 +69,12 @@ class RaftFitToolbarPartsTest {
             assertNotNull(narrowUntil({ width = it }) { !has(hasText("Status")) }, "the filters give way")
             assertTrue(has(hasTestTag("clear")), "Clear all stays")
             assertFalse(tagged("clear", "Clear all"), "as its icon alone")
-            assertTrue(has(hasTestTag("clear") and hasContentDescription("Clear all")), "its words its name")
-            onNodeWithTag("clear").performClick()
+            // The icon button's name sits on its clickable node, inside the tooltip box the tag is on.
+            assertTrue(
+                has(hasTestTag("clear") and (hasContentDescription("Clear all") or hasAnyDescendant(hasContentDescription("Clear all")))),
+                "its words its name",
+            )
+            onNode(hasContentDescription("Clear all") and hasClickAction()).performClick()
             assertEquals(1, cleared)
         }
 

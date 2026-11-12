@@ -713,6 +713,8 @@ jobs:
             compose/shared/build/test-results/testDebugUnitTest/
             compose/androidApp/build/reports/tests/testDebugUnitTest/
             compose/androidApp/build/test-results/testDebugUnitTest/
+            compose/designsystem/build/reports/tests/desktopTest/
+            compose/designsystem/build/test-results/desktopTest/
           retention-days: 7
 
       - name: Gradle failure diagnostics
