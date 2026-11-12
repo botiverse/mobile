@@ -19,6 +19,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,6 +97,11 @@ class RaftFitToolbarSearch(
      */
     val open: Boolean = false,
     val onOpenChange: ((Boolean) -> Unit)? = null,
+    /**
+     * Told whether the search is drawn over the scope (opened from its button, or holding text
+     * while given way): the state a page's Back handler closes, as Esc does (text first).
+     */
+    val onShownOverScopeChange: ((Boolean) -> Unit)? = null,
 )
 
 /**
@@ -223,6 +229,16 @@ fun RaftFitToolbar(
     var ownSearchOpen by remember { mutableStateOf(false) }
     val searchOpen = if (search?.onOpenChange != null) search.open else ownSearchOpen
     val setSearchOpen: (Boolean) -> Unit = { open -> search?.onOpenChange?.invoke(open) ?: run { ownSearchOpen = open } }
+    // What the last measure chose, reported after it: an open search the toolbar no longer gives
+    // way (it widened) is closed, and the page learns when the search covers the scope.
+    val measuredCollapsed = remember { mutableStateOf(false) }
+    val measuredOverScope = remember { mutableStateOf(false) }
+    val currentSetSearchOpen by rememberUpdatedState(setSearchOpen)
+    val onShownOverScope by rememberUpdatedState(search?.onShownOverScopeChange)
+    LaunchedEffect(measuredCollapsed.value, searchOpen) {
+        if (!measuredCollapsed.value && searchOpen) currentSetSearchOpen(false)
+    }
+    LaunchedEffect(measuredOverScope.value) { onShownOverScope?.invoke(measuredOverScope.value) }
     SubcomposeLayout(
         modifier
             .fillMaxWidth()
@@ -282,6 +298,8 @@ fun RaftFitToolbar(
         val forms = raftFitToolbarForms(raftFitToolbarStep(widths, available, wrap), wrap)
         val searchCollapsed = search != null && forms.searchButton
         val searchOverScope = searchCollapsed && (searchOpen || search?.value?.isNotEmpty() == true)
+        if (measuredCollapsed.value != searchCollapsed) measuredCollapsed.value = searchCollapsed
+        if (measuredOverScope.value != searchOverScope) measuredOverScope.value = searchOverScope
         val filtersOnFirstLine = filters.isNotEmpty() && !forms.filtersWrapped
 
         // The first line, in order; the filler takes what the others leave.
@@ -391,15 +409,18 @@ fun RaftFitToolbar(
             } else {
                 null
             }
-        val height = if (secondLine != null) lineHeight * 2 + gap else lineHeight
+        // A line is the control height, or its tallest part's when large text makes one taller.
+        val firstLine = maxOf(lineHeight, parts.maxOfOrNull { it.placeable?.height ?: 0 } ?: 0, overScope?.height ?: 0)
+        val secondLineHeight = secondLine?.let { maxOf(lineHeight, it.height) } ?: 0
+        val height = if (secondLine != null) firstLine + gap + secondLineHeight else firstLine
         layout(available, height) {
             parts.forEachIndexed { i, part ->
                 val placeable = part.placeable ?: return@forEachIndexed
                 // Centred on the line: the segmented track (38 / 40) hangs 3dp into the air.
-                placeable.placeRelative(xs[i], (lineHeight - placeable.height) / 2)
+                placeable.placeRelative(xs[i], (firstLine - placeable.height) / 2)
             }
-            overScope?.placeRelative(0, (lineHeight - overScope.height) / 2)
-            secondLine?.placeRelative(0, lineHeight + gap + (lineHeight - secondLine.height) / 2)
+            overScope?.placeRelative(0, (firstLine - overScope.height) / 2)
+            secondLine?.placeRelative(0, firstLine + gap + (secondLineHeight - secondLine.height) / 2)
         }
     }
 }

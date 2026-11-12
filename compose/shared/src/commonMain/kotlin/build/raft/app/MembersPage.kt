@@ -15022,7 +15022,12 @@ private fun MembersToolbar(
     val externalLabel = stringResource(Res.string.members_create_agent_external)
     // A search given way to a button, opened over the tabs: system Back closes it (AGENTS.md).
     var searchOpen by remember { mutableStateOf(false) }
-    RaftBackHandler(enabled = searchOpen, label = "members_toolbar_search") { searchOpen = false }
+    var searchOverTabs by remember { mutableStateOf(false) }
+    // As Esc: text first, then the search itself. Only while it covers the tabs, so Back is never
+    // swallowed by an inline search (a wide toolbar).
+    RaftBackHandler(enabled = searchOverTabs, label = "members_toolbar_search") {
+        if (query.isNotEmpty()) onQuery("") else searchOpen = false
+    }
     RaftFitToolbar(
         scope =
             RaftFitToolbarScope(
@@ -15041,6 +15046,7 @@ private fun MembersToolbar(
                 testTag = MembersSearchTestTag,
                 open = searchOpen,
                 onOpenChange = { searchOpen = it },
+                onShownOverScopeChange = { searchOverTabs = it },
             ),
         display =
             if (grouping == null) {
