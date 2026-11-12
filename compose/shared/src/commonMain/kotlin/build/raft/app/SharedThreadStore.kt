@@ -13247,17 +13247,7 @@ internal class SharedThreadStore(
     }
 
     private suspend fun applyChannelJoined(channelId: String) {
-        reducePayloadPatchAndCache(cachePayload = true) { payload ->
-            if (payload.joinChannelTargetId()?.value != channelId) {
-                payload
-            } else {
-                payload.copy(
-                    joined = true,
-                    canSend = true,
-                    composer = payload.composer.copy(enabled = true)
-                )
-            }
-        }
+        reducePayloadPatchAndCache(cachePayload = true) { payload -> payload.withChannelJoined(channelId) }
     }
 
     private suspend fun applyChannelLeft(channelId: String) {
