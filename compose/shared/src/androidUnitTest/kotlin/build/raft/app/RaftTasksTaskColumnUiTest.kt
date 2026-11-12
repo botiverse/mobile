@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -150,8 +151,12 @@ class RaftTasksTaskColumnUiTest {
     /** The page in the column: its head ends with the column's actions, as ThreadPageHeader does. */
     @Composable
     private fun TaskFixture(taskId: String?) {
-        Box(Modifier.testTag("task-page-$taskId")) {
-            LocalRaftTaskColumnHead.current?.let { RaftTaskColumnHeadActions(it) }
+        // The head's actions at its end, as the task page's header has them: at the column's start
+        // they sat under its resize edge, which took the tap.
+        Box(Modifier.fillMaxWidth().testTag("task-page-$taskId"), contentAlignment = androidx.compose.ui.Alignment.TopEnd) {
+            androidx.compose.foundation.layout.Row {
+                LocalRaftTaskColumnHead.current?.let { RaftTaskColumnHeadActions(it) }
+            }
         }
     }
 
