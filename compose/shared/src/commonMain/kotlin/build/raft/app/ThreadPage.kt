@@ -19492,6 +19492,9 @@ internal fun ThreadPageHeader(
                     threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind) ||
                     payload.threadHeaderOpenInParentActionVisible()
             )
+    // The Tasks page's task column (RaftTasksTaskColumn.kt; web TaskConversationBar beside the
+    // list): its Expand and Close end the head, also while the page is still loading.
+    val taskColumnHead = LocalRaftTaskColumnHead.current
     // iPhone Duo (raft-design #859): beside the system's side column, Back and the page's actions
     // are the column's (Back first, two actions, the rest in its ⋯); the header keeps the title
     // and the subtitle, from the 16dp margin, without Back and without icon buttons.
@@ -19633,7 +19636,8 @@ internal fun ThreadPageHeader(
             },
         // The 3dp edge inset only mirrors Back when a trailing PanelAction sits at the end;
         // without one the title keeps the default end padding instead of running to the edge.
-        contentEndPadding = if (showHeaderActions && !controlsInColumn) ThreadHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
+        contentEndPadding =
+            if ((showHeaderActions && !controlsInColumn) || taskColumnHead != null) ThreadHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
         contentSpacing = ThreadHeaderContentSpacing,
         titleLeadingContent = {
             // Back is the same 44dp frameless PanelAction as the trailing actions (not the shared
@@ -19748,15 +19752,18 @@ internal fun ThreadPageHeader(
             }
         },
         trailingContent =
-            if (showHeaderActions && controlsInColumn) {
+            if (showHeaderActions && controlsInColumn && taskColumnHead == null) {
                 // The Agent followers are the task's facts, not a button: they stay in the header.
                 { agentFollowersHeader() }
-            } else if (showHeaderActions) {
+            } else if (showHeaderActions || taskColumnHead != null) {
                 {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(ThreadHeaderActionGroupSpacing)
                 ) {
+                    if (showHeaderActions && controlsInColumn) {
+                        agentFollowersHeader()
+                    } else if (showHeaderActions) {
                     agentFollowersHeader()
                     // Web ThreadPanel: a reply thread's Search in Thread and View in Channel live in
                     // its ⋯ menu ("thread commands live in the menu"), not as header buttons.
@@ -19825,6 +19832,8 @@ internal fun ThreadPageHeader(
                             notificationLevelTargetInput = notificationLevelTarget,
                         )
                     }
+                    }
+                    taskColumnHead?.let { RaftTaskColumnHeadActions(it) }
                 }
                 }
             } else {

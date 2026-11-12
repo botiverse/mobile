@@ -85,23 +85,23 @@ internal enum class RaftWideBackStep { PopSupportingPane, Existing }
 
 /**
  * [shown] is whether the pane is on screen (the same condition that draws it). Pages can sit in the
- * stack while it isn't, e.g. under the task overlay; Back must not spend a press closing it unseen.
+ * stack while it isn't, e.g. while the Tasks page's task column shows; Back must not spend a press closing it unseen.
  */
 internal fun raftWideBackStep(supporting: RaftPaneStack, shown: Boolean): RaftWideBackStep =
     if (shown && supporting.isOpen) RaftWideBackStep.PopSupportingPane else RaftWideBackStep.Existing
 
 /**
  * The shell's wide Back: an open supporting pane is the topmost thing, so Back closes it before
- * stepping the history; the task overlay sits above it, so while [overlayOpen] Back is the
- * overlay's (Tenny, #3953). [paneShown] is what [RaftSupportingPaneShownReport] last reported.
+ * stepping the history; on the Tasks page the task column shows the detail without the pane, so
+ * while [overlayOpen] (that column open) Back is the column's (Tenny, #3953). [paneShown] is what [RaftSupportingPaneShownReport] last reported.
  */
 internal fun raftWideBackStep(supporting: RaftPaneStack, paneShown: Boolean, overlayOpen: Boolean): RaftWideBackStep =
     raftWideBackStep(supporting, shown = paneShown && !overlayOpen)
 
 /**
  * Reports through [report] whether the supporting pane is [shown] in this detail pane. Only the
- * pane that hosts it ([host]: the main detail, not the task overlay's copy) reports, so the
- * overlay's copy leaving the composition when the overlay closes does not reset it (Tenny, #3953).
+ * pane that hosts it ([host]: the main detail, not the Tasks page column's copy) reports, so the
+ * column's copy leaving the composition when the column closes does not reset it (Tenny, #3953).
  */
 @Composable
 internal fun RaftSupportingPaneShownReport(host: Boolean, shown: Boolean, report: (Boolean) -> Unit) {

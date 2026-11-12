@@ -109,6 +109,12 @@ internal object RaftPaneGridColumns {
 
     /** Web `COLUMN_BOUNDS.sideCards`: the Tasks / Files column, 360, at least 280, its left seam included. */
     val SideCards = RaftPaneGridColumnBounds(id = "sideCards", defaultWidthDp = 360f, minWidthDp = 280f)
+
+    /**
+     * Web `COLUMN_BOUNDS.detail`: the right-hand detail column, here the Tasks page's task beside
+     * its list (web TasksRoute); 400, at least 320 (web's content minimum).
+     */
+    val Detail = RaftPaneGridColumnBounds(id = "detail", defaultWidthDp = 400f, minWidthDp = 320f)
 }
 
 

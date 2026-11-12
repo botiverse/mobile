@@ -480,6 +480,10 @@
     <string name="thread_side_card_resize_column">Cambiar el ancho de %1$s</string>
     <string name="thread_side_card_tasks_and_files">Tareas y archivos</string>
     <string name="thread_side_thread_resize">Cambiar el ancho del hilo</string>
+    <string name="tasks_task_column_expand">Ampliar</string>
+    <string name="tasks_task_column_restore">Restaurar</string>
+    <string name="tasks_task_column_close">Cerrar panel de la tarea</string>
+    <string name="tasks_task_column_resize">Cambiar el ancho del panel</string>
     <string name="thread_state_loading">Cargando…</string>
     <string name="thread_error_load">No se pudo cargar el hilo</string>
     <string name="thread_error_access_resolution">No se pudo verificar el acceso a este hilo o a su mensaje principal. Revisa tu conexión e inténtalo de nuevo.</string>

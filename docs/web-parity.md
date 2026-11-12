@@ -157,7 +157,7 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Feature | Web | Mobile | Mobile evidence | Server | Effort |
 |---|---|---|---|---|---|
 | Task board / list, filters | `task/TasksPanel.tsx` | done (separate status filter TBC) | `SharedTasksPage.kt` | `/tasks/server`, `/tasks/channel/:id` | – |
-| Create, claim, assign, status, detail | `task/CreateTaskDialog.tsx`, `TaskProperties.tsx` | done | `data/TasksDataSource.kt`, `RaftTasksDetailOverlay.kt` | existing | – |
+| Create, claim, assign, status, detail | `task/CreateTaskDialog.tsx`, `TaskProperties.tsx` | done | `data/TasksDataSource.kt`, `RaftTasksTaskColumn.kt` | existing | – |
 | **Task history timeline** | `task/HistoryTimeline.tsx` | missing | searched `/history` | `GET /tasks/:id/history` | S |
 | Linked tasks in threads | `message/MessageItem.tsx` | done | `ThreadLinkedTaskProjection.kt` | existing | – |
 | Agent list, profile, avatar, permissions | `agent/AgentDetailPanel.tsx` | done | `MembersPage.kt`, `data/AgentsApi.kt` | existing | – |
