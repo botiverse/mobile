@@ -231,12 +231,14 @@ fun RaftFitToolbar(
     val setSearchOpen: (Boolean) -> Unit = { open -> search?.onOpenChange?.invoke(open) ?: run { ownSearchOpen = open } }
     // What the last measure chose, reported after it: an open search the toolbar no longer gives
     // way (it widened) is closed, and the page learns when the search covers the scope.
-    val measuredCollapsed = remember { mutableStateOf(false) }
+    // Null until the first measure: an effect may run before it, and must not close a search the
+    // toolbar is about to give way.
+    val measuredCollapsed = remember { mutableStateOf<Boolean?>(null) }
     val measuredOverScope = remember { mutableStateOf(false) }
     val currentSetSearchOpen by rememberUpdatedState(setSearchOpen)
     val onShownOverScope by rememberUpdatedState(search?.onShownOverScopeChange)
     LaunchedEffect(measuredCollapsed.value, searchOpen) {
-        if (!measuredCollapsed.value && searchOpen) currentSetSearchOpen(false)
+        if (measuredCollapsed.value == false && searchOpen) currentSetSearchOpen(false)
     }
     LaunchedEffect(measuredOverScope.value) { onShownOverScope?.invoke(measuredOverScope.value) }
     SubcomposeLayout(
