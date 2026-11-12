@@ -3,7 +3,7 @@ import XCTest
 
 final class RaftIosSideActionItemsTests: XCTestCase {
     override func setUpWithError() throws {
-        // Vertical bar items (`axisBehavior`) are iOS 27.1 API.
+        // RaftIosSideActionItems is iOS 27.1 only (the host draws columns there).
         guard #available(iOS 27.1, *) else { throw XCTSkip("iOS 27.1 or later") }
     }
 
@@ -42,7 +42,6 @@ final class RaftIosSideActionItemsTests: XCTestCase {
         XCTAssertTrue(rows[1].attributes.contains(.disabled))
 
         for item in items.leading + items.trailing {
-            XCTAssertEqual(item.axisBehavior, .verticalPreferred)
             XCTAssertNotNil(item.image)
         }
     }

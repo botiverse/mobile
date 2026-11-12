@@ -122,4 +122,43 @@ CGRect RaftIosReservedRegionFrame(id _Nullable region) {
     return frame;
 }
 
+// `UIBarButtonItem.axisBehavior` is iOS 27.1 SDK API: the premerge lane builds with Xcode 27.0
+// and ios-release.yml keeps a 26.6 fallback, so it is compiled only where the SDK declares it
+// (`__IPHONE_OS_VERSION_MAX_ALLOWED` is the SDK's version) and called only on iOS 27.1+.
+#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 270100
+#define RAFT_IOS_SDK_HAS_VERTICAL_BAR_ITEMS 1
+#else
+#define RAFT_IOS_SDK_HAS_VERTICAL_BAR_ITEMS 0
+#endif
+
+BOOL RaftIosVerticalBarItemsSupported(void) {
+#if RAFT_IOS_SDK_HAS_VERTICAL_BAR_ITEMS
+    if (@available(iOS 27.1, *)) {
+        return YES;
+    }
+#endif
+    return NO;
+}
+
+BOOL RaftIosMakeBarButtonItemsVerticalPreferred(NSArray<UIBarButtonItem *> *items) {
+#if RAFT_IOS_SDK_HAS_VERTICAL_BAR_ITEMS
+    if (@available(iOS 27.1, *)) {
+        for (UIBarButtonItem *item in items) {
+            item.axisBehavior = UIBarButtonItemAxisBehaviorVerticalPreferred;
+        }
+        return YES;
+    }
+#endif
+    return NO;
+}
+
+BOOL RaftIosBarButtonItemIsVerticalPreferred(UIBarButtonItem *item) {
+#if RAFT_IOS_SDK_HAS_VERTICAL_BAR_ITEMS
+    if (@available(iOS 27.1, *)) {
+        return item.axisBehavior == UIBarButtonItemAxisBehaviorVerticalPreferred;
+    }
+#endif
+    return NO;
+}
+
 NS_ASSUME_NONNULL_END

@@ -31,7 +31,9 @@ final class RaftIosSideActionHost: NSObject, RaftSideActionHostListener {
         self.hostId = hostId
         super.init()
         bridge.attachListener(listener: self)
-        bridge.setAvailable(available: true)
+        // Only where the build's SDK and the system have vertical bar items; else the page keeps
+        // drawing its own column.
+        bridge.setAvailable(available: RaftIosVerticalBarItemsSupported())
     }
 
     deinit {
@@ -43,6 +45,7 @@ final class RaftIosSideActionHost: NSObject, RaftSideActionHostListener {
         guard let controller,
               let items = RaftIosSideActionItems.make(json: json, onTap: { [weak self] id in _ = self?.bridge.sideActionTapped(id: id) })
         else { return }
+        guard RaftIosMakeBarButtonItemsVerticalPreferred(items.leading + items.trailing) else { return }
         let navigationItem = controller.navigationItem
         navigationItem.hidesBackButton = true
         navigationItem.leftBarButtonItems = items.leading

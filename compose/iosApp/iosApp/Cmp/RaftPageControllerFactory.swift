@@ -53,7 +53,7 @@ import shared
         // bar (RaftIosSideActionHost). Every page gets a bridge; off Duo the page never presents.
         hostPageData.removeValue(forKey: RaftSideActionHostBridgeKt.RaftSideActionHostIdPageDataKey)
         var sideActions: (hostId: String, bridge: RaftSideActionHostBridge)?
-        if #available(iOS 27.1, *) {
+        if #available(iOS 27.1, *), RaftIosVerticalBarItemsSupported() {
             sideActions = RaftIosSideActionHost.register(pageData: &hostPageData)
         }
         let container = RaftPageViewController(pageName: pageName, pageData: hostPageData)

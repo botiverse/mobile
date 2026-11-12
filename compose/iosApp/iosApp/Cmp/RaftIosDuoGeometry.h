@@ -56,4 +56,16 @@ FOUNDATION_EXTERN NSArray *RaftIosReservedRegionsForKind(UIView * _Nullable view
 /// A reserved region's frame in its owner's coordinate space.
 FOUNDATION_EXTERN CGRect RaftIosReservedRegionFrame(id _Nullable region);
 
+/// Whether this build can put bar button items in the system's vertical bar
+/// (`UIBarButtonItem.axisBehavior`, iOS 27.1): built with the iOS 27.1 SDK or later and running
+/// on iOS 27.1 or later. NO on a 26.x / 27.0 SDK build, whatever the device runs.
+FOUNDATION_EXTERN BOOL RaftIosVerticalBarItemsSupported(void);
+
+/// Sets `axisBehavior = .verticalPreferred` on every item, so the system draws them in the
+/// vertical bar. NO, leaving the items untouched, when [RaftIosVerticalBarItemsSupported] is NO.
+FOUNDATION_EXTERN BOOL RaftIosMakeBarButtonItemsVerticalPreferred(NSArray<UIBarButtonItem *> *items);
+
+/// Whether [item] has `axisBehavior == .verticalPreferred` (NO where the API does not exist).
+FOUNDATION_EXTERN BOOL RaftIosBarButtonItemIsVerticalPreferred(UIBarButtonItem *item);
+
 NS_ASSUME_NONNULL_END
