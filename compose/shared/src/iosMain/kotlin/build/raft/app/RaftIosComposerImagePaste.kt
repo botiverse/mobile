@@ -1,6 +1,9 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package build.raft.app
 
 import build.raft.app.data.PlatformFile
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSURL
 import platform.UIKit.UIPasteboard
 
@@ -52,6 +55,14 @@ interface RaftIosComposerEditorFocusListener {
 }
 
 object RaftIosComposerImagePasteHost {
+    init {
+        ThreadComposerImagePasteRequests.discardFiles = { files ->
+            files.forEach { file ->
+                file.fileRef?.let { NSURL.URLWithString(it) }?.let { NSFileManager.defaultManager.removeItemAtURL(it, null) }
+            }
+        }
+    }
+
     var reader: RaftIosPastedImageReader? = null
 
     fun setFocusListener(listener: RaftIosComposerEditorFocusListener?) {

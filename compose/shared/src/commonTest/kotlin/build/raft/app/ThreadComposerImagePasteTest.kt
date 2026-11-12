@@ -76,11 +76,42 @@ class ThreadComposerImagePasteTest {
 
     @Test
     fun hostPastedFilesAreTakenOnce() {
+        val composer = Any()
         val file = PlatformFile(id = "a", fileName = "Pasted image.jpg", mimeType = "image/jpeg")
-        ThreadComposerImagePasteRequests.deliver(listOf(file))
+        ThreadComposerImagePasteRequests.editorFocusChanged(composer, true)
+        try {
+            ThreadComposerImagePasteRequests.deliver(listOf(file))
 
-        assertEquals(listOf(file), ThreadComposerImagePasteRequests.takePending())
-        assertNull(ThreadComposerImagePasteRequests.takePending())
+            assertEquals(listOf(file), ThreadComposerImagePasteRequests.takePending())
+            assertNull(ThreadComposerImagePasteRequests.takePending())
+        } finally {
+            ThreadComposerImagePasteRequests.editorFocusChanged(composer, false)
+        }
+    }
+
+    @Test
+    fun imagesNoComposerTookAreDroppedAndTheirFilesDeleted() {
+        val discarded = mutableListOf<PlatformFile>()
+        ThreadComposerImagePasteRequests.discardFiles = { discarded += it }
+        val composer = Any()
+        val late = PlatformFile(id = "late", fileName = "Pasted image.jpg", mimeType = "image/jpeg")
+        val untaken = PlatformFile(id = "untaken", fileName = "Pasted image.png", mimeType = "image/png")
+        try {
+            // Encoding finished after the keyboard went away: nobody is focused.
+            ThreadComposerImagePasteRequests.deliver(listOf(late))
+            assertNull(ThreadComposerImagePasteRequests.takePending())
+
+            // Delivered, then the composer lost focus before taking them.
+            ThreadComposerImagePasteRequests.editorFocusChanged(composer, true)
+            ThreadComposerImagePasteRequests.deliver(listOf(untaken))
+            ThreadComposerImagePasteRequests.editorFocusChanged(composer, false)
+            assertNull(ThreadComposerImagePasteRequests.takePending())
+
+            assertEquals(listOf(late, untaken), discarded)
+        } finally {
+            ThreadComposerImagePasteRequests.discardFiles = null
+            ThreadComposerImagePasteRequests.editorFocusChanged(composer, false)
+        }
     }
 
     @Test

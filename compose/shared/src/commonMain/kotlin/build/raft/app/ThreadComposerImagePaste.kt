@@ -86,9 +86,31 @@ internal object ThreadComposerImagePasteRequests {
         return true
     }
 
+    /** Deletes a host paste's temporary files that no composer took (iOS host). */
+    var discardFiles: ((List<PlatformFile>) -> Unit)? = null
+
+    /**
+     * A host paste for the focused composer. With no composer focused (the keyboard went away
+     * while the images were being encoded) the images are dropped and their files deleted, so a
+     * later paste never opens them instead of the clipboard's current images.
+     */
     fun deliver(files: List<PlatformFile>) {
+        if (focusedOwner == null) {
+            discard(files)
+            return
+        }
+        discardPending()
         pending = files
         count++
+    }
+
+    private fun discardPending() {
+        pending?.let(::discard)
+        pending = null
+    }
+
+    private fun discard(files: List<PlatformFile>) {
+        if (files.isNotEmpty()) discardFiles?.invoke(files)
     }
 
     /** The files a host paste delivered, once; null when the clipboard should be read instead. */
@@ -98,7 +120,11 @@ internal object ThreadComposerImagePasteRequests {
         val before = focusedOwner
         when {
             hasFocus -> focusedOwner = owner
-            before === owner -> focusedOwner = null
+            before === owner -> {
+                focusedOwner = null
+                // Not taken before the composer lost focus: stale for the next paste.
+                discardPending()
+            }
             else -> return
         }
         if (before !== focusedOwner) focusListener?.invoke(focusedOwner != null)
