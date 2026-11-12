@@ -336,15 +336,46 @@ private fun defaultFor(
  * fit the field's kind; otherwise each field's default. Parents come before
  * their dependents so defaults follow the stored parent. writeOnly fields are
  * never stored in form.values, so they start blank, which on edit means "keep".
+ *
+ * Edit: an optional dependent_select or derived_select (a reasoning effort)
+ * with no stored string (null or absent: the agent uses the runtime default)
+ * starts at "" (Default), never at the parent's default
+ * (`defaultValueByValue` / `defaultAttribute`): saving untouched must not turn
+ * Default into the model's default effort. The parent's default applies on
+ * create, and on edit only once the parent changes ([applyRuntimeFormV2Change]).
+ * Only while the parent itself is stored: see [parentStored]. (slock #14569)
  */
 internal fun initialRuntimeFormV2Values(form: ParsedRuntimeFormV2, sources: RuntimeFormV2Sources): RuntimeFormV2Values {
     val values = linkedMapOf<String, JsonElement>()
+    val editing = form.values != null
     for (field in dependencyOrder(form.fields)) {
         val stored = form.values?.get(field.key)
-        values[field.key] = if (storedFits(field, stored)) stored!! else defaultFor(field, sources, values)
+        values[field.key] = when {
+            storedFits(field, stored) -> stored!!
+            editing && keepsRuntimeDefault(field) && parentStored(form, field) -> JsonPrimitive("")
+            else -> defaultFor(field, sources, values)
+        }
     }
     return values
 }
+
+/**
+ * The field's parent has a stored value: the field is in effect for the agent
+ * as saved. A parent with none (a branch the saved agent is not on, e.g. Pi's
+ * "configured" model while it uses a provider) means the field does not apply,
+ * so switching to that branch starts at the parent's default, as on create.
+ */
+private fun parentStored(form: ParsedRuntimeFormV2, field: RuntimeFormV2Field): Boolean {
+    val parentKey = field.dependsOn ?: field.derivedFrom?.key ?: return false
+    val parent = form.fields.firstOrNull { it.key == parentKey } ?: return false
+    val stored = form.values?.get(parent.key)
+    return storedFits(parent, stored) && stored.stringOrNull() != ""
+}
+
+/** An optional choice field whose empty value means "the runtime's default" and whose default follows a parent. */
+private fun keepsRuntimeDefault(field: RuntimeFormV2Field): Boolean =
+    (field.kind == RuntimeFormV2FieldKind.DependentSelect || field.kind == RuntimeFormV2FieldKind.DerivedSelect) &&
+        !field.required && field.requiredWhen.isEmpty()
 
 private fun storedFits(field: RuntimeFormV2Field, stored: JsonElement?): Boolean {
     if (stored == null) return false

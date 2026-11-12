@@ -325,6 +325,41 @@ class RuntimeFormV2Test {
     }
 
     @Test
+    fun editAStoredNullOrAbsentDerivedEffortStaysDefaultTheModelsDefaultAppliesOnCreateAndAfterAModelChange() {
+        // slock #14569 (c4172b9f): editing an agent on Default reasoning must not start at, or save, the model's default.
+        fun efforts(vararg values: String) = buildJsonArray { values.forEach { add(JsonPrimitive(it)) } }
+        val effortSources: RuntimeFormV2Sources = mapOf(
+            "model" to RuntimeFormV2Source(
+                sourceId = "model",
+                kind = RuntimeFormV2SourceKind.Select,
+                pointer = "/model",
+                options = listOf(
+                    choice("k2", "K2", "supportedReasoningEfforts" to efforts("low", "medium", "high"), "defaultReasoningEffort" to JsonPrimitive("medium")),
+                    choice("k3", "K3", "supportedReasoningEfforts" to efforts("low", "high"), "defaultReasoningEffort" to JsonPrimitive("high"))
+                ),
+                defaultValue = "k2"
+            )
+        )
+        assertEquals("medium", initialRuntimeFormV2Values(kimi, effortSources).text("reasoningEffort"), "create starts at the model's default")
+        for (stored in listOf<Map<String, JsonElement>>(mapOf("reasoningEffort" to JsonNull), emptyMap())) {
+            val edit = kimi.copy(values = JsonObject(mapOf("model" to JsonPrimitive("k2"), "envVars" to JsonObject(emptyMap())) + stored))
+            val values = initialRuntimeFormV2Values(edit, effortSources)
+            assertEquals(JsonPrimitive(""), values["reasoningEffort"], "$stored: Default (the runtime's), not the model's default")
+            assertEquals(emptyMap(), validateRuntimeFormV2(edit, effortSources, values, editing = true), "$stored")
+            assertEquals(JsonNull, runtimeFormV2Submission(edit, values, effortSources)["reasoningEffort"], "$stored: saved untouched, still Default")
+            assertEquals(
+                "high",
+                applyRuntimeFormV2Change(edit, effortSources, values, "model", JsonPrimitive("k3")).text("reasoningEffort"),
+                "$stored: a model change takes the new model's default"
+            )
+        }
+        val explicit = kimi.copy(
+            values = JsonObject(mapOf("model" to JsonPrimitive("k2"), "reasoningEffort" to JsonPrimitive("low"), "envVars" to JsonObject(emptyMap())))
+        )
+        assertEquals("low", initialRuntimeFormV2Values(explicit, effortSources).text("reasoningEffort"), "a stored effort is kept")
+    }
+
+    @Test
     fun onEditABlankSecretIsValidOnCreateItIsRequired() {
         val values = initialRuntimeFormV2Values(pi, piSources)
         assertEquals(mapOf("apiKey" to RuntimeFormV2ErrorCode.Required), validateRuntimeFormV2(pi, piSources, values))
