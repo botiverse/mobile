@@ -69,4 +69,52 @@ class RuntimeFormV3ConditionsConformanceTest {
         assertTrue(evaluateRuntimeFormV3Schema(listed, JsonPrimitive(false)))
         assertFalse(evaluateRuntimeFormV3Schema(listed, null), "absent is \"\", not false")
     }
+
+    @Test
+    fun objectsCompareStructurallyWhateverTheKeyOrder() {
+        // #wg-runtime-form:#20 (Otter): structural, key order does not count; slock adds this case to the table.
+        val ab = Json.parseToJsonElement("""{"a":"1","b":[1,{"c":true}]}""")
+        val ba = Json.parseToJsonElement("""{"b":[1.0,{"c":true}],"a":"1"}""")
+        assertTrue(evaluateRuntimeFormV3Schema(JsonObject(mapOf("const" to ab)), ba), "same object, other key order")
+        assertTrue(evaluateRuntimeFormV3Schema(JsonObject(mapOf("enum" to JsonArray(listOf(ab)))), ba))
+        val reordered = Json.parseToJsonElement("""{"a":"1","b":[{"c":true},1]}""")
+        assertFalse(evaluateRuntimeFormV3Schema(JsonObject(mapOf("const" to ab)), reordered), "array order still counts")
+        val extra = Json.parseToJsonElement("""{"a":"1","b":[1,{"c":true}],"d":""}""")
+        assertFalse(evaluateRuntimeFormV3Schema(JsonObject(mapOf("const" to ab)), extra), "an extra key differs")
+    }
+
+    @Test
+    fun patternsInsideThePortableSubsetAreSupported() {
+        for (pattern in listOf(
+            "^connection:", "seek$", "^$", ".*", "^dee", "a|b", "^(openai|anthropic)-compatible$", "(?:ab)+",
+            "[a-z0-9_-]+", "[^/]+", "x{2}", "x{2,}", "x{1,3}", "^gpt-5\\.6$", "\\(\\)", "[\\]\\-]", "^模型$"
+        )) {
+            assertTrue(isSupportedRuntimeFormV3Schema(JsonObject(mapOf("pattern" to JsonPrimitive(pattern)))), pattern)
+        }
+    }
+
+    @Test
+    fun patternsOutsideThePortableSubsetMakeTheConditionUnsupported() {
+        for (pattern in listOf(
+            "(?<=a)b", "(?<!a)b", "a(?=b)", "a(?!b)", "(?<name>a)", "(?i)a", "(a)\\1", "\\d+", "\\w", "\\s", "\\bword",
+            "\\p{L}", "\\u0041", "a*?", "a++", "a{2}?", "*a", "^*", "a{", "a{x}", "}", "]", "[]", "[a[b]]", "[a&&b]",
+            "[\\d]", "(a", "a)", "\\"
+        )) {
+            assertFalse(isPortableRuntimeFormV3Pattern(pattern), pattern)
+            assertFalse(isSupportedRuntimeFormV3Schema(JsonObject(mapOf("pattern" to JsonPrimitive(pattern)))), pattern)
+        }
+        // Inside a form: one non-portable pattern makes the whole form unavailable.
+        val form = Json.parseToJsonElement(BUILTIN_V3_FORM_SAVED_CONNECTIONS_JSON).jsonObject
+        val ui = form.getValue("uiSchema").jsonObject
+        val rules = ui.getValue("rules").jsonArray.map { rule ->
+            val obj = rule.jsonObject
+            val condition = obj.getValue("condition").jsonObject
+            if (condition["schema"]?.jsonObject?.containsKey("pattern") == true) {
+                JsonObject(obj + ("condition" to JsonObject(condition + ("schema" to JsonObject(mapOf("pattern" to JsonPrimitive("(?<=x)connection:")))))))
+            } else {
+                obj
+            }
+        }
+        assertNull(parseRuntimeFormV2(JsonObject(form + ("uiSchema" to JsonObject(ui + ("rules" to JsonArray(rules)))))))
+    }
 }
