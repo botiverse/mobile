@@ -16,8 +16,8 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 
 /*
- * Host-drawn iPhone Duo side column (iOS 27.1: bar button items with `axisBehavior =
- * .verticalPreferred` on a hidden navigation bar, drawn by the system in the vertical strip).
+ * Host-drawn iPhone Duo side column (iOS 27.1: the page's bar button items with `axisBehavior =
+ * .verticalPreferred`, drawn by the system in the vertical strip; RaftIosSideActionHost.swift).
  *
  * The page's RaftSideActionColumn stays the single source of truth for what the column holds
  * (Back, the page actions, which of them overflow into the ⋯). When every button has an SF Symbol

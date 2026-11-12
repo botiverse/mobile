@@ -49,7 +49,19 @@ import shared
             hostPageData[RaftNativeNavBarHostIdPageDataKeyName] = hostId
             nativeNavBar = (hostId, bridge)
         }
+        // iPhone Duo: the side column's buttons are the page's bar buttons in the system's vertical
+        // bar (RaftIosSideActionHost). Every page gets a bridge; off Duo the page never presents.
+        hostPageData.removeValue(forKey: RaftSideActionHostBridgeKt.RaftSideActionHostIdPageDataKey)
+        var sideActions: (hostId: String, bridge: RaftSideActionHostBridge)?
+        if #available(iOS 27.1, *) {
+            sideActions = RaftIosSideActionHost.register(pageData: &hostPageData)
+        }
         let container = RaftPageViewController(pageName: pageName, pageData: hostPageData)
+        if #available(iOS 27.1, *), let sideActions {
+            container.raftSideActionHost = RaftIosSideActionHost(
+                controller: container, bridge: sideActions.bridge, hostId: sideActions.hostId
+            )
+        }
         if let nativeNavBar = nativeNavBar {
             container.raftUsesNativeNavBar = usesNativeNavBar
             let navHost = RaftNativeNavBarHost(
