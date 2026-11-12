@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -604,14 +605,16 @@ fun RaftPaneGrid(
                 .testTag(RAFT_PANE_GRID_MAIN_TEST_TAG)
                 // Beside the leading column the main pane's start is away from the screen edge.
                 .then(if (beside) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.Start) else Modifier)
-                // Rule 2: in the planned row the main pane's content keeps 360 and clips.
-                .then(if (plan != null) Modifier.clipToBounds() else Modifier)
         ) {
-            Column(Modifier.fillMaxSize().raftPaneGridContentMinWidth(if (plan != null) RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP else 0f)) {
+            Column(Modifier.fillMaxSize()) {
+                // The row tabs at the pane's own width, so every tab stays in reach while the content clips.
                 val mainTabs = tabsOf[RAFT_ROW_CONVERSATION]
                 if (mainTabs != null) RaftPaneGridTabStrip(mainTabs, RAFT_PANE_GRID_TABS_TEST_TAG + RAFT_ROW_CONVERSATION)
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    CompositionLocalProvider(LocalRaftPaneGridHost provides host, LocalRaftPaneGridDepth provides depth + 1) { main() }
+                // Rule 2: in the planned row the main pane's content keeps 360 and clips.
+                Box(Modifier.weight(1f).fillMaxWidth().then(if (plan != null) Modifier.clipToBounds() else Modifier)) {
+                    Box(Modifier.fillMaxSize().raftPaneGridContentMinWidth(if (plan != null) RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP else 0f)) {
+                        CompositionLocalProvider(LocalRaftPaneGridHost provides host, LocalRaftPaneGridDepth provides depth + 1) { main() }
+                    }
                 }
             }
         }
@@ -699,20 +702,27 @@ fun RowScope.RaftPaneGridSideColumn(
             // A tab not shown is out of reach (web `inert`).
             .then(if (tabHidden) Modifier.clearAndSetSemantics {} else Modifier)
     ) {
-        Box(Modifier.fillMaxSize().clipToBounds()) {
-            Row(Modifier.fillMaxSize().raftPaneGridContentMinWidth(if (fill) 0f else minWidth)) {
-                // The column's left seam (web `border-l border-line-seam`); in Focus mode the column is the row.
-                if (!fill) Box(Modifier.width(RaftStroke.Hairline).fillMaxHeight().background(RaftTheme.colors.lineSeam))
-                Column(Modifier.weight(1f).fillMaxHeight()) {
-                    if (topInset > 0.dp) Spacer(Modifier.fillMaxWidth().height(topInset))
-                    if (tabs != null) RaftPaneGridTabStrip(tabs, RAFT_PANE_GRID_TABS_TEST_TAG + column.bounds.id)
+        val seam = if (fill) 0.dp else RaftStroke.Hairline
+        Column(Modifier.fillMaxSize()) {
+            if (topInset > 0.dp) Spacer(Modifier.fillMaxWidth().height(topInset))
+            // The row tabs at the column's own width, so every tab stays in reach while the content clips.
+            if (tabs != null) {
+                Box(Modifier.fillMaxWidth().padding(start = seam)) {
+                    RaftPaneGridTabStrip(tabs, RAFT_PANE_GRID_TABS_TEST_TAG + column.bounds.id)
+                }
+            }
+            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+                Row(Modifier.fillMaxSize().raftPaneGridContentMinWidth(if (fill) 0f else minWidth)) {
+                    Spacer(Modifier.width(seam).fillMaxHeight())
                     // A page in a cell is not in the main pane: a grid it declares is its own.
                     CompositionLocalProvider(LocalRaftPaneGridHost provides null) {
-                        RaftPaneGridStackView(column, Modifier.weight(1f).fillMaxWidth())
+                        RaftPaneGridStackView(column, Modifier.weight(1f).fillMaxHeight())
                     }
                 }
             }
         }
+        // The column's left seam (web `border-l border-line-seam`), its full height; in Focus mode the column is the row.
+        if (!fill) Box(Modifier.width(RaftStroke.Hairline).fillMaxHeight().background(RaftTheme.colors.lineSeam))
         if (!fill && !gone) {
             var dragStart by remember { mutableStateOf(width) }
             val currentWidth by rememberUpdatedState(width)

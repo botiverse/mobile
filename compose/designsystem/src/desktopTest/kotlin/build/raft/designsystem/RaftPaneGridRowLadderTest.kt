@@ -8,16 +8,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftPaneGridSizes
@@ -55,7 +57,8 @@ class RaftPaneGridRowLadderTest {
     private fun ComposeUiTest.showRow() {
         setContent {
             RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
-                CompositionLocalProvider(LocalRaftPaneGridSizes provides RaftPaneGridMemorySizes()) {
+                val sizes = remember { RaftPaneGridMemorySizes() }
+                CompositionLocalProvider(LocalRaftPaneGridSizes provides sizes) {
                     // Wider than the test window: laid out from its start, unclipped by the window.
                     Box(Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(rowWidth.dp, 600.dp)) {
                         RaftPaneGrid(
@@ -138,13 +141,13 @@ class RaftPaneGridRowLadderTest {
             assertEquals(0, onAllTabs(profile).size, "the profile shows no strip of its own while it is the tab not shown")
             val group = widthDp(column(artifact))
             assertTrue(group >= 160f, "the group's column keeps 160: $group")
-            onNodeWithText("Profile · Details").performClick()
+            onNodeWithText("Profile · Details").performSemanticsAction(SemanticsActions.OnClick)
             waitForIdle()
             onNodeWithTag(RAFT_PANE_GRID_TABS_TEST_TAG + profile.id, useUnmergedTree = true).assertExists()
             assertEquals(0, onAllTabs(artifact).size)
             assertWidth(group, column(profile))
             // Back to the Artifact.
-            onNodeWithText("Artifact").performClick()
+            onNodeWithText("Artifact").performSemanticsAction(SemanticsActions.OnClick)
             waitForIdle()
             onNodeWithTag(RAFT_PANE_GRID_TABS_TEST_TAG + artifact.id, useUnmergedTree = true).assertExists()
         }
