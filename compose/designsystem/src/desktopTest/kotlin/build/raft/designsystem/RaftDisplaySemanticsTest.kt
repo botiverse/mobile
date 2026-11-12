@@ -59,6 +59,7 @@ import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftCardVariant
 import build.raft.designsystem.components.RaftDescriptionList
@@ -637,6 +638,38 @@ class RaftDisplaySemanticsTest {
             timeUp.complete(Unit)
             mainClock.advanceTimeBy(1_000)
             onNode(hasText("Add Reaction")).assertDoesNotExist()
+        }
+
+    /** [RaftTooltip] `openOnTap` (an info button): a tap opens the bubble for 1.5s and still clicks. */
+    @Test
+    fun aTapOpensAnOpenOnTapTooltipAndStillClicks() =
+        runComposeUiTest {
+            var clicks = 0
+            val timers = mutableListOf<Long>()
+            val timeUp = CompletableDeferred<Unit>()
+            setContent(
+                themed {
+                    CompositionLocalProvider(
+                        LocalRaftTooltipTouchTimer provides { millis -> timers += millis; timeUp.await() },
+                    ) {
+                        Box(Modifier.size(200.dp)) {
+                            RaftTooltip(text = "Up to 30 servers", openOnTap = true, modifier = Modifier.align(Alignment.Center)) {
+                                RaftIconButton(onClick = { clicks++ }, tooltip = null, contentDescription = "Up to 30 servers", variant = RaftButtonVariant.Ghost) {}
+                            }
+                        }
+                    }
+                },
+            )
+            mainClock.autoAdvance = false
+            onNode(hasText("Up to 30 servers")).assertDoesNotExist()
+            onNodeWithContentDescription("Up to 30 servers").performTouchInput { click() }
+            mainClock.advanceTimeBy(300)
+            onNode(hasText("Up to 30 servers")).assertExists()
+            assertEquals(1, clicks, "the tap still reaches the button")
+            assertEquals(listOf(1_500L), timers, "a tap's tooltip runs the touch timer")
+            timeUp.complete(Unit)
+            mainClock.advanceTimeBy(1_000)
+            onNode(hasText("Up to 30 servers")).assertDoesNotExist()
         }
 
     /** With its own long-press action, a long press runs it (not the click) and opens no tooltip. */

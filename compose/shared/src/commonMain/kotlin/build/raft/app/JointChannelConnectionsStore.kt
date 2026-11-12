@@ -172,13 +172,13 @@ internal data class JointChannelConnectionsState(
         get() = canFederate && connections?.isJoint == true && connections.archived.not() && !externalChannelsEnabled
 
     /**
-     * The rows as shown. External channels on: the host leads (web `jointServerRows`), the rest
-     * keep the server's order. Off: the server's order, as before.
+     * The rows as shown (web `jointServerRows`, slock c8849c8b3cfd EditChannelDialog.tsx:445): the
+     * host leads, the rest keep the server's order; a private channel offering Connect your
+     * servers lists this server alone, as its host.
      */
     val displayServers: List<JointChannelServer>
         get() {
             val servers = connections?.servers.orEmpty()
-            if (!externalChannelsEnabled) return servers
             privateHostRow?.let { return listOf(it) }
             val (host, rest) = servers.partition { it.role == JointChannelRole.Host }
             return host + rest
@@ -239,15 +239,14 @@ internal data class JointChannelConnectionsState(
         return !sheet.closed && row.server.id !in sheet.done && memberConnectRowState(row) == MemberConnectRowState.Eligible
     }
 
-    /** External channels on: the host row's Host badge. */
-    fun showsHostBadge(server: JointChannelServer): Boolean =
-        externalChannelsEnabled && server.role == JointChannelRole.Host
+    /** The host row's Host badge (web: `server.role === "host"`). */
+    fun showsHostBadge(server: JointChannelServer): Boolean = server.role == JointChannelRole.Host
 
     /** External channels on: no Free/Paid chip (web #wg-rbac:2ee0381d). */
     fun showsPlanBadge(server: JointChannelServer): Boolean = !externalChannelsEnabled && server.plan != null
 
-    /** Off: every row says active or pending. On: a connected server needs no badge, pending still says so. */
-    fun showsStatusBadge(server: JointChannelServer): Boolean = !externalChannelsEnabled || !server.active
+    /** A connected server needs no badge; a legacy pending row still says so (web Q2, #wg-rbac:2ee0381d). */
+    fun showsStatusBadge(server: JointChannelServer): Boolean = !server.active
 
     /**
      * Web `canDisconnectJointServers` and its row check: this server hosts the joint, external

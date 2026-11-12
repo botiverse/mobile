@@ -376,7 +376,6 @@ class RaftAndroidNav3StackTest {
         listOf(
             "compose_thread_members" to scope,
             "compose_channel_settings" to scope,
-            "compose_joint_channel_connections" to scope,
             "compose_thread_forward_bundle_page" to scope,
             FILE_PREVIEW to file,
             "compose_artifact_viewer" to scope,

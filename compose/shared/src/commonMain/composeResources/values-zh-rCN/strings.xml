@@ -3698,7 +3698,6 @@
     <string name="joint_connections_this_server">此服务器</string>
     <string name="joint_connections_plan_free">免费版</string>
     <string name="joint_connections_plan_paid">付费版</string>
-    <string name="joint_connections_status_active">已连接</string>
     <string name="joint_connections_status_pending">待接受</string>
     <string name="joint_connections_meta_unavailable">服务器详情暂不可用，请稍后再试。</string>
     <string name="joint_connections_load_failed">无法加载已连接的服务器。</string>
@@ -3740,6 +3739,7 @@
     <string name="joint_disconnected_toast">%1$s 已断开与 #%2$s 的连接</string>
     <string name="joint_server_disconnect_title">断开 %1$s？</string>
     <string name="joint_server_disconnect_confirm">%1$s 的成员和 Agent 将离开 #%2$s，这个频道也会从该服务器移除；其他服务器会保留这个频道及其历史记录。</string>
+    <string name="joint_server_disconnect_tooltip">断开服务器</string>
     <string name="joint_server_disconnect_action">断开 %1$s</string>
     <string name="joint_server_disconnect_failed">没能断开 %1$s，请重试。</string>
     <string name="joint_server_disconnected_toast">已断开 %1$s 与 #%2$s 的连接</string>
