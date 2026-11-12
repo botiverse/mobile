@@ -5773,7 +5773,7 @@ internal fun List<RaftHomeNotificationItem>.nonAppUpdateHomeNotifications(): Lis
     visibleHomeNotifications().filterNot { it.id == APP_UPDATE_HOME_NOTIFICATION_ID }
 
 @Composable
-private fun HomeAppUpdateBanner(
+internal fun HomeAppUpdateBanner(
     notification: RaftHomeNotificationItem,
     onClick: () -> Unit
 ) {

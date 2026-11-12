@@ -4824,7 +4824,8 @@ private fun RaftAppShellReadyContent(
                 message = gate.message,
                 onRetry = { authGateViewModel.dispatch(SharedAuthGateIntent.Retry) },
                 onSignIn = { authGateViewModel.dispatch(SharedAuthGateIntent.ShowSignIn) },
-                onOpenDiagnostics = { pager.openAppShellDeveloper() }
+                onOpenDiagnostics = { pager.openAppShellDeveloper() },
+                topBanner = { SignedOutAppUpdateBanner(pager, bridge) }
             )
             return
         }
@@ -10713,7 +10714,8 @@ internal fun AppShellAuthErrorContent(
     onRetry: () -> Unit,
     onSignIn: () -> Unit,
     onOpenDiagnostics: () -> Unit,
-    onBack: (() -> Unit)? = null
+    onBack: (() -> Unit)? = null,
+    topBanner: (@Composable () -> Unit)? = null
 ) {
     AuthScaffold(
         onDiagnosticsShortcut = onOpenDiagnostics,
@@ -10721,7 +10723,8 @@ internal fun AppShellAuthErrorContent(
             {
                 RaftBackButton(onClick = back, label = stringResource(Res.string.common_back))
             }
-        }
+        },
+        topBanner = topBanner
     ) {
         AuthLogoBadge("RAFT")
         Text(
@@ -12763,7 +12766,7 @@ internal fun SharedCreateChannelMemberPicker(
 }
 
 @Composable
-private fun SharedHomeNotification.toHomeNotificationItem(): RaftHomeNotificationItem =
+internal fun SharedHomeNotification.toHomeNotificationItem(): RaftHomeNotificationItem =
     RaftHomeNotificationItem(
         id = id,
         title = titleDesc?.localized() ?: title,

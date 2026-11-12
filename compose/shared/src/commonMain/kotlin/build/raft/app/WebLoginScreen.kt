@@ -138,6 +138,7 @@ internal fun WebLoginScreen(
             }
         },
         onOpenPrivateDeployment = onOpenPrivateDeployment,
+        topBanner = { SignedOutAppUpdateBanner(pager, bridge) },
     )
 }
 
@@ -157,10 +158,12 @@ internal fun WebLoginContent(
     onSignIn: () -> Unit,
     onOpenPrivateDeployment: () -> Unit,
     traceId: String? = null,
+    topBanner: (@Composable () -> Unit)? = null,
 ) {
     AuthScaffold(
         contentScrollable = true,
         scrollContentVerticalArrangement = Arrangement.Center,
+        topBanner = topBanner,
     ) {
         AuthCenterMark(size = 52.dp)
         AuthFormColumn {

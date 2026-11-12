@@ -143,6 +143,8 @@ internal fun AuthScaffold(
     topBarHorizontalPadding: Dp = 16.dp,
     topBarBrandImagePadding: Dp = 0.dp,
     topLeadingContent: (@Composable () -> Unit)? = null,
+    /** Full-width notice under the top bar, above the centered form (the app-update banner). */
+    topBanner: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val statusBarHeight = LocalActivity.current.pageData.statusBarHeight
@@ -228,6 +230,7 @@ internal fun AuthScaffold(
                     .background(RaftColor.Canvas)
             ) {
                 AuthTopBar(statusBarHeight, onBrandClick, topBarHorizontalPadding, topBarBrandImagePadding, topLeadingContent)
+                topBanner?.invoke()
                 Box(
                     modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 36.dp),
                     contentAlignment = Alignment.TopCenter
