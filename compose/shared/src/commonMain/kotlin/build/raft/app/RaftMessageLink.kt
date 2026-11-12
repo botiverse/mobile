@@ -87,9 +87,9 @@ internal fun parseRaftMessageLink(
 }
 
 /**
- * An Artifacts home address opened from outside the app (Android App Link, iOS Universal Link):
- * `/s/{slug}/artifacts?artifact={id}[&version={n}]`, the address the web keeps an open Artifact in
- * (slock v1.21.61 #13670). The origin is a message link's (the hosts [parseRaftMessageLink] takes);
+ * An Artifact link opened from outside the app (Android App Link, iOS Universal Link): the Artifacts
+ * home address `/s/{slug}/artifacts?artifact={id}[&version={n}]`, the address the web keeps an open
+ * Artifact in (slock v1.21.61 #13670), or the share address `/artifacts/{id}[/v/{n}]`. The origin is a message link's (the hosts [parseRaftMessageLink] takes);
  * the path and query are [parseArtifactOpenAddress]'s. Null when the app must not claim it.
  */
 internal fun parseRaftArtifactDeepLink(
@@ -99,7 +99,11 @@ internal fun parseRaftArtifactDeepLink(
 ): ArtifactLinkTarget? {
     val origin = url.toRaftLinkUrl() ?: return null
     if (!origin.isAllowedMessageLinkOrigin(configuredWebUrl?.toRaftLinkUrl(), appHosts)) return null
-    return parseArtifactOpenAddress(url, setOf(origin.host))
+    // The open address first; then the share address everyone sends (`/artifacts/<id>[/v/<n>]`, what
+    // `raft artifact push` prints and the web's Copy link gives; also `/s/<slug>/artifacts/<id>`),
+    // read by the same path parser the message cards use (#proj-mobile:#128).
+    val hosts = setOf(origin.host)
+    return parseArtifactOpenAddress(url, hosts) ?: parseArtifactLinkTarget(url, hosts)
 }
 
 /**
