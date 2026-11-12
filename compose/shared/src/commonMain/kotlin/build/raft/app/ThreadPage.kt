@@ -9673,6 +9673,17 @@ private fun SharedThreadRouteContentContent(
                     restoredAttachmentUploadFileIds = restoredAttachmentUploadFileIds + keyedFiles.keys
                 }
             }
+            // A row restored while its upload was in flight on a page that is gone has no attempt
+            // left to finish it: fail it (upload_interrupted) so the chip offers Retry with the
+            // file registered above, instead of blocking Send forever.
+            recoverOrphanedThreadComposerUploads(
+                draftKey = draftKey,
+                state = draftState,
+                acceptWithState = composerDraftViewModel::acceptWithState,
+                currentState = { composerDraftViewModel.state.value },
+                orchestrator = attachmentUploadOrchestrator,
+                log = { message -> bridge.logWarn(message) }
+            )
         }
     }
     fun routeAuthRequired(code: String? = null): Boolean {
@@ -11104,16 +11115,31 @@ private fun SharedThreadRouteContentContent(
                 )
                 return
             }
-            composerDraftViewModel.accept(
-                SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
-                    attachmentIds = terminalAttachmentIds,
-                    errorCode = errorCode,
-                    expectedDraftKey = draftKey,
-                    expectedAdmissions =
-                        terminalAttachmentIds.mapNotNull { id -> expectedAdmissions[id] }
-                            .associateBy { admission -> admission.localAttachmentId }
+            val failureReceipt =
+                composerDraftViewModel.acceptWithState(
+                    SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
+                        attachmentIds = terminalAttachmentIds,
+                        errorCode = errorCode,
+                        expectedDraftKey = draftKey,
+                        expectedAdmissions =
+                            terminalAttachmentIds.mapNotNull { id -> expectedAdmissions[id] }
+                                .associateBy { admission -> admission.localAttachmentId }
+                    )
                 )
-            )
+            val unmarkedIds =
+                terminalAttachmentIds.filterNot { id ->
+                    failureReceipt.state.uploadedAttachments.any { row ->
+                        row.id == id && row.status == "failed" && row.errorCode == errorCode
+                    }
+                }
+            if (unmarkedIds.isNotEmpty()) {
+                bridge.logWarn(
+                    "thread_composer_attachment_result_rejected result=failure errorCode=$errorCode " +
+                        "draftKey=${draftKey.orEmpty()} " +
+                        "stateDraftKey=${failureReceipt.state.draftKey.orEmpty()} " +
+                        "attachments=${failureReceipt.state.threadComposerAttachmentStatusSummary(unmarkedIds.toSet())}"
+                )
+            }
         }
         bridge.toast(
             localizedAttachmentUploadFailedDetail(
@@ -11926,6 +11952,12 @@ private fun SharedThreadRouteContentContent(
                                                     )
                                                 uploadSucceeded = true
                                             } else {
+                                                bridge.logWarn(
+                                                    "thread_composer_attachment_result_rejected result=success " +
+                                                        "draftKey=$draftKey " +
+                                                        "stateDraftKey=${projectionReceipt.state.draftKey.orEmpty()} " +
+                                                        "attachments=${projectionReceipt.state.threadComposerAttachmentStatusSummary(setOf(localAttachmentId))}"
+                                                )
                                                 publishTerminalFailure("attachment_upload_projection_rejected")
                                             }
                                         }
@@ -12080,7 +12112,8 @@ private fun SharedThreadRouteContentContent(
                     "surface=${payload.surfaceKind} status=${payload.status} canSend=${payload.canSend} " +
                     "sendChannelId=${threadId.orEmpty()} hasText=${draftText.isNotBlank()} " +
                     "attachments=${attachmentIds.size} blockingAttachments=$hasBlockingAttachmentUpload " +
-                    "failedAttachments=$hasFailedAttachmentUpload"
+                    "failedAttachments=$hasFailedAttachmentUpload " +
+                    "attachmentStates=${currentComposer.pendingAttachments.threadComposerSendGateAttachmentStates()}"
             )
             return false
         }

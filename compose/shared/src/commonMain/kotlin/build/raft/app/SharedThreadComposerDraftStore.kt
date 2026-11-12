@@ -1814,6 +1814,7 @@ internal class SharedThreadComposerDraftPersistSlice(
             is SharedThreadComposerDraftIntent.RestoreAfterFailure,
             is SharedThreadComposerDraftIntent.AddUploadedAttachments,
             is SharedThreadComposerDraftIntent.MarkAttachmentsFailed,
+            is SharedThreadComposerDraftIntent.MarkOrphanedAttachmentsInterrupted,
             is SharedThreadComposerDraftIntent.RemoveAttachment ->
                 next.draftKey?.let { key ->
                     cancelPendingWrite(key)
@@ -2375,6 +2376,26 @@ private fun SharedThreadComposerDraftState.isAdmissibleUploadedAttachmentProject
     return true
 }
 
+internal const val ThreadComposerUploadInterruptedErrorCode = "upload_interrupted"
+
+/**
+ * Local rows still shown as uploading that nothing can finish any more.  Every upload attempt
+ * publishes progress, success and failure against the admission minted by `AddLocalAttachments`
+ * in this store; a row without one (restored from the durable draft after the page was
+ * recreated, or kept across a remount with another composer instance) can never leave
+ * "uploading"/"queued", and it blocks sending.  A queued External Share row is excluded: it is
+ * uploaded on Send, by design.
+ */
+internal fun SharedThreadComposerDraftState.orphanedThreadComposerUploadIds(): Set<String> =
+    uploadedAttachments
+        .asSequence()
+        .filter { attachment -> attachment.id.isNotBlank() && attachment.id !in removedAttachmentIds }
+        .filter { attachment -> attachment.status == "uploading" || attachment.status == "queued" }
+        .filterNot { attachment -> attachment.source == "external_share" && attachment.status == "queued" }
+        .filter { attachment -> attachment.id !in attachmentAdmissionsByLocalId }
+        .map { attachment -> attachment.id }
+        .toSet()
+
 private fun SharedThreadComposerDraftState.isAdmissibleAttachmentFailure(
     intent: SharedThreadComposerDraftIntent.MarkAttachmentsFailed
 ): Boolean {
@@ -2429,6 +2450,7 @@ private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosti
         is SharedThreadComposerDraftIntent.AddUploadedAttachments -> "AddUploadedAttachments"
         is SharedThreadComposerDraftIntent.AddLocalAttachments -> "AddLocalAttachments"
         is SharedThreadComposerDraftIntent.MarkAttachmentsFailed -> "MarkAttachmentsFailed"
+        is SharedThreadComposerDraftIntent.MarkOrphanedAttachmentsInterrupted -> "MarkOrphanedAttachmentsInterrupted"
         is SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress -> "UpdateAttachmentUploadProgress"
         is SharedThreadComposerDraftIntent.RemoveAttachment -> "RemoveAttachment"
         is SharedThreadComposerDraftIntent.RetryAttachment -> "RetryAttachment"
@@ -2531,6 +2553,15 @@ internal sealed interface SharedThreadComposerDraftIntent {
         val expectedDraftKey: String? = null,
         /** Scope failure marking to the exact local-row generations that failed. */
         val expectedAdmissions: Map<String, SharedThreadComposerAttachmentAdmission> = emptyMap()
+    ) : SharedThreadComposerDraftIntent
+    /**
+     * Fail rows of [expectedDraftKey] that no upload attempt can ever finish (see
+     * [orphanedThreadComposerUploadIds]): the reducer re-checks each id, so a row admitted by a
+     * new attempt in the meantime is left alone.
+     */
+    data class MarkOrphanedAttachmentsInterrupted(
+        val attachmentIds: Set<String>,
+        val expectedDraftKey: String
     ) : SharedThreadComposerDraftIntent
     /** The upload attempt's meter state ([transfer]), published by the attempt that owns the meter. */
     data class UpdateAttachmentUploadProgress(
@@ -3080,6 +3111,35 @@ internal class SharedThreadComposerDraftStore(
                             current.uploadedAttachments.map { attachment ->
                                 if (attachment.id in intent.attachmentIds) {
                                     attachment.copy(status = "failed", errorCode = intent.errorCode)
+                                } else {
+                                    attachment
+                                }
+                            }
+                    )
+                }
+            }
+            is SharedThreadComposerDraftIntent.MarkOrphanedAttachmentsInterrupted -> {
+                val expectedKey = normalizeThreadAttachmentUploadDraftKey(intent.expectedDraftKey)
+                val orphanedIds =
+                    if (expectedKey == null || normalizeThreadAttachmentUploadDraftKey(current.draftKey) != expectedKey) {
+                        emptySet()
+                    } else {
+                        current.orphanedThreadComposerUploadIds().intersect(intent.attachmentIds)
+                    }
+                if (orphanedIds.isEmpty()) {
+                    current
+                } else {
+                    current.copy(
+                        syncNonce = current.syncNonce + 1,
+                        sending = false,
+                        uploadedAttachments =
+                            current.uploadedAttachments.map { attachment ->
+                                if (attachment.id in orphanedIds) {
+                                    attachment.copy(
+                                        status = "failed",
+                                        errorCode = ThreadComposerUploadInterruptedErrorCode,
+                                        uploadTransfer = null
+                                    )
                                 } else {
                                     attachment
                                 }

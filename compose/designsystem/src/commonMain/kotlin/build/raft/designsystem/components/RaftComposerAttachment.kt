@@ -1,12 +1,5 @@
 package build.raft.designsystem.components
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,11 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.sp
@@ -88,7 +77,7 @@ private val LabelBarGap = 2.dp
 /** How far the remove sticker reaches into a tile from its top edge. */
 private val RemoveClearance = RemoveSize - RaftComposerAttachmentRemoveOverhang
 private val FailedBottomInset = 2.dp
-private const val IndeterminateSegment = 0.4f
+private const val FinishingPercent = 99
 private const val MaxLabelLines = 2
 private val MinLabelFontSize = 9.sp
 
@@ -187,41 +176,6 @@ private fun BoxScope.RaftComposerAttachmentProgressBar(progress: Int) {
 }
 
 /**
- * The same 4dp bar while the upload finishes (the bytes are sent, the server is confirming):
- * no percent to show, so a [IndeterminateSegment] wide `info` segment sweeps across the track
- * every [RaftProgressBarIndeterminateMillis] (raft-ui Progress's indeterminate sweep). [still]
- * holds it centred (screenshots).
- */
-@Composable
-private fun BoxScope.RaftComposerAttachmentIndeterminateBar(still: Boolean) {
-    val track = RaftTheme.colors.layerCard
-    val sweep =
-        if (still) {
-            RaftProgressBarStillSweep
-        } else {
-            rememberInfiniteTransition(label = "composer-attachment-finishing").animateFloat(
-                initialValue = 0f,
-                targetValue = 1f,
-                animationSpec =
-                    infiniteRepeatable(
-                        animation = tween(RaftProgressBarIndeterminateMillis, easing = LinearEasing),
-                        repeatMode = RepeatMode.Restart,
-                    ),
-                label = "composer-attachment-finishing-sweep",
-            ).value
-        }
-    Box(Modifier.matchParentSize().padding(start = ProgressInset, end = ProgressInset, bottom = ProgressInset)) {
-        Canvas(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(ProgressHeight)) {
-            val radius = CornerRadius(ProgressRadius.toPx())
-            drawRoundRect(color = track, cornerRadius = radius)
-            val segment = size.width * IndeterminateSegment
-            val start = -segment + (size.width + segment) * sweep
-            clipRect { drawRoundRect(color = RaftUiPalette.info, topLeft = Offset(start, 0f), size = Size(segment, size.height), cornerRadius = radius) }
-        }
-    }
-}
-
-/**
  * raft-ui `ComposerAttachmentImage`: a 64dp `fill-muted` square with a hairline edge and
  * control radius, clipping its [content] (the thumbnail, cropped to fill; or a placeholder
  * glyph while there is none). [onClick] opens a preview.
@@ -261,9 +215,9 @@ fun RaftComposerAttachmentImage(
  *   [percent] (the bar's value; null for no bar) runs the 4dp bar inset 6dp from the sides
  *   and bottom (2dp radius, `layer-card` track, `info` fill, at least 4% so it is visible from
  *   the start), and the spinner and label centre above it.
- * - [Finishing][RaftComposerAttachmentPhase.Finishing]: the same, "Finishing upload…", and the
- *   bar sweeps (indeterminate) whatever [percent] says: the bytes are sent and the server has
- *   not confirmed yet. The web holds its bar at 99%.
+ * - [Finishing][RaftComposerAttachmentPhase.Finishing]: the same, "Finishing upload…", with the
+ *   bar filled to [percent] (99 when null): the bytes are sent and the server has not
+ *   confirmed yet. The web holds its bar at 99% too.
  * - [Failed][RaftComposerAttachmentPhase.Failed]: `layer-card` at 90% inside a 1dp
  *   `danger-strong` edge, [label] ("Upload failed") centred in caption 12/16 semibold
  *   `danger-strong`. Mobile adds the underlined [action] ("Retry") under it; tapping the tile
@@ -275,7 +229,7 @@ fun RaftComposerAttachmentImage(
  * than the tile ("Uploading", "Finishing" on an image tile) shrinks the label until it fits
  * (not below 9sp) instead of being broken or spilling past the tile's edges.
  *
- * [spinnerStillStep] freezes the spinner and the finishing sweep (screenshots); so does
+ * [spinnerStillStep] freezes the spinner (screenshots); so does
  * [LocalRaftSpinnerStillStep].
  */
 @Composable
@@ -347,7 +301,8 @@ fun BoxScope.RaftComposerAttachmentOverlay(
         )
     }
     when {
-        finishing -> RaftComposerAttachmentIndeterminateBar(still = stillStep != null)
+        // Finishing keeps the filled bar (#4596 swapped it for a sweep that read as empty).
+        finishing -> RaftComposerAttachmentProgressBar(percent ?: FinishingPercent)
         percent != null -> RaftComposerAttachmentProgressBar(percent)
     }
 }
