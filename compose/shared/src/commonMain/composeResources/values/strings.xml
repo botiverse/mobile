@@ -2147,6 +2147,8 @@
     <string name="list_toolbar_more">More</string>
     <string name="list_toolbar_group">Group</string>
     <string name="list_toolbar_clear_search">Clear search</string>
+    <string name="list_toolbar_sort">Sort</string>
+    <string name="list_toolbar_view">View as</string>
     <string name="members_no_matches">No members match “%1$s”.</string>
     <string name="member_hosted_runtime_location">Runs in the cloud</string>
     <string name="member_hosted_runtime_free">Free for a limited time</string>

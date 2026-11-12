@@ -3,11 +3,10 @@ package build.raft.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -27,18 +26,19 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.data.ComputersRackGroupBy
 import build.raft.app.data.ComputersRackSort
 import build.raft.app.data.ComputersRackSortKey
+import build.raft.app.data.ComputersRackView
 import build.raft.app.resources.*
-import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckboxIndicator
-import build.raft.designsystem.components.RaftDropdownMenu
-import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftFitToolbar
+import build.raft.designsystem.components.RaftFitToolbarAction
+import build.raft.designsystem.components.RaftFitToolbarChoice
+import build.raft.designsystem.components.RaftFitToolbarOption
+import build.raft.designsystem.components.RaftFitToolbarPrimary
+import build.raft.designsystem.components.RaftFitToolbarSearch
+import build.raft.designsystem.components.RaftFitToolbarView
+import build.raft.designsystem.components.RaftFitToolbarViewOption
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuSeparator
-import build.raft.designsystem.components.RaftPickerTriggerButton
-import build.raft.designsystem.components.RaftSeparator
-import build.raft.designsystem.components.RaftTextField
-import build.raft.designsystem.components.RaftTextFieldClearAction
-import build.raft.designsystem.components.RaftTextFieldSize
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -46,16 +46,21 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 
 /*
- * The Computers page's toolbar on a phone (task #proj-mobile:#60 step 2): web
- * features/computer/ComputersRackToolbar.tsx in its narrow, two-line form (slock staging 573130e3).
+ * The Computers page's toolbar, the toolbar over a list on [RaftFitToolbar] (web
+ * features/computer/ComputersRackToolbar.tsx, slock staging 80e1ce7049; raft-design
+ * computers.md › The toolbar), the same on a phone and a wide window:
  *
- * - Line 1: the search filling the line, then Group and Sort as their icons (FitToolbar's
- *   `displayLabels` step), each filled `info-soft` once it differs from its default.
- * - Line 2: Status and Runtime with their words, the applied first, scrolling sideways; Clear all
- *   as its × pinned at the end while the search, Status or Runtime is set.
+ *   [search] [Status] [Runtime] [Clear all] [Group] [Sort] [Cards | List] [⋯] [Add Computer]
  *
- * Cards / List stay in the page head (as Artifacts' view toggle does), Add Computer on the counts
- * line. The logic is [RaftComputersRackToolbarModel]'s; this only draws it and sends intents.
+ * The search fills the line; Status and Runtime are filled `info-soft` once applied and the
+ * applied come first; Clear all ends them while the search, Status or Runtime is set. Group and
+ * Sort (its key and, in their own group, its direction) are filled once off their defaults. As
+ * the toolbar narrows it gives way by itself: Group, Sort and the view switch show their icons,
+ * the filters theirs, the filters move to a scrolling second line with their words back (Clear
+ * all as ×), Add Computer becomes +, Group, Sort and the view fold into ⋯, and last an empty
+ * search becomes its button (system Back closes it, as Esc does: the text first).
+ *
+ * The logic is [RaftComputersRackToolbarModel]'s; this only draws it and sends intents.
  */
 
 /** Test tags (web `data-testid`s). */
@@ -67,6 +72,8 @@ internal object RaftComputersRackTags {
     const val Group = "computers-rack-group"
     const val Sort = "computers-rack-sort"
     const val Clear = "computers-rack-clear"
+    const val View = "computers-rack-view"
+    const val Add = "computers-rack-add"
     const val EmptyClear = "computers-rack-empty-clear"
     const val GroupTitle = "rack-group"
     const val OfflineTitle = "rack-group-offline"
@@ -81,112 +88,110 @@ internal object RaftComputersRackTags {
     const val LoadingSkeleton = "computers-loading-skeleton"
 }
 
+/**
+ * The toolbar under the Computers head. [view] is the list's Cards / List; [onAddComputer] is Add
+ * Computer at the end, given where the person may add computers (null hides it).
+ */
 @Composable
 internal fun RaftComputersRackToolbar(
     state: RaftComputersRackToolbarState,
     model: RaftComputersRackToolbarModel,
     onIntent: (RaftComputersRackToolbarIntent) -> Unit,
+    view: ComputersRackView,
+    onAddComputer: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxWidth().background(RaftTheme.colors.layerCanvas).testTag(RaftComputersRackTags.Toolbar)) {
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                val searchLabel = stringResource(Res.string.settings_computers_rack_search_label)
-                val query = state.filters.query
-                RaftTextField(
+    val query = state.filters.query
+    // A search given way to a button and opened: system Back closes it (AGENTS.md › Back Handling).
+    var searchOpen by remember { mutableStateOf(false) }
+    var searchShown by remember { mutableStateOf(false) }
+    // As Esc: the text first, then the search itself. Only while it is drawn over the line's start,
+    // so Back is never swallowed by an inline search (a wide toolbar).
+    RaftBackHandler(enabled = searchShown, label = "computers_toolbar_search") {
+        if (query.isNotEmpty()) onIntent(RaftComputersRackToolbarIntent.Search("")) else searchOpen = false
+    }
+    val statusApplied = model.filters.status != RaftComputersRackStatusFilter.All
+    val runtimeApplied = model.filters.runtimes.isNotEmpty()
+    val status = raftRackStatusChoice(model, onIntent)
+    val runtime = if (model.runtimeOptions.isNotEmpty()) raftRackRuntimeChoice(model, onIntent) else null
+    // Web: the applied filters first, so they are in view before any scrolling.
+    val filters =
+        listOfNotNull(status to statusApplied, runtime?.let { it to runtimeApplied })
+            .sortedByDescending { (_, applied) -> applied }
+            .map { it.first }
+    val clearAllLabel = stringResource(Res.string.settings_computers_rack_filter_clear_all)
+    val addLabel = stringResource(Res.string.settings_computers_add_computer)
+    Box(modifier.fillMaxWidth().background(RaftTheme.colors.layerCanvas).testTag(RaftComputersRackTags.Toolbar)) {
+        RaftFitToolbar(
+            search =
+                RaftFitToolbarSearch(
                     value = query,
                     onValueChange = { onIntent(RaftComputersRackToolbarIntent.Search(it)) },
-                    modifier = Modifier.weight(1f).testTag(RaftComputersRackTags.Search).semantics { contentDescription = searchLabel },
+                    label = stringResource(Res.string.settings_computers_rack_search_label),
                     placeholder = stringResource(Res.string.settings_computers_rack_search_placeholder),
-                    leading = { RaftComputersIcon(RaftLucideIconName.Search, size = 14.dp) },
-                    trailingAction =
-                        if (query.isNotEmpty()) {
-                            {
-                                RaftTextFieldClearAction(
-                                    onClear = { onIntent(RaftComputersRackToolbarIntent.Search("")) },
-                                    label = stringResource(Res.string.settings_computers_rack_search_clear),
-                                )
-                            }
-                        } else {
-                            null
-                        },
-                    size = RaftTextFieldSize.Md,
-                )
-                RaftRackGroupPicker(state.groupBy, onIntent)
-                RaftRackSortPicker(model, onIntent)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                val statusApplied = model.filters.status != RaftComputersRackStatusFilter.All
-                val runtimeApplied = model.filters.runtimes.isNotEmpty()
-                // Web: the applied filters first, so they are in view before any scrolling.
-                val filters =
-                    listOf(RaftRackFilterSlot.Status to statusApplied, RaftRackFilterSlot.Runtime to runtimeApplied)
-                        .filter { (slot, _) -> slot != RaftRackFilterSlot.Runtime || model.runtimeOptions.isNotEmpty() }
-                        .sortedByDescending { (_, applied) -> applied }
-                        .map { it.first }
-                LazyRow(
-                    Modifier.weight(1f, fill = false),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    filters.forEach { slot ->
-                        item(key = slot.name) {
-                            when (slot) {
-                                RaftRackFilterSlot.Status -> RaftRackStatusPicker(model, onIntent)
-                                RaftRackFilterSlot.Runtime -> RaftRackRuntimePicker(model, onIntent)
-                            }
-                        }
-                    }
-                }
+                    clearLabel = stringResource(Res.string.list_toolbar_clear_search),
+                    testTag = RaftComputersRackTags.Search,
+                    open = searchOpen,
+                    onOpenChange = { searchOpen = it },
+                    onShownOverScopeChange = { searchShown = it },
+                ),
+            filters = filters,
+            filtersEnd =
                 if (model.filtered) {
-                    // Web: on a phone Clear all is its × (a ghost icon button), named by its words.
-                    RaftIconButton(
+                    RaftFitToolbarAction(
+                        text = clearAllLabel,
+                        icon = { RaftRackToolbarIcon(RaftLucideIconName.X) },
                         onClick = { onIntent(RaftComputersRackToolbarIntent.ClearFilters) },
-                        tooltip = stringResource(Res.string.settings_computers_rack_filter_clear_all),
-                        modifier = Modifier.testTag(RaftComputersRackTags.Clear),
-                        variant = RaftButtonVariant.Ghost,
-                    ) { RaftComputersIcon(RaftLucideIconName.X) }
-                }
-            }
-        }
-        RaftSeparator()
+                        testTag = RaftComputersRackTags.Clear,
+                    )
+                } else {
+                    null
+                },
+            display = listOf(raftRackGroupChoice(state.groupBy, onIntent), raftRackSortChoice(model, onIntent)),
+            view = raftRackViewSwitch(view, onIntent),
+            primary =
+                onAddComputer?.let { add ->
+                    RaftFitToolbarPrimary(
+                        text = addLabel,
+                        onClick = add,
+                        icon = { RaftRackToolbarIcon(RaftLucideIconName.Plus) },
+                        testTag = RaftComputersRackTags.Add,
+                    )
+                },
+            moreLabel = stringResource(Res.string.list_toolbar_more),
+            wrap = true,
+        )
     }
 }
 
-private enum class RaftRackFilterSlot { Status, Runtime }
+/** A toolbar icon filling the box its control gives it, in the control's ink. */
+@Composable
+private fun RaftRackToolbarIcon(name: RaftLucideIconName) {
+    RaftLucideIcon(name, Modifier.fillMaxSize(), color = raftArgbHex(LocalRaftContentColor.current))
+}
 
 /** Web `RackStatusSelect`: one value, named "Status: All statuses"; filled once it is not All. */
 @Composable
-private fun RaftRackStatusPicker(model: RaftComputersRackToolbarModel, onIntent: (RaftComputersRackToolbarIntent) -> Unit) {
-    var open by remember { mutableStateOf(false) }
+private fun raftRackStatusChoice(
+    model: RaftComputersRackToolbarModel,
+    onIntent: (RaftComputersRackToolbarIntent) -> Unit,
+): RaftFitToolbarChoice {
     val status = model.filters.status
     val value = raftRackStatusLabel(status)
     val name = stringResource(Res.string.settings_computers_rack_filter_applied, stringResource(Res.string.settings_computers_rack_filter_status), value)
-    Box {
-        RaftPickerTriggerButton(
-            text = value,
-            onClick = { open = true },
-            modifier = Modifier.testTag(RaftComputersRackTags.Status).semantics { contentDescription = name },
-            hasValue = status != RaftComputersRackStatusFilter.All,
-            leadingIcon = { RaftComputersIcon(RaftLucideIconName.CircleDot, size = 14.dp) },
-        )
-        RaftDropdownMenu(expanded = open, onDismissRequest = { open = false }, minWidth = 200.dp) {
-            RaftComputersRackStatusFilter.entries.forEach { option ->
-                RaftMenuItem(
-                    text = raftRackStatusLabel(option),
-                    checked = option == status,
-                    modifier = Modifier.testTag("${RaftComputersRackTags.Status}-${option.name.lowercase()}"),
-                    onClick = {
-                        open = false
-                        onIntent(RaftComputersRackToolbarIntent.SetStatus(option))
-                    },
-                )
-            }
-        }
-    }
+    val options = RaftComputersRackStatusFilter.entries.map { RaftFitToolbarOption(key = it.name.lowercase(), label = raftRackStatusLabel(it)) }
+    return RaftFitToolbarChoice(
+        text = value,
+        icon = { RaftRackToolbarIcon(RaftLucideIconName.CircleDot) },
+        options = options,
+        selectedKey = status.name.lowercase(),
+        onSelect = { key ->
+            RaftComputersRackStatusFilter.entries.firstOrNull { it.name.lowercase() == key }?.let { onIntent(RaftComputersRackToolbarIntent.SetStatus(it)) }
+        },
+        contentDescription = name,
+        applied = status != RaftComputersRackStatusFilter.All,
+        testTag = RaftComputersRackTags.Status,
+    )
 }
 
 /**
@@ -194,9 +199,12 @@ private fun RaftRackStatusPicker(model: RaftComputersRackToolbarModel, onIntent:
  * picking. One chosen says its name; several, "Runtime" and how many.
  */
 @Composable
-private fun RaftRackRuntimePicker(model: RaftComputersRackToolbarModel, onIntent: (RaftComputersRackToolbarIntent) -> Unit) {
-    var open by remember { mutableStateOf(false) }
+private fun raftRackRuntimeChoice(
+    model: RaftComputersRackToolbarModel,
+    onIntent: (RaftComputersRackToolbarIntent) -> Unit,
+): RaftFitToolbarChoice {
     val chosen = model.filters.runtimes
+    val options = model.runtimeOptions
     val filterName = stringResource(Res.string.settings_computers_rack_filter_runtime)
     val names = chosen.map { raftRackRuntimeLabel(it) }
     val text =
@@ -211,105 +219,132 @@ private fun RaftRackRuntimePicker(model: RaftComputersRackToolbarModel, onIntent
         } else {
             stringResource(Res.string.settings_computers_rack_filter_applied, filterName, names.joinToString(", "))
         }
-    Box {
-        RaftPickerTriggerButton(
-            text = text,
-            onClick = { open = true },
-            modifier = Modifier.testTag(RaftComputersRackTags.Runtime).semantics { contentDescription = name },
-            hasValue = chosen.isNotEmpty(),
-            leadingIcon = { RaftComputersIcon(RaftLucideIconName.Cpu, size = 14.dp) },
-        )
-        RaftDropdownMenu(expanded = open, onDismissRequest = { open = false }, minWidth = 200.dp) {
-            model.runtimeOptions.forEach { option ->
+    return RaftFitToolbarChoice(
+        text = text,
+        icon = { RaftRackToolbarIcon(RaftLucideIconName.Cpu) },
+        options = emptyList(),
+        selectedKey = null,
+        onSelect = {},
+        contentDescription = name,
+        applied = chosen.isNotEmpty(),
+        testTag = RaftComputersRackTags.Runtime,
+        menu = { _ ->
+            options.forEach { option ->
                 RaftMenuItem(
                     text = raftRackRuntimeLabel(option),
                     modifier = Modifier.testTag("${RaftComputersRackTags.Runtime}-${option.name.lowercase()}"),
                     leadingIcon = { RaftCheckboxIndicator(checked = option in chosen) },
-                    onClick = { onIntent(RaftComputersRackToolbarIntent.ToggleRuntime(option, model.runtimeOptions)) },
+                    onClick = { onIntent(RaftComputersRackToolbarIntent.ToggleRuntime(option, options)) },
                 )
             }
-        }
-    }
+        },
+    )
 }
 
-/** Web `RackGroupSelect`, as its icon on a phone: named "Group" or "Group: Name prefix"; filled once grouped. */
+/** Web `RackGroupSelect`: "Group", or "Group: Name prefix" and filled once grouped. */
 @Composable
-private fun RaftRackGroupPicker(groupBy: ComputersRackGroupBy, onIntent: (RaftComputersRackToolbarIntent) -> Unit) {
-    var open by remember { mutableStateOf(false) }
+private fun raftRackGroupChoice(
+    groupBy: ComputersRackGroupBy,
+    onIntent: (RaftComputersRackToolbarIntent) -> Unit,
+): RaftFitToolbarChoice {
     val grouped = groupBy != ComputersRackGroupBy.None
-    val name =
+    val label =
         if (grouped) {
             stringResource(Res.string.settings_computers_rack_group_button, raftRackGroupByLabel(groupBy))
         } else {
             stringResource(Res.string.settings_computers_rack_group_label)
         }
-    Box {
-        RaftPickerTriggerButton(
-            text = "",
-            onClick = { open = true },
-            modifier = Modifier.testTag(RaftComputersRackTags.Group).semantics { contentDescription = name },
-            hasValue = grouped,
-            leadingIcon = { RaftComputersIcon(RaftLucideIconName.Rows3, size = 14.dp) },
-        )
-        RaftDropdownMenu(expanded = open, onDismissRequest = { open = false }, alignEnd = true, minWidth = 200.dp) {
-            ComputersRackGroupBy.entries.forEach { option ->
-                RaftMenuItem(
-                    text = raftRackGroupByLabel(option),
-                    checked = option == groupBy,
-                    modifier = Modifier.testTag("${RaftComputersRackTags.Group}-${option.storageKey}"),
-                    onClick = {
-                        open = false
-                        onIntent(RaftComputersRackToolbarIntent.SetGroupBy(option))
-                    },
-                )
-            }
-        }
-    }
+    val options = ComputersRackGroupBy.entries.map { RaftFitToolbarOption(key = it.storageKey, label = raftRackGroupByLabel(it)) }
+    return RaftFitToolbarChoice(
+        text = label,
+        icon = { RaftRackToolbarIcon(RaftLucideIconName.Rows3) },
+        options = options,
+        selectedKey = groupBy.storageKey,
+        onSelect = { key -> ComputersRackGroupBy.entries.firstOrNull { it.storageKey == key }?.let { onIntent(RaftComputersRackToolbarIntent.SetGroupBy(it)) } },
+        heading = stringResource(Res.string.list_toolbar_group),
+        contentDescription = label,
+        applied = grouped,
+        testTag = RaftComputersRackTags.Group,
+    )
 }
 
 /**
- * Web `RackSortSelect`, as its icon on a phone: the keys (Name; what each runtime has left; Disk,
- * Memory), then the direction in its own group, each checked. A new key starts at its own first
- * direction; the list stays open while choosing. Filled once it is not Name, A to Z.
+ * Web `RackSortSelect`: "Sort: Name", named with its direction too. Its list holds the keys (Name;
+ * what each runtime has left; Disk, Memory), then the direction in its own group, each checked.
+ * A new key starts at its own first direction; the list stays open while choosing. Filled once it
+ * is not Name, A to Z.
  */
 @Composable
-private fun RaftRackSortPicker(model: RaftComputersRackToolbarModel, onIntent: (RaftComputersRackToolbarIntent) -> Unit) {
-    var open by remember { mutableStateOf(false) }
+private fun raftRackSortChoice(
+    model: RaftComputersRackToolbarModel,
+    onIntent: (RaftComputersRackToolbarIntent) -> Unit,
+): RaftFitToolbarChoice {
     val sort = model.sort
-    val name =
-        stringResource(Res.string.settings_computers_rack_sort_label, raftRackSortKeyLabel(sort.key)) + ", " +
-            raftRackSortDirectionLabel(sort)
-    Box {
-        RaftPickerTriggerButton(
-            text = "",
-            onClick = { open = true },
-            modifier = Modifier.testTag(RaftComputersRackTags.Sort).semantics { contentDescription = name },
-            hasValue = model.sortApplied,
-            leadingIcon = { RaftComputersIcon(RaftLucideIconName.ArrowDownUp, size = 14.dp) },
-        )
-        RaftDropdownMenu(expanded = open, onDismissRequest = { open = false }, alignEnd = true, minWidth = 220.dp) {
-            model.sortMenuSections.forEachIndexed { index, keys ->
-                if (index > 0) RaftMenuSeparator()
-                keys.forEach { key ->
-                    RaftMenuItem(
-                        text = raftRackSortKeyLabel(key),
-                        checked = key == sort.key,
-                        modifier = Modifier.testTag("${RaftComputersRackTags.Sort}-${key.wire}"),
-                        onClick = { onIntent(RaftComputersRackToolbarIntent.ChooseSortKey(key, sort)) },
-                    )
-                }
-            }
-            RaftMenuSeparator()
-            raftRackSortDirections(sort.key).forEach { direction ->
-                RaftMenuItem(
-                    text = raftRackSortDirectionLabel(sort.copy(direction = direction)),
-                    checked = direction == sort.direction,
-                    modifier = Modifier.testTag("${RaftComputersRackTags.Sort}-direction-${direction.wire}"),
-                    onClick = { onIntent(RaftComputersRackToolbarIntent.ChooseSortDirection(direction, sort)) },
-                )
-            }
+    val label = stringResource(Res.string.settings_computers_rack_sort_label, raftRackSortKeyLabel(sort.key))
+    val name = label + ", " + raftRackSortDirectionLabel(sort)
+    return RaftFitToolbarChoice(
+        text = label,
+        icon = { RaftRackToolbarIcon(RaftLucideIconName.ArrowDownUp) },
+        options = emptyList(),
+        selectedKey = null,
+        onSelect = {},
+        heading = stringResource(Res.string.list_toolbar_sort),
+        contentDescription = name,
+        applied = model.sortApplied,
+        testTag = RaftComputersRackTags.Sort,
+        menu = { _ -> RaftRackSortMenuItems(model, onIntent) },
+    )
+}
+
+/** The Sort list: the key sections, then the directions the key has, each checked. */
+@Composable
+private fun RaftRackSortMenuItems(model: RaftComputersRackToolbarModel, onIntent: (RaftComputersRackToolbarIntent) -> Unit) {
+    val sort = model.sort
+    model.sortMenuSections.forEachIndexed { index, keys ->
+        if (index > 0) RaftMenuSeparator()
+        keys.forEach { key ->
+            RaftMenuItem(
+                text = raftRackSortKeyLabel(key),
+                checked = key == sort.key,
+                modifier = Modifier.testTag("${RaftComputersRackTags.Sort}-${key.wire}"),
+                onClick = { onIntent(RaftComputersRackToolbarIntent.ChooseSortKey(key, sort)) },
+            )
         }
     }
+    RaftMenuSeparator()
+    raftRackSortDirections(sort.key).forEach { direction ->
+        RaftMenuItem(
+            text = raftRackSortDirectionLabel(sort.copy(direction = direction)),
+            checked = direction == sort.direction,
+            modifier = Modifier.testTag("${RaftComputersRackTags.Sort}-direction-${direction.wire}"),
+            onClick = { onIntent(RaftComputersRackToolbarIntent.ChooseSortDirection(direction, sort)) },
+        )
+    }
+}
+
+/** Web `RackViewSwitch`: Cards / List (the default first, stdrc 11-05), kept on this device. */
+@Composable
+private fun raftRackViewSwitch(view: ComputersRackView, onIntent: (RaftComputersRackToolbarIntent) -> Unit): RaftFitToolbarView {
+    val views = listOf(ComputersRackView.Cards, ComputersRackView.List)
+    val cards = stringResource(Res.string.settings_computers_rack_view_cards)
+    val list = stringResource(Res.string.settings_computers_rack_view_list)
+    return RaftFitToolbarView(
+        options =
+            views.map { option ->
+                RaftFitToolbarViewOption(
+                    key = option.storageKey,
+                    label = if (option == ComputersRackView.Cards) cards else list,
+                    icon = {
+                        RaftRackToolbarIcon(if (option == ComputersRackView.Cards) RaftLucideIconName.LayoutGrid else RaftLucideIconName.LayoutList)
+                    },
+                )
+            },
+        selectedKey = view.storageKey,
+        onSelect = { key -> views.firstOrNull { it.storageKey == key }?.let { onIntent(RaftComputersRackToolbarIntent.SetView(it)) } },
+        label = stringResource(Res.string.settings_computers_rack_view_label),
+        heading = stringResource(Res.string.list_toolbar_view),
+        testTag = RaftComputersRackTags.View,
+    )
 }
 
 /**

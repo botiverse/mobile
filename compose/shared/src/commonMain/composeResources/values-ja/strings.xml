@@ -2149,6 +2149,8 @@
     <string name="list_toolbar_more">その他</string>
     <string name="list_toolbar_group">グループ</string>
     <string name="list_toolbar_clear_search">検索をクリア</string>
+    <string name="list_toolbar_sort">並べ替え</string>
+    <string name="list_toolbar_view">表示</string>
     <string name="members_no_matches">「%1$s」に一致するメンバーはいません。</string>
     <string name="member_hosted_runtime_location">クラウドで実行</string>
     <string name="member_hosted_runtime_free">期間限定で無料</string>
