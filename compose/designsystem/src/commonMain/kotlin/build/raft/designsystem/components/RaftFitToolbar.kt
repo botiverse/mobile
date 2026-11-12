@@ -307,7 +307,8 @@ fun RaftFitToolbar(
             }
         parts += RaftFitPart(null, 0, filler = true)
         if (filtersOnFirstLine && fillerKind != RaftFitFiller.Filters) {
-            parts += RaftFitPart(shown("filters") { RaftFitToolbarFilterRow(filters, forms.filterIcons, controlHeight) })
+            // A scrolling row needs a bounded width: at most the line (the step chosen leaves it room).
+            parts += RaftFitPart(shown("filters", Constraints(maxWidth = available)) { RaftFitToolbarFilterRow(filters, forms.filterIcons, controlHeight) })
         }
         val folded = display.isNotEmpty() || secondary.isNotEmpty()
         if (forms.inMore) {
