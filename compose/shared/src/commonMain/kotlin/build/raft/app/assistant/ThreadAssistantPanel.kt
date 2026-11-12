@@ -62,6 +62,13 @@ import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDrawer
+import build.raft.designsystem.components.RaftDrawerFill
+import build.raft.designsystem.components.RaftDrawerSnapPoint
+import build.raft.designsystem.components.raftDrawerDragArea
+import build.raft.designsystem.components.rememberRaftDrawerState
+import build.raft.app.RaftBackHandler
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftIconButton
@@ -157,6 +164,8 @@ internal fun ThreadAssistantPanel(
                     // The collapse button's 18dp chevron ends on the 16dp line: 3dp out for the 44dp
                     // button, 11dp for the 28dp bar button under a mouse or trackpad (sizing v12).
                     .padding(start = 16.dp, end = 16.dp - (RaftTheme.controls.barButtonSize - 18.dp) / 2)
+                    // In the phone's drawer the head drags the sheet, as its grab handle does.
+                    .raftDrawerDragArea()
                     .testTag(ThreadAssistantPanelHeaderTestTag),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -239,8 +248,12 @@ internal fun ColumnScope.ThreadAssistantPanelConversationMissing(name: String) {
  *
  * - A phone window (narrower than [ThreadAssistantPanelWideMinWidth], web `PHONE_MEDIA_QUERY`):
  *   the `Drawer`, `--drawer-content-height: 82vh`, a [RaftDrawer] holding [ThreadAssistantPanel]
- *   with [conversation] as its body. Back, a tap on the scrim and collapse close it; it slides up
- *   as it opens and back down as it closes (the drawer stays composed until that ends). The
+ *   with [conversation] as its body, on the canvas from its grab handle down (one opaque layer,
+ *   #proj-mobile:#134). It has snap points: it opens at 82% ([initialSnapPoint]), the grab handle
+ *   and the panel's head drag it, up to the whole window, back down to 82%, and further down
+ *   closes it. Back from the whole window goes back to 82%; Back there, a tap on the scrim and
+ *   collapse close it; it slides up as it opens and back down as it closes (the drawer stays
+ *   composed until that ends). The
  *   drawer is its own window, so the keyboard is that window's (no host IME report).
  *   [windowOverlay] is drawn over the whole drawer window: the page's notification banner while
  *   the panel is open (see [threadForegroundBannerOnPage]).
@@ -256,6 +269,7 @@ internal fun ThreadAssistantPanelSheet(
     otter: ThreadAssistantOtter,
     windowOverlay: @Composable BoxScope.() -> Unit = {},
     onCoversPageChange: (Boolean) -> Unit = {},
+    initialSnapPoint: RaftDrawerSnapPoint = RaftDrawerSnapPoint.Default,
     conversation: @Composable ColumnScope.() -> Unit,
 ) {
     val wide = threadAssistantPanelWide()
@@ -290,6 +304,9 @@ internal fun ThreadAssistantPanelSheet(
     if (wide) {
         ThreadAssistantPanelPopover(rest = otter.rest.bounds, onDismissRequest = { close() }) { panel() }
     } else {
+        // One per opening: the drawer leaves composition once it has slid down.
+        val drawerState = rememberRaftDrawerState(initialSnapPoint)
+        val scope = rememberCoroutineScope()
         RaftDrawer(
             onDismissRequest = { close() },
             modifier = Modifier.testTag(ThreadAssistantPanelSheetTestTag),
@@ -297,7 +314,17 @@ internal fun ThreadAssistantPanelSheet(
             visible = otter.panelOpen,
             onHidden = { drawerShown = false },
             overlay = windowOverlay,
+            state = drawerState,
+            fill = RaftDrawerFill.Canvas,
         ) {
+            // Composed in the drawer's window, after its own Back (which closes it): pulled up to
+            // the whole window, Back first brings it back down to 82%.
+            RaftBackHandler(
+                enabled = otter.panelOpen && drawerState.snapPoint == RaftDrawerSnapPoint.Full,
+                label = "assistant-panel-full",
+            ) {
+                scope.launch { drawerState.animateTo(RaftDrawerSnapPoint.Default) }
+            }
             panel()
         }
     }

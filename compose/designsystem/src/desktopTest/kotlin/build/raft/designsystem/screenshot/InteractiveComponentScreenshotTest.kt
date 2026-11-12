@@ -57,6 +57,7 @@ import build.raft.designsystem.components.RaftDialogSheetCenteredSurface
 import build.raft.designsystem.components.RaftDialogSheetSurface
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftDialogSurface
+import build.raft.designsystem.components.RaftDrawerFill
 import build.raft.designsystem.components.RaftDrawerSurface
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftField
@@ -1066,6 +1067,34 @@ class InteractiveComponentScreenshotTest {
                     }
                     Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(RaftTheme.colors.lineSeam))
                     Column(Modifier.weight(1f).fillMaxWidth().background(RaftTheme.colors.layerCanvas).padding(16.dp)) {
+                        RaftText("The body fills the rest of the drawer.", style = RaftTheme.typography.body)
+                    }
+                }
+            }
+        }
+
+    /**
+     * [RaftDrawerSurface] with [RaftDrawerFill.Canvas]: a panel on the canvas fills the whole
+     * sheet with it, the grab handle's strip included, so in dark mode the strip is not a lighter
+     * band over the head (the assistant's panel, #proj-mobile:#134).
+     */
+    @Test
+    fun drawerCanvas() =
+        capture("drawer_canvas") {
+            Column(Modifier.width(358.dp)) {
+                Caption("Drawer, canvas fill: one layer from the handle down", Modifier.padding(bottom = 12.dp))
+                RaftDrawerSurface(Modifier.height(320.dp), fill = RaftDrawerFill.Canvas) {
+                    Row(
+                        Modifier.fillMaxWidth().height(56.dp).padding(start = 16.dp, end = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RaftText("Otto", Modifier.weight(1f), style = RaftTheme.typography.headline)
+                        RaftIconButton(onClick = {}, tooltip = "Collapse", variant = RaftButtonVariant.Ghost) {
+                            RaftGlyphIcon(RaftGlyph.ChevronDown, size = 18.dp)
+                        }
+                    }
+                    Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(RaftTheme.colors.lineSeam))
+                    Column(Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
                         RaftText("The body fills the rest of the drawer.", style = RaftTheme.typography.body)
                     }
                 }

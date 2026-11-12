@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import build.raft.app.LocalThreadReactionAtlasImage
 import build.raft.app.resources.RaftBundledFiles
 import build.raft.app.resources.Res
+import build.raft.designsystem.components.RaftDrawerSnapPoint
 import kotlinx.coroutines.runBlocking
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE
@@ -119,7 +120,16 @@ class ThreadAssistantPanelScreenshotTest {
     @Test
     fun pausedLight() = capture("assistant.panel.paused", RaftAppAppearance.Light, paused = true)
 
-    private fun capture(name: String, appearance: RaftAppAppearance, paused: Boolean) =
+    /** Dragged up to its full snap point (#proj-mobile:#134): the whole window under the status bar, one opaque canvas. */
+    @Test
+    fun fullDark() = capture("assistant.panel.full.dark", RaftAppAppearance.Dark, paused = false, snapPoint = RaftDrawerSnapPoint.Full)
+
+    private fun capture(
+        name: String,
+        appearance: RaftAppAppearance,
+        paused: Boolean,
+        snapPoint: RaftDrawerSnapPoint = RaftDrawerSnapPoint.Default,
+    ) =
         RaftRobolectricScreenshot.capture(
             name,
             appearance,
@@ -171,7 +181,7 @@ class ThreadAssistantPanelScreenshotTest {
                 }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftHost provides host) {
                 RaftDesignSystemTheme {
-                    ThreadAssistantPanelSheet(otter) {
+                    ThreadAssistantPanelSheet(otter, initialSnapPoint = snapPoint) {
                         // As RaftChildPage mounts THREAD_PAGE in production: the page in its own pager.
                         Box(Modifier.weight(1f).fillMaxWidth()) {
                             // The reaction atlas decoded here, synchronously (as
