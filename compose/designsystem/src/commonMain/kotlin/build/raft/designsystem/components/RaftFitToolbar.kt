@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -117,6 +118,10 @@ class RaftFitToolbarSearch(
  * the menu staying open while picking) or of two values in one list (a sort's key and its
  * direction, each in its own group). It closes the menu with `close` when it means to; in More it
  * shows under [heading] the same way.
+ *
+ * [key] names the choice across recompositions (default: [testTag], else [heading], else [text];
+ * pass one when the text is the value and changes): its open
+ * menu stays with it when the page reorders its choices (applied filters first).
  */
 class RaftFitToolbarChoice(
     val text: String,
@@ -129,6 +134,7 @@ class RaftFitToolbarChoice(
     val applied: Boolean = false,
     val testTag: String? = null,
     val menu: (@Composable ColumnScope.(close: () -> Unit) -> Unit)? = null,
+    val key: String = testTag ?: heading ?: text,
 )
 
 /** One view of a [RaftFitToolbarView]: [icon] (in a 16dp box, filling it) and [label], its name. */
@@ -418,8 +424,8 @@ fun RaftFitToolbar(
                     )
             }
         } else {
-            display.forEachIndexed { i, choice ->
-                parts += RaftFitPart(shown("display-$i") { RaftFitToolbarPicker(choice, forms.displayIcons, controlHeight) })
+            display.forEach { choice ->
+                parts += RaftFitPart(shown("display-${choice.key}") { RaftFitToolbarPicker(choice, forms.displayIcons, controlHeight) })
             }
             if (view != null) {
                 parts += RaftFitPart(shown("view") { RaftFitToolbarViewSwitch(view, forms.displayIcons) })
@@ -718,7 +724,8 @@ private fun RaftFitToolbarFilterRow(
                 horizontalArrangement = Arrangement.spacedBy(RaftFitToolbarDefaults.Gap),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                filters.forEach { RaftFitToolbarPicker(it, iconsOnly, controlHeight) }
+                // Keyed, not placed: a reordered filter keeps its own open menu (review of #4627).
+                filters.forEach { choice -> key(choice.key) { RaftFitToolbarPicker(choice, iconsOnly, controlHeight) } }
             }
         }
         if (end != null) RaftFitToolbarFiltersEnd(end, endIconOnly)
