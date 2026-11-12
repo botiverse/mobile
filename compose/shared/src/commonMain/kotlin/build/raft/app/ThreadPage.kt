@@ -39,6 +39,7 @@ import build.raft.designsystem.components.RaftMessageListJumpSide
 import build.raft.designsystem.components.RaftLocatedMillis
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftMenuSurface
+import build.raft.designsystem.components.RaftMenuSeparator
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.raftLocatedStrength
 import build.raft.designsystem.components.raftCopyable
@@ -332,6 +333,7 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
+import build.raft.app.markdown.LocalRaftMarkdownLinkLongPress
 import build.raft.app.markdown.LocalRaftMarkdownTaskRefStatuses
 import build.raft.app.markdown.parseRaftMarkdownTaskRefLabel
 import build.raft.app.markdown.parseRaftMarkdownMessageRefLabel
@@ -26612,7 +26614,22 @@ private fun ThreadMessagesListContent(
                     actionMessageId = null
                     classicMenuOverrideMessageId = null
                     inPlaceSelectionMenuHost?.contextMenuSelectionCopy = null
+                    inPlaceSelectionMenuHost?.contextMenuLink = null
                 }
+                // A long press on a link in this message (artin, 1.24): the link's section leads the
+                // menu, whichever menu shows (ThreadMessageLinkMenu.kt). Open is the link's own tap.
+                val linkSection =
+                    inPlaceSelectionMenuHost?.contextMenuLinkFor(message.id, resolvedActionAnchor)?.let { url ->
+                        rememberThreadMessageLinkMenuSection(
+                            url = url,
+                            webUrl = adaptiveSharedStores.apiEnvironmentStore.current().webUrl,
+                            close = closeActionMenu,
+                            openLink = { linkUrl -> onThreadEvent("openMarkdownUrl", linkUrl, null, null) },
+                            // The list's scope: Share answers after the menu has closed.
+                            scope = coroutineScope,
+                            diagnosticsLogger = diagnosticsLogger
+                        )
+                    }
                 // A right-click over selected text in this message: "Copy" copies that text, first
                 // in the menu's tools (the selection itself is kept). Not tracked: only the long-press
                 // menu has a `message_action_selected` surface.
@@ -26699,7 +26716,8 @@ private fun ThreadMessagesListContent(
                         onSelectText = actions.tools.onSelectText,
                         onMarkThreadUnread = actions.tools.onMarkThreadUnread,
                         onCopySelection = onCopySelection ?: {},
-                        onMarkConversationUnread = actions.tools.onMarkConversationUnread
+                        onMarkConversationUnread = actions.tools.onMarkConversationUnread,
+                        link = linkSection
                     )
                 } else {
                     ThreadMessageActionMenu(
@@ -26799,6 +26817,7 @@ private fun ThreadMessagesListContent(
                                     onThreadEvent("downloadAttachment", null, attachmentId, null)
                                 }
                             },
+                        link = linkSection,
                         diagnosticsLogger = diagnosticsLogger
                     )
                 }
@@ -30252,6 +30271,16 @@ private fun ThreadMessageCardContent(
             }
         }
     val inPlaceSelectionHost = LocalThreadInPlaceTextSelectionHost.current
+    // artin, 1.24: a finger's long press on a link in the body opens this row's menu too, with the
+    // link on top (RaftMarkdownLinkLongPress.kt); none where the row has no long-press menu.
+    val linkLongPress =
+        if (!message.isRetracted && threadMessageUsesFullRowLongPressActions(shareSelectionActive)) {
+            remember(message.id, longPressGestureOwner, inPlaceSelectionHost, inPlaceSelection) {
+                threadMessageLinkLongPressHandler(message.id, longPressGestureOwner, inPlaceSelectionHost, inPlaceSelection)
+            }
+        } else {
+            null
+        }
     // raft-ui MessageItem `not-data-located:hover:[--mi-row-fill:var(--fill-subtle)]`: a mouse or
     // trackpad over the row lays the subtle tier; a finger never does. A row that already has a
     // fill (checked, its menu open, the current search match, located) keeps it.
@@ -30348,6 +30377,7 @@ private fun ThreadMessageCardContent(
                                 inPlaceSelection?.let { selection ->
                                     { offset, pointerType ->
                                         selection.lastPointerDownFromTouch = pointerType.raftIsTouchLike()
+                                        selection.linkLongPressOwnsGesture = false
                                         selection.dismissalGestureInFlight =
                                             inPlaceSelectionHost?.onRowPointerDown(
                                                 messageId = message.id,
@@ -30820,6 +30850,7 @@ private fun ThreadMessageCardContent(
                                                           // A tap on a code block is not the row's tap (web skips `pre, code`).
                                                           CompositionLocalProvider(
                                                             LocalRaftMarkdownCodeTapObserver provides codeBlockTapObserver,
+                                                            LocalRaftMarkdownLinkLongPress provides linkLongPress,
                                                             LocalRaftUnavailableQuotedPermalink provides
                                                                 quotedPermalinkTarget.takeIf {
                                                                     quotedPermalinkState.value == ThreadQuotedPermalinkUiState.Unavailable
@@ -31155,10 +31186,14 @@ internal fun ThreadNewMessageMenu(
     onSelectText: () -> Unit = {},
     onMarkThreadUnread: () -> Unit = {},
     onCopySelection: () -> Unit = {},
-    onMarkConversationUnread: () -> Unit = {}
+    onMarkConversationUnread: () -> Unit = {},
+    /** A long press on a link opened the menu: that link's section on top (ThreadMessageLinkMenu.kt). */
+    link: ThreadMessageLinkMenuSection? = null
 ) {
     val density = LocalDensity.current
     val secondaryRowCount = if (availability.secondaryTools().isEmpty()) 0 else 1
+    val linkSectionHeight =
+        if (link == null) 0.dp else ThreadMessageLinkMenuUrlRowHeight + ThreadNewMessageMenuToolRowHeight + RaftAppStroke.Thin
     val contentSize =
         with(density) {
             Size(
@@ -31169,7 +31204,8 @@ internal fun ThreadNewMessageMenu(
                             RaftAppStroke.Thin +
                             ThreadNewMessageMenuToolRowHeight * (1 + secondaryRowCount) +
                             ThreadNewMessageMenuMoreOverlayHeight +
-                            ThreadNewMessageMenuVerticalPadding * 2
+                            ThreadNewMessageMenuVerticalPadding * 2 +
+                            linkSectionHeight
                     ).toPx()
             )
         }
@@ -31204,7 +31240,8 @@ internal fun ThreadNewMessageMenu(
             onSelectText = onSelectText,
             onMarkThreadUnread = onMarkThreadUnread,
             onCopySelection = onCopySelection,
-            onMarkConversationUnread = onMarkConversationUnread
+            onMarkConversationUnread = onMarkConversationUnread,
+            link = link
         )
     }
 }
@@ -31230,7 +31267,9 @@ internal fun ThreadNewMessageMenuChrome(
     onSelectAll: () -> Unit = {},
     onMarkThreadUnread: () -> Unit = {},
     onCopySelection: () -> Unit = {},
-    onMarkConversationUnread: () -> Unit = {}
+    onMarkConversationUnread: () -> Unit = {},
+    /** A long press on a link opened the menu: that link's section on top (ThreadMessageLinkMenu.kt). */
+    link: ThreadMessageLinkMenuSection? = null
 ) {
     val callbacks =
         ThreadNewMessageMenuToolCallbacks(
@@ -31261,6 +31300,7 @@ internal fun ThreadNewMessageMenuChrome(
                     .raftLookOverlaySurface()
                     .padding(horizontal = 8.dp, vertical = ThreadNewMessageMenuVerticalPadding)
         ) {
+            if (link != null) ThreadNewMessageMenuLinkSection(link)
             if (availability.showsReactionRow()) {
                 ThreadMessageReactionRow(
                     reactionAtlasImage = LocalThreadReactionAtlasImage.current,
@@ -31420,6 +31460,39 @@ private fun ThreadNewMessageMenuToolRow(
             Spacer(Modifier.weight(1f))
         }
     }
+}
+
+/**
+ * The Compact menu's link section (a long press on a link): the address, its actions as tool
+ * buttons in the tool rows' columns, and a hairline under them.
+ */
+@Composable
+private fun ThreadNewMessageMenuLinkSection(section: ThreadMessageLinkMenuSection) {
+    ThreadMessageLinkMenuUrl(section.url)
+    Row(
+        modifier = Modifier.fillMaxWidth().height(ThreadNewMessageMenuToolRowHeight),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        section.items.forEach { item ->
+            ThreadNewMessageMenuToolButton(
+                label = stringResource(item.action.label()),
+                icon = item.action.icon(),
+                enabled = true,
+                onClick = item.onClick,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        repeat((ThreadNewMessageMenuToolOrder.size - section.items.size).coerceAtLeast(0)) {
+            Spacer(Modifier.weight(1f))
+        }
+    }
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(RaftAppStroke.Thin)
+                .background(RaftColor.BorderHairline)
+    )
 }
 
 @Composable
@@ -33322,6 +33395,32 @@ internal class ThreadMessageLongPressGestureOwner(
         if (isLeaseActive(lease)) pressed = false
     }
 
+    /**
+     * A finger's long press on a link in this row's text ([position] in [source]'s local px): the
+     * row's long-press menu at the press, as a long press anywhere else on the row opens it.
+     * [beforeShow] gets the menu's anchor first (the link section is keyed to it). False when the
+     * row cannot open its menu now (left composition, no anchor): the press is then left alone.
+     */
+    fun showActionsForLink(
+        source: LayoutCoordinates,
+        position: Offset,
+        beforeShow: (RaftPopoverAnchor) -> Unit
+    ): Boolean {
+        val lease = captureActiveLease() ?: return false
+        val current = callbacksSnapshot(lease) ?: return false
+        val anchor =
+            rootAnchor.resolveAt(source, position)
+                ?: run {
+                    current.diagnosticsLogger("thread_message_link_long_press_anchor_unavailable messageId=${key.messageId}")
+                    return false
+                }
+        current.diagnosticsLogger("thread_message_link_long_press_menu messageId=${key.messageId}")
+        hidePressFeedback(lease)
+        beforeShow(anchor)
+        current.onShowActions(anchor)
+        return true
+    }
+
     fun clearReleasedPressRipple(
         lease: ThreadMessageLongPressCompositionLease,
         expectedOrigin: Offset
@@ -34694,7 +34793,9 @@ internal fun threadMessageMenuWidthDp(showReactionActions: Boolean, showAddReact
 
 internal fun threadMessageMenuContentHeightDp(
     actionGroups: List<String>,
-    showReactionActions: Boolean
+    showReactionActions: Boolean,
+    /** A link section's actions ([ThreadMessageLinkMenuRows]); 0: no link section. */
+    linkActionCount: Int = 0
 ): Float {
     // The popover chooses above/below before drawing its content. Feeding it a
     // generic first-frame estimate and replacing that with onGloballyPositioned
@@ -34715,9 +34816,18 @@ internal fun threadMessageMenuContentHeightDp(
         } else {
             0f
         }
+    // A link section leads the header: its address line, a row per action, and the separator
+    // under it (before the reaction row, or the header's own when there is none).
+    val linkSectionHeight =
+        if (linkActionCount > 0) {
+            ThreadMessageLinkMenuUrlRowHeight.value + linkActionCount * ThreadMessageMenuRowHeight.value + separatorHeight
+        } else {
+            0f
+        }
     return effectiveRowCount * ThreadMessageMenuRowHeight.value +
         groupDividerCount * separatorHeight +
         reactionHeaderHeight +
+        linkSectionHeight +
         RaftMetrics.PopupPadding.value * 2
 }
 
@@ -35224,6 +35334,8 @@ private fun ThreadMessageActionMenu(
     onMarkConversationUnread: () -> Unit = {},
     onCopySelection: (() -> Unit)? = null,
     onDownloadVideo: (() -> Unit)? = null,
+    /** A long press on a link opened the menu: that link's section on top (ThreadMessageLinkMenu.kt). */
+    link: ThreadMessageLinkMenuSection? = null,
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     val reactionAtlasImage = LocalThreadReactionAtlasImage.current
@@ -35314,7 +35426,8 @@ private fun ThreadMessageActionMenu(
         with(density) {
             threadMessageMenuContentHeightDp(
                 actionGroups = actions.map { it.group },
-                showReactionActions = showReactionActions
+                showReactionActions = showReactionActions,
+                linkActionCount = link?.items?.size ?: 0
             ).dp.toPx()
         }
     val viewportGapPx = with(density) { ThreadMessageMenuViewportGap.toPx() }
@@ -35340,7 +35453,7 @@ private fun ThreadMessageActionMenu(
             "thread-message-${message.id}-${pageRootAnchor?.hashCode() ?: 0}-${actions.size}"
         },
         shellItems = shellItems,
-        shellContentKey = showReactionActions to showAddReaction,
+        shellContentKey = Triple(showReactionActions, showAddReaction, link?.url),
         keepsHostKeyboard = true,
         shellContent = { onSelected ->
             // The shell host composes this in its own page. Decode the reaction atlas
@@ -35361,7 +35474,9 @@ private fun ThreadMessageActionMenu(
                     modifier = Modifier,
                     // Like the emojis: called straight into this page, which closes the menu and
                     // opens the picker at the menu's anchor.
-                    onAddReaction = if (showAddReaction) onAddReaction else null
+                    onAddReaction = if (showAddReaction) onAddReaction else null,
+                    // Its actions too.
+                    link = link
                 )
             }
         },
@@ -35391,7 +35506,8 @@ private fun ThreadMessageActionMenu(
                 reactionAtlasImage = reactionAtlasImage,
                 onReact = onReact,
                 modifier = Modifier,
-                onAddReaction = if (showAddReaction) onAddReaction else null
+                onAddReaction = if (showAddReaction) onAddReaction else null,
+                link = link
             )
         }
     )
@@ -35874,7 +35990,9 @@ internal fun ThreadMessageMenuChrome(
     onReact: (String) -> Unit,
     modifier: Modifier = Modifier,
     /** Ends the reaction header with Add Reaction (web `reaction-add-any`); null: no such button. */
-    onAddReaction: (() -> Unit)? = null
+    onAddReaction: (() -> Unit)? = null,
+    /** A long press on a link opened the menu: that link's section leads the header (ThreadMessageLinkMenu.kt). */
+    link: ThreadMessageLinkMenuSection? = null
 ) {
     // task #11 (artin: 统一两套菜单): the action rows render through the shared
     // design-system menu surface ([RaftUiMenuSurface]) — press wash, row metrics and icon specs
@@ -35896,14 +36014,22 @@ internal fun ThreadMessageMenuChrome(
         modifier = modifier,
         width = threadMessageMenuWidthDp(showReactionActions, showAddReactionAction = onAddReaction != null).dp,
         header =
-            if (showReactionActions) {
+            if (showReactionActions || link != null) {
                 {
-                    ThreadMessageReactionRow(
-                        reactionAtlasImage = reactionAtlasImage,
-                        onReact = onReact,
-                        glyphSize = ThreadMessageMenuReactionGlyphSize,
-                        onAddReaction = onAddReaction
-                    )
+                    Column(Modifier.fillMaxWidth()) {
+                        if (link != null) {
+                            ThreadMessageLinkMenuRows(link)
+                            if (showReactionActions) RaftMenuSeparator()
+                        }
+                        if (showReactionActions) {
+                            ThreadMessageReactionRow(
+                                reactionAtlasImage = reactionAtlasImage,
+                                onReact = onReact,
+                                glyphSize = ThreadMessageMenuReactionGlyphSize,
+                                onAddReaction = onAddReaction
+                            )
+                        }
+                    }
                 }
             } else {
                 null

@@ -282,6 +282,8 @@ private fun AnnotatedString.Builder.appendRaftArtifactLinkChip(
         } ?: LinkAnnotation.Url(url = url, styles = raftAppLinkChipLinkStyles(), linkInteractionListener = LinkInteractionListener { openUri(url) })
     withRaftInlineChipGaps(box) {
         withRaftInlineBox(box) {
+            // The chip's words carry the link's address for a long press's link menu (RaftMarkdownLinkLongPress.kt).
+            pushStringAnnotation(RaftMarkdownLinkUrlTag, url)
             withLink(annotation) {
                 withStyle(SpanStyle(fontSize = RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM.em)) {
                     appendInlineContent(iconId, "\uFFFC")
@@ -293,6 +295,7 @@ private fun AnnotatedString.Builder.appendRaftArtifactLinkChip(
                     }
                 }
             }
+            pop()
         }
     }
     val anchor = host.artifactAnchor?.invoke(chip.target.key) ?: Modifier

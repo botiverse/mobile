@@ -443,6 +443,8 @@
     <string name="thread_action_quote">Цитировать</string>
     <string name="thread_action_translate">Перевести</string>
     <string name="thread_action_copy_link">Копировать ссылку</string>
+    <string name="thread_link_menu_copy_link">Копировать ссылку</string>
+    <string name="thread_link_menu_open_in_browser">Открыть в браузере</string>
     <string name="thread_action_copy_markdown">Копировать Markdown</string>
     <string name="thread_action_select_text">Выделить текст</string>
     <string name="thread_select_text_hint">Нажмите и удерживайте, чтобы выделить текст.</string>

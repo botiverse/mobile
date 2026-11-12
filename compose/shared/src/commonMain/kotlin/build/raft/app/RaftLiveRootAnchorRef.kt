@@ -233,6 +233,16 @@ internal class RaftPopoverAnchor private constructor(
         fun resolve(localPoint: RaftPopoverLocalPoint): RaftPopoverAnchor? =
             resolve(localPoint = localPoint, expectedCaptureLease = captureLease)
 
+        /**
+         * The anchor at [sourceOffset] (local px of [source], a node laid out inside the captured
+         * one, such as a message's text), in this ref's own space; null when either is detached.
+         */
+        fun resolveAt(source: LayoutCoordinates, sourceOffset: Offset): RaftPopoverAnchor? {
+            val current = coordinates?.takeIf { it.isAttached } ?: return null
+            if (!source.isAttached) return null
+            return resolve(RaftPopoverLocalPoint.Exact(current.localPositionOf(source, sourceOffset)))
+        }
+
         internal fun resolve(
             localPoint: RaftPopoverLocalPoint,
             expectedCaptureLease: Long,

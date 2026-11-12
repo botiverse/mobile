@@ -443,6 +443,8 @@
     <string name="thread_action_quote">인용</string>
     <string name="thread_action_translate">번역</string>
     <string name="thread_action_copy_link">링크 복사</string>
+    <string name="thread_link_menu_copy_link">링크 복사</string>
+    <string name="thread_link_menu_open_in_browser">브라우저에서 열기</string>
     <string name="thread_action_copy_markdown">Markdown 복사</string>
     <string name="thread_action_select_text">텍스트 선택</string>
     <string name="thread_select_text_hint">길게 눌러 텍스트를 선택하세요</string>
