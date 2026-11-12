@@ -9,6 +9,7 @@ import build.raft.designsystem.components.RaftPaneGridMemorySizes
 import build.raft.designsystem.components.RaftPaneGridRow
 import build.raft.designsystem.components.RaftPaneGridConversationBounds
 import build.raft.designsystem.components.raftPaneGridDragMaxDp
+import build.raft.designsystem.components.planColumn
 import build.raft.designsystem.components.raftPaneGridMoveSeam
 import build.raft.designsystem.components.raftPaneGridSharePerDp
 import build.raft.designsystem.components.raftPaneGridStack
@@ -117,7 +118,21 @@ class RaftPaneGridTest {
     }
 
     private fun row(roomDp: Float, own: List<RaftPaneGridColumn> = emptyList()) =
-        RaftPaneGridRow(roomDp = roomDp, ownColumns = own, ownWidthsDp = 0f, mainBounds = RaftPaneGridConversationBounds)
+        RaftPaneGridRow(
+            roomDp = roomDp,
+            ownColumns = own.map { it.planColumn(RaftPaneGridMemorySizes()) },
+            ownWidthsDp = 0f,
+            mainBounds = RaftPaneGridConversationBounds,
+        )
+
+    @Test
+    fun anEqualRowIsTheSameRowSoItsReadersAreNotInvalidated() {
+        // The grid makes a new row each time it recomposes (a nested grid handing its columns up again); pages read it
+        // through a composition local, which only invalidates them where the value differs.
+        val outer = RaftPaneGridColumnBounds(id = "outer", defaultWidthDp = 300f, minWidthDp = 300f)
+        assertEquals(row(1000f, listOf(column(outer))), row(1000f, listOf(column(outer))))
+        assertFalse(row(1000f) == row(999f))
+    }
 
     @Test
     fun theThreadFoldsWhereTheConversationAndItCantKeep360Each() {

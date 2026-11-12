@@ -17,6 +17,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.currentCompositionLocalContext
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -495,7 +496,8 @@ internal class RaftPaneGridHost internal constructor() {
         val others = { columns: List<RaftPaneGridColumn> -> columns.filter { it.bounds.id != bounds.id }.map { it.planColumn(sizes) } }
         val candidate = RaftRowPlanColumn(bounds.id, listOf(RAFT_ROW_THREAD), listOf(bounds.minWidthDp), sizes.widthDp(bounds))
         val columns =
-            others(row.ownColumns + ups.filter { it.depth < depth }.flatMap { it.columns }) +
+            row.ownColumns.filter { it.key != bounds.id } +
+                others(ups.filter { it.depth < depth }.flatMap { it.columns }) +
                 candidate +
                 others(ups.filter { it.depth >= depth }.flatMap { it.columns })
         val total = columns.sumOf { it.saved.toDouble() }.toFloat()
@@ -516,13 +518,17 @@ internal class RaftPaneGridHost internal constructor() {
 
 /**
  * The outermost grid's row as its main pane sees it, from the frame it is composed in (its constraints): [roomDp],
- * the row less the leading column; its [ownColumns] and their widths as planned ([ownWidthsDp]); and where the main
- * pane's width is kept ([mainBounds]).
+ * the row less the leading column; its [ownColumns] as the plan sees them and their widths as planned
+ * ([ownWidthsDp]); and where the main pane's width is kept ([mainBounds]).
+ *
+ * Values only, compared by value: the grid recomposes whenever a nested grid hands its columns up again (each time a
+ * page recomposes, with new column objects), and a new but equal row must not invalidate the pages that read it.
+ * Otherwise a page reading it recomposes, hands its columns up again, the grid recomposes, and so on without end.
  */
 @Immutable
-internal class RaftPaneGridRow(
+internal data class RaftPaneGridRow(
     val roomDp: Float,
-    val ownColumns: List<RaftPaneGridColumn>,
+    val ownColumns: List<RaftRowPlanColumn>,
     val ownWidthsDp: Float,
     val mainBounds: RaftPaneGridColumnBounds,
 )
@@ -561,12 +567,19 @@ fun raftPaneGridRoomDp(): Float? {
  * instead (with Back). It counts every column the row has or would have with it, each at its saved width in [sizes],
  * and the main pane's saved width (else the web's 400 default). Null outside any grid's main pane. The room is there
  * on the first frame; a column handed up by a grid inside the main pane joins a frame later.
+ *
+ * The answer depends only on the room and the columns the row would have with this one, never on whether it is shown
+ * now, so folding never changes it back. It is derived state: the caller recomposes only when the answer changes,
+ * not each time a grid hands its columns up again (a grid the caller declares does so whenever it recomposes, which
+ * would otherwise loop).
  */
 @Composable
 fun raftPaneGridFolds(bounds: RaftPaneGridColumnBounds, sizes: RaftPaneGridSizes = LocalRaftPaneGridSizes.current): Boolean? {
     val host = LocalRaftPaneGridHost.current ?: return null
     val row = LocalRaftPaneGridRow.current ?: return null
-    return host.folds(row, LocalRaftPaneGridDepth.current, bounds, sizes)
+    val depth = LocalRaftPaneGridDepth.current
+    val folds = remember(host, row, depth, bounds, sizes) { derivedStateOf { host.folds(row, depth, bounds, sizes) } }
+    return folds.value
 }
 
 // ---------------------------------------------------------------- the grid
@@ -688,7 +701,7 @@ fun RaftPaneGrid(
         val row =
             if (outer != null) LocalRaftPaneGridRow.current
             else if (availableDp <= 0f) null
-            else RaftPaneGridRow(roomDp, columns, fitted.take(columns.size).sum(), mainBounds)
+            else RaftPaneGridRow(roomDp, columns.map { it.planColumn(store) }, fitted.take(columns.size).sum(), mainBounds)
         Row(Modifier.fillMaxSize()) {
             if (leading != null) RaftPaneGridLeadingView(leading)
             // Collapsed by width, never weight(0f) (Compose rejects it): see raftParentPaneLayout.

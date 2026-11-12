@@ -36,6 +36,8 @@ import build.raft.designsystem.components.RaftPaneGridColumnBounds
 import build.raft.designsystem.components.RaftPaneGridConversationBounds
 import build.raft.designsystem.components.RaftPaneGridMemorySizes
 import build.raft.designsystem.components.raftPaneGridFolds
+import build.raft.designsystem.components.raftPaneGridInRow
+import build.raft.designsystem.components.raftPaneGridRoomDp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
@@ -179,21 +181,50 @@ class RaftPaneGridRowFoldTest {
     private var folds: Boolean? = null
     private var cardsOpen by mutableStateOf(false)
 
-    /** The workspace's shape: the split's grid, the detail's grid one level in (the thread), the conversation's two in. */
+    /** How often the workspace's pages composed; past [COMPOSITION_CAP] it is a loop, failed at once instead of hanging. */
+    private var detailCompositions = 0
+    private var conversationCompositions = 0
+
+    private fun counted(count: Int, page: String): Int {
+        check(count < COMPOSITION_CAP) { "the $page recomposes without end: a recomposition loop in the pane grid's row" }
+        return count + 1
+    }
+
+    /**
+     * The workspace's shape: the split's grid, the detail's grid one level in (the thread, declared only while the
+     * plan doesn't fold it, as SettingsHomePage does), the conversation's two in (Tasks / Files, new column objects
+     * every time it composes and reading the row, as ThreadPage does).
+     */
     private fun ComposeUiTest.showWorkspace() {
         val sizes = RaftPaneGridMemorySizes()
+        detailCompositions = 0
+        conversationCompositions = 0
         setContent {
             Frame(sizes) {
                 RaftPaneGrid(columns = emptyList()) {
+                    detailCompositions = counted(detailCompositions, "detail")
                     val threadFolds = raftPaneGridFolds(thread)
                     folds = threadFolds
                     RaftPaneGrid(columns = if (threadFolds == false) listOf(column(thread, "thread")) else emptyList()) {
-                        RaftPaneGrid(columns = if (cardsOpen) listOf(column(cards, "tasks", "files")) else emptyList()) { Cell("main") }
+                        conversationCompositions = counted(conversationCompositions, "conversation")
+                        val inRow = raftPaneGridInRow()
+                        raftPaneGridRoomDp()
+                        RaftPaneGrid(columns = if (cardsOpen && inRow) listOf(column(cards, "tasks", "files")) else emptyList()) { Cell("main") }
                     }
                 }
             }
         }
         waitForIdle()
+    }
+
+    /** The row settled: a few more frames compose none of the workspace's pages again. */
+    private fun ComposeUiTest.assertSettled() {
+        val detail = detailCompositions
+        val conversation = conversationCompositions
+        repeat(5) { mainClock.advanceTimeByFrame() }
+        waitForIdle()
+        assertEquals(detail, detailCompositions, "the detail recomposed with nothing changing")
+        assertEquals(conversation, conversationCompositions, "the conversation recomposed with nothing changing")
     }
 
     @Test
@@ -203,19 +234,23 @@ class RaftPaneGridRowFoldTest {
             rowWidth = 720f
             showWorkspace()
             assertEquals(false, folds, "at 720 the conversation and the thread keep 360 each")
+            assertSettled()
             rowWidth = 719f
             waitForIdle()
             assertEquals(true, folds, "under 720 the thread folds")
+            assertSettled()
             // Tasks / Files beside the conversation: the thread folds before anything would clip, under 360 + 360 + 280.
             cardsOpen = true
             rowWidth = 1000f
             waitForIdle()
             assertEquals(false, folds, "at 1000 all three stand side by side")
+            assertSettled()
             near(360f, widthDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + thread.id), "thread at 1000")
             near(280f, widthDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + cards.id), "cards at 1000")
             rowWidth = 999f
             waitForIdle()
             assertEquals(true, folds, "under 1000 the thread folds")
+            assertSettled()
             // Folded, the cards still stand beside the conversation, at their 360 (the conversation has what is left).
             near(360f, widthDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + cards.id), "cards beside the folded conversation")
             near(639f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "the conversation beside them")
@@ -223,5 +258,11 @@ class RaftPaneGridRowFoldTest {
             rowWidth = 1200f
             waitForIdle()
             assertEquals(false, folds)
+            assertSettled()
         }
+
+    private companion object {
+        /** Far more compositions than a settled row ever needs, far fewer than a loop makes before the 60s watchdog. */
+        const val COMPOSITION_CAP = 200
+    }
 }
