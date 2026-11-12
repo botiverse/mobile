@@ -283,7 +283,8 @@ internal enum class RaftArtifactViewerHostAction(val wireName: String) {
     OpenInBrowser("open-in-browser"),
 }
 
-internal val RAFT_ARTIFACT_VIEWER_HOST_MENU: String = RaftArtifactViewerHostAction.entries.joinToString(",") { it.wireName }
+/** Every [RaftArtifactViewerHostAction], comma-separated (a const: [RaftArtifactViewerEmbedQuery] is read before it). */
+internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU = "desktop-mode,open-in-browser"
 
 /** The App action [url]'s fragment asks for (`#host=desktop-mode`, `#host=open-in-browser`); null for any other. */
 internal fun raftArtifactViewerHostAction(url: String): RaftArtifactViewerHostAction? {

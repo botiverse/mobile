@@ -103,6 +103,11 @@ class RaftArtifactViewerEmbedTest {
     }
 
     @Test
+    fun theDeclaredMenuIsEveryAppAction() {
+        assertEquals(RaftArtifactViewerHostAction.entries.joinToString(",") { it.wireName }, RAFT_ARTIFACT_VIEWER_HOST_MENU)
+    }
+
+    @Test
     fun oneTapIsOneAction() {
         val tap = "$web/artifacts/$id?$embed#host=desktop-mode"
         assertTrue(raftArtifactViewerHostActionIsNew(tap, handledUrl = null, handledCleared = true, sinceHandledMs = 0))
