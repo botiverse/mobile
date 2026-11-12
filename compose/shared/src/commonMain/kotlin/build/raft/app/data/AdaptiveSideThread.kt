@@ -14,20 +14,18 @@ import build.raft.app.optString
 import build.raft.app.reduceRaftAdaptiveWorkspace
 import build.raft.app.toRaftAdaptiveDetailCloseRequestOrNull
 import build.raft.app.toRaftAdaptiveDetailIdentity
+import build.raft.app.RaftPaneGridColumns
 import build.raft.app.withEntry
+import build.raft.designsystem.components.RAFT_ROW_CONVERSATION_DEFAULT_WIDTH_DP
+import build.raft.designsystem.components.RAFT_ROW_THREAD
+import build.raft.designsystem.components.RaftRowPlanColumn
+import build.raft.designsystem.components.RaftRowPlanInput
+import build.raft.designsystem.components.RaftRowPlanSize
+import build.raft.designsystem.components.raftRowDecideFold
 import kotlinx.serialization.json.JsonObject
 
-/**
- * task #36: below this window width the reply thread keeps replacing the channel in the detail
- * pane (Back returns). It is only the first gate — the actual detail width is checked too.
- */
-internal const val RAFT_SIDE_THREAD_MIN_WINDOW_DP = 1200f
-
-/** Fixed width of the reply-thread column beside the channel. */
+/** The reply-thread column's default width beside the channel (web `COLUMN_BOUNDS.thread`); it is kept per device. */
 internal const val RAFT_SIDE_THREAD_COLUMN_DP = 400f
-
-/** Narrowest the channel body may get once the thread column takes its share. */
-internal const val RAFT_SIDE_THREAD_MAIN_MIN_DP = 440f
 
 /** Divider between the channel body and the thread column. */
 internal const val RAFT_SIDE_THREAD_DIVIDER_DP = 1f
@@ -47,23 +45,47 @@ internal data class AdaptiveSideThread(
 }
 
 /**
- * Whether the side column fits. [detailPaneWidthDp] is the measured width of the detail pane
- * itself — after the rail, the list, dividers and safe-area insets — so a window that only just
- * reaches the breakpoint cannot squeeze the channel body below its minimum. Unknown width (null or
- * not yet measured) means no column.
+ * #189 rule 3 (web rowPlan `decideFold`) where only the conversation and the thread share [roomDp], both at their
+ * defaults (the conversation what the thread leaves, at least 400; the thread 400): the thread folds where the two
+ * can't keep 360 each, under 720.
+ */
+internal fun raftSideThreadFoldsAlone(roomDp: Float): Boolean {
+    val thread = RaftPaneGridColumns.Thread
+    return raftRowDecideFold(
+        RaftRowPlanInput(
+            available = roomDp,
+            conversation =
+                RaftRowPlanSize(
+                    saved = maxOf(RAFT_ROW_CONVERSATION_DEFAULT_WIDTH_DP, roomDp - thread.defaultWidthDp),
+                    contentMin = RaftPaneGridColumns.Conversation.minWidthDp,
+                ),
+            thread = RaftRowPlanSize(thread.defaultWidthDp, thread.minWidthDp),
+            columns = listOf(RaftRowPlanColumn(thread.id, listOf(RAFT_ROW_THREAD), listOf(thread.minWidthDp), thread.defaultWidthDp)),
+        )
+    ).fold
+}
+
+/**
+ * Whether the side column stands beside the conversation (#189 rule 3, web rowPlan `decideFold`): in desktop mode
+ * and a dual pane, where the row plan does not fold the thread into the conversation. [threadFolds] is the plan's
+ * answer for the row the detail stands in ([build.raft.app.raftPaneGridFolds]: every column in it and the
+ * conversation at their kept widths); without one, [detailPaneWidthDp] (the room the detail and its columns have,
+ * after the rail, the list and insets) decides with the conversation and the thread alone at their defaults. Unknown
+ * width (not yet measured) means no column.
+ *
+ * (Before #189 the column needed a window of 1200 and a detail of 841: 440 + 1 + 400.)
  */
 internal fun raftSideThreadColumnAvailable(
     desktopModeOnLargeScreen: Boolean,
     pane: RaftAdaptivePaneState,
     detailPaneWidthDp: Float?,
+    threadFolds: Boolean? = null,
 ): Boolean =
     desktopModeOnLargeScreen &&
         pane.layout == RaftAdaptivePaneLayout.DualPane &&
         pane.density > 0f &&
-        pane.widthPx / pane.density >= RAFT_SIDE_THREAD_MIN_WINDOW_DP &&
         detailPaneWidthDp != null &&
-        detailPaneWidthDp >=
-        RAFT_SIDE_THREAD_MAIN_MIN_DP + RAFT_SIDE_THREAD_DIVIDER_DP + RAFT_SIDE_THREAD_COLUMN_DP
+        !(threadFolds ?: raftSideThreadFoldsAlone(detailPaneWidthDp))
 
 /** task #36: what the caller of [openSideThread] must do. */
 internal sealed interface AdaptiveSideThreadOpen {
@@ -128,7 +150,7 @@ internal fun SharedAdaptiveWorkspaceSession.openSideThread(
 /** Whether this session's current host can show the side column right now. */
 internal fun SharedAdaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen: Boolean): Boolean {
     val pane = workspace?.pane ?: return false
-    return raftSideThreadColumnAvailable(desktopModeOnLargeScreen, pane, detailPaneWidthDp)
+    return raftSideThreadColumnAvailable(desktopModeOnLargeScreen, pane, detailPaneWidthDp, sideThreadFolds)
 }
 
 /**
@@ -226,7 +248,7 @@ internal fun SharedAdaptiveWorkspaceSession.closeSideThread(
 }
 
 /**
- * When the window can no longer hold the column, the side thread becomes the main detail with the
+ * When the row can no longer hold the column (#189 rule 3), the side thread becomes the main detail with the
  * channel in its Back history — the same shape the in-pane replace produces — so nothing is lost
  * and Back still returns to the channel.
  */

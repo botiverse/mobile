@@ -66,12 +66,6 @@ internal const val RAFT_PANE_GRID_MAX_SAVED_WIDTH_DP = build.raft.designsystem.c
 internal const val RAFT_PANE_GRID_KEYBOARD_STEP_DP = build.raft.designsystem.components.RAFT_PANE_GRID_KEYBOARD_STEP_DP
 internal const val RAFT_PANE_GRID_KEYBOARD_STEP_LARGE_DP = build.raft.designsystem.components.RAFT_PANE_GRID_KEYBOARD_STEP_LARGE_DP
 
-internal fun raftPaneGridFitWidths(
-    availableDp: Float,
-    columns: List<Pair<Float, Float>>,
-    mainMinDp: Float = RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP,
-): List<Float> = build.raft.designsystem.components.raftPaneGridFitWidths(availableDp, columns, mainMinDp)
-
 internal fun raftPaneGridDragMaxDp(
     minWidthDp: Float,
     renderedWidthDp: Float,
@@ -95,9 +89,17 @@ internal fun raftPaneGridMoveSeam(
     collapsed: List<Boolean>,
 ): List<Float> = build.raft.designsystem.components.raftPaneGridMoveSeam(shares, seam, top, heightDp, collapsed)
 
-/** See the design system's `raftPaneGridSpareDp`: the room a grid declared here could give its columns. */
+/** See the design system's `raftPaneGridInRow`: a grid declared here hands its columns to the outermost grid's planned row. */
 @Composable
-internal fun raftPaneGridSpareDp(): Float? = build.raft.designsystem.components.raftPaneGridSpareDp()
+internal fun raftPaneGridInRow(): Boolean = build.raft.designsystem.components.raftPaneGridInRow()
+
+/**
+ * See the design system's `raftPaneGridFolds` (#189 rule 3): whether a column of [bounds] declared here (the reply
+ * thread) folds into the main pane, by the app's kept widths. Null outside any grid's main pane.
+ */
+@Composable
+internal fun raftPaneGridFolds(bounds: RaftPaneGridColumnBounds): Boolean? =
+    build.raft.designsystem.components.raftPaneGridFolds(bounds, LocalRaftPaneGridStore.current)
 
 /** See the design system's `raftPaneGridRoomDp`: the outermost grid's room for its main pane and the columns handed up. */
 @Composable
@@ -115,6 +117,12 @@ internal object RaftPaneGridColumns {
      * its list (web TasksRoute); 400, at least 320 (web's content minimum).
      */
     val Detail = RaftPaneGridColumnBounds(id = "detail", defaultWidthDp = 400f, minWidthDp = 320f)
+
+    /**
+     * The main pane, the conversation (web rowLayout `slock:conversationWidth`, #189): none kept until a seam beside
+     * it is let go (then the plan gives it what the columns leave, at least 400), kept at least its content's 360.
+     */
+    val Conversation: RaftPaneGridColumnBounds = build.raft.designsystem.components.RaftPaneGridConversationBounds
 }
 
 
@@ -123,7 +131,9 @@ internal object RaftPaneGridColumns {
 /**
  * The grid's kept sizes and folds, per device as web keeps them in localStorage:
  * - `raftPaneGrid:width:<column>`: a column's width in dp (web `slock:threadPanelWidth`; the
- *   Tasks / Files column's `width` in `slock:channelSideLayout`), saved when a drag or key ends;
+ *   Tasks / Files column's `width` in `slock:channelSideLayout`), and the main pane's under
+ *   `raftPaneGrid:width:conversation` (web `slock:conversationWidth`), every shown one saved as it
+ *   shows when a seam's drag or key ends (#189 rule 1);
  * - `raftPaneGrid:splits`: web's `slock:channelSideSplits` shape, `{"tasks+files":[0.6,0.4]}`;
  * - `raftPaneGrid:collapsed`: folded cells by id, web's `slock:channelSideCardsCollapsed` shape.
  */
@@ -131,7 +141,8 @@ internal object RaftPaneGridColumns {
 internal class RaftPaneGridStore(private val preferences: () -> SharedPreferenceStore? = { null }) : RaftPaneGridSizes {
     private val store: SharedPreferenceStore? by lazy { runCatching(preferences).getOrNull() }
     private var version by mutableIntStateOf(0)
-    private val widths = mutableMapOf<String, Float>()
+    /** Each column's kept width as read or last saved; null where none is kept. */
+    private val widths = mutableMapOf<String, Float?>()
     private var splits: MutableMap<String, List<Float>>? = null
     private var folded: MutableMap<String, Boolean>? = null
 
@@ -142,19 +153,21 @@ internal class RaftPaneGridStore(private val preferences: () -> SharedPreference
         version++
     }
 
-    /** The kept width, within the saved range (280 to 4000, web `parseChannelSideLayout`); else the column's default. */
-    override fun widthDp(bounds: RaftPaneGridColumnBounds): Float {
+    /** The kept width, within the saved range (the column's minimum to 4000, web `parseChannelSideLayout`); else null. */
+    override fun savedWidthDp(bounds: RaftPaneGridColumnBounds): Float? {
         version
-        return widths.getOrPut(bounds.id) {
-            read("$WIDTH_KEY_PREFIX${bounds.id}")?.trim()?.toFloatOrNull()
-                ?.takeIf { it in bounds.minWidthDp..RAFT_PANE_GRID_MAX_SAVED_WIDTH_DP }
-                ?: bounds.defaultWidthDp
-        }
+        if (bounds.id in widths) return widths[bounds.id]
+        return read("$WIDTH_KEY_PREFIX${bounds.id}")?.trim()?.toFloatOrNull()
+            ?.takeIf { it in bounds.minWidthDp..RAFT_PANE_GRID_MAX_SAVED_WIDTH_DP }
+            .also { widths[bounds.id] = it }
     }
+
+    /** The kept width; else the column's default. */
+    override fun widthDp(bounds: RaftPaneGridColumnBounds): Float = savedWidthDp(bounds) ?: bounds.defaultWidthDp
 
     override fun setWidth(bounds: RaftPaneGridColumnBounds, widthDp: Float) {
         val width = widthDp.roundToInt().toFloat().coerceIn(bounds.minWidthDp, RAFT_PANE_GRID_MAX_SAVED_WIDTH_DP)
-        if (widthDp(bounds) == width) return
+        if (savedWidthDp(bounds) == width) return
         widths[bounds.id] = width
         write("$WIDTH_KEY_PREFIX${bounds.id}", width.roundToInt().toString())
     }

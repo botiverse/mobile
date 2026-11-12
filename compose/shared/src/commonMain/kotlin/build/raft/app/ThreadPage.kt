@@ -17365,16 +17365,17 @@ private fun ThreadPageContentContent(
         if (sideCardsEnabled) sideCardsStoreState.availableIn(RaftThreadTab.Tasks in availableTabs) else ConversationSideCardsState()
     // Task v2 on a wide page: the cards stand in a column beside the conversation instead of
     // covering it ([conversationSideCardsBeside]). In the workspace the column joins the pane grid
-    // around the page, right of the reply thread: the room is that grid's ([raftPaneGridSpareDp]).
-    // A page on its own measures its root; until then the window's width stands in for it.
+    // around the page, right of the reply thread, and always stands beside: the grid's row plan
+    // makes room for it (#189: give way, clip, tabs; [conversationSideCardsBesideInGrid]). Known on
+    // the first frame. A page on its own measures its root; until then the window's width stands in.
     val sideCardsDensity = LocalDensity.current.density
     val sideCardsWindowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
     var sideCardsPageWidthDp by remember { mutableStateOf(sideCardsWindowWidthDp) }
-    val sideCardsGridSpareDp = raftPaneGridSpareDp()
+    val sideCardsInGridRow = raftPaneGridInRow()
     val sideCardsBeside =
         sideCardsEnabled &&
-            if (sideCardsGridSpareDp != null) {
-                conversationSideCardsBesideInGrid(sideCardsWindowWidthDp, sideCardsGridSpareDp)
+            if (sideCardsInGridRow) {
+                conversationSideCardsBesideInGrid(sideCardsWindowWidthDp)
             } else {
                 conversationSideCardsBeside(sideCardsWindowWidthDp, sideCardsPageWidthDp)
             }

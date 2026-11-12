@@ -42,6 +42,12 @@ internal data class SharedAdaptiveWorkspaceSession(
      * rail, list, dividers and insets. Null while unmeasured or on a host without a side column.
      */
     val detailPaneWidthDp: Float? = null,
+    /**
+     * #189 rule 3: whether the row plan folds the reply thread into the conversation (web rowPlan
+     * `decideFold`), from the row the detail stands in with every column and the conversation at
+     * their kept widths. Null where the host has no pane grid row; [detailPaneWidthDp] decides then.
+     */
+    val sideThreadFolds: Boolean? = null,
 )
 
 /** One adoption request the shell accepted and is waiting to confirm before acking. */

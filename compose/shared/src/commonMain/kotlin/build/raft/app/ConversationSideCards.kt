@@ -270,12 +270,13 @@ internal fun conversationSideCardsBeside(windowWidthDp: Float, pageWidthDp: Floa
         pageWidthDp >= RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP + RaftPaneGridColumns.SideCards.minWidthDp
 
 /**
- * The same in the workspace's pane grid (web `placeSections`): the Tasks / Files column stands
- * beside when its 280 fits in [spareDp], the room the grid leaves with the conversation at 360 and
- * the columns left of it (the reply thread) at their minimums ([raftPaneGridSpareDp]).
+ * The same in the workspace's pane grid (web `placeSections`, #189): on a wide window
+ * ([DualPaneMinimumWidthDp]; web: a desktop viewport, 768) the Tasks / Files column always stands
+ * beside the conversation, and the grid's row plan makes room for it: every column gives way in
+ * proportion, then clips down to 160, then the rightmost become tabs. Nothing covers the
+ * conversation there.
  */
-internal fun conversationSideCardsBesideInGrid(windowWidthDp: Float, spareDp: Float): Boolean =
-    windowWidthDp >= DualPaneMinimumWidthDp && spareDp >= RaftPaneGridColumns.SideCards.minWidthDp
+internal fun conversationSideCardsBesideInGrid(windowWidthDp: Float): Boolean = windowWidthDp >= DualPaneMinimumWidthDp
 
 /** On screen: beside the conversation every open card is; covering it, the one shown. */
 internal fun sideCardShowing(cards: ConversationSideCardsState, beside: Boolean, card: ConversationSideCard): Boolean =
