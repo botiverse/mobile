@@ -87,6 +87,23 @@ internal fun List<RaftThreadMessageItem>.withLocalFullMessages(
     return map { seed -> if (seed.activityPreviewTruncated) fullById[seed.id] ?: seed else seed }
 }
 
+/**
+ * artin 11-12: the full text of a cut seed message from a canonical answer the refresh fetches again
+ * because the conversation's freshness generation moved during the request (in a busy channel most
+ * opens), instead of a loading indicator under the tapped message until every round has finished. Only
+ * a cut seed takes the full copy of the same message from the same stream; nothing else on the frame
+ * changes, and the refetched result still replaces the whole timeline.
+ */
+internal fun RaftThreadScreenPayload.withActivitySeedBodiesFrom(
+    superseded: RaftThreadScreenPayload,
+): RaftThreadScreenPayload {
+    if (messages.none { it.activityPreviewTruncated }) return this
+    val stream = resolveThreadRouteIdentity().timelineChannelId ?: return this
+    if (superseded.resolveThreadRouteIdentity().timelineChannelId != stream) return this
+    val filled = messages.withLocalFullMessages(superseded.messages)
+    return if (filled == messages) this else copy(messages = filled)
+}
+
 /** The server's preview ellipsis (`truncatePreview`, `historyLimitedPreview`). */
 internal const val ActivityPreviewEllipsis = "…"
 
