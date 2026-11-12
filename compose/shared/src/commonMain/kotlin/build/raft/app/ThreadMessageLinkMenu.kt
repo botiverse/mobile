@@ -19,6 +19,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.parseArtifactOpenAddress
+import build.raft.app.links.toParsedRaftPermalink
 import build.raft.app.markdown.RaftMarkdownLinkLongPressHandler
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.text.RaftText
@@ -63,8 +64,12 @@ internal fun threadMessageLinkMenuActions(isRaftLink: Boolean): List<ThreadMessa
  * environment's web ([webUrl], [raftMarkdownUrlOpen]) or a Raft Desktop link to one, or an
  * Artifact's address on one of Raft's [appHosts].
  */
-internal fun threadMessageLinkIsRaft(url: String, webUrl: String?, appHosts: Collection<String>): Boolean =
-    raftMarkdownUrlOpen(url, webUrl).target != null || parseArtifactOpenAddress(url, appHosts) != null
+internal fun threadMessageLinkIsRaft(url: String, webUrl: String?, appHosts: Collection<String>): Boolean {
+    val open = raftMarkdownUrlOpen(url, webUrl)
+    return open.target != null ||
+        open.url.toParsedRaftPermalink(configuredWebUrl = webUrl, appHosts = appHosts) != null ||
+        parseArtifactOpenAddress(open.url, appHosts) != null
+}
 
 internal fun ThreadMessageLinkMenuAction.label(): StringResource =
     when (this) {
