@@ -14,6 +14,7 @@ import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.shared.AndroidRealtimeKeepAliveController
 import build.raft.app.shared.RaftAndroidHostHooks
+import build.raft.app.shared.RaftAndroidStoreReview
 import build.raft.app.shared.RaftAndroidNightMode
 import build.raft.app.shared.RaftBuildStamp
 import build.raft.app.shared.ProcessAndroidAttachmentMediaStoreCleanup
@@ -44,6 +45,8 @@ class RaftApplication : Application() {
         RaftCmpRouter.configure(debugBuild = BuildConfig.DEBUG)
         RaftPageRegistry.install()
         RaftAndroidHostHooks.install(this)
+        // The Google Play rating prompt for RaftRatingPrompt (`play` builds only).
+        RaftAndroidStoreReview.install(this)
         // Alpha builds default the Navigation 3 page stack on; set before any window reads it.
         build.raft.app.nav.RaftNav3StackFlag.buildDefaultOn = BuildConfig.NAV3_STACK_DEFAULT_ON
         // All notification channels up front, independent of permission (see RaftNotificationChannels).

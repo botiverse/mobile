@@ -892,6 +892,10 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.installations)
+    // Google Play In-App Review: the store rating prompt (src/play RaftAndroidStoreReview). The `play`
+    // build type only; Hands APKs (release, alpha, debug) never carry it.
+    // String form: the Kotlin DSL has no typed accessor for a build type created in this script.
+    add("playImplementation", libs.play.review)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     // Builds real notifications in JVM unit tests.

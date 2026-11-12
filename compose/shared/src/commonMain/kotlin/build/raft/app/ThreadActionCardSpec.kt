@@ -576,6 +576,12 @@ internal class ThreadActionCardSpecStore(
     private val stepUp: SecondFactorStepUpCoordinator? = null,
     /** The client clock: a card past its `expiresAt` runs nothing from here. */
     private val nowMillis: () -> Long = ::defaultNowMillis,
+    /**
+     * The person approved the card and it ran: an execute Button (directly or through its
+     * confirm) or a question card's answer, answered `executed` (not someone else's earlier run,
+     * not an `open_form` sheet). The rating prompt's `action_card_approved` moment.
+     */
+    private val onApproved: () -> Unit = {},
 ) {
     private val _state = MutableStateFlow(ThreadActionCardSpecState())
     val state: StateFlow<ThreadActionCardSpecState> = _state.asStateFlow()
@@ -686,9 +692,14 @@ internal class ThreadActionCardSpecStore(
             val result = executeSteppingUp(messageId, card, null)
             update { it.copy(busy = it.busy - messageId) }
             if (result == null) return@launch
+            noteApproved(result)
             val error = cardError(messageId, card, result)
             if (error != null) update { it.copy(errors = it.errors + (messageId to error)) }
         }
+    }
+
+    private fun noteApproved(result: DataResult<ActionCardExecuteOutcome>) {
+        if ((result as? DataResult.Content)?.data is ActionCardExecuteOutcome.Executed) onApproved()
     }
 
     /** Applies an execute's card; what stays under the card, or null when nothing does. */
@@ -764,6 +775,7 @@ internal class ThreadActionCardSpecStore(
                 update { it.copy(inlineIssues = it.inlineIssues + (messageId to ThreadActionCardInlineIssues(invalid.issues, invalid.traceId))) }
                 return@launch
             }
+            noteApproved(result)
             val error = cardError(messageId, card, result)
             update {
                 if (error != null) {
@@ -805,6 +817,7 @@ internal class ThreadActionCardSpecStore(
                 if (open != null) update { it.copy(confirm = open.copy(submitting = false)) }
                 return@launch
             }
+            noteApproved(result)
             when (val settled = settle(confirm.messageId, confirm.card, result)) {
                 null -> if (open != null) update { it.copy(confirm = null) }
                 else -> if (open != null) update { it.copy(confirm = open.copy(submitting = false, error = settled)) }

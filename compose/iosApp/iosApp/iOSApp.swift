@@ -558,6 +558,7 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         )
         RaftIosNetworkPathMonitor.shared.start()
         RaftIosImagePaste.install()
+        RaftIosStoreReview.install()
         UNUserNotificationCenter.current().delegate = self
         RaftIosPushHost.registerNotificationCategories()
         // osPermission rides the push registration; a change in Settings re-registers on return.

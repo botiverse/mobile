@@ -71,6 +71,7 @@ class ThreadActionCardSpecStoreTest {
         val answers = ArrayDeque<CompletableDeferred<DataResult<ActionCardExecuteOutcome>>>()
         val applied = mutableListOf<Pair<String, ThreadActionCard>>()
         val opened = mutableListOf<String>()
+        var approvals = 0
         val store =
             ThreadActionCardSpecStore(
                 scope = scope.backgroundScope,
@@ -82,6 +83,7 @@ class ThreadActionCardSpecStoreTest {
                 loadWebUrl = { "https://staging.raft.example" },
                 openInBrowser = { url -> opened += url },
                 stepUp = stepUp,
+                onApproved = { approvals++ },
             )
 
         fun answer(result: DataResult<ActionCardExecuteOutcome>) = CompletableDeferred<DataResult<ActionCardExecuteOutcome>>().also {
@@ -322,6 +324,42 @@ class ThreadActionCardSpecStoreTest {
         assertEquals("open", h.store.state.value.busyElement("m-1", typedPending = true))
         assertNull(h.store.state.value.busyElement("m-1", typedPending = false))
         assertTrue(h.applied.isEmpty())
+    }
+
+    /** The rating prompt's `action_card_approved`: only the person's own approval that ran. */
+    @Test
+    fun anApprovalCountsOnlyWhenTheExecuteOrItsConfirmRan() = runTest {
+        val h = Harness(this)
+        val executed = DataResult.Content(ActionCardExecuteOutcome.Executed(card(state = "executed")))
+        val notRun =
+            listOf(
+                DataResult.Error(ScreenError(code = "x")),
+                DataResult.Content(ActionCardExecuteOutcome.AlreadyExecuted(card(state = "executed"), "Already")),
+                DataResult.Content(ActionCardExecuteOutcome.FormRequired(null)),
+            )
+        for (answer in notRun) {
+            h.answer(answer)
+            h.store.dispatch(ThreadActionCardSpecIntent.Press("m-1", "go", card(), spec("go" to execute)))
+            runCurrent()
+        }
+        assertEquals(0, h.approvals, "a failure, someone else's run or a refusal is not an approval")
+        h.answer(executed)
+        h.store.dispatch(ThreadActionCardSpecIntent.Press("m-1", "go", card(), spec("go" to execute)))
+        runCurrent()
+        assertEquals(1, h.approvals)
+        h.answer(executed)
+        h.store.dispatch(ThreadActionCardSpecIntent.Press("m-2", "sure", card(), spec("sure" to confirmed)))
+        assertEquals(1, h.approvals, "opening the confirm runs nothing")
+        h.store.dispatch(ThreadActionCardSpecIntent.ConfirmExecute)
+        runCurrent()
+        assertEquals(2, h.approvals)
+        // An open_form sheet is data entry, not an approval.
+        h.answer(executed)
+        h.store.dispatch(ThreadActionCardSpecIntent.Press("m-3", "fill", card(), spec("fill" to form)))
+        h.store.dispatch(ThreadActionCardSpecIntent.SubmitForm(mapOf("title" to ActionCardFormValue.Text("Hi"))))
+        runCurrent()
+        assertNull(h.store.state.value.form)
+        assertEquals(2, h.approvals)
     }
 
     @Test

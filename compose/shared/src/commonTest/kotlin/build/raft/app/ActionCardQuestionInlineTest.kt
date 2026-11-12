@@ -176,6 +176,7 @@ class ActionCardQuestionInlineTest {
     private class Harness(scope: kotlinx.coroutines.test.TestScope, vararg answers: DataResult<ActionCardExecuteOutcome>) {
         val calls = mutableListOf<Pair<String, ExecuteActionFormBody?>>()
         val applied = mutableListOf<ThreadActionCard>()
+        var approvals = 0
         private val queue = ArrayDeque(answers.toList())
         val store =
             ThreadActionCardSpecStore(
@@ -185,6 +186,7 @@ class ActionCardQuestionInlineTest {
                     queue.removeFirst()
                 },
                 applyCard = { _, card -> applied += card },
+                onApproved = { approvals++ },
             )
     }
 
@@ -200,6 +202,7 @@ class ActionCardQuestionInlineTest {
         runCurrent()
         assertEquals(listOf<Pair<String, ExecuteActionFormBody?>>("m-q" to ExecuteActionFormBody("answers", postgres)), harness.calls)
         assertEquals(listOf(answered), harness.applied)
+        assertEquals(1, harness.approvals, "an answered question card is an approval (rating prompt)")
         assertNull(harness.store.state.value.slice("m-q").inlineValues)
 
         // Frozen while the answer waited: nothing is sent; the card says so and keeps the choices.
@@ -208,6 +211,7 @@ class ActionCardQuestionInlineTest {
         frozen.store.dispatch(ThreadActionCardSpecIntent.SubmitInlineForm("m-q", card(state = "frozen"), "answers", "answer", postgres))
         runCurrent()
         assertEquals(emptyList(), frozen.calls)
+        assertEquals(0, frozen.approvals)
         assertEquals(ThreadActionCardSpecError.QuestionNotSent, frozen.store.state.value.slice("m-q").error)
         assertEquals(postgres, frozen.store.state.value.slice("m-q").inlineValues)
 

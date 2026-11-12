@@ -77,6 +77,8 @@ androidsvg = "1.4"
 mmkv = "2.4.3"
 firebaseBom = "35.1.0"
 googleServices = "4.5.0"
+# Google Play In-App Review (the store rating prompt; `play` build type only, RaftAndroidStoreReview).
+playReview = "2.0.2"
 benchmarkMacro = "1.5.0"
 profileinstaller = "1.4.1"
 uiautomator = "2.4.1"
@@ -136,6 +138,7 @@ mmkv = { group = "com.tencent", name = "mmkv", version.ref = "mmkv" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
 firebase-installations = { group = "com.google.firebase", name = "firebase-installations" }
+play-review = { group = "com.google.android.play", name = "review", version.ref = "playReview" }
 
 # Compose Multiplatform artifacts (replace the deprecated `compose.*` Gradle plugin aliases).
 cmp-runtime = { group = "org.jetbrains.compose.runtime", name = "runtime", version.ref = "composePlugin" }

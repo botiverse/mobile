@@ -23,6 +23,7 @@ import build.raft.app.data.RaftAndroidPushRegistrationBridge
 import build.raft.app.data.RaftAuthApiClient
 import build.raft.app.data.RaftHostNetworkNotifyContract
 import build.raft.app.data.RaftProductEvents
+import build.raft.app.data.RaftRatingPrompt
 import build.raft.app.data.RaftRealtimeMaxSessions
 import build.raft.app.data.updateRaftHostVisibility
 import build.raft.app.data.postAndroidAppScopeEvent
@@ -108,6 +109,8 @@ internal object AndroidAppScopeRealtimeOwner {
                 // Product analytics: app_opened (cold / back after the 30-minute session gap) waits
                 // for the activity's resume, after onNewIntent delivered a notification tap.
                 productAppOpenPending = true
+                // Rating prompt: today is an active day (counted once per local day).
+                RaftRatingPrompt.onAppForeground()
                 RaftResumeFrameProbe.onAppShown()
                 installedApplicationContext?.let { context ->
                     onAppShown(context, source = "process_activity_started")
@@ -121,6 +124,7 @@ internal object AndroidAppScopeRealtimeOwner {
             } else {
                 takePendingProductAppOpen()
                 RaftProductEvents.onAppBackground()
+                RaftRatingPrompt.onAppBackground()
                 RaftResumeFrameProbe.onAppHidden()
                 onAppHidden(source = "process_activity_stopped")
                 // No-Play-services devices: make sure the background connection service is up now that the

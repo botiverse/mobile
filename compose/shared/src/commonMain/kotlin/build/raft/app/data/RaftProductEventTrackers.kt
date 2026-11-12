@@ -372,6 +372,11 @@ class RaftProductEventsRecorder(
         }
     }
 
+    /** The app called the platform's store rating prompt after [trigger] (at most once per device). */
+    fun appRatingPromptRequested(trigger: RaftAppRatingPromptTrigger) {
+        client.track(RaftProductEvent.AppRatingPromptRequested(RaftAppRatingPromptRequestedProperties(trigger)))
+    }
+
     /** The next thread page with [instanceId] opens a task (a task opens as a thread on phones). */
     fun markTaskThreadOpening(instanceId: String) {
         val key = instanceId.trim().takeIf { it.isNotEmpty() } ?: return

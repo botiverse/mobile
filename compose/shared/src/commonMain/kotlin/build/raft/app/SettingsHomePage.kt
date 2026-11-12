@@ -34,6 +34,7 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.RaftNavDestination
 import build.raft.app.data.RaftNavSurface
 import build.raft.app.data.RaftProductEvents
+import build.raft.app.data.RaftRatingPrompt
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
@@ -3076,6 +3077,7 @@ private fun RaftAppShellReadyContent(
         }
     val appShellComputersStore =
         remember(sharedStores, storeScope) { sharedStores.computersStore(storeScope) }
+    RaftRatingPromptShellBinding(authStore = shellAuthStore, computersStore = appShellComputersStore)
     val settingsRepository =
         remember(sharedStores, shellAuthStore, appShellNetworkClient) {
             RealSettingsRepository(
@@ -5497,6 +5499,7 @@ private fun RaftAppShellReadyContent(
         val selection = adaptiveWorkspaceStore.snapshot().workspace?.selection
         bridge.log("tasks_detail_overlay_close selection=${selection?.identity?.key.orEmpty()}")
         tasksDetailOverlayActive = false
+        RaftRatingPrompt.onTaskListShown()
         if (selection == null) return
         adaptiveWorkspaceStore.update { it.closeDetailCompletely() }
         releaseAdaptiveHandoffLease(selection.generation)
@@ -6603,7 +6606,10 @@ private fun RaftAppShellReadyContent(
             null ->
                 when (entry.surface) {
                     "members" -> membersDetailSelection.value = null
-                    "tasks" -> tasksDetailOverlayActive = false
+                    "tasks" -> {
+                        tasksDetailOverlayActive = false
+                        RaftRatingPrompt.onTaskListShown()
+                    }
                     "settings" -> Unit
                     else -> {
                         val selection = adaptiveWorkspaceStore.snapshot().workspace?.selection ?: return
@@ -8319,6 +8325,8 @@ private fun RaftAppShellReadyContent(
                             }
                             // page_viewed: the thread page this opens counts as `task`.
                             RaftProductEvents.recorder.markTaskThreadOpening(taskLaunchPayload.instanceId)
+                            // Rating prompt (task_result_viewed): counts when the list shows again.
+                            RaftRatingPrompt.onTaskOpened(task)
                             // task #34: wide desktop mode keeps the board and opens the task's
                             // thread in a bounded overlay; otherwise the full-page push stays.
                             val overlaySelection = openLaunchPayloadInAdaptiveDetail(taskLaunchPayload)
