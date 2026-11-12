@@ -65,7 +65,7 @@ internal actual fun raftPlatformShortcutsUseCommand(): Boolean = true
 internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = true
 
 // Images and no text on the clipboard (a screenshot's "Copy and Delete"): the one rule for the edit
-// menu, ⌘V and the composer's clipboard (raftIosClipboardHoldsOnlyImages). Asking does not read
+// menu and ⌘V (raftIosClipboardHoldsOnlyImages). Asking does not read
 // the clipboard, so iOS shows no paste prompt for it.
 internal actual fun raftPlatformClipboardHasAttachments(): Boolean = raftIosClipboardHoldsOnlyImages()
 
@@ -79,7 +79,12 @@ internal actual fun raftPlatformImagePasteClipEntry(): ClipEntry? =
 
 internal actual fun raftPlatformPastedImagesOpenEditor(): Boolean = true
 
-internal actual fun raftPlatformComposerUsesImagePasteClipboard(): Boolean = true
+// The composer's text field keeps the platform clipboard, as every other field does (and as in
+// 1.23): text paste goes the way it always did. CMP 1.12's iOS text field asks the pasteboard
+// itself whether Paste applies (`nativeClipboard.hasStrings`), so the placeholder never offered
+// Paste for an image anyway; paste with only images on the clipboard is the host's hook on the
+// editor view (RaftIosImagePaste.swift).
+internal actual fun raftPlatformComposerUsesImagePasteClipboard(): Boolean = false
 
 internal actual fun raftPlatformComposerMinimumBottomPaddingDp(): Float = 0f
 

@@ -23,7 +23,6 @@ enum RaftIosImagePaste {
     /// Longest side of a pasted image; larger ones are downscaled on read.
     static let maxPixelSize = 4096
     private static var hooked = Set<ObjectIdentifier>()
-    fileprivate static weak var firstResponder: UIResponder?
     /// The composer's editor view while the composer has focus; the hooks act only for it.
     private static weak var composerEditor: UIResponder?
     private static var composerFocused = false
@@ -54,15 +53,36 @@ enum RaftIosImagePaste {
 
     private static func captureComposerEditor() {
         guard composerFocused else { return }
-        firstResponder = nil
-        UIApplication.shared.sendAction(#selector(UIResponder.raftCaptureFirstResponder), to: nil, from: nil, for: nil)
-        guard let responder = firstResponder, responder is UIView, responder is UITextInput else { return }
+        guard let responder = currentFirstResponder(), responder is UITextInput else { return }
         // Never web content (WKContentView and friends), whatever has focus.
         guard !NSStringFromClass(type(of: responder)).hasPrefix("WK") else { return }
         if composerEditor !== responder {
             composerEditor = responder
         }
         hook(type(of: responder))
+    }
+
+    /// The focused text view, found by walking the windows. Not a nil-targeted action: UIKit sends
+    /// it to the first responder that `canPerformAction` it, and Compose's editor view
+    /// (CMPEditMenuView) answers NO to every action but its edit menu's, so the action went to a
+    /// container view and the editor was never hooked.
+    static func currentFirstResponder() -> UIView? {
+        let windows = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .sorted { $0.isKeyWindow && !$1.isKeyWindow }
+        for window in windows {
+            if let found = firstResponder(in: window) { return found }
+        }
+        return nil
+    }
+
+    private static func firstResponder(in view: UIView) -> UIView? {
+        if view.isFirstResponder { return view }
+        for subview in view.subviews {
+            if let found = firstResponder(in: subview) { return found }
+        }
+        return nil
     }
 
     private static func isComposerEditor(_ view: AnyObject) -> Bool {
@@ -230,8 +250,4 @@ private final class RaftIosComposerEditorFocus: NSObject, RaftIosComposerEditorF
             DispatchQueue.main.async { RaftIosImagePaste.composerFocusChanged(focused) }
         }
     }
-}
-
-extension UIResponder {
-    @objc fileprivate func raftCaptureFirstResponder() { RaftIosImagePaste.firstResponder = self }
 }

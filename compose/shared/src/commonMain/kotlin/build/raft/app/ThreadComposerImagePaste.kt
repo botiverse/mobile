@@ -1,10 +1,15 @@
 package build.raft.app
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.Clipboard
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.NativeClipboard
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -43,6 +48,19 @@ internal class ThreadComposerImagePasteClipboard(private val platform: Clipboard
     override val nativeClipboard: NativeClipboard
         get() = platform.nativeClipboard
 }
+
+/** The clipboard the composer's editor gets: [ThreadComposerImagePasteClipboard] where [raftPlatformComposerUsesImagePasteClipboard]. */
+@Composable
+internal fun rememberThreadComposerClipboard(): Clipboard {
+    val platform = LocalClipboard.current
+    return remember(platform) {
+        if (raftPlatformComposerUsesImagePasteClipboard()) ThreadComposerImagePasteClipboard(platform) else platform
+    }
+}
+
+/** Reports the composer editor's focus for host image paste ([ThreadComposerImagePasteRequests.editorFocusChanged]). */
+internal fun Modifier.threadComposerImagePasteFocus(owner: Any): Modifier =
+    onFocusChanged { ThreadComposerImagePasteRequests.editorFocusChanged(owner, it.hasFocus) }
 
 /**
  * Whether [changed] is [previous] with exactly the placeholder pasted over its selection (a paste
