@@ -8,7 +8,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import build.raft.app.data.KeyValueTasksPageQueryPreferenceRepository
 import build.raft.app.data.SharedTasksDataSource
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksRouteOwner
 import build.raft.app.data.SharedTasksRouteSession
@@ -37,7 +39,8 @@ internal fun rememberSharedTasksRoute(
             authStore = authStore,
             dataSource = dataSource,
             sharedTasksDataStore = sharedTasksDataStore,
-            diagnosticsLogger = raftLogger("SlockTasks", "shared_tasks")
+            diagnosticsLogger = raftLogger("SlockTasks", "shared_tasks"),
+            queryPreferences = KeyValueTasksPageQueryPreferenceRepository(raftSharedPreferenceStore())
         )
     }
     DisposableEffect(route) {

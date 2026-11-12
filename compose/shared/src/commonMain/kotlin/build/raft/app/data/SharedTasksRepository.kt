@@ -43,6 +43,27 @@ interface SharedTasksRepository {
         status: String? = null
     ): TasksPageResult = TasksPageResult.Error(code = "tasks_page_unsupported")
 
+    /**
+     * One page of the Tasks page's server-side query (`GET /api/tasks/server` with board
+     * filters, `sort`, `limit`, `cursor`, `detail=summary`; TasksServerQueryApi.kt). The default
+     * (fakes) refuses.
+     */
+    suspend fun loadServerTaskQueryPage(
+        serverId: ServerId,
+        filters: ServerTaskBoardFilters,
+        sort: ServerTaskSort,
+        limit: Int,
+        cursor: String?,
+        priority: DataRequestPriority
+    ): TasksPageResult = TasksPageResult.Error(code = "tasks_page_unsupported")
+
+    /** The counts of one filter set (`GET /api/tasks/server/counts`). The default (fakes) refuses. */
+    suspend fun loadServerTaskCounts(
+        serverId: ServerId,
+        filters: ServerTaskBoardFilters,
+        priority: DataRequestPriority
+    ): ServerTaskCountsResult = ServerTaskCountsResult.Error(code = "tasks_counts_unsupported")
+
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
 
     /** A move into Backlog with its [reason] (slock #12962); the default (fakes) drops the reason. */
@@ -126,6 +147,21 @@ class SharedTasksDataRepository(
         priority: DataRequestPriority,
         status: String?
     ): TasksPageResult = remoteDataSource.loadServerTasksPage(serverId, limit, cursor, priority, status)
+
+    override suspend fun loadServerTaskQueryPage(
+        serverId: ServerId,
+        filters: ServerTaskBoardFilters,
+        sort: ServerTaskSort,
+        limit: Int,
+        cursor: String?,
+        priority: DataRequestPriority
+    ): TasksPageResult = remoteDataSource.loadServerTaskQueryPage(serverId, filters, sort, limit, cursor, priority)
+
+    override suspend fun loadServerTaskCounts(
+        serverId: ServerId,
+        filters: ServerTaskBoardFilters,
+        priority: DataRequestPriority
+    ): ServerTaskCountsResult = remoteDataSource.loadServerTaskCounts(serverId, filters, priority)
 
     override suspend fun updateTaskStatus(
         serverId: ServerId,
@@ -226,6 +262,23 @@ interface SharedTasksRemoteDataSource {
         priority: DataRequestPriority = DataRequestPriority.Visible,
         status: String? = null
     ): TasksPageResult = TasksPageResult.Error(code = "tasks_page_unsupported")
+
+    /** See [SharedTasksRepository.loadServerTaskQueryPage]. */
+    suspend fun loadServerTaskQueryPage(
+        serverId: ServerId,
+        filters: ServerTaskBoardFilters,
+        sort: ServerTaskSort,
+        limit: Int,
+        cursor: String?,
+        priority: DataRequestPriority
+    ): TasksPageResult = TasksPageResult.Error(code = "tasks_page_unsupported")
+
+    /** See [SharedTasksRepository.loadServerTaskCounts]. */
+    suspend fun loadServerTaskCounts(
+        serverId: ServerId,
+        filters: ServerTaskBoardFilters,
+        priority: DataRequestPriority
+    ): ServerTaskCountsResult = ServerTaskCountsResult.Error(code = "tasks_counts_unsupported")
 
     suspend fun loadChannelTasks(
         serverId: ServerId,

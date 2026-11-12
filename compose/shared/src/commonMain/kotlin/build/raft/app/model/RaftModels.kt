@@ -909,6 +909,11 @@ data class TaskSummary(
      * offer to add one over it (web TaskModalHead `descriptionLoaded`).
      */
     val descriptionLoaded: Boolean = true,
+    /**
+     * When the task last moved (slock `activityAt`: lastActivityAt ?? updatedAt), what the Tasks
+     * page's `sort=activity` orders by; null from a source without it.
+     */
+    val activityAt: String? = null,
 )
 
 // Inbox Models
