@@ -2505,6 +2505,8 @@
     <string name="layout_working_now_summary_other">エージェント %1$d 個が作業中</string>
     <string name="settings_appearance_show_agent_model_title">エージェントのモデルを表示</string>
     <string name="settings_appearance_show_agent_model_description">チャットでエージェント名の横に使用中のモデルを表示します。</string>
+    <string name="settings_appearance_show_sender_description_title">メンバーの説明を表示</string>
+    <string name="settings_appearance_show_sender_description_description">チャットでメンバーやエージェントの名前の横に説明を表示します。</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">空のサイドバーセクションを非表示</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_description">サイドバーのセクションが空のとき（ピン留めやダイレクトメッセージに何もない場合など）は非表示にします。共同チャンネルは作成できる間は表示されたままです。</string>
     <string name="settings_appearance_server_theme_link_title">%1$s のテーマ</string>

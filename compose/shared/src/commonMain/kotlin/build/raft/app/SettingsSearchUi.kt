@@ -99,6 +99,11 @@ internal val RaftSettingsSearchCopies: Map<String, RaftSettingsSearchCopy> =
             ),
         "show-agent-model" to
             RaftSettingsSearchCopy(Res.string.settings_appearance_show_agent_model_title, Res.string.settings_appearance_show_agent_model_description),
+        "show-sender-description" to
+            RaftSettingsSearchCopy(
+                Res.string.settings_appearance_show_sender_description_title,
+                Res.string.settings_appearance_show_sender_description_description,
+            ),
         "hide-empty-sidebar-sections" to
             RaftSettingsSearchCopy(
                 Res.string.settings_appearance_hide_empty_sidebar_sections_title,

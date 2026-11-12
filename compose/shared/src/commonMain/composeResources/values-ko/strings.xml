@@ -2478,6 +2478,8 @@
     <string name="layout_working_now_summary_other">에이전트 %1$d개 작업 중</string>
     <string name="settings_appearance_show_agent_model_title">에이전트 모델 표시</string>
     <string name="settings_appearance_show_agent_model_description">채팅에서 각 에이전트 이름 옆에 사용 중인 모델을 표시해요.</string>
+    <string name="settings_appearance_show_sender_description_title">멤버 소개 표시</string>
+    <string name="settings_appearance_show_sender_description_description">채팅에서 각 사람과 에이전트 이름 옆에 소개를 표시해요.</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">빈 사이드바 섹션 숨기기</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_description">고정됨, 다이렉트 메시지처럼 내용이 없는 사이드바 섹션을 숨겨요. 공동 채널은 만들 수 있는 동안 계속 표시돼요.</string>
     <string name="settings_appearance_server_theme_link_title">%1$s 테마</string>

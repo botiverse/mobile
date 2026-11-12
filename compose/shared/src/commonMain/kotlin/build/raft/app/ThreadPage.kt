@@ -84,6 +84,7 @@ import build.raft.app.downloads.RaftDownloadCenterProcess
 import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.KnownEntityScope
+import build.raft.app.data.RaftDisplayPreferenceRuntime
 import build.raft.app.data.memberOrigin
 import build.raft.app.data.memberRemovableFromChannel
 import build.raft.app.data.memberRowServerLabel
@@ -29996,7 +29997,9 @@ private fun ThreadMessageCardContent(
             memberModelLabelResolver,
             message.authorId.takeIf { message.externalAuthor == null && !message.authorKind.equals("system", ignoreCase = true) },
         )
-    val authorDescription = threadAuthorRowDescription(message, authorFacts)
+    // Settings > Appearance "Show member descriptions" (web #14653): off, no description here.
+    val authorDescription =
+        threadAuthorRowDescription(message, authorFacts, showDescription = RaftDisplayPreferenceRuntime.showSenderDescription)
     val authorGuestLabel =
         if (threadAuthorRowShowsGuest(message, authorFacts)) stringResource(Res.string.channel_member_role_guest) else null
     val pointerSessionKey = LocalThreadMessagePointerSessionKey.current
@@ -33775,10 +33778,17 @@ internal fun RaftThreadMessageItem.canOpenThreadAuthorProfile(): Boolean =
  * The author row's description (web MessageItem `senderDescriptionText`, botiverse/slock #14629):
  * the directory's agent or member (or joint roster person) first, else the message's own
  * `senderDescription`; whitespace counts as none. An external (bridged) sender keeps its provider.
+ * [showDescription] off (Settings > Appearance "Show member descriptions", web #14653): none, for
+ * people and agents alike; the provider of a bridged sender is not a description and stays.
  */
-internal fun threadAuthorRowDescription(message: RaftThreadMessageItem, facts: RaftMemberAuthorFacts?): String? {
+internal fun threadAuthorRowDescription(
+    message: RaftThreadMessageItem,
+    facts: RaftMemberAuthorFacts?,
+    showDescription: Boolean = true,
+): String? {
     val own = message.authorDescription?.trim()?.takeIf { it.isNotEmpty() }
     if (message.externalAuthor != null) return own
+    if (!showDescription) return null
     return facts?.description?.trim()?.takeIf { it.isNotEmpty() } ?: own
 }
 

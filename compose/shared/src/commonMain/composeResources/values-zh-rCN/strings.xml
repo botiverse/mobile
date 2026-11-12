@@ -2503,6 +2503,8 @@
     <string name="layout_working_now_summary_other">%1$d 个 Agent 工作中</string>
     <string name="settings_appearance_show_agent_model_title">显示 Agent 模型</string>
     <string name="settings_appearance_show_agent_model_description">在聊天里 Agent 名字旁显示它使用的模型。</string>
+    <string name="settings_appearance_show_sender_description_title">显示成员描述</string>
+    <string name="settings_appearance_show_sender_description_description">在聊天里成员和 Agent 名字旁显示他们的描述。</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">隐藏空的侧栏分区</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_description">当侧栏某个分区没有内容时（例如置顶、私信为空），整块隐藏不显示。只要你可以创建联合频道，联合频道分区就会保留显示。</string>
     <string name="settings_appearance_server_theme_link_title">%1$s 的主题</string>

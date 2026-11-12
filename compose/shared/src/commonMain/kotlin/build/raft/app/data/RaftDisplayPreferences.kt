@@ -10,6 +10,12 @@ internal const val RaftShowAgentModelNameStorageKey = "slock_show_agent_model_na
 /** The Web's default: on everywhere (`readStoredShowAgentModelName`). */
 const val RaftShowAgentModelNameDefault: Boolean = true
 
+/** The Web's `SHOW_SENDER_DESCRIPTION_STORAGE_KEY` (appearanceStore), kept as the stored key. */
+internal const val RaftShowSenderDescriptionStorageKey = "slock_show_sender_description"
+
+/** The Web's default: on everywhere (`readStoredShowSenderDescription`). */
+const val RaftShowSenderDescriptionDefault: Boolean = true
+
 /** The Web's `SHOW_LIVE_AGENT_ACTIVITY_BAR_STORAGE_KEY` (appearanceStore), kept as the stored key. */
 internal const val RaftShowLiveAgentActivityStorageKey = "slock_show_live_agent_activity_bar"
 
@@ -23,6 +29,8 @@ const val RaftShowLiveAgentActivityDefault: Boolean = true
  *   the Home bar (Web `WorkingNowSummary`).
  * - "Show agent model": the model label next to an agent's name in a message row
  *   (Web `MessageItem`).
+ * - "Show member descriptions": the sender's description on a message's author row, people
+ *   and agents alike (Web `MessageItem`); the profile card keeps it.
  * - "Hide empty sidebar sections": the Home list drops sections with nothing in them; the
  *   same value as the Home section menu's "Hide empty sections"
  *   ([RaftSidebarHideEmptySectionsStore]).
@@ -37,6 +45,8 @@ object RaftDisplayPreferenceRuntime {
     private var showLiveAgentActivityState by mutableStateOf(RaftShowLiveAgentActivityDefault)
 
     private var showAgentModelNameState by mutableStateOf(RaftShowAgentModelNameDefault)
+
+    private var showSenderDescriptionState by mutableStateOf(RaftShowSenderDescriptionDefault)
 
     private var hideEmptySidebarSectionsState by mutableStateOf(RaftSidebarHideEmptySectionsDefault)
 
@@ -56,6 +66,12 @@ object RaftDisplayPreferenceRuntime {
                 "false" -> false
                 else -> RaftShowAgentModelNameDefault
             }
+        showSenderDescriptionState =
+            when (runCatching { store.getString(RaftShowSenderDescriptionStorageKey) }.getOrNull()) {
+                "true" -> true
+                "false" -> false
+                else -> RaftShowSenderDescriptionDefault
+            }
         hideEmptySidebarSectionsState = KeyValueRaftSidebarHideEmptySectionsStore(store).read()
     }
 
@@ -69,6 +85,12 @@ object RaftDisplayPreferenceRuntime {
         get() {
             ensureLoaded()
             return showAgentModelNameState
+        }
+
+    val showSenderDescription: Boolean
+        get() {
+            ensureLoaded()
+            return showSenderDescriptionState
         }
 
     val hideEmptySidebarSections: Boolean
@@ -89,6 +111,12 @@ object RaftDisplayPreferenceRuntime {
         runCatching { store().putString(RaftShowAgentModelNameStorageKey, show.toString()) }
     }
 
+    fun setShowSenderDescription(show: Boolean) {
+        ensureLoaded()
+        showSenderDescriptionState = show
+        runCatching { store().putString(RaftShowSenderDescriptionStorageKey, show.toString()) }
+    }
+
     fun setHideEmptySidebarSections(hide: Boolean) {
         ensureLoaded()
         hideEmptySidebarSectionsState = hide
@@ -101,6 +129,7 @@ object RaftDisplayPreferenceRuntime {
         loaded = false
         showLiveAgentActivityState = RaftShowLiveAgentActivityDefault
         showAgentModelNameState = RaftShowAgentModelNameDefault
+        showSenderDescriptionState = RaftShowSenderDescriptionDefault
         hideEmptySidebarSectionsState = RaftSidebarHideEmptySectionsDefault
     }
 }

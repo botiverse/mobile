@@ -2478,6 +2478,8 @@
     <string name="layout_working_now_summary_other">%1$d agentes trabajando</string>
     <string name="settings_appearance_show_agent_model_title">Mostrar modelo del agente</string>
     <string name="settings_appearance_show_agent_model_description">Muestra el modelo de cada agente junto a su nombre en el chat.</string>
+    <string name="settings_appearance_show_sender_description_title">Mostrar descripciones de los miembros</string>
+    <string name="settings_appearance_show_sender_description_description">Muestra la descripción de cada persona y agente junto a su nombre en el chat.</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">Ocultar secciones vacías de la barra lateral</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_description">Oculta las secciones de la barra lateral mientras no tengan contenido, como Fijados o Mensajes directos vacíos. Canales compartidos sigue visible mientras puedas crear uno.</string>
     <string name="settings_appearance_server_theme_link_title">Tema en %1$s</string>

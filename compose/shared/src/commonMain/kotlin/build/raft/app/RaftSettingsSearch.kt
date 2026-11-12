@@ -144,6 +144,22 @@ internal val RaftSettingsSearchEntries: List<RaftSettingsSearchEntry> =
             Appearance,
         ),
         RaftSettingsSearchEntry(
+            "show-sender-description",
+            "appearance",
+            // The web's aliases for it, every display locale (slock #14653).
+            mapOf(
+                "en" to listOf("description", "bio", "member description", "agent description", "author row"),
+                "zh-cn" to listOf("描述", "简介", "成员描述"),
+                "zh-tw" to listOf("描述", "簡介"),
+                "ja" to listOf("説明", "プロフィール"),
+                "ko" to listOf("소개", "설명"),
+                "es" to listOf("descripción"),
+                "pt-br" to listOf("descrição"),
+                "ru" to listOf("описание"),
+            ),
+            Appearance,
+        ),
+        RaftSettingsSearchEntry(
             "hide-empty-sidebar-sections",
             "appearance",
             words(listOf("sidebar", "empty sections"), listOf("侧栏", "空分组", "隐藏分组")),
