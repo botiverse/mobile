@@ -190,6 +190,8 @@ private data class WireAgent(
      * (web `AssistantPaused` `PausedBy`); absent or null otherwise.
      */
     val assistantPausedBy: WireAssistantPausedBy? = null,
+    /** Personal assistants only (slock `agents.assistantOwnerUserId` on `GET /agents`): the owner; null otherwise. */
+    val assistantOwnerUserId: String? = null,
     /**
      * `GET /agents` only (botiverse/slock #13575 `agentBlockedReason`): why the server runs the agent
      * nowhere: `computer_access_revoked` (its Computer's key was revoked) or
@@ -987,6 +989,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         assistantPausedAt = assistantPausedAt?.takeIf { it.isNotBlank() },
         assistantPausedByName =
             assistantPausedBy?.name?.trim()?.takeIf { it.isNotEmpty() && !assistantPausedAt.isNullOrBlank() },
+        assistantOwnerUserId = assistantOwnerUserId?.trim()?.takeIf { it.isNotEmpty() },
         managedByAppInstallId = managedByAppInstallId?.takeIf { it.isNotBlank() },
         managedByAppName = managedByApp?.name?.takeIf { it.isNotBlank() },
         inMemberLists = inMemberLists,

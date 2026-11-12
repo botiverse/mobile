@@ -17439,9 +17439,9 @@ internal fun Message.toRaftThreadMessageItem(currentUserId: String?): RaftThread
         authorId = author.id.value,
         authorName = author.displayName,
         authorHandle = author.handle,
-        authorDescription =
-            author.description?.takeIf { it.isNotBlank() }
-                ?: author.roleDescription?.takeIf { it.isNotBlank() },
+        // The sender's description only: a role (Owner / Admin, an agent's runtime) is never
+        // written on the author row (web #14535 / #14629).
+        authorDescription = author.description?.takeIf { it.isNotBlank() },
         authorKind =
             when (author.kind) {
                 MemberKind.Agent -> "agent"

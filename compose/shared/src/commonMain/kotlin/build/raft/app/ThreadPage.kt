@@ -3417,8 +3417,8 @@ internal data class RaftThreadMessageItem(
     val authorId: String,
     val authorName: String,
     val authorHandle: String = "",
-    // Sender subtitle shown after the name, mirroring React's senderSubtitle
-    // (agent/member description; humans fall back to role description).
+    // The message's own sender description (`senderDescription`; an external sender's provider).
+    // The author row prefers the directory's (threadAuthorRowDescription); never a role.
     val authorDescription: String? = null,
     val authorKind: String = "",
     val isOwn: Boolean = false,
@@ -29988,6 +29988,17 @@ private fun ThreadMessageCardContent(
         }
     // botiverse/slock #11273: an App Bot's row shows the Bot badge (and no model).
     val authorAppBot = rememberRaftMemberAppBot(message.authorId.takeIf { message.isThreadAgentAuthor() })
+    // dm:@artin:#120 (web MessageItem, botiverse/slock #14629): the directory's description first,
+    // so a live message (`message:new` omits `senderDescription`) shows it without a reload, and
+    // this server's Guest label.
+    val authorFacts =
+        rememberRaftMemberAuthorFacts(
+            memberModelLabelResolver,
+            message.authorId.takeIf { message.externalAuthor == null && !message.authorKind.equals("system", ignoreCase = true) },
+        )
+    val authorDescription = threadAuthorRowDescription(message, authorFacts)
+    val authorGuestLabel =
+        if (threadAuthorRowShowsGuest(message, authorFacts)) stringResource(Res.string.channel_member_role_guest) else null
     val pointerSessionKey = LocalThreadMessagePointerSessionKey.current
     val horizontalArrangement =
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
@@ -30617,7 +30628,16 @@ private fun ThreadMessageCardContent(
                                         authorBadgeLabel?.let { label ->
                                             ThreadMessageAuthorBadge(label)
                                         }
-                                        message.authorDescription?.let { description ->
+                                        // Web: this server's Guest, then the description. Same meta
+                                        // style; the Guest word keeps its room, the description
+                                        // gives way first.
+                                        authorGuestLabel?.let { guest ->
+                                            ThreadMessageAuthorSubtitle(
+                                                description = guest,
+                                                modifier = Modifier.alignByBaseline()
+                                            )
+                                        }
+                                        authorDescription?.let { description ->
                                             val subtitleAnchor =
                                                 remember(message.id) {
                                                     RaftLiveRootAnchorRef(
@@ -33750,6 +33770,23 @@ internal fun RaftThreadMessageItem.threadAuthorBadgeLabel(): String? =
 
 internal fun RaftThreadMessageItem.canOpenThreadAuthorProfile(): Boolean =
     threadAuthorBadgeLabel() == null
+
+/**
+ * The author row's description (web MessageItem `senderDescriptionText`, botiverse/slock #14629):
+ * the directory's agent or member (or joint roster person) first, else the message's own
+ * `senderDescription`; whitespace counts as none. An external (bridged) sender keeps its provider.
+ */
+internal fun threadAuthorRowDescription(message: RaftThreadMessageItem, facts: RaftMemberAuthorFacts?): String? {
+    val own = message.authorDescription?.trim()?.takeIf { it.isNotEmpty() }
+    if (message.externalAuthor != null) return own
+    return facts?.description?.trim()?.takeIf { it.isNotEmpty() } ?: own
+}
+
+/** Web `isViewerServerGuest` on the author row: a person who is this server's Guest. */
+internal fun threadAuthorRowShowsGuest(message: RaftThreadMessageItem, facts: RaftMemberAuthorFacts?): Boolean =
+    facts?.viewerServerGuest == true &&
+        message.externalAuthor == null &&
+        message.authorKind.equals("human", ignoreCase = true)
 
 internal fun RaftThreadMessageItem.canOpenThreadAuthorProfile(shareSelectionActive: Boolean): Boolean =
     !shareSelectionActive && canOpenThreadAuthorProfile()
