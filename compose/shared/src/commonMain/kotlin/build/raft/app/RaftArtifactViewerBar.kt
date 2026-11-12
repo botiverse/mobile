@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +24,7 @@ import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 
 /**
  * The viewer's own ⋮: only what the web page's ⋯ cannot offer (owner decision 2026-11-10, "two
@@ -40,6 +43,11 @@ internal class RaftArtifactViewerBarActions(
  * over [content], the web page with its own toolbar and ⋯ menu. [desktopMode]: on or off, null
  * where it is not offered (no ⋮ item). The menu is a window on a device; screenshots draw
  * [RaftArtifactViewerMenuItems] themselves.
+ *
+ * [pageDrawsBar] (artin, "双栏"): the page said its toolbar is the only bar (Back, the title, and
+ * this bar's ⋮ items in its own ⋯; [raftArtifactViewerPageDrawsHostBar]). Then this bar is not drawn:
+ * [content] starts under the status bar, which keeps the page's colour. [content] keeps its place
+ * either way, so the WebView is never recreated when the bar comes or goes.
  */
 @Composable
 internal fun RaftArtifactViewerFrame(
@@ -47,6 +55,7 @@ internal fun RaftArtifactViewerFrame(
     onBack: () -> Unit,
     actions: RaftArtifactViewerBarActions = RaftArtifactViewerBarActions(),
     desktopMode: Boolean? = null,
+    pageDrawsBar: Boolean = false,
     /** Screenshot fixtures only (no host window there). */
     topSafeAreaOverride: Dp? = null,
     content: @Composable () -> Unit,
@@ -54,7 +63,13 @@ internal fun RaftArtifactViewerFrame(
     var menuOpen by remember { mutableStateOf(false) }
     val hasMenu = actions.onOpenInBrowser != null || (desktopMode != null && actions.onToggleDesktopMode != null)
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-        RaftTopPageHeader(
+        if (pageDrawsBar) {
+            // No head here: the host's own bar (iOS native navigation) is hidden too.
+            RaftNativeNavBarDecline()
+            val topSafeArea = (topSafeAreaOverride ?: raftTopSafeAreaPadding()).coerceAtLeast(0.dp)
+            RaftStatusBarBackdropClaim(RaftColor.SurfaceWhite, enabled = topSafeArea > 0.dp)
+            Spacer(Modifier.fillMaxWidth().height(topSafeArea))
+        } else RaftTopPageHeader(
             title = title,
             backgroundColor = RaftColor.SurfaceWhite,
             onBack = onBack,

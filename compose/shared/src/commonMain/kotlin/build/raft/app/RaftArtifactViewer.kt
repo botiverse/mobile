@@ -261,14 +261,107 @@ internal fun raftArtifactViewerPagePath(target: ArtifactLinkTarget): String =
  * ignores it, and the App's own bar keeps Back meanwhile.
  */
 internal val RaftArtifactViewerEmbedQuery: String =
-    "embed=$SharedSettingsEmbedContract&shell=$SharedSettingsEmbedHostShell&back=$RAFT_ARTIFACT_VIEWER_HOST_BACK"
+    "embed=$SharedSettingsEmbedContract&shell=$SharedSettingsEmbedHostShell&back=$RAFT_ARTIFACT_VIEWER_HOST_BACK" +
+        "&$RAFT_ARTIFACT_VIEWER_HOST_MENU_PARAM=$RAFT_ARTIFACT_VIEWER_HOST_MENU"
+
+/**
+ * One bar (artin, "双栏什么时候可以解决"; proposed to the web 2026-11-12): `hostMenu` names the App's
+ * own items the page may put in its ⋯ ([RaftArtifactViewerHostAction]; a web that does not know it
+ * ignores it). A tap sets the address's fragment to `#host=<name>`, as Back's `#host=close`. Desktop
+ * Mode's state is `hostDesktop=on|off` in the query (absent: not offered here), kept there by the App
+ * ([raftArtifactViewerHostDesktopScript]). A page that draws the App's items and Back in its toolbar
+ * says so with `hostToolbar=1` in its address ([raftArtifactViewerPageDrawsHostBar]): only then does
+ * the App leave its own bar out.
+ */
+internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU_PARAM = "hostMenu"
+internal const val RAFT_ARTIFACT_VIEWER_HOST_DESKTOP_PARAM = "hostDesktop"
+internal const val RAFT_ARTIFACT_VIEWER_HOST_TOOLBAR_PARAM = "hostToolbar"
+
+/** The `#host=<name>` actions the App offers the page's ⋯. */
+internal enum class RaftArtifactViewerHostAction(val wireName: String) {
+    DesktopMode("desktop-mode"),
+    OpenInBrowser("open-in-browser"),
+}
+
+/** Every [RaftArtifactViewerHostAction], comma-separated (a const: [RaftArtifactViewerEmbedQuery] is read before it). */
+internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU = "desktop-mode,open-in-browser"
+
+/** The App action [url]'s fragment asks for (`#host=desktop-mode`, `#host=open-in-browser`); null for any other. */
+internal fun raftArtifactViewerHostAction(url: String): RaftArtifactViewerHostAction? {
+    val fragment = url.substringAfter('#', "")
+    if (!fragment.startsWith("host=")) return null
+    val name = fragment.removePrefix("host=")
+    return RaftArtifactViewerHostAction.entries.firstOrNull { it.wireName == name }
+}
+
+/**
+ * Whether a `#host=<name>` [url] is a new tap: not the one last handled ([handledUrl]) while its
+ * fragment was not yet taken off ([handledCleared] false: a platform's second callback, or Android's
+ * reload for Desktop Mode at that address) or within [RAFT_ARTIFACT_VIEWER_HOST_ACTION_REPEAT_MS] of it.
+ */
+internal fun raftArtifactViewerHostActionIsNew(url: String, handledUrl: String?, handledCleared: Boolean, sinceHandledMs: Long): Boolean =
+    url != handledUrl || (handledCleared && sinceHandledMs >= RAFT_ARTIFACT_VIEWER_HOST_ACTION_REPEAT_MS)
+
+internal const val RAFT_ARTIFACT_VIEWER_HOST_ACTION_REPEAT_MS = 500L
+
+private fun raftArtifactViewerQueryParam(url: String, name: String): String? =
+    url.substringBefore('#').substringAfter('?', "").split('&')
+        .firstOrNull { it.substringBefore('=') == name }
+        ?.substringAfter('=', "")
+
+/** Whether the page at [url] draws the only bar: its toolbar with Back and the App's items (`hostToolbar=1`). */
+internal fun raftArtifactViewerPageDrawsHostBar(url: String): Boolean =
+    raftArtifactViewerQueryParam(url, RAFT_ARTIFACT_VIEWER_HOST_TOOLBAR_PARAM) == "1"
+
+/** `hostDesktop` as the App writes it: `on`/`off`, null (absent) where Desktop Mode is not offered. */
+internal fun raftArtifactViewerHostDesktopValue(desktopMode: Boolean?): String? =
+    desktopMode?.let { if (it) "on" else "off" }
+
+/** Whether [url] already says [desktopMode] ([raftArtifactViewerHostDesktopValue]). */
+internal fun raftArtifactViewerAddressSaysDesktop(url: String, desktopMode: Boolean?): Boolean =
+    raftArtifactViewerQueryParam(url, RAFT_ARTIFACT_VIEWER_HOST_DESKTOP_PARAM) == raftArtifactViewerHostDesktopValue(desktopMode)
+
+/** [url] with `hostDesktop` set to [desktopMode] (removed when null); the rest stays as it is. */
+internal fun raftArtifactViewerWithHostDesktop(url: String, desktopMode: Boolean?): String {
+    val fragment = url.indexOf('#').let { if (it < 0) "" else url.substring(it) }
+    val beforeFragment = url.removeSuffix(fragment)
+    val path = beforeFragment.substringBefore('?')
+    val kept =
+        beforeFragment.substringAfter('?', missingDelimiterValue = "")
+            .split('&')
+            .filter { it.isNotEmpty() && it.substringBefore('=') != RAFT_ARTIFACT_VIEWER_HOST_DESKTOP_PARAM }
+    val params = kept + listOfNotNull(raftArtifactViewerHostDesktopValue(desktopMode)?.let { "$RAFT_ARTIFACT_VIEWER_HOST_DESKTOP_PARAM=$it" })
+    return if (params.isEmpty()) path + fragment else path + "?" + params.joinToString("&") + fragment
+}
+
+/**
+ * Puts Desktop Mode's state in the page's address (`hostDesktop`, replaced: no history entry, no
+ * load) and tells the page (`raft:host-state`). [clearHostAction]: also takes a handled `#host=<name>`
+ * off, so the next tap on the same item is a new address.
+ */
+internal fun raftArtifactViewerHostDesktopScript(webOrigin: String, desktopMode: Boolean?, clearHostAction: Boolean = false): String {
+    val param = Json.encodeToString(String.serializer(), RAFT_ARTIFACT_VIEWER_HOST_DESKTOP_PARAM)
+    val value = raftArtifactViewerHostDesktopValue(desktopMode)?.let { Json.encodeToString(String.serializer(), it) } ?: "null"
+    return raftArtifactViewerGuardedScript(
+        webOrigin,
+        """
+        var url = new URL(window.location.href);
+        var value = $value;
+        if (value === null) url.searchParams.delete($param); else url.searchParams.set($param, value);
+        if (${clearHostAction} && /^#host=/.test(url.hash) && url.hash !== ${Json.encodeToString(String.serializer(), RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT)}) url.hash = '';
+        if (url.href !== window.location.href) window.history.replaceState(window.history.state, '', url.href);
+        window.dispatchEvent(new Event('raft:host-state'));
+        """.trimIndent(),
+    )
+}
 
 internal const val RAFT_ARTIFACT_VIEWER_HOST_BACK = "host"
 
 /** The fragment the page writes when its host Back is pressed: the viewer closes. */
 internal const val RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT = "#host=close"
 
-private val RaftArtifactViewerEmbedKeys = setOf("embed", "shell", "chrome", "back")
+private val RaftArtifactViewerEmbedKeys =
+    setOf("embed", "shell", "chrome", "back", RAFT_ARTIFACT_VIEWER_HOST_MENU_PARAM, RAFT_ARTIFACT_VIEWER_HOST_TOOLBAR_PARAM)
 
 /**
  * [url] with the embed contract in its query: any `embed`/`shell` already there is replaced and a `chrome` dropped, every

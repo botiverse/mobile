@@ -43,6 +43,11 @@ class RaftArtifactViewerScreenshotTest {
 
     @Test fun barDark() = capture("artifact.viewer.bar.dark", RaftAppAppearance.Dark) { Viewer() }
 
+    // One bar: the page's toolbar is the only one, under the status bar (24dp stand-in).
+    @Test fun pageBarLight() = capture("artifact.viewer.page-bar", RaftAppAppearance.Light) { Viewer(pageDrawsBar = true) }
+
+    @Test fun pageBarDark() = capture("artifact.viewer.page-bar.dark", RaftAppAppearance.Dark) { Viewer(pageDrawsBar = true) }
+
     @Test fun menuLight() = capture("artifact.viewer.bar.menu", RaftAppAppearance.Light) { Viewer(overlay = { Menu() }) }
 
     @Test fun menuDark() = capture("artifact.viewer.bar.menu.dark", RaftAppAppearance.Dark) { Viewer(overlay = { Menu() }) }
@@ -64,9 +69,16 @@ private const val Title = "q4-launch-plan.html"
 private val Actions = RaftArtifactViewerBarActions(onToggleDesktopMode = {}, onOpenInBrowser = {})
 
 @Composable
-private fun Viewer(desktopMode: Boolean? = null, overlay: (@Composable () -> Unit)? = null) {
+private fun Viewer(desktopMode: Boolean? = null, pageDrawsBar: Boolean = false, overlay: (@Composable () -> Unit)? = null) {
     Box(Modifier.fillMaxSize()) {
-        RaftArtifactViewerFrame(title = Title, onBack = {}, actions = Actions, desktopMode = desktopMode, topSafeAreaOverride = 0.dp) {
+        RaftArtifactViewerFrame(
+            title = Title,
+            onBack = {},
+            actions = Actions,
+            desktopMode = desktopMode,
+            pageDrawsBar = pageDrawsBar,
+            topSafeAreaOverride = if (pageDrawsBar) 24.dp else 0.dp,
+        ) {
             PageStandIn()
         }
         overlay?.invoke()
