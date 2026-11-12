@@ -425,6 +425,8 @@ internal data class ThreadActionCardSpecFormState(
     val values: Map<String, ActionCardFormValue>,
     /** The server's 422 `FORM_INVALID` issues of the last submit. */
     val issues: List<ActionCardFormIssue> = emptyList(),
+    /** That 422's trace id, shown once under the issues. */
+    val issuesTraceId: String? = null,
     val submitting: Boolean = false,
     /** Any other refusal, as the sheet's banner. */
     val error: ThreadActionCardSpecError? = null,
@@ -443,8 +445,8 @@ internal data class ThreadActionCardSpecState(
     val typedPress: Map<String, String> = emptyMap(),
     /** A question card answered on the card (spec §5.9): its choices by message, kept while it scrolls away. */
     val inlineValues: Map<String, Map<String, ActionCardFormValue>> = emptyMap(),
-    /** The server's 422 `FORM_INVALID` issues of a card's inline answer, by message. */
-    val inlineIssues: Map<String, List<ActionCardFormIssue>> = emptyMap(),
+    /** The server's 422 `FORM_INVALID` issues of a card's inline answer, and that 422's trace id, by message. */
+    val inlineIssues: Map<String, ThreadActionCardInlineIssues> = emptyMap(),
 ) {
     /** The Button the frame shows busy: the store's run, else the typed path's while it is pending. */
     fun busyElement(messageId: String, typedPending: Boolean): String? =
@@ -457,9 +459,16 @@ internal data class ThreadActionCardSpecState(
             typedPress = typedPress[messageId],
             error = errors[messageId],
             inlineValues = inlineValues[messageId],
-            inlineIssues = inlineIssues[messageId].orEmpty(),
+            inlineIssues = inlineIssues[messageId]?.issues.orEmpty(),
+            inlineIssuesTraceId = inlineIssues[messageId]?.traceId,
         )
 }
+
+/** A question card's inline answer refused (422 `FORM_INVALID`): the issues, and the refusal's trace id. */
+internal data class ThreadActionCardInlineIssues(
+    val issues: List<ActionCardFormIssue>,
+    val traceId: String? = null,
+)
 
 /** The sheets [ThreadActionCardSpecState] has open: what the page draws over the thread. */
 internal data class ThreadActionCardSpecDialogs(
@@ -475,6 +484,8 @@ internal data class ThreadActionCardSpecCardSlice(
     /** The inline answer's choices so far; null before the first one (the form's defaults). */
     val inlineValues: Map<String, ActionCardFormValue>? = null,
     val inlineIssues: List<ActionCardFormIssue> = emptyList(),
+    /** The trace id of the 422 that gave [inlineIssues], while any of them shows. */
+    val inlineIssuesTraceId: String? = null,
 ) {
     fun busyElement(typedPending: Boolean): String? = busy ?: typedPress?.takeIf { typedPending }
 }
@@ -707,10 +718,11 @@ internal class ThreadActionCardSpecStore(
             if (messageId in current.busy) return@update current
             val before = current.inlineValues[messageId].orEmpty()
             // An edited question drops the server's issue under it.
-            val issues = current.inlineIssues[messageId]?.filter { issue -> issue.field == null || values[issue.field] == before[issue.field] }
+            val refused = current.inlineIssues[messageId]
+            val issues = refused?.issues?.filter { issue -> issue.field == null || values[issue.field] == before[issue.field] }.orEmpty()
             current.copy(
                 inlineValues = current.inlineValues + (messageId to values),
-                inlineIssues = if (issues.isNullOrEmpty()) current.inlineIssues - messageId else current.inlineIssues + (messageId to issues),
+                inlineIssues = if (refused == null || issues.isEmpty()) current.inlineIssues - messageId else current.inlineIssues + (messageId to refused.copy(issues = issues)),
             )
         }
     }
@@ -749,7 +761,7 @@ internal class ThreadActionCardSpecStore(
             if (result == null) return@launch
             val invalid = (result as? DataResult.Content)?.data as? ActionCardExecuteOutcome.FormInvalid
             if (invalid != null && invalid.issues.isNotEmpty()) {
-                update { it.copy(inlineIssues = it.inlineIssues + (messageId to invalid.issues)) }
+                update { it.copy(inlineIssues = it.inlineIssues + (messageId to ThreadActionCardInlineIssues(invalid.issues, invalid.traceId))) }
                 return@launch
             }
             val error = cardError(messageId, card, result)
@@ -819,12 +831,12 @@ internal class ThreadActionCardSpecStore(
             }
             if (result is DataResult.Content && result.data is ActionCardExecuteOutcome.FormInvalid) {
                 val invalid = result.data as ActionCardExecuteOutcome.FormInvalid
-                if (open != null) update { it.copy(form = open.copy(submitting = false, issues = invalid.issues, error = null)) }
+                if (open != null) update { it.copy(form = open.copy(submitting = false, issues = invalid.issues, issuesTraceId = invalid.traceId, error = null)) }
                 return@launch
             }
             when (val settled = settle(form.messageId, form.card, result)) {
                 null -> if (open != null) update { it.copy(form = null) }
-                else -> if (open != null) update { it.copy(form = open.copy(submitting = false, issues = emptyList(), error = settled)) }
+                else -> if (open != null) update { it.copy(form = open.copy(submitting = false, issues = emptyList(), issuesTraceId = null, error = settled)) }
             }
         }
     }

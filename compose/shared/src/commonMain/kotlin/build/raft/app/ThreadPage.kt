@@ -15919,6 +15919,7 @@ private fun SharedThreadRouteContentContent(
                 values = formState.values,
                 onValuesChange = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.FormValuesChanged(it)) },
                 fieldErrors = formState.issues,
+                fieldErrorsTraceId = formState.issuesTraceId,
                 submitting = formState.submitting,
                 onSubmit = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.SubmitForm(it)) },
                 onDismiss = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.DismissForm) },

@@ -14,6 +14,7 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.app.data.ActionCardFormValue
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardQuestion
@@ -22,6 +23,7 @@ import build.raft.app.data.parseActionCardSpec
 import build.raft.app.data.stripActionCardSpec
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import org.junit.runner.RunWith
@@ -85,6 +87,18 @@ class ThreadActionCardScreenshotTest {
 
     @Test
     fun questionCardsEndedDark() = capture("thread.action-cards.question.ended.dark", RaftAppAppearance.Dark) { ThreadQuestionCardsVisualContent(answered = false, ended = true) }
+
+    /**
+     * A confirm (slock #14497): a question of one option is one bordered button with its label, no
+     * Other. C alone for Maya, then pressed (checked, during its Undo wait), then for Ada (disabled);
+     * B with a confirm among other questions, the required one pressed; C answered, the same one
+     * line as any answer.
+     */
+    @Test
+    fun questionConfirmLight() = capture("thread.action-cards.question.confirm", RaftAppAppearance.Light) { ThreadQuestionConfirmVisualContent() }
+
+    @Test
+    fun questionConfirmDark() = capture("thread.action-cards.question.confirm.dark", RaftAppAppearance.Dark) { ThreadQuestionConfirmVisualContent() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit = { ThreadActionCardsVisualContent() }) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -318,6 +332,66 @@ private fun ThreadQuestionCardsVisualContent(answered: Boolean, ended: Boolean =
                     viewer = "u-maya",
                 )
             }
+        }
+    }
+}
+
+/** The confirm cards (slock #14497) as Maya and Ada see them; Maya's pressed ones hold their choice in the host's state. */
+@Composable
+private fun ThreadQuestionConfirmVisualContent() {
+    val timeContext = RaftTimeContext(localOffsetMinutes = 0, todayEpochDay = raftEpochDayForDate(2026, 11, 9), nowEpochMillis = 1_794_218_580_000L)
+    val names = ThreadActionCardNameLookup { kind, id -> if (kind == ThreadActionCardEntityKind.Human && id == "u-maya") "Maya" else null }
+    fun card(json: String, questions: List<ThreadActionCardQuestion>, answered: Boolean = false) =
+        ThreadActionCard(
+            type = "question:ask",
+            state = if (answered) "executed" else "prepared",
+            presentationCardJson = json,
+            expiresAt = "2026-11-16T10:03:00.000Z",
+            questionAddresseeUserId = "u-maya",
+            questionAddresseeHandle = "maya",
+            questions = questions,
+            executedByUserName = if (answered) "Maya" else null,
+        )
+
+    @Composable
+    fun Show(messageId: String, card: ThreadActionCard, viewer: String, values: Map<String, ActionCardFormValue>? = null) {
+        val spec = requireNotNull(card.actionCardSpecToRender(specEnabled = true, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
+        val state = remember(messageId, values) { MutableStateFlow(ThreadActionCardSpecState(inlineValues = values?.let { mapOf(messageId to it) }.orEmpty())) }
+        CompositionLocalProvider(LocalThreadActionCardSpecHost provides ThreadActionCardSpecHost(state = state, viewerUserId = viewer)) {
+            ThreadActionCardSpecView(
+                messageId = messageId,
+                card = card,
+                spec = spec,
+                commitEnabled = true,
+                typedPending = false,
+                executedTimeLabel = null,
+                askerName = "Fixer",
+                onAction = {},
+            )
+        }
+    }
+    val one = listOf(ThreadActionCardQuestion("single", 1))
+    val confirm = ActionCardSpecFixtures.questionConfirmCardJson()
+    val pressed = mapOf("how" to ActionCardFormValue.Choice(listOf("o0")))
+    CompositionLocalProvider(
+        LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext),
+        LocalThreadActionCardNames provides names,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            Show("m-confirm", card(confirm, one), viewer = "u-maya")
+            Show("m-confirm-pressed", card(confirm, one), viewer = "u-maya", values = pressed)
+            Show("m-confirm-ada", card(confirm, one), viewer = "u-ada")
+            Show(
+                "m-confirm-among",
+                card(ActionCardSpecFixtures.questionConfirmAmongOthersJson(), listOf(ThreadActionCardQuestion("single", 1), ThreadActionCardQuestion("single", 2), ThreadActionCardQuestion("single", 1))),
+                viewer = "u-maya",
+                values = mapOf("ack" to ActionCardFormValue.Choice(listOf("ok"))),
+            )
+            Show(
+                "m-confirm-answered",
+                card(ActionCardSpecFixtures.questionCardAnsweredJson(answer = "Got it", question = "The deploy is done. Seen it?"), one, answered = true),
+                viewer = "u-ada",
+            )
         }
     }
 }

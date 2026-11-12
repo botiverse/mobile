@@ -367,18 +367,20 @@ class ThreadActionCardSpecStoreTest {
 
         // 422 FORM_INVALID: the issues under their fields, the sheet stays open with the values.
         val issue = actionCardFormIssue("title", ActionCardFormIssueCode.Conflict)
-        h.answer(DataResult.Content(ActionCardExecuteOutcome.FormInvalid(listOf(issue), "Invalid")))
+        h.answer(DataResult.Content(ActionCardExecuteOutcome.FormInvalid(listOf(issue), "Invalid", "4bf92f3577b34da6a3ce929d0e0e4736")))
         h.store.dispatch(ThreadActionCardSpecIntent.SubmitForm(values))
         runCurrent()
         assertEquals(ExecuteActionFormBody(id = "details", values = values), h.calls.single().third)
         val invalid = assertNotNull(h.store.state.value.form)
         assertEquals(Triple(listOf(issue), values, false), Triple(invalid.issues, invalid.values, invalid.submitting))
+        assertEquals("4bf92f3577b34da6a3ce929d0e0e4736", invalid.issuesTraceId, "the 422's trace id, shown once under its issues")
 
         // 422 FORM_REQUIRED: the refresh hint in the banner.
         h.answer(DataResult.Content(ActionCardExecuteOutcome.FormRequired(null)))
         h.store.dispatch(ThreadActionCardSpecIntent.SubmitForm(values))
         runCurrent()
         assertEquals(ThreadActionCardSpecError.FormRequired, h.store.state.value.form?.error)
+        assertNull(h.store.state.value.form?.issuesTraceId, "another refusal drops the 422's trace id with its issues")
 
         // 409 ALREADY_EXECUTED: the card as it now is, the sheet closes and says who.
         val done = card(state = "executed").copy(executedByUserName = "Ada")

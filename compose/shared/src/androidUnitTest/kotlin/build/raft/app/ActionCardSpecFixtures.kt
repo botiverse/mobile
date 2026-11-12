@@ -83,8 +83,11 @@ internal object ActionCardSpecFixtures {
         inline: Boolean = true,
         multiple: Boolean = false,
         question: String = "How should I go about them?",
+        /** Other… on the Choice; a question of one option (a confirm, slock #14497) has none. */
+        other: Boolean = true,
     ): String {
         val opts = options.mapIndexed { index, label -> """{"value":"o$index","label":${raw(label)}}""" }.joinToString(",")
+        val otherJson = if (other) ""","other":{"label":{"key":"actionCard.question.other","text":{"en":"Other…"}},"maxLength":500}""" else ""
         return """
 {"catalog":"action-card.v1","icon":"message",
  "title":{"key":"actionCard.question.title.one","text":{"en":"Answer Question"},"params":{"count":1}},
@@ -99,8 +102,43 @@ internal object ActionCardSpecFixtures {
   "submitLabel":{"key":"actionCard.question.form.submit","text":{"en":"Answer"}},
   "description":{"key":"actionCard.question.form.visibility","text":{"en":"{agent} and everyone who can read this conversation will see your answers."},"params":{"agent":{"kind":"agent","id":"$QUESTION_FIXER_ID","fallback":"fixer"}}},
   ${if (inline) "\"placement\":\"inline\"," else ""}
-  "fields":[{"type":"Choice","name":"how","label":${raw(question)},"required":true,"multiple":$multiple,"options":[$opts],
-    "other":{"label":{"key":"actionCard.question.other","text":{"en":"Other…"}},"maxLength":500}}]}}}
+  "fields":[{"type":"Choice","name":"how","label":${raw(question)},"required":true,"multiple":$multiple,"options":[$opts]$otherJson}]}}}
+"""
+    }
+
+    /** A confirm alone (slock #14497 `questionField`): one question of one option, a single Choice without Other…, on the card. */
+    fun questionConfirmCardJson(option: String = "Got it", question: String = "The deploy is done. Seen it?"): String =
+        questionCardJson(options = listOf(option), question = question, other = false)
+
+    /**
+     * Three questions on the card (slock #14497's behavior test): a required confirm, a choice of two
+     * with Other…, and an optional confirm. The confirms sit under their questions, the card keeps
+     * its one "Answer Questions" submit.
+     */
+    fun questionConfirmAmongOthersJson(): String {
+        fun row(id: String, text: String) = """"q_$id":{"type":"Field","props":{"label":{"key":"actionCard.question.questionN","text":{"en":"Question {n}"},"params":{"n":1}},"value":"$text"}}"""
+        fun confirm(id: String, text: String, label: String, required: Boolean) =
+            """{"type":"Choice","name":"$id","label":${raw(text)},"required":$required,"multiple":false,"options":[{"value":"ok","label":${raw(label)}}]}"""
+        return """
+{"catalog":"action-card.v1","icon":"message",
+ "title":{"key":"actionCard.question.title.other","text":{"en":"Answer Questions"},"params":{"count":3}},
+ "spec":{"root":"root","elements":{
+  "root":{"type":"Stack","props":{},"children":["properties","actions"]},
+  "properties":{"type":"Stack","props":{},"children":["for","q_ack","q_window","q_also"]},
+  "for":{"type":"Field","props":{"label":{"key":"actionCard.question.for","text":{"en":"For"}},"value":[{"kind":"user","id":"$QUESTION_MAYA_ID","fallback":"maya"}]}},
+  ${row("ack", "The deploy is done. Seen it?")},
+  ${row("window", "Which window?")},
+  ${row("also", "And the checklist?")},
+  "actions":{"type":"Stack","props":{"direction":"row","wrap":true,"role":"actions"},"children":["answer"]},
+  "answer":{"type":"Button","props":{"label":{"key":"actionCard.question.answer.other","text":{"en":"Answer Questions"},"params":{"count":3}},"emphasis":"primary","action":{"kind":"open_form","form":"answers"}}}}},
+ "forms":{"answers":{"title":{"key":"actionCard.question.form.title.other","text":{"en":"Answer Questions"},"params":{"count":3}},
+  "submitLabel":{"key":"actionCard.question.form.submit","text":{"en":"Answer"}},
+  "placement":"inline",
+  "fields":[${confirm("ack", "The deploy is done. Seen it?", "Got it", required = true)},
+   {"type":"Choice","name":"window","label":${raw("Which window?")},"required":true,"multiple":false,
+    "options":[{"value":"tue","label":${raw("Tue 10:00")}},{"value":"wed","label":${raw("Wed 15:00")}}],
+    "other":{"label":{"key":"actionCard.question.other","text":{"en":"Other…"}},"maxLength":500}},
+   ${confirm("also", "And the checklist?", "Done too", required = false)}]}}}
 """
     }
 
