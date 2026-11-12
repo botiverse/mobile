@@ -220,7 +220,7 @@ internal suspend fun createThenJoinAgent(
     state: CreatedAgentJoinState,
     create: (suspend () -> DataResult<String>)?,
     join: suspend (agentId: String) -> DataResult<*>,
-    isCurrent: () -> Boolean,
+    isCurrent: suspend () -> Boolean,
     publish: (CreatedAgentJoinState) -> Unit,
 ): CreateThenJoinOutcome {
     var current = state
