@@ -56,9 +56,6 @@ import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftSpinner
-import build.raft.designsystem.components.RaftStatusDot
-import build.raft.designsystem.components.RaftStatusSize
-import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
@@ -157,7 +154,10 @@ internal fun ComputerRuntimeAuthHeaderLine(auth: ComputerRuntimeAuthCardState, u
     }
 }
 
-/** Raft DS StatusChip, as the account row draws its health. */
+/**
+ * The account's sign-in state, Signed in or Signed out, as a soft badge with no dot: a light is
+ * presence, and the words carry the state (raft-design patterns/status.md, the usage card).
+ */
 @Composable
 private fun ComputerRuntimeAuthStatusChip(signedIn: Boolean, modifier: Modifier = Modifier) {
     RaftBadge(
@@ -165,7 +165,6 @@ private fun ComputerRuntimeAuthStatusChip(signedIn: Boolean, modifier: Modifier 
         modifier = modifier,
         appearance = RaftBadgeAppearance.Soft,
         variant = if (signedIn) RaftBadgeVariant.Success else RaftBadgeVariant.Warning,
-        icon = { RaftStatusDot(variant = if (signedIn) RaftStatusVariant.Success else RaftStatusVariant.Warning, size = RaftStatusSize.Md) },
     )
 }
 

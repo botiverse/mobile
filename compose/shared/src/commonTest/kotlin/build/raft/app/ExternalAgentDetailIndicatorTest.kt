@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 /**
  * task #1119 PR 2: mobile agent-detail tone for external agents mirrors web
  * `AgentStatusBadge` (slock@2676dab22) tier for tier. Product rule (@artin):
- * not signed in ⇒ gray + "finish setup on the web"; reviewer rule (@LiBai):
+ * not signed in ⇒ orange (a step, raft-design status.md) + "finish setup on the web"; reviewer rule (@LiBai):
  * a status we could not read is never rendered as "waiting for login".
  */
 class ExternalAgentDetailIndicatorTest {
@@ -81,7 +81,7 @@ class ExternalAgentDetailIndicatorTest {
 
     @Test
     fun waitingForLoginStillWinsOverAnOnlineLastSeenAt() {
-        // Existing mobile-only divergence: not signed in ⇒ gray + setup copy
+        // Existing mobile-only divergence: not signed in ⇒ orange + setup copy
         // even when the credential was just seen. The dot never disagrees
         // with the text beside it.
         val result = externalAgentDetailIndicator(
@@ -89,7 +89,7 @@ class ExternalAgentDetailIndicatorTest {
             nowEpochMillis = now,
             lastSeenAt = iso(now - 10_000L)
         )
-        assertEquals(RaftColor.StatusNeutralGray, result.state.color)
+        assertEquals(RaftColor.AccentOrange, result.state.color)
         assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
     }
 
@@ -154,9 +154,9 @@ class ExternalAgentDetailIndicatorTest {
     }
 
     @Test
-    fun waitingForLoginWithoutActivityIsGrayAndSetupRequired() {
+    fun waitingForLoginWithoutActivityIsOrangeAndSetupRequired() {
         val result = externalAgentDetailIndicator(status(ExternalAgentSetupState.WaitingForLogin), now)
-        assertEquals(RaftColor.StatusNeutralGray, result.state.color)
+        assertEquals(RaftColor.AccentOrange, result.state.color)
         assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
     }
 
@@ -192,16 +192,16 @@ class ExternalAgentDetailIndicatorTest {
 
     // Deliberate divergence from web: web evaluates activity tiers before the
     // setup state and can show a lime dot beside a "setup required" caption
-    // (agent ran, then lost its credential). Product rule: not signed in ⇒ gray,
+    // (agent ran, then lost its credential). Product rule: not signed in ⇒ orange (a step, status.md),
     // and the dot must never disagree with the text beside it.
     @Test
-    fun waitingForLoginWithFreshActivityStaysGrayAndSetupRequired() {
+    fun waitingForLoginWithFreshActivityStaysOrangeAndSetupRequired() {
         val result =
             externalAgentDetailIndicator(
                 status(ExternalAgentSetupState.WaitingForLogin, lastActivityAt = iso(now - 60_000L)),
                 now
             )
-        assertEquals(RaftColor.StatusNeutralGray, result.state.color)
+        assertEquals(RaftColor.AccentOrange, result.state.color)
         assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
     }
 
@@ -212,7 +212,7 @@ class ExternalAgentDetailIndicatorTest {
     // runs. If someone reintroduces a `< 30 min` arm below `waiting`, this test does
     // NOT go red — the arm would simply be dead again, which is why the removal was
     // safe. What this pins is the ordering: move `waiting` below the age tiers to
-    // "match web" and this goes gray → cyan, exposing it as a product change.
+    // "match web" and this goes orange → cyan, exposing it as a product change.
     @Test
     fun waitingForLoginOutranksTheAgeTiersWebWouldUseHere() {
         val result =
@@ -220,7 +220,7 @@ class ExternalAgentDetailIndicatorTest {
                 status(ExternalAgentSetupState.WaitingForLogin, lastActivityAt = iso(now - 20 * 60_000L)),
                 now
             )
-        assertEquals(RaftColor.StatusNeutralGray, result.state.color)
+        assertEquals(RaftColor.AccentOrange, result.state.color)
         assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
     }
 
@@ -248,7 +248,7 @@ class ExternalAgentDetailIndicatorTest {
         assertNull(parseExternalAgentTimestampOrNull(""))
         val result =
             externalAgentDetailIndicator(status(ExternalAgentSetupState.WaitingForLogin, lastActivityAt = "garbage"), now)
-        assertEquals(RaftColor.StatusNeutralGray, result.state.color)
+        assertEquals(RaftColor.AccentOrange, result.state.color)
         assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
     }
 

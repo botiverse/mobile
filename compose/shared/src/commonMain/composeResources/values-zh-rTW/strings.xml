@@ -1532,12 +1532,12 @@
     <string name="member_label_computer_status">電腦狀態</string>
     <string name="member_action_edit_display_name">編輯顯示名稱</string>
     <string name="member_daemon_version_suffix">&#160;· daemon v%1$s</string>
-    <string name="member_machine_run_computer_version">電腦 v%1$s</string>
-    <string name="member_machine_run_daemon_version">daemon v%1$s</string>
-    <string name="member_machine_run_computer_online">電腦線上</string>
-    <string name="member_machine_run_daemon_online">daemon 上線中</string>
-    <string name="member_machine_run_computer_offline">電腦離線</string>
-    <string name="member_machine_run_daemon_offline">daemon 離線</string>
+    <string name="member_machine_run_computer_version">v%1$s</string>
+    <string name="member_machine_run_daemon_version">v%1$s</string>
+    <string name="member_machine_run_computer_online">線上</string>
+    <string name="member_machine_run_daemon_online">線上</string>
+    <string name="member_machine_run_computer_offline">離線</string>
+    <string name="member_machine_run_daemon_offline">離線</string>
     <string name="member_machine_no_computer_assigned">未指派電腦</string>
     <string name="member_label_created">建立時間</string>
     <string name="member_label_creator">建立者</string>
@@ -1551,7 +1551,7 @@
     <string name="member_label_command">指令</string>
     <string name="member_label_default">預設</string>
     <string name="member_label_fast">快速</string>
-    <string name="member_label_connected">已連結</string>
+    <string name="member_label_connected">線上</string>
     <string name="member_label_offline">離線</string>
     <string name="member_label_no_creator">未指定建立者</string>
     <string name="member_label_activity_only">僅動態</string>
@@ -2142,7 +2142,7 @@
     <string name="agent_create_error_no_machine_runtimes">所選電腦沒有執行環境資料。請重新整理電腦清單，或選擇其他電腦。</string>
     <string name="agent_create_suffix_coming_soon">（即將推出）</string>
     <string name="agent_create_suffix_not_installed">（未安裝）</string>
-    <string name="agent_create_suffix_offline">（離線）</string>
+    <string name="agent_create_suffix_offline">&#160;· 離線</string>
     <string name="agent_create_hint_provider">「預設」不會變更 Claude Code 的供應商設定。「自訂」會為此 Agent 設定 ANTHROPIC_BASE_URL 和 ANTHROPIC_API_KEY。</string>
     <string name="agent_create_error_name_taken">這個名稱已被使用，請換一個名稱。</string>
     <string name="agent_create_error_name_reserved">Agent 名稱 @%1$s 已保留，請選擇其他名稱。</string>
@@ -2264,9 +2264,9 @@
     <string name="home_notification_machine_offline_title_many">%1$s 已離線</string>
     <string name="home_notification_machine_offline_body_one">目前這台電腦上沒有使用中的 Agent——下次需要時再重新連線即可。</string>
     <string name="home_notification_machine_offline_body_many">這些電腦目前沒有活躍的 Agent；下次需要時再重新連線。</string>
-    <string name="home_notification_machine_outdated_title_one">%1$s 正在執行舊版 daemon</string>
-    <string name="home_notification_machine_outdated_title_many">%1$s 正在執行舊版 daemon</string>
-    <string name="home_notification_machine_outdated_body">請停止 daemon 並重新連線以更新。</string>
+    <string name="home_notification_machine_outdated_title_one">%1$s 有可用更新</string>
+    <string name="home_notification_machine_outdated_title_many">%1$s 有可用更新</string>
+    <string name="home_notification_machine_outdated_body">停止後重新連線即可更新。</string>
     <string name="home_notification_computer_upgrade_deadline_title_one">%1$s 需要在 %2$s 前升級</string>
     <string name="home_notification_computer_upgrade_deadline_title_many">%1$d 台電腦需要在 %2$s 前升級</string>
     <string name="home_notification_computer_reinstall_deadline_title_one">%1$s 需要重新安裝，請在 %2$s 前完成</string>
@@ -2652,7 +2652,8 @@
     <string name="settings_computers_rack_no_attention_title">沒有需要處理的電腦</string>
     <string name="settings_computers_rack_no_attention_description">所有已連接的電腦都是最新版本。</string>
     <string name="settings_computers_delete_busy">刪除中…</string>
-    <string name="settings_computers_status_connected">已連結</string>
+    <string name="settings_computers_status_connected">線上</string>
+    <string name="settings_computers_status_updating">更新中…</string>
     <string name="settings_computers_status_offline">離線</string>
     <string name="settings_computers_section_name">名稱</string>
     <string name="settings_computers_label_name">電腦名稱</string>
@@ -2671,13 +2672,13 @@
     <string name="settings_computers_state_no_creator">沒有建立者</string>
     <string name="settings_computers_creator_handle">@%1$s</string>
     <string name="settings_computers_label_runtimes">偵測到的執行環境</string>
-    <string name="settings_computers_runtime_suffix_update_computer">（需更新 Raft Computer）</string>
+    <string name="settings_computers_runtime_suffix_update_computer">（需要更新）</string>
     <string name="settings_computers_runtime_usage_title">%1$s 用量</string>
     <string name="settings_computers_runtime_usage_version">版本 %1$s</string>
     <string name="settings_computers_runtime_usage_version_unavailable">無法取得版本</string>
     <string name="settings_computers_runtime_usage_private">擁有電腦編輯權限或連接這台電腦的人可見</string>
     <string name="settings_computers_runtime_usage_health_ok">正常</string>
-    <string name="settings_computers_runtime_usage_health_rate_limited">速率受限</string>
+    <string name="settings_computers_runtime_usage_health_rate_limited">已用完</string>
     <string name="settings_computers_runtime_usage_health_reauth_required">需要重新登入</string>
     <string name="settings_computers_runtime_usage_health_unsupported">不支援</string>
     <string name="settings_computers_runtime_usage_health_error">錯誤</string>
@@ -2692,8 +2693,8 @@
     <string name="settings_computers_runtime_usage_parse_unavailable">無法顯示用量</string>
     <string name="settings_computers_runtime_usage_window_used">已用 %1$s · %2$s重設</string>
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">已用 %1$s · 暫時無法取得重設時間</string>
-    <string name="settings_computers_runtime_usage_window_used_up">已用完 · %1$s重設</string>
-    <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">已用完 · 無法取得重設時間</string>
+    <string name="settings_computers_runtime_usage_window_used_up">已用完 · %1$s恢復</string>
+    <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">已用完</string>
     <string name="settings_computers_runtime_usage_later">稍後</string>
     <string name="settings_computers_runtime_usage_metadata">整個帳號 · %1$s更新</string>
     <string name="settings_computers_runtime_usage_recently">剛剛</string>
@@ -2747,6 +2748,7 @@
     <string name="settings_computers_create_agent_error_failed">無法建立 Agent：%1$s</string>
     <string name="settings_computers_create_agent_error_forbidden">你沒有建立 Agent 的權限。</string>
     <string name="settings_computers_update_available">有可用的更新</string>
+    <string name="settings_computers_update_required">需要更新</string>
     <string name="settings_computers_last_seen">上次上線：%1$s</string>
     <string name="settings_computers_rack_computer_count_one">%1$d 台電腦</string>
     <string name="settings_computers_rack_computer_count_other">%1$d 台電腦</string>
@@ -2754,13 +2756,14 @@
     <string name="settings_computers_rack_agent_count_one">%1$d 個 Agent</string>
     <string name="settings_computers_rack_agent_count_other">%1$d 個 Agent</string>
     <string name="settings_computers_rack_version">v%1$s</string>
+    <string name="settings_computers_rack_updating_to">正在更新至 v%1$s</string>
     <string name="settings_computers_rack_last_seen">上次上線：%1$s。</string>
     <string name="settings_computers_rack_percent_used">已用 %1$s</string>
     <string name="settings_computers_rack_used_up">已用完</string>
     <string name="settings_computers_rack_resets_in_minutes">%1$dm 後重設</string>
     <string name="settings_computers_rack_resets_in_hours">%1$dh 後重設</string>
     <string name="settings_computers_rack_resets_in_days">%1$dd 後重設</string>
-    <string name="settings_computers_rack_used_up_resets">已用完，%1$s重設</string>
+    <string name="settings_computers_rack_used_up_resets">已用完 · %1$s恢復</string>
     <string name="settings_computers_rack_col_other">其他</string>
     <string name="settings_computers_rack_other_runtimes">其他執行環境</string>
     <string name="settings_computers_rack_usage_unavailable">%1$s：無法取得用量</string>
@@ -2805,8 +2808,6 @@
     <string name="settings_computers_rack_no_match_title">沒有符合的 Computer</string>
     <string name="settings_computers_rack_no_match_description">換個關鍵字，或清除篩選。</string>
     <string name="settings_computers_disk_low">磁碟空間不足</string>
-    <string name="settings_computers_needs_upgrade">需要升級</string>
-    <string name="settings_computers_needs_reinstall">需要重新安裝</string>
     <string name="settings_computers_workspace_status_active">啟用中</string>
     <string name="settings_computers_workspace_status_orphan">已孤立</string>
     <string name="settings_computers_cannot_delete_message_one">這台電腦還有 %1$d 個 Agent。請先移除所有 Agent，再刪除電腦。</string>
@@ -2821,7 +2822,7 @@
     <string name="settings_computers_restart_timed_out">重新啟動逾時。請確認電腦已上線，然後再試一次。</string>
     <string name="settings_computers_up_to_date">已是最新版本</string>
     <string name="settings_computers_upgrade_to_version">升級至 v%1$s</string>
-    <string name="settings_computers_upgrading">升級中…</string>
+    <string name="settings_computers_upgrading">更新中…</string>
     <string name="settings_computers_upgrade_status_reinstall">這個版本無法從網頁升級，請用本頁頂端的指令重新安裝。</string>
     <string name="settings_computers_upgrade_status_reading">正在讀取版本，請稍後再查看。</string>
     <string name="settings_computers_upgrade_status_cannot_check">目前無法檢查新版本，請稍後再試。</string>
@@ -2876,10 +2877,10 @@
     <string name="settings_computers_mac_linux">macOS / Linux</string>
     <string name="settings_computers_release_notes_open">查看更新內容</string>
     <string name="settings_computers_release_notes_title">v%1$s 更新內容</string>
-    <string name="settings_computers_version_notice_upgrade_title">請盡快升級</string>
-    <string name="settings_computers_version_notice_upgrade_title_scheduled">請盡快升級：自 %1$s 起，這台電腦上的 Agent 將停止執行</string>
-    <string name="settings_computers_version_notice_reinstall_title">這個版本需要重新安裝</string>
-    <string name="settings_computers_version_notice_reinstall_title_scheduled">請盡快重新安裝：自 %1$s 起，這台電腦上的 Agent 將停止執行</string>
+    <string name="settings_computers_version_notice_upgrade_title">需要更新</string>
+    <string name="settings_computers_version_notice_upgrade_title_scheduled">需要更新：自 %1$s 起，這台電腦上的 Agent 將停止執行</string>
+    <string name="settings_computers_version_notice_reinstall_title">需要更新</string>
+    <string name="settings_computers_version_notice_reinstall_title_scheduled">需要更新：自 %1$s 起，這台電腦上的 Agent 將停止執行</string>
     <string name="settings_computers_version_notice_enforced_title">這台電腦上的 Agent 已停止執行：版本過舊</string>
     <string name="settings_computers_version_notice_enforced_title_unknown">這台電腦上的 Agent 已停止執行：電腦沒有回報版本</string>
     <string name="settings_computers_version_notice_unknown_title">這台電腦沒有回報版本</string>
@@ -3297,8 +3298,8 @@
     <string name="member_row_status_disconnected">已中斷連線</string>
     <string name="member_row_status_error">錯誤</string>
     <string name="member_row_status_external">外部</string>
-    <string name="member_row_status_working">工作中</string>
-    <string name="member_row_status_thinking">思考中</string>
+    <string name="member_row_status_working">工作中…</string>
+    <string name="member_row_status_thinking">思考中…</string>
     <string name="home_dm_agent_activity_thinking">思考中…</string>
     <string name="home_dm_agent_activity_working">處理中…</string>
     <string name="agent_activity_starting">啟動中…</string>
@@ -3334,7 +3335,7 @@
     <string name="runtime_quota_window_five_hour">5 小時</string>
     <string name="runtime_quota_window_week">本週</string>
     <string name="runtime_quota_used">%1$s 已用 %2$s</string>
-    <string name="runtime_quota_used_up">%1$s 已用完，%2$s恢復</string>
+    <string name="runtime_quota_used_up">%1$s 已用完 · %2$s恢復</string>
     <string name="runtime_quota_used_up_no_reset">%1$s 已用完</string>
     <string name="runtime_quota_attention">%1$s · 需要處理</string>
     <string name="runtime_picker_search">搜尋</string>
@@ -4201,6 +4202,9 @@
     <string name="agent_status_credential_plan_default_model">方案不包含這個模型</string>
     <string name="agent_status_credential_billing">服務商餘額已用完</string>
     <string name="agent_status_computer_access_revoked">電腦的存取權已撤銷：請把 Agent 移到另一台電腦（重新加入會新增一台電腦）</string>
+    <string name="agent_status_computer_update_required">電腦需要更新</string>
+    <string name="agent_status_computer_offline">電腦離線</string>
+    <string name="agent_status_open_computer">開啟電腦</string>
     <string name="agent_migration_place_from_revoked_computer_note">這個 Agent 所在的電腦已失去伺服器的存取權，無法帶走它的檔案。它會移到你選擇的電腦，並在下次收到訊息時在那裡開始新的工作階段。</string>
     <string name="agent_status_model_unsupported">這個執行環境的帳號或方案不包含模型「%1$s」。請更換模型，或登入包含該模型的帳號</string>
     <string name="agent_status_model_unsupported_default">這個執行環境的帳號或方案不包含這個 Agent 的模型。請更換模型，或登入包含該模型的帳號</string>
@@ -4427,7 +4431,7 @@
     <string name="channel_announcement_picker_no_match">沒有符合的 Artifact</string>
     <string name="member_activity_overview_view_subagents">子 Agent</string>
     <string name="member_activity_subagents_open_from_log">查看這個子 Agent</string>
-    <string name="member_activity_subagents_state_running">工作中</string>
+    <string name="member_activity_subagents_state_running">工作中…</string>
     <string name="member_activity_subagents_state_done">完成</string>
     <string name="member_activity_subagents_state_failed">失敗</string>
     <string name="member_activity_subagents_state_ceiling">達到上限</string>
@@ -4437,7 +4441,7 @@
     <string name="member_activity_subagents_steps_one">1 步</string>
     <string name="member_activity_subagents_steps_other">%1$d 步</string>
     <string name="member_activity_subagents_now">正在：%1$s</string>
-    <string name="member_activity_subagents_group_running">執行中</string>
+    <string name="member_activity_subagents_group_running">工作中</string>
     <string name="member_activity_subagents_group_ended">已結束</string>
     <string name="member_activity_subagents_recent_only">列出這個 Agent 最近動態裡的子 Agent。</string>
     <string name="member_activity_subagents_empty_title">現在沒有子 Agent</string>
@@ -4650,4 +4654,5 @@
     <string name="external_invite_error_busy">%1$s 正在更新，請過一分鐘再試。</string>
     <string name="external_invite_error_too_many_attempts">嘗試次數過多，請稍候一分鐘再試一次。</string>
     <string name="external_invite_error_generic">發生錯誤，請再試一次。</string>
+    <string name="settings_computers_runtime_auth_not_signed_in">未登入</string>
 </resources>

@@ -124,7 +124,7 @@ class SharedCreateAgentDialogTest {
             )
 
         assertEquals(listOf("machine-online", "machine-offline", "machine-other"), items.map { it.id })
-        assertEquals("Build Mini (offline)", items[1].label)
+        assertEquals("Build Mini · Offline", items[1].label)
         assertTrue(items[0].enabled)
         assertFalse(items[1].enabled)
         assertFalse(items[2].enabled)

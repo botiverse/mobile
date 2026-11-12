@@ -100,12 +100,15 @@ internal fun raftRackEffectiveRuntimeFilter(
 ): List<RaftComputersRackRuntimeFilter> = chosen.filter { it in options }
 
 /**
- * Web `rackNeedsAttention`: an upgrade waiting (`getComputerAttentionStatus` "upgrade"), a
- * Computer that is not online, or an online one low on disk (shared `isMachineDiskLow`).
+ * Web `rackNeedsAttention`: an upgrade waiting (`getComputerAttentionStatus` "upgrade": Update
+ * available and Update required alike, raft-design patterns/status.md), a Computer that is not
+ * online (unless it is only restarting for an update in flight, which is in progress), or an
+ * online one low on disk (shared `isMachineDiskLow`).
  */
 internal fun raftRackNeedsAttention(computer: SettingsComputerSnapshot): Boolean {
     if (computer.upgradeAvailable) return true
-    if (!computer.online) return computer.isComputer
+    if (computer.isComputer && raftComputerVersionTier(computer) is RaftComputerVersionTier.Notice) return true
+    if (!computer.online) return computer.isComputer && !computer.raftComputerUpdating()
     return raftComputerDiskLow(computer)
 }
 
@@ -567,8 +570,9 @@ internal fun raftComputersRackLayout(
     val sort = model.sort
     val sorted = if (sort != null) raftSortRackComputers(filtered, sort, usage) else filtered.raftMineFirst { it.isMyComputer(userId) }
     val offlineSection = model.filters.status != RaftComputersRackStatusFilter.Offline
-    val online = if (offlineSection) sorted.filter { it.online } else sorted
-    val offline = if (offlineSection) sorted.filter { !it.online } else emptyList()
+    // An updating Computer stays in place while it restarts (raft-design patterns/status.md).
+    val online = if (offlineSection) sorted.filter { it.online || it.raftComputerUpdating() } else sorted
+    val offline = if (offlineSection) sorted.filter { !it.online && !it.raftComputerUpdating() } else emptyList()
     val groups = raftGroupRackComputers(online, groupBy, labels, raftRackGroupRank(online, sort, usage, userId))
     return RaftComputersRackLayout(groups, offline)
 }

@@ -199,6 +199,7 @@ import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentStatus
+import build.raft.app.data.AgentActivityDetailKindWakeCrashLoopBlocked
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -270,6 +271,7 @@ import build.raft.designsystem.components.RaftFitToolbarScope
 import build.raft.designsystem.components.RaftFitToolbarSearch
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftSidebarItem
+import build.raft.designsystem.components.RaftSidebarItemMeta
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftPanelNotice
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -7453,6 +7455,15 @@ private fun MembersDetailContent(
                             detail = detail,
                             serverId = currentServerId,
                             agentStatusIndicatorState = agentStatusObservedState,
+                            heldByOfflineComputer =
+                                membersAgentHeldByOfflineComputer(
+                                    computerOffline =
+                                        (machineStatusRow(detail?.summary?.machineId) as? MembersMachineStatusRow.Machine)
+                                            ?.online == false,
+                                    indicator = agentStatusObservedState,
+                                    lifecycleStatus = detail?.summary?.status ?: member.agentLifecycleStatus,
+                                    external = member.isExternal || agentStatusObservedState?.external == true,
+                                ),
                             loadState = agentActivityLoadState,
                             overview = activityOverview,
                             onOpenComputer = onOpenComputer,
@@ -10017,6 +10028,41 @@ internal fun MembersMachineRunLabel.resource(): StringResource =
         MembersMachineRunLabel.DaemonOffline -> Res.string.member_machine_run_daemon_offline
     }
 
+/**
+ * Web `agentHeldByOfflineComputer` (#triage:#206): the agent's Computer is offline and it was not
+ * stopped by a person, is not in error and is not paused by the server for its own reasons, so it
+ * reads "Computer offline" (raft-design identity-and-presence). A held agent (its Computer revoked
+ * or too old) and an external agent keep their own words. Read from the profile's Computer row;
+ * the lists get it once the server's agent verdict carries it.
+ */
+internal fun membersAgentHeldByOfflineComputer(
+    computerOffline: Boolean,
+    indicator: RaftAgentStatusIndicatorState?,
+    lifecycleStatus: String?,
+    external: Boolean,
+): Boolean {
+    if (!computerOffline || external || indicator?.blocked != null) return false
+    if (lifecycleStatus?.trim()?.lowercase() == "stopped") return false
+    if (indicator?.status == AgentStatus.Error) return false
+    return indicator?.detailKind?.trim() !in MembersOwnOfflineDetailKinds
+}
+
+/** Web `OWN_OFFLINE_DETAIL_KINDS`: offline states the server paused, which keep their own words. */
+private val MembersOwnOfflineDetailKinds =
+    setOf(AgentActivityDetailKindWakeCrashLoopBlocked, AgentActivityDetailKindTerminalFailurePaused)
+
+/** The agent profile's Computer version row (web #14585): "v{version}" while online, else "—". */
+@Composable
+internal fun membersAgentComputerVersionText(runLabel: MembersMachineRunLabel): String {
+    val version =
+        when (runLabel) {
+            is MembersMachineRunLabel.ComputerVersion -> runLabel.version
+            is MembersMachineRunLabel.DaemonVersion -> runLabel.version
+            else -> null
+        } ?: return "—"
+    return stringResource(Res.string.settings_computers_rack_version, version.removePrefix("v"))
+}
+
 /** The single `%1$s` argument for the two version labels; null for the four argument-free ones. */
 internal fun MembersMachineRunLabel.formatArg(): String? =
     when (this) {
@@ -10178,7 +10224,12 @@ internal fun MembersAgentProfileHeader(
      * the agent cannot run until someone restarts it ([agentNeedsManualRestart]).
      */
     onRetry: (() -> Unit)? = null,
-    retryInProgress: Boolean = false
+    retryInProgress: Boolean = false,
+    /**
+     * Opens the agent's Computer: the link beside "Computer update required" (raft-design
+     * identity-and-presence, the step links to the computer); null when there is none to open.
+     */
+    onOpenComputer: (() -> Unit)? = null
 ) {
     val appBot = !member.managedByAppInstallId.isNullOrBlank()
     // Web AgentDisplayState.blocked (botiverse/slock #13575): held agents say why, not their activity.
@@ -10235,9 +10286,12 @@ internal fun MembersAgentProfileHeader(
     )
     // SSOT audit: the badge words localize like every other live-status caption. A held agent's
     // sentence does not fit the one-line chip: the chip reads Error (its light) and the sentence
-    // follows under it ([AgentBlockedStatusNotice]).
+    // follows under it ([AgentBlockedStatusNotice]). "Computer update required" is already the
+    // short form (raft-design identity-and-presence): the chip says it, with no sentence under it.
     val statusLabel =
-        if (blocked != null) {
+        if (blocked == AgentBlockedState.ComputerUpdateRequired) {
+            AgentBlockedState.ComputerUpdateRequired.localizedStatusLabel()
+        } else if (blocked != null) {
             stringResource(Res.string.member_row_status_error)
         } else if (credentialReason != null) {
             if (showActivityDetail) {
@@ -10379,8 +10433,21 @@ internal fun MembersAgentProfileHeader(
                         }
                     )
                 }
+                val openComputer = onOpenComputer?.takeIf { blocked == AgentBlockedState.ComputerUpdateRequired }
                 if (!appBot) {
-                    if (showRetry && onRetry != null) {
+                    if (openComputer != null) {
+                        // The step is on the Computer: the chip itself opens it (web #14585
+                        // AgentStatusBadge `agent-status-computer-too-old`).
+                        statusChip(
+                            Modifier
+                                .padding(top = 6.dp)
+                                .raftClickable(
+                                    onClick = openComputer,
+                                    onClickLabel = stringResource(Res.string.agent_status_open_computer),
+                                    shape = RoundedCornerShape(RaftAppRadius.Control)
+                                )
+                        )
+                    } else if (showRetry && onRetry != null) {
                         // Web `flex items-center gap-1.5`: the quiet Retry right after the chip.
                         Row(
                             modifier = Modifier.padding(top = 6.dp),
@@ -10394,7 +10461,7 @@ internal fun MembersAgentProfileHeader(
                         statusChip(Modifier.padding(top = 6.dp))
                     }
                 }
-                if (blocked != null) {
+                if (blocked != null && blocked != AgentBlockedState.ComputerUpdateRequired) {
                     AgentBlockedStatusNotice(blocked = blocked, modifier = Modifier.padding(top = 6.dp))
                 }
                 // Web #10446: stuck on one tool call: its own lines under the status chip, so the
@@ -11271,8 +11338,9 @@ internal fun MembersAgentComputerInfoRows(
                 )
             }
         }
-        // web `agent-computer-version`: <span class="font-mono"><MachineRunLabel/></span>.
-        val runLabel = statusRow.runLabel.localized()
+        // web `agent-computer-version` (#14585): the version only, "v1.0.53"; "—" while the
+        // Computer is offline or reports none. Whether it is online is the row above.
+        val runLabel = membersAgentComputerVersionText(statusRow.runLabel)
         MembersAgentInfoField(
             label = stringResource(Res.string.settings_computers_label_version),
             copyText = runLabel
@@ -12073,7 +12141,8 @@ private fun MembersAgentProfileIdentity(
                 onChangeModel = lifecycle.onOpenModelSettings,
                 timeContext = lifecycle.timeContext,
                 onRetry = lifecycle.onRetryRestart,
-                retryInProgress = lifecycle.retryRestartInProgress
+                retryInProgress = lifecycle.retryRestartInProgress,
+                onOpenComputer = lifecycle.onOpenComputer
             )
         }
     )
@@ -13848,6 +13917,8 @@ private fun MembersAgentActivityTab(
     serverId: String?,
     /** The detail page's observed live status (null = not observed: no dot). */
     agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
+    /** The agent waits for its offline Computer ([membersAgentHeldByOfflineComputer]): "Computer offline". */
+    heldByOfflineComputer: Boolean = false,
     loadState: MembersAgentActivityLoadState,
     overview: MembersAgentActivityOverviewBinding? = null,
     onOpenComputer: (() -> Unit)? = null,
@@ -13959,14 +14030,25 @@ private fun MembersAgentActivityTab(
             MembersAgentActivityOverview(
                 binding = overview,
                 now = MembersAgentActivityNow(
-                    label = membersLiveAgentStatusLabel(
-                        indicatorState = agentStatusIndicatorState,
-                        summaryStatus = summary?.status,
-                        summaryActivity = summary?.activity,
-                        summaryActivityDetail = summary?.activityDetail,
-                        fallback = MembersUnknownAgentStatusLabel
-                    ),
-                    indicator = agentStatusIndicatorState,
+                    label =
+                        if (heldByOfflineComputer) {
+                            stringResource(Res.string.agent_status_computer_offline)
+                        } else {
+                            membersLiveAgentStatusLabel(
+                                indicatorState = agentStatusIndicatorState,
+                                summaryStatus = summary?.status,
+                                summaryActivity = summary?.activity,
+                                summaryActivityDetail = summary?.activityDetail,
+                                fallback = MembersUnknownAgentStatusLabel
+                            )
+                        },
+                    // Its Computer offline: the offline light, whatever its last activity (web #14585).
+                    indicator =
+                        if (heldByOfflineComputer) {
+                            raftAgentStatusIndicatorState(status = AgentStatus.Offline, presence = Presence.Offline, external = false)
+                        } else {
+                            agentStatusIndicatorState
+                        },
                     wakeCrashLoop =
                         membersAgentActivityWakeCrashLoop(
                             indicator = agentStatusIndicatorState,
@@ -15271,7 +15353,9 @@ private fun MembersListMachineGroupLabel(
  * phone size ([RaftSidebarItem]), led by the 19dp avatar. An agent's status is the light on
  * the avatar's corner (web `AvatarSlot badge={<SidebarAgentActivityBadge/>}`); an app-managed
  * bot has none. The name is followed by "(you)" on the viewer's own row and the outline Guest
- * badge for a guest; the description, when there is one, is the subtitle.
+ * badge for a guest; the description, when there is one, is the subtitle. An agent's row ends with
+ * its short status word (web `MembersAgentList` Status column: "Working…", "Offline", "Computer
+ * update required"), so the state never rests on the light's colour alone.
  */
 @Composable
 private fun MembersListRow(
@@ -15303,6 +15387,12 @@ private fun MembersListRow(
                 memberAvatarResolver = memberAvatarResolver
             )
         },
+        trailing =
+            if (member.membersListShowsAgentStatus()) {
+                { MembersListRowStatusWord(member = member, agentStatusResolver = agentStatusResolver) }
+            } else {
+                null
+            },
         titleTrailing =
             if (isSelf || isGuest || appBot != null) {
                 {
@@ -15329,6 +15419,35 @@ private fun MembersListRow(
     )
 }
 
+/** A managed agent's row shows its status (light and word); a human's or an App Bot's does not. */
+private fun MemberProfile.membersListShowsAgentStatus(): Boolean =
+    kind == MemberKind.Agent && managedByAppInstallId.isNullOrBlank()
+
+/**
+ * The row's short status word (web `MembersAgentList` `statusWord`): the coarse state, as the
+ * light on the avatar, in the row's quiet meta ([RaftSidebarItemMeta]). It reads the status on its
+ * own, like the avatar, so an agent:activity push recomposes only this. Nothing while the status
+ * is unknown (no light either).
+ */
+@Composable
+private fun MembersListRowStatusWord(
+    member: MemberProfile,
+    agentStatusResolver: RaftAgentStatusResolver
+) {
+    val status =
+        rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value)
+            ?.withoutActivityDetail()
+            ?: return
+    RaftSidebarItemMeta(
+        text = status.localizedMemberStatusLabel(),
+        modifier = Modifier.widthIn(max = MembersListStatusWordMaxWidth),
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+/** The status word gives way to the name: at most this wide, then it ends in an ellipsis. */
+private val MembersListStatusWordMaxWidth = 120.dp
+
 /**
  * The row's avatar. An agent's status light reads only here, so an agent:activity push
  * recomposes the avatar, not the row. Same contract as the detail header: an unresolved
@@ -15340,7 +15459,7 @@ private fun MembersListRowAvatar(
     agentStatusResolver: RaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver
 ) {
-    val showsStatus = member.kind == MemberKind.Agent && member.managedByAppInstallId.isNullOrBlank()
+    val showsStatus = member.membersListShowsAgentStatus()
     val status =
         // The Members tab does not subscribe to detailed agent:activity: coarse state only.
         rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value.takeIf { showsStatus })

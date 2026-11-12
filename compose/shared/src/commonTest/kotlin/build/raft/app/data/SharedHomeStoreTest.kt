@@ -3554,8 +3554,8 @@ class SharedHomeStoreTest {
 
         val notification = store.state.value.notifications.single()
         assertEquals("machine-outdated:0.63.7:machine-1", notification.id)
-        assertEquals("Jiachengs-MacBook-Pro.local is running an outdated daemon", notification.title)
-        assertEquals("Stop the daemon and reconnect to update.", notification.body)
+        assertEquals("Update available for Jiachengs-MacBook-Pro.local", notification.title)
+        assertEquals("Stop it and reconnect to update.", notification.body)
         assertTrue(notification.titleDesc != null)
         assertTrue(notification.bodyDesc != null)
         assertTrue(notification.actionLabelDesc != null)

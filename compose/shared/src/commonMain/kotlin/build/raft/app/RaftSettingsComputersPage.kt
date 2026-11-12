@@ -33,7 +33,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import build.raft.designsystem.components.raftGrayscale
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
-import build.raft.designsystem.tokens.RaftUiPalette
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -1190,7 +1189,7 @@ private fun RaftComputerRackCard(
     onDelete: () -> Unit = {},
     install: RaftComputerRackInstall? = null,
 ) {
-    RaftCard(modifier = modifier.testTag("rack-row-${row.id}"), onClick = onClick, inactive = !row.online) {
+    RaftCard(modifier = modifier.testTag("rack-row-${row.id}"), onClick = onClick, inactive = !row.present) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             RaftComputerDeviceIcon(row)
             Spacer(Modifier.size(RaftComputerCardTitleGap))
@@ -1225,7 +1224,7 @@ private fun RaftComputerRackCard(
         // Computer owner v1 (web ComputerOwnerLabel): "Owner: <name>" or "Public (no owner)".
         RaftComputerOwnerLine(row.owner, Modifier.padding(start = RaftComputerCardIconSize + RaftComputerCardTitleGap, top = 2.dp))
         Spacer(Modifier.height(12.dp))
-        RaftComputerAgentStripRow(agents, dimmed = !row.online, agentStatusResolver = agentStatusResolver, onOpenAgent = onOpenAgent)
+        RaftComputerAgentStripRow(agents, dimmed = !row.present, agentStatusResolver = agentStatusResolver, onOpenAgent = onOpenAgent)
         // Online only: an offline computer's meters would be old (web `liveDiskStatus`), and it
         // reads no usage.
         if (row.online) {
@@ -1579,7 +1578,7 @@ private fun RaftComputerRackBlock(
     install: RaftComputerRackInstall? = null,
 ) {
     val colors = RaftTheme.colors
-    val surface = if (row.online) colors.layerCard else colors.fillSubtle.compositeOver(colors.layerCard)
+    val surface = if (row.present) colors.layerCard else colors.fillSubtle.compositeOver(colors.layerCard)
     val hint = colors.foregroundHint
     CompositionLocalProvider(LocalRaftSurfaceColor provides surface) {
         Column(
@@ -1626,7 +1625,7 @@ private fun RaftComputerRackBlock(
             if (agents.isNotEmpty()) {
                 RaftComputerAgentStripRow(
                     agents,
-                    dimmed = !row.online,
+                    dimmed = !row.present,
                     agentStatusResolver = agentStatusResolver,
                     onOpenAgent = onOpenAgent,
                     modifier = Modifier.padding(top = 8.dp),
@@ -1635,7 +1634,7 @@ private fun RaftComputerRackBlock(
             if (row.online && (fleetColumns.usage.isNotEmpty() || fleetColumns.other.isNotEmpty())) {
                 RaftComputerRackCells(row, fleetColumns, cellWidth, usageLoads, runtimeCatalog, onOpenUsage, nowMillis, Modifier.padding(top = 8.dp))
             }
-            if (!row.online) {
+            if (!row.present) {
                 row.lastSeenAt?.let { lastSeen ->
                     RaftText(
                         stringResource(Res.string.settings_computers_rack_last_seen, raftRelativeTimestampLabel(lastSeen)),
@@ -2036,21 +2035,25 @@ private fun RaftComputerDeviceIcon(row: RaftComputerRowModel) {
         }
         RaftStatusDot(
             modifier = Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp),
+            // raft-design patterns/status.md: yellow only while updating (in progress); orange when
+            // an update is available or required (needs attention), never the pink of unread.
             presence =
                 when (row.dot) {
                     RaftComputerDot.Online -> RaftPresence.Online
                     RaftComputerDot.Offline -> RaftPresence.Offline
-                    RaftComputerDot.Upgrade -> null
+                    RaftComputerDot.Upgrade -> RaftPresence.Error
+                    RaftComputerDot.Updating -> RaftPresence.Busy
                 },
-            color = if (row.dot == RaftComputerDot.Upgrade) RaftUiPalette.attention else null,
         )
     }
 }
 
 /**
  * The facts line (web card `CardDescription`, Space Mono `foreground-hint`). Online it is one line
- * that only the OS gives way on: "Ubuntu 24.04 · v1.0.49 → v1.0.53", the arrow in bold ink, the
- * version floor's chip in bold `warning-strong`. Offline: "Offline · Last seen 2 days ago.".
+ * that only the OS gives way on: "Ubuntu 24.04 · v1.0.49 · Update available", the step in bold
+ * `warning-strong` (Update available and Update required alike, raft-design patterns/status.md),
+ * "· Updating to v1.0.50" in bold ink while an update is in flight. Offline: "Offline · Last seen
+ * 2 days ago.".
  */
 @Composable
 private fun RaftComputerCardFactsLine(facts: RaftComputerCardFacts, modifier: Modifier = Modifier) {
@@ -2088,20 +2091,25 @@ private fun RaftComputerCardFactsLine(facts: RaftComputerCardFacts, modifier: Mo
                 when (val notice = facts.notice) {
                     is RaftComputerVersionNotice.Available ->
                         RaftText(
-                            " → " + stringResource(Res.string.settings_computers_rack_version, notice.version.removePrefix("v")),
+                            " · " + stringResource(Res.string.settings_computers_update_available),
                             style = style.copy(fontWeight = FontWeight.Bold),
-                            color = RaftTheme.colors.foreground,
+                            color = RaftTheme.colors.warningStrong,
                             maxLines = 1,
                             softWrap = false,
                         )
                     is RaftComputerVersionNotice.BelowFloor ->
                         RaftText(
-                            " " +
-                                stringResource(
-                                    if (notice.reinstall) Res.string.settings_computers_needs_reinstall else Res.string.settings_computers_needs_upgrade
-                                ),
+                            " · " + stringResource(Res.string.settings_computers_update_required),
                             style = style.copy(fontWeight = FontWeight.Bold),
                             color = RaftTheme.colors.warningStrong,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    is RaftComputerVersionNotice.Updating ->
+                        RaftText(
+                            " · " + stringResource(Res.string.settings_computers_rack_updating_to, notice.version.removePrefix("v")),
+                            style = style.copy(fontWeight = FontWeight.Bold),
+                            color = RaftTheme.colors.foreground,
                             maxLines = 1,
                             softWrap = false,
                         )
@@ -2720,8 +2728,14 @@ private fun RaftComputerRuntimeBadge(chip: RaftComputerRuntimeChip) {
         // Long press copies the runtime name without the "(not installed)" style suffix.
         modifier = Modifier.raftCopyable(chip.name),
         appearance = RaftBadgeAppearance.Soft,
+        // "(update required)" is orange like "(not signed in)": it won't run until someone updates
+        // the Computer (raft-design patterns/status.md; web #14585). Not installed stays muted.
         variant =
-            if (chip.availability == RaftComputerRuntimeAvailability.Detected) RaftBadgeVariant.Information else RaftBadgeVariant.Muted,
+            when (chip.availability) {
+                RaftComputerRuntimeAvailability.Detected -> RaftBadgeVariant.Information
+                RaftComputerRuntimeAvailability.UpdateComputer -> RaftBadgeVariant.Warning
+                RaftComputerRuntimeAvailability.NotInstalled -> RaftBadgeVariant.Muted
+            },
     )
 }
 
@@ -2802,8 +2816,8 @@ private fun RaftComputerDetailHeader(computer: RaftComputerRowModel) {
                 modifier = Modifier.raftCopyable(computer.name),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                RaftComputerStatus(computer.online)
-                if (computer.updateAvailable) RaftComputerUpdateBadge()
+                RaftComputerStatus(computer)
+                RaftComputerUpdateBadge(computer)
             }
             val meta = listOfNotNull(raftComputerVersionLine(computer), computer.hostDetail).joinToString(" · ")
             if (meta.isNotBlank()) {
@@ -3192,28 +3206,44 @@ private fun RaftComputerTile(row: RaftComputerRowModel, size: RaftIconTileSize =
     }
 }
 
+/** The detail head's light and word (raft-design patterns/status.md): Online, Offline or Updating…. */
 @Composable
-private fun RaftComputerStatus(online: Boolean) {
+private fun RaftComputerStatus(computer: RaftComputerRowModel) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        RaftStatusDot(presence = if (online) RaftPresence.Online else RaftPresence.Offline)
+        RaftStatusDot(
+            presence =
+                when {
+                    computer.updating -> RaftPresence.Busy
+                    computer.online -> RaftPresence.Online
+                    else -> RaftPresence.Offline
+                },
+        )
         RaftListRowValue(
-            if (online) {
-                stringResource(Res.string.settings_computers_status_connected)
-            } else {
-                stringResource(Res.string.settings_computers_status_offline)
+            when {
+                computer.updating -> stringResource(Res.string.settings_computers_status_updating)
+                computer.online -> stringResource(Res.string.settings_computers_status_connected)
+                else -> stringResource(Res.string.settings_computers_status_offline)
             },
             maxWidth = 120.dp,
         )
     }
 }
 
+/**
+ * "Update required" (below the version floor) or "Update available", both orange: both need
+ * attention and differ only in words (xxchan, raft-design patterns/status.md). None while updating.
+ */
 @Composable
-private fun RaftComputerUpdateBadge() {
-    RaftBadge(
-        stringResource(Res.string.settings_computers_update_available),
-        appearance = RaftBadgeAppearance.Soft,
-        variant = RaftBadgeVariant.Warning,
-    )
+private fun RaftComputerUpdateBadge(computer: RaftComputerRowModel) {
+    val text =
+        when {
+            computer.updating -> null
+            computer.versionNotice is RaftComputerVersionNotice.BelowFloor -> stringResource(Res.string.settings_computers_update_required)
+            computer.updateAvailable || computer.versionNotice is RaftComputerVersionNotice.Available ->
+                stringResource(Res.string.settings_computers_update_available)
+            else -> null
+        } ?: return
+    RaftBadge(text, appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Warning)
 }
 
 /** A refresh that failed while the page still shows its last content. */
@@ -3290,17 +3320,14 @@ private fun RaftComputersInlineNotice(title: String, detail: String) {
 @Composable
 private fun raftComputerVersionLine(row: RaftComputerRowModel): String? = raftComputerKindVersion(row.kind, row.version)
 
-/** "computer v1.2.0" / "daemon v0.64.1", or null without a version. */
+/**
+ * "v1.2.0", or null without a version: the version alone, for a Computer and a legacy daemon alike
+ * (web #14585 `machine.runLabel.computerVersion`; raft-design patterns/status.md).
+ */
 @Composable
-private fun raftComputerKindVersion(kindOf: RaftComputerKind, version: String?): String? {
-    val kind =
-        if (kindOf == RaftComputerKind.Computer) {
-            stringResource(Res.string.settings_computers_kind_computer)
-        } else {
-            stringResource(Res.string.settings_computers_kind_daemon)
-        }
-    return version?.let { stringResource(Res.string.settings_computers_run_version, kind, it.removePrefix("v")) }
-}
+@Suppress("UNUSED_PARAMETER")
+private fun raftComputerKindVersion(kindOf: RaftComputerKind, version: String?): String? =
+    version?.let { stringResource(Res.string.settings_computers_rack_version, it.removePrefix("v")) }
 
 @Composable
 private fun raftComputerLastSeen(timestamp: String): String =
