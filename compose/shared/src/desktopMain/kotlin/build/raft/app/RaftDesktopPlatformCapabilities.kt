@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.ui.platform.ClipEntry
 import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
@@ -42,6 +43,9 @@ internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = false
 internal actual fun raftPlatformClipboardHasAttachments(): Boolean = RaftDesktopClipboardAttachments.available()
 
 internal actual fun raftPlatformReadClipboardAttachments(): List<PlatformFile> = RaftDesktopClipboardAttachments.read()
+
+// ⌘V with an image attaches it already (threadComposerPasteAttachments).
+internal actual fun raftPlatformImagePasteClipEntry(): ClipEntry? = null
 
 internal actual fun raftPlatformComposerMinimumBottomPaddingDp(): Float = 16f
 
