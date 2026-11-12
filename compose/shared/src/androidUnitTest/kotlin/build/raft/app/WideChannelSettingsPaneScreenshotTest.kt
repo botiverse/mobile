@@ -31,12 +31,13 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Wide pane roles (artin 2026-10-29): the channel details, and a member's profile, opened from a
- * conversation on the wide layout (and Add Member, the members page's add view) are a column
- * right of it (web ChannelDetailsSurface / ProfilePanel, 400 wide, no scrim; the details' head is
- * Details and Close), the rail, the sidebar and the conversation staying. The
- * conversation is a fixture; the panes are the channel settings fixture of
- * [ChannelSettingsScreenshotTest] and the agent profile visual fixture. Verify / record as
- * [RaftRobolectricScreenshot].
+ * conversation on the wide layout (and Add Member, the members page's add view) are the profile
+ * column of the conversation's row (#189 step 3; web channelSideLayout's profile / details column,
+ * ChannelDetailsSurface / ProfilePanel, 400 wide, no scrim; the details' head is Details and
+ * Close), the rail, the sidebar and the conversation staying. The production pane grid and
+ * [raftProfileColumn] lay it out; the conversation is a fixture; the cells are the channel
+ * settings fixture of [ChannelSettingsScreenshotTest] and the agent profile visual fixture.
+ * Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -73,7 +74,8 @@ class WideChannelSettingsPaneScreenshotTest {
                 remember {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                 }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            val grid = remember { RaftPaneGridStore() }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftPaneGridStore provides grid) {
                 val servers = listOf(RaftServerSwitcherItem(id = "s1", name = "Botiverse", slug = "botiverse", activityUnreadCount = 0L))
                 RaftDesignSystemTheme {
                     Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
@@ -110,15 +112,14 @@ class WideChannelSettingsPaneScreenshotTest {
                                     detailBottomInset = 0.dp,
                                     listPane = { FixtureSidebar() },
                                     detailPane = { modifier ->
-                                        RaftSupportingPaneLayout(
-                                            modifier = modifier.fillMaxSize(),
-                                            // The pane's first page, as RaftSupportingPaneStack provides it.
-                                            supporting = {
-                                                CompositionLocalProvider(LocalRaftPaneBackCloses provides true) {
-                                                    pane.content()
-                                                }
-                                            },
-                                        ) { detailModifier -> FixtureConversation(detailModifier, pane.lines) }
+                                        // The cell's first page, as RaftProfileColumnCellStack provides it.
+                                        val column =
+                                            raftProfileColumn(listOf(pane.cell)) {
+                                                CompositionLocalProvider(LocalRaftPaneBackCloses provides true) { pane.content() }
+                                            }
+                                        RaftPaneGrid(columns = listOfNotNull(column), modifier = modifier.fillMaxSize()) {
+                                            FixtureConversation(Modifier.fillMaxSize(), pane.lines)
+                                        }
                                     },
                                 )
                             }
@@ -139,7 +140,11 @@ class WideChannelSettingsPaneScreenshotTest {
     }
 
     /** What the pane shows, and the two lines of the conversation beside it. */
-    private class PaneFixture(val lines: Pair<String, String>, val content: @Composable () -> Unit)
+    private class PaneFixture(
+        val lines: Pair<String, String>,
+        val cell: RaftProfileColumnCell = RaftProfileColumnCell.Details,
+        val content: @Composable () -> Unit,
+    )
 
     private val ChannelSettingsPane =
         PaneFixture(
@@ -154,6 +159,7 @@ class WideChannelSettingsPaneScreenshotTest {
     private val AgentProfilePane =
         PaneFixture(
             "Ada: @Product-UX-Designer can you check the release notes?" to "Linus: the profile opens beside the chat",
+            RaftProfileColumnCell.Profile,
         ) { MembersAgentDetailVisualContent() }
 
     @Composable

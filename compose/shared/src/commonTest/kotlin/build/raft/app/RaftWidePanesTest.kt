@@ -13,7 +13,7 @@ import kotlin.test.fail
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
-/** Wide pane roles (RaftWidePanes.kt, plan option C): routing, the pane stack and Back order. */
+/** Wide pane roles (RaftWidePanes.kt, plan option C): routing, the pane stack, the profile column's cells and Back order. */
 class RaftWidePanesTest {
     private val data = JsonObject(mapOf("serverId" to JsonPrimitive("s1"), "channelId" to JsonPrimitive("c1")))
 
@@ -175,40 +175,128 @@ class RaftWidePanesTest {
     }
 
     @Test
-    fun backPopsTheSupportingPaneBeforeAnythingElse() {
-        val open = RaftPaneStack().replace("settings", data).push("members", data)
+    fun backClosesTheProfileColumnsLastPageBeforeAnythingElse() {
+        val open = RaftProfileColumnPanes().open(CHANNEL_SETTINGS_PAGE, data).openFrom(RaftProfileColumnCell.Details, THREAD_MEMBERS_PAGE, data)
         assertEquals(RaftWideBackStep.PopSupportingPane, raftWideBackStep(open, shown = true))
-        assertEquals(RaftWideBackStep.PopSupportingPane, raftWideBackStep(open.pop(), shown = true))
-        assertEquals(RaftWideBackStep.Existing, raftWideBackStep(open.pop().pop(), shown = true))
-        assertEquals(RaftWideBackStep.Existing, raftWideBackStep(RaftPaneStack(), shown = true))
-        // Pages kept in the stack while the pane isn't drawn (e.g. under the task overlay): Back
-        // goes straight to the existing step instead of closing an invisible pane.
+        assertEquals(RaftWideBackStep.PopSupportingPane, raftWideBackStep(open.back(), shown = true))
+        assertEquals(RaftWideBackStep.Existing, raftWideBackStep(open.back().back(), shown = true))
+        assertEquals(RaftWideBackStep.Existing, raftWideBackStep(RaftProfileColumnPanes(), shown = true))
+        // Pages kept in the column while it isn't declared (e.g. under the task overlay): Back
+        // goes straight to the existing step instead of closing an invisible column.
         assertEquals(RaftWideBackStep.Existing, raftWideBackStep(open, shown = false))
+        assertEquals(RaftWideBackStep.Existing, raftWideBackStep(open, paneShown = true, overlayOpen = true))
+    }
+
+    // #189 step 3 (web channelSideLayout): the profile column's cells, profile over details, as pages open and close.
+    @Test
+    fun aPageOpensInItsCellProfileOverDetails() {
+        assertEquals(RaftProfileColumnCell.Profile, raftProfileColumnCellOf(MEMBER_DETAIL_PAGE))
+        assertEquals(RaftProfileColumnCell.Details, raftProfileColumnCellOf(CHANNEL_SETTINGS_PAGE))
+        assertEquals(RaftProfileColumnCell.Details, raftProfileColumnCellOf(THREAD_MEMBERS_PAGE))
+        val none = RaftProfileColumnPanes()
+        assertFalse(none.isOpen)
+        assertEquals(emptyList(), none.cells, "nothing open: no column")
+        val details = none.open(CHANNEL_SETTINGS_PAGE, data)
+        assertEquals(listOf(RaftProfileColumnCell.Details), details.cells)
+        val profile = none.open(MEMBER_DETAIL_PAGE, data)
+        assertEquals(listOf(RaftProfileColumnCell.Profile), profile.cells)
+        // Both open: one column, the profile on top (web: the details follow the profile), whichever opened first.
+        val both = details.open(MEMBER_DETAIL_PAGE, data)
+        assertEquals(listOf(RaftProfileColumnCell.Profile, RaftProfileColumnCell.Details), both.cells)
+        assertEquals(both.cells, profile.open(CHANNEL_SETTINGS_PAGE, data).cells)
+        // Opened from the conversation a page starts its cell over; the other cell stays.
+        val again = both.open(MEMBER_DETAIL_PAGE, data)
+        assertEquals(1, again.profile.entries.size)
+        assertEquals(both.details, again.details)
     }
 
     @Test
-    fun paneSitsBesideWhenTheConversationKeepsItsMinimum() {
-        // 1280 window: about 960 of detail beside the rail and the 240 sidebar.
-        assertEquals(RaftSupportingPaneSize(400f, beside = true), raftSupportingPaneSize(960f))
-        assertEquals(RaftSupportingPaneSize(352f, beside = true), raftSupportingPaneSize(712f))
-        assertEquals(RaftSupportingPaneSize(320f, beside = true), raftSupportingPaneSize(680f))
-        // Narrower: the column takes the slot over the conversation, never a drawer over its edge.
-        assertEquals(RaftSupportingPaneSize(528f, beside = false), raftSupportingPaneSize(528f))
-        assertEquals(RaftSupportingPaneSize(400f, beside = false), raftSupportingPaneSize(400f))
+    fun aPageOpenedInTheColumnPushesInItsCellOrOpensTheOther() {
+        val details = RaftProfileColumnPanes().open(CHANNEL_SETTINGS_PAGE, data)
+        // The details' member list: pushed over the details, in their cell.
+        val members = details.openFrom(RaftProfileColumnCell.Details, THREAD_MEMBERS_PAGE, data)
+        assertEquals(listOf(CHANNEL_SETTINGS_PAGE, THREAD_MEMBERS_PAGE), members.details.entries.map { it.pageName })
+        assertEquals(listOf(RaftProfileColumnCell.Details), members.cells)
+        // A member picked there: their profile above the list, which stays as it was.
+        val picked = members.openFrom(RaftProfileColumnCell.Details, MEMBER_DETAIL_PAGE, data)
+        assertEquals(listOf(RaftProfileColumnCell.Profile, RaftProfileColumnCell.Details), picked.cells)
+        assertEquals(members.details, picked.details)
+        assertEquals(listOf(MEMBER_DETAIL_PAGE), picked.profile.entries.map { it.pageName })
+        // Another profile from the profile: pushed in the profile.
+        val next = picked.openFrom(RaftProfileColumnCell.Profile, MEMBER_DETAIL_PAGE, data)
+        assertEquals(2, next.profile.entries.size)
+        // Every page, the details' first, for reopening on the platform stack when the window narrows.
+        assertEquals(listOf(CHANNEL_SETTINGS_PAGE, THREAD_MEMBERS_PAGE, MEMBER_DETAIL_PAGE, MEMBER_DETAIL_PAGE), next.pages.map { it.pageName })
     }
 
-    // raft-design channel.md: the conversation's Settings toggle is pressed while its own details are the pane's root.
     @Test
-    fun theSettingsToggleReadsTheChannelDetailsAtThePaneRoot() {
+    fun backClosesTheLastOpenedPageFirstThenTheOtherCell() {
+        val picked =
+            RaftProfileColumnPanes()
+                .open(CHANNEL_SETTINGS_PAGE, data)
+                .openFrom(RaftProfileColumnCell.Details, THREAD_MEMBERS_PAGE, data)
+                .openFrom(RaftProfileColumnCell.Details, MEMBER_DETAIL_PAGE, data)
+        assertEquals(RaftProfileColumnCell.Profile, picked.backCell)
+        // The profile goes first; then the member list, then the details.
+        val one = picked.back()
+        assertEquals(listOf(RaftProfileColumnCell.Details), one.cells)
+        assertEquals(RaftProfileColumnCell.Details, one.backCell)
+        val two = one.back()
+        assertEquals(listOf(CHANNEL_SETTINGS_PAGE), two.details.entries.map { it.pageName })
+        val three = two.back()
+        assertFalse(three.isOpen)
+        assertEquals(null, three.backCell)
+        assertEquals(three, three.back(), "Back with nothing open changes nothing")
+        // The details opened after a profile: Back closes the details first.
+        val detailsLast = RaftProfileColumnPanes().open(MEMBER_DETAIL_PAGE, data).open(CHANNEL_SETTINGS_PAGE, data)
+        assertEquals(RaftProfileColumnCell.Details, detailsLast.backCell)
+        assertEquals(listOf(RaftProfileColumnCell.Profile), detailsLast.back().cells)
+    }
+
+    @Test
+    fun closeTakesItsCellOrItsPageAndWhatWasOpenedOverIt() {
+        val picked =
+            RaftProfileColumnPanes()
+                .open(CHANNEL_SETTINGS_PAGE, data)
+                .openFrom(RaftProfileColumnCell.Details, THREAD_MEMBERS_PAGE, data)
+                .open(MEMBER_DETAIL_PAGE, data)
+        // The details' Close (their first page's): the member list goes with them; the profile stays, and Back is its.
+        val root = picked.details.entries.first().id
+        val closed = picked.close(RaftProfileColumnCell.Details, root)
+        assertEquals(listOf(RaftProfileColumnCell.Profile), closed.cells)
+        assertEquals(RaftProfileColumnCell.Profile, closed.backCell)
+        // The member list's own Close: back to the details.
+        val list = picked.details.entries.last().id
+        assertEquals(listOf(CHANNEL_SETTINGS_PAGE), picked.close(RaftProfileColumnCell.Details, list).details.entries.map { it.pageName })
+        // The Settings toggle closes the details cell whole.
+        assertEquals(listOf(RaftProfileColumnCell.Profile), picked.closeCell(RaftProfileColumnCell.Details).cells)
+        // The profile's Close with the profile opened last: Back moves to the details.
+        val profileClosed = picked.close(RaftProfileColumnCell.Profile, picked.profile.entries.first().id)
+        assertEquals(RaftProfileColumnCell.Details, profileClosed.backCell)
+        assertFalse(picked.cleared().isOpen)
+        // Ids stay unique after clearing, so a page opened again gets a fresh composition.
+        val reopened = picked.cleared().open(CHANNEL_SETTINGS_PAGE, data)
+        assertTrue(reopened.details.entries.first().id !in picked.details.entries.map { it.id })
+    }
+
+    // raft-design channel.md: the conversation's Settings toggle is pressed while its own details are the column's.
+    @Test
+    fun theSettingsToggleReadsTheChannelDetailsCell() {
         val details = RaftPaneStack().replace(CHANNEL_SETTINGS_PAGE, data)
-        assertTrue(RaftSupportingPaneState(details.entries.first()) {}.showsChannelDetails("c1"))
-        // Its member list pushed over the details: still open.
+        assertTrue(RaftProfileColumnState(details.entries.first()) {}.showsChannelDetails("c1"))
+        // Their member list pushed over the details: still open.
         val members = details.push(THREAD_MEMBERS_PAGE, data)
-        assertTrue(RaftSupportingPaneState(members.entries.first()) {}.showsChannelDetails("c1"))
-        assertFalse(RaftSupportingPaneState(details.entries.first()) {}.showsChannelDetails("c2"))
-        assertFalse(RaftSupportingPaneState(details.entries.first()) {}.showsChannelDetails(null))
-        val profile = RaftPaneStack().replace(MEMBER_DETAIL_PAGE, data)
-        assertFalse(RaftSupportingPaneState(profile.entries.first()) {}.showsChannelDetails("c1"))
-        assertFalse(RaftSupportingPaneState(null) {}.showsChannelDetails("c1"))
+        assertTrue(RaftProfileColumnState(members.entries.first()) {}.showsChannelDetails("c1"))
+        assertFalse(RaftProfileColumnState(details.entries.first()) {}.showsChannelDetails("c2"))
+        assertFalse(RaftProfileColumnState(details.entries.first()) {}.showsChannelDetails(null))
+        // A member list opened from the conversation alone is not the details.
+        val list = RaftPaneStack().replace(THREAD_MEMBERS_PAGE, data)
+        assertFalse(RaftProfileColumnState(list.entries.first()) {}.showsChannelDetails("c1"))
+        assertFalse(RaftProfileColumnState(null) {}.showsChannelDetails("c1"))
+    }
+
+    @Test
+    fun theProfileColumnIsTheWebsProfileColumn() {
+        assertEquals(RaftPaneGridColumnBounds(id = "profile", defaultWidthDp = 400f, minWidthDp = 320f), RaftPaneGridColumns.Profile)
     }
 }

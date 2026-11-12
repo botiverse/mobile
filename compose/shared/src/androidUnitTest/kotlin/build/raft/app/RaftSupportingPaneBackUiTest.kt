@@ -20,10 +20,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Wide supporting pane vs the task overlay (Tenny, #3953 review): the shell composes the detail
- * pane twice while the overlay is open, the main detail (which hosts the pane) and the overlay's
- * copy (`allowSideColumn = false`), and disposes the copy when the overlay closes. Back must then
- * still close the pane, and must not close it while the overlay covers it. Drives a real
+ * Wide profile column (the pages with the Supporting role) vs the task overlay (Tenny, #3953 review):
+ * the shell composes the detail pane twice while the overlay is open, the main detail (which hosts
+ * the column) and the overlay's copy (`allowSideColumn = false`), and disposes the copy when the
+ * overlay closes. Back must then still close the column, and must not close it while the overlay
+ * covers it. Drives a real
  * composition with [runRobolectricComposeUiTest]; see AGENTS.md "Compose UI tests".
  */
 @OptIn(ExperimentalTestApi::class)
@@ -35,14 +36,14 @@ class RaftSupportingPaneBackUiTest {
 
     /** The shell state SettingsHomePage keeps for this, and its `navigateWideHistory` Back. */
     private class Shell {
-        var panes by mutableStateOf(RaftPaneStack())
+        var panes by mutableStateOf(RaftProfileColumnPanes())
         var paneShown by mutableStateOf(false)
         var overlayOpen by mutableStateOf(false)
         var historyBacks = 0
 
         fun back() {
             if (raftWideBackStep(panes, paneShown, overlayOpen = overlayOpen) == RaftWideBackStep.PopSupportingPane) {
-                panes = panes.pop()
+                panes = panes.back()
             } else {
                 historyBacks++
             }
@@ -68,7 +69,7 @@ class RaftSupportingPaneBackUiTest {
 
     private fun ComposeUiTest.openPaneThenOverlay(shell: Shell) {
         showShell(shell)
-        runOnIdle { shell.panes = shell.panes.replace("channel_settings", JsonObject(emptyMap())) }
+        runOnIdle { shell.panes = shell.panes.open(CHANNEL_SETTINGS_PAGE, JsonObject(emptyMap())) }
         onNodeWithTag(PANE).assertExists()
         assertTrue(shell.paneShown, "pane opened but not reported shown")
         runOnIdle { shell.overlayOpen = true }

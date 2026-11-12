@@ -6520,17 +6520,18 @@ private fun RaftAppShellReadyContent(
             desktopModeEnabled = desktopModeOnLargeScreen,
             paneState = shellScope.adaptivePane
         )
-    // Wide pane roles (RaftWidePanes.kt): the pages the conversation opened in the supporting pane
-    // beside it. They belong to that conversation: picking another one closes them. When the window
-    // leaves the wide layout they reopen as pages on the platform stack, as they would have opened there.
-    var supportingPanes by remember { mutableStateOf(RaftPaneStack()) }
-    // Whether the pane is drawn right now (set where it is drawn); Back goes by this, not the stack alone.
+    // Wide pane roles (RaftWidePanes.kt): the pages the conversation opened in the profile column
+    // (a member's profile over the channel details, #189 step 3). They belong to that conversation:
+    // picking another one closes them. When the window leaves the wide layout they reopen as pages on
+    // the platform stack, as they would have opened there.
+    var supportingPanes by remember { mutableStateOf(RaftProfileColumnPanes()) }
+    // Whether the column is declared right now (set where it is); Back goes by this, not the pages alone.
     var supportingPaneShown by remember { mutableStateOf(false) }
     val shellHostNavigator = LocalRaftHost.current.navigator
     LaunchedEffect(adaptiveWorkspaceState?.selection?.identity?.key) { supportingPanes = supportingPanes.cleared() }
     LaunchedEffect(navRailActive) {
         if (navRailActive || !supportingPanes.isOpen) return@LaunchedEffect
-        supportingPanes.entries.forEach { shellHostNavigator.openPage(it.pageName, it.pageData) }
+        supportingPanes.pages.forEach { shellHostNavigator.openPage(it.pageName, it.pageData) }
         supportingPanes = supportingPanes.cleared()
     }
     // stdrc 2026-10-21: Settings is the More tab's root on the phone bar and the pinned rail entry
@@ -6645,8 +6646,8 @@ private fun RaftAppShellReadyContent(
             direction == RaftWideNavDirection.Back &&
             raftWideBackStep(supportingPanes, supportingPaneShown, overlayOpen = tasksDetailColumnOpen) == RaftWideBackStep.PopSupportingPane
         ) {
-            bridge.log("wide_history_back source=$source pops=supporting_pane")
-            supportingPanes = supportingPanes.pop()
+            bridge.log("wide_history_back source=$source pops=profile_column cell=${supportingPanes.backCell?.id}")
+            supportingPanes = supportingPanes.back()
             return
         }
         val before = wideNavHistories.of(serverId)
@@ -8144,9 +8145,12 @@ private fun RaftAppShellReadyContent(
                         }
                         val supportingPaneHost = navRailActive && allowSideColumn
                         val supportingOpen = supportingPaneHost && detailAccepted && supportingPanes.isOpen
-                        // Only the main detail pane reports whether the pane is shown (RaftWidePanes.kt).
+                        // Only the main detail pane reports whether the column is shown (RaftWidePanes.kt).
                         RaftSupportingPaneShownReport(host = supportingPaneHost, shown = supportingOpen) { supportingPaneShown = it }
-                        RaftSupportingPaneLayout(
+                        // The profile column's pages are the shell's, not the conversation's: they get the shell's
+                        // host (each wraps its own, RaftProfileColumnCellStack), not the conversation's pane wrapper.
+                        val profileColumnHost = LocalRaftHost.current
+                        Box(
                             modifier =
                                 paneModifier
                                     .fillMaxSize()
@@ -8159,37 +8163,11 @@ private fun RaftAppShellReadyContent(
                                             else it.copy(detailPaneWidthDp = widthDp, sideThreadFolds = null)
                                         }
                                     },
-                            supporting =
-                                if (supportingOpen) {
-                                    {
-                                        RaftSupportingPaneStack(
-                                            supportingPanes,
-                                            active,
-                                            onStackChange = { supportingPanes = it },
-                                            // A conversation opened in the pane (the profile's
-                                            // Message) becomes the main detail and the pane
-                                            // closes, as the web's closeProfile + navigate.
-                                            openDetail = { _, pageData ->
-                                                val opened =
-                                                    threadLaunchPayloadOrNull(pageData)?.let(::openLaunchPayloadInAdaptiveDetail)
-                                                if (opened != null) {
-                                                    supportingPanes = supportingPanes.cleared()
-                                                    homeShellStore.dispatch(
-                                                        SharedHomeShellIntent.SetSelectedConversation(opened.identity.threadId)
-                                                    )
-                                                }
-                                                bridge.log("wide_supporting_pane_open_detail opened=${opened != null}")
-                                                opened != null
-                                            },
-                                        )
-                                    }
-                                } else {
-                                    null
-                                },
-                        ) { detailModifier ->
+                        ) {
+                        val detailModifier = Modifier.fillMaxSize()
                         RaftPaneHost(
                             wide = supportingPaneHost,
-                            openInPane = { _, pageName, pageData -> supportingPanes = supportingPanes.replace(pageName, pageData) },
+                            openInPane = { _, pageName, pageData -> supportingPanes = supportingPanes.open(pageName, pageData) },
                         ) {
                         val workspace = adaptiveWorkspaceState
                         // task #33: a surface may decline the shared selection (the DMs tab shows only
@@ -8228,10 +8206,10 @@ private fun RaftAppShellReadyContent(
                                 generation = mounted.generation,
                             )
                         }
-                        // One right-hand column at a time: the side thread steps aside while the
-                        // supporting pane is open and comes back when it closes.
+                        // The side thread stays beside the profile column: the row plan gives both room, or
+                        // folds the thread into the conversation (#189 rule 3), clips or makes tabs.
                         val sideThreadColumn: RaftPaneGridColumn? =
-                            if (showSideColumn && sideThread != null && workspace != null && !supportingOpen) {
+                            if (showSideColumn && sideThread != null && workspace != null) {
                                 // task #180: the page data key is deliberately independent of Focus mode.
                                 // Toggling re-lays-out the same child page instead of recreating it, which is
                                 // what keeps the reader's scroll position across Focus <-> Standard.
@@ -8281,20 +8259,51 @@ private fun RaftAppShellReadyContent(
                         // list + detail split they all stand in its row. In Focus
                         // mode the thread takes the row (task #180: the conversation is collapsed by
                         // width and stays composed).
-                        // The pane beside the conversation, for its header's Settings toggle. Kept
-                        // across recompositions so ThreadPage, which reads it, only recomposes when
-                        // the pane's root changes.
-                        val supportingPaneRoot = supportingPanes.entries.firstOrNull()?.takeIf { supportingOpen }
-                        val supportingPaneState =
-                            remember(supportingPaneRoot) {
-                                RaftSupportingPaneState(
-                                    root = supportingPaneRoot,
-                                    close = { supportingPanes = supportingPanes.cleared() },
+                        // The profile column (RaftWidePanes.kt, #189 step 3): the profile over the channel details,
+                        // the row's last column (web DEFAULT_CHANNEL_SIDE_LAYOUT). Only the selected tab's pane
+                        // declares it, as the side thread. A new column object each composition: the grid draws its
+                        // latest cells (the hand-up's `fresh` path), so the cells see the current pages and `active`.
+                        val profileColumn: RaftPaneGridColumn? =
+                            if (supportingOpen && tabSelected) {
+                                raftProfileColumn(supportingPanes.cells) { cell ->
+                                    CompositionLocalProvider(LocalRaftHost provides profileColumnHost) {
+                                        RaftProfileColumnCellStack(
+                                            cell = cell,
+                                            panes = supportingPanes,
+                                            active = active,
+                                            onChange = { supportingPanes = it },
+                                            // A conversation opened in the column (the profile's Message) becomes the
+                                            // main detail and the column closes, as the web's closeProfile + navigate.
+                                            openDetail = { _, pageData ->
+                                                val opened = threadLaunchPayloadOrNull(pageData)?.let(::openLaunchPayloadInAdaptiveDetail)
+                                                if (opened != null) {
+                                                    supportingPanes = supportingPanes.cleared()
+                                                    homeShellStore.dispatch(
+                                                        SharedHomeShellIntent.SetSelectedConversation(opened.identity.threadId)
+                                                    )
+                                                }
+                                                bridge.log("wide_profile_column_open_detail opened=${opened != null}")
+                                                opened != null
+                                            },
+                                        )
+                                    }
+                                }
+                            } else {
+                                null
+                            }
+                        // The column beside the conversation, for its header's Settings toggle. Kept across
+                        // recompositions so ThreadPage, which reads it, only recomposes when the details change.
+                        val profileColumnDetails = supportingPanes.details.entries.firstOrNull()?.takeIf { supportingOpen }
+                        val profileColumnState =
+                            remember(profileColumnDetails) {
+                                RaftProfileColumnState(
+                                    details = profileColumnDetails,
+                                    closeDetails = { supportingPanes = supportingPanes.closeCell(RaftProfileColumnCell.Details) },
                                 )
                             }
-                        CompositionLocalProvider(LocalRaftSupportingPane provides supportingPaneState) {
+                        CompositionLocalProvider(LocalRaftProfileColumn provides profileColumnState) {
                         RaftPaneGrid(
-                            columns = listOfNotNull(sideThreadColumn),
+                            columns = listOfNotNull(sideThreadColumn, profileColumn),
                             modifier = detailModifier,
                             fillColumn = RaftPaneGridColumns.Thread.id.takeIf { sideThreadFocusActive && sideThreadColumn != null },
                         ) {

@@ -53,7 +53,6 @@ import build.raft.designsystem.components.RaftIconToggleButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftFormSection
 import build.raft.designsystem.components.RaftSeparator
-import build.raft.designsystem.components.RaftSideDrawerDefaults
 import build.raft.designsystem.components.RaftSwitch
 import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.components.rememberRaftStorePullRefreshState
@@ -5994,7 +5993,7 @@ internal fun ThreadMembersPageContent(
     RaftDesignSystemTheme {
     Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         // In Add Member the header's Back returns to the roster (web `add-member-back`), also when
-        // the members page is the first page of the wide layout's supporting pane (no Close there).
+        // the members page is the first page of the wide layout's profile column cell (no Close there).
         CompositionLocalProvider(
             LocalRaftPaneBackCloses provides (LocalRaftPaneBackCloses.current && !addDialogVisible),
         ) {
@@ -18460,15 +18459,16 @@ private fun ThreadPageContentContent(
                         replyThreadSurface = timelineSlice.replyThreadSurface && data.taskConversationChrome == null,
                         originReplyMetadata = originReplyMetadata
                     )
-                // The channel details (raft-design channel.md): on the wide layout a column beside the
-                // conversation, whose Settings toggle is pressed while they are open and closes them
-                // when pressed again; on a phone a pushed page. A DM keeps its settings page or drawer,
-                // a Lounge its drawer.
-                val supportingPane = LocalRaftSupportingPane.current
+                // The channel details (raft-design channel.md): on the wide layout the details cell of the
+                // profile column in the conversation's row (RaftWidePanes.kt, #189 step 3), whose Settings
+                // toggle is pressed while they are open and closes them when pressed again (a profile
+                // above them stays); on a phone a pushed page. A DM keeps its settings page or drawer, a
+                // Lounge its drawer.
+                val profileColumn = LocalRaftProfileColumn.current
                 val channelDetailsOpen =
                     conversationLounge == null &&
                         payload.surfaceKind != RaftThreadSurfaceKind.DirectMessage &&
-                        supportingPane.showsChannelDetails(payload.sourceThreadId?.trim())
+                        profileColumn.showsChannelDetails(payload.sourceThreadId?.trim())
                 val showSettings: () -> Unit = {
                     if (conversationLounge != null) {
                         activeModal = "settings"
@@ -18476,7 +18476,7 @@ private fun ThreadPageContentContent(
                         // A wide window, or a page that could not open: the drawer.
                         if (!(settingsOpensAsPage && onOpenSettingsPage?.invoke() == true)) activeModal = "settings"
                     } else if (channelDetailsOpen) {
-                        supportingPane.close()
+                        profileColumn.closeDetails()
                     } else {
                         onThreadEvent("openChannelSettings", null, null, null)
                     }
