@@ -487,9 +487,13 @@ Record the following in the release issue:
 - the from → to versionCodes
 - pass or fail, with a screenshot or recording of the prompt
 
-A fail blocks `main`. Fix it, rebuild `preview`, and test again. Checking only
-the public update endpoint (the finalize script already does that) does not
-count.
+A fail blocks `main`. The fix is a new candidate (Hard rule 5): rebuild both
+platforms with higher build numbers, re-verify (§6) and republish `preview`.
+Then repeat this test, starting from the previous train's `preview` build:
+reinstall it if the device already took the failed one.
+
+Checking only the public update endpoint does not count; the finalize script
+already does that.
 
 ### 7.3 Google Play beyond internal
 
