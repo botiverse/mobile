@@ -2285,6 +2285,8 @@ private fun RaftAppShellReadyContent(
     var tasksDetailColumnActive by remember { mutableStateOf(false) }
     var tasksDetailColumnExpanded by remember { mutableStateOf(false) }
     var tasksDetailColumnTaskId by remember { mutableStateOf<String?>(null) }
+    // Which task each column detail showed, so a history restore marks the reopened task's card.
+    var tasksDetailColumnTaskIds by remember { mutableStateOf(RaftTasksColumnTaskIds()) }
     rememberAuthRuntimeCapabilities(
         store = sharedStores.authRuntimeCapabilityStore,
         pageData = pager.pageData.params
@@ -5528,12 +5530,6 @@ private fun RaftAppShellReadyContent(
             membersDetailSelection.value = null
             return true
         }
-        // Web parity (rowPlanStore's Escape): the task column's Expand is a step of its own, as the
-        // thread's Focus mode below; the next Back steps the column (RaftTasksTaskColumn.kt).
-        if (tasksDetailColumnOpen && tasksDetailColumnExpanded) {
-            tasksDetailColumnExpanded = false
-            return true
-        }
         // task #180 (web parity): Focus mode is one step of its own. Back leaves Focus and restores
         // the two columns; only the next Back closes the thread. Matches the web menu's model where
         // maximise is a reversible view state, not a new screen.
@@ -6611,7 +6607,10 @@ private fun RaftAppShellReadyContent(
                     bridge.logWarn("wide_history_restore_open_refused detail=$detail")
                     return
                 }
-                if (entry.surface == "tasks") tasksDetailColumnActive = true
+                if (entry.surface == "tasks") {
+                    tasksDetailColumnActive = true
+                    tasksDetailColumnTaskId = tasksDetailColumnTaskIds.restored(detail.identity.key, tasksDetailColumnTaskId)
+                }
                 homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(session.detailListSelectionId()))
             }
             is RaftWideNavDetail.Member -> wideNavMemberOpenRequest = detail.identity
@@ -6620,6 +6619,8 @@ private fun RaftAppShellReadyContent(
                     "members" -> membersDetailSelection.value = null
                     "tasks" -> {
                         tasksDetailColumnActive = false
+                        // As Close: going forward again reopens the task beside the list, not expanded.
+                        tasksDetailColumnExpanded = false
                         RaftRatingPrompt.onTaskListShown()
                     }
                     "settings" -> Unit
@@ -8337,7 +8338,12 @@ private fun RaftAppShellReadyContent(
                             }
                             // page_viewed: the thread page this opens counts as `task`.
                             RaftProductEvents.recorder.markTaskThreadOpening(taskLaunchPayload.instanceId)
-                            // Rating prompt (task_result_viewed): counts when the list shows again.
+                            // Rating prompt (task_result_viewed): counts when the list shows again. With a
+                            // task open beside the list, the list was in view: another task replacing it
+                            // counts the one that was open.
+                            if (tasksDetailColumnOpen && tasksDetailColumnTaskId != task.id.value) {
+                                RaftRatingPrompt.onTaskListShown()
+                            }
                             RaftRatingPrompt.onTaskOpened(task)
                             // task #34: wide desktop mode keeps the list and opens the task's thread
                             // in the column beside it (web TasksRoute), replacing the task open there;
@@ -8346,6 +8352,8 @@ private fun RaftAppShellReadyContent(
                             if (columnSelection != null) {
                                 tasksDetailColumnActive = true
                                 tasksDetailColumnTaskId = task.id.value
+                                tasksDetailColumnTaskIds =
+                                    tasksDetailColumnTaskIds.opened(columnSelection.identity.key, task.id.value)
                                 // Web tasksPageOpen: opened from the list, a task starts beside it.
                                 tasksDetailColumnExpanded = false
                                 bridge.log(
