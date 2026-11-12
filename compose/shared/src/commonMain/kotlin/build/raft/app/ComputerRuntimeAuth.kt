@@ -20,7 +20,7 @@ import build.raft.app.data.RuntimeAuthView
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedRealtimeDomainEventOwner
 import build.raft.app.data.SharedRuntimeAccountUsageStore
-import build.raft.app.data.isPiLiteralApiKey
+import build.raft.app.data.oauthMethods
 import build.raft.app.data.isRuntimeAuthPastedCode
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RuntimeAuthAccountLabel
@@ -57,7 +57,12 @@ internal interface ComputerRuntimeAuthOps {
 
     suspend fun invalidate()
 
-    suspend fun startLogin(runtime: RuntimeAuthRuntime, region: RuntimeAuthLoginRegion?, providerId: String?): RuntimeAuthCall<String>
+    suspend fun startLogin(
+        runtime: RuntimeAuthRuntime,
+        region: RuntimeAuthLoginRegion?,
+        providerId: String?,
+        oauthMethod: String? = null,
+    ): RuntimeAuthCall<String>
 
     suspend fun submitCode(runtime: RuntimeAuthRuntime, loginId: String, code: String): RuntimeAuthCall<Unit>
 
@@ -80,8 +85,8 @@ internal class StoreComputerRuntimeAuthOps(
 
     override suspend fun invalidate() = store.invalidateRuntimeAuthView(machineId)
 
-    override suspend fun startLogin(runtime: RuntimeAuthRuntime, region: RuntimeAuthLoginRegion?, providerId: String?) =
-        store.startRuntimeLogin(owner, serverId, machineId, runtime, region, providerId)
+    override suspend fun startLogin(runtime: RuntimeAuthRuntime, region: RuntimeAuthLoginRegion?, providerId: String?, oauthMethod: String?) =
+        store.startRuntimeLogin(owner, serverId, machineId, runtime, region, providerId, oauthMethod)
 
     override suspend fun submitCode(runtime: RuntimeAuthRuntime, loginId: String, code: String) =
         store.submitRuntimeLoginCode(owner, serverId, machineId, runtime, loginId, code)
@@ -112,6 +117,13 @@ internal enum class ComputerRuntimeAuthProblem {
     NotAttached,
     Busy,
     PiBusy,
+    OpencodeBusy,
+    /** OpenCode: the chosen sign-in needs a browser on the Computer itself; another way, not a retry. */
+    LoopbackRequired,
+    /** OpenCode 1: signing in from here needs OpenCode 2. */
+    OpencodeVersionUnsupported,
+    /** OpenCode: a sign-in holds its one server on that Computer (a sign-out or a key save waits for none). */
+    SignInInProgress,
     RateLimited,
     Forbidden,
     NotFound,
@@ -155,13 +167,13 @@ internal data class ComputerRuntimeAuthFailure(
 )
 
 /** Web `startFailure`: the start request was refused. */
-internal fun RuntimeAuthRequestError.signInStartFailure(perProvider: Boolean): ComputerRuntimeAuthFailure {
+internal fun RuntimeAuthRequestError.signInStartFailure(runtime: RuntimeAuthRuntime): ComputerRuntimeAuthFailure {
     val (problem, retryable) =
         when {
             code == "computer_offline" -> ComputerRuntimeAuthProblem.ComputerOffline to true
             code == "computer_upgrade_required" -> ComputerRuntimeAuthProblem.UpgradeRequired to false
             code == "computer_not_attached" -> ComputerRuntimeAuthProblem.NotAttached to false
-            code == "login_in_progress" -> (if (perProvider) ComputerRuntimeAuthProblem.PiBusy else ComputerRuntimeAuthProblem.Busy) to true
+            code == "login_in_progress" -> runtime.busyProblem() to true
             code == "rate_limited" || status == 429 -> ComputerRuntimeAuthProblem.RateLimited to true
             status == 403 -> ComputerRuntimeAuthProblem.Forbidden to false
             status == 404 -> ComputerRuntimeAuthProblem.NotFound to false
@@ -171,26 +183,36 @@ internal fun RuntimeAuthRequestError.signInStartFailure(perProvider: Boolean): C
 }
 
 /** Web `resultFailure`: the Computer ended the login without signing in. */
-internal fun RuntimeAuthLoginOutcome.signInResultFailure(perProvider: Boolean): ComputerRuntimeAuthFailure? =
+internal fun RuntimeAuthLoginOutcome.signInResultFailure(runtime: RuntimeAuthRuntime): ComputerRuntimeAuthFailure? =
     when (this) {
         is RuntimeAuthLoginOutcome.LoggedIn -> null
-        RuntimeAuthLoginOutcome.Busy ->
-            ComputerRuntimeAuthFailure(if (perProvider) ComputerRuntimeAuthProblem.PiBusy else ComputerRuntimeAuthProblem.Busy, true)
+        RuntimeAuthLoginOutcome.Busy -> ComputerRuntimeAuthFailure(runtime.busyProblem(), true)
         RuntimeAuthLoginOutcome.Cancelled -> ComputerRuntimeAuthFailure(ComputerRuntimeAuthProblem.Cancelled, true)
-        is RuntimeAuthLoginOutcome.Unsupported -> ComputerRuntimeAuthFailure(RuntimeAuthUnavailableReason.fromWire(reason).unsupportedProblem(), false)
+        is RuntimeAuthLoginOutcome.Unsupported ->
+            ComputerRuntimeAuthFailure(RuntimeAuthUnavailableReason.fromWire(reason).unsupportedProblem(runtime), false)
         is RuntimeAuthLoginOutcome.Failed ->
             when (reason) {
                 "timed_out" -> ComputerRuntimeAuthFailure(ComputerRuntimeAuthProblem.TimedOut, true)
                 "rejected" -> ComputerRuntimeAuthFailure(ComputerRuntimeAuthProblem.Rejected, true)
                 "not_logged_in" -> ComputerRuntimeAuthFailure(ComputerRuntimeAuthProblem.NotLoggedIn, true)
                 "interaction_failed" -> ComputerRuntimeAuthFailure(ComputerRuntimeAuthProblem.InteractionFailed, false)
+                "loopback_required" -> ComputerRuntimeAuthFailure(ComputerRuntimeAuthProblem.LoopbackRequired, false)
                 else -> ComputerRuntimeAuthFailure(ComputerRuntimeAuthProblem.ProcessFailed, true)
             }
     }
 
-private fun RuntimeAuthUnavailableReason?.unsupportedProblem(): ComputerRuntimeAuthProblem =
+/** Web `failureMessageFor`: a per-provider runtime's busy names it (another of its sign-ins may be for another provider). */
+private fun RuntimeAuthRuntime.busyProblem(): ComputerRuntimeAuthProblem =
     when (this) {
-        RuntimeAuthUnavailableReason.VersionUnsupported -> ComputerRuntimeAuthProblem.VersionUnsupported
+        RuntimeAuthRuntime.Pi -> ComputerRuntimeAuthProblem.PiBusy
+        RuntimeAuthRuntime.Opencode -> ComputerRuntimeAuthProblem.OpencodeBusy
+        else -> ComputerRuntimeAuthProblem.Busy
+    }
+
+private fun RuntimeAuthUnavailableReason?.unsupportedProblem(runtime: RuntimeAuthRuntime? = null): ComputerRuntimeAuthProblem =
+    when (this) {
+        RuntimeAuthUnavailableReason.VersionUnsupported ->
+            if (runtime == RuntimeAuthRuntime.Opencode) ComputerRuntimeAuthProblem.OpencodeVersionUnsupported else ComputerRuntimeAuthProblem.VersionUnsupported
         RuntimeAuthUnavailableReason.NotInstalled -> ComputerRuntimeAuthProblem.NotInstalled
         else -> ComputerRuntimeAuthProblem.UnsupportedInstallation
     }
@@ -199,7 +221,7 @@ private fun RuntimeAuthUnavailableReason?.unsupportedProblem(): ComputerRuntimeA
 internal fun RuntimeAuthLogoutResult.signOutProblem(runtime: RuntimeAuthRuntime): ComputerRuntimeAuthProblem? =
     when (this) {
         RuntimeAuthLogoutResult.LoggedOut -> null
-        is RuntimeAuthLogoutResult.Unsupported -> reason.unsupportedProblem()
+        is RuntimeAuthLogoutResult.Unsupported -> reason.unsupportedProblem(runtime)
         is RuntimeAuthLogoutResult.Failed ->
             when (reason) {
                 "still_logged_in" ->
@@ -209,6 +231,8 @@ internal fun RuntimeAuthLogoutResult.signOutProblem(runtime: RuntimeAuthRuntime)
                         else -> ComputerRuntimeAuthProblem.SignOutStillLoggedIn
                     }
                 "timed_out" -> ComputerRuntimeAuthProblem.SignOutTimedOut
+                // OpenCode: a sign-in on that Computer holds its one OpenCode server until it ends.
+                "busy" -> ComputerRuntimeAuthProblem.SignInInProgress
                 else -> ComputerRuntimeAuthProblem.SignOutFailed
             }
     }
@@ -268,7 +292,27 @@ internal data class ComputerRuntimeSignInProvider(
     val label: String,
     /** `paste_code` / `paste_address`: what the code field asks for; null for a device code. */
     val pastesAddress: Boolean = false,
+    /** OpenCode: the OAuth sign-in chosen, by its label, named on the login start. */
+    val oauthMethod: String? = null,
 )
+
+/**
+ * Web `loopbackRequiredMethods`: OpenCode sign-ins seen to end as `loopback_required` (only a browser
+ * on the Computer itself could finish them), per Computer, runtime, provider and method, for this
+ * process: Add Provider greys them out with why. Memory only.
+ */
+internal object ComputerRuntimeLoopbackRequired {
+    private val seen = mutableSetOf<List<String>>()
+
+    fun remember(machineId: String, runtime: RuntimeAuthRuntime, providerId: String, method: String) {
+        seen += listOf(machineId, runtime.wire, providerId, method)
+    }
+
+    fun contains(machineId: String, runtime: RuntimeAuthRuntime, providerId: String, method: String): Boolean =
+        listOf(machineId, runtime.wire, providerId, method) in seen
+
+    fun clearForTests() = seen.clear()
+}
 
 /** Web `CodeState`: `Invalid` the server refused the value; `SendFailed` it never got there (kept to resend). */
 internal enum class ComputerRuntimeSignInCodeState { Idle, Submitting, Sent, Invalid, SendFailed }
@@ -317,12 +361,12 @@ internal data class ComputerRuntimeSignInState(
         }
     }
 
-    fun withOutcome(outcome: RuntimeAuthLoginOutcome, perProvider: Boolean): ComputerRuntimeSignInState {
+    fun withOutcome(outcome: RuntimeAuthLoginOutcome, runtime: RuntimeAuthRuntime): ComputerRuntimeSignInState {
         if (ended) return this
         return if (outcome is RuntimeAuthLoginOutcome.LoggedIn) {
             copy(started = true, code = "", done = true, account = outcome.account)
         } else {
-            copy(started = true, code = "", failure = outcome.signInResultFailure(perProvider))
+            copy(started = true, code = "", failure = outcome.signInResultFailure(runtime))
         }
     }
 }
@@ -387,7 +431,7 @@ internal class ComputerRuntimeSignInSession(
         shown = null
         early = mutableListOf()
         scope.launch {
-            val result = ops.startLogin(runtime, region, provider?.id)
+            val result = ops.startLogin(runtime, region, provider?.id, provider?.oauthMethod)
             if (attempt != current) return@launch
             val pending = early.orEmpty()
             early = null
@@ -404,7 +448,7 @@ internal class ComputerRuntimeSignInSession(
                     pending.forEach(::route)
                 }
                 is RuntimeAuthCall.Refused ->
-                    if (!closed) state = state.copy(code = "", failure = result.error.signInStartFailure(runtime.perProvider))
+                    if (!closed) state = state.copy(code = "", failure = result.error.signInStartFailure(runtime))
                 RuntimeAuthCall.Superseded -> onSuperseded()
             }
         }
@@ -433,7 +477,11 @@ internal class ComputerRuntimeSignInSession(
             is RuntimeAuthLoginResultPushed ->
                 if (event.loginId == login.id) {
                     login.running = false
-                    state = state.withOutcome(event.result, runtime.perProvider)
+                    state = state.withOutcome(event.result, runtime)
+                    val method = provider?.oauthMethod
+                    if (method != null && (event.result as? RuntimeAuthLoginOutcome.Failed)?.reason == "loopback_required") {
+                        ComputerRuntimeLoopbackRequired.remember(machineId, runtime, provider.id, method)
+                    }
                     log("computer_runtime_sign_in_result runtime=${runtime.wire} outcome=${event.result.diagnosticsLabel()}")
                     scope.launch { ops.invalidate() }
                 }
@@ -516,10 +564,12 @@ internal sealed interface ComputerRuntimePiProviderList {
 }
 
 /** A row of Pi's Add Provider: an account sign-in, or an API key, of one provider. */
-internal data class ComputerRuntimePiChoice(val account: Boolean, val providerId: String) {
-    val value: String
-        get() = (if (account) "account:" else "key:") + providerId
-}
+internal data class ComputerRuntimePiChoice(
+    val account: Boolean,
+    val providerId: String,
+    /** Which of the provider's OAuth sign-ins (OpenCode lists several; Pi has one). */
+    val methodIndex: Int = 0,
+)
 
 internal enum class ComputerRuntimePiStep { Choose, Key, Done }
 
@@ -529,7 +579,8 @@ internal enum class ComputerRuntimePiStep { Choose, Key, Done }
  * sent, and is dropped once saved or when the dialog closes; it is never logged.
  */
 internal class ComputerRuntimePiSession(
-    private val runtime: RuntimeAuthRuntime,
+    val runtime: RuntimeAuthRuntime,
+    val machineId: String,
     private val ops: ComputerRuntimeAuthOps,
     private val scope: CoroutineScope,
     private val onAccount: (ComputerRuntimeSignInProvider) -> Unit,
@@ -555,7 +606,7 @@ internal class ComputerRuntimePiSession(
 
     /** Pi would run a key starting with ! and fill in a $ name: said at once, never sent. */
     val keyRefusedHere: Boolean
-        get() = apiKey.trim().let { it.isNotEmpty() && !isPiLiteralApiKey(it) }
+        get() = apiKey.trim().let { it.isNotEmpty() && !runtime.literalApiKeyFits(it) }
 
     val chosenProvider: RuntimeAuthProvider?
         get() = chosen?.let { choice -> (list as? ComputerRuntimePiProviderList.Listed)?.providers?.firstOrNull { it.id == choice.providerId } }
@@ -601,13 +652,16 @@ internal class ComputerRuntimePiSession(
         keyRefusedByServer = false
         apiKey = ""
         if (choice.account) {
-            val flow = provider.oauthFlow ?: return
-            if (flow == RuntimeAuthProviderOAuthFlow.ComputerOnly) return
+            val method = provider.oauthMethods.getOrNull(choice.methodIndex) ?: return
+            if (method.flow == RuntimeAuthProviderOAuthFlow.ComputerOnly) return
+            if (ComputerRuntimeLoopbackRequired.contains(machineId, runtime, provider.id, method.label)) return
             onAccount(
                 ComputerRuntimeSignInProvider(
                     id = provider.id,
-                    label = provider.oauthLabel ?: provider.label,
-                    pastesAddress = flow == RuntimeAuthProviderOAuthFlow.PasteAddress,
+                    // Pi's sign-in names its provider ("Anthropic (Claude Pro/Max)"); OpenCode's method does not.
+                    label = if (runtime.choosesOAuthMethod) provider.label else method.label,
+                    pastesAddress = method.flow == RuntimeAuthProviderOAuthFlow.PasteAddress,
+                    oauthMethod = method.label.takeIf { runtime.choosesOAuthMethod },
                 )
             )
         } else {
@@ -647,7 +701,14 @@ internal class ComputerRuntimePiSession(
                             apiKey = ""
                             step = ComputerRuntimePiStep.Done
                         }
-                        RuntimeAuthProviderConnectResult.Busy -> failure = providerResultFailure(null, null, busy = true, connect = true)
+                        RuntimeAuthProviderConnectResult.Busy ->
+                            failure =
+                                if (runtime == RuntimeAuthRuntime.Opencode) {
+                                    // OpenCode's key save waits for no sign-in: one running or waiting makes it busy.
+                                    ComputerRuntimeAuthFailure(ComputerRuntimeAuthProblem.SignInInProgress, true)
+                                } else {
+                                    providerResultFailure(null, null, busy = true, connect = true)
+                                }
                         is RuntimeAuthProviderConnectResult.Failed -> failure = providerResultFailure(value.reason, null, busy = false, connect = true)
                         is RuntimeAuthProviderConnectResult.Unsupported -> failure = providerResultFailure(null, value.reason, busy = false, connect = true)
                     }
@@ -742,6 +803,7 @@ internal class ComputerRuntimeAuthController(
                 val session =
                     ComputerRuntimePiSession(
                         runtime = runtime,
+                        machineId = machineId,
                         ops = ops,
                         scope = scope,
                         onAccount = { provider -> openProviderSignIn(provider) },

@@ -55,6 +55,8 @@ internal enum class RuntimeAuthRuntime(
     val actions: Set<RuntimeAuthAction>,
     val regionChoices: List<RuntimeAuthLoginRegion> = emptyList(),
     val perProvider: Boolean = false,
+    /** slock `runtimeAuthChoosesOAuthMethod`: a provider may offer several OAuth sign-ins; the login names one (OpenCode). */
+    val choosesOAuthMethod: Boolean = false,
     val serverGated: Boolean = false,
     val logoutNeedsCapability: Boolean = false,
 ) {
@@ -65,7 +67,23 @@ internal enum class RuntimeAuthRuntime(
     Qwen("qwen", setOf(RuntimeAuthAction.ConnectProvider)),
     Antigravity("antigravity", setOf(RuntimeAuthAction.Login, RuntimeAuthAction.Logout), serverGated = true, logoutNeedsCapability = true),
     Pi("pi", setOf(RuntimeAuthAction.Login, RuntimeAuthAction.Logout, RuntimeAuthAction.ConnectProvider), perProvider = true),
-    Grok("grok", setOf(RuntimeAuthAction.Login, RuntimeAuthAction.Logout));
+    Grok("grok", setOf(RuntimeAuthAction.Login, RuntimeAuthAction.Logout)),
+
+    /** OpenCode 2, per provider like Pi (slock #14378, contract §6c). */
+    Opencode(
+        "opencode",
+        setOf(RuntimeAuthAction.Login, RuntimeAuthAction.Logout, RuntimeAuthAction.ConnectProvider),
+        perProvider = true,
+        choosesOAuthMethod = true,
+    );
+
+    /** slock `runtimeAuthLiteralApiKeyFits`: the key-content rule of a per-provider runtime. */
+    fun literalApiKeyFits(apiKey: String): Boolean =
+        when (this) {
+            Pi -> isPiLiteralApiKey(apiKey)
+            Opencode -> isOpencodeLiteralApiKey(apiKey)
+            else -> true
+        }
 
     fun supports(action: RuntimeAuthAction): Boolean = action in actions
 
@@ -90,6 +108,7 @@ internal enum class RuntimeAuthRuntime(
                 "antigravity" -> Antigravity
                 "pi" -> Pi
                 "grok" -> Grok
+                "opencode" -> Opencode
                 else -> null
             }
     }
@@ -138,7 +157,8 @@ internal data class RuntimeAuthSignedInProvider(
     val id: String,
     val label: String,
     val apiKey: Boolean,
-    val subscription: Boolean = false,
+    /** Null when the runtime does not say (OpenCode): neither a subscription nor a plain account is claimed. */
+    val subscription: Boolean? = null,
 )
 
 /** slock `runtimeAuthStatusSchema`. */
@@ -255,7 +275,7 @@ private fun JsonElement.toRuntimeAuthSignedInProvider(): RuntimeAuthSignedInProv
             "oauth" -> false
             else -> return null
         }
-    val subscription = (obj["subscription"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: false
+    val subscription = (obj["subscription"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull
     return RuntimeAuthSignedInProvider(id = id, label = label, apiKey = apiKey, subscription = subscription)
 }
 
@@ -276,6 +296,15 @@ internal fun isRuntimeAuthPastedCode(value: String): Boolean =
  * name, and sends it in an HTTP header (one byte per character), so such a key is never sent.
  */
 internal fun isPiLiteralApiKey(apiKey: String): Boolean = !apiKey.startsWith("!") && '$' !in apiKey && apiKey.all { it.code <= 0xff }
+
+private val OpencodeKeyReference = Regex("\\{(?:env|file):", RegexOption.IGNORE_CASE)
+
+/** slock `isOpencodeLiteralApiKey`: one byte per character, and no `{env:}` / `{file:}` reference. */
+internal fun isOpencodeLiteralApiKey(apiKey: String): Boolean = !OpencodeKeyReference.containsMatchIn(apiKey) && apiKey.all { it.code <= 0xff }
+
+/** slock `isRuntimeAuthOAuthMethodLabel`: one untrimmed short line with no control characters. */
+internal fun isRuntimeAuthOAuthMethodLabel(value: String?): Boolean =
+    value != null && value.trim() == value && value.isNotEmpty() && value.length <= 80 && value.none { it.code < 0x20 || it.code == 0x7f }
 
 /**
  * `runtime_auth:login:event`'s `event` (slock `runtimeAuthLoginEventSchema`, strict): null for an
@@ -310,7 +339,7 @@ internal fun JsonElement.toRuntimeAuthLoginStep(): RuntimeAuthLoginStep? {
     }
 }
 
-private val RuntimeAuthLoginFailureReasons = setOf("timed_out", "rejected", "not_logged_in", "interaction_failed", "process_failed")
+private val RuntimeAuthLoginFailureReasons = setOf("timed_out", "rejected", "not_logged_in", "interaction_failed", "process_failed", "loopback_required")
 
 /** `runtime_auth:login:result`'s `result` (slock `runtimeAuthLoginResultSchema`); null when it does not check out. */
 internal fun JsonElement.toRuntimeAuthLoginOutcome(): RuntimeAuthLoginOutcome? {
@@ -335,7 +364,7 @@ internal sealed interface RuntimeAuthLogoutResult {
     data class Unsupported(val reason: RuntimeAuthUnavailableReason) : RuntimeAuthLogoutResult
 }
 
-private val RuntimeAuthLogoutFailureReasons = setOf("timed_out", "rejected", "process_failed", "still_logged_in")
+private val RuntimeAuthLogoutFailureReasons = setOf("timed_out", "rejected", "process_failed", "still_logged_in", "busy")
 
 internal fun JsonElement.toRuntimeAuthLogoutResult(): RuntimeAuthLogoutResult? {
     val obj = this as? JsonObject ?: return null
@@ -352,6 +381,8 @@ internal enum class RuntimeAuthProviderOAuthFlow(val wire: String) {
     DeviceCode("device_code"),
     PasteCode("paste_code"),
     PasteAddress("paste_address"),
+    /** OpenCode: the provider's sign-in page; what follows is known once the attempt starts. */
+    Link("link"),
     ComputerOnly("computer_only");
 
     companion object {
@@ -380,10 +411,23 @@ internal data class RuntimeAuthProvider(
     val label: String,
     val oauthLabel: String? = null,
     val oauthFlow: RuntimeAuthProviderOAuthFlow? = null,
+    /** OpenCode: every OAuth sign-in the provider offers (`signIn.oauthMethods`), device code first; [oauthLabel] is then null. */
+    val oauthMethodList: List<RuntimeAuthOAuthMethod> = emptyList(),
     val apiKeyEntry: RuntimeAuthProviderKeyEntry? = null,
     /** `oauth` or `api_key`: how its stored sign-in authenticates. */
     val stored: String? = null,
 )
+
+/** One OAuth sign-in of a provider, by its label as the runtime lists it. */
+internal data class RuntimeAuthOAuthMethod(val label: String, val flow: RuntimeAuthProviderOAuthFlow)
+
+/** Web `oauthMethodsOf`: OpenCode's methods, or Pi's one. */
+internal val RuntimeAuthProvider.oauthMethods: List<RuntimeAuthOAuthMethod>
+    get() =
+        oauthMethodList.ifEmpty {
+            val flow = oauthFlow ?: return emptyList()
+            listOf(RuntimeAuthOAuthMethod(oauthLabel ?: label, flow))
+        }
 
 /** slock `runtimeAuthProvidersResultSchema`. */
 internal sealed interface RuntimeAuthProvidersResult {
@@ -417,11 +461,19 @@ private fun JsonElement.toRuntimeAuthProvider(): RuntimeAuthProvider? {
     val signIn = obj["signIn"] as? JsonObject
     val oauth = signIn?.get("oauth") as? JsonObject
     val apiKey = signIn?.get("apiKey") as? JsonObject
+    // One odd method label drops that method only (the daemon filters with the same rule).
+    val methods =
+        (signIn?.get("oauthMethods") as? JsonArray)?.mapNotNull { element ->
+            val method = element as? JsonObject ?: return@mapNotNull null
+            val methodLabel = method.plainString("label")?.takeIf(::isRuntimeAuthOAuthMethodLabel) ?: return@mapNotNull null
+            RuntimeAuthProviderOAuthFlow.fromWire(method.plainString("flow"))?.let { RuntimeAuthOAuthMethod(methodLabel, it) }
+        }.orEmpty()
     return RuntimeAuthProvider(
         id = id,
         label = label,
         oauthLabel = oauth?.safeText("label", 80),
         oauthFlow = oauth?.let { RuntimeAuthProviderOAuthFlow.fromWire(it.plainString("flow")) ?: return null },
+        oauthMethodList = methods,
         apiKeyEntry = apiKey?.let { RuntimeAuthProviderKeyEntry.fromWire(it.plainString("entry")) ?: return null },
         stored = signIn?.plainString("stored")?.takeIf { it == "oauth" || it == "api_key" },
     )
@@ -451,7 +503,12 @@ internal fun JsonElement.toRuntimeAuthProviderConnectResult(): RuntimeAuthProvid
 
 /** `POST …/:runtime/login` body: the region for Kimi, the provider for Pi, nothing for the others. */
 @Serializable
-internal data class RuntimeAuthLoginStartBody(val region: String? = null, val providerId: String? = null)
+internal data class RuntimeAuthLoginStartBody(
+    val region: String? = null,
+    val providerId: String? = null,
+    /** OpenCode: the OAuth sign-in the person chose, by its label. */
+    val oauthMethod: String? = null,
+)
 
 /** `POST …/login/:loginId/code` body. The code is never logged. */
 @Serializable

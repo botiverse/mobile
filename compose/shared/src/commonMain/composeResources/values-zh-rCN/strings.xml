@@ -2849,6 +2849,15 @@
     <string name="settings_computers_runtime_auth_pi_paste_address_hint">登录后，浏览器会跳转到一个无法打开的页面。把地址栏中的完整地址粘贴到这里。</string>
     <string name="settings_computers_runtime_auth_pi_paste_code_hint">登录后，页面会显示一个类似 abc…#xyz 的代码。请完整粘贴。</string>
     <string name="settings_computers_runtime_auth_pi_error_busy">这台 Computer 上已有另一个 Pi 登录正在进行（这个或其他提供商的）。请先完成或取消它，再重试。</string>
+    <string name="settings_computers_runtime_auth_opencode_version_unsupported">在这里登录需要 OpenCode 2。在这台 Computer 上把 OpenCode 升级到 2.x 后，在这台 Computer 的页面上点「重新检测运行时」。</string>
+    <string name="settings_computers_runtime_auth_opencode_flow_link">在提供商的页面上登录</string>
+    <string name="settings_computers_runtime_auth_opencode_method_label">%1$s · %2$s</string>
+    <string name="settings_computers_runtime_auth_opencode_key_refused">OpenCode 无法把它当作密钥。请粘贴密钥本身，而不是对环境变量或文件的引用。</string>
+    <string name="settings_computers_runtime_auth_opencode_key_outside">在 OpenCode 之外设置，在这台 Computer 上</string>
+    <string name="settings_computers_runtime_auth_opencode_key_success">已保存到这台 Computer。Agent 使用 %1$s 时，OpenCode 会检查这个密钥。</string>
+    <string name="settings_computers_runtime_auth_opencode_error_busy">这台 Computer 上已有另一个 OpenCode 登录正在进行（这个或其他提供商的）。请先完成或取消它，再重试。</string>
+    <string name="settings_computers_runtime_auth_opencode_error_sign_in_in_progress">这台 Computer 上有登录正在进行。请先完成或取消它，再重试。</string>
+    <string name="settings_computers_runtime_auth_error_loopback_required">用这种方式登录 %1$s 需要在这台 Computer 上的浏览器。请换一种方式，或在这台 Computer 上登录。</string>
     <string name="settings_computers_state_unknown">未知</string>
     <string name="settings_computers_workspace_modified">修改于 %1$s</string>
     <string name="settings_computers_file_count_one">%1$d 个文件</string>

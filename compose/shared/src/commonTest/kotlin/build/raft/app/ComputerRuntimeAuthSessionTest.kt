@@ -4,6 +4,7 @@ import build.raft.app.data.RuntimeAuthAvailability
 import build.raft.app.data.RuntimeAuthCall
 import build.raft.app.data.RuntimeAuthLoginRegion
 import build.raft.app.data.RuntimeAuthLogoutResult
+import build.raft.app.data.RuntimeAuthOAuthMethod
 import build.raft.app.data.RuntimeAuthProvider
 import build.raft.app.data.RuntimeAuthProviderConnectResult
 import build.raft.app.data.RuntimeAuthProviderKeyEntry
@@ -108,24 +109,35 @@ class ComputerRuntimeAuthSessionTest {
 
     @Test
     fun startRefusalsSayWhetherTryingAgainCanHelp() {
-        fun failure(status: Int?, code: String?, perProvider: Boolean = false) =
-            RuntimeAuthRequestError(status, code).signInStartFailure(perProvider).let { it.problem to it.retryable }
+        fun failure(status: Int?, code: String?, runtime: RuntimeAuthRuntime = RuntimeAuthRuntime.Claude) =
+            RuntimeAuthRequestError(status, code).signInStartFailure(runtime).let { it.problem to it.retryable }
         assertEquals(ComputerRuntimeAuthProblem.UpgradeRequired to false, failure(409, "computer_upgrade_required"))
         assertEquals(ComputerRuntimeAuthProblem.NotAttached to false, failure(409, "computer_not_attached"))
         assertEquals(ComputerRuntimeAuthProblem.Busy to true, failure(409, "login_in_progress"))
-        assertEquals(ComputerRuntimeAuthProblem.PiBusy to true, failure(409, "login_in_progress", perProvider = true))
+        assertEquals(ComputerRuntimeAuthProblem.PiBusy to true, failure(409, "login_in_progress", RuntimeAuthRuntime.Pi))
+        assertEquals(ComputerRuntimeAuthProblem.OpencodeBusy to true, failure(409, "login_in_progress", RuntimeAuthRuntime.Opencode))
         assertEquals(ComputerRuntimeAuthProblem.RateLimited to true, failure(429, "rate_limited"))
         assertEquals(ComputerRuntimeAuthProblem.Forbidden to false, failure(403, null))
         assertEquals(ComputerRuntimeAuthProblem.NotFound to false, failure(404, "runtime_auth_not_offered"))
         assertEquals(ComputerRuntimeAuthProblem.StartFailed to true, failure(500, null))
         assertEquals(
             ComputerRuntimeAuthProblem.InteractionFailed to false,
-            RuntimeAuthLoginOutcome.Failed("interaction_failed").signInResultFailure(false)!!.let { it.problem to it.retryable },
+            RuntimeAuthLoginOutcome.Failed("interaction_failed").signInResultFailure(RuntimeAuthRuntime.Claude)!!.let { it.problem to it.retryable },
         )
         assertEquals(
             ComputerRuntimeAuthProblem.VersionUnsupported,
-            RuntimeAuthLoginOutcome.Unsupported("version_unsupported").signInResultFailure(false)?.problem,
+            RuntimeAuthLoginOutcome.Unsupported("version_unsupported").signInResultFailure(RuntimeAuthRuntime.Claude)?.problem,
         )
+        // OpenCode: another way, not a retry; OpenCode 1 says to upgrade to OpenCode 2.
+        assertEquals(
+            ComputerRuntimeAuthProblem.LoopbackRequired to false,
+            RuntimeAuthLoginOutcome.Failed("loopback_required").signInResultFailure(RuntimeAuthRuntime.Opencode)!!.let { it.problem to it.retryable },
+        )
+        assertEquals(
+            ComputerRuntimeAuthProblem.OpencodeVersionUnsupported,
+            RuntimeAuthLoginOutcome.Unsupported("version_unsupported").signInResultFailure(RuntimeAuthRuntime.Opencode)?.problem,
+        )
+        assertEquals(ComputerRuntimeAuthProblem.SignInInProgress, RuntimeAuthLogoutResult.Failed("busy").signOutProblem(RuntimeAuthRuntime.Opencode))
     }
 
     @Test
@@ -268,6 +280,54 @@ class ComputerRuntimeAuthSessionTest {
         assertEquals("cancel pi $LOGIN", ops.calls.last(), "closing ends the provider's login")
     }
 
+    @Test
+    fun openCodeNamesTheChosenMethodAndGreysOutOneThatNeedsTheComputersBrowser() = runTest {
+        ComputerRuntimeLoopbackRequired.clearForTests()
+        val providers =
+            listOf(
+                RuntimeAuthProvider(
+                    "github-copilot",
+                    "GitHub Copilot",
+                    oauthMethodList =
+                        listOf(
+                            RuntimeAuthOAuthMethod("Login with GitHub (device)", RuntimeAuthProviderOAuthFlow.DeviceCode),
+                            RuntimeAuthOAuthMethod("Login with GitHub", RuntimeAuthProviderOAuthFlow.Link),
+                        ),
+                ),
+            )
+        val ops = FakeAuthOps(providers = RuntimeAuthCall.Done(RuntimeAuthProvidersResult.Listed(providers)))
+        val controller = controller(RuntimeAuthRuntime.Opencode, ops)
+        controller.openSignIn()
+        runCurrent()
+        val pi = assertIs<ComputerRuntimeAuthDialog.AddProvider>(controller.dialog).session
+        pi.choose(ComputerRuntimePiChoice(account = true, providerId = "github-copilot", methodIndex = 1))
+        pi.continueWithChoice()
+        val signIn = assertIs<ComputerRuntimeAuthDialog.SignIn>(controller.dialog).session
+        assertEquals(ComputerRuntimeSignInProvider("github-copilot", "GitHub Copilot", oauthMethod = "Login with GitHub"), signIn.provider)
+        runCurrent()
+        assertEquals("start opencode region=null provider=github-copilot method=Login with GitHub", ops.calls.last())
+        ops.start.complete(RuntimeAuthCall.Done(LOGIN))
+        runCurrent()
+        signIn.onRealtime(RuntimeAuthLoginResultPushed("s1", "m1", "opencode", LOGIN, RuntimeAuthLoginOutcome.Failed("loopback_required")))
+        assertEquals(ComputerRuntimeAuthProblem.LoopbackRequired, signIn.state.failure?.problem)
+        assertTrue(ComputerRuntimeLoopbackRequired.contains("m1", RuntimeAuthRuntime.Opencode, "github-copilot", "Login with GitHub"))
+        // The same method is not started again from here this session.
+        controller.closeDialog()
+        controller.openSignIn()
+        runCurrent()
+        val again = assertIs<ComputerRuntimeAuthDialog.AddProvider>(controller.dialog).session
+        again.choose(ComputerRuntimePiChoice(account = true, providerId = "github-copilot", methodIndex = 1))
+        again.continueWithChoice()
+        assertIs<ComputerRuntimeAuthDialog.AddProvider>(controller.dialog)
+        // OpenCode's key rule: no {env:} / {file:} reference.
+        again.choose(ComputerRuntimePiChoice(account = false, providerId = "github-copilot"))
+        again.apiKeyChanged("{env:OPENAI_API_KEY}")
+        assertTrue(again.keyRefusedHere)
+        again.apiKeyChanged("!literal-for-opencode")
+        assertTrue(!again.keyRefusedHere, "a leading ! is Pi's rule, not OpenCode's")
+        ComputerRuntimeLoopbackRequired.clearForTests()
+    }
+
     private fun TestScope.signIn(runtime: RuntimeAuthRuntime, ops: FakeAuthOps) =
         ComputerRuntimeSignInSession("s1", "m1", runtime, provider = null, ops = ops, scope = this)
 
@@ -296,8 +356,8 @@ class ComputerRuntimeAuthSessionTest {
             calls += "invalidate"
         }
 
-        override suspend fun startLogin(runtime: RuntimeAuthRuntime, region: RuntimeAuthLoginRegion?, providerId: String?): RuntimeAuthCall<String> {
-            calls += "start ${runtime.wire} region=${region?.wire} provider=$providerId"
+        override suspend fun startLogin(runtime: RuntimeAuthRuntime, region: RuntimeAuthLoginRegion?, providerId: String?, oauthMethod: String?): RuntimeAuthCall<String> {
+            calls += "start ${runtime.wire} region=${region?.wire} provider=$providerId" + (oauthMethod?.let { " method=$it" } ?: "")
             return start.await()
         }
 

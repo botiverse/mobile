@@ -31,6 +31,7 @@ import build.raft.app.data.RuntimeAuthSignedInProvider
 import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthUnavailableReason
 import build.raft.app.data.RuntimeAuthView
+import build.raft.app.data.oauthMethods
 import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -239,7 +240,12 @@ internal fun ComputerRuntimeAuthUnavailable(raftRuntimeId: String, reason: Runti
             stringResource(
                 when (reason) {
                     RuntimeAuthUnavailableReason.NotInstalled -> Res.string.settings_computers_runtime_auth_unavailable_not_installed
-                    RuntimeAuthUnavailableReason.VersionUnsupported -> Res.string.settings_computers_runtime_auth_unavailable_version_unsupported
+                    RuntimeAuthUnavailableReason.VersionUnsupported ->
+                        if (raftRuntimeId == "opencode") {
+                            Res.string.settings_computers_runtime_auth_opencode_version_unsupported
+                        } else {
+                            Res.string.settings_computers_runtime_auth_unavailable_version_unsupported
+                        }
                     RuntimeAuthUnavailableReason.UnsupportedInstallation -> Res.string.settings_computers_runtime_auth_unavailable_unsupported_installation
                 }
             ),
@@ -295,6 +301,8 @@ internal fun ComputerRuntimeAuthProviderRows(auth: ComputerRuntimeAuthCardState,
                     stringResource(
                         when {
                             provider.apiKey -> Res.string.settings_computers_runtime_auth_pi_method_api_key
+                            // OpenCode does not say whether an account is a subscription: neither is claimed.
+                            provider.subscription == null -> Res.string.settings_computers_runtime_auth_signed_in
                             provider.subscription -> Res.string.settings_computers_runtime_auth_pi_method_subscription
                             else -> Res.string.settings_computers_runtime_auth_pi_method_account
                         }
@@ -335,6 +343,10 @@ internal fun ComputerRuntimeAuthProblem.text(runtimeName: String): String =
         ComputerRuntimeAuthProblem.NotAttached -> stringResource(Res.string.settings_computers_runtime_auth_not_attached)
         ComputerRuntimeAuthProblem.Busy -> stringResource(Res.string.settings_computers_runtime_auth_error_busy)
         ComputerRuntimeAuthProblem.PiBusy -> stringResource(Res.string.settings_computers_runtime_auth_pi_error_busy)
+        ComputerRuntimeAuthProblem.OpencodeBusy -> stringResource(Res.string.settings_computers_runtime_auth_opencode_error_busy)
+        ComputerRuntimeAuthProblem.LoopbackRequired -> stringResource(Res.string.settings_computers_runtime_auth_error_loopback_required, runtimeName)
+        ComputerRuntimeAuthProblem.OpencodeVersionUnsupported -> stringResource(Res.string.settings_computers_runtime_auth_opencode_version_unsupported)
+        ComputerRuntimeAuthProblem.SignInInProgress -> stringResource(Res.string.settings_computers_runtime_auth_opencode_error_sign_in_in_progress)
         ComputerRuntimeAuthProblem.RateLimited -> stringResource(Res.string.settings_computers_runtime_auth_error_rate_limited)
         ComputerRuntimeAuthProblem.Forbidden -> stringResource(Res.string.settings_computers_runtime_auth_error_forbidden)
         ComputerRuntimeAuthProblem.NotFound -> stringResource(Res.string.settings_computers_runtime_auth_error_not_found)
@@ -829,7 +841,15 @@ private fun ComputerRuntimePiBody(session: ComputerRuntimePiSession, runtimeName
         when {
             session.step == ComputerRuntimePiStep.Done ->
                 RaftBanner(
-                    description = stringResource(Res.string.settings_computers_runtime_auth_pi_key_success, chosenLabel),
+                    description =
+                        stringResource(
+                            if (session.runtime == RuntimeAuthRuntime.Opencode) {
+                                Res.string.settings_computers_runtime_auth_opencode_key_success
+                            } else {
+                                Res.string.settings_computers_runtime_auth_pi_key_success
+                            },
+                            chosenLabel,
+                        ),
                     status = RaftBannerStatus.Success,
                     size = RaftBannerSize.Sm,
                 )
@@ -844,7 +864,7 @@ private fun ComputerRuntimePiBody(session: ComputerRuntimePiSession, runtimeName
                     ComputerRuntimePiKeyForm(session, runtimeName, chosenLabel)
                 } else {
                     RaftText(stringResource(Res.string.settings_computers_runtime_auth_pi_choose_prompt, runtimeName, computerName), style = typography.subhead, color = colors.foregroundMuted)
-                    ComputerRuntimePiProviderChoices(list, session.chosen, session::choose, runtimeName)
+                    ComputerRuntimePiProviderChoices(list, session.chosen, session::choose, runtimeName, session.runtime, session.machineId)
                     RaftText(stringResource(Res.string.settings_computers_runtime_auth_pi_scope_note, runtimeName), style = typography.caption, color = colors.foregroundHint)
                 }
         }
@@ -858,6 +878,8 @@ internal fun ComputerRuntimePiProviderChoices(
     chosen: ComputerRuntimePiChoice?,
     onChoose: (ComputerRuntimePiChoice) -> Unit,
     runtimeName: String,
+    runtime: RuntimeAuthRuntime = RuntimeAuthRuntime.Pi,
+    machineId: String = "",
 ) {
     val signedIn = stringResource(Res.string.settings_computers_runtime_auth_pi_signed_in)
     val success = RaftTheme.colors.successStrong
@@ -869,22 +891,39 @@ internal fun ComputerRuntimePiProviderChoices(
             RuntimeAuthProviderOAuthFlow.PasteCode to stringResource(Res.string.settings_computers_runtime_auth_pi_flow_paste_code),
             RuntimeAuthProviderOAuthFlow.PasteAddress to stringResource(Res.string.settings_computers_runtime_auth_pi_flow_paste_address),
             RuntimeAuthProviderOAuthFlow.ComputerOnly to stringResource(Res.string.settings_computers_runtime_auth_pi_flow_computer_only),
+            RuntimeAuthProviderOAuthFlow.Link to stringResource(Res.string.settings_computers_runtime_auth_opencode_flow_link),
         )
     val moreFields = stringResource(Res.string.settings_computers_runtime_auth_pi_key_more_fields)
-    val outside = stringResource(Res.string.settings_computers_runtime_auth_pi_key_outside)
+    val outside =
+        stringResource(
+            if (runtime == RuntimeAuthRuntime.Opencode) Res.string.settings_computers_runtime_auth_opencode_key_outside else Res.string.settings_computers_runtime_auth_pi_key_outside
+        )
     val accountRows = mutableListOf<RaftChoiceListItem<ComputerRuntimePiChoice>>()
     val keyRows = mutableListOf<RaftChoiceListItem<ComputerRuntimePiChoice>>()
     list.providers.forEach { provider ->
-        val flow = provider.oauthFlow
-        if (flow != null) {
-            val label = provider.oauthLabel ?: provider.label
+        provider.oauthMethods.forEachIndexed { index, method ->
+            // A sign-in that ended as loopback_required on this Computer: greyed out for the session.
+            val needsComputer =
+                method.flow == RuntimeAuthProviderOAuthFlow.ComputerOnly ||
+                    ComputerRuntimeLoopbackRequired.contains(machineId, runtime, provider.id, method.label)
+            // OpenCode's method labels ("Login with GitHub (device)") do not name the provider.
+            val label =
+                if (runtime.choosesOAuthMethod) {
+                    stringResource(Res.string.settings_computers_runtime_auth_opencode_method_label, provider.label, method.label)
+                } else {
+                    method.label
+                }
             accountRows +=
                 RaftChoiceListItem(
-                    value = ComputerRuntimePiChoice(account = true, providerId = provider.id),
+                    value = ComputerRuntimePiChoice(account = true, providerId = provider.id, methodIndex = index),
                     label = label,
-                    descriptions = listOfNotNull(AnnotatedString(flowText.getValue(flow)), signedInLine(provider.stored == "oauth")),
-                    enabled = flow != RuntimeAuthProviderOAuthFlow.ComputerOnly,
-                    searchText = "$label ${provider.label}",
+                    descriptions =
+                        listOfNotNull(
+                            AnnotatedString(flowText.getValue(if (needsComputer) RuntimeAuthProviderOAuthFlow.ComputerOnly else method.flow)),
+                            signedInLine(provider.stored == "oauth"),
+                        ),
+                    enabled = !needsComputer,
+                    searchText = "${method.label} ${provider.label}",
                     group = "account",
                 )
         }
@@ -930,7 +969,14 @@ private fun ComputerRuntimePiKeyForm(session: ComputerRuntimePiSession, runtimeN
     val colors = RaftTheme.colors
     val error =
         when {
-            session.keyRefusedHere -> stringResource(Res.string.settings_computers_runtime_auth_pi_key_refused)
+            session.keyRefusedHere ->
+                stringResource(
+                    if (session.runtime == RuntimeAuthRuntime.Opencode) {
+                        Res.string.settings_computers_runtime_auth_opencode_key_refused
+                    } else {
+                        Res.string.settings_computers_runtime_auth_pi_key_refused
+                    }
+                )
             session.keyRefusedByServer -> stringResource(Res.string.settings_computers_runtime_auth_provider_field_api_key)
             else -> null
         }

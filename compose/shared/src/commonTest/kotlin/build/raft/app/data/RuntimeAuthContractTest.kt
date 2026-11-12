@@ -161,6 +161,32 @@ class RuntimeAuthContractTest {
             ).toRuntimeAuthProvidersResult(),
             "a flow it does not know",
         )
+        // slock #14378 (staging fa3b81be1): OpenCode lists every OAuth sign-in of a provider, and
+        // an odd method label drops that method only; its stored accounts claim no subscription.
+        val opencode =
+            assertIs<RuntimeAuthProvidersResult.Listed>(
+                Json.parseToJsonElement(
+                    """
+                    {"kind":"listed","providers":[{"id":"github-copilot","label":"GitHub Copilot","configured":false,"endpoint":{"kind":"fixed"},"needsModelIds":false,
+                     "signIn":{"oauthMethods":[{"label":"Login with GitHub (device)","flow":"device_code"},{"label":"Login with GitHub","flow":"link"},{"label":" padded","flow":"link"}]}}]}
+                    """.trimIndent()
+                ).toRuntimeAuthProvidersResult()
+            ).providers.single()
+        assertEquals(
+            listOf(
+                RuntimeAuthOAuthMethod("Login with GitHub (device)", RuntimeAuthProviderOAuthFlow.DeviceCode),
+                RuntimeAuthOAuthMethod("Login with GitHub", RuntimeAuthProviderOAuthFlow.Link),
+            ),
+            opencode.oauthMethods,
+        )
+        assertNull(
+            (Json.parseToJsonElement("""{"kind":"logged_in","providers":[{"id":"openai","label":"OpenAI","method":"oauth"}]}""").toRuntimeAuthStatus() as RuntimeAuthStatus.LoggedIn)
+                .providers.single().subscription,
+        )
+        assertEquals(RuntimeAuthRuntime.Opencode, RuntimeAuthRuntime.forRaftRuntime("opencode"))
+        assertFalse(RuntimeAuthRuntime.Opencode.literalApiKeyFits("{env:OPENAI_API_KEY}"))
+        assertTrue(RuntimeAuthRuntime.Opencode.literalApiKeyFits("!sk-1"))
+        assertEquals(RuntimeAuthLogoutResult.Failed("busy"), Json.parseToJsonElement("""{"kind":"failed","reason":"busy"}""").toRuntimeAuthLogoutResult())
         assertEquals(RuntimeAuthProviderConnectResult.Busy, Json.parseToJsonElement("""{"kind":"busy"}""").toRuntimeAuthProviderConnectResult())
         assertFalse(isPiLiteralApiKey("!op read x"))
         assertFalse(isPiLiteralApiKey("\$KEY"))
@@ -176,6 +202,7 @@ class RuntimeAuthContractTest {
         client.startRuntimeLogin(ServerId("s1"), "m1", RuntimeAuthRuntime.Kimi, region = RuntimeAuthLoginRegion.Global)
         client.startRuntimeLogin(ServerId("s1"), "m1", RuntimeAuthRuntime.Pi, providerId = "openai-codex")
         client.logoutRuntime(ServerId("s1"), "m1", RuntimeAuthRuntime.Grok)
+        client.startRuntimeLogin(ServerId("s1"), "m1", RuntimeAuthRuntime.Opencode, providerId = "github-copilot", oauthMethod = "Login with GitHub (device)")
         // The server refuses a `region` or `providerId` that is present, even null, where the runtime takes none.
         assertEquals(
             listOf(
@@ -183,6 +210,7 @@ class RuntimeAuthContractTest {
                 Triple("login", "kimi", mapOf("region" to "global")),
                 Triple("login", "pi", mapOf("providerId" to "openai-codex")),
                 Triple("logout", "grok", emptyMap<String, String>()),
+                Triple("login", "opencode", mapOf("providerId" to "github-copilot", "oauthMethod" to "Login with GitHub (device)")),
             ),
             api.calls.map { (route, runtime, body) -> Triple(route, runtime, body.mapValues { it.value.jsonPrimitive.content }) },
         )

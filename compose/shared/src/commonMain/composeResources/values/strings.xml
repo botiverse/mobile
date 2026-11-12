@@ -2849,6 +2849,15 @@
     <string name="settings_computers_runtime_auth_pi_paste_address_hint">After signing in, your browser lands on a page that won't load. Paste the full address from the address bar here.</string>
     <string name="settings_computers_runtime_auth_pi_paste_code_hint">After signing in, the page shows a code like abc…#xyz. Paste all of it.</string>
     <string name="settings_computers_runtime_auth_pi_error_busy">Another Pi sign-in is in progress on this Computer, for this or another provider. Finish or cancel it, then try again.</string>
+    <string name="settings_computers_runtime_auth_opencode_version_unsupported">Signing in from here needs OpenCode 2. Upgrade OpenCode on the Computer to 2.x, then use Rescan runtimes on the Computer's page.</string>
+    <string name="settings_computers_runtime_auth_opencode_flow_link">Sign in on the provider's page</string>
+    <string name="settings_computers_runtime_auth_opencode_method_label">%1$s · %2$s</string>
+    <string name="settings_computers_runtime_auth_opencode_key_refused">OpenCode can't take this as a key. Paste the key itself, not a reference to an environment variable or a file.</string>
+    <string name="settings_computers_runtime_auth_opencode_key_outside">Set up outside OpenCode, on the Computer</string>
+    <string name="settings_computers_runtime_auth_opencode_key_success">Saved on this Computer. OpenCode checks the key when an agent uses %1$s.</string>
+    <string name="settings_computers_runtime_auth_opencode_error_busy">Another OpenCode sign-in is in progress on this Computer, for this or another provider. Finish or cancel it, then try again.</string>
+    <string name="settings_computers_runtime_auth_opencode_error_sign_in_in_progress">A sign-in is in progress on this Computer. Finish or cancel it, then try again.</string>
+    <string name="settings_computers_runtime_auth_error_loopback_required">This way of signing in to %1$s needs a browser on the Computer itself. Choose another way, or sign in on the Computer.</string>
     <string name="settings_computers_state_unknown">Unknown</string>
     <string name="settings_computers_workspace_modified">Modified %1$s</string>
     <string name="settings_computers_file_count_one">%1$d file</string>

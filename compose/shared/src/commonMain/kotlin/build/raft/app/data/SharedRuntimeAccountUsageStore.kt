@@ -163,8 +163,9 @@ internal class SharedRuntimeAccountUsageStore(
         runtime: RuntimeAuthRuntime,
         region: RuntimeAuthLoginRegion? = null,
         providerId: String? = null,
+        oauthMethod: String? = null,
     ): RuntimeAuthCall<String> =
-        asOwner(owner) { client.startRuntimeLogin(ServerId(serverId), machineId, runtime, region, providerId) }
+        asOwner(owner) { client.startRuntimeLogin(ServerId(serverId), machineId, runtime, region, providerId, oauthMethod) }
 
     suspend fun submitRuntimeLoginCode(
         owner: SharedComputersOwner,

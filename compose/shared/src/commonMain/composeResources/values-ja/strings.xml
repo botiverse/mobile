@@ -2849,6 +2849,15 @@
     <string name="settings_computers_runtime_auth_pi_paste_address_hint">ログイン後、ブラウザーは開けないページに移動します。アドレスバーのアドレス全体をここに貼り付けてください。</string>
     <string name="settings_computers_runtime_auth_pi_paste_code_hint">ログイン後、ページに abc…#xyz のようなコードが表示されます。すべて貼り付けてください。</string>
     <string name="settings_computers_runtime_auth_pi_error_busy">このコンピューターでは別の Pi のログイン（このプロバイダーまたは別のプロバイダー）が進行中です。完了するかキャンセルしてから、もう一度お試しください。</string>
+    <string name="settings_computers_runtime_auth_opencode_version_unsupported">ここからログインするには OpenCode 2 が必要です。コンピューターの OpenCode を 2.x にアップグレードしてから、コンピューターのページで「ランタイムを再スキャン」を使ってください。</string>
+    <string name="settings_computers_runtime_auth_opencode_flow_link">プロバイダーのページでログイン</string>
+    <string name="settings_computers_runtime_auth_opencode_method_label">%1$s · %2$s</string>
+    <string name="settings_computers_runtime_auth_opencode_key_refused">OpenCode はこれをキーとして使えません。環境変数やファイルへの参照ではなく、キーそのものを貼り付けてください。</string>
+    <string name="settings_computers_runtime_auth_opencode_key_outside">OpenCode の外、コンピューター上で設定します</string>
+    <string name="settings_computers_runtime_auth_opencode_key_success">このコンピューターに保存しました。エージェントが %1$s を使うときに OpenCode がキーを確認します。</string>
+    <string name="settings_computers_runtime_auth_opencode_error_busy">このコンピューターでは別の OpenCode のログイン（このプロバイダーまたは別のプロバイダー）が進行中です。完了するかキャンセルしてから、もう一度お試しください。</string>
+    <string name="settings_computers_runtime_auth_opencode_error_sign_in_in_progress">このコンピューターでログインが進行中です。完了するかキャンセルしてから、もう一度お試しください。</string>
+    <string name="settings_computers_runtime_auth_error_loopback_required">この方法で %1$s にログインするには、コンピューター上のブラウザーが必要です。別の方法を選ぶか、コンピューターでログインしてください。</string>
     <string name="settings_computers_state_unknown">不明</string>
     <string name="settings_computers_workspace_modified">%1$s に更新</string>
     <string name="settings_computers_file_count_one">%1$d 個のファイル</string>

@@ -611,8 +611,10 @@ internal class RaftComputersApiClient(
         runtime: RuntimeAuthRuntime,
         region: RuntimeAuthLoginRegion? = null,
         providerId: String? = null,
+        oauthMethod: String? = null,
     ): RuntimeAuthCall<String> {
-        val body = runtimeAuthBodyJson.encodeToString(RuntimeAuthLoginStartBody.serializer(), RuntimeAuthLoginStartBody(region?.wire, providerId))
+        val body =
+            runtimeAuthBodyJson.encodeToString(RuntimeAuthLoginStartBody.serializer(), RuntimeAuthLoginStartBody(region?.wire, providerId, oauthMethod))
         val response = transport.startRuntimeLogin(serverId, machineId, runtime.wire, body)
         return response.runtimeAuthCall { wire ->
             ((wire as? JsonObject)?.get("loginId") as? JsonPrimitive)
