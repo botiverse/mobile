@@ -12,6 +12,7 @@ import build.raft.app.network.sync.CanonicalConversationContextV2
 import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
 import build.raft.app.network.sync.CanonicalMessageV2RetentionPolicy
 import build.raft.app.network.sync.CanonicalMessageV2ScopePoisoned
+import build.raft.app.network.sync.diagnosticsLabel
 import build.raft.app.network.sync.CanonicalMessageV2ThreadJoinConfirmed
 import build.raft.app.network.sync.ThreadDurablePageDirection
 import build.raft.app.network.sync.ThreadDurablePageExtender
@@ -682,7 +683,7 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                 } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
                     // A stale/cross-scope durable row must never escape the background write. The page already
                     // has its network-backed content; leave the durable scope untouched.
-                    log("poisoned fact=${poisoned.factId.orEmpty()}")
+                    log("poisoned ${poisoned.diagnosticsLabel()}")
                 }
             }
         } finally {
@@ -867,7 +868,7 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                         else -> skip(result.wireOutcome(frame.envelopes.size))
                     }
                 } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
-                    skip("poisoned fact=${poisoned.factId.orEmpty()}")
+                    skip("poisoned ${poisoned.diagnosticsLabel()}")
                 }
             }
         } finally {
@@ -1054,7 +1055,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                 log(result.wireOutcome(write.envelopes.size))
                 if (result == CanonicalMessageV2CommitResult.Committed) reportCommitToCanary(scope, before, write)
             } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
-                log("poisoned fact=${poisoned.factId.orEmpty()}")
+                log("poisoned ${poisoned.diagnosticsLabel()}")
             }
         }
     }
@@ -1290,7 +1291,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                     }
                 }
             } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
-                log("poisoned fact=${poisoned.factId.orEmpty()}")
+                log("poisoned ${poisoned.diagnosticsLabel()}")
             }
         }
     }
@@ -1339,13 +1340,23 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             }
         }
 
+        // Hands 7e198cab: a task conversation's anchor page converts under its task's channel, like its older /
+        // newer / latest pages (task #proj-mobile:#46); `GET /messages/context/:id` answers a task conversation the
+        // same way as any channel (its rows carry their `conversationContext`).
+        val taskParentChannelId = if (scope.scopeKind == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) {
+            taskParentChannelOf(partition, channelId, rawMessages) ?: return skip("task_parent_unknown")
+        } else {
+            null
+        }
+
         val expectedGeneration = generationEngine.partitionGeneration(partition)
 
         // Phase 3b: a horizonReset after this read voids the page's head claim (never its facts).
 
         val expectedHeadEpoch = requestHeadEpoch ?: generationEngine.partitionHeadEpoch(partition)
         val rows = fetcher.convertPageRows(
-            partition, channelId, scope.scopeKind, rawMessages, parent, replyCountByParentId = replyCountByParentId.orEmpty(),
+            partition, channelId, scope.scopeKind, rawMessages, parent, taskParentChannelId,
+            replyCountByParentId = replyCountByParentId.orEmpty(),
         )
         val envelopes = rows.envelopes
         if (envelopes.isEmpty()) return skip(rows.firstRefusal ?: "canonical_v2_snapshot_not_full_v6")
@@ -1401,7 +1412,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                     skip(result.wireOutcome(write.envelopes.size))
                 }
             } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
-                skip("poisoned fact=${poisoned.factId.orEmpty()}")
+                skip("poisoned ${poisoned.diagnosticsLabel()}")
             }
         }
     }
@@ -1445,9 +1456,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             ?: channelType?.takeIf { it in CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS }
             ?: fetcher.topLevelKind(partition, channelId)?.first
             ?: return ContextPageScope.Refused("scope_kind_unknown")
-        // A task window takes older / newer / latest pages (task #proj-mobile:#46), not yet an anchor context page:
-        // this path resolves no task parent to convert under.
-        if (kind == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) return ContextPageScope.Refused("task_window_extend_unsupported")
+        // A task conversation is a top-level scope; its task channel is read from the page (see persistContextPage).
         val scope = SyncScopeKey(partition = partition, scopeId = channelId, scopeKind = kind)
         if (kind != REPLY_THREAD_SCOPE_KIND) return ContextPageScope.Resolved(scope, null)
         val stored = generationEngine.storedCursor(scope)

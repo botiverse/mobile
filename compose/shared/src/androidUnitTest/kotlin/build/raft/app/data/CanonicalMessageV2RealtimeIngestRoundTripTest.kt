@@ -144,6 +144,27 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
         }
     }
 
+    /**
+     * Hands 7e198cab: one message delivered under two channel ids. The store keeps one row per message id, so the
+     * second write finds no fact in its scope: refused as `poisoned`, which used to log no cause at all.
+     */
+    @Test
+    fun aMessageStoredUnderAnotherConversationIsRefusedWithItsCauseAndMarksTheConversation() = withFile { file ->
+        file.rig().session { rig ->
+            rig.connect(1L)
+            assertTrue(rig.deliver(rig.messageNew(other, "m5", 5L), epoch = 1L))
+            rig.deliver(rig.messageNew(channel, "m5", 5L), epoch = 1L)
+            assertTrue(
+                rig.logs.any {
+                    "canonical_v2_realtime outcome=failed" in it && "scope=channel-1" in it &&
+                        "reason=poisoned fact=m5 cause=fact_not_in_scope" in it
+                },
+                rig.logs.toString(),
+            )
+            assertEquals(listOf("channel-1" to "fact_not_in_scope"), rig.poisonedConversations.toList())
+        }
+    }
+
     // ---- (4) a stale grant ---------------------------------------------------------------------------
 
     @Test
@@ -551,6 +572,9 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
 
         /** Partition holes reported to the tracker (reasons). */
         val partitionHoles: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
+
+        /** Conversations whose frame the ingest refused as `poisoned`, with the cause. */
+        val poisonedConversations: MutableList<Pair<String, String>> = java.util.Collections.synchronizedList(mutableListOf())
         val database = RaftSqlDatabase(driver)
         val logs: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
         @Volatile var killBeforeCommit = false
@@ -614,6 +638,7 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             dispatcher = Dispatchers.IO,
             queueCapacity = queueCapacity,
             partitionRetentionEvery = partitionRetentionEvery,
+            onConversationPoisoned = { _, conversationId, cause -> poisonedConversations += conversationId to cause },
         )
         val grant = canonicalV2TestGrant()
 

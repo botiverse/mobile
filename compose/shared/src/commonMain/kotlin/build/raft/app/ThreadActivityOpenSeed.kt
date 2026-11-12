@@ -366,3 +366,13 @@ internal fun activitySeedAuthorName(
         .firstOrNull()
         .orEmpty()
 }
+
+/**
+ * Hands 7e198cab: the route opens at a message ([RaftThreadScreenPayload.focusedMessageId]: an Activity
+ * row, a notification, a link) and this frame does not hold it, neither in its timeline nor as its origin
+ * or parent row. Such a frame is not shown as the conversation; the open waits at the anchor instead.
+ */
+internal fun RaftThreadScreenPayload.lacksFocusedAnchor(): Boolean {
+    val anchor = focusedMessageId?.takeIf { it.isNotBlank() } ?: return false
+    return messages.none { it.id == anchor } && originMessage?.id != anchor && parentMessageId != anchor
+}

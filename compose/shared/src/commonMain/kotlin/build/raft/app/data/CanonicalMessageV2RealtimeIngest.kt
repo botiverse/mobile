@@ -9,6 +9,7 @@ import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2LiveCoverageTracker
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2ScopePoisoned
+import build.raft.app.network.sync.diagnosticsLabel
 import build.raft.app.network.sync.CanonicalMessageV2ThreadParent
 import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
@@ -104,6 +105,12 @@ internal class CanonicalMessageV2RealtimeIngest(
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val queueCapacity: Int = CANONICAL_MESSAGE_V2_REALTIME_QUEUE_CAPACITY,
     private val partitionRetentionEvery: Int = CANONICAL_MESSAGE_V2_REALTIME_PARTITION_RETENTION_EVERY,
+    /**
+     * Hands 7e198cab: a frame of [conversationId] (the frame's own channel id) was refused as `poisoned`; its
+     * conversation's local copies may now miss messages, so its next open must not show them as complete.
+     */
+    private val onConversationPoisoned: (partition: DurablePartitionKey, conversationId: String, cause: String) -> Unit =
+        { _, _, _ -> },
 ) {
     private sealed interface Work {
         class Commit(
@@ -396,7 +403,14 @@ internal class CanonicalMessageV2RealtimeIngest(
             throw cancelled
         } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
             // A stored header naming another parent, or a stored row this frame cannot merge with.
-            return fail(partition, foldInput, "poisoned fact=${poisoned.factId.orEmpty()}")
+            try {
+                onConversationPoisoned(partition, row.channelId, poisoned.cause)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                // Best effort: the failure line below still says what happened.
+            }
+            return fail(partition, foldInput, "poisoned ${poisoned.diagnosticsLabel()}")
         } catch (throwable: Throwable) {
             return fail(partition, foldInput, "write_failed error=${throwable::class.simpleName ?: "unknown"}")
         }

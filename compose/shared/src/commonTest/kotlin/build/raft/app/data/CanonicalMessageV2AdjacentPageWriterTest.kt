@@ -604,6 +604,26 @@ class CanonicalMessageV2AdjacentPageWriterTest {
     }
 
     @Test
+    fun aContextPageOfATaskConversationIsStoredUnderItsTaskChannel() = runBlocking {
+        // Hands 7e198cab: an Activity open of a task conversation wrote nothing (`task_window_extend_unsupported`).
+        val page = adjacentPageOf(adjacentPageNode("m40", 40, channelId = "conv-1"), adjacentPageNode("m50", 50, channelId = "conv-1"))
+        val h = taskHarness()
+        h.seedWindow(taskScope, taskParentChannelId = "channel-1")
+        h.context("m50", page, hasOlder = true, hasNewer = true, channelId = "conv-1")
+        assertEquals(listOf(20L to 50L), h.store.segments.getValue(taskScope).map { it.lowSeq to it.highSeq })
+        val context = h.store.facts.getValue(taskScope).getValue("m50").context as CanonicalConversationContextV2.TopLevel
+        assertEquals(TopLevelScopeRefV2.Task("server-1", "conv-1", "channel-1"), context.scope)
+        assertTrue(h.logs.any { "scope=conv-1 anchor=m50 outcome=committed reason=head_extended facts=2" in it }, h.logs.toString())
+
+        // Twin: nothing names the task's channel (no row context, the server names no parent): nothing is written.
+        val unknown = taskHarness(parentChannelId = null)
+        unknown.seedWindow(taskScope, taskParentChannelId = "channel-1")
+        unknown.context("m50", page, hasOlder = true, hasNewer = true, channelId = "conv-1")
+        assertEquals(listOf(20L, 30L, 40L), unknown.store.seqs(taskScope))
+        assertTrue(unknown.logs.any { "scope=conv-1 anchor=m50 outcome=skipped reason=task_parent_unknown" in it }, unknown.logs.toString())
+    }
+
+    @Test
     fun aChannelPageStillAsksForNoParent() = runBlocking {
         // Unchanged channel behaviour: the parent lookup is for task windows only.
         val h = harness()
@@ -702,8 +722,9 @@ class CanonicalMessageV2AdjacentPageWriterTest {
             userDriven: Boolean = true,
             channelType: String? = null,
             replyCounts: Map<String, Int>? = null,
+            channelId: SyncScopeId = "channel-1",
         ) = writer.persistContextPage(
-            partition, "channel-1", anchor, rawMessages, hasOlder, hasNewer, null,
+            partition, channelId, anchor, rawMessages, hasOlder, hasNewer, null,
             replyCountByParentId = replyCounts,
             userDriven = userDriven,
             channelType = channelType,
