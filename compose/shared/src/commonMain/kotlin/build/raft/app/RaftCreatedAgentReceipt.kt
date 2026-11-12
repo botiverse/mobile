@@ -157,8 +157,11 @@ internal suspend fun openMemberDirectMessage(
 /**
  * Runs View's DM request: the process, not the page, so a request a tap started finishes even
  * if the page's composition goes first (its result is then dropped, see [RaftCreatedAgentReceipt]).
+ * Lazy: touching `Dispatchers.Main` when this file loads binds it to whatever main looper is
+ * current, which leaked into later Robolectric screenshot tests (a receipt test passes its own
+ * scope and never creates this one).
  */
-private val raftCreatedAgentViewScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+private val raftCreatedAgentViewScope: CoroutineScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Main) }
 
 /**
  * Lands a created agent ([CreatedAgentLanding]): [openSetupGuide] for an external agent, else the
