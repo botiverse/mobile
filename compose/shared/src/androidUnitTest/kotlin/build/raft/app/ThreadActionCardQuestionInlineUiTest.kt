@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import build.raft.app.data.ActionCardExecuteOutcome
 import build.raft.app.data.ActionCardFormIssueCode
 import build.raft.app.data.ActionCardFormValue
@@ -413,11 +415,12 @@ class ThreadActionCardQuestionInlineUiTest {
         onNodeWithText("Other").assertExists()
         onNodeWithText("Answer Questions").assertExists()
 
-        onNodeWithText("Done too").performClick()
+        // The third question sits below the test window: press it through its click action, not a tap at its place.
+        onNodeWithText("Done too").performSemanticsAction(SemanticsActions.OnClick)
         advance(PICK_MS + 50)
         onNodeWithText("Done too").assertIsSelected()
         onNodeWithText("Undo").assertDoesNotExist()
-        onNodeWithText("Done too").performClick()
+        onNodeWithText("Done too").performSemanticsAction(SemanticsActions.OnClick)
         advance(PICK_MS + 50)
         onNodeWithText("Done too").assertIsNotSelected()
     }
