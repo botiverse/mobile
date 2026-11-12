@@ -118,13 +118,13 @@ class AdaptiveListPaneWidthTest {
     }
 
     @Test fun wideningTheListCanTakeTheRoomTheSideColumnNeeds() {
-        // F4 needs 841dp of detail. A 1440dp row with the widest sidebar leaves 1039dp; the widest
-        // Activity list leaves 799dp, so the side thread folds once that drag ends (SettingsHomePage).
-        val needed = RAFT_SIDE_THREAD_MAIN_MIN_DP + RAFT_SIDE_THREAD_DIVIDER_DP + RAFT_SIDE_THREAD_COLUMN_DP
+        // #189 rule 3: the thread alone beside the conversation needs 720 of room (360 each). A 1300dp row
+        // with the widest sidebar leaves 899dp; the widest Activity list leaves 659dp, so the side thread
+        // folds once that drag ends (SettingsHomePage).
         fun detail(kind: RaftListPaneKind, row: Float) =
             row - RAFT_LIST_PANE_DIVIDER_DP - raftListPaneWidthDp(kind, kind.maxDp, row)
-        assertTrue(detail(sidebar, 1440f) >= needed)
-        assertTrue(detail(list, 1440f) < needed)
+        assertFalse(raftSideThreadFoldsAlone(detail(sidebar, 1300f)))
+        assertTrue(raftSideThreadFoldsAlone(detail(list, 1300f)))
     }
 
     @Test fun aDragEndsExactlyOnceWhicheverEndArrivesFirst() {

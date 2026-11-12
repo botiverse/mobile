@@ -3577,8 +3577,12 @@ private fun RaftAppShellReadyContent(
             realtimeEvents.applyRoomTransitions(adaptiveRoomLeaseRegistry.release(previousOwner))
         }
     }
-    // task #36: when the window (or desktop mode) can no longer hold the side column, fold the
-    // side thread into the main detail with the channel in Back history.
+    // task #36: when the row (or desktop mode) can no longer hold the side column, fold the side
+    // thread into the main detail with the channel in Back history. #189 rule 3 decides it from the
+    // row plan (sideThreadColumnAvailable), not from fixed window and detail widths. The fold is a
+    // page swap and one-way: once the thread is the main detail the channel's Tasks / Files leave the
+    // row, so the plan may then say "no fold" again; nothing unfolds on that (the way back out is #189
+    // step 3's). Not yet: the web's forceFold (a touch tablet in portrait under 1280 always folds).
     // task #37: the user's list column width (saved per device) and whether its divider is being
     // dragged. A drag that squeezes the detail below the column threshold folds the side thread
     // only when the finger lifts, so dragging across the threshold and back loses nothing.
@@ -3605,7 +3609,7 @@ private fun RaftAppShellReadyContent(
         if (!sideThreadNeedsFold) return@LaunchedEffect
         adaptiveWorkspaceStore.update { current ->
             if (current.visibleSideThread() != null && !current.sideThreadColumnAvailable(desktopModeOnLargeScreen)) {
-                bridge.log("adaptive_side_thread_fold width=${current.detailPaneWidthDp}")
+                bridge.log("adaptive_side_thread_fold width=${current.detailPaneWidthDp} planFolds=${current.sideThreadFolds}")
                 // task #180: drop Focus together with the column. The fold turns the thread into the
                 // main detail, so a leftover flag would mean "maximised with no column to maximise".
                 current.foldSideThreadIntoDetail().copy(sideThreadFocused = false)
@@ -8115,7 +8119,8 @@ private fun RaftAppShellReadyContent(
                         LaunchedEffect(active, allowSideColumn) {
                             if (active && !allowSideColumn) {
                                 adaptiveWorkspaceStore.update {
-                                    if (it.detailPaneWidthDp == null) it else it.copy(detailPaneWidthDp = null)
+                                    if (it.detailPaneWidthDp == null && it.sideThreadFolds == null) it
+                                    else it.copy(detailPaneWidthDp = null, sideThreadFolds = null)
                                 }
                             }
                         }
@@ -8125,11 +8130,16 @@ private fun RaftAppShellReadyContent(
                         // Inside the list + detail split the detail's columns stand in the split's row,
                         // right of this pane: the width the side column decision reads is that of the
                         // pane and its columns together, as when they stood inside it.
+                        // #189 rule 3 (web rowPlan decideFold): whether the thread's column folds into the
+                        // conversation, from that row with every column in it at its kept width (the Tasks /
+                        // Files column the conversation hands up included) and the conversation's kept width.
                         val gridRoomDp = raftPaneGridRoomDp()
-                        LaunchedEffect(active, allowSideColumn, gridRoomDp) {
+                        val gridThreadFolds = raftPaneGridFolds(RaftPaneGridColumns.Thread)
+                        LaunchedEffect(active, allowSideColumn, gridRoomDp, gridThreadFolds) {
                             if (!active || !allowSideColumn || gridRoomDp == null) return@LaunchedEffect
                             adaptiveWorkspaceStore.update {
-                                if (it.detailPaneWidthDp == gridRoomDp) it else it.copy(detailPaneWidthDp = gridRoomDp)
+                                if (it.detailPaneWidthDp == gridRoomDp && it.sideThreadFolds == gridThreadFolds) it
+                                else it.copy(detailPaneWidthDp = gridRoomDp, sideThreadFolds = gridThreadFolds)
                             }
                         }
                         val supportingPaneHost = navRailActive && allowSideColumn
@@ -8143,8 +8153,10 @@ private fun RaftAppShellReadyContent(
                                     .onSizeChanged { size ->
                                         if (!active || !allowSideColumn || gridRoomDp != null) return@onSizeChanged
                                         val widthDp = with(density) { size.width.toDp().value }
+                                        // No grid row here: the measured width decides the fold (sideThreadFolds null).
                                         adaptiveWorkspaceStore.update {
-                                            if (it.detailPaneWidthDp == widthDp) it else it.copy(detailPaneWidthDp = widthDp)
+                                            if (it.detailPaneWidthDp == widthDp && it.sideThreadFolds == null) it
+                                            else it.copy(detailPaneWidthDp = widthDp, sideThreadFolds = null)
                                         }
                                     },
                             supporting =
@@ -8232,10 +8244,14 @@ private fun RaftAppShellReadyContent(
                                             .put(RAFT_ADAPTIVE_DETAIL_GENERATION, sideThread.generation)
                                     }
                                 val sideThreadPageData by rememberUpdatedState(sidePageData)
+                                // Read in the cell through state, not captured in the remembered column (PR #4661
+                                // review): captured, a tab switched away and back could leave the column's page
+                                // inactive and blank. The column object stays the same; the page follows the state.
+                                val sideThreadActive by rememberUpdatedState(childActive)
                                 val sideThreadResizeLabel = stringResource(Res.string.thread_side_thread_resize)
                                 // Its tab where the row is short of 160 per column (#189 rule 4; web RowTabs "Thread").
                                 val sideThreadTabLabel = stringResource(Res.string.thread_reply_title)
-                                remember(sideThreadResizeLabel, sideThreadTabLabel, childActive) {
+                                remember(sideThreadResizeLabel, sideThreadTabLabel) {
                                     RaftPaneGridColumn(
                                         bounds = RaftPaneGridColumns.Thread,
                                         resizeLabel = sideThreadResizeLabel,
@@ -8247,7 +8263,7 @@ private fun RaftAppShellReadyContent(
                                                         pageName = THREAD_PAGE,
                                                         pageData = sideThreadPageData,
                                                         modifier = Modifier.fillMaxSize(),
-                                                        active = childActive,
+                                                        active = sideThreadActive,
                                                     )
                                                 }
                                             ),
@@ -8260,8 +8276,9 @@ private fun RaftAppShellReadyContent(
                         // MainLayout's row): the thread's column right of it (web COLUMN_BOUNDS.thread:
                         // 400 by default, at least 360, its left seam dragging it until the
                         // conversation is down to 360; the width is kept), then the columns the
-                        // conversation declares (Task v2's Tasks / Files), the rightmost giving way
-                        // first. Inside the list + detail split they all stand in its row. In Focus
+                        // conversation declares (Task v2's Tasks / Files), laid out by the #189 row
+                        // plan (all give way in proportion, then clip, then become tabs). Inside the
+                        // list + detail split they all stand in its row. In Focus
                         // mode the thread takes the row (task #180: the conversation is collapsed by
                         // width and stays composed).
                         // The pane beside the conversation, for its header's Settings toggle. Kept

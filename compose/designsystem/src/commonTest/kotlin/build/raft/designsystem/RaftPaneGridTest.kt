@@ -1,13 +1,16 @@
 package build.raft.designsystem
 
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftPaneGridColumn
 import build.raft.designsystem.components.RaftPaneGridColumnBounds
 import build.raft.designsystem.components.RaftPaneGridHandedUp
 import build.raft.designsystem.components.RaftPaneGridHost
 import build.raft.designsystem.components.RaftPaneGridMemorySizes
+import build.raft.designsystem.components.RaftPaneGridRow
+import build.raft.designsystem.components.RaftPaneGridConversationBounds
 import build.raft.designsystem.components.raftPaneGridDragMaxDp
-import build.raft.designsystem.components.raftPaneGridFitWidths
+import build.raft.designsystem.components.planColumn
 import build.raft.designsystem.components.raftPaneGridMoveSeam
 import build.raft.designsystem.components.raftPaneGridSharePerDp
 import build.raft.designsystem.components.raftPaneGridStack
@@ -24,15 +27,7 @@ class RaftPaneGridTest {
         assertTrue(abs(expected - actual) < 0.001f, message ?: "expected $expected, was $actual")
 
     @Test
-    fun columnsGiveWayRightmostFirstAndGrowUntilTheMainPaneIsAt360() {
-        // Thread 400 + cards 360 beside a 360 main pane: 1120 fits all.
-        assertEquals(listOf(400f, 360f), raftPaneGridFitWidths(1120f, listOf(400f to 360f, 360f to 280f)))
-        // 1040: the rightmost gives way first (360 -> 280).
-        assertEquals(listOf(400f, 280f), raftPaneGridFitWidths(1040f, listOf(400f to 360f, 360f to 280f)))
-        // 1000: then the one before it.
-        assertEquals(listOf(360f, 280f), raftPaneGridFitWidths(1000f, listOf(400f to 360f, 360f to 280f)))
-        // Never under a minimum.
-        assertEquals(listOf(280f), raftPaneGridFitWidths(500f, listOf(360f to 280f)))
+    fun aColumnGrowsUntilTheMainPaneIsAt360() {
         // Web growToMainMinMax: a 360 column beside a 600 main pane may grow to 600.
         assertEquals(600f, raftPaneGridDragMaxDp(280f, 360f, 600f))
         assertEquals(280f, raftPaneGridDragMaxDp(280f, 280f, 300f))
@@ -123,29 +118,92 @@ class RaftPaneGridTest {
         assertEquals(emptyList(), host.placed(emptyList(), 0.dp))
     }
 
+    private fun row(roomDp: Float, own: List<RaftPaneGridColumn> = emptyList()) =
+        RaftPaneGridRow(
+            roomDp = roomDp,
+            ownColumns = own.map { it.planColumn(RaftPaneGridMemorySizes()) },
+            ownWidthsDp = 0f,
+            mainBounds = RaftPaneGridConversationBounds,
+        )
+
     @Test
-    fun theRightmostColumnGivesWayFirstAndTheConversationKeeps360() {
+    fun anEqualRowIsTheSameRowSoItsReadersAreNotInvalidated() {
+        // The grid makes a new row each time it recomposes (a nested grid handing its columns up again); pages read it
+        // through a composition local, which only invalidates them where the value differs.
+        val outer = RaftPaneGridColumnBounds(id = "outer", defaultWidthDp = 300f, minWidthDp = 300f)
+        assertEquals(row(1000f, listOf(column(outer))), row(1000f, listOf(column(outer))))
+        assertFalse(row(1000f) == row(999f))
+    }
+
+    @Test
+    fun theThreadFoldsWhereTheConversationAndItCantKeep360Each() {
+        // #189 rule 3 (web decideFold): alone beside the conversation, the thread folds under 720.
+        val host = RaftPaneGridHost()
+        val sizes = RaftPaneGridMemorySizes()
+        assertFalse(host.folds(row(720f), depth = 1, bounds = thread, sizes = sizes))
+        assertTrue(host.folds(row(719f), depth = 1, bounds = thread, sizes = sizes))
+        // Kept widths only share the room out: dragged wide, the pair still stands beside down to 720.
+        sizes.setWidth(thread, 900f)
+        sizes.setWidth(RaftPaneGridConversationBounds, 700f)
+        assertFalse(host.folds(row(720f), depth = 1, bounds = thread, sizes = sizes))
+        assertTrue(host.folds(row(719f), depth = 1, bounds = thread, sizes = sizes))
+    }
+
+    @Test
+    fun theThreadFoldsBeforeAnyColumnHandedUpBesideItWouldClip() {
+        val host = RaftPaneGridHost()
+        val sizes = RaftPaneGridMemorySizes()
+        // The conversation (two levels in) hands up Tasks / Files: folding comes before any clipping, so the thread
+        // folds under 360 + 360 + 280.
+        host.handUp("conversation", RaftPaneGridHandedUp(depth = 2, columns = listOf(column(cards))))
+        assertFalse(host.folds(row(1000f), depth = 1, bounds = thread, sizes = sizes))
+        assertTrue(host.folds(row(999f), depth = 1, bounds = thread, sizes = sizes))
+        // The thread's own column, once handed up, counts once.
+        host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(column(thread))))
+        assertFalse(host.folds(row(1000f), depth = 1, bounds = thread, sizes = sizes))
+        assertTrue(host.folds(row(999f), depth = 1, bounds = thread, sizes = sizes))
+        // The outermost grid's own columns count too.
+        val outer = RaftPaneGridColumnBounds(id = "outer", defaultWidthDp = 300f, minWidthDp = 300f)
+        assertTrue(host.folds(row(1299f, listOf(column(outer))), depth = 1, bounds = thread, sizes = sizes))
+        assertFalse(host.folds(row(1300f, listOf(column(outer))), depth = 1, bounds = thread, sizes = sizes))
+    }
+
+    @Test
+    fun handingUpTheSameColumnsAgainWritesNothingTheRowReads() {
+        // A nested grid hands up every time its page composes, with new objects. Writing the row each time made the
+        // outermost grid recompose, which recomposed the page, which handed up again: a loop every frame.
         val host = RaftPaneGridHost()
         host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(column(thread))))
-        host.handUp("conversation", RaftPaneGridHandedUp(depth = 2, columns = listOf(column(cards))))
-        val placed = host.placed(emptyList(), 0.dp).map { it.column.bounds.defaultWidthDp to it.column.bounds.minWidthDp }
-        // Row right of a 300 list (and its seam) in a 1500 window: 1199 holds 360 + 400 + 360 and more.
-        assertEquals(listOf(400f, 360f), raftPaneGridFitWidths(1500f - 301f, placed))
-        // 1080: the cards (rightmost) give way first, to 320; the thread keeps 400.
-        assertEquals(listOf(400f, 320f), raftPaneGridFitWidths(1080f, placed))
-        // 1020: the cards are at 280, the thread gives way to 380; the conversation keeps 360.
-        val fitted = raftPaneGridFitWidths(1020f, placed)
-        assertEquals(listOf(380f, 280f), fitted)
-        assertEquals(360f, 1020f - fitted.sum())
-        // Before the outermost grid is measured nobody can tell.
-        assertEquals(null, host.spareDp(2))
-        // The cards (two levels in) may count on what is left with the conversation at 360 and the thread at its 360.
-        host.roomDp = 1000f
-        assertEquals(280f, host.spareDp(2))
-        host.roomDp = 999f
-        assertEquals(279f, host.spareDp(2))
-        // The thread itself (one level out) does not count the cards.
-        assertEquals(639f, host.spareDp(1))
+        val written = mutableListOf<Any>()
+        val again = column(thread)
+        val snapshot = Snapshot.takeMutableSnapshot(writeObserver = { written += it })
+        try {
+            snapshot.enter { host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(again))) }
+            assertFalse(written.any { it === host.handedUp }, "the same shape again leaves the row alone")
+            // Where the column is drawn it is the latest (its cells' content may have changed with the same shape).
+            assertTrue(written.any { it === host.fresh }, "the latest is kept for the column's drawing")
+            assertTrue(snapshot.enter { host.freshColumn("workspace", thread.id) } === again)
+            // A column more changes the row.
+            snapshot.enter { host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(again, column(cards)))) }
+            assertTrue(written.any { it === host.handedUp }, "a new column is a change to the row")
+        } finally {
+            snapshot.dispose()
+        }
+    }
+
+    @Test
+    fun theMainPanesWidthIsKeptWhereTheInnermostPageNamesIt() {
+        val host = RaftPaneGridHost()
+        // Nobody names it: the conversation's (web slock:conversationWidth).
+        assertEquals(RaftPaneGridConversationBounds, host.mainBounds(null))
+        val list = RaftPaneGridColumnBounds(id = "tasksList", defaultWidthDp = 400f, minWidthDp = 360f)
+        val outer = RaftPaneGridColumnBounds(id = "outerMain", defaultWidthDp = 400f, minWidthDp = 360f)
+        assertEquals(outer, host.mainBounds(outer))
+        // A page in the main pane naming its own (the Tasks page's list) wins, even before its column opens.
+        host.handUp("tasks", RaftPaneGridHandedUp(depth = 1, columns = emptyList(), mainBounds = list))
+        assertEquals(list, host.mainBounds(outer))
+        host.handUp("tasks", null)
+        assertEquals(outer, host.mainBounds(outer))
     }
 
     @Test

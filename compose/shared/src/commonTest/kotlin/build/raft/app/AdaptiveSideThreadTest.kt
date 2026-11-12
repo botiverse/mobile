@@ -33,18 +33,28 @@ class AdaptiveSideThreadTest {
     private fun SharedAdaptiveWorkspaceSession.mainSource(): RaftAdaptiveDetailCloseRequest =
         RaftAdaptiveDetailCloseRequest("shell", workspace!!.selection!!.identity.key, workspace.selection!!.generation)
 
-    @Test fun columnNeedsTheBreakpointAndTheMeasuredDetailWidth() {
-        val needed = RAFT_SIDE_THREAD_MAIN_MIN_DP + RAFT_SIDE_THREAD_DIVIDER_DP + RAFT_SIDE_THREAD_COLUMN_DP
-        assertTrue(raftSideThreadColumnAvailable(true, pane(1440), needed))
-        // 1199 vs 1200dp window.
-        assertFalse(raftSideThreadColumnAvailable(true, pane(1199), 900f))
-        assertTrue(raftSideThreadColumnAvailable(true, pane(1200), needed))
-        // Window at the breakpoint but rail + list + insets leave too little for the body.
-        assertFalse(raftSideThreadColumnAvailable(true, pane(1200), needed - 1f))
+    @Test fun columnFollowsTheRowPlansFoldNotAFixedWindowWidth() {
+        // #189 rule 3 (web decideFold): alone with the conversation, the thread stands beside while the two keep 360
+        // each, from 720 of room, whatever the window (before #189: a 1200 window and an 841 detail).
+        assertTrue(raftSideThreadColumnAvailable(true, pane(1440), 720f))
+        assertFalse(raftSideThreadColumnAvailable(true, pane(1440), 719f))
+        assertTrue(raftSideThreadColumnAvailable(true, pane(1100), 720f))
+        // The plan's answer for the row the detail stands in (Tasks / Files beside it, kept widths) decides when known.
+        assertFalse(raftSideThreadColumnAvailable(true, pane(1440), 999f, threadFolds = true))
+        assertTrue(raftSideThreadColumnAvailable(true, pane(1440), 1000f, threadFolds = false))
         // Not measured yet, desktop mode off, or not dual pane.
         assertFalse(raftSideThreadColumnAvailable(true, pane(1440), null))
-        assertFalse(raftSideThreadColumnAvailable(false, pane(1440), needed))
-        assertFalse(raftSideThreadColumnAvailable(true, pane(1440).copy(layout = RaftAdaptivePaneLayout.Compact), needed))
+        assertFalse(raftSideThreadColumnAvailable(true, pane(1440), null, threadFolds = false))
+        assertFalse(raftSideThreadColumnAvailable(false, pane(1440), 900f))
+        assertFalse(raftSideThreadColumnAvailable(true, pane(1440).copy(layout = RaftAdaptivePaneLayout.Compact), 900f))
+    }
+
+    @Test fun theSessionTakesThePlansFoldForItsRow() {
+        val roomy = session().copy(detailPaneWidthDp = 1000f)
+        assertTrue(roomy.sideThreadColumnAvailable(true))
+        // Tasks / Files beside the conversation in a 999 row: the plan folds the thread, so no column.
+        assertFalse(roomy.copy(detailPaneWidthDp = 999f, sideThreadFolds = true).sideThreadColumnAvailable(true))
+        assertTrue(roomy.copy(sideThreadFolds = false).sideThreadColumnAvailable(true))
     }
 
     @Test fun replyUnderTheShownChannelOpensBesideItWithoutChangingTheMainDetail() {
@@ -144,7 +154,7 @@ class AdaptiveSideThreadTest {
     }
 
     @Test fun wideDetailRoutingUsesSessionWidthAndKeepsStaleSourcesInert() {
-        val needed = RAFT_SIDE_THREAD_MAIN_MIN_DP + RAFT_SIDE_THREAD_DIVIDER_DP + RAFT_SIDE_THREAD_COLUMN_DP
+        val needed = 720f
         val wide = session().copy(detailPaneWidthDp = needed)
         // Room for the column: opens beside the channel.
         val side = wide.openWithinWideDetail(wide.mainSource(), reply, "server", desktopModeOnLargeScreen = true)
@@ -163,7 +173,7 @@ class AdaptiveSideThreadTest {
     }
 
     @Test fun sideColumnSourceThatCannotUseTheColumnReplacesOnBehalfOfItsOwner() {
-        val needed = RAFT_SIDE_THREAD_MAIN_MIN_DP + RAFT_SIDE_THREAD_DIVIDER_DP + RAFT_SIDE_THREAD_COLUMN_DP
+        val needed = 720f
         val wide = session().copy(detailPaneWidthDp = needed)
         val side = wide.openWithinWideDetail(wide.mainSource(), reply, "server", true)
         val sideSource = side.visibleSideThread()!!.closeRequest("shell")
@@ -176,7 +186,7 @@ class AdaptiveSideThreadTest {
     }
 
     @Test fun backClosesAVisibleSideColumnFirst() {
-        val needed = RAFT_SIDE_THREAD_MAIN_MIN_DP + RAFT_SIDE_THREAD_DIVIDER_DP + RAFT_SIDE_THREAD_COLUMN_DP
+        val needed = 720f
         val wide = session().let { it.copy(detailPaneWidthDp = needed, workspace = it.workspace!!.copy(parentVisible = true)) }
         assertFalse(wide.backClosesSideThreadFirst(true))
         val side = wide.openWithinWideDetail(wide.mainSource(), reply, "server", true)

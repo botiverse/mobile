@@ -104,9 +104,10 @@ class RaftPaneGridRowLadderTest {
     @Test
     fun withRoomEveryColumnShowsItsSavedWidthAndTheMainPaneTheRest() =
         runComposeUiTest {
-            rowWidth = 2000f
+            // The columns' 1640 and the main pane's default 400 (web CONVERSATION_DEFAULT_WIDTH, none kept yet).
+            rowWidth = 2040f
             showRow()
-            assertWidth(360f, RAFT_PANE_GRID_MAIN_TEST_TAG)
+            assertWidth(400f, RAFT_PANE_GRID_MAIN_TEST_TAG)
             assertWidth(400f, column(thread))
             assertWidth(360f, column(cards))
             assertWidth(480f, column(artifact))

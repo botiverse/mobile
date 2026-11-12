@@ -89,27 +89,42 @@ class RaftPaneGridTest {
     }
 
     @Test
-    fun columnsGiveWayRightmostFirstAndGrowUntilTheMainPaneIsAt360() {
-        // Thread 400 + cards 360 beside a 360 main pane: 1120 fits all.
-        assertEquals(listOf(400f, 360f), raftPaneGridFitWidths(1120f, listOf(400f to 360f, 360f to 280f)))
-        // 1040: the rightmost gives way first (360 -> 280).
-        assertEquals(listOf(400f, 280f), raftPaneGridFitWidths(1040f, listOf(400f to 360f, 360f to 280f)))
-        // 1000: then the one before it.
-        assertEquals(listOf(360f, 280f), raftPaneGridFitWidths(1000f, listOf(400f to 360f, 360f to 280f)))
-        // Never under a minimum.
-        assertEquals(listOf(280f), raftPaneGridFitWidths(500f, listOf(360f to 280f)))
+    fun theConversationsWidthIsKeptOnlyOnceASeamIsLetGo() {
+        val prefs = MapPreferences()
+        val store = RaftPaneGridStore { prefs }
+        // None kept: the row plan gives it what the columns leave, at least 400 (web CONVERSATION_DEFAULT_WIDTH).
+        assertEquals(null, store.savedWidthDp(RaftPaneGridColumns.Conversation))
+        assertEquals(400f, store.widthDp(RaftPaneGridColumns.Conversation))
+        // Kept even where it equals the default, under web's slock:conversationWidth's place in the grid's keys.
+        store.setWidth(RaftPaneGridColumns.Conversation, 400f)
+        assertEquals("400", prefs.values["raftPaneGrid:width:conversation"])
+        assertEquals(400f, store.savedWidthDp(RaftPaneGridColumns.Conversation))
+        // At least its content's 360.
+        store.setWidth(RaftPaneGridColumns.Conversation, 200f)
+        assertEquals(360f, RaftPaneGridStore { prefs }.savedWidthDp(RaftPaneGridColumns.Conversation))
+        prefs.values["raftPaneGrid:width:conversation"] = "100"
+        assertEquals(null, RaftPaneGridStore { prefs }.savedWidthDp(RaftPaneGridColumns.Conversation))
+        // The Tasks page's list keeps its own (PR #4661 review), so a task column's seam never sets the conversation's.
+        store.setWidth(RaftPaneGridColumns.TasksList, 520f)
+        assertEquals("520", prefs.values["raftPaneGrid:width:tasksList"])
+        assertEquals(360f, store.savedWidthDp(RaftPaneGridColumns.Conversation))
+    }
+
+    @Test
+    fun aColumnGrowsUntilTheMainPaneIsAt360() {
         // Web growToMainMinMax: a 360 column beside a 600 main pane may grow to 600.
         assertEquals(600f, raftPaneGridDragMaxDp(280f, 360f, 600f))
         assertEquals(280f, raftPaneGridDragMaxDp(280f, 280f, 300f))
     }
 
     @Test
-    fun cardsStandBesideInTheGridWhileTheir280Fits() {
-        // The room the grid leaves with the conversation at 360 and the thread at its 360.
-        assertTrue(conversationSideCardsBesideInGrid(windowWidthDp = 1400f, spareDp = 280f))
-        assertFalse(conversationSideCardsBesideInGrid(windowWidthDp = 1400f, spareDp = 279f))
+    fun cardsAlwaysStandBesideInTheGridOnAWideWindow() {
+        // Web placeSections (#189): on a desktop every column stands in the row; the plan makes room (give way,
+        // clip, tabs), whatever the room.
+        assertTrue(conversationSideCardsBesideInGrid(windowWidthDp = 1400f))
+        assertTrue(conversationSideCardsBesideInGrid(windowWidthDp = DualPaneMinimumWidthDp))
         // A phone (or a window under the app's 744 breakpoint) keeps the cover.
-        assertFalse(conversationSideCardsBesideInGrid(windowWidthDp = 700f, spareDp = 400f))
+        assertFalse(conversationSideCardsBesideInGrid(windowWidthDp = 700f))
     }
 
     @Test
