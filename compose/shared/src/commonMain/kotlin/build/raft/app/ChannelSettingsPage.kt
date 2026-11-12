@@ -537,6 +537,22 @@ private fun ChannelSettingsPageScreen() {
     // Web reads external_channels_v1 for the current server: the one whose copy is open.
     val externalChannels =
         rememberServerFeatureLatched(sharedStores.serverFeatureFlags, route.serverId, EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)
+    // Connected servers, a section of the details (web `serversSection`): its store lives here,
+    // outside the lazy list, so the draft and an open confirm survive scrolling it away.
+    val showsServers =
+        channel != null &&
+            (channelSettingsIsJoint(channel) || channelSettingsOffersPrivateMemberConnect(channel, externalChannels, memberConnectAccount))
+    val connectedServers =
+        rememberJointConnectedServers(
+            route = route,
+            routeOwner = routeOwner,
+            liveOwner = liveOwner,
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            bridge = bridge,
+            externalChannels = externalChannels,
+            active = showsServers,
+        )
     var sosStore by remember(route) { mutableStateOf<ChannelSosStore?>(null) }
     val agentControlsApi = remember(sharedStores, storeScope) {
         RaftAgentControlsApi(sharedStores.networkClient(storeScope))
@@ -683,6 +699,7 @@ private fun ChannelSettingsPageScreen() {
                             } else {
                                 null
                             },
+                        servers = { JointConnectedServersSection(connectedServers) },
                         notificationLevelTarget =
                             RaftNotificationLevelTarget(
                                 serverId = route.serverId.value,
@@ -730,14 +747,6 @@ private fun ChannelSettingsPageScreen() {
                                             scope = scope
                                         )
                                 },
-                                onOpenJointConnections = {
-                                    pager.openRaftPage(
-                                        pageName = JOINT_CHANNEL_CONNECTIONS_PAGE,
-                                        pageData = jointChannelConnectionsPageData(route),
-                                        storeScopeOverride = storeScope,
-                                        authenticatedRouteAuthorityRequired = true,
-                                    )
-                                },
                                 onMoveSection = { moves ->
                                     if (settingsState.writeActionsEnabled && authorityAccepted) {
                                         channelSectionHomeIntents(sectionPin, moves).forEach { homeStore?.dispatch(it) }
@@ -780,6 +789,8 @@ private fun ChannelSettingsPageScreen() {
                 onConfirm = { settingsStore.dispatch(activeConfirm.intent) },
             )
         }
+
+        if (showsServers) JointConnectedServersOverlays(connectedServers)
 
         val activeSosStore = sosStore
         if (channel != null && activeSosStore != null) {
@@ -857,7 +868,6 @@ internal class ChannelSettingsCallbacks(
     val onConfirm: (ChannelSettingsConfirm) -> Unit = {},
     val onUnarchive: () -> Unit = {},
     val onStopAllAgents: () -> Unit = {},
-    val onOpenJointConnections: () -> Unit = {},
     val onMoveSection: (List<ChannelSectionMove>) -> Unit = {},
     val onCreateSection: (name: String, emoji: String?) -> Unit = { _, _ -> },
 )
@@ -1003,6 +1013,11 @@ internal fun ChannelSettingsContent(
     refreshNotificationLevels: Boolean = true,
     /** Channel announcements: the Announcement row after the members (ChannelSettingsAnnouncementSection); null hides it. */
     announcement: (@Composable () -> Unit)? = null,
+    /**
+     * Connected servers (web `serversSection`, after the announcement): a joint channel's, or a
+     * private one offering Connect your servers ([JointConnectedServersSection]); null hides it.
+     */
+    servers: (@Composable () -> Unit)? = null,
     callbacks: ChannelSettingsCallbacks,
 ) {
     // task #177: standalone page; the last row clears the system navigation bar.
@@ -1030,10 +1045,8 @@ internal fun ChannelSettingsContent(
         if (announcement != null) {
             item(key = "announcement") { announcement() }
         }
-        if (channelSettingsIsJoint(channel) || model.privateMemberConnect) {
-            item(key = "joint-connections") {
-                ChannelJointConnectionsEntry(onClick = callbacks.onOpenJointConnections)
-            }
+        if (servers != null && (channelSettingsIsJoint(channel) || model.privateMemberConnect)) {
+            item(key = "joint-connections") { servers() }
         }
         if (channelDetailsHasChannelSettings(model)) {
             item(key = "channel-settings") {
@@ -2115,23 +2128,6 @@ private fun ChannelActionRow(
         divider = divider,
         leading = { RaftComputersIcon(icon, size = 20.dp) },
     )
-}
-
-/** Joint channels: the entry to Connected servers (list, resend, invite another server). */
-@Composable
-private fun ChannelJointConnectionsEntry(onClick: () -> Unit) {
-    RaftListRowGroup(Modifier.fillMaxWidth()) {
-        RaftListRow(
-            title = stringResource(Res.string.joint_connections_title),
-            onClick = onClick,
-            variant = RaftListRowVariant.Plain,
-            description = stringResource(Res.string.joint_connections_rule),
-            wrapDescription = true,
-            descriptionMaxLines = 2,
-            leading = { RaftComputersIcon(RaftLucideIconName.Server, size = 20.dp) },
-            trailing = { RaftListRowChevron() },
-        )
-    }
 }
 
 /**

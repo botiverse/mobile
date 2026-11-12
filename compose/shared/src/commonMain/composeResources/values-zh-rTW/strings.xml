@@ -3528,7 +3528,6 @@
     <string name="joint_connections_this_server">此伺服器</string>
     <string name="joint_connections_plan_free">免費版</string>
     <string name="joint_connections_plan_paid">付費版</string>
-    <string name="joint_connections_status_active">已連結</string>
     <string name="joint_connections_status_pending">待接受</string>
     <string name="joint_connections_meta_unavailable">目前還無法取得伺服器詳細資料，請稍後再試。</string>
     <string name="joint_connections_load_failed">無法載入已連結的伺服器。</string>
@@ -3570,6 +3569,7 @@
     <string name="joint_disconnected_toast">%1$s 已中斷與 #%2$s 的連結</string>
     <string name="joint_server_disconnect_title">要中斷 %1$s 的連結嗎？</string>
     <string name="joint_server_disconnect_confirm">%1$s 的成員和 Agent 將離開 #%2$s，這個頻道也會從該伺服器移除；其他伺服器會保留這個頻道及其歷史記錄。</string>
+    <string name="joint_server_disconnect_tooltip">中斷伺服器連結</string>
     <string name="joint_server_disconnect_action">中斷 %1$s 的連結</string>
     <string name="joint_server_disconnect_failed">無法中斷 %1$s 的連結，請再試一次。</string>
     <string name="joint_server_disconnected_toast">已中斷 %1$s 與 #%2$s 的連結</string>

@@ -46,7 +46,7 @@ class RaftWidePanesTest {
     fun channelSettingsItsSubViewsAndTheProfileAreSupportingPanes() {
         val supporting = RaftPageRegistry.pageNames.filter { RaftPageRegistry.paneRole(it) == RaftPaneRole.Supporting }.toSet()
         assertEquals(
-            setOf(CHANNEL_SETTINGS_PAGE, THREAD_MEMBERS_PAGE, JOINT_CHANNEL_CONNECTIONS_PAGE, MEMBER_DETAIL_PAGE),
+            setOf(CHANNEL_SETTINGS_PAGE, THREAD_MEMBERS_PAGE, MEMBER_DETAIL_PAGE),
             supporting,
         )
         // The registry never sends a page to the main detail: only the pane does (below).

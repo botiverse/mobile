@@ -9,7 +9,6 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.DataResult
 import build.raft.app.data.JointChannelConnections
@@ -28,7 +27,7 @@ import org.robolectric.annotation.Config
 
 /**
  * Connected servers ⋯ > Connect your servers on a real composition, wired as the page wires it
- * (the store's state into [JointConnectionsContent] and [JointMemberConnectSheet]): the menu only
+ * (the store's state into [JointConnectedServersSection] and [JointMemberConnectSheet]): the menu only
  * with a server to connect, the sheet's rows with why each can or can't be chosen, the earlier
  * messages notice for a private channel, a partial answer's lines with the trace ID, and
  * "Connected by you" on the list once the sheet closes.
@@ -59,7 +58,7 @@ class JointMemberConnectSheetUiTest {
         setContent {
             val state by store.state.collectAsState()
             RaftDesignSystemTheme {
-                JointConnectionsContent(
+                JointConnectedServersSection(
                     state = state,
                     slug = "",
                     people = "",
@@ -71,7 +70,6 @@ class JointMemberConnectSheetUiTest {
                     onSendInvite = {},
                     onResend = {},
                     onConnectYourServers = { store.dispatch(JointChannelConnectionsIntent.OpenMemberConnect) },
-                    bottomSafeArea = 0.dp,
                 )
                 JointMemberConnectSheet(
                     state = state,

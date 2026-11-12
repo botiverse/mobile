@@ -179,6 +179,11 @@ internal val LocalRaftTooltipTouchTimer = staticCompositionLocalOf<suspend (dura
  * [openOnLongPress] = false leaves the long press to [content] (an icon button with its own
  * long-press action): the tooltip then opens only under a mouse or trackpad pointer.
  *
+ * [openOnTap]: a touch or stylus tap opens it too, for the same [RaftTooltipMetrics.TouchDuration];
+ * the tap still reaches [content]. For an info button whose whole job is its tooltip (web
+ * `<Tooltip><Button><Info /></Button></Tooltip>` beside a heading): a phone has no hover, so a
+ * long press alone would leave the tap doing nothing.
+ *
  * [shortcut] adds its keyboard shortcut after [text] ("⌘\"), as raft-ui's tooltip with a `Kbd`
  * (web LeftRail's "Collapse sidebar ⌘\"): 6dp after the label, a 16dp-high chip with a 1dp ring,
  * mono 12/16 regular, both in `foreground-on-hud` at 70%. Screen readers don't get it from here.
@@ -189,6 +194,7 @@ fun RaftTooltip(
     text: String,
     modifier: Modifier = Modifier,
     openOnLongPress: Boolean = true,
+    openOnTap: Boolean = false,
     placement: RaftTooltipPlacement = LocalRaftTooltipPlacement.current,
     shortcut: String? = null,
     content: @Composable () -> Unit,
@@ -202,7 +208,7 @@ fun RaftTooltip(
     val scope = rememberCoroutineScope()
     // The caller's modifier goes on this outer box, which keeps parent-data modifiers (`align`,
     // `weight`) working.
-    Box(modifier.raftTooltipGestures(state, scope, touchTimer, openOnLongPress), propagateMinConstraints = true) {
+    Box(modifier.raftTooltipGestures(state, scope, touchTimer, openOnLongPress, openOnTap), propagateMinConstraints = true) {
         val label: @Composable () -> Unit = {
             if (shortcut == null) {
                 RaftText(
@@ -556,7 +562,8 @@ private fun CoroutineScope.showForTouch(
 /**
  * Hover (mouse) opens [state] until the pointer leaves; with [onLongPress], a touch / stylus
  * long press opens it for [RaftTooltipMetrics.TouchDuration] and eats the rest of that
- * gesture so [content] doesn't click. Runs in the Initial pass and consumes nothing else, so
+ * gesture so [content] doesn't click; with [onTap], a touch / stylus tap opens it for as long
+ * and still clicks. Runs in the Initial pass and consumes nothing else, so
  * [content]'s own clicks, presses and hover are unchanged.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -565,24 +572,30 @@ private fun Modifier.raftTooltipGestures(
     scope: CoroutineScope,
     touchTimer: suspend (Long) -> Unit,
     onLongPress: Boolean,
+    onTap: Boolean,
 ): Modifier =
-    then(if (onLongPress) Modifier.raftTooltipLongPress(state, scope, touchTimer) else Modifier)
+    then(if (onLongPress || onTap) Modifier.raftTooltipTouch(state, scope, touchTimer, onLongPress, onTap) else Modifier)
         .raftTooltipHover(state, scope)
 
 @OptIn(ExperimentalMaterial3Api::class)
-private fun Modifier.raftTooltipLongPress(
+private fun Modifier.raftTooltipTouch(
     state: TooltipState,
     scope: CoroutineScope,
     touchTimer: suspend (Long) -> Unit,
+    onLongPress: Boolean,
+    onTap: Boolean,
 ): Modifier =
-    pointerInput(state) {
+    pointerInput(state, onLongPress, onTap) {
         awaitEachGesture {
             val pass = PointerEventPass.Initial
             val down = awaitFirstDown(requireUnconsumed = false, pass = pass)
             if (down.type != PointerType.Touch && down.type != PointerType.Stylus) return@awaitEachGesture
             try {
-                withTimeout(viewConfiguration.longPressTimeoutMillis) { waitForUpOrCancellation(pass) }
+                val up = withTimeout(viewConfiguration.longPressTimeoutMillis) { waitForUpOrCancellation(pass) }
+                // A tap (lifted, not cancelled): shown, and the tap goes on to [content].
+                if (onTap && up != null) scope.showForTouch(state, touchTimer)
             } catch (_: PointerEventTimeoutCancellationException) {
+                if (!onLongPress) return@awaitEachGesture
                 scope.showForTouch(state, touchTimer)
                 // The long press was the tooltip's: swallow it up to the release.
                 do {

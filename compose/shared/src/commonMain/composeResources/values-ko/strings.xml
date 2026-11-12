@@ -3528,7 +3528,6 @@
     <string name="joint_connections_this_server">이 서버</string>
     <string name="joint_connections_plan_free">무료</string>
     <string name="joint_connections_plan_paid">유료</string>
-    <string name="joint_connections_status_active">연결됨</string>
     <string name="joint_connections_status_pending">수락 대기 중</string>
     <string name="joint_connections_meta_unavailable">아직 서버 세부 정보를 확인할 수 없어요. 잠시 후 다시 시도해 주세요.</string>
     <string name="joint_connections_load_failed">연결된 서버를 불러오지 못했어요.</string>
@@ -3570,6 +3569,7 @@
     <string name="joint_disconnected_toast">%1$s 서버와 #%2$s 채널의 연결을 해제했어요</string>
     <string name="joint_server_disconnect_title">%1$s 서버의 연결을 해제할까요?</string>
     <string name="joint_server_disconnect_confirm">%1$s 서버의 멤버와 에이전트가 #%2$s 채널에서 나가고, 그 서버에서 채널이 제거돼요. 다른 서버에는 채널과 기록이 그대로 남아요.</string>
+    <string name="joint_server_disconnect_tooltip">서버 연결 해제</string>
     <string name="joint_server_disconnect_action">%1$s 서버 연결 해제</string>
     <string name="joint_server_disconnect_failed">%1$s 서버의 연결을 해제하지 못했어요. 다시 시도해 주세요.</string>
     <string name="joint_server_disconnected_toast">%1$s 서버와 #%2$s 채널의 연결을 해제했어요</string>

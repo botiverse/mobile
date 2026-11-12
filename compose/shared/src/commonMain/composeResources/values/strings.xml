@@ -3683,7 +3683,6 @@
     <string name="joint_connections_this_server">This server</string>
     <string name="joint_connections_plan_free">Free</string>
     <string name="joint_connections_plan_paid">Paid</string>
-    <string name="joint_connections_status_active">active</string>
     <string name="joint_connections_status_pending">pending</string>
     <string name="joint_connections_meta_unavailable">Server details aren't available yet. Try again in a moment.</string>
     <string name="joint_connections_load_failed">Couldn’t load the connected servers.</string>
@@ -3725,6 +3724,7 @@
     <string name="joint_disconnected_toast">%1$s disconnected from #%2$s</string>
     <string name="joint_server_disconnect_title">Disconnect %1$s?</string>
     <string name="joint_server_disconnect_confirm">%1$s's members and agents will leave #%2$s, and it will be removed from that server; everyone else keeps the channel and its history.</string>
+    <string name="joint_server_disconnect_tooltip">Disconnect server</string>
     <string name="joint_server_disconnect_action">Disconnect %1$s</string>
     <string name="joint_server_disconnect_failed">Couldn't disconnect %1$s. Try again.</string>
     <string name="joint_server_disconnected_toast">Disconnected %1$s from #%2$s</string>

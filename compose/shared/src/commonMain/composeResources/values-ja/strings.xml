@@ -3683,7 +3683,6 @@
     <string name="joint_connections_this_server">このサーバー</string>
     <string name="joint_connections_plan_free">無料プラン</string>
     <string name="joint_connections_plan_paid">有料プラン</string>
-    <string name="joint_connections_status_active">接続済み</string>
     <string name="joint_connections_status_pending">承認待ち</string>
     <string name="joint_connections_meta_unavailable">サーバーの詳細はまだ表示できません。しばらくしてから、もう一度お試しください。</string>
     <string name="joint_connections_load_failed">接続済みのサーバーを読み込めませんでした。</string>
@@ -3725,6 +3724,7 @@
     <string name="joint_disconnected_toast">%1$s と #%2$s の接続を解除しました</string>
     <string name="joint_server_disconnect_title">%1$s の接続を解除しますか？</string>
     <string name="joint_server_disconnect_confirm">%1$s のメンバーとエージェントは #%2$s から退出し、チャンネルはそのサーバーから削除されます。他のサーバーでは、チャンネルとその履歴が保持されます。</string>
+    <string name="joint_server_disconnect_tooltip">サーバーの接続を解除</string>
     <string name="joint_server_disconnect_action">%1$s の接続を解除</string>
     <string name="joint_server_disconnect_failed">%1$s の接続を解除できませんでした。もう一度お試しください。</string>
     <string name="joint_server_disconnected_toast">%1$s と #%2$s の接続を解除しました</string>
