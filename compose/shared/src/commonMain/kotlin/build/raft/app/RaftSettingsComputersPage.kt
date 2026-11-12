@@ -3320,17 +3320,14 @@ private fun RaftComputersInlineNotice(title: String, detail: String) {
 @Composable
 private fun raftComputerVersionLine(row: RaftComputerRowModel): String? = raftComputerKindVersion(row.kind, row.version)
 
-/** "computer v1.2.0" / "daemon v0.64.1", or null without a version. */
+/**
+ * "v1.2.0", or null without a version: the version alone, for a Computer and a legacy daemon alike
+ * (web #14585 `machine.runLabel.computerVersion`; raft-design patterns/status.md).
+ */
 @Composable
-private fun raftComputerKindVersion(kindOf: RaftComputerKind, version: String?): String? {
-    val kind =
-        if (kindOf == RaftComputerKind.Computer) {
-            stringResource(Res.string.settings_computers_kind_computer)
-        } else {
-            stringResource(Res.string.settings_computers_kind_daemon)
-        }
-    return version?.let { stringResource(Res.string.settings_computers_run_version, kind, it.removePrefix("v")) }
-}
+@Suppress("UNUSED_PARAMETER")
+private fun raftComputerKindVersion(kindOf: RaftComputerKind, version: String?): String? =
+    version?.let { stringResource(Res.string.settings_computers_rack_version, it.removePrefix("v")) }
 
 @Composable
 private fun raftComputerLastSeen(timestamp: String): String =
