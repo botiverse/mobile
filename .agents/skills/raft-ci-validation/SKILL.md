@@ -35,6 +35,18 @@ only on the nightly schedule and `release-*` pushes (planner output
 pushes or any dispatch scope. 27.1-only SDK breakage surfaces in the nightly
 and in `ios-release.yml`'s 27.1 build.
 
+The iOS compile job runs the iOS tests (planner output `run_ios_tests`) only
+on the full tier: nightly schedule, `release-*` pushes, `scope=full`, premerge
+with a `release/*` base, and `full-ci` PRs. That is the K/N commonTest compile
+(`compileTestKotlinIosSimulatorArm64`), the shared `iosTest` simulator run, the
+`iosAppTests` XCTest bundle (including `RaftRouterLoginTransitionTests`),
+adaptive editor snapshots and the UI-test harness build. `scope=premerge`,
+`scope=ios`, main pushes and the merge queue compile the iOS targets, link the
+shared framework and build the host app only, so a green premerge iOS compile
+is not an iOS test result; iOS-only behaviour regressions surface in the
+nightly within 24h. To run the iOS tests on a branch before merge, dispatch
+`scope=full` (it also runs the Android device suite).
+
 So an ordinary PR never proves the iOS build, and that is intended
 (wg-cost, 2026-11-12: about $1 per iOS compile; 76 a day was 5x the budget).
 Do not dispatch `scope=ios` by hand before merge. Stamp's ready-to-merge check

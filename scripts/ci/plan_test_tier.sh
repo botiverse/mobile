@@ -163,6 +163,15 @@ emit_plan() {
   # expensive runner). 27.1-only SDK breakage is caught by the nightly within
   # 24h and by ios-release.yml's 27.1 build before any release.
   local run_ios_xcode271=false
+  # iOS tests in the iOS compile job (step 1 of the mobile test prune, Lagoon
+  # 2026-11-13, artin's go-ahead): the K/N commonTest compile + iosTest
+  # simulator run, the iosAppTests and adaptive-editor XCTests and the UI-test
+  # harness build run only on the full tier: nightly schedule, release-*
+  # pushes, scope=full, premerge into a release base and full-ci PRs. Every
+  # other iOS run (premerge, scope=ios, main push, merge queue) compiles the
+  # iOS targets, links the framework and builds the host app only; iOS-only
+  # behaviour regressions surface in the nightly within 24h.
+  local run_ios_tests=false
   local ios_lanes="[]"
   reason=""
 
@@ -184,6 +193,7 @@ emit_plan() {
         run_device_suite=true
         run_canonical_final=false
         attachment_api_levels="[31]"
+        run_ios_tests=true
         reason="pull-request-full-ci"
       else
         # Task #37 (artin 2026-10-09): iOS compile runs only on the trunk
@@ -242,6 +252,7 @@ emit_plan() {
           run_canonical_final=false
           attachment_api_levels="[]"
           run_ios_xcode271=true
+          run_ios_tests=true
           reason="release-push-full-readback"
           ;;
         *)
@@ -258,6 +269,7 @@ emit_plan() {
       run_canonical_final=true
       attachment_api_levels="[29,31,34]"
       run_ios_xcode271=true
+      run_ios_tests=true
       reason="schedule-full-readback"
       ;;
     workflow_dispatch)
@@ -267,7 +279,8 @@ emit_plan() {
       # Linux gates + Android compile, no iOS, no device suite. scope=full
       # keeps the deliberate full readback. scope=ios (2026-11-05) is the
       # pre-merge iOS check: plan + the Blacksmith Xcode 27.0 iOS compile only
-      # (Android is already covered by the PR-tier run). An empty/unknown scope
+      # (Android is already covered by the PR-tier run), compile + link + host
+      # app build without the iOS tests (run_ios_tests=false). An empty/unknown scope
       # is rejected so the choice is always explicit in the workflow input.
       case "$dispatch_scope" in
         pr)
@@ -306,6 +319,7 @@ emit_plan() {
               run_device_suite=true
               run_canonical_final=true
               attachment_api_levels="[29,31,34]"
+              run_ios_tests=true
               reason="workflow_dispatch-premerge:release-full"
               ;;
             *)
@@ -343,6 +357,7 @@ emit_plan() {
           run_device_suite=true
           run_canonical_final=true
           attachment_api_levels="[29,31,34]"
+          run_ios_tests=true
           reason="workflow_dispatch-full-readback"
           ;;
         *)
@@ -383,6 +398,7 @@ emit_plan() {
   # ios-release.yml / ios-simulator-app.yml.
   if test "$run_ios" != true; then
     run_ios_xcode271=false
+    run_ios_tests=false
   fi
   if test "$run_ios_xcode271" = true; then
     ios_lanes='["blacksmith-xcode27.0","github-xcode27.1"]'
@@ -394,6 +410,7 @@ emit_plan() {
   printf 'run_ios=%s\n' "$run_ios"
   printf 'run_ios_xcode271=%s\n' "$run_ios_xcode271"
   printf 'ios_lanes=%s\n' "$ios_lanes"
+  printf 'run_ios_tests=%s\n' "$run_ios_tests"
   printf 'run_device_suite=%s\n' "$run_device_suite"
   printf 'run_canonical_final=%s\n' "$run_canonical_final"
   printf 'attachment_api_levels=%s\n' "$attachment_api_levels"
