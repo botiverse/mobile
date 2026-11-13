@@ -2622,6 +2622,7 @@
     <string name="settings_computers_detail_no_access">沒有這台電腦的存取權限</string>
     <string name="settings_computers_detail_error_load">無法載入電腦</string>
     <string name="settings_computers_section_agents">這台電腦上的 Agent</string>
+    <string name="settings_computers_action_create_agent">建立 Agent</string>
     <string name="settings_computers_action_select">選取</string>
     <string name="settings_computers_action_create">建立</string>
     <string name="settings_computers_section_workspaces">Agent 工作區</string>

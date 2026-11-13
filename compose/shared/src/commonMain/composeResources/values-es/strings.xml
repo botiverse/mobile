@@ -2622,6 +2622,7 @@
     <string name="settings_computers_detail_no_access">Sin acceso a la computadora</string>
     <string name="settings_computers_detail_error_load">No se pudo cargar la computadora</string>
     <string name="settings_computers_section_agents">Agentes en esta computadora</string>
+    <string name="settings_computers_action_create_agent">Crear agente</string>
     <string name="settings_computers_action_select">Seleccionar</string>
     <string name="settings_computers_action_create">Crear</string>
     <string name="settings_computers_section_workspaces">Espacios de trabajo de agentes</string>

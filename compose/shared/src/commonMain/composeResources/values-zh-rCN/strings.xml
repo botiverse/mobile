@@ -2650,6 +2650,7 @@
     <string name="settings_computers_detail_no_access">无权访问计算机</string>
     <string name="settings_computers_detail_error_load">无法加载计算机</string>
     <string name="settings_computers_section_agents">此计算机上的 Agent</string>
+    <string name="settings_computers_action_create_agent">创建 Agent</string>
     <string name="settings_computers_action_select">选择</string>
     <string name="settings_computers_action_create">创建</string>
     <string name="settings_computers_section_workspaces">Agent 工作区</string>

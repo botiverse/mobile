@@ -2622,6 +2622,7 @@
     <string name="settings_computers_detail_no_access">컴퓨터에 접근할 권한이 없어요</string>
     <string name="settings_computers_detail_error_load">컴퓨터를 불러오지 못했어요</string>
     <string name="settings_computers_section_agents">이 컴퓨터의 에이전트</string>
+    <string name="settings_computers_action_create_agent">에이전트 만들기</string>
     <string name="settings_computers_action_select">선택</string>
     <string name="settings_computers_action_create">만들기</string>
     <string name="settings_computers_section_workspaces">에이전트 워크스페이스</string>

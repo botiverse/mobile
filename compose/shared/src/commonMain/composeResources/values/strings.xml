@@ -2650,6 +2650,7 @@
     <string name="settings_computers_detail_no_access">No access to computer</string>
     <string name="settings_computers_detail_error_load">Unable to load computer</string>
     <string name="settings_computers_section_agents">Agents on this computer</string>
+    <string name="settings_computers_action_create_agent">Create agent</string>
     <string name="settings_computers_action_select">Select</string>
     <string name="settings_computers_action_create">Create</string>
     <string name="settings_computers_section_workspaces">Agent Workspaces</string>

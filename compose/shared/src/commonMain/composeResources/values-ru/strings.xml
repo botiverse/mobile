@@ -2619,6 +2619,7 @@
     <string name="settings_computers_detail_no_access">Нет доступа к компьютеру</string>
     <string name="settings_computers_detail_error_load">Не удалось загрузить компьютер</string>
     <string name="settings_computers_section_agents">Агенты на этом компьютере</string>
+    <string name="settings_computers_action_create_agent">Создать агента</string>
     <string name="settings_computers_action_select">Выбрать</string>
     <string name="settings_computers_action_create">Создать</string>
     <string name="settings_computers_section_workspaces">Рабочие пространства агентов</string>

@@ -2650,6 +2650,7 @@
     <string name="settings_computers_detail_no_access">コンピューターへのアクセス権がありません</string>
     <string name="settings_computers_detail_error_load">コンピューターを読み込めませんでした</string>
     <string name="settings_computers_section_agents">このコンピューターのエージェント</string>
+    <string name="settings_computers_action_create_agent">エージェントを作成</string>
     <string name="settings_computers_action_select">選択</string>
     <string name="settings_computers_action_create">作成</string>
     <string name="settings_computers_section_workspaces">エージェントのワークスペース</string>
