@@ -21,6 +21,7 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.DataResult
 import build.raft.app.data.PlatformFile
+import build.raft.app.data.productFeedbackImageContentType
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsFeedbackProxyAttempt
 import build.raft.app.data.SettingsFeedbackProxyOutcome
@@ -73,6 +74,7 @@ import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -339,13 +341,43 @@ internal fun SharedHandsFeedbackContent(
         }
     }
 
-    /** [capture]: the camera (the composer's camera button / long-pressed Add image), an image. */
-    fun pickAttachment(imageOnly: Boolean, capture: Boolean = false) {
-        if (busy) return
-        if (remainingSlots <= 0) {
-            error = copy.attachmentLimitReached(attachmentLimit)
-            return
+    /**
+     * Picked (or pasted) files into the form: the 10 MB cap and the 3-image limit, then a new
+     * image opens in the annotation editor. Done there replaces it in place, Cancel keeps it.
+     * [typeRejectedCount]: files already left out for a type the server refuses.
+     */
+    fun admitAttachments(files: List<PlatformFile>, imageOnly: Boolean, typeRejectedCount: Int = 0) {
+        val pickedFiles =
+            normalizeSettingsHandsFeedbackPickerFiles(
+                files = files,
+                imageOnly = imageOnly
+            )
+        val before = attachmentsState.value
+        val merge =
+            settingsHandsFeedbackMergedAttachments(
+                existing = before,
+                picked = pickedFiles,
+                attachmentMaxBytes = attachmentMaxBytes,
+                attachmentLimit = attachmentLimit
+            )
+        attachments = merge.attachments
+        error = when {
+            typeRejectedCount > 0 -> copy.submissionAttachmentTypeBody
+            merge.rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
+            merge.limitTrimmed -> copy.attachmentLimitTrimmed(attachmentLimit)
+            else -> null
         }
+        settingsHandsFeedbackPickedImageToAnnotate(
+            existing = before,
+            merged = merge.attachments,
+            fallbackName = copy.attachment
+        )?.let { picked ->
+            previewAttachment(picked.feedbackComposerAttachmentId(), opensInEditor = true)
+        }
+    }
+
+    /** Leaving the form for a picker or the editor: [busy] while it is open. */
+    fun beginAttachmentAdmission() {
         busy = true
         error = null
         dismissFormKeyboard()
@@ -354,43 +386,65 @@ internal fun SharedHandsFeedbackContent(
         feedbackDraftResetGeneration += 1L
         abortAllOwnedImageEditSessions()
         pendingImageEditSession = null
+    }
+
+    /** [capture]: the camera (the composer's camera button / long-pressed Add image), an image. */
+    fun pickAttachment(imageOnly: Boolean, capture: Boolean = false) {
+        if (busy) return
+        if (remainingSlots <= 0) {
+            error = copy.attachmentLimitReached(attachmentLimit)
+            return
+        }
+        beginAttachmentAdmission()
         scope.launch {
             when (val result = settingsCapabilities.pickFeedbackAttachment(imageOnly, capture)) {
-                is DataResult.Content -> {
-                    val pickedFiles =
-                        normalizeSettingsHandsFeedbackPickerFiles(
-                            files = result.data,
-                            imageOnly = imageOnly || capture
-                        )
-                    // Picks mount straight into the form; a picked image then opens in the
-                    // annotation editor. Done there replaces it in place, Cancel keeps it.
-                    val before = attachmentsState.value
-                    val merge =
-                        settingsHandsFeedbackMergedAttachments(
-                            existing = before,
-                            picked = pickedFiles,
-                            attachmentMaxBytes = attachmentMaxBytes,
-                            attachmentLimit = attachmentLimit
-                        )
-                    attachments = merge.attachments
-                    error = when {
-                        merge.rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
-                        merge.limitTrimmed -> copy.attachmentLimitTrimmed(attachmentLimit)
-                        else -> null
-                    }
-                    settingsHandsFeedbackPickedImageToAnnotate(
-                        existing = before,
-                        merged = merge.attachments,
-                        fallbackName = copy.attachment
-                    )?.let { picked ->
-                        previewAttachment(picked.feedbackComposerAttachmentId(), opensInEditor = true)
-                    }
-                }
+                is DataResult.Content -> admitAttachments(result.data, imageOnly = imageOnly || capture)
                 is DataResult.Empty -> Unit
                 is DataResult.Error -> error = copy.attachmentPickerFailed
                 is DataResult.NoPermission -> error = copy.attachmentPickerPermissionNeeded
             }
             busy = false
+        }
+    }
+
+    /**
+     * Images (or files) pasted into the message field, as the chat composer takes them: the ones
+     * the host already read inside its paste action, else the clipboard's. They go the picked
+     * path ([admitAttachments]); signed in, a type the server refuses is left out, as the
+     * paperclip there picks images only.
+     */
+    fun pasteAttachments() {
+        val hostPasted = ThreadComposerImagePasteRequests.takePending()
+        if (busy) return
+        if (remainingSlots <= 0) {
+            error = copy.attachmentLimitReached(attachmentLimit)
+            return
+        }
+        scope.launch {
+            val pasted =
+                (hostPasted ?: withContext(Dispatchers.Default) { raftPlatformReadClipboardAttachments() })
+                    .take(ThreadComposerImagePasteMaxImages)
+            settingsCapabilities.log(
+                "settings_hands_feedback_paste files=${pasted.size} host=${hostPasted != null}"
+            )
+            if (pasted.isEmpty() || busy) return@launch
+            val accepted =
+                if (proxySubmitter != null) {
+                    pasted.filter { it.productFeedbackImageContentType() != null }
+                } else {
+                    pasted
+                }
+            val typeRejectedCount = pasted.size - accepted.size
+            if (accepted.isEmpty()) {
+                error = copy.submissionAttachmentTypeBody
+                return@launch
+            }
+            beginAttachmentAdmission()
+            try {
+                admitAttachments(accepted, imageOnly = true, typeRejectedCount = typeRejectedCount)
+            } finally {
+                busy = false
+            }
         }
     }
 
@@ -910,6 +964,8 @@ internal fun SharedHandsFeedbackContent(
             // taken now goes into the form like a picked one (limit, size cap, editor). The
             // composer shows neither where there is no camera (desktop).
             ThreadComposerCaptureImageAction -> pickAttachment(imageOnly = true, capture = true)
+            // An image pasted into the message field (chat composer parity).
+            ThreadComposerPasteAttachmentsAction -> pasteAttachments()
             // The Raft server takes only PNG/JPEG/GIF/WebP images, so signed in the paperclip
             // picks images too; any other file would only block the send.
             "attachFile" -> pickAttachment(imageOnly = proxySubmitter != null)
