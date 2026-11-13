@@ -190,6 +190,14 @@ IPAD8_SIZE = (2064, 2752)
 IPAD8_CROP_PX = (48, 40)  # status bar 24pt and home indicator 20pt at 2x
 # Two headline lines and two subline lines reserved: the iPad sits at the same place in every shot.
 IPAD8_TEXT_LINES = (2, 2)
+# The App Store iPhone Duo set of 5 (`--set duo5`, 1.24): chat, Agent, tasks, activity, computers
+# with the iPhone 8 / iPad set's copy, on both screens. Raw renders are the iPhone Duo simulator's
+# own screenshots of the real app shell around `compose_store_ipad_visual` (system status bar and
+# the side column's glass buttons included, so the frame draws no chrome):
+# <raw>/<screen>/<lang>/<scene>.png, screen inner (2007x2853) | outer (1398x2034).
+# Output: <out>/<screen>/<ASC locale>/NN.png.
+DUO5_KEYS = ["01-chat", "05-agent", "04-tasks", "06-activity", "07-computers"]
+DUO5_SCREENS = {"inner": ("duo-inner-portrait", (2007, 2853), 34), "outer": ("duo-outer", (1398, 2034), 44)}
 RES_DIR = f"{REPO}/compose/shared/src/commonMain/composeResources"
 ICON_DIR = f"{REPO}/compose/iosApp/iosApp/Assets.xcassets"
 
@@ -627,7 +635,8 @@ def main():
     ap.add_argument("--langs")
     ap.add_argument("--scenes")
     ap.add_argument("--jobs", type=int, default=4)
-    ap.add_argument("--set", default="store", choices=["store", "play8", "appstore8", "ipad8"],
+    ap.add_argument("--screens", help="duo5: inner,outer")
+    ap.add_argument("--set", default="store", choices=["store", "play8", "appstore8", "ipad8", "duo5"],
                     help="play8: the 8 Play phone shots per language, <out>/<lang>/NN-scene.png + contact-<lang>.png")
     a = ap.parse_args()
     raw, out = os.path.abspath(a.raw), os.path.abspath(a.out)
@@ -637,6 +646,40 @@ def main():
     langs = a.langs.split(",") if a.langs else LANGS
     scenes = set(a.scenes.split(",")) if a.scenes else None
     jobs = []
+    if a.set == "duo5":
+        langs = a.langs.split(",") if a.langs else list(IPAD8_LOCALES)
+        screens = a.screens.split(",") if a.screens else list(DUO5_SCREENS)
+        copy_by_key = {key: (accent, copy) for key, accent, copy in IPAD8_SCENES}
+        for screen in screens:
+            profile, size, radius = DUO5_SCREENS[screen]
+            w, h = size
+            for lang in langs:
+                for idx, key in enumerate(DUO5_KEYS, start=1):
+                    if scenes and key not in scenes:
+                        continue
+                    shot = os.path.join(raw, screen, lang, key + ".png")
+                    if not os.path.exists(shot):
+                        raise SystemExit(f"missing raw render {shot}")
+                    if Image.open(shot).size != size:
+                        raise SystemExit(f"{shot}: raw render is {Image.open(shot).size}, expected {size}")
+                    accent, copy = copy_by_key[key]
+                    headline, sub = copy[lang]
+                    out_png = f"{out}/{screen}/{IPAD8_LOCALES[lang]}/{idx:02d}.png"
+                    jobs.append((page(a.style, shot, profile, accent, headline, sub, idx, lang, w, h, 1.0, IPAD8_TEXT_LINES,
+                                      chrome={"sbDp": 0, "hbDp": 0, "bezel": 0.022, "radiusDp": radius,
+                                              "status": lambda _c: "",
+                                              # as the iPad set: ~88% of the canvas width, cut off at the bottom
+                                              "maxW": round(w * 0.88), "bleed": True}), out_png, w, h))
+        with concurrent.futures.ThreadPoolExecutor(a.jobs) as pool:
+            for done in pool.map(lambda j: render(*j), jobs):
+                print("wrote", done)
+        for screen in screens:
+            for lang in langs:
+                paths = [f"{out}/{screen}/{IPAD8_LOCALES[lang]}/{i:02d}.png" for i in range(1, len(DUO5_KEYS) + 1)]
+                if all(os.path.exists(p) for p in paths):
+                    print("wrote", contact_sheet(paths, f"{out}/contact-{screen}-{lang}.png", cols=5, scale=6))
+        print(len(jobs), "images")
+        return
     if a.set == "ipad8":
         langs = a.langs.split(",") if a.langs else list(IPAD8_LOCALES)
         w, h = IPAD8_SIZE

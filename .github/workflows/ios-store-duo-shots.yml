@@ -45,12 +45,13 @@ jobs:
           rt=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; print([r["runtimeRoot"] for r in json.load(sys.stdin)["runtimes"] if r["identifier"].endswith("iPhone19-4")][0])')
           head -20 "$rt/System/Library/PrivateFrameworks/SpringBoardFoundation.framework/hinge-samples.csv" > probe/hinge-samples.txt
           # Which runtime binaries talk about the hinge, and what they say.
-          for f in $(find "$rt/System/Library/PrivateFrameworks" "$rt/System/Library/Frameworks" "$rt/usr/libexec" "$rt/usr/lib" "$rt/System/Library/CoreServices" -maxdepth 3 -type f -perm -u+x 2>/dev/null); do
+          find "$rt/System/Library/PrivateFrameworks" "$rt/System/Library/Frameworks" "$rt/usr/libexec" "$rt/usr/lib" "$rt/System/Library/CoreServices" -maxdepth 3 -type f -perm -u+x 2>/dev/null |
+          while IFS= read -r f; do
             n=$(strings -a "$f" 2>/dev/null | grep -ciE 'hinge')
-            [ "${n:-0}" -gt 0 ] && echo "$n $f"
+            [ "${n:-0}" -gt 0 ] && printf '%s\t%s\n' "$n" "$f"
           done | sort -rn > probe/hinge-binaries.txt
           head -40 probe/hinge-binaries.txt
-          for f in $(head -12 probe/hinge-binaries.txt | awk '{print $2}'); do
+          head -12 probe/hinge-binaries.txt | cut -f2 | while IFS= read -r f; do
             echo "== $f"; strings -a "$f" | grep -iE 'hinge|fold|posture|unfold|cover|inner' | grep -viE 'folder|manifold|scaffold' | sort -u | head -400
           done > probe/hinge-strings.txt 2>&1
           wc -l probe/hinge-strings.txt

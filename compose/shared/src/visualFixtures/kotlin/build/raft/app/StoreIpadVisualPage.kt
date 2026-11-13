@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -120,6 +123,8 @@ private fun StoreIpadVisualContent() {
     val params = pager.pageData.params
     val scene = remember { params.optString("scene").trim().ifEmpty { "01-chat" } }
     val lang = remember { params.optString("lang").trim().ifEmpty { "en" } }
+    // iPhone Duo store shots (1.24): "inner" | "outer"; empty = the iPad set.
+    val duo = remember { params.optString("duo").trim() }
     remember(lang) {
         val locale =
             when (lang) {
@@ -138,10 +143,15 @@ private fun StoreIpadVisualContent() {
     ) {
         RaftDesignSystemTheme {
             ThreadReactionAtlasProvider {
-                Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-                    Box(Modifier.fillMaxWidth().height(IpadStatusBar).background(RaftColor.Canvas))
-                    Box(Modifier.weight(1f).fillMaxWidth()) { IpadScene(scene) }
-                    Box(Modifier.fillMaxWidth().height(IpadHomeIndicator).background(RaftColor.SurfaceWhite))
+                when (duo) {
+                    "inner" -> DuoInnerScene(scene)
+                    "outer" -> DuoOuterScene(scene)
+                    else ->
+                        Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
+                            Box(Modifier.fillMaxWidth().height(IpadStatusBar).background(RaftColor.Canvas))
+                            Box(Modifier.weight(1f).fillMaxWidth()) { IpadScene(scene) }
+                            Box(Modifier.fillMaxWidth().height(IpadHomeIndicator).background(RaftColor.SurfaceWhite))
+                        }
                 }
             }
         }
@@ -163,6 +173,91 @@ private fun IpadScene(scene: String) {
         "07-computers" -> IpadShell("computers") { IpadComputersScene() }
         "08-home" -> IpadShell("home") { IpadSplit(RaftListPaneKind.Sidebar, { home("dm-agent-atlas") }) { IpadDmScene() } }
         else -> IpadShell("home") { IpadSplit(RaftListPaneKind.Sidebar, { home("ch-$IpadChannel") }) { IpadChatScene() } }
+    }
+}
+
+// ---- iPhone Duo (1.24 store shots) ------------------------------------------------------------------
+// The real app's window on the Duo simulator hosts this page, so the system status bar and the side
+// column with its glass buttons (#4610) are the host's own. The page keeps out of the window's safe
+// area like the app's pages do.
+
+/** The inner screen held upright: the desktop mode without the top bar (raft-design #859). */
+@Composable
+private fun DuoInnerScene(scene: String) {
+    val home: @Composable (String?) -> Unit = { selected -> IpadHomeList(Modifier.fillMaxSize(), selected) }
+    when (scene) {
+        "04-tasks" -> DuoInnerShell("tasks") { IpadTasksScene() }
+        "05-agent" -> DuoInnerShell("home") { IpadSplit(RaftListPaneKind.Sidebar, { home("dm-agent-forge") }) { IpadAgentScene() } }
+        "06-activity" ->
+            DuoInnerShell("activity") {
+                IpadSplit(RaftListPaneKind.List, { IpadActivityList(selectedKey = "channel:$IpadChannel") }) { IpadChatScene() }
+            }
+        "07-computers" -> DuoInnerShell("computers") { IpadComputersScene() }
+        else -> DuoInnerShell("home") { IpadSplit(RaftListPaneKind.Sidebar, { home("ch-$IpadChannel") }) { IpadChatScene() } }
+    }
+}
+
+@Composable
+private fun DuoInnerShell(railKey: String, content: @Composable () -> Unit) {
+    val topBar = remember { RaftAppShellTopBarState() }
+    val labels = raftNavLabels(RaftNavPresentation.Rail)
+    val searchLabel = stringResource(Res.string.home_nav_search)
+    val inlinePage = if (railKey == "computers") RaftAppDestination.Computers.id else null
+    val selectedTab = if (inlinePage != null) "home" else railKey
+    val items =
+        appShellRailItemsWithSearch(
+            appShellRailTabs(
+                selectedTab = selectedTab,
+                labelFor = { key -> labels[key] ?: key },
+                activityUnreadCount = if (railKey == "activity") 0 else 4,
+                inlinePageRailId = inlinePage,
+            ).orderedLikePhoneBar { it.key },
+            searchLabel = searchLabel,
+            searchOpen = false,
+        )
+    val footer =
+        appShellRailFooterTabs(
+            selectedTab = if (inlinePage != null) "" else selectedTab,
+            labelFor = { key -> labels[key] ?: key },
+            helpOpen = false,
+        )
+    val serverModel = remember { RaftServerMenuModel(servers = IpadServers, currentServer = IpadServers.first(), otherServersUnread = true) }
+    val insets = WindowInsets.safeDrawing.asPaddingValues()
+    CompositionLocalProvider(LocalRaftAppShellTopBar provides topBar) {
+        Row(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+            RaftNavigationRailTabBar(
+                items = items,
+                onSelect = {},
+                modifier = Modifier.fillMaxHeight(),
+                bottomItems = footer,
+                topSafeArea = insets.calculateTopPadding(),
+                bottomSafeArea = insets.calculateBottomPadding(),
+                header = { RaftAppRailServerTile(model = serverModel, open = false, onClick = {}, tooltip = false) },
+                footerTools = { RaftAppRailNotificationBell(topBar, onToggle = {}) },
+            )
+            Box(
+                Modifier.weight(1f).fillMaxHeight()
+                    .padding(top = insets.calculateTopPadding(), bottom = insets.calculateBottomPadding())
+            ) { content() }
+        }
+    }
+}
+
+/** The outer screen: the phone's pages beside the system's side column. */
+@Composable
+private fun DuoOuterScene(scene: String) {
+    val insets = WindowInsets.safeDrawing.asPaddingValues()
+    Box(
+        Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)
+            .padding(top = maxOf(insets.calculateTopPadding(), RaftSideColumnTopInset), bottom = insets.calculateBottomPadding())
+    ) {
+        when (scene) {
+            "04-tasks" -> IpadTasksScene(TasksViewMode.List)
+            "05-agent" -> IpadAgentScene()
+            "06-activity" -> IpadActivityList(selectedKey = null)
+            "07-computers" -> IpadComputersScene()
+            else -> IpadChatScene()
+        }
     }
 }
 
@@ -757,7 +852,7 @@ private fun ipadTaskSummaries(): List<TaskSummary> =
     }
 
 @Composable
-private fun IpadTasksScene() {
+private fun IpadTasksScene(mode: TasksViewMode = TasksViewMode.Board) {
     val tasks = remember { ipadTaskSummaries() }
     Box(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         SharedTasksPanel(
@@ -766,7 +861,7 @@ private fun IpadTasksScene() {
             showHeader = true,
             showChannelFilter = true,
             initialPresentationOverride =
-                TasksPresentationState.Default.copy(selectedMode = TasksViewMode.Board, collapsedStatuses = setOf(TaskStatus.Closed)),
+                TasksPresentationState.Default.copy(selectedMode = mode, collapsedStatuses = setOf(TaskStatus.Closed)),
             timeContext = IpadTime,
         )
     }
