@@ -37,8 +37,8 @@ private val appLinkPreviewsJson = Json {
  * `appIcons`) are read as one list and the prompts as another, so an entry this client can't
  * read drops only its own list. Each preview is strict (`.strict()`): an unknown key, or a `card`
  * outside the read-only catalog ([RaftAppLinkCard]), makes it unreadable, like the web. One
- * result per link, one prompt per App. Where the Server's `interactive_link_cards` flag is on,
- * this client reads with the batched link-card read instead ([AppLinkCardV2.kt]), declaring
+ * result per link, one prompt per App. A conversation's messages are read with the batched
+ * link-card read instead ([AppLinkCardV2.kt]), declaring
  * [APP_LINK_CARD_READ_CAPABILITIES] (`card.v2`, `inline.v1`, `inline.tone.v2`, `button.v1`, `confirm.v1`, `undo.v1`, `block.v1`, `preview.v3`, `unreviewed_app.v1`).
  *
  * Field names are exact camelCase. No snake_case fallbacks.
@@ -311,8 +311,8 @@ internal interface RaftAppLinkPreviewApi {
     suspend fun readPreviews(messageId: String, serverId: String): HomeNetworkResponse
 
     /**
-     * `POST messages/:messageId/link-cards/read` (the batched link-card read, flag
-     * `interactive_link_cards` on): 404 where the server has no batched read.
+     * `POST messages/:messageId/link-cards/read` (the batched link-card read): 404 where the server
+     * has no batched read.
      */
     suspend fun readLinkCards(messageId: String, serverId: String, body: AppLinkCardReadRequestBody): HomeNetworkResponse
 

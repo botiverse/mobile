@@ -59,7 +59,7 @@ class RaftSettingsSearchIndexTest {
     @Test
     fun anOrdinaryMemberFindsNoAdminOnlyOrOwnerOnlySettings() {
         val member =
-            ids(RaftSettingsSearchContext(phoneRows, role = "member", publicServer = true, serverSso = true, accountDeletion = true))
+            ids(RaftSettingsSearchContext(phoneRows, role = "member", publicServer = true, serverSso = true))
         assertTrue("leave-server" in member)
         assertTrue("delete-account" in member)
         for (hidden in listOf("plan", "invite-links", "single-sign-on", "member-permissions", "public-access")) {
@@ -81,7 +81,6 @@ class RaftSettingsSearchIndexTest {
         val admin = ids(RaftSettingsSearchContext(phoneRows, role = "admin"))
         assertFalse("single-sign-on" in admin) // server_sso_v1 off
         assertFalse("public-access" in admin) // owner only, and public_server_v0 off
-        assertFalse("delete-account" in admin) // no Delete account row
         assertTrue("invite-links" in admin)
     }
 
@@ -106,7 +105,7 @@ class RaftSettingsSearchIndexTest {
             )
         cases.forEach { (settings, found) ->
             val context =
-                settingsSearchContext(null, flags, serverId = null, notificationSettings = settings, ticketSupported = false)
+                settingsSearchContext(null, flags, serverId = null, notificationSettings = settings)
                     .copy(rowKeys = phoneRows)
             assertEquals(found, context.followedThreadReplies, "$settings")
             assertEquals(found, id in ids(context), "$settings")
@@ -128,7 +127,7 @@ class RaftSettingsSearchIndexTest {
         assertEquals(pageOrder.sorted(), pageOrder)
         // Within Account, the index's own order.
         assertEquals(
-            listOf("display-name", "username", "email", "password", "sign-out"),
+            listOf("display-name", "username", "email", "password", "sign-out", "delete-account"),
             placements.filter { it.rowKey == SettingsDestinationAccount }.map { it.entry.id },
         )
     }

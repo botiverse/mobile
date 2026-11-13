@@ -42,7 +42,7 @@ class SharedServerFeatureFlagsTest {
         val snapshot = flags.prefetch(server)
         assertTrue(snapshot.resolved)
         assertTrue(flags.isEnabled(server, SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY))
-        assertFalse(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY)) // absent from evaluations -> off
+        assertFalse(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY)) // absent from evaluations -> off
         assertFalse(flags.isEnabled(server, SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY))
         assertEquals(REGISTERED_SERVER_FEATURE_FLAG_KEYS, api.lastKeys) // batch: all registered keys
     }
@@ -55,7 +55,7 @@ class SharedServerFeatureFlagsTest {
         assertTrue(idle.isEnabled(server, doh))
         assertTrue(idle.isEnabled(null, doh))
         // Ordinary keys keep reading OFF without a decision.
-        assertFalse(idle.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
+        assertFalse(idle.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
 
         // Key absent from the response: ON.
         idle.prefetch(server)
@@ -108,7 +108,7 @@ class SharedServerFeatureFlagsTest {
 
         // Before any resolve there is no server decision: the default-on key reads ON (and the hook keeps it ON).
         assertTrue(flags.isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
-        assertFalse(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
         assertEquals(Triple<ServerId?, String, Boolean>(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, true), seen[0])
 
         // After resolve the hook still sees the true server value (explicit OFF) and the raw snapshot is untouched.
@@ -160,11 +160,6 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun ordinaryRegisteredFlagsRequireExplicitResolvedEnablement() = runTest {
-        assertEquals("activity_overview_web_v0", ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY)
-        // slock serverFeatureFlags.ts THREAD_UNREAD_BADGE_FLAG_KEY (staging 259f9fe0), default off.
-        assertEquals("thread_unread_badge_v0", THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY)
-        // botiverse/slock d60367a1 packages/shared/src/featureFlags.ts SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY.
-        assertEquals("sidebar_mark_all_read_v0", SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY)
         // slock staging 2618da4f packages/web/src/store/serverFeatureFlags.ts TASK_V2_CONVERSATIONS_FLAG_KEY.
         assertEquals("task_v2_conversations_v0", TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
         // slock staging 82ec87f2 packages/shared/src/featureFlags.ts SLACK_BRIDGE_FEATURE_FLAG_KEYS.master.
@@ -178,9 +173,6 @@ class SharedServerFeatureFlagsTest {
         for (
             key in listOf(
                 MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
-                ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
-                THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
-                SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
                 TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY,
                 SLACK_BRIDGE_FEATURE_FLAG_KEY,
                 PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
@@ -216,7 +208,7 @@ class SharedServerFeatureFlagsTest {
     @Test
     fun snapshotRevisionAdvancesOnAcceptedEvaluationsAndOnTheFirstSettledFailure() = runTest {
         val accepted = SharedServerFeatureFlags(
-            FakeApi(ok("""{"evaluations":[{"key":"$THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY","enabled":true}]}"""))
+            FakeApi(ok("""{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":true}]}"""))
         )
         assertEquals(0L, accepted.snapshotRevision.value)
         accepted.prefetch(server)
@@ -231,14 +223,14 @@ class SharedServerFeatureFlagsTest {
             assertEquals(1L, failed.snapshotRevision.value, "$response")
             failed.prefetch(server, forceRefresh = true)
             assertEquals(1L, failed.snapshotRevision.value, "$response")
-            assertFalse(failed.isEnabled(server, THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY), "$response")
+            assertFalse(failed.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY), "$response")
         }
     }
 
     @Test
     fun decisionStaysPendingUntilAnEvaluationSettlesOrALastKnownValueExists() = runTest {
         // A default-off flag; the cold-start part below keeps it on disk explicitly.
-        val key = THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
+        val key = DRAFTS_SECTION_FEATURE_FLAG_KEY
         class ThrowingApi : RaftFeatureFlagsApi {
             override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
                 throw IllegalStateException("offline")
@@ -480,7 +472,7 @@ class SharedServerFeatureFlagsTest {
         val api =
             FakeApi(
                 ok(
-                    """{"evaluations":[{"key":"$READ_RECEIPTS_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
+                    """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
                 )
             )
         val flags =
@@ -493,7 +485,7 @@ class SharedServerFeatureFlagsTest {
 
         assertEquals(
             listOf(
-                "s1|$READ_RECEIPTS_FEATURE_FLAG_KEY|false|kill_switch|production-env"
+                "s1|$DRAFTS_SECTION_FEATURE_FLAG_KEY|false|kill_switch|production-env"
             ),
             evaluations
         )
@@ -508,7 +500,7 @@ class SharedServerFeatureFlagsTest {
                 api =
                     FakeApi(
                         ok(
-                            """{"evaluations":[{"key":"$READ_RECEIPTS_FEATURE_FLAG_KEY","enabled":true,"reason":"default"}]}"""
+                            """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":true,"reason":"default"}]}"""
                         )
                     ),
                 diagnosticsLogger = diagnostics::add,
@@ -518,7 +510,7 @@ class SharedServerFeatureFlagsTest {
         val snapshot = flags.prefetch(server)
 
         assertTrue(snapshot.resolved)
-        assertTrue(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
+        assertTrue(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
         assertTrue(diagnostics.any { it.contains("evaluation_observer_failed") })
     }
 
@@ -538,12 +530,12 @@ class SharedServerFeatureFlagsTest {
                             firstStarted.complete(Unit)
                             releaseFirst.await()
                             ok(
-                                """{"evaluations":[{"key":"$READ_RECEIPTS_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
+                                """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
                             )
                         }
                         else ->
                             ok(
-                                """{"evaluations":[{"key":"$READ_RECEIPTS_FEATURE_FLAG_KEY","enabled":true,"reason":"default"}]}"""
+                                """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":true,"reason":"default"}]}"""
                             )
                     }
             }
@@ -565,7 +557,7 @@ class SharedServerFeatureFlagsTest {
         releaseFirst.complete(Unit)
         first.await()
 
-        assertTrue(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
+        assertTrue(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
         assertEquals(listOf(true to "default", false to "kill_switch"), evaluations.map { it.first to it.second })
         assertTrue(evaluations[0].third > evaluations[1].third)
         assertTrue(diagnostics.any { it.contains("stale_ignored") })
@@ -587,7 +579,7 @@ class SharedServerFeatureFlagsTest {
                             firstStarted.complete(Unit)
                             releaseFirst.await()
                             ok(
-                                """{"evaluations":[{"key":"$READ_RECEIPTS_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
+                                """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
                             )
                         }
                         else -> HomeNetworkResponse(code = 500, bodyText = null)
@@ -606,7 +598,7 @@ class SharedServerFeatureFlagsTest {
         releaseFirst.complete(Unit)
         first.await()
 
-        assertFalse(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
         assertEquals(listOf(false to "kill_switch"), evaluations.map { it.first to it.second })
         assertTrue(evaluations.single().third > 0L)
     }
@@ -624,7 +616,7 @@ class SharedServerFeatureFlagsTest {
                     started.complete(Unit)
                     withContext(NonCancellable) { release.await() }
                     return ok(
-                        """{"evaluations":[{"key":"$READ_RECEIPTS_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
+                        """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
                     )
                 }
             }
@@ -649,8 +641,8 @@ class SharedServerFeatureFlagsTest {
         val flags = SharedServerFeatureFlags(FakeApi(ok("{}")))
         // no prefetch yet
         assertFalse(flags.snapshotFor(server).resolved)
-        assertFalse(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
-        assertFalse(flags.isEnabled(null, READ_RECEIPTS_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(null, DRAFTS_SECTION_FEATURE_FLAG_KEY))
     }
 
     @Test
@@ -658,7 +650,7 @@ class SharedServerFeatureFlagsTest {
         val flags = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
         val snapshot = flags.prefetch(server)
         assertFalse(snapshot.resolved) // failed -> stays Unresolved, ordinary flags default off (feature stays dark)
-        assertFalse(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
     }
 
     @Test

@@ -97,7 +97,7 @@ import build.raft.app.components.RaftSlotIcon
 
 /*
  * Agent Activity tab "Overview" (web packages/web/src/components/agent/AgentActivityOverview.tsx at
- * botiverse/slock 24873fd5be37, behind `activity_overview_web_v0`): one block per finished turn in
+ * botiverse/slock 24873fd5be37): one block per finished turn in
  * time order, oldest at the top like the raw log, then the turn still running, then what the agent
  * is doing now at the bottom. Detail stays in the raw log, one segment away.
  */

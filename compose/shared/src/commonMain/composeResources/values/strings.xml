@@ -184,7 +184,6 @@
     <string name="settings_account_delete">Delete account</string>
     <string name="settings_account_delete_detail">Ask us to permanently delete your Raft account and personal data.</string>
     <string name="settings_account_delete_action">Delete Account</string>
-    <string name="settings_account_delete_title">Delete your account?</string>
     <string name="settings_step_up_title">Verify it's you</string>
     <string name="settings_step_up_description">Changing how you sign in needs a fresh second step. It lasts 10 minutes.</string>
     <string name="settings_step_up_generic_description">This needs a fresh second step. It lasts 10 minutes.</string>
@@ -204,11 +203,6 @@
     <string name="settings_step_up_sign_in_again">Sign In Again</string>
     <string name="settings_step_up_passkey_only">Make this change in Raft on the web and confirm it with your passkey.</string>
     <string name="settings_step_up_failed">Couldn't verify. Try again.</string>
-    <string name="settings_account_delete_message">We'll delete your account and personal data (profile, email, avatar and sign-in methods) within %1$d days. Messages you sent in shared channels stay, shown as “Deleted user”. We'll email you when it's done.</string>
-    <string name="settings_account_delete_confirm">Request deletion</string>
-    <string name="settings_account_delete_requesting">Requesting…</string>
-    <string name="settings_account_delete_requested">Deletion requested. We'll email you within %1$d days.</string>
-    <string name="settings_account_delete_failed">We couldn't send your deletion request. Please try again.</string>
     <string name="settings_usage_data_title">Share usage data</string>
     <string name="settings_account_login_security_title">Login &amp; security</string>
     <string name="settings_account_two_step_title">Two-step verification</string>

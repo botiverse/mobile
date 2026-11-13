@@ -243,8 +243,7 @@ internal class SettingsSearchHost(
 
 /**
  * Who is searching, from the signed-in [session] and the current server's flags (its rows are the
- * list's own, filled in by [rememberSettingsSearchResults]): the role, whether Account has Delete
- * account ([settingsAccountDeletionEntry]), the flags Server > Public access and
+ * list's own, filled in by [rememberSettingsSearchResults]): the role, the flags Server > Public access and
  * Administration > Single sign-on show by, and whether the loaded [notificationSettings] carry
  * Replies in threads I follow (null: not loaded, no row).
  */
@@ -253,16 +252,12 @@ internal fun settingsSearchContext(
     flags: SharedServerFeatureFlags,
     serverId: String?,
     notificationSettings: RaftNotificationAccountSettings? = null,
-    ticketSupported: Boolean = raftPlatformSupportsHandsFeedbackSubmit(),
 ): RaftSettingsSearchContext {
     val server = serverId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId)
     fun flag(key: String) = server != null && flags.isEnabled(server, key)
     return RaftSettingsSearchContext(
         rowKeys = emptyList(),
         role = session?.currentServerSummary()?.role,
-        accountDeletion =
-            settingsAccountDeletionEntry(settingsAccountDeletionFlagOn(flags, serverId), ticketSupported) !=
-                SettingsAccountDeletionEntry.Hidden,
         publicServer = flag(PUBLIC_SERVER_FEATURE_FLAG_KEY),
         serverSso = flag(SERVER_SSO_FEATURE_FLAG_KEY),
         followedThreadReplies = notificationSettings?.followedThreadRepliesSupported == true,

@@ -13,7 +13,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.messageCardBuildStoredJson
 import build.raft.app.data.messageCardMetadataJson
-import build.raft.app.data.messageCardToRender
+import build.raft.app.data.readMessageCardFromMetadata
 import build.raft.app.data.toMessageItemMetadata
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
@@ -49,9 +49,8 @@ class RaftMessageCardScreenshotTest {
 
     private fun card(actionMetadata: String) =
         requireNotNull(
-            messageCardToRender(
-                Json { ignoreUnknownKeys = true }.decodeFromString(WireActionCardMetadata.serializer(), actionMetadata).toMessageItemMetadata(),
-                cardsEnabled = true,
+            readMessageCardFromMetadata(
+                Json { ignoreUnknownKeys = true }.decodeFromString(WireActionCardMetadata.serializer(), actionMetadata).toMessageItemMetadata()
             )
         )
 

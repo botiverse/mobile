@@ -173,14 +173,6 @@ internal fun readMessageCardFromMetadata(metadata: Map<String, String>): RaftMes
     return read
 }
 
-/**
- * What a message row draws as a card: its card when the Server's `message_cards` flag is on
- * ([cardsEnabled]) and the card reads; otherwise null, and the row draws the message's text (the
- * fallback), as a client without card support does.
- */
-internal fun messageCardToRender(metadata: Map<String, String>, cardsEnabled: Boolean): RaftMessageCard? =
-    if (cardsEnabled) readMessageCardFromMetadata(metadata) else null
-
 /** `updatedAt` as the server writes it (`Date.toISOString()`); the web draws "Updated" only for a time `Date.parse` reads. */
 private fun isMessageCardTime(value: String): Boolean = isStrictRfc3339Utc(value)
 

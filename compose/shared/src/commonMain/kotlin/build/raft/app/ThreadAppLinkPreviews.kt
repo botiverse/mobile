@@ -35,7 +35,6 @@ import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.APP_LINK_READ_MODE_V1
 import build.raft.app.data.AppLinkBatchRead
 import build.raft.app.data.AppLinkCardView
-import build.raft.app.data.INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY
 import build.raft.app.data.appLinkCardReadLocale
 import build.raft.app.data.runtimeFormRequestLanguageTag
 import kotlinx.coroutines.awaitCancellation
@@ -82,8 +81,8 @@ internal data class ThreadAppLinkPreviewHost(
     val toastWithIntent: (String, RaftToastIntent?) -> Unit = { text, _ -> toast(text) },
     /** Workspace Artifacts links; null where they aren't read (fixtures, no provider). */
     val artifacts: ThreadArtifactLinkHost? = null,
-    /** Where `interactive_link_cards` is read (the batched link-card read); null: always the GET (fixtures). */
-    val featureFlags: SharedServerFeatureFlags? = null,
+    /** The batched link-card read (App link cards v2); false: always the GET (fixtures). */
+    val batchedRead: Boolean = false,
 )
 
 /**
@@ -201,8 +200,7 @@ internal fun ThreadAppLinkPreviewScope(
             )
         }
     LaunchedEffect(host.store, host.viewerKey, messageId, body, view.wantsRead, view.readSignature, batch) {
-        // Until the flag is decided the row waits (one evaluation at most), so it is read once, the right way.
-        if (view.wantsRead && !batch.pending) host.store.read(host.viewerKey, host.serverId, messageId, body, host.conversationId, batch.read)
+        if (view.wantsRead) host.store.read(host.viewerKey, host.serverId, messageId, body, host.conversationId, batch.read)
     }
     // Links Raft answered rate_limited are read again only while this row is on screen.
     LaunchedEffect(host.store, batch, view.readsLimited) {
@@ -292,25 +290,21 @@ internal fun ThreadAppLinkPreviewScope(
     }
 }
 
-/** How a message row reads its App links: [read] null is the GET; [pending] while the flag isn't decided yet. */
+/** How a message row reads its App links: [read] null is the GET. */
 @Immutable
-internal data class ThreadAppLinkBatch(val read: AppLinkBatchRead?, val pending: Boolean)
+internal data class ThreadAppLinkBatch(val read: AppLinkBatchRead?)
 
 /**
- * The Server's `interactive_link_cards` flag (latched for the row, re-read for another Server) and,
- * when on, this message view of the batched read: its `view_instance_id` made once when the row
- * is shown and kept while it stays, in the app's language.
+ * This message view of the batched read: its `view_instance_id` made once when the row is shown
+ * and kept while it stays, in the app's language. The GET where the host has no batched read
+ * (fixtures).
  */
 @Composable
 private fun rememberThreadAppLinkBatchRead(host: ThreadAppLinkPreviewHost, messageId: String, body: String): ThreadAppLinkBatch {
-    val flags = host.featureFlags ?: return remember { ThreadAppLinkBatch(read = null, pending = false) }
-    val serverId = ServerId(host.serverId)
-    val on = rememberServerFeatureLatched(flags, serverId, INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY)
-    val revision by flags.snapshotRevision.collectAsState()
-    val pending = remember(flags, host.serverId, revision, on) { !on && flags.isDecisionPending(serverId, INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY) }
+    if (!host.batchedRead) return remember { ThreadAppLinkBatch(read = null) }
     val locale = remember { appLinkCardReadLocale(runtimeFormRequestLanguageTag()) }
-    return remember(on, pending, host.serverId, messageId, body, locale) {
-        ThreadAppLinkBatch(read = if (on) AppLinkBatchRead(AppLinkCardView.create(), locale) else null, pending = pending)
+    return remember(host.serverId, messageId, body, locale) {
+        ThreadAppLinkBatch(read = AppLinkBatchRead(AppLinkCardView.create(), locale))
     }
 }
 

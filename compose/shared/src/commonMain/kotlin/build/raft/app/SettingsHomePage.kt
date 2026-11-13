@@ -172,8 +172,6 @@ import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeParentThreadUnread
-import build.raft.app.data.SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY
-import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
 import build.raft.app.data.DRAFTS_SECTION_FEATURE_FLAG_KEY
 import build.raft.app.data.agentLoungeEnabled
 import build.raft.app.data.AGENT_LOUNGE_FEATURE_FLAG_KEY
@@ -8618,27 +8616,8 @@ private fun RaftAppShellReadyContent(
                                 readyServerId = readyServerId
                             )
                         val homeListPositionServerId = readyServerId ?: homeListServerId
-                        // thread_unread_badge_v0, read per server like the web `useServerFeatureFlag`.
+                        // Server flags, read per server like the web `useServerFeatureFlag`.
                         val homeFeatureFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-                        val homeThreadUnreadBadgeEnabled =
-                            remember(homeListServerId, homeFeatureFlagRevision) {
-                                val flagServerId = homeListServerId?.takeIf { it.isNotBlank() }
-                                flagServerId != null &&
-                                    sharedStores.serverFeatureFlags.isEnabled(
-                                        ServerId(flagServerId),
-                                        THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
-                                    )
-                            }
-                        // sidebar_mark_all_read_v0, the web SidebarReadToggleMenuItem's second gate.
-                        val homeSidebarMarkAllReadEnabled =
-                            remember(homeListServerId, homeFeatureFlagRevision) {
-                                val flagServerId = homeListServerId?.takeIf { it.isNotBlank() }
-                                flagServerId != null &&
-                                    sharedStores.serverFeatureFlags.isEnabled(
-                                        ServerId(flagServerId),
-                                        SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY
-                                    )
-                            }
                         // agent_lounge_v0 (web useAgentLoungeEnabled): flag on and not a Guest.
                         val homeAgentLoungeEnabled =
                             remember(homeListServerId, homeFeatureFlagRevision, homeState) {
@@ -8696,8 +8675,6 @@ private fun RaftAppShellReadyContent(
                                 // The phone bar or the wide rail carries Search and Activity (nav
                                 // spec §5): the list keeps only Saved, never a second copy.
                                 searchAndActivityOnShellNav = appShellNavCarriesSearchAndActivity(navRailActive),
-                                threadUnreadBadgeEnabled = homeThreadUnreadBadgeEnabled,
-                                sidebarMarkAllReadEnabled = homeSidebarMarkAllReadEnabled,
                                 agentLoungeEnabled = homeAgentLoungeEnabled,
                                 agentLoungeNetworkClient = appShellNetworkClient,
                                 onIntent = { intent ->
@@ -11773,10 +11750,6 @@ private fun SharedHomeScreen(
     serverSwitcherInTopBar: Boolean = false,
     /** The phone bottom bar is on screen: the list drops its Search / Activity rows. */
     searchAndActivityOnShellNav: Boolean = false,
-    /** Server flag `thread_unread_badge_v0`: channel rows show followed-thread unread (web parity). */
-    threadUnreadBadgeEnabled: Boolean = false,
-    /** Server flag `sidebar_mark_all_read_v0`: with the thread badge on, rows offer "Mark All as Read". */
-    sidebarMarkAllReadEnabled: Boolean = false,
     /** Server flag `agent_lounge_v0` and not a Guest: the Lounges get their own sidebar rows. */
     agentLoungeEnabled: Boolean = false,
     /** Loads a listed Lounge's own row (mute, recency) the client never loaded; null: none loaded. */
@@ -12088,14 +12061,10 @@ private fun SharedHomeScreen(
                 }
             val conversationDirectoryProjections by conversationDirectoryFlow.collectAsState(emptyMap())
             val restoredRowHints = current.displayRowHints()
-            // Store-owned followed-thread unread, folded per parent channel; gated like the web sidebar.
+            // Store-owned followed-thread unread, folded per parent channel.
             val threadUnreadByParent =
-                remember(snapshot.followedThreadUnread, threadUnreadBadgeEnabled) {
-                    if (threadUnreadBadgeEnabled) {
-                        snapshot.followedThreadUnread.foldThreadUnreadByParent()
-                    } else {
-                        emptyMap<ChannelId, HomeParentThreadUnread>()
-                    }
+                remember(snapshot.followedThreadUnread) {
+                    snapshot.followedThreadUnread.foldThreadUnreadByParent()
                 }
             // Agent Lounge v0: a Lounge joined here (your first post) shows its row without a Home reload.
             val knownAgentLounges by RaftAgentLounges.lounges.collectAsState()
@@ -12454,12 +12423,9 @@ private fun SharedHomeScreen(
                         }
                     )
                 },
-                onMarkConversationReadAll =
-                    if (threadUnreadBadgeEnabled && sidebarMarkAllReadEnabled) {
-                        { conversationId -> onIntent(SharedHomeIntent.MarkConversationReadAll(conversationId)) }
-                    } else {
-                        null
-                    },
+                onMarkConversationReadAll = { conversationId ->
+                    onIntent(SharedHomeIntent.MarkConversationReadAll(conversationId))
+                },
                 onChannelActivityMuteToggle = { conversationId, muted ->
                     onIntent(SharedHomeIntent.SetChannelActivityMuted(conversationId, muted))
                 },
@@ -16512,8 +16478,8 @@ internal data class SharedHomeConversationRowProjector(
     /** task #166: cold-start hints from [SharedHomeContentState.Content.displayRowHints]. */
     val restoredRowHints: Map<String, HomeRowRestoredHint> = emptyMap(),
     /**
-     * [HomeSnapshot.followedThreadUnread] folded per parent channel. Empty when the server gates the
-     * thread mark off (web `thread_unread_badge_v0`), which hides both the count and the thread's @.
+     * [HomeSnapshot.followedThreadUnread] folded per parent channel (web `threadUnread`): the row's
+     * thread count and the thread's @.
      */
     val threadUnreadByParent: Map<ChannelId, HomeParentThreadUnread> = emptyMap(),
     /** [HomeSnapshot.markedUnreadIds]: rows marked unread with no count (botiverse/slock #11795). */

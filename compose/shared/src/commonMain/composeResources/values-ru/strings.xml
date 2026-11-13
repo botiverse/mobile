@@ -184,7 +184,6 @@
     <string name="settings_account_delete">Удалить аккаунт</string>
     <string name="settings_account_delete_detail">Запросить безвозвратное удаление аккаунта Raft и личных данных.</string>
     <string name="settings_account_delete_action">Удалить аккаунт</string>
-    <string name="settings_account_delete_title">Удалить аккаунт?</string>
     <string name="settings_step_up_title">Подтвердите, что это вы</string>
     <string name="settings_step_up_description">Чтобы изменить способ входа, нужно заново пройти второй шаг. Подтверждение действует 10 минут.</string>
     <string name="settings_step_up_generic_description">Для этого нужно заново пройти второй шаг. Подтверждение действует 10 минут.</string>
@@ -204,11 +203,6 @@
     <string name="settings_step_up_sign_in_again">Войти снова</string>
     <string name="settings_step_up_passkey_only">Внесите изменение в веб-версии Raft и подтвердите его ключом доступа.</string>
     <string name="settings_step_up_failed">Не удалось подтвердить. Попробуйте ещё раз.</string>
-    <string name="settings_account_delete_message">Мы удалим ваш аккаунт и личные данные (профиль, адрес электронной почты, аватар и способы входа) в течение %1$d дн. Сообщения, которые вы отправили в каналы, останутся, но вместо вашего имени будет показано «Удалённый пользователь». Когда удаление завершится, мы сообщим вам по электронной почте.</string>
-    <string name="settings_account_delete_confirm">Запросить удаление</string>
-    <string name="settings_account_delete_requesting">Отправка запроса…</string>
-    <string name="settings_account_delete_requested">Запрос на удаление отправлен. Мы напишем вам в течение %1$d дн.</string>
-    <string name="settings_account_delete_failed">Не удалось отправить запрос на удаление. Попробуйте ещё раз.</string>
     <string name="settings_usage_data_title">Передавать данные об использовании</string>
     <string name="settings_account_login_security_title">Вход и безопасность</string>
     <string name="settings_account_two_step_title">Двухэтапная аутентификация</string>

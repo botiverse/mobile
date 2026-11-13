@@ -98,7 +98,6 @@ import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.ReadStateV1ProductionCanary
 import build.raft.app.network.sync.ReadStateV1DestinationPublication
 import build.raft.app.network.sync.ProcessReadStateV1DiagnosticOverride
-import build.raft.app.network.sync.DiagnosticFeatureFlagScope
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.network.sync.SqlDelightReadStateV1Store
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
@@ -967,10 +966,10 @@ internal class RaftSharedStoreProvider private constructor(
         )
     }
 
-    /** Whether [requestSyncChangesPull] would pull [serverId] now (signed in, selected, flag on). */
+    /** Whether [requestSyncChangesPull] would pull [serverId] now (signed in, selected). */
     internal fun syncChangesPullAllowed(serverId: String): Boolean {
         val scope = currentSyncScope(serverId) ?: return false
-        return scopesForServer(scope.serverId).isNotEmpty() && syncChangesEnabled(scope)
+        return scopesForServer(scope.serverId).isNotEmpty()
     }
 
     /** The one retry after a first transient pull failure, per scope (#proj-mobile:#112). */
@@ -1001,20 +1000,9 @@ internal class RaftSharedStoreProvider private constructor(
         return RaftSyncScope.of(context.environmentId, context.accountId, serverId)
     }
 
-    private fun syncChangesEnabled(scope: RaftSyncScope): Boolean {
-        val serverEffective =
-            serverFeatureFlags.isEnabled(ServerId(scope.serverId), MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY)
-        return ProcessDiagnosticFeatureFlagOverrides.registry
-            .decide(
-                key = MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY,
-                serverEffective = serverEffective,
-                scope = DiagnosticFeatureFlagScope(scope.environmentId, scope.accountId, scope.serverId),
-            ).finalEffective
-    }
-
     /**
      * Pulls [serverId]'s changes since its cursor ([RaftSyncChangesEngine]) when it is a server a shell
-     * has selected (other servers keep their summary fetch) and `mobile_sync_changes_v0` is on.
+     * has selected (other servers keep their summary fetch).
      * Triggers: socket (re)connect, foreground return, server select. False when skipped.
      *
      * [onFailed] runs when the pull failed and dropped the cursor
@@ -1035,7 +1023,6 @@ internal class RaftSharedStoreProvider private constructor(
     ): Boolean {
         val scope = currentSyncScope(serverId) ?: return false
         if (scopesForServer(scope.serverId).isEmpty()) return false
-        if (!syncChangesEnabled(scope)) return false
         // A normal trigger pulling first makes a waiting retry moot (#proj-mobile:#112).
         if (!transientRetry) syncTransientRetry.onTriggerPull(scope)
         val job =

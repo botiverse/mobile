@@ -93,24 +93,19 @@ class ThreadActionCardSpecStoreTest {
     }
 
     @Test
-    fun theSpecCardRendersOnlyWithTheFlagOnForAReadableCardWithoutATypedOnlyType() {
+    fun theSpecCardRendersForAReadableCardWithoutATypedOnlyType() {
         val withSpec = card(spec = cardJson("go" to execute, "up" to """{"kind":"open","intent":"upgrade_dialog"}"""))
-        // Flag off: the legacy card, whatever the card carries.
-        assertNull(withSpec.actionCardSpecToRender(specEnabled = false, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
-        // Flag on: the stripped spec; the App has no upgrade dialog, so that Button opens in web.
-        val rendered = assertNotNull(withSpec.actionCardSpecToRender(specEnabled = true, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
+        // The stripped spec; the App has no upgrade dialog, so that Button opens in web.
+        val rendered = assertNotNull(withSpec.actionCardSpecToRender(capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
         val up = rendered.spec.element("up") as ActionCardSpecButton
         assertEquals(ActionCardSpecAction.OpenInWeb to ACTION_CARD_OPEN_IN_WEB_LABEL, up.action to up.label)
         assertEquals(ActionCardSpecAction.Execute(), (rendered.spec.element("go") as ActionCardSpecButton).action)
         // No spec, an unreadable one, or a type whose typed card shows more: the legacy card.
-        assertNull(card().actionCardSpecToRender(true, RAFT_APP_ACTION_CARD_CAPABILITIES))
-        assertNull(card(spec = cardJson("go" to execute).replace("action-card.v1", "action-card.v9")).actionCardSpecToRender(true, RAFT_APP_ACTION_CARD_CAPABILITIES))
+        assertNull(card().actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES))
+        assertNull(card(spec = cardJson("go" to execute).replace("action-card.v1", "action-card.v9")).actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES))
         for (type in ThreadActionCardTypedOnlyTypes) {
-            assertNull(card(type = type, spec = cardJson("go" to execute)).actionCardSpecToRender(true, RAFT_APP_ACTION_CARD_CAPABILITIES), type)
+            assertNull(card(type = type, spec = cardJson("go" to execute)).actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES), type)
         }
-        // The flag is the card's own server's, else the viewer's.
-        assertEquals("card-server", card().copy(sourceServerId = "card-server").actionCardSpecFlagServerId("viewer"))
-        assertEquals("viewer", card().actionCardSpecFlagServerId("viewer"))
     }
 
     @Test
@@ -178,12 +173,12 @@ class ThreadActionCardSpecStoreTest {
         val createChannel = """{"kind":"open","intent":"create_channel"}"""
         val createAgent = """{"kind":"open","intent":"create_agent"}"""
         val json = cardJson("chan" to createChannel, "agent" to createAgent)
-        val onChannelCard = assertNotNull(card(type = "channel:create", spec = json).actionCardSpecToRender(true, RAFT_APP_ACTION_CARD_CAPABILITIES))
+        val onChannelCard = assertNotNull(card(type = "channel:create", spec = json).actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES))
         assertEquals(ActionCardSpecAction.Open(ActionCardSpecIntent.CreateChannel), (onChannelCard.spec.element("chan") as ActionCardSpecButton).action)
         // Another type's dialog: "Open in web", with that label, not the spec's.
         val other = onChannelCard.spec.element("agent") as ActionCardSpecButton
         assertEquals(ActionCardSpecAction.OpenInWeb to ACTION_CARD_OPEN_IN_WEB_LABEL, other.action to other.label)
-        val onAgentCard = assertNotNull(card(type = "agent:create", spec = json).actionCardSpecToRender(true, RAFT_APP_ACTION_CARD_CAPABILITIES))
+        val onAgentCard = assertNotNull(card(type = "agent:create", spec = json).actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES))
         assertEquals(ActionCardSpecAction.OpenInWeb, (onAgentCard.spec.element("chan") as ActionCardSpecButton).action)
         assertEquals(ActionCardSpecAction.Open(ActionCardSpecIntent.CreateAgent), (onAgentCard.spec.element("agent") as ActionCardSpecButton).action)
         assertEquals(

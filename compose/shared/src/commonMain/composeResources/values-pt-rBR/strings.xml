@@ -184,7 +184,6 @@
     <string name="settings_account_delete">Excluir conta</string>
     <string name="settings_account_delete_detail">Peça a exclusão permanente da sua conta do Raft e dos seus dados pessoais.</string>
     <string name="settings_account_delete_action">Excluir conta</string>
-    <string name="settings_account_delete_title">Excluir sua conta?</string>
     <string name="settings_step_up_title">Confirme que é você</string>
     <string name="settings_step_up_description">Para alterar a forma de entrar, é preciso passar pela segunda etapa de novo. A verificação vale por 10 minutos.</string>
     <string name="settings_step_up_generic_description">Esta ação exige passar pela segunda etapa de novo. A verificação vale por 10 minutos.</string>
@@ -204,11 +203,6 @@
     <string name="settings_step_up_sign_in_again">Entrar novamente</string>
     <string name="settings_step_up_passkey_only">Faça essa alteração no Raft pela web e confirme com sua chave de acesso.</string>
     <string name="settings_step_up_failed">Não foi possível verificar. Tente novamente.</string>
-    <string name="settings_account_delete_message">Vamos excluir sua conta e seus dados pessoais (perfil, e-mail, avatar e métodos de login) em até %1$d dias. As mensagens que você enviou em canais compartilhados permanecem, exibidas como “Usuário excluído”. Enviaremos um e-mail quando terminarmos.</string>
-    <string name="settings_account_delete_confirm">Solicitar exclusão</string>
-    <string name="settings_account_delete_requesting">Solicitando…</string>
-    <string name="settings_account_delete_requested">Exclusão solicitada. Enviaremos um e-mail em até %1$d dias.</string>
-    <string name="settings_account_delete_failed">Não foi possível enviar sua solicitação de exclusão. Tente novamente.</string>
     <string name="settings_usage_data_title">Compartilhar dados de uso</string>
     <string name="settings_account_login_security_title">Login e segurança</string>
     <string name="settings_account_two_step_title">Verificação em duas etapas</string>

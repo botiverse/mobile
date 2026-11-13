@@ -43,8 +43,6 @@ internal data class RaftSettingsSearchContext(
     val rowKeys: List<String>,
     /** The current server role, `owner` / `admin` / `member` / `guest`; null without a server. */
     val role: String? = null,
-    /** Account > Delete account has a row ([settingsAccountDeletionEntry] is not Hidden). */
-    val accountDeletion: Boolean = false,
     /** `public_server_v0` on for the current server (Server > Public access, owner only). */
     val publicServer: Boolean = false,
     /** `server_sso_v1` on for the current server (Administration > Single sign-on, admins). */
@@ -110,7 +108,6 @@ internal val RaftSettingsSearchEntries: List<RaftSettingsSearchEntry> =
             "account",
             words(listOf("remove account", "close account"), listOf("删除账号", "注销账号")),
             Account,
-            shown = { it.accountDeletion },
         ),
         RaftSettingsSearchEntry(
             "display-language",

@@ -184,7 +184,6 @@
     <string name="settings_account_delete">계정 삭제</string>
     <string name="settings_account_delete_detail">Raft 계정과 개인 데이터의 영구 삭제를 요청해요.</string>
     <string name="settings_account_delete_action">계정 삭제</string>
-    <string name="settings_account_delete_title">계정을 삭제할까요?</string>
     <string name="settings_step_up_title">본인 확인</string>
     <string name="settings_step_up_description">로그인 방식을 변경하려면 2단계 인증을 다시 해야 해요. 인증은 10분 동안 유지돼요.</string>
     <string name="settings_step_up_generic_description">이 작업을 하려면 2단계 인증을 다시 해야 해요. 인증은 10분 동안 유지돼요.</string>
@@ -204,11 +203,6 @@
     <string name="settings_step_up_sign_in_again">다시 로그인</string>
     <string name="settings_step_up_passkey_only">웹의 Raft에서 변경하고 패스키로 확인해 주세요.</string>
     <string name="settings_step_up_failed">확인하지 못했어요. 다시 시도해 주세요.</string>
-    <string name="settings_account_delete_message">%1$d일 이내에 계정과 개인 데이터(프로필, 이메일, 아바타, 로그인 방법)를 삭제해요. 공유 채널에 보낸 메시지는 남아 있으며 ‘삭제된 사용자’로 표시돼요. 삭제가 완료되면 이메일로 알려 드릴게요.</string>
-    <string name="settings_account_delete_confirm">삭제 요청</string>
-    <string name="settings_account_delete_requesting">요청 중…</string>
-    <string name="settings_account_delete_requested">삭제를 요청했어요. %1$d일 이내에 이메일로 알려 드릴게요.</string>
-    <string name="settings_account_delete_failed">삭제 요청을 보내지 못했어요. 다시 시도해 주세요.</string>
     <string name="settings_usage_data_title">사용 데이터 공유</string>
     <string name="settings_account_login_security_title">로그인 및 보안</string>
     <string name="settings_account_two_step_title">2단계 인증</string>

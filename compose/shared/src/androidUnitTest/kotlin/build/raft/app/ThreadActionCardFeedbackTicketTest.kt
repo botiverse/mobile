@@ -83,7 +83,7 @@ class ThreadActionCardFeedbackTicketTest {
     }
 
     private fun ThreadActionCard.render(visible: Boolean, capabilities: List<String> = RAFT_APP_ACTION_CARD_CAPABILITIES) =
-        assertNotNull(actionCardSpecToRender(specEnabled = true, capabilities = capabilities, feedbackTicketVisible = visible))
+        assertNotNull(actionCardSpecToRender(capabilities = capabilities, feedbackTicketVisible = visible))
 
     @Test
     fun theAppDeclaresTheIntentOnlyForFeedbackCardsAndKeepsTheButtonThere() = runTest {

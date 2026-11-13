@@ -47,7 +47,7 @@ private suspend fun RaftNetworkClient.markChannelReadAll(
 
 /**
  * Sidebar "Mark All as Read" (slock `packages/server/src/routes/channels.ts`
- * `POST /:id/conversation-read-all`, behind `sidebar_mark_all_read_v0`): reads the channel and its
+ * `POST /:id/conversation-read-all`): reads the channel and its
  * active followed threads at one frontier. No request body. The response
  * `{ ok, serverId, markedCount, scopes: [{ scopeId, maxReadSeq, readStateVersion }] }` is the same
  * read-ack envelope [parseReadReceiptResult] reads for `inbox/read-all`.

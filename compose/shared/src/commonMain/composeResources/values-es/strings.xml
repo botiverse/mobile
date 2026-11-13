@@ -184,7 +184,6 @@
     <string name="settings_account_delete">Eliminar cuenta</string>
     <string name="settings_account_delete_detail">Solicítanos eliminar de forma permanente tu cuenta de Raft y tus datos personales.</string>
     <string name="settings_account_delete_action">Eliminar cuenta</string>
-    <string name="settings_account_delete_title">¿Eliminar tu cuenta?</string>
     <string name="settings_step_up_title">Confirma que eres tú</string>
     <string name="settings_step_up_description">Para cambiar cómo inicias sesión, tienes que volver a completar el segundo paso. Es válido durante 10 minutos.</string>
     <string name="settings_step_up_generic_description">Para esto tienes que volver a completar el segundo paso. Es válido durante 10 minutos.</string>
@@ -204,11 +203,6 @@
     <string name="settings_step_up_sign_in_again">Volver a iniciar sesión</string>
     <string name="settings_step_up_passkey_only">Haz este cambio en Raft en la web y confírmalo con tu llave de acceso.</string>
     <string name="settings_step_up_failed">No se pudo verificar. Inténtalo de nuevo.</string>
-    <string name="settings_account_delete_message">Eliminaremos tu cuenta y tus datos personales (perfil, correo, avatar y métodos de inicio de sesión) en un plazo de %1$d días. Los mensajes que enviaste en canales compartidos se conservan y se muestran como “Usuario eliminado”. Te enviaremos un correo cuando termine el proceso.</string>
-    <string name="settings_account_delete_confirm">Solicitar eliminación</string>
-    <string name="settings_account_delete_requesting">Solicitando…</string>
-    <string name="settings_account_delete_requested">Se solicitó la eliminación. Te enviaremos un correo en un plazo de %1$d días.</string>
-    <string name="settings_account_delete_failed">No pudimos enviar tu solicitud de eliminación. Inténtalo de nuevo.</string>
     <string name="settings_usage_data_title">Compartir datos de uso</string>
     <string name="settings_account_login_security_title">Inicio de sesión y seguridad</string>
     <string name="settings_account_two_step_title">Verificación en dos pasos</string>

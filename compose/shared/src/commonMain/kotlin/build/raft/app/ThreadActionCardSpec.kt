@@ -44,28 +44,15 @@ import kotlinx.coroutines.launch
 // Which card renders (task #39, A4).
 
 /**
- * Types that keep their typed card with the flag on (web `TYPED_CARD_ONLY_ACTION_TYPES`): the MCP
+ * Types that keep their typed card (web `TYPED_CARD_ONLY_ACTION_TYPES`): the MCP
  * connect picker, and the install confirmation that shows the App's prompt text and turns its 409
  * refusals into copy (ThreadInstallAppActionDialog); the spec has neither yet.
  */
 internal val ThreadActionCardTypedOnlyTypes: Set<String> = setOf("integration:connect_mcp", "integration:install_marketplace_app")
 
 /**
- * Types that exist only as a spec card (web `SPEC_ONLY_ACTION_TYPES`, slock #11937): server-built,
- * no typed card, so drawn from their spec whatever the `action_card_spec` flag (the legacy
- * presentation when the spec does not read). `agent:approve_call`: a hosted agent's held call.
- */
-internal val ThreadActionCardSpecOnlyTypes: Set<String> = setOf("agent:approve_call")
-
-/** The server whose `action_card_spec` flag decides for [this] card: its own, else the viewer's (web `ActionCard`). */
-internal fun ThreadActionCard.actionCardSpecFlagServerId(viewerServerId: String?): String? =
-    sourceServerId?.takeIf { it.isNotBlank() } ?: viewerServerId?.takeIf { it.isNotBlank() }
-
-/**
  * The spec card to draw for [this] card (web `ActionCard` + `readActionCardSpec`), or null for the
- * typed / legacy card exactly as before: the flag is off for the card's server ([specEnabled]),
- * unless its type is spec-only ([ThreadActionCardSpecOnlyTypes]),
- * the card has no `presentation.card` this App can read (A1's read parse; an unknown catalog or
+ * typed / legacy card: the card has no `presentation.card` this App can read (A1's read parse; an unknown catalog or
  * a card that fails it is already null), or its type keeps its typed card
  * ([ThreadActionCardTypedOnlyTypes]). Otherwise the card stripped to [capabilities]: every
  * button this App cannot run is "Open in web". A result's "View in Settings"
@@ -73,12 +60,10 @@ internal fun ThreadActionCard.actionCardSpecFlagServerId(viewerServerId: String?
  * otherwise it is removed, and the viewer sees the summary alone (S0.3: hidden, not "Open in web").
  */
 internal fun ThreadActionCard.actionCardSpecToRender(
-    specEnabled: Boolean,
     capabilities: Collection<String>,
     feedbackTicketVisible: Boolean = false,
     offersUpgrade: Boolean = settingsBillingOffersUpgrade(),
 ): ActionCardSpecCard? {
-    if (!specEnabled && type !in ThreadActionCardSpecOnlyTypes) return null
     if (type in ThreadActionCardTypedOnlyTypes) return null
     val read = presentationCard ?: return null
     // iOS view-only Billing: a seat request's Add Seats or a Pro request's Upgrade would strip to

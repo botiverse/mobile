@@ -39,7 +39,7 @@ class HomeConversationRowProjectorMarksTest {
 
     @Test
     fun gatedOffThreadMarkLeavesOnlyTheRowMention() {
-        // The Home screen passes an empty fold when thread_unread_badge_v0 is off.
+        // An empty fold (no followed-thread unread under this channel).
         val projector = SharedHomeConversationRowProjector()
 
         val item = projector.project(general)
