@@ -622,7 +622,6 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
@@ -9159,8 +9158,21 @@ private fun SharedThreadRouteContentContent(
     val threadMembersServerId = threadPageServerId(currentServerId, storeScope.initialServerId)?.let(::ServerId)
     // Composer attachment uploads belong to the draft, not to this page (artin: "不能背后上传吗"):
     // the process-wide owner keeps them going after the user leaves the conversation, and the
-    // composer that opens this draft again picks up their progress or result.
-    val attachmentUploads = sharedStores.composerDraftUploads.forServer(threadMembersServerId?.value)
+    // composer that opens this draft again picks up their progress or result. Keyed on this page's
+    // own account and server (the shell scope's server, else the page's captured provenance), never
+    // on whichever server the session selects later.
+    val attachmentUploadAccountId = currentSession?.user?.id?.trim()?.takeIf(String::isNotBlank)
+    val attachmentUploadServerId =
+        threadComposerUploadOwnerServerId(
+            shellServerId = storeScope.initialServerId,
+            pageServerId = replyCacheProvenance?.serverId,
+            sessionServerId = currentServerId
+        )
+    val attachmentUploads =
+        sharedStores.composerDraftUploads.forOwner(attachmentUploadAccountId, attachmentUploadServerId)
+    // Until the page knows its account and server it cannot tell a draft-owned upload from an
+    // orphan, so the orphan safety net waits for both.
+    val attachmentUploadOwnerResolved = attachmentUploadAccountId != null && attachmentUploadServerId != null
     val attachmentUploadOrchestrator = attachmentUploads.orchestrator
     val attachmentUploadSemaphore = attachmentUploads.semaphore
     val threadMembersChannelId = baseRenderedPayload.sourceThreadId?.trim()?.takeIf { it.isNotBlank() }?.let(::ChannelId)
@@ -9638,7 +9650,7 @@ private fun SharedThreadRouteContentContent(
     LaunchedEffect(threadInstanceKey) {
         runCatchingPreservingCancellation { dataSource.prefetchAttachmentUploadCapabilities() }
     }
-    LaunchedEffect(composerDraftViewModel, threadInstanceKey) {
+    LaunchedEffect(composerDraftViewModel, threadInstanceKey, attachmentUploads, attachmentUploadOwnerResolved) {
         composerDraftViewModel.state.collect { draftState ->
             val draftKey = normalizeThreadAttachmentUploadDraftKey(draftState.draftKey)
             val previousRestoredKey = restoredAttachmentUploadDraftKey
@@ -9695,6 +9707,7 @@ private fun SharedThreadRouteContentContent(
             // the upload was cancelled) can never finish: fail it (upload_interrupted) so the chip
             // offers Retry with the file registered above, instead of blocking Send forever. The
             // draft's own uploads are left to the applier below.
+            if (!attachmentUploadOwnerResolved) return@collect
             recoverOrphanedThreadComposerUploads(
                 draftKey = draftKey,
                 state = draftState,
@@ -9702,7 +9715,7 @@ private fun SharedThreadRouteContentContent(
                 currentState = { composerDraftViewModel.state.value },
                 orchestrator = attachmentUploadOrchestrator,
                 log = { message -> bridge.logWarn(message) },
-                ownedByDraftUpload = { id -> attachmentUploads.upload(draftKey, id) != null }
+                ownedByDraftUpload = { id -> attachmentUploads.ownsUpload(draftKey, id) }
             )
         }
     }
@@ -11931,9 +11944,10 @@ private fun SharedThreadRouteContentContent(
                 currentState = { composerDraftViewModel.state.value },
                 acceptWithState = composerDraftViewModel::acceptWithState,
                 onAdopted = { upload ->
+                    val file = upload.file
                     threadAttachmentUploadAttemptIdentity(upload.localAttachmentId, draftKey)?.let { identity ->
-                        if (attachmentUploadFilesByLocalId[identity] == null) {
-                            attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId + (identity to upload.file)
+                        if (file != null && attachmentUploadFilesByLocalId[identity] == null) {
+                            attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId + (identity to file)
                         }
                     }
                 },
@@ -20441,6 +20455,19 @@ internal object ThreadComposerRestingHeight {
 }
 
 internal fun ThreadComposerSurface.threadComposerRestingHeightKey(): String = "$kind|$showTaskButton"
+
+/**
+ * The server a page's composer uploads belong to: the page's own (its shell scope's, else the
+ * server its reply cache was captured for), the session's selection only when neither is known.
+ */
+internal fun threadComposerUploadOwnerServerId(
+    shellServerId: String?,
+    pageServerId: String?,
+    sessionServerId: String?
+): String? =
+    listOf(shellServerId, pageServerId, sessionServerId).firstNotNullOfOrNull { id ->
+        id?.trim()?.takeIf(String::isNotBlank)
+    }
 
 /**
  * The server a thread page reads per-server state for (feature flags, member directory): the

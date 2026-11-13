@@ -35,8 +35,11 @@ internal data class RaftComposerDraftUpload(
     val attemptToken: Long,
     /** The row as it was admitted ("uploading"), to show it again if the draft lost it. */
     val row: SharedThreadComposerAttachment,
-    /** The picked file, so a composer that adopts the upload can offer Retry. */
-    val file: PlatformFile,
+    /**
+     * The picked file, so a composer that adopts the upload can offer Retry. Dropped (null) once a
+     * composer took the ready attachments: nothing retries a finished upload.
+     */
+    val file: PlatformFile?,
     /** The admission minted by the composer store that launched the upload. */
     val launchAdmission: SharedThreadComposerAttachmentAdmission,
     val transfer: RaftTransferProgress? = null,
@@ -48,7 +51,7 @@ internal data class RaftComposerDraftUpload(
 }
 
 /**
- * The composer attachment uploads of one server, keyed by draft key (the conversation's channel,
+ * The composer attachment uploads of one account on one server, keyed by draft key (the conversation's channel,
  * thread or DM draft). Lives for the process (see [RaftComposerDraftUploads]); pages subscribe to
  * [byDraft] and never own the jobs.
  *
@@ -57,6 +60,7 @@ internal data class RaftComposerDraftUpload(
  * user removed the tile), [retireDraft] (sent or cleared) and [dispose] (sign-out, server lost).
  */
 internal class RaftComposerServerUploads(
+    val accountId: String,
     val serverId: String,
     processScope: CoroutineScope,
     /** Shared by every server: the process-wide concurrency bound. */
@@ -73,6 +77,18 @@ internal class RaftComposerServerUploads(
 
     fun upload(draftKey: String?, localAttachmentId: String): RaftComposerDraftUpload? =
         uploads(draftKey)[localAttachmentId.trim()]
+
+    /**
+     * Whether something still owns this row's upload, so the orphan safety net must leave the row
+     * alone: the attempt has a result for a composer to apply, or its job is still running. A record
+     * left in flight with no live job (it never reached a result) is not owned: the row is failed as
+     * `upload_interrupted` and offers Retry.
+     */
+    fun ownsUpload(draftKey: String?, localAttachmentId: String): Boolean {
+        val key = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return false
+        val upload = upload(key, localAttachmentId) ?: return false
+        return !upload.inFlight || orchestrator.isActive(upload.localAttachmentId, key)
+    }
 
     /**
      * Starts [block] for [row] of [draftKey] on the process scope. The upload is recorded before the
@@ -102,7 +118,17 @@ internal class RaftComposerServerUploads(
                         ),
                     )
                 }
-            if (recorded) block(attemptToken)
+            if (recorded) {
+                try {
+                    block(attemptToken)
+                } finally {
+                    // The block ended without a result (cancelled by something other than the
+                    // user's remove, or it returned early): the attempt can never finish, so the
+                    // tile offers Retry instead of staying "uploading". No-op once the attempt has
+                    // an outcome, was removed, or a newer attempt of the same id replaced it.
+                    fail(key, id, attemptToken, ThreadComposerUploadInterruptedErrorCode)
+                }
+            }
         }
     }
 
@@ -137,19 +163,36 @@ internal class RaftComposerServerUploads(
     /** A composer store took the terminal outcome of this attempt. */
     fun markDelivered(draftKey: String, localAttachmentId: String, attemptToken: Long) {
         updateAttempt(draftKey, localAttachmentId, attemptToken) { upload ->
-            if (upload.inFlight) upload else upload.copy(delivered = true)
+            when (upload.outcome) {
+                RaftComposerDraftUploadOutcome.InFlight -> upload
+                // The ready attachments are in the draft: the picked file is not needed any more.
+                is RaftComposerDraftUploadOutcome.Succeeded -> upload.copy(delivered = true, file = null)
+                is RaftComposerDraftUploadOutcome.Failed -> upload.copy(delivered = true)
+            }
         }
     }
 
-    /** The user removed the tile: cancel its upload and forget it. */
-    fun remove(draftKey: String?, localAttachmentId: String) {
+    /**
+     * The user removed the tile: cancel its upload and forget it. [attachmentId] is the tile's id:
+     * the local picked id while uploading, or the server attachment id once the upload's ready row
+     * replaced it (the upload is still recorded under the local id).
+     */
+    fun remove(draftKey: String?, attachmentId: String) {
         val key = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return
-        val id = localAttachmentId.trim()
+        val id = attachmentId.trim()
+        if (id.isBlank()) return
         orchestrator.remove(id, key)
         state.update { current ->
             val draft = current[key] ?: return@update current
-            if (id !in draft) return@update current
-            val remaining = draft - id
+            val removed =
+                draft.filter { (localId, upload) ->
+                    localId == id ||
+                        (upload.outcome as? RaftComposerDraftUploadOutcome.Succeeded)
+                            ?.attachments
+                            ?.any { attachment -> attachment.id == id } == true
+                }.keys
+            if (removed.isEmpty()) return@update current
+            val remaining = draft - removed
             if (remaining.isEmpty()) current - key else current + (key to remaining)
         }
     }
@@ -192,7 +235,8 @@ internal class RaftComposerServerUploads(
 }
 
 /**
- * The process owner of composer attachment uploads: one [RaftComposerServerUploads] per server,
+ * The process owner of composer attachment uploads: one [RaftComposerServerUploads] per account
+ * and server,
  * held by the shared app graph (`RaftSharedStores.composerDraftUploads`), so an upload outlives
  * the conversation page that started it. In memory only: a process death loses in-flight uploads
  * and the restored row turns into Retry (`upload_interrupted`).
@@ -202,27 +246,37 @@ internal class RaftComposerDraftUploads(
     concurrencyLimit: Int = RaftComposerDraftUploadConcurrencyLimit,
 ) {
     private val lock = SynchronizedObject()
-    private val servers = mutableMapOf<String, RaftComposerServerUploads>()
+    private val owners = mutableMapOf<Pair<String, String>, RaftComposerServerUploads>()
     private val semaphore = Semaphore(concurrencyLimit)
 
-    /** [serverId]'s uploads; a blank id (server not known yet) has its own bucket. */
-    fun forServer(serverId: String?): RaftComposerServerUploads {
-        val key = serverId?.trim().orEmpty()
+    /**
+     * The uploads of [accountId] on [serverId], the conversation page's own account and server.
+     * Keyed by the account too: a session that changes identity without a sign-out (no terminal
+     * cleanup, so no [cancelAll]) must never show the previous account's uploads. A blank part (not
+     * known yet) has its own bucket.
+     */
+    fun forOwner(accountId: String?, serverId: String?): RaftComposerServerUploads {
+        val account = accountId?.trim().orEmpty()
+        val server = serverId?.trim().orEmpty()
         return synchronized(lock) {
-            servers.getOrPut(key) { RaftComposerServerUploads(key, processScope, semaphore) }
+            owners.getOrPut(account to server) { RaftComposerServerUploads(account, server, processScope, semaphore) }
         }
     }
 
-    /** Sign-out: every server's uploads are cancelled and forgotten. */
+    /** Sign-out: every account's and server's uploads are cancelled and forgotten. */
     fun cancelAll() {
-        val disposed = synchronized(lock) { servers.values.toList().also { servers.clear() } }
+        val disposed = synchronized(lock) { owners.values.toList().also { owners.clear() } }
         disposed.forEach(RaftComposerServerUploads::dispose)
     }
 
     /** The account lost [serverId] (removed, server deleted): its uploads are cancelled. */
     fun dropServer(serverId: String) {
-        val disposed = synchronized(lock) { servers.remove(serverId.trim()) }
-        disposed?.dispose()
+        val server = serverId.trim()
+        val disposed =
+            synchronized(lock) {
+                owners.keys.filter { (_, ownerServer) -> ownerServer == server }.mapNotNull { key -> owners.remove(key) }
+            }
+        disposed.forEach(RaftComposerServerUploads::dispose)
     }
 }
 
