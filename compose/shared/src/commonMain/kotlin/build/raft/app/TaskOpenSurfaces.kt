@@ -597,7 +597,11 @@ internal fun TaskPendingConversationPage(
             headRoute(TaskHeadPlacement.PullDown)
         }
         if (joined == false) {
-            ThreadJoinFooter(label = stringResource(Res.string.task_conversation_join_to_reply), onJoin = onJoin)
+            ThreadJoinFooter(
+                label = stringResource(Res.string.task_conversation_join_to_reply),
+                onJoin = onJoin,
+                joining = ThreadChannelJoinsInFlight.isJoining(task.channelId),
+            )
         } else {
             // The conversation page's own composer in its dock: multi-line, paste, its send button.
             ThreadComposerDock {

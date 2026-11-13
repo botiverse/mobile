@@ -528,6 +528,7 @@
     <string name="thread_parent_authority_resolving">권한을 확인하는 중이라 지금은 보낼 수 없어요</string>
     <string name="thread_parent_channel_deleted_composer">채널이 삭제되어 보낼 수 없어요</string>
     <string name="thread_action_join_channel">채널 참여</string>
+    <string name="thread_action_joining">참여 중…</string>
     <string name="thread_timestamp_now">방금</string>
     <string name="relative_time_unknown">알 수 없는 시간</string>
     <string name="relative_time_toggle_show_absolute">정확한 시간 표시</string>
@@ -3325,8 +3326,6 @@
     <string name="app_update_download_paused">다운로드 일시 중지됨 — 재개 대기 중</string>
     <string name="app_update_download_failed">다운로드하지 못했어요. 다시 시도를 눌러 다시 다운로드하세요.</string>
     <string name="thread_audio_playback_position">재생 위치</string>
-    <string name="thread_focus_mode_focus">집중 모드</string>
-    <string name="thread_focus_mode_standard">일반 모드</string>
     <string name="thread_focus_mode_menu_more">스레드 패널 메뉴</string>
     <string name="member_runtime_usage_attention">사용량 확인 필요</string>
     <string name="runtime_quota_window_five_hour">5시간</string>
