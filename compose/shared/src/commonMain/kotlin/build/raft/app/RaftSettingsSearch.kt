@@ -49,6 +49,12 @@ internal data class RaftSettingsSearchContext(
     val publicServer: Boolean = false,
     /** `server_sso_v1` on for the current server (Administration > Single sign-on, admins). */
     val serverSso: Boolean = false,
+    /**
+     * Notifications > Replies in threads I follow has a row: the loaded account notification
+     * settings carry `followedThreadReplies` (`RaftNotificationAccountSettings.followedThreadRepliesSupported`).
+     * Not loaded yet, or a server that does not send the field: no row, so nothing to find.
+     */
+    val followedThreadReplies: Boolean = false,
 ) {
     internal val normalizedRole: String? get() = role?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
 
@@ -204,7 +210,8 @@ internal val RaftSettingsSearchEntries: List<RaftSettingsSearchEntry> =
             words(listOf("sound", "ringtone", "audio"), listOf("提示音", "声音", "铃声")),
             Notifications,
         ),
-        // Added on the web in botiverse/slock #14677 (9b284c6d); its en / zh-cn aliases.
+        // Added on the web in botiverse/slock #14677 (9b284c6d); its en / zh-cn aliases. The row shows
+        // only while the loaded settings carry the field (SettingsNotificationsAccountSections).
         RaftSettingsSearchEntry(
             "notification-followed-thread-replies",
             "notifications",
@@ -213,6 +220,7 @@ internal val RaftSettingsSearchEntries: List<RaftSettingsSearchEntry> =
                 listOf("消息列通知", "关注的消息列", "任务回复", "只通知@我", "所有设备"),
             ),
             Notifications,
+            shown = { it.followedThreadReplies },
         ),
         RaftSettingsSearchEntry(
             "theme",

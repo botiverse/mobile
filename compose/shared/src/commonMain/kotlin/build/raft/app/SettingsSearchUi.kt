@@ -31,6 +31,7 @@ import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.PUBLIC_SERVER_FEATURE_FLAG_KEY
+import build.raft.app.data.RaftNotificationAccountSettings
 import build.raft.app.data.SERVER_SSO_FEATURE_FLAG_KEY
 import build.raft.app.model.ServerId
 import build.raft.app.data.SharedServerFeatureFlags
@@ -243,13 +244,15 @@ internal class SettingsSearchHost(
 /**
  * Who is searching, from the signed-in [session] and the current server's flags (its rows are the
  * list's own, filled in by [rememberSettingsSearchResults]): the role, whether Account has Delete
- * account ([settingsAccountDeletionEntry]), and the flags Server > Public access and
- * Administration > Single sign-on show by.
+ * account ([settingsAccountDeletionEntry]), the flags Server > Public access and
+ * Administration > Single sign-on show by, and whether the loaded [notificationSettings] carry
+ * Replies in threads I follow (null: not loaded, no row).
  */
 internal fun settingsSearchContext(
     session: StoredAuthSession?,
     flags: SharedServerFeatureFlags,
     serverId: String?,
+    notificationSettings: RaftNotificationAccountSettings? = null,
     ticketSupported: Boolean = raftPlatformSupportsHandsFeedbackSubmit(),
 ): RaftSettingsSearchContext {
     val server = serverId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId)
@@ -262,6 +265,7 @@ internal fun settingsSearchContext(
                 SettingsAccountDeletionEntry.Hidden,
         publicServer = flag(PUBLIC_SERVER_FEATURE_FLAG_KEY),
         serverSso = flag(SERVER_SSO_FEATURE_FLAG_KEY),
+        followedThreadReplies = notificationSettings?.followedThreadRepliesSupported == true,
     )
 }
 

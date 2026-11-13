@@ -8985,9 +8985,19 @@ private fun RaftAppShellReadyContent(
                         // stays while Settings stays on one server; who can find what follows the
                         // role and the server flags the pages read themselves.
                         val settingsSearchState = rememberSettingsSearchState(readyServerId)
+                        // Replies in threads I follow is findable only while its row shows: the
+                        // loaded account settings carry the field (none before they load).
+                        val settingsNotificationAccount by
+                            build.raft.app.data.RaftNotificationAccountSettingsStore.state.collectAsState()
+                        val settingsNotificationSettings = settingsNotificationAccount.settings
                         val settingsSearchContext =
-                            remember(settingsSession, readyServerId, settingsFeatureFlagRevision) {
-                                settingsSearchContext(settingsSession, sharedStores.serverFeatureFlags, readyServerId)
+                            remember(settingsSession, readyServerId, settingsFeatureFlagRevision, settingsNotificationSettings) {
+                                settingsSearchContext(
+                                    settingsSession,
+                                    sharedStores.serverFeatureFlags,
+                                    readyServerId,
+                                    notificationSettings = settingsNotificationSettings,
+                                )
                             }
                         val settingsSearchServerName = settingsSession?.settingsThemeServer()?.name.orEmpty()
                         if (navRailActive) {
