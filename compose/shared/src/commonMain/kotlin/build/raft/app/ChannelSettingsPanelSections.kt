@@ -153,6 +153,8 @@ internal fun ChannelSectionSelect(
     onMove: (List<ChannelSectionMove>) -> Unit,
     onCreate: (name: String, emoji: String?) -> Unit,
     label: String,
+    /** At a wide settings row's end: as wide as its longest option (raft-ui `SelectTrigger fit`). */
+    fit: Boolean = false,
 ) {
     var creating by remember { mutableStateOf(false) }
     val homeLabel =
@@ -187,6 +189,7 @@ internal fun ChannelSectionSelect(
         optionLabel = labelOf,
         enabled = enabled,
         label = label,
+        fit = fit,
     )
     if (creating) {
         RaftHomeSectionDialog(

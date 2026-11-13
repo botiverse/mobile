@@ -318,7 +318,8 @@ RAFT_UI_ICON_SOURCE_DIR = os.path.join(SCRIPT_DIR, "assets", "raft-ui")
 # Icons drawn by raft-ui where Lucide has none (raft-design packages/ui/src/components/icons:
 # conversation-icons.tsx ThreadIcon, action-icons.tsx Follow/UnfollowThreadIcon,
 # Follow/UnfollowArtifactIcon, ReopenTaskIcon, object-icons.tsx ArtifactIcon (Lucide file-code
-# since raft-design #1052), conversation-icons.tsx MessageIcon / DirectMessageIcon),
+# since raft-design #1052, its page drawn 2 wider, x 3 to 21, since #1210 / raft-ui 0.95.1; the
+# Follow/Unfollow pair share that page), conversation-icons.tsx MessageIcon / DirectMessageIcon),
 # copied path for path so the app's menus draw what the web's do.
 CUSTOM_ICONS = {
     "mosaic": os.path.join(BRAND_ASSET_SOURCE_DIR, "mosaic.svg"),

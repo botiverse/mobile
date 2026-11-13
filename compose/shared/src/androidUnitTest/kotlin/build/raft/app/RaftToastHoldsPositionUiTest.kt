@@ -16,6 +16,7 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftToastHostState
@@ -23,6 +24,7 @@ import build.raft.designsystem.components.RaftToastHost
 import build.raft.designsystem.components.RaftToastHostState
 import build.raft.designsystem.components.raftToastAvoid
 import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -58,9 +60,14 @@ class RaftToastHoldsPositionUiTest {
         }
     }
 
-    private fun ComposeUiTest.host(state: RaftToastHostState, keyboard: () -> Dp = { 0.dp }, barHeight: () -> Dp) {
+    private fun ComposeUiTest.host(
+        state: RaftToastHostState,
+        keyboard: () -> Dp = { 0.dp },
+        scale: RaftScale = RaftScale.Compact,
+        barHeight: () -> Dp,
+    ) {
         setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
+            RaftTheme(appearance = RaftAppearance.Light, scale = scale) {
                 CompositionLocalProvider(LocalRaftToastHostState provides state) {
                     Box(Modifier.fillMaxSize()) {
                         val height = barHeight()
@@ -118,6 +125,22 @@ class RaftToastHoldsPositionUiTest {
         bar = 0.dp
         settle()
         assertEquals(above, bottomOf("First"), "and it does not drop again")
+    }
+
+    /**
+     * raft-design #1217: a wide window (a tablet) keeps the toast above the composer as a phone does,
+     * not at the bottom of the window where it covered the composer while typing.
+     */
+    @Test
+    fun aWideWindowsToastSitsAboveTheComposerToo() = runRobolectricComposeUiTest {
+        val state = RaftToastHostState()
+        mainClock.autoAdvance = false
+        host(state, scale = RaftScale.Wide) { 120.dp }
+        state.show("Wide")
+        settle()
+        val composerTop = onRoot().getBoundsInRoot().bottom - 120.dp
+        // The text sits inside the toast's padding: its bottom is at least 16dp above the composer.
+        assertTrue(bottomOf("Wide") <= composerTop - 16.dp, "above the composer, not over it at the window's bottom")
     }
 
     /** A toast shown while typing: above the composer on the keyboard, then back down with it. */

@@ -6,12 +6,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -30,11 +33,13 @@ import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -95,6 +100,13 @@ internal fun raftSelectTriggerLook(
  * Screen readers hear a drop-down list named by the field's label (or [label]) with the
  * value, or the placeholder when empty, and, when [expanded] is given, whether it is
  * expanded (the expand / collapse actions; [onCollapse] closes it).
+ *
+ * By default the trigger fills its width. With [fit] (raft-ui 0.95.1 `SelectTrigger fit`, for a
+ * select at a settings row's end) it is as wide as the longest of [fitLabels] (every option's
+ * label, at the value's weight) and the [placeholder], at least [RaftSelectFitMinWidth] and at
+ * most [RaftSelectFitMaxWidth], past which the value ends in an ellipsis. The width comes from
+ * every label, so it stays the same whichever value is chosen; without [fitLabels] it stays at
+ * the minimum (as raft-ui without `items`).
  */
 @Composable
 fun RaftSelectTrigger(
@@ -111,6 +123,8 @@ fun RaftSelectTrigger(
     interactionSource: MutableInteractionSource? = null,
     /** A raft-ui `Badge.Experimental` after the value ([RaftComboboxOption.badge] of the chosen option). */
     badge: String? = null,
+    fit: Boolean = false,
+    fitLabels: List<String> = emptyList(),
 ) {
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -127,9 +141,12 @@ fun RaftSelectTrigger(
     // leaves room for a large font scale on a phone; on a desktop the 22dp line keeps 6dp too.
     val controlHeight = RaftTheme.controls.height
     val padY = ((controlHeight - 22.dp) / 2).coerceAtMost(6.dp)
+    val valueStyle = if (field.inField) base else base.copy(fontWeight = FontWeight.SemiBold)
+    val placeholderStyle = if (field.inField) base else base.copy(fontWeight = FontWeight.Medium)
     Row(
         modifier
-            .fillMaxWidth()
+            // raft-ui `fit`: `w-auto min-w-44 max-w-80`, the width the longest label asks for.
+            .then(if (fit) Modifier.widthIn(min = RaftSelectFitMinWidth, max = RaftSelectFitMaxWidth).width(IntrinsicSize.Max) else Modifier.fillMaxWidth())
             // A minimum, so a large font scale grows the trigger instead of clipping its text.
             .heightIn(min = controlHeight)
             .raftFocusRing(focused, RaftRadius.Control, colors)
@@ -161,18 +178,64 @@ fun RaftSelectTrigger(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RaftText(
-                shown,
-                Modifier.weight(1f, fill = false),
-                // In a field the value and placeholder keep `font-field` (400), like an input's.
-                style = if (field.inField) base else base.copy(fontWeight = if (value != null) FontWeight.SemiBold else FontWeight.Medium),
-                color = look.ink,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // In a field the value and placeholder keep `font-field` (400), like an input's.
+            val shownStyle = if (value != null) valueStyle else placeholderStyle
+            if (fit) {
+                RaftSelectFitValue(
+                    shown = shown,
+                    shownStyle = shownStyle,
+                    color = look.ink,
+                    sizers = fitLabels.map { it to valueStyle } + listOfNotNull(placeholder.takeIf { it.isNotEmpty() }?.let { it to placeholderStyle }),
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            } else {
+                RaftText(
+                    shown,
+                    Modifier.weight(1f, fill = false),
+                    style = shownStyle,
+                    color = look.ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             if (badge != null && value != null) RaftExperimentalBadge(badge, enabled = enabled)
         }
         RaftGlyphIcon(RaftGlyph.ChevronDown, size = 16.dp, color = look.chevron)
+    }
+}
+
+/** raft-ui `SelectTrigger fit`: at least 11rem wide. */
+val RaftSelectFitMinWidth: Dp = 176.dp
+
+/** raft-ui `SelectTrigger fit`: at most 20rem wide; a longer value ends in an ellipsis. */
+val RaftSelectFitMaxWidth: Dp = 320.dp
+
+/**
+ * A fit trigger's value (raft-ui `SelectValue` in a `fit` trigger): [shown] in one line, in a box
+ * as wide as the widest of [sizers] (each label at the weight it shows at) and [shown]. The sizers
+ * are only asked for their width: never placed, drawn or read by a screen reader.
+ */
+@Composable
+private fun RaftSelectFitValue(
+    shown: String,
+    shownStyle: TextStyle,
+    color: Color,
+    sizers: List<Pair<String, TextStyle>>,
+    modifier: Modifier = Modifier,
+) {
+    Layout(
+        content = {
+            RaftText(shown, style = shownStyle, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            sizers.forEach { (label, style) ->
+                RaftText(label, Modifier.clearAndSetSemantics {}, style = style, maxLines = 1, softWrap = false)
+            }
+        },
+        modifier = modifier,
+    ) { measurables, constraints ->
+        val widest = measurables.maxOf { it.maxIntrinsicWidth(Constraints.Infinity) }
+        val width = widest.coerceIn(constraints.minWidth, constraints.maxWidth)
+        val value = measurables.first().measure(Constraints(maxWidth = width, maxHeight = constraints.maxHeight))
+        layout(width, value.height) { value.placeRelative(0, 0) }
     }
 }
 
@@ -196,6 +259,8 @@ fun <T> RaftSelect(
     invalid: Boolean = LocalRaftFieldState.current.invalid,
     label: String? = LocalRaftFieldState.current.label,
     optionEnabled: (T) -> Boolean = { true },
+    /** raft-ui `SelectTrigger fit`: the trigger is as wide as its longest option ([RaftSelectTrigger]). */
+    fit: Boolean = false,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var triggerWidth by remember { mutableStateOf(0) }
@@ -213,6 +278,8 @@ fun <T> RaftSelect(
             label = label,
             expanded = expanded,
             onCollapse = { expanded = false },
+            fit = fit,
+            fitLabels = if (fit) options.map(optionLabel) else emptyList(),
         )
         RaftDropdownMenu(
             expanded = expanded,

@@ -31,6 +31,8 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftSelect
+import build.raft.designsystem.components.RaftSelectFitMaxWidth
+import build.raft.designsystem.components.RaftSelectFitMinWidth
 import build.raft.app.data.ChannelSlackBridgeOption
 import build.raft.app.data.ChannelSlackBridgeState
 import build.raft.designsystem.components.RaftTextField
@@ -1882,12 +1884,13 @@ private fun ChannelPreferencesSection(
     ) {
         if (notificationLevelTarget != null) {
             val title = stringResource(Res.string.notification_level_title)
-            ChannelDetailsSelectRow(title = title, divider = false) {
+            ChannelDetailsSelectRow(title = title, divider = false) { fit ->
                 RaftNotificationLevelSelect(
                     target = notificationLevelTarget,
                     enabled = enabled,
                     refresh = refreshNotificationLevels,
                     label = title,
+                    fit = fit,
                     onSetMuted = { next -> if (next != muted && muteSupported && enabled) onToggleMute() },
                 )
             }
@@ -1903,8 +1906,8 @@ private fun ChannelPreferencesSection(
         }
         if (section != null) {
             val title = stringResource(Res.string.channel_details_sidebar_section)
-            ChannelDetailsSelectRow(title = title, divider = true) {
-                ChannelSectionSelect(state = section, enabled = enabled, onMove = onMoveSection, onCreate = onCreateSection, label = title)
+            ChannelDetailsSelectRow(title = title, divider = true) { fit ->
+                ChannelSectionSelect(state = section, enabled = enabled, onMove = onMoveSection, onCreate = onCreateSection, label = title, fit = fit)
             }
         } else {
             ChannelPreferenceRow(
@@ -1956,10 +1959,6 @@ private fun ChannelPreferenceRow(
 /** forms.md (raft-design #1204): a row this wide or wider has its select at its end. */
 internal val ChannelDetailsWideRowMinWidth = 512.dp
 
-/** A select at a wide row's end: as wide as its longest option, 11rem to 20rem. */
-private val ChannelDetailsEndSelectMinWidth = 176.dp
-private val ChannelDetailsEndSelectMaxWidth = 320.dp
-
 /** A select under a narrow row's title: `max-w-sm`. */
 private val ChannelDetailsUnderSelectMaxWidth = 384.dp
 
@@ -1974,7 +1973,10 @@ internal fun channelDetailsSelectAtRowEnd(rowWidth: Dp): Boolean = rowWidth >= C
 /**
  * A setting whose control is a select (or a segmented control), laid out by its own width
  * ([channelDetailsSelectAtRowEnd]): its title (and [description]) then the control under it, at most
- * `max-w-sm` wide; or, in a row 32rem wide or wider, the control at the row's end, 11rem to 20rem.
+ * `max-w-sm` wide; or, in a row 32rem wide or wider, the control at the row's end. [control] gets
+ * `fit` = at the row's end: a select there is as wide as its longest option, 11rem to 20rem
+ * (raft-ui 0.95.1 `SelectTrigger fit`, [RaftSelectFitMinWidth]..[RaftSelectFitMaxWidth]), so the
+ * row's end doesn't move with the chosen value.
  * Kept here, not in the design system: [RaftListRow] has no slot under its text yet.
  */
 @Composable
@@ -1982,7 +1984,7 @@ private fun ChannelDetailsSelectRow(
     title: String,
     divider: Boolean,
     description: String? = null,
-    control: @Composable () -> Unit,
+    control: @Composable (fit: Boolean) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val atEnd = channelDetailsSelectAtRowEnd(maxWidth)
@@ -1996,7 +1998,7 @@ private fun ChannelDetailsSelectRow(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ChannelDetailsRowText(title, description, Modifier.weight(1f))
-                    Box(Modifier.widthIn(min = ChannelDetailsEndSelectMinWidth, max = ChannelDetailsEndSelectMaxWidth)) { control() }
+                    Box(Modifier.widthIn(max = RaftSelectFitMaxWidth), contentAlignment = Alignment.CenterEnd) { control(true) }
                 }
             } else {
                 Column(
@@ -2004,7 +2006,7 @@ private fun ChannelDetailsSelectRow(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     ChannelDetailsRowText(title, description)
-                    Box(Modifier.fillMaxWidth().widthIn(max = ChannelDetailsUnderSelectMaxWidth)) { control() }
+                    Box(Modifier.fillMaxWidth().widthIn(max = ChannelDetailsUnderSelectMaxWidth)) { control(false) }
                 }
             }
         }

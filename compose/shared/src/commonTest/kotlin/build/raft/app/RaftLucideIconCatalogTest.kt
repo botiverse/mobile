@@ -17,11 +17,15 @@ class RaftLucideIconCatalogTest {
     }
 
     @Test
-    fun artifactIconIsLucideFileCode() {
-        // raft-ui ArtifactIcon is Lucide file-code, unchanged (raft-design #1052, pinned by #1054):
-        // the rail, the server popover, the inbox filter and the Artifacts home show the chip's icon.
+    fun artifactIconIsLucideFileCodeWithAWiderPage() {
+        // raft-ui ArtifactIcon was Lucide file-code (raft-design #1052, #1054); raft-ui 0.95.1 /
+        // ricons 0.1.1 (raft-design #1210) draws its page 2 wider, so it is file-code's shape, not
+        // its exact paths: the same parts, with the page's outline changed.
         val paths = { name: RaftLucideIconName -> RaftLucideIconPaths.spec(name).paths.map { it.pathData } }
-        assertEquals(paths(RaftLucideIconName.FileCode), paths(RaftLucideIconName.Artifact))
+        val artifact = paths(RaftLucideIconName.Artifact)
+        val fileCode = paths(RaftLucideIconName.FileCode)
+        assertEquals(fileCode.size, artifact.size, "the same parts as file-code")
+        assertFalse(artifact == fileCode, "the page is drawn wider than file-code's")
     }
 
     @Test

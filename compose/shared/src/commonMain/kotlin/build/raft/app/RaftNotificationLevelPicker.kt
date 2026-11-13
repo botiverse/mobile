@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.DataResult
@@ -345,7 +346,12 @@ internal fun RaftNotificationLevelSelect(
     enabled: Boolean = true,
     refresh: Boolean = true,
     label: String? = null,
-    onSetMuted: ((Boolean) -> Unit)? = null
+    onSetMuted: ((Boolean) -> Unit)? = null,
+    /**
+     * At a wide settings row's end: the select is as wide as its longest choice (raft-ui
+     * `SelectTrigger fit`) and the column wraps it, ending where the row ends.
+     */
+    fit: Boolean = false,
 ) {
     val all by RaftNotificationLevelStore.state.collectAsState()
     val levels = all[target.serverId] ?: RaftServerNotificationLevels(target.serverId)
@@ -359,7 +365,11 @@ internal fun RaftNotificationLevelSelect(
     val shownLevel = (raftNotificationChoiceShown(shownTarget.copy(muted = false), levels) as RaftNotificationChoice.Level).setting
     val choices = raftNotificationChoices(shownTarget.scope, shownTarget.hasMuteChoice, shownLevel, shownTarget.muted)
     val labels = choices.associateWith { it.localizedLabel(target, inherited) }
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        modifier = if (fit) modifier else modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalAlignment = if (fit) Alignment.End else Alignment.Start,
+    ) {
         RaftSelect(
             value = selected,
             options = choices,
@@ -379,6 +389,7 @@ internal fun RaftNotificationLevelSelect(
             optionLabel = { labels.getValue(it) },
             enabled = enabled && !saving,
             label = label,
+            fit = fit,
         )
         if (shownTarget.muted) SettingsFormDetailText(stringResource(Res.string.notification_level_muted_note))
         if (failed) SettingsFormErrorText(stringResource(Res.string.notification_level_save_failed))

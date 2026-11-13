@@ -1256,8 +1256,8 @@ internal object RaftLucideIconPaths {
                 RaftLucideIconSpec(
                     "follow-artifact",
                     listOf(
-                        RaftLucidePathSpec("M20 12.5V8a2.4 2.4 0 0 0-.706-1.704l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h8"),
-                        RaftLucidePathSpec("M14 2v5a1 1 0 0 0 1 1h5"),
+                        RaftLucidePathSpec("M21 12.5V8a2.4 2.4 0 0 0-.706-1.704l-3.588-3.588A2.4 2.4 0 0 0 15 2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h9"),
+                        RaftLucidePathSpec("M15 2v5a1 1 0 0 0 1 1h5"),
                         RaftLucidePathSpec("M10 11 8 13.5l2 2.5"),
                         RaftLucidePathSpec("m14 11 2 2.5-2 2.5"),
                         RaftLucidePathSpec("M19 16v6"),
@@ -1910,8 +1910,8 @@ internal object RaftLucideIconPaths {
                 RaftLucideIconSpec(
                     "artifact",
                     listOf(
-                        RaftLucidePathSpec("M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"),
-                        RaftLucidePathSpec("M14 2v5a1 1 0 0 0 1 1h5"),
+                        RaftLucidePathSpec("M5 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 21 8v12a2 2 0 0 1-2 2z"),
+                        RaftLucidePathSpec("M15 2v5a1 1 0 0 0 1 1h5"),
                         RaftLucidePathSpec("M10 12.5 8 15l2 2.5"),
                         RaftLucidePathSpec("m14 12.5 2 2.5-2 2.5"),
                     ),
@@ -2277,8 +2277,8 @@ internal object RaftLucideIconPaths {
                 RaftLucideIconSpec(
                     "unfollow-artifact",
                     listOf(
-                        RaftLucidePathSpec("M20 12.5V8a2.4 2.4 0 0 0-.706-1.704l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h8"),
-                        RaftLucidePathSpec("M14 2v5a1 1 0 0 0 1 1h5"),
+                        RaftLucidePathSpec("M21 12.5V8a2.4 2.4 0 0 0-.706-1.704l-3.588-3.588A2.4 2.4 0 0 0 15 2H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h9"),
+                        RaftLucidePathSpec("M15 2v5a1 1 0 0 0 1 1h5"),
                         RaftLucidePathSpec("M10 11 8 13.5l2 2.5"),
                         RaftLucidePathSpec("m14 11 2 2.5-2 2.5"),
                         RaftLucidePathSpec("M17.5 19.5h4", strokeWidth = 3f),

@@ -44,8 +44,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.motion.RaftMotion
 import build.raft.designsystem.motion.rememberRaftReducedMotion
-import build.raft.designsystem.theme.RaftScale
-import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.launch
 
 /**
@@ -73,12 +71,12 @@ internal val RaftToastSwipeThreshold: Dp = 40.dp
  * above dialogs"), and passes every touch elsewhere through. Fill the window with it.
  *
  * - Bottom centre, at most 384dp wide and 16dp from the sides, inside the horizontal safe area.
- * - Compact window ([RaftScale.Compact]): the bottom edge sits 16dp above whatever holds the bottom of the
- *   page ([raftToastAvoid], [RaftToastAvoidBottom]: the tab bar, the composer). While a toast shows it
- *   only moves up, for something taller, never down when the page changes; never lower than 16dp above
+ * - At every width the bottom edge sits 16dp above whatever holds the bottom of the page
+ *   ([raftToastAvoid], [RaftToastAvoidBottom]: the tab bar, the composer; the highest of them, so a
+ *   conversation beside a thread clears both), or the bottom of the window where nothing does
+ *   (raft-design #1217: on a wide window too, not only on a phone). While a toast shows it only
+ *   moves up, for something taller, never down when the page changes; never lower than 16dp above
  *   the system bars and the keyboard (`WindowInsets.safeDrawing`), which it still follows.
- *   Wide window ([RaftScale.Wide]): the bottom of the window (stdrc 2026-10-23), above the safe
- *   area and the keyboard only.
  * - Several toasts ([RaftToastHostState.limit] > 1) stack newest at the bottom, [RaftToastGap]
  *   apart (raft-ui's expanded stack).
  * - A toast slides up as it opens (none with reduced motion), swipes away down or right, and
@@ -95,13 +93,12 @@ fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
     val presentAtStart = remember(state) { state.visible.map { it.id }.toSet() }
     var hostBottomPx by remember { mutableFloatStateOf(Float.NaN) }
     val density = LocalDensity.current
-    val phone = RaftTheme.scale != RaftScale.Wide
     // While a stack shows, the page's height only rises: pages change under a toast (composer, tab
     // bar, none while one loads) and it must not jump down with them (artin 2026-11-07), but something
     // taller that appears must not end up covered (Kirby). What the keyboard adds is not held, or a
     // toast would hang there after the keyboard closes (Jasper).
-    val liveAvoidedPx = if (phone && !hostBottomPx.isNaN()) state.avoidedHeightPx(hostBottomPx) else 0f
-    val pageAvoidedPx = if (phone && !hostBottomPx.isNaN()) state.pageAvoidedHeightPx(hostBottomPx) else 0f
+    val liveAvoidedPx = if (!hostBottomPx.isNaN()) state.avoidedHeightPx(hostBottomPx) else 0f
+    val pageAvoidedPx = if (!hostBottomPx.isNaN()) state.pageAvoidedHeightPx(hostBottomPx) else 0f
     val heldPagePx = remember(state, toasts.isEmpty(), hostBottomPx) { mutableFloatStateOf(pageAvoidedPx) }
     SideEffect { if (pageAvoidedPx > heldPagePx.floatValue) heldPagePx.floatValue = pageAvoidedPx }
     val avoidedPx = maxOf(heldPagePx.floatValue, liveAvoidedPx)
@@ -206,7 +203,7 @@ private fun RaftToastHostItem(state: RaftToastHostState, toast: RaftToastData, a
 
 /**
  * Marks what holds the bottom of the page (raft-ui `--toast-viewport-bottom`: the composer, the
- * tab bar): on a phone, the window's toasts sit 16dp above this element's top edge while it is
+ * tab bar): the window's toasts sit 16dp above this element's top edge while it is
  * laid out and [enabled]. Pass `enabled = false` from a page that is composed but not shown
  * (a page under the top one in a stack). [keyboardPx]: the keyboard under an element that rides on it
  * (a composer), read when it is laid out, so a toast does not stay up after the keyboard closes.

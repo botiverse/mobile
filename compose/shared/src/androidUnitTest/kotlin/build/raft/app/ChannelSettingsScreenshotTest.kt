@@ -51,6 +51,15 @@ class ChannelSettingsScreenshotTest {
     @Test
     fun channelSettingsDark() = capture("channel.settings.dark", RaftAppAppearance.Dark)
 
+    /**
+     * A tablet's full-width details: rows 32rem wide or wider put their select at the row's end
+     * (forms.md, raft-design #1204), as wide as its longest option (raft-ui 0.95.1 `SelectTrigger
+     * fit`, 11rem to 20rem), so the row's end doesn't move with the chosen section.
+     */
+    @Test
+    @Config(qualifiers = "w700dp-h1600dp-mdpi")
+    fun channelSettingsWideLight() = capture("channel.settings.wide", RaftAppAppearance.Light)
+
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
