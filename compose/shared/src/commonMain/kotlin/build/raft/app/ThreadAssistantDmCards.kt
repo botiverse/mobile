@@ -283,7 +283,7 @@ private fun DelegatedReceiptCard(
         place?.channelId?.let { channelId ->
             { link(channelId, null, null)?.let { url -> onOpenUrl?.invoke(url) } ?: host?.bridge?.toast(openFailed) }
         }
-    val openMessage = {
+    val openMessage: () -> Unit = {
         val parentChannelId = line.parentChannelId
         val parentMessageId = line.parentMessageId
         val url =
