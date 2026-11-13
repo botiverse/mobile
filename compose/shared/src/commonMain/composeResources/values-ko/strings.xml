@@ -4673,4 +4673,7 @@
     <string name="external_invite_error_too_many_attempts">시도 횟수가 너무 많아요. 1분 정도 기다린 후 다시 시도해 주세요.</string>
     <string name="external_invite_error_generic">문제가 발생했어요. 다시 시도해 주세요.</string>
     <string name="settings_computers_runtime_auth_not_signed_in">로그인 안 됨</string>
+    <string name="agent_runtime_error_code_message_too_large_title">메시지가 너무 길어요</string>
+    <string name="agent_runtime_error_code_message_too_large_member">에이전트에게 보낸 메시지가 너무 길어 런타임이 한 번에 받을 수 없어서 전달되지 않았어요. 메시지를 줄이거나 여러 개로 나눠 주세요.</string>
+    <string name="agent_runtime_error_code_message_too_large_manager">메시지가 너무 길어 이 에이전트의 런타임이 한 번에 받을 수 없어서 전달되지 않았어요. 메시지를 줄이거나 여러 개로 나눠 다시 보내 주세요.</string>
 </resources>

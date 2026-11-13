@@ -75,7 +75,10 @@ internal enum class RuntimeAuthRuntime(
         setOf(RuntimeAuthAction.Login, RuntimeAuthAction.Logout, RuntimeAuthAction.ConnectProvider),
         perProvider = true,
         choosesOAuthMethod = true,
-    );
+    ),
+
+    /** CodeBuddy Code, OAR-only: its own sign-in link and logout (slock #14680). */
+    Codebuddy("codebuddy", setOf(RuntimeAuthAction.Login, RuntimeAuthAction.Logout));
 
     /** slock `runtimeAuthLiteralApiKeyFits`: the key-content rule of a per-provider runtime. */
     fun literalApiKeyFits(apiKey: String): Boolean =
@@ -109,6 +112,7 @@ internal enum class RuntimeAuthRuntime(
                 "pi" -> Pi
                 "grok" -> Grok
                 "opencode" -> Opencode
+                "codebuddy" -> Codebuddy
                 else -> null
             }
     }
@@ -127,6 +131,7 @@ internal val RUNTIME_INSTALL_COMMANDS: Map<String, String> =
         "claude" to "npm install -g @anthropic-ai/claude-code",
         "codex" to "npm install -g @openai/codex",
         "kimi-sdk" to "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
+        "codebuddy" to "npm install -g @tencent-ai/codebuddy-code",
     )
 
 /** slock `RuntimeAuthAvailability` of the runtime-auth read. */

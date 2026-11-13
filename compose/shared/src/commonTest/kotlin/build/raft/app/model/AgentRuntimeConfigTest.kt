@@ -59,12 +59,12 @@ class AgentRuntimeConfigTest {
         assertEquals(
             listOf(
                 "claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk",
-                "kimi", "copilot", "cursor", "gemini", "opencode", "pi", "qwen", "qoder"
+                "kimi", "copilot", "cursor", "gemini", "opencode", "pi", "qwen", "qoder", "codebuddy"
             ),
             ids
         )
         assertEquals(setOf("antigravity", "kimi", "gemini", "copilot"), RUNTIMES.filter { it.deprecated }.map { it.id }.toSet())
-        assertEquals(setOf("qwen", "qoder"), RUNTIMES.filter { it.experimental }.map { it.id }.toSet())
+        assertEquals(setOf("qwen", "qoder", "codebuddy"), RUNTIMES.filter { it.experimental }.map { it.id }.toSet())
         assertEquals("Kimi CLI", RUNTIMES.single { it.id == "kimi" }.displayName)
     }
 

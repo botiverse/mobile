@@ -4750,4 +4750,7 @@
     <string name="external_invite_error_too_many_attempts">Слишком много попыток. Подождите минуту и попробуйте ещё раз.</string>
     <string name="external_invite_error_generic">Что-то пошло не так. Попробуйте ещё раз.</string>
     <string name="settings_computers_runtime_auth_not_signed_in">Вход не выполнен</string>
+    <string name="agent_runtime_error_code_message_too_large_title">Слишком длинное сообщение</string>
+    <string name="agent_runtime_error_code_message_too_large_member">Сообщение агенту оказалось слишком длинным, чтобы среда выполнения приняла его за один раз, поэтому оно не доставлено. Сократите его или разделите на несколько сообщений.</string>
+    <string name="agent_runtime_error_code_message_too_large_manager">Сообщение оказалось слишком длинным, чтобы среда выполнения этого агента приняла его за один раз, поэтому оно не доставлено. Сократите его или разделите на несколько сообщений и отправьте снова.</string>
 </resources>

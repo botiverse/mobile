@@ -4673,4 +4673,7 @@
     <string name="external_invite_error_too_many_attempts">嘗試次數過多，請稍候一分鐘再試一次。</string>
     <string name="external_invite_error_generic">發生錯誤，請再試一次。</string>
     <string name="settings_computers_runtime_auth_not_signed_in">未登入</string>
+    <string name="agent_runtime_error_code_message_too_large_title">訊息過長</string>
+    <string name="agent_runtime_error_code_message_too_large_member">傳給 Agent 的訊息過長，執行環境無法一次接收，因此未送達。請縮短訊息，或拆成多則傳送。</string>
+    <string name="agent_runtime_error_code_message_too_large_manager">訊息過長，此 Agent 的執行環境無法一次接收，因此未送達。請縮短訊息，或拆成多則後重新傳送。</string>
 </resources>

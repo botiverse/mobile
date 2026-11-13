@@ -16,7 +16,8 @@ enum class AgentRuntimeErrorCode(val wireValue: String) {
     ModelUnavailable("model_unavailable"),
     AuthRequired("auth_required"),
     NetworkTimeout("network_timeout"),
-    InputTooLarge("input_too_large");
+    InputTooLarge("input_too_large"),
+    MessageTooLarge("message_too_large");
 
     companion object {
         /** Web `classifyRuntimeErrorCode`: a known code, else null (a newer server's code is no code). */

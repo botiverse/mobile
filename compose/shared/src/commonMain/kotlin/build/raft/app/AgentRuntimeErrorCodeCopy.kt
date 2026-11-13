@@ -54,6 +54,12 @@ internal val AgentRuntimeErrorCode.messages: AgentRuntimeErrorCodeCopy
                     Res.string.agent_runtime_error_code_input_too_large_member,
                     Res.string.agent_runtime_error_code_input_too_large_manager,
                 )
+            AgentRuntimeErrorCode.MessageTooLarge ->
+                AgentRuntimeErrorCodeCopy(
+                    Res.string.agent_runtime_error_code_message_too_large_title,
+                    Res.string.agent_runtime_error_code_message_too_large_member,
+                    Res.string.agent_runtime_error_code_message_too_large_manager,
+                )
         }
 
 /**

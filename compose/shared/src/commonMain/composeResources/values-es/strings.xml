@@ -4673,4 +4673,7 @@
     <string name="external_invite_error_too_many_attempts">Demasiados intentos. Espera un minuto e inténtalo de nuevo.</string>
     <string name="external_invite_error_generic">Algo salió mal. Inténtalo de nuevo.</string>
     <string name="settings_computers_runtime_auth_not_signed_in">Sin sesión iniciada</string>
+    <string name="agent_runtime_error_code_message_too_large_title">Mensaje demasiado largo</string>
+    <string name="agent_runtime_error_code_message_too_large_member">Un mensaje para el agente era demasiado largo para que su runtime lo aceptara de una vez, así que no se entregó. Acórtalo o divídelo en varios mensajes.</string>
+    <string name="agent_runtime_error_code_message_too_large_manager">Un mensaje era demasiado largo para que el runtime de este agente lo aceptara de una vez, así que no se entregó. Acórtalo o divídelo en varios mensajes y vuelve a enviarlo.</string>
 </resources>
