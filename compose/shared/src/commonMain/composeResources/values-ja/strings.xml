@@ -1541,6 +1541,9 @@
     <string name="agent_runtime_error_code_input_too_large_title">入力が大きすぎます</string>
     <string name="agent_runtime_error_code_input_too_large_member">エージェントの入力がモデルの受け付けられるサイズを超えています。エージェントのオーナーにセッションのリセット、または起動時コンテキストの削減を依頼してください。</string>
     <string name="agent_runtime_error_code_input_too_large_manager">エージェントの入力がモデルの受け付けられるサイズを超えています。セッションをリセットするか、起動時コンテキストを減らしてください。</string>
+    <string name="agent_runtime_error_code_message_too_large_title">メッセージが長すぎます</string>
+    <string name="agent_runtime_error_code_message_too_large_member">エージェントへのメッセージが長すぎて、ランタイムが一度に受け取れなかったため、配信されませんでした。短くするか、複数のメッセージに分けてください。</string>
+    <string name="agent_runtime_error_code_message_too_large_manager">メッセージが長すぎて、このエージェントのランタイムが一度に受け取れなかったため、配信されませんでした。短くするか、複数のメッセージに分けて送り直してください。</string>
     <string name="agent_runtime_error_tool_args_invalid">モデルが無効な形式のツール呼び出し引数を出力したため、Codex がそのツール呼び出しを拒否しました。別のモデルをお試しください。</string>
     <string name="agent_activity_error">エラー</string>
     <string name="agent_activity_error_with_detail">エラー：%1$s</string>

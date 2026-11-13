@@ -1530,6 +1530,9 @@
     <string name="agent_runtime_error_code_input_too_large_title">输入过长</string>
     <string name="agent_runtime_error_code_input_too_large_member">Agent 的输入超出了模型可接受的长度。请 Agent 的所有者重置会话，或精简启动上下文。</string>
     <string name="agent_runtime_error_code_input_too_large_manager">Agent 的输入超出了模型可接受的长度。请重置会话，或精简启动上下文。</string>
+    <string name="agent_runtime_error_code_message_too_large_title">消息过长</string>
+    <string name="agent_runtime_error_code_message_too_large_member">发给 Agent 的消息过长，运行时无法一次接收，因此未送达。请缩短消息，或拆分为多条发送。</string>
+    <string name="agent_runtime_error_code_message_too_large_manager">消息过长，此 Agent 的运行时无法一次接收，因此未送达。请缩短消息，或拆分为多条后重新发送。</string>
     <string name="agent_runtime_error_tool_args_invalid">模型输出的工具参数格式无效，Codex 拒绝了该次工具调用；可更换模型</string>
     <string name="agent_activity_error">错误</string>
     <string name="agent_activity_error_with_detail">错误：%1$s</string>

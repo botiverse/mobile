@@ -1532,6 +1532,9 @@
     <string name="agent_runtime_error_code_input_too_large_title">Input too large</string>
     <string name="agent_runtime_error_code_input_too_large_member">The agent's input is larger than its model accepts. Ask the agent's owner to reset the session or reduce the startup context.</string>
     <string name="agent_runtime_error_code_input_too_large_manager">The agent's input is larger than its model accepts. Reset the session, or reduce the startup context.</string>
+    <string name="agent_runtime_error_code_message_too_large_title">Message too long</string>
+    <string name="agent_runtime_error_code_message_too_large_member">A message to the agent was too long for its runtime to take at once, so it was not delivered. Shorten it, or split it into several messages.</string>
+    <string name="agent_runtime_error_code_message_too_large_manager">A message was too long for this agent's runtime to take at once, so it was not delivered. Shorten it, or split it into several messages, and send again.</string>
     <string name="agent_runtime_error_tool_args_invalid">The model produced tool-call arguments in an invalid format, so Codex rejected the tool call — try a different model.</string>
     <string name="agent_activity_error">Error</string>
     <string name="agent_activity_error_with_detail">Error: %1$s</string>
