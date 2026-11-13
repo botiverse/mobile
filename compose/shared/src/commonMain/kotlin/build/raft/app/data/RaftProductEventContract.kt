@@ -416,6 +416,13 @@ sealed class RaftProductEvent<P>(val name: String, private val serializer: KSeri
             RaftAppRatingPromptRequestedProperties.serializer(),
         )
 
+    /** Android: where this install came from (store + validated utm_*), once per install after first sign-in. */
+    data class AppInstallSourceRead(override val properties: RaftAppInstallSourceReadProperties) :
+        RaftProductEvent<RaftAppInstallSourceReadProperties>(
+            "app_install_source_read",
+            RaftAppInstallSourceReadProperties.serializer(),
+        )
+
     data class AppOpened(override val properties: RaftAppOpenedProperties) :
         RaftProductEvent<RaftAppOpenedProperties>("app_opened", RaftAppOpenedProperties.serializer())
 

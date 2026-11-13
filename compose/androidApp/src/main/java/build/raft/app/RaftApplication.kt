@@ -14,6 +14,7 @@ import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.shared.AndroidRealtimeKeepAliveController
 import build.raft.app.shared.RaftAndroidHostHooks
+import build.raft.app.shared.RaftAndroidInstallReferrer
 import build.raft.app.shared.RaftAndroidStoreReview
 import build.raft.app.shared.RaftAndroidNightMode
 import build.raft.app.shared.RaftBuildStamp
@@ -98,6 +99,9 @@ class RaftApplication : Application() {
         AndroidAppScopeRealtimeOwner.install(this)
         AndroidPushRegistration.start(this)
         AndroidRealtimeKeepAliveController.installNoPlayServicesFallback(this)
+        // Install source (Play Install Referrer), read once per install on a background thread;
+        // reported once after the first sign-in (RaftInstallSourceReport).
+        RaftAndroidInstallReferrer.start(this)
         // The one main-thread `runBlocking` on the auth-session lock that stays (allowlisted in
         // scripts/ci/check_source_constraints.py). The #3823 deadlock needs a Main-dispatched
         // coroutine already queued on the lock; here the main looper has not run a single message

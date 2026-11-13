@@ -63,9 +63,11 @@ object RaftProductEvents {
     fun setSignedIn(serverId: String) {
         val normalized = serverId.trim().takeIf { it.isNotEmpty() } ?: return
         recorder.client.setSignedIn(ServerId(normalized))
+        RaftInstallSourceReport.onSignedIn()
     }
 
     fun setSignedOut() {
+        RaftInstallSourceReport.onSignedOut()
         recorder.client.setSignedOut()
     }
 
@@ -121,6 +123,11 @@ object RaftProductEvents {
     /** See [RaftProductEventsRecorder.appRatingPromptRequested]. */
     fun appRatingPromptRequested(trigger: RaftAppRatingPromptTrigger) {
         recorder.appRatingPromptRequested(trigger)
+    }
+
+    /** See [RaftInstallSourceReport]: called once per install, after the first sign-in. */
+    fun appInstallSourceRead(properties: RaftAppInstallSourceReadProperties) {
+        recorder.appInstallSourceRead(properties)
     }
 
     fun navEntrySelected(destination: RaftNavDestination?, surface: RaftNavSurface, wasActive: Boolean) {
