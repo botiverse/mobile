@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -19,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -153,12 +155,15 @@ fun RaftPaneGridColumnHead(
     val tabs = grid?.tabs?.takeIf { cellId != null && slot?.owner == cellId }
     val expand = if (expandable && cellId != null) grid?.expandFor(cellId)?.takeIf { it.shown } else null
     val tag = RAFT_PANE_GRID_HEAD_TEST_TAG + (cellId ?: title)
-    BoxWithConstraints(modifier.fillMaxWidth().height(metrics.headHeight).background(colors.layerCanvas).testTag(tag)) {
+    // In a column clipped under its minimum the cell is laid out wider than what shows: the head takes only what shows.
+    val visible = LocalRaftPaneGridVisibleWidth.current
+    BoxWithConstraints(modifier.fillMaxWidth().height(metrics.headHeight).background(colors.layerCanvas)) {
+        val headWidth = if (visible != null) minOf(maxWidth, visible) else maxWidth
         val start = if (lead != null) metrics.barEdgeInset else 16.dp
         val end = metrics.barEdgeInset
         val shownOwn =
             raftPaneGridHeadShownActions(
-                widthDp = maxWidth.value,
+                widthDp = headWidth.value,
                 leadButtons = if (lead != null) leadButtons else 0,
                 own = ownActions.size,
                 controls = (if (expand != null) 1 else 0) + (if (onClose != null) 1 else 0),
@@ -172,7 +177,14 @@ fun RaftPaneGridColumnHead(
         // The head's buttons are bar buttons: 28 under a mouse or trackpad, 44 by touch (sizing v12).
         CompositionLocalProvider(LocalRaftBarButtons provides true) {
             Row(
-                Modifier.fillMaxWidth().height(metrics.headHeight - RaftStroke.Hairline).padding(start = start, end = end),
+                // At its visible width and cut there: never drawn past its column, even where the buttons that never
+                // fold (⋯, Expand, Close) don't fit.
+                Modifier
+                    .width(headWidth)
+                    .height(metrics.headHeight - RaftStroke.Hairline)
+                    .clipToBounds()
+                    .testTag(tag)
+                    .padding(start = start, end = end),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(RAFT_PANE_GRID_HEAD_GAP_DP.dp),
             ) {

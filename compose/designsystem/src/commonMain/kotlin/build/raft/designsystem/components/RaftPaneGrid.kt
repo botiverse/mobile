@@ -689,11 +689,13 @@ internal class RaftPaneGridHost internal constructor() {
                         // The declaring grid's locals, then what the column gives its cells (as RaftPaneGridSideColumn).
                         val shown = LocalRaftPaneGridColumnShown.current
                         val controls = LocalRaftPaneGridColumnControls.current
+                        val visible = LocalRaftPaneGridVisibleWidth.current
                         CompositionLocalProvider(locals) {
                             CompositionLocalProvider(
                                 LocalRaftPaneGridHost provides null,
                                 LocalRaftPaneGridColumnShown provides shown,
                                 LocalRaftPaneGridColumnControls provides controls,
+                                LocalRaftPaneGridVisibleWidth provides visible,
                             ) {
                                 latest.content(scope)
                             }
@@ -879,6 +881,14 @@ data class RaftPaneGridColumnControls(
     fun expandFor(region: String): RaftPaneGridExpandControl? =
         expandState?.let { RaftPaneGridExpandControl(region, shown = expandShown, pressed = expanded == region, state = it) }
 }
+
+/**
+ * The width of the column a cell stands in as it shows on screen, its seam left out; null outside a column, or where
+ * the column fills the row. A column clipped under its minimum (#189 rule 2) lays its cells out at the minimum and
+ * cuts them at its edge: a head ([RaftPaneGridColumnHead]) lays itself out at this width instead, folding its own
+ * actions into ⋯ as it must, so nothing of it is cut off or drawn past its column.
+ */
+val LocalRaftPaneGridVisibleWidth = compositionLocalOf<Dp?> { null }
 
 /** The controls of the column a cell stands in ([RaftPaneGridColumnControls]); null outside a planned row's column. */
 val LocalRaftPaneGridColumnControls = compositionLocalOf<RaftPaneGridColumnControls?> { null }
@@ -1251,6 +1261,8 @@ fun RowScope.RaftPaneGridSideColumn(
                         LocalRaftPaneGridHost provides null,
                         LocalRaftPaneGridColumnShown provides !gone,
                         LocalRaftPaneGridColumnControls provides controls,
+                        // What of the column shows, for the heads (its content may be laid out wider and clipped).
+                        LocalRaftPaneGridVisibleWidth provides if (fill) null else (width.dp - seam).coerceAtLeast(0.dp),
                     ) {
                         RaftPaneGridStackView(column, Modifier.weight(1f).fillMaxHeight())
                     }
