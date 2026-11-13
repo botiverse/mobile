@@ -1,22 +1,22 @@
 package build.raft.app
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.raftClickable
 
 /*
  * Adjacent system messages fold into one row (web `systemMessageGrouping.ts` +
@@ -196,7 +196,7 @@ internal fun ThreadSystemMessageGroupHeader(
         Row(
             modifier =
                 Modifier.testTag("system-message-group-toggle")
-                    .clickable(role = Role.Button, onClick = onToggle)
+                    .raftClickable(onClick = onToggle, shape = RoundedCornerShape(6.dp))
                     .padding(horizontal = RaftAppSpacing.Sm, vertical = ThreadMessageTimelineRowInset),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
