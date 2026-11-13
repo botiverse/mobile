@@ -1597,6 +1597,9 @@
     <string name="profile_preview_managed_by_app">Managed by app</string>
     <string name="profile_preview_unknown_app">Unknown app</string>
     <string name="profile_preview_external_runtime">External runtime</string>
+    <string name="profile_preview_external">External</string>
+    <string name="profile_preview_external_from">External: %1$s</string>
+    <string name="profile_preview_from_servers">From %1$s</string>
     <string name="member_label_agent_dm">Agent DM</string>
     <string name="member_label_show_more">Show more</string>
     <string name="member_label_show_less">Show less</string>

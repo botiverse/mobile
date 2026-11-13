@@ -50,6 +50,12 @@ internal class RaftMemberModelLabelResolver(
 internal data class RaftMemberAuthorFacts(
     val description: String? = null,
     val viewerServerGuest: Boolean = false,
+    /**
+     * A sender from another server ([memberOrigin], web `useSenderOrigin`): the servers to name, the
+     * viewed server left out. The first one's tile goes on the avatar's corner; empty for this
+     * server's people and agents (and for an external sender whose server was not named).
+     */
+    val originServers: List<build.raft.app.model.MemberServerRef> = emptyList(),
 )
 
 internal val EmptyRaftMemberModelLabelResolver =
@@ -113,15 +119,18 @@ internal fun build.raft.app.model.MemberProfile.authorRowModelLabel(viewerServer
 }
 
 /** The author row's directory facts about [this] sender, as seen from [viewerServerId]. */
-internal fun build.raft.app.model.MemberProfile.authorFacts(viewerServerId: ServerId?): RaftMemberAuthorFacts =
-    RaftMemberAuthorFacts(
+internal fun build.raft.app.model.MemberProfile.authorFacts(viewerServerId: ServerId?): RaftMemberAuthorFacts {
+    val origin = memberOrigin(this, viewerServerId?.value)
+    return RaftMemberAuthorFacts(
         description = description?.trim()?.takeIf { it.isNotEmpty() },
         // web `isViewerServerGuest`: a Guest label is a fact of the viewed server only.
         viewerServerGuest =
             kind == build.raft.app.model.MemberKind.Human &&
                 (serverRole ?: effectiveChannelRole)?.trim()?.lowercase() == "guest" &&
-                !isFromAnotherServer(viewerServerId),
+                !origin.external,
+        originServers = if (origin.external) origin.servers else emptyList(),
     )
+}
 
 /**
  * The one "from another server" rule ([memberOrigin], #4656): a joint roster's `serverId` is only

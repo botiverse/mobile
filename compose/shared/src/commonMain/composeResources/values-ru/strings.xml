@@ -1569,6 +1569,9 @@
     <string name="profile_preview_managed_by_app">Управляется приложением</string>
     <string name="profile_preview_unknown_app">Неизвестное приложение</string>
     <string name="profile_preview_external_runtime">Внешняя среда выполнения</string>
+    <string name="profile_preview_external">Внешний</string>
+    <string name="profile_preview_external_from">Внешний: %1$s</string>
+    <string name="profile_preview_from_servers">Из %1$s</string>
     <string name="member_label_agent_dm">Личный чат агентов</string>
     <string name="member_label_show_more">Показать полностью</string>
     <string name="member_label_show_less">Свернуть</string>

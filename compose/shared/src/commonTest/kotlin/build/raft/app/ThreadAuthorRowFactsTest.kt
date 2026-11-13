@@ -56,6 +56,28 @@ class ThreadAuthorRowFactsTest {
     }
 
     @Test
+    fun aSenderFromAnotherServerCarriesItsServersForTheAvatarCorner() {
+        // web #14535 useSenderOrigin / AvatarOriginCorner: the directory's (or joint roster's) origin.
+        val peer = build.raft.app.model.MemberServerRef("server-peer", "Peer Labs", "peer-labs")
+        val acme = build.raft.app.model.MemberServerRef("server-acme", "Acme", "acme")
+        val external = person.copy(serverId = ServerId(peer.id), inViewerServer = false, servers = listOf(peer, acme))
+        assertEquals(listOf(peer, acme), external.authorFacts(server).originServers)
+        assertEquals(listOf(peer.copy(slug = "")), person.copy(serverId = ServerId(peer.id), serverName = peer.name).authorFacts(server).originServers)
+        // This server's own, and one of them whose first source is the peer: no corner.
+        assertEquals(emptyList(), person.authorFacts(server).originServers)
+        assertEquals(emptyList(), external.copy(inViewerServer = true).authorFacts(server).originServers)
+        // An external sender whose server was not named has no tile to draw.
+        assertEquals(emptyList(), person.copy(serverId = ServerId(peer.id)).authorFacts(server).originServers)
+
+        val facts = external.authorFacts(server)
+        val row = RaftThreadMessageItem(id = "m-2", authorId = "user-2", authorName = "Ada", authorKind = "human")
+        assertEquals(listOf(peer, acme), threadAuthorRowOriginServers(row, facts))
+        // A bridged (Slack) sender's provider is not a server; a system row has no sender.
+        assertEquals(emptyList(), threadAuthorRowOriginServers(row.copy(authorKind = "external", externalAuthor = ExternalMessageAuthor(displayName = "Al", provider = "slack", actorKind = "user")), facts))
+        assertEquals(emptyList(), threadAuthorRowOriginServers(row.copy(authorKind = "system"), facts))
+    }
+
+    @Test
     fun assistantOwnerIsReadFromTheAgentDirectory() {
         // botiverse/slock ec13decd3 routes/agents.ts GET /agents: the agent row's `assistantOwnerUserId`.
         val members =

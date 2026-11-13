@@ -21,6 +21,7 @@ new product concept gets a Japanese rendering.
 | Agent | エージェント | Never 智能体-style translation; katakana only |
 | Human(s) | 人間 | Explicit contrast with エージェント (Members page sections) |
 | External user (unattributed bridged sender) | 外部ユーザー | Name shown for a message bridged from another app (e.g. Slack) without author details; copied from the web ja catalog (`message.author.externalFallback`) |
+| External (someone from another server) | 外部 | Profile card ribbon "外部：{servers}", author row "{servers} から"; copied from the web ja catalog `message.profilePreview.external*` / `fromServers` (botiverse/slock #14535) |
 | Computer / Machine | コンピューター | Long-vowel MS style; daemon = デーモン |
 | Per-agent memory limit | エージェントごとのメモリ上限 | Computer page warning; copied from the web ja catalog (botiverse/slock #10860) |
 | Channel announcement | お知らせ | One Artifact pinned as a strip above a channel's timeline ("お知らせを設定", "お知らせの設定"); copied from the web ja catalog `channel.announcement.*` (botiverse/slock #14039). Not the product's AnnouncementDialog |

@@ -1572,6 +1572,9 @@
     <string name="profile_preview_managed_by_app">Gerenciado pelo app</string>
     <string name="profile_preview_unknown_app">App desconhecido</string>
     <string name="profile_preview_external_runtime">Runtime externo</string>
+    <string name="profile_preview_external">Externo</string>
+    <string name="profile_preview_external_from">Externo: %1$s</string>
+    <string name="profile_preview_from_servers">De %1$s</string>
     <string name="member_label_agent_dm">MD entre agentes</string>
     <string name="member_label_show_more">Mostrar mais</string>
     <string name="member_label_show_less">Mostrar menos</string>

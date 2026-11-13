@@ -15,8 +15,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.data.memberOrigin
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.data.runtimeCatalogDisplayName
@@ -72,6 +74,14 @@ internal data class RaftProfilePreviewCardModel(
     /** The server whose avatar cache holds the face. */
     val serverId: String? = null,
     /**
+     * Someone from another server than the viewed one ([memberOrigin], web #14535): the ribbon
+     * across the card's top with [originServers] and "External"; an agent shows none of this
+     * server's facts (Computer, Runtime, Model, Managed by app).
+     */
+    val external: Boolean = false,
+    /** The servers the ribbon names, the viewed one left out; may be empty (none was named). */
+    val originServers: List<MemberServerRef> = emptyList(),
+    /**
      * Not in the directory (a cross-server mention): the handle (or "Agent" / "Member") and
      * "Profile unavailable", never an empty card.
      */
@@ -108,9 +118,14 @@ internal fun raftProfilePreviewCardModel(
     status: RaftAgentStatusIndicatorState? = null,
     avatarWireValue: String? = null,
     readReceipt: RaftProfilePreviewReadReceipt? = null,
+    /** The server the card is opened on; where the profile is from is read against it. */
+    viewerServerId: String? = null,
 ): RaftProfilePreviewCardModel {
     val appBot = profile.appBotIdentityOrNull()
     val isAgent = profile.kind == MemberKind.Agent
+    val origin = memberOrigin(profile, viewerServerId)
+    // web `hideAgentServerFacts`: another server's agent comes with its identity only.
+    val agentFacts = isAgent && appBot == null && !origin.external
     val runtimeId = (status?.runtime ?: profile.roleDescription)?.trim()?.takeIf { it.isNotBlank() }
     val displayName = appBot?.appName ?: profile.displayName.ifBlank { profile.handle }
     return RaftProfilePreviewCardModel(
@@ -125,12 +140,12 @@ internal fun raftProfilePreviewCardModel(
         description = if (appBot != null) null else profile.description?.trim()?.takeIf { it.isNotBlank() },
         appBot = appBot,
         status = if (isAgent && appBot == null) status else null,
-        runtimeLabel = if (isAgent && appBot == null) runtimeId?.let { runtimeIdentityDisplayName(it, profile.serverId?.value) } else null,
-        runtimeId = if (isAgent && appBot == null) runtimeId else null,
-        modelLabel = if (isAgent && appBot == null) profile.modelLabel() else null,
+        runtimeLabel = if (agentFacts) runtimeId?.let { runtimeIdentityDisplayName(it, profile.serverId?.value) } else null,
+        runtimeId = if (agentFacts) runtimeId else null,
+        modelLabel = if (agentFacts) profile.modelLabel() else null,
         computer =
             when {
-                !isAgent || appBot != null -> null
+                !agentFacts -> null
                 profile.isExternal -> RaftProfilePreviewComputer.External
                 else ->
                     profile.permissionBadges
@@ -140,6 +155,8 @@ internal fun raftProfilePreviewCardModel(
             },
         readReceipt = if (isAgent && appBot == null) readReceipt else null,
         serverId = profile.serverId?.value,
+        external = origin.external,
+        originServers = origin.servers,
     )
 }
 
@@ -159,6 +176,8 @@ internal fun rememberRaftProfilePreviewCardModel(
     readReceipt: RaftProfilePreviewReadReceipt? = null,
     agentStatusResolver: RaftAgentStatusResolver = remember(serverMembersStore, serverId) { raftAgentStatusResolver(serverMembersStore, serverId) },
     memberAvatarResolver: RaftMemberAvatarResolver = remember(serverMembersStore, serverId) { raftMemberAvatarResolver(serverMembersStore, serverId) },
+    /** The server the card is opened on (the profile may be read from the member's own [serverId]). */
+    viewerServerId: String? = serverId,
 ): RaftProfilePreviewCardModel {
     val cleanServerId = remember(serverId) { serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId) }
     val profileFlow =
@@ -173,11 +192,11 @@ internal fun rememberRaftProfilePreviewCardModel(
     val status = rememberRaftAgentStatusIndicatorState(agentStatusResolver, memberId.takeIf { kind == MemberKind.Agent })
     val avatar = rememberRaftMemberAvatarWireValue(memberAvatarResolver, memberId)
     val current = profile
-    return remember(current, status, avatar, readReceipt, memberId, kind, fallbackHandle) {
+    return remember(current, status, avatar, readReceipt, memberId, kind, fallbackHandle, viewerServerId) {
         if (current == null) {
             RaftProfilePreviewCardModel.unavailable(memberId, kind, fallbackHandle)
         } else {
-            raftProfilePreviewCardModel(current, status, avatar, readReceipt)
+            raftProfilePreviewCardModel(current, status, avatar, readReceipt, viewerServerId)
         }
     }
 }
@@ -186,6 +205,9 @@ internal fun rememberRaftProfilePreviewCardModel(
  * web `ProfilePreviewCardContent` in raft-ui's PreviewCard parts, for the `card` of a
  * [RaftPreviewCard] (or inside a `RaftPreviewCardSurface` in a fixture):
  *
+ * - Someone from another server ([RaftProfilePreviewCardModel.external]): the ribbon across the
+ *   card's top first ([RaftProfilePreviewExternalRibbon]: their servers and "External"); an agent
+ *   then has no Computer / Runtime / Model or Managed by app rows.
  * - Header: the large avatar ([RaftAvatarSize.Lg], 51dp) and, 12dp beside it, the name
  *   (headline, one line); after it the Bot badge for an App Bot, or an agent's status light
  *   (`Status sm`) and its words (`text-callout` `foreground-hint`). Then the `@handle` in Space
@@ -215,6 +237,9 @@ internal fun RaftProfilePreviewCardContent(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
+    // Member labels (web #14535 ExternalOriginRibbon): someone from another server, a band across
+    // the card's top naming their servers and "External".
+    RaftProfilePreviewExternalRibbon(external = model.external && !model.unavailable, servers = model.originServers)
     if (model.unavailable) {
         RaftPreviewCardHeader(leading = { ProfilePreviewAvatar(model) }) {
             val fallback =
@@ -272,7 +297,7 @@ internal fun RaftProfilePreviewCardContent(
             )
         }
         val appBot = model.appBot
-        if (appBot != null) {
+        if (appBot != null && !model.external) {
             ProfilePreviewFacts(
                 listOf(stringResource(Res.string.profile_preview_managed_by_app) to (appBot.appName ?: stringResource(Res.string.profile_preview_unknown_app))),
                 Modifier.padding(top = 8.dp),
