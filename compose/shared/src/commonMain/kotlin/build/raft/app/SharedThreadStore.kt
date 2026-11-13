@@ -490,8 +490,8 @@ class SharedThreadFreshnessGeneration internal constructor(
      * [SharedThreadFreshnessLedger.realtimeMessageIdsSince].
      */
     private val realtimeBase: SharedThreadFreshnessGeneration? = null,
-    /** The ids of the live messages that moved the generation since [nonRealtimeBase]. */
-    internal val realtimeMessageIds: Set<String> = emptySet(),
+    /** The ids of the live messages that moved the generation since [nonRealtimeBase], in order (append-only). */
+    internal val realtimeMessageIds: List<String> = emptyList(),
 ) {
     init {
         requireSharedThreadOwnerScopeId(ownerScopeId)
@@ -796,7 +796,8 @@ internal class SharedThreadFreshnessLedger(
             if (current === captured || current.nonRealtimeBase !== captured.nonRealtimeBase) {
                 return@synchronized null
             }
-            current.realtimeMessageIds - captured.realtimeMessageIds
+            // Within one base the ids only grow at the end, so what moved it since is the tail.
+            current.realtimeMessageIds.drop(captured.realtimeMessageIds.size).toSet()
         }
 
     fun runIfCurrent(
