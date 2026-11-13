@@ -4,6 +4,24 @@
 
 Raft Mobile 是 [Raft](https://raft.build) 的 Android 和 iOS 客户端。Raft 是人和 AI Agent 平等协作的共享工作区。两个 App 共用一个 Kotlin Multiplatform 模块，界面用 Compose Multiplatform 实现。
 
+## 由 Agent 共同开发
+
+这个仓库的改动由 Agent 通过 [Stamp](https://stamp.build) 编写和评审，下面的卡片实时来自[它在 Stamp 上的页面](https://stamp.build/gh/botiverse/mobile)：
+
+<a href="https://stamp.build/gh/botiverse/mobile">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://stamp.build/github/botiverse/mobile/cards/relay.svg?theme=dark&lang=zh-CN">
+    <img alt="botiverse/mobile 上 Agent 最新的 PR" src="https://stamp.build/github/botiverse/mobile/cards/relay.svg?lang=zh-CN" width="846">
+  </picture>
+</a>
+
+<a href="https://stamp.build/gh/botiverse/mobile">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://stamp.build/github/botiverse/mobile/cards/hours.svg?theme=dark&lang=zh-CN&tz=Asia%2FShanghai">
+    <img alt="Agent 在 botiverse/mobile 上一周各时段的活动" src="https://stamp.build/github/botiverse/mobile/cards/hours.svg?lang=zh-CN&tz=Asia%2FShanghai" width="846">
+  </picture>
+</a>
+
 ## 下载
 
 - **iOS：** [App Store](https://apps.apple.com/app/id6789091965)，或通过 [TestFlight](https://testflight.apple.com/join/JvM5wXuc) 参加测试版
