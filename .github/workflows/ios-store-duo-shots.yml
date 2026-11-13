@@ -41,25 +41,23 @@ jobs:
         run: |
           set +e
           mkdir -p probe
-          dev=$(xcode-select -p)
-          plat="$dev/Platforms/iPhoneSimulator.platform/Developer"
-          find "$plat/Library/Frameworks" "$plat/Library/PrivateFrameworks" "$plat/usr/lib" -maxdepth 2 -name '*.framework' -o -maxdepth 2 -name '*.dylib' 2>/dev/null > probe/xct-frameworks.txt
-          cat probe/xct-frameworks.txt
-          while IFS= read -r fw; do
-            b="$fw"; [ -d "$fw" ] && b="$fw/$(basename "$fw" .framework)"
-            [ -f "$b" ] || continue
-            hits=$(strings -a "$b" | grep -iE 'hinge|posture|unfold|foldstate|fold state|setFold|deviceFold|innerDisplay|coverDisplay' | grep -viE 'folder|manifold|scaffold' | sort -u)
-            [ -n "$hits" ] && { echo "== $b"; echo "$hits" | head -150; }
-          done < probe/xct-frameworks.txt > probe/xct-hinge.txt 2>&1
-          cat probe/xct-hinge.txt | cut -c1-200 | head -200
-          find "$dev/Platforms/iPhoneOS.platform/Developer/SDKs" "$dev/Platforms/iPhoneSimulator.platform/Developer/SDKs" -path '*XCTest*' -name '*.h' 2>/dev/null | head -3
-          grep -rilE 'hinge|posture|unfold' "$plat/Library/Frameworks" --include='*.h' --include='*.swiftinterface' 2>/dev/null | head -20 > probe/xct-headers.txt
-          cat probe/xct-headers.txt
-          while IFS= read -r h; do echo "== $h"; grep -inE -B2 -A6 'hinge|posture|unfold' "$h" | head -120; done < probe/xct-headers.txt > probe/xct-header-hits.txt
-          head -250 probe/xct-header-hits.txt
-          sdk=$(xcrun --sdk iphonesimulator --show-sdk-path)
-          grep -rlE 'hinge|Posture|unfold|verticalBarEdge' "$sdk/System/Library/Frameworks/UIKit.framework" 2>/dev/null | head > probe/uikit-hits.txt
-          cat probe/uikit-hits.txt
+          rt=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; print([r["runtimeRoot"] for r in json.load(sys.stdin)["runtimes"] if r["identifier"].endswith("iPhone19-4")][0])')
+          strings -a "$rt/System/Library/PrivateFrameworks/SpringBoard.framework/SpringBoard" | gzip > probe/springboard-strings.txt.gz
+          base=$(dirname "$(dirname "$(dirname "$rt")")")
+          find "$base" "$rt" -maxdepth 6 -iname '*shared_cache*' 2>/dev/null | head -20 > probe/caches.txt
+          find / -maxdepth 9 -name 'dyld_sim_shared_cache_arm64e*' -path '*iPhoneOS*' 2>/dev/null | head -20 >> probe/caches.txt
+          cat probe/caches.txt
+          grep -v '\.[0-9]*$\|map$\|atlas$' probe/caches.txt | sort -u | head -3 | while IFS= read -r c; do
+            echo "== $c $(ls -la "$c")"
+          done
+          ls "$(grep -m1 dyld_sim_shared_cache probe/caches.txt | xargs -I{} dirname "{}")" > probe/cache-dir.txt 2>&1
+          cat probe/cache-dir.txt
+          dir=$(grep -m1 dyld_sim_shared_cache probe/caches.txt | xargs -I{} dirname "{}")
+          for c in "$dir"/dyld_sim_shared_cache_arm64e*; do
+            case "$c" in *.map|*.atlas) continue;; esac
+            strings -a "$c" | grep -iE 'hinge|posture|unfold|foldstate|fold state|simulatedfold|continuousfold' | grep -viE 'folder|manifold|scaffold'
+          done | sort -u | gzip > probe/cache-hinge.txt.gz
+          zcat probe/cache-hinge.txt.gz | wc -l
       - uses: actions/upload-artifact@v7
         if: always()
         with:
