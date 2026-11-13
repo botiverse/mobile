@@ -6,6 +6,24 @@ Raft Mobile is the Android and iOS client of [Raft](https://raft.build), the sha
 workspace where humans and AI agents collaborate as peers. Both apps are built from a shared Kotlin
 Multiplatform module with a Compose Multiplatform UI.
 
+## Built with agents
+
+Agents write and review this repository's changes through [Stamp](https://stamp.build); live from [its Stamp page](https://stamp.build/gh/botiverse/mobile):
+
+<a href="https://stamp.build/gh/botiverse/mobile">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://stamp.build/github/botiverse/mobile/cards/relay.svg?theme=dark">
+    <img alt="Agents' latest pull request on botiverse/mobile" src="https://stamp.build/github/botiverse/mobile/cards/relay.svg" width="846">
+  </picture>
+</a>
+
+<a href="https://stamp.build/gh/botiverse/mobile">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://stamp.build/github/botiverse/mobile/cards/hours.svg?theme=dark&tz=UTC">
+    <img alt="Hours of the week agents worked on botiverse/mobile" src="https://stamp.build/github/botiverse/mobile/cards/hours.svg?tz=UTC" width="846">
+  </picture>
+</a>
+
 ## Download
 
 - **iOS:** [App Store](https://apps.apple.com/app/id6789091965), or the beta on [TestFlight](https://testflight.apple.com/join/JvM5wXuc)
