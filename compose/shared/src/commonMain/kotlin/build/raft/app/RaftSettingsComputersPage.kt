@@ -779,7 +779,8 @@ internal fun RaftSettingsComputersContent(
                         RaftComputersStateBlock(
                             title = stringResource(Res.string.settings_computers_error_load),
                             detail = raftComputerFailureMessage(model.failure),
-                            iconName = RaftLucideIconName.TriangleAlert,
+                            // Web `machine.mobile.loadErrorTitle`: the page's own icon.
+                            iconName = RaftLucideIconName.Monitor,
                             actionLabel = stringResource(Res.string.common_retry).takeIf { model.failure.retryable },
                             onAction = onRetry,
                         )
@@ -795,6 +796,7 @@ internal fun RaftSettingsComputersContent(
                     RaftComputersRackBody(
                         model = model,
                         refreshErrorCode = refreshErrorCode,
+                        onRetry = onRetry,
                         bottomContentPadding = bottomContentPadding,
                         fleetColumns = fleetColumns,
                         toolbarModel = toolbarModel,
@@ -839,6 +841,7 @@ internal fun RaftSettingsComputersContent(
 private fun RaftComputersRackBody(
     model: RaftComputersListModel.Content,
     refreshErrorCode: String?,
+    onRetry: () -> Unit,
     bottomContentPadding: Dp,
     /** The fleet's runtime columns and the toolbar's model, as the toolbar above has them. */
     fleetColumns: RaftRackRuntimeColumns,
@@ -961,7 +964,7 @@ private fun RaftComputersRackBody(
                 )
             }
             LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
-                refreshErrorCode?.let { code -> item(key = "refresh-error") { RaftComputersRefreshErrorBanner(code) } }
+                refreshErrorCode?.let { code -> item(key = "refresh-error") { RaftComputersRefreshErrorBanner(code, onRetry) } }
                 // Web: the cards sit in the page's padding; the phone list runs edge to edge under its header.
                 if (!list) item(key = "top-gap") { Spacer(Modifier.height(if (cardColumns > 1) RaftComputerCardGridEdge else 16.dp)) }
                 if (list && !layout.empty && (fleetColumns.usage.isNotEmpty() || fleetColumns.other.isNotEmpty())) {
@@ -2063,7 +2066,7 @@ private fun RaftComputerCardFactsLine(facts: RaftComputerCardFacts, modifier: Mo
         is RaftComputerCardFacts.Offline -> {
             val offline = stringResource(Res.string.settings_computers_status_offline)
             val text =
-                facts.lastSeenAt?.let { "$offline · " + stringResource(Res.string.settings_computers_rack_last_seen, raftRelativeTimestampLabel(it)) }
+                facts.lastSeenAt?.let { "$offline · " + stringResource(Res.string.settings_computers_rack_offline_last_seen, raftRelativeTimestampLabel(it)) }
                     ?: offline
             RaftText(text, modifier = modifier, style = style, color = hint)
         }
@@ -3246,14 +3249,32 @@ private fun RaftComputerUpdateBadge(computer: RaftComputerRowModel) {
     RaftBadge(text, appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Warning)
 }
 
-/** A refresh that failed while the page still shows its last content. */
+/**
+ * A refresh that failed while the page still shows its last content. With [onRetry] (the
+ * Computers list, web `machine.mobile.refreshErrorSaved`): it says the list is the saved one and
+ * offers Retry.
+ */
 @Composable
-private fun RaftComputersRefreshErrorBanner(code: String) {
+private fun RaftComputersRefreshErrorBanner(code: String, onRetry: (() -> Unit)? = null) {
     RaftBanner(
         description = raftComputerErrorCodeMessage(code, null, null),
         status = RaftBannerStatus.Warning,
-        title = stringResource(Res.string.settings_computers_error_refresh_title),
+        title =
+            stringResource(
+                if (onRetry != null) Res.string.settings_computers_error_refresh_saved else Res.string.settings_computers_error_refresh_title,
+            ),
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        action =
+            onRetry?.let { retry ->
+                {
+                    RaftButton(
+                        text = stringResource(Res.string.common_retry),
+                        onClick = retry,
+                        variant = RaftButtonVariant.Default,
+                        leadingIcon = { RaftComputersIcon(RaftLucideIconName.RefreshCw) },
+                    )
+                }
+            },
     )
 }
 

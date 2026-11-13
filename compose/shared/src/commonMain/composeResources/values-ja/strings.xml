@@ -2908,6 +2908,7 @@
     <string name="settings_computers_rack_version">v%1$s</string>
     <string name="settings_computers_rack_updating_to">v%1$s にアップデート中</string>
     <string name="settings_computers_rack_last_seen">最終接続は%1$sです。</string>
+    <string name="settings_computers_rack_offline_last_seen">最終接続 %1$s</string>
     <string name="settings_computers_rack_percent_used">%1$s使用</string>
     <string name="settings_computers_rack_used_up">上限到達</string>
     <string name="settings_computers_rack_resets_in_minutes">%1$dm で回復</string>
@@ -2963,6 +2964,7 @@
     <string name="settings_computers_cannot_delete_message_one">このコンピューターには %1$d 件のエージェントが割り当てられています。コンピューターを削除する前に、すべてのエージェントを削除してください。</string>
     <string name="settings_computers_cannot_delete_message_many">このコンピューターには %1$d 件のエージェントが割り当てられています。コンピューターを削除する前に、すべてのエージェントを削除してください。</string>
     <string name="settings_computers_error_refresh_title">更新できませんでした</string>
+    <string name="settings_computers_error_refresh_saved">コンピューターを更新できませんでした。保存済みの結果を表示しています。</string>
     <string name="settings_computers_restart">再起動</string>
     <string name="settings_computers_restarting">再起動中…</string>
     <string name="settings_computers_restarted">再起動しました。</string>
