@@ -48,6 +48,7 @@ jobs:
         shell: bash
         run: |
           scripts/ci/test_version_code.sh
+          python3 -I scripts/ci/check_ios_profile_entitlements.py --self-test
           scripts/test_resolve_git_revision.sh
 
       - name: Test iOS device automation helpers

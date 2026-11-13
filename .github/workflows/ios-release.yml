@@ -226,6 +226,28 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Fail in the first minute, not after the ~10-minute framework link: the
+      # profile must grant every capability the app declares (Associated Domains
+      # applinks:app.raft.build / open.raft.build, Sign In with Apple, Push). A
+      # stale profile once failed late in "Archive app" (run #137) and then
+      # shipped 1.16.0 without Universal Links (run #138). The error names the
+      # profile, the missing capability and how to regenerate the secret.
+      - name: Preflight provisioning profile capabilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -n "${SLOCK_IOS_PROVISIONING_PROFILE_BASE64}" ] || { echo "::error::Missing SLOCK_IOS_PROVISIONING_PROFILE_BASE64"; exit 1; }
+          PREFLIGHT_DIR="$(mktemp -d "${RUNNER_TEMP}/profile-preflight.XXXXXX")"
+          if ! printf '%s' "${SLOCK_IOS_PROVISIONING_PROFILE_BASE64}" | tr -d '[:space:]' | base64 --decode > "${PREFLIGHT_DIR}/profile.mobileprovision" 2>/dev/null \
+            || [ ! -s "${PREFLIGHT_DIR}/profile.mobileprovision" ]; then
+            echo "::error::SLOCK_IOS_PROVISIONING_PROFILE_BASE64 is empty or not valid base64. Re-create it from the raw file, e.g. \`base64 -i <file> | pbcopy\` then \`gh secret set SLOCK_IOS_PROVISIONING_PROFILE_BASE64\` — do not store the raw binary."
+            exit 1
+          fi
+          security cms -D -i "${PREFLIGHT_DIR}/profile.mobileprovision" > "${PREFLIGHT_DIR}/profile.plist"
+          python3 -I scripts/ci/check_ios_profile_entitlements.py profile \
+            "${PREFLIGHT_DIR}/profile.plist" compose/iosApp/iosApp/iosApp.entitlements
+          rm -rf "${PREFLIGHT_DIR}"
+
       - name: Pin Xcode
         # Build with a chosen Xcode, not the runner image's default: the SDK decides how iOS
         # lays the app out (the iOS 27.1 SDK makes it edge-to-edge on iPhone Duo, status bar on
@@ -373,16 +395,6 @@ jobs:
           echo "profile_uuid=${PROFILE_UUID}" >> "$GITHUB_OUTPUT"
           echo "profile_name=${PROFILE_NAME}" >> "$GITHUB_OUTPUT"
           echo "profile_team=${PROFILE_TEAM}" >> "$GITHUB_OUTPUT"
-          # Raft message links (#proj-mobile #26): the app declares Associated Domains
-          # (applinks:app.raft.build / open.raft.build). A profile generated before that
-          # capability was enabled on the App ID cannot sign it; archive without the
-          # entitlement then (Universal Links stay off in that build) instead of failing.
-          if /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.associated-domains' "${PROFILE_PLIST}" >/dev/null 2>&1; then
-            echo "associated_domains=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "associated_domains=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Provisioning profile ${PROFILE_NAME} has no Associated Domains entitlement; this build ships without Universal Links. Enable Associated Domains on the build.raft.app App ID, regenerate the App Store profile and update SLOCK_IOS_PROVISIONING_PROFILE_BASE64."
-          fi
           echo "keychain_path=${KEYCHAIN_PATH}" >> "$GITHUB_OUTPUT"
 
       - name: Test diagnostics path admission
@@ -426,7 +438,6 @@ jobs:
         env:
           PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
           PROFILE_TEAM: ${{ steps.signing.outputs.profile_team }}
-          PROFILE_ASSOCIATED_DOMAINS: ${{ steps.signing.outputs.associated_domains }}
         run: |
           set -euo pipefail
           mkdir -p "${RUNNER_TEMP}/ios-release"
@@ -452,14 +463,6 @@ jobs:
             "OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES"
             "RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES"
           )
-          if [ "${PROFILE_ASSOCIATED_DOMAINS:-false}" != "true" ]; then
-            # Same entitlements minus Associated Domains (see the signing step).
-            FALLBACK_ENTITLEMENTS="${RUNNER_TEMP}/ios-release/iosApp-no-associated-domains.entitlements"
-            cp iosApp/iosApp.entitlements "${FALLBACK_ENTITLEMENTS}"
-            # PlistBuddy, not `plutil -remove`: plutil reads the dots in the key as a key path.
-            /usr/libexec/PlistBuddy -c 'Delete :com.apple.developer.associated-domains' "${FALLBACK_ENTITLEMENTS}"
-            BUILD_SETTINGS+=("CODE_SIGN_ENTITLEMENTS=${FALLBACK_ENTITLEMENTS}")
-          fi
           set -o pipefail
           ARCHIVE_LOG="${RUNNER_TEMP}/ios-release/xcodebuild-archive.log"
           xcodebuild \
@@ -537,6 +540,11 @@ jobs:
           [ "${VERSION_CODE}" = "${RAFT_IOS_VERSION_CODE}" ] || { echo "Unexpected version code: ${VERSION_CODE}" >&2; exit 1; }
           [ "${VERSION_CODE}" != "1" ] || { echo "CFBundleVersion must not be the project default 1" >&2; exit 1; }
           [ -f "${APP_PATH}/embedded.mobileprovision" ] || { echo "embedded.mobileprovision missing" >&2; exit 1; }
+          # The signed app must carry every capability the source declares (Universal Links:
+          # applinks:app.raft.build / open.raft.build), never a silently reduced set.
+          codesign -d --entitlements - --xml "${APP_PATH}" > "${TMP_DIR}/signed-entitlements.plist"
+          python3 -I scripts/ci/check_ios_profile_entitlements.py signed \
+            "${TMP_DIR}/signed-entitlements.plist" compose/iosApp/iosApp/iosApp.entitlements
           # App strings and bundled files are Compose Multiplatform resources, copied by the
           # "[CP-User] Copy Compose resources to app" phase (:ui-cmp:syncComposeResourcesForXcodeApp).
           APP_RES="${APP_PATH}/compose-resources/composeResources/build.raft.app.resources"
