@@ -51,7 +51,7 @@ jobs:
           xcrun simctl spawn "$udid" "$tool" dump > probe/dump-ent.txt 2>&1; echo "dump-ent exit=$?"; head -5 probe/dump-ent.txt
           head -150 probe/dump.txt
           shot before
-          xcrun simctl spawn "$udid" log stream --style compact --predicate 'process == "SpringBoard" AND composedMessage CONTAINS[c] "DisplayTool"' > probe/sb-log.txt 2>&1 &
+          xcrun simctl spawn "$udid" log stream --style compact --level debug --predicate 'process == "SpringBoard" OR process == "duo_swap"' > probe/sb-log.txt 2>&1 &
           logpid=$!
           sleep 2
           xcrun simctl spawn "$udid" "$tool" swap 0.5 2>&1 | tee probe/swap1.txt
@@ -63,7 +63,7 @@ jobs:
           xcrun simctl spawn "$udid" "$plain" swap 0.5 2>&1 | tee probe/swap3-plain.txt
           sleep 8; shot swap3plain
           kill $logpid
-          cat probe/sb-log.txt | tail -40
+          grep -iE 'displaytool|sbdisplay|duo_swap|swap|authoriz|BSService|fold|hinge' probe/sb-log.txt | tail -80
           python3 -c "
           import glob
           for p in sorted(glob.glob('probe/*.png')): print(p, len(open(p,'rb').read()))

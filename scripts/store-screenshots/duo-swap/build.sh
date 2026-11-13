@@ -6,7 +6,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 out=${1:-$here/duo_swap}
 ent=(-Wl,-sectcreate,__TEXT,__entitlements,"$here/entitlements.plist")
-[ "${2:-}" = plain ] && ent=()
+[ "${2:-}" = plain ] && ent=(-Wl,-dead_strip)
 xcrun -sdk iphonesimulator clang -arch arm64 -mios-simulator-version-min=26.0 -fobjc-arc -framework Foundation \
   "${ent[@]}" "$here/duo_swap.m" -o "$out"
 codesign -f -s - "$out"

@@ -1,93 +1,96 @@
-// iPhone Duo simulator: open or close the device by asking SpringBoard's display tool service to
-// swap displays (the hosted runner has no Simulator.app, whose Device menu does this). Built for
-// the simulator and run inside it with `xcrun simctl spawn`. Store screenshots only.
-//   duo_swap dump   - list SpringBoardServices' display tool classes and their methods
-//   duo_swap swap   - swap the primary display (folded <-> open)
+// iPhone Duo simulator: open or close the device by asking SpringBoard's display tool service
+// (com.apple.springboard.sbdisplay.service) to swap displays. The hosted runner has no
+// Simulator.app, whose Device menu does this. Built for the simulator (build.sh) and run inside it
+// with `xcrun simctl spawn <udid> duo_swap swap`. Store screenshots only.
+//   duo_swap dump   - BoardServices' connection classes, for debugging
+//   duo_swap swap [duration]
 #import <Foundation/Foundation.h>
 #import <dlfcn.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 
-static void dumpClass(Class c) {
-    printf("class %s : %s\n", class_getName(c), class_getSuperclass(c) ? class_getName(class_getSuperclass(c)) : "-");
+@protocol SBSDisplayToolServiceServerInterface
+- (void)swapDisplayWithOptions:(id)options completion:(void (^)(NSError *error))completion;
+@end
+
+#define MSG(ret, ...) ((ret(*)(__VA_ARGS__))objc_msgSend)
+
+static void dumpClass(const char *name) {
+    Class c = objc_getClass(name);
+    if (!c) { printf("class %s: missing\n", name); return; }
+    printf("class %s\n", name);
     for (int meta = 0; meta < 2; meta++) {
-        Class t = meta ? object_getClass((id)c) : c;
         unsigned n = 0;
-        Method *ms = class_copyMethodList(t, &n);
-        for (unsigned i = 0; i < n; i++) {
-            printf("  %c%s %s\n", meta ? '+' : '-', sel_getName(method_getName(ms[i])), method_getTypeEncoding(ms[i]));
-        }
+        Method *ms = class_copyMethodList(meta ? object_getClass((id)c) : c, &n);
+        for (unsigned i = 0; i < n; i++) printf("  %c%s %s\n", meta ? '+' : '-', sel_getName(method_getName(ms[i])), method_getTypeEncoding(ms[i]));
         free(ms);
     }
-    unsigned pn = 0;
-    objc_property_t *ps = class_copyPropertyList(c, &pn);
-    for (unsigned i = 0; i < pn; i++) printf("  @property %s %s\n", property_getName(ps[i]), property_getAttributes(ps[i]));
-    free(ps);
 }
 
-static NSArray<Class> *interestingClasses(void) {
-    NSMutableArray *out = [NSMutableArray array];
-    int n = objc_getClassList(NULL, 0);
-    Class *all = (Class *)malloc(sizeof(Class) * n);
-    n = objc_getClassList(all, n);
-    for (int i = 0; i < n; i++) {
-        NSString *name = @(class_getName(all[i]));
-        if ([name rangeOfString:@"DisplayTool"].location != NSNotFound ||
-            ([name hasPrefix:@"SBS"] && ([name rangeOfString:@"Swap"].location != NSNotFound || [name rangeOfString:@"Hinge"].location != NSNotFound ||
-                                         [name rangeOfString:@"Fold"].location != NSNotFound))) {
-            [out addObject:all[i]];
-        }
-    }
-    free(all);
-    return out;
-}
-
-static void trySet(id obj, NSString *setter, double value) {
-    SEL sel = NSSelectorFromString(setter);
-    if (![obj respondsToSelector:sel]) return;
-    const char *type = [obj methodSignatureForSelector:sel].numberOfArguments > 2 ? [[obj methodSignatureForSelector:sel] getArgumentTypeAtIndex:2] : "";
-    printf("set %s (%s) = %g\n", setter.UTF8String, type, value);
-    if (type[0] == 'd') ((void (*)(id, SEL, double))objc_msgSend)(obj, sel, value);
-    else if (type[0] == 'f') ((void (*)(id, SEL, float))objc_msgSend)(obj, sel, (float)value);
-    else if (type[0] == 'B' || type[0] == 'c') ((void (*)(id, SEL, BOOL))objc_msgSend)(obj, sel, value != 0);
-    else ((void (*)(id, SEL, long))objc_msgSend)(obj, sel, (long)value);
+static id call(id target, const char *sel) {
+    SEL s = sel_registerName(sel);
+    if (![target respondsToSelector:s]) { printf("! %s does not respond to %s\n", [[target description] UTF8String], sel); return nil; }
+    return MSG(id, id, SEL)(target, s);
 }
 
 int main(int argc, char **argv) {
     @autoreleasepool {
+        dlopen("/System/Library/PrivateFrameworks/BoardServices.framework/BoardServices", RTLD_NOW);
         dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_NOW);
         NSString *cmd = argc > 1 ? @(argv[1]) : @"dump";
-        NSArray<Class> *classes = interestingClasses();
         if ([cmd isEqualToString:@"dump"]) {
-            for (Class c in classes) dumpClass(c);
+            const char *names[] = {"BSServiceConnectionEndpoint", "BSServiceConnection", "BSServiceInterface", "BSObjCProtocol",
+                                   "BSServiceDispatchQueue", "BSServiceQueue", "BSMutableServiceInterface", "SBSLockScreenService"};
+            for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) dumpClass(names[i]);
             return 0;
         }
-        SEL swapSel = NSSelectorFromString(@"swapDisplayWithOptions:completion:");
-        Class serviceClass = nil, optionsClass = nil;
-        for (Class c in classes) {
-            if (!serviceClass && class_getInstanceMethod(c, swapSel)) serviceClass = c;
-            NSString *name = @(class_getName(c));
-            if (!optionsClass && [name rangeOfString:@"Options"].location != NSNotFound &&
-                ([name rangeOfString:@"Swap"].location != NSNotFound || [name rangeOfString:@"DisplayTool"].location != NSNotFound)) optionsClass = c;
+        NSString *machName = argc > 3 ? @(argv[3]) : @"com.apple.frontboard.systemappservices";
+        NSString *service = @"com.apple.springboard.sbdisplay.service";
+        Class Endpoint = objc_getClass("BSServiceConnectionEndpoint");
+        id endpoint = MSG(id, id, SEL, id, id, id)((id)Endpoint, sel_registerName("endpointForMachName:service:instance:"), machName, service, nil);
+        printf("endpoint=%s\n", [[endpoint description] UTF8String]);
+        id connection = MSG(id, id, SEL, id)((id)objc_getClass("BSServiceConnection"), sel_registerName("connectionWithEndpoint:"), endpoint);
+        printf("connection=%s\n", [[connection description] UTF8String]);
+        id interface = MSG(id, id, SEL, id)((id)objc_getClass("BSServiceInterface"), sel_registerName("interfaceWithIdentifier:"), service);
+        id proto = MSG(id, id, SEL, Protocol *)((id)objc_getClass("BSObjCProtocol"), sel_registerName("protocolForProtocol:"), @protocol(SBSDisplayToolServiceServerInterface));
+        MSG(void, id, SEL, id)(interface, sel_registerName("setServer:"), proto);
+        printf("interface=%s\n", [[interface description] UTF8String]);
+        dispatch_queue_t q = dispatch_queue_create("duo_swap", DISPATCH_QUEUE_SERIAL);
+        id serviceQueue = nil;
+        Class DQ = objc_getClass("BSServiceDispatchQueue");
+        if (DQ) {
+            const char *sels[] = {"queueWithDispatchQueue:", "queueWithName:serviceQuality:"};
+            for (size_t i = 0; i < 2; i++) {
+                const char *s = sels[i];
+                if ([DQ respondsToSelector:sel_registerName(s)]) {
+                    serviceQueue = strcmp(s, "queueWithDispatchQueue:") == 0
+                        ? MSG(id, id, SEL, id)((id)DQ, sel_registerName(s), q)
+                        : MSG(id, id, SEL, id, id)((id)DQ, sel_registerName(s), @"duo_swap", nil);
+                    break;
+                }
+            }
         }
-        printf("service=%s options=%s\n", serviceClass ? class_getName(serviceClass) : "nil", optionsClass ? class_getName(optionsClass) : "nil");
-        if (!serviceClass) return 2;
-        id service = [[serviceClass alloc] init];
-        id options = optionsClass ? [[optionsClass alloc] init] : nil;
-        double duration = argc > 2 ? atof(argv[2]) : 0.5;
-        trySet(options, @"setDuration:", duration);
-        trySet(options, @"setWaitForCompletion:", 1);
-        printf("options=%s\n", [[options description] UTF8String]);
+        printf("serviceQueue=%s\n", [[serviceQueue description] UTF8String]);
+        MSG(void, id, SEL, id)(connection, sel_registerName("configureConnection:"), ^(id config) {
+            MSG(void, id, SEL, id)(config, sel_registerName("setInterface:"), interface);
+            if (serviceQueue) MSG(void, id, SEL, id)(config, sel_registerName("setTargetQueue:"), serviceQueue);
+            MSG(void, id, SEL, id)(config, sel_registerName("setInterruptionHandler:"), ^(id c) { printf("interrupted\n"); });
+            MSG(void, id, SEL, id)(config, sel_registerName("setInvalidationHandler:"), ^(id c) { printf("invalidated\n"); });
+        });
+        MSG(void, id, SEL)(connection, sel_registerName("activate"));
+        id remote = call(connection, "remoteTarget");
+        printf("remote=%s\n", [[remote description] UTF8String]);
+        if (!remote) return 2;
         dispatch_semaphore_t done = dispatch_semaphore_create(0);
         __block int status = 0;
-        void (^completion)(id) = ^(id result) {
-            printf("completion: %s\n", result ? [[result description] UTF8String] : "nil");
-            if ([result isKindOfClass:NSError.class]) status = 1;
+        [(id<SBSDisplayToolServiceServerInterface>)remote swapDisplayWithOptions:nil completion:^(NSError *error) {
+            printf("completion error=%s\n", error ? [[error description] UTF8String] : "nil");
+            status = error ? 1 : 0;
             dispatch_semaphore_signal(done);
-        };
-        ((void (*)(id, SEL, id, id))objc_msgSend)(service, swapSel, options, completion);
+        }];
         long timedOut = dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC));
         printf("swap returned (timedOut=%ld status=%d)\n", timedOut, status);
+        MSG(void, id, SEL)(connection, sel_registerName("invalidate"));
         return timedOut ? 3 : status;
     }
 }
