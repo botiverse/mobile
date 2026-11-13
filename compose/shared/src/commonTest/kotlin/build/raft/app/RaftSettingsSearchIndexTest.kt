@@ -127,7 +127,7 @@ class RaftSettingsSearchIndexTest {
         assertEquals(pageOrder.sorted(), pageOrder)
         // Within Account, the index's own order.
         assertEquals(
-            listOf("display-name", "username", "email", "password", "sign-out"),
+            listOf("display-name", "username", "email", "password", "sign-out", "delete-account"),
             placements.filter { it.rowKey == SettingsDestinationAccount }.map { it.entry.id },
         )
     }
