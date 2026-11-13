@@ -21,6 +21,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -303,6 +304,7 @@ private fun ServerJoinReady(view: ServerJoinView.Ready, onJoin: (ServerJoinInvit
 
 @Composable
 private fun ServerJoinAgreementCard(agreement: ServerJoinAgreement) {
+    val uriHandler = LocalUriHandler.current
     RaftCard(modifier = Modifier.fillMaxWidth()) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Column {
@@ -314,7 +316,7 @@ private fun ServerJoinAgreementCard(agreement: ServerJoinAgreement) {
                 )
             }
             Box(Modifier.fillMaxWidth().heightIn(max = 224.dp).verticalScroll(rememberScrollState())) {
-                RaftMarkdownBody(body = agreement.bodyMarkdown)
+                RaftMarkdownBody(body = agreement.bodyMarkdown, onOpenUrl = { uriHandler.openUri(it) })
             }
         }
     }
