@@ -9,6 +9,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.rememberTextMeasurer
 import build.raft.app.data.RaftAgentCreateEntry
+import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.RaftAgentsNetworkApi
+import build.raft.app.data.RaftComputersApiClient
+import build.raft.app.data.RaftComputersNetworkApi
+import build.raft.app.data.RealMemberRepository
+import build.raft.app.data.SharedCreateAgentCoordinator
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RuntimeAccountUsageKey
 import build.raft.app.data.RuntimeAccountUsageLoad
@@ -2342,6 +2348,27 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
             )
         }
     }
+    // Web MachineAgentList bulk selection: each selected agent gets the requests its own page
+    // sends (start / stop / reset, `PATCH /agents/:id`), on this computer's own server only.
+    val bulkAgentActions =
+        remember(sharedStores, environment.authStore, environment.storeScope, createAgentOwner?.serverId, target.machineId) {
+            createAgentOwner?.let { owner ->
+                val client = sharedStores.networkClient(environment.storeScope)
+                val agentsApi = RaftAgentsApiClient(RaftAgentsNetworkApi(client))
+                RaftComputerBulkAgentActions(
+                    memberRepository =
+                        RealMemberRepository(
+                            sessionStore = environment.authStore,
+                            networkClient = client,
+                            logger = { message -> bridge.log("settings_computers_bulk $message") },
+                        ),
+                    agentsApi = agentsApi,
+                    modelCatalog = SharedCreateAgentCoordinator(agentsApi, RaftComputersApiClient(RaftComputersNetworkApi(client))),
+                    serverId = owner.serverId,
+                    machineId = target.machineId,
+                )
+            }
+        }
     // A created agent stays on this page with a "Created <name>" toast whose View opens its DM; an
     // external agent opens its profile (setup guide), as web CreateAgentDialog.
     val createdAgentReceipt =
@@ -2371,6 +2398,13 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                 runtimeCatalog = runtimeCatalog,
                 ownerMembers = ownerMembersEntry?.members.orEmpty(),
                 onOpenAgent = { agent -> openAgentProfile(agent.id) },
+                bulkAgentActions = bulkAgentActions,
+                onBulkAgentsChanged = {
+                    createAgentOwner?.let { owner ->
+                        createAgentScope.launch { environment.serverMembersStore.refreshAgents(ServerId(owner.serverId), "computer_detail_bulk") }
+                    }
+                    refresh()
+                },
                 onCreateAgent =
                     if (createAgentOwner != null) {
                         {
@@ -2447,6 +2481,10 @@ internal fun RaftSettingsComputerDetailContent(
     ownerMembers: List<MemberProfile> = emptyList(),
     /** The agents header's Create agent (web `machine.detail.create`); null hides it. */
     onCreateAgent: (() -> Unit)? = null,
+    /** The agents' bulk Select (web `MachineAgentList`); null hides it. */
+    bulkAgentActions: RaftComputerBulkAgentActions? = null,
+    /** After a bulk action: the agents' state changed on the server. */
+    onBulkAgentsChanged: () -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
@@ -2487,6 +2525,8 @@ internal fun RaftSettingsComputerDetailContent(
                     runtimeCatalog = runtimeCatalog,
                     ownerMembers = ownerMembers,
                     onCreateAgent = onCreateAgent,
+                    bulkAgentActions = bulkAgentActions,
+                    onBulkAgentsChanged = onBulkAgentsChanged,
                 )
         }
     }
@@ -2507,6 +2547,8 @@ private fun RaftComputerDetailBody(
     runtimeCatalog: ServerRuntimeCatalog,
     ownerMembers: List<MemberProfile>,
     onCreateAgent: (() -> Unit)?,
+    bulkAgentActions: RaftComputerBulkAgentActions?,
+    onBulkAgentsChanged: () -> Unit,
 ) {
     val computer = model.computer
     val snapshot = model.snapshot
@@ -2547,6 +2589,38 @@ private fun RaftComputerDetailBody(
             onCopy = { command -> onIntent(SharedSettingsIntent.CopyComputerCommand(command)) },
             onOpenInstallGuide = { onIntent(SharedSettingsIntent.OpenComputerInstallGuide) },
         )
+    // The agents' live state (the members store), for their rows and the bulk toolbar.
+    val agentLive =
+        snapshot.agents.associate { agent ->
+            key(agent.id) { agent.id to raftComputerAgentStatusIndicator(agent, rememberRaftAgentStatusIndicatorState(agentStatusResolver, agent.id)) }
+        }
+    val agentRunning: (String) -> Boolean = { id -> agentLive[id].raftComputerAgentRunning() }
+    val bulkState = remember(machineId) { RaftComputerAgentsBulkState() }
+    val bulkScope = rememberCoroutineScope()
+    val bulkActions = bulkAgentActions?.takeIf { snapshot.canManageMachines }
+    val bulk =
+        bulkActions?.let { actions ->
+            RaftComputerAgentsBulk(
+                state = bulkState,
+                computerOnline = snapshot.computer.online,
+                running = agentRunning,
+                onStart = {
+                    bulkState.runLifecycle(bulkScope, actions, snapshot.agents, agentRunning, RaftComputerBulkAction.Start, onBulkAgentsChanged)
+                },
+                onRetryModel = {
+                    (bulkState.receipt as? RaftComputerBulkReceipt.Partial)?.let { partial ->
+                        bulkState.modelRequest = RaftComputerBulkModelRequest(partial.unfinished.keys.toList(), retry = partial)
+                    }
+                },
+            )
+        }
+    // Agents that left this computer leave the selection (web's stale-id cleanup).
+    val agentIds = snapshot.agents.map { it.id }
+    LaunchedEffect(agentIds) {
+        bulkState.selected = bulkState.selected.filterTo(mutableSetOf()) { it in agentIds }
+    }
+    // Back leaves select mode first.
+    RaftBackHandler(enabled = bulk != null && bulkState.selectionMode, label = "computer_agents_select") { bulkState.clearSelection() }
     LazyColumn(Modifier.fillMaxSize()) {
         item(key = "header") { RaftComputerDetailHeader(computer) }
         item(key = "version-notice") { RaftComputerVersionNotice(controls) }
@@ -2697,9 +2771,10 @@ private fun RaftComputerDetailBody(
         item(key = "agents") {
             RaftComputerAgentsSection(
                 snapshot,
-                agentStatusResolver,
+                agentLive,
                 onOpenAgent,
                 onCreateAgent = onCreateAgent?.takeIf { snapshot.canManageMachines },
+                bulk = bulk,
             )
         }
         item(key = "workspaces") {
@@ -2758,6 +2833,44 @@ private fun RaftComputerDetailBody(
             },
             onDismiss = { transferOwnerOpen = false },
         )
+    }
+    if (bulk != null && bulkActions != null) {
+        if (bulkState.resetOptionsOpen) {
+            RaftComputerBulkResetDialog(bulkState, count = bulkState.selected.size) {
+                bulkState.runLifecycle(bulkScope, bulkActions, snapshot.agents, agentRunning, bulkState.resetAction, onBulkAgentsChanged)
+            }
+        }
+        if (bulkState.stopConfirmOpen) {
+            RaftComputerBulkStopDialog(
+                bulkState,
+                onlineCount = snapshot.agents.count { it.id in bulkState.selected && agentRunning(it.id) },
+            ) {
+                bulkState.runLifecycle(bulkScope, bulkActions, snapshot.agents, agentRunning, RaftComputerBulkAction.Stop, onBulkAgentsChanged)
+            }
+        }
+        bulkState.modelRequest?.let { request ->
+            val chosen = snapshot.agents.filter { it.id in request.agentIds }
+            if (chosen.isEmpty()) {
+                LaunchedEffect(request) { bulkState.modelRequest = null }
+            } else {
+                RaftComputerBulkChangeModelDialog(
+                    request = request,
+                    agents = chosen,
+                    computerRuntimes = snapshot.computer.runtimes,
+                    running = agentRunning,
+                    actions = bulkActions,
+                    scope = bulkScope,
+                    onOpenAgent = onOpenAgent,
+                    onClose = { bulkState.modelRequest = null },
+                    onFinished = { receipt ->
+                        bulkState.receipt = receipt
+                        bulkState.modelRequest = null
+                        bulkState.clearSelection()
+                        onBulkAgentsChanged()
+                    },
+                )
+            }
+        }
     }
     if (confirmDelete) {
         RaftComputerDeleteDialog(
@@ -3088,26 +3201,38 @@ private fun RaftComputerEditableText(
 @Composable
 private fun RaftComputerAgentsSection(
     snapshot: SettingsComputerDetailSnapshot,
-    agentStatusResolver: RaftAgentStatusResolver,
+    agentLive: Map<String, RaftAgentStatusIndicatorState?>,
     onOpenAgent: (SettingsComputerAgentSnapshot) -> Unit,
     /** Web `MachineAgentList`: with `canManageMachines`, an ink-line Create agent in the header, agents or not. */
     onCreateAgent: (() -> Unit)?,
+    /** Web's bulk selection, for a viewer with `canManageMachines`; null hides it. */
+    bulk: RaftComputerAgentsBulk?,
 ) {
     val agents = snapshot.agents
+    val selecting = bulk?.state?.selectionMode == true
+    val selectable = bulk != null && agents.isNotEmpty()
+    val createAgent = onCreateAgent?.takeIf { !selecting }
     RaftSection(
         title = stringResource(Res.string.settings_computers_section_agents),
         count = agents.size.takeIf { it > 0 }?.toString(),
         action =
-            onCreateAgent?.let { onClick ->
+            if (selectable || createAgent != null) {
                 {
-                    RaftButton(
-                        text = stringResource(Res.string.settings_computers_action_create_agent),
-                        onClick = onClick,
-                        variant = RaftButtonVariant.Default,
-                        size = RaftButtonSize.Md,
-                        leadingIcon = { RaftComputersIcon(RaftLucideIconName.Plus) },
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (selectable && bulk != null) RaftComputerAgentsSelectButtons(bulk.state, agents.map { it.id })
+                        if (createAgent != null) {
+                            RaftButton(
+                                text = stringResource(Res.string.settings_computers_action_create_agent),
+                                onClick = createAgent,
+                                variant = RaftButtonVariant.Default,
+                                size = RaftButtonSize.Md,
+                                leadingIcon = { RaftComputersIcon(RaftLucideIconName.Plus) },
+                            )
+                        }
+                    }
                 }
+            } else {
+                null
             },
     ) {
         val error = snapshot.agentsError
@@ -3119,14 +3244,31 @@ private fun RaftComputerAgentsSection(
                 )
             agents.isEmpty() -> RaftComputersEmptyNote(stringResource(Res.string.settings_computers_empty_agents))
             else ->
-                RaftListRowGroup(Modifier.fillMaxWidth()) {
-                    agents.forEachIndexed { index, agent ->
-                        RaftComputerAgentRow(
-                            agent = agent,
-                            divider = index > 0,
-                            agentStatusResolver = agentStatusResolver,
-                            onClick = { onOpenAgent(agent) },
-                        )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (bulk != null) {
+                        RaftComputerAgentsBulkReceiptBanner(bulk)
+                        RaftComputerAgentsBulkToolbar(bulk, agents)
+                    }
+                    RaftListRowGroup(Modifier.fillMaxWidth()) {
+                        agents.forEachIndexed { index, agent ->
+                            if (selecting && bulk != null) {
+                                RaftComputerSelectableAgentRow(
+                                    agent = agent,
+                                    live = agentLive[agent.id],
+                                    divider = index > 0,
+                                    selected = agent.id in bulk.state.selected,
+                                    onToggle = { bulk.state.toggle(agent.id) },
+                                    avatar = { RaftComputerAgentAvatar(agent) },
+                                )
+                            } else {
+                                RaftComputerAgentRow(
+                                    agent = agent,
+                                    divider = index > 0,
+                                    live = agentLive[agent.id],
+                                    onClick = { onOpenAgent(agent) },
+                                )
+                            }
+                        }
                     }
                 }
         }
@@ -3142,10 +3284,9 @@ private fun RaftComputerAgentsSection(
 private fun RaftComputerAgentRow(
     agent: SettingsComputerAgentSnapshot,
     divider: Boolean,
-    agentStatusResolver: RaftAgentStatusResolver,
+    live: RaftAgentStatusIndicatorState?,
     onClick: () -> Unit,
 ) {
-    val live = raftComputerAgentStatusIndicator(agent, rememberRaftAgentStatusIndicatorState(agentStatusResolver, agent.id))
     // Web MachineAgentRow on a phone-width row: a plain Online / Offline is the status light
     // alone; anything else (an error, a block, what it is working on) keeps its words, on a line
     // under the runtime · model line.
