@@ -13221,8 +13221,13 @@ private fun SharedThreadRouteContentContent(
                 LocalRaftMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
                 LocalRaftMarkdownTaskStatuses provides markdownTaskStatuses,
                 LocalRaftMarkdownTaskRefStatuses provides markdownTaskRefStatuses,
+                // web MessageMarkdownBody: a Raft message permalink in a message body is a
+                // PermalinkReferenceChip (link icon, the conversation, a mono "msg"), not a bare URL.
                 LocalRaftMarkdownRenderConfig provides
-                    RaftMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
+                    RaftMarkdownRenderConfig(
+                        renderMessagePermalinksAsTag = true,
+                        singleParagraphLightPath = singleParagraphLightPathEnabled,
+                    ),
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
                 LocalThreadFeedbackCardEntryEnabled provides feedbackCardEntryEnabled,
                 LocalThreadViewerServerId provides currentServerId,
