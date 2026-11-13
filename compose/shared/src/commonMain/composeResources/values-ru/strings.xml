@@ -3499,9 +3499,6 @@
     <string name="invite_human_email_label">Адрес электронной почты</string>
     <string name="invite_human_add_invitee">Добавить ещё</string>
     <string name="invite_human_remove_invitee">Удалить приглашённого № %1$d</string>
-    <string name="invite_human_role_label">Роль</string>
-    <string name="invite_human_role_member">Участник</string>
-    <string name="invite_human_role_guest">Гость</string>
     <string name="invite_human_link_label">Ссылка-приглашение</string>
     <string name="invite_human_preparing_link">Подготовка ссылки-приглашения…</string>
     <string name="invite_human_link_unavailable">Ссылка-приглашение недоступна</string>
@@ -4774,4 +4771,11 @@
     <string name="server_join_humans_other">%1$d человека</string>
     <string name="server_join_agents_one">%1$d агент</string>
     <string name="server_join_agents_other">%1$d агента</string>
+    <string name="member_label_channel">Канал</string>
+    <string name="member_guest_in_channel">Гость в канале #%1$s</string>
+    <string name="member_action_promote_to_member">Сделать участником сервера</string>
+    <string name="member_promote_dialog_title">Перевести гостя %1$s в участники сервера %2$s?</string>
+    <string name="member_promote_dialog_message">Гость получит доступ к серверу %1$s наравне с другими участниками и займёт одно место.</string>
+    <string name="member_promote_dialog_confirm">Сделать участником</string>
+    <string name="member_promote_dialog_promoting">Перевод в участники…</string>
 </resources>

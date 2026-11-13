@@ -407,6 +407,16 @@ data class MemberServerRef(
     val slug: String = "",
 )
 
+/**
+ * A Guest's bound channel (slock shared `GuestChannelField.guestChannel`): set only for a Guest,
+ * and only for a viewer who may read that channel, so a private channel's name never leaks.
+ */
+@Serializable
+data class MemberGuestChannelRef(
+    val id: String,
+    val name: String = "",
+)
+
 @Serializable
 data class MemberProfile(
     val id: MemberId,
@@ -528,6 +538,12 @@ data class MemberProfile(
      * [serverId] / [serverName] / [serverSlug] stand. Read through [build.raft.app.data.memberOrigin].
      */
     val servers: List<MemberServerRef>? = null,
+    /**
+     * The channel a Guest belongs to (`guestChannel` on `GET /servers/:id/members` rows and the
+     * member profile), shown as "Guest in #x" in the profile's Info. Null for anyone else, or a
+     * channel the viewer may not read.
+     */
+    val guestChannel: MemberGuestChannelRef? = null,
     /**
      * Joint channel roster rows only (`GET /channels/:id/members`, slock `getChannelMembers`):
      * the server's own answer to "is this one of the viewed server's members". Authoritative over

@@ -8019,11 +8019,6 @@ private fun RaftAppShellReadyContent(
                             loadWebBaseUrl = {
                                 (settingsCapabilities.loadDeveloper() as? DataResult.Content)?.data?.webUrl
                             },
-                            canOfferGuest =
-                                sharedStores.serverFeatureFlags.isEnabled(
-                                    ServerId(inviteServerId),
-                                    InviteHumanGuestFeatureFlagKey
-                                ),
                             copyToPasteboard = bridge::copyToPasteboard,
                             onDismiss = { serverSwitcherInviteServerId = null }
                         )
@@ -11186,19 +11181,12 @@ private fun SharedMembersScreen(
                     serverMembersStore = serverMembersStore
                 )
             }
-            val inviteGuestFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-            val inviteCanOfferGuest =
-                remember(serverId, inviteGuestFlagRevision) {
-                    serverId.isNotBlank() &&
-                        sharedStores.serverFeatureFlags.isEnabled(ServerId(serverId), InviteHumanGuestFeatureFlagKey)
-                }
             val inviteHumanDialog: (@Composable (() -> Unit) -> Unit)? =
                 if (membersPayload.canInviteHumans && serverId.isNotBlank()) {
                     { onDismiss ->
                         SharedServerInviteHumanDialogHost(
                             serverId = serverId,
                             membersDataSource = settingsMembersDataSource,
-                            canOfferGuest = inviteCanOfferGuest,
                             loadWebBaseUrl = {
                                 onForegroundActivity("load_invite_link")
                                 loadInviteWebBaseUrl()

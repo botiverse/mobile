@@ -36,6 +36,7 @@ import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftCard
 import build.raft.app.data.MembersAgentsGrouping
 import build.raft.designsystem.components.RaftCardVariant
@@ -538,15 +539,22 @@ internal fun membersEditableHumanServerRoles(
     ) {
         return emptyList()
     }
-    val currentRole = targetRole.toMembersHumanServerRoleOrNull() ?: return emptyList()
+    // A Guest is never a target, but an existing Guest can be made a member or admin (web
+    // `humanRoleTransitions` / shared `canTransitionServerRole`).
+    val targetIsGuest = targetRole.normalizedMembersServerRole() == "guest"
+    val currentRole = targetRole.toMembersHumanServerRoleOrNull()
+    if (currentRole == null && !targetIsGuest) return emptyList()
     return when (actorRole.normalizedMembersServerRole()) {
         "owner" -> MembersHumanServerRole.entries.filter { candidate ->
             candidate != currentRole &&
                 !(currentRole == MembersHumanServerRole.Owner && (ownerCount == null || ownerCount <= 1))
         }
         "admin" ->
-            if (currentRole == MembersHumanServerRole.Member) listOf(MembersHumanServerRole.Admin)
-            else emptyList()
+            when {
+                targetIsGuest -> listOf(MembersHumanServerRole.Admin, MembersHumanServerRole.Member)
+                currentRole == MembersHumanServerRole.Member -> listOf(MembersHumanServerRole.Admin)
+                else -> emptyList()
+            }
         else -> emptyList()
     }
 }
@@ -953,7 +961,9 @@ internal fun membersDirectMessageEligibility(
     member: MemberProfile,
     currentUserId: String?,
     currentServerId: String?,
-    deleted: Boolean = false
+    deleted: Boolean = false,
+    /** The viewer's server role: a Guest has no DMs with people (web `humanDmAccess.canMessageHuman`). */
+    viewerRole: String? = null
 ): MembersDirectMessageEligibility {
     val memberId = member.id.value.trim()
     if (memberId.isBlank() || member.kind == MemberKind.System || deleted) {
@@ -971,6 +981,11 @@ internal fun membersDirectMessageEligibility(
         }
         if (memberId == currentUserId?.trim()) {
             return MembersDirectMessageEligibility.Self
+        }
+        // A Guest has no DMs (#wg-rbac:#15), neither as the viewer nor as the other person, even
+        // if a DM channel exists from before (web `humanDmAccess.canMessageHuman`).
+        if (viewerRole.normalizedMembersServerRole() == "guest" || member.serverRole.normalizedMembersServerRole() == "guest") {
+            return MembersDirectMessageEligibility.Unavailable
         }
     }
     return MembersDirectMessageEligibility.Peer
@@ -2691,22 +2706,12 @@ internal fun MembersPageContent(
     }
     // Humans "+" invite: web `InviteHumanDialog.tsx` (email / link tabs, link limits,
     // update / revoke), rendered by the shared dialog host.
-    val inviteGuestFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-    val inviteCanOfferGuest =
-        remember(serverId, inviteGuestFlagRevision) {
-            serverId.isNotBlank() &&
-                sharedStores.serverFeatureFlags.isEnabled(
-                    build.raft.app.model.ServerId(serverId),
-                    InviteHumanGuestFeatureFlagKey
-                )
-        }
     val inviteHumanDialog: (@Composable (() -> Unit) -> Unit)? =
         if (payload.canInviteHumans && serverId.isNotBlank()) {
             { onDismiss ->
                 SharedServerInviteHumanDialogHost(
                     serverId = serverId,
                     membersDataSource = membersDataSource,
-                    canOfferGuest = inviteCanOfferGuest,
                     loadWebBaseUrl = {
                         (settingsCapabilities.loadDeveloper() as? DataResult.Content)?.data?.webUrl
                     },
@@ -5166,6 +5171,64 @@ internal fun MemberDetailPageContent(
                         currentServerId = current.server.id.value,
                         ownerCount = ownerCount.takeIf { it > 0 }
                     )
+                // Promote to server member (web HumanProfileActions, design D2): an owner/admin makes a
+                // Guest a member, the same role change as the Role picker, behind its confirmation.
+                val canPromoteGuest =
+                    current.member.serverRole.normalizedMembersServerRole() == "guest" &&
+                        MembersHumanServerRole.Member in
+                        membersEditableHumanServerRoles(
+                            actorRole = current.server.role,
+                            targetRole = current.member.serverRole,
+                            targetMembershipStatus = current.member.membershipStatus,
+                            accessMode = current.accessMode,
+                            targetMemberId = current.member.id.value,
+                            currentUserId = current.currentUserId,
+                            targetServerId = current.member.serverId?.value,
+                            currentServerId = current.server.id.value,
+                            ownerCount = ownerCount.takeIf { it > 0 }
+                        )
+                var promoteConfirmOpen by remember(current.member.id) { mutableStateOf(false) }
+                var promoting by remember(current.member.id) { mutableStateOf(false) }
+                var promoteError by remember(current.member.id) { mutableStateOf<String?>(null) }
+                if (promoteConfirmOpen) {
+                    MembersPromoteGuestConfirmDialog(
+                        personName = current.member.displayName.trim().ifBlank { current.member.handle },
+                        serverName = current.server.name,
+                        promoting = promoting,
+                        errorMessage = promoteError,
+                        onDismiss = { if (!promoting) promoteConfirmOpen = false },
+                        onConfirm = {
+                            promoting = true
+                            promoteError = null
+                            routeScope.launch {
+                                val result =
+                                    runCatchingPreservingCancellation {
+                                        provider.updateHumanRole(current.server.id.value, current.member.id.value, MembersHumanServerRole.Member)
+                                    }.getOrNull()
+                                promoting = false
+                                if (result is DataResult.Content && result.data.success) {
+                                    promoteConfirmOpen = false
+                                    // The profile reads as a member now: the Member badge, no channel row, no Promote.
+                                    routeState =
+                                        current.copy(
+                                            member =
+                                                current.member.copy(
+                                                    serverRole = MembersHumanServerRole.Member.wireValue,
+                                                    // As the parser labels a wire role (`toSettingsLabel`).
+                                                    roleDescription = MembersHumanServerRole.Member.wireValue.replaceFirstChar { it.titlecase() },
+                                                    guestChannel = null
+                                                )
+                                        )
+                                } else {
+                                    promoteError =
+                                        (result as? DataResult.Error)?.error?.userFacingMessage(errorStrings)
+                                            ?: (result as? DataResult.Content)?.data?.message?.takeIf { it.isNotBlank() }
+                                            ?: "member_role_save_failed".userFacingErrorCodeMessage(errorStrings)
+                                }
+                            }
+                        },
+                    )
+                }
                 // Remove member asks first (web HumanProfileActions' RemoveMemberConfirmDialog), and
                 // its banner says which of the person's Computers go offline (slock #13547).
                 var removeConfirmOpen by remember(current.member.id) { mutableStateOf(false) }
@@ -5238,6 +5301,11 @@ internal fun MemberDetailPageContent(
                             removeFailed = false
                             removeConfirmOpen = true
                         }) else null,
+                        onPromoteGuest = if (canPromoteGuest) ({
+                            promoteError = null
+                            promoteConfirmOpen = true
+                        }) else null,
+                        promotingGuest = promoting,
                         onOpenUrl = { linkNavigator.open(it) },
                         onOpenReminderMessage = { permalink ->
                             pager.openMembersReminderMessage(
@@ -6647,6 +6715,10 @@ private class MembersDetailActions(
     val onOpenComputer: (() -> Unit)? = null,
     val onCopyMemberId: () -> Unit,
     val onRemoveMember: (() -> Unit)? = null,
+    /** Promote to server member, for a Guest an owner/admin may make a member (web HumanProfileActions). */
+    val onPromoteGuest: (() -> Unit)? = null,
+    /** The promotion is in flight: the button is disabled. */
+    val promotingGuest: Boolean = false,
     val onOpenUrl: (String) -> Unit,
     val onOpenReminderMessage: (String) -> Unit = {},
     /** Opens a message the agent Activity overview names, by channel and message id. */
@@ -7355,6 +7427,7 @@ private fun MembersDetailContent(
                     currentUserId = currentUserId,
                     currentServerId = currentServerId,
                     memberAvatarResolver = memberAvatarResolver,
+                    viewerRole = humanActorRole,
                     onBack = onBack,
                     onOpenDirectMessage = onOpenDirectMessage,
                     directMessageOpening = actions.directMessageOpening
@@ -7766,6 +7839,8 @@ private fun MembersDetailContent(
                             onRemoveMember = onRemoveMember?.takeIf {
                                 member.membershipStatus != "removed"
                             },
+                            onPromoteGuest = actions.onPromoteGuest,
+                            promotingGuest = actions.promotingGuest,
                             onOpenCreatedAgent = onOpenCreatedAgent
                         )
                     }
@@ -8066,6 +8141,7 @@ private fun MembersHumanDetailHeader(
     currentUserId: String?,
     currentServerId: String?,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    viewerRole: String? = null,
     onBack: () -> Unit,
     onOpenDirectMessage: () -> Unit,
     directMessageOpening: Boolean = false
@@ -8074,7 +8150,8 @@ private fun MembersHumanDetailHeader(
         membersDirectMessageEligibility(
             member = member,
             currentUserId = currentUserId,
-            currentServerId = currentServerId
+            currentServerId = currentServerId,
+            viewerRole = viewerRole
         ) != MembersDirectMessageEligibility.Unavailable
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -9284,6 +9361,8 @@ private fun MembersHumanDetailSections(
     ownerCount: Int? = null,
     onUpdateRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null,
     onRemoveMember: (() -> Unit)? = null,
+    onPromoteGuest: (() -> Unit)? = null,
+    promotingGuest: Boolean = false,
     onOpenCreatedAgent: ((AgentProfile) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -9334,8 +9413,12 @@ private fun MembersHumanDetailSections(
                 onOpenCreatedAgent = onOpenCreatedAgent
             )
         }
-        if (onRemoveMember != null) {
-            MembersHumanActionsSection(onRemoveMember)
+        if (onRemoveMember != null || onPromoteGuest != null) {
+            MembersHumanActionsSection(
+                onRemoveMember = onRemoveMember,
+                onPromoteGuest = onPromoteGuest,
+                promotingGuest = promotingGuest
+            )
         }
     }
 }
@@ -9693,6 +9776,14 @@ private fun MembersHumanInfoSection(
                     RaftDescriptionValue(email)
                 }
             }
+            // Web GuestChannelRow: "Channel: Guest in #x" for a Guest whose channel the viewer may read.
+            member.guestChannel?.name?.takeIf {
+                it.isNotBlank() && displayedRole == null && member.serverRole.normalizedMembersServerRole() == "guest"
+            }?.let { channelName ->
+                MembersHumanKeyValue(term = stringResource(Res.string.member_label_channel)) {
+                    RaftDescriptionValue(stringResource(Res.string.member_guest_in_channel, channelName))
+                }
+            }
             joined?.takeIf { it.isNotBlank() }?.let { joinedText ->
                 MembersHumanKeyValue(term = stringResource(Res.string.member_label_joined)) {
                     RaftDescriptionValue(joinedText, mono = true)
@@ -9957,18 +10048,85 @@ private fun MembersHumanCreatedAgentsSection(
     }
 }
 
+/**
+ * Web HumanProfileActions' promote ConfirmDialog: "Make {name} a member of {server}?", what it
+ * takes (a seat), Cancel and the accent "Make member" (loading "Promoting…").
+ */
 @Composable
-private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
+private fun MembersPromoteGuestConfirmDialog(
+    personName: String,
+    serverName: String,
+    promoting: Boolean,
+    errorMessage: String?,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    RaftDialog(
+        onDismissRequest = onDismiss,
+        title = stringResource(Res.string.member_promote_dialog_title, personName, serverName),
+        description = stringResource(Res.string.member_promote_dialog_message, serverName),
+        dismissOnClickOutside = !promoting,
+        closeLabel = stringResource(Res.string.common_close),
+        footer = {
+            RaftButton(
+                text = stringResource(Res.string.common_cancel),
+                onClick = onDismiss,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg,
+                enabled = !promoting,
+            )
+            RaftButton(
+                text = stringResource(Res.string.member_promote_dialog_confirm),
+                onClick = { if (!promoting) onConfirm() },
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg,
+                loading = promoting,
+                loadingLabel = stringResource(Res.string.member_promote_dialog_promoting),
+            )
+        },
+        content =
+            if (errorMessage != null) {
+                { RaftBanner(description = errorMessage, status = RaftBannerStatus.Warning) }
+            } else {
+                null
+            },
+    )
+}
+
+@Composable
+private fun MembersHumanActionsSection(
+    onRemoveMember: (() -> Unit)?,
+    onPromoteGuest: (() -> Unit)? = null,
+    promotingGuest: Boolean = false
+) {
     MembersHumanSection(title = stringResource(Res.string.member_section_actions)) {
-        // Web: raft-ui Button size="lg" variant="danger", full width, Trash2 18.
-        RaftButton(
-            text = stringResource(Res.string.member_action_remove_member),
-            onClick = onRemoveMember,
-            variant = RaftButtonVariant.Danger,
-            size = RaftButtonSize.Lg,
-            leadingIcon = { MembersHumanGlyph(RaftLucideIconName.Trash2, 18.dp) },
-            modifier = Modifier.fillMaxWidth()
-        )
+        // Web HumanProfileActions: `stack-y-2`, Promote to server member (a Guest, design D2)
+        // above Remove Member.
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (onPromoteGuest != null) {
+                // Web: raft-ui Button size="lg" variant="default", full width, UserPlus 18.
+                RaftButton(
+                    text = stringResource(Res.string.member_action_promote_to_member),
+                    onClick = onPromoteGuest,
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Lg,
+                    enabled = !promotingGuest,
+                    leadingIcon = { MembersHumanGlyph(RaftLucideIconName.UserPlus, 18.dp) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (onRemoveMember != null) {
+                // Web: raft-ui Button size="lg" variant="danger", full width, Trash2 18.
+                RaftButton(
+                    text = stringResource(Res.string.member_action_remove_member),
+                    onClick = onRemoveMember,
+                    variant = RaftButtonVariant.Danger,
+                    size = RaftButtonSize.Lg,
+                    leadingIcon = { MembersHumanGlyph(RaftLucideIconName.Trash2, 18.dp) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
     }
 }
 

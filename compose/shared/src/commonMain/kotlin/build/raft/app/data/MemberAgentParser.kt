@@ -11,6 +11,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MemberGuestChannelRef
 import build.raft.app.model.MemberServerRef
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
@@ -51,6 +52,15 @@ private data class WireServerMember(
      * in that channel, `[]` when its roster lists them through none. Absent otherwise.
      */
     val servers: List<WireMemberServer>? = null,
+    /** slock shared `GuestChannelField`: a Guest's bound channel, for a viewer who may read it. */
+    val guestChannel: WireGuestChannel? = null,
+)
+
+/** `channelService.VisibleGuestChannel`: `{ id, name }`. */
+@Serializable
+private data class WireGuestChannel(
+    val id: String,
+    val name: String = "",
 )
 
 /** `channelService.ChannelMemberServer`: `{ id, name, slug }`. */
@@ -921,6 +931,7 @@ private fun WireServerMember.toMemberProfile(): MemberProfile {
             ?: joinedAt?.let { "active" },
         createdAgents = createdAgents.filterNot { it.isDeletedAgent }.map { it.toAgentProfile() },
         servers = servers?.map { it.toMemberServerRef() },
+        guestChannel = guestChannel?.let { MemberGuestChannelRef(id = it.id, name = it.name) },
     )
 }
 

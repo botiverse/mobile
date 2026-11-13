@@ -96,12 +96,12 @@ class SharedInviteHumanDialogTest {
         val targets =
             inviteHumanTargets(
                 listOf(
-                    InviteHumanInvitee(0, " a@b.com ", "guest"),
+                    InviteHumanInvitee(0, " a@b.com "),
                     InviteHumanInvitee(1, "   "),
                     InviteHumanInvitee(2, "c@d.com"),
                 )
             )
-        assertEquals(listOf("a@b.com" to "guest", "c@d.com" to "member"), targets.map { it.email to it.role })
+        assertEquals(listOf("a@b.com", "c@d.com"), targets.map { it.email })
     }
 
     @Test

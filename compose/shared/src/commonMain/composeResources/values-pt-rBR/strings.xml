@@ -3502,9 +3502,6 @@
     <string name="invite_human_email_label">Endereço de e-mail</string>
     <string name="invite_human_add_invitee">Adicionar mais um</string>
     <string name="invite_human_remove_invitee">Remover pessoa convidada %1$d</string>
-    <string name="invite_human_role_label">Função</string>
-    <string name="invite_human_role_member">Membro</string>
-    <string name="invite_human_role_guest">Convidado</string>
     <string name="invite_human_link_label">Link de convite</string>
     <string name="invite_human_preparing_link">Preparando link de convite…</string>
     <string name="invite_human_link_unavailable">Link de convite indisponível</string>
@@ -4697,4 +4694,11 @@
     <string name="server_join_humans_other">%1$d pessoas</string>
     <string name="server_join_agents_one">%1$d agente</string>
     <string name="server_join_agents_other">%1$d agentes</string>
+    <string name="member_label_channel">Canal</string>
+    <string name="member_guest_in_channel">Convidado em #%1$s</string>
+    <string name="member_action_promote_to_member">Promover a membro do servidor</string>
+    <string name="member_promote_dialog_title">Tornar %1$s membro de %2$s?</string>
+    <string name="member_promote_dialog_message">Essa pessoa terá acesso a %1$s como os outros membros e ocupará uma licença.</string>
+    <string name="member_promote_dialog_confirm">Tornar membro</string>
+    <string name="member_promote_dialog_promoting">Tornando membro…</string>
 </resources>
