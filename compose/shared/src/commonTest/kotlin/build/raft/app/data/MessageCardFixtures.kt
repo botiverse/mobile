@@ -78,3 +78,47 @@ internal const val messageCardOpenBesideStoredJson =
     """{"version":1,"header":{"title":"Preview of the landing page"},"root":"go","elements":{""" +
         """"go":{"type":"Button","props":{"label":"Open preview","variant":"default","action":{"kind":"navigate","url":"https://preview.example.com/"},"open":"beside"}}""" +
         """}}"""
+
+/*
+ * RFC 086 App-sent cards (botiverse/slock #14723 @ 3a036f809943760a0fee9b6250784a3964b2b720):
+ *  - [messageCardActingStoredJson]: `acting_buttons_as_stored` of `packages/shared/src/messageCard.v1.vector.json`
+ *    (its `parsed`): Approve / Deny as Raft stores them, navigate Buttons to the App's fallback page with
+ *    the reason Raft writes for older clients.
+ *  - [messageCardActingActionsJson]: `ACTIONS` of `packages/server/src/routes/messageCardActions.api.test.ts`,
+ *    stored beside the card as `actions`.
+ *  - [messageCardActingFallback]: the vector case's `fallback` (the message's content when the App wrote none).
+ *  - The read answers ([messageCardReadBody]) follow that test's `readCard` answers:
+ *    `{ items: [], prompts, message_card: { card_revision, actions, waiting_for?, consent?, app? } }`.
+ */
+internal const val MessageCardActingPage = "https://vault.example.com/requests/42"
+
+internal const val messageCardActingStoredJson =
+    """{"version":1,"header":{"title":"Access request: deploy key"},"root":"root","elements":{""" +
+        """"root":{"type":"Stack","props":{"direction":"column","wrap":false},"children":["what","row"]},""" +
+        """"what":{"type":"Text","props":{"text":"builder-bot asks to use the deploy key until 18:00 UTC.","tone":"default","mono":false}},""" +
+        """"row":{"type":"Stack","props":{"direction":"row","wrap":false},"children":["approve","deny"]},""" +
+        """"approve":{"type":"Button","props":{"label":"Approve","variant":"default","action":{"kind":"navigate","url":"$MessageCardActingPage"},"disabledReason":"Update Raft to use this button"}},""" +
+        """"deny":{"type":"Button","props":{"label":"Deny","variant":"ghost","action":{"kind":"navigate","url":"$MessageCardActingPage"},"disabledReason":"Update Raft to use this button"}}""" +
+        """}}"""
+
+internal const val messageCardActingActionsJson =
+    """{"approve":{"kind":"execute","action_id":"approve","confirm":"prepare"},"deny":{"kind":"execute","action_id":"deny","undoWindowMs":5000}}"""
+
+internal const val messageCardActingFallback =
+    "**Access request: deploy key**\n\nbuilder-bot asks to use the deploy key until 18:00 UTC.\n\n" +
+        "Approve (disabled: Update Raft to use this button) · Deny (disabled: Update Raft to use this button)"
+
+/** The stored `actionMetadata` of an App's card with acting buttons (RFC 086 §4.1), for [forUserId] when given. */
+internal fun messageCardActingMetadataJson(
+    actions: String = messageCardActingActionsJson,
+    forUserId: String? = "user-alice",
+    revision: Int = 1,
+): String =
+    """{"kind":"message-card","card":$messageCardActingStoredJson,"revision":$revision,"updatedAt":"2026-11-13T09:00:00.000Z",""" +
+        """"actions":$actions${forUserId?.let { ""","for":"$it"""" } ?: ""}}"""
+
+/** A card message read's answer: `message_card` as given and the read's `prompts`. */
+internal fun messageCardReadBody(messageCard: String, prompts: String = "[]"): String =
+    """{"items":[],"prompts":$prompts,"message_card":$messageCard}"""
+
+internal const val MessageCardActingApp = """{"id":"client-vault","name":"Vault","icon":null}"""

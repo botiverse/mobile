@@ -49,12 +49,17 @@ internal class ThreadAppLinkCardActionHost(
 )
 
 @Composable
-internal fun rememberThreadAppLinkCardPress(card: AppLinkResult.Card, actions: ThreadAppLinkCardActionHost?): ThreadAppLinkCardPress {
+internal fun rememberThreadAppLinkCardPress(
+    card: AppLinkResult.Card,
+    actions: ThreadAppLinkCardActionHost?,
+    /** What the press lives as long as: the link (a link card), or the message (a card message, RFC 086). */
+    key: Any? = card.url,
+): ThreadAppLinkCardPress {
     val scope = rememberCoroutineScope()
     val failed = stringResource(Res.string.thread_link_preview_action_failed)
     val undo = stringResource(Res.string.common_undo)
     val refreshFailed = stringResource(Res.string.thread_link_preview_refresh_failed)
-    val press = remember(card.url, actions) { ThreadAppLinkCardPress(card, actions, scope, failed, undo, refreshFailed) }
+    val press = remember(key, actions) { ThreadAppLinkCardPress(card, actions, scope, failed, undo, refreshFailed) }
     // The card is read again after a press: its handles and revision are the latest one's.
     press.card = card
     return press

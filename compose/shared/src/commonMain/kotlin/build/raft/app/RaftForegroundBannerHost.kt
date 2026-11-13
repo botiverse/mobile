@@ -10,6 +10,7 @@ import org.jetbrains.compose.resources.stringResource
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.PushPreviewMode
+import build.raft.app.data.messageNotificationText
 import build.raft.app.data.raftNotificationTitleWithoutSubtitle
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
@@ -567,7 +568,8 @@ internal fun raftForegroundMessageBannerProjectionResult(
     val threadContext = projection.resolveForegroundBannerThreadContext(conversation)
     val iconKind = projection.resolveForegroundBannerIconKind(conversation)
     val iconName = projection.resolveForegroundBannerIconName(conversation)
-    val body = markdownToPreviewText(message.body, ForegroundBannerPreviewMaxLength).ifBlank { "Sent a new message." }
+    // RFC 086: a card this client draws with acting buttons never shows the reason stored for older clients.
+    val body = markdownToPreviewText(messageNotificationText(message.body, message.metadata), ForegroundBannerPreviewMaxLength).ifBlank { "Sent a new message." }
     val senderMemberId =
         projection.resolveForegroundBannerSenderMemberId(message)
             ?: message.author.id.value.takeIf { it.isNotBlank() }
