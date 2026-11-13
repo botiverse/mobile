@@ -3,7 +3,8 @@
 // Simulator.app, whose Device menu does this. Built for the simulator (build.sh) and run inside it
 // with `xcrun simctl spawn <udid> duo_swap swap`. Store screenshots only.
 //   duo_swap dump   - BoardServices' connection classes, for debugging
-//   duo_swap swap [duration]
+//   duo_swap swap [interface identifier] [mach name]
+//   duo_swap inspect - how SBSLockScreenService connects
 #import <Foundation/Foundation.h>
 #import <dlfcn.h>
 #import <objc/message.h>
@@ -39,6 +40,26 @@ int main(int argc, char **argv) {
         dlopen("/System/Library/PrivateFrameworks/BoardServices.framework/BoardServices", RTLD_NOW);
         dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_NOW);
         NSString *cmd = argc > 1 ? @(argv[1]) : @"dump";
+        if ([cmd isEqualToString:@"inspect"]) {
+            // How SpringBoardServices' own lock screen client connects: endpoint and interface.
+            id lock = [[objc_getClass("SBSLockScreenService") alloc] init];
+            unsigned n = 0;
+            Ivar *ivars = class_copyIvarList(object_getClass(lock), &n);
+            for (unsigned i = 0; i < n; i++) {
+                const char *type = ivar_getTypeEncoding(ivars[i]);
+                printf("ivar %s %s\n", ivar_getName(ivars[i]), type);
+                if (type[0] == '@') {
+                    id v = object_getIvar(lock, ivars[i]);
+                    printf("  = %s\n", [[v description] UTF8String]);
+                    if ([v respondsToSelector:sel_registerName("endpoint")]) printf("  endpoint = %s\n", [[MSG(id, id, SEL)(v, sel_registerName("endpoint")) description] UTF8String]);
+                    if ([v respondsToSelector:sel_registerName("interface")]) printf("  interface = %s\n", [[MSG(id, id, SEL)(v, sel_registerName("interface")) description] UTF8String]);
+                    if ([v respondsToSelector:sel_registerName("debugDescription")]) printf("  debug = %s\n", [[v debugDescription] UTF8String]);
+                }
+            }
+            free(ivars);
+            dumpClass("SBSLockScreenService");
+            return 0;
+        }
         if ([cmd isEqualToString:@"dump"]) {
             const char *names[] = {"BSServiceConnectionEndpoint", "BSServiceConnection", "BSServiceInterface", "BSObjCProtocol",
                                    "BSServiceDispatchQueue", "BSServiceQueue", "BSMutableServiceInterface", "SBSLockScreenService"};
@@ -47,12 +68,13 @@ int main(int argc, char **argv) {
         }
         NSString *machName = argc > 3 ? @(argv[3]) : @"com.apple.frontboard.systemappservices";
         NSString *service = @"com.apple.springboard.sbdisplay.service";
+        NSString *identifier = argc > 2 ? @(argv[2]) : service;
         Class Endpoint = objc_getClass("BSServiceConnectionEndpoint");
         id endpoint = MSG(id, id, SEL, id, id, id)((id)Endpoint, sel_registerName("endpointForMachName:service:instance:"), machName, service, nil);
         printf("endpoint=%s\n", [[endpoint description] UTF8String]);
         id connection = MSG(id, id, SEL, id)((id)objc_getClass("BSServiceConnection"), sel_registerName("connectionWithEndpoint:"), endpoint);
         printf("connection=%s\n", [[connection description] UTF8String]);
-        id interface = MSG(id, id, SEL, id)((id)objc_getClass("BSMutableServiceInterface"), sel_registerName("interfaceWithIdentifier:"), service);
+        id interface = MSG(id, id, SEL, id)((id)objc_getClass("BSMutableServiceInterface"), sel_registerName("interfaceWithIdentifier:"), identifier);
         id proto = MSG(id, id, SEL, Protocol *)((id)objc_getClass("BSObjCProtocol"), sel_registerName("protocolForProtocol:"), @protocol(SBSDisplayToolServiceServerInterface));
         MSG(void, id, SEL, id)(interface, sel_registerName("setServer:"), proto);
         printf("interface=%s\n", [[interface description] UTF8String]);

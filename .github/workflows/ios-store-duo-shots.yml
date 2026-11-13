@@ -47,27 +47,22 @@ jobs:
           xcrun simctl boot "$udid"; xcrun simctl bootstatus "$udid" -b
           sleep 10
           shot() { for d in 1 3; do xcrun simctl io "$udid" screenshot --display=$d "probe/$1-d$d.png" >/dev/null 2>&1; done; }
-          xcrun simctl spawn "$udid" "$plain" dump > probe/dump.txt 2>&1; echo "dump exit=$?"
-          xcrun simctl spawn "$udid" "$tool" dump > probe/dump-ent.txt 2>&1; echo "dump-ent exit=$?"; head -5 probe/dump-ent.txt
-          head -150 probe/dump.txt
+          xcrun simctl spawn "$udid" "$tool" inspect 2>&1 | tee probe/inspect.txt | grep -v '^  [-+]' | head -60
           shot before
           xcrun simctl spawn "$udid" log stream --style compact --level debug --predicate 'process == "SpringBoard" OR process == "duo_swap"' > probe/sb-log.txt 2>&1 &
           logpid=$!
           sleep 2
-          xcrun simctl spawn "$udid" "$tool" swap 0.5 2>&1 | tee probe/swap1.txt
-          sleep 8; shot swap1
+          i=0
+          for id in com.apple.springboard.sbdisplay SBSDisplayToolServiceServerInterface com.apple.springboard.sbdisplay.service; do
+            i=$((i+1))
+            echo "### identifier $id"
+            xcrun simctl spawn "$udid" "$tool" swap "$id" 2>&1 | grep -E 'completion|returned|interface=' | tee "probe/swap$i.txt"
+            sleep 8; shot "swap$i"
+            python3 -c "
+          from PIL import Image; im=Image.open('probe/swap$i-d3.png').convert('L'); print('d3 extrema', im.getextrema())" 2>/dev/null || true
+          done
           xcrun simctl launch "$udid" com.apple.Preferences; sleep 6; shot prefs
-          xcrun simctl io "$udid" enumerate 2>&1 | grep -E "Name: LCD|UI Orientation" | head
-          xcrun simctl spawn "$udid" "$tool" swap 0.5 2>&1 | tee probe/swap2.txt
-          sleep 8; shot swap2
-          xcrun simctl spawn "$udid" "$plain" swap 0.5 2>&1 | tee probe/swap3-plain.txt
-          sleep 8; shot swap3plain
           kill $logpid
-          grep -iE 'displaytool|sbdisplay|duo_swap|swap|authoriz|BSService|fold|hinge' probe/sb-log.txt | tail -80
-          python3 -c "
-          import glob
-          for p in sorted(glob.glob('probe/*.png')): print(p, len(open(p,'rb').read()))
-          "
           mkdir -p probe/crash; cp ~/Library/Logs/DiagnosticReports/duo_swap* probe/crash/ 2>/dev/null; ls probe/crash
           for f in probe/crash/*; do head -c 6000 "$f" | grep -E 'exception|signal|frame|imageOffset|symbol' | head -40; done
           xcrun simctl shutdown "$udid"; xcrun simctl delete "$udid"
