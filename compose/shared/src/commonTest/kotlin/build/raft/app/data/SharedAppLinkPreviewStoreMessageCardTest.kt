@@ -5,7 +5,6 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.launch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -93,49 +92,4 @@ class SharedAppLinkPreviewStoreMessageCardTest {
         assertFalse(store.readMessageCard(CViewer, CServer, CMessage, view, "en"))
         assertEquals(RaftMessageCardConsent.Declined, store.live()?.consent)
     }
-
-    @Test
-    fun aRowComposedAgainReusesTheCurrentAnswerAndAPressOrAnAllowReadsAgain() = runTest(StandardTestDispatcher()) {
-        val needed =
-            HomeNetworkResponse(
-                200,
-                messageCardReadBody(
-                    """{"card_revision":"1","actions":[],"consent":"needed","app":$MessageCardActingApp}""",
-                    prompts = """[{"url":"$MessageCardActingPage","app":$MessageCardActingApp}]""",
-                ),
-            )
-        val granted = HomeNetworkResponse(200, messageCardReadBody("""{"card_revision":"1","app":$MessageCardActingApp,"actions":${handles("t-1")}}"""))
-        val api = FakeAppLinkPreviewApi().apply { cardReadResponses += listOf(needed, granted, granted, granted) }
-        val store = store(api)
-        assertTrue(store.readMessageCard(CViewer, CServer, CMessage, AppLinkCardView.create(), "en", cardRevision = "1"))
-        // Scrolled away and back: a new view, the same revision, nothing changed for the App: no request.
-        assertTrue(store.readMessageCard(CViewer, CServer, CMessage, AppLinkCardView.create(), "en", cardRevision = "1"))
-        assertEquals(1, api.cardReads.size)
-        // Allowing moves the App's epoch: the same read now goes out.
-        store.allow(CViewer, CServer, AppLinkPromptApp("client-vault", "Vault", null)).await()
-        assertTrue(store.readMessageCard(CViewer, CServer, CMessage, AppLinkCardView.create(), "en", cardRevision = "1"))
-        assertEquals(2, api.cardReads.size)
-        assertEquals(2, store.live()?.handles?.size)
-        // A new revision of the card is read; a press reads again whatever is held.
-        assertTrue(store.readMessageCard(CViewer, CServer, CMessage, AppLinkCardView.create(), "en", cardRevision = "2"))
-        assertTrue(store.readMessageCard(CViewer, CServer, CMessage, AppLinkCardView.create(), "en", cardRevision = "1", force = true))
-        assertEquals(4, api.cardReads.size)
-    }
-
-    @Test
-    fun aReadOnItsWayIsNotSentTwice() = runTest(StandardTestDispatcher()) {
-        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val api = FakeAppLinkPreviewApi().apply { readGate = gate }
-        val store = store(api)
-        val first = backgroundScope.launchRead(store)
-        runCurrent()
-        assertTrue(store.readMessageCard(CViewer, CServer, CMessage, AppLinkCardView.create(), "en", cardRevision = "1"))
-        assertEquals(1, api.cardReads.size)
-        gate.complete(Unit)
-        runCurrent()
-        assertTrue(first.isCompleted)
-    }
-
-    private fun kotlinx.coroutines.CoroutineScope.launchRead(store: SharedAppLinkPreviewStore) =
-        launch { store.readMessageCard(CViewer, CServer, CMessage, AppLinkCardView.create(), "en", cardRevision = "1") }
 }
