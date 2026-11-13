@@ -3239,6 +3239,7 @@
     <string name="runtime_form_v2_error_secret_reentry_required">Ключ API привязан к сохранённым настройкам, которые вы изменили. Введите новый ключ.</string>
     <string name="runtime_form_v2_option_default">По умолчанию</string>
     <string name="runtime_form_v2_use_custom">Использовать «%1$s»</string>
+    <string name="runtime_form_v2_custom_value">Пользовательский</string>
     <string name="runtime_form_v2_secret_keep_hint">Оставьте пустым, чтобы сохранить текущее значение.</string>
     <string name="runtime_form_v2_load_failed">Не удалось загрузить форму среды выполнения (%1$s).</string>
     <string name="runtime_form_v2_unavailable">Конфигурация среды выполнения недоступна.</string>

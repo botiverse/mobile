@@ -3242,6 +3242,7 @@
     <string name="runtime_form_v2_error_secret_reentry_required">API 金鑰與你變更的已儲存設定綁定，請輸入新的金鑰。</string>
     <string name="runtime_form_v2_option_default">預設</string>
     <string name="runtime_form_v2_use_custom">使用「%1$s」</string>
+    <string name="runtime_form_v2_custom_value">自訂</string>
     <string name="runtime_form_v2_secret_keep_hint">留空即可保留目前的值。</string>
     <string name="runtime_form_v2_load_failed">無法載入執行環境表單（%1$s）。</string>
     <string name="runtime_form_v2_unavailable">無法取得執行環境設定。</string>
