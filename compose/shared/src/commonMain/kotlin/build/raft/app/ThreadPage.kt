@@ -334,6 +334,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.agentAvatarFallbackWireValue
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.providerLabel
@@ -3904,7 +3905,13 @@ internal data class RaftThreadMemberItem(
     val rosterServerId: String? = null,
     val sourceServerLabel: String? = null,
     val canRemove: Boolean = true,
-    val effectiveChannelRole: String? = null
+    val effectiveChannelRole: String? = null,
+    /**
+     * Someone from another server ([memberOrigin], web `jointMemberOrigin`): every server they are
+     * from, the viewed one left out. Their row carries the first one's tile on the avatar and the
+     * names after the name, in place of the server chip. Empty for the viewed server's members.
+     */
+    val originServers: List<MemberServerRef> = emptyList()
 )
 
 @Serializable
@@ -5519,11 +5526,14 @@ private fun ThreadMembersPageScreen() {
     // External invites (web ChannelMembers): the viewer's role and this server's name.
     var viewerServerRole by remember(routeOwner) { mutableStateOf<String?>(null) }
     var viewerServerName by remember(routeOwner) { mutableStateOf("") }
+    // Member labels (web #14535): logos of the servers the viewer is in, for the rows' server tiles.
+    var viewerServerLogos by remember(routeOwner) { mutableStateOf<Map<String, String>>(emptyMap()) }
     LaunchedEffect(liveOwner, routeOwner) {
         canCreateAgents = false
         viewerServerRole = null
         if (liveOwner == routeOwner) {
             val session = sharedStores.authStore(storeScope).readSession()
+            viewerServerLogos = raftViewerServerLogos(session?.servers.orEmpty().map { it.id to it.avatarUrl })
             val stored = session?.servers?.firstOrNull { it.id == routeOwner.serverId }
             val server = stored?.toServerSummary()
             canCreateAgents = threadAddMemberCanCreateAgents(server?.permissions)
@@ -5764,7 +5774,10 @@ private fun ThreadMembersPageScreen() {
     val memberAppBotResolver = remember(serverMembersStore, route.serverId) {
         raftMemberAppBotResolver(serverMembersStore, route.serverId.value)
     }
-    CompositionLocalProvider(LocalRaftMemberAppBotResolver provides memberAppBotResolver) {
+    CompositionLocalProvider(
+        LocalRaftMemberAppBotResolver provides memberAppBotResolver,
+        LocalRaftViewerServerLogos provides viewerServerLogos,
+    ) {
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         ThreadMembersPageContent(
             members = members, filteredMembers = filteredMembers, filteredExternal = filteredExternal,
@@ -13248,8 +13261,15 @@ private fun SharedThreadRouteContentContent(
                     },
                 )
             }
+        // Member labels (web #14535): another server's tile shows its logo only when the viewer is
+        // also a member of it (the session's servers); otherwise its initial.
+        val viewerServerLogos =
+            remember(currentSession?.servers) {
+                raftViewerServerLogos(currentSession?.servers.orEmpty().map { it.id to it.avatarUrl })
+            }
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
+                LocalRaftViewerServerLogos provides viewerServerLogos,
                 // One channel-kind glyph per channel (forward targets, composer suggestions). Read
                 // from values this lambda already captures (see the JVM-limit note below).
                 LocalRaftChannelKinds provides rememberRaftChannelKindsState(sharedHomeStore.homeStateForPage()),
@@ -30039,6 +30059,9 @@ private fun ThreadMessageCardContent(
         threadAuthorRowDescription(message, authorFacts, showDescription = RaftDisplayPreferenceRuntime.showSenderDescription)
     val authorGuestLabel =
         if (threadAuthorRowShowsGuest(message, authorFacts)) stringResource(Res.string.channel_member_role_guest) else null
+    // Member labels (web botiverse/slock #14535): a sender from another server carries that server's
+    // tile on the avatar's top-left corner.
+    val authorOriginServers = threadAuthorRowOriginServers(message, authorFacts)
     val pointerSessionKey = LocalThreadMessagePointerSessionKey.current
     val horizontalArrangement =
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
@@ -30548,6 +30571,7 @@ private fun ThreadMessageCardContent(
                         muted = message.isDeletedThreadAuthor(),
                         delegatedBy = message.delegatedBy,
                         delegatedSurface = rowSurface,
+                        originServers = authorOriginServers,
                         // Selecting messages: the avatar toggles the row like its body does, so the
                         // strip it shares with the checkbox's touch target selects too (Lagoon,
                         // device check of #4091); no profile, mention or hover card meanwhile.
@@ -31190,6 +31214,7 @@ private fun ThreadMessageCardContent(
                         muted = message.isDeletedThreadAuthor(),
                         delegatedBy = message.delegatedBy,
                         delegatedSurface = rowSurface,
+                        originServers = authorOriginServers,
                         onClick = { openAuthorProfile("avatar") },
                         onLongPress = { onMentionAuthor(message) }
                     )
@@ -33818,6 +33843,16 @@ internal fun RaftThreadMessageItem.canOpenThreadAuthorProfile(): Boolean =
  * [showDescription] off (Settings > Appearance "Show member descriptions", web #14653): none, for
  * people and agents alike; the provider of a bridged sender is not a description and stays.
  */
+/**
+ * The servers the author row's corner tile names (web MessageItem `useSenderOrigin`): a directory
+ * sender from another server ([RaftMemberAuthorFacts.originServers]); never a bridged (external)
+ * sender, whose provider is not a server, nor a system row.
+ */
+internal fun threadAuthorRowOriginServers(message: RaftThreadMessageItem, facts: RaftMemberAuthorFacts?): List<MemberServerRef> {
+    if (message.externalAuthor != null || message.authorKind.equals("system", ignoreCase = true)) return emptyList()
+    return facts?.originServers.orEmpty()
+}
+
 internal fun threadAuthorRowDescription(
     message: RaftThreadMessageItem,
     facts: RaftMemberAuthorFacts?,
@@ -36652,6 +36687,8 @@ private fun ThreadMessageAvatarSlot(
     muted: Boolean = false,
     delegatedBy: MessageDelegatedBy? = null,
     delegatedSurface: Color = RaftColor.Canvas,
+    /** A sender from another server: the servers it is from; the first one's tile goes on the corner. */
+    originServers: List<MemberServerRef> = emptyList(),
     onClick: () -> Unit,
     onLongPress: () -> Unit = {},
     /** The author's profile card under a mouse or trackpad pointer resting on the avatar; null: none. */
@@ -36709,6 +36746,7 @@ private fun ThreadMessageAvatarSlot(
                             muted = muted,
                             delegatedBy = delegatedBy,
                             delegatedSurface = delegatedSurface,
+                            originServers = originServers,
                             onClick = onClick,
                             onLongPress = onLongPress
                         )
@@ -36772,6 +36810,7 @@ private fun ThreadMessageAvatar(
     muted: Boolean = false,
     delegatedBy: MessageDelegatedBy? = null,
     delegatedSurface: Color = RaftColor.Canvas,
+    originServers: List<MemberServerRef> = emptyList(),
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
@@ -36830,13 +36869,26 @@ private fun ThreadMessageAvatar(
                 }
             }
         }
-        if (delegatedBy == null) {
-            avatarWithStatus()
-        } else {
-            RaftAvatarBadgeBox(
-                size = RaftAvatarSize.Md,
-                badge = { ThreadMessageDelegatedFace(delegatedBy, delegatedSurface) }
-            ) { avatarWithStatus() }
+        // Member labels (web #14535 AvatarOriginCorner): another server's tile on the top-left
+        // corner, clear of the presence light and the delegated face. The avatar names no one, so
+        // the corner says where the sender is from ("From Acme Corp", web's text after the name).
+        val originDescription =
+            raftOriginServerNames(originServers).takeIf { it.isNotEmpty() }?.let { names ->
+                stringResource(Res.string.profile_preview_from_servers, names)
+            }
+        RaftAvatarWithOriginCorner(
+            servers = originServers,
+            avatarEdge = RaftAvatarSize.Md.edge,
+            contentDescription = originDescription,
+        ) {
+            if (delegatedBy == null) {
+                avatarWithStatus()
+            } else {
+                RaftAvatarBadgeBox(
+                    size = RaftAvatarSize.Md,
+                    badge = { ThreadMessageDelegatedFace(delegatedBy, delegatedSurface) }
+                ) { avatarWithStatus() }
+            }
         }
     }
 }
@@ -39840,7 +39892,14 @@ internal fun ThreadMembersPagerRow(
             "guest" -> ChannelMemberBadge(stringResource(Res.string.channel_member_role_guest), ChannelMemberBadgeKind.External)
             else -> null
         }
-    val serverBadge = member.sourceServerLabel?.takeIf { it.isNotBlank() }?.let { ChannelMemberBadge(it, ChannelMemberBadgeKind.External) }
+    // Member labels (web #14535 MemberRowName): someone from another server reads their servers
+    // after the name in quiet text, with the first one's tile on the avatar, in place of the chip.
+    // A member of the viewed server who is also in another keeps the chip.
+    val originNames = raftOriginServerNames(member.originServers)
+    val serverBadge =
+        member.sourceServerLabel
+            ?.takeIf { it.isNotBlank() && originNames.isEmpty() }
+            ?.let { ChannelMemberBadge(it, ChannelMemberBadgeKind.External) }
     ChannelMembersRow(
         title = member.displayName,
         subtitle = subtitle,
@@ -39851,7 +39910,16 @@ internal fun ThreadMembersPagerRow(
         cacheServerId = member.sourceServerId,
         statusColor = status?.color,
         badges = listOfNotNull(serverBadge, roleBadge),
-        titleBadge = appBot?.let { bot -> { RaftAppBotBadge(identity = bot, botName = member.displayName) } },
+        titleBadge =
+            if (appBot == null && originNames.isEmpty()) {
+                null
+            } else {
+                {
+                    appBot?.let { bot -> RaftAppBotBadge(identity = bot, botName = member.displayName) }
+                    if (originNames.isNotEmpty()) ChannelMemberOriginServerNames(originNames)
+                }
+            },
+        avatarOriginServers = member.originServers,
         divider = divider,
         removing = removing,
         removeLabel = stringResource(Res.string.thread_members_remove_name, member.displayName),
@@ -39994,7 +40062,8 @@ internal fun MemberProfile.toRaftThreadMemberItem(localServerId: ServerId? = nul
         sourceServerLabel = memberRowServerLabel(this, viewerServerId),
         canRemove = memberRemovableFromChannel(this, viewerServerId),
         // A Guest label is a fact of the viewed server only (web `rosterRoleTag`).
-        effectiveChannelRole = if (origin.external && effectiveChannelRole == "guest") "member" else effectiveChannelRole
+        effectiveChannelRole = if (origin.external && effectiveChannelRole == "guest") "member" else effectiveChannelRole,
+        originServers = if (origin.external) origin.servers else emptyList()
     )
 }
 

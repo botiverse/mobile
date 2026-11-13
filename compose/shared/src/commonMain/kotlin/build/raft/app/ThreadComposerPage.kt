@@ -48,6 +48,7 @@ import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberKind
 import build.raft.app.model.Presence
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MemberServerRef
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -4114,6 +4115,17 @@ private fun ComposerSuggestionHeader(
     }
 }
 
+/**
+ * The server a mention candidate's corner mark stands for (web `candidate.origin`): someone from
+ * another server whose server was named ([RaftComposerMemberItem.sourceServerLabel], the origin's
+ * names); empty for the viewed server's people, a member of it who is also in another included.
+ */
+internal fun RaftComposerMemberItem.mentionOriginServers(): List<MemberServerRef> {
+    if (isLocalServer) return emptyList()
+    val label = sourceServerLabel?.trim()?.takeIf { it.isNotEmpty() } ?: return emptyList()
+    return listOf(MemberServerRef(id = sourceServerId?.trim().orEmpty(), name = label))
+}
+
 /** The agent whose App Bot identity a mention candidate shows; null for people. */
 internal fun RaftComposerMemberItem.mentionAppBotLookupMemberId(): String? =
     memberId?.trim()?.takeIf { kind == MemberKind.Agent && it.isNotBlank() }
@@ -4161,19 +4173,27 @@ internal fun ComposerMemberSuggestionRow(
     ) {
         // web `MentionCandidateAvatar muted`: the avatar dims once more (`opacity-60`) inside the row's.
         Box(modifier = if (muted) Modifier.alpha(0.6f) else Modifier) {
-            RaftAvatarWithStatus(
-                statusColor = agentStatus?.color,
-                avatarSize = ComposerMemberSuggestionAvatarSize,
-                statusSize = ComposerMemberSuggestionStatusSize,
+            // Member labels (web #14535 MentionCandidateAvatar): a candidate from another server
+            // carries a plain dot on the avatar's top-left corner (the xs face has no room for a tile).
+            RaftAvatarWithOriginCorner(
+                servers = member.mentionOriginServers(),
+                avatarEdge = ComposerMemberSuggestionAvatarSize,
+                forceDot = true,
             ) {
-                RaftMemberAvatar(
-                    identity = RaftMemberAvatarIdentity(member.kind, member.memberId, member.sourceServerId),
-                    // web `MentionCandidateAvatar`: a person is their uploaded avatar or, without one, the
-                    // placeholder person icon, never initials (an empty label falls back to the icon).
-                    label = if (member.kind == MemberKind.Human) "" else member.displayName.ifBlank { member.avatarLabel },
+                RaftAvatarWithStatus(
+                    statusColor = agentStatus?.color,
                     avatarSize = ComposerMemberSuggestionAvatarSize,
-                    carriedAvatarWireValue = member.avatarWireValue,
-                )
+                    statusSize = ComposerMemberSuggestionStatusSize,
+                ) {
+                    RaftMemberAvatar(
+                        identity = RaftMemberAvatarIdentity(member.kind, member.memberId, member.sourceServerId),
+                        // web `MentionCandidateAvatar`: a person is their uploaded avatar or, without one, the
+                        // placeholder person icon, never initials (an empty label falls back to the icon).
+                        label = if (member.kind == MemberKind.Human) "" else member.displayName.ifBlank { member.avatarLabel },
+                        avatarSize = ComposerMemberSuggestionAvatarSize,
+                        carriedAvatarWireValue = member.avatarWireValue,
+                    )
+                }
             }
         }
         if (muted) {

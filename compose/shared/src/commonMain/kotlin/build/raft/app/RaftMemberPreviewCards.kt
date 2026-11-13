@@ -54,6 +54,8 @@ internal class RaftMemberPreviewCardSource(
             readReceipt = readReceipt,
             agentStatusResolver = agentStatusResolver,
             memberAvatarResolver = memberAvatarResolver,
+            // Where the member is from is read against the server the card opens on.
+            viewerServerId = serverId,
         )
     },
 )

@@ -31,6 +31,8 @@ class ThreadMemberItemOriginTest {
     @Test
     fun aViewedServerMemberWhoseFirstSourceIsAnotherServerStaysLocal() {
         val row = person.copy(inViewerServer = true, servers = listOf(peer)).toRaftThreadMemberItem(local)
+        // One of the viewed server's own: no corner tile; the chip keeps naming the other server.
+        assertEquals(emptyList(), row.originServers)
 
         // Opens the full profile in the viewed server and keeps Remove (older app: remote, no Remove).
         assertEquals(local.value, row.sourceServerId)
@@ -52,6 +54,8 @@ class ThreadMemberItemOriginTest {
         assertEquals(false, row.canRemove)
         // A Guest label is a fact of the viewed server only.
         assertEquals("member", row.effectiveChannelRole)
+        // Member labels (web #14535): the servers for the avatar's tile and the names after the name.
+        assertEquals(listOf(peer, acme), row.originServers)
 
         // A host admin (joint authority) may remove another server's people.
         assertEquals(true, external.copy(canRemoveFromChannel = true).toRaftThreadMemberItem(local).canRemove)
@@ -63,6 +67,7 @@ class ThreadMemberItemOriginTest {
         assertEquals(peer.id, remote.sourceServerId)
         assertEquals("Peer Labs", remote.sourceServerLabel)
         assertEquals(false, remote.canRemove)
+        assertEquals(listOf(MemberServerRef(peer.id, peer.name, "")), remote.originServers)
 
         val own = person.copy(serverId = local, serverName = "Slock", effectiveChannelRole = "guest").toRaftThreadMemberItem(local)
         assertEquals(local.value, own.sourceServerId)

@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -23,6 +25,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.data.RaftAvatarCacheSubject
+import build.raft.app.model.MemberServerRef
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -148,6 +151,8 @@ internal fun ChannelMembersRow(
     onClick: (() -> Unit)? = null,
     subtitleCopyText: String? = null,
     titleBadge: (@Composable () -> Unit)? = null,
+    /** Someone from another server: the first one's tile on the avatar's top-left corner. */
+    avatarOriginServers: List<MemberServerRef> = emptyList(),
 ) {
     RaftListRow(
         title = title,
@@ -160,19 +165,21 @@ internal fun ChannelMembersRow(
         subtitleCopyText = subtitleCopyText,
         subtitle = subtitle?.takeIf { it.isNotBlank() },
         leading = {
-            RaftAvatarWithStatus(
-                statusColor = statusColor,
-                avatarSize = ChannelMembersAvatarSize,
-                cutoutColor = RaftTheme.colors.layerCanvas,
-            ) {
-                RaftAppAvatar(
-                    kind = avatarKind,
-                    avatarWireValue = avatarWireValue,
-                    label = avatarLabel,
+            RaftAvatarWithOriginCorner(servers = avatarOriginServers, avatarEdge = ChannelMembersAvatarSize) {
+                RaftAvatarWithStatus(
+                    statusColor = statusColor,
                     avatarSize = ChannelMembersAvatarSize,
-                    cacheSubject = cacheSubject,
-                    cacheServerId = cacheServerId,
-                )
+                    cutoutColor = RaftTheme.colors.layerCanvas,
+                ) {
+                    RaftAppAvatar(
+                        kind = avatarKind,
+                        avatarWireValue = avatarWireValue,
+                        label = avatarLabel,
+                        avatarSize = ChannelMembersAvatarSize,
+                        cacheSubject = cacheSubject,
+                        cacheServerId = cacheServerId,
+                    )
+                }
             }
         },
         trailing =
@@ -205,6 +212,25 @@ internal fun ChannelMembersRow(
             },
     )
 }
+
+/**
+ * Web `MemberRowName`'s server names after the name of someone from another server ("Acme Corp,
+ * Lumen Labs"): caption, regular, `foreground-hint`, one line, truncated; capped so the name keeps
+ * its room (the web lets the names give way first).
+ */
+@Composable
+internal fun ChannelMemberOriginServerNames(names: String) {
+    RaftText(
+        names,
+        modifier = Modifier.widthIn(max = 140.dp).testTag(ChannelMemberOriginServersTestTag),
+        style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.Normal),
+        color = RaftTheme.colors.foregroundHint,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+internal const val ChannelMemberOriginServersTestTag = "member-row-origin-servers"
 
 /** Web members-page loading line: a spinner and "Loading members…", centred. */
 @Composable

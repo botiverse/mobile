@@ -32,7 +32,9 @@ import org.robolectric.annotation.GraphicsMode
  *  - a person: avatar, name, @handle, the description under a hairline, View Profile and Message
  *    at the card's end (raft-design #939: the bordered Message last);
  *  - an agent: its status light and words after the name, @handle, "Not read yet", Runtime and
- *    Model under a hairline, the description.
+ *    Model under a hairline, the description;
+ *  - someone from another server: the `info-soft` ribbon across the top (Peer Labs · Acme Corp's
+ *    tiles and names, "External"), then the person as above.
  * Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -49,6 +51,12 @@ class ProfilePreviewCardScreenshotTest {
     @Test fun agentLight() = capture("profile-preview.agent", RaftAppAppearance.Light) { Card(agentModel, actions = false) }
 
     @Test fun agentDark() = capture("profile-preview.agent.dark", RaftAppAppearance.Dark) { Card(agentModel, actions = false) }
+
+    // Member labels (web botiverse/slock #14535 ExternalOriginRibbon): someone from another server,
+    // the ribbon across the card's top with their servers' tiles and names, and "External".
+    @Test fun externalLight() = capture("profile-preview.external", RaftAppAppearance.Light) { Card(externalModel, actions = true) }
+
+    @Test fun externalDark() = capture("profile-preview.external.dark", RaftAppAppearance.Dark) { Card(externalModel, actions = true) }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -96,4 +104,18 @@ private val agentModel =
         modelLabel = "Claude Opus",
         computer = RaftProfilePreviewComputer.Named("studio-mac"),
         readReceipt = RaftProfilePreviewReadReceipt.Unread,
+    )
+
+private val externalModel =
+    humanModel.copy(
+        memberId = "human-bo",
+        displayName = "Bo Peer",
+        handle = "bo",
+        description = "Runs the partner integrations from the Peer Labs side.",
+        external = true,
+        originServers =
+            listOf(
+                build.raft.app.model.MemberServerRef("server-peer", "Peer Labs", "peer-labs"),
+                build.raft.app.model.MemberServerRef("server-acme", "Acme Corp", "acme"),
+            ),
     )

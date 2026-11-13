@@ -1595,6 +1595,9 @@
     <string name="profile_preview_managed_by_app">所属应用</string>
     <string name="profile_preview_unknown_app">未知应用</string>
     <string name="profile_preview_external_runtime">外部运行时</string>
+    <string name="profile_preview_external">外部</string>
+    <string name="profile_preview_external_from">外部：%1$s</string>
+    <string name="profile_preview_from_servers">来自 %1$s</string>
     <string name="member_label_agent_dm">Agent 私信</string>
     <string name="member_label_show_more">展开</string>
     <string name="member_label_show_less">收起</string>
