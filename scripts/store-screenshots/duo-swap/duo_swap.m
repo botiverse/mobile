@@ -56,11 +56,19 @@ int main(int argc, char **argv) {
         id proto = MSG(id, id, SEL, Protocol *)((id)objc_getClass("BSObjCProtocol"), sel_registerName("protocolForProtocol:"), @protocol(SBSDisplayToolServiceServerInterface));
         MSG(void, id, SEL, id)(interface, sel_registerName("setServer:"), proto);
         printf("interface=%s\n", [[interface description] UTF8String]);
-        id serviceQueue = MSG(id, id, SEL, id)((id)objc_getClass("BSServiceDispatchQueue"), sel_registerName("queueWithName:"), @"duo_swap");
+        id serviceQueue = MSG(id, id, SEL)((id)objc_getClass("BSServiceDispatchQueue"), sel_registerName("mainQueue"));
         printf("serviceQueue=%s\n", [[serviceQueue description] UTF8String]);
         MSG(void, id, SEL, id)(connection, sel_registerName("configureConnection:"), ^(id config) {
+            dumpClass(object_getClassName(config));
             MSG(void, id, SEL, id)(config, sel_registerName("setInterface:"), interface);
-            if (serviceQueue && [config respondsToSelector:sel_registerName("setTargetQueue:")]) MSG(void, id, SEL, id)(config, sel_registerName("setTargetQueue:"), serviceQueue);
+            const char *queueSetters[] = {"setTargetQueue:", "setServiceQueue:", "setQueue:"};
+            for (size_t i = 0; i < 3; i++) {
+                if ([config respondsToSelector:sel_registerName(queueSetters[i])]) {
+                    printf("config %s\n", queueSetters[i]);
+                    MSG(void, id, SEL, id)(config, sel_registerName(queueSetters[i]), serviceQueue);
+                    break;
+                }
+            }
             MSG(void, id, SEL, id)(config, sel_registerName("setInterruptionHandler:"), ^(id c) { printf("interrupted\n"); });
             MSG(void, id, SEL, id)(config, sel_registerName("setInvalidationHandler:"), ^(id c) { printf("invalidated\n"); });
         });
@@ -75,7 +83,12 @@ int main(int argc, char **argv) {
             status = error ? 1 : 0;
             dispatch_semaphore_signal(done);
         }];
-        long timedOut = dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC));
+        // The reply comes on the main queue: spin the run loop until it does.
+        long timedOut = 1;
+        for (int i = 0; i < 300; i++) {
+            [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
+            if (dispatch_semaphore_wait(done, DISPATCH_TIME_NOW) == 0) { timedOut = 0; break; }
+        }
         printf("swap returned (timedOut=%ld status=%d)\n", timedOut, status);
         MSG(void, id, SEL)(connection, sel_registerName("invalidate"));
         return timedOut ? 3 : status;
