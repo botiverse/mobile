@@ -41,21 +41,25 @@ jobs:
         run: |
           set +e
           mkdir -p probe
-          find / -maxdepth 7 -name 'Simulator.app' -not -path '*/proc/*' 2>/dev/null | head > probe/simulator-apps.txt
-          rt=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; print([r["runtimeRoot"] for r in json.load(sys.stdin)["runtimes"] if r["identifier"].endswith("iPhone19-4")][0])')
-          head -20 "$rt/System/Library/PrivateFrameworks/SpringBoardFoundation.framework/hinge-samples.csv" > probe/hinge-samples.txt
-          # Which runtime binaries talk about the hinge, and what they say.
-          find "$rt/System/Library/PrivateFrameworks" "$rt/System/Library/Frameworks" "$rt/usr/libexec" "$rt/usr/lib" "$rt/System/Library/CoreServices" -maxdepth 3 -type f -perm -u+x 2>/dev/null |
-          while IFS= read -r f; do
-            n=$(strings -a "$f" 2>/dev/null | grep -ciE 'hinge')
-            [ "${n:-0}" -gt 0 ] && printf '%s\t%s\n' "$n" "$f"
-          done | sort -rn > probe/hinge-binaries.txt
-          head -40 probe/hinge-binaries.txt
-          head -12 probe/hinge-binaries.txt | cut -f2 | while IFS= read -r f; do
-            echo "== $f"; strings -a "$f" | grep -iE 'hinge|fold|posture|unfold|cover|inner' | grep -viE 'folder|manifold|scaffold' | sort -u | head -400
-          done > probe/hinge-strings.txt 2>&1
-          wc -l probe/hinge-strings.txt
-          grep -iE 'default|simulat|override|notif|key|debug|fake|mock|test' probe/hinge-strings.txt | head -120
+          dev=$(xcode-select -p)
+          plat="$dev/Platforms/iPhoneSimulator.platform/Developer"
+          find "$plat/Library/Frameworks" "$plat/Library/PrivateFrameworks" "$plat/usr/lib" -maxdepth 2 -name '*.framework' -o -maxdepth 2 -name '*.dylib' 2>/dev/null > probe/xct-frameworks.txt
+          cat probe/xct-frameworks.txt
+          while IFS= read -r fw; do
+            b="$fw"; [ -d "$fw" ] && b="$fw/$(basename "$fw" .framework)"
+            [ -f "$b" ] || continue
+            hits=$(strings -a "$b" | grep -iE 'hinge|posture|unfold|foldstate|fold state|setFold|deviceFold|innerDisplay|coverDisplay' | grep -viE 'folder|manifold|scaffold' | sort -u)
+            [ -n "$hits" ] && { echo "== $b"; echo "$hits" | head -150; }
+          done < probe/xct-frameworks.txt > probe/xct-hinge.txt 2>&1
+          cat probe/xct-hinge.txt | cut -c1-200 | head -200
+          find "$dev/Platforms/iPhoneOS.platform/Developer/SDKs" "$dev/Platforms/iPhoneSimulator.platform/Developer/SDKs" -path '*XCTest*' -name '*.h' 2>/dev/null | head -3
+          grep -rilE 'hinge|posture|unfold' "$plat/Library/Frameworks" --include='*.h' --include='*.swiftinterface' 2>/dev/null | head -20 > probe/xct-headers.txt
+          cat probe/xct-headers.txt
+          while IFS= read -r h; do echo "== $h"; grep -inE -B2 -A6 'hinge|posture|unfold' "$h" | head -120; done < probe/xct-headers.txt > probe/xct-header-hits.txt
+          head -250 probe/xct-header-hits.txt
+          sdk=$(xcrun --sdk iphonesimulator --show-sdk-path)
+          grep -rlE 'hinge|Posture|unfold|verticalBarEdge' "$sdk/System/Library/Frameworks/UIKit.framework" 2>/dev/null | head > probe/uikit-hits.txt
+          cat probe/uikit-hits.txt
       - uses: actions/upload-artifact@v7
         if: always()
         with:
