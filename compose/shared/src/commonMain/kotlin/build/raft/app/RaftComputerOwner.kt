@@ -73,7 +73,8 @@ internal fun RaftComputerOwnerLine(owner: RaftComputerCreatorModel?, modifier: M
 
 /**
  * The Computer page's Owner row value (web `ComputerOwnerField`): the owner (opening their profile)
- * or "Public (no owner)", then Transfer owner and / or Make it mine as the viewer may.
+ * or "Public (no owner)", then Transfer owner and / or Make it mine as the viewer may. Call it
+ * inside a flow row (the Owner fact's value).
  */
 @Composable
 internal fun RaftComputerOwnerField(
@@ -85,38 +86,34 @@ internal fun RaftComputerOwnerField(
     onTransfer: () -> Unit,
     onClaim: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (owner != null) {
-            Row(Modifier.testTag(RAFT_COMPUTER_OWNER_TAG)) {
-                RaftComputerCreatorLink(owner, onClick = { onOpenOwner(owner) })
-            }
-        } else {
-            RaftText(
-                stringResource(Res.string.settings_computers_owner_public),
-                modifier = Modifier.testTag(RAFT_COMPUTER_OWNER_PUBLIC_TAG),
-                style = RaftTheme.typography.callout,
-                color = RaftTheme.colors.foregroundHint,
-            )
+    // Web: one wrapping line (`flex flex-wrap items-center gap-2`): the owner, then the buttons.
+    // Emitted straight into the caller's flow (the description list's value row).
+    if (owner != null) {
+        Row(Modifier.testTag(RAFT_COMPUTER_OWNER_TAG)) {
+            RaftComputerCreatorLink(owner, onClick = { onOpenOwner(owner) })
         }
-        if (canTransfer || canClaim) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (canTransfer) {
-                    RaftButton(
-                        text = stringResource(Res.string.settings_computers_owner_transfer),
-                        onClick = onTransfer,
-                        modifier = Modifier.testTag(RAFT_COMPUTER_OWNER_TRANSFER_TAG),
-                    )
-                }
-                if (canClaim) {
-                    RaftButton(
-                        text = stringResource(Res.string.settings_computers_owner_make_mine),
-                        onClick = onClaim,
-                        loading = claiming,
-                        modifier = Modifier.testTag(RAFT_COMPUTER_OWNER_MAKE_MINE_TAG),
-                    )
-                }
-            }
-        }
+    } else {
+        RaftText(
+            stringResource(Res.string.settings_computers_owner_public),
+            modifier = Modifier.testTag(RAFT_COMPUTER_OWNER_PUBLIC_TAG),
+            style = RaftTheme.typography.callout,
+            color = RaftTheme.colors.foregroundHint,
+        )
+    }
+    if (canTransfer) {
+        RaftButton(
+            text = stringResource(Res.string.settings_computers_owner_transfer),
+            onClick = onTransfer,
+            modifier = Modifier.testTag(RAFT_COMPUTER_OWNER_TRANSFER_TAG),
+        )
+    }
+    if (canClaim) {
+        RaftButton(
+            text = stringResource(Res.string.settings_computers_owner_make_mine),
+            onClick = onClaim,
+            loading = claiming,
+            modifier = Modifier.testTag(RAFT_COMPUTER_OWNER_MAKE_MINE_TAG),
+        )
     }
 }
 

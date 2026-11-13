@@ -253,6 +253,7 @@ enum class RaftActivityMarkAction(val wire: String) {
 @Serializable
 enum class RaftAgentCreateEntry(val wire: String) {
     @SerialName("channel_members") ChannelMembers("channel_members"),
+    @SerialName("computer_detail") ComputerDetail("computer_detail"),
     @SerialName("members_page") MembersPage("members_page"),
 }
 
