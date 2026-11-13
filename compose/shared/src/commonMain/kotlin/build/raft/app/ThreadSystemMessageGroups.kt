@@ -71,7 +71,7 @@ internal fun RaftThreadMessageItem.threadSystemMessageCategory(): ThreadSystemMe
     // Drawn as cards, not event lines (web: delegated receipt, WeChat notice, hand-off with a reason).
     if (threadActionCard() != null) return null
     if (taskHandoffNotice() != null) return null
-    if (randomId?.startsWith("wechat-connected:") == true) return null
+    if (isAssistantDmCardLine()) return null
     val content = body.stripLeadingStatusGlyph()
     if (ThreadSystemTaskEventPattern.containsMatchIn(content)) return ThreadSystemMessageCategory.TaskUpdate
     if (ThreadSystemTaskMentionPattern.containsMatchIn(content)) return ThreadSystemMessageCategory.TaskUpdate

@@ -376,6 +376,7 @@ import build.raft.app.data.ChannelSosStore
 import build.raft.app.data.channelAnnouncementNoticeOf
 import build.raft.app.data.isChannelAnnouncementNoticeMetadataKey
 import build.raft.app.data.isTaskAssignmentNoticeMetadataKey
+import build.raft.app.data.isDelegatedReceiptMetadataKey
 import build.raft.app.data.RaftAgentControlsApi
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.MessageId
@@ -13202,6 +13203,18 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadAgentTyping provides agentTyping,
                 LocalThreadAgentTypingInThread provides agentTypingInThread,
                 LocalThreadAssistantOtter provides assistantOtter,
+                // The assistant DM's receipt and WeChat notice cards. Read from values this lambda
+                // already captures (see the JVM-limit note below).
+                LocalThreadAssistantDmCards provides
+                    rememberThreadAssistantDmCardsHost(
+                        sharedStores = sharedStores,
+                        storeScope = storeScope,
+                        serverId = currentServerId,
+                        userId = currentSession?.user?.id,
+                        conversationChannelId =
+                            renderedThread.streamChannelId.takeIf { renderedThread.surfaceKind != RaftThreadSurfaceKind.ReplyThread },
+                        bridge = bridge,
+                    ),
                 LocalThreadInlineVideoPreviewHost provides
                     ThreadInlineVideoPreviewHost(
                         states = inlineVideoPreviewStates,
@@ -25972,6 +25985,8 @@ private fun ThreadMessagesListContent(
                                         message = displayMessage,
                                         timestampValue = message.timestampLabel,
                                         timeline = renderPayload.messages,
+                                        serverSlug = currentServerSlug,
+                                        onOpenUrl = onOpenMarkdownUrl,
                                     )
                                 }
                             }
@@ -25980,6 +25995,8 @@ private fun ThreadMessagesListContent(
                                 message = displayMessage,
                                 timestampValue = message.timestampLabel,
                                 timeline = renderPayload.messages,
+                                serverSlug = currentServerSlug,
+                                onOpenUrl = onOpenMarkdownUrl,
                             )
                         } else {
                             val translationUi =
@@ -29313,7 +29330,16 @@ internal fun ThreadSystemMessageRow(
     timestampValue: String,
     /** The conversation's messages, oldest first: a hand-off card reads whether the task came back since. */
     timeline: List<RaftThreadMessageItem> = emptyList(),
+    /**
+     * The conversation list's link opener and server: with them, the assistant DM's receipt and
+     * WeChat notice are cards (ThreadAssistantDmCards.kt); without (a share image, a thread's
+     * origin) they stay one-line notices.
+     */
+    serverSlug: String? = null,
+    onOpenUrl: ((String) -> Unit)? = null,
 ) {
+    // The assistant DM's delegated-send receipt and WeChat connected notice are cards (web MessageItem).
+    if (onOpenUrl != null && ThreadAssistantDmCardRow(message, serverSlug, onOpenUrl)) return
     // A task handed to someone with a reason is a card, not the one-line notice (web MessageItem).
     if (ThreadTaskHandoffRow(message, timeline)) return
     var expanded by remember(message.id) { mutableStateOf(false) }
@@ -34901,7 +34927,7 @@ internal fun RaftThreadMessageItem.expandedSystemDetails(): String =
     buildList {
         systemEventType?.takeIf { it.isNotBlank() }?.let { add("Type: ${it.sanitizeThreadSystemText()}") }
         metadata.entries.sortedBy { it.key }.forEach { (key, value) ->
-            if (key.isNotBlank() && value.isNotBlank() && !isChannelAnnouncementNoticeMetadataKey(key) && !isTaskAssignmentNoticeMetadataKey(key)) {
+            if (key.isNotBlank() && value.isNotBlank() && !isChannelAnnouncementNoticeMetadataKey(key) && !isTaskAssignmentNoticeMetadataKey(key) && !isDelegatedReceiptMetadataKey(key)) {
                 add("${key.sanitizeThreadSystemText()}: ${value.sanitizeThreadSystemText()}")
             }
         }

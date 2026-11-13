@@ -352,7 +352,31 @@ internal data class WireActionCardMetadata(
     val taskNumber: JsonElement? = null,
     val assignee: JsonElement? = null,
     val reason: JsonElement? = null,
+    /*
+     * A delegated-send receipt's lines (`kind: "delegated-receipt"`, AssistantDmCards.kt): kept as
+     * JSON for the same reason.
+     */
+    val delegatedReceipt: JsonElement? = null,
+    val delegatedReceipts: JsonElement? = null,
+    val joinedChannels: JsonElement? = null,
+    val joinedNotForwarded: JsonElement? = null,
 )
+
+/** The delegated-send receipt's metadata string this `actionMetadata` projects to; empty for anything else. */
+internal fun WireActionCardMetadata.delegatedReceiptMetadata(): Map<String, String> {
+    if (kind != DELEGATED_RECEIPT_KIND) return emptyMap()
+    return delegatedReceiptMessageMetadata(
+        JsonObject(
+            buildMap {
+                put("kind", JsonPrimitive(DELEGATED_RECEIPT_KIND))
+                delegatedReceipt?.let { put("delegatedReceipt", it) }
+                delegatedReceipts?.let { put("delegatedReceipts", it) }
+                joinedChannels?.let { put("joinedChannels", it) }
+                joinedNotForwarded?.let { put("joinedNotForwarded", it) }
+            }
+        )
+    )
+}
 
 /** The channel announcement notice this `actionMetadata` carries, read as the web reads it; null for anything else. */
 internal fun WireActionCardMetadata.channelAnnouncementNotice(): ChannelAnnouncementNotice? {
