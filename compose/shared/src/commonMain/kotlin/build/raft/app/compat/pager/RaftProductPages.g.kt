@@ -37,6 +37,7 @@ internal val raftProductPageFactories: Map<String, () -> Pager> =
         "compose_message_link_public_preview" to { build.raft.app.ComposeRaftMessageLinkPublicPreviewPage() },
         "compose_pager_scroll_probe" to { build.raft.app.RaftPagerScrollProbePage() },
         "compose_release_notes" to { build.raft.app.ComposeReleaseNotesPage() },
+        "compose_server_join" to { build.raft.app.RaftServerJoinPage() },
         "compose_settings_account" to { build.raft.app.ComposeSettingsAccountPage() },
         "compose_settings_computers" to { build.raft.app.RaftSettingsComputersPage() },
         "compose_settings_feedback_tickets" to { build.raft.app.ComposeSettingsFeedbackTicketsPage() },

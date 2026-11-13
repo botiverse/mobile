@@ -408,6 +408,7 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.SetJointChannelSortMode -> "patch:joint-channel-sort:$mode"
         is SharedHomeIntent.ReorderSidebar -> "patch:sidebar-order:${channelOrder?.size ?: 0}/${jointChannelOrder?.size ?: 0}/${dmOrder?.size ?: 0}/${pinnedOrder?.size ?: 0}"
         is SharedHomeIntent.ReorderServers -> "patch:server-order:${serverOrder.size}"
+        SharedHomeIntent.SyncSessionServers -> "patch:session-servers"
         is SharedHomeIntent.MarkRead -> "patch:read:$conversationId"
         is SharedHomeIntent.MarkUnread -> "patch:unread:$conversationId"
         is SharedHomeIntent.MarkConversationReadAll -> "patch:read-all:$conversationId"
