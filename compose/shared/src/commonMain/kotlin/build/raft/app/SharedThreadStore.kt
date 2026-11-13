@@ -467,6 +467,8 @@ private const val SharedThreadReplyCountFactLimit = 2_048
 private const val SharedThreadPrewarmGenerationSupersededCode = "thread_prewarm_generation_superseded"
 internal const val SharedThreadFreshnessCauseInitial = "initial"
 private const val SharedThreadStaleConversationLimit = 256
+/** artin #110: past this many live messages since the last other change, a generation is treated as moved by other causes. */
+private const val SharedThreadRealtimeFoldMessageIdLimit = 64
 private const val SharedThreadPrewarmJoinTimeoutMillis = 5_000L
 private const val ReplyCacheProvenanceStaleCode = "thread_reply_cache_provenance_stale"
 
@@ -481,10 +483,22 @@ class SharedThreadFreshnessGeneration internal constructor(
      * logs this as `thread_canonical_superseded cause=`). `initial` for the first capture.
      */
     internal val cause: String = SharedThreadFreshnessCauseInitial,
+    /**
+     * artin #110: for a generation moved by a live message event (an edit / delete / reaction /
+     * reply), the last generation that was NOT moved that way. Null when this generation itself was
+     * moved by something else (an invalidation, a removal, an owner change, a list re-read). See
+     * [SharedThreadFreshnessLedger.realtimeMessageIdsSince].
+     */
+    private val realtimeBase: SharedThreadFreshnessGeneration? = null,
+    /** The ids of the live messages that moved the generation since [nonRealtimeBase], in order (append-only). */
+    internal val realtimeMessageIds: List<String> = emptyList(),
 ) {
     init {
         requireSharedThreadOwnerScopeId(ownerScopeId)
     }
+
+    internal val nonRealtimeBase: SharedThreadFreshnessGeneration
+        get() = realtimeBase ?: this
 }
 
 /**
@@ -619,14 +633,16 @@ internal class SharedThreadFreshnessLedger(
             while (messageFacts.size > messageFactLimit.coerceAtLeast(1)) {
                 messageFacts.remove(messageFacts.keys.firstOrNull() ?: break)
             }
-            advanceAllOwnersLocked(key, cause = "message_mutation")
+            advanceAllOwnersLocked(key, cause = "message_mutation", realtimeMessageId = message.id.value)
             true
         }
 
     fun acceptSummary(
         serverId: String,
         threadId: String,
-        fact: SharedThreadSummaryFact
+        fact: SharedThreadSummaryFact,
+        /** The live message (a reply) this fact comes from; null for a list re-read. */
+        realtimeMessageId: String? = null,
     ): Boolean =
         synchronized(lock) {
             val key = SharedThreadPayloadCacheKey(serverId, threadId)
@@ -646,7 +662,7 @@ internal class SharedThreadFreshnessLedger(
                 return@synchronized false
             }
             summaryFacts[key] = fact
-            advanceAllOwnersLocked(key, cause = "activity_summary")
+            advanceAllOwnersLocked(key, cause = "activity_summary", realtimeMessageId = realtimeMessageId)
             true
         }
 
@@ -761,6 +777,29 @@ internal class SharedThreadFreshnessLedger(
             ] === generation
         }
 
+    /**
+     * artin #110: when [captured] is no longer current and only live message events (edits /
+     * deletes / reactions / replies) moved it since, the ids of those messages; null when anything
+     * else moved it (or it is still current). A request that captured it may keep its answer and
+     * fold those events onto it, if it holds every one of them, instead of fetching again.
+     */
+    fun realtimeMessageIdsSince(captured: SharedThreadFreshnessGeneration): Set<String>? =
+        synchronized(lock) {
+            val current =
+                generations[
+                    sharedThreadOwnedPayloadCacheKey(
+                        captured.ownerScopeId,
+                        captured.key.serverId,
+                        captured.key.threadId
+                    )
+                ] ?: return@synchronized null
+            if (current === captured || current.nonRealtimeBase !== captured.nonRealtimeBase) {
+                return@synchronized null
+            }
+            // Within one base the ids only grow at the end, so what moved it since is the tail.
+            current.realtimeMessageIds.drop(captured.realtimeMessageIds.size).toSet()
+        }
+
     fun runIfCurrent(
         generation: SharedThreadFreshnessGeneration,
         block: () -> Unit
@@ -795,11 +834,32 @@ internal class SharedThreadFreshnessLedger(
             true
         }
 
-    private fun advanceAllOwnersLocked(payloadKey: SharedThreadPayloadCacheKey, cause: String) {
+    private fun advanceAllOwnersLocked(
+        payloadKey: SharedThreadPayloadCacheKey,
+        cause: String,
+        realtimeMessageId: String? = null,
+    ) {
         generations.keys
             .filter { key -> key.payloadKey == payloadKey }
             .forEach { key ->
-                generations[key] = SharedThreadFreshnessGeneration(payloadKey, key.ownerScopeId, cause)
+                val previous = generations[key]
+                val realtimeIds =
+                    realtimeMessageId
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { id -> previous?.realtimeMessageIds.orEmpty() + id }
+                        ?.takeIf { ids -> ids.size <= SharedThreadRealtimeFoldMessageIdLimit }
+                generations[key] =
+                    if (previous != null && realtimeIds != null) {
+                        SharedThreadFreshnessGeneration(
+                            payloadKey,
+                            key.ownerScopeId,
+                            cause,
+                            realtimeBase = previous.nonRealtimeBase,
+                            realtimeMessageIds = realtimeIds,
+                        )
+                    } else {
+                        SharedThreadFreshnessGeneration(payloadKey, key.ownerScopeId, cause)
+                    }
             }
         contentGenerations[payloadKey] = SharedThreadContentGeneration(payloadKey)
     }
@@ -4748,6 +4808,13 @@ internal class SharedThreadDataSource(
          * content (not cached here) that the caller must not present as final.
          */
         onCanonicalRefetchCapped: (() -> Unit)? = null,
+        /**
+         * artin #110: asked with the message ids when only live message events moved the freshness
+         * generation during the request. True when the caller holds every one of those events for
+         * this conversation and folds them onto the answer itself; the answer is then returned as is
+         * (not cached under a generation it does not match) instead of being fetched again.
+         */
+        foldsRealtimeIntoSupersededResult: ((Set<String>) -> Boolean)? = null,
     ): DataResult<RaftThreadScreenPayload> {
         if (!isCurrentReplyCacheProvenanceForLocalSend(expectedContext.provenance)) {
             return staleReplyCacheProvenanceResult()
@@ -4767,6 +4834,7 @@ internal class SharedThreadDataSource(
             onEnteredPage = onEnteredPage,
             onSupersededCanonicalResult = onSupersededCanonicalResult,
             onCanonicalRefetchCapped = onCanonicalRefetchCapped,
+            foldsRealtimeIntoSupersededResult = foldsRealtimeIntoSupersededResult,
         )
     }
 
@@ -4780,6 +4848,7 @@ internal class SharedThreadDataSource(
         onEnteredPage: ((ThreadDurableEnteredPage) -> Unit)? = null,
         onSupersededCanonicalResult: (suspend (DataResult<RaftThreadScreenPayload>) -> Unit)? = null,
         onCanonicalRefetchCapped: (() -> Unit)? = null,
+        foldsRealtimeIntoSupersededResult: ((Set<String>) -> Boolean)? = null,
     ): DataResult<RaftThreadScreenPayload> {
         val resolutionScope = replyResolutionScope ?: readReplyResolutionScope() ?: return authSessionRequiredResult()
         val session = resolutionScope.session
@@ -4934,6 +5003,25 @@ internal class SharedThreadDataSource(
                         resolvedThreadId,
                         payloadOwnerScopeId
                     )
+                // artin #110: only live events the page also received moved it (web merges its answer
+                // with the socket events in one store): keep this answer, the caller folds them onto it.
+                val realtimeMessageIds =
+                    if (foldsRealtimeIntoSupersededResult != null) {
+                        payloadCache.freshnessLedger.realtimeMessageIdsSince(generation)
+                    } else {
+                        null
+                    }
+                if (
+                    foldsRealtimeIntoSupersededResult != null &&
+                    realtimeMessageIds != null &&
+                    foldsRealtimeIntoSupersededResult(realtimeMessageIds)
+                ) {
+                    diagnosticsLogger(
+                        "thread_canonical_superseded_merged threadId=$resolvedThreadId round=${extraRound + 1} " +
+                            "cause=${supersededBy.cause}"
+                    )
+                    return result
+                }
                 diagnosticsLogger(
                     "thread_canonical_superseded threadId=$resolvedThreadId round=${extraRound + 1} " +
                         "cause=${supersededBy.cause}"
@@ -8558,6 +8646,75 @@ internal class SharedThreadStore(
     private var nextThreadRepliesRebaselineGeneration: Long = 0L
     private val initialAccessStateMutex = Mutex()
     private val realtimeGapRecoveryMutex = Mutex()
+    private val inFlightRealtimeFoldLock = SynchronizedObject()
+    private val inFlightRealtimeFolds = mutableListOf<InFlightRealtimeFold>()
+
+    /**
+     * artin #110: the live message events a refresh in flight received for its route, in arrival
+     * order. They are folded onto its answer when it lands (web merges its answer and the socket
+     * events in one store), so an edit / delete / reaction that arrived mid-flight is not lost and
+     * a generation moved only by them needs no second fetch. [complete] turns false when an event
+     * could not be held (a seq gap or a sync horizon reset): the refresh then fetches again.
+     */
+    private class InFlightRealtimeFold(val staleToken: MviStaleToken) {
+        val events = mutableListOf<InFlightRealtimeEvent>()
+        val messageIds = mutableSetOf<String>()
+        var complete = true
+    }
+
+    private class InFlightRealtimeEvent(
+        val event: RealtimeEvent,
+        val currentUserId: String?,
+        val activeReplyParentMessageId: MessageId?,
+    )
+
+    private fun beginInFlightRealtimeFold(staleToken: MviStaleToken): InFlightRealtimeFold =
+        InFlightRealtimeFold(staleToken).also { fold ->
+            synchronized(inFlightRealtimeFoldLock) { inFlightRealtimeFolds += fold }
+        }
+
+    private fun endInFlightRealtimeFold(fold: InFlightRealtimeFold) {
+        synchronized(inFlightRealtimeFoldLock) { inFlightRealtimeFolds.remove(fold) }
+    }
+
+    private fun recordInFlightRealtime(
+        staleToken: MviStaleToken,
+        event: RealtimeEvent?,
+        messageIds: Collection<String> = emptyList(),
+        currentUserId: String? = null,
+        activeReplyParentMessageId: MessageId? = null,
+    ) {
+        synchronized(inFlightRealtimeFoldLock) {
+            inFlightRealtimeFolds
+                .filter { fold -> fold.staleToken == staleToken }
+                .forEach { fold ->
+                    if (event == null) {
+                        fold.complete = false
+                    } else {
+                        fold.events += InFlightRealtimeEvent(event, currentUserId, activeReplyParentMessageId)
+                        fold.messageIds += messageIds
+                    }
+                }
+        }
+    }
+
+    private fun InFlightRealtimeFold.holdsAll(messageIds: Set<String>): Boolean =
+        synchronized(inFlightRealtimeFoldLock) { complete && this.messageIds.containsAll(messageIds) }
+
+    /** The held events replayed in order through the realtime reducer (idempotent by message id). */
+    private fun RaftThreadScreenPayload.withInFlightRealtimeFolded(buffer: InFlightRealtimeFold): RaftThreadScreenPayload {
+        val events = synchronized(inFlightRealtimeFoldLock) { buffer.events.toList() }
+        return events.fold(this) { payload, held ->
+            payload.applyRealtimeEvent(
+                event = held.event,
+                currentUserId = held.currentUserId,
+                activeReplyParentMessageId = held.activeReplyParentMessageId,
+                shouldPreserveReactionsForRealtime = { message, userId ->
+                    shouldPreserveReactionsForRealtime(message, userId)
+                },
+            )
+        }
+    }
     private var realtimeGapRecoveryState: RealtimeGapRecoveryState? = null
     // The catch-up launched off the realtime authority lock ([launchRealtimeGapRecovery]); cancelled by [clear].
     private var realtimeGapRecoveryJob: Job? = null
@@ -9489,8 +9646,9 @@ internal class SharedThreadStore(
         explicitRetry: Boolean = false
     ) {
         val refreshStartedAt = TimeSource.Monotonic.markNow()
+        val realtimeFold = beginInFlightRealtimeFold(staleToken)
         try {
-            refreshOnce(basePayload, staleToken, reusePrewarm, explicitRetry, refreshStartedAt)
+            refreshOnce(basePayload, staleToken, reusePrewarm, explicitRetry, refreshStartedAt, realtimeFold)
         } catch (cancelled: CancellationException) {
             // Hands 7e198cab: a refresh cut short (the page was left, or a newer route replaced it) used to
             // leave no result line, so a log could not tell "still loading" from "abandoned".
@@ -9499,6 +9657,8 @@ internal class SharedThreadStore(
                     "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds}"
             )
             throw cancelled
+        } finally {
+            endInFlightRealtimeFold(realtimeFold)
         }
     }
 
@@ -9508,6 +9668,7 @@ internal class SharedThreadStore(
         reusePrewarm: Boolean,
         explicitRetry: Boolean,
         refreshStartedAt: TimeSource.Monotonic.ValueTimeMark,
+        realtimeFold: InFlightRealtimeFold,
     ) {
         val refreshProducerContext = dataSource.captureReplyCacheProducerContext() ?: return
         val refreshProvenance = refreshProducerContext.provenance
@@ -9655,6 +9816,7 @@ internal class SharedThreadStore(
                         )
                     },
                     onCanonicalRefetchCapped = { refetchCapped = true },
+                    foldsRealtimeIntoSupersededResult = { messageIds -> realtimeFold.holdsAll(messageIds) },
                 )
             } finally {
                 // Superseded content is not a durable baseline either.
@@ -9791,7 +9953,9 @@ internal class SharedThreadStore(
                                     !currentState.canonicalAccessResolved
                             val refreshStableNextPayload =
                                 if (result is DataResult.Content) {
-                                    nextPayload.preserveStableTimelineFrom(
+                                    // artin #110: the live events that arrived during the request, folded
+                                    // onto its answer before it replaces the live timeline.
+                                    nextPayload.withInFlightRealtimeFolded(realtimeFold).preserveStableTimelineFrom(
                                         previous = currentPayload,
                                         preserveAuxiliaryProjectionFromPrevious = true,
                                         refreshObservedMessageIds = refreshObservedMessageIds,
@@ -11424,6 +11588,7 @@ internal class SharedThreadStore(
         activeReplyParentMessageId: MessageId? = null
     ) {
         if (event.isSyncHorizonReset()) {
+            recordInFlightRealtime(routeStaleToken, event = null)
             // A resume had too many late messages to send (slock #10982): re-read the latest page through
             // the existing gap catch-up, as on a foreground resume.
             diagnosticsLogger?.invoke("thread_sync_horizon_reset threadId=${_state.value.payload.sourceThreadId.orEmpty()}")
@@ -11548,6 +11713,20 @@ internal class SharedThreadStore(
                 }
                 val storeEvent =
                     if (event is ThreadUpdated) event.copy(latestReply = null) else event
+                recordInFlightRealtime(
+                    staleToken = eventStaleToken,
+                    event = storeEvent,
+                    messageIds =
+                        when (event) {
+                            is MessageNew -> listOf(event.message.id.value)
+                            is MessageUpdated -> listOf(event.message.id.value)
+                            is SyncResumeResponse -> event.messages.map { message -> message.id.value }
+                            is ThreadUpdated -> listOfNotNull(event.latestReply?.messageId)
+                            else -> emptyList()
+                        },
+                    currentUserId = currentUserId,
+                    activeReplyParentMessageId = activeReplyParentMessageId,
+                )
                 val eventIdentity =
                     when (event) {
                         is MessageNew -> {
@@ -11576,6 +11755,9 @@ internal class SharedThreadStore(
                         activeReplyParentMessageId = activeReplyParentMessageId,
                     )
                 if (realtimeGapServerSeq != null) {
+                    // Messages are missing before this one: an answer in flight cannot be completed
+                    // from the held events alone.
+                    recordInFlightRealtime(eventStaleToken, event = null)
                     val matchingRecovery =
                         realtimeGapRecoveryState?.takeIf { state ->
                             state.staleToken == eventStaleToken && state.routeIdentity == eventRouteIdentity
@@ -11689,6 +11871,7 @@ internal class SharedThreadStore(
                         previous = currentPayload,
                         activeReplyParentMessageId = activeReplyParentMessageId,
                     )
+                if (replyCountGap != null) recordInFlightRealtime(eventStaleToken, event = null)
                 diagnosticsLogger?.invoke(
                     "thread_realtime_fold threadId=${currentPayload.sourceThreadId.orEmpty()} " +
                         "messagesBefore=${currentPayload.messages.size} messagesAfter=${merged.messages.size} " +

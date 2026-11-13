@@ -1226,13 +1226,14 @@ class SharedActivityStore internal constructor(
         return marker.copy(contentGeneration = generation)
     }
 
-    private fun advanceReplyThreadContent(existing: InboxItem, patched: InboxItem) {
+    private fun advanceReplyThreadContent(existing: InboxItem, patched: InboxItem, realtimeMessageId: String?) {
         val serverId = _state.value.ownerServerId ?: return
         val key = existing.replyThreadPrewarmKey(serverId) ?: return
         replyThreadFreshnessLedger.acceptSummary(
             key.serverId,
             key.threadChannelId,
-            patched.replyThreadSummaryFact()
+            patched.replyThreadSummaryFact(),
+            realtimeMessageId = realtimeMessageId,
         )
     }
 
@@ -1561,7 +1562,7 @@ class SharedActivityStore internal constructor(
                 // (legacy Done only; see advancedActivityFrontier).
                 readStateLatestActivitySeq = existing.advancedActivityFrontier(message.seq)
             ).withLiveUnread(unread, message.id).withActivityFollowStateProjection()
-        advanceReplyThreadContent(existing, patched)
+        advanceReplyThreadContent(existing, patched, realtimeMessageId = message.id.value)
         rememberRealtimeHighWater(patched, seq = incomingSeq, inPlaceUnread = unread != null)
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
         if (unread != null) inPlaceDriftCheck.notePatched(patched, intent.inPlaceTrigger())
@@ -1727,7 +1728,7 @@ class SharedActivityStore internal constructor(
                     }
             ).withActivityFollowStateProjection()
         if (patched == existing) return false
-        advanceReplyThreadContent(existing, patched)
+        advanceReplyThreadContent(existing, patched, realtimeMessageId = event.latestReply?.messageId)
         rememberRealtimeHighWater(patched)
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
         return true
