@@ -147,6 +147,35 @@ internal val LocalRaftArtifactOpenStoreScope = compositionLocalOf<RaftShellStore
 internal val LocalRaftArtifactViewerInColumn = compositionLocalOf { false }
 
 /**
+ * The viewer screen's frame as the screen decides it: whether the App's bar is left out ([pageSaysItDrawsBar]: the
+ * page said `hostToolbar=1`, it shows the Artifact, [viewing], and the subject is known, [scopeKnown]) and where it
+ * stands ([LocalRaftArtifactViewerInColumn]). One bar in a column too (#4635, web #14672): where the page draws it,
+ * its Back (`#host=close`) closes the page, and so the column; where it doesn't (an older web), the App's bar has the
+ * column's Close. Its own composable so a test composes this decision, not a frame built by hand (PR #4666 review).
+ */
+@Composable
+internal fun RaftArtifactViewerScreenFrame(
+    title: String,
+    onBack: () -> Unit,
+    pageSaysItDrawsBar: Boolean,
+    viewing: Boolean,
+    scopeKnown: Boolean,
+    desktopMode: Boolean? = null,
+    actions: RaftArtifactViewerBarActions = RaftArtifactViewerBarActions(),
+    content: @Composable () -> Unit,
+) {
+    RaftArtifactViewerFrame(
+        title = title,
+        onBack = onBack,
+        actions = actions,
+        desktopMode = desktopMode,
+        pageDrawsBar = pageSaysItDrawsBar && viewing && scopeKnown,
+        inColumn = LocalRaftArtifactViewerInColumn.current,
+        content = content,
+    )
+}
+
+/**
  * Opens the viewer page for [target] from [this] page, with [storeScope] when given (else the
  * page's own scope). False when no page can be opened from here (no scope): the caller falls back.
  */
@@ -466,14 +495,13 @@ private fun RaftArtifactViewerScreen() {
     // title and this bar's ⋮ items in its own ⋯. Otherwise (a web that does not, while loading, a
     // load error, unavailable) this bar has Back, the title and a ⋮ with only what the page's own
     // toolbar and ⋯ (under it) cannot offer; nothing shows twice.
-    RaftArtifactViewerFrame(
+    RaftArtifactViewerScreenFrame(
         title = header?.title?.ifBlank { untitled } ?: untitled,
         onBack = ::closePage,
         desktopMode = desktopMode.takeIf { desktopModeOffered && viewing },
-        // One bar in a column too (#4635, web #14672): where the page draws it, its Back (`#host=close`) closes the
-        // page, and so the column; where it doesn't (an older web), the App's bar has the column's Close.
-        pageDrawsBar = pageDrawsBar && viewing && scope != null,
-        inColumn = inColumn,
+        pageSaysItDrawsBar = pageDrawsBar,
+        viewing = viewing,
+        scopeKnown = scope != null,
         actions =
             RaftArtifactViewerBarActions(
                 onToggleDesktopMode = { toggleDesktopMode("bar") },
