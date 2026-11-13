@@ -5115,4 +5115,15 @@
     <string name="member_promote_dialog_message">对方将像其他成员一样使用 %1$s，并占用一个席位。</string>
     <string name="member_promote_dialog_confirm">设为成员</string>
     <string name="member_promote_dialog_promoting">正在设为成员…</string>
+    <string name="thread_system_group_task_update_count_one">%1$d 条任务更新</string>
+    <string name="thread_system_group_task_update_count_other">%1$d 条任务更新</string>
+    <string name="thread_system_group_reminder_update_count_one">%1$d 条提醒更新</string>
+    <string name="thread_system_group_reminder_update_count_other">%1$d 条提醒更新</string>
+    <string name="thread_system_group_system_message_count_one">%1$d 条系统消息</string>
+    <string name="thread_system_group_system_message_count_other">%1$d 条系统消息</string>
+    <string name="thread_system_group_list_join">%1$s, %2$s</string>
+    <string name="thread_system_group_single_part_one">有 %1$s</string>
+    <string name="thread_system_group_single_part_other">有 %1$s</string>
+    <string name="thread_system_group_multi_parts">有 %1$s</string>
+    <string name="thread_system_group_system_updates">有 %1$d 条系统更新：%2$s</string>
 </resources>

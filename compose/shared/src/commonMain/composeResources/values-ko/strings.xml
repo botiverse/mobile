@@ -4774,4 +4774,15 @@
     <string name="member_promote_dialog_message">다른 멤버처럼 %1$s 서버를 이용할 수 있게 되며 시트 1개를 사용해요.</string>
     <string name="member_promote_dialog_confirm">멤버로 만들기</string>
     <string name="member_promote_dialog_promoting">멤버로 만드는 중…</string>
+    <string name="thread_system_group_task_update_count_one">작업 업데이트 %1$d개</string>
+    <string name="thread_system_group_task_update_count_other">작업 업데이트 %1$d개</string>
+    <string name="thread_system_group_reminder_update_count_one">리마인더 업데이트 %1$d개</string>
+    <string name="thread_system_group_reminder_update_count_other">리마인더 업데이트 %1$d개</string>
+    <string name="thread_system_group_system_message_count_one">시스템 메시지 %1$d개</string>
+    <string name="thread_system_group_system_message_count_other">시스템 메시지 %1$d개</string>
+    <string name="thread_system_group_list_join">%1$s, %2$s</string>
+    <string name="thread_system_group_single_part_one">%1$s가 있어요</string>
+    <string name="thread_system_group_single_part_other">%1$s가 있어요</string>
+    <string name="thread_system_group_multi_parts">%1$s가 있어요</string>
+    <string name="thread_system_group_system_updates">시스템 업데이트가 %1$d개 있어요: %2$s</string>
 </resources>

@@ -4774,4 +4774,15 @@
     <string name="member_promote_dialog_message">Tendrá acceso a %1$s como los demás miembros y ocupará un puesto.</string>
     <string name="member_promote_dialog_confirm">Hacer miembro</string>
     <string name="member_promote_dialog_promoting">Haciendo miembro…</string>
+    <string name="thread_system_group_task_update_count_one">%1$d actualización de tarea</string>
+    <string name="thread_system_group_task_update_count_other">%1$d actualizaciones de tareas</string>
+    <string name="thread_system_group_reminder_update_count_one">%1$d actualización de recordatorio</string>
+    <string name="thread_system_group_reminder_update_count_other">%1$d actualizaciones de recordatorios</string>
+    <string name="thread_system_group_system_message_count_one">%1$d mensaje del sistema</string>
+    <string name="thread_system_group_system_message_count_other">%1$d mensajes del sistema</string>
+    <string name="thread_system_group_list_join">%1$s, %2$s</string>
+    <string name="thread_system_group_single_part_one">Hay %1$s</string>
+    <string name="thread_system_group_single_part_other">Hay %1$s</string>
+    <string name="thread_system_group_multi_parts">Hay %1$s</string>
+    <string name="thread_system_group_system_updates">Hay %1$d actualizaciones del sistema: %2$s</string>
 </resources>

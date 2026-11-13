@@ -4851,4 +4851,15 @@
     <string name="member_promote_dialog_message">Гость получит доступ к серверу %1$s наравне с другими участниками и займёт одно место.</string>
     <string name="member_promote_dialog_confirm">Сделать участником</string>
     <string name="member_promote_dialog_promoting">Перевод в участники…</string>
+    <string name="thread_system_group_task_update_count_one">%1$d обновление задачи</string>
+    <string name="thread_system_group_task_update_count_other">%1$d обновления задач</string>
+    <string name="thread_system_group_reminder_update_count_one">%1$d обновление напоминания</string>
+    <string name="thread_system_group_reminder_update_count_other">%1$d обновления напоминаний</string>
+    <string name="thread_system_group_system_message_count_one">%1$d системное сообщение</string>
+    <string name="thread_system_group_system_message_count_other">%1$d системных сообщения</string>
+    <string name="thread_system_group_list_join">%1$s, %2$s</string>
+    <string name="thread_system_group_single_part_one">Здесь %1$s</string>
+    <string name="thread_system_group_single_part_other">Здесь %1$s</string>
+    <string name="thread_system_group_multi_parts">Здесь %1$s</string>
+    <string name="thread_system_group_system_updates">Здесь %1$d системных события: %2$s</string>
 </resources>

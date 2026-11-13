@@ -4774,4 +4774,15 @@
     <string name="member_promote_dialog_message">Essa pessoa terá acesso a %1$s como os outros membros e ocupará uma licença.</string>
     <string name="member_promote_dialog_confirm">Tornar membro</string>
     <string name="member_promote_dialog_promoting">Tornando membro…</string>
+    <string name="thread_system_group_task_update_count_one">%1$d atualização de tarefa</string>
+    <string name="thread_system_group_task_update_count_other">%1$d atualizações de tarefa</string>
+    <string name="thread_system_group_reminder_update_count_one">%1$d atualização de lembrete</string>
+    <string name="thread_system_group_reminder_update_count_other">%1$d atualizações de lembrete</string>
+    <string name="thread_system_group_system_message_count_one">%1$d mensagem do sistema</string>
+    <string name="thread_system_group_system_message_count_other">%1$d mensagens do sistema</string>
+    <string name="thread_system_group_list_join">%1$s, %2$s</string>
+    <string name="thread_system_group_single_part_one">Há %1$s</string>
+    <string name="thread_system_group_single_part_other">Há %1$s</string>
+    <string name="thread_system_group_multi_parts">Há %1$s</string>
+    <string name="thread_system_group_system_updates">Há %1$d atualizações do sistema: %2$s</string>
 </resources>
