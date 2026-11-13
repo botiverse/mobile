@@ -1002,6 +1002,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
             assistantPausedBy?.name?.trim()?.takeIf { it.isNotEmpty() && !assistantPausedAt.isNullOrBlank() },
         assistantOwnerUserId = assistantOwnerUserId?.trim()?.takeIf { it.isNotEmpty() },
         managedByAppInstallId = managedByAppInstallId?.takeIf { it.isNotBlank() },
+        agentCreatorUserId = creatorId?.trim()?.takeIf { it.isNotEmpty() && creatorType == "user" },
         managedByAppName = managedByApp?.name?.takeIf { it.isNotBlank() },
         inMemberLists = inMemberLists,
         model = firstNonBlank(model, runtimeProfile?.current?.model),

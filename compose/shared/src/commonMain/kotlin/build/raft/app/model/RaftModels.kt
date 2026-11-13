@@ -515,6 +515,12 @@ data class MemberProfile(
      */
     val managedByAppInstallId: String? = null,
     /**
+     * The person who created this agent (`creatorId` on `GET /agents` when `creatorType` is
+     * `user`); null for an agent made by an agent and on payloads without it. The Members page's
+     * row menu reads it for the creator's rights (web `canViewAgentPrivateSurfaces`).
+     */
+    val agentCreatorUserId: String? = null,
+    /**
      * App Bots only: the owning App's name (`managedByApp.name` on `GET /agents` and
      * `GET /agents/:id`, botiverse/slock #11273). Web `AppBadge` reads it for "App · <App>".
      */

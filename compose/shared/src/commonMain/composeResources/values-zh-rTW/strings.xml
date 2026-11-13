@@ -2128,6 +2128,9 @@
     <string name="list_toolbar_view">檢視</string>
     <string name="members_no_matches">沒有符合「%1$s」的成員。</string>
     <string name="members_page_empty">這裡還沒有人。</string>
+    <string name="members_menu_direct_message">私訊</string>
+    <string name="members_menu_edit_agent">編輯 Agent</string>
+    <string name="members_edit_agent_named">編輯 %1$s</string>
     <string name="members_tag_you">你</string>
     <string name="members_tag_you_with_role">你 · %1$s</string>
     <string name="member_hosted_runtime_location">在雲端執行</string>

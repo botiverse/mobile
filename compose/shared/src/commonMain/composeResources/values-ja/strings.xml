@@ -2158,6 +2158,9 @@
     <string name="list_toolbar_view">表示</string>
     <string name="members_no_matches">「%1$s」に一致するメンバーはいません。</string>
     <string name="members_page_empty">メンバーはまだいません。</string>
+    <string name="members_menu_direct_message">ダイレクトメッセージ</string>
+    <string name="members_menu_edit_agent">エージェントを編集</string>
+    <string name="members_edit_agent_named">%1$s を編集</string>
     <string name="members_tag_you">あなた</string>
     <string name="members_tag_you_with_role">あなた · %1$s</string>
     <string name="member_hosted_runtime_location">クラウドで実行</string>

@@ -2156,6 +2156,9 @@
     <string name="list_toolbar_view">View as</string>
     <string name="members_no_matches">No members match “%1$s”.</string>
     <string name="members_page_empty">No one here yet.</string>
+    <string name="members_menu_direct_message">Direct message</string>
+    <string name="members_menu_edit_agent">Edit agent</string>
+    <string name="members_edit_agent_named">Edit %1$s</string>
     <string name="members_tag_you">You</string>
     <string name="members_tag_you_with_role">You · %1$s</string>
     <string name="member_hosted_runtime_location">Runs in the cloud</string>

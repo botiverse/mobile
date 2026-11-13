@@ -2128,6 +2128,9 @@
     <string name="list_toolbar_view">보기</string>
     <string name="members_no_matches">‘%1$s’에 해당하는 멤버가 없어요.</string>
     <string name="members_page_empty">아직 여기에 아무도 없어요.</string>
+    <string name="members_menu_direct_message">다이렉트 메시지</string>
+    <string name="members_menu_edit_agent">에이전트 편집</string>
+    <string name="members_edit_agent_named">%1$s 편집</string>
     <string name="members_tag_you">나</string>
     <string name="members_tag_you_with_role">나 · %1$s</string>
     <string name="member_hosted_runtime_location">클라우드에서 실행</string>
