@@ -528,6 +528,7 @@
     <string name="thread_parent_authority_resolving">Проверка прав — отправка временно недоступна</string>
     <string name="thread_parent_channel_deleted_composer">Канал удалён — отправка невозможна</string>
     <string name="thread_action_join_channel">Присоединиться к каналу</string>
+    <string name="thread_action_joining">Присоединение…</string>
     <string name="thread_timestamp_now">только что</string>
     <string name="relative_time_unknown">время неизвестно</string>
     <string name="relative_time_toggle_show_absolute">Показать точное время</string>
@@ -3325,8 +3326,6 @@
     <string name="app_update_download_paused">Скачивание приостановлено — ожидание возобновления</string>
     <string name="app_update_download_failed">Не удалось скачать обновление. Нажмите «Повторить», чтобы попробовать снова.</string>
     <string name="thread_audio_playback_position">Позиция воспроизведения</string>
-    <string name="thread_focus_mode_focus">Режим фокусировки</string>
-    <string name="thread_focus_mode_standard">Обычный режим</string>
     <string name="thread_focus_mode_menu_more">Меню панели ветки</string>
     <string name="member_runtime_usage_attention">Использование требует внимания</string>
     <string name="runtime_quota_window_five_hour">5 ч</string>

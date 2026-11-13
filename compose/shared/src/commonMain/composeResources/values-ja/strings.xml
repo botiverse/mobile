@@ -534,6 +534,7 @@
     <string name="thread_parent_authority_resolving">権限を確認しているため、現在は送信できません</string>
     <string name="thread_parent_channel_deleted_composer">チャンネルが削除されたため送信できません</string>
     <string name="thread_action_join_channel">チャンネルに参加</string>
+    <string name="thread_action_joining">参加中…</string>
     <string name="thread_timestamp_now">1 分以内</string>
     <string name="relative_time_unknown">時刻不明</string>
     <string name="relative_time_toggle_show_absolute">正確な時刻を表示</string>
@@ -3486,8 +3487,6 @@
     <string name="app_update_download_paused">ダウンロード一時停止中 — 再開を待っています</string>
     <string name="app_update_download_failed">ダウンロードに失敗しました。再試行してください。</string>
     <string name="thread_audio_playback_position">再生位置</string>
-    <string name="thread_focus_mode_focus">フォーカスモード</string>
-    <string name="thread_focus_mode_standard">標準モード</string>
     <string name="thread_focus_mode_menu_more">スレッドパネルのメニュー</string>
     <string name="member_runtime_usage_attention">使用量に要注意</string>
     <string name="runtime_quota_window_five_hour">5 時間</string>

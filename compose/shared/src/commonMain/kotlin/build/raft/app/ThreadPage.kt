@@ -12885,23 +12885,28 @@ private fun SharedThreadRouteContentContent(
         },
         onJoin = { task ->
             val channelId = task.channelId
-            if (channelId != null) {
+            // slock #12426: a join already in flight sends no second request.
+            if (channelId != null && ThreadChannelJoinsInFlight.begin(channelId)) {
                 coroutineScope.launch {
-                    when (val result = dataSource.joinChannel(channelId)) {
-                        is DataResult.Content -> {
-                            threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
-                            currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
-                                realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
-                                sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, result.data.channelId))
-                                sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                    try {
+                        when (val result = dataSource.joinChannel(channelId)) {
+                            is DataResult.Content -> {
+                                threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
+                                currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
+                                    realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
+                                    sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, result.data.channelId))
+                                    sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                                }
+                                realtimeEvents.joinChannel(result.data.channelId.value, currentSession?.currentServerId)
+                                bridge.toast(joinedChannelLabel)
                             }
-                            realtimeEvents.joinChannel(result.data.channelId.value, currentSession?.currentServerId)
-                            bridge.toast(joinedChannelLabel)
+                            is DataResult.NoPermission ->
+                                if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
+                            is DataResult.Error -> bridge.errorToast(unableToJoinChannelLabel, result.error)
+                            else -> bridge.toast(unableToJoinChannelLabel)
                         }
-                        is DataResult.NoPermission ->
-                            if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
-                        is DataResult.Error -> bridge.errorToast(unableToJoinChannelLabel, result.error)
-                        else -> bridge.toast(unableToJoinChannelLabel)
+                    } finally {
+                        ThreadChannelJoinsInFlight.end(channelId)
                     }
                 }
             }
@@ -15230,33 +15235,40 @@ private fun SharedThreadRouteContentContent(
                     tasksViewModel.dispatch(intent)
                 }
                 action == "joinChannel" -> {
+                    // slock #12426: a join already in flight sends no second request.
+                    val joinKey = renderedThread.joinChannelTargetId()
+                    if (joinKey != null && !ThreadChannelJoinsInFlight.begin(joinKey)) return@ThreadPageContent
                     coroutineScope.launch {
-                        // A task conversation's Join joins its task channel, not the conversation.
-                        when (
-                            val outcome =
-                                renderedThread.joinThreadChannel(dataSource::loadTaskConversationRef, dataSource::joinChannel)
-                        ) {
-                            is ThreadJoinChannelOutcome.Joined -> {
-                                val joinedId = outcome.channel.joinedChannelId
-                                threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(outcome.channel.pageChannelId.value))
-                                currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
-                                    // Now a member: closing this page must not leave the room (the
-                                    // conversation directory may still list the channel as not joined).
-                                    realtimeRoomLeaseRegistry.markJoinedByUser(serverId, joinedId.value)
-                                    sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, joinedId))
-                                    sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                        try {
+                            // A task conversation's Join joins its task channel, not the conversation.
+                            when (
+                                val outcome =
+                                    renderedThread.joinThreadChannel(dataSource::loadTaskConversationRef, dataSource::joinChannel)
+                            ) {
+                                is ThreadJoinChannelOutcome.Joined -> {
+                                    val joinedId = outcome.channel.joinedChannelId
+                                    threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(outcome.channel.pageChannelId.value))
+                                    currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
+                                        // Now a member: closing this page must not leave the room (the
+                                        // conversation directory may still list the channel as not joined).
+                                        realtimeRoomLeaseRegistry.markJoinedByUser(serverId, joinedId.value)
+                                        sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, joinedId))
+                                        sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                                    }
+                                    realtimeEvents.joinChannel(joinedId.value, currentSession?.currentServerId)
+                                    bridge.toast(joinedChannelLabel)
                                 }
-                                realtimeEvents.joinChannel(joinedId.value, currentSession?.currentServerId)
-                                bridge.toast(joinedChannelLabel)
+                                ThreadJoinChannelOutcome.Unresolved -> bridge.toast(unableToJoinChannelLabel)
+                                is ThreadJoinChannelOutcome.Failed ->
+                                    when (val result = outcome.result) {
+                                        is DataResult.NoPermission ->
+                                            if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
+                                        is DataResult.Error -> bridge.errorToast(unableToJoinChannelLabel, result.error)
+                                        else -> bridge.toast(unableToJoinChannelLabel)
+                                    }
                             }
-                            ThreadJoinChannelOutcome.Unresolved -> bridge.toast(unableToJoinChannelLabel)
-                            is ThreadJoinChannelOutcome.Failed ->
-                                when (val result = outcome.result) {
-                                    is DataResult.NoPermission ->
-                                        if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
-                                    is DataResult.Error -> bridge.errorToast(unableToJoinChannelLabel, result.error)
-                                    else -> bridge.toast(unableToJoinChannelLabel)
-                                }
+                        } finally {
+                            joinKey?.let(ThreadChannelJoinsInFlight::end)
                         }
                     }
                 }
@@ -18815,7 +18827,8 @@ private fun ThreadPageContentContent(
             } else if (threadFooterShowsJoin(payload.joined, conversationLounge)) {
                 ThreadJoinFooter(
                     label = localizedThreadJoinLabel(payload.joinLabel),
-                    onJoin = { onThreadEvent("joinChannel", null, null, null) }
+                    onJoin = { onThreadEvent("joinChannel", null, null, null) },
+                    joining = ThreadChannelJoinsInFlight.isJoining(payload.joinChannelTargetId()),
                 )
             } else if (shareSelectionActive) {
                 // Preserve the footer's layout height while capture owns the
@@ -19861,16 +19874,13 @@ internal fun ThreadPageHeader(
                         onOpenInChannel.takeIf { replyThreadMenu && payload.threadHeaderOpenInParentActionVisible() }
                     val toggleFocus = onToggleFocusMode
                     val hasPanelMenu =
-                        toggleFocus != null || onToggleThreadFollow != null || onMarkThreadUnread != null || taskConversation ||
+                        onToggleThreadFollow != null || onMarkThreadUnread != null || taskConversation ||
                             replyThreadSearch != null || replyThreadViewInChannel != null || onOpenTimeline != null
                     if (hasPanelMenu) {
                         ThreadHeaderFocusModeMenu(
-                            focused = focusModeActive,
-                            onSelect = { toggleFocus?.invoke() },
                             followed = threadFollowed,
                             onToggleFollow = onToggleThreadFollow,
                             onMarkUnread = onMarkThreadUnread,
-                            focusEnabled = focusModeActive || toggleFocus != null,
                             onSearchInTask = onOpenSearch.takeIf { taskConversation } ?: replyThreadSearch,
                             onTimeline = onOpenTimeline,
                             onViewInChannel = taskConversationChrome?.onViewInChannel.takeIf { taskConversation } ?: replyThreadViewInChannel,
@@ -19880,6 +19890,9 @@ internal fun ThreadPageHeader(
                             notificationLevelTargetInput = notificationLevelTarget,
                         )
                     }
+                    // web ThreadPanelHeader (slock #12211): Focus mode is the head's Expand, a window
+                    // control after ⋯ and never in it, so a wide layout always shows it.
+                    toggleFocus?.let { ThreadHeaderFocusModeToggle(focused = focusModeActive, onToggle = it) }
                     }
                     taskColumnHead?.let { RaftTaskColumnHeadActions(it) }
                 }
@@ -19959,7 +19972,7 @@ private fun threadHeaderSideColumnActions(
     val viewInChannelLabel = stringResource(Res.string.task_conversation_view_in_channel)
     val deleteTaskLabel = stringResource(Res.string.task_delete_action)
     val focusLabel =
-        stringResource(if (focusModeActive) Res.string.thread_focus_mode_standard else Res.string.thread_focus_mode_focus)
+        stringResource(if (focusModeActive) Res.string.tasks_task_column_restore else Res.string.tasks_task_column_expand)
     val searchInTaskLabel = stringResource(Res.string.task_conversation_search)
     val followLabel =
         threadFollowed?.let { followed ->
@@ -20016,9 +20029,10 @@ private fun threadHeaderSideColumnActions(
         if (payload.threadHeaderOpenInParentActionVisible()) {
             add(raftSideColumnLucideAction("thread-open-in-channel", viewInChannelLabel, RaftLucideIconName.MapPin, onOpenInChannel))
         }
+        // web ThreadPanelHeader (slock #12211): Focus mode (the head's Expand) never goes into the ⋯.
         if (onToggleFocusMode != null) {
-            val icon = if (focusModeActive) RaftLucideIconName.Square else RaftLucideIconName.Maximize2
-            add(raftSideColumnLucideAction(FOCUS_MODE_MENU_ITEM_ID, focusLabel, icon, onToggleFocusMode, priority = -1))
+            val icon = if (focusModeActive) RaftLucideIconName.Minimize2 else RaftLucideIconName.Maximize2
+            add(raftSideColumnLucideAction(FOCUS_MODE_MENU_ITEM_ID, focusLabel, icon, onToggleFocusMode).copy(keepVisible = true))
         }
         if (taskConversation) {
             add(raftSideColumnLucideAction(SEARCH_IN_TASK_MENU_ITEM_ID, searchInTaskLabel, RaftLucideIconName.Search, onOpenSearch))
@@ -20277,6 +20291,23 @@ private fun conversationSideCardToggleLabel(card: ConversationSideCard, open: Bo
  * A header toggle (raft-ui `PanelToggleAction`): the yellow sticker while its card is open, named
  * "Close Tasks" then; the toggle state is announced by [RaftIconToggleButton].
  */
+/**
+ * Focus mode as the head shows it on a wide layout (web ThreadPanelHeader `RowExpandAction`,
+ * slock #12211): Expand, pressed Restore, a window control after ⋯ and never in it.
+ */
+@Composable
+private fun ThreadHeaderFocusModeToggle(focused: Boolean, onToggle: () -> Unit) {
+    val label = stringResource(if (focused) Res.string.tasks_task_column_restore else Res.string.tasks_task_column_expand)
+    Box(Modifier.testTag(FOCUS_MODE_MENU_ITEM_ID)) {
+        ConversationHeaderToggle(
+            icon = if (focused) RaftLucideIconName.Minimize2 else RaftLucideIconName.Maximize2,
+            selected = focused,
+            label = label,
+            onClick = onToggle,
+        )
+    }
+}
+
 @Composable
 private fun ConversationHeaderToggle(
     icon: RaftLucideIconName,
@@ -20797,8 +20828,6 @@ private fun String?.threadParticipantHandleKey(): String? =
  */
 @Composable
 private fun ThreadHeaderFocusModeMenu(
-    focused: Boolean,
-    onSelect: () -> Unit,
     followed: Boolean? = null,
     onToggleFollow: (() -> Unit)? = null,
     /**
@@ -20806,7 +20835,6 @@ private fun ThreadHeaderFocusModeMenu(
      * thread the person doesn't follow, as its Activity row has none.
      */
     onMarkUnread: (() -> Unit)? = null,
-    focusEnabled: Boolean = true,
     /** Web ThreadOverflowMenu: Search in Task (a task) or Search in Thread (a reply thread), after Focus mode. */
     onSearchInTask: (() -> Unit)? = null,
     /** Web ThreadOverflowMenu Timeline (botiverse/slock #13534): the thread timeline's sheet, after Search. */
@@ -20834,22 +20862,6 @@ private fun ThreadHeaderFocusModeMenu(
     val notificationLevelLabel = rememberRaftNotificationLevelMenuLabel(notificationLevelTarget)
     val items =
         buildList {
-            if (!drawLocally) add(
-                RaftUiMenuItem(
-                    id = FOCUS_MODE_MENU_ITEM_ID,
-                    label =
-                        stringResource(
-                            if (focused) {
-                                Res.string.thread_focus_mode_standard
-                            } else {
-                                Res.string.thread_focus_mode_focus
-                            }
-                        ),
-                    // Only Maximize2 exists in the icon catalog; Square reads as "back to the standard pane".
-                    icon = if (focused) RaftLucideIconName.Square else RaftLucideIconName.Maximize2,
-                    enabled = focusEnabled
-                )
-            )
             // Task v2: the web menu's next rows for a task, in its order (ThreadOverflowMenu.tsx).
             if (onSearchInTask != null) {
                 add(
@@ -20972,7 +20984,6 @@ private fun ThreadHeaderFocusModeMenu(
                 openRequestId = null
                 val selectedId = eventData?.optString(SHELL_OVERLAY_SELECTED_ID).orEmpty()
                 when (selectedId) {
-                    FOCUS_MODE_MENU_ITEM_ID -> onSelect()
                     FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
                     MARK_THREAD_UNREAD_MENU_ITEM_ID -> onMarkUnread?.invoke()
                     SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
@@ -38179,7 +38190,7 @@ private fun String.threadTaskAssigneeKey(): String =
         .ifBlank { "unknown" }
 
 @Composable
-internal fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
+internal fun ThreadJoinFooter(label: String, onJoin: () -> Unit, joining: Boolean = false) {
     // task #176: last element of the page, like the composer it replaces, so it
     // keeps clear of the system navigation bar.
     val bottomSafeArea = raftBottomSafeAreaPadding()
@@ -38189,10 +38200,12 @@ internal fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
             .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // slock #12426: "Joining…" and disabled while the join is in flight.
         RaftButton(
-            text = label,
+            text = if (joining) stringResource(Res.string.thread_action_joining) else label,
             onClick = onJoin,
             modifier = Modifier.fillMaxWidth(),
+            enabled = !joining,
             leadingIcon = { RaftSlotIcon(RaftLucideIconName.LogIn) },
             variant = RaftButtonVariant.Primary,
             size = RaftButtonSize.Lg
@@ -39194,10 +39207,13 @@ internal fun <T> RaftForwardTargetPicker(
                 )
             }
             // web `InputGroup` with the inline-start Search addon, inside `main p-3`, `mb-3`.
+            // web ForwardComposerMobile `autoFocusSearch` (slock #12083): a touch phone keeps the
+            // keyboard closed when the picker opens, so the recent destinations stay in view; it
+            // opens when people tap the field. Only a mouse-and-keyboard window focuses it.
             RaftForwardPickerSearchField(
                 query = state.query,
                 enabled = searchInputInteractive,
-                autoFocus = singleTapContinues,
+                autoFocus = singleTapContinues && raftPlatformHasFinePointer(),
                 focusKey = state.sessionKey,
                 onQueryChange = { onIntent(RaftForwardTargetPickerIntent.QueryChanged(it)) }
             )

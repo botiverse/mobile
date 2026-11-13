@@ -528,6 +528,7 @@
     <string name="thread_parent_authority_resolving">正在確認權限，暫時無法傳送</string>
     <string name="thread_parent_channel_deleted_composer">頻道已刪除，無法傳送</string>
     <string name="thread_action_join_channel">加入頻道</string>
+    <string name="thread_action_joining">正在加入…</string>
     <string name="thread_timestamp_now">剛剛</string>
     <string name="relative_time_unknown">未知時間</string>
     <string name="relative_time_toggle_show_absolute">顯示確切時間</string>
@@ -3328,8 +3329,6 @@
     <string name="app_update_download_paused">下載已暫停，等待繼續</string>
     <string name="app_update_download_failed">下載失敗，請點選「重試」重新下載。</string>
     <string name="thread_audio_playback_position">播放位置</string>
-    <string name="thread_focus_mode_focus">專注模式</string>
-    <string name="thread_focus_mode_standard">標準模式</string>
     <string name="thread_focus_mode_menu_more">討論串面板選單</string>
     <string name="member_runtime_usage_attention">用量需要留意</string>
     <string name="runtime_quota_window_five_hour">5 小時</string>

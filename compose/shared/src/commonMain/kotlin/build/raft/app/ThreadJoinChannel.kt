@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.runtime.mutableStateMapOf
 import build.raft.app.data.ChannelJoinResult
 import build.raft.app.data.DataResult
 import build.raft.app.data.TaskConversationChannelRef
@@ -66,3 +67,25 @@ internal fun RaftThreadScreenPayload.withChannelJoined(channelId: String): RaftT
             composer = composer.copy(enabled = true)
         )
     }
+
+/**
+ * Channel joins in flight, by the id the Join stands for (web channelStore `joiningChannelIds` and
+ * channelJoin's in-flight map, slock #12426): the Join reads "Joining…" and is disabled until the
+ * request settles, and a repeated tap sends no second request. Main thread only.
+ */
+internal object ThreadChannelJoinsInFlight {
+    private val ids = mutableStateMapOf<String, Unit>()
+
+    fun isJoining(channelId: ChannelId?): Boolean = channelId != null && channelId.value in ids
+
+    /** Marks [channelId] joining; false when a join of it is already in flight (send nothing). */
+    fun begin(channelId: ChannelId): Boolean {
+        if (channelId.value in ids) return false
+        ids[channelId.value] = Unit
+        return true
+    }
+
+    fun end(channelId: ChannelId) {
+        ids.remove(channelId.value)
+    }
+}
