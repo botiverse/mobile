@@ -66,6 +66,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
@@ -149,6 +151,7 @@ import build.raft.app.data.ComputersRackSortKey
 import build.raft.app.model.RaftRelativeTimeLabel
 import build.raft.app.model.RaftRelativeTimeUnit
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -1590,37 +1593,46 @@ private fun RaftComputerRackBlock(
                 .padding(horizontal = RaftComputerBlockEdge, vertical = 12.dp)
                 .testTag("rack-row-${row.id}"),
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RaftComputerDeviceIcon(row)
-                    RaftText(
-                        row.name,
-                        modifier = Modifier.weight(1f, fill = false),
-                        style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold),
-                        color = colors.foreground,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    // The phone list has no header total: each block keeps its count.
-                    RaftText(agents.size.toString(), style = RaftTheme.typography.monoMeta, color = hint, maxLines = 1)
-                    if (row.diskLow) {
-                        RaftBadge(
-                            stringResource(Res.string.settings_computers_disk_low),
-                            appearance = RaftBadgeAppearance.Soft,
-                            variant = RaftBadgeVariant.Warning,
+            // The icon and name come first: a version too long for the line (a staging build's) is
+            // cut, the name keeping at least half the line (web truncates the version too).
+            RaftComputerGiveWayRow(
+                leadFloor = { width -> width / 2 },
+                gap = 8.dp,
+                trailAtEnd = true,
+                modifier = Modifier.fillMaxWidth(),
+                lead = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RaftComputerDeviceIcon(row)
+                        RaftText(
+                            row.name,
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold),
+                            color = colors.foreground,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
+                        // The phone list has no header total: each block keeps its count.
+                        RaftText(agents.size.toString(), style = RaftTheme.typography.monoMeta, color = hint, maxLines = 1)
+                        if (row.diskLow) {
+                            RaftBadge(
+                                stringResource(Res.string.settings_computers_disk_low),
+                                appearance = RaftBadgeAppearance.Soft,
+                                variant = RaftBadgeVariant.Warning,
+                            )
+                        }
                     }
-                }
-                Spacer(Modifier.width(8.dp))
-                // The version (with what it may upgrade to), or Offline: the OS is on the Computer page.
-                RaftComputerCardFactsLine(
-                    when (val facts = row.cardFacts()) {
-                        is RaftComputerCardFacts.Online -> facts.copy(osName = null)
-                        is RaftComputerCardFacts.Offline -> RaftComputerCardFacts.Offline(lastSeenAt = null)
-                    },
-                    Modifier.testTag("rack-row-version-${row.id}"),
-                )
-            }
+                },
+                trail = {
+                    // The version (with what it may upgrade to), or Offline: the OS is on the Computer page.
+                    RaftComputerCardFactsLine(
+                        when (val facts = row.cardFacts()) {
+                            is RaftComputerCardFacts.Online -> facts.copy(osName = null)
+                            is RaftComputerCardFacts.Offline -> RaftComputerCardFacts.Offline(lastSeenAt = null)
+                        },
+                        Modifier.testTag("rack-row-version-${row.id}"),
+                    )
+                },
+            )
             RaftComputerOwnerLine(row.owner, Modifier.padding(top = 4.dp))
             if (agents.isNotEmpty()) {
                 RaftComputerAgentStripRow(
@@ -2074,48 +2086,113 @@ private fun RaftComputerCardFactsLine(facts: RaftComputerCardFacts, modifier: Mo
                 } else {
                     raftComputerKindVersion(facts.kind, facts.version)
                 }
-            Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-                if (facts.osName != null) {
-                    RaftText(
-                        facts.osName,
-                        modifier = Modifier.weight(1f, fill = false),
-                        style = style,
-                        color = hint,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    RaftText(if (version != null) " · $version" else "", style = style, color = hint, maxLines = 1, softWrap = false)
-                } else if (version != null) {
-                    RaftText(version, style = style, color = hint, maxLines = 1, softWrap = false)
-                }
-                when (val notice = facts.notice) {
-                    is RaftComputerVersionNotice.Available ->
+            // The version is cut at its end when the line is too short for it (a staging build's
+            // "v1.25.0-staging.…"); the notice after it stays whole.
+            val versionAndNotice: @Composable () -> Unit = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val versionText = if (facts.osName != null) version?.let { " · $it" } else version
+                    if (versionText != null) {
                         RaftText(
-                            " · " + stringResource(Res.string.settings_computers_update_available),
-                            style = style.copy(fontWeight = FontWeight.Bold),
-                            color = RaftTheme.colors.warningStrong,
+                            versionText,
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = style,
+                            color = hint,
                             maxLines = 1,
-                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                    is RaftComputerVersionNotice.BelowFloor ->
-                        RaftText(
-                            " · " + stringResource(Res.string.settings_computers_update_required),
-                            style = style.copy(fontWeight = FontWeight.Bold),
-                            color = RaftTheme.colors.warningStrong,
-                            maxLines = 1,
-                            softWrap = false,
-                        )
-                    is RaftComputerVersionNotice.Updating ->
-                        RaftText(
-                            " · " + stringResource(Res.string.settings_computers_rack_updating_to, notice.version.removePrefix("v")),
-                            style = style.copy(fontWeight = FontWeight.Bold),
-                            color = RaftTheme.colors.foreground,
-                            maxLines = 1,
-                            softWrap = false,
-                        )
-                    null -> Unit
+                    }
+                    RaftComputerVersionNoticeText(facts.notice, style)
                 }
             }
+            if (facts.osName != null) {
+                // The OS gives way first (down to a couple of characters), then the version.
+                RaftComputerGiveWayRow(
+                    leadFloor = { 24.dp.roundToPx() },
+                    gap = 0.dp,
+                    trailAtEnd = false,
+                    modifier = modifier,
+                    lead = {
+                        RaftText(facts.osName, style = style, color = hint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    },
+                    trail = versionAndNotice,
+                )
+            } else {
+                Box(modifier) { versionAndNotice() }
+            }
+        }
+    }
+}
+
+/** The facts line's version notice: "· Update available" / "· Update required" / "· Updating to …". */
+@Composable
+private fun RaftComputerVersionNoticeText(notice: RaftComputerVersionNotice?, style: TextStyle) {
+    when (notice) {
+        is RaftComputerVersionNotice.Available ->
+            RaftText(
+                " · " + stringResource(Res.string.settings_computers_update_available),
+                style = style.copy(fontWeight = FontWeight.Bold),
+                color = RaftTheme.colors.warningStrong,
+                maxLines = 1,
+                softWrap = false,
+            )
+        is RaftComputerVersionNotice.BelowFloor ->
+            RaftText(
+                " · " + stringResource(Res.string.settings_computers_update_required),
+                style = style.copy(fontWeight = FontWeight.Bold),
+                color = RaftTheme.colors.warningStrong,
+                maxLines = 1,
+                softWrap = false,
+            )
+        is RaftComputerVersionNotice.Updating ->
+            RaftText(
+                " · " + stringResource(Res.string.settings_computers_rack_updating_to, notice.version.removePrefix("v")),
+                style = style.copy(fontWeight = FontWeight.Bold),
+                color = RaftTheme.colors.foreground,
+                maxLines = 1,
+                softWrap = false,
+            )
+        null -> Unit
+    }
+}
+
+/**
+ * One line of a lead and a trail ([trailAtEnd]: the trail at the line's end, else right after the
+ * lead). When both don't fit, the lead gives way first, down to [leadFloor] (px, of the line's
+ * width), then the trail does; each is measured to the width it gets and cuts its own text.
+ */
+@Composable
+private fun RaftComputerGiveWayRow(
+    leadFloor: Density.(Int) -> Int,
+    gap: Dp,
+    trailAtEnd: Boolean,
+    modifier: Modifier = Modifier,
+    lead: @Composable () -> Unit,
+    trail: @Composable () -> Unit,
+) {
+    Layout(contents = listOf(lead, trail), modifier = modifier) { (leadMeasurables, trailMeasurables), constraints ->
+        val leadMeasurable = leadMeasurables.first()
+        val trailMeasurable = trailMeasurables.first()
+        val gapPx = gap.roundToPx()
+        val width = constraints.maxWidth
+        val leadWant = leadMeasurable.maxIntrinsicWidth(constraints.maxHeight)
+        val trailWant = trailMeasurable.maxIntrinsicWidth(constraints.maxHeight)
+        val leadWidth =
+            if (width == Constraints.Infinity || leadWant + gapPx + trailWant <= width) {
+    leadWant
+            } else {
+    maxOf(width - gapPx - trailWant, minOf(leadWant, leadFloor(width))).coerceIn(0, width)
+            }
+        val trailWidth =
+            if (width == Constraints.Infinity) trailWant else minOf(trailWant, (width - gapPx - leadWidth).coerceAtLeast(0))
+        val leadPlaceable = leadMeasurable.measure(Constraints(maxWidth = leadWidth, maxHeight = constraints.maxHeight))
+        val trailPlaceable = trailMeasurable.measure(Constraints(maxWidth = trailWidth, maxHeight = constraints.maxHeight))
+        val natural = leadPlaceable.width + gapPx + trailPlaceable.width
+        val lineWidth = if (trailAtEnd && constraints.hasBoundedWidth) width else natural.coerceIn(constraints.minWidth, constraints.maxWidth)
+        val height = maxOf(leadPlaceable.height, trailPlaceable.height).coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(lineWidth, height) {
+            leadPlaceable.placeRelative(0, (height - leadPlaceable.height) / 2)
+            val trailX = if (trailAtEnd) lineWidth - trailPlaceable.width else leadPlaceable.width + gapPx
+            trailPlaceable.placeRelative(trailX, (height - trailPlaceable.height) / 2)
         }
     }
 }
