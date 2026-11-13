@@ -257,7 +257,20 @@ jobs:
                 node scripts/qa/resolve_pinned_android_artifact.mjs "$metadata" "$resolved" "$APK_RUN_ID"
               fi
               artifact_name=$(jq -r .artifactName "$resolved")
-              source_commit="$FROZEN_ARTIFACT_SOURCE_COMMIT"
+              # Resolve the frozen input to a full sha via the commits API: a
+              # short or unknown sha fails here (404/422 ambiguous) rather than
+              # being prefix-matched against whatever the APK embeds.
+              expected_commit=$(printf '%s' "$FROZEN_ARTIFACT_SOURCE_COMMIT" | tr 'A-F' 'a-f')
+              if ! printf '%s' "$expected_commit" | grep -Eq '^[0-9a-f]{7,40}$'; then
+                echo "artifact_source_commit must be a hex sha (7-40 chars), got: $FROZEN_ARTIFACT_SOURCE_COMMIT" >&2
+                exit 2
+              fi
+              if ! source_commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$expected_commit" --jq .sha) \
+                || ! printf '%s' "$source_commit" | grep -Eq '^[0-9a-f]{40}$' \
+                || [ "${source_commit#"$expected_commit"}" = "$source_commit" ]; then
+                echo "artifact_source_commit $expected_commit is ambiguous or does not resolve to a commit in $GITHUB_REPOSITORY" >&2
+                exit 2
+              fi
               artifact_id=$(jq -r .artifactId "$resolved")
               if [ -n "$APK_ARTIFACT_ID" ]; then
                 gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$APK_ARTIFACT_ID/zip" > "$RUNNER_TEMP/pinned-android-artifact.zip"
@@ -272,16 +285,33 @@ jobs:
               pkg=$(printf '%s' "$badging" | sed -n "s/package: name='\([^']*\)'.*/\1/p" | head -1)
               vn=$(printf '%s' "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
               vc=$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -1)
-              APK="$apk" SOURCE="$source_commit" PIN="$APK_RUN_ID" ARTIFACT_NAME="$artifact_name" ARTIFACT_ID="$artifact_id" PKG="$pkg" VN="$vn" VC="$vc" python3 - <<'EOF2'
+              # Derive the commit from the APK itself (versionName +sha, else
+              # BuildConfig.GIT_COMMIT in dex) instead of echoing the input back
+              # as verified. A contradicting embedded commit fails here; none
+              # readable records source_commit_verified=false so the identity
+              # check below refuses the run.
+              dex="$RUNNER_TEMP/pinned-android-classes.dex"
+              unzip -p "$apk" 'classes*.dex' > "$dex" 2>/dev/null || true
+              commit_obs=$(node scripts/qa/observe_apk_source_commit.mjs "$vn" "$dex" "$source_commit")
+              echo "APK source commit observation: $commit_obs"
+              APK="$apk" SOURCE="$source_commit" EXPECTED="$expected_commit" COMMIT_OBS="$commit_obs" PIN="$APK_RUN_ID" ARTIFACT_NAME="$artifact_name" ARTIFACT_ID="$artifact_id" PKG="$pkg" VN="$vn" VC="$vc" python3 - <<'EOF2'
           import hashlib, json, os
           apk = os.environ["APK"]
+          obs = json.loads(os.environ["COMMIT_OBS"])
           info = {
               "platform": "android",
               "pinned_from_run": os.environ["PIN"],
               "artifact_id": os.environ["ARTIFACT_ID"],
               "artifact_name": os.environ["ARTIFACT_NAME"],
+              # source_commit: input resolved to a full sha via the GitHub API;
+              # source_commit_expected: the raw frozen input;
+              # source_commit_observed: the commit read from the APK bytes.
               "source_commit": os.environ["SOURCE"],
-              "source_commit_verified": True,
+              "source_commit_expected": os.environ["EXPECTED"],
+              "source_commit_verified": obs["verified"] is True,
+              "source_commit_observed": obs.get("observed", ""),
+              "source_commit_method": obs.get("method", ""),
+              "source_commit_unverified_reason": obs.get("reason", ""),
               "apk_sha256": hashlib.sha256(open(apk, "rb").read()).hexdigest(),
               "package": os.environ["PKG"],
               "app_version": os.environ["VN"],
