@@ -1370,8 +1370,9 @@ data class UserProfileUpdated(
  *   [userId] set). The desktop app files into the web app, so it is the desktop app's.
  * - `product_feedback:app_unread` `{ source, unreadTotal }`: a mobile app's ([source] `android`,
  *   `ios` or `ohos`; [userId] null: the room says whose).
- * Always the whole total, never a change. Every connection of the person receives every one; a
- * client takes only its own app's (build.raft.app.data.feedbackUnreadEventIsOwn).
+ * Always one app's whole total, never a change. Every connection of the person receives every
+ * one; the dot sums every app (slock #14722 / #14732), so each of the person's own replaces that
+ * app's total in the dot (build.raft.app.data.feedbackUnreadEventIsMine, RaftFeedbackUnreadStore).
  */
 @Serializable
 data class ProductFeedbackUnreadUpdated(

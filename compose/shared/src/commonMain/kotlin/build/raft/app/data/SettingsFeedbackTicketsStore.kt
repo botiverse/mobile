@@ -106,11 +106,20 @@ class SettingsFeedbackTicketsStore(
      */
     private val agentDraftSent: Flow<Boolean> = flowOf(true),
     /**
-     * This app's unread feedback total as a list page or a ticket read answered it (`unread_total`;
-     * a ticket read moves the read receipt first): the Settings / Feedback dot
-     * ([RaftFeedbackUnreadStore.applyRead]), so a reply read here clears it at once.
+     * Called as each list request is sent; what it returns takes that page's unread totals
+     * (`unread_by_source`, each app's, and `unread_total`, their sum; a cursor page carries neither
+     * and passes nothing): the Settings / Feedback dot ([RaftFeedbackUnreadStore.captureListRead],
+     * which drops them when a push or ticket read landed while the request was out).
      */
-    private val onUnreadTotal: (Int) -> Unit = {},
+    private val captureUnreadListRead: () -> (FeedbackUnreadRead) -> Unit = { {} },
+    /**
+     * A ticket's first page was read (which moves its read receipt): its answer's `unread_total` is
+     * that ticket's app's own (source, total; source null: this app's), which the dot takes for that
+     * app ([RaftFeedbackUnreadStore.onTicketRead]).
+     */
+    private val onTicketRead: (source: String?, total: Int?) -> Unit = { _, _ -> },
+    /** Pages answered empty with a `next_cursor` read on at once, before Load More is left to the person. */
+    private val emptyPageFollowMax: Int = FEEDBACK_EMPTY_PAGE_FOLLOW_MAX,
 ) {
     private val mutableState = MutableStateFlow(SettingsFeedbackTicketsState())
     val state: StateFlow<SettingsFeedbackTicketsState> = mutableState.asStateFlow()
@@ -190,13 +199,28 @@ class SettingsFeedbackTicketsStore(
         listJob =
             scope.launch {
                 var retryMillis: Long? = null
+                // The merged list may answer a page with no tickets but a next cursor (an app still
+                // being read: slock #14722); it ends only at `next_cursor: null`. Such a page is read
+                // on at once (up to [emptyPageFollowMax]), so Load More never answers with nothing.
+                var pageCursor = cursor
+                var emptyPagesFollowed = 0
                 while (true) {
-                    val result = repository.listTickets(cursor = cursor)
+                    val onUnread = captureUnreadListRead()
+                    val result = repository.listTickets(cursor = pageCursor)
                     if (generation != listGeneration) return@launch
                     when (result) {
                         is FeedbackResult.Ok ->
                             when (val read = result.value) {
                                 is FeedbackTicketListRead.Page -> {
+                                    read.page.unread.takeUnless { it.isUnknown }?.let(onUnread)
+                                    val next = read.page.nextCursor
+                                    if (read.page.tickets.isEmpty() && next != null && emptyPagesFollowed < emptyPageFollowMax) {
+                                        emptyPagesFollowed++
+                                        pageCursor = next
+                                        // An empty page shows nothing; a refresh's rows stay until the next one.
+                                        logger("settings_feedback_tickets_list_empty_page followed=$emptyPagesFollowed")
+                                        continue
+                                    }
                                     lastFailedLoadWasMore = false
                                     mutableState.update { state ->
                                         val list = state.list
@@ -217,7 +241,6 @@ class SettingsFeedbackTicketsStore(
                                                 )
                                         )
                                     }
-                                    onUnreadTotal(read.page.unreadTotal)
                                     logger("settings_feedback_tickets_list_ready count=${read.page.tickets.size} more=${read.page.nextCursor != null}")
                                     return@launch
                                 }
@@ -309,6 +332,7 @@ class SettingsFeedbackTicketsStore(
         detailJob?.cancel()
         val generation = ++detailGeneration
         val ticketId = current.ticketId
+        val source = current.ticket?.source
         val cursor = if (mode == TicketLoad.More) current.detail?.nextCommentCursor else null
         updateDetail(ticketId) { detail ->
             when (mode) {
@@ -320,7 +344,7 @@ class SettingsFeedbackTicketsStore(
         }
         detailJob =
             scope.launch {
-                val result = repository.ticket(ticketId, commentCursor = cursor)
+                val result = repository.ticket(ticketId, commentCursor = cursor, source = source)
                 if (generation != detailGeneration) return@launch
                 when (result) {
                     is FeedbackResult.Ok -> {
@@ -350,7 +374,7 @@ class SettingsFeedbackTicketsStore(
                                 list = state.list.copy(tickets = state.list.tickets.updatedWith(read.ticket, markRead = cursor == null)),
                             )
                         }
-                        onUnreadTotal(read.unreadTotal)
+                        if (cursor == null) onTicketRead(read.ticket.source ?: source, read.unreadTotal)
                         logger("settings_feedback_tickets_detail_ready comments=${read.comments.size} more=${read.nextCommentCursor != null}")
                     }
                     is FeedbackResult.Failed -> {
@@ -379,13 +403,14 @@ class SettingsFeedbackTicketsStore(
         val detail = mutableState.value.detail ?: return
         if (!detail.canSend || detail.closing || detail.detail == null) return
         val ticketId = detail.ticketId
+        val source = detail.ticket?.source
         val body = detail.replyDraft.trim()
         val submission = replySubmission?.takeIf { it.first == "$ticketId\n$body" } ?: ("$ticketId\n$body" to newSubmissionId())
         replySubmission = submission
         updateDetail(ticketId) { it.copy(sending = true, replyError = null) }
         actionJob =
             scope.launch {
-                val result = repository.reply(ticketId, body, submission.second)
+                val result = repository.reply(ticketId, body, submission.second, source)
                 when (result) {
                     is FeedbackResult.Ok -> {
                         replySubmission = null
@@ -431,10 +456,11 @@ class SettingsFeedbackTicketsStore(
         val detail = mutableState.value.detail ?: return
         if (!detail.canClose || detail.closing || detail.sending) return
         val ticketId = detail.ticketId
+        val source = detail.ticket?.source
         updateDetail(ticketId) { it.copy(closing = true, closeError = null) }
         actionJob =
             scope.launch {
-                when (val result = repository.close(ticketId, reason)) {
+                when (val result = repository.close(ticketId, reason, source)) {
                     is FeedbackResult.Ok -> {
                         logger("settings_feedback_tickets_closed reason=${reason.wire}")
                         mutableState.update { state ->
@@ -473,11 +499,12 @@ class SettingsFeedbackTicketsStore(
     fun openAttachment(attachment: FeedbackAttachment, onOpened: (FeedbackOpenedAttachment) -> Unit) {
         val detail = mutableState.value.detail ?: return
         val ticketId = detail.ticketId
+        val source = detail.ticket?.source
         attachmentJob?.cancel()
         updateDetail(ticketId) { it.copy(openingAttachmentId = attachment.id, attachmentError = false) }
         attachmentJob =
             scope.launch {
-                val result = repository.attachment(ticketId, attachment.id)
+                val result = repository.attachment(ticketId, attachment.id, source)
                 val stillOpen = mutableState.value.detail?.ticketId == ticketId
                 when (result) {
                     is FeedbackResult.Ok -> {
@@ -503,6 +530,9 @@ class SettingsFeedbackTicketsStore(
         }
     }
 }
+
+/** Empty merged-list pages (with a next cursor) read on in one load before Load More is left to the person. */
+const val FEEDBACK_EMPTY_PAGE_FOLLOW_MAX: Int = 5
 
 /** Web `DEGRADED_RETRY_MAX_MS`. */
 const val FEEDBACK_DEGRADED_RETRY_MAX_MILLIS: Long = 60_000L

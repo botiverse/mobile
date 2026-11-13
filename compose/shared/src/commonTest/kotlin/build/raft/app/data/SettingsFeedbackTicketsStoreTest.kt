@@ -46,27 +46,36 @@ class SettingsFeedbackTicketsStoreTest {
         val replies = mutableListOf<Triple<String, String, String>>()
         val closes = mutableListOf<Pair<String, FeedbackReporterCloseReason>>()
 
+        /** Each ticket call's operation and the ticket app it named (null: this app's). */
+        val sources = mutableListOf<Pair<String, String?>>()
+
         override suspend fun listTickets(cursor: String?, limit: Int): FeedbackResult<FeedbackTicketListRead> {
             listCursors += cursor
             return listAnswers.removeFirst()
         }
 
-        override suspend fun ticket(ticketId: String, commentCursor: String?, commentLimit: Int): FeedbackResult<FeedbackTicketDetail> {
+        override suspend fun ticket(ticketId: String, commentCursor: String?, commentLimit: Int, source: String?): FeedbackResult<FeedbackTicketDetail> {
             ticketReads += ticketId to commentCursor
+            sources += "detail" to source
             return ticketAnswers.removeFirst()
         }
 
-        override suspend fun reply(ticketId: String, body: String, submissionId: String): FeedbackResult<FeedbackComment> {
+        override suspend fun reply(ticketId: String, body: String, submissionId: String, source: String?): FeedbackResult<FeedbackComment> {
             replies += Triple(ticketId, body, submissionId)
+            sources += "reply" to source
             return replyAnswers.removeFirst()
         }
 
-        override suspend fun close(ticketId: String, reason: FeedbackReporterCloseReason): FeedbackResult<Unit> {
+        override suspend fun close(ticketId: String, reason: FeedbackReporterCloseReason, source: String?): FeedbackResult<Unit> {
             closes += ticketId to reason
+            sources += "close" to source
             return closeAnswer
         }
 
-        override suspend fun attachment(ticketId: String, attachmentId: String): FeedbackResult<FeedbackAttachmentBytes> = attachmentAnswer
+        override suspend fun attachment(ticketId: String, attachmentId: String, source: String?): FeedbackResult<FeedbackAttachmentBytes> {
+            sources += "attachment" to source
+            return attachmentAnswer
+        }
     }
 
     private fun page(vararg tickets: FeedbackTicket, next: String? = null): FeedbackResult<FeedbackTicketListRead> =
@@ -255,31 +264,134 @@ class SettingsFeedbackTicketsStoreTest {
     }
 
     @Test
-    fun theListAndAnOpenedTicketHandTheirUnreadTotalToTheDot() = runTest {
-        // The Settings / Feedback dot follows these reads: opening the ticket with the new reply
-        // (its read moves the receipt) clears it at once, not at the next start or reconnect.
+    fun theFirstPagesSummedTotalGoesToTheDotAndAnOpenedTicketAsksForTheSumAgain() = runTest {
+        // slock #14722: `unread_total` sums every app on the first page only; a cursor page's is null
+        // ("not known": keep the value). A ticket read answers only its own app's total, so the dot
+        // reads the sum again instead of taking it.
         val repository = FakeRepository()
         val unread = ticket("a", unread = true, comments = 1)
         repository.listAnswers += FeedbackResult.Ok(FeedbackTicketListRead.Degraded(5))
-        repository.listAnswers += FeedbackResult.Ok(FeedbackTicketListRead.Page(FeedbackTicketPage(listOf(unread), null, unreadTotal = 1)))
+        repository.listAnswers += FeedbackResult.Ok(FeedbackTicketListRead.Page(FeedbackTicketPage(listOf(unread), "c2", unreadTotal = 3)))
+        repository.listAnswers += FeedbackResult.Ok(FeedbackTicketListRead.Page(FeedbackTicketPage(listOf(ticket("b")), null, unreadTotal = null)))
         repository.ticketAnswers += FeedbackResult.Ok(FeedbackTicketDetail(unread.copy(unread = false, unreadCount = 0), emptyList(), emptyList(), null, unreadTotal = 0))
         repository.ticketAnswers += failed(FeedbackErrorKind.Unavailable)
-        val totals = mutableListOf<Int>()
-        val store = SettingsFeedbackTicketsStore(repository, backgroundScope, onUnreadTotal = { totals += it })
+        val totals = mutableListOf<Int?>()
+        val ticketReads = mutableListOf<Pair<String?, Int?>>()
+        val store =
+            SettingsFeedbackTicketsStore(repository, backgroundScope, captureUnreadListRead = { { totals += it.total } }, onTicketRead = { source, total -> ticketReads += source to total })
         store.start()
         runCurrent()
         // A degraded page knows no total: nothing is handed on.
-        assertEquals(emptyList<Int>(), totals)
+        assertEquals(emptyList<Int?>(), totals)
         advanceTimeBy(5_001)
-        assertEquals(listOf(1), totals)
+        assertEquals(listOf<Int?>(3), totals)
+        store.loadMore()
+        runCurrent()
+        assertEquals(listOf("a", "b"), store.state.value.list.tickets.map { it.id })
+        assertEquals(listOf<Int?>(3), totals, "a cursor page's null total is not 0")
 
         store.openTicket("a")
         runCurrent()
-        assertEquals(listOf(1, 0), totals)
+        assertEquals(listOf<Int?>(3), totals, "a ticket's total is its app's, not the sum")
+        // Its own app's total, for that app (no source named: this app's).
+        assertEquals(listOf<Pair<String?, Int?>>(null to 0), ticketReads)
         // A failed read hands nothing on.
         store.refreshTicket()
         runCurrent()
-        assertEquals(listOf(1, 0), totals)
+        assertEquals(1, ticketReads.size)
+    }
+
+    @Test
+    fun anEmptyPageWithANextCursorIsReadOnUntilTicketsOrTheEnd() = runTest {
+        // slock #14722: a merged page may hold no tickets and still have a next cursor; the list ends
+        // only at `next_cursor: null`.
+        val repository = FakeRepository()
+        // The first page's totals; the cursor pages carry none.
+        repository.listAnswers += FeedbackResult.Ok(FeedbackTicketListRead.Page(FeedbackTicketPage(emptyList(), "c1", 3, mapOf("web" to 2, "ios" to 1))))
+        repository.listAnswers += FeedbackResult.Ok(FeedbackTicketListRead.Page(FeedbackTicketPage(emptyList(), "c2", null)))
+        repository.listAnswers += FeedbackResult.Ok(FeedbackTicketListRead.Page(FeedbackTicketPage(listOf(ticket("a")), "c3", null)))
+        repository.listAnswers += page(next = "c4")
+        repository.listAnswers += page(next = null)
+        val totals = mutableListOf<FeedbackUnreadRead>()
+        // Captured as each request goes out, before its answer (RaftFeedbackUnreadStore.captureListRead).
+        val capturedBeforeRequest = mutableListOf<Int>()
+        val store =
+            SettingsFeedbackTicketsStore(
+                repository,
+                backgroundScope,
+                captureUnreadListRead = {
+                    capturedBeforeRequest += repository.listCursors.size
+                    val take: (FeedbackUnreadRead) -> Unit = { totals += it }
+                    take
+                },
+            )
+        store.start()
+        runCurrent()
+        assertEquals(listOf(null, "c1", "c2"), repository.listCursors)
+        assertEquals(listOf(FeedbackUnreadRead(3, mapOf("web" to 2, "ios" to 1))), totals, "the first page's totals are kept")
+        assertEquals(listOf(0, 1, 2), capturedBeforeRequest)
+        val list = store.state.value.list
+        assertEquals(FeedbackTicketsListPhase.Ready, list.phase)
+        assertEquals(listOf("a"), list.tickets.map { it.id })
+        assertEquals("c3", list.nextCursor)
+
+        // Load More past an empty page reaches the end, and the rows stay.
+        store.loadMore()
+        runCurrent()
+        assertEquals(listOf(null, "c1", "c2", "c3", "c4"), repository.listCursors)
+        assertEquals(listOf("a"), store.state.value.list.tickets.map { it.id })
+        assertNull(store.state.value.list.nextCursor)
+        assertFalse(store.state.value.list.loadingMore)
+    }
+
+    @Test
+    fun emptyPagesAreFollowedOnlySoFarThenLoadMoreGoesOn() = runTest {
+        val repository = FakeRepository()
+        repeat(FEEDBACK_EMPTY_PAGE_FOLLOW_MAX + 1) { repository.listAnswers += page(next = "e$it") }
+        val store = store(repository)
+        store.start()
+        runCurrent()
+        assertEquals(FEEDBACK_EMPTY_PAGE_FOLLOW_MAX + 1, repository.listCursors.size)
+        val list = store.state.value.list
+        assertEquals(FeedbackTicketsListPhase.Ready, list.phase)
+        assertTrue(list.tickets.isEmpty())
+        assertEquals("e$FEEDBACK_EMPTY_PAGE_FOLLOW_MAX", list.nextCursor, "Load More stays offered")
+    }
+
+    @Test
+    fun aTicketOfAnotherAppIsReadAnsweredClosedAndItsFilesOpenedInItsApp() = runTest {
+        val repository = FakeRepository()
+        val web = ticket("w", comments = 0).copy(source = "web", client = FeedbackClient.Desktop)
+        repository.listAnswers += page(web, ticket("own"))
+        repository.ticketAnswers += detail(web)
+        repository.replyAnswers += FeedbackResult.Ok(FeedbackComment("r1", FeedbackAuthorType.Reporter, "Thanks", 5_000))
+        repository.ticketAnswers += detail(web)
+        repository.ticketAnswers += detail(web)
+        repository.ticketAnswers += detail(ticket("own"))
+        val store = store(repository)
+        store.start()
+        runCurrent()
+
+        store.openTicket("w")
+        runCurrent()
+        store.setReplyDraft("Thanks")
+        store.sendReply()
+        runCurrent()
+        store.closeTicket(FeedbackReporterCloseReason.Completed)
+        runCurrent()
+        store.openAttachment(FeedbackAttachment("f1", "a.png", "image/png", 1, 1)) {}
+        runCurrent()
+        assertEquals(
+            listOf<Pair<String, String?>>("detail" to "web", "reply" to "web", "detail" to "web", "close" to "web", "detail" to "web", "attachment" to "web"),
+            repository.sources,
+        )
+
+        // A ticket of this app (no source named) asks its own app.
+        repository.sources.clear()
+        store.closeTicketView()
+        store.openTicket("own")
+        runCurrent()
+        assertEquals(listOf<Pair<String, String?>>("detail" to null), repository.sources)
     }
 
     @Test

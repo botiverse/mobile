@@ -1371,8 +1371,10 @@ internal class RaftSharedStoreProvider private constructor(
         }
 
     /**
-     * The signed-in person's unread feedback replies in this app's Hands app: the Settings and
-     * Feedback row dot. Read on start / sign-in and on every realtime (re)connect, then pushed.
+     * The signed-in person's unread feedback replies summed over every Hands app (slock #14722,
+     * #14732): the Settings and Feedback row dot. It holds each app's total from the merged list's
+     * first page (`unread_by_source`, read on start / sign-in and every realtime (re)connect), and a
+     * push or a ticket read replaces one app's ([RaftFeedbackUnreadStore]).
      */
     internal val feedbackUnread: RaftFeedbackUnreadStore by lazy {
         val logger = sharedInfoLogger("SlockFeedbackUnread")
@@ -4141,8 +4143,9 @@ internal class SharedRealtimeDomainEventOwner(
         userProfileUpdatedSink = sink
     }
 
-    // `product_feedback:unread` / `product_feedback:app_unread`: the person's feedback unread total, sent to
-    // their user room (no server); the sink keeps only this app's and the grant's account's. Process entry only.
+    // `product_feedback:unread` / `product_feedback:app_unread`: one app's feedback unread total, sent to the
+    // person's user room (no server); the sink takes every app's for the grant's account (the dot sums them,
+    // RaftFeedbackUnreadStore). Process entry only.
     private var feedbackUnreadSink: ((principalId: String, event: ProductFeedbackUnreadUpdated) -> Unit)? = null
 
     fun installFeedbackUnreadSink(sink: (principalId: String, event: ProductFeedbackUnreadUpdated) -> Unit) {

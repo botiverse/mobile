@@ -4425,6 +4425,11 @@
     <string name="settings_feedback_tickets_filter_all">Все</string>
     <string name="settings_feedback_tickets_filter_active">Активные</string>
     <string name="settings_feedback_tickets_filter_ended">Завершённые</string>
+    <string name="settings_feedback_ticket_client_web">Веб</string>
+    <string name="settings_feedback_ticket_client_desktop">Десктоп</string>
+    <string name="settings_feedback_ticket_client_android">Android</string>
+    <string name="settings_feedback_ticket_client_ios">iOS</string>
+    <string name="settings_feedback_ticket_client_ohos">HarmonyOS</string>
     <string name="settings_feedback_tickets_loading">Загрузка отзывов</string>
     <string name="settings_feedback_tickets_empty_all_title">Отзывов пока нет</string>
     <string name="settings_feedback_tickets_empty_all_body">Поделитесь идеей или сообщите об ошибке — ответы команды появятся здесь.</string>

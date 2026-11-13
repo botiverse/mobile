@@ -139,7 +139,7 @@ internal enum class RaftMoreAttention(val settingsRowKey: String) {
     Computers(SettingsDestinationComputers),
 
     /**
-     * A feedback ticket has a reply not read yet (this app's unread total, RaftFeedbackUnreadStore):
+     * A feedback ticket has a reply not read yet (the unread total over every app, RaftFeedbackUnreadStore):
      * the Feedback row (web `useSettingsPageAttention` / SettingsSidebarList `FeedbackUnreadDot`).
      */
     FeedbackReplies(SettingsDestinationHandsFeedback),
@@ -151,7 +151,7 @@ internal enum class RaftMoreAttention(val settingsRowKey: String) {
  * - [RaftMoreAttention.Computers]: a computer the offline-computer or outdated-daemon notice
  *   names is in a state not yet seen ([computersSeen]; raft-design #620 "Attention dots": the
  *   dot marks an unseen change, opening Computers sees it — see data/RaftComputerAttentionSeen.kt).
- * - [RaftMoreAttention.FeedbackReplies]: [feedbackUnreadTotal] (this app's unread feedback replies)
+ * - [RaftMoreAttention.FeedbackReplies]: [feedbackUnreadTotal] (unread feedback replies over every app)
  *   is above 0; reading them clears it.
  * Members has no unread signal today. The More tab dot reads this same set
  * ([appShellMoreTabShowsDot]), so the tab and its rows light and clear together.

@@ -30,6 +30,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.FeedbackAttachment
 import build.raft.app.data.FeedbackAttachmentBytes
 import build.raft.app.data.FeedbackAuthorType
+import build.raft.app.data.FeedbackClient
 import build.raft.app.data.FeedbackComment
 import build.raft.app.data.FeedbackErrorKind
 import build.raft.app.data.FeedbackFailure
@@ -110,21 +111,21 @@ class SettingsFeedbackTicketsPageUiTest {
 
         override suspend fun listTickets(cursor: String?, limit: Int) = list
 
-        override suspend fun ticket(ticketId: String, commentCursor: String?, commentLimit: Int): FeedbackResult<FeedbackTicketDetail> {
+        override suspend fun ticket(ticketId: String, commentCursor: String?, commentLimit: Int, source: String?): FeedbackResult<FeedbackTicketDetail> {
             val detail = details.getValue(ticketId)
             return FeedbackResult.Ok(detail.copy(comments = detail.comments + extraComments))
         }
 
-        override suspend fun reply(ticketId: String, body: String, submissionId: String): FeedbackResult<FeedbackComment> {
+        override suspend fun reply(ticketId: String, body: String, submissionId: String, source: String?): FeedbackResult<FeedbackComment> {
             replies += ticketId to body
             val comment = FeedbackComment("reply-${replies.size}", FeedbackAuthorType.Reporter, body, 1_762_700_060_000L)
             extraComments += comment
             return FeedbackResult.Ok(comment)
         }
 
-        override suspend fun close(ticketId: String, reason: FeedbackReporterCloseReason) = FeedbackResult.Ok(Unit)
+        override suspend fun close(ticketId: String, reason: FeedbackReporterCloseReason, source: String?) = FeedbackResult.Ok(Unit)
 
-        override suspend fun attachment(ticketId: String, attachmentId: String): FeedbackResult<FeedbackAttachmentBytes> =
+        override suspend fun attachment(ticketId: String, attachmentId: String, source: String?): FeedbackResult<FeedbackAttachmentBytes> =
             FeedbackResult.Failed(FeedbackFailure(FeedbackErrorKind.Unavailable, "x"))
     }
 
@@ -146,6 +147,7 @@ class SettingsFeedbackTicketsPageUiTest {
         onNewFeedback: () -> Unit = {},
         onCopyTicketLink: ((String) -> Unit)? = null,
         agentDraftSent: kotlinx.coroutines.flow.Flow<Boolean> = kotlinx.coroutines.flow.flowOf(true),
+        ownClient: FeedbackClient? = FeedbackClient.Android,
     ) {
         val scope = rememberCoroutineScope()
         val store = remember { SettingsFeedbackTicketsStore(repository, scope, agentDraftSent = agentDraftSent).also { it.start() } }
@@ -159,12 +161,14 @@ class SettingsFeedbackTicketsPageUiTest {
                         onBack = store::closeTicketView,
                         onNewFeedback = onNewFeedback,
                         onRetryList = store::retryList,
+                        onLoadMore = store::loadMore,
                         onFilter = store::setFilter,
                         onOpenTicket = store::openTicket,
                         onReplyChange = store::setReplyDraft,
                         onSendReply = store::sendReply,
                         onCopyTicketLink = onCopyTicketLink,
                     ),
+                ownClient = ownClient,
                 replyComposer = { draft, enabled, sending, error, onChange, onSend ->
                     Column {
                         RaftTextarea(value = draft, onValueChange = onChange, modifier = Modifier.testTag(ReplyField), placeholder = "Write a reply…")
@@ -231,6 +235,42 @@ class SettingsFeedbackTicketsPageUiTest {
         }
 
     @Test
+    fun aTicketFiledOnAnotherClientNamesItOnTheFirstMessageAndTheListDoesNot() =
+        runRobolectricComposeUiTest {
+            // Design settings.md "Feedback" (option F): no client on list rows; in the ticket, an
+            // outline badge after the first message's time, only when filed on another client.
+            val fromDesktop = crash.copy(source = "web", client = FeedbackClient.Desktop)
+            val fromHere = idea.copy(source = "android", client = FeedbackClient.Android)
+            val repository =
+                FakeRepository(
+                    pageOf(fromDesktop, fromHere),
+                    mapOf(
+                        fromDesktop.id to crashDetail.copy(ticket = crashDetail.ticket.copy(source = "web", client = FeedbackClient.Desktop)),
+                        fromHere.id to FeedbackTicketDetail(fromHere.copy(latestComment = null), emptyList(), emptyList(), null, 0),
+                    ),
+                )
+            setContent { Page(repository) }
+            waitForIdle()
+            onNodeWithText("Crash on launch").assertIsDisplayed()
+            onNodeWithText("Desktop").assertDoesNotExist()
+            onNodeWithTag(SettingsFeedbackTicketFiledFromTag).assertDoesNotExist()
+
+            onNodeWithText("Crash on launch").performClick()
+            waitForIdle()
+            onNodeWithTag(SettingsFeedbackTicketFiledFromTag, useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithText("Desktop", useUnmergedTree = true).assertIsDisplayed()
+
+            onNode(hasContentDescription("Back")).performClick()
+            waitForIdle()
+            onNodeWithText("Dark mode for the composer").performClick()
+            waitForIdle()
+            // Its first message has loaded (the reporter's own line), and names no client.
+            onNodeWithText("You", useUnmergedTree = true).assertExists()
+            onNodeWithTag(SettingsFeedbackTicketFiledFromTag, useUnmergedTree = true).assertDoesNotExist()
+            onNodeWithText("Android", useUnmergedTree = true).assertDoesNotExist()
+        }
+
+    @Test
     fun noTicketsIsTheEmptyStateAndNewFeedbackOpensTheForm() =
         runRobolectricComposeUiTest {
             var opened = 0
@@ -242,6 +282,23 @@ class SettingsFeedbackTicketsPageUiTest {
             onNodeWithText("All").assertDoesNotExist()
             onNodeWithText("New Feedback").performClick()
             runOnIdle { assertEquals(1, opened) }
+        }
+
+    @Test
+    fun anEmptyFirstPageWithMoreToReadIsNotNoFeedback() =
+        runRobolectricComposeUiTest {
+            // slock #14722: a merged page may hold no tickets and still have a next cursor. The store
+            // reads on (bounded); with still nothing, the list offers Load More, not "No feedback yet".
+            val repository = FakeRepository(FeedbackResult.Ok(FeedbackTicketListRead.Page(FeedbackTicketPage(emptyList(), "more", 2))))
+            setContent { Page(repository) }
+            waitForIdle()
+            onNodeWithText("No feedback yet").assertDoesNotExist()
+            onNodeWithText("Load More").assertIsDisplayed()
+            // Once the list ends with nothing, it is the empty state.
+            repository.list = pageOf()
+            onNodeWithText("Load More").performClick()
+            waitForIdle()
+            onNodeWithText("No feedback yet").assertIsDisplayed()
         }
 
     @Test
