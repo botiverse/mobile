@@ -29,6 +29,17 @@ class RuntimeFormV2ChoiceIdentifierTest {
     }
 
     @Test
+    fun internalValuesHaveNoIdLine() {
+        // A saved provider connection's value is internal (`connection:<id>`), never shown.
+        assertNull(runtimeChoiceIdentifier("connection:conn_8f2a", "DeepSeek (work)"))
+        assertNull(runtimeChoiceIdentifier("connection:", "Saved"))
+        // The default row stays without one.
+        assertNull(runtimeChoiceIdentifier("", "Default (DeepSeek Flash)"))
+        // A provider id that merely contains the word keeps its line.
+        assertEquals("deepseek/connection-test", runtimeChoiceIdentifier("deepseek/connection-test", "Connection Test"))
+    }
+
+    @Test
     fun onlySearchableListsDrawTheIdLine() {
         val model = RuntimeFormV2Field("model", RuntimeFormV2FieldKind.DependentSelect, required = true, advanced = false, label = "Model", optionSourceId = "pi-models")
         val effort = RuntimeFormV2Field("effort", RuntimeFormV2FieldKind.DerivedSelect, required = false, advanced = false, label = "Effort", optionSourceId = "pi-models")

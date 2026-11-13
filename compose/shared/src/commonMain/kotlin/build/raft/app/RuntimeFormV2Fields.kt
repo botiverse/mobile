@@ -144,11 +144,15 @@ internal fun RuntimeFormV2Fields(
 
 /**
  * Web RuntimeChoiceCombobox `renderOption`: the line under a model's name is its stored id (for Pi
- * `provider/modelId`), only when it differs from the name. The runtime default ("") and a value the
- * list does not have (shown as itself) have none.
+ * `provider/modelId`), only when it differs from the name. Only real model / provider ids get it
+ * (runtime owner, PR #4682): the runtime default ("") and a saved provider connection's internal
+ * `connection:<id>` value have none, nor does a value the list does not have (shown as itself).
  */
 internal fun runtimeChoiceIdentifier(value: String, label: String): String? =
-    value.takeIf { it.isNotEmpty() && it != label }
+    value.takeIf { it.isNotEmpty() && it != label && !it.startsWith(RUNTIME_CHOICE_CONNECTION_PREFIX) }
+
+/** `provider.saved_connection`: a saved connection's option value is `connection:<connectionId>`. */
+private const val RUNTIME_CHOICE_CONNECTION_PREFIX = "connection:"
 
 /**
  * Web RuntimeFormV2FieldControl: a select takes the searchable list whose rows carry the id line when
