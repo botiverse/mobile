@@ -642,7 +642,7 @@
     <string name="thread_composer_payload_failed">Composer payload parse failed</string>
     <string name="thread_composer_placeholder_message">Message</string>
     <string name="thread_composer_chat_unavailable">Chat is unavailable</string>
-    <string name="thread_app_bot_removed_notice">@%1$s was removed from this server. An admin can add it back in Settings › Applications.</string>
+    <string name="thread_app_bot_removed_notice">@%1$s was removed from this server. An admin can add it back in Settings › Apps.</string>
     <string name="thread_composer_placeholder_dm">Message @%1$s</string>
     <string name="thread_composer_placeholder_channel">Message #%1$s</string>
     <string name="thread_composer_placeholder_reply">Reply in thread</string>
@@ -3064,7 +3064,7 @@
     <string name="settings_connected_apps_no_marketplace_match">No marketplace apps match this search.</string>
     <string name="settings_connected_apps_no_installed_marketplace">No marketplace apps are installed for this workspace.</string>
     <string name="settings_connected_apps_no_oauth_clients">No server-local OAuth clients yet.</string>
-    <string name="settings_connected_apps_title">Applications</string>
+    <string name="settings_connected_apps_title">Apps</string>
     <string name="settings_connected_apps_subtitle">Marketplace, installed apps, OAuth clients</string>
     <string name="settings_connected_apps_unavailable">Connected Apps are unavailable for this workspace.</string>
     <string name="settings_connected_apps_permission_required">Permission Required</string>
