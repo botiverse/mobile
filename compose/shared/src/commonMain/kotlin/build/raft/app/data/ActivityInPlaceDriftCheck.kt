@@ -19,7 +19,8 @@ import kotlinx.serialization.json.putJsonObject
  * `inbox.inplace.sample_rate` (every conflict is sent; one `noop` in [ActivityInPlaceNoopSample]).
  * An answer still behind the patched row judges nothing: the row waits for the next answer, up to
  * [ActivityInPlaceCheckTtlMillis]. Mobile has no persisted-read event yet, so `read_persisted` is
- * never a trigger here.
+ * never a trigger here. `order` leaves out rows listed here ahead of the answer (`;ahead=N`, web
+ * `aheadOfServed`, slock #14247).
  */
 internal const val ActivityInPlaceCheckTtlMillis = 90_000L
 internal const val ActivityInPlaceExpectationsCap = 200
@@ -80,6 +81,10 @@ internal fun InboxItem.inPlaceScopeId(): String? =
         else -> null
     }
 
+/** Web `isConversationRow`: a channel, DM or thread row (not a mention action or object row). */
+private fun InboxItem.isConversationRow(): Boolean =
+    kind == InboxItemKind.Thread || kind == InboxItemKind.Channel || kind == InboxItemKind.DirectMessage
+
 /** Not thread-safe: the store calls it under its realtime owner lock. */
 internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
     private class Expectation(
@@ -132,8 +137,9 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
     fun check(local: List<InboxItem>, served: List<InboxItem>): List<ActivityInPlaceCheck> {
         if (expectations.isEmpty()) return emptyList()
         val now = nowMillis()
-        val localKeys = local.mapTo(HashSet()) { it.key }
-        val servedKeys = served.mapTo(HashSet()) { it.key }
+        val ahead = aheadOfServed(local, served)
+        val localKeys = local.asSequence().map { it.key }.filterTo(HashSet()) { it !in ahead }
+        val servedKeys = served.asSequence().map { it.key }.filterTo(HashSet()) { it !in ahead }
         val checks = mutableListOf<ActivityInPlaceCheck>()
         val iterator = expectations.entries.iterator()
         while (iterator.hasNext()) {
@@ -173,7 +179,8 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
                 detail =
                     ";unread=${localRow.unreadCount}/${servedRow.unreadCount}" +
                         ";mention=${if (localRow.hasMention) 1 else 0}/${if (servedRow.hasMention) 1 else 0}" +
-                        ";order=$localIndex/$servedIndex"
+                        ";order=$localIndex/$servedIndex" +
+                        ";ahead=${ahead.size}"
             }
             iterator.remove()
             val agrees = result == "match" || result == "appeared"
@@ -193,6 +200,21 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
                 )
         }
         return checks
+    }
+
+    /**
+     * Web `aheadOfServed` (slock #14247): keys of the rows listed here at a newer message than the
+     * answer has (a live message the view has not caught up with). The answer still sorts them at
+     * their old place, so they are left out of the order comparison: a lagging neighbour does not
+     * move the judged row.
+     */
+    private fun aheadOfServed(local: List<InboxItem>, served: List<InboxItem>): Set<String> {
+        val servedSeq = served.filter { it.isConversationRow() }.associate { it.key to it.latestActivitySeq }
+        return local
+            .asSequence()
+            .filter { it.isConversationRow() && it.key in servedSeq }
+            .filter { compareActivitySeq(it.latestActivitySeq, servedSeq[it.key]) > 0 }
+            .mapTo(HashSet()) { it.key }
     }
 
     /** Index of [key] among the rows both lists have, so a row only one side lists does not shift it. */

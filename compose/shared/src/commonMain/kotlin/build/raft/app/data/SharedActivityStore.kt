@@ -18,6 +18,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageSystemProvenance
 import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverReadStateChanged
@@ -83,7 +84,11 @@ private data class ActivityRealtimeHighWater(
      * has none.
      */
     val seq: String? = null,
-    /** Channel/DM rows only: the patch stops holding over older served rows after this time. */
+    /**
+     * The patch stops holding over older served rows after this time (the stale-list bound,
+     * [ActivityLocalMutationHoldMillis]): channel/DM rows (web `preserveNewerChannelActivity`) and
+     * thread rows (web `ThreadActivityHighWater.until`, slock #14247).
+     */
     val holdUntilMillis: Long? = null,
     /**
      * `mobile_inbox_inplace_v0`: the patch also moved the row's unread and mention, so a served row
@@ -110,32 +115,61 @@ private enum class RealtimeRowPatch {
  */
 private class InPlaceUnreadContext(val principalId: String, val activeConversationId: String?)
 
-/** Web `InboxLiveUnread`: one more unread, and whether it @-mentions the reader. */
+/**
+ * Web `InboxLiveUnread` + `liveUnreadFields`: [counts] one more unread, [mention] the message
+ * @-mentions the reader (a thread system line the server does not count still lights the @).
+ */
 private data class InPlaceLiveUnread(val counts: Boolean, val mention: Boolean)
+
+/**
+ * The followed-thread unread rule (slock infra/risingwave/sql/070-followed-thread-stats-v3.sql,
+ * web `UNCOUNTED_THREAD_SYSTEM_SUBTYPES`): these system lines never count on a thread row.
+ */
+private val UncountedThreadSystemSubtypes = setOf("channel.self_unfollow_thread", "task.deleted_summary")
+
+/**
+ * Web `threadSystemMessageCounts` (slock #14247): a system message counts on a thread row as the
+ * server counts it: not when the reader caused it, nor one of [UncountedThreadSystemSubtypes], and
+ * never on a task conversation's row (its count is chat replies only). Without its provenance
+ * ([provenance] null: the frame carried no `systemSubtype`, e.g. a `thread:updated` reply) it
+ * cannot be judged and does not count; the re-read brings the server's count.
+ */
+private fun threadSystemMessageCounts(row: InboxItem, provenance: MessageSystemProvenance?, principalId: String): Boolean {
+    if (row.isTaskConversation) return false
+    if (provenance == null) return false
+    if (provenance.systemSubtype != null && provenance.systemSubtype in UncountedThreadSystemSubtypes) return false
+    return !(provenance.causalActorType == "user" && provenance.causalActorId == principalId)
+}
 
 /**
  * Web `liveActivityUnread` + `liveUnreadFields`: a live message counts unless it is the reader's
  * own, it lands in the conversation open on screen, or the row is an unfollowed thread (the server
- * counts none for it); a lifecycle line on a thread row counts no reply. Null: cannot tell here (a
- * thread row or reply without a seq), the row is re-read.
+ * counts none for it); a system line on a thread row counts only as [threadSystemMessageCounts]
+ * says. Null: cannot tell here (a thread row or reply without a seq), the row is re-read.
  */
-private fun InPlaceUnreadContext.unreadFor(row: InboxItem, message: Message, snapshot: InboxSnapshot): InPlaceLiveUnread? {
+private fun InPlaceUnreadContext.unreadFor(
+    row: InboxItem,
+    message: Message,
+    snapshot: InboxSnapshot,
+    provenance: MessageSystemProvenance?
+): InPlaceLiveUnread? {
     val thread = row.kind == InboxItemKind.Thread
     if (thread && (row.latestActivitySeq == null || message.seq == null)) return null
     val streamChannelId = (message.channelId ?: message.threadChannelId)?.value ?: return null
-    val counts =
+    val live =
         message.author.id.value != principalId &&
             !isActiveActivityConversation(streamChannelId, activeConversationId, snapshot) &&
-            !row.isUnfollowedActivityThread &&
-            !(thread && message.messageType == MessageType.System)
-    return InPlaceLiveUnread(counts = counts, mention = counts && message.mentions.mentionsUser(principalId))
+            !row.isUnfollowedActivityThread
+    val counts =
+        live && !(thread && message.messageType == MessageType.System && !threadSystemMessageCounts(row, provenance, principalId))
+    return InPlaceLiveUnread(counts = counts, mention = live && message.mentions.mentionsUser(principalId))
 }
 
 private fun InboxItem.withLiveUnread(live: InPlaceLiveUnread?, messageId: MessageId): InboxItem {
-    if (live == null || !live.counts) return this
+    if (live == null || (!live.counts && !live.mention)) return this
     return copy(
-        unreadCount = unreadCount + 1,
-        firstUnreadMessageId = if (unreadCount == 0) messageId else firstUnreadMessageId,
+        unreadCount = if (live.counts) unreadCount + 1 else unreadCount,
+        firstUnreadMessageId = if (live.counts && unreadCount == 0) messageId else firstUnreadMessageId,
         hasMention = hasMention || live.mention,
         firstMentionMessageId = if (live.mention && !hasMention) messageId else firstMentionMessageId
     )
@@ -1505,7 +1539,7 @@ class SharedActivityStore internal constructor(
         // In place: a thread row or reply without a seq is left to the re-read (web
         // liveUnreadFields: its recency guard is by message id only, so a late older reply would
         // count twice).
-        val unread = inPlace?.unreadFor(existing, message, snapshot)
+        val unread = inPlace?.unreadFor(existing, message, snapshot, (intent.event as? MessageNew)?.systemProvenance)
 
         val patched =
             existing.copy(
@@ -1560,7 +1594,7 @@ class SharedActivityStore internal constructor(
         val incomingSeq = message.seq?.takeIf { it >= 0L }?.toString() ?: return RealtimeRowPatch.NeedsRead
         if (existing.latestActivitySeq == null) return RealtimeRowPatch.NeedsRead
         if (compareActivitySeq(incomingSeq, existing.latestActivitySeq) <= 0) return RealtimeRowPatch.Unchanged
-        val unread = inPlace?.unreadFor(existing, message, snapshot)
+        val unread = inPlace?.unreadFor(existing, message, snapshot, (intent.event as? MessageNew)?.systemProvenance)
         val patched =
             existing.copy(
                 lastMessageId = message.id,
@@ -1745,6 +1779,7 @@ class SharedActivityStore internal constructor(
                 marker = item.latestActivityMessageId,
                 replyCount = item.replyCount,
                 seq = seq ?: previous?.seq?.takeIf { previous.marker == item.latestActivityMessageId },
+                holdUntilMillis = nowMillis() + ActivityLocalMutationHoldMillis,
                 // A later `thread:updated` meta patch keeps the unread the reply put there.
                 inPlaceUnread = inPlaceUnread || previous?.inPlaceUnread == true
             )
@@ -3357,7 +3392,10 @@ class SharedActivityStore internal constructor(
                     return@map reconciledRow
                 }
                 val current = currentThreads[canonical.key]
-                if (current == null) {
+                // Past the stale-list bound the answer is not lag any more: it wins (web
+                // preserveNewerThreadActivity `until`, slock #14247).
+                val holdLapsed = localVersion.holdUntilMillis?.let { until -> nowMillis() > until } ?: false
+                if (current == null || holdLapsed) {
                     realtimeHighWater.remove(canonical.key)
                     return@map canonical
                 }

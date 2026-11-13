@@ -4,6 +4,8 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageMention
 import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageSystemProvenance
+import build.raft.app.model.MessageType
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -123,7 +125,7 @@ class SharedActivityStoreInboxInPlaceCheckTest {
         assertEquals(ActivityInPlaceCheckOutcome.Conflict, check.outcome)
         assertEquals("unread+mention+order", check.result)
         assertEquals(1, check.sampleRate)
-        assertEquals("trigger=message_new;existed=1;result=unread+mention+order;unread=1/2;mention=1/0;order=0/1", check.outcomeDetail)
+        assertEquals("trigger=message_new;existed=1;result=unread+mention+order;unread=1/2;mention=1/0;order=0/1;ahead=0", check.outcomeDetail)
     }
 
     @Test
@@ -139,6 +141,82 @@ class SharedActivityStoreInboxInPlaceCheckTest {
         assertEquals(InboxRefreshTrigger.ThreadReply, check.trigger)
         assertEquals("match", check.result)
         assertEquals(ActivityInPlaceCheckOutcome.Noop, check.outcome)
+    }
+
+    @Test
+    fun aNeighbourBumpedAheadOfItsServedCopyDoesNotMoveTheJudgedRow() = runTest {
+        // slock #14247 aheadOfServed: the thread row was bumped by a reply the answer does not have
+        // yet, so the answer still sorts it last; left out of the order comparison, the channel row
+        // the answer has caught up on keeps its place (it was a false `order` conflict before).
+        val servedChannel = channelRow.copy(latestActivitySeq = "11", unreadCount = 1)
+        val f = loadedStore(listOf(listOf(otherRow, channelRow, threadRow), listOf(servedChannel, otherRow, threadRow)))
+
+        f.store.dispatch(live("m-11", channelId = "channel-1", seq = 11L))
+        f.store.dispatch(reply("r-21", seq = 21L, replyCount = 3))
+        assertEquals(listOf(threadRow.key, channelRow.key, otherRow.key), f.store.state.value.items.map { it.key })
+        untilReconcile()
+
+        assertEquals(2, f.inbox.initialLoadCount, "the inplace_reconcile read answered")
+        with(f.sent.single().check) {
+            assertEquals("channel:channel-1", entityId)
+            assertEquals("match", result)
+            assertEquals(ActivityInPlaceCheckOutcome.Noop, outcome)
+            assertEquals("trigger=message_new;existed=1;result=match;unread=1/1;mention=0/0;order=0/0;ahead=1", outcomeDetail)
+        }
+        // The thread row's answer is still behind its reply: it judges nothing yet.
+        assertTrue(f.sent.none { it.check.entityId == threadRow.key })
+    }
+
+    @Test
+    fun rowsAheadOfTheAnswerAreLeftOutOfTheOrderComparisonOnly() {
+        val check = ActivityInPlaceDriftCheck(nowMillis = { 0L })
+        val channel = channelRow.copy(latestActivitySeq = "11", unreadCount = 1)
+        val bumpedThread = threadRow.copy(latestActivitySeq = "21")
+        val local = listOf(bumpedThread, channel, otherRow)
+
+        check.notePatched(channel, InboxRefreshTrigger.MessageNew)
+        val lagging = check.check(local = local, served = listOf(channel, otherRow, threadRow)).single()
+        assertEquals("match", lagging.result)
+        assertEquals("trigger=message_new;existed=1;result=match;unread=1/1;mention=0/0;order=0/0;ahead=1", lagging.outcomeDetail)
+
+        // An answer that has the thread's reply and still sorts it below is a real order drift.
+        check.notePatched(channel, InboxRefreshTrigger.MessageNew)
+        val caughtUp = check.check(local = local, served = listOf(channel, otherRow, bumpedThread)).single()
+        assertEquals("order", caughtUp.result)
+        assertEquals("trigger=message_new;existed=1;result=order;unread=1/1;mention=0/0;order=1/0;ahead=0", caughtUp.outcomeDetail)
+    }
+
+    @Test
+    fun aThreadSystemMessageCountsInPlaceOnlyAsTheServerCountsIt() = runTest {
+        val f = loadedStore(listOf(listOf(otherRow, threadRow)))
+
+        fun system(id: String, seq: Long, provenance: MessageSystemProvenance?) =
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(id, channelId = "thread-1", authorId = "system", seq = seq).copy(messageType = MessageType.System),
+                    systemProvenance = provenance
+                )
+            )
+
+        fun unread() = f.store.state.value.items.single { it.key == threadRow.key }.unreadCount
+
+        // Caused by someone else, a counted subtype: one more unread, as the server counts it.
+        f.store.dispatch(system("s-21", 21L, MessageSystemProvenance("task.lifecycle_thread", "agent", "agent-1")))
+        assertEquals(1, unread())
+        // Caused by the reader: born read.
+        f.store.dispatch(system("s-22", 22L, MessageSystemProvenance("task.lifecycle_thread", "user", "user-1")))
+        assertEquals(1, unread())
+        // The followed-thread rule's uncounted subtypes.
+        f.store.dispatch(system("s-23", 23L, MessageSystemProvenance("channel.self_unfollow_thread", "agent", "agent-1")))
+        f.store.dispatch(system("s-24", 24L, MessageSystemProvenance("task.deleted_summary", null, null)))
+        assertEquals(1, unread())
+        // No provenance on the frame (like a thread:updated reply): it cannot be judged, so it does not count.
+        f.store.dispatch(system("s-25", 25L, provenance = null))
+        assertEquals(1, unread())
+        // A null subtype with no actor still counts.
+        f.store.dispatch(system("s-26", 26L, MessageSystemProvenance(null, null, null)))
+        assertEquals(2, unread())
+        assertEquals("26", f.store.state.value.items.first().latestActivitySeq, "every line still moves the row")
     }
 
     @Test

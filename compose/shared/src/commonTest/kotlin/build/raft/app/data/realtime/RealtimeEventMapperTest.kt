@@ -14,6 +14,7 @@ import build.raft.app.model.Heartbeat
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageSystemProvenance
 import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.NotificationPushReceived
@@ -325,6 +326,34 @@ class RealtimeEventMapperTest {
         assertEquals(MemberKind.System, message.author.kind)
         assertEquals(1_781_312_400_000L, message.createdAtEpochMillis)
         assertEquals("✅ artin moved #252 \"Implement Thread timeline system-message rendering\" to Done", message.body)
+    }
+
+    @Test
+    fun messageNewKeepsTheSystemProvenanceOnlyWhenTheFrameCarriesIt() {
+        fun frame(extra: String): MessageNew =
+            assertIs<MessageNew>(
+                RealtimeEventMapper().map(
+                    RealtimeSocketEvents.MessageNew,
+                    """
+                    {
+                      "id": "sys-1", "channelId": "thread-1", "senderType": "user", "senderId": "system",
+                      "messageType": "system", "content": "x", "createdAt": "2026-06-13T01:00:00Z", "seq": 44$extra
+                    }
+                    """.trimIndent()
+                )
+            )
+
+        assertEquals(
+            MessageSystemProvenance(systemSubtype = "task.lifecycle_thread", causalActorType = "user", causalActorId = "u1"),
+            frame(""", "systemSubtype": "task.lifecycle_thread", "causalActorType": "user", "causalActorId": "u1"""").systemProvenance
+        )
+        // An explicit null subtype is provenance too (web `"systemSubtype" in message`).
+        assertEquals(
+            MessageSystemProvenance(systemSubtype = null, causalActorType = null, causalActorId = null),
+            frame(""", "systemSubtype": null""").systemProvenance
+        )
+        // The allowlisted projection has no provenance columns: nothing to judge by.
+        assertEquals(null, frame("").systemProvenance)
     }
 
     @Test
