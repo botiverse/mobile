@@ -672,7 +672,6 @@ private const val ThreadSendMaxSilentRetries = 2
 // randomId makes the follow-up retry idempotent server-side.
 private const val ThreadSendRequestTimeoutMs = 30_000L
 private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
-private const val ThreadAttachmentUploadConcurrencyLimit = 12
 internal const val ThreadRelativeTimestampSlotWidthDp = 112f
 
 // task #387: when the channel initial-access lookup finds the home store still loading, it may
@@ -8408,9 +8407,6 @@ private fun SharedThreadRouteContentContent(
     var inlineAudioPreviewStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadInlineAudioPreviewUiState>>(emptyMap())
     }
-    val attachmentUploadOrchestrator = remember(threadInstanceKey, threadSendScope) {
-        ThreadAttachmentUploadOrchestrator(threadSendScope)
-    }
     var attachmentUploadFilesByLocalId by remember(threadInstanceKey) {
         mutableStateOf<Map<ThreadAttachmentUploadAttemptIdentity, PlatformFile>>(emptyMap())
     }
@@ -8432,9 +8428,6 @@ private fun SharedThreadRouteContentContent(
         remember(threadInstanceKey) { PendingMentionActionBatchRequestGate() }
     var externalShareExpectedAuthority by remember(threadInstanceKey) {
         mutableStateOf<build.raft.app.data.RaftExpectedAuthBinding?>(null)
-    }
-    val attachmentUploadSemaphore = remember(threadInstanceKey) {
-        Semaphore(ThreadAttachmentUploadConcurrencyLimit)
     }
     var composerImageActionCounter by remember(threadInstanceKey) { mutableStateOf(0) }
     // Cross-process editor callbacks may arrive out of order and on separate event-bus turns.
@@ -9164,6 +9157,12 @@ private fun SharedThreadRouteContentContent(
     // their names; reading nothing there painted them as plain text and re-laid the rows out as
     // chips a few frames later (Compose 版 open jitter, artin 11-03).
     val threadMembersServerId = threadPageServerId(currentServerId, storeScope.initialServerId)?.let(::ServerId)
+    // Composer attachment uploads belong to the draft, not to this page (artin: "不能背后上传吗"):
+    // the process-wide owner keeps them going after the user leaves the conversation, and the
+    // composer that opens this draft again picks up their progress or result.
+    val attachmentUploads = sharedStores.composerDraftUploads.forServer(threadMembersServerId?.value)
+    val attachmentUploadOrchestrator = attachmentUploads.orchestrator
+    val attachmentUploadSemaphore = attachmentUploads.semaphore
     val threadMembersChannelId = baseRenderedPayload.sourceThreadId?.trim()?.takeIf { it.isNotBlank() }?.let(::ChannelId)
     val threadServerMembersEntry by remember(serverMembersStore, threadMembersServerId) {
         if (serverMembersStore != null && threadMembersServerId != null) {
@@ -9644,10 +9643,9 @@ private fun SharedThreadRouteContentContent(
             val draftKey = normalizeThreadAttachmentUploadDraftKey(draftState.draftKey)
             val previousRestoredKey = restoredAttachmentUploadDraftKey
             if (draftKey != null && previousRestoredKey != null && draftKey != previousRestoredKey) {
-                // A reused Thread surface may keep the process-owned orchestrator alive while its
-                // composer store moves from draft A to draft B. Retire A before touching restored
-                // file bookkeeping so a late transport callback cannot publish into B.
-                attachmentUploadOrchestrator.retireDraft(previousRestoredKey)
+                // A reused Thread surface moved its composer store from draft A to draft B: A's
+                // uploads keep going (they belong to draft A, not to this page) and publish only
+                // into draft A's uploads, never into B.
                 // The map key is the complete (draft,id) identity.  Retire every handle owned by
                 // the old draft; a same-named local id admitted by the new draft is a different
                 // key and therefore remains untouched.  This also prevents a late old-job
@@ -9675,8 +9673,13 @@ private fun SharedThreadRouteContentContent(
                     }
                     .toMap()
             if (restoredFiles.isNotEmpty()) {
-                val activeUploadIds = attachmentUploadOrchestrator.activeAttemptIds(draftKey)
-                val safeRestoredFiles = restoredFiles.filterKeys { id -> id !in activeUploadIds }
+                // Never shadow the handle a live attempt of this page registered; a draft-owned
+                // upload started by a page that is gone gets the restored file (Retry after a
+                // background failure).
+                val safeRestoredFiles =
+                    restoredFiles.filterKeys { id ->
+                        attachmentUploadFilesByLocalId.threadAttachmentUploadFile(id, draftKey) == null
+                    }
                 if (safeRestoredFiles.isNotEmpty()) {
                     val keyedFiles =
                         safeRestoredFiles.mapNotNull { (id, file) ->
@@ -9688,16 +9691,18 @@ private fun SharedThreadRouteContentContent(
                     restoredAttachmentUploadFileIds = restoredAttachmentUploadFileIds + keyedFiles.keys
                 }
             }
-            // A row restored while its upload was in flight on a page that is gone has no attempt
-            // left to finish it: fail it (upload_interrupted) so the chip offers Retry with the
-            // file registered above, instead of blocking Send forever.
+            // A restored row whose upload nothing owns any more (the process died meanwhile, or
+            // the upload was cancelled) can never finish: fail it (upload_interrupted) so the chip
+            // offers Retry with the file registered above, instead of blocking Send forever. The
+            // draft's own uploads are left to the applier below.
             recoverOrphanedThreadComposerUploads(
                 draftKey = draftKey,
                 state = draftState,
                 acceptWithState = composerDraftViewModel::acceptWithState,
                 currentState = { composerDraftViewModel.state.value },
                 orchestrator = attachmentUploadOrchestrator,
-                log = { message -> bridge.logWarn(message) }
+                log = { message -> bridge.logWarn(message) },
+                ownedByDraftUpload = { id -> attachmentUploads.upload(draftKey, id) != null }
             )
         }
     }
@@ -11094,66 +11099,14 @@ private fun SharedThreadRouteContentContent(
             }
         }.invokeOnCompletion { ThreadPendingSendInFlightRegistry.end(context.randomId) }
     }
-    fun handleAttachmentUploadFailure(
-        errorCode: String,
-        attachmentIds: Set<String> = emptySet(),
-        ownerDraftKey: String? = null,
-        expectedAdmissions: Map<String, SharedThreadComposerAttachmentAdmission> = emptyMap(),
-    ) {
-        // The month's uploads are used up (`FILE_UPLOAD_QUOTA_EXCEEDED`): the upgrade dialog, as web
-        // MessageInput opens it (`upload_monthly_quota`). Nothing opens on a paid plan.
+    /**
+     * A draft-owned upload failed and its row now offers Retry: the upgrade dialog when the month's
+     * uploads are used up (`FILE_UPLOAD_QUOTA_EXCEEDED`, web MessageInput `upload_monthly_quota`;
+     * nothing opens on a paid plan), and the failure toast.
+     */
+    fun showAttachmentUploadFailure(errorCode: String) {
         if (raftUpgradeGateForErrorCode(errorCode) == RaftUpgradeGate.UploadMonthlyQuota) {
             pager.openRaftUpgradeDialog(RaftUpgradeGate.UploadMonthlyQuota, storeScope)
-        }
-        val draftKey =
-            normalizeThreadAttachmentUploadDraftKey(ownerDraftKey)
-                ?: normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
-        // Fail only this file's attempt.  Failing every active sibling here cancelled healthy
-        // uploads and produced a multi-id mark the strict reducer rejects, stranding every chip on
-        // "Checking file…" (oversize original image + small sibling, 1.17.0/1.17.1).
-        val terminalAttachmentIds = attachmentUploadOrchestrator.failAttempts(draftKey, attachmentIds)
-        if (terminalAttachmentIds.isNotEmpty()) {
-            // A current-state lookup is not a safe fallback here: after an A→B remount the
-            // callback may carry A's local id while the state map now belongs to B.  Production
-            // callers must provide the admission captured at launch; without it, retire the
-            // orchestrator token but leave the reducer untouched rather than risking B's row.
-            if (expectedAdmissions.isEmpty()) {
-                bridge.logWarn(
-                    "thread_composer_attachment_failure_dropped reason=missing_admission_witness " +
-                        "draftKey=${draftKey.orEmpty()} ids=${terminalAttachmentIds.joinToString(",")}"
-                )
-                bridge.toast(
-                    localizedAttachmentUploadFailedDetail(
-                        userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
-                    )
-                )
-                return
-            }
-            val failureReceipt =
-                composerDraftViewModel.acceptWithState(
-                    SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
-                        attachmentIds = terminalAttachmentIds,
-                        errorCode = errorCode,
-                        expectedDraftKey = draftKey,
-                        expectedAdmissions =
-                            terminalAttachmentIds.mapNotNull { id -> expectedAdmissions[id] }
-                                .associateBy { admission -> admission.localAttachmentId }
-                    )
-                )
-            val unmarkedIds =
-                terminalAttachmentIds.filterNot { id ->
-                    failureReceipt.state.uploadedAttachments.any { row ->
-                        row.id == id && row.status == "failed" && row.errorCode == errorCode
-                    }
-                }
-            if (unmarkedIds.isNotEmpty()) {
-                bridge.logWarn(
-                    "thread_composer_attachment_result_rejected result=failure errorCode=$errorCode " +
-                        "draftKey=${draftKey.orEmpty()} " +
-                        "stateDraftKey=${failureReceipt.state.draftKey.orEmpty()} " +
-                        "attachments=${failureReceipt.state.threadComposerAttachmentStatusSummary(unmarkedIds.toSet())}"
-                )
-            }
         }
         bridge.toast(
             localizedAttachmentUploadFailedDetail(
@@ -11736,10 +11689,14 @@ private fun SharedThreadRouteContentContent(
         // per-file multipart path is the 1.10.0-shaped uploader. The aggregate
         // direct-session branch above stays dormant.
         var launchedCount = 0
+        // The draft owns these uploads (process-wide), so they keep going when the user leaves
+        // the conversation; results go to the draft's uploads and the composer showing this draft
+        // applies them (see composerDraftUploadApplier).
+        val draftUploads = attachmentUploads
         for (file in acceptedFiles) {
             val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: continue
             val admission = admittedLocalAdmissions[localAttachmentId] ?: continue
-            val admittedSourceAttachment = localAttachments.firstOrNull { it.id == localAttachmentId }
+            val admittedSourceAttachment = localAttachments.firstOrNull { it.id == localAttachmentId } ?: continue
             val identity = threadAttachmentUploadAttemptIdentity(localAttachmentId, draftKey)
             val clientRequestId =
                 if (identity != null) {
@@ -11748,18 +11705,14 @@ private fun SharedThreadRouteContentContent(
                     newAttachmentUploadClientRequestId()
                 }
             val attemptToken =
-                attachmentUploadOrchestrator.launch(
-                    localAttachmentId = localAttachmentId,
-                    draftKey = draftKey
+                draftUploads.launch(
+                    draftKey = draftKey,
+                    row = admittedSourceAttachment,
+                    file = file,
+                    launchAdmission = admission
                 ) { uploadAttemptToken ->
-                    var uploadSucceeded = false
                     fun publishTerminalFailure(errorCode: String) {
-                        handleAttachmentUploadFailure(
-                            errorCode = errorCode,
-                            attachmentIds = setOf(localAttachmentId),
-                            ownerDraftKey = draftKey,
-                            expectedAdmissions = mapOf(localAttachmentId to admission)
-                        )
+                        draftUploads.fail(draftKey, localAttachmentId, uploadAttemptToken, errorCode)
                     }
                     try {
                         bridge.log(
@@ -11823,22 +11776,7 @@ private fun SharedThreadRouteContentContent(
                                     val uploadMeterLock = SynchronizedObject()
                                     fun publishTransfer(step: RaftTransferMeter.() -> RaftTransferProgress) {
                                         val transfer = synchronized(uploadMeterLock) { uploadMeter.step() }
-                                        coroutineScope.launch {
-                                            attachmentUploadOrchestrator.publishIfAccepted(
-                                                localAttachmentId,
-                                                draftKey,
-                                                uploadAttemptToken
-                                            ) {
-                                                composerDraftViewModel.accept(
-                                                    SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
-                                                        attachmentId = localAttachmentId,
-                                                        transfer = transfer,
-                                                        expectedDraftKey = draftKey,
-                                                        expectedAdmission = admission
-                                                    )
-                                                )
-                                            }
-                                        }
+                                        draftUploads.progress(draftKey, localAttachmentId, uploadAttemptToken, transfer)
                                     }
                                     fun publishPhaseProgress(phase: ThreadComposerDirectUploadPhase) {
                                         when (phase) {
@@ -11896,7 +11834,7 @@ private fun SharedThreadRouteContentContent(
                                 }
                             }
                         val published =
-                            attachmentUploadOrchestrator.publishIfAccepted(
+                            draftUploads.orchestrator.publishIfAccepted(
                                 localAttachmentId,
                                 draftKey,
                                 uploadAttemptToken
@@ -11937,43 +11875,10 @@ private fun SharedThreadRouteContentContent(
                                         ) {
                                             publishTerminalFailure("empty_upload_result")
                                         } else {
-                                            val replacementSlotId =
-                                                threadComposerReplacementSlotId(
-                                                    replaceAttachmentId =
-                                                        replaceAttachmentIdsByLocalId[localAttachmentId]
-                                                            ?: replaceAttachmentId,
-                                                    localAttachmentId = localAttachmentId
-                                                )
-                                            val projectionReceipt = composerDraftViewModel.acceptWithState(
-                                                SharedThreadComposerDraftIntent.AddUploadedAttachments(
-                                                    attachments = uploaded,
-                                                    replacedAttachmentIds = setOf(localAttachmentId),
-                                                    replacedAttachmentIdsByUploadedId =
-                                                        uploaded.associate { attachment -> attachment.id to replacementSlotId },
-                                                    expectedDraftKey = draftKey,
-                                                    expectedAdmissions = mapOf(localAttachmentId to admission),
-                                                    expectedServerAttachmentIdsByLocalId =
-                                                        mapOf(localAttachmentId to uploaded.map { it.id }.toSet()),
-                                                    expectedReplacementAttachmentIdsByLocalId =
-                                                        mapOf(localAttachmentId to replacementSlotId)
-                                                )
-                                            )
-                                            if (projectionReceipt.accepted) {
-                                                attachmentUploadFilesByLocalId =
-                                                    attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(
-                                                        localAttachmentId,
-                                                        draftKey
-                                                    )
-                                                uploadSucceeded = true
-                                            } else {
-                                                bridge.logWarn(
-                                                    "thread_composer_attachment_result_rejected result=success " +
-                                                        "draftKey=$draftKey " +
-                                                        "stateDraftKey=${projectionReceipt.state.draftKey.orEmpty()} " +
-                                                        "attachments=${projectionReceipt.state.threadComposerAttachmentStatusSummary(setOf(localAttachmentId))}"
-                                                )
-                                                publishTerminalFailure("attachment_upload_projection_rejected")
-                                            }
+                                            // The composer showing this draft (this page, or the
+                                            // one that opens it after the user came back) puts
+                                            // these in place of the local row.
+                                            draftUploads.succeed(draftKey, localAttachmentId, uploadAttemptToken, uploaded)
                                         }
                                     }
                                     is DataResult.Error ->
@@ -12010,6 +11915,38 @@ private fun SharedThreadRouteContentContent(
             }
         }
         return acceptedFiles.isNotEmpty() && acceptedFiles.size == files.size && launchedCount == acceptedFiles.size
+    }
+    // The draft's uploads, wherever they were started: progress, the ready attachment, or Retry.
+    val composerDraftUploadApplier =
+        remember(composerDraftViewModel) { RaftComposerDraftUploadApplier(log = { message -> bridge.logWarn(message) }) }
+    LaunchedEffect(composerDraftViewModel, attachmentUploads) {
+        combine(composerDraftViewModel.state, attachmentUploads.byDraft) { draftState, uploads ->
+            val draftKey = normalizeThreadAttachmentUploadDraftKey(draftState.draftKey)
+            draftKey to draftKey?.let { key -> uploads[key] }.orEmpty()
+        }.collect { (draftKey, uploads) ->
+            if (draftKey == null || uploads.isEmpty()) return@collect
+            composerDraftUploadApplier.apply(
+                draftKey = draftKey,
+                uploads = uploads,
+                currentState = { composerDraftViewModel.state.value },
+                acceptWithState = composerDraftViewModel::acceptWithState,
+                onAdopted = { upload ->
+                    threadAttachmentUploadAttemptIdentity(upload.localAttachmentId, draftKey)?.let { identity ->
+                        if (attachmentUploadFilesByLocalId[identity] == null) {
+                            attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId + (identity to upload.file)
+                        }
+                    }
+                },
+                onSucceeded = { upload ->
+                    attachmentUploadFilesByLocalId =
+                        attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(upload.localAttachmentId, draftKey)
+                },
+                onFailed = { _, errorCode -> showAttachmentUploadFailure(errorCode) },
+                onDelivered = { upload ->
+                    attachmentUploads.markDelivered(draftKey, upload.localAttachmentId, upload.attemptToken)
+                }
+            )
+        }
     }
     // Image viewer > Edit (artin, task #32): the edited copy goes into this conversation's
     // composer as a new attachment, like a pasted image; the original message is untouched.
@@ -12200,6 +12137,9 @@ private fun SharedThreadRouteContentContent(
         // returned false above. CompleteSend only clears the durable record; the send
         // completion below still dispatches its own CompleteSend for mention actions.
         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
+        // The draft went out with its ready attachments: forget its uploads (the send gate let it
+        // through only with none in flight).
+        attachmentUploads.retireDraft(currentDraftState.draftKey)
         // Before the request: the canonical echo may beat the HTTP response, and it must already
         // resolve these attachment ids to the local image instead of downloading it again.
         build.raft.app.image.RaftSentAttachmentLocalImages.registry.register(
@@ -15773,7 +15713,8 @@ private fun SharedThreadRouteContentContent(
                             )
                             return@ThreadPageContent
                         }
-                        attachmentUploadOrchestrator.remove(id, draftKey)
+                        // Removing the tile is what cancels its upload (leaving the conversation does not).
+                        attachmentUploads.remove(draftKey, id)
                         attachmentUploadFilesByLocalId =
                             attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(id, draftKey)
                         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(id))

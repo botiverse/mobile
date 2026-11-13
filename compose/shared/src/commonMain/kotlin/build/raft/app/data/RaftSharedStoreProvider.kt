@@ -6,6 +6,7 @@ import build.raft.app.toJointConnectionsDurableRecord
 import build.raft.app.toJointConnectionsSnapshot
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loader
 import build.raft.app.host.HostCapabilities
+import build.raft.app.RaftComposerDraftUploads
 import build.raft.app.SharedThreadComposerDraftAccount
 import build.raft.app.SharedThreadComposerDraftAccountStore
 import build.raft.app.SharedThreadComposerDraftAccounts
@@ -534,6 +535,12 @@ internal class RaftSharedStoreProvider private constructor(
     private val homeActivityStoreScope: CoroutineScope,
     val threadSendScope: CoroutineScope
 ) {
+    /**
+     * Composer attachment uploads, owned by their draft (server + conversation draft key) for the
+     * life of the process rather than by the conversation page: leaving the conversation does not
+     * stop them. Cancelled on remove / send, sign-out and lost server access; not persisted.
+     */
+    internal val composerDraftUploads = RaftComposerDraftUploads(threadSendScope)
     // task #166: display-only last-known unread counts and previews for the cached cold-start
     // Home. Declared first so every later initializer that builds the Home store sees it.
     private val homeRowHintPersistStorage = HomeRowHintPersistStorage(sharedPreferenceStore)
@@ -1489,6 +1496,8 @@ internal class RaftSharedStoreProvider private constructor(
                     // Sign-out keeps the account's stored data (keyed by account; owner decision
                     // 2026-10-27) and resets every in-memory copy: see AccountLocalData.
                     accountLocalData.onSignOut()
+                    // The signed-out account's attachment uploads stop with it.
+                    composerDraftUploads.cancelAll()
                     // Pending-send rows are retired by the identity-bound
                     // processPresenceBindingTransition hook.  This terminal
                     // route deliberately has no captured environment/principal
@@ -1557,6 +1566,7 @@ internal class RaftSharedStoreProvider private constructor(
             onServerAccessLost = { grant ->
                 reconnectRefetchJitter.dropServer(grant.serverId, reason = "server_access_lost")
                 threadPayloadStore.dropServer(grant.serverId)
+                composerDraftUploads.dropServer(grant.serverId)
                 readReceiptPendingStore.dropServer(grant.serverId, replyCacheAuthContext.value?.accountId)
                 // Step 3: the server's members (memory in every shell, durable row, avatar refs).
                 allServerMembersStores().forEach { store -> store.dropServer(ServerId(grant.serverId)) }
