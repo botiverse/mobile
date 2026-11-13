@@ -25,6 +25,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -109,10 +110,12 @@ class MembersAgentsGroupingUiTest {
             showTab(MembersTab.Agents)
             onAllNodesWithText("artin").assertCountEquals(0)
             onNodeWithText("Volta").assertExists()
-            onAllNodesWithText("MacBook Pro", substring = true).assertCountEquals(0)
+            // Ungrouped, each agent's runtime line names its computer (web MemberPhoneRow).
+            onAllNodesWithText("MacBook Pro", substring = true).fetchSemanticsNodes().isNotEmpty().let(::assertTrue)
 
             pickGrouping(MembersAgentsGrouping.Computer)
 
+            // By computer: the heading names it once; the rows' runtime lines leave it out.
             onAllNodesWithText("MacBook Pro", substring = true).assertCountEquals(1)
             onAllNodesWithText("daybed-earth", substring = true).assertCountEquals(1)
             assertEquals(MembersAgentsGrouping.Computer, store.grouping)
