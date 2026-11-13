@@ -4201,6 +4201,10 @@
     <string name="message_card_waiting_for_someone">Waiting for someone else</string>
     <string name="message_card_declined">You turned off %1$s.</string>
     <string name="message_card_allow_app">Allow %1$s</string>
+    <string name="message_card_consent_title">Allow %1$s?</string>
+    <string name="message_card_consent_body">%1$s will know it's you when you view its links or use its buttons here. You can turn this off in Settings › Applications.</string>
+    <string name="message_card_consent_allow">Allow</string>
+    <string name="message_card_consent_not_now">Not now</string>
     <string name="artifacts_card_open_in_new_page">Open in New Page</string>
     <string name="artifacts_card_comments_one">1 comment</string>
     <string name="artifacts_card_comments_many">%1$d comments</string>

@@ -13,11 +13,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import build.raft.app.data.AppLinkConsentStatus
-import build.raft.app.data.AppLinkResult
 import build.raft.app.data.RaftMessageCardLive
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -111,8 +107,15 @@ internal fun RaftMessageCardView(
     val acting = card.acting
     val actingHost = if (acting != null) rememberThreadMessageCardActingHost(messageId, card) else null
     val live = (actingHost?.live ?: actingLive).forCard(card)
-    val press = if (acting != null) rememberThreadAppLinkCardPress(remember(card, live) { messageCardPressCard(card, live) }, actingHost?.actions) else null
-    var asking by remember(messageId) { mutableStateOf<AppLinkResult.Consent?>(null) }
+    // One press per message (and actions host): the press card's address moves with each read, and an Undo
+    // window or a confirmation on screen must outlive it.
+    val press =
+        if (acting != null) {
+            rememberThreadAppLinkCardPress(remember(card, live) { messageCardPressCard(card, live) }, actingHost?.actions, key = messageId)
+        } else {
+            null
+        }
+    val consent = rememberThreadMessageCardConsentFlow(actingHost)
     val onAllow = rememberThreadMessageCardAllow(actingHost)
     val actingNote = if (acting != null) messageCardActingNote(live) else null
     val updatedAt = card.updatedAt?.takeIf { card.showsUpdated }
@@ -134,7 +137,7 @@ internal fun RaftMessageCardView(
                         val action = acting?.actions?.get(id)
                         if (action != null && press != null) {
                             val fallbackUrl = (button.action as? RaftLinkCardButtonAction.Navigate)?.url
-                            RaftMessageCardActingButton(id, button, action, messageCardActingState(live, id, fallbackUrl), press, onAsk = { asking = it })
+                            RaftMessageCardActingButton(id, button, action, messageCardActingState(live, id, fallbackUrl), press, onAsk = { prompt -> consent?.ask(prompt) })
                         } else {
                             RaftMessageCardLink(button, onOpenUrl)
                         }
@@ -153,7 +156,7 @@ internal fun RaftMessageCardView(
         }
     }
     press?.let { ThreadMessageCardActingConfirmation(it) }
-    ThreadMessageCardActingPrompts(actingHost, asking, onOpenUrl, onDismiss = { asking = null })
+    ThreadMessageCardConsentSheet(consent, actingHost)
 }
 
 /**

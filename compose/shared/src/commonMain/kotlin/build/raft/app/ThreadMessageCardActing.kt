@@ -2,6 +2,14 @@ package build.raft.app
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import build.raft.app.data.SharedAppLinkPreviewStore
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftSheet
+import build.raft.designsystem.components.RaftSheetSurface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,8 +54,8 @@ import kotlinx.coroutines.launch
  *  - a handle: pressable, exactly as a link card's (RFC 076: prepare, Raft's confirmation, execute,
  *    the Undo window, the toast, reading again; [ThreadAppLinkCardPress]);
  *  - `waiting_for` (the card is for someone else): disabled, "Waiting for {name}" under them;
- *  - `consent: "needed"`: enabled; the first press asks the App's first-view question (the link card
- *    prompt), and once allowed the card is read again;
+ *  - `consent: "needed"`: enabled; a press asks "Allow {App}?" ([ThreadMessageCardConsentFlow]: Allow,
+ *    then the card is read again, or Not now, which sends nothing and asks again next press);
  *  - `consent: "declined"`: disabled, "You turned off {App}." (web copy, Kirby),
  *    with Allow {App} (allowing lifts the decline);
  *  - otherwise (not read yet, a failed read, the App can't act now): disabled, no reason.
@@ -140,14 +148,14 @@ internal fun rememberThreadMessageCardActingHost(messageId: String?, card: RaftM
     val status = appKey?.let { state.status[it] }
     val declined = status == AppLinkConsentStatus.Declined
     LaunchedEffect(host.store, host.viewerKey, host.serverId, messageId, view, card.acting, epoch, declined) {
-        host.store.readMessageCard(host.viewerKey, host.serverId, messageId, view, locale)
+        host.store.readMessageCard(host.viewerKey, host.serverId, messageId, view, locale, cardRevision = card.revision.toString())
     }
     val actions =
         remember(host, messageId, view, locale) {
             ThreadAppLinkCardActionHost(
                 prepare = { handle, revision -> host.store.prepareAction(host.serverId, handle, revision) },
                 execute = { handle, requestId, prepared -> host.store.executeAction(host.serverId, handle, requestId, prepared) },
-                reread = { _ -> host.store.readMessageCard(host.viewerKey, host.serverId, messageId, view, locale) },
+                reread = { _ -> host.store.readMessageCard(host.viewerKey, host.serverId, messageId, view, locale, force = true) },
                 toast = host.toast,
             )
         }
@@ -174,7 +182,8 @@ internal fun RaftMessageCardActingButton(
                 onClick = pressable?.onClick ?: {},
                 modifier = modifier,
                 variant = if (pressable?.frameless == true) RaftButtonVariant.Ghost else variant,
-                enabled = pressable?.enabled ?: true,
+                // No way to press it here (no conversation): drawn disabled, never a button that does nothing.
+                enabled = pressable?.enabled ?: false,
                 loading = pressable?.loading ?: false,
             )
         }
@@ -225,19 +234,111 @@ internal fun RaftMessageCardActingNoteView(note: RaftMessageCardActingNote, allo
 }
 
 /**
- * The conversation's side of the acting buttons: the consent question while [asking], and Allow
- * from the declined line (a failure says so in a toast; the card is read again once allowed).
+ * The question a press asks before the viewer has agreed to the card's App (`consent: "needed"`,
+ * RFC 086 §4.2; web copy, AppFather): Allow (`link-preview-consent`; the App's epoch moves, so the
+ * card reads again) or Not now, which only closes it: the next press asks again. Not now is never a
+ * decline; only the server's `consent: "declined"` says "You turned off {App}.". Unlike the link
+ * card prompt, there is no Don't Allow here.
  */
-@Composable
-internal fun ThreadMessageCardActingPrompts(
-    host: ThreadMessageCardActingHost?,
-    asking: AppLinkResult.Consent?,
-    onOpenUrl: (String) -> Unit,
-    onDismiss: () -> Unit,
+internal class ThreadMessageCardConsentFlow(
+    private val store: SharedAppLinkPreviewStore,
+    private val viewerKey: String,
+    private val serverId: String,
 ) {
-    if (host == null || asking == null) return
-    ThreadAppLinkConsentSheet(host = host.preview, prompt = asking, onOpenLink = onOpenUrl, onDismiss = onDismiss)
+    /** The question on screen, or null. */
+    var asking by mutableStateOf<AppLinkResult.Consent?>(null)
+        private set
+
+    fun ask(prompt: AppLinkResult.Consent) {
+        asking = prompt
+    }
+
+    /** Not now: closes the question; nothing is sent. */
+    fun notNow() {
+        asking = null
+    }
+
+    /** Allow ([SharedAppLinkPreviewStore.allow]): the question closes unless allowing failed (then it offers Retry). */
+    suspend fun allow(): AppLinkConsentAnswer? {
+        val prompt = asking ?: return null
+        val answer = store.allow(viewerKey, serverId, prompt.app).await()
+        if (answer != AppLinkConsentAnswer.Failed) asking = null
+        return answer
+    }
 }
+
+@Composable
+internal fun rememberThreadMessageCardConsentFlow(host: ThreadMessageCardActingHost?): ThreadMessageCardConsentFlow? {
+    host ?: return null
+    val preview = host.preview
+    return remember(preview.store, preview.viewerKey, preview.serverId) { ThreadMessageCardConsentFlow(preview.store, preview.viewerKey, preview.serverId) }
+}
+
+/** The consent question of [flow] in a sheet: "Allow {App}?", what allowing tells the App, Allow and Not now. */
+@Composable
+internal fun ThreadMessageCardConsentSheet(flow: ThreadMessageCardConsentFlow?, host: ThreadMessageCardActingHost?) {
+    val prompt = flow?.asking ?: return
+    host ?: return
+    val scope = rememberCoroutineScope()
+    val state by host.preview.store.state.collectAsState()
+    val status = state.status[appLinkAppKey(host.preview.viewerKey, prompt.app.id)]
+    val unavailable = stringResource(Res.string.thread_link_preview_prompt_unavailable, prompt.app.name)
+    RaftDesignSystemTheme {
+        ThreadMessageCardConsentPrompt(
+            appName = prompt.app.name,
+            status = status,
+            onAllow = {
+                scope.launch {
+                    if (flow.allow() == AppLinkConsentAnswer.Unavailable) host.preview.toast(unavailable)
+                }
+            },
+            onNotNow = flow::notNow,
+        )
+    }
+}
+
+/** The sheet itself; [inWindow] false draws the surface alone (fixtures). */
+@Composable
+internal fun ThreadMessageCardConsentPrompt(
+    appName: String,
+    status: AppLinkConsentStatus?,
+    onAllow: () -> Unit,
+    onNotNow: () -> Unit,
+    inWindow: Boolean = true,
+) {
+    val title = stringResource(Res.string.message_card_consent_title, appName)
+    val description =
+        if (status == AppLinkConsentStatus.Failed) {
+            stringResource(Res.string.thread_link_preview_prompt_allow_failed, appName)
+        } else {
+            stringResource(Res.string.message_card_consent_body, appName)
+        }
+    val actions: @Composable ColumnScope.() -> Unit = {
+        RaftButton(
+            text = stringResource(if (status == AppLinkConsentStatus.Failed) Res.string.common_retry else Res.string.message_card_consent_allow),
+            onClick = onAllow,
+            modifier = Modifier.fillMaxWidth(),
+            size = RaftButtonSize.Lg,
+            loading = status == AppLinkConsentStatus.Allowing,
+            loadingLabel = stringResource(Res.string.thread_link_preview_prompt_allowing),
+        )
+        RaftButton(
+            text = stringResource(Res.string.message_card_consent_not_now),
+            onClick = onNotNow,
+            modifier = Modifier.fillMaxWidth().testTag(ThreadMessageCardConsentNotNowTestTag),
+            variant = RaftButtonVariant.Ghost,
+            size = RaftButtonSize.Lg,
+            enabled = status != AppLinkConsentStatus.Allowing,
+        )
+    }
+    if (inWindow) {
+        RaftSheet(onDismissRequest = onNotNow, title = title, description = description, actions = actions, content = {})
+    } else {
+        RaftSheetSurface(title = title, description = description, actions = actions, content = {})
+    }
+}
+
+internal const val ThreadMessageCardConsentNotNowTestTag = "thread_message_card_consent_not_now"
 
 /** Allow [app] from the declined line: lifts the decline (`link-preview-consent`); the card reads again on the App's new epoch. */
 @Composable

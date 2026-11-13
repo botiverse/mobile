@@ -4201,6 +4201,10 @@
     <string name="message_card_waiting_for_someone">ほかの人の対応待ち</string>
     <string name="message_card_declined">%1$s をオフにしています。</string>
     <string name="message_card_allow_app">%1$s を許可</string>
+    <string name="message_card_consent_title">%1$s を許可しますか？</string>
+    <string name="message_card_consent_body">ここで %1$s のリンクを表示したりボタンを使ったりすると、%1$s にあなたであることが伝わります。設定 › アプリ でオフにできます。</string>
+    <string name="message_card_consent_allow">許可</string>
+    <string name="message_card_consent_not_now">今はしない</string>
     <string name="artifacts_card_open_in_new_page">新しいページで開く</string>
     <string name="artifacts_card_comments_one">コメント 1 件</string>
     <string name="artifacts_card_comments_many">コメント %1$d 件</string>
