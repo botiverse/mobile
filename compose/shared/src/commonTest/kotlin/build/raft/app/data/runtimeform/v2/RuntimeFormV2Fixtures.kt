@@ -4,7 +4,7 @@ package build.raft.app.data.runtimeform.v2
 // packages/runtime-form/fixtures/ (the server's exact v2 bodies). Do not edit;
 // re-run the script when slock regenerates its fixtures.
 
-/** fixtures/builtin.form.json, sha256 ca9e7f3cd56730c4c4b3385486ca23f9c039b909a856e3a4bca3410155a9bee6 */
+/** fixtures/builtin.form.json, sha256 1c390e6da24bc49f16988ed1a7937645b16bbc12ff51b146865ad2b1f78ce3cc */
 internal const val BUILTIN_V2_FORM_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "builtin",
@@ -56,6 +56,19 @@ internal const val BUILTIN_V2_FORM_JSON: String = """{
         "additionalProperties": {
           "type": "string"
         }
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionSource": "reasoningEffort"
+      },
+      "contextWindow": {
+        "type": "string",
+        "title": "Context window (tokens)"
+      },
+      "maxOutputTokens": {
+        "type": "string",
+        "title": "Max output tokens"
       }
     }
   },
@@ -66,11 +79,16 @@ internal const val BUILTIN_V2_FORM_JSON: String = """{
       "baseUrl",
       "supportsImageInput",
       "model",
+      "reasoningEffort",
+      "contextWindow",
+      "maxOutputTokens",
       "loadLocalPlugins",
       "envVars"
     ],
     "layout": {
       "advanced": [
+        "/contextWindow",
+        "/maxOutputTokens",
         "/loadLocalPlugins",
         "/envVars"
       ]
@@ -93,6 +111,58 @@ internal const val BUILTIN_V2_FORM_JSON: String = """{
           "in": [
             "openai-compatible",
             "anthropic-compatible"
+          ]
+        }
+      },
+      {
+        "pointer": "/contextWindow",
+        "when": {
+          "pointer": "/providerId",
+          "in": [
+            "openai-compatible",
+            "anthropic-compatible",
+            "openrouter",
+            "deepseek",
+            "minimax",
+            "minimax-cn",
+            "zai",
+            "zai-coding-cn",
+            "moonshotai",
+            "moonshotai-cn",
+            "kimi-coding",
+            "qwen-token-plan",
+            "qwen-token-plan-cn",
+            "openai",
+            "anthropic",
+            "google",
+            "xai",
+            "xiaomi"
+          ]
+        }
+      },
+      {
+        "pointer": "/maxOutputTokens",
+        "when": {
+          "pointer": "/providerId",
+          "in": [
+            "openai-compatible",
+            "anthropic-compatible",
+            "openrouter",
+            "deepseek",
+            "minimax",
+            "minimax-cn",
+            "zai",
+            "zai-coding-cn",
+            "moonshotai",
+            "moonshotai-cn",
+            "kimi-coding",
+            "qwen-token-plan",
+            "qwen-token-plan-cn",
+            "openai",
+            "anthropic",
+            "google",
+            "xai",
+            "xiaomi"
           ]
         }
       }
@@ -126,6 +196,19 @@ internal const val BUILTIN_V2_FORM_JSON: String = """{
       "envVars": {
         "label": "Environment Variables",
         "hint": "These will be injected into the runtime command environment."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning"
+      },
+      "contextWindow": {
+        "label": "Context window (tokens)",
+        "placeholder": "200000",
+        "hint": "Optional. Overrides the model's context window. Leave empty to use the listed model's own value or Raft's default. A gateway can provide both limits automatically. [Learn more](https://docs.raft.build/developers/gateway-model-limits/)"
+      },
+      "maxOutputTokens": {
+        "label": "Max output tokens",
+        "placeholder": "8192",
+        "hint": "Optional. Overrides the most tokens the model may write in one reply. Leave empty to use the listed model's own value or Raft's default. A gateway can provide both limits automatically. [Learn more](https://docs.raft.build/developers/gateway-model-limits/)"
       }
     }
   },
@@ -158,12 +241,17 @@ internal const val BUILTIN_V2_FORM_JSON: String = """{
       "kind": "dependent_select",
       "pointer": "/model",
       "dependsOn": "/providerId"
+    },
+    "reasoningEffort": {
+      "kind": "select",
+      "sourceId": "reasoningEffort",
+      "pointer": "/reasoningEffort"
     }
   }
 }
 """
 
-/** fixtures/builtin.edit.json, sha256 73a79db889d6e6a3662328162034a420fcab96a38a1ae24d145bf7e4363ef644 */
+/** fixtures/builtin.edit.json, sha256 44741d8f35c59f375a7e6bc4c0e2f6b85235a5eeef23117186b4b04a9e379dc4 */
 internal const val BUILTIN_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "builtin",
@@ -215,6 +303,19 @@ internal const val BUILTIN_V2_EDIT_JSON: String = """{
         "additionalProperties": {
           "type": "string"
         }
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionSource": "reasoningEffort"
+      },
+      "contextWindow": {
+        "type": "string",
+        "title": "Context window (tokens)"
+      },
+      "maxOutputTokens": {
+        "type": "string",
+        "title": "Max output tokens"
       }
     }
   },
@@ -225,11 +326,16 @@ internal const val BUILTIN_V2_EDIT_JSON: String = """{
       "baseUrl",
       "supportsImageInput",
       "model",
+      "reasoningEffort",
+      "contextWindow",
+      "maxOutputTokens",
       "loadLocalPlugins",
       "envVars"
     ],
     "layout": {
       "advanced": [
+        "/contextWindow",
+        "/maxOutputTokens",
         "/loadLocalPlugins",
         "/envVars"
       ]
@@ -252,6 +358,58 @@ internal const val BUILTIN_V2_EDIT_JSON: String = """{
           "in": [
             "openai-compatible",
             "anthropic-compatible"
+          ]
+        }
+      },
+      {
+        "pointer": "/contextWindow",
+        "when": {
+          "pointer": "/providerId",
+          "in": [
+            "openai-compatible",
+            "anthropic-compatible",
+            "openrouter",
+            "deepseek",
+            "minimax",
+            "minimax-cn",
+            "zai",
+            "zai-coding-cn",
+            "moonshotai",
+            "moonshotai-cn",
+            "kimi-coding",
+            "qwen-token-plan",
+            "qwen-token-plan-cn",
+            "openai",
+            "anthropic",
+            "google",
+            "xai",
+            "xiaomi"
+          ]
+        }
+      },
+      {
+        "pointer": "/maxOutputTokens",
+        "when": {
+          "pointer": "/providerId",
+          "in": [
+            "openai-compatible",
+            "anthropic-compatible",
+            "openrouter",
+            "deepseek",
+            "minimax",
+            "minimax-cn",
+            "zai",
+            "zai-coding-cn",
+            "moonshotai",
+            "moonshotai-cn",
+            "kimi-coding",
+            "qwen-token-plan",
+            "qwen-token-plan-cn",
+            "openai",
+            "anthropic",
+            "google",
+            "xai",
+            "xiaomi"
           ]
         }
       }
@@ -285,6 +443,19 @@ internal const val BUILTIN_V2_EDIT_JSON: String = """{
       "envVars": {
         "label": "Environment Variables",
         "hint": "These will be injected into the runtime command environment."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning"
+      },
+      "contextWindow": {
+        "label": "Context window (tokens)",
+        "placeholder": "200000",
+        "hint": "Optional. Overrides the model's context window. Leave empty to use the listed model's own value or Raft's default. A gateway can provide both limits automatically. [Learn more](https://docs.raft.build/developers/gateway-model-limits/)"
+      },
+      "maxOutputTokens": {
+        "label": "Max output tokens",
+        "placeholder": "8192",
+        "hint": "Optional. Overrides the most tokens the model may write in one reply. Leave empty to use the listed model's own value or Raft's default. A gateway can provide both limits automatically. [Learn more](https://docs.raft.build/developers/gateway-model-limits/)"
       }
     }
   },
@@ -317,6 +488,11 @@ internal const val BUILTIN_V2_EDIT_JSON: String = """{
       "kind": "dependent_select",
       "pointer": "/model",
       "dependsOn": "/providerId"
+    },
+    "reasoningEffort": {
+      "kind": "select",
+      "sourceId": "reasoningEffort",
+      "pointer": "/reasoningEffort"
     }
   },
   "writeOnlyKeepRequiresUnchanged": {
@@ -330,6 +506,7 @@ internal const val BUILTIN_V2_EDIT_JSON: String = """{
     "baseUrl": "https://gateway.example.test/v1",
     "supportsImageInput": true,
     "model": "example-model",
+    "reasoningEffort": "",
     "loadLocalPlugins": false,
     "envVars": {
       "EXAMPLE_FLAG": "1"
@@ -931,16 +1108,36 @@ internal const val GEMINI_V2_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/antigravity.edit.json, sha256 23a95b2d3af36c1de1bbbf7bdeb165d98546d889e94d14ffc18e2c48037b09ba */
+/** fixtures/antigravity.edit.json, sha256 2bc48e2f7dedb69aba9eaeb6f9e42066b6b4be75f68fa98123b919ae40560855 */
 internal const val ANTIGRAVITY_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "antigravity",
   "schemaVersion": "antigravity.edit.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value"
+  ],
   "dataSchema": {
     "type": "object",
     "additionalProperties": false,
-    "required": [],
+    "required": [
+      "model"
+    ],
     "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
       "envVars": {
         "type": "object",
         "title": "Environment Variables",
@@ -952,6 +1149,8 @@ internal const val ANTIGRAVITY_V2_EDIT_JSON: String = """{
   },
   "uiSchema": {
     "order": [
+      "model",
+      "reasoningEffort",
       "envVars"
     ],
     "layout": {
@@ -961,6 +1160,48 @@ internal const val ANTIGRAVITY_V2_EDIT_JSON: String = """{
     },
     "visibility": [],
     "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available to this computer's Antigravity login. AGY configured default lets Antigravity choose. You can also type a model ID."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "off": {
+            "label": "No reasoning",
+            "description": "Answers directly, without a thinking phase"
+          },
+          "minimal": {
+            "label": "Minimal",
+            "description": "Very light reasoning for the fastest responses"
+          },
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra high",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
       "envVars": {
         "label": "Environment Variables",
         "hint": "These will be injected into the runtime command environment."
@@ -974,8 +1215,19 @@ internal const val ANTIGRAVITY_V2_EDIT_JSON: String = """{
       "/hostUserState"
     ]
   },
-  "optionSources": {},
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "antigravity",
+      "schemaVersion": "antigravity.edit.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  },
   "values": {
+    "model": "default",
+    "reasoningEffort": "",
     "envVars": {
       "EXAMPLE_FLAG": "1"
     }
@@ -1086,15 +1338,13 @@ internal const val CHOICES_V2_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/codex.form.json, sha256 cc5499d1f15e9970a4edf0e56385d647ed5e766df3c7e556374ba0ac74e8e5ee */
+/** fixtures/codex.form.json, sha256 f1ff2ae48f461ce7bd4d3a497907921d662584b646c6ba2c664bd702231531c3 */
 internal const val CODEX_V2_FORM_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "codex",
   "schemaVersion": "codex.create.v1",
   "requiredClientCapabilities": [
-    "select.custom_value",
-    "choice.labels",
-    "option_source.status"
+    "select.custom_value"
   ],
   "dataSchema": {
     "type": "object",
@@ -1153,6 +1403,14 @@ internal const val CODEX_V2_FORM_JSON: String = """{
         "label": "Reasoning",
         "hint": "Available values depend on the selected model.",
         "choices": {
+          "off": {
+            "label": "No reasoning",
+            "description": "Answers directly, without a thinking phase"
+          },
+          "minimal": {
+            "label": "Minimal",
+            "description": "Very light reasoning for the fastest responses"
+          },
           "low": {
             "label": "Low",
             "description": "Fast responses with lighter reasoning"
@@ -1166,7 +1424,7 @@ internal const val CODEX_V2_FORM_JSON: String = """{
             "description": "Greater reasoning depth for complex problems"
           },
           "xhigh": {
-            "label": "Extra High",
+            "label": "Extra high",
             "description": "Extra high reasoning depth for complex problems"
           },
           "max": {
@@ -1209,15 +1467,13 @@ internal const val CODEX_V2_FORM_JSON: String = """{
 }
 """
 
-/** fixtures/codex.edit.json, sha256 ce8a01ff57c2a652a7edfc2d748fb94f0287a7af03dc1647b31449d4dcba4c27 */
+/** fixtures/codex.edit.json, sha256 bef197cf662d748b976d9ba6e5b0633d64a584bcbfb153e7abb8e226aa265b0b */
 internal const val CODEX_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "codex",
   "schemaVersion": "codex.create.v1",
   "requiredClientCapabilities": [
-    "select.custom_value",
-    "choice.labels",
-    "option_source.status"
+    "select.custom_value"
   ],
   "dataSchema": {
     "type": "object",
@@ -1276,6 +1532,14 @@ internal const val CODEX_V2_EDIT_JSON: String = """{
         "label": "Reasoning",
         "hint": "Available values depend on the selected model.",
         "choices": {
+          "off": {
+            "label": "No reasoning",
+            "description": "Answers directly, without a thinking phase"
+          },
+          "minimal": {
+            "label": "Minimal",
+            "description": "Very light reasoning for the fastest responses"
+          },
           "low": {
             "label": "Low",
             "description": "Fast responses with lighter reasoning"
@@ -1289,7 +1553,7 @@ internal const val CODEX_V2_EDIT_JSON: String = """{
             "description": "Greater reasoning depth for complex problems"
           },
           "xhigh": {
-            "label": "Extra High",
+            "label": "Extra high",
             "description": "Extra high reasoning depth for complex problems"
           },
           "max": {
@@ -1614,15 +1878,12 @@ internal const val CODEX_V2_UNAVAILABLE_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/grok.form.json, sha256 59c8fddc2b82b4652c835792c0c6a45e89f244b2538b8cf092490056591fca2f */
+/** fixtures/grok.form.json, sha256 0ddbe525407e2d7b8b6fcced5b50594a9fa69ea2aa620a3c46921b5dca2321b7 */
 internal const val GROK_V2_FORM_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "grok",
   "schemaVersion": "grok.create.v1",
-  "requiredClientCapabilities": [
-    "choice.labels",
-    "option_source.status"
-  ],
+  "requiredClientCapabilities": [],
   "dataSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -1675,6 +1936,14 @@ internal const val GROK_V2_FORM_JSON: String = """{
         "label": "Reasoning",
         "hint": "Available values depend on the selected model.",
         "choices": {
+          "off": {
+            "label": "No reasoning",
+            "description": "Answers directly, without a thinking phase"
+          },
+          "minimal": {
+            "label": "Minimal",
+            "description": "Very light reasoning for the fastest responses"
+          },
           "low": {
             "label": "Low",
             "description": "Fast responses with lighter reasoning"
@@ -1688,7 +1957,7 @@ internal const val GROK_V2_FORM_JSON: String = """{
             "description": "Greater reasoning depth for complex problems"
           },
           "xhigh": {
-            "label": "Extra High",
+            "label": "Extra high",
             "description": "Extra high reasoning depth for complex problems"
           },
           "max": {
@@ -1727,15 +1996,13 @@ internal const val GROK_V2_FORM_JSON: String = """{
 }
 """
 
-/** fixtures/claude.form.json, sha256 4914b834e8447d3a0ed3f09e76ed567c125995d03aee574a40fcf6a25a1b590b */
+/** fixtures/claude.form.json, sha256 0436472ecc5f7061c60b7c390a25f23ae9369c81b39846164af43ba375d7a83d */
 internal const val CLAUDE_V2_FORM_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "claude",
   "schemaVersion": "claude.create.v1",
   "requiredClientCapabilities": [
-    "select.custom_value",
-    "choice.labels",
-    "option_source.status"
+    "select.custom_value"
   ],
   "dataSchema": {
     "type": "object",
@@ -1755,6 +2022,11 @@ internal const val CLAUDE_V2_FORM_JSON: String = """{
         "type": "string",
         "title": "API URL",
         "format": "uri"
+      },
+      "authType": {
+        "type": "string",
+        "title": "Authentication",
+        "x-optionSource": "authType"
       },
       "apiKey": {
         "type": "string",
@@ -1797,6 +2069,7 @@ internal const val CLAUDE_V2_FORM_JSON: String = """{
     "order": [
       "provider",
       "apiUrl",
+      "authType",
       "apiKey",
       "model",
       "reasoningEffort",
@@ -1821,6 +2094,15 @@ internal const val CLAUDE_V2_FORM_JSON: String = """{
         }
       },
       {
+        "pointer": "/authType",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "custom"
+          ]
+        }
+      },
+      {
         "pointer": "/apiKey",
         "when": {
           "pointer": "/provider",
@@ -1833,11 +2115,15 @@ internal const val CLAUDE_V2_FORM_JSON: String = """{
     "localization": {
       "provider": {
         "label": "Provider",
-        "hint": "Default leaves Claude Code provider settings untouched. Custom sets ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY for this agent."
+        "hint": "Default leaves Claude Code provider settings untouched. Custom sets ANTHROPIC_BASE_URL and, from the key, ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN for this agent."
       },
       "apiUrl": {
         "label": "API URL",
         "placeholder": "https://gateway.example.com"
+      },
+      "authType": {
+        "label": "Authentication",
+        "hint": "Use Bearer token for a gateway that expects an Authorization header."
       },
       "apiKey": {
         "label": "API Key",
@@ -1851,6 +2137,14 @@ internal const val CLAUDE_V2_FORM_JSON: String = """{
         "label": "Reasoning",
         "hint": "Available values depend on the selected model.",
         "choices": {
+          "off": {
+            "label": "No reasoning",
+            "description": "Answers directly, without a thinking phase"
+          },
+          "minimal": {
+            "label": "Minimal",
+            "description": "Very light reasoning for the fastest responses"
+          },
           "low": {
             "label": "Low",
             "description": "Fast responses with lighter reasoning"
@@ -1864,7 +2158,7 @@ internal const val CLAUDE_V2_FORM_JSON: String = """{
             "description": "Greater reasoning depth for complex problems"
           },
           "xhigh": {
-            "label": "Extra High",
+            "label": "Extra high",
             "description": "Extra high reasoning depth for complex problems"
           },
           "max": {
@@ -1909,6 +2203,14 @@ internal const val CLAUDE_V2_FORM_JSON: String = """{
       "sourceId": "provider",
       "kind": "select",
       "pointer": "/provider"
+    },
+    "authType": {
+      "protocolVersion": 1,
+      "runtimeId": "claude",
+      "schemaVersion": "claude.create.v1",
+      "sourceId": "authType",
+      "kind": "select",
+      "pointer": "/authType"
     },
     "model": {
       "protocolVersion": 1,
@@ -1922,15 +2224,13 @@ internal const val CLAUDE_V2_FORM_JSON: String = """{
 }
 """
 
-/** fixtures/claude.edit.json, sha256 523d30a8075d8f7505ebea4fd8243b65da048dd857483e727693edb69392decc */
+/** fixtures/claude.edit.json, sha256 5ab72f75724a679a422f0864ebc9af89e67950d5f73b2f0aed4299716a31a7ef */
 internal const val CLAUDE_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "claude",
   "schemaVersion": "claude.create.v1",
   "requiredClientCapabilities": [
-    "select.custom_value",
-    "choice.labels",
-    "option_source.status"
+    "select.custom_value"
   ],
   "dataSchema": {
     "type": "object",
@@ -1950,6 +2250,11 @@ internal const val CLAUDE_V2_EDIT_JSON: String = """{
         "type": "string",
         "title": "API URL",
         "format": "uri"
+      },
+      "authType": {
+        "type": "string",
+        "title": "Authentication",
+        "x-optionSource": "authType"
       },
       "apiKey": {
         "type": "string",
@@ -1992,6 +2297,7 @@ internal const val CLAUDE_V2_EDIT_JSON: String = """{
     "order": [
       "provider",
       "apiUrl",
+      "authType",
       "apiKey",
       "model",
       "reasoningEffort",
@@ -2016,6 +2322,15 @@ internal const val CLAUDE_V2_EDIT_JSON: String = """{
         }
       },
       {
+        "pointer": "/authType",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "custom"
+          ]
+        }
+      },
+      {
         "pointer": "/apiKey",
         "when": {
           "pointer": "/provider",
@@ -2028,11 +2343,15 @@ internal const val CLAUDE_V2_EDIT_JSON: String = """{
     "localization": {
       "provider": {
         "label": "Provider",
-        "hint": "Default leaves Claude Code provider settings untouched. Custom sets ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY for this agent."
+        "hint": "Default leaves Claude Code provider settings untouched. Custom sets ANTHROPIC_BASE_URL and, from the key, ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN for this agent."
       },
       "apiUrl": {
         "label": "API URL",
         "placeholder": "https://gateway.example.com"
+      },
+      "authType": {
+        "label": "Authentication",
+        "hint": "Use Bearer token for a gateway that expects an Authorization header."
       },
       "apiKey": {
         "label": "API Key",
@@ -2046,6 +2365,14 @@ internal const val CLAUDE_V2_EDIT_JSON: String = """{
         "label": "Reasoning",
         "hint": "Available values depend on the selected model.",
         "choices": {
+          "off": {
+            "label": "No reasoning",
+            "description": "Answers directly, without a thinking phase"
+          },
+          "minimal": {
+            "label": "Minimal",
+            "description": "Very light reasoning for the fastest responses"
+          },
           "low": {
             "label": "Low",
             "description": "Fast responses with lighter reasoning"
@@ -2059,7 +2386,7 @@ internal const val CLAUDE_V2_EDIT_JSON: String = """{
             "description": "Greater reasoning depth for complex problems"
           },
           "xhigh": {
-            "label": "Extra High",
+            "label": "Extra high",
             "description": "Extra high reasoning depth for complex problems"
           },
           "max": {
@@ -2104,6 +2431,14 @@ internal const val CLAUDE_V2_EDIT_JSON: String = """{
       "sourceId": "provider",
       "kind": "select",
       "pointer": "/provider"
+    },
+    "authType": {
+      "protocolVersion": 1,
+      "runtimeId": "claude",
+      "schemaVersion": "claude.create.v1",
+      "sourceId": "authType",
+      "kind": "select",
+      "pointer": "/authType"
     },
     "model": {
       "protocolVersion": 1,
@@ -2123,6 +2458,7 @@ internal const val CLAUDE_V2_EDIT_JSON: String = """{
   "values": {
     "provider": "custom",
     "apiUrl": "https://gateway.example.test",
+    "authType": "api_key",
     "model": "sonnet",
     "reasoningEffort": "high",
     "fastMode": true,
@@ -2157,7 +2493,7 @@ internal const val CLAUDE_V2_PROVIDER_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/claude.option-source.fallback.json, sha256 4315ca68a1451f09851f7950984bd10d8b4504fb62a1df8604e5197f303dcc2a */
+/** fixtures/claude.option-source.fallback.json, sha256 f19f9642ccca8d7bbcdf8abcba30e01c6ad9e03064450a8e3b88901753018517 */
 internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
   "protocolVersion": 1,
   "runtimeId": "claude",
@@ -2173,7 +2509,8 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ]
     },
     {
@@ -2183,7 +2520,8 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ]
     },
     {
@@ -2193,7 +2531,8 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ]
     },
     {
@@ -2213,7 +2552,8 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ]
     },
     {
@@ -2223,7 +2563,8 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ]
     },
     {
@@ -2233,7 +2574,8 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ]
     },
     {
@@ -2243,7 +2585,8 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ]
     },
     {
@@ -2253,7 +2596,19 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "value": "claude-fable-5-2",
+      "label": "Claude Fable 5.2",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
       ]
     },
     {
@@ -2263,7 +2618,8 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ]
     },
     {
@@ -2273,7 +2629,8 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ]
     },
     {
@@ -2283,7 +2640,8 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ]
     },
     {
@@ -2293,7 +2651,8 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ]
     },
     {
@@ -2303,7 +2662,8 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ]
     },
     {
@@ -2313,7 +2673,8 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ]
     },
     {
@@ -2335,14 +2696,13 @@ internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/cursor.form.json, sha256 d9ee01cb0e1cd9677e74a7a0bb87fb15c13863522d3f2f164296dc0fbf99aefa */
+/** fixtures/cursor.form.json, sha256 1ac3f603b452838d62dd31e2a378a2a1529f1eb30f60e85c77f4ac3e4648fbb1 */
 internal const val CURSOR_V2_FORM_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "cursor",
   "schemaVersion": "cursor.create.v1",
   "requiredClientCapabilities": [
-    "select.custom_value",
-    "option_source.status"
+    "select.custom_value"
   ],
   "dataSchema": {
     "type": "object",
@@ -2408,14 +2768,13 @@ internal const val CURSOR_V2_FORM_JSON: String = """{
 }
 """
 
-/** fixtures/cursor.edit.json, sha256 2bdc95baf932a192c4b928dd2570ace439b94a40539666740ac6ed9861247e87 */
+/** fixtures/cursor.edit.json, sha256 20db99570e974ada8637855fbad1f1a1842dc247b087eb408f18345d39c943f2 */
 internal const val CURSOR_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "cursor",
   "schemaVersion": "cursor.create.v1",
   "requiredClientCapabilities": [
-    "select.custom_value",
-    "option_source.status"
+    "select.custom_value"
   ],
   "dataSchema": {
     "type": "object",
@@ -2517,15 +2876,13 @@ internal const val CURSOR_V2_FALLBACK_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/copilot.edit.json, sha256 f110cb7aebe489669a4bca186380821b90db49d96b6df9e9137c95bd5d11a5bc */
+/** fixtures/copilot.edit.json, sha256 f81d20d3f03eae13ba2217532afb16fd642e9fecce1de669bf085dcdb1c60cb9 */
 internal const val COPILOT_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "copilot",
   "schemaVersion": "copilot.edit.v1",
   "requiredClientCapabilities": [
-    "select.custom_value",
-    "choice.labels",
-    "option_source.status"
+    "select.custom_value"
   ],
   "dataSchema": {
     "type": "object",
@@ -2579,6 +2936,14 @@ internal const val COPILOT_V2_EDIT_JSON: String = """{
         "label": "Reasoning",
         "hint": "Available values depend on the selected model.",
         "choices": {
+          "off": {
+            "label": "No reasoning",
+            "description": "Answers directly, without a thinking phase"
+          },
+          "minimal": {
+            "label": "Minimal",
+            "description": "Very light reasoning for the fastest responses"
+          },
           "low": {
             "label": "Low",
             "description": "Fast responses with lighter reasoning"
@@ -2592,7 +2957,7 @@ internal const val COPILOT_V2_EDIT_JSON: String = """{
             "description": "Greater reasoning depth for complex problems"
           },
           "xhigh": {
-            "label": "Extra High",
+            "label": "Extra high",
             "description": "Extra high reasoning depth for complex problems"
           },
           "max": {
@@ -2694,15 +3059,13 @@ internal const val COPILOT_V2_LIVE_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/pi.form.json, sha256 5dea8e688c2d617efa05c74d81200dcf4f7a5d2fe0e122e09cc3de9fe948818a */
+/** fixtures/pi.form.json, sha256 4b0682d84ebcc0a5b33031da08e7e945ac8ee59617175c350de8bf3fb3db6ec0 */
 internal const val PI_V2_FORM_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "pi",
   "schemaVersion": "pi.create.v1",
   "requiredClientCapabilities": [
-    "select.custom_value",
-    "choice.labels",
-    "option_source.status"
+    "select.custom_value"
   ],
   "dataSchema": {
     "type": "object",
@@ -2842,6 +3205,14 @@ internal const val PI_V2_FORM_JSON: String = """{
         "label": "Reasoning",
         "hint": "Available values depend on the selected model.",
         "choices": {
+          "off": {
+            "label": "No reasoning",
+            "description": "Answers directly, without a thinking phase"
+          },
+          "minimal": {
+            "label": "Minimal",
+            "description": "Very light reasoning for the fastest responses"
+          },
           "low": {
             "label": "Low",
             "description": "Fast responses with lighter reasoning"
@@ -2855,7 +3226,7 @@ internal const val PI_V2_FORM_JSON: String = """{
             "description": "Greater reasoning depth for complex problems"
           },
           "xhigh": {
-            "label": "Extra High",
+            "label": "Extra high",
             "description": "Extra high reasoning depth for complex problems"
           },
           "max": {
@@ -2876,6 +3247,14 @@ internal const val PI_V2_FORM_JSON: String = """{
         "label": "Reasoning",
         "hint": "Available values depend on the selected model.",
         "choices": {
+          "off": {
+            "label": "No reasoning",
+            "description": "Answers directly, without a thinking phase"
+          },
+          "minimal": {
+            "label": "Minimal",
+            "description": "Very light reasoning for the fastest responses"
+          },
           "low": {
             "label": "Low",
             "description": "Fast responses with lighter reasoning"
@@ -2889,7 +3268,7 @@ internal const val PI_V2_FORM_JSON: String = """{
             "description": "Greater reasoning depth for complex problems"
           },
           "xhigh": {
-            "label": "Extra High",
+            "label": "Extra high",
             "description": "Extra high reasoning depth for complex problems"
           },
           "max": {
@@ -2947,15 +3326,13 @@ internal const val PI_V2_FORM_JSON: String = """{
 }
 """
 
-/** fixtures/pi.edit.json, sha256 a452337bf7bb55552aa5b377a65e6f098dea0f008c598b6d38bcccd85127f0a4 */
+/** fixtures/pi.edit.json, sha256 4c84a3492aac2168bd355055f405c1c73ed4c70a4ceb6dca535ec2afc4b828d1 */
 internal const val PI_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "pi",
   "schemaVersion": "pi.create.v1",
   "requiredClientCapabilities": [
-    "select.custom_value",
-    "choice.labels",
-    "option_source.status"
+    "select.custom_value"
   ],
   "dataSchema": {
     "type": "object",
@@ -3095,6 +3472,14 @@ internal const val PI_V2_EDIT_JSON: String = """{
         "label": "Reasoning",
         "hint": "Available values depend on the selected model.",
         "choices": {
+          "off": {
+            "label": "No reasoning",
+            "description": "Answers directly, without a thinking phase"
+          },
+          "minimal": {
+            "label": "Minimal",
+            "description": "Very light reasoning for the fastest responses"
+          },
           "low": {
             "label": "Low",
             "description": "Fast responses with lighter reasoning"
@@ -3108,7 +3493,7 @@ internal const val PI_V2_EDIT_JSON: String = """{
             "description": "Greater reasoning depth for complex problems"
           },
           "xhigh": {
-            "label": "Extra High",
+            "label": "Extra high",
             "description": "Extra high reasoning depth for complex problems"
           },
           "max": {
@@ -3129,6 +3514,14 @@ internal const val PI_V2_EDIT_JSON: String = """{
         "label": "Reasoning",
         "hint": "Available values depend on the selected model.",
         "choices": {
+          "off": {
+            "label": "No reasoning",
+            "description": "Answers directly, without a thinking phase"
+          },
+          "minimal": {
+            "label": "Minimal",
+            "description": "Very light reasoning for the fastest responses"
+          },
           "low": {
             "label": "Low",
             "description": "Fast responses with lighter reasoning"
@@ -3142,7 +3535,7 @@ internal const val PI_V2_EDIT_JSON: String = """{
             "description": "Greater reasoning depth for complex problems"
           },
           "xhigh": {
-            "label": "Extra High",
+            "label": "Extra high",
             "description": "Extra high reasoning depth for complex problems"
           },
           "max": {
@@ -3213,15 +3606,13 @@ internal const val PI_V2_EDIT_JSON: String = """{
 }
 """
 
-/** fixtures/pi.edit.configured.json, sha256 794c022770fd0dfcb73e040da5b15489d16be24f09c6652299b58077f927f192 */
+/** fixtures/pi.edit.configured.json, sha256 e4789dabdf71b28202dce6fe4e805dfd0836307cfba46402cd508921da5c7802 */
 internal const val PI_V2_EDIT_CONFIGURED_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "pi",
   "schemaVersion": "pi.create.v1",
   "requiredClientCapabilities": [
-    "select.custom_value",
-    "choice.labels",
-    "option_source.status"
+    "select.custom_value"
   ],
   "dataSchema": {
     "type": "object",
@@ -3361,6 +3752,14 @@ internal const val PI_V2_EDIT_CONFIGURED_JSON: String = """{
         "label": "Reasoning",
         "hint": "Available values depend on the selected model.",
         "choices": {
+          "off": {
+            "label": "No reasoning",
+            "description": "Answers directly, without a thinking phase"
+          },
+          "minimal": {
+            "label": "Minimal",
+            "description": "Very light reasoning for the fastest responses"
+          },
           "low": {
             "label": "Low",
             "description": "Fast responses with lighter reasoning"
@@ -3374,7 +3773,7 @@ internal const val PI_V2_EDIT_CONFIGURED_JSON: String = """{
             "description": "Greater reasoning depth for complex problems"
           },
           "xhigh": {
-            "label": "Extra High",
+            "label": "Extra high",
             "description": "Extra high reasoning depth for complex problems"
           },
           "max": {
@@ -3395,6 +3794,14 @@ internal const val PI_V2_EDIT_CONFIGURED_JSON: String = """{
         "label": "Reasoning",
         "hint": "Available values depend on the selected model.",
         "choices": {
+          "off": {
+            "label": "No reasoning",
+            "description": "Answers directly, without a thinking phase"
+          },
+          "minimal": {
+            "label": "Minimal",
+            "description": "Very light reasoning for the fastest responses"
+          },
           "low": {
             "label": "Low",
             "description": "Fast responses with lighter reasoning"
@@ -3408,7 +3815,7 @@ internal const val PI_V2_EDIT_CONFIGURED_JSON: String = """{
             "description": "Greater reasoning depth for complex problems"
           },
           "xhigh": {
-            "label": "Extra High",
+            "label": "Extra high",
             "description": "Extra high reasoning depth for complex problems"
           },
           "max": {
@@ -3500,7 +3907,7 @@ internal const val PI_V2_PROVIDER_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/pi.option-source.provider-model.json, sha256 1770fef437c723ec98c0a647c7811958e059867567ea6db5270d9dd87d3280d6 */
+/** fixtures/pi.option-source.provider-model.json, sha256 65b22978b415585d83ededf98fad0c12e7fbdc21291dba31da90c11b089dedcb */
 internal const val PI_V2_PROVIDER_MODEL_SOURCE_JSON: String = """{
   "protocolVersion": 1,
   "runtimeId": "pi",
@@ -3515,20 +3922,26 @@ internal const val PI_V2_PROVIDER_MODEL_SOURCE_JSON: String = """{
         "value": "deepseek/deepseek-v4-pro",
         "label": "DeepSeek V4 Pro",
         "supportedReasoningEfforts": [
+          "off",
+          "minimal",
           "low",
           "medium",
           "high",
-          "xhigh"
+          "xhigh",
+          "max"
         ]
       },
       {
         "value": "deepseek/deepseek-flash",
         "label": "DeepSeek V4.1 Flash",
         "supportedReasoningEfforts": [
+          "off",
+          "minimal",
           "low",
           "medium",
           "high",
-          "xhigh"
+          "xhigh",
+          "max"
         ]
       }
     ]
@@ -3542,7 +3955,7 @@ internal const val PI_V2_PROVIDER_MODEL_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/pi.option-source.fallback.json, sha256 be0aa9f87a1a6283e88f28d86f9e86a19b2701899edc9d7766a6d2dbd4b4a984 */
+/** fixtures/pi.option-source.fallback.json, sha256 72d60bad15ea8de7ae62e7c6c7520a655317715110d1ae59ffee15dd4acd14a3 */
 internal const val PI_V2_FALLBACK_SOURCE_JSON: String = """{
   "protocolVersion": 1,
   "runtimeId": "pi",
@@ -3555,10 +3968,13 @@ internal const val PI_V2_FALLBACK_SOURCE_JSON: String = """{
       "value": "default",
       "label": "Configured Default / Auto",
       "supportedReasoningEfforts": [
+        "off",
+        "minimal",
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ]
     }
   ],
