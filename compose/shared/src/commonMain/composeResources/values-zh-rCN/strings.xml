@@ -2120,6 +2120,10 @@
     <string name="agent_create_action_add_computer">添加 Computer</string>
     <string name="agent_create_hint_required_computer">必须使用的计算机：%1$s</string>
     <string name="agent_create_hint_suggested_computer">建议使用的计算机：%1$s</string>
+    <string name="agent_create_runtime_suggested_by">由 %1$s 建议</string>
+    <string name="agent_create_runtime_suggested_by_action_card">由操作卡片建议。</string>
+    <string name="agent_create_suggested_runtime_unavailable">%2$s 上无法使用 %1$s，请选择一个运行时。</string>
+    <string name="agent_create_suggested_runtime_not_admitted">这里的新 Agent 不能使用 %1$s，请选择一个运行时。</string>
     <string name="agent_create_hosted_option">云端 Agent，在云端运行 · 限时免费</string>
     <string name="agent_create_hosted_hint">Raft 会在云端创建这个 Agent 并自动完成连接，无需命令行操作。</string>
     <string name="agent_create_hosted_model_label">模型</string>

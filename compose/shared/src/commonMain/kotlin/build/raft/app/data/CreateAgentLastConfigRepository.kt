@@ -54,17 +54,26 @@ internal val CreateAgentOnboardingRuntimePriority: List<String> = listOf("claude
  * goes by [CreateAgentOnboardingRuntimePriority]; otherwise the [remembered] runtime of the last
  * create while it is still a candidate, else the first candidate. Unlike the web, a candidate this
  * app cannot set up is never the default: no usable candidate is "" (nothing selected).
+ *
+ * A Create Agent card's [suggested] runtime (web `prefilledRuntime`) comes before [remembered], for
+ * that card only, and never falls back: where it is not a usable candidate here, nothing is picked
+ * ("") and the dialog says why ([createAgentSuggestedRuntimeUnavailable]), so the person chooses.
+ * It is only a starting pick: nothing here writes it to the remembered last config.
  */
 internal fun pickCreateAgentRuntime(
     candidates: List<String>,
     supported: Set<String>,
     onboarding: Boolean,
     remembered: String?,
+    suggested: String? = null,
 ): String {
     if (onboarding) {
         return CreateAgentOnboardingRuntimePriority.firstOrNull { it in candidates && it in supported }
             ?: candidates.firstOrNull { it in supported }
             ?: ""
+    }
+    if (!suggested.isNullOrBlank()) {
+        return suggested.takeIf { it in candidates && it in supported } ?: ""
     }
     if (remembered != null && remembered in candidates && remembered in supported) return remembered
     return candidates.firstOrNull { it in supported } ?: ""
@@ -84,11 +93,41 @@ internal fun createAgentRuntimeForOptions(
     supported: Set<String>,
     remembered: String?,
     onboarding: Boolean = false,
+    suggested: String? = null,
 ): String {
     if (machineId == null || options == null || options.machineId != machineId) return current
     val usable = createAgentRuntimeCandidates(options).filter { it in supported }
     if (current in usable) return current
-    return pickCreateAgentRuntime(usable, supported, onboarding, remembered)
+    return pickCreateAgentRuntime(usable, supported, onboarding, remembered, suggested)
+}
+
+/** Why a card's suggested runtime is not the pick (web `SuggestedRuntimeUnavailableCause`). */
+internal enum class CreateAgentSuggestedRuntimeUnavailable { NotOnComputer, NotAdmitted }
+
+/**
+ * Whether, and why, the dialog says the card's [suggested] runtime can't be used (web
+ * `suggestedRuntimeUnavailable`): there is a suggestion, [options] are loaded for [machineId], it is
+ * not a usable candidate, and nothing is picked yet ([runtime] blank). [NotAdmitted][CreateAgentSuggestedRuntimeUnavailable.NotAdmitted]
+ * when the computer reports it ([computerRuntimes]) but its row is not offered for a new agent;
+ * else [NotOnComputer][CreateAgentSuggestedRuntimeUnavailable.NotOnComputer].
+ */
+internal fun createAgentSuggestedRuntimeUnavailable(
+    suggested: String?,
+    runtime: String,
+    machineId: String?,
+    options: SharedCreateAgentRuntimeCatalog?,
+    supported: Set<String>,
+    computerRuntimes: List<String>,
+): CreateAgentSuggestedRuntimeUnavailable? {
+    if (suggested.isNullOrBlank() || runtime.isNotBlank()) return null
+    if (machineId == null || options == null || options.machineId != machineId || options.options.isEmpty()) return null
+    if (suggested in createAgentRuntimeCandidates(options) && suggested in supported) return null
+    val admitted = options.options.any { it.runtimeId.trim() == suggested && it.availableForNew }
+    return if (suggested in computerRuntimes && !admitted) {
+        CreateAgentSuggestedRuntimeUnavailable.NotAdmitted
+    } else {
+        CreateAgentSuggestedRuntimeUnavailable.NotOnComputer
+    }
 }
 
 /** The runtimes a create may default to: the runtime-options rows with `canSelectInThisContext`. */

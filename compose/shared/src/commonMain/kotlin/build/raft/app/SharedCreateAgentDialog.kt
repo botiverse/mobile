@@ -47,6 +47,8 @@ import build.raft.app.data.CREATE_AGENT_HOSTED_PROVIDER
 import build.raft.app.data.HostedRuntimeModels
 import build.raft.app.data.BundledRuntimeCatalog
 import build.raft.app.data.createAgentRuntimeForOptions
+import build.raft.app.data.createAgentSuggestedRuntimeUnavailable
+import build.raft.app.data.CreateAgentSuggestedRuntimeUnavailable
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.RaftRuntimeCatalogNames
 import build.raft.app.data.RuntimeCatalogSource
@@ -444,6 +446,14 @@ internal fun SharedCreateAgentDialog(
      * is online, with no hint line; offline, the form picks as usual. The user may change it.
      */
     initialComputer: String? = null,
+    /**
+     * A Create Agent card's suggested runtime (web `prefilledRuntime`): the starting pick, before the
+     * remembered last runtime, only while the chosen computer offers it; otherwise nothing is picked
+     * and the form says why. The person may change it; it is never remembered unless created with.
+     */
+    suggestedRuntime: String? = null,
+    /** The agent that suggested [suggestedRuntime] (web `prefilledRuntimeSuggestedBy`); null: "the action card". */
+    suggestedRuntimeBy: String? = null,
     machines: List<SharedCreateAgentMachineOption> = emptyList(),
     machinesLoading: Boolean = false,
     machinesErrorMessage: String? = null,
@@ -638,7 +648,8 @@ internal fun SharedCreateAgentDialog(
     // Keeps a choice only while this computer's runtime-options still offer it; otherwise picks the
     // default. No usable runtime leaves the field empty instead of guessing; options still loading
     // (or another computer's) change nothing.
-    LaunchedEffect(availableSelectedMachineId, runtimeCatalog, supportedRuntimeIds, rememberedRuntime, skipsComputer) {
+    val cleanSuggestedRuntime = suggestedRuntime?.trim()?.takeIf { it.isNotEmpty() }
+    LaunchedEffect(availableSelectedMachineId, runtimeCatalog, supportedRuntimeIds, rememberedRuntime, cleanSuggestedRuntime, skipsComputer) {
         if (skipsComputer) return@LaunchedEffect
         val next =
             createAgentRuntimeForOptions(
@@ -646,7 +657,8 @@ internal fun SharedCreateAgentDialog(
                 machineId = availableSelectedMachineId,
                 options = runtimeCatalog,
                 supported = supportedRuntimeIds,
-                remembered = rememberedRuntime
+                remembered = rememberedRuntime,
+                suggested = cleanSuggestedRuntime
             )
         if (next != runtime) runtime = next
     }
@@ -685,6 +697,20 @@ internal fun SharedCreateAgentDialog(
             machineRuntimeIds = selectedMachineRuntimeIds,
             external = skipsComputer
         )
+    // A card's suggested runtime: never a quiet fallback where this computer cannot run it.
+    val suggestedRuntimeUnavailable =
+        if (skipsComputer || selectedMachine?.status != "online") {
+            null
+        } else {
+            createAgentSuggestedRuntimeUnavailable(
+                suggested = cleanSuggestedRuntime,
+                runtime = runtime,
+                machineId = availableSelectedMachineId,
+                options = runtimeCatalog,
+                supported = supportedRuntimeIds,
+                computerRuntimes = selectedMachineRuntimeIds
+            )
+        }
     val selectedMachineBlocked = !skipsComputer &&
         (selectedMachine == null ||
             selectedMachine.status != "online" ||
@@ -936,6 +962,17 @@ internal fun SharedCreateAgentDialog(
                             runtimeAvailabilityError = runtimeAvailabilityError,
                             enabled = !submitting
                         ) {
+                            CreateAgentSuggestedRuntimeNotice(
+                                suggestedRuntime = cleanSuggestedRuntime,
+                                suggestedBy = suggestedRuntimeBy,
+                                runtime = runtime,
+                                unavailable = suggestedRuntimeUnavailable,
+                                runtimeName = cleanSuggestedRuntime?.let { id ->
+                                    (serverRuntimeCatalog.entry(id) ?: BundledRuntimeCatalog.entry(id))
+                                        ?.displayName?.takeIf { it.isNotBlank() } ?: id
+                                }.orEmpty(),
+                                computerName = selectedMachine?.name.orEmpty()
+                            )
                             if (runtimeSection == CreateAgentRuntimeSection.Loading && availableSelectedMachineId != null) {
                                 Text(
                                     text = stringResource(Res.string.agent_create_state_computers_loading),
@@ -1323,6 +1360,49 @@ internal fun MachinePicker(
             )
         }
     }
+}
+
+/**
+ * Under the runtime picker, for a card's suggested runtime (web `SuggestedRuntimeNotice`): who
+ * suggested it while it is the pick, or, where the chosen computer cannot run it (and nothing is
+ * picked), why: the computer lacks it, or this server does not offer it for new agents.
+ */
+@Composable
+private fun CreateAgentSuggestedRuntimeNotice(
+    suggestedRuntime: String?,
+    suggestedBy: String?,
+    runtime: String,
+    unavailable: CreateAgentSuggestedRuntimeUnavailable?,
+    runtimeName: String,
+    computerName: String
+) {
+    if (suggestedRuntime == null) return
+    if (runtime == suggestedRuntime) {
+        val by = suggestedBy?.trim()?.takeIf { it.isNotEmpty() }
+        Text(
+            text =
+                if (by != null) {
+                    Res.string.agent_create_runtime_suggested_by.format(listOf(by)).localized()
+                } else {
+                    stringResource(Res.string.agent_create_runtime_suggested_by_action_card)
+                },
+            style = RaftType.Caption,
+            color = RaftColor.TextMutedGray
+        )
+        return
+    }
+    val cause = unavailable ?: return
+    Text(
+        text =
+            when (cause) {
+                CreateAgentSuggestedRuntimeUnavailable.NotAdmitted ->
+                    Res.string.agent_create_suggested_runtime_not_admitted.format(listOf(runtimeName)).localized()
+                CreateAgentSuggestedRuntimeUnavailable.NotOnComputer ->
+                    Res.string.agent_create_suggested_runtime_unavailable.format(listOf(runtimeName, computerName)).localized()
+            },
+        style = RaftType.Caption,
+        color = RaftColor.WarningStrong
+    )
 }
 
 @Composable

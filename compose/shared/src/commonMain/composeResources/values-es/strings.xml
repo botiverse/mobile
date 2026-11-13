@@ -2094,6 +2094,10 @@
     <string name="agent_create_action_add_computer">Agregar computadora</string>
     <string name="agent_create_hint_required_computer">Computadora requerida: %1$s</string>
     <string name="agent_create_hint_suggested_computer">Computadora sugerida: %1$s</string>
+    <string name="agent_create_runtime_suggested_by">Sugerido por %1$s</string>
+    <string name="agent_create_runtime_suggested_by_action_card">Sugerido por la tarjeta de acción.</string>
+    <string name="agent_create_suggested_runtime_unavailable">%1$s no está disponible en %2$s. Elige un runtime.</string>
+    <string name="agent_create_suggested_runtime_not_admitted">%1$s no se puede usar para agentes nuevos aquí. Elige un runtime.</string>
     <string name="agent_create_hosted_option">Agente en la nube, se ejecuta en la nube · Gratis por tiempo limitado</string>
     <string name="agent_create_hosted_hint">Raft crea el agente en la nube y lo conecta por ti. No necesitas usar la línea de comandos.</string>
     <string name="agent_create_hosted_model_label">Modelo</string>

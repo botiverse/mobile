@@ -2122,6 +2122,10 @@
     <string name="agent_create_action_add_computer">Add Computer</string>
     <string name="agent_create_hint_required_computer">Required computer: %1$s</string>
     <string name="agent_create_hint_suggested_computer">Suggested computer: %1$s</string>
+    <string name="agent_create_runtime_suggested_by">Suggested by %1$s</string>
+    <string name="agent_create_runtime_suggested_by_action_card">Suggested by the action card.</string>
+    <string name="agent_create_suggested_runtime_unavailable">%1$s isn't available on %2$s. Choose a runtime.</string>
+    <string name="agent_create_suggested_runtime_not_admitted">%1$s can't be used for new agents here. Choose a runtime.</string>
     <string name="agent_create_hosted_option">Cloud agent, runs in the cloud · Free for a limited time</string>
     <string name="agent_create_hosted_hint">Raft creates the agent in the cloud and connects it for you. No command line needed.</string>
     <string name="agent_create_hosted_model_label">Model</string>
