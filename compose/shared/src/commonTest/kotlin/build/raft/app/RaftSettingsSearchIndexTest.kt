@@ -1,6 +1,11 @@
 package build.raft.app
 
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.data.HomeNetworkResponse
+import build.raft.app.data.RaftFeatureFlagsApi
+import build.raft.app.data.RaftNotificationAccountSettings
+import build.raft.app.data.SharedServerFeatureFlags
+import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -78,6 +83,42 @@ class RaftSettingsSearchIndexTest {
         assertFalse("public-access" in admin) // owner only, and public_server_v0 off
         assertFalse("delete-account" in admin) // no Delete account row
         assertTrue("invite-links" in admin)
+    }
+
+    @Test
+    fun repliesInThreadsIFollowIsFoundOnlyWhileTheLoadedSettingsCarryTheField() {
+        // No server (no flag reads): the evaluation API is never called.
+        val flags =
+            SharedServerFeatureFlags(
+                object : RaftFeatureFlagsApi {
+                    override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
+                        error("no flag read without a server")
+                },
+            )
+        val id = "notification-followed-thread-replies"
+        // Not loaded yet, a server that does not send the field (feature pulled back), then on and off.
+        val cases =
+            listOf(
+                null to false,
+                RaftNotificationAccountSettings(followedThreadReplies = null) to false,
+                RaftNotificationAccountSettings(followedThreadReplies = true) to true,
+                RaftNotificationAccountSettings(followedThreadReplies = false) to true,
+            )
+        cases.forEach { (settings, found) ->
+            val context =
+                settingsSearchContext(null, flags, serverId = null, notificationSettings = settings, ticketSupported = false)
+                    .copy(rowKeys = phoneRows)
+            assertEquals(found, context.followedThreadReplies, "$settings")
+            assertEquals(found, id in ids(context), "$settings")
+            val results =
+                searchSettings(
+                    raftSearchableSettings(context, emptyMap(), "Acme", "en") { res, _ -> res.key },
+                    "followed threads",
+                )
+            assertEquals(if (found) listOf(id) else emptyList(), results.map { it.setting.id }, "$settings")
+        }
+        // The rest of Notifications is found either way.
+        assertTrue("notification-sound" in ids(RaftSettingsSearchContext(phoneRows)))
     }
 
     @Test
