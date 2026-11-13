@@ -46,6 +46,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
@@ -113,7 +114,11 @@ internal fun raftComboboxFocusesSearch(creates: Boolean): Boolean = creates
  * says what the value means, `text-caption` `foreground-hint`; never the label again in
  * another form), the [group] it is listed under (consecutive options with the same group
  * share one group label), [keywords] that search matches too (an id, an email, a former
- * name), and whether it can be picked. [badge]: a raft-ui `Badge.Experimental` (solid
+ * name), and whether it can be picked. [identifier]: the stored id the label names (a model's
+ * `provider/modelId`), a one-line `text-mono-meta` `foreground-hint` line under the label that
+ * truncates, search matches it, and it is visual help only (not announced); a [description]
+ * takes its place (web RuntimeChoiceCombobox `renderOption`). Leave it null when it would read
+ * as the label again. [badge]: a raft-ui `Badge.Experimental` (solid
  * `success`) after the label, in the list and in the trigger. [triggerLabel]: what the closed
  * trigger says when it differs from the list's label (a group heading in the list already says
  * part of it); the label otherwise.
@@ -128,19 +133,22 @@ data class RaftComboboxOption<out T>(
     val enabled: Boolean = true,
     val badge: String? = null,
     val triggerLabel: String? = null,
+    val identifier: String? = null,
 )
 
 /**
  * The options a combobox lists for [query]: every option when the query is blank, else
  * those where each word of the query (split on white space) is found, ignoring case, in
- * the label or in one of the keywords. Order is kept, so groups stay together.
+ * the label, the identifier or one of the keywords. Order is kept, so groups stay together.
  */
 fun <T> raftComboboxFilter(options: List<RaftComboboxOption<T>>, query: String): List<RaftComboboxOption<T>> {
     val terms = query.trim().split(RaftComboboxWhitespace).filter { it.isNotEmpty() }
     if (terms.isEmpty()) return options
     return options.filter { option ->
         terms.all { term ->
-            option.label.contains(term, ignoreCase = true) || option.keywords.any { it.contains(term, ignoreCase = true) }
+            option.label.contains(term, ignoreCase = true) ||
+                option.identifier?.contains(term, ignoreCase = true) == true ||
+                option.keywords.any { it.contains(term, ignoreCase = true) }
         }
     }
 }
@@ -946,7 +954,9 @@ private fun RaftComboboxClear(text: String, onClick: () -> Unit) {
  * pressed or focused, `foreground-disabled` when not [enabled]. [leading] (an icon or an
  * avatar) goes before the label in `foreground-muted`; [description] is a second line
  * under the label (`text-caption` regular `foreground-hint`, 2dp under it), with the
- * leading slot and the check on the label's line. One focus stop, selectable, with its
+ * leading slot and the check on the label's line. Without a description, [identifier] is that
+ * line instead: `text-mono-meta` regular `foreground-hint`, one line, truncated, hidden from
+ * accessibility (web `aria-hidden`: the label names the option). One focus stop, selectable, with its
  * selected state; in a [RaftDropdownMenu] it takes part in the menu's keyboard navigation.
  */
 @Composable
@@ -960,6 +970,7 @@ internal fun RaftComboboxOptionRow(
     leading: (@Composable () -> Unit)? = null,
     badge: String? = null,
     interactionSource: MutableInteractionSource? = null,
+    identifier: String? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -1008,7 +1019,7 @@ internal fun RaftComboboxOptionRow(
             .selectable(selected = selected, interactionSource = source, indication = null, enabled = enabled, onClick = onClick)
             .padding(horizontal = RaftMenuMetrics.ItemPaddingHorizontal, vertical = raftOptionInset(labelStyle)),
         horizontalArrangement = Arrangement.spacedBy(RaftMenuMetrics.ItemGap),
-        verticalAlignment = if (description != null) Alignment.Top else Alignment.CenterVertically,
+        verticalAlignment = if (description != null || identifier != null) Alignment.Top else Alignment.CenterVertically,
     ) {
         if (leading != null) {
             CompositionLocalProvider(LocalRaftContentColor provides if (enabled) colors.foregroundMuted else colors.foregroundDisabled) {
@@ -1030,6 +1041,15 @@ internal fun RaftComboboxOptionRow(
                     description,
                     style = typography.caption.copy(fontWeight = FontWeight.Normal),
                     color = if (enabled) colors.foregroundHint else colors.foregroundDisabled,
+                )
+            } else if (identifier != null) {
+                RaftText(
+                    identifier,
+                    Modifier.clearAndSetSemantics {},
+                    style = typography.monoMeta.copy(fontWeight = FontWeight.Normal),
+                    color = if (enabled) colors.foregroundHint else colors.foregroundDisabled,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -1076,6 +1096,7 @@ internal fun <T> RaftComboboxMenuRows(
                     enabled = option.enabled,
                     leading = if (optionLeading != null) { { optionLeading(option) } } else null,
                     badge = option.badge,
+                    identifier = option.identifier,
                 )
             }
         }
@@ -1248,6 +1269,7 @@ private fun <T> RaftComboboxList(
                         enabled = option.enabled,
                         leading = if (optionLeading != null) { { optionLeading(option) } } else null,
                         badge = option.badge,
+                        identifier = option.identifier,
                     )
                 }
             }

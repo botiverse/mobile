@@ -283,6 +283,8 @@ class SharedCreateAgentDialogTest {
         assertTrue(createAgentHostedModelFieldShown(CreateAgentHostedModels.Failed), "says the list failed")
         assertFalse(createAgentHostedModelFieldShown(CreateAgentHostedModels.Ready(offered.copy(picker = false))))
         assertEquals(listOf("", "gpt-5.6-luna"), createAgentHostedModelOptions(offered, "Default (DeepSeek Flash)").map { it.value })
+        // Web RuntimeChoiceCombobox: each model's id under its name; the default row has none.
+        assertEquals(listOf(null, "gpt-5.6-luna"), createAgentHostedModelOptions(offered, "Default (DeepSeek Flash)").map { it.identifier })
     }
 
     @Test

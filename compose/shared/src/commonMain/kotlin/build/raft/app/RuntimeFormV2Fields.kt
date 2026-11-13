@@ -143,6 +143,22 @@ internal fun RuntimeFormV2Fields(
 }
 
 /**
+ * Web RuntimeChoiceCombobox `renderOption`: the line under a model's name is its stored id (for Pi
+ * `provider/modelId`), only when it differs from the name. The runtime default ("") and a value the
+ * list does not have (shown as itself) have none.
+ */
+internal fun runtimeChoiceIdentifier(value: String, label: String): String? =
+    value.takeIf { it.isNotEmpty() && it != label }
+
+/**
+ * Web RuntimeFormV2FieldControl: a select takes the searchable list whose rows carry the id line when
+ * it accepts a typed value or lists what an option source reports (models); a derived select (an
+ * effort menu) and a fixed list stay a plain select without it.
+ */
+internal fun runtimeFormV2ShowsChoiceIdentifiers(field: RuntimeFormV2Field, choices: RuntimeFormV2Choices.Select): Boolean =
+    choices.allowCustom || (field.optionSourceId != null && field.kind != RuntimeFormV2FieldKind.DerivedSelect)
+
+/**
  * The combobox value for a select whose stored value is [current]. "" means "nothing chosen" unless the
  * list offers a "" option (the runtime default, e.g. reasoning "Default"): then that option is the
  * selection, so the trigger shows its label and its row is checked, as v1.19.0 did.
@@ -344,6 +360,8 @@ private fun RuntimeFormV2FieldRow(
                     // selected by its own label and reason, never rewritten; validation blocks the save.
                     val unavailableSelected =
                         if (unlisted) unavailableChoices.firstOrNull { it.value == current.trim() } else null
+                    // Web draws a searchable list (RuntimeChoiceCombobox) for these, each row with its id under the name.
+                    val showsIdentifiers = runtimeFormV2ShowsChoiceIdentifiers(field, choices)
                     // One option list for both pickers; "" is the runtime default.
                     val options = buildList {
                         if (choices.allowEmpty) add(RaftComboboxOption("", defaultLabel))
@@ -354,7 +372,10 @@ private fun RuntimeFormV2FieldRow(
                                     label = option.label,
                                     group = option.group?.takeIf { grouped }?.let { if (it == "saved") savedGroupLabel else directGroupLabel },
                                     // A bound connection that is unavailable stays visible but cannot be picked again.
-                                    enabled = !option.unavailable
+                                    enabled = !option.unavailable,
+                                    // Web shows a choice's description in the row instead; here it goes under the field.
+                                    identifier = option.takeIf { showsIdentifiers && it.description.isNullOrBlank() }
+                                        ?.let { runtimeChoiceIdentifier(it.value, it.label) }
                                 )
                             )
                         }
@@ -371,7 +392,9 @@ private fun RuntimeFormV2FieldRow(
                                             "direct" -> directGroupLabel
                                             else -> unavailableGroupLabel
                                         },
-                                        enabled = false
+                                        enabled = false,
+                                        // Shown only without a reason (the reason takes its line).
+                                        identifier = if (showsIdentifiers) runtimeChoiceIdentifier(entry.value, entry.label) else null
                                     )
                                 )
                             }
