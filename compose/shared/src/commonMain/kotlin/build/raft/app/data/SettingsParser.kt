@@ -11,6 +11,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
@@ -442,6 +443,10 @@ private data class WireSettingsAgent(
     val machineId: String? = null,
     val creatorType: String? = null,
     val creatorId: String? = null,
+    val reasoningEffort: String? = null,
+    val external: Boolean = false,
+    val envVars: JsonElement? = null,
+    val runtimeConfig: JsonElement? = null,
 )
 
 fun parseSharedSettingsComputerAgents(
@@ -464,8 +469,30 @@ private fun WireSettingsAgent.toSettingsComputerAgentSnapshot(): SettingsCompute
         model = model?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
         description = description,
+        reasoningEffort = reasoningEffort?.takeIf { it.isNotBlank() },
+        external = external || runtime == "external",
+        envVars = envVars.toSettingsStringMap(),
+        runtimeConfig = (runtimeConfig as? JsonObject)?.toSettingsComputerAgentRuntimeConfig(),
     )
 }
+
+private fun JsonElement?.toSettingsStringMap(): Map<String, String>? =
+    (this as? JsonObject)
+        ?.mapNotNull { (key, value) -> (value as? JsonPrimitive)?.takeIf { it.isString }?.let { key to it.content } }
+        ?.toMap()
+
+private fun JsonElement?.settingsString(key: String): String? =
+    ((this as? JsonObject)?.get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+private fun JsonObject.toSettingsComputerAgentRuntimeConfig(): SettingsComputerAgentRuntimeConfig =
+    SettingsComputerAgentRuntimeConfig(
+        runtime = settingsString("runtime"),
+        modelKind = this["model"].settingsString("kind"),
+        providerKind = this["provider"].settingsString("kind"),
+        command = settingsString("command"),
+        fastMode = this["mode"].settingsString("kind") == "fast",
+        envVars = this["envVars"].toSettingsStringMap(),
+    )
 
 @Serializable
 private data class WireServerMemberProfile(

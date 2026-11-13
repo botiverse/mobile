@@ -1957,7 +1957,31 @@ data class SettingsComputerAgentSnapshot(
     val model: String? = null,
     val avatarUrl: String? = null,
     val description: String? = null,
-    val memberProfile: MemberProfile? = null
+    val memberProfile: MemberProfile? = null,
+    /** The saved reasoning effort (wire `reasoningEffort`); null is the runtime's default. */
+    val reasoningEffort: String? = null,
+    /** Wire `external`: an external agent's runtime fields cannot be changed. */
+    val external: Boolean = false,
+    /** Wire top-level `envVars`, the fallback when [runtimeConfig] carries none. */
+    val envVars: Map<String, String>? = null,
+    /** What the bulk Change model reads from wire `runtimeConfig`; null when the row carries none. */
+    val runtimeConfig: SettingsComputerAgentRuntimeConfig? = null
+)
+
+/**
+ * The parts of an agent's `runtimeConfig` the Computer page's bulk Change model needs (web
+ * `agentHasOnlyRebuildableSettings` / `buildBulkAgentUpdate`).
+ */
+data class SettingsComputerAgentRuntimeConfig(
+    val runtime: String? = null,
+    /** `model.kind`: `preset` or `custom`. */
+    val modelKind: String? = null,
+    /** `provider.kind`; null when the runtime carries no provider. */
+    val providerKind: String? = null,
+    val command: String? = null,
+    /** `mode.kind == "fast"`. */
+    val fastMode: Boolean = false,
+    val envVars: Map<String, String>? = null
 )
 
 data class SettingsServerSnapshot(
