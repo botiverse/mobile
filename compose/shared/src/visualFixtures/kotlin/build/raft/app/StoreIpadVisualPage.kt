@@ -258,7 +258,7 @@ private fun DuoOuterScene(scene: String) {
             "07-computers" -> {
                 // Computers is a pushed page on the phone: its Back is the column's (SettingsHomePage).
                 raftSideColumnControls(back = raftSideColumnBackAction(onBack = {}))
-                IpadComputersScene()
+                IpadComputersScene(compact = true)
             }
             // The channel is a pushed page on the phone: Back, Search and Settings in the column.
             else -> IpadChatScene(showBack = true)
@@ -1164,7 +1164,7 @@ private fun ipadUsageLoads(): Map<String, Map<RuntimeAccountUsageProvider, Runti
 }
 
 @Composable
-private fun IpadComputersScene() {
+private fun IpadComputersScene(compact: Boolean = false) {
     val snapshot =
         remember {
             SettingsComputersSnapshot(
@@ -1203,22 +1203,29 @@ private fun IpadComputersScene() {
         }
     val model = remember { raftComputersListModel(ScreenLoadState.Content(snapshot)) }
     val title = stringResource(Res.string.settings_computers_title)
-    CompositionLocalProvider(LocalRaftSettingsWideDetail provides true) {
+    // compact: the phone's page (the Duo's outer screen): the title over its counts, Add only.
+    val countsLine =
+        if (model is RaftComputersListModel.Content) raftComputersCountsLine(raftComputersCounts(model.rows, agentsByMachine)) else ""
+    CompositionLocalProvider(LocalRaftSettingsWideDetail provides !compact) {
         SettingsDetailShell(
             title = title,
-            subtitle = "",
+            subtitle = if (compact) countsLine else "",
             applyTopSafeArea = false,
             onBack = {},
             titleContent =
-                if (model is RaftComputersListModel.Content) {
+                if (!compact && model is RaftComputersListModel.Content) {
                     { RaftComputersWideTitle(title, raftComputersCountsLine(raftComputersCounts(model.rows, agentsByMachine))) }
                 } else {
                     null
                 },
             trailingContent = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RaftComputersRackViewToggle(ComputersRackView.Cards) {}
-                    Box(Modifier.padding(start = 8.dp)) { RaftComputersAddButton {} }
+                if (compact) {
+                    RaftComputersAddButton {}
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RaftComputersRackViewToggle(ComputersRackView.Cards) {}
+                        Box(Modifier.padding(start = 8.dp)) { RaftComputersAddButton {} }
+                    }
                 }
             },
         ) {
