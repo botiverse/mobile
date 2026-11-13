@@ -657,6 +657,8 @@ data class HomeNetworkPayload(
      * arrive is still here; the store decides whether it may replace what Home shows.
      */
     val unreadStale: Boolean = false,
+    /** botiverse/slock #12066: an unread read failed with `503 rw_unconfigured`; implies [unreadStale]. */
+    val unreadUnavailable: Boolean = false,
     /** The server's `Retry-After` on a stale or overloaded unread read; the first recovery read waits for it. */
     val unreadRetryAfterMillis: Long? = null
 )
@@ -788,6 +790,7 @@ internal class RaftHomeApiClient(
                 serverUnreadSummaryAvailable = serverUnreadSummaryAvailable,
                 unreadEnrichmentAvailable = unreadEnrichmentAvailable,
                 unreadStale = unreadCountsStale.stale || serverUnreadSummaryStale.stale,
+                unreadUnavailable = unreadCountsStale.unconfigured || serverUnreadSummaryStale.unconfigured,
                 unreadRetryAfterMillis =
                     listOfNotNull(unreadCountsStale.retryAfterMillis, serverUnreadSummaryStale.retryAfterMillis).maxOrNull()
             )
@@ -903,12 +906,19 @@ internal class RaftHomeApiClient(
             }
         if (staleness != null) {
             val staleReason = response.raftStaleReason()
-            staleness.stale = staleReason != null || response.isRwOverloaded()
+            // botiverse/slock #12066: `503 rw_unconfigured` (no read warehouse on this server) also
+            // keeps the counts shown, and says they are temporarily unavailable.
+            staleness.unconfigured = response.isRwUnconfigured()
+            staleness.stale = staleReason != null || response.isRwOverloaded() || staleness.unconfigured
             if (staleness.stale) staleness.retryAfterMillis = response.raftRetryAfterMillis()
             if (staleness.stale) {
                 diagnosticsLogger(
                     "home_endpoint_stale category=$category code=${response.code} " +
-                        "reason=${staleReason?.wireValue ?: if (response.code == 503) RwOverloadedErrorCode else "unknown"}"
+                        "reason=${staleReason?.wireValue ?: when {
+                            staleness.unconfigured -> RwUnconfiguredErrorCode
+                            response.code == 503 -> RwOverloadedErrorCode
+                            else -> "unknown"
+                        }}"
                 )
             }
         }
@@ -968,7 +978,7 @@ private fun <T> HomeNetworkResponse.toHomeApiFailure(serverMessage: String?): Da
                 code = "home_http_$code",
                 retryable = true,
                 serverMessage = serverMessage,
-                serverCode = RwOverloadedErrorCode.takeIf { isRwOverloaded() },
+                serverCode = RwOverloadedErrorCode.takeIf { isRwOverloaded() } ?: RwUnconfiguredErrorCode.takeIf { isRwUnconfigured() },
                 retryAfterSeconds = raftRetryAfterSecondsIfRwOverloaded()
             )
         )
@@ -981,6 +991,10 @@ private class HomeSectionStaleness {
 
     @kotlin.concurrent.Volatile
     var retryAfterMillis: Long? = null
+
+    /** The read failed with `503 rw_unconfigured` (botiverse/slock #12066). */
+    @kotlin.concurrent.Volatile
+    var unconfigured: Boolean = false
 }
 
 @Serializable

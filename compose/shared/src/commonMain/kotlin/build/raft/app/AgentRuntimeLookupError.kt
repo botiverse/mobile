@@ -37,7 +37,9 @@ private val AgentRuntimeAuthFailedPattern =
  * Web `RuntimeErrorKind` (classifyRuntimeError.ts): the runtime errors told in the app's own words.
  * [ToolArgsInvalid] and [BillingExhausted] come only from the typed diagnostic, never from the
  * message text: the daemon classifies the provider's 402 / insufficient-balance reply into
- * `BillingError` / `billing_exhausted` (botiverse/slock #13435, task #1351).
+ * `BillingError` / `billing_exhausted` (botiverse/slock #13435, task #1351). [RootPrivileges] is
+ * typed-only too: Claude Code refused to start as root or under sudo (`RootPrivilegesError` /
+ * `root_privileges`, botiverse/slock #12892).
  */
 internal enum class AgentRuntimeErrorKind {
     NotLoggedIn,
@@ -45,6 +47,7 @@ internal enum class AgentRuntimeErrorKind {
     AuthFailed,
     ToolArgsInvalid,
     BillingExhausted,
+    RootPrivileges,
 }
 
 /** Web `classifyRuntimeError`: only these stable patterns, in this order; anything else is null. */
@@ -63,6 +66,7 @@ internal fun agentClassifyRuntimeError(message: String): AgentRuntimeErrorKind? 
 internal fun agentTypedRuntimeErrorKind(errorClass: String?, errorReason: String?): AgentRuntimeErrorKind? {
     if (errorClass.isNullOrBlank() || errorReason.isNullOrBlank()) return null
     return when {
+        errorReason == "root_privileges" -> AgentRuntimeErrorKind.RootPrivileges
         errorReason == "auth_failed" || errorClass == "AuthError" -> AgentRuntimeErrorKind.AuthFailed
         errorReason == "model_tool_args_invalid" || errorClass == "ToolArgumentParseError" -> AgentRuntimeErrorKind.ToolArgsInvalid
         errorReason == "billing_exhausted" || errorClass == "BillingError" -> AgentRuntimeErrorKind.BillingExhausted
@@ -144,6 +148,7 @@ internal fun agentRuntimeErrorDisplayText(display: AgentRuntimeErrorDisplay): St
                 AgentRuntimeErrorKind.ToolArgsInvalid -> stringResource(Res.string.agent_runtime_error_tool_args_invalid)
                 // The billing banner's title; the banner adds its body and one action.
                 AgentRuntimeErrorKind.BillingExhausted -> stringResource(Res.string.agent_runtime_error_billing_exhausted)
+                AgentRuntimeErrorKind.RootPrivileges -> stringResource(Res.string.agent_runtime_error_root_privileges)
             }
         is AgentRuntimeErrorDisplay.Coded ->
             stringResource(if (display.forManager) display.code.messages.manager else display.code.messages.member)

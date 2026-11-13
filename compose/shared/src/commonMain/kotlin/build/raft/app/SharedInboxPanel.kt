@@ -1044,7 +1044,9 @@ private fun SharedActivityPanelContent(
         )
         RaftAppShellBodyTopBanner()
         // Task #164 (stdrc O2): under the head, above the filters; the rows and counts stay.
-        if (state.stale) {
+        if (state.unavailable && state.snapshot != null) {
+            RaftReadWarehouseUnavailableNotice(stringResource(Res.string.activity_unavailable_notice))
+        } else if (state.stale) {
             RaftReadWarehouseStaleNotice(stringResource(Res.string.activity_stale_notice))
         }
         // slock #11383 (stdrc option A): the filter is a menu now, so the swipe-between-filters
@@ -1156,9 +1158,14 @@ private fun SharedActivityBodyContent(
             snapshot == null && state.errorCode != null ->
                 SharedActivityRefreshableStateBody(
                     title = stringResource(Res.string.inbox_error_load_activity),
+                    // botiverse/slock #12066: `503 rw_unconfigured` says Activity is temporarily unavailable.
                     detail =
-                        userFacingErrorLabels.forErrorCode(state.errorCode)
-                            ?: userFacingErrorLabels.generic(),
+                        if (state.unavailable) {
+                            stringResource(Res.string.activity_unavailable_notice)
+                        } else {
+                            userFacingErrorLabels.forErrorCode(state.errorCode)
+                                ?: userFacingErrorLabels.generic()
+                        },
                     actionLabel = if (state.refreshing || state.loading) "…" else stringResource(Res.string.common_retry),
                     onAction = { onIntent(SharedActivityIntent.Refresh) },
                     refreshing = state.refreshing,

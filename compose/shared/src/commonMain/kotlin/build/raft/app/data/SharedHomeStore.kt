@@ -3018,6 +3018,12 @@ internal class SharedHomeStore(
                             fetchedSnapshot?.unreadStale == true
                         } else {
                             _state.value.unreadStale
+                        },
+                    unreadUnavailable =
+                        if (dataResult is DataResult.Content) {
+                            fetchedSnapshot?.unreadUnavailable == true
+                        } else {
+                            _state.value.unreadUnavailable
                         }
                 )
             val published =
@@ -6084,7 +6090,13 @@ data class SharedHomeState(
      * counts themselves stay as they were; the phone Home shows the stale notice until a load
      * with fresh unread reads clears it.
      */
-    val unreadStale: Boolean = false
+    val unreadStale: Boolean = false,
+    /**
+     * botiverse/slock #12066: one of those reads failed with `503 rw_unconfigured` (a self-hosted
+     * server without RisingWave). Set only with [unreadStale]; the notice then says the counts are
+     * temporarily unavailable instead of "may be out of date".
+     */
+    val unreadUnavailable: Boolean = false
 )
 
 /**

@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.data.AgentActivitySubscriptions
+import build.raft.app.data.AgentActivityDetailKindClaudeRootPrivileges
 import build.raft.app.data.AgentBlockedState
 import build.raft.app.data.statusLabelRes
 import build.raft.app.data.AgentRuntimeErrorCode
@@ -469,6 +470,11 @@ internal fun RaftAgentActivityDetailText.localizedText(): String =
 internal fun RaftAgentStatusIndicatorState.localizedMemberStatusLabel(): String {
     // Web formatAgentDisplayStateText: a held agent reads why before anything else.
     blocked?.let { return it.localizedStatusLabel() }
+    // Web getActivityTextDescriptor (botiverse/slock #12892): Claude Code refused to start as root;
+    // say how to fix it instead of "Offline".
+    if (detailKind == AgentActivityDetailKindClaudeRootPrivileges) {
+        return stringResource(Res.string.agent_runtime_error_root_privileges)
+    }
     // Web #13985: a coded runtime error reads its title; the server's generic member line, ours.
     if (status == AgentStatus.Error && !external) {
         agentErrorStatusCopy(errorCode, label)?.let { return stringResource(it) }

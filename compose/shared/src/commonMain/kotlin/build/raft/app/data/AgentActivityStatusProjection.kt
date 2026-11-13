@@ -167,6 +167,12 @@ internal const val AgentActivityDetailKindCompactingContext = "compacting_contex
 /** Shared detail kind of a status whose automatic wakes the server paused (it carries `wakeCrashLoop`). */
 internal const val AgentActivityDetailKindWakeCrashLoopBlocked = "wake_crash_loop_blocked"
 
+/**
+ * Shared detail kind of an agent whose Claude Code refused to start with root or sudo privileges
+ * (botiverse/slock #12892): the server projects it as offline; web says how to fix it.
+ */
+internal const val AgentActivityDetailKindClaudeRootPrivileges = "claude_root_privileges"
+
 /** Shared detail kind of a failed start (it carries `spawnFailure`). */
 internal const val AgentActivityDetailKindRuntimeUnavailable = "runtime_unavailable"
 

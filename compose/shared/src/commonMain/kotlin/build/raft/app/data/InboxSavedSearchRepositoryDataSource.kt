@@ -609,7 +609,7 @@ private fun <T> HomeNetworkResponse.toInboxLikeDataError(serverMessage: String?,
                     code = "server_unavailable",
                     retryable = true,
                     serverMessage = serverMessage,
-                    serverCode = RwOverloadedErrorCode.takeIf { isRwOverloaded() },
+                    serverCode = RwOverloadedErrorCode.takeIf { isRwOverloaded() } ?: RwUnconfiguredErrorCode.takeIf { isRwUnconfigured() },
                     retryAfterSeconds = raftRetryAfterSecondsIfRwOverloaded()
                 )
             )

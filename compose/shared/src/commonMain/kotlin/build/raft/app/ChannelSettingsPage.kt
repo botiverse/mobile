@@ -601,7 +601,10 @@ private fun ChannelSettingsPageScreen() {
             is ChannelSettingsEffect.Failure -> {
                 confirm = null
                 if (effect.action != ChannelSettingsAction.Profile) {
-                    bridge.toast(channelSettingsFailureMessage(effect, failureLabels, errorStrings))
+                    bridge.toast(
+                        channelSettingsDisconnectGuestsPresentMessage(effect, settingsState.channel?.name)
+                            ?: channelSettingsFailureMessage(effect, failureLabels, errorStrings)
+                    )
                 }
             }
             ChannelSettingsEffect.Close -> {
@@ -2237,6 +2240,21 @@ internal fun channelSettingsDisconnectedToast(serverName: String?, channelName: 
     val server = serverName?.trim()?.takeIf(String::isNotBlank) ?: return null
     val channel = channelName?.trim()?.removePrefix("#")?.takeIf(String::isNotBlank) ?: return null
     return Res.string.joint_disconnected_toast.format(server, channel).resolve()
+}
+
+/**
+ * Web `jointDisconnectGuestRefusalMessage` (botiverse/slock #13220): the server refuses to
+ * disconnect a joint channel that has Guests bound to this copy (`409 guests_present`), since
+ * they would be stranded. Say so in this locale, with the next step (remove the guests, or archive
+ * the channel), instead of the server's English. Null for any other failure.
+ */
+internal fun channelSettingsDisconnectGuestsPresentMessage(
+    failure: ChannelSettingsEffect.Failure,
+    channelName: String?,
+): String? {
+    if (failure.action != ChannelSettingsAction.Disconnect || failure.code != "guests_present") return null
+    val channel = channelName?.trim()?.removePrefix("#")?.takeIf(String::isNotBlank) ?: return null
+    return Res.string.joint_disconnect_guests_present.format("#$channel").resolve()
 }
 
 /** Disconnect failures keep the server's reason (web shows the route's `error`), via the app error pipeline. */

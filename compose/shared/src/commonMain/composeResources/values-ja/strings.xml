@@ -1230,7 +1230,9 @@
     <string name="inbox_action_mark_all_read">すべて既読にする</string>
     <string name="inbox_error_load_activity">アクティビティを読み込めませんでした</string>
     <string name="activity_stale_notice">アクティビティが最新でない可能性があります。Raft が追いつくと自動で更新されます。</string>
+    <string name="activity_unavailable_notice">アクティビティは一時的に利用できません。</string>
     <string name="home_unread_stale_notice">未読数が最新でない可能性があります。Raft が追いつくと自動で更新されます。</string>
+    <string name="home_unread_unavailable_notice">未読数は一時的に利用できません。</string>
     <string name="inbox_state_activity_empty">会話はありません</string>
     <string name="inbox_state_no_mentions">メンションはありません</string>
     <string name="inbox_state_no_unread_chats">未読の会話はありません</string>
@@ -1545,6 +1547,7 @@
     <string name="agent_runtime_error_code_message_too_large_member">エージェントへのメッセージが長すぎて、ランタイムが一度に受け取れなかったため、配信されませんでした。短くするか、複数のメッセージに分けてください。</string>
     <string name="agent_runtime_error_code_message_too_large_manager">メッセージが長すぎて、このエージェントのランタイムが一度に受け取れなかったため、配信されませんでした。短くするか、複数のメッセージに分けて送り直してください。</string>
     <string name="agent_runtime_error_tool_args_invalid">モデルが無効な形式のツール呼び出し引数を出力したため、Codex がそのツール呼び出しを拒否しました。別のモデルをお試しください。</string>
+    <string name="agent_runtime_error_root_privileges">権限チェックが無効な状態では、Claude Code を root または sudo 権限で起動できません。root 以外のユーザーで Raft Computer を実行してから、エージェントをもう一度起動してください。</string>
     <string name="agent_activity_error">エラー</string>
     <string name="agent_activity_error_with_detail">エラー：%1$s</string>
     <string name="member_state_profile_loading">エージェントプロフィールを読み込み中...</string>
@@ -3735,6 +3738,7 @@
     <string name="joint_disconnect_action">接続を解除</string>
     <string name="joint_disconnecting">接続を解除中…</string>
     <string name="joint_disconnect_failed">共同チャンネルの接続を解除できませんでした</string>
+    <string name="joint_disconnect_guests_present">%1$s にはゲストがいるため、このサーバーの接続を解除できません。先にゲストを削除するか、チャンネルをアーカイブしてください。</string>
     <string name="joint_connections_role_host">ホスト</string>
     <string name="joint_host_archive_hint">このチャンネルに参加している他のすべてのサーバーでもアーカイブされます。</string>
     <string name="joint_disconnected_toast">%1$s と #%2$s の接続を解除しました</string>

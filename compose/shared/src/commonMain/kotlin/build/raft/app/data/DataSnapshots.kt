@@ -635,6 +635,9 @@ data class HomeSnapshot(
      */
     @Transient
     val unreadStale: Boolean = false,
+    /** botiverse/slock #12066: an unread read failed with `503 rw_unconfigured`. Never persisted. */
+    @Transient
+    val unreadUnavailable: Boolean = false,
     /** Task #164: the server's `Retry-After` on that stale or overloaded read. Never persisted. */
     @Transient
     val unreadRetryAfterMillis: Long? = null,

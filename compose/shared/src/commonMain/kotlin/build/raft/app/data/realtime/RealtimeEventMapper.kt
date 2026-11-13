@@ -5,6 +5,7 @@ import build.raft.app.model.AvatarReference
 import build.raft.app.toRaftAvatarLabel
 import build.raft.app.MemberKindWireContract
 import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.data.AgentActivityDetailKindClaudeRootPrivileges
 import build.raft.app.data.ReplyPreviewWireSenderTypes
 import build.raft.app.data.agentToolLogLabel
 import build.raft.app.data.agentToolStartHiddenInActivityLog
@@ -1832,7 +1833,8 @@ private fun resolveTrajectoryStatusDisplay(
             when {
                 detailKind == "stopped" -> "Stopped"
                 detailKind == "machine_disconnected" -> "Disconnected"
-                detailKind == "runtime_crashed" -> "Crashed"
+                // botiverse/slock #12892: Claude Code refused to start as root (web reads it as Crashed).
+                detailKind == "runtime_crashed" || detailKind == AgentActivityDetailKindClaudeRootPrivileges -> "Crashed"
                 detail == "Stopped" -> "Stopped"
                 detail == "Machine disconnected" -> "Disconnected"
                 detail.startsWith("Crashed") -> "Crashed"
