@@ -444,6 +444,9 @@ internal const val SettingsNotificationFollowedThreadRepliesTestTag = "settings-
  * "Replies in threads I follow" (web ContentCard, `followedThreadReplies`, #triage:#357), after
  * Sound: off, a followed thread or task notifies only when a reply @mentions you; the description
  * says what off keeps (the thread stays in Activity). Shown only when the server has the setting.
+ * Never before the account settings load (the page composes the account sections only with
+ * loaded settings, and the store refuses this write without them): "not loaded" is never "on"
+ * (Tenny, #triage:#357).
  */
 @Composable
 internal fun SettingsNotificationFollowedThreadRepliesRow(

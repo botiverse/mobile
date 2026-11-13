@@ -691,6 +691,12 @@ object RaftNotificationAccountSettingsStore {
                 mutableState.update { it.copy(errorCode = "notification_settings_pause_out_of_range", errorTraceId = null) }
                 return@withLock false
             }
+            // "Replies in threads I follow" is only written over loaded settings: before the GET
+            // lands its value is unknown, and "not loaded" must never read as on (#triage:#357).
+            if (patch.followedThreadReplies != null && mutableState.value.settings?.followedThreadRepliesSupported != true) {
+                mutableState.update { it.copy(errorCode = "notification_settings_not_loaded", errorTraceId = null) }
+                return@withLock false
+            }
             val before = mutableState.value.settings ?: RaftNotificationAccountSettings()
             mutableState.update { it.copy(settings = patch.appliedTo(before), saving = true, errorCode = null, errorTraceId = null) }
             var version: Int? = before.version

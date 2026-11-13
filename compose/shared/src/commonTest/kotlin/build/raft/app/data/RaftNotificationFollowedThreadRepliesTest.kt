@@ -127,8 +127,27 @@ class RaftNotificationFollowedThreadRepliesTest {
     }
 
     @Test
+    fun nothingIsWrittenBeforeTheSettingsLoadOrOnAServerWithoutTheField() = runTest {
+        val client = scriptedStore()
+        // Not loaded: the value is unknown, never "on"; no PATCH goes out.
+        assertNull(RaftNotificationAccountSettingsStore.state.value.settings)
+        assertFalse(RaftNotificationAccountSettingsStore.update(RaftNotificationAccountSettingsPatch(followedThreadReplies = false)))
+        assertTrue(client.requests.isEmpty(), "never sent before load")
+        assertNull(RaftNotificationAccountSettingsStore.state.value.settings, "nothing optimistic before load")
+
+        // Loaded from an older server without the field: still nothing to write.
+        client.respond("GET", "me/notification-settings", 200, """{"settings":{"previewMode":"full","sound":true,"version":1},"servers":[]}""")
+        assertTrue(RaftNotificationAccountSettingsStore.load())
+        assertFalse(RaftNotificationAccountSettingsStore.update(RaftNotificationAccountSettingsPatch(followedThreadReplies = false)))
+        assertEquals(listOf("GET"), client.requests.map { it.method })
+        assertNull(RaftNotificationAccountSettingsStore.state.value.settings?.followedThreadReplies)
+    }
+
+    @Test
     fun aVersionConflictAdoptsTheServerSettingsAndSendsTheFlipOnceMore() = runTest {
         val client = scriptedStore()
+        client.respond("GET", "me/notification-settings", 200, """{"settings":{"previewMode":"full","sound":true,"followedThreadReplies":true,"version":5},"servers":[]}""")
+        assertTrue(RaftNotificationAccountSettingsStore.load())
         client.respond(
             "PATCH",
             "me/notification-settings",
@@ -139,8 +158,8 @@ class RaftNotificationFollowedThreadRepliesTest {
 
         assertTrue(RaftNotificationAccountSettingsStore.update(RaftNotificationAccountSettingsPatch(followedThreadReplies = false)))
 
-        val bodies = client.requests.map { body(it.bodyText) }
-        assertEquals(listOf(0, 6), bodies.map { it.getValue("version").jsonPrimitive.int })
+        val bodies = client.requests.filter { it.method == "PATCH" }.map { body(it.bodyText) }
+        assertEquals(listOf(5, 6), bodies.map { it.getValue("version").jsonPrimitive.int })
         assertEquals(listOf(false, false), bodies.map { it.getValue("followedThreadReplies").jsonPrimitive.boolean })
         val held = requireNotNull(RaftNotificationAccountSettingsStore.state.value.settings)
         assertEquals(false, held.followedThreadReplies)
