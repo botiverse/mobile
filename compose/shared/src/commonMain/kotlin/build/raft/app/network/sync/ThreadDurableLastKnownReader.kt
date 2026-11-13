@@ -182,7 +182,7 @@ internal class CanonicalMessageV2DurableLastKnownReader(
         } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
             logger(
                 "durable_last_known outcome=poisoned server=${partition.serverId} scope=$scopeId " +
-                    "scopeKind=$scopeKind fact=${poisoned.factId.orEmpty()}",
+                    "scopeKind=$scopeKind ${poisoned.diagnosticsLabel()}",
             )
             return null
         }

@@ -12,6 +12,7 @@ import build.raft.app.network.sync.CanonicalMessageV2EnvelopeConversion
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2LiveCoverageTracker
 import build.raft.app.network.sync.CanonicalMessageV2ScopePoisoned
+import build.raft.app.network.sync.diagnosticsLabel
 import build.raft.app.network.sync.CanonicalMessageV2ThreadParent
 import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
@@ -173,6 +174,10 @@ internal class CanonicalMessageV2ResumeIngest(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
+                logger(
+                    "canonical_v2_resume poisoned server=${partition.serverId} scope=${carry.row.channelId} " +
+                        poisoned.diagnosticsLabel(),
+                )
                 "poisoned"
             }
             if (reason != null) {
@@ -209,6 +214,10 @@ internal class CanonicalMessageV2ResumeIngest(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
+                logger(
+                    "canonical_v2_resume poisoned server=${partition.serverId} scope=${scope.scopeId} " +
+                        poisoned.diagnosticsLabel(),
+                )
                 "poisoned"
             } catch (throwable: Throwable) {
                 "write_failed:${throwable::class.simpleName ?: "unknown"}"

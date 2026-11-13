@@ -818,7 +818,7 @@ class SharedActivityStore internal constructor(
             deferredThreadFollows = emptyMap()
             owner
         }
-        ownerServerId?.let(replyThreadFreshnessLedger::invalidateServer)
+        ownerServerId?.let { serverId -> replyThreadFreshnessLedger.invalidateServer(serverId, cause = "activity_cleared") }
         clearReplyPrewarmState()
     }
 
@@ -1304,7 +1304,9 @@ class SharedActivityStore internal constructor(
                 if (current.ownerServerId == serverId) return@synchronized false
                 // Never bound to a server and nothing loading: the first LoadInitial binds the store.
                 if (current.ownerServerId == null && loadJob?.isActive != true) return@synchronized false
-                current.ownerServerId?.let(replyThreadFreshnessLedger::invalidateServer)
+                current.ownerServerId?.let { previous ->
+                    replyThreadFreshnessLedger.invalidateServer(previous, cause = "activity_server_switch")
+                }
                 realtimeHighWater.clear()
                 resetRealtimeCatchUpLocked()
                 resetInPlaceReconcileLocked()
@@ -1382,10 +1384,19 @@ class SharedActivityStore internal constructor(
                 applyChannelMessageUpdatedPatch(event.message, intent)
             }
             is SyncResumeResponse ->
-                _state.value.ownerServerId?.let(replyThreadFreshnessLedger::invalidateServer)
-            is RealtimeRefreshRequired ->
                 _state.value.ownerServerId?.let { serverId ->
-                    replyThreadFreshnessLedger.invalidateServer(serverId)
+                    replyThreadFreshnessLedger.invalidateServer(serverId, cause = "activity_sync_resume")
+                }
+            // Only a Home refresh (catch-up, horizon reset) can mean missed messages. An Agents /
+            // Machines / members / settings refresh changes no timeline; invalidating the server for
+            // it superseded every thread fetch in flight on a busy server (Hands 7e198cab: a task
+            // conversation opened from Activity refetched round after round and never showed the
+            // tapped message).
+            is RealtimeRefreshRequired ->
+                if (event.scope == RealtimeRefreshScope.Home) {
+                    _state.value.ownerServerId?.let { serverId ->
+                        replyThreadFreshnessLedger.invalidateServer(serverId, cause = "activity_refresh_required")
+                    }
                 }
             else -> Unit
         }
@@ -2444,7 +2455,10 @@ class SharedActivityStore internal constructor(
                                     stateBeforeOwner.ownerUserId?.let { it != userId } == true
                             if (ownerChanged) {
                                 stateBeforeOwner.ownerServerId?.let { previousServerId ->
-                                    replyThreadFreshnessLedger.invalidateServer(previousServerId)
+                                    replyThreadFreshnessLedger.invalidateServer(
+                                        previousServerId,
+                                        cause = "activity_server_switch",
+                                    )
                                 }
                                 realtimeHighWater.clear()
                                 resetRealtimeCatchUpLocked()

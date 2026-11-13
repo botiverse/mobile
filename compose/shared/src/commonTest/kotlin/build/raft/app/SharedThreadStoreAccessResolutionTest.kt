@@ -433,7 +433,8 @@ class SharedThreadStoreAccessResolutionTest {
                 channelRepository = channelRepository
             )
         dataSource.cachePayloadForTest(
-            contentPayloadForRoute(route, "cached reply").copy(
+            // The warm frame holds the tapped reply (Hands 7e198cab: a frame without it waits at the anchor).
+            contentPayloadForRoute(route, "cached reply", id = "reply-1").copy(
                 joined = false,
                 canSend = false,
                 composer = route.composer.copy(enabled = false)

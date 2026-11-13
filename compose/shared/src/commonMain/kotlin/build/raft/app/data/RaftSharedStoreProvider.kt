@@ -19,6 +19,7 @@ import build.raft.app.ProcessAttachmentAuthScopes
 import build.raft.app.ReplyCacheProvenance
 import build.raft.app.SharedThreadMessageStore
 import build.raft.app.SharedThreadPayloadStore
+import build.raft.app.sharedThreadTimelineOwnerScopeId
 import build.raft.app.RaftPixelAvatarRuntime
 import build.raft.app.RaftPlatformLogHint
 import build.raft.app.SharedForegroundBannerStore
@@ -1443,6 +1444,15 @@ internal class RaftSharedStoreProvider private constructor(
             generationEngine = canonicalMessageV2GenerationEngine,
             // Lines already start with `canonical_v2_realtime`.
             logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2Realtime"),
+            onConversationPoisoned = { partition, conversationId, cause ->
+                threadPayloadStore.markConversationStale(
+                    serverId = partition.serverId,
+                    threadId = conversationId,
+                    ownerScopeId =
+                        sharedThreadTimelineOwnerScopeId(partition.environmentId, partition.principalId, partition.serverId),
+                    cause = "realtime_poisoned:$cause",
+                )
+            },
         )
     }
 

@@ -464,6 +464,8 @@ private const val SharedThreadZeroReplyOriginHydrationGraceMillis = 300L
 private const val SharedThreadFreshnessMessageFactLimit = 512
 private const val SharedThreadReplyCountFactLimit = 2_048
 private const val SharedThreadPrewarmGenerationSupersededCode = "thread_prewarm_generation_superseded"
+internal const val SharedThreadFreshnessCauseInitial = "initial"
+private const val SharedThreadStaleConversationLimit = 256
 private const val SharedThreadPrewarmJoinTimeoutMillis = 5_000L
 private const val ReplyCacheProvenanceStaleCode = "thread_reply_cache_provenance_stale"
 
@@ -472,7 +474,12 @@ private fun <T> staleReplyCacheProvenanceResult(): DataResult<T> =
 
 class SharedThreadFreshnessGeneration internal constructor(
     internal val key: SharedThreadPayloadCacheKey,
-    internal val ownerScopeId: String
+    internal val ownerScopeId: String,
+    /**
+     * Why this generation replaced the previous one (diagnostics only: a refresh superseded by it
+     * logs this as `thread_canonical_superseded cause=`). `initial` for the first capture.
+     */
+    internal val cause: String = SharedThreadFreshnessCauseInitial,
 ) {
     init {
         requireSharedThreadOwnerScopeId(ownerScopeId)
@@ -566,11 +573,12 @@ internal class SharedThreadFreshnessLedger(
     fun advance(
         serverId: String,
         threadId: String,
-        ownerScopeId: String
+        ownerScopeId: String,
+        cause: String = "advanced",
     ): SharedThreadFreshnessGeneration =
         synchronized(lock) {
             val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
-            SharedThreadFreshnessGeneration(key.payloadKey, key.ownerScopeId).also { generations[key] = it }
+            SharedThreadFreshnessGeneration(key.payloadKey, key.ownerScopeId, cause).also { generations[key] = it }
         }
 
     /** Canonical content changed for every owner of this server/thread (no owner is selected). */
@@ -580,7 +588,7 @@ internal class SharedThreadFreshnessLedger(
     ): SharedThreadContentGeneration =
         synchronized(lock) {
             val key = SharedThreadPayloadCacheKey(serverId, threadId)
-            advanceAllOwnersLocked(key)
+            advanceAllOwnersLocked(key, cause = "content_changed")
             requireNotNull(contentGenerations[key])
         }
 
@@ -588,12 +596,13 @@ internal class SharedThreadFreshnessLedger(
         serverId: String,
         threadId: String,
         ownerScopeId: String,
+        cause: String = "cache_removed",
         block: (previous: SharedThreadFreshnessGeneration?, current: SharedThreadFreshnessGeneration) -> Unit
     ): SharedThreadFreshnessGeneration =
         synchronized(lock) {
             val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
             val previous = generations[key]
-            val current = SharedThreadFreshnessGeneration(key.payloadKey, key.ownerScopeId)
+            val current = SharedThreadFreshnessGeneration(key.payloadKey, key.ownerScopeId, cause)
             generations[key] = current
             block(previous, current)
             current
@@ -609,7 +618,7 @@ internal class SharedThreadFreshnessLedger(
             while (messageFacts.size > messageFactLimit.coerceAtLeast(1)) {
                 messageFacts.remove(messageFacts.keys.firstOrNull() ?: break)
             }
-            advanceAllOwnersLocked(key)
+            advanceAllOwnersLocked(key, cause = "message_mutation")
             true
         }
 
@@ -636,7 +645,7 @@ internal class SharedThreadFreshnessLedger(
                 return@synchronized false
             }
             summaryFacts[key] = fact
-            advanceAllOwnersLocked(key)
+            advanceAllOwnersLocked(key, cause = "activity_summary")
             true
         }
 
@@ -685,12 +694,12 @@ internal class SharedThreadFreshnessLedger(
         }
     }
 
-    fun invalidateServer(serverId: String) {
+    fun invalidateServer(serverId: String, cause: String = "server_invalidated") {
         synchronized(lock) {
             generations.keys
                 .filter { key -> key.payloadKey.serverId == serverId }
                 .forEach { key ->
-                    generations[key] = SharedThreadFreshnessGeneration(key.payloadKey, key.ownerScopeId)
+                    generations[key] = SharedThreadFreshnessGeneration(key.payloadKey, key.ownerScopeId, cause)
                 }
             contentGenerations.keys
                 .filter { key -> key.serverId == serverId }
@@ -716,7 +725,7 @@ internal class SharedThreadFreshnessLedger(
                 .filter { key -> key.ownerScopeId == ownerScopeId }
                 .associateWith { key ->
                     val previous = requireNotNull(generations[key])
-                    val current = SharedThreadFreshnessGeneration(key.payloadKey, key.ownerScopeId)
+                    val current = SharedThreadFreshnessGeneration(key.payloadKey, key.ownerScopeId, "owner_retired")
                     generations[key] = current
                     previous to current
                 }
@@ -734,7 +743,7 @@ internal class SharedThreadFreshnessLedger(
                 }
                 .associateWith { key ->
                     val previous = requireNotNull(generations[key])
-                    val current = SharedThreadFreshnessGeneration(key.payloadKey, key.ownerScopeId)
+                    val current = SharedThreadFreshnessGeneration(key.payloadKey, key.ownerScopeId, "owner_retired")
                     generations[key] = current
                     previous to current
                 }
@@ -779,17 +788,17 @@ internal class SharedThreadFreshnessLedger(
                     generation.key.threadId
                 )
             if (generations[key] !== generation) return@synchronized false
-            val current = SharedThreadFreshnessGeneration(generation.key, key.ownerScopeId)
+            val current = SharedThreadFreshnessGeneration(generation.key, key.ownerScopeId, "cache_removed")
             generations[key] = current
             block(current)
             true
         }
 
-    private fun advanceAllOwnersLocked(payloadKey: SharedThreadPayloadCacheKey) {
+    private fun advanceAllOwnersLocked(payloadKey: SharedThreadPayloadCacheKey, cause: String) {
         generations.keys
             .filter { key -> key.payloadKey == payloadKey }
             .forEach { key ->
-                generations[key] = SharedThreadFreshnessGeneration(payloadKey, key.ownerScopeId)
+                generations[key] = SharedThreadFreshnessGeneration(payloadKey, key.ownerScopeId, cause)
             }
         contentGenerations[payloadKey] = SharedThreadContentGeneration(payloadKey)
     }
@@ -1218,6 +1227,38 @@ internal class SharedThreadPayloadStore(
     }
 
     /**
+     * Hands 7e198cab: conversations whose realtime durable write was refused (`poisoned`), by cause.
+     * Later messages may be missing from every local copy (memory frame, durable window), so the
+     * next open shows none of them as complete and waits for the network; a canonical refresh that
+     * lands clears the mark. Bounded (oldest dropped); leaves with the session.
+     */
+    private val staleConversationCauses = LinkedHashMap<SharedThreadOwnedPayloadCacheKey, String>()
+
+    fun markConversationStale(serverId: String, threadId: String, ownerScopeId: String, cause: String) {
+        if (serverId.isBlank() || threadId.isBlank() || ownerScopeId.isBlank()) return
+        val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
+        synchronized(recencyLock) {
+            staleConversationCauses.remove(key)
+            staleConversationCauses[key] = cause
+            while (staleConversationCauses.size > SharedThreadStaleConversationLimit) {
+                staleConversationCauses.remove(staleConversationCauses.keys.first())
+            }
+        }
+    }
+
+    fun staleConversationCause(serverId: String, threadId: String, ownerScopeId: String): String? {
+        if (serverId.isBlank() || threadId.isBlank() || ownerScopeId.isBlank()) return null
+        val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
+        return synchronized(recencyLock) { staleConversationCauses[key] }
+    }
+
+    fun clearConversationStale(serverId: String, threadId: String, ownerScopeId: String) {
+        if (serverId.isBlank() || threadId.isBlank() || ownerScopeId.isBlank()) return
+        val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
+        synchronized(recencyLock) { staleConversationCauses.remove(key) }
+    }
+
+    /**
      * Hands 4cf4c781: conversations whose canonical access this process resolved (owner + server +
      * thread). A reopen showing the memory frame keeps that resolution instead of hiding the
      * composer until the refresh lands; the refresh still applies its access result. Dropped with
@@ -1301,7 +1342,7 @@ internal class SharedThreadPayloadStore(
     fun evictConversation(serverId: String, threadId: String, ownerScopeId: String) {
         if (serverId.isBlank() || threadId.isBlank() || ownerScopeId.isBlank()) return
         val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
-        freshnessLedger.advanceAndRun(serverId, threadId, ownerScopeId) { _, _ ->
+        freshnessLedger.advanceAndRun(serverId, threadId, ownerScopeId, cause = "access_lost") { _, _ ->
             synchronized(recencyLock) {
                 payloads.update { current -> current - key }
                 recency.remove(key)
@@ -1321,6 +1362,7 @@ internal class SharedThreadPayloadStore(
             payloads.value = emptyMap()
             recency.clear()
             resolvedAccessKeys.clear()
+            staleConversationCauses.clear()
         }
         referenceResolver.clear()
     }
@@ -2811,6 +2853,23 @@ internal class SharedThreadDataSource(
                 ownerScopeId
             )
         }
+
+    /** Hands 7e198cab: why this conversation's local copies are not to be shown as complete, or `null`. */
+    internal fun staleConversationCauseIfCurrent(
+        threadId: String,
+        expectedProvenance: ReplyCacheProvenance
+    ): String? =
+        synchronized(replyCacheProvenanceLock) {
+            if (replyCacheProvenance.value != expectedProvenance) return@synchronized null
+            val ownerScopeId = expectedProvenance.threadPayloadOwnerScopeId ?: return@synchronized null
+            payloadCache.staleConversationCause(expectedProvenance.serverId, threadId, ownerScopeId)
+        }
+
+    /** A canonical refresh of [threadId] landed: its local copies are current again. */
+    internal fun clearStaleConversation(threadId: String, provenance: ReplyCacheProvenance) {
+        val ownerScopeId = provenance.threadPayloadOwnerScopeId ?: return
+        payloadCache.clearConversationStale(provenance.serverId, threadId, ownerScopeId)
+    }
 
     /**
      * Durable last-known first frame for a top-level route (channel / DM) or, task #168 step 3, a
@@ -4862,6 +4921,18 @@ internal class SharedThreadDataSource(
                 if (!isCurrentReplyCacheProvenanceForLocalSend(resolutionScope.provenance)) {
                     return staleReplyCacheProvenanceResult()
                 }
+                // Hands 7e198cab: say what moved the generation, so a refresh that never settles
+                // names its cause (an Activity summary, a server-wide invalidation, a removal, ...).
+                val supersededBy =
+                    payloadCache.captureGeneration(
+                        session.currentServerId.orEmpty(),
+                        resolvedThreadId,
+                        payloadOwnerScopeId
+                    )
+                diagnosticsLogger(
+                    "thread_canonical_superseded threadId=$resolvedThreadId round=${extraRound + 1} " +
+                        "cause=${supersededBy.cause}"
+                )
                 if (extraRound == 0) {
                     // The content may miss what moved the generation; the access it carries does not.
                     onSupersededCanonicalResult?.invoke(result)
@@ -8404,6 +8475,12 @@ internal class SharedThreadStore(
     /** One-shot Mark as Unread notices (Nothing to mark), shown by the page as a toast. */
     val readToggleNotices: SharedFlow<RaftReadToggleNotice> = _readToggleNotices.asSharedFlow()
     private var lastRoutePayload: RaftThreadScreenPayload? = null
+    /**
+     * Hands 7e198cab: the local frame an anchored open did not show because it lacks the anchor
+     * (see `thread_start_anchor_pending`). Only a failed main load shows it, as before; any
+     * canonical answer replaces it. Reset per route.
+     */
+    private var anchorPendingStandIn: RaftThreadScreenPayload? = null
     private var visiblePayloadOwnerScopeId: String? = null
     private var firstContentReadyRouteKey: String? = null
     private var pendingAuxiliaryHydration: PendingAuxiliaryHydration? = null
@@ -8802,9 +8879,24 @@ internal class SharedThreadStore(
         pendingSecondaryTimelineApply = null
         val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()
         val threadId = routeIdentity.timelineKey
+        anchorPendingStandIn = null
         dataSource.onReplyCacheFirstFrameAdmissionForTest?.invoke()
+        // Hands 7e198cab: a realtime write of this conversation was refused (`poisoned`), so later messages
+        // may be missing from every local copy. Show none of them as complete; the refresh below decides.
+        val staleConversationCause =
+            threadId?.let { candidateThreadId ->
+                producerContext?.let { context ->
+                    dataSource.staleConversationCauseIfCurrent(candidateThreadId, context.provenance)
+                }
+            }
+        if (staleConversationCause != null) {
+            diagnosticsLogger?.invoke(
+                "thread_start_stale_refetch threadId=${threadId.orEmpty()} cause=$staleConversationCause"
+            )
+        }
         val cached =
             threadId
+                ?.takeIf { staleConversationCause == null }
                 ?.let { candidateThreadId ->
                     producerContext?.let { context ->
                         dataSource.cachedPayloadIfCurrent(candidateThreadId, context.provenance)
@@ -8842,7 +8934,7 @@ internal class SharedThreadStore(
         // the newest content this process has seen (artin's own confirmed send). Keep it as a candidate
         // for the first frame; it is weighed against the durable frame below and the refresh still runs.
         val supersededMemory =
-            if (cached == null && current == null) {
+            if (cached == null && current == null && staleConversationCause == null) {
                 threadId
                     ?.let { candidateThreadId ->
                         producerContext?.let { context ->
@@ -8876,7 +8968,7 @@ internal class SharedThreadStore(
         // durable last-known frame stand in for the loading shell. Memory candidates are newer by
         // construction (they were written by a network response in this process).
         val durableLastKnown =
-            if (cached == null && current == null && threadId != null) {
+            if (cached == null && current == null && threadId != null && staleConversationCause == null) {
                 producerContext?.let { context ->
                     dataSource.durableLastKnownPayloadIfCurrent(
                         routePayload = routeContextPayload,
@@ -8965,10 +9057,44 @@ internal class SharedThreadStore(
                     "added=${seededStandIn.messages.size - standInFirstFrame.messages.size}"
             )
         }
+        // Hands 7e198cab: an open aimed at a message (Activity, a notification, a link) whose local frame
+        // lacks that message would paint an older window as if it were the conversation and show the
+        // message only after the network answered (or never, when the answer kept being superseded).
+        // Such an open shows a loading state at the anchor instead (the Activity seed when it holds the
+        // message); the candidate is kept only to stand in if the load fails.
+        val firstFrameCandidate = cached ?: current ?: seededStandIn
+        val anchorPending =
+            current == null &&
+                firstFrameCandidate.hasRenderableThreadContent() &&
+                firstFrameCandidate.lacksFocusedAnchor()
+        val anchoredFirstFrame =
+            if (anchorPending) {
+                anchorPendingStandIn = firstFrameCandidate
+                val anchorId = routeContextPayload.focusedMessageId.orEmpty()
+                val loading =
+                    routeContextPayload.copy(
+                        status = if (threadId == null) routeContextPayload.status else "loading",
+                        errorCode = null,
+                    )
+                val seedHoldsAnchor = activitySeedBodies.any { it.id == anchorId }
+                val candidateSource =
+                    when {
+                        cached != null -> "memory"
+                        supersededFirstFrame != null -> "superseded_memory"
+                        durableLastKnownWithReplies != null -> "durable"
+                        else -> "activity_seed"
+                    }
+                diagnosticsLogger?.invoke(
+                    "thread_start_anchor_pending threadId=${threadId.orEmpty()} anchor=$anchorId " +
+                        "candidate=$candidateSource candidateMessages=${firstFrameCandidate.messages.size} " +
+                        "seed=$seedHoldsAnchor"
+                )
+                if (seedHoldsAnchor) loading.withActivityOpenSeed(activitySeedBodies) else loading
+            } else {
+                firstFrameCandidate
+            }
         val visiblePayload =
-            (cached
-                ?: current
-                ?: seededStandIn).let { candidate ->
+            anchoredFirstFrame.let { candidate ->
                 rememberedAccessFailure?.let { failure ->
                     candidate
                         .asRefreshFailed(failure.code)
@@ -9295,6 +9421,26 @@ internal class SharedThreadStore(
         explicitRetry: Boolean = false
     ) {
         val refreshStartedAt = TimeSource.Monotonic.markNow()
+        try {
+            refreshOnce(basePayload, staleToken, reusePrewarm, explicitRetry, refreshStartedAt)
+        } catch (cancelled: CancellationException) {
+            // Hands 7e198cab: a refresh cut short (the page was left, or a newer route replaced it) used to
+            // leave no result line, so a log could not tell "still loading" from "abandoned".
+            diagnosticsLogger?.invoke(
+                "thread_refresh_result threadId=${basePayload.sourceThreadId.orEmpty()} result=cancelled " +
+                    "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            throw cancelled
+        }
+    }
+
+    private suspend fun refreshOnce(
+        basePayload: RaftThreadScreenPayload,
+        staleToken: MviStaleToken,
+        reusePrewarm: Boolean,
+        explicitRetry: Boolean,
+        refreshStartedAt: TimeSource.Monotonic.ValueTimeMark,
+    ) {
         val refreshProducerContext = dataSource.captureReplyCacheProducerContext() ?: return
         val refreshProvenance = refreshProducerContext.provenance
         if (
@@ -9432,6 +9578,13 @@ internal class SharedThreadStore(
                     onSupersededCanonicalResult = { superseded ->
                         applySupersededCanonicalAccess(basePayload, staleToken, refreshProvenance, superseded)
                         applySupersededActivitySeedBodies(basePayload, staleToken, refreshProvenance, superseded)
+                        applySupersededAnchorContext(
+                            basePayload,
+                            staleToken,
+                            refreshProvenance,
+                            superseded,
+                            refreshObservedMessageIds,
+                        )
                     },
                     onCanonicalRefetchCapped = { refetchCapped = true },
                 )
@@ -9497,6 +9650,7 @@ internal class SharedThreadStore(
                     preserveAuxiliaryProjectionFromPrevious = true,
                 )
                 ?.asLoadedEmptyReplyThreadPayload()
+        val errorBase = anchorPendingFallbackFor(latest) ?: latest
         val nextPayload =
             when (result) {
                 is DataResult.Content ->
@@ -9508,7 +9662,9 @@ internal class SharedThreadStore(
                         latest.asRefreshFailed("empty_thread")
                     }
                 is DataResult.Error ->
-                    latest.asRefreshFailed(result.error.code)
+                    // Hands 7e198cab: an anchored open still waiting at its anchor falls back to the
+                    // local frame it held back (offline keeps showing what this device has).
+                    errorBase.asRefreshFailed(result.error.code)
                 is DataResult.NoPermission -> {
                     // Canonical fetch says we can no longer read this thread:
                     // the cached first-frame candidate is unrecoverable-stale
@@ -9521,7 +9677,7 @@ internal class SharedThreadStore(
                 // A durable last-known frame survives only a transient failure; any canonical answer
                 // (content, empty, no permission) replaces it and clears the stand-in flag.
                 durableLastKnown =
-                    latest.durableLastKnown &&
+                    (if (result is DataResult.Error) errorBase else latest).durableLastKnown &&
                         when (result) {
                             is DataResult.Error -> true
                             is DataResult.Empty -> result.reason != EmptyReason.NoMessages
@@ -9672,6 +9828,12 @@ internal class SharedThreadStore(
                 abortRepliesRebaseline()
             }
             return
+        }
+        if (result !is DataResult.Error) anchorPendingStandIn = null
+        if (result is DataResult.Content) {
+            basePayload.resolveThreadRouteIdentity().timelineChannelId?.let { conversationId ->
+                dataSource.clearStaleConversation(conversationId, refreshProvenance)
+            }
         }
         // The route may only learn it is a task conversation from this commit.
         launchTaskConversationTitle(_state.value.payload, basePayload, staleToken)
@@ -10331,6 +10493,71 @@ internal class SharedThreadStore(
                             ),
                     )
                 )
+            }
+        }
+    }
+
+    /**
+     * Hands 7e198cab: the stand-in [startRoute] held back for an anchored open, while the page still
+     * shows the loading state at that anchor (nothing else landed since).
+     */
+    private fun anchorPendingFallbackFor(latest: RaftThreadScreenPayload): RaftThreadScreenPayload? {
+        val standIn = anchorPendingStandIn ?: return null
+        if (latest.hasRenderableThreadContent()) return null
+        return standIn.withRouteContext(latest)
+    }
+
+    /**
+     * Hands 7e198cab: an anchored open whose page still lacks the anchor shows the first canonical result
+     * even when its freshness generation moved during the request (so it is fetched again): it is the
+     * newest server answer this page has, and holds the message the person tapped. Only when nothing newer
+     * reached the page since the request began (no message appeared that the refresh did not see at its
+     * start); nothing is cached or committed, and the refetched result replaces the timeline as usual.
+     */
+    private suspend fun applySupersededAnchorContext(
+        routePayload: RaftThreadScreenPayload,
+        staleToken: MviStaleToken,
+        refreshProvenance: ReplyCacheProvenance,
+        result: DataResult<RaftThreadScreenPayload>,
+        refreshObservedMessageIds: Set<String>,
+    ) {
+        val anchor = routePayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return
+        val canonical = (result as? DataResult.Content)?.data ?: return
+        if (canonical.messages.none { it.id == anchor }) return
+        initialAccessStateMutex.withLock {
+            dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
+                val currentPayload = _state.value.payload
+                if (
+                    !staleTokenStillCurrent(staleToken, "thread_superseded_anchor", "apply", routePayload, currentPayload) ||
+                    !routeStillCurrent(routePayload, "thread_superseded_anchor", "apply", currentPayload)
+                ) {
+                    return@withCurrentReplyCacheProvenanceForLocalSend
+                }
+                if (currentPayload.hasRenderableThreadContent() && !currentPayload.lacksFocusedAnchor()) {
+                    return@withCurrentReplyCacheProvenanceForLocalSend
+                }
+                if (currentPayload.messages.any { it.id !in refreshObservedMessageIds }) {
+                    diagnosticsLogger?.invoke(
+                        "thread_superseded_anchor_context threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                            "anchor=$anchor applied=false reason=newer_on_page"
+                    )
+                    return@withCurrentReplyCacheProvenanceForLocalSend
+                }
+                val shown =
+                    canonical
+                        .withRouteContext(routePayload)
+                        .preserveStableTimelineFrom(
+                            previous = currentPayload,
+                            preserveAuxiliaryProjectionFromPrevious = true,
+                            refreshObservedMessageIds = refreshObservedMessageIds,
+                            sendEchoMatchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId,
+                        )
+                        .copy(backgroundRefreshing = true, durableLastKnown = false, mainLoadFailed = false)
+                diagnosticsLogger?.invoke(
+                    "thread_superseded_anchor_context threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                        "anchor=$anchor applied=true messages=${shown.messages.size}"
+                )
+                reducePayloadPatch { latest -> latest.withThreadContentProjectionFrom(shown) }
             }
         }
     }
