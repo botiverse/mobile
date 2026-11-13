@@ -7,18 +7,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.SoftwareKeyboardController
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertIsFocused
-import androidx.compose.ui.test.assertIsNotFocused
-import androidx.compose.ui.test.onNodeWithTag
 import build.raft.app.nav.RaftStackPageActivity
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -58,6 +57,7 @@ class ThreadComposerKeyboardHandoffUiTest {
         var covered by mutableStateOf(false)
         var handoff: ThreadComposerKeyboardHandoff? = null
         var returns = 0
+        var focused = false
     }
 
     private fun ComposeUiTest.showFocusedComposer(page: Page): ThreadComposerKeyboardHandoff {
@@ -71,7 +71,7 @@ class ThreadComposerKeyboardHandoffUiTest {
                             page.keyboard.show()
                         }
                     TextField(
-                        modifier = Modifier.testTag(COMPOSER).fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().onFocusChanged { page.focused = it.isFocused },
                         value = "",
                         autoFocus = false,
                         onValueChange = {},
@@ -82,7 +82,7 @@ class ThreadComposerKeyboardHandoffUiTest {
         }
         runOnIdle { page.composerFocus.requestFocus() }
         waitForIdle()
-        onNodeWithTag(COMPOSER).assertIsFocused()
+        assertTrue(page.focused, "the composer is not focused")
         return assertNotNull(page.handoff)
     }
 
@@ -94,7 +94,7 @@ class ThreadComposerKeyboardHandoffUiTest {
 
             // The image button: down before the picker.
             runOnIdle { handoff.leave(keyboardOpen = true) }
-            onNodeWithTag(COMPOSER).assertIsNotFocused()
+            assertFalse(page.focused, "the composer kept the focus")
             assertEquals(1, page.keyboard.hidden, "the keyboard stayed up for the picker")
 
             // The picker returns and the editor opens over the conversation.
@@ -104,14 +104,14 @@ class ThreadComposerKeyboardHandoffUiTest {
                 page.covered = true
             }
             waitForIdle()
-            onNodeWithTag(COMPOSER).assertIsNotFocused()
+            assertFalse(page.focused, "the composer kept the focus")
             assertEquals(0, page.returns, "the keyboard came back over the editor")
 
             // The editor closes: the conversation page is resumed again.
             runOnIdle { page.covered = false }
             waitForIdle()
             assertEquals(1, page.returns)
-            onNodeWithTag(COMPOSER).assertIsFocused()
+            assertTrue(page.focused, "the composer is not focused")
             assertEquals(ThreadComposerKeyboardHandoff.Phase.Idle, handoff.phase)
 
             // Once: a later pause and resume of the page does not raise it again.
@@ -129,12 +129,12 @@ class ThreadComposerKeyboardHandoffUiTest {
             val handoff = showFocusedComposer(page)
 
             runOnIdle { handoff.leave(keyboardOpen = true) }
-            onNodeWithTag(COMPOSER).assertIsNotFocused()
+            assertFalse(page.focused, "the composer kept the focus")
             runOnIdle { handoff.settle() }
             waitForIdle()
 
             assertEquals(1, page.returns)
-            onNodeWithTag(COMPOSER).assertIsFocused()
+            assertTrue(page.focused, "the composer is not focused")
             assertEquals(1, page.keyboard.shown)
         }
 
@@ -157,8 +157,4 @@ class ThreadComposerKeyboardHandoffUiTest {
             assertEquals(0, page.keyboard.hidden)
             assertEquals(0, page.returns, "a keyboard the user had put away came back")
         }
-
-    private companion object {
-        const val COMPOSER = "composer"
-    }
 }
