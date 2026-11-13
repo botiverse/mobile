@@ -2753,6 +2753,7 @@
     <string name="settings_computers_rack_version">v%1$s</string>
     <string name="settings_computers_rack_updating_to">Atualizando para v%1$s</string>
     <string name="settings_computers_rack_last_seen">Visto pela última vez %1$s.</string>
+    <string name="settings_computers_rack_offline_last_seen">visto por último %1$s</string>
     <string name="settings_computers_rack_percent_used">%1$s usado</string>
     <string name="settings_computers_rack_used_up">Esgotado</string>
     <string name="settings_computers_rack_resets_in_minutes">Renova %1$dm</string>
@@ -2808,6 +2809,7 @@
     <string name="settings_computers_cannot_delete_message_one">Este computador tem %1$d agente atribuído. Remova todos os agentes antes de excluir o computador.</string>
     <string name="settings_computers_cannot_delete_message_many">Este computador tem %1$d agentes atribuídos. Remova todos os agentes antes de excluir o computador.</string>
     <string name="settings_computers_error_refresh_title">Não foi possível atualizar</string>
+    <string name="settings_computers_error_refresh_saved">Não foi possível atualizar os computadores. Mostrando resultados salvos.</string>
     <string name="settings_computers_restart">Reiniciar</string>
     <string name="settings_computers_restarting">Reiniciando…</string>
     <string name="settings_computers_restarted">Reiniciado.</string>
