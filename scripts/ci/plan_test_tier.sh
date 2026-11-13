@@ -47,7 +47,25 @@ change_keeps_ios() {
       return 0
     fi
     case "$path" in
-      compose/iosApp/*|compose/shared/src/iosMain/*|compose/shared/src/iosTest/*|compose/shared/src/nativeMain/*|compose/shared/src/nativeInterop/*|compose/core/src/iosMain/*|compose/core/src/iosTest/*|compose/ui-cmp/src/iosMain/*)
+      compose/iosApp/*|compose/shared/src/iosMain/*|compose/shared/src/nativeMain/*|compose/shared/src/nativeInterop/*|compose/core/src/iosMain/*|compose/ui-cmp/src/iosMain/*|*/iosTest/*)
+        return 0
+        ;;
+    esac
+  done < "$changed_paths_file"
+  return 1
+}
+
+# iOS test sources: any iosTest source set, the iosAppTests XCTest bundle and
+# the iosAppUITests harness. A change to one of these is about the iOS tests,
+# so an iOS compile that would otherwise skip the tests (premerge, main push)
+# runs them; a test-only iOS change must not go green on a compile alone.
+change_touches_ios_tests() {
+  local changed_paths_file="$1"
+  local path
+  while IFS= read -r path || test -n "$path"; do
+    path="${path%$'\r'}"
+    case "$path" in
+      */iosTest/*|compose/iosApp/iosAppTests/*|compose/iosApp/iosAppUITests/*)
         return 0
         ;;
     esac
@@ -163,6 +181,17 @@ emit_plan() {
   # expensive runner). 27.1-only SDK breakage is caught by the nightly within
   # 24h and by ios-release.yml's 27.1 build before any release.
   local run_ios_xcode271=false
+  # iOS tests in the iOS compile job (step 1 of the mobile test prune, Lagoon
+  # 2026-11-13, artin's go-ahead): the K/N commonTest compile + iosTest
+  # simulator run, the iosAppTests and adaptive-editor XCTests and the UI-test
+  # harness build run only on the full tier: nightly schedule, release-*
+  # pushes, scope=full, premerge into a release base and full-ci PRs. Every
+  # other iOS run (premerge, scope=ios, main push, merge queue) compiles the
+  # iOS targets, links the framework and builds the host app only; iOS-only
+  # behaviour regressions surface in the nightly within 24h. Exception: a
+  # premerge or main push whose diff touches iOS test sources
+  # (change_touches_ios_tests) runs the iOS tests too.
+  local run_ios_tests=false
   local ios_lanes="[]"
   reason=""
 
@@ -184,6 +213,7 @@ emit_plan() {
         run_device_suite=true
         run_canonical_final=false
         attachment_api_levels="[31]"
+        run_ios_tests=true
         reason="pull-request-full-ci"
       else
         # Task #37 (artin 2026-10-09): iOS compile runs only on the trunk
@@ -228,6 +258,10 @@ emit_plan() {
               main-push-paths:*) reason="main-push-paths:$(platform_summary)" ;;
             esac
           fi
+          # A main push touching iOS test sources runs the iOS tests.
+          if test "$run_ios" = true && change_touches_ios_tests "$changed_paths_file"; then
+            run_ios_tests=true
+          fi
           # Task #26 closure: routine main pushes no longer run the device
           # suite; nightly and explicit manual dispatch keep the readback.
           run_device_suite=false
@@ -242,6 +276,7 @@ emit_plan() {
           run_canonical_final=false
           attachment_api_levels="[]"
           run_ios_xcode271=true
+          run_ios_tests=true
           reason="release-push-full-readback"
           ;;
         *)
@@ -258,6 +293,7 @@ emit_plan() {
       run_canonical_final=true
       attachment_api_levels="[29,31,34]"
       run_ios_xcode271=true
+      run_ios_tests=true
       reason="schedule-full-readback"
       ;;
     workflow_dispatch)
@@ -267,7 +303,8 @@ emit_plan() {
       # Linux gates + Android compile, no iOS, no device suite. scope=full
       # keeps the deliberate full readback. scope=ios (2026-11-05) is the
       # pre-merge iOS check: plan + the Blacksmith Xcode 27.0 iOS compile only
-      # (Android is already covered by the PR-tier run). An empty/unknown scope
+      # (Android is already covered by the PR-tier run), compile + link + host
+      # app build without the iOS tests (run_ios_tests=false). An empty/unknown scope
       # is rejected so the choice is always explicit in the workflow input.
       case "$dispatch_scope" in
         pr)
@@ -306,6 +343,7 @@ emit_plan() {
               run_device_suite=true
               run_canonical_final=true
               attachment_api_levels="[29,31,34]"
+              run_ios_tests=true
               reason="workflow_dispatch-premerge:release-full"
               ;;
             *)
@@ -328,6 +366,10 @@ emit_plan() {
                   if test "$run_ios" = true && ! change_keeps_ios "$changed_paths_file"; then
                     run_ios=false
                   fi
+                  # A premerge touching iOS test sources runs the iOS tests.
+                  if test "$run_ios" = true && change_touches_ios_tests "$changed_paths_file"; then
+                    run_ios_tests=true
+                  fi
                   if test "$run_ios" = true; then
                     reason="workflow_dispatch-premerge:ios"
                   else
@@ -343,6 +385,7 @@ emit_plan() {
           run_device_suite=true
           run_canonical_final=true
           attachment_api_levels="[29,31,34]"
+          run_ios_tests=true
           reason="workflow_dispatch-full-readback"
           ;;
         *)
@@ -381,8 +424,13 @@ emit_plan() {
   # on the nightly schedule and release-* pushes (run_ios_xcode271 above); GitHub
   # Macs are the most expensive runner and share one concurrency cap with
   # ios-release.yml / ios-simulator-app.yml.
+  # Defensive clamp: no branch above sets run_ios_xcode271/run_ios_tests
+  # without iOS today, but both only make sense inside the iOS job, so a future
+  # branch that drops iOS cannot leave them true (verify_test_tier_results.mjs
+  # rejects either flag without run_ios).
   if test "$run_ios" != true; then
     run_ios_xcode271=false
+    run_ios_tests=false
   fi
   if test "$run_ios_xcode271" = true; then
     ios_lanes='["blacksmith-xcode27.0","github-xcode27.1"]'
@@ -394,6 +442,7 @@ emit_plan() {
   printf 'run_ios=%s\n' "$run_ios"
   printf 'run_ios_xcode271=%s\n' "$run_ios_xcode271"
   printf 'ios_lanes=%s\n' "$ios_lanes"
+  printf 'run_ios_tests=%s\n' "$run_ios_tests"
   printf 'run_device_suite=%s\n' "$run_device_suite"
   printf 'run_canonical_final=%s\n' "$run_canonical_final"
   printf 'attachment_api_levels=%s\n' "$attachment_api_levels"

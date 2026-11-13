@@ -597,7 +597,14 @@ The canonical flow is (Stamp commands, run from a Stamp checkout):
    diffs against the merge-base, never reruns Android, and compiles iOS only
    when the diff touches iOS-specific source (`compose/iosApp/**`, `iosMain`,
    `iosTest`, `nativeMain`, `nativeInterop`) or CI control, the same rule as
-   main pushes (`change_keeps_ios`). Ordinary `commonMain` changes rely on the
+   main pushes (`change_keeps_ios`). That premerge iOS compile (like
+   `scope=ios` and main pushes) compiles, links the shared framework and
+   builds the host app only; the iOS tests (`iosTest`, the `iosAppTests`
+   XCTests, adaptive editor snapshots, the UI-test harness build) run only on
+   the nightly schedule, `release-*` pushes, `scope=full`, premerge into a
+   release base, and PRs with the `full-ci` label (2026-11-13); a premerge or
+   main push whose diff touches iOS test sources (`*/iosTest/*`,
+   `iosAppTests`, `iosAppUITests`) runs them too. Ordinary `commonMain` changes rely on the
    nightly iOS readback and the main merge hold (a red `Test` on main stops
    merges until a `fix-red` PR lands). `scope=ios` is still there for a
    deliberate one-off check, e.g. a risky expect/actual change; run it at most

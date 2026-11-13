@@ -80,6 +80,7 @@ jobs:
       run_ios: ${{ steps.plan.outputs.run_ios }}
       run_ios_xcode271: ${{ steps.plan.outputs.run_ios_xcode271 }}
       ios_lanes: ${{ steps.plan.outputs.ios_lanes }}
+      run_ios_tests: ${{ steps.plan.outputs.run_ios_tests }}
       run_device_suite: ${{ steps.plan.outputs.run_device_suite }}
       run_canonical_final: ${{ steps.plan.outputs.run_canonical_final }}
       attachment_api_levels: ${{ steps.plan.outputs.attachment_api_levels }}
@@ -1080,6 +1081,13 @@ jobs:
     # the pre-merge iOS check. The CI gate expects android and the emulator jobs skipped.
     # workflow_dispatch scope=premerge (Stamp's ready-to-merge check) runs this lane only when
     # the PR diff can affect iOS; otherwise every job but plan and the CI gate is skipped.
+    # iOS tests (planner output `run_ios_tests`): the K/N commonTest compile
+    # (compileTestKotlinIosSimulatorArm64), adaptive editor snapshots, the iosAppTests XCTest
+    # bundle, the UI-test harness build and the shared iosTest simulator run happen only on the
+    # full tier: nightly schedule, release-* pushes, scope=full, premerge into a release base and
+    # full-ci PRs. Premerge, scope=ios, main pushes and the merge queue compile the iOS targets,
+    # link the framework and build the host app only (mobile test prune step 1, 2026-11-13:
+    # ~5 of ~13 min per job were tests); iOS-only behaviour regressions surface in the nightly.
     # The simulator steps pick an iPhone on the newest iOS runtime not newer than the SDK, skipping
     # iPhone Duo (on xcode-27 the iOS 27.1 runtime only offers Duo; the tab-bar tests expect a phone).
     needs: [plan]
@@ -1159,18 +1167,23 @@ jobs:
       # compile) runs only on the full tier (full-ci PRs, nightly, scope=full dispatch) and on
       # release-* pushes. Main pushes and merge-queue runs compile the simulator targets only;
       # ios-release.yml still compiles and links the device target for every device release.
-      - name: Compile shared and design system iOS targets and unit tests
+      # The commonTest K/N compile (:shared:compileTestKotlinIosSimulatorArm64) runs only when
+      # the plan runs the iOS tests (run_ios_tests).
+      - name: Compile shared and design system iOS targets (and unit tests on the full tier)
         working-directory: compose
         env:
           IOS_DEVICE_COMPILE: ${{ needs.plan.outputs.run_device_suite == 'true' || startsWith(github.ref, 'refs/heads/release-') }}
+          IOS_TESTS: ${{ needs.plan.outputs.run_ios_tests }}
         run: |
           set -euo pipefail
           tasks=(
             :shared:compileKotlinIosSimulatorArm64
-            :shared:compileTestKotlinIosSimulatorArm64
             :designsystem:compileKotlinIosSimulatorArm64
             :ui-cmp:compileKotlinIosSimulatorArm64
           )
+          if [ "$IOS_TESTS" = true ]; then
+            tasks+=(:shared:compileTestKotlinIosSimulatorArm64)
+          fi
           if [ "$IOS_DEVICE_COMPILE" = true ]; then
             tasks+=(:shared:compileKotlinIosArm64)
           fi
@@ -1243,6 +1256,7 @@ jobs:
           exit "$status"
 
       - name: Test adaptive editor snapshots (UIKit)
+        if: ${{ needs.plan.outputs.run_ios_tests == 'true' }}
         working-directory: compose/iosApp
         run: |
           set -o pipefail
@@ -1264,6 +1278,7 @@ jobs:
           python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/assert_xctest_ran.py" "$log" RaftAdaptiveEditorSnapshotTests
 
       - name: Test iOS host XCTests (iosAppTests bundle, UIKit)
+        if: ${{ needs.plan.outputs.run_ios_tests == 'true' }}
         working-directory: compose/iosApp
         run: |
           set -o pipefail
@@ -1305,7 +1320,7 @@ jobs:
       # app -- which is what actually proves shared/iOS integration still
       # compiles -- and leave the harness compile to non-PR runs.
       - name: Build iOS UI-test harness (simulator)
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ github.event_name != 'pull_request' && needs.plan.outputs.run_ios_tests == 'true' }}
         working-directory: compose/iosApp
         run: |
           set -o pipefail
@@ -1337,7 +1352,7 @@ jobs:
       # hide their results.
       - name: Run shared iosTest on the simulator
         working-directory: compose
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && needs.plan.outputs.run_ios_tests == 'true' }}
         run: |
           set -uo pipefail
           device_id=$(xcrun simctl list devices available -j | SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)" python3 -c 'import json,os,re,sys; v=lambda s: tuple(int(p) for p in re.findall(r"\d+", s)); rs=sorted(((v(k.rsplit(".iOS-", 1)[1]), k, vs) for k, vs in json.load(sys.stdin)["devices"].items() if ".iOS-" in k), key=lambda t: t[0], reverse=True); rs=[t for t in rs if t[0] <= v(os.environ["SDK"])] or rs; ds=[(k, x) for _, k, vs in rs for x in vs if "iPhone" in x["name"]]; k, x=next((d for d in ds if "Duo" not in d[1]["name"]), ds[0]); print(x["name"], k, file=sys.stderr); print(x["udid"])')
