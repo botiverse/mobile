@@ -10,8 +10,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.SoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import build.raft.app.nav.RaftStackPageActivity
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -71,7 +74,7 @@ class ThreadComposerKeyboardHandoffUiTest {
                             page.keyboard.show()
                         }
                     TextField(
-                        modifier = Modifier.fillMaxWidth().onFocusChanged { page.focused = it.isFocused },
+                        modifier = Modifier.testTag(COMPOSER).fillMaxWidth().onFocusChanged { page.focused = it.isFocused },
                         value = "",
                         autoFocus = false,
                         onValueChange = {},
@@ -80,7 +83,9 @@ class ThreadComposerKeyboardHandoffUiTest {
                 }
             }
         }
-        runOnIdle { page.composerFocus.requestFocus() }
+        // A tap, as the user focuses it: that also puts the window in touch mode, where a cleared
+        // focus stays cleared (out of touch mode Android hands the view its default focus back).
+        onNodeWithTag(COMPOSER).performClick()
         waitForIdle()
         assertTrue(page.focused, "the composer is not focused")
         return assertNotNull(page.handoff)
@@ -157,4 +162,8 @@ class ThreadComposerKeyboardHandoffUiTest {
             assertEquals(0, page.keyboard.hidden)
             assertEquals(0, page.returns, "a keyboard the user had put away came back")
         }
+
+    private companion object {
+        const val COMPOSER = "composer"
+    }
 }
