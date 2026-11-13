@@ -1,0 +1,284 @@
+# App Store iPhone Duo screenshots (1.24): build the Debug Simulator app with visual fixtures on
+# Xcode 27.1 (the only Xcode with the iPhone Duo simulator), boot an iPhone Duo simulator, capture
+# `compose_store_ipad_visual` (pageData duo=inner|outer) on each screen inside the real app window
+# (system status bar and the side column's glass buttons, #4610), then frame with
+# scripts/store-screenshots/frames.py --set duo5. Branch-only tooling (agent/lagoon/duo-store-shots),
+# dispatched by hand.
+#
+# The hosted runner has no Simulator.app, so the device is opened (the inner screen made primary)
+# with scripts/store-screenshots/duo-swap: a tiny client of SpringBoard's display tool service run
+# inside the simulator.
+name: iPhone Duo store screenshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "probe = no build, look for the simulator's fold control; shots = build and capture"
+        type: string
+        default: shots
+      screens:
+        description: "inner and/or outer"
+        type: string
+        default: "inner outer"
+      langs:
+        description: "zh-Hans en ja"
+        type: string
+        default: "zh-Hans en ja"
+      scenes:
+        description: "01-chat 05-agent 04-tasks 06-activity 07-computers"
+        type: string
+        default: "01-chat 05-agent 04-tasks 06-activity 07-computers"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-store-duo-shots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fold-probe:
+    name: Fold probe (no build)
+    if: ${{ inputs.mode == 'probe' }}
+    runs-on: xcode-27
+    timeout-minutes: 40
+    env:
+      XCODE_APP_PATH: /Applications/Xcode_27.1.app
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pin Xcode
+        run: bash scripts/ci/select_ios_xcode.sh
+      - name: Probe
+        run: |
+          set +e
+          mkdir -p probe
+          tool=$(bash scripts/store-screenshots/duo-swap/build.sh "$RUNNER_TEMP/duo_swap" 2>&1 | tail -1); echo "tool=$tool"
+          codesign -d --entitlements - "$tool" 2>&1 | tail -12
+          udid=$(xcrun simctl create "Probe Duo" com.apple.CoreSimulator.SimDeviceType.iPhone-Duo com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4)
+          xcrun simctl boot "$udid"; xcrun simctl bootstatus "$udid" -b
+          sleep 10
+          shot() { for d in 1 3; do xcrun simctl io "$udid" screenshot --display=$d "probe/$1-d$d.png" >/dev/null 2>&1; done; }
+          xcrun simctl spawn "$udid" "$tool" dump > probe/dump.txt 2>&1; echo "dump exit=$?"
+          head -150 probe/dump.txt
+          shot before
+          xcrun simctl spawn "$udid" log stream --style compact --predicate 'process == "SpringBoard" AND eventMessage CONTAINS[c] "DisplayTool"' > probe/sb-log.txt 2>&1 &
+          logpid=$!
+          sleep 2
+          xcrun simctl spawn "$udid" "$tool" swap 0.5 2>&1 | tee probe/swap1.txt
+          sleep 8; shot swap1
+          xcrun simctl launch "$udid" com.apple.Preferences; sleep 6; shot prefs
+          xcrun simctl io "$udid" enumerate 2>&1 | grep -E "Name: LCD|UI Orientation" | head
+          xcrun simctl spawn "$udid" "$tool" swap 0.5 2>&1 | tee probe/swap2.txt
+          sleep 8; shot swap2
+          kill $logpid
+          cat probe/sb-log.txt | tail -40
+          python3 -c "
+          import glob
+          for p in sorted(glob.glob('probe/*.png')): print(p, len(open(p,'rb').read()))
+          "
+          xcrun simctl shutdown "$udid"; xcrun simctl delete "$udid"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: fold-probe
+          path: probe/
+
+  compile-check:
+    name: Compile shared with the fixture (Android, fast fail)
+    if: ${{ inputs.mode != 'probe' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: ./.github/actions/gradle-cache-policy
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+          gradle-home-cache-excludes: |
+            caches/jars-*
+            caches/transforms-*
+            caches/*/transforms
+      - name: Gradle memory budget
+        run: |
+          GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"; mkdir -p "$GUH"
+          printf '%s\n' "org.gradle.jvmargs=-Xmx9g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+            'kotlin.compiler.execution.strategy=in-process' >> "$GUH/gradle.properties"
+      - name: Compile
+        working-directory: compose
+        run: ./gradlew :shared:compileDebugKotlinAndroid -PslockVisualFixtures=true --no-daemon --console=plain
+
+  capture:
+    name: Capture on iPhone Duo (Xcode 27.1)
+    needs: compile-check
+    runs-on: xcode-27
+    timeout-minutes: 120
+    env:
+      SLOCK_VISUAL_FIXTURES: "true"
+      XCODE_APP_PATH: /Applications/Xcode_27.1.app
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pin Xcode
+        run: bash scripts/ci/select_ios_xcode.sh
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: ./.github/actions/gradle-cache-policy
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: ./.github/actions/ios-kn-gradle
+        with:
+          heap: 12g
+      - name: KSP incremental cache hygiene
+        run: rm -rf compose/shared/build/generated/ksp compose/shared/build/kotlin
+      - name: Generate shared framework placeholder
+        working-directory: compose
+        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain -PslockVisualFixtures=true
+      - name: Pod install
+        working-directory: compose/iosApp
+        run: pod install
+      - name: Sync shared framework (simulator arm64, fixtures)
+        working-directory: compose
+        run: |
+          ./gradlew :shared:syncFramework \
+            -Pkotlin.native.cocoapods.platform=iphonesimulator \
+            -Pkotlin.native.cocoapods.archs=arm64 \
+            -Pkotlin.native.cocoapods.configuration=Debug \
+            -PslockVisualFixtures=true --no-daemon --console=plain
+      - name: Create the iPhone Duo simulator
+        run: |
+          set -euo pipefail
+          udid=$(xcrun simctl create "Store Duo" com.apple.CoreSimulator.SimDeviceType.iPhone-Duo com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4)
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+          echo "udid=$udid"
+      - name: Build iOS app for simulator
+        working-directory: compose/iosApp
+        run: |
+          log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
+          set +e
+          xcodebuild -workspace iosApp.xcworkspace -scheme iosApp -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIM_UDID" \
+            -derivedDataPath build/DerivedData \
+            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
+            RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES build > "$log" 2>&1
+          status=$?
+          tail -40 "$log"
+          [ "$status" -eq 0 ] || grep -nE "(^|[[:space:]])e: |: error:|BUILD FAILED" "$log" | grep -v "Using response file" | tail -60
+          exit "$status"
+      - name: Build the display swap tool
+        run: echo "DUO_SWAP=$(bash scripts/store-screenshots/duo-swap/build.sh "$RUNNER_TEMP/duo_swap" | tail -1)" >> "$GITHUB_ENV"
+      - name: Boot and install
+        run: |
+          set +e
+          xcrun simctl boot "$SIM_UDID"
+          xcrun simctl bootstatus "$SIM_UDID" -b
+          xcrun simctl status_bar "$SIM_UDID" override --time "9:41" --dataNetwork wifi --wifiBars 3 --cellularBars 4 --batteryState charged --batteryLevel 100
+          app=$(find compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+          xcrun simctl install "$SIM_UDID" "$app"
+          echo "BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")" >> "$GITHUB_ENV"
+          sleep 5
+      - name: Capture
+        env:
+          SCREENS: ${{ inputs.screens }}
+          LANGS: ${{ inputs.langs }}
+          SCENES: ${{ inputs.scenes }}
+        run: |
+          set +e
+          out=duo-raw; mkdir -p "$out" diag
+          page=compose_store_ipad_visual
+          failed=0
+          # The device boots folded (outer screen primary). Outer first, then open it for the inner.
+          for screen in outer inner; do
+            case " $SCREENS " in *" $screen "*) ;; *) continue;; esac
+            if [ "$screen" = inner ]; then
+              xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null
+              xcrun simctl spawn "$SIM_UDID" "$DUO_SWAP" swap 0.5 2>&1 | tail -3
+              sleep 8
+              # status bar overrides are per display: set them again on the open device
+              xcrun simctl status_bar "$SIM_UDID" override --time "9:41" --dataNetwork wifi --wifiBars 3 --cellularBars 4 --batteryState charged --batteryLevel 100
+              display=3
+            else
+              display=1
+            fi
+            for lang in $LANGS; do
+              mkdir -p "$out/$screen/$lang"
+              for scene in $SCENES; do
+                xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null
+                log="diag/$screen-$lang-$scene.log"
+                SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_STATUS_BAR=1 \
+                SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE="$page" \
+                SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE_DATA="{\"pageName\":\"$page\",\"scene\":\"$scene\",\"lang\":\"$lang\",\"duo\":\"$screen\"}" \
+                  xcrun simctl launch --console-pty "$SIM_UDID" "$BUNDLE_ID" > "$log" 2>&1 &
+                pid=$!
+                ready=0
+                for _ in $(seq 1 60); do
+                  if grep -q "SLOCK_VISUAL_FIXTURE_READY page=$page" "$log"; then ready=1; break; fi
+                  sleep 1
+                done
+                sleep 8
+                xcrun simctl io "$SIM_UDID" screenshot --display=$display "$out/$screen/$lang/$scene.png" >/dev/null 2>&1
+                kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+                facts=$(grep -a "RAFT_WINDOW_FACTS" "$log" | tail -1 | sed -E 's/^.*ios_window_facts //' | cut -c1-220)
+                sides=$(grep -a "RAFT_SIDE_ACTIONS shown" "$log" | tail -1 | sed -E 's/^.*RAFT_SIDE_ACTIONS //')
+                echo "$screen/$lang/$scene ready=$ready | $facts | $sides"
+                [ "$ready" = 1 ] || { echo "::warning::$screen/$lang/$scene not ready"; failed=$((failed+1)); }
+              done
+            done
+          done
+          python3 -c "
+          import struct, glob
+          for p in sorted(glob.glob('duo-raw/*/*/*.png')):
+              w, h = struct.unpack('>II', open(p, 'rb').read()[16:24]); print(p, w, h)
+          "
+          echo "failed=$failed"
+      - name: Clean up simulator
+        if: always()
+        run: |
+          xcrun simctl shutdown "${SIM_UDID:-none}" 2>/dev/null || true
+          xcrun simctl delete "${SIM_UDID:-none}" 2>/dev/null || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: duo-raw
+          path: |
+            duo-raw/
+            diag/
+            xcodebuild-ios.log
+          if-no-files-found: warn
+
+  frame:
+    name: Frame (frames.py --set duo5)
+    needs: capture
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: duo-raw
+          path: dl
+      - name: Tools
+        run: |
+          python3 -m pip install --quiet pillow
+          npm install --silent --prefix "$RUNNER_TEMP/store-fonts" @fontsource/noto-sans-sc @fontsource/noto-sans-jp
+          mkdir -p "$RUNNER_TEMP/bin"
+          chrome=$(command -v chromium || command -v google-chrome || command -v chromium-browser)
+          ln -sf "$chrome" "$RUNNER_TEMP/bin/chromium"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Frame
+        env:
+          SCREENS: ${{ inputs.screens }}
+          LANGS: ${{ inputs.langs }}
+          SCENES: ${{ inputs.scenes }}
+        run: |
+          python3 scripts/store-screenshots/frames.py --set duo5 --raw dl/duo-raw --out duo-final \
+            --fonts "$RUNNER_TEMP/store-fonts/node_modules/@fontsource" --jobs 3 \
+            --screens "$(echo $SCREENS | tr ' ' ',')" --langs "$(echo $LANGS | tr ' ' ',')" --scenes "$(echo $SCENES | tr ' ' ',')"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: duo-final
+          path: duo-final/
