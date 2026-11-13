@@ -21,7 +21,7 @@ import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowDialog
 
 /**
- * JVM screenshots of the agent Report Issue panel and its "Report Submitted" screen (web
+ * JVM screenshots of the agent Report issue panel and its "Report submitted" screen (web
  * ReportIssueDialog), light and dark:
  * - `members.report-issue`: the panel for an agent on the reporter's own machine — the Include
  *   section (no disclosure lines, web #14218), every box on, the transcript hint, the machine runner log tail
@@ -29,7 +29,7 @@ import org.robolectric.shadows.ShadowDialog
  * - `members.report-issue.submitted`: the ticket was filed (View Ticket + Done), session record
  *   requested.
  * - `members.report-issue.ticket-failed`: uploaded but no ticket — warning, report reference,
- *   Copy Report Reference and Retry Ticket.
+ *   Copy report reference and Retry ticket.
  * Verify / record as [RaftRobolectricScreenshot]; reports land in `build/reports/home-screenshots/`.
  */
 @RunWith(RobolectricTestRunner::class)
