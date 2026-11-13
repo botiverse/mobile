@@ -4,7 +4,7 @@ area: artifacts
 platforms:
   - android
   - ios
-pull_request: TBD
+pull_request: 4676
 rollout: full
 ---
 
