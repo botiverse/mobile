@@ -118,6 +118,9 @@ class RuntimeFormV2Test {
                 "baseUrl" to RuntimeFormV2FieldKind.Url,
                 "supportsImageInput" to RuntimeFormV2FieldKind.Boolean,
                 "model" to RuntimeFormV2FieldKind.DependentSelect,
+                "reasoningEffort" to RuntimeFormV2FieldKind.Select,
+                "contextWindow" to RuntimeFormV2FieldKind.Text,
+                "maxOutputTokens" to RuntimeFormV2FieldKind.Text,
                 "loadLocalPlugins" to RuntimeFormV2FieldKind.Boolean,
                 "envVars" to RuntimeFormV2FieldKind.StringMap
             ),
@@ -127,7 +130,7 @@ class RuntimeFormV2Test {
         assertEquals("Load local Pi extensions", pi.field("loadLocalPlugins").label)
         // v2-only copy (slock #8556): the v1 frozen form has no model hint, so this is how a screen shows v2.
         assertEquals("Pick a model from the list. Where the provider allows it, you can also type a model ID.", pi.field("model").hint)
-        assertEquals(listOf("loadLocalPlugins", "envVars"), pi.fields.filter { it.advanced }.map { it.key })
+        assertEquals(listOf("contextWindow", "maxOutputTokens", "loadLocalPlugins", "envVars"), pi.fields.filter { it.advanced }.map { it.key })
         assertEquals(listOf("providerId", "apiKey", "model"), pi.fields.filter { it.required }.map { it.key })
         assertEquals("providerId", pi.field("baseUrl").visibleWhen.first().key)
         assertEquals(emptyList(), pi.blockingFieldKeys)

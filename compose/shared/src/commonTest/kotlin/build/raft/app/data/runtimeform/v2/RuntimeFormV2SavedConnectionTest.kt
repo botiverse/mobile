@@ -245,6 +245,8 @@ class RuntimeFormV2SavedConnectionTest {
                 if (sourceId == "provider") {
                     """{"sourceId":"provider","kind":"select","pointer":"/providerId",""" +
                         """"options":[{"value":"deepseek","label":"DeepSeek"}],"defaultValue":"deepseek"}"""
+                } else if (sourceId == "reasoningEffort") {
+                    """{"sourceId":"reasoningEffort","kind":"select","pointer":"/reasoningEffort","options":[]}"""
                 } else {
                     """{"sourceId":"model","kind":"dependent_select","pointer":"/model","dependsOn":"/providerId",""" +
                         """"optionsByValue":{"deepseek":[{"value":"deepseek/v4","label":"V4"}]}}"""
@@ -258,7 +260,10 @@ class RuntimeFormV2SavedConnectionTest {
             RuntimeFormV2Loader(api).loadCreate(ServerId("s1"), "m1", "builtin")
         ).data
         assertEquals("rev-1", loaded.form.revision)
-        assertEquals(listOf("provider rev=rev-1 refresh=false", "model rev=rev-1 refresh=false"), api.sourceRequests)
+        assertEquals(
+            listOf("provider rev=rev-1 refresh=false", "model rev=rev-1 refresh=false", "reasoningEffort rev=rev-1 refresh=false"),
+            api.sourceRequests
+        )
 
         val unrevisioned = RevisionApi(mutableListOf(BUILTIN_V2_FORM_JSON)) { sourceId, _, _ -> liveSource(sourceId) }
         RuntimeFormV2Loader(unrevisioned).loadCreate(ServerId("s1"), "m1", "builtin")

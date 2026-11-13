@@ -63,8 +63,11 @@ class RuntimeFormV3StateTest {
         assertEquals(mapOf("apiKey" to RuntimeFormV2ErrorCode.Required), validateRuntimeFormV2(builtin, builtinSources, direct))
 
         val connection = applyRuntimeFormV2Change(builtin, builtinSources, direct.with("apiKey", "sk-typed"), "providerId", JsonPrimitive("connection:conn-deepseek"))
-        for (key in listOf("apiKey", "baseUrl", "supportsImageInput", "contextWindow", "maxOutputTokens")) {
+        for (key in listOf("apiKey", "baseUrl", "supportsImageInput")) {
             assertFalse(isRuntimeFormV2FieldVisible(builtin.field(key), connection, builtinSources), "$key hidden while a connection is selected")
+        }
+        for (key in listOf("contextWindow", "maxOutputTokens")) {
+            assertTrue(isRuntimeFormV2FieldVisible(builtin.field(key), connection, builtinSources), "$key: a saved preset connection takes limits like its provider (slock #14754)")
         }
         assertFalse(isRuntimeFormV2FieldRequired(builtin.field("apiKey"), connection))
         assertEquals(emptyMap(), validateRuntimeFormV2(builtin, builtinSources, connection))

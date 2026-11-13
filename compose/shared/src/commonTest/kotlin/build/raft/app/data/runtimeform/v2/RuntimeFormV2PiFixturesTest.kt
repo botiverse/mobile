@@ -52,7 +52,7 @@ class RuntimeFormV2PiFixturesTest {
         val model = runtimeFormV2Choices(field("providerModel"), sources, values) as RuntimeFormV2Choices.Select
         assertFalse(model.allowCustom, "DeepSeek models only come from its list")
         val effort = runtimeFormV2Choices(field("providerReasoningEffort"), sources, values) as RuntimeFormV2Choices.Select
-        assertEquals(listOf("low", "medium", "high", "xhigh"), effort.options.map { it.value })
+        assertEquals(listOf("off", "minimal", "low", "medium", "high", "xhigh", "max"), effort.options.map { it.value })
         assertEquals(RuntimeFormV2ErrorCode.NotAChoice, validateRuntimeFormV2(pi, sources, values + ("providerModel" to JsonPrimitive("typed")))["providerModel"])
     }
 
