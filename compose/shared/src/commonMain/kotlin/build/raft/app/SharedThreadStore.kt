@@ -166,6 +166,7 @@ import build.raft.app.network.sync.CanonicalMessageV2EnterBaseline
 import build.raft.app.network.sync.CanonicalMessageV2ThreadJoinConfirmed
 import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
+import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.ThreadDurableAccessEvictor
@@ -5576,6 +5577,69 @@ internal class SharedThreadDataSource(
         acceptedWindow?.takeIf { it.identity.isValid() }?.let { recordReplyWindows(listOf(it)) }
         return patched
     }
+
+    /**
+     * #proj-mobile #120 / #wg-mobile-sync #88: the sender's own reply, confirmed by the send's HTTP
+     * answer, lands on the parent conversation's cached payload (reply count, inline preview) the way
+     * web's thread panel updates the parent summary when a send resolves. Until now the parent only
+     * moved on `thread:updated`; a joint channel's frame is fanned out per server projection to that
+     * server's `channel:<local parent>` room, and mobile holds a socket for the current server only,
+     * so a reply sent from a window whose server is not the socket's (or whose projection frame never
+     * reached it) left the parent's reply count and preview stale.
+     *
+     * Keyed by the reply page's own parent channel under [provenance] (the server that page belongs to),
+     * not by the realtime envelope. [replyCountAtLeast] is what the reply page itself proves; the
+     * parent's count also grows by one when its inline window shows this reply is newer than anything
+     * it has counted. A later `thread:updated` still overwrites with the server's total.
+     */
+    internal fun applySentReplyToParentConversation(
+        provenance: ReplyCacheProvenance,
+        parentScopeId: String,
+        parentMessageId: String,
+        threadChannelId: String,
+        reply: ReplyPreview,
+        replyCountAtLeast: Int,
+    ): Boolean =
+        synchronized(replyCacheProvenanceLock) {
+            if (replyCacheProvenance.value?.isCurrentOrSuccessorForLocalSend(provenance) != true) {
+                return@synchronized false
+            }
+            val current = replyCacheProvenance.value ?: return@synchronized false
+            val ownerScopeId = current.threadPayloadOwnerScopeId ?: return@synchronized false
+            val generation = payloadCache.captureGeneration(current.serverId, parentScopeId, ownerScopeId)
+            val cached =
+                payloadCache.get(
+                    current.serverId,
+                    parentScopeId,
+                    current.environmentId,
+                    current.principalId,
+                    ownerScopeId,
+                ) ?: return@synchronized false
+            val next = cached.withSentReplyOnParent(parentMessageId, threadChannelId, reply, replyCountAtLeast)
+            if (next == cached) return@synchronized false
+            if (!payloadCache.putIfCurrent(generation, next, ownerScopeId)) return@synchronized false
+            // The cache read re-applies reply-count facts; record the new total as the newest one so an
+            // older summary/realtime fact cannot pull the parent back to its pre-send count.
+            val nextParent = (next.messages + listOfNotNull(next.originMessage)).firstOrNull { it.id == parentMessageId }
+            if (nextParent != null) {
+                payloadCache.recordReplyCountFacts(
+                    serverId = current.serverId,
+                    threadId = parentScopeId,
+                    environmentId = current.environmentId,
+                    principalId = current.principalId,
+                    facts =
+                        listOf(
+                            parentMessageId to
+                                SharedThreadReplyCountFact(
+                                    threadChannelId = nextParent.threadChannelId ?: threadChannelId,
+                                    replyCount = nextParent.replyCount,
+                                    observedAt = TimeSource.Monotonic.markNow(),
+                                )
+                        ),
+                )
+            }
+            true
+        }
 
     /**
      * Outcome of an attempt to enrich the current thread payload with
@@ -13095,6 +13159,60 @@ internal class SharedThreadStore(
                     .preserveStableTimelineFrom(payload)
             payload.withThreadContentProjectionFrom(selected)
         }
+        dataSource.currentReplyCacheProvenance()?.let { provenance ->
+            applySentReplyToParentConversation(page, provenance)
+        }
+    }
+
+    /**
+     * #proj-mobile #120 / #wg-mobile-sync #88: a reply this page sent also moves its parent message
+     * in the parent conversation (reply count, inline preview), without waiting for a
+     * `thread:updated` that a joint channel may deliver only to another server's socket.
+     */
+    private fun applySentReplyToParentConversation(page: ThreadMessagesPage, provenance: ReplyCacheProvenance) {
+        val payload = _state.value.payload
+        if (payload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) return
+        val parent = payload.durableReplyParentOrNull() ?: return
+        val threadChannelId = payload.replyThreadContentChannelId() ?: return
+        val sent =
+            page.messages.lastOrNull { message ->
+                message.id != parent.rootMessageId && (message.seq ?: 0L) > 0L
+            } ?: return
+        val senderType =
+            if (sent.messageType.equals("system", ignoreCase = true)) "system" else sent.senderType.trim().lowercase()
+        if (senderType !in build.raft.app.data.ReplyPreviewWireSenderTypes) return
+        val reply =
+            ReplyPreview(
+                messageId = sent.id,
+                seq = sent.seq ?: return,
+                content = sent.content,
+                senderId = sent.senderId.trim(),
+                senderType = senderType,
+                senderName = sent.senderName?.trim().orEmpty(),
+                createdAt = sent.createdAt?.trim().orEmpty(),
+            )
+        val loadedReplies =
+            if (payload.canLoadMoreBefore) {
+                0
+            } else {
+                payload.messages.count { message ->
+                    message.id != parent.rootMessageId && message.deliveryState == ThreadMessageDeliverySent
+                }
+            }
+        val replyCountAtLeast = maxOf(payload.originMessage?.replyCount ?: 0, loadedReplies, 1)
+        val patched =
+            dataSource.applySentReplyToParentConversation(
+                provenance = provenance,
+                parentScopeId = parent.parentChannelId,
+                parentMessageId = parent.rootMessageId,
+                threadChannelId = threadChannelId,
+                reply = reply,
+                replyCountAtLeast = replyCountAtLeast,
+            )
+        diagnosticsLogger?.invoke(
+            "thread_sent_reply_parent_patch parentMessageId=${parent.rootMessageId} " +
+                "parentScopeId=${parent.parentChannelId} replyCountAtLeast=$replyCountAtLeast cachePatched=$patched"
+        )
     }
 
     internal fun admitLocalSend(
@@ -13393,6 +13511,7 @@ internal class SharedThreadStore(
                 )
             }
         }
+        applySentReplyToParentConversation(page, currentProvenance)
         // Realtime may have consumed the row first. The durable send is still terminal after the
         // HTTP success, so journal cleanup is independent of the optional payload-cache commit
         // and of whether this page is still mounted on the original route.
@@ -16421,6 +16540,54 @@ private fun RaftThreadScreenPayload.withOffPageThreadUpdated(event: ThreadUpdate
     fun RaftThreadMessageItem.fold(): RaftThreadMessageItem =
         if (id == parentId) copy(replyCount = model.replyCount, inlineReplies = model) else this
     return counted.copy(messages = counted.messages.map { it.fold() }, originMessage = counted.originMessage?.fold())
+}
+
+/**
+ * The parent conversation's cached payload after the viewer's own reply under [parentMessageId] was
+ * accepted by the server (see [SharedThreadDataSource.applySentReplyToParentConversation]). The reply
+ * folds into the parent's inline preview; the count never goes down and only grows past what the
+ * parent already showed when its inline window proves the reply was not counted yet (newer than
+ * every reply it holds), so a `thread:updated` that already landed is not counted twice.
+ */
+internal fun RaftThreadScreenPayload.withSentReplyOnParent(
+    parentMessageId: String,
+    threadChannelId: String,
+    reply: ReplyPreview,
+    replyCountAtLeast: Int,
+): RaftThreadScreenPayload {
+    val previousParent = (messages + listOfNotNull(originMessage)).firstOrNull { it.id == parentMessageId } ?: return this
+    val previousThreadChannelId = previousParent.threadChannelId?.trim()?.takeIf { it.isNotBlank() }
+    val window =
+        previousParent.inlineReplies
+            ?.takeIf { previousThreadChannelId == null || previousThreadChannelId == threadChannelId }
+    val replyIsUncounted =
+        window != null &&
+            window.replies.none { it.messageId == reply.messageId } &&
+            reply.seq > window.snapshotSeq &&
+            window.replies.all { it.seq < reply.seq }
+    val parentCount = maxOf(previousParent.replyCount, window?.replyCount ?: 0)
+    val replyCount =
+        maxOf(
+            parentCount + if (replyIsUncounted || parentCount == 0) 1 else 0,
+            replyCountAtLeast,
+        )
+    val model =
+        (window ?: initialThreadRepliesReadModel(emptyList(), 0, InlineThreadReplyPreviewLimit))
+            .applyReplyFrame(reply, replyCount, InlineThreadReplyPreviewLimit)
+    fun RaftThreadMessageItem.fold(): RaftThreadMessageItem =
+        if (id != parentMessageId) {
+            this
+        } else {
+            copy(
+                threadChannelId = previousThreadChannelId ?: threadChannelId,
+                replyCount = maxOf(replyCount, model.replyCount),
+                inlineReplies = model,
+            )
+        }
+    val nextMessages = messages.map { it.fold() }
+    val nextOrigin = originMessage?.fold()
+    if (nextMessages == messages && nextOrigin == originMessage) return this
+    return copy(messages = nextMessages, originMessage = nextOrigin)
 }
 
 internal fun RaftThreadScreenPayload.withActionCard(messageId: String, card: ThreadActionCard): RaftThreadScreenPayload =
