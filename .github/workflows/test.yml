@@ -560,9 +560,9 @@ jobs:
           "$GRADLE_HEAP" 4g
           # :shared:verifySqlDelightMigration applies every checked-in migration (.sqm) to each
           # schema snapshot (src/commonMain/sqldelight/databases/<n>.db) and fails if the result
-          # differs from the current RaftDatabase.sq schema. verifyMigrations is on in
-          # compose/shared/build.gradle.kts, but only `check` depended on it and CI never runs
-          # `check`, so a broken migration could merge and fail on users' devices on upgrade.
+          # differs from the current RaftDatabase.sq schema (verifyMigrations is on in
+          # compose/shared/build.gradle.kts). CI never runs `check`, the only thing depending on
+          # verifySqlDelightMigration, so it is invoked explicitly.
           tasks+=(
             :shared:verifySqlDelightMigration
             :core:testAndroidHostTest
