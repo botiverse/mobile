@@ -102,6 +102,8 @@ internal fun RaftMessageCardView(
     messageId: String? = null,
     /** Fixtures: the viewer's read of the acting buttons, where no conversation reads it. */
     actingLive: RaftMessageCardLive? = null,
+    /** Fixtures: how the acting buttons would run, where no conversation runs them. */
+    actingActions: ThreadAppLinkCardActionHost? = null,
 ) {
     val buttons = remember(card.card) { card.card.messageCardButtons() }
     val acting = card.acting
@@ -111,7 +113,7 @@ internal fun RaftMessageCardView(
     // window or a confirmation on screen must outlive it.
     val press =
         if (acting != null) {
-            rememberThreadAppLinkCardPress(remember(card, live) { messageCardPressCard(card, live) }, actingHost?.actions, key = messageId)
+            rememberThreadAppLinkCardPress(remember(card, live) { messageCardPressCard(card, live) }, actingHost?.actions ?: actingActions, key = messageId)
         } else {
             null
         }

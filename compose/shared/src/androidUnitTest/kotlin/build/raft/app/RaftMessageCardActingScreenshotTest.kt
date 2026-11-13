@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.AppLinkActionResult
 import build.raft.app.data.MessageCardActingApp
 import build.raft.app.data.MessageCardActingPage
 import build.raft.app.data.WireActionCardMetadata
@@ -54,6 +55,15 @@ class RaftMessageCardActingScreenshotTest {
             )
         )
 
+    /** Buttons that can be pressed but go nowhere: the fixture draws the pressable state. */
+    private val noActions =
+        ThreadAppLinkCardActionHost(
+            prepare = { _, _ -> AppLinkActionResult.Failed(null, null, outOfDate = false) },
+            execute = { _, _, _ -> AppLinkActionResult.Failed(null, null, outOfDate = false) },
+            reread = { true },
+            toast = {},
+        )
+
     private fun live(messageCard: String) = requireNotNull(parseMessageCardReadAnswer(messageCardReadBody(messageCard)))
 
     private fun capture(name: String, appearance: RaftAppAppearance) {
@@ -72,7 +82,7 @@ class RaftMessageCardActingScreenshotTest {
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     for (live in listOf(forViewer, waiting, declined)) {
-                        RaftMessageCardView(card, onOpenUrl = {}, modifier = Modifier.fillMaxWidth(), actingLive = live)
+                        RaftMessageCardView(card, onOpenUrl = {}, modifier = Modifier.fillMaxWidth(), actingLive = live, actingActions = noActions)
                     }
                 }
             }
