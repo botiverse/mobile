@@ -151,6 +151,9 @@ import build.raft.app.data.ComputersRackSortKey
 import build.raft.app.model.RaftRelativeTimeLabel
 import build.raft.app.model.RaftRelativeTimeUnit
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.drawBehind
@@ -1593,12 +1596,11 @@ private fun RaftComputerRackBlock(
                 .padding(horizontal = RaftComputerBlockEdge, vertical = 12.dp)
                 .testTag("rack-row-${row.id}"),
         ) {
-            // The icon and name come first: a version too long for the line (a staging build's) is
-            // cut, the name keeping at least half the line (web truncates the version too).
-            RaftComputerGiveWayRow(
-                leadFloor = { width -> width / 2 },
+            // The icon, name and count come first; a version that doesn't fit beside them (a staging
+            // build's) goes whole onto the next line, under the name.
+            RaftComputerWrapRow(
                 gap = 8.dp,
-                trailAtEnd = true,
+                wrapIndent = RaftComputerCardIconSize + 8.dp,
                 modifier = Modifier.fillMaxWidth(),
                 lead = {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2086,85 +2088,92 @@ private fun RaftComputerCardFactsLine(facts: RaftComputerCardFacts, modifier: Mo
                 } else {
                     raftComputerKindVersion(facts.kind, facts.version)
                 }
-            // The version is cut at its end when the line is too short for it (a staging build's
-            // "v1.25.0-staging.…"); the notice after it stays whole.
-            val versionAndNotice: @Composable () -> Unit = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val versionText = if (facts.osName != null) version?.let { " · $it" } else version
-                    if (versionText != null) {
-                        RaftText(
-                            versionText,
-                            modifier = Modifier.weight(1f, fill = false),
-                            style = style,
-                            color = hint,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    RaftComputerVersionNoticeText(facts.notice, style)
+            val notice =
+                when (val notice = facts.notice) {
+                    is RaftComputerVersionNotice.Available ->
+                        " · " + stringResource(Res.string.settings_computers_update_available) to RaftTheme.colors.warningStrong
+                    is RaftComputerVersionNotice.BelowFloor ->
+                        " · " + stringResource(Res.string.settings_computers_update_required) to RaftTheme.colors.warningStrong
+                    is RaftComputerVersionNotice.Updating ->
+                        " · " + stringResource(Res.string.settings_computers_rack_updating_to, notice.version.removePrefix("v")) to
+                            RaftTheme.colors.foreground
+                    null -> null
                 }
-            }
+            // The whole version and its notice, never cut: a version too long for the line (a staging
+            // build's "v1.25.0-staging.…") wraps onto the next.
+            val versionAndNotice =
+                buildAnnotatedString {
+                    if (version != null) append(if (facts.osName != null) " · $version" else version)
+                    notice?.let { (text, color) -> withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = color)) { append(text) } }
+                }
             if (facts.osName != null) {
                 // The OS gives way first (down to a couple of characters), then the version.
                 RaftComputerGiveWayRow(
                     leadFloor = { 24.dp.roundToPx() },
                     gap = 0.dp,
-                    trailAtEnd = false,
                     modifier = modifier,
                     lead = {
                         RaftText(facts.osName, style = style, color = hint, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     },
-                    trail = versionAndNotice,
+                    trail = { RaftText(versionAndNotice, style = style, color = hint) },
                 )
             } else {
-                Box(modifier) { versionAndNotice() }
+                RaftText(versionAndNotice, modifier = modifier, style = style, color = hint)
             }
         }
     }
 }
 
-/** The facts line's version notice: "· Update available" / "· Update required" / "· Updating to …". */
+/**
+ * A lead and a trail on one line, the trail at its end; when they don't both fit, the trail goes
+ * onto the next line, [wrapIndent] in, where it may wrap further. The lead keeps the full width.
+ */
 @Composable
-private fun RaftComputerVersionNoticeText(notice: RaftComputerVersionNotice?, style: TextStyle) {
-    when (notice) {
-        is RaftComputerVersionNotice.Available ->
-            RaftText(
-                " · " + stringResource(Res.string.settings_computers_update_available),
-                style = style.copy(fontWeight = FontWeight.Bold),
-                color = RaftTheme.colors.warningStrong,
-                maxLines = 1,
-                softWrap = false,
-            )
-        is RaftComputerVersionNotice.BelowFloor ->
-            RaftText(
-                " · " + stringResource(Res.string.settings_computers_update_required),
-                style = style.copy(fontWeight = FontWeight.Bold),
-                color = RaftTheme.colors.warningStrong,
-                maxLines = 1,
-                softWrap = false,
-            )
-        is RaftComputerVersionNotice.Updating ->
-            RaftText(
-                " · " + stringResource(Res.string.settings_computers_rack_updating_to, notice.version.removePrefix("v")),
-                style = style.copy(fontWeight = FontWeight.Bold),
-                color = RaftTheme.colors.foreground,
-                maxLines = 1,
-                softWrap = false,
-            )
-        null -> Unit
+private fun RaftComputerWrapRow(
+    gap: Dp,
+    wrapIndent: Dp,
+    modifier: Modifier = Modifier,
+    lead: @Composable () -> Unit,
+    trail: @Composable () -> Unit,
+) {
+    Layout(contents = listOf(lead, trail), modifier = modifier) { (leadMeasurables, trailMeasurables), constraints ->
+        val leadMeasurable = leadMeasurables.first()
+        val trailMeasurable = trailMeasurables.first()
+        val gapPx = gap.roundToPx()
+        val width = constraints.maxWidth
+        val leadWant = leadMeasurable.maxIntrinsicWidth(Constraints.Infinity)
+        val trailWant = trailMeasurable.maxIntrinsicWidth(Constraints.Infinity)
+        val oneLine = width == Constraints.Infinity || leadWant + gapPx + trailWant <= width
+        val leadPlaceable = leadMeasurable.measure(Constraints(maxWidth = width))
+        if (oneLine) {
+            val trailPlaceable = trailMeasurable.measure(Constraints(maxWidth = trailWant))
+            val lineWidth = if (constraints.hasBoundedWidth) width else leadPlaceable.width + gapPx + trailPlaceable.width
+            val height = maxOf(leadPlaceable.height, trailPlaceable.height).coerceIn(constraints.minHeight, constraints.maxHeight)
+            layout(lineWidth, height) {
+                leadPlaceable.placeRelative(0, (height - leadPlaceable.height) / 2)
+                trailPlaceable.placeRelative(lineWidth - trailPlaceable.width, (height - trailPlaceable.height) / 2)
+            }
+        } else {
+            val indent = wrapIndent.roundToPx().coerceAtMost(width)
+            val trailPlaceable = trailMeasurable.measure(Constraints(maxWidth = width - indent))
+            val height = (leadPlaceable.height + trailPlaceable.height).coerceIn(constraints.minHeight, constraints.maxHeight)
+            layout(width, height) {
+                leadPlaceable.placeRelative(0, 0)
+                trailPlaceable.placeRelative(indent, leadPlaceable.height)
+            }
+        }
     }
 }
 
 /**
- * One line of a lead and a trail ([trailAtEnd]: the trail at the line's end, else right after the
- * lead). When both don't fit, the lead gives way first, down to [leadFloor] (px, of the line's
- * width), then the trail does; each is measured to the width it gets and cuts its own text.
+ * One line of a lead and, right after it, a trail. When both don't fit, the lead gives way first,
+ * down to [leadFloor] (px, of the line's width), then the trail does; each is measured to the
+ * width it gets (the lead cuts its text, the trail may wrap).
  */
 @Composable
 private fun RaftComputerGiveWayRow(
     leadFloor: Density.(Int) -> Int,
     gap: Dp,
-    trailAtEnd: Boolean,
     modifier: Modifier = Modifier,
     lead: @Composable () -> Unit,
     trail: @Composable () -> Unit,
@@ -2187,12 +2196,11 @@ private fun RaftComputerGiveWayRow(
         val leadPlaceable = leadMeasurable.measure(Constraints(maxWidth = leadWidth, maxHeight = constraints.maxHeight))
         val trailPlaceable = trailMeasurable.measure(Constraints(maxWidth = trailWidth, maxHeight = constraints.maxHeight))
         val natural = leadPlaceable.width + gapPx + trailPlaceable.width
-        val lineWidth = if (trailAtEnd && constraints.hasBoundedWidth) width else natural.coerceIn(constraints.minWidth, constraints.maxWidth)
+        val lineWidth = natural.coerceIn(constraints.minWidth, constraints.maxWidth)
         val height = maxOf(leadPlaceable.height, trailPlaceable.height).coerceIn(constraints.minHeight, constraints.maxHeight)
         layout(lineWidth, height) {
             leadPlaceable.placeRelative(0, (height - leadPlaceable.height) / 2)
-            val trailX = if (trailAtEnd) lineWidth - trailPlaceable.width else leadPlaceable.width + gapPx
-            trailPlaceable.placeRelative(trailX, (height - trailPlaceable.height) / 2)
+            trailPlaceable.placeRelative(leadPlaceable.width + gapPx, (height - trailPlaceable.height) / 2)
         }
     }
 }
