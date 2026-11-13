@@ -83,9 +83,9 @@ static unsigned long long const RaftDiagnosticsLogMaxBytes = 512ULL * 1024ULL;
 static NSUInteger const RaftDiagnosticsLogMaxFiles = 4;
 static NSUInteger const RaftDiagnosticsMaxLaunchSessions = 5;
 static NSUInteger const RaftDiagnosticsAttachmentMaxLogFiles = 20;
-/// Raw log bytes a feedback report attaches (shared RaftFeedbackDiagnosticsBudget.DefaultBudgetBytes):
+/// Raw log bytes a feedback report attaches (shared RaftFeedbackDiagnosticsBudget.ReportBudgetBytes):
 /// newest launch first, newest shard first; the newest shard is always attached.
-static unsigned long long const RaftDiagnosticsAttachmentMaxLogBytes = 1024ULL * 1024ULL;
+static unsigned long long const RaftDiagnosticsAttachmentMaxLogBytes = 768ULL * 1024ULL;
 static NSUInteger const RaftDiagnosticsMinimumRetainedSnapshotCount = 5;
 static NSTimeInterval const RaftDiagnosticsFeedbackPruneMinimumAgeSeconds = 24.0 * 60.0 * 60.0;
 static NSUInteger const RaftDiagnosticsOutstandingLimit = 512;

@@ -80,7 +80,13 @@ class RaftApplication : Application() {
                     RaftAndroidLocalDiagnostics.recordCriticalLog(record.level, record.tag, record.message)
                 RaftPlatformLogHint.None ->
                     // Shared lines were already admitted by the shared RaftDiagnosticsVolumePolicy.
-                    RaftAndroidLocalDiagnostics.recordSharedLog(record.level, record.tag, record.message, record.persist)
+                    RaftAndroidLocalDiagnostics.recordSharedLog(
+                        record.level,
+                        record.tag,
+                        record.message,
+                        record.persist,
+                        recent = record.recent,
+                    )
             }
         }
         installAndroidAppScopeSharedKeyValueStores(this)

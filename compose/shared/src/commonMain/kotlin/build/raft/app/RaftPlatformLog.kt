@@ -34,7 +34,13 @@ data class RaftPlatformLogRecord(
      * False: [RaftDiagnosticsVolumePolicy] keeps this line out of the persistent diagnostics log
      * (a gated verbose category, or counted into a per-minute summary). Console/logcat only.
      */
-    val persist: Boolean = true
+    val persist: Boolean = true,
+    /**
+     * True while not [persist]: summarized out of the log, but still a line for the platform's
+     * in-memory ring of the last minutes at full detail (`recent-memory.jsonl`). False for
+     * verbose-gated categories.
+     */
+    val recent: Boolean = persist
 )
 
 /**
@@ -313,7 +319,15 @@ internal class RaftPlatformLogQueue(
                 }.getOrNull()
             }
         admission?.summaries?.forEach { summary -> dispatchSummary(summary, item.timestampMillis) }
-        deliver(item.level, safeTag, safeMessage, item.timestampMillis, item.hint, persist = admission?.persist ?: true)
+        deliver(
+            item.level,
+            safeTag,
+            safeMessage,
+            item.timestampMillis,
+            item.hint,
+            persist = admission?.persist ?: true,
+            recent = admission?.recent ?: true
+        )
     }
 
     private fun dispatchSummary(summary: String, timestampMillis: Long) {
@@ -343,7 +357,8 @@ internal class RaftPlatformLogQueue(
         safeMessage: String,
         timestampMillis: Long,
         hint: RaftPlatformLogHint,
-        persist: Boolean
+        persist: Boolean,
+        recent: Boolean = persist
     ) {
         val sink = recordSink ?: RaftPlatformLogSinkRegistry.sink
         if (sink != null) {
@@ -354,7 +369,8 @@ internal class RaftPlatformLogQueue(
                     message = safeMessage,
                     timestampMillis = timestampMillis,
                     hint = hint,
-                    persist = persist
+                    persist = persist,
+                    recent = recent
                 )
             if (runCatching { sink(record) }.isSuccess) return
         }

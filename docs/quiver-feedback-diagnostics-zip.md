@@ -32,7 +32,7 @@ Quiver docs: `/docs/agent-cli-feedback`. Everything below is app-owned.)
 raft-diagnostics-summary.txt       human-readable environment/session summary
 app_logs/
   launch-<id>/raft-diagnostics.jsonl  app log (JSONL) per launch; rotations .1 .. .N
-  recent-memory.jsonl              recent in-memory events
+  recent-memory.jsonl              recent in-memory events (1.25+: last minutes at full detail)
   feedback-selection.txt           (1.23+) shards attached / omitted under the budget
 auth_logs/
   raft-auth-critical.jsonl         bounded auth-critical journal when present
@@ -108,7 +108,14 @@ carries the `key=value` payload. Sort by `ts` (or `seq`) to reconstruct order.
 
 ## Size budget and summaries (1.23+)
 
-A report attaches at most 1 MiB of raw app logs (`RaftFeedbackDiagnosticsBudget`):
+From 1.25 the budget is 768 KiB (`RaftFeedbackDiagnosticsBudget.ReportBudgetBytes`,
+`recent-memory.jsonl` included) and shards last written more than 6 hours before the
+report are left out, except the newest shard of the newest launch and of the launch
+before it (the end of a launch that crashed or was killed). The zip summary's
+"Recent logs" section is now a pointer to `app_logs/` and `auth_logs/` instead of a
+~120 KB copy of them (the Settings copy/share text still carries the copy).
+
+1.23 and 1.24: a report attaches at most 1 MiB of raw app logs (`RaftFeedbackDiagnosticsBudget`):
 the newest launch newest shard first, with a reserve for the end of the launch
 before it; a shard that does not fit whole is attached as its tail from the first
 full line. iOS applies the same byte budget to its attachment list. Before 1.23
@@ -120,11 +127,59 @@ high-frequency events keep their first line(s) per key and minute and one
 line; duplicate realtime skips, avatar, markdown preparse/recompose, viewport
 intents and per-request network successes are written only with Settings >
 Developer > Verbose diagnostics on (`diagnostics_verbose_off` counts them
-otherwise). Warnings, errors and failures are always written.
+otherwise). Warnings, errors and failures are always written (1.23 and 1.24; see
+below for 1.25).
+
+### 1.25 writer
+
+Measured on three 1.24.0 reports (fb-93123592, 7e198cab, 9cf9735f): the writer
+still produced 400–700 lines (~250 KB) per active minute, so 1 MiB held only the
+last 3–5 minutes. From 1.25:
+
+- Unlisted routine info events keep **2** lines per key and minute (was 10); the
+  rest go into the minute's `diagnostics_summary`.
+- Per-keystroke composer lines (`thread_composer_change[_result]`,
+  `thread_composer_draft_persist_save[d]`, 3/min), `thread_read_tail` (3/min),
+  `app_shell_parent_home_start_check` / `app_shell_child_tab_render` (2/min),
+  `tasks_realtime_ignore` (1/min) are summarized. Composer send lines
+  (`thread_composer_send_*`), thread read start/result/skip and
+  `app_shell_child_tab_dispatch` are still always written.
+- Routine **warn** lines are summarized too: `scroll_frames` (3/min),
+  `ime_animation_end` (2/min, `timedOut=true` always written) and request finishes
+  with `kind=CANCELLED` (2/min). Other warnings, including slow requests and
+  `nav_transition_frames` (navigation from/to), are always written.
+- Info lines that read like a failure are always written when they carry a
+  request/trace id (`clientRequestId=`, `requestId=`, `traceId=` …); without one,
+  5 per key and minute, counted as `failed:<key>` in the summary. Fields that say
+  "no failure" (`failedAttachments=false`, `errorBytes=0`, `error=none`) no longer
+  make a line look like a failure.
+- Summary entries carry timings where the rule names them:
+  `<key>=<suppressed>/<seen>[<sampleIds>;<distinct>]{<metric>=<min>..<max>,last=<v>;…}`,
+  e.g. `scroll_frames=14/17[…]{durationMs=180..1290,last=372;jankFrames=0..6,last=0;longestFrameMs=11..96,last=11}`.
+  Up to 2 sample ids per key (was 3).
+- `network_request_unfinished`: the 8 newest open requests per export, plus one
+  `network_request_unfinished_more count=… listed=8 total=…` line for the rest.
+- `recent-memory.jsonl` (Android) is the in-memory ring of the last 3 minutes at
+  **full detail**: every line, including the ones summarized out of the shards
+  (not the Verbose-diagnostics categories), newest kept first up to ~190 KB, whole
+  lines only. Its lines repeat the newest persisted lines; dedupe by `seq` when
+  merging with the shards. In heavy use (typing, scrolling) 190 KB is about the
+  last 30–60 s; when quieter, the full 3 minutes.
+
+Always written, never summarized: crash / ANR / system-kill / process-exit and
+memory context, auth trail, errors, warnings outside the list above, sends,
+navigation and route opens (`thread_start`, `thread_route_open`,
+`thread_reply_open`, `home_open_*`, `conversation_open`, `nav_transition_frames`,
+`app_shell_child_tab_dispatch`), lifecycle / background transitions, socket /
+reconnect / push / notification, artifact viewer / WebView, feedback and
+diagnostics lines. The build stamp (Version / Version code / Build / Source) is in
+the summary file.
 
 ## Triage tips
 
-The log is high-volume; filter aggressively. Common noise: `thread_composer_*`,
+The log is high-volume; filter aggressively. From 1.25, a routine line missing
+from the shards may be in `recent-memory.jsonl` (last minutes) or counted in a
+`diagnostics_summary` line. Common noise: `thread_composer_*`,
 `*_composer_draft_*`, `MemberPresenceUpdated` / `realtime_domain_accept_skip`,
 `shared_auth_session` / `mmkv_auth_key`.
 
