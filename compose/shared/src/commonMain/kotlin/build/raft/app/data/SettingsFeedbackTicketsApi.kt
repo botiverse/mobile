@@ -202,7 +202,23 @@ data class FeedbackTicketPage(
     val nextCursor: String?,
     /** The sum over the apps on a first page; null ("not known now") on a cursor page or with an app unavailable. */
     val unreadTotal: Int?,
-)
+    /**
+     * Each app's own total on a first page (`unread_by_source`), keyed by source; an app that could not
+     * be read has no key. Null: not sent (a cursor page, or a server before it).
+     */
+    val unreadBySource: Map<String, Int>? = null,
+) {
+    /** What this page says about the dot. */
+    val unread: FeedbackUnreadRead get() = FeedbackUnreadRead(unreadTotal, unreadBySource)
+}
+
+/**
+ * The Feedback dot's read of the merged list's first page: [total] (`unread_total`, the sum; null
+ * not known) and [bySource] (`unread_by_source`, each app's own; null not sent, a missing key not known).
+ */
+data class FeedbackUnreadRead(val total: Int?, val bySource: Map<String, Int>? = null) {
+    val isUnknown: Boolean get() = total == null && bySource == null
+}
 
 /** A list read: a page, or the server's "can't read right now" answer to retry after a while. */
 sealed interface FeedbackTicketListRead {
@@ -216,7 +232,8 @@ data class FeedbackTicketDetail(
     val comments: List<FeedbackComment>,
     val attachments: List<FeedbackAttachment>,
     val nextCommentCursor: String?,
-    val unreadTotal: Int,
+    /** The ticket's own app's unread total after this read (`unread_total`); null when not sent. */
+    val unreadTotal: Int?,
 )
 
 data class FeedbackAttachmentBytes(val bytes: ByteArray, val contentType: String?)
@@ -284,11 +301,12 @@ class NetworkSettingsFeedbackTicketsRepository(
     }
 
     /**
-     * The unread total across every app for the Settings / Feedback dot: the merged list's first
-     * page `unread_total` with `limit=1` (slock #14722 "Read the total from the first page"). Null:
-     * not known now (an app unavailable, or Hands slow or refusing: a `degraded` answer), never 0.
+     * The unread totals for the Settings / Feedback dot: the merged list's first page with `limit=1`
+     * (slock #14722 "Read the total from the first page"): `unread_total` (the sum) and, when the
+     * server sends it, `unread_by_source` (each app's). A null total is not known now (an app
+     * unavailable, or Hands slow or refusing: a `degraded` answer), never 0.
      */
-    suspend fun unreadTotal(): FeedbackResult<Int?> =
+    suspend fun unreadTotal(): FeedbackResult<FeedbackUnreadRead> =
         call("unread_total") {
             networkClient.requestWithHeaders(
                 DataRequestPriority.Background,
@@ -301,8 +319,8 @@ class NetworkSettingsFeedbackTicketsRepository(
                 is FeedbackResult.Failed -> result
                 is FeedbackResult.Ok ->
                     when (val read = result.value) {
-                        is FeedbackTicketListRead.Page -> FeedbackResult.Ok(read.page.unreadTotal)
-                        is FeedbackTicketListRead.Degraded -> FeedbackResult.Ok(null)
+                        is FeedbackTicketListRead.Page -> FeedbackResult.Ok(read.page.unread)
+                        is FeedbackTicketListRead.Degraded -> FeedbackResult.Ok(FeedbackUnreadRead(null))
                     }
             }
         }
@@ -508,6 +526,12 @@ private data class FeedbackTicketPageDto(
     val tickets: List<FeedbackTicketDto>? = null,
     @SerialName("next_cursor") val nextCursor: String? = null,
     @SerialName("unread_total") val unreadTotal: Int? = null,
+    /**
+     * Each app's own unread total, first page only (`{ web?, android?, ios?, ohos? }`; a failed app has
+     * no key). Announced by Archer (#triage:#364) for a follow-up to slock #14722: pending contract
+     * verification, optional until it ships.
+     */
+    @SerialName("unread_by_source") val unreadBySource: Map<String, Int?>? = null,
     val degraded: Boolean? = null,
     @SerialName("retry_after_seconds") val retryAfterSeconds: Int? = null,
 )
@@ -532,6 +556,10 @@ internal fun parseFeedbackTicketListRead(body: String): FeedbackTicketListRead? 
             nextCursor = dto.nextCursor?.takeIf { it.isNotBlank() },
             // Null: not known (a cursor page, or an app unavailable): never read as 0.
             unreadTotal = dto.unreadTotal?.coerceAtLeast(0),
+            unreadBySource =
+                dto.unreadBySource?.entries
+                    ?.mapNotNull { (source, total) -> total?.takeIf { source in FeedbackTicketSources }?.let { source to it.coerceAtLeast(0) } }
+                    ?.toMap(),
         )
     )
 }
@@ -544,7 +572,7 @@ internal fun parseFeedbackTicketDetail(body: String): FeedbackTicketDetail? {
         comments = dto.comments.orEmpty().mapNotNull { it.toModel() }.sortedWith(FeedbackCommentOrder),
         attachments = dto.attachments.orEmpty().mapNotNull { it.toModel() },
         nextCommentCursor = dto.nextCommentCursor?.takeIf { it.isNotBlank() },
-        unreadTotal = (dto.unreadTotal ?: 0).coerceAtLeast(0),
+        unreadTotal = dto.unreadTotal?.coerceAtLeast(0),
     )
 }
 

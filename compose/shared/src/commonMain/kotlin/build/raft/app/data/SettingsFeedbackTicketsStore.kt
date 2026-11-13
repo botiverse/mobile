@@ -106,16 +106,17 @@ class SettingsFeedbackTicketsStore(
      */
     private val agentDraftSent: Flow<Boolean> = flowOf(true),
     /**
-     * The unread total over every app as the list's first page answered it (`unread_total`, summed
-     * by the server; a cursor page's is null and not passed): the Settings / Feedback dot
-     * ([RaftFeedbackUnreadStore.applyRead]).
+     * The unread totals as the list's first page answered them (`unread_by_source`, each app's, and
+     * `unread_total`, their sum; a cursor page carries neither and passes nothing): the Settings /
+     * Feedback dot ([RaftFeedbackUnreadStore.applyRead]).
      */
-    private val onUnreadTotal: (Int) -> Unit = {},
+    private val onUnreadTotal: (FeedbackUnreadRead) -> Unit = {},
     /**
      * A ticket's first page was read (which moves its read receipt): its answer's `unread_total` is
-     * that ticket's app's only, so the dot reads the sum again ([RaftFeedbackUnreadStore.onTicketRead]).
+     * that ticket's app's own (source, total; source null: this app's), which the dot takes for that
+     * app ([RaftFeedbackUnreadStore.onTicketRead]).
      */
-    private val onTicketRead: () -> Unit = {},
+    private val onTicketRead: (source: String?, total: Int?) -> Unit = { _, _ -> },
     /** Pages answered empty with a `next_cursor` read on at once, before Load More is left to the person. */
     private val emptyPageFollowMax: Int = FEEDBACK_EMPTY_PAGE_FOLLOW_MAX,
 ) {
@@ -209,7 +210,7 @@ class SettingsFeedbackTicketsStore(
                         is FeedbackResult.Ok ->
                             when (val read = result.value) {
                                 is FeedbackTicketListRead.Page -> {
-                                    read.page.unreadTotal?.let(onUnreadTotal)
+                                    read.page.unread.takeUnless { it.isUnknown }?.let(onUnreadTotal)
                                     val next = read.page.nextCursor
                                     if (read.page.tickets.isEmpty() && next != null && emptyPagesFollowed < emptyPageFollowMax) {
                                         emptyPagesFollowed++
@@ -371,7 +372,7 @@ class SettingsFeedbackTicketsStore(
                                 list = state.list.copy(tickets = state.list.tickets.updatedWith(read.ticket, markRead = cursor == null)),
                             )
                         }
-                        if (cursor == null) onTicketRead()
+                        if (cursor == null) onTicketRead(read.ticket.source ?: source, read.unreadTotal)
                         logger("settings_feedback_tickets_detail_ready comments=${read.comments.size} more=${read.nextCommentCursor != null}")
                     }
                     is FeedbackResult.Failed -> {

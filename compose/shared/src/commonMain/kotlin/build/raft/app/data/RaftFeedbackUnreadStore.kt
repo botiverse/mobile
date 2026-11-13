@@ -36,14 +36,19 @@ internal fun feedbackUnreadEventIsMine(ownerUserId: String, event: ProductFeedba
  * tickets (slock #14722; design settings.md "Feedback": "its pink pixel counts new replies on all of
  * them"). Process-wide, one per app.
  *
- * - Its value is [readTotal]: `unread_total` of the merged list's first page (`GET
- *   /api/product-feedback/tickets?sources=all&limit=1`), the only place the server sums the apps. Read
- *   on start / sign-in and after a realtime (re)connect. A "not known now" answer (null: an app
- *   unavailable, or degraded) or a failure keeps the value held. No periodic read.
- * - A push ([applyRealtime]) carries one app's whole total, not the sum, so any app's push reads the
- *   sum again ([refresh]); so does a ticket read here ([onTicketRead]: its `unread_total` is that
- *   ticket's app's only).
- * - This app's own Feedback list ([applyRead]): its first page's summed `unread_total`.
+ * It holds each app's own total and shows their sum:
+ * - [readTotal] reads the merged list's first page (`GET
+ *   /api/product-feedback/tickets?sources=all&limit=1`): `unread_by_source` (each app's; an app that
+ *   could not be read has no key, and keeps the value held) and `unread_total` (the sum). Read on start
+ *   / sign-in and after a realtime (re)connect. No periodic read. The Feedback list's own first page
+ *   says the same ([applyRead]).
+ * - A push ([applyRealtime]) carries one app's whole total: it replaces that app's (`product_feedback:unread`
+ *   is the web app's, `product_feedback:app_unread` its `source`'s).
+ * - A ticket read here ([onTicketRead]) answers its own app's total: it replaces that app's.
+ * Without `unread_by_source` (a server before it; announced by Archer, #triage:#364, as a follow-up
+ * to slock #14722) only the sum is known: it is `unread_total`, a "not known now" answer (null: an
+ * app unavailable, or degraded) or a failure keeps the value held, and a push or a ticket read reads
+ * the sum again ([refresh]).
  * A newer value always wins over a read started before it, and a refresh asked for while a read is
  * on its way reads once more after it (that read may have left before the change). Signed out: 0,
  * and no request.
@@ -52,7 +57,7 @@ class RaftFeedbackUnreadStore(
     /** `android` / `ios` / `web` (desktop): `raftFeedbackWebViewClientKind()`; for logs. */
     private val clientKind: String,
     private val scope: CoroutineScope,
-    private val readTotal: suspend () -> FeedbackResult<Int?>,
+    private val readTotal: suspend () -> FeedbackResult<FeedbackUnreadRead>,
     private val reconnectWindowMillis: Long = FEEDBACK_UNREAD_RECONNECT_WINDOW_MILLIS,
     private val timeSource: TimeSource = TimeSource.Monotonic,
     private val logger: (String) -> Unit = {},
@@ -73,6 +78,9 @@ class RaftFeedbackUnreadStore(
     /** A refresh came while a read was on its way: read once more when it ends. */
     private var rereadPending = false
 
+    /** Each app's own total (by source); null: only the sum is known. */
+    private var bySource: Map<String, Int>? = null
+
     /** Follows the signed-in person (null: signed out) for the store's lifetime. */
     fun follow(userIds: Flow<String?>): Job =
         scope.launch { userIds.distinctUntilChanged().collect { onSession(it) } }
@@ -88,6 +96,7 @@ class RaftFeedbackUnreadStore(
             readJob = null
             lastReadStarted = null
             rereadPending = false
+            bySource = null
             mutableTotal.value = 0
         }
         logger("feedback_unread_session signedIn=${id != null}")
@@ -100,23 +109,64 @@ class RaftFeedbackUnreadStore(
     }
 
     /**
-     * One app's pushed total: the sum is read again. False when it is not the signed-in person's
-     * ([principalId], or the web event's `userId`).
+     * One app's pushed total replaces that app's (or, with only the sum known, the sum is read again).
+     * False when it is not the signed-in person's ([principalId], or the web event's `userId`).
      */
     fun applyRealtime(principalId: String, event: ProductFeedbackUnreadUpdated): Boolean {
+        var replaced = false
         val taken =
             synchronized(lock) {
                 val owner = ownerUserId
-                owner != null && principalId.trim() == owner && feedbackUnreadEventIsMine(owner, event)
+                (owner != null && principalId.trim() == owner && feedbackUnreadEventIsMine(owner, event)).also { mine ->
+                    if (mine) replaced = replaceSource(event.source, event.unreadTotal)
+                }
             }
-        logger("feedback_unread_realtime client=$clientKind source=${event.source} taken=$taken")
-        if (taken) refresh(reason = "realtime")
+        logger("feedback_unread_realtime client=$clientKind source=${event.source} taken=$taken replaced=$replaced")
+        if (taken && !replaced) refresh(reason = "realtime")
         return taken
     }
 
-    /** A ticket was read here: its app's total moved, so the sum is read again. */
-    fun onTicketRead() {
-        refresh(reason = "ticket_read")
+    /**
+     * A ticket of [source] (null: this app's) was read here and answered its app's [total]: it replaces
+     * that app's (or, with only the sum known or no total sent, the sum is read again).
+     */
+    fun onTicketRead(source: String?, total: Int?) {
+        val app = source?.trim()?.takeIf { it.isNotEmpty() } ?: feedbackOwnSource(clientKind)
+        val replaced = total != null && synchronized(lock) { ownerUserId != null && replaceSource(app, total) }
+        logger("feedback_unread_ticket_read source=$app replaced=$replaced")
+        if (!replaced) refresh(reason = "ticket_read")
+    }
+
+    /** Under [lock]: [source]'s total replaced and the sum shown; false when only the sum is known. */
+    private fun replaceSource(source: String, total: Int): Boolean {
+        val held = bySource ?: return false
+        val next = held + (source to total.coerceAtLeast(0))
+        bySource = next
+        write(next.values.sum())
+        return true
+    }
+
+    /**
+     * Under [lock]: a first page's answer. Each app it names replaces that app's (one it does not
+     * name keeps what it had); without names, its sum. False when it says nothing.
+     */
+    private fun applyCounts(read: FeedbackUnreadRead): Boolean {
+        val named = read.bySource
+        val total = read.total
+        return when {
+            named != null -> {
+                val next = bySource.orEmpty() + named
+                bySource = next
+                write(next.values.sum())
+                true
+            }
+            total != null -> {
+                bySource = null
+                write(total)
+                true
+            }
+            else -> false
+        }
     }
 
     /** Reads the sum again; one asked for while a read is on its way runs after it. */
@@ -124,13 +174,14 @@ class RaftFeedbackUnreadStore(
         read(reason = reason, coalesce = false, rereadWhenBusy = true)
     }
 
-    /** This app's own Feedback list's first page answered [total] (its summed `unread_total`). */
-    fun applyRead(total: Int) {
-        synchronized(lock) {
-            if (ownerUserId == null) return
-            write(total)
-        }
-        logger("feedback_unread_local total=$total")
+    /** This app's own Feedback list's first page answered [read] (`unread_by_source` / `unread_total`). */
+    fun applyRead(read: FeedbackUnreadRead) {
+        val applied =
+            synchronized(lock) {
+                if (ownerUserId == null) return
+                applyCounts(read)
+            }
+        logger("feedback_unread_local applied=$applied total=${mutableTotal.value}")
     }
 
     private fun write(total: Int) {
@@ -174,7 +225,7 @@ class RaftFeedbackUnreadStore(
         var reread = false
         val outcome =
             synchronized(lock) {
-                val total = (result as? FeedbackResult.Ok)?.value
+                val counts = (result as? FeedbackResult.Ok)?.value
                 if (ownerUserId == owner && rereadPending) {
                     rereadPending = false
                     reread = true
@@ -184,11 +235,8 @@ class RaftFeedbackUnreadStore(
                     ownerUserId != owner || generation != startedAt -> "stale"
                     result is FeedbackResult.Failed -> "failed_${result.failure.kind}"
                     // Not known now (an app unavailable, or `degraded`), never 0: keep the value held.
-                    total == null -> "unknown"
-                    else -> {
-                        write(total)
-                        "applied"
-                    }
+                    counts == null || !applyCounts(counts) -> "unknown"
+                    else -> "applied"
                 }
             }
         logger("feedback_unread_read reason=$reason outcome=$outcome reread=$reread")

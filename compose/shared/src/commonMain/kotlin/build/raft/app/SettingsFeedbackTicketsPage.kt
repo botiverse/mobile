@@ -185,8 +185,8 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
                         val userId = sharedStores.authStore(storeScope).readSession()?.user?.id
                         emitAll(RaftFeedbackAgentDraftSent.repository.sent(userId))
                     },
-                // The Settings / Feedback dot follows the list's summed total, and reads the sum
-                // again when a ticket is read here (a reply read clears it).
+                // The Settings / Feedback dot follows the list's first page (each app's total, and
+                // their sum), and a ticket read here answers its app's total (a reply read clears it).
                 onUnreadTotal = sharedStores.feedbackUnread::applyRead,
                 onTicketRead = sharedStores.feedbackUnread::onTicketRead,
             )

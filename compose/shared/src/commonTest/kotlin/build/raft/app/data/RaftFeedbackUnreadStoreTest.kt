@@ -22,14 +22,19 @@ import kotlin.test.assertTrue
 class RaftFeedbackUnreadStoreTest {
     /** The `GET tickets?sources=all&limit=1` reads: each takes the next answer, waiting on its gate when it has one. */
     private class FakeReads {
-        val answers = ArrayDeque<Pair<FeedbackResult<Int?>, CompletableDeferred<Unit>?>>()
+        val answers = ArrayDeque<Pair<FeedbackResult<FeedbackUnreadRead>, CompletableDeferred<Unit>?>>()
         var count = 0
 
         fun answer(total: Int?, gate: CompletableDeferred<Unit>? = null) {
-            answers += FeedbackResult.Ok(total) to gate
+            answers += FeedbackResult.Ok(FeedbackUnreadRead(total)) to gate
         }
 
-        suspend fun read(): FeedbackResult<Int?> {
+        /** A first page with `unread_by_source` (an app that could not be read has no key). */
+        fun answerBySource(bySource: Map<String, Int>, total: Int? = null, gate: CompletableDeferred<Unit>? = null) {
+            answers += FeedbackResult.Ok(FeedbackUnreadRead(total, bySource)) to gate
+        }
+
+        suspend fun read(): FeedbackResult<FeedbackUnreadRead> {
             count++
             val (result, gate) = answers.removeFirstOrNull() ?: error("unexpected read #$count")
             gate?.await()
@@ -57,7 +62,7 @@ class RaftFeedbackUnreadStoreTest {
         store.follow(session)
         runCurrent()
         store.onReconnected()
-        store.applyRead(3)
+        store.applyRead(FeedbackUnreadRead(3))
         assertFalse(store.applyRealtime("user-1", app("android", 2)))
         runCurrent()
         assertEquals(0, reads.count)
@@ -134,14 +139,82 @@ class RaftFeedbackUnreadStoreTest {
         runCurrent()
         assertEquals(3, store.unreadTotal.value)
         // The Feedback list's first page says the same sum.
-        store.applyRead(3)
+        store.applyRead(FeedbackUnreadRead(3))
         assertEquals(3, store.unreadTotal.value)
-        // Reading the iOS ticket here: its answer is iOS's own total (0), so the sum is read again.
+        // Reading the iOS ticket here: its answer is iOS's own total (0); with only the sum known
+        // (no `unread_by_source`), the sum is read again.
         reads.answer(2)
-        store.onTicketRead()
+        store.onTicketRead("ios", 0)
         runCurrent()
         assertEquals(2, reads.count)
         assertEquals(2, store.unreadTotal.value)
+    }
+
+    @Test
+    fun aPushReplacesItsOwnAppsTotalAndTheDotShowsTheSum() = runTest {
+        // unread_by_source (Archer, #triage:#364): each app's total; a push is one app's whole total.
+        val reads = FakeReads().also { it.answerBySource(mapOf("web" to 2, "android" to 1, "ios" to 0), total = 3) }
+        val store = store(reads, "android")
+        store.onSession("user-1")
+        runCurrent()
+        assertEquals(3, store.unreadTotal.value)
+
+        // A reply on an iOS ticket: iOS's entry becomes 4, the others stay, no read.
+        assertTrue(store.applyRealtime("user-1", app("ios", 4)))
+        runCurrent()
+        assertEquals(7, store.unreadTotal.value)
+        // The web's event is the web app's entry.
+        assertTrue(store.applyRealtime("user-1", web("user-1", 0)))
+        assertEquals(5, store.unreadTotal.value)
+        // An app not named before (HarmonyOS) joins the sum.
+        assertTrue(store.applyRealtime("user-1", app("ohos", 1)))
+        assertEquals(6, store.unreadTotal.value)
+        // Another person's web event changes nothing.
+        assertFalse(store.applyRealtime("user-1", web("user-2", 9)))
+        assertEquals(6, store.unreadTotal.value)
+        assertEquals(1, reads.count)
+    }
+
+    @Test
+    fun anAppMissingFromAFirstPageKeepsItsTotal() = runTest {
+        val reads = FakeReads().also { it.answerBySource(mapOf("web" to 2, "android" to 1, "ios" to 3), total = 6) }
+        val store = store(reads, "ios")
+        store.onSession("user-1")
+        runCurrent()
+        assertEquals(6, store.unreadTotal.value)
+
+        // iOS could not be read this time (no key, and `unread_total` null): its 3 stays.
+        reads.answerBySource(mapOf("web" to 0, "android" to 1), total = null)
+        advanceTimeBy(FEEDBACK_UNREAD_RECONNECT_WINDOW_MILLIS + 1)
+        store.onReconnected()
+        runCurrent()
+        assertEquals(4, store.unreadTotal.value)
+
+        // The Feedback list's first page names apps the same way.
+        store.applyRead(FeedbackUnreadRead(null, mapOf("android" to 0)))
+        assertEquals(3, store.unreadTotal.value)
+    }
+
+    @Test
+    fun aTicketReadReplacesItsAppsTotal() = runTest {
+        val reads = FakeReads().also { it.answerBySource(mapOf("web" to 2, "android" to 1), total = 3) }
+        val store = store(reads, "android")
+        store.onSession("user-1")
+        runCurrent()
+        // A web ticket read here: the web's total is now 0.
+        store.onTicketRead("web", 0)
+        assertEquals(1, store.unreadTotal.value)
+        // A ticket of this app (no source named): this app's.
+        store.onTicketRead(null, 0)
+        assertEquals(0, store.unreadTotal.value)
+        runCurrent()
+        assertEquals(1, reads.count)
+        // No total in the answer: the sum is read again.
+        reads.answerBySource(mapOf("web" to 1, "android" to 0), total = 1)
+        store.onTicketRead("web", null)
+        runCurrent()
+        assertEquals(2, reads.count)
+        assertEquals(1, store.unreadTotal.value)
     }
 
     @Test
@@ -159,7 +232,7 @@ class RaftFeedbackUnreadStoreTest {
         assertTrue(store.applyRealtime("user-1", app("ios", 0)))
         runCurrent()
         assertTrue(store.applyRealtime("user-1", web("user-1", 1)))
-        store.onTicketRead()
+        store.onTicketRead("android", null)
         runCurrent()
         assertEquals(2, reads.count)
         gate.complete(Unit)
@@ -238,7 +311,7 @@ class RaftFeedbackUnreadStoreTest {
         store.onReconnected()
         runCurrent()
         // The Feedback list's first page answered its sum meanwhile.
-        store.applyRead(1)
+        store.applyRead(FeedbackUnreadRead(1))
         second.complete(Unit)
         runCurrent()
         assertEquals(1, store.unreadTotal.value)

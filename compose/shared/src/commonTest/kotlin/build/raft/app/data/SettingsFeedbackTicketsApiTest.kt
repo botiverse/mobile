@@ -116,7 +116,7 @@ class SettingsFeedbackTicketsApiTest {
 
         val result = NetworkSettingsFeedbackTicketsRepository(network, clientKind = "ios").unreadTotal()
 
-        assertEquals(4, assertIs<FeedbackResult.Ok<Int?>>(result).value)
+        assertEquals(FeedbackUnreadRead(4), assertIs<FeedbackResult.Ok<FeedbackUnreadRead>>(result).value)
         val call = network.calls.single()
         assertEquals("product-feedback/tickets", call.path)
         assertEquals(listOf("sources" to "all", "limit" to "1", "degraded_ok" to "1"), call.query)
@@ -131,7 +131,7 @@ class SettingsFeedbackTicketsApiTest {
             FakeNetwork {
                 HomeNetworkResponse(200, """{"tickets":[],"next_cursor":null,"unread_total":null,"degraded":true,"retry_after_seconds":5}""")
             }
-        assertNull(assertIs<FeedbackResult.Ok<Int?>>(NetworkSettingsFeedbackTicketsRepository(degraded, "android").unreadTotal()).value)
+        assertTrue(assertIs<FeedbackResult.Ok<FeedbackUnreadRead>>(NetworkSettingsFeedbackTicketsRepository(degraded, "android").unreadTotal()).value.isUnknown)
 
         val refused = FakeNetwork { HomeNetworkResponse(503, """{"code":"feedback_service_unavailable"}""") }
         val failure = assertIs<FeedbackResult.Failed>(NetworkSettingsFeedbackTicketsRepository(refused, "android").unreadTotal()).failure
@@ -190,7 +190,7 @@ class SettingsFeedbackTicketsApiTest {
         assertEquals("c3", page.nextCursor)
         assertNull(page.unreadTotal)
         // The dot's read: unknown, so the dot keeps what it shows.
-        assertNull(assertIs<FeedbackResult.Ok<Int?>>(repository.unreadTotal()).value)
+        assertTrue(assertIs<FeedbackResult.Ok<FeedbackUnreadRead>>(repository.unreadTotal()).value.isUnknown)
     }
 
     @Test
@@ -283,6 +283,30 @@ class SettingsFeedbackTicketsApiTest {
         assertEquals(FeedbackClient.Desktop, feedbackForeignClient(ticket.copy(source = "web", client = FeedbackClient.Desktop), android))
         assertEquals(FeedbackClient.Android, feedbackForeignClient(ticket.copy(source = "android", client = FeedbackClient.Android), feedbackOwnClient("ios")))
         assertNull(FeedbackClient.fromWire("windows"))
+    }
+
+    /**
+     * `unread_by_source` on the first page (announced by Archer, #triage:#364, for a follow-up to slock
+     * #14722; pending contract verification): each app's own total, an app that failed has no key.
+     */
+    @Test
+    fun theFirstPageMayNameEachAppsUnreadTotal() = runTest {
+        val network =
+            FakeNetwork {
+                HomeNetworkResponse(
+                    200,
+                    """{"tickets":[],"next_cursor":null,"unread_total":null,"unavailable_sources":["ios"],
+                        "unread_by_source":{"web":2,"android":1,"ohos":null,"windows":5}}""",
+                )
+            }
+        val repository = NetworkSettingsFeedbackTicketsRepository(network, "android")
+        val read = assertIs<FeedbackResult.Ok<FeedbackUnreadRead>>(repository.unreadTotal()).value
+        // A null value and a source the server does not have are left out, as a missing key.
+        assertEquals(FeedbackUnreadRead(null, mapOf("web" to 2, "android" to 1)), read)
+
+        // Without it (as #14722 answers): the sum only.
+        val older = FakeNetwork { HomeNetworkResponse(200, """{"tickets":[],"next_cursor":null,"unread_total":3,"unavailable_sources":[]}""") }
+        assertEquals(FeedbackUnreadRead(3, null), assertIs<FeedbackResult.Ok<FeedbackUnreadRead>>(NetworkSettingsFeedbackTicketsRepository(older, "ios").unreadTotal()).value)
     }
 
     @Test

@@ -275,13 +275,14 @@ class SettingsFeedbackTicketsStoreTest {
         repository.listAnswers += FeedbackResult.Ok(FeedbackTicketListRead.Page(FeedbackTicketPage(listOf(ticket("b")), null, unreadTotal = null)))
         repository.ticketAnswers += FeedbackResult.Ok(FeedbackTicketDetail(unread.copy(unread = false, unreadCount = 0), emptyList(), emptyList(), null, unreadTotal = 0))
         repository.ticketAnswers += failed(FeedbackErrorKind.Unavailable)
-        val totals = mutableListOf<Int>()
-        var ticketReads = 0
-        val store = SettingsFeedbackTicketsStore(repository, backgroundScope, onUnreadTotal = { totals += it }, onTicketRead = { ticketReads++ })
+        val totals = mutableListOf<Int?>()
+        val ticketReads = mutableListOf<Pair<String?, Int?>>()
+        val store =
+            SettingsFeedbackTicketsStore(repository, backgroundScope, onUnreadTotal = { totals += it.total }, onTicketRead = { source, total -> ticketReads += source to total })
         store.start()
         runCurrent()
         // A degraded page knows no total: nothing is handed on.
-        assertEquals(emptyList<Int>(), totals)
+        assertEquals(emptyList<Int?>(), totals)
         advanceTimeBy(5_001)
         assertEquals(listOf(3), totals)
         store.loadMore()
@@ -292,11 +293,12 @@ class SettingsFeedbackTicketsStoreTest {
         store.openTicket("a")
         runCurrent()
         assertEquals(listOf(3), totals, "a ticket's total is its app's, not the sum")
-        assertEquals(1, ticketReads)
-        // A failed read asks for nothing.
+        // Its own app's total, for that app (no source named: this app's).
+        assertEquals(listOf<Pair<String?, Int?>>(null to 0), ticketReads)
+        // A failed read hands nothing on.
         store.refreshTicket()
         runCurrent()
-        assertEquals(1, ticketReads)
+        assertEquals(1, ticketReads.size)
     }
 
     @Test
