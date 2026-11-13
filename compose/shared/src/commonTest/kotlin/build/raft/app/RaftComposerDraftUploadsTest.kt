@@ -335,7 +335,7 @@ class RaftComposerDraftUploadsTest {
         )
         assertEquals("failed", secondPage.row(PickedId).status)
         assertEquals(listOf("socket_timeout"), failures)
-        assertEquals(listOf(picked(PickedId).toFile()), adoptedFiles, "the returning page has the file for Retry")
+        assertEquals<List<PlatformFile?>>(listOf(picked(PickedId).toFile()), adoptedFiles, "the returning page has the file for Retry")
 
         // Retry (the page's retryAttachment): a new attempt of the same tile, from the returning page.
         secondPage.dispatch(SharedThreadComposerDraftIntent.RetryAttachment(PickedId))
