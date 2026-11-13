@@ -7,9 +7,14 @@ function clean(value, name) {
 }
 
 export function verifyPinnedAndroidIdentity({ manifest, observed, expected }) {
-  if (!manifest || manifest.source_commit_verified === false) throw new Error("artifact manifest does not verify source commit");
+  if (!manifest || manifest.source_commit_verified !== true) {
+    const reason = manifest?.source_commit_unverified_reason ? `: ${manifest.source_commit_unverified_reason}` : "";
+    throw new Error(`artifact manifest does not verify source commit${reason}`);
+  }
   if (manifest.platform !== "android") throw new Error("artifact manifest platform is not android");
   const source = clean(manifest.source_commit, "manifest source_commit");
+  const embedded = clean(manifest.source_commit_observed, "manifest source_commit_observed");
+  if (!/^[0-9a-f]{10,40}$/.test(embedded) || !source.startsWith(embedded)) throw new Error("manifest source_commit/APK-embedded commit mismatch");
   const manifestSha = clean(manifest.apk_sha256, "manifest apk_sha256");
   const actual = {
     sha256: clean(observed.sha256, "observed sha256"),
@@ -24,7 +29,13 @@ export function verifyPinnedAndroidIdentity({ manifest, observed, expected }) {
     if (value != null && String(value) !== actual[key]) throw new Error(`manifest/observed ${key} mismatch`);
   }
   for (const [key, value] of Object.entries(expected || {})) {
-    if (value && String(value) !== actual[key]) throw new Error(`frozen ${key} mismatch`);
+    if (!value || String(value) === actual[key]) continue;
+    // A short frozen sha was resolved to the full manifest sha via the GitHub
+    // commits API; accept it only when the manifest records that exact input.
+    const resolvedShort = key === "sourceCommit"
+      && String(value).toLowerCase() === manifest.source_commit_expected
+      && source.startsWith(manifest.source_commit_expected);
+    if (!resolvedShort) throw new Error(`frozen ${key} mismatch`);
   }
   return actual;
 }
