@@ -172,6 +172,7 @@ import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.text.RaftText
@@ -2488,6 +2489,7 @@ internal fun RaftSettingsComputerDetailContent(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RaftComputerDetailBody(
     model: RaftComputerDetailModel.Content,
@@ -2593,14 +2595,20 @@ private fun RaftComputerDetailBody(
         }
         item(key = "info") {
             RaftSection(title = stringResource(Res.string.settings_computers_section_info)) {
-                RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
+                // Web MachineInfoSection: stacked facts (label above value), then Created, Creator
+                // and Owner side by side, wrapping (`flex flex-wrap gap-x-8 gap-y-3`).
+                RaftDescriptionList(direction = RaftDescriptionListDirection.Vertical) {
                     Item(stringResource(Res.string.settings_computers_label_os), snapshot.computer.platform?.takeIf { it.isNotBlank() })
                     Item(stringResource(Res.string.settings_computers_label_version), raftComputerVersionLine(computer), mono = true)
-                    // Web: the runtimes as chips, cyan-soft when detected, muted with why not otherwise.
+                    // Web MachineRuntimeChips: the detected runtimes (and the ones this computer
+                    // predates); the not-installed ones only after "Show all supported".
                     Item(stringResource(Res.string.settings_computers_label_runtimes)) {
+                        val chips = raftComputerRuntimeChips(computer.runtimes, runtimeCatalog)
+                        val hasNotInstalled = chips.any { it.availability == RaftComputerRuntimeAvailability.NotInstalled }
+                        var showAllRuntimes by remember(machineId) { mutableStateOf(false) }
                         // Usage runtimes open their account usage (web RuntimeAccountUsageGateChip).
                         ComputerRuntimeUsageChips(
-                            raftComputerRuntimeChips(computer.runtimes, runtimeCatalog),
+                            chips.filter { showAllRuntimes || it.availability != RaftComputerRuntimeAvailability.NotInstalled },
                             machineId,
                             enabled = canEdit,
                             runtimeVersions = snapshot.computer.runtimeVersions,
@@ -2609,44 +2617,70 @@ private fun RaftComputerDetailBody(
                         ) { chip ->
                             RaftComputerRuntimeBadge(chip)
                         }
+                        if (hasNotInstalled) {
+                            RaftTextLink(
+                                text =
+                                    stringResource(
+                                        if (showAllRuntimes) {
+                                            Res.string.settings_computers_runtime_show_installed_only
+                                        } else {
+                                            Res.string.settings_computers_runtime_show_all_supported
+                                        }
+                                    ),
+                                onClick = { showAllRuntimes = !showAllRuntimes },
+                                style = RaftTheme.typography.footnote,
+                            )
+                        }
                     }
-                    // Web: the date it was created ("Oct 22, 2026"), as on an agent's page.
-                    Item(stringResource(Res.string.settings_computers_label_created), raftComputerCreatedDate(model.createdAt), mono = true)
+                }
+                Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(32.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    RaftDescriptionList(direction = RaftDescriptionListDirection.Vertical) {
+                        // Web: the date it was created ("Oct 22, 2026"), as on an agent's page.
+                        Item(stringResource(Res.string.settings_computers_label_created), raftComputerCreatedDate(model.createdAt), mono = true)
+                    }
                     // Web: managed Computers name who attached them beside Created; raw daemons don't.
                     if (model.showsCreator) {
-                        Item(stringResource(Res.string.settings_computers_label_creator)) {
-                            val creator = model.creator
-                            if (creator != null) {
-                                RaftComputerCreatorLink(creator, onClick = { onOpenCreator(creator) })
-                            } else {
-                                RaftText(
-                                    stringResource(Res.string.settings_computers_state_no_creator),
-                                    style = RaftTheme.typography.callout,
-                                    color = RaftTheme.colors.foregroundHint,
-                                )
+                        RaftDescriptionList(direction = RaftDescriptionListDirection.Vertical) {
+                            Item(stringResource(Res.string.settings_computers_label_creator)) {
+                                val creator = model.creator
+                                if (creator != null) {
+                                    RaftComputerCreatorLink(creator, onClick = { onOpenCreator(creator) })
+                                } else {
+                                    RaftText(
+                                        stringResource(Res.string.settings_computers_state_no_creator),
+                                        style = RaftTheme.typography.callout,
+                                        color = RaftTheme.colors.foregroundHint,
+                                    )
+                                }
                             }
                         }
                     }
                     // Computer owner v1 (web ComputerOwnerField): who Raft records as its owner, or Public.
-                    Item(stringResource(Res.string.settings_computers_label_owner)) {
-                        RaftComputerOwnerField(
-                            owner = model.owner,
-                            canTransfer = model.canTransferOwner,
-                            canClaim = model.canClaimOwner,
-                            claiming = claimingOwner && ownerSaving,
-                            onOpenOwner = onOpenCreator,
-                            onTransfer = {
-                                transferSubmitted = false
-                                transferOwnerOpen = true
-                            },
-                            onClaim = {
-                                val me = snapshot.currentUserId
-                                if (me != null && !ownerSaving) {
-                                    claimingOwner = true
-                                    onIntent(SharedSettingsIntent.SetComputerOwner(SettingsComputerOwnerRequest(machineId, me)))
-                                }
-                            },
-                        )
+                    RaftDescriptionList(direction = RaftDescriptionListDirection.Vertical) {
+                        Item(stringResource(Res.string.settings_computers_label_owner)) {
+                            RaftComputerOwnerField(
+                                owner = model.owner,
+                                canTransfer = model.canTransferOwner,
+                                canClaim = model.canClaimOwner,
+                                claiming = claimingOwner && ownerSaving,
+                                onOpenOwner = onOpenCreator,
+                                onTransfer = {
+                                    transferSubmitted = false
+                                    transferOwnerOpen = true
+                                },
+                                onClaim = {
+                                    val me = snapshot.currentUserId
+                                    if (me != null && !ownerSaving) {
+                                        claimingOwner = true
+                                        onIntent(SharedSettingsIntent.SetComputerOwner(SettingsComputerOwnerRequest(machineId, me)))
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
                 // Web: an offline Computer's version row links the notes of the version it can move to.
@@ -3080,11 +3114,7 @@ private fun RaftComputerAgentsSection(
                     title = stringResource(Res.string.settings_computers_error_load_agents),
                     detail = raftComputerErrorCodeMessage(error.computerErrorCode, error.screenError, error.permissionBlocker),
                 )
-            agents.isEmpty() ->
-                RaftComputersInlineNotice(
-                    title = stringResource(Res.string.settings_computers_empty_agents),
-                    detail = stringResource(Res.string.settings_computers_empty_agents_detail),
-                )
+            agents.isEmpty() -> RaftComputersEmptyNote(stringResource(Res.string.settings_computers_empty_agents))
             else ->
                 RaftListRowGroup(Modifier.fillMaxWidth()) {
                     agents.forEachIndexed { index, agent ->
@@ -3113,13 +3143,24 @@ private fun RaftComputerAgentRow(
     onClick: () -> Unit,
 ) {
     val live = raftComputerAgentStatusIndicator(agent, rememberRaftAgentStatusIndicatorState(agentStatusResolver, agent.id))
+    // Web MachineAgentRow on a phone-width row: a plain Online / Offline is the status light
+    // alone; anything else (an error, a block, what it is working on) keeps its words, on a line
+    // under the runtime · model line.
+    val statusText = live?.localizedMemberStatusLabel()
+    val plainPresence =
+        statusText == null ||
+            statusText == stringResource(Res.string.member_row_status_online) ||
+            statusText == stringResource(Res.string.member_row_status_offline) ||
+            statusText == stringResource(Res.string.member_row_status_likely_online)
     RaftListRow(
         title = agent.name,
         onClick = onClick,
         divider = divider,
         subtitle = raftComputerAgentIdentityLabel(agent.runtime, agent.model),
+        description = statusText?.takeIf { !plainPresence },
+        descriptionMaxLines = 3,
         leading = { RaftComputerAgentAvatar(agent) },
-        trailing = if (live != null) { { RaftComputerAgentStatus(live) } } else null,
+        trailing = if (live != null) { { RaftStatusIndicator(color = live.color, size = 10.dp) } } else null,
     )
 }
 
@@ -3134,23 +3175,6 @@ internal fun raftComputerAgentStatusIndicator(
     live: RaftAgentStatusIndicatorState?,
 ): RaftAgentStatusIndicatorState? =
     projectHomeAgentStatusIndicatorState(showPresence = true, memberId = agent.id, canonicalState = live)
-
-/** The live activity (web `StatusDot activity` + `formatActivityText`). */
-@Composable
-private fun RaftComputerAgentStatus(live: RaftAgentStatusIndicatorState) {
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        RaftStatusIndicator(color = live.color, size = 10.dp)
-        val text = live.localizedMemberStatusLabel()
-        RaftText(
-            text,
-            modifier = Modifier.widthIn(max = 120.dp),
-            style = RaftTheme.typography.monoMeta,
-            color = RaftTheme.colors.foregroundHint,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
 
 /**
  * An agent on this computer: its own avatar (pixel avatar or photo) in the agent sticker,
@@ -3176,6 +3200,8 @@ private fun RaftComputerWorkspacesSection(
 ) {
     RaftSection(
         title = stringResource(Res.string.settings_computers_section_workspaces),
+        // Web WorkspacesSection: a FolderOpen before the heading.
+        icon = { RaftComputersIcon(RaftLucideIconName.FolderOpen, size = 14.dp) },
         count = snapshot.workspaces.size.takeIf { snapshot.workspacesScanned && it > 0 }?.toString(),
         // Web `SectionHeader action`: a small outline Scan / Rescan button at the end of the heading.
         action = {
@@ -3198,10 +3224,7 @@ private fun RaftComputerWorkspacesSection(
             !snapshot.workspacesScanned ->
                 // Web shows the scan prompt only while no scan is running.
                 if (!scanning) {
-                    RaftComputersInlineNotice(
-                        title = stringResource(Res.string.settings_computers_workspace_scan_title),
-                        detail = stringResource(Res.string.settings_computers_workspace_scan_detail),
-                    )
+                    RaftComputersEmptyNote(stringResource(Res.string.settings_computers_workspace_scan_title))
                 } else {
                     Unit
                 }
@@ -3210,11 +3233,7 @@ private fun RaftComputerWorkspacesSection(
                     title = stringResource(Res.string.settings_computers_error_load_workspaces),
                     detail = raftComputerErrorCodeMessage(error.computerErrorCode, error.screenError, error.permissionBlocker),
                 )
-            snapshot.workspaces.isEmpty() ->
-                RaftComputersInlineNotice(
-                    title = stringResource(Res.string.settings_computers_empty_workspaces),
-                    detail = stringResource(Res.string.settings_computers_empty_workspaces_detail),
-                )
+            snapshot.workspaces.isEmpty() -> RaftComputersEmptyNote(stringResource(Res.string.settings_computers_empty_workspaces))
             else ->
                 RaftListRowGroup(Modifier.fillMaxWidth()) {
                     snapshot.workspaces.forEachIndexed { index, workspace ->
@@ -3395,6 +3414,12 @@ private fun RaftComputersStateBlock(
             )
         }
     }
+}
+
+/** Web `DETAIL_EMPTY_NOTE_CLASS_NAME`: the quiet line of an empty list (footnote, hint ink). */
+@Composable
+private fun RaftComputersEmptyNote(text: String) {
+    RaftText(text, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundHint)
 }
 
 /** An empty or failed section of the detail page: a title line and its explanation. */
