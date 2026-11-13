@@ -320,4 +320,76 @@ class RaftWidePanesTest {
     fun theProfileColumnIsTheWebsProfileColumn() {
         assertEquals(RaftPaneGridColumnBounds(id = "profile", defaultWidthDp = 400f, minWidthDp = 320f), RaftPaneGridColumns.Profile)
     }
+
+    // #189 step 4 (web F41): the Artifact viewer opens in a column of the conversation's row on the wide layout.
+    @Test
+    fun theArtifactViewerOpensInTheArtifactColumnOnTheWideLayoutOnly() {
+        assertEquals(RaftPaneRole.Artifact, RaftPageRegistry.paneRole(RAFT_ARTIFACT_VIEWER_PAGE))
+        assertEquals(listOf(RAFT_ARTIFACT_VIEWER_PAGE), RaftPageRegistry.pageNames.filter { RaftPageRegistry.paneRole(it) == RaftPaneRole.Artifact })
+        // A phone (or any compact layout) opens it as the page it always was.
+        assertEquals(RaftPaneRole.Window, raftPaneRoute(wide = false, pageName = RAFT_ARTIFACT_VIEWER_PAGE))
+        assertEquals(RaftPaneRole.Artifact, raftPaneRoute(wide = true, pageName = RAFT_ARTIFACT_VIEWER_PAGE))
+        // Opened from the profile column it goes to the Artifact column too, not into the profile's stack.
+        assertEquals(RaftPaneRole.Artifact, raftProfileColumnRole(RAFT_ARTIFACT_VIEWER_PAGE))
+        assertEquals(RaftPaneGridColumnBounds(id = "artifact", defaultWidthDp = 480f, minWidthDp = 480f), RaftPaneGridColumns.Artifact)
+        assertEquals(RaftChannelSideSection.Artifact.wire, RAFT_ARTIFACT_COLUMN_CELL, "the cell is the side layout's section")
+    }
+
+    @Test
+    fun theArtifactColumnHoldsOneArtifactAtATime() {
+        val first = RaftArtifactColumnPane().open(RAFT_ARTIFACT_VIEWER_PAGE, data)
+        assertTrue(first.isOpen)
+        val second = first.open(RAFT_ARTIFACT_VIEWER_PAGE, data)
+        assertTrue(second.entry!!.id != first.entry!!.id, "another Artifact replaces it, in a new composition")
+        // A page already replaced closing itself changes nothing; the one shown closes the column.
+        assertEquals(second, second.close(first.entry!!.id))
+        assertFalse(second.close(second.entry!!.id).isOpen)
+        assertEquals(RaftArtifactColumnPane(), RaftArtifactColumnPane().cleared())
+        // Closed, then another opened: still a new id (the viewer's own link to another Artifact closes, then opens).
+        val reopened = second.cleared().open(RAFT_ARTIFACT_VIEWER_PAGE, data)
+        assertTrue(reopened.entry!!.id != second.entry!!.id)
+    }
+
+    // PR #4666 review: Back goes in the order things were opened across both columns, not by one flag.
+    @Test
+    fun backClosesInTheOrderThingsWereOpenedAcrossBothColumns() {
+        val p1 = RaftProfileColumnPanes().open(MEMBER_DETAIL_PAGE, data)
+        val artifact = RaftArtifactColumnPane().open(RAFT_ARTIFACT_VIEWER_PAGE, data, p1)
+        // P1, then the Artifact: the Artifact first.
+        assertTrue(artifact.isOnTopOf(p1))
+        assertEquals(RaftWideBackStep.PopArtifactColumn, raftWideBackStep(p1, shown = true, artifact = artifact, artifactShown = true))
+        // P1, the Artifact, then P2 (the details): P2, then the Artifact, then P1.
+        val p2 = p1.open(CHANNEL_SETTINGS_PAGE, data)
+        assertFalse(artifact.isOnTopOf(p2))
+        assertEquals(RaftWideBackStep.PopProfileColumn, raftWideBackStep(p2, shown = true, artifact = artifact, artifactShown = true))
+        val afterP2 = p2.back()
+        assertEquals(listOf(RaftProfileColumnCell.Profile), afterP2.cells, "P2 closed, P1 left")
+        assertEquals(RaftWideBackStep.PopArtifactColumn, raftWideBackStep(afterP2, shown = true, artifact = artifact, artifactShown = true))
+        assertEquals(RaftWideBackStep.PopProfileColumn, raftWideBackStep(afterP2, shown = true, artifact = artifact.cleared(), artifactShown = true))
+        // A profile replacing P1 after the Artifact (another avatar) is above it too.
+        val replaced = p1.open(MEMBER_DETAIL_PAGE, data)
+        assertFalse(artifact.isOnTopOf(replaced))
+        // Opened with no profile page: any profile page is above it; with none left, Back is the Artifact's.
+        val alone = RaftArtifactColumnPane().open(RAFT_ARTIFACT_VIEWER_PAGE, data)
+        assertEquals(RaftWideBackStep.PopProfileColumn, raftWideBackStep(p1, shown = true, artifact = alone, artifactShown = true))
+        assertEquals(RaftWideBackStep.PopArtifactColumn, raftWideBackStep(RaftProfileColumnPanes(), shown = true, artifact = alone, artifactShown = true))
+        // Out of sight (Focus, under the task overlay) it is not Back's.
+        assertEquals(RaftWideBackStep.PopProfileColumn, raftWideBackStep(p1, shown = true, artifact = artifact, artifactShown = false))
+        assertEquals(RaftWideBackStep.Existing, raftWideBackStep(p1, paneShown = true, overlayOpen = true, artifact = artifact, artifactShown = true))
+        assertEquals(RaftWideBackStep.Existing, raftWideBackStep(RaftProfileColumnPanes(), shown = false))
+    }
+
+    @Test
+    fun narrowingReopensThePagesInBacksOrder() {
+        val p1 = RaftProfileColumnPanes().open(MEMBER_DETAIL_PAGE, data)
+        val columns = RaftWideSideColumns()
+        columns.profile = p1
+        columns.artifact = RaftArtifactColumnPane().open(RAFT_ARTIFACT_VIEWER_PAGE, data, p1)
+        columns.profile = p1.open(CHANNEL_SETTINGS_PAGE, data)
+        val navigator = RecordingNavigator()
+        columns.reopenOn(navigator)
+        assertEquals(listOf(MEMBER_DETAIL_PAGE, RAFT_ARTIFACT_VIEWER_PAGE, CHANNEL_SETTINGS_PAGE), navigator.opened.map { it.first }, "the one opened last on top")
+        assertFalse(columns.profile.isOpen)
+        assertFalse(columns.artifact.isOpen)
+    }
 }

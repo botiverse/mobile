@@ -410,7 +410,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.layout.onSizeChanged
-import build.raft.app.cmp.host.LocalRaftHost
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -6520,20 +6519,9 @@ private fun RaftAppShellReadyContent(
             desktopModeEnabled = desktopModeOnLargeScreen,
             paneState = shellScope.adaptivePane
         )
-    // Wide pane roles (RaftWidePanes.kt): the pages the conversation opened in the profile column
-    // (a member's profile over the channel details, #189 step 3). They belong to that conversation:
-    // picking another one closes them. When the window leaves the wide layout they reopen as pages on
-    // the platform stack, as they would have opened there.
-    var profileColumnPanes by remember { mutableStateOf(RaftProfileColumnPanes()) }
-    // Whether the column is declared right now (set where it is); Back goes by this, not the pages alone.
-    var profileColumnShown by remember { mutableStateOf(false) }
-    val shellHostNavigator = LocalRaftHost.current.navigator
-    LaunchedEffect(adaptiveWorkspaceState?.selection?.identity?.key) { profileColumnPanes = profileColumnPanes.cleared() }
-    LaunchedEffect(navRailActive) {
-        if (navRailActive || !profileColumnPanes.isOpen) return@LaunchedEffect
-        profileColumnPanes.pages.forEach { shellHostNavigator.openPage(it.pageName, it.pageData) }
-        profileColumnPanes = profileColumnPanes.cleared()
-    }
+    // The wide layout's profile and Artifact columns (RaftWideSideColumns.kt, #189 steps 3-4): they belong to the
+    // conversation picked, and reopen as pages when the window leaves the wide layout.
+    val sideColumns = rememberRaftWideSideColumns(adaptiveWorkspaceState?.selection?.identity?.key, navRailActive)
     // stdrc 2026-10-21: Settings is the More tab's root on the phone bar and the pinned rail entry
     // on the wide layout; a selection made for the other layout moves to this layout's root.
     LaunchedEffect(selectedTab, navRailActive) {
@@ -6642,14 +6630,7 @@ private fun RaftAppShellReadyContent(
     fun navigateWideHistory(direction: RaftWideNavDirection, source: String) {
         val serverId = readyServerId ?: return
         if (!navRailActive) return
-        if (
-            direction == RaftWideNavDirection.Back &&
-            raftWideBackStep(profileColumnPanes, profileColumnShown, overlayOpen = tasksDetailColumnOpen) == RaftWideBackStep.PopProfileColumn
-        ) {
-            bridge.log("wide_history_back source=$source pops=profile_column cell=${profileColumnPanes.backCell?.id}")
-            profileColumnPanes = profileColumnPanes.back()
-            return
-        }
+        if (direction == RaftWideNavDirection.Back && sideColumns.back(tasksDetailColumnOpen, source) { bridge.log(it) }) return
         val before = wideNavHistories.of(serverId)
         val after = before.go(direction)
         val target = after.current?.takeIf { after != before } ?: return
@@ -8144,7 +8125,6 @@ private fun RaftAppShellReadyContent(
                             }
                         }
                         val profileColumnHost = navRailActive && allowSideColumn
-                        val profileColumnOpen = profileColumnHost && detailAccepted && profileColumnPanes.isOpen
                         Box(
                             modifier =
                                 paneModifier
@@ -8254,12 +8234,11 @@ private fun RaftAppShellReadyContent(
                         // the row's last column (web DEFAULT_CHANNEL_SIDE_LAYOUT), with the conversation's host that
                         // opens pages in it. A page opened in it leaves Focus; Focus entered with it open puts it out
                         // of sight, and Back leaves Focus first (RaftWorkspaceDetailGrid).
-                        RaftWorkspaceDetailGrid(
+                        RaftWorkspaceDetailRow(
                             modifier = detailModifier,
-                            wide = profileColumnHost,
-                            panes = { profileColumnPanes },
-                            onPanesChange = { profileColumnPanes = it },
-                            columnOpen = profileColumnOpen,
+                            columns = sideColumns,
+                            columnHost = profileColumnHost,
+                            detailAccepted = detailAccepted,
                             tabSelected = tabSelected,
                             active = active,
                             sideThreadColumn = sideThreadColumn,
@@ -8268,15 +8247,12 @@ private fun RaftAppShellReadyContent(
                                 bridge.log("wide_profile_column_open leaves=thread_focus")
                                 adaptiveWorkspaceStore.update { it.copy(sideThreadFocused = false) }
                             },
-                            // Only the main detail pane reports whether the column is shown (RaftWidePanes.kt).
-                            reportHost = profileColumnHost,
-                            onShown = { profileColumnShown = it },
                             // A conversation opened in the column (the profile's Message) becomes the main detail and
                             // the column closes, as the web's closeProfile + navigate.
-                            openDetail = { _, pageData ->
+                            openDetail = { pageData ->
                                 val opened = threadLaunchPayloadOrNull(pageData)?.let(::openLaunchPayloadInAdaptiveDetail)
                                 if (opened != null) {
-                                    profileColumnPanes = profileColumnPanes.cleared()
+                                    sideColumns.profile = sideColumns.profile.cleared()
                                     homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(opened.identity.threadId))
                                 }
                                 bridge.log("wide_profile_column_open_detail opened=${opened != null}")

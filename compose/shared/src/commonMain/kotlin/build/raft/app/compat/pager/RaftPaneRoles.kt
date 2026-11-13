@@ -2,6 +2,7 @@ package build.raft.app.compat.pager
 
 import build.raft.app.CHANNEL_SETTINGS_PAGE
 import build.raft.app.MEMBER_DETAIL_PAGE
+import build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE
 import build.raft.app.THREAD_MEMBERS_PAGE
 
 /**
@@ -26,6 +27,13 @@ enum class RaftPaneRole {
      * closes the panel and opens the conversation.
      */
     Detail,
+
+    /**
+     * The Artifact column of the open conversation's row (#189 step 4; web F41, channelSideLayout's `artifact`
+     * section, RaftWidePanes.kt), the conversation staying beside it. Opened from anywhere else (the Artifacts home,
+     * Activity) the viewer stays a Window, as nothing hosts the column there.
+     */
+    Artifact,
 }
 
 /** The pages that do not open as a [RaftPaneRole.Window]; every other page does. */
@@ -39,4 +47,6 @@ internal val raftPagePaneRoles: Map<String, RaftPaneRole> =
         // channel members) is a column right of the conversation. The Members rail root shows its
         // own inline detail (MembersAdaptiveWorkspace) and does not go through a pane.
         MEMBER_DETAIL_PAGE to RaftPaneRole.Supporting,
+        // Web F41: an Artifact opened in a conversation shows in the channel's side area, beside the messages.
+        RAFT_ARTIFACT_VIEWER_PAGE to RaftPaneRole.Artifact,
     )

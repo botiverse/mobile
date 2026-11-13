@@ -4032,6 +4032,7 @@
     <string name="artifacts_activity_someone">Кто-то</string>
     <string name="artifacts_activity_untitled">Artifact без названия</string>
     <string name="artifacts_viewer_more">Другие действия</string>
+    <string name="artifacts_column_title">Artifact</string>
     <string name="artifacts_viewer_unavailable_title">Не удаётся открыть этот Artifact</string>
     <string name="artifacts_viewer_unavailable_body">Такого Artifact нет, или у вас нет к нему доступа.</string>
     <string name="artifacts_viewer_open_in_browser">Открыть в браузере</string>

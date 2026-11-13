@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import build.raft.app.base.BridgeModule
 import build.raft.app.cmp.host.HostBridgeTransport
 import build.raft.app.cmp.host.LocalRaftHost
@@ -75,22 +76,43 @@ internal data class RaftPaneStack(val entries: List<RaftPaneEntry> = emptyList()
 }
 
 /** What a wide Back (system Back, Esc, Cmd+[, the top bar's Back) does first. */
-internal enum class RaftWideBackStep { PopProfileColumn, Existing }
+internal enum class RaftWideBackStep { PopArtifactColumn, PopProfileColumn, Existing }
 
 /**
  * [shown] is whether the profile column is on screen (the same condition that declares it). Pages can sit in it
  * while it isn't, e.g. while the Tasks page's task column shows; Back must not spend a press closing it unseen.
+ * [artifactShown]: the same for the Artifact column ([artifact]). Of the two, Back closes the one opened last
+ * ([RaftArtifactColumnPane.isOnTopOf]) first.
  */
-internal fun raftWideBackStep(column: RaftProfileColumnPanes, shown: Boolean): RaftWideBackStep =
-    if (shown && column.isOpen) RaftWideBackStep.PopProfileColumn else RaftWideBackStep.Existing
+internal fun raftWideBackStep(
+    column: RaftProfileColumnPanes,
+    shown: Boolean,
+    artifact: RaftArtifactColumnPane = RaftArtifactColumnPane(),
+    artifactShown: Boolean = false,
+): RaftWideBackStep {
+    val profileOn = shown && column.isOpen
+    val artifactOn = artifactShown && artifact.isOpen
+    return when {
+        artifactOn && (artifact.isOnTopOf(column) || !profileOn) -> RaftWideBackStep.PopArtifactColumn
+        profileOn -> RaftWideBackStep.PopProfileColumn
+        else -> RaftWideBackStep.Existing
+    }
+}
 
 /**
- * The shell's wide Back: an open profile column is the topmost thing, so Back closes its last page before
- * stepping the history; on the Tasks page the task column shows the detail without the column, so
- * while [overlayOpen] (that column open) Back is the column's (Tenny, #3953). [paneShown] is what [RaftSupportingPaneShownReport] last reported.
+ * The shell's wide Back: an open profile or Artifact column is the topmost thing, so Back closes it (the profile
+ * column's last page) before stepping the history; on the Tasks page the task column shows the detail without the
+ * columns, so while [overlayOpen] (that column open) Back is the column's (Tenny, #3953). [paneShown] and
+ * [artifactShown] are what [RaftSupportingPaneShownReport] last reported for each.
  */
-internal fun raftWideBackStep(column: RaftProfileColumnPanes, paneShown: Boolean, overlayOpen: Boolean): RaftWideBackStep =
-    raftWideBackStep(column, shown = paneShown && !overlayOpen)
+internal fun raftWideBackStep(
+    column: RaftProfileColumnPanes,
+    paneShown: Boolean,
+    overlayOpen: Boolean,
+    artifact: RaftArtifactColumnPane = RaftArtifactColumnPane(),
+    artifactShown: Boolean = false,
+): RaftWideBackStep =
+    raftWideBackStep(column, shown = paneShown && !overlayOpen, artifact = artifact, artifactShown = artifactShown && !overlayOpen)
 
 /**
  * Reports through [report] whether the profile column (the pages with the Supporting role) is [shown] beside this
@@ -235,6 +257,17 @@ internal data class RaftProfileColumnPanes(
     val pages: List<RaftPaneEntry>
         get() = if (backCell == RaftProfileColumnCell.Details) profile.entries + details.entries else details.entries + profile.entries
 
+    /** Each page by its cell and id: unique for the column's life (ids are never reused within a cell). */
+    val pageKeys: Set<String> get() = pagesWithKeys.map { it.first }.toSet()
+
+    /** [pages], in their order, each with its key ([pageKeys]). */
+    val pagesWithKeys: List<Pair<String, RaftPaneEntry>>
+        get() {
+            val profileKeyed = profile.entries.map { "profile:${it.id}" to it }
+            val detailsKeyed = details.entries.map { "details:${it.id}" to it }
+            return if (backCell == RaftProfileColumnCell.Details) profileKeyed + detailsKeyed else detailsKeyed + profileKeyed
+        }
+
     /** Whether this has a page [before] hadn't (one opened, not one closed): the column must show (it leaves Focus). */
     fun openedSince(before: RaftProfileColumnPanes): Boolean =
         RaftProfileColumnCell.entries.any { cell ->
@@ -358,6 +391,10 @@ internal fun RaftProfileColumnCellStack(
     active: Boolean,
     onChange: (RaftProfileColumnPanes) -> Unit,
     openDetail: (String, JsonObject) -> Boolean = { _, _ -> false },
+    /** An Artifact opened from the cell: the Artifact column where there is one, else the platform stack. */
+    openArtifact: ((String, JsonObject) -> Unit)? = null,
+    /** Whether Back is the column's at all: not while an Artifact column opened after it is shown (it closes first). */
+    backOn: () -> Boolean = { true },
     page: @Composable (entry: RaftPaneEntry, active: Boolean) -> Unit = { entry, pageActive ->
         val pageData = remember(entry) { entry.pageData.toKuiklyJson() }
         RaftChildPage(pageName = entry.pageName, pageData = pageData, modifier = Modifier.fillMaxSize(), active = pageActive)
@@ -366,10 +403,11 @@ internal fun RaftProfileColumnCellStack(
     val currentPanes by rememberUpdatedState(panes)
     val currentOnChange by rememberUpdatedState(onChange)
     val currentOpenDetail by rememberUpdatedState(openDetail)
+    val currentOpenArtifact by rememberUpdatedState(openArtifact)
     val platform = LocalRaftHost.current.navigator
     val shown = LocalRaftPaneGridColumnShown.current
     val now = panes()
-    RaftBackHandler(enabled = active && shown && now.backCell == cell, label = "wide_profile_column", blocksBackSwipe = false) {
+    RaftBackHandler(enabled = active && shown && now.backCell == cell && backOn(), label = "wide_profile_column", blocksBackSwipe = false) {
         currentOnChange(currentPanes().back())
     }
     val stack = now.stack(cell)
@@ -383,6 +421,7 @@ internal fun RaftProfileColumnCellStack(
                     openInPane = { role, name, data ->
                         when (role) {
                             RaftPaneRole.Detail -> if (!currentOpenDetail(name, data)) platform.openPage(name, data)
+                            RaftPaneRole.Artifact -> currentOpenArtifact?.invoke(name, data) ?: platform.openPage(name, data)
                             else -> currentOnChange(currentPanes().openFrom(cell, name, data))
                         }
                     },
@@ -397,6 +436,120 @@ internal fun RaftProfileColumnCellStack(
         }
     }
 }
+
+/*
+ * The Artifact column (#189 step 4; web F41, ChannelSideArea's `artifact` section): on the wide layout the Artifact
+ * viewer (RAFT_ARTIFACT_VIEWER_PAGE, role [RaftPaneRole.Artifact]) opened from the conversation, its thread or a
+ * column beside them opens in a column of the row, 480 wide and at least 480, where the side layout puts it (by
+ * default right of Tasks / Files, left of the profile column), instead of a page over the whole window. One Artifact
+ * at a time: opening another replaces it. It belongs to the conversation it was opened from: picking another one
+ * closes it; narrowing out of the wide layout reopens it as the page it is on a phone.
+ */
+
+/** The Artifact column's one cell; its id is the side layout's section ([RaftChannelSideSection.Artifact]). */
+internal const val RAFT_ARTIFACT_COLUMN_CELL = "artifact"
+
+/**
+ * The Artifact column's page: the viewer open in it ([entry]; null: none), and the profile column's pages that were
+ * open when it opened ([below], [RaftProfileColumnPanes.pageKeys]). Back goes in the order things were opened across
+ * both columns: a profile page opened after the Artifact closes before it, one opened before it closes after it
+ * (P1, then the Artifact, then P2: Back closes P2, the Artifact, P1). Values only, compared by value.
+ */
+@Immutable
+internal data class RaftArtifactColumnPane(
+    val entry: RaftPaneEntry? = null,
+    val below: Set<String> = emptySet(),
+    private val nextId: Long = 0,
+) {
+    val isOpen: Boolean get() = entry != null
+
+    /**
+     * [pageName] opened with [profile] the profile column's pages: it replaces the one open (web: one Artifact at a
+     * time) and stands above those pages.
+     */
+    fun open(pageName: String, pageData: JsonObject, profile: RaftProfileColumnPanes = RaftProfileColumnPanes()): RaftArtifactColumnPane =
+        RaftArtifactColumnPane(RaftPaneEntry(nextId, pageName, pageData), below = profile.pageKeys, nextId = nextId + 1)
+
+    /** Whether it is above every page of [profile] (none was opened after it): Back closes it before them. */
+    fun isOnTopOf(profile: RaftProfileColumnPanes): Boolean = below.containsAll(profile.pageKeys)
+
+    /** Entry [id] closed itself (its Close, its `closePage`); a page already replaced changes nothing. */
+    fun close(id: Long): RaftArtifactColumnPane = if (entry?.id == id) cleared() else this
+
+    fun cleared(): RaftArtifactColumnPane = if (entry == null && below.isEmpty()) this else copy(entry = null, below = emptySet())
+}
+
+/**
+ * The Artifact column of the pane grid, its one cell drawn by [content]. It trails, after the conversation's Tasks /
+ * Files and before the profile column (declared after it), as the web's default layout has it; the side layout
+ * ([LocalRaftChannelSideLayoutStore]) places it. [content] is composed where the grid draws the column.
+ */
+@Composable
+internal fun raftArtifactColumn(content: @Composable () -> Unit): RaftPaneGridColumn {
+    val title = stringResource(Res.string.artifacts_column_title)
+    val resizeLabel = stringResource(Res.string.thread_side_card_resize_column, title)
+    return RaftPaneGridColumn(
+        bounds = RaftPaneGridColumns.Artifact,
+        resizeLabel = resizeLabel,
+        cells = listOf(RaftPaneGridCell(id = RAFT_ARTIFACT_COLUMN_CELL) { content() }),
+        tabLabel = title,
+        trailing = true,
+    )
+}
+
+/**
+ * The Artifact column's cell: the viewer in [pane] as a child page whose `closePage` closes the column (its head's
+ * leading Close: [LocalRaftPaneBackCloses]) and whose `openPage` opens another Artifact in its place, a page with the
+ * Supporting role in the profile column ([openSupporting]) and any other page on the platform stack. Back closes it
+ * while it is on screen ([LocalRaftPaneGridColumnShown]: not a row tab not shown, not out of sight in Focus) and
+ * [backOn] (the profile column did not open a page after it); the viewer's own Back is off in a column
+ * ([LocalRaftArtifactViewerInColumn]), so it is this one. [pane] is read when it is needed.
+ */
+@Composable
+internal fun RaftArtifactColumnCell(
+    pane: () -> RaftArtifactColumnPane,
+    active: Boolean,
+    backOn: () -> Boolean,
+    onChange: (RaftArtifactColumnPane) -> Unit,
+    /** Another Artifact opened from the viewer: in its place, above the profile column's pages as they are now. */
+    openArtifact: (String, JsonObject) -> Unit,
+    openSupporting: (String, JsonObject) -> Unit,
+    page: @Composable (entry: RaftPaneEntry, active: Boolean) -> Unit,
+) {
+    val currentPane by rememberUpdatedState(pane)
+    val currentOnChange by rememberUpdatedState(onChange)
+    val currentOpenArtifact by rememberUpdatedState(openArtifact)
+    val currentOpenSupporting by rememberUpdatedState(openSupporting)
+    val platform = LocalRaftHost.current.navigator
+    val shown = LocalRaftPaneGridColumnShown.current
+    val entry = pane().entry
+    RaftBackHandler(enabled = entry != null && active && shown && backOn(), label = "wide_artifact_column", blocksBackSwipe = false) {
+        currentOnChange(currentPane().cleared())
+    }
+    if (entry == null) return
+    key(entry.id) {
+        RaftPaneHost(
+            wide = true,
+            openInPane = { role, name, data ->
+                when (role) {
+                    RaftPaneRole.Artifact -> currentOpenArtifact(name, data)
+                    RaftPaneRole.Supporting -> currentOpenSupporting(name, data)
+                    else -> platform.openPage(name, data)
+                }
+            },
+            close = { currentOnChange(currentPane().close(entry.id)) },
+        ) {
+            CompositionLocalProvider(LocalRaftPaneBackCloses provides true, LocalRaftArtifactViewerInColumn provides true) {
+                Box(Modifier.fillMaxSize().testTag(RAFT_ARTIFACT_COLUMN_PAGE_TEST_TAG)) {
+                    page(entry, active && shown)
+                }
+            }
+        }
+    }
+}
+
+/** Test tag of the page in the Artifact column. */
+internal const val RAFT_ARTIFACT_COLUMN_PAGE_TEST_TAG = "raftArtifactColumnPage"
 
 /**
  * The wide workspace detail's row (SettingsHomePage `adaptiveDetailPane`; composed as is by RaftProfileColumnUiTest):
@@ -414,6 +567,12 @@ internal fun RaftProfileColumnCellStack(
  *   does not count it as shown and its own Back is off, so Back leaves Focus first and the column comes back.
  *
  * [panes] is read where it is needed (the shell's state), so two Backs in a row each act on the pages as they are.
+ *
+ * The Artifact column (#189 step 4): an Artifact opened under the conversation's host (its messages, the thread, a
+ * column beside them) opens in it where [wide] ([RaftPaneRole.Artifact]); [artifact] is its page, [artifactOpen]
+ * whether it may show here and has one (as [columnOpen]), [onArtifactShown] reports it as [onShown] does. Like the
+ * profile column it leaves Focus when it opens, and is out of sight, inert and without Back while the thread fills the
+ * row. Back closes whichever of the two columns opened last first.
  */
 @Composable
 internal fun RaftWorkspaceDetailGrid(
@@ -430,6 +589,10 @@ internal fun RaftWorkspaceDetailGrid(
     reportHost: Boolean,
     onShown: (Boolean) -> Unit,
     openDetail: (String, JsonObject) -> Boolean = { _, _ -> false },
+    artifact: () -> RaftArtifactColumnPane = { RaftArtifactColumnPane() },
+    onArtifactChange: (RaftArtifactColumnPane) -> Unit = {},
+    artifactOpen: Boolean = false,
+    onArtifactShown: (Boolean) -> Unit = {},
     page: @Composable (entry: RaftPaneEntry, active: Boolean) -> Unit = { entry, pageActive ->
         val pageData = remember(entry) { entry.pageData.toKuiklyJson() }
         RaftChildPage(pageName = entry.pageName, pageData = pageData, modifier = Modifier.fillMaxSize(), active = pageActive)
@@ -437,14 +600,21 @@ internal fun RaftWorkspaceDetailGrid(
     main: @Composable () -> Unit,
 ) {
     val filling = threadFocused && sideThreadColumn != null
-    // Only the main detail pane reports whether the column is shown; out of sight in Focus it isn't.
+    // Only the main detail pane reports whether the columns are shown; out of sight in Focus they aren't.
     RaftSupportingPaneShownReport(host = reportHost, shown = columnOpen && !filling, report = onShown)
+    RaftSupportingPaneShownReport(host = reportHost, shown = artifactOpen && !filling, report = onArtifactShown)
     val currentPanes by rememberUpdatedState(panes)
     val currentOnPanesChange by rememberUpdatedState(onPanesChange)
+    val currentArtifact by rememberUpdatedState(artifact)
+    val currentOnArtifactChange by rememberUpdatedState(onArtifactChange)
     val currentFilling by rememberUpdatedState(filling)
     val currentOnLeaveFocus by rememberUpdatedState(onLeaveFocus)
-    // Every change to the column's pages goes through here: one that opens a page while the thread fills the row
-    // leaves Focus first.
+    val profileDeclared = columnOpen && tabSelected
+    val artifactDeclared = artifactOpen && tabSelected
+    val currentProfileDeclared by rememberUpdatedState(profileDeclared)
+    val currentArtifactDeclared by rememberUpdatedState(artifactDeclared)
+    // Every change to the columns' pages goes through here: one that opens a page while the thread fills the row
+    // leaves Focus first (web restoreRowExpand).
     val change: (RaftProfileColumnPanes) -> Unit =
         remember {
             { next: RaftProfileColumnPanes ->
@@ -452,15 +622,52 @@ internal fun RaftWorkspaceDetailGrid(
                 currentOnPanesChange(next)
             }
         }
-    // The column's pages are the shell's, not the conversation's: they get this host, not the pane wrapper below.
+    val changeArtifact: (RaftArtifactColumnPane) -> Unit =
+        remember {
+            { next: RaftArtifactColumnPane ->
+                val opened = next.entry != null && next.entry.id != currentArtifact().entry?.id
+                if (currentFilling && opened) currentOnLeaveFocus()
+                currentOnArtifactChange(next)
+            }
+        }
+    val openArtifact: (String, JsonObject) -> Unit = remember { { name: String, data: JsonObject -> changeArtifact(currentArtifact().open(name, data, currentPanes())) } }
+    // The columns' pages are the shell's, not the conversation's: they get this host, not the pane wrapper below.
     val shellHost = LocalRaftHost.current
     val now = panes()
-    // A new column object each composition: the grid draws its latest cells (each grid's `fresh` state).
+    // New column objects each composition: the grid draws their latest cells (each grid's `fresh` state).
     val profileColumn =
-        if (columnOpen && tabSelected) {
+        if (profileDeclared) {
             raftProfileColumn(now.cells) { cell ->
                 CompositionLocalProvider(LocalRaftHost provides shellHost) {
-                    RaftProfileColumnCellStack(cell = cell, panes = panes, active = active, onChange = change, openDetail = openDetail, page = page)
+                    RaftProfileColumnCellStack(
+                        cell = cell,
+                        panes = panes,
+                        active = active,
+                        onChange = change,
+                        openDetail = openDetail,
+                        openArtifact = openArtifact,
+                        // An Artifact column opened after the profile's last page closes first.
+                        backOn = { !(currentArtifactDeclared && currentArtifact().isOnTopOf(currentPanes())) },
+                        page = page,
+                    )
+                }
+            }
+        } else {
+            null
+        }
+    val artifactColumn =
+        if (artifactDeclared) {
+            raftArtifactColumn {
+                CompositionLocalProvider(LocalRaftHost provides shellHost) {
+                    RaftArtifactColumnCell(
+                        pane = artifact,
+                        active = active,
+                        backOn = { currentArtifact().isOnTopOf(currentPanes()) || !currentProfileDeclared },
+                        openArtifact = openArtifact,
+                        onChange = changeArtifact,
+                        openSupporting = { name, data -> change(currentPanes().open(name, data)) },
+                        page = page,
+                    )
                 }
             }
         } else {
@@ -473,10 +680,16 @@ internal fun RaftWorkspaceDetailGrid(
         remember(details) {
             RaftProfileColumnState(details = details, closeDetails = { change(currentPanes().closeCell(RaftProfileColumnCell.Details)) })
         }
-    RaftPaneHost(wide = wide, openInPane = { _, pageName, pageData -> change(currentPanes().open(pageName, pageData)) }) {
+    RaftPaneHost(
+        wide = wide,
+        openInPane = { role, pageName, pageData ->
+            if (role == RaftPaneRole.Artifact) openArtifact(pageName, pageData) else change(currentPanes().open(pageName, pageData))
+        },
+    ) {
         CompositionLocalProvider(LocalRaftProfileColumn provides state) {
             RaftPaneGrid(
-                columns = listOfNotNull(sideThreadColumn, profileColumn),
+                // The Artifact's column before the profile's: both trail, in this order (web DEFAULT_CHANNEL_SIDE_LAYOUT).
+                columns = listOfNotNull(sideThreadColumn, artifactColumn, profileColumn),
                 modifier = modifier,
                 fillColumn = RaftPaneGridColumns.Thread.id.takeIf { filling },
                 main = main,

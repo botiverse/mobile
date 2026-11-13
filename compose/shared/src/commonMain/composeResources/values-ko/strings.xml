@@ -4069,6 +4069,7 @@
     <string name="artifacts_activity_someone">요청자</string>
     <string name="artifacts_activity_untitled">제목 없는 Artifact</string>
     <string name="artifacts_viewer_more">더 보기</string>
+    <string name="artifacts_column_title">Artifact</string>
     <string name="artifacts_viewer_unavailable_title">이 Artifact를 열 수 없어요</string>
     <string name="artifacts_viewer_unavailable_body">존재하지 않거나 볼 권한이 없어요.</string>
     <string name="artifacts_viewer_open_in_browser">브라우저에서 열기</string>

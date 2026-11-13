@@ -4069,6 +4069,7 @@
     <string name="artifacts_activity_someone">有人</string>
     <string name="artifacts_activity_untitled">未命名的 Artifact</string>
     <string name="artifacts_viewer_more">更多操作</string>
+    <string name="artifacts_column_title">Artifact</string>
     <string name="artifacts_viewer_unavailable_title">打不開這個 Artifact</string>
     <string name="artifacts_viewer_unavailable_body">它不存在，或者你沒有權限查看。</string>
     <string name="artifacts_viewer_open_in_browser">在瀏覽器中開啟</string>
