@@ -95,4 +95,61 @@ class RaftArtifactDeepLinkTest {
             opened,
         )
     }
+
+    @Test
+    fun aTappedShareLinkOpensTheViewerOnEveryRaftHost() {
+        val opened = mutableListOf<String>()
+        var webUrl = staging
+        var appHosts = emptySet<String>()
+        val navigator =
+            RaftLinkNavigator(
+                modeProvider = { LinkOpenMode.InAppBrowser },
+                openInAppBrowser = { opened += "in_app:$it"; true },
+                openExternalBrowser = { opened += "view:$it" },
+                onRejected = { opened += "rejected:$it" },
+                openArtifactAddress =
+                    raftArtifactLinkOpener(webUrl = { webUrl }, appHosts = { appHosts }) { target ->
+                        opened += "viewer:${target.id}@${target.version}"
+                        true
+                    },
+            )
+        fun open(url: String) = navigator.open(url).target
+
+        // Before the client config loads (no app hosts): the production share address, with and
+        // without a version, and the environment's own web.
+        assertEquals(RaftLinkOpenTarget.ArtifactViewer, open("https://app.raft.build/artifacts/pt_abc123"))
+        assertEquals(RaftLinkOpenTarget.ArtifactViewer, open("https://open.raft.build/artifacts/pt_abc123/v/2"))
+        assertEquals(RaftLinkOpenTarget.ArtifactViewer, open("$staging/artifacts/pt_abc123"))
+        assertEquals(RaftLinkOpenTarget.ArtifactViewer, open("https://app.raft.build/s/hq/artifacts/$short"))
+        // The Artifacts home address still opens it, on production and on the environment's web.
+        assertEquals(RaftLinkOpenTarget.ArtifactViewer, open("https://app.raft.build/s/hq/artifacts?artifact=$short&version=4"))
+        assertEquals(RaftLinkOpenTarget.ArtifactViewer, open("$staging/s/hq/artifacts?artifact=$short"))
+        // A client-config host once it has loaded.
+        assertEquals(RaftLinkOpenTarget.InAppBrowser, open("https://raft.example/artifacts/pt_abc123"))
+        appHosts = setOf("raft.example")
+        assertEquals(RaftLinkOpenTarget.ArtifactViewer, open("https://raft.example/artifacts/pt_abc123"))
+        // A production environment does not claim the staging web; nor anyone's other host or path.
+        webUrl = ""
+        assertEquals(RaftLinkOpenTarget.InAppBrowser, open("$staging/artifacts/pt_abc123"))
+        assertEquals(RaftLinkOpenTarget.ArtifactViewer, open("https://app.raft.build/artifacts/pt_abc123"))
+        assertEquals(RaftLinkOpenTarget.InAppBrowser, open("https://evil.example/artifacts/pt_abc123"))
+        assertEquals(RaftLinkOpenTarget.InAppBrowser, open("https://app.raft.build/artifacts"))
+        assertEquals(
+            listOf(
+                "viewer:pt_abc123@null",
+                "viewer:pt_abc123@2",
+                "viewer:pt_abc123@null",
+                "viewer:$short@null",
+                "viewer:$short@4",
+                "viewer:$short@null",
+                "in_app:https://raft.example/artifacts/pt_abc123",
+                "viewer:pt_abc123@null",
+                "in_app:$staging/artifacts/pt_abc123",
+                "viewer:pt_abc123@null",
+                "in_app:https://evil.example/artifacts/pt_abc123",
+                "in_app:https://app.raft.build/artifacts",
+            ),
+            opened,
+        )
+    }
 }

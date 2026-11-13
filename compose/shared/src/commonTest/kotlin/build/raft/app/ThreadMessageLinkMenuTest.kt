@@ -52,8 +52,13 @@ class ThreadMessageLinkMenuTest {
                 "raft:///s/$slug/channel/$cid?msg=$mid",
                 // An Artifact's address.
                 "https://app.raft.build/s/botiverse/artifacts?artifact=2QthvfPeGfDnqwr7LG6itx",
+                // An Artifact's share link, on production and on the environment's web.
+                "https://app.raft.build/artifacts/pt_abc123",
+                "$staging/artifacts/pt_abc123/v/2",
             )
         for (url in raft) assertEquals(true, threadMessageLinkIsRaft(url, staging, appHosts), url)
+        // Before the client config loads (no app hosts), a production share link is still Raft's.
+        assertEquals(true, threadMessageLinkIsRaft("https://app.raft.build/artifacts/pt_abc123", "", emptyList()))
         val external = listOf("https://example.com/docs", "https://github.com/botiverse/mobile/pull/1", "mailto:a@b.c")
         for (url in external) assertEquals(false, threadMessageLinkIsRaft(url, staging, appHosts), url)
     }
