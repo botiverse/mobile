@@ -244,7 +244,8 @@ class SharedActivityStoreInboxInPlaceCheckTest {
         untilReconcile()
         assertEquals(2, f.inbox.initialLoadCount, "the inplace_reconcile read answered, still behind")
         val held = f.store.state.value.items.single { it.key == threadRow.key }
-        assertEquals("21" to MessageId("r-21"), held.latestActivitySeq to held.latestActivityMessageId, "inside 90 s the patch holds")
+        // The held row keeps the patched reply (its served seq stays, withRealtimeActivityProjection).
+        assertEquals(MessageId("r-21") to 3, held.latestActivityMessageId to held.replyCount, "inside 90 s the patch holds")
         assertTrue(threadRow.key in f.store.realtimeHighWaterKeysForTest())
 
         advanceTimeBy(ActivityLocalMutationHoldMillis)
