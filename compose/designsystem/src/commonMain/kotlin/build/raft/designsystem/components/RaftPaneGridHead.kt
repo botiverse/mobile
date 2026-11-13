@@ -44,7 +44,8 @@ import build.raft.designsystem.tokens.RaftStroke
  *   something in it;
  * - Expand (rule 5) is a window control against Close, never in ⋯; shown only where the row has more than one column,
  *   and always on the column expanded, so it can come back (Restore);
- * - ⋯, Expand and Close never fold.
+ * - ⋯, Expand and Close never fold where the title keeps its floor beside them; narrower, Expand and then Close go into
+ *   ⋯ (mobile's 44dp touch buttons, [raftPaneGridHeadFit]), and the title never vanishes.
  * The buttons are the bar buttons of the input in use ([build.raft.designsystem.theme.RaftControlMetrics]: 44 by
  * touch, 28 under a fine pointer), the head [build.raft.designsystem.theme.RaftControlMetrics.headHeight] tall with a
  * seam under it.
@@ -123,6 +124,63 @@ fun raftPaneGridHeadShownActions(
 }
 
 /**
+ * The least the title keeps (a letter or two and the ellipsis; tabs in its place scroll in it) once the head's own
+ * actions are all in ⋯. Mobile's own floor, see [raftPaneGridHeadFit].
+ */
+const val RAFT_PANE_GRID_HEAD_TITLE_FLOOR_DP = 32f
+
+/** Test tag suffix of a head's title (`+` the cell id). */
+const val RAFT_PANE_GRID_HEAD_TITLE_SUFFIX = ":title"
+
+/** How a head lays out ([raftPaneGridHeadFit]): its own actions shown as buttons, and whether Expand and Close went into ⋯. */
+data class RaftPaneGridHeadFit(val shownOwn: Int, val expandInMenu: Boolean = false, val closeInMenu: Boolean = false)
+
+/**
+ * The head's layout in [widthDp] (rule 6). First the web's headFit ([raftPaneGridHeadShownActions]): the own actions
+ * fold into ⋯, the last first, until the title keeps 56 (tabs 120). Where they are all in ⋯ and the title still
+ * hasn't its floor ([titleFloorDp]) beside ⋯, Expand and Close, the window controls go into ⋯ too: Expand first, then
+ * Close. ⋯ itself never goes, and it stands last then.
+ *
+ * The web has no such step: there the title (raft-ui `PanelHeaderContent`, `min-w-0 flex-1`, its title `truncate`) is
+ * the only thing that gives way, down to nothing, and Expand and Close never fold; its 28 to 32px buttons leave a
+ * title even in a 160px column without a lead. Mobile's 44dp touch buttons don't: at 160 ⋯, Expand and Close alone take
+ * 140, so the title would vanish (pane_grid_heads, run 43355784708). A head never loses its title: its name is the
+ * column's (and the screen reader's).
+ */
+fun raftPaneGridHeadFit(
+    widthDp: Float,
+    leadButtons: Int,
+    own: Int,
+    expand: Boolean,
+    close: Boolean,
+    menuItems: Int,
+    tabs: Boolean,
+    buttonDp: Float,
+    startDp: Float,
+    endDp: Float,
+    gapDp: Float = RAFT_PANE_GRID_HEAD_GAP_DP,
+    leadDp: Float = buttonDp + gapDp,
+    titleGapDp: Float = gapDp,
+    titleFloorDp: Float = RAFT_PANE_GRID_HEAD_TITLE_FLOOR_DP,
+): RaftPaneGridHeadFit {
+    val controls = (if (expand) 1 else 0) + (if (close) 1 else 0)
+    val shown = raftPaneGridHeadShownActions(widthDp, leadButtons, own, controls, menuItems, tabs, buttonDp, startDp, endDp, gapDp, leadDp, titleGapDp)
+    if (widthDp <= 0f || shown > 0) return RaftPaneGridHeadFit(shown)
+    val room = widthDp - startDp - endDp - leadButtons * leadDp - titleFloorDp - titleGapDp
+    fun fits(bar: Int, menu: Boolean): Boolean {
+        val count = bar + (if (menu) 1 else 0)
+        return count == 0 || buttonDp * count + gapDp * (count - 1) <= room
+    }
+    val menu = own + menuItems > 0
+    if (fits(controls, menu)) return RaftPaneGridHeadFit(0)
+    if (expand) {
+        if (fits(controls - 1, true)) return RaftPaneGridHeadFit(0, expandInMenu = true)
+        return RaftPaneGridHeadFit(0, expandInMenu = true, closeInMenu = close)
+    }
+    return RaftPaneGridHeadFit(0, closeInMenu = close)
+}
+
+/**
  * A pane grid column's head (see the rule above). [cellId] is the cell it heads: its region for Expand and for the
  * row tabs, which come from the column it stands in ([LocalRaftPaneGridColumnControls]); outside a planned row it has
  * neither. [lead] stands before the title ([leadButtons] buttons: a stacked cell's fold chevron). [ownActions] show as
@@ -161,19 +219,36 @@ fun RaftPaneGridColumnHead(
         val headWidth = if (visible != null) minOf(maxWidth, visible) else maxWidth
         val start = if (lead != null) metrics.barEdgeInset else 16.dp
         val end = metrics.barEdgeInset
-        val shownOwn =
-            raftPaneGridHeadShownActions(
+        val fit =
+            raftPaneGridHeadFit(
                 widthDp = headWidth.value,
                 leadButtons = if (lead != null) leadButtons else 0,
                 own = ownActions.size,
-                controls = (if (expand != null) 1 else 0) + (if (onClose != null) 1 else 0),
+                expand = expand != null,
+                close = onClose != null,
                 menuItems = menuItems.size,
                 tabs = tabs != null,
                 buttonDp = metrics.barButtonSize.value,
                 startDp = start.value,
                 endDp = end.value,
             )
-        val menu = ownActions.drop(shownOwn) + menuItems
+        val shownOwn = fit.shownOwn
+        // Too narrow for its window controls beside the title's floor, they stand last in ⋯: Expand, then Close.
+        val expandItem =
+            expand?.takeIf { fit.expandInMenu }?.let {
+                RaftPaneGridHeadAction(
+                    id = "expand",
+                    label = if (it.pressed) labels.restore else labels.expand,
+                    onSelect = { it.toggle() },
+                    glyph = if (it.pressed) RaftGlyph.Minimize2 else RaftGlyph.Maximize2,
+                    testTag = tag + RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX,
+                )
+            }
+        val closeItem =
+            onClose?.takeIf { fit.closeInMenu }?.let {
+                RaftPaneGridHeadAction(id = "close", label = closeLabel ?: title, onSelect = it, glyph = RaftGlyph.X, testTag = tag + RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX)
+            }
+        val menu = ownActions.drop(shownOwn) + menuItems + listOfNotNull(expandItem, closeItem)
         // The head's buttons are bar buttons: 28 under a mouse or trackpad, 44 by touch (sizing v12).
         CompositionLocalProvider(LocalRaftBarButtons provides true) {
             Row(
@@ -189,7 +264,7 @@ fun RaftPaneGridColumnHead(
                 horizontalArrangement = Arrangement.spacedBy(RAFT_PANE_GRID_HEAD_GAP_DP.dp),
             ) {
                 lead?.invoke()
-                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                Box(Modifier.weight(1f).testTag(tag + RAFT_PANE_GRID_HEAD_TITLE_SUFFIX), contentAlignment = Alignment.CenterStart) {
                     if (tabs != null) {
                         // Rule 4: the row tabs in the title's place, the title's whole room; they scroll where they don't fit.
                         RaftTabStrip(
@@ -199,6 +274,7 @@ fun RaftPaneGridColumnHead(
                             tabs.tabs.forEach { (key, label) -> RaftTab(text = label, selected = key == tabs.selected, onClick = { tabs.onSelect(key) }) }
                         }
                     } else {
+                        // Truncated or not, its node carries the whole title: the head's name for screen readers.
                         RaftText(
                             title,
                             Modifier.semantics { heading() },
@@ -222,7 +298,7 @@ fun RaftPaneGridColumnHead(
                     }
                 }
                 if (menu.isNotEmpty()) RaftPaneGridHeadMenu(menu, labels.more, tag + RAFT_PANE_GRID_HEAD_MORE_SUFFIX)
-                if (expand != null) {
+                if (expand != null && !fit.expandInMenu) {
                     RaftIconButton(
                         onClick = { expand.toggle() },
                         tooltip = if (expand.pressed) labels.restore else labels.expand,
@@ -233,7 +309,7 @@ fun RaftPaneGridColumnHead(
                         RaftGlyphIcon(if (expand.pressed) RaftGlyph.Minimize2 else RaftGlyph.Maximize2, size = metrics.barIconSize)
                     }
                 }
-                if (onClose != null) {
+                if (onClose != null && !fit.closeInMenu) {
                     RaftIconButton(
                         onClick = onClose,
                         tooltip = closeLabel,

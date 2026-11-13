@@ -18,6 +18,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -27,6 +29,8 @@ import build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX
 import build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX
 import build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_MORE_SUFFIX
 import build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_TEST_TAG
+import build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_TITLE_FLOOR_DP
+import build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_TITLE_SUFFIX
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftPaneGrid
 import build.raft.designsystem.components.RaftPaneGridCell
@@ -78,8 +82,11 @@ class RaftPaneGridHeadFitTest {
         waitForIdle()
     }
 
-    /** Every head's buttons (its own action, ⋯, Expand, Close) lie inside its column, as laid out (not as clipped). */
-    private fun ComposeUiTest.assertHeadsInsideTheirColumns(at: Float) {
+    /**
+     * Every head's buttons (its own action, ⋯, Expand, Close) lie inside its column, as laid out (not as clipped), and
+     * its title keeps at least its floor and its whole text; with [allControls], ⋯, Expand and Close are in the bar.
+     */
+    private fun ComposeUiTest.assertHeadsInsideTheirColumns(at: Float, allControls: Boolean = true) {
         columns.forEach { bounds ->
             val column = onNodeWithTag(RAFT_PANE_GRID_COLUMN_TEST_TAG + bounds.id, useUnmergedTree = true).fetchSemanticsNode()
             val left = column.positionInRoot.x
@@ -90,11 +97,15 @@ class RaftPaneGridHeadFitTest {
                 val x = button.positionInRoot.x
                 assertTrue(x >= left - 0.5f && x + button.size.width <= right + 0.5f, "${bounds.id} at $at: a head button at $x..${x + button.size.width} past its column $left..$right")
             }
-            // ⋯, Expand and Close never fold, and stay in sight.
             cells.getValue(bounds).forEach { id ->
-                listOf(RAFT_PANE_GRID_HEAD_MORE_SUFFIX, RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX, RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX).forEach { suffix ->
-                    onNodeWithTag(RAFT_PANE_GRID_HEAD_TEST_TAG + id + suffix, useUnmergedTree = true).assertExists()
-                }
+                // The title never vanishes: at least its floor wide, its node the whole title (the screen reader's name).
+                val title = onNodeWithTag(RAFT_PANE_GRID_HEAD_TEST_TAG + id + RAFT_PANE_GRID_HEAD_TITLE_SUFFIX, useUnmergedTree = true).fetchSemanticsNode()
+                val floor = with(density) { RAFT_PANE_GRID_HEAD_TITLE_FLOOR_DP.dp.toPx() }
+                assertTrue(title.size.width >= floor - 1f, "$id at $at: its title is ${title.size.width}px, under its floor $floor")
+                onNode(hasText(id) and isHeading(), useUnmergedTree = true).assertExists()
+                // ⋯ never folds; with room, Expand and Close stand beside it.
+                val suffixes = if (allControls) listOf(RAFT_PANE_GRID_HEAD_MORE_SUFFIX, RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX, RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX) else listOf(RAFT_PANE_GRID_HEAD_MORE_SUFFIX)
+                suffixes.forEach { suffix -> onNodeWithTag(RAFT_PANE_GRID_HEAD_TEST_TAG + id + suffix, useUnmergedTree = true).assertExists() }
             }
         }
     }
@@ -109,6 +120,11 @@ class RaftPaneGridHeadFitTest {
             rowWidth = 1160f
             waitForIdle()
             assertHeadsInsideTheirColumns(1160f)
+            // 800: every column at 160 (rule 2's floor); by touch Expand, and with a fold chevron Close, go into ⋯
+            // before the title would.
+            rowWidth = 800f
+            waitForIdle()
+            assertHeadsInsideTheirColumns(800f, allControls = false)
         }
 }
 

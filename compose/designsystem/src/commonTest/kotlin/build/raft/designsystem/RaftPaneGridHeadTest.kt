@@ -2,6 +2,8 @@ package build.raft.designsystem
 
 import build.raft.designsystem.components.RaftPaneGridColumnControls
 import build.raft.designsystem.components.RaftPaneGridExpand
+import build.raft.designsystem.components.RaftPaneGridHeadFit
+import build.raft.designsystem.components.raftPaneGridHeadFit
 import build.raft.designsystem.components.RaftRowPlanColumn
 import build.raft.designsystem.components.raftPaneGridHeadShownActions
 import build.raft.designsystem.components.raftPaneGridRowPlan
@@ -61,6 +63,37 @@ class RaftPaneGridHeadTest {
         assertEquals(0, head(205f, 1, lead = 1))
         assertEquals(1, head(270f, 1, tabs = true))
         assertEquals(0, head(250f, 1, tabs = true))
+    }
+
+    /** Mobile's head by touch: 44dp buttons 4 apart, 16 / 5 margins (5 / 5 after a lead), a lead 48 with its gap. */
+    private fun touch(width: Float, own: Int = 1, lead: Int = 0, menuItems: Int = 1, expand: Boolean = true, close: Boolean = true): RaftPaneGridHeadFit =
+        raftPaneGridHeadFit(
+            widthDp = width,
+            leadButtons = lead,
+            own = own,
+            expand = expand,
+            close = close,
+            menuItems = menuItems,
+            tabs = false,
+            buttonDp = 44f,
+            startDp = if (lead > 0) 5f else 16f,
+            endDp = 5f,
+        )
+
+    @Test
+    fun theTitleNeverVanishesExpandThenCloseGoIntoTheMenuFirst() {
+        // With room, the web's rule alone: the own action shows; at 272 with a fold chevron it is in ⋯, Expand and
+        // Close stay, the title has 178 - 140 + 32 of room.
+        assertEquals(RaftPaneGridHeadFit(1), touch(400f))
+        assertEquals(RaftPaneGridHeadFit(0), touch(272f, lead = 1))
+        // 160, no lead: ⋯, Expand and Close (140) would leave the title under its 32; Expand goes into ⋯.
+        assertEquals(RaftPaneGridHeadFit(0, expandInMenu = true), touch(160f))
+        // 160 with a fold chevron: ⋯ and Close (92) still don't leave it 32; Close goes too, ⋯ stays.
+        assertEquals(RaftPaneGridHeadFit(0, expandInMenu = true, closeInMenu = true), touch(160f, lead = 1))
+        // Nothing for ⋯ to hold but no room for Close: Close goes into a ⋯ of its own.
+        assertEquals(RaftPaneGridHeadFit(0, closeInMenu = true), touch(100f, own = 0, menuItems = 0, expand = false))
+        // A head not measured yet shows everything.
+        assertEquals(RaftPaneGridHeadFit(1), touch(0f))
     }
 
     private val columns =
