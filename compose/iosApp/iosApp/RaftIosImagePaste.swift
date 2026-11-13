@@ -17,14 +17,14 @@ import UniformTypeIdentifiers
 ///
 /// The editor is also Compose's edit menu view (CMPEditMenuView, iOS 16+: UIEditMenuInteraction).
 /// CMP 1.12 offers Paste only for text, and on iOS it never shows Compose's custom menu items
-/// (`appendTextContextMenuComponents` needs the new context menu, which is off on iOS). UIKit does
-/// not show the system's Paste for images-only on this view either, even with the
-/// `canPerformAction` hook answering YES (only ⌘V and the iOS 15 menu go by that). So with only
-/// images on the clipboard a long press showed no menu in an empty composer. The hooked
-/// `editMenuInteraction(_:menuFor:suggestedActions:)` puts "Paste Image" first in the composer's
-/// menu while the clipboard holds only images (RaftIosComposerPasteTests checks what is on screen).
-/// It is the app's own action, not the system's paste action, so its read of another app's
-/// clipboard shows iOS's "Allow Paste" prompt (unless the user chose Allow in Settings).
+/// (`appendTextContextMenuComponents` needs the new context menu, which is off on iOS). Its menu is
+/// UIKit's suggested actions as UIKit filters them, so whether the system's Paste shows for
+/// images-only, with the `canPerformAction` hook answering YES, is up to UIKit: on iPad (iOS 26.1)
+/// it does, in an empty composer on iPhone it did not, and the long press showed no menu. The
+/// hooked `editMenuInteraction(_:menuFor:suggestedActions:)` keeps the menu to exactly one Paste
+/// while the clipboard holds only images (`composerEditMenu`): the system's where the menu has it,
+/// else the composer's own item titled as the system's. Both end in the editor's `paste(_:)`
+/// (RaftIosComposerPasteTests checks what is on screen).
 ///
 /// The clipboard is read inside `paste(_:)`, the system paste action, so iOS shows no
 /// "Allow Paste" prompt; the images are downscaled and encoded off the main thread and handed to
@@ -144,8 +144,8 @@ enum RaftIosImagePaste {
         }
     }
 
-    /// The composer editor's edit menu (iOS 16+): Compose's menu, plus "Paste Image" while the
-    /// clipboard holds only images. Posted as `composerEditMenuNotification` (RaftIosComposerPasteTests).
+    /// The composer editor's edit menu (iOS 16+): Compose's menu, with one Paste while the clipboard
+    /// holds only images. Posted as `composerEditMenuNotification` (RaftIosComposerPasteTests).
     @available(iOS 16.0, *)
     private static func hookEditMenu(_ cls: AnyClass) {
         let selector = NSSelectorFromString("editMenuInteraction:menuForConfiguration:suggestedActions:")
@@ -156,8 +156,10 @@ enum RaftIosImagePaste {
             view, interaction, configuration, suggested in
             let menu = original(view, selector, interaction, configuration, suggested)
             guard isComposerEditor(view) else { return menu }
-            let result = composerEditMenu(menu)
-            NotificationCenter.default.post(name: composerEditMenuNotification, object: result)
+            let result = composerEditMenu(menu, suggested: suggested as? [UIMenuElement] ?? [], editor: view)
+            var info: [String: Any] = ["suggested": suggested]
+            if let menu { info["original"] = menu }
+            NotificationCenter.default.post(name: composerEditMenuNotification, object: result, userInfo: info)
             return result
         }
         let imp = imp_implementationWithBlock(replacement)
@@ -166,28 +168,72 @@ enum RaftIosImagePaste {
         }
     }
 
-    /// Posted with the composer editor's edit menu (a UIMenu, or nil) each time UIKit asks for it.
+    /// Posted with the composer editor's edit menu (a UIMenu, or nil) each time UIKit asks for it;
+    /// userInfo: "suggested" (UIKit's suggested actions), "original" (Compose's menu, when it built one).
     static let composerEditMenuNotification = Notification.Name("RaftComposerEditMenu")
 
-    /// Title of the menu item that pastes the clipboard's images ("Paste Image").
-    static var pasteImageTitle: String { RaftIosComposerImagePasteKt.raftComposerPasteImageLabel() }
+    private static let pasteSelector = #selector(UIResponderStandardEditActions.paste(_:))
 
-    /// With only images on the clipboard, "Paste Image" first. Text on the clipboard (alone or with
-    /// images) keeps Compose's menu as it is: its Paste pastes the text.
+    /// The system's Paste in a menu: the standard edit command (`paste:`), or an action UIKit
+    /// identifies as paste.
+    private static func isSystemPaste(_ element: UIMenuElement) -> Bool {
+        if let command = element as? UICommand { return command.action == pasteSelector }
+        if let action = element as? UIAction {
+            guard action.identifier != pasteIdentifier else { return false }
+            let id = action.identifier.rawValue.lowercased()
+            return id == "paste" || id.hasSuffix(".paste")
+        }
+        return false
+    }
+
+    private static func systemPaste(in elements: [UIMenuElement]) -> UIMenuElement? {
+        for element in elements {
+            if isSystemPaste(element) { return element }
+            if let menu = element as? UIMenu, let found = systemPaste(in: menu.children) { return found }
+        }
+        return nil
+    }
+
+    /// UIKit's own title for Paste (the one its edit menu shows, in the language UIKit uses), or
+    /// the app's "Paste" when UIKit's strings do not have it.
+    static var pasteTitle: String {
+        let missing = "\u{0}"
+        for bundle in [Bundle(for: UIView.self), Bundle(identifier: "com.apple.UIKitCore"), Bundle(identifier: "com.apple.UIKit")] {
+            guard let bundle else { continue }
+            let title = bundle.localizedString(forKey: "Paste", value: missing, table: nil)
+            if title != missing, !title.isEmpty { return title }
+        }
+        return RaftIosComposerImagePasteKt.raftComposerPasteLabel()
+    }
+
+    /// Only images on the clipboard: exactly one Paste. Compose's menu (UIKit's suggested actions,
+    /// filtered) already has the system's Paste where UIKit offers it for this view (the #4648
+    /// `canPerformAction` hook answers YES): keep it, add nothing; choosing it sends `paste(_:)`,
+    /// which the hook routes to the image path, read inside the system paste action. Without one
+    /// (CMP 1.12 builds no Paste for images), add ours, titled as the system's Paste, which sends
+    /// the same `paste(_:)` to the editor. Text on the clipboard (alone or with images) keeps
+    /// Compose's menu as it is: its Paste pastes the text.
     @available(iOS 16.0, *)
-    private static func composerEditMenu(_ menu: UIMenu?) -> UIMenu? {
+    private static func composerEditMenu(_ menu: UIMenu?, suggested: [UIMenuElement], editor: AnyObject) -> UIMenu? {
         guard RaftIosComposerImagePasteKt.raftIosClipboardHoldsOnlyImages() else { return menu }
-        let item = UIAction(title: pasteImageTitle, identifier: pasteImageIdentifier) { _ in
-            pasteImagesIntoComposer()
+        if let menu, systemPaste(in: menu.children) != nil { return menu }
+        let title = (systemPaste(in: suggested) as? UICommand)?.title ?? (systemPaste(in: suggested) as? UIAction)?.title
+        let item = UIAction(
+            title: title.flatMap { $0.isEmpty ? nil : $0 } ?? pasteTitle,
+            identifier: pasteIdentifier
+        ) { [weak editor] action in
+            guard let editor = editor as? UIResponder else { return }
+            // The editor's paste(_:), as the system's Paste: the hook takes images-only.
+            editor.perform(pasteSelector, with: action)
         }
         guard let menu else { return UIMenu(title: "", children: [item]) }
         return menu.replacingChildren([item] + menu.children)
     }
 
-    private static let pasteImageIdentifier = UIAction.Identifier("build.raft.composer.pasteImage")
+    private static let pasteIdentifier = UIAction.Identifier("build.raft.composer.paste")
 
-    /// Inside the system paste action (no prompt) or Paste Image (iOS may prompt): read now,
-    /// encode off the main thread.
+    /// Inside `paste(_:)`: from the system's Paste or ⌘V (no prompt), or from the composer's own
+    /// Paste item (iOS may prompt): read now, encode off the main thread.
     private static func pasteImagesIntoComposer() {
         guard RaftIosComposerImagePasteKt.raftComposerImagePasteClaim() else { return }
         let sources = captureClipboardImages()

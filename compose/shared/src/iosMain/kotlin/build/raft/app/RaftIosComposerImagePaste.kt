@@ -6,7 +6,7 @@ import build.raft.app.data.PlatformFile
 import build.raft.app.resources.Res
 import build.raft.app.resources.desc
 import build.raft.app.resources.resolve
-import build.raft.app.resources.thread_composer_paste_image
+import build.raft.app.resources.thread_composer_paste
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSURL
 import platform.UIKit.UIPasteboard
@@ -75,10 +75,11 @@ object RaftIosComposerImagePasteHost {
 }
 
 /**
- * The composer's edit menu item for paste with only images on the clipboard (RaftIosImagePaste.swift
- * adds it where the menu has no Paste), in the app language.
+ * "Paste" in the app language: the title of the composer's own Paste item (RaftIosImagePaste.swift
+ * adds it, with only images on the clipboard, where the menu has no system Paste) when UIKit's
+ * own title for Paste cannot be found.
  */
-fun raftComposerPasteImageLabel(): String = Res.string.thread_composer_paste_image.desc().resolve()
+fun raftComposerPasteLabel(): String = Res.string.thread_composer_paste.desc().resolve()
 
 /** Most images one paste takes. */
 fun raftIosPasteMaxImages(): Int = ThreadComposerImagePasteMaxImages

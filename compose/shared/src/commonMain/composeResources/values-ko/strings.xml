@@ -65,7 +65,7 @@
     <string name="release_notes_error_title">릴리스 노트를 불러오지 못했어요</string>
     <string name="release_notes_error_body">연결 상태를 확인하고 다시 시도해 주세요.</string>
     <string name="thread_composer_insert_newline">줄바꿈 삽입</string>
-    <string name="thread_composer_paste_image">이미지 붙여넣기</string>
+    <string name="thread_composer_paste">붙여넣기</string>
     <string name="settings_invite_by_email">이메일로 초대</string>
     <string name="settings_delete_server">서버 삭제</string>
     <string name="common_done">완료</string>
