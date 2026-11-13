@@ -503,7 +503,68 @@ internal class RaftPaneGridPlaced(
     val topInset: Dp,
     val locals: CompositionLocalContext?,
     val token: Any? = null,
+    /**
+     * The ids of the declared columns its cells come from: its own, or, for a column the arrangement stacks anew from
+     * several ([RaftPaneGridArrangement]), theirs. Focus mode ([RaftPaneGrid]'s `fillColumn`) names a declared column.
+     */
+    val sourceIds: Set<String> = setOf(column.bounds.id),
 )
+
+// ---------------------------------------------------------------- the arrangement
+
+/**
+ * One column of a [RaftPaneGridArrangement]: the ids of the cells it stacks, top to bottom, and its width where a
+ * column has to be made for them ([widthDp]: its default; the column keeps its own width once one is kept).
+ */
+@Immutable
+data class RaftPaneGridArrangementColumn(val cells: List<String>, val widthDp: Float)
+
+/**
+ * Where the outermost grid stands and stacks the cells it is given, whichever grid declared them (#189 step 4; web
+ * channelSideLayout): left to right, each column the cells it stacks. A declared column whose cells all stand in one
+ * arrangement column, in its order, stays as declared (its bounds, its kept width) and stands where that column does.
+ * Otherwise its cells are drawn where the arrangement puts them, in a column made for them (keyed by the arrangement
+ * column's cell ids joined by `+`); a declared cell the arrangement doesn't name goes with its column's first arranged
+ * cell. Declared columns with no arranged cell stand first, in their declared order, as without an arrangement.
+ */
+@Immutable
+data class RaftPaneGridArrangement(val columns: List<RaftPaneGridArrangementColumn>)
+
+/** The arrangement the outermost grid below stands its columns by; null: as declared. Compared by value. */
+val LocalRaftPaneGridArrangement = compositionLocalOf<RaftPaneGridArrangement?> { null }
+
+/** Where a column of the arranged row comes from ([raftPaneGridArrange]). */
+internal sealed interface RaftPaneGridSlot {
+    /** Declared column [index] as is. */
+    data class Declared(val index: Int) : RaftPaneGridSlot
+
+    /** A column made for [cells] (each a declared column's index and a cell id), top to bottom, keyed [key], [widthDp] by default. */
+    data class Stacked(val key: String, val cells: List<Pair<Int, String>>, val widthDp: Float) : RaftPaneGridSlot
+}
+
+/**
+ * The arranged row ([RaftPaneGridArrangement]) of declared columns with cell ids [columns], left to right: declared
+ * columns with no arranged cell first, then one slot per arrangement column with a cell, in its order.
+ */
+internal fun raftPaneGridArrange(columns: List<List<String>>, arrangement: RaftPaneGridArrangement?): List<RaftPaneGridSlot> {
+    if (arrangement == null) return columns.indices.map { RaftPaneGridSlot.Declared(it) }
+    fun at(cell: String): Int? = arrangement.columns.indexOfFirst { cell in it.cells }.takeIf { it >= 0 }
+    val unarranged = columns.indices.filter { i -> columns[i].none { at(it) != null } }
+    val groups = mutableMapOf<Int, MutableList<Pair<Int, String>>>()
+    columns.indices.filter { it !in unarranged }.forEach { i ->
+        val first = columns[i].firstNotNullOf { at(it) }
+        columns[i].forEach { cell -> groups.getOrPut(at(cell) ?: first) { mutableListOf() } += i to cell }
+    }
+    return unarranged.map { RaftPaneGridSlot.Declared(it) } +
+        groups.keys.sorted().map { a ->
+            val order = arrangement.columns[a].cells
+            // Stable: cells the arrangement doesn't name stay last, in their declared order.
+            val cells = groups.getValue(a).sortedBy { (_, id) -> order.indexOf(id).let { if (it < 0) Int.MAX_VALUE else it } }
+            val sources = cells.map { it.first }.distinct()
+            if (sources.size == 1 && columns[sources[0]] == cells.map { it.second }) RaftPaneGridSlot.Declared(sources[0])
+            else RaftPaneGridSlot.Stacked(key = order.joinToString("+"), cells = cells, widthDp = arrangement.columns[a].widthDp)
+        }
+}
 
 /** The outermost grid, as the grids and pages in its main pane see it. */
 @Stable
@@ -563,6 +624,68 @@ internal class RaftPaneGridHost internal constructor() {
                     up.columns.map { RaftPaneGridPlaced(it, up.topInset, up.locals, token) }
                 }
         ).sortedBy { it.column.trailing }
+
+    /**
+     * [placed] stood and stacked by [arrangement] ([raftPaneGridArrange]). A column made anew draws each of its cells
+     * as the declaring grid's latest hand-up has it ([freshColumn]), with that grid's locals.
+     */
+    internal fun arranged(placed: List<RaftPaneGridPlaced>, arrangement: RaftPaneGridArrangement?): List<RaftPaneGridPlaced> {
+        if (arrangement == null) return placed
+        return raftPaneGridArrange(placed.map { place -> place.column.cells.map { it.id } }, arrangement).map { slot ->
+            when (slot) {
+                is RaftPaneGridSlot.Declared -> placed[slot.index]
+                is RaftPaneGridSlot.Stacked -> stacked(placed, slot)
+            }
+        }
+    }
+
+    private fun stacked(placed: List<RaftPaneGridPlaced>, slot: RaftPaneGridSlot.Stacked): RaftPaneGridPlaced {
+        val sources = slot.cells.map { it.first }.distinct().map { placed[it] }
+        val cells =
+            slot.cells.map { (index, id) ->
+                val place = placed[index]
+                val cell = place.column.cells.first { it.id == id }
+                RaftPaneGridCell(id = id, defaultShare = cell.defaultShare) {
+                    val scope = this
+                    // The latest content handed up, read here so only this cell is drawn anew when it changes.
+                    val latest = place.token?.let { freshColumn(it, place.column.bounds.id) }?.cells?.firstOrNull { it.id == id } ?: cell
+                    val locals = place.locals
+                    if (locals == null) {
+                        latest.content(scope)
+                    } else {
+                        // The declaring grid's locals, then what the column gives its cells (as RaftPaneGridSideColumn).
+                        val shown = LocalRaftPaneGridColumnShown.current
+                        CompositionLocalProvider(locals) {
+                            CompositionLocalProvider(LocalRaftPaneGridHost provides null, LocalRaftPaneGridColumnShown provides shown) {
+                                latest.content(scope)
+                            }
+                        }
+                    }
+                }
+            }
+        val first = sources.first().column
+        val column =
+            RaftPaneGridColumn(
+                bounds =
+                    RaftPaneGridColumnBounds(
+                        id = slot.key,
+                        defaultWidthDp = slot.widthDp,
+                        minWidthDp = sources.maxOf { it.column.bounds.minWidthDp },
+                    ),
+                resizeLabel = first.resizeLabel,
+                cells = cells,
+                splitLabel = sources.firstNotNullOfOrNull { it.column.splitLabel },
+                shortShownCell = first.shortShownCell.takeIf { sources.size == 1 },
+                shortSwitch = first.shortSwitch.takeIf { sources.size == 1 },
+                tabLabel = sources.mapNotNull { it.column.tabLabel }.distinct().joinToString(" · ").ifEmpty { null },
+            )
+        return RaftPaneGridPlaced(
+            column = column,
+            topInset = sources.maxOf { it.topInset },
+            locals = null,
+            sourceIds = sources.map { it.column.bounds.id }.toSet(),
+        )
+    }
 
     /**
      * Where the main pane's width is kept: the innermost grid that names it (the page the main pane shows: the Tasks
@@ -726,8 +849,10 @@ fun RaftPaneGrid(
     // squeezed to nothing and the rightmost columns past the row's end.)
     BoxWithConstraints(modifier) {
         val availableDp = if (constraints.hasBoundedWidth) maxWidth.value else 0f
-        // The outermost grid lays out its own columns and every column handed up, left to right.
-        val placed = if (outer != null) emptyList() else host.placed(columns, topInset)
+        // The outermost grid lays out its own columns and every column handed up, left to right, stood and stacked by
+        // the arrangement where there is one (#189 step 4, web channelSideLayout).
+        val arrangement = LocalRaftPaneGridArrangement.current
+        val placed = if (outer != null) emptyList() else host.arranged(host.placed(columns, topInset), arrangement)
         val fillIds = if (outer != null) emptySet() else host.fillIds(fillColumn)
         // Where the main pane's width is kept: the innermost page's that names it, else this grid's, else the conversation's.
         val keptMain = if (outer != null) mainBounds ?: RaftPaneGridConversationBounds else host.mainBounds(mainBounds)
@@ -739,7 +864,7 @@ fun RaftPaneGrid(
                 else -> 0f
             }
         val roomDp = maxOf(0f, availableDp - leadingDp)
-        val filling = placed.any { it.column.bounds.id in fillIds }
+        val filling = placed.any { place -> place.sourceIds.any { it in fillIds } }
         val leadingFills = leading?.mode == RaftPaneGridLeadingMode.Fill
         // The #189 row (raftPaneGridRowPlan) once measured; Focus mode and a list filling the row lay out as before.
         val planned = availableDp > 0f && placed.isNotEmpty() && !filling && !leadingFills
@@ -847,8 +972,8 @@ fun RaftPaneGrid(
                             widthDp = fitted[index],
                             // A column's width includes its left seam (web), so the main pane has the rest.
                             mainWidthDp = maxOf(0f, roomDp - fitted.sum()),
-                            fill = filling && column.bounds.id in fillIds,
-                            hidden = leadingFills || (filling && column.bounds.id !in fillIds),
+                            fill = filling && place.sourceIds.any { it in fillIds },
+                            hidden = leadingFills || (filling && place.sourceIds.none { it in fillIds }),
                             topInset = place.topInset,
                             tabs = tabsOf[column.bounds.id],
                             tabHidden = plan != null && fitted[index] <= 0f,

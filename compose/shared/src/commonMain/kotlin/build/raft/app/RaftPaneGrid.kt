@@ -24,6 +24,7 @@ import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.resources.*
+import build.raft.designsystem.components.LocalRaftPaneGridArrangement
 import build.raft.designsystem.components.LocalRaftPaneGridPlatform
 import build.raft.designsystem.components.LocalRaftPaneGridSizes
 import build.raft.designsystem.components.RaftButtonVariant
@@ -226,6 +227,9 @@ internal class RaftPaneGridStore(private val preferences: () -> SharedPreference
 
 internal val LocalRaftPaneGridStore = staticCompositionLocalOf { RaftPaneGridStore.App }
 
+/** This device's side layout (#189 step 4, RaftChannelSideLayout.kt), by which the outermost grid stands and stacks the side columns. */
+internal val LocalRaftChannelSideLayoutStore = staticCompositionLocalOf { RaftChannelSideLayoutStore.App }
+
 private fun shareText(value: Float): String = ((value * 10_000f).roundToInt() / 10_000.0).toString()
 
 internal fun encodeRaftPaneGridSplits(splits: Map<String, List<Float>>): String =
@@ -301,9 +305,13 @@ internal fun RowScope.RaftPaneGridSideColumn(
 internal fun RaftPaneGridAppLocals(content: @Composable () -> Unit) {
     val finePointer = raftPlatformHasFinePointer()
     val platform = remember(finePointer) { RaftPaneGridPlatform(finePointer = finePointer, splitterModifier = Modifier.raftNativeDispatchCapture()) }
+    // The side sections stand and stack as this device's layout says (web channelSideLayout); equal values are the
+    // same arrangement, so the grids below recompose only when the layout changes.
+    val arrangement = LocalRaftChannelSideLayoutStore.current.layout.paneGridArrangement()
     CompositionLocalProvider(
         LocalRaftPaneGridSizes provides LocalRaftPaneGridStore.current,
         LocalRaftPaneGridPlatform provides platform,
+        LocalRaftPaneGridArrangement provides arrangement,
         content = content,
     )
 }

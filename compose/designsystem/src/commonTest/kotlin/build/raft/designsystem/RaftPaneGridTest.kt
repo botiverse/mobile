@@ -2,7 +2,12 @@ package build.raft.designsystem
 
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.RaftPaneGridArrangement
+import build.raft.designsystem.components.RaftPaneGridArrangementColumn
+import build.raft.designsystem.components.RaftPaneGridCell
 import build.raft.designsystem.components.RaftPaneGridColumn
+import build.raft.designsystem.components.RaftPaneGridSlot
+import build.raft.designsystem.components.raftPaneGridArrange
 import build.raft.designsystem.components.RaftPaneGridColumnBounds
 import build.raft.designsystem.components.RaftPaneGridHandedUp
 import build.raft.designsystem.components.RaftPaneGridHost
@@ -260,5 +265,102 @@ class RaftPaneGridTest {
         assertEquals(setOf("own"), host.fillIds("own"))
         host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(column(thread)), fillColumn = "thread"))
         assertEquals(setOf("thread"), host.fillIds(null))
+    }
+
+    // #189 step 4 (web channelSideLayout): the outermost grid stands and stacks the cells by an arrangement.
+    private val sideLayout =
+        RaftPaneGridArrangement(
+            listOf(
+                RaftPaneGridArrangementColumn(listOf("thread"), 400f),
+                RaftPaneGridArrangementColumn(listOf("tasks", "files"), 360f),
+                RaftPaneGridArrangementColumn(listOf("artifact"), 480f),
+                RaftPaneGridArrangementColumn(listOf("profile", "context", "details"), 400f),
+            )
+        )
+
+    @Test
+    fun theArrangementStandsDeclaredColumnsInItsOrder() {
+        // Declared: the Tasks page's task (no section), the thread, Tasks / Files, the profile column, the Artifact.
+        val declared = listOf(listOf("task"), listOf("thread"), listOf("tasks", "files"), listOf("profile", "details"), listOf("artifact"))
+        assertEquals(
+            listOf(0, 1, 2, 4, 3).map { RaftPaneGridSlot.Declared(it) },
+            raftPaneGridArrange(declared, sideLayout),
+            "a column with no arranged cell first, then the arrangement's order; each declared column kept as it is",
+        )
+        // Only some of a column's cells open (Files alone, the details alone): still the declared column.
+        assertEquals(
+            listOf(RaftPaneGridSlot.Declared(1), RaftPaneGridSlot.Declared(0)),
+            raftPaneGridArrange(listOf(listOf("details"), listOf("files")), sideLayout),
+        )
+        // No arrangement: as declared.
+        assertEquals(declared.indices.map { RaftPaneGridSlot.Declared(it) }, raftPaneGridArrange(declared, null))
+    }
+
+    @Test
+    fun theArrangementStacksCellsOfDifferentColumnsAndSplitsOne() {
+        val stackedThread =
+            RaftPaneGridArrangement(
+                listOf(
+                    RaftPaneGridArrangementColumn(listOf("thread", "tasks"), 400f),
+                    RaftPaneGridArrangementColumn(listOf("files"), 360f),
+                    RaftPaneGridArrangementColumn(listOf("artifact"), 480f),
+                    RaftPaneGridArrangementColumn(listOf("profile", "context", "details"), 400f),
+                )
+            )
+        assertEquals(
+            listOf(
+                RaftPaneGridSlot.Stacked("thread+tasks", listOf(0 to "thread", 1 to "tasks"), 400f),
+                RaftPaneGridSlot.Stacked("files", listOf(1 to "files"), 360f),
+            ),
+            raftPaneGridArrange(listOf(listOf("thread"), listOf("tasks", "files")), stackedThread),
+        )
+        // A declared column whose cells the arrangement orders otherwise is drawn in that order; a cell it doesn't
+        // name goes last with its column's first arranged one.
+        val filesFirst = RaftPaneGridArrangement(listOf(RaftPaneGridArrangementColumn(listOf("files", "tasks"), 360f)))
+        assertEquals(
+            listOf(RaftPaneGridSlot.Stacked("files+tasks", listOf(0 to "files", 0 to "tasks", 0 to "extra"), 360f)),
+            raftPaneGridArrange(listOf(listOf("tasks", "extra", "files")), filesFirst),
+        )
+    }
+
+    private fun cellsColumn(bounds: RaftPaneGridColumnBounds, vararg cells: String, trailing: Boolean = false) =
+        RaftPaneGridColumn(bounds = bounds, resizeLabel = bounds.id, cells = cells.map { RaftPaneGridCell(id = it) {} }, tabLabel = bounds.id, trailing = trailing)
+
+    @Test
+    fun theOutermostGridPlacesHandedUpColumnsByTheArrangement() {
+        val host = RaftPaneGridHost()
+        val profile = RaftPaneGridColumnBounds(id = "profile", defaultWidthDp = 400f, minWidthDp = 320f)
+        val artifact = RaftPaneGridColumnBounds(id = "artifact", defaultWidthDp = 480f, minWidthDp = 480f)
+        host.handUp("conversation", RaftPaneGridHandedUp(depth = 2, columns = listOf(cellsColumn(cards, "tasks", "files"))))
+        host.handUp(
+            "workspace",
+            RaftPaneGridHandedUp(
+                depth = 1,
+                columns = listOf(cellsColumn(thread, "thread"), cellsColumn(profile, "profile", trailing = true), cellsColumn(artifact, "artifact")),
+                fillColumn = "thread",
+            ),
+        )
+        // The default layout: thread | Tasks / Files | Artifact | profile, the declared columns as they are.
+        val arranged = host.arranged(host.placed(emptyList(), 0.dp), sideLayout)
+        assertEquals(listOf("thread", "sideCards", "artifact", "profile"), arranged.map { it.column.bounds.id })
+        assertEquals(listOf("conversation" to "sideCards"), arranged.filter { it.token == "conversation" }.map { it.token to it.column.bounds.id })
+        // The thread stacked over Tasks: one column made for them, at least the widest minimum, named by both; Focus
+        // on the thread still finds it.
+        val stacked =
+            RaftPaneGridArrangement(
+                listOf(
+                    RaftPaneGridArrangementColumn(listOf("thread", "tasks", "files"), 420f),
+                    RaftPaneGridArrangementColumn(listOf("profile", "context", "details", "artifact"), 400f),
+                )
+            )
+        val merged = host.arranged(host.placed(emptyList(), 0.dp), stacked)
+        assertEquals(listOf("thread+tasks+files", "profile+context+details+artifact"), merged.map { it.column.bounds.id })
+        assertEquals(listOf("thread", "tasks", "files"), merged[0].column.cells.map { it.id })
+        assertEquals(RaftPaneGridColumnBounds("thread+tasks+files", 420f, 360f), merged[0].column.bounds)
+        assertEquals(RaftPaneGridColumnBounds("profile+context+details+artifact", 400f, 480f), merged[1].column.bounds)
+        assertEquals(setOf("thread", "sideCards"), merged[0].sourceIds)
+        assertEquals("thread · sideCards", merged[0].column.tabLabel)
+        assertTrue("thread" in host.fillIds(null) && merged[0].sourceIds.any { it in host.fillIds(null) })
+        assertFalse(merged[1].sourceIds.any { it in host.fillIds(null) })
     }
 }
