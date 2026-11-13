@@ -9537,6 +9537,12 @@ private fun SharedThreadRouteContentContent(
             composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
         }
     }
+    // dm #119: an open keyboard goes down before the image picker / editor opens and comes back
+    // when the user is back at the composer (ThreadComposerKeyboardHandoff.kt).
+    val composerKeyboardHandoff =
+        rememberThreadComposerKeyboardHandoff(key = threadInstanceKey) {
+            composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RequestFocus)
+        }
     // A4 adoption (task #18): register the draft-persist barrier + viewport anchor providers
     // with the holder the page-level initiator calls. Registration is keyed on the objects
     // themselves so a rotated detail never serves a stale provider.
@@ -10477,11 +10483,12 @@ private fun SharedThreadRouteContentContent(
             }
         }
     }
-    fun openAttachmentNoPreview(attachment: RaftThreadAttachmentItem) {
-        if (attachment.id.isBlank()) return
+    /** True when the file page opened. */
+    fun openAttachmentNoPreview(attachment: RaftThreadAttachmentItem): Boolean {
+        if (attachment.id.isBlank()) return false
         // A tap never downloads in the conversation: previewable files open their preview, any
         // other file its file page, where Download shows progress (task #75).
-        pager.openRaftFilePreviewPage(
+        return pager.openRaftFilePreviewPage(
             attachment.toThreadAttachmentLazyPreviewPayload(
                 kind = attachment.threadAttachmentOpenRoute().requestedPreviewKind,
                 attachmentCommentsEnabled = attachmentCommentsEnabled
@@ -10573,14 +10580,15 @@ private fun SharedThreadRouteContentContent(
             }
     }
 
-    fun openComposerAttachmentPreview(attachmentId: String) {
+    /** True when a page (the preview, the image editor) opened over the conversation. */
+    fun openComposerAttachmentPreview(attachmentId: String): Boolean {
         val composerPayload = currentComposerPayload()
-        val attachment = composerPayload.pendingAttachments.firstOrNull { it.id == attachmentId } ?: return
+        val attachment = composerPayload.pendingAttachments.firstOrNull { it.id == attachmentId } ?: return false
         val currentDraftState = composerDraftViewModel.state.value
         val name = attachment.fileName.ifBlank { "Attachment" }
         val meta = attachment.displaySizeLabel()
         if (!attachment.isReadyThreadAttachmentForSend()) {
-            pager.openRaftFilePreviewPage(
+            return pager.openRaftFilePreviewPage(
                 RaftFilePreviewPayload(
                     kind = if (attachment.status == "failed") "error" else "loading",
                     requestedKind = "composer_attachment",
@@ -10609,7 +10617,6 @@ private fun SharedThreadRouteContentContent(
                     externalMimeType = attachment.mimeType.orEmpty()
                 )
             )
-            return
         }
         val threadAttachment =
             RaftThreadAttachmentItem(
@@ -10634,21 +10641,20 @@ private fun SharedThreadRouteContentContent(
                 ?: draftAttachmentsById[id]
                     ?.toComposerImagePlatformFile()
                     ?.takeIf { file -> !file.fileRef.isNullOrBlank() }
-        if (composerImageGroup != null && composerImageGroup.images.size > 1) {
+        return if (composerImageGroup != null && composerImageGroup.images.size > 1) {
             val galleryFiles =
                 composerImageGroup.images.mapNotNull { image -> composerImageFileFor(image.id) }
             // A ready tile without a local file ref is not safely editable. Keep it as an
             // ordinary preview rather than creating a composer session whose Done action can
             // never produce a deliverable event.
             if (galleryFiles.size != composerImageGroup.images.size || galleryFiles.isEmpty()) {
-                pager.openRaftFilePreviewPage(
+                return pager.openRaftFilePreviewPage(
                     threadAttachment.toThreadAttachmentLazyPreviewPayload(
                         kind = "image",
                         imageGallery = composerImageGroup.images,
                         imageGalleryIndex = composerImageGroup.currentIndex
                     ).copy(imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() })
                 )
-                return
             }
             composerImageActionCounter += 1
             val baseActionId =
@@ -10661,7 +10667,7 @@ private fun SharedThreadRouteContentContent(
                     replacementAttachmentIds = composerImageGroup.images.map { it.id },
                     selectedIndex = composerImageGroup.currentIndex,
                     originalImage = currentDraftState.originalImage
-                ) ?: return
+                ) ?: return false
             )
         } else if (threadAttachment.isImageAttachment()) {
             composerImageActionCounter += 1
@@ -10671,12 +10677,11 @@ private fun SharedThreadRouteContentContent(
             // retired.  It is not safely editable/compressible in that state, so keep it a plain
             // read-only preview instead of creating a Done session that can never emit an event.
             if (composerImageFile == null) {
-                pager.openRaftFilePreviewPage(
+                return pager.openRaftFilePreviewPage(
                     threadAttachment.toThreadAttachmentLazyPreviewPayload(
                         kind = "image"
                     ).copy(imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() })
                 )
-                return
             }
             openTrackedComposerImagePreview(
                 threadComposerUploadedImagePreviewPayload(
@@ -10686,7 +10691,7 @@ private fun SharedThreadRouteContentContent(
                     replacementAttachmentIds = listOf(attachment.id),
                     selectedIndex = 0,
                     originalImage = currentDraftState.originalImage
-                ) ?: return
+                ) ?: return false
             )
         } else {
             openAttachmentNoPreview(threadAttachment)
@@ -12334,14 +12339,16 @@ private fun SharedThreadRouteContentContent(
         val currentDraftState = composerDraftViewModel.state.value
         composerImageActionCounter += 1
         val actionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${firstFile.id.take(12)}"
-        openTrackedComposerImagePreview(
-            threadComposerImageAnnotationPayload(
-                threadInstanceKey = threadInstanceKey,
-                actionId = actionId,
-                files = files,
-                originalImage = currentDraftState.originalImage,
-            ) ?: return
-        )
+        val opened =
+            openTrackedComposerImagePreview(
+                threadComposerImageAnnotationPayload(
+                    threadInstanceKey = threadInstanceKey,
+                    actionId = actionId,
+                    files = files,
+                    originalImage = currentDraftState.originalImage,
+                ) ?: return
+            )
+        if (opened) composerKeyboardHandoff.pageOpened()
     }
     /**
      * A host files envelope from the attach buttons' picker or a drop on the composer
@@ -15678,8 +15685,11 @@ private fun SharedThreadRouteContentContent(
                         if (files.isEmpty()) return@launch
                         if (raftPlatformPastedImagesOpenEditor() && raftComposerImagePickerFilesAreStrictImages(files)) {
                             // The picked-photo path: the editor first, compressed after Done
-                            // unless the draft asks for the original.
+                            // unless the draft asks for the original. The keyboard the paste
+                            // came from goes down over the editor and comes back after it (dm #119).
+                            composerKeyboardHandoff.leave(keyboardOpen = adaptivePageKeyboardInsetDp > 0f)
                             openComposerImageAnnotation(files)
+                            composerKeyboardHandoff.settle()
                             return@launch
                         }
                         val prepared =
@@ -15716,25 +15726,35 @@ private fun SharedThreadRouteContentContent(
                             action = action,
                             originalImage = currentDraftState.originalImage
                         )
+                    // A picked photo opens the image editor: the keyboard goes down before the
+                    // picker, or coming back to the window raises it over the editor (dm #119).
+                    // A file pick goes straight into the tray and keeps the keyboard as it is.
+                    val opensImageEditor = action != "attachFile"
+                    if (opensImageEditor) composerKeyboardHandoff.leave(keyboardOpen = adaptivePageKeyboardInsetDp > 0f)
                     coroutineScope.launch {
-                        val channelId = composerSurface.sendChannelId
-                        if (channelId == null) {
-                            bridge.toast(attachmentPickerUnavailableLabel)
-                            return@launch
+                        try {
+                            val channelId = composerSurface.sendChannelId
+                            if (channelId == null) {
+                                bridge.toast(attachmentPickerUnavailableLabel)
+                                return@launch
+                            }
+                            val response =
+                                bridge.threadAttachmentUpload(
+                                    channelId = channelId,
+                                    imageOnly = opensImageEditor,
+                                    capture = action == ThreadComposerCaptureImageAction,
+                                    // Image picker/camera results enter the annotation editor first.
+                                    // Do not encode before the editor decision: picker JPEG -> editor
+                                    // PNG -> JPEG would incur two lossy generations. Generic file
+                                    // picks also stay uncompressed so a JPEG remains source bytes
+                                    // and the shared size gate sees the real file.
+                                    compressImages = compressPickerImages,
+                                )
+                            admitComposerPickedAttachments(action, response)
+                        } finally {
+                            // Cancelled, rejected or straight into the tray: back at the composer.
+                            if (opensImageEditor) composerKeyboardHandoff.settle()
                         }
-                        val response =
-                            bridge.threadAttachmentUpload(
-                                channelId = channelId,
-                                imageOnly = action != "attachFile",
-                                capture = action == ThreadComposerCaptureImageAction,
-                                // Image picker/camera results enter the annotation editor first.
-                                // Do not encode before the editor decision: picker JPEG -> editor
-                                // PNG -> JPEG would incur two lossy generations. Generic file
-                                // picks also stay uncompressed so a JPEG remains source bytes
-                                // and the shared size gate sees the real file.
-                                compressImages = compressPickerImages,
-                            )
-                        admitComposerPickedAttachments(action, response)
                     }
                 }
                 "removeAttachment" -> {
@@ -15809,7 +15829,13 @@ private fun SharedThreadRouteContentContent(
                     }
                 }
                 "previewAttachment" -> {
-                    attachmentId?.takeIf { it.isNotBlank() }?.let(::openComposerAttachmentPreview)
+                    attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
+                        // The tile opens its preview or the image editor: the keyboard goes down
+                        // first and comes back when that page closes (dm #119).
+                        composerKeyboardHandoff.leave(keyboardOpen = adaptivePageKeyboardInsetDp > 0f)
+                        if (openComposerAttachmentPreview(id)) composerKeyboardHandoff.pageOpened()
+                        composerKeyboardHandoff.settle()
+                    }
                 }
                 "blur" -> {
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
