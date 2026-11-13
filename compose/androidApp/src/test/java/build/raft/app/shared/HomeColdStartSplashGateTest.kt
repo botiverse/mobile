@@ -34,6 +34,17 @@ class HomeColdStartSplashGateTest {
     }
 
     @Test
+    fun serverSwitchAndRebuiltWindowsSkipTheSplash() {
+        assertFalse(
+            shouldInstallHomeColdStartSplash(
+                RaftCmpActivity.PAGE_APP_SHELL,
+                """{"slockInitialTab":"home","slockServerSwitchTapEpochMillis":1700000000000}"""
+            )
+        )
+        assertFalse(shouldInstallHomeColdStartSplash(RaftCmpActivity.PAGE_APP_SHELL, null, rebuiltOnNewIntent = true))
+    }
+
+    @Test
     fun homeFirstFrameReleasesSplashBeforeTimeout() {
         val gate = HomeColdStartSplashGate(enabled = true, startedAtMillis = 1_000L)
 

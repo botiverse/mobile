@@ -2,6 +2,7 @@ package build.raft.app.shared
 
 import android.app.Activity
 import build.raft.app.R
+import build.raft.app.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
 import org.json.JSONObject
 
 /**
@@ -16,14 +17,23 @@ internal const val HOME_COLD_START_SPLASH_TIMEOUT_MILLIS = 5_000L
  */
 internal const val HOME_COLD_START_SPLASH_FALLBACK_TIMEOUT_MILLIS = 10_000L
 
-internal fun shouldInstallHomeColdStartSplash(pageName: String, pageDataText: String?): Boolean {
+/**
+ * The branded splash (the Raft mark on the splash colour, held until Home draws) is for a cold
+ * start only. A window the running app opens or brings back for a server switch, or rebuilds for
+ * a new Intent (Multiple app windows: the server's window already existed), is no cold start: it
+ * shows the canvas and the shell's own restore frame, not the mark for up to the splash timeout
+ * (#wg-mobile-sync:#86, the white screen with only the Raft icon after a switch).
+ */
+internal fun shouldInstallHomeColdStartSplash(
+    pageName: String,
+    pageDataText: String?,
+    rebuiltOnNewIntent: Boolean = false,
+): Boolean {
     if (pageName != RaftCmpActivity.PAGE_APP_SHELL) return false
-    val initialTab =
-        runCatching {
-            JSONObject(pageDataText.orEmpty())
-                .optString(RaftCmpActivity.KEY_APP_SHELL_INITIAL_TAB)
-        }
-            .getOrDefault("")
+    if (rebuiltOnNewIntent) return false
+    val pageData = runCatching { JSONObject(pageDataText.orEmpty()) }.getOrNull()
+    if ((pageData?.optLong(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, 0L) ?: 0L) > 0L) return false
+    val initialTab = pageData?.optString(RaftCmpActivity.KEY_APP_SHELL_INITIAL_TAB).orEmpty()
     return initialTab.isBlank() || initialTab == "home"
 }
 
