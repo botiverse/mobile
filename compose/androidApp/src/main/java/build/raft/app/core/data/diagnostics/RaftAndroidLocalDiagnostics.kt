@@ -34,7 +34,6 @@ object RaftAndroidLocalDiagnostics {
     private const val RecentDiagnosticsMaxChars = 120_000
     /** Raw bytes of app logs (in-memory tail + shards) a feedback zip carries. */
     private const val FeedbackLogBudgetBytes = RaftFeedbackDiagnosticsBudget.ReportBudgetBytes
-    /** The in-memory tail duplicates the newest shard; it is the fallback when file writes failed. */
     /**
      * `recent-memory.jsonl`: the last [RaftGeneralLogRing.RecentMaxAgeMillis] at full detail
      * (including the lines the volume policy summarized out of the log), at most this many chars.
