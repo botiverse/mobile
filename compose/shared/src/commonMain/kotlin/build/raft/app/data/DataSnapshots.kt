@@ -132,13 +132,6 @@ data class InboxItem(
 data class InboxTaskConversation(
     val taskId: TaskId?,
     val taskTitle: String?,
-    /**
-     * Followed task-conversation rows (botiverse/slock #12118, channelService.ts): the message the
-     * task hangs under and when it was posted; null when it hangs under no message, its source was
-     * deleted, or the server predates them. Where the unread-thread pill places and jumps to it.
-     */
-    val sourceMessageId: MessageId? = null,
-    val sourceMessageCreatedAt: String? = null,
 )
 
 /** A task v2 conversation row (web `isTaskConversationItem`). */

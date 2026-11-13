@@ -101,10 +101,6 @@ private data class WireInboxItem(
     // task v2 conversation rows (kind "task", channelService.ts TaskConversationInboxItem)
     val taskId: String? = null,
     val taskTitle: String? = null,
-    // followed task-conversation rows (botiverse/slock #12118, GET /channels/threads/followed): the
-    // message the task hangs under and its time; null when under no message. Absent on older servers.
-    val sourceMessageId: String? = null,
-    val sourceMessageCreatedAt: String? = null,
     // thread follow state; only an explicit false means Unfollowed
     val isFollowing: Boolean? = null,
     val unfollowedAt: String? = null,
@@ -362,8 +358,6 @@ private fun WireInboxItem.toTaskConversationDomain(diagnostics: (String) -> Unit
             InboxTaskConversation(
                 taskId = taskId?.trim()?.takeIf { it.isNotBlank() }?.let(::TaskId),
                 taskTitle = title,
-                sourceMessageId = sourceMessageId?.trim()?.takeIf { it.isNotBlank() }?.let(::MessageId),
-                sourceMessageCreatedAt = sourceMessageCreatedAt?.takeIf { it.isNotBlank() },
             ),
     )
 }
