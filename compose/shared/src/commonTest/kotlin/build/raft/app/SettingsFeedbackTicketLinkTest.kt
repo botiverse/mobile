@@ -50,8 +50,22 @@ class SettingsFeedbackTicketLinkTest {
         assertNull(settingsFeedbackTicketLink(null, " ", ticketId, "android"))
         assertNull(settingsFeedbackTicketLink(null, "ac/me", ticketId, "android"))
         assertNull(settingsFeedbackTicketLink(null, "acme", " ", "ios"))
-        assertNull(settingsFeedbackTicketLink(null, "acme", ticketId, "web"))
+        assertNull(settingsFeedbackTicketLink(null, "acme", ticketId, "desktop"))
         assertNull(settingsFeedbackTicketLink(null, "acme", ticketId, ""))
+    }
+
+    @Test
+    fun aTicketOfAnotherAppLinksToItsOwnApp() {
+        // slock #14722: the one list holds every app's tickets; a copied link names the ticket's app.
+        // A web (or Raft Desktop) ticket needs no platform: the web reads its own app by default.
+        assertEquals(
+            "https://app.raft.build/s/acme/settings/feedback/ticket/$ticketId",
+            settingsFeedbackTicketLink(null, "acme", ticketId, "web"),
+        )
+        assertEquals(
+            "https://app.raft.build/s/acme/settings/feedback/ticket/$ticketId?platform=ohos",
+            settingsFeedbackTicketLink(null, "acme", ticketId, "ohos"),
+        )
     }
 
     @Test

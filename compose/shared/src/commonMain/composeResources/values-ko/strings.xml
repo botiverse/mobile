@@ -4348,6 +4348,11 @@
     <string name="settings_feedback_tickets_filter_all">전체</string>
     <string name="settings_feedback_tickets_filter_active">진행 중</string>
     <string name="settings_feedback_tickets_filter_ended">종료됨</string>
+    <string name="settings_feedback_ticket_client_web">웹</string>
+    <string name="settings_feedback_ticket_client_desktop">데스크톱</string>
+    <string name="settings_feedback_ticket_client_android">Android</string>
+    <string name="settings_feedback_ticket_client_ios">iOS</string>
+    <string name="settings_feedback_ticket_client_ohos">HarmonyOS</string>
     <string name="settings_feedback_tickets_loading">피드백을 불러오는 중</string>
     <string name="settings_feedback_tickets_empty_all_title">아직 피드백이 없어요</string>
     <string name="settings_feedback_tickets_empty_all_body">아이디어를 공유하거나 버그를 신고해 보세요. 팀의 답장이 여기에 표시돼요.</string>

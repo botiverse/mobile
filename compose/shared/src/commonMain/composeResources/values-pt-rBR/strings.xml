@@ -4348,6 +4348,11 @@
     <string name="settings_feedback_tickets_filter_all">Todos</string>
     <string name="settings_feedback_tickets_filter_active">Ativos</string>
     <string name="settings_feedback_tickets_filter_ended">Encerrados</string>
+    <string name="settings_feedback_ticket_client_web">Web</string>
+    <string name="settings_feedback_ticket_client_desktop">Desktop</string>
+    <string name="settings_feedback_ticket_client_android">Android</string>
+    <string name="settings_feedback_ticket_client_ios">iOS</string>
+    <string name="settings_feedback_ticket_client_ohos">HarmonyOS</string>
     <string name="settings_feedback_tickets_loading">Carregando feedback</string>
     <string name="settings_feedback_tickets_empty_all_title">Nenhum feedback ainda</string>
     <string name="settings_feedback_tickets_empty_all_body">Compartilhe uma ideia ou relate um bug — as respostas da equipe aparecem aqui.</string>

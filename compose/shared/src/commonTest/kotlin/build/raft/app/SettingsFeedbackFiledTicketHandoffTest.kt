@@ -59,15 +59,15 @@ class SettingsFeedbackFiledTicketHandoffTest {
             return listAnswers.removeFirst()
         }
 
-        override suspend fun ticket(ticketId: String, commentCursor: String?, commentLimit: Int): FeedbackResult<FeedbackTicketDetail> =
+        override suspend fun ticket(ticketId: String, commentCursor: String?, commentLimit: Int, source: String?): FeedbackResult<FeedbackTicketDetail> =
             ticketAnswers.removeFirst()
 
-        override suspend fun reply(ticketId: String, body: String, submissionId: String): FeedbackResult<FeedbackComment> =
+        override suspend fun reply(ticketId: String, body: String, submissionId: String, source: String?): FeedbackResult<FeedbackComment> =
             error("not used")
 
-        override suspend fun close(ticketId: String, reason: FeedbackReporterCloseReason): FeedbackResult<Unit> = error("not used")
+        override suspend fun close(ticketId: String, reason: FeedbackReporterCloseReason, source: String?): FeedbackResult<Unit> = error("not used")
 
-        override suspend fun attachment(ticketId: String, attachmentId: String): FeedbackResult<FeedbackAttachmentBytes> =
+        override suspend fun attachment(ticketId: String, attachmentId: String, source: String?): FeedbackResult<FeedbackAttachmentBytes> =
             error("not used")
     }
 

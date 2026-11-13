@@ -4606,6 +4606,11 @@
     <string name="settings_feedback_tickets_filter_all">すべて</string>
     <string name="settings_feedback_tickets_filter_active">対応中</string>
     <string name="settings_feedback_tickets_filter_ended">終了</string>
+    <string name="settings_feedback_ticket_client_web">Web 版</string>
+    <string name="settings_feedback_ticket_client_desktop">デスクトップ版</string>
+    <string name="settings_feedback_ticket_client_android">Android</string>
+    <string name="settings_feedback_ticket_client_ios">iOS</string>
+    <string name="settings_feedback_ticket_client_ohos">HarmonyOS</string>
     <string name="settings_feedback_tickets_loading">フィードバックを読み込み中</string>
     <string name="settings_feedback_tickets_empty_all_title">フィードバックはまだありません</string>
     <string name="settings_feedback_tickets_empty_all_body">アイデアを共有したり不具合を報告したりできます。チームからの返信はここに表示されます。</string>

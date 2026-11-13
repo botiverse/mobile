@@ -14,12 +14,13 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The Settings / Feedback dot's total (slock `docs/development/feedback-native-entry.md` "Unread
- * replies", f0f773995): read on start and reconnect, then pushed, each app taking only its own event.
+ * The Settings / Feedback dot's total, summed over every app (slock #14722, one list across apps):
+ * `unread_total` of `GET tickets?sources=all&limit=1`, read on start and reconnect, and read again
+ * when any app's push (one app's whole total, not the sum) or a ticket read here says it moved.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class RaftFeedbackUnreadStoreTest {
-    /** The `GET tickets?limit=1` reads: each takes the next answer, waiting on its gate when it has one. */
+    /** The `GET tickets?sources=all&limit=1` reads: each takes the next answer, waiting on its gate when it has one. */
     private class FakeReads {
         val answers = ArrayDeque<Pair<FeedbackResult<Int?>, CompletableDeferred<Unit>?>>()
         var count = 0
@@ -77,29 +78,33 @@ class RaftFeedbackUnreadStoreTest {
     }
 
     @Test
-    fun eachAppTakesOnlyItsOwnEvent() = runTest {
-        // clientKind, event, taken: every connection of the person receives every one of these.
+    fun everyAppsPushOfThePersonReadsTheSumAgain() = runTest {
+        // clientKind, event, taken: every connection of the person receives every one of these, and
+        // the dot counts every app, so each of the person's own moves the sum.
         val cases =
             listOf(
                 Triple("android", app("android", 4), true),
-                Triple("android", app("ios", 4), false),
-                Triple("android", app("ohos", 4), false),
-                Triple("android", web("user-1", 4), false),
-                Triple("ios", app("ios", 4), true),
-                Triple("ios", app("android", 4), false),
-                Triple("ios", web("user-1", 4), false),
-                // The desktop app files into the web app: the web's event, for the signed-in person only.
+                Triple("android", app("ios", 4), true),
+                Triple("android", app("ohos", 4), true),
+                Triple("android", web("user-1", 4), true),
+                Triple("android", web("user-2", 4), false),
+                Triple("ios", app("android", 4), true),
+                Triple("ios", web("user-1", 4), true),
                 Triple("web", web("user-1", 4), true),
                 Triple("web", web("user-2", 4), false),
-                Triple("web", app("android", 4), false),
+                Triple("web", app("android", 4), true),
             )
         cases.forEach { (clientKind, event, taken) ->
             val reads = FakeReads().also { it.answer(1) }
             val store = store(reads, clientKind)
             store.onSession("user-1")
             runCurrent()
+            // The push holds one app's total (4), never the sum: the sum is read (7).
+            if (taken) reads.answer(7)
             assertEquals(taken, store.applyRealtime("user-1", event), "$clientKind <- $event")
-            assertEquals(if (taken) 4 else 1, store.unreadTotal.value, "$clientKind <- $event")
+            runCurrent()
+            assertEquals(if (taken) 2 else 1, reads.count, "$clientKind <- $event")
+            assertEquals(if (taken) 7 else 1, store.unreadTotal.value, "$clientKind <- $event")
         }
     }
 
@@ -110,10 +115,57 @@ class RaftFeedbackUnreadStoreTest {
         store.onSession("user-1")
         runCurrent()
         assertFalse(store.applyRealtime("user-2", app("android", 5)))
+        runCurrent()
+        assertEquals(1, reads.count)
         assertEquals(1, store.unreadTotal.value)
-        // The whole total, never a change: 0 clears the dot.
+        // The sum read again can clear the dot.
+        reads.answer(0)
         assertTrue(store.applyRealtime("user-1", app("android", 0)))
+        runCurrent()
         assertEquals(0, store.unreadTotal.value)
+    }
+
+    @Test
+    fun theSumIsWhatTheDotShowsWhicheverAppsRepliesAreUnread() = runTest {
+        // Two unread on the web, one on iOS, in the Android app: the merged first page says 3.
+        val reads = FakeReads().also { it.answer(3) }
+        val store = store(reads, "android")
+        store.onSession("user-1")
+        runCurrent()
+        assertEquals(3, store.unreadTotal.value)
+        // The Feedback list's first page says the same sum.
+        store.applyRead(3)
+        assertEquals(3, store.unreadTotal.value)
+        // Reading the iOS ticket here: its answer is iOS's own total (0), so the sum is read again.
+        reads.answer(2)
+        store.onTicketRead()
+        runCurrent()
+        assertEquals(2, reads.count)
+        assertEquals(2, store.unreadTotal.value)
+    }
+
+    @Test
+    fun aChangeWhileAReadIsOnItsWayIsReadOnceMoreAfterIt() = runTest {
+        val reads = FakeReads()
+        val gate = CompletableDeferred<Unit>()
+        reads.answer(3)
+        val store = store(reads)
+        store.onSession("user-1")
+        runCurrent()
+
+        // A push starts a read; two more pushes land while it is on its way: one more read after it.
+        reads.answer(2, gate)
+        reads.answer(1)
+        assertTrue(store.applyRealtime("user-1", app("ios", 0)))
+        runCurrent()
+        assertTrue(store.applyRealtime("user-1", web("user-1", 1)))
+        store.onTicketRead()
+        runCurrent()
+        assertEquals(2, reads.count)
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(3, reads.count)
+        assertEquals(1, store.unreadTotal.value)
     }
 
     @Test
@@ -173,25 +225,19 @@ class RaftFeedbackUnreadStoreTest {
     }
 
     @Test
-    fun aPushOrALocalReadNewerThanAReadInFlightWins() = runTest {
+    fun aLocalReadNewerThanAReadInFlightWins() = runTest {
         val reads = FakeReads()
-        val gate = CompletableDeferred<Unit>()
-        reads.answer(2, gate)
+        reads.answer(2)
         val store = store(reads)
         store.onSession("user-1")
         runCurrent()
-        // The ticket was read on another device while the start read was on its way.
-        assertTrue(store.applyRealtime("user-1", app("android", 0)))
-        gate.complete(Unit)
-        runCurrent()
-        assertEquals(0, store.unreadTotal.value)
 
         val second = CompletableDeferred<Unit>()
         reads.answer(5, second)
         advanceTimeBy(FEEDBACK_UNREAD_RECONNECT_WINDOW_MILLIS + 1)
         store.onReconnected()
         runCurrent()
-        // Opening the ticket here answered its own total.
+        // The Feedback list's first page answered its sum meanwhile.
         store.applyRead(1)
         second.complete(Unit)
         runCurrent()

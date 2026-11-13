@@ -17,11 +17,23 @@ import kotlinx.serialization.json.jsonPrimitive
  * Bearer, and `X-Raft-Client-Kind` (`android` / `ios`) so the server reads the Hands app the App
  * files into (productFeedbackApps.ts; no header reads the web app).
  *
- * - GET  tickets?limit=&cursor=|degraded_ok=1      list (first page may answer `degraded`)
+ * - GET  tickets?sources=all&limit=&cursor=|degraded_ok=1  one list across every app (first page may
+ *                                                     answer `degraded`)
  * - GET  tickets/:id?comment_limit=&comment_cursor= detail: ticket, comments, attachments
  * - POST tickets/:id/comments {body, submission_id} reply (JSON; the route's multer skips it)
  * - POST tickets/:id/close {reason}                 close: completed | no_longer_needed
  * - GET  tickets/:id/attachments/:attachmentId      attachment bytes
+ *
+ * One list across apps (slock #14722, `docs/development/feedback-native-entry.md` "One list across
+ * apps", `packages/server/src/services/productFeedbackMergedList.ts`): `sources=all` lists the
+ * person's tickets from every Hands app (web, which Raft Desktop shares, android, ios, ohos) in one
+ * order. Each ticket carries `source` (the app it lives in) and `client` (the client that filed it,
+ * a label: web | desktop | android | ios | ohos); the detail's `ticket` carries both too. A ticket of
+ * another app is read, answered, closed and its files opened with `?platform=<source>`
+ * (`ticketFeedbackSource`). `unread_total` is the sum over the apps on the first page and null on a
+ * cursor page or while an app is unavailable ("not known": keep the value held). A page may hold
+ * fewer tickets than `limit`, even none, and still have a `next_cursor`: the list ends only at
+ * `next_cursor: null`. `unavailable_sources` is not read (the design: list the others, say nothing).
  */
 
 /** First page size the web page asks for (FeedbackInbox `pageSize`). */
@@ -37,6 +49,49 @@ const val FEEDBACK_REPLY_MAX_CHARS: Int = 10_000
 const val FEEDBACK_ATTACHMENT_MAX_BYTES: Int = 10 * 1024 * 1024 + 64 * 1024
 
 internal const val FEEDBACK_CLIENT_KIND_HEADER = "X-Raft-Client-Kind"
+
+/** The Hands apps a ticket can live in (slock productFeedbackApps.ts `PRODUCT_FEEDBACK_SOURCES`). */
+internal val FeedbackTicketSources: Set<String> = setOf("web", "ios", "android", "ohos")
+
+/** This app's own Hands app: its client kind, or the web's when it sends none (desktop files as web). */
+internal fun feedbackOwnSource(clientKind: String): String = clientKind.trim().ifEmpty { "web" }
+
+/**
+ * The `?platform=` a call about a ticket of [source] needs from an app whose client kind is
+ * [clientKind]: none for its own app (or an unknown one), else the ticket's app.
+ */
+internal fun feedbackTicketPlatform(source: String?, clientKind: String): String? =
+    source?.trim()?.takeIf { it in FeedbackTicketSources && it != feedbackOwnSource(clientKind) }
+
+/**
+ * The client a ticket was filed from (slock productFeedbackMergedList.ts `PRODUCT_FEEDBACK_CLIENTS`):
+ * a label only. Raft Desktop files into the web app, so it is [Desktop] with source `web`.
+ */
+enum class FeedbackClient(val wire: String) {
+    Web("web"),
+    Desktop("desktop"),
+    Android("android"),
+    Ios("ios"),
+    Ohos("ohos");
+
+    companion object {
+        fun fromWire(value: String?): FeedbackClient? = entries.firstOrNull { it.wire == value?.trim() }
+    }
+}
+
+/**
+ * The client a ticket filed in the app with client kind [clientKind] has: `android` / `ios` (and
+ * `ohos`) name themselves; the desktop app files into the web app with no desktop version, so `web`.
+ */
+fun feedbackOwnClient(clientKind: String): FeedbackClient? = FeedbackClient.fromWire(feedbackOwnSource(clientKind))
+
+/**
+ * The client to name on a ticket's first message (design settings.md "Feedback", option F): the
+ * ticket's [FeedbackTicket.client] when it is not the app the person is in ([ownClient]); null
+ * (nothing shown) for a ticket filed here, or when the server named no client.
+ */
+fun feedbackForeignClient(ticket: FeedbackTicket?, ownClient: FeedbackClient?): FeedbackClient? =
+    ticket?.client?.takeIf { it != ownClient }
 
 enum class FeedbackTicketKind { Feedback, Bug }
 
@@ -102,6 +157,10 @@ data class FeedbackTicket(
     val commentCount: Int,
     /** List pages only; null on a detail read or with no comment yet. */
     val latestComment: FeedbackLatestComment? = null,
+    /** The Hands app it lives in (`web` / `android` / `ios` / `ohos`); null: the server named none (this app's). */
+    val source: String? = null,
+    /** The client that filed it; null: the server named none. */
+    val client: FeedbackClient? = null,
 ) {
     /** The first line, as the web list and ticket header show it. */
     val title: String get() = message.lineSequence().firstOrNull()?.trim().orEmpty()
@@ -141,7 +200,8 @@ data class FeedbackAttachment(
 data class FeedbackTicketPage(
     val tickets: List<FeedbackTicket>,
     val nextCursor: String?,
-    val unreadTotal: Int,
+    /** The sum over the apps on a first page; null ("not known now") on a cursor page or with an app unavailable. */
+    val unreadTotal: Int?,
 )
 
 /** A list read: a page, or the server's "can't read right now" answer to retry after a while. */
@@ -184,18 +244,20 @@ sealed interface FeedbackResult<out T> {
 interface SettingsFeedbackTicketsRepository {
     suspend fun listTickets(cursor: String?, limit: Int = FEEDBACK_TICKETS_PAGE_SIZE): FeedbackResult<FeedbackTicketListRead>
 
+    /** [source]: the ticket's app ([FeedbackTicket.source]); another app's is asked with `?platform=`. */
     suspend fun ticket(
         ticketId: String,
         commentCursor: String? = null,
         commentLimit: Int = FEEDBACK_TICKET_COMMENT_LIMIT,
+        source: String? = null,
     ): FeedbackResult<FeedbackTicketDetail>
 
     /** Safe to retry with the same [submissionId]: Hands dedupes on it. */
-    suspend fun reply(ticketId: String, body: String, submissionId: String): FeedbackResult<FeedbackComment>
+    suspend fun reply(ticketId: String, body: String, submissionId: String, source: String? = null): FeedbackResult<FeedbackComment>
 
-    suspend fun close(ticketId: String, reason: FeedbackReporterCloseReason): FeedbackResult<Unit>
+    suspend fun close(ticketId: String, reason: FeedbackReporterCloseReason, source: String? = null): FeedbackResult<Unit>
 
-    suspend fun attachment(ticketId: String, attachmentId: String): FeedbackResult<FeedbackAttachmentBytes>
+    suspend fun attachment(ticketId: String, attachmentId: String, source: String? = null): FeedbackResult<FeedbackAttachmentBytes>
 }
 
 class NetworkSettingsFeedbackTicketsRepository(
@@ -210,6 +272,8 @@ class NetworkSettingsFeedbackTicketsRepository(
     override suspend fun listTickets(cursor: String?, limit: Int): FeedbackResult<FeedbackTicketListRead> {
         val query =
             buildList {
+                // One list across every app the person files into (slock #14722).
+                add("sources" to "all")
                 add("limit" to limit.toString())
                 // Only the first page may degrade (server #12566); a later page keeps its 503.
                 if (cursor != null) add("cursor" to cursor) else add("degraded_ok" to "1")
@@ -220,9 +284,9 @@ class NetworkSettingsFeedbackTicketsRepository(
     }
 
     /**
-     * This app's unread total for the Settings / Feedback dot (the server spec "Unread replies": the
-     * first page's `unread_total` with `limit=1`, read on start and reconnect). Null: not known now
-     * (Hands slow or refusing: a `degraded` answer, whose `unread_total` is null, never 0).
+     * The unread total across every app for the Settings / Feedback dot: the merged list's first
+     * page `unread_total` with `limit=1` (slock #14722 "Read the total from the first page"). Null:
+     * not known now (an app unavailable, or Hands slow or refusing: a `degraded` answer), never 0.
      */
     suspend fun unreadTotal(): FeedbackResult<Int?> =
         call("unread_total") {
@@ -230,7 +294,7 @@ class NetworkSettingsFeedbackTicketsRepository(
                 DataRequestPriority.Background,
                 "$FEEDBACK_ROUTE/tickets",
                 headers,
-                query = listOf("limit" to "1", "degraded_ok" to "1"),
+                query = listOf("sources" to "all", "limit" to "1", "degraded_ok" to "1"),
             )
         }.decode("unread_total", ::parseFeedbackTicketListRead).let { result ->
             when (result) {
@@ -243,19 +307,24 @@ class NetworkSettingsFeedbackTicketsRepository(
             }
         }
 
-    override suspend fun ticket(ticketId: String, commentCursor: String?, commentLimit: Int): FeedbackResult<FeedbackTicketDetail> {
+    /** `?platform=<source>` for a ticket of another app (slock productFeedback.ts `ticketFeedbackSource`). */
+    private fun platformQuery(source: String?): List<Pair<String, String>> =
+        feedbackTicketPlatform(source, clientKind)?.let { listOf("platform" to it) }.orEmpty()
+
+    override suspend fun ticket(ticketId: String, commentCursor: String?, commentLimit: Int, source: String?): FeedbackResult<FeedbackTicketDetail> {
         val id = ticketId.feedbackPathSegmentOrNull() ?: return notFound()
         val query =
             buildList {
                 add("comment_limit" to commentLimit.toString())
                 commentCursor?.let { add("comment_cursor" to it) }
+                addAll(platformQuery(source))
             }
         return call("detail") {
             networkClient.requestWithHeaders(DataRequestPriority.Foreground, "$FEEDBACK_ROUTE/tickets/$id", headers, query = query)
         }.decode("detail", ::parseFeedbackTicketDetail)
     }
 
-    override suspend fun reply(ticketId: String, body: String, submissionId: String): FeedbackResult<FeedbackComment> {
+    override suspend fun reply(ticketId: String, body: String, submissionId: String, source: String?): FeedbackResult<FeedbackComment> {
         val id = ticketId.feedbackPathSegmentOrNull() ?: return notFound()
         val text = body.trim()
         if (text.isEmpty() || text.length > FEEDBACK_REPLY_MAX_CHARS) {
@@ -268,12 +337,13 @@ class NetworkSettingsFeedbackTicketsRepository(
                 "$FEEDBACK_ROUTE/tickets/$id/comments",
                 headers,
                 method = "POST",
+                query = platformQuery(source),
                 bodyText = payload,
             )
         }.decode("reply") { parseFeedbackComment(it, fallbackBody = text) }
     }
 
-    override suspend fun close(ticketId: String, reason: FeedbackReporterCloseReason): FeedbackResult<Unit> {
+    override suspend fun close(ticketId: String, reason: FeedbackReporterCloseReason, source: String?): FeedbackResult<Unit> {
         val id = ticketId.feedbackPathSegmentOrNull() ?: return notFound()
         val payload = feedbackJson.encodeToString(FeedbackCloseWire.serializer(), FeedbackCloseWire(reason.wire))
         return call("close") {
@@ -282,19 +352,22 @@ class NetworkSettingsFeedbackTicketsRepository(
                 "$FEEDBACK_ROUTE/tickets/$id/close",
                 headers,
                 method = "POST",
+                query = platformQuery(source),
                 bodyText = payload,
             )
         }.decode("close") { body -> if (parseFeedbackCloseStatus(body) == "closed") Unit else null }
     }
 
-    override suspend fun attachment(ticketId: String, attachmentId: String): FeedbackResult<FeedbackAttachmentBytes> {
+    override suspend fun attachment(ticketId: String, attachmentId: String, source: String?): FeedbackResult<FeedbackAttachmentBytes> {
         val id = ticketId.feedbackPathSegmentOrNull() ?: return notFound()
         val attachment = attachmentId.feedbackPathSegmentOrNull() ?: return notFound()
+        // The bytes read takes no query list: the platform (one of [FeedbackTicketSources]) goes on the path.
+        val platform = feedbackTicketPlatform(source, clientKind)?.let { "?platform=$it" }.orEmpty()
         val response =
             try {
                 networkClient.requestBytesWithHeaders(
                     DataRequestPriority.Foreground,
-                    "$FEEDBACK_ROUTE/tickets/$id/attachments/$attachment",
+                    "$FEEDBACK_ROUTE/tickets/$id/attachments/$attachment$platform",
                     headers,
                     maxBytes = FEEDBACK_ATTACHMENT_MAX_BYTES,
                 )
@@ -407,6 +480,10 @@ private data class FeedbackTicketDto(
     @SerialName("attachment_count") val attachmentCount: Int? = null,
     @SerialName("comment_count") val commentCount: Int? = null,
     @SerialName("latest_comment") val latestComment: FeedbackLatestCommentDto? = null,
+    /** slock productFeedbackMergedList.ts `ProductFeedbackMergedTicket.source` (merged list and detail). */
+    val source: String? = null,
+    /** `ProductFeedbackMergedTicket.client`: web | desktop | android | ios | ohos. */
+    val client: String? = null,
 )
 
 @Serializable
@@ -453,7 +530,8 @@ internal fun parseFeedbackTicketListRead(body: String): FeedbackTicketListRead? 
         FeedbackTicketPage(
             tickets = tickets.mapNotNull { it.toModel() },
             nextCursor = dto.nextCursor?.takeIf { it.isNotBlank() },
-            unreadTotal = (dto.unreadTotal ?: 0).coerceAtLeast(0),
+            // Null: not known (a cursor page, or an app unavailable): never read as 0.
+            unreadTotal = dto.unreadTotal?.coerceAtLeast(0),
         )
     )
 }
@@ -517,6 +595,8 @@ private fun FeedbackTicketDto.toModel(): FeedbackTicket? {
         attachmentCount = (attachmentCount ?: 0).coerceAtLeast(0),
         commentCount = (commentCount ?: 0).coerceAtLeast(0),
         latestComment = latestComment?.toModel(),
+        source = source?.trim()?.takeIf { it in FeedbackTicketSources },
+        client = FeedbackClient.fromWire(client),
     )
 }
 

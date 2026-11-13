@@ -4606,6 +4606,11 @@
     <string name="settings_feedback_tickets_filter_all">全部</string>
     <string name="settings_feedback_tickets_filter_active">活跃</string>
     <string name="settings_feedback_tickets_filter_ended">已结束</string>
+    <string name="settings_feedback_ticket_client_web">网页版</string>
+    <string name="settings_feedback_ticket_client_desktop">桌面版</string>
+    <string name="settings_feedback_ticket_client_android">Android</string>
+    <string name="settings_feedback_ticket_client_ios">iOS</string>
+    <string name="settings_feedback_ticket_client_ohos">HarmonyOS</string>
     <string name="settings_feedback_tickets_loading">正在加载反馈</string>
     <string name="settings_feedback_tickets_empty_all_title">还没有反馈</string>
     <string name="settings_feedback_tickets_empty_all_body">分享想法或报告问题，团队回复会显示在这里。</string>

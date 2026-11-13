@@ -4606,6 +4606,11 @@
     <string name="settings_feedback_tickets_filter_all">All</string>
     <string name="settings_feedback_tickets_filter_active">Active</string>
     <string name="settings_feedback_tickets_filter_ended">Ended</string>
+    <string name="settings_feedback_ticket_client_web">Web</string>
+    <string name="settings_feedback_ticket_client_desktop">Desktop</string>
+    <string name="settings_feedback_ticket_client_android">Android</string>
+    <string name="settings_feedback_ticket_client_ios">iOS</string>
+    <string name="settings_feedback_ticket_client_ohos">HarmonyOS</string>
     <string name="settings_feedback_tickets_loading">Loading feedback</string>
     <string name="settings_feedback_tickets_empty_all_title">No feedback yet</string>
     <string name="settings_feedback_tickets_empty_all_body">Share an idea or report a bug — team replies will show up here.</string>

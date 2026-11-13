@@ -80,7 +80,7 @@ class SettingsFeedbackTicketsApiTest {
         "attachment_count":1,"comment_count":2,"latest_comment_at":1500,"unread":$unread,"unread_count":$unreadCount$latest}"""
 
     @Test
-    fun listReadsTheFirstPageWithTheClientKindAndDegradedOptIn() = runTest {
+    fun listReadsTheFirstPageOfEveryAppWithTheClientKindAndDegradedOptIn() = runTest {
         val network =
             FakeNetwork {
                 HomeNetworkResponse(
@@ -96,7 +96,7 @@ class SettingsFeedbackTicketsApiTest {
         val call = network.calls.single()
         assertEquals("product-feedback/tickets", call.path)
         assertEquals("GET", call.method)
-        assertEquals(listOf("limit" to "20", "degraded_ok" to "1"), call.query)
+        assertEquals(listOf("sources" to "all", "limit" to "20", "degraded_ok" to "1"), call.query)
         assertEquals(mapOf("X-Raft-Client-Kind" to "android"), call.headers)
         val page = assertIs<FeedbackTicketListRead.Page>(assertIs<FeedbackResult.Ok<FeedbackTicketListRead>>(result).value).page
         assertEquals("c2", page.nextCursor)
@@ -111,7 +111,7 @@ class SettingsFeedbackTicketsApiTest {
     }
 
     @Test
-    fun unreadTotalReadsOneTicketInTheBackgroundWithTheClientKind() = runTest {
+    fun unreadTotalReadsTheSumOverEveryAppFromOneTicketInTheBackground() = runTest {
         val network = FakeNetwork { HomeNetworkResponse(200, """{"tickets":[${ticketJson(unread = true, unreadCount = 3)}],"next_cursor":"c2","unread_total":4}""") }
 
         val result = NetworkSettingsFeedbackTicketsRepository(network, clientKind = "ios").unreadTotal()
@@ -119,7 +119,7 @@ class SettingsFeedbackTicketsApiTest {
         assertEquals(4, assertIs<FeedbackResult.Ok<Int?>>(result).value)
         val call = network.calls.single()
         assertEquals("product-feedback/tickets", call.path)
-        assertEquals(listOf("limit" to "1", "degraded_ok" to "1"), call.query)
+        assertEquals(listOf("sources" to "all", "limit" to "1", "degraded_ok" to "1"), call.query)
         assertEquals(mapOf("X-Raft-Client-Kind" to "ios"), call.headers)
         assertEquals(DataRequestPriority.Background, call.priority)
     }
@@ -138,11 +138,158 @@ class SettingsFeedbackTicketsApiTest {
         assertEquals(FeedbackErrorKind.Unavailable, failure.kind)
     }
 
+    /**
+     * The merged list's first page as slock #14722 answers it (head 6a2841c296146278072c2a89455cc33d951f4167,
+     * packages/server/src/routes/productFeedback.mergedList.api.test.ts "sources=all reads every
+     * configured app": THREE_APPS, Hands' `client_kind` / `client_version` folded into `client`).
+     */
+    @Test
+    fun theMergedListCarriesEachTicketsAppAndClientAndTheSummedUnreadTotal() = runTest {
+        fun merged(n: Int, activity: Long, source: String, client: String): String {
+            val updatedAt = 1_762_000_000_000L + activity + 1_000
+            return """{"id":"${n.toString().padStart(8, '0')}-0000-4000-8000-000000000000","kind":"feedback","status":"open",
+                "closure_reason":null,"duplicate_of_ticket_id":null,"message":"ticket $n","version_name":null,"channel":null,
+                "created_at":${updatedAt - 1_000},"updated_at":$updatedAt,"attachment_count":0,"comment_count":0,
+                "latest_comment_at":null,"unread":false,"unread_count":0,"source":"$source","client":"$client"}"""
+        }
+        val body =
+            """{"tickets":[${merged(1, 900, "web", "desktop")},${merged(4, 800, "android", "android")},${merged(6, 700, "ios", "ios")},
+                ${merged(2, 500, "web", "web")},${merged(5, 200, "android", "android")},${merged(3, 100, "web", "web")}],
+                "next_cursor":null,"unread_total":3,"unavailable_sources":[]}"""
+        val network = FakeNetwork { HomeNetworkResponse(200, body) }
+
+        val result = NetworkSettingsFeedbackTicketsRepository(network, "android").listTickets(cursor = null)
+
+        val page = assertIs<FeedbackTicketListRead.Page>(assertIs<FeedbackResult.Ok<FeedbackTicketListRead>>(result).value).page
+        assertEquals(
+            listOf(
+                Triple("ticket 1", "web", FeedbackClient.Desktop),
+                Triple("ticket 4", "android", FeedbackClient.Android),
+                Triple("ticket 6", "ios", FeedbackClient.Ios),
+                Triple("ticket 2", "web", FeedbackClient.Web),
+                Triple("ticket 5", "android", FeedbackClient.Android),
+                Triple("ticket 3", "web", FeedbackClient.Web),
+            ),
+            page.tickets.map { Triple(it.title, it.source, it.client) },
+        )
+        assertEquals(3, page.unreadTotal)
+        assertNull(page.nextCursor)
+    }
+
+    @Test
+    fun aCursorPageOrAnUnavailableAppHasNoTotalAndAnEmptyPageMayStillHaveMore() = runTest {
+        // slock #14722: `unread_total` is null on a cursor page and while an app is unavailable
+        // ("not known": keep the value held, never 0); a page may hold no tickets and a next cursor.
+        val network =
+            FakeNetwork { HomeNetworkResponse(200, """{"tickets":[],"next_cursor":"c3","unread_total":null,"unavailable_sources":["ios"]}""") }
+        val repository = NetworkSettingsFeedbackTicketsRepository(network, "ios")
+
+        val read = assertIs<FeedbackResult.Ok<FeedbackTicketListRead>>(repository.listTickets(cursor = "c2")).value
+        val page = assertIs<FeedbackTicketListRead.Page>(read).page
+        assertTrue(page.tickets.isEmpty())
+        assertEquals("c3", page.nextCursor)
+        assertNull(page.unreadTotal)
+        // The dot's read: unknown, so the dot keeps what it shows.
+        assertNull(assertIs<FeedbackResult.Ok<Int?>>(repository.unreadTotal()).value)
+    }
+
+    @Test
+    fun theSingleAppAnswerWithoutSourceOrClientStillReads() = runTest {
+        // A server before #14722 ignores `sources` and answers the caller's own app: no source, no client.
+        val network = FakeNetwork { HomeNetworkResponse(200, """{"tickets":[${ticketJson()}],"next_cursor":null,"unread_total":0}""") }
+        val read = assertIs<FeedbackResult.Ok<FeedbackTicketListRead>>(NetworkSettingsFeedbackTicketsRepository(network, "android").listTickets(cursor = null)).value
+        val page = assertIs<FeedbackTicketListRead.Page>(read).page
+        val ticket = page.tickets.single()
+        assertNull(ticket.source)
+        assertNull(ticket.client)
+        assertEquals(0, page.unreadTotal)
+    }
+
+    @Test
+    fun theDetailsTicketCarriesItsAppAndClient() = runTest {
+        // slock #14722 test "the detail's ticket gains source and client": `{source: "web", client: "desktop"}`.
+        val withSource = ticketJson().trimEnd().removeSuffix("}") + ""","source":"web","client":"desktop"}"""
+        val network =
+            FakeNetwork { HomeNetworkResponse(200, """{"ticket":$withSource,"comments":[],"attachments":[],"next_comment_cursor":null,"unread_total":0}""") }
+        val result = NetworkSettingsFeedbackTicketsRepository(network, "android").ticket(ticketId, source = "web")
+        val detail = assertIs<FeedbackResult.Ok<FeedbackTicketDetail>>(result).value
+        assertEquals("web", detail.ticket.source)
+        assertEquals(FeedbackClient.Desktop, detail.ticket.client)
+    }
+
+    @Test
+    fun aTicketOfAnotherAppIsAskedForWithItsPlatformOnEveryCall() = runTest {
+        // slock productFeedback.ts `ticketFeedbackSource`: `?platform=` names the ticket's app on the
+        // detail, comment, close and attachment routes.
+        val network =
+            FakeNetwork { path ->
+                when {
+                    path.endsWith("/comments") -> HomeNetworkResponse(201, """{"id":"c-new","author_type":"reporter","body":"Thanks","created_at":4000}""")
+                    path.endsWith("/close") -> HomeNetworkResponse(200, """{"id":"$ticketId","status":"closed"}""")
+                    else -> HomeNetworkResponse(200, """{"ticket":${ticketJson()},"comments":[],"attachments":[],"next_comment_cursor":null,"unread_total":0}""")
+                }
+            }
+        val repository = NetworkSettingsFeedbackTicketsRepository(network, "android")
+
+        repository.ticket(ticketId, source = "web")
+        repository.reply(ticketId, "Thanks", "sub-1", source = "ios")
+        repository.close(ticketId, FeedbackReporterCloseReason.Completed, source = "ohos")
+        repository.attachment(ticketId, attachmentId, source = "web")
+
+        assertEquals(
+            listOf(
+                listOf("comment_limit" to "100", "platform" to "web"),
+                listOf("platform" to "ios"),
+                listOf("platform" to "ohos"),
+            ),
+            network.calls.map { it.query },
+        )
+        assertEquals("product-feedback/tickets/$ticketId/attachments/$attachmentId?platform=web", network.byteReads.single().first)
+        // The client kind header stays: the server still knows which app is asking.
+        assertTrue(network.calls.all { it.headers == mapOf("X-Raft-Client-Kind" to "android") })
+    }
+
+    @Test
+    fun aTicketOfThisAppOrOfNoNamedAppSendsNoPlatform() = runTest {
+        val network =
+            FakeNetwork { HomeNetworkResponse(200, """{"ticket":${ticketJson()},"comments":[],"attachments":[],"next_comment_cursor":null,"unread_total":0}""") }
+        val repository = NetworkSettingsFeedbackTicketsRepository(network, "ios")
+        repository.ticket(ticketId, source = "ios")
+        repository.ticket(ticketId, source = null)
+        // Not a Hands app the server knows: not sent (the server would answer 400).
+        repository.ticket(ticketId, source = "desktop")
+        repository.attachment(ticketId, attachmentId, source = "ios")
+        assertTrue(network.calls.all { it.query == listOf("comment_limit" to "100") })
+        assertEquals("product-feedback/tickets/$ticketId/attachments/$attachmentId", network.byteReads.single().first)
+
+        // The desktop app files into the web app: a web ticket is its own, an Android one is not.
+        assertNull(feedbackTicketPlatform("web", ""))
+        assertNull(feedbackTicketPlatform("web", "web"))
+        assertEquals("android", feedbackTicketPlatform("android", "web"))
+    }
+
+    @Test
+    fun onlyATicketFiledOnAnotherClientNamesIt() {
+        val ticket = FeedbackTicket(ticketId, FeedbackTicketKind.Feedback, FeedbackTicketStatus.Open, null, "m", 1, 1, false, 0, 0, 0)
+        val android = feedbackOwnClient("android")
+        assertEquals(FeedbackClient.Android, android)
+        assertEquals(FeedbackClient.Ios, feedbackOwnClient("ios"))
+        assertNull(feedbackForeignClient(ticket.copy(source = "android", client = FeedbackClient.Android), android), "own client: nothing")
+        assertNull(feedbackForeignClient(ticket, android), "no client named: nothing")
+        assertNull(feedbackForeignClient(null, android))
+        assertEquals(FeedbackClient.Ios, feedbackForeignClient(ticket.copy(source = "ios", client = FeedbackClient.Ios), android))
+        assertEquals(FeedbackClient.Web, feedbackForeignClient(ticket.copy(source = "web", client = FeedbackClient.Web), android))
+        // Raft Desktop files into the web app: still another client.
+        assertEquals(FeedbackClient.Desktop, feedbackForeignClient(ticket.copy(source = "web", client = FeedbackClient.Desktop), android))
+        assertEquals(FeedbackClient.Android, feedbackForeignClient(ticket.copy(source = "android", client = FeedbackClient.Android), feedbackOwnClient("ios")))
+        assertNull(FeedbackClient.fromWire("windows"))
+    }
+
     @Test
     fun aLaterPageSendsItsCursorAndNoDegradedOptIn() = runTest {
         val network = FakeNetwork { HomeNetworkResponse(200, """{"tickets":[],"next_cursor":null,"unread_total":0}""") }
         NetworkSettingsFeedbackTicketsRepository(network, clientKind = "ios").listTickets(cursor = "c2")
-        assertEquals(listOf("limit" to "20", "cursor" to "c2"), network.calls.single().query)
+        assertEquals(listOf("sources" to "all", "limit" to "20", "cursor" to "c2"), network.calls.single().query)
         assertEquals(mapOf("X-Raft-Client-Kind" to "ios"), network.calls.single().headers)
     }
 

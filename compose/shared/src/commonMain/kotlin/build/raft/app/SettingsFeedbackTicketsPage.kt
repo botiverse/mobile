@@ -52,6 +52,7 @@ import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DataResult
 import build.raft.app.data.FeedbackAttachment
 import build.raft.app.data.FeedbackAuthorType
+import build.raft.app.data.FeedbackClient
 import build.raft.app.data.FeedbackClosureReason
 import build.raft.app.data.FeedbackComment
 import build.raft.app.data.FeedbackErrorKind
@@ -69,6 +70,8 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SettingsFeedbackTicketsState
 import build.raft.app.data.SettingsFeedbackTicketsStore
+import build.raft.app.data.feedbackForeignClient
+import build.raft.app.data.feedbackOwnClient
 import build.raft.app.data.feedbackPreviewLine
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.model.RaftTimeContext
@@ -182,8 +185,10 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
                         val userId = sharedStores.authStore(storeScope).readSession()?.user?.id
                         emitAll(RaftFeedbackAgentDraftSent.repository.sent(userId))
                     },
-                // The Settings / Feedback dot follows what these reads answer (a reply read clears it).
+                // The Settings / Feedback dot follows the list's summed total, and reads the sum
+                // again when a ticket is read here (a reply read clears it).
                 onUnreadTotal = sharedStores.feedbackUnread::applyRead,
+                onTicketRead = sharedStores.feedbackUnread::onTicketRead,
             )
         }
     val initialTicketId = remember(pager.pageData.params) { feedbackTicketIdOrNull(pager.pageData.params.optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID)) }
@@ -214,7 +219,9 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
                         session?.servers?.firstOrNull { it.id == storeScope.initialServerId }?.slug?.takeIf(String::isNotBlank)
                             ?: session?.currentServerSlug()
                     val webUrl = (settingsCapabilities.loadDeveloper() as? DataResult.Content)?.data?.webUrl
-                    val link = settingsFeedbackTicketLink(webUrl, serverSlug, ticketId, platform)
+                    // A ticket of another app (the one list holds every app's) links to its own app.
+                    val ticketSource = store.state.value.detail?.takeIf { it.ticketId == ticketId }?.ticket?.source
+                    val link = settingsFeedbackTicketLink(webUrl, serverSlug, ticketId, ticketSource ?: platform)
                     bridge.log("settings_feedback_tickets_copy_link ticket=${ticketId.take(8)} ok=${link != null}")
                     if (link != null) settingsCapabilities.bridgeCopyToClipboard(link) else bridge.toast(copyLinkFailedMessage)
                 }
@@ -264,16 +271,23 @@ internal fun settingsFeedbackTicketLinkPlatform(clientKind: String): String? =
  * A ticket's web address, to hand it to an agent (#119): the web's Settings › Feedback ticket route
  * (slock `packages/web/src/feedback/feedbackPaths.ts` `feedbackTicketPath`:
  * `/s/{slug}/settings/feedback/ticket/{encodeURIComponent(id)}`) on [webUrl], the Developer
- * environment's web URL (blank or null is production), plus `?platform=android|ios`, so the agent
- * reads the ticket and its diagnostics from that Hands app. The web reads the ticket from the path
- * only (AboutFeedbackDialog `feedbackWorkspaceRouteFromPath`), so the link still opens it there.
- * Null without a server slug, a ticket id, or a [platform] other than `android` / `ios`.
+ * environment's web URL (blank or null is production), plus `?platform=android|ios|ohos`, so the
+ * agent reads the ticket and its diagnostics from that Hands app. [platform] is the Hands app the
+ * ticket lives in: this app's, or the ticket's `source` in the one list across apps (slock #14722);
+ * a web ticket (`web`) needs no platform, as the web reads its own app by default. The web reads the
+ * ticket from the path only (AboutFeedbackDialog `feedbackWorkspaceRouteFromPath`), so the link still
+ * opens it there. Null without a server slug, a ticket id, or a known [platform].
  */
 internal fun settingsFeedbackTicketLink(webUrl: String?, serverSlug: String?, ticketId: String, platform: String): String? {
     val slug = serverSlug?.trim()?.takeIf(::isRaftLinkIdentifier) ?: return null
     val id = ticketId.trim().takeIf(String::isNotEmpty) ?: return null
-    if (settingsFeedbackTicketLinkPlatform(platform) == null) return null
-    return "${sharedSettingsResolvedWebBaseUrl(webUrl)}/s/$slug/settings/feedback/ticket/${id.encodeUriComponent()}?platform=$platform"
+    val query =
+        when (platform) {
+            "android", "ios", "ohos" -> "?platform=$platform"
+            "web" -> ""
+            else -> return null
+        }
+    return "${sharedSettingsResolvedWebBaseUrl(webUrl)}/s/$slug/settings/feedback/ticket/${id.encodeUriComponent()}$query"
 }
 
 /** JavaScript `encodeURIComponent`: UTF-8, all but `A-Z a-z 0-9 - _ . ! ~ * ' ( )` escaped. */
@@ -341,6 +355,8 @@ internal fun SettingsFeedbackTicketsScreen(
     timeContext: RaftTimeContext?,
     actions: SettingsFeedbackTicketsActions,
     bottomContentPadding: androidx.compose.ui.unit.Dp = 0.dp,
+    /** The client this app files as: a ticket filed on another one names it on its first message. */
+    ownClient: FeedbackClient? = feedbackOwnClient(raftFeedbackWebViewClientKind()),
     replyComposer: SettingsFeedbackReplyComposer = { draft, enabled, sending, error, onChange, onSend ->
         SettingsFeedbackThreadReplyComposer(draft, enabled, sending, error, onChange, onSend, bottomContentPadding)
     },
@@ -396,7 +412,7 @@ internal fun SettingsFeedbackTicketsScreen(
         if (detail == null) {
             FeedbackTicketList(state.list, timeContext, actions, bottomContentPadding, showAgentHint = state.showAgentHint)
         } else {
-            FeedbackTicketDetail(detail, timeContext, actions, replyComposer, bottomContentPadding, onOpenCloseDialog = openCloseDialog)
+            FeedbackTicketDetail(detail, timeContext, actions, replyComposer, bottomContentPadding, ownClient = ownClient, onOpenCloseDialog = openCloseDialog)
         }
     }
     if (detail != null && closeDialogOpen) {
@@ -547,7 +563,8 @@ private fun FeedbackTicketList(
                         }
                     FeedbackTicketsListPhase.Ready -> {
                         val visible = list.visibleTickets
-                        if (visible.isEmpty()) {
+                        // No tickets yet but more to read (the merged list's empty page): Load More, not "No feedback yet".
+                        if (visible.isEmpty() && !(list.tickets.isEmpty() && list.nextCursor != null)) {
                             item(key = "empty") {
                                 val (title, body) = list.emptyKind.emptyResources()
                                 RaftEmptyState(title = stringResource(title), description = stringResource(body))
@@ -835,6 +852,7 @@ private fun FeedbackTicketDetail(
     actions: SettingsFeedbackTicketsActions,
     replyComposer: SettingsFeedbackReplyComposer,
     bottomContentPadding: androidx.compose.ui.unit.Dp,
+    ownClient: FeedbackClient?,
     onOpenCloseDialog: () -> Unit,
 ) {
     val ticket = detail.ticket
@@ -868,7 +886,7 @@ private fun FeedbackTicketDetail(
             enabled = detail.detail != null,
             modifier = Modifier.weight(1f).fillMaxWidth(),
         ) {
-            FeedbackTicketThread(detail, timeContext, actions)
+            FeedbackTicketThread(detail, timeContext, actions, ownClient)
         }
         val read = detail.detail
         if (read != null && read.ticket.status == FeedbackTicketStatus.Closed) {
@@ -892,7 +910,12 @@ private fun FeedbackTicketDetail(
 }
 
 @Composable
-private fun FeedbackTicketThread(detail: FeedbackTicketDetailState, timeContext: RaftTimeContext?, actions: SettingsFeedbackTicketsActions) {
+private fun FeedbackTicketThread(
+    detail: FeedbackTicketDetailState,
+    timeContext: RaftTimeContext?,
+    actions: SettingsFeedbackTicketsActions,
+    ownClient: FeedbackClient?,
+) {
     val read = detail.detail
     val listState = rememberLazyListState()
     // Opened at the latest message, as the web's conversation does.
@@ -938,6 +961,8 @@ private fun FeedbackTicketThread(detail: FeedbackTicketDetailState, timeContext:
                 body = ticket.message,
                 createdAt = ticket.createdAt,
                 timeContext = timeContext,
+                // Filed on another client: named once, here, after the first message's time (design F).
+                filedFrom = feedbackForeignClient(ticket, ownClient),
                 attachments = read.attachments,
                 openingAttachmentId = detail.openingAttachmentId,
                 onOpenAttachment = actions.onOpenAttachment,
@@ -1009,6 +1034,7 @@ private fun FeedbackConversationMessage(
     createdAt: Long,
     timeContext: RaftTimeContext?,
     continuation: Boolean,
+    filedFrom: FeedbackClient? = null,
     attachments: List<FeedbackAttachment> = emptyList(),
     openingAttachmentId: String? = null,
     onOpenAttachment: (FeedbackAttachment) -> Unit = {},
@@ -1034,6 +1060,7 @@ private fun FeedbackConversationMessage(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     RaftText(stringResource(authorType.senderResource()), style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.SemiBold), color = colors.foreground)
                     RaftText(feedbackClock(createdAt, timeContext), style = RaftTheme.typography.footnote, color = colors.foregroundMuted)
+                    if (filedFrom != null) FeedbackFiledFromBadge(filedFrom)
                 }
             }
             RaftMarkdownBody(body = body, modifier = Modifier.fillMaxWidth())
@@ -1047,6 +1074,41 @@ private fun FeedbackConversationMessage(
         }
     }
 }
+
+/**
+ * The client a ticket was filed on, when it is not this one (design settings.md "Feedback"): an
+ * outline muted Badge with the client's icon and name, after the first message's time.
+ */
+@Composable
+internal fun FeedbackFiledFromBadge(client: FeedbackClient) {
+    val colors = RaftTheme.colors
+    RaftBadge(
+        text = stringResource(client.labelResource()),
+        modifier = Modifier.testTag(SettingsFeedbackTicketFiledFromTag),
+        appearance = RaftBadgeAppearance.Outline,
+        variant = RaftBadgeVariant.Muted,
+        icon = { RaftLucideIcon(client.iconName(), modifier = Modifier.size(14.dp), color = raftArgbHex(colors.foregroundMuted)) },
+    )
+}
+
+internal const val SettingsFeedbackTicketFiledFromTag = "settings_feedback_ticket_filed_from"
+
+private fun FeedbackClient.labelResource(): StringResource =
+    when (this) {
+        FeedbackClient.Web -> Res.string.settings_feedback_ticket_client_web
+        FeedbackClient.Desktop -> Res.string.settings_feedback_ticket_client_desktop
+        FeedbackClient.Android -> Res.string.settings_feedback_ticket_client_android
+        FeedbackClient.Ios -> Res.string.settings_feedback_ticket_client_ios
+        FeedbackClient.Ohos -> Res.string.settings_feedback_ticket_client_ohos
+    }
+
+/** Design settings.md "Feedback": `globe` Web, `monitor` Desktop, `smartphone` the phone apps. */
+private fun FeedbackClient.iconName(): RaftLucideIconName =
+    when (this) {
+        FeedbackClient.Web -> RaftLucideIconName.Globe
+        FeedbackClient.Desktop -> RaftLucideIconName.Monitor
+        FeedbackClient.Android, FeedbackClient.Ios, FeedbackClient.Ohos -> RaftLucideIconName.Smartphone
+    }
 
 /**
  * One of the ticket's files: an image opens in the image viewer (it is read through the server

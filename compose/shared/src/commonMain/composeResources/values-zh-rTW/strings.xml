@@ -4348,6 +4348,11 @@
     <string name="settings_feedback_tickets_filter_all">全部</string>
     <string name="settings_feedback_tickets_filter_active">進行中</string>
     <string name="settings_feedback_tickets_filter_ended">已結束</string>
+    <string name="settings_feedback_ticket_client_web">網頁版</string>
+    <string name="settings_feedback_ticket_client_desktop">桌面版</string>
+    <string name="settings_feedback_ticket_client_android">Android</string>
+    <string name="settings_feedback_ticket_client_ios">iOS</string>
+    <string name="settings_feedback_ticket_client_ohos">HarmonyOS</string>
     <string name="settings_feedback_tickets_loading">正在載入意見回饋</string>
     <string name="settings_feedback_tickets_empty_all_title">還沒有意見回饋</string>
     <string name="settings_feedback_tickets_empty_all_body">分享想法或回報問題，團隊回覆會顯示在這裡。</string>

@@ -1371,8 +1371,9 @@ internal class RaftSharedStoreProvider private constructor(
         }
 
     /**
-     * The signed-in person's unread feedback replies in this app's Hands app: the Settings and
-     * Feedback row dot. Read on start / sign-in and on every realtime (re)connect, then pushed.
+     * The signed-in person's unread feedback replies summed over every Hands app (slock #14722): the
+     * Settings and Feedback row dot. Read on start / sign-in, on every realtime (re)connect, and
+     * again whenever an app's push says one app's total moved.
      */
     internal val feedbackUnread: RaftFeedbackUnreadStore by lazy {
         val logger = sharedInfoLogger("SlockFeedbackUnread")
