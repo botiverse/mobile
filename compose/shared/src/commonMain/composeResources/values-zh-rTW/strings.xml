@@ -4150,6 +4150,8 @@
     <string name="settings_notifications_quiet_hours_end">結束時間</string>
     <string name="settings_notifications_sound_title">音效</string>
     <string name="settings_notifications_sound_detail">通知時播放音效，套用到所有裝置。</string>
+    <string name="settings_notifications_followed_thread_replies_title">我追蹤的討論串中的回覆</string>
+    <string name="settings_notifications_followed_thread_replies_detail">關閉後，你追蹤的討論串或任務裡的回覆只有 @你 時才通知。討論串仍會出現在動態裡。</string>
     <string name="settings_notifications_account_save_failed">無法儲存通知設定，請再試一次。</string>
     <string name="settings_notifications_mobile_delay_title">電腦上在用時，手機</string>
     <string name="settings_notifications_mobile_delay_always">立即通知，即使我在用電腦</string>

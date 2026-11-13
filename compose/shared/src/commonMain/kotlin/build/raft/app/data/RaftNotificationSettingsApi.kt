@@ -41,6 +41,10 @@ import kotlinx.serialization.json.put
  *  - `settings.mobileDelay` (phone push delay while the user is on a computer, Wug, #proj-raft-ui
  *    #186): `always` | `inactive` (default, the behaviour before the field) | `1m` | `2m` | `5m` |
  *    `10m`. An older server does not send it; the app then never shows or PATCHes it.
+ *  - `settings.followedThreadReplies` ("Replies in threads I follow", contract v1.2 §1.2,
+ *    #triage:#357): off, a reply in a followed thread or task conversation notifies only when it
+ *    @mentions the user; following and Activity are unchanged. Default true. An older server does
+ *    not send it: it reads as on and the app hides the row and never PATCHes it.
  *  - `PUT notification-levels` `{scope, id, level}` → `{scope, id, serverId, level, effective,
  *    muted, prefsVersion}`; `server` rejects `default`.
  *  - `GET notification-levels` (server header) → `{serverId, server, channels: [{id, level}],
@@ -76,8 +80,21 @@ data class RaftNotificationAccountSettings(
      * server). Kept raw so an unknown future value is never rewritten unless the user picks one.
      */
     val mobileDelay: String? = null,
+    /**
+     * The wire `followedThreadReplies` as sent, or null when the server did not send the field (an
+     * older server, whose behaviour is on). Null hides the row; see [followedThreadRepliesEnabled].
+     */
+    val followedThreadReplies: Boolean? = null,
     val version: Int = 0
 ) {
+    /** Whether replies in followed threads notify: absent on the wire reads as on (web `!== false`). */
+    val followedThreadRepliesEnabled: Boolean
+        get() = followedThreadReplies != false
+
+    /** Whether the server has the "Replies in threads I follow" setting (the row is shown). */
+    val followedThreadRepliesSupported: Boolean
+        get() = followedThreadReplies != null
+
     /** The preview mode; an unknown value fails closed to hidden. */
     val preview: PushPreviewMode
         get() = PushPreviewMode.fromWire(previewMode) ?: PushPreviewMode.Hidden
@@ -170,7 +187,9 @@ data class RaftNotificationAccountSettingsPatch(
     val previewMode: PushPreviewMode? = null,
     val sound: Boolean? = null,
     /** Only sent when the user picks a delay; the row exists only when the server sent the field. */
-    val mobileDelay: RaftNotificationMobileDelay? = null
+    val mobileDelay: RaftNotificationMobileDelay? = null,
+    /** Only sent when the user flips it; the row exists only when the server sent the field. */
+    val followedThreadReplies: Boolean? = null
 ) {
     /** The settings as they read once this patch applied, for an optimistic update. */
     fun appliedTo(settings: RaftNotificationAccountSettings): RaftNotificationAccountSettings =
@@ -179,7 +198,8 @@ data class RaftNotificationAccountSettingsPatch(
             quietHours = quietHours ?: settings.quietHours,
             previewMode = previewMode?.wireName ?: settings.previewMode,
             sound = sound ?: settings.sound,
-            mobileDelay = mobileDelay?.wireName ?: settings.mobileDelay
+            mobileDelay = mobileDelay?.wireName ?: settings.mobileDelay,
+            followedThreadReplies = followedThreadReplies ?: settings.followedThreadReplies
         )
 }
 
@@ -195,6 +215,7 @@ fun buildRaftNotificationAccountSettingsPatchBody(patch: RaftNotificationAccount
         patch.previewMode?.let { put("previewMode", it.wireName) }
         patch.sound?.let { put("sound", it) }
         patch.mobileDelay?.let { put("mobileDelay", it.wireName) }
+        patch.followedThreadReplies?.let { put("followedThreadReplies", it) }
         version?.let { put("version", it) }
     }.toString()
 
@@ -596,11 +617,17 @@ data class RaftNotificationAccountSettingsState(
     val settings: RaftNotificationAccountSettings? = null,
     val loading: Boolean = false,
     val saving: Boolean = false,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    /**
+     * The failed request's `X-Trace-Id` beside [errorCode] (AGENTS.md "Errors carry the trace ID"),
+     * shown under the save warning; null when no server answered (or a local refusal).
+     */
+    val errorTraceId: String? = null
 )
 
 /**
- * Process store of the account-wide settings (pause, quiet hours, preview, sound; contract §2.1).
+ * Process store of the account-wide settings (pause, quiet hours, preview, sound, phone alerts,
+ * replies in followed threads; contract §2.1).
  * Also mirrors the preview mode into the device's preview preference
  * ([KeyValuePushPreviewModePreferenceStore]), which
  * the Android poster and the in-app banners read for text this app builds itself.
@@ -637,11 +664,11 @@ object RaftNotificationAccountSettingsStore {
             is DataResult.Content -> {
                 accept(result.data.settings)
                 RaftNotificationLevelStore.applyServerLevels(result.data.serverLevels)
-                mutableState.update { it.copy(loading = false, errorCode = null) }
+                mutableState.update { it.copy(loading = false, errorCode = null, errorTraceId = null) }
                 true
             }
             is DataResult.Error -> {
-                mutableState.update { it.copy(loading = false, errorCode = result.error.code) }
+                mutableState.update { it.copy(loading = false, errorCode = result.error.code, errorTraceId = result.error.traceId) }
                 false
             }
             else -> {
@@ -661,12 +688,19 @@ object RaftNotificationAccountSettingsStore {
             val api = apiProvider() ?: return@withLock false
             // Contract §2.1: pausedUntil is in the future and at most 366 days ahead (else 400).
             if (patch.pausedUntil != null && !raftPausedUntilAccepted(patch.pausedUntil, nowEpochMillis)) {
-                mutableState.update { it.copy(errorCode = "notification_settings_pause_out_of_range") }
+                mutableState.update { it.copy(errorCode = "notification_settings_pause_out_of_range", errorTraceId = null) }
+                return@withLock false
+            }
+            // "Replies in threads I follow" is only written over loaded settings: before the GET
+            // lands its value is unknown, and "not loaded" must never read as on (#triage:#357).
+            if (patch.followedThreadReplies != null && mutableState.value.settings?.followedThreadRepliesSupported != true) {
+                mutableState.update { it.copy(errorCode = "notification_settings_not_loaded", errorTraceId = null) }
                 return@withLock false
             }
             val before = mutableState.value.settings ?: RaftNotificationAccountSettings()
-            mutableState.update { it.copy(settings = patch.appliedTo(before), saving = true, errorCode = null) }
+            mutableState.update { it.copy(settings = patch.appliedTo(before), saving = true, errorCode = null, errorTraceId = null) }
             var version: Int? = before.version
+            var failedTraceId: String? = null
             repeat(2) { attempt ->
                 val response =
                     try {
@@ -682,6 +716,7 @@ object RaftNotificationAccountSettingsStore {
                     mutableState.update { it.copy(saving = false) }
                     return@withLock true
                 }
+                failedTraceId = response?.traceId
                 if (response?.code == 404) RaftNotificationCapability.recordAccount(supported = false)
                 if (response?.code == 409 && attempt == 0) {
                     val current = parseRaftNotificationAccountSettingsEnvelope(response.errorBodyText ?: response.bodyText)
@@ -692,11 +727,13 @@ object RaftNotificationAccountSettingsStore {
                     }
                 }
                 mutableState.update {
-                    it.copy(settings = before, saving = false, errorCode = "notification_settings_save_failed")
+                    it.copy(settings = before, saving = false, errorCode = "notification_settings_save_failed", errorTraceId = failedTraceId)
                 }
                 return@withLock false
             }
-            mutableState.update { it.copy(settings = before, saving = false, errorCode = "notification_settings_save_failed") }
+            mutableState.update {
+                it.copy(settings = before, saving = false, errorCode = "notification_settings_save_failed", errorTraceId = failedTraceId)
+            }
             false
         }
 

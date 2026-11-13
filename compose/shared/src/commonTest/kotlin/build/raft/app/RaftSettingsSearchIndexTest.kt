@@ -13,13 +13,14 @@ import kotlin.test.assertTrue
  * the app's pages have, and each person finds only what their list and pages show them.
  */
 class RaftSettingsSearchIndexTest {
-    /** settingsSearch.v1.json's ids at b36482a1, in its order. */
+    /** settingsSearch.v1.json's ids at b36482a1 (plus 9b284c6d's notification-followed-thread-replies), in its order. */
     private val webIds =
         listOf(
             "display-name", "username", "email", "password", "passkeys", "two-step", "sign-out", "delete-account",
             "display-language", "translation-mode", "time-format", "timezone", "message-font-size",
             "live-agent-activity", "show-agent-model", "show-sender-description", "hide-empty-sidebar-sections", "send-with",
             "push-notifications", "pause-notifications", "quiet-hours", "notification-preview", "notification-sound",
+            "notification-followed-thread-replies",
             "theme", "server-theme", "mute-server", "server-name", "public-access", "leave-server", "plan",
             "invite-links", "single-sign-on", "member-permissions", "ai-providers", "desktop-app",
         )

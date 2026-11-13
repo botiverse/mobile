@@ -4325,6 +4325,8 @@
     <string name="settings_notifications_quiet_hours_end">结束时间</string>
     <string name="settings_notifications_sound_title">声音</string>
     <string name="settings_notifications_sound_detail">通知时播放声音，对所有设备生效。</string>
+    <string name="settings_notifications_followed_thread_replies_title">我关注的消息列中的回复</string>
+    <string name="settings_notifications_followed_thread_replies_detail">关闭后，你关注的消息列或任务里的回复只有 @你 时才通知。消息列仍会出现在动态里。</string>
     <string name="settings_notifications_account_save_failed">通知设置没能保存，请重试。</string>
     <string name="settings_notifications_mobile_delay_title">电脑上在用时，手机</string>
     <string name="settings_notifications_mobile_delay_always">立即通知，即使我在用电脑</string>

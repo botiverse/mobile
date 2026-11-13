@@ -4325,6 +4325,8 @@
     <string name="settings_notifications_quiet_hours_end">終了時刻</string>
     <string name="settings_notifications_sound_title">サウンド</string>
     <string name="settings_notifications_sound_detail">通知時にサウンドを鳴らします。すべてのデバイスに適用されます。</string>
+    <string name="settings_notifications_followed_thread_replies_title">フォロー中のスレッドへの返信</string>
+    <string name="settings_notifications_followed_thread_replies_detail">オフにすると、フォロー中のスレッドやタスクへの返信は、あなたへの @メンションがあるときだけ通知されます。スレッドはアクティビティに残ります。</string>
     <string name="settings_notifications_account_save_failed">通知設定を保存できませんでした。もう一度お試しください。</string>
     <string name="settings_notifications_mobile_delay_title">パソコンを使っているときのスマートフォン</string>
     <string name="settings_notifications_mobile_delay_always">すぐに通知（パソコンを使っていても）</string>

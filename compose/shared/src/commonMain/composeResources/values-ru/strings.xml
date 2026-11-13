@@ -4113,6 +4113,8 @@
     <string name="settings_notifications_quiet_hours_end">Время окончания</string>
     <string name="settings_notifications_sound_title">Звук</string>
     <string name="settings_notifications_sound_detail">Воспроизводить звук уведомлений на всех устройствах.</string>
+    <string name="settings_notifications_followed_thread_replies_title">Ответы в ветках, на которые я подписан</string>
+    <string name="settings_notifications_followed_thread_replies_detail">Если выключить, ответ в ветке или задаче, на которую вы подписаны, придёт уведомлением, только если в нём есть @упоминание вас. Ветка остаётся в Активности.</string>
     <string name="settings_notifications_account_save_failed">Не удалось сохранить настройки уведомлений. Попробуйте ещё раз.</string>
     <string name="settings_notifications_mobile_delay_title">Пока я за компьютером, уведомлять на телефоне</string>
     <string name="settings_notifications_mobile_delay_always">Сразу, даже когда я за компьютером</string>

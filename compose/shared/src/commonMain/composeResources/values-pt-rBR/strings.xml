@@ -4150,6 +4150,8 @@
     <string name="settings_notifications_quiet_hours_end">Hora de término</string>
     <string name="settings_notifications_sound_title">Som</string>
     <string name="settings_notifications_sound_detail">Toca um som com as notificações, em todos os dispositivos.</string>
+    <string name="settings_notifications_followed_thread_replies_title">Respostas em threads que sigo</string>
+    <string name="settings_notifications_followed_thread_replies_detail">Desligado: uma resposta em uma thread ou tarefa que você segue só notifica quando @menciona você. A thread continua em Atividade.</string>
     <string name="settings_notifications_account_save_failed">Não foi possível salvar as configurações de notificação. Tente de novo.</string>
     <string name="settings_notifications_mobile_delay_title">Enquanto uso um computador, avisar meu celular</string>
     <string name="settings_notifications_mobile_delay_always">Na hora, mesmo enquanto uso um computador</string>

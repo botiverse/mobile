@@ -4325,6 +4325,8 @@
     <string name="settings_notifications_quiet_hours_end">End time</string>
     <string name="settings_notifications_sound_title">Sound</string>
     <string name="settings_notifications_sound_detail">Play a sound with notifications, on every device.</string>
+    <string name="settings_notifications_followed_thread_replies_title">Replies in threads I follow</string>
+    <string name="settings_notifications_followed_thread_replies_detail">Off: a reply in a thread or task you follow notifies you only when it @mentions you. The thread stays in Activity.</string>
     <string name="settings_notifications_account_save_failed">Couldn’t save notification settings. Try again.</string>
     <string name="settings_notifications_mobile_delay_title">While I'm on a computer, notify my phone</string>
     <string name="settings_notifications_mobile_delay_always">Right away, even while I'm on a computer</string>

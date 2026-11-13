@@ -132,6 +132,12 @@ internal val RaftSettingsSearchCopies: Map<String, RaftSettingsSearchCopy> =
                 Res.string.settings_notifications_sound_detail,
                 Res.string.settings_notifications_content_section,
             ),
+        "notification-followed-thread-replies" to
+            RaftSettingsSearchCopy(
+                Res.string.settings_notifications_followed_thread_replies_title,
+                Res.string.settings_notifications_followed_thread_replies_detail,
+                Res.string.settings_notifications_content_section,
+            ),
         "theme" to RaftSettingsSearchCopy(Res.string.settings_theme_group_mode, Res.string.settings_appearance_theme_description),
         "server-theme" to
             RaftSettingsSearchCopy(Res.string.settings_theme_title, Res.string.settings_server_theme_description, descriptionWithServer = true),
