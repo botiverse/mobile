@@ -217,6 +217,46 @@ class SharedActivityStoreInboxInPlaceCheckTest {
         f.store.dispatch(system("s-26", 26L, MessageSystemProvenance(null, null, null)))
         assertEquals(2, unread())
         assertEquals("26", f.store.state.value.items.first().latestActivitySeq, "every line still moves the row")
+
+        // An uncounted line that @-mentions the reader adds no unread but still lights the @ (web liveUnreadFields).
+        f.store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message("s-27", channelId = "thread-1", authorId = "system", seq = 27L).copy(
+                        messageType = MessageType.System,
+                        mentions = listOf(MessageMention(type = "user", id = "user-1"))
+                    ),
+                    systemProvenance = MessageSystemProvenance("task.deleted_summary", "agent", "agent-1")
+                )
+            )
+        )
+        val mentioned = f.store.state.value.items.single { it.key == threadRow.key }
+        assertEquals(2, mentioned.unreadCount)
+        assertEquals(true to MessageId("s-27"), mentioned.hasMention to mentioned.firstMentionMessageId)
+    }
+
+    @Test
+    fun aThreadRowHeldOverALaggingAnswerGivesWayPastTheStaleListBound() = runTest {
+        // Web preserveNewerThreadActivity `until` (slock #14247): not gated by mobile_inbox_inplace_v0.
+        val f = loadedStore(listOf(listOf(otherRow, threadRow), listOf(otherRow, threadRow)))
+
+        f.store.dispatch(reply("r-21", seq = 21L, replyCount = 3))
+        untilReconcile()
+        assertEquals(2, f.inbox.initialLoadCount, "the inplace_reconcile read answered, still behind")
+        val held = f.store.state.value.items.single { it.key == threadRow.key }
+        assertEquals("21" to MessageId("r-21"), held.latestActivitySeq to held.latestActivityMessageId, "inside 90 s the patch holds")
+        assertTrue(threadRow.key in f.store.realtimeHighWaterKeysForTest())
+
+        advanceTimeBy(ActivityLocalMutationHoldMillis)
+        f.store.dispatch(SharedActivityIntent.PullRefresh)
+        advanceTimeBy(1_000L)
+        runCurrent()
+
+        assertEquals(3, f.inbox.initialLoadCount)
+        val served = f.store.state.value.items.single { it.key == threadRow.key }
+        assertEquals("20" to MessageId("latest-thread"), served.latestActivitySeq to served.latestActivityMessageId, "the served row wins")
+        assertEquals(2, served.replyCount)
+        assertTrue(threadRow.key !in f.store.realtimeHighWaterKeysForTest(), "the high-water entry is gone")
     }
 
     @Test

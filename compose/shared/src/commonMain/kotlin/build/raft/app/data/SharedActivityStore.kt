@@ -489,6 +489,9 @@ class SharedActivityStore internal constructor(
     private var unresolvedDmPeerChannelIds: Set<ChannelId> = emptySet()
     private var dmPeerNamesFetchInFlight = false
     private val realtimeHighWater = mutableMapOf<String, ActivityRealtimeHighWater>()
+
+    /** Test hook: the row keys a realtime patch still holds over lagging served rows. */
+    internal fun realtimeHighWaterKeysForTest(): Set<String> = synchronized(realtimeOwnerLock) { realtimeHighWater.keys.toSet() }
     // One owner for live row patches, version-ledger changes, background reconcile scheduling,
     // and canonical load folds.
     private val realtimeOwnerLock = SynchronizedObject()
