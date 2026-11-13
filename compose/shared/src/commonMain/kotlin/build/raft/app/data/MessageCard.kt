@@ -99,7 +99,7 @@ internal fun WireActionCardMetadata.messageCardMetadata(): Map<String, String> {
 
 /**
  * A projected message's metadata from its wire `actionMetadata`: Raft's action card, else a card message's card,
- * else a channel announcement's change line, else none.
+ * else a channel announcement's change line, a task's assignment line or a delegated-send receipt, else none.
  */
 internal fun WireActionCardMetadata?.toMessageItemMetadata(): Map<String, String> {
     val meta = this ?: return emptyMap()
@@ -107,6 +107,7 @@ internal fun WireActionCardMetadata?.toMessageItemMetadata(): Map<String, String
         ?: meta.messageCardMetadata()
             .ifEmpty { meta.channelAnnouncementNotice()?.toMessageMetadata().orEmpty() }
             .ifEmpty { meta.taskAssignmentNotice()?.toMessageMetadata().orEmpty() }
+            .ifEmpty { meta.delegatedReceiptMetadata() }
 }
 
 /** The card revision a projected message carries; null when it is not a card message. */
