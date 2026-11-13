@@ -9,6 +9,7 @@ import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
 import build.raft.app.RaftTextSize
 import build.raft.app.RaftColor
+import build.raft.app.raftLogWarn
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftAppRadius
@@ -1499,8 +1500,14 @@ private object RaftMarkdownTextProvider : TextProvider {
         val appLinkChips = LocalRaftAppLinkChips.current
         val appLinkContent =
             remember(permalinkContent.text, appLinkChips, permalinkUriHandler, permalinkThemeColors) {
-                permalinkContent.text.withRaftAppLinkChipContent(appLinkChips) { url ->
-                    permalinkCoroutineScope.launch { permalinkUriHandler.openUri(url) }
+                // A chip that fails to draw is the author's link again, never the conversation's end (#triage:#351).
+                try {
+                    permalinkContent.text.withRaftAppLinkChipContent(appLinkChips) { url ->
+                        permalinkCoroutineScope.launch { permalinkUriHandler.openUri(url) }
+                    }
+                } catch (error: Exception) {
+                    raftLogWarn("RaftMarkdown", "link chips failed, the author's links kept: ${error::class.simpleName}: ${error.message}")
+                    RaftAppLinkChipContent(permalinkContent.text, emptyMap())
                 }
             }
         val styledText = remember(appLinkContent.text, resolvedStyle, permalinkThemeColors) {
@@ -3404,7 +3411,11 @@ internal fun raftMarkdownUnderlinedLinkAt(
 }
 
 internal fun AnnotatedString.withRaftMarkdownLinkUnderlines(): AnnotatedString {
-    val links = getLinkAnnotations(0, length).filter { it.item is LinkAnnotation.Url && it.end > it.start }
+    // An Artifact link the author gave words to is still their link, underlined as written (#proj-workspace:#289).
+    val links =
+        getLinkAnnotations(0, length).filter {
+            (it.item is LinkAnnotation.Url || (it.item as? LinkAnnotation.Clickable)?.tag == RaftArtifactLabelledLinkTag) && it.end > it.start
+        }
     if (links.isEmpty()) return this
     // A chip's extent includes its padding (gap placeholders / spacers glued by word joiners), so a
     // link spanning the chip's padding as well as its label is still the chip, never underlined.
