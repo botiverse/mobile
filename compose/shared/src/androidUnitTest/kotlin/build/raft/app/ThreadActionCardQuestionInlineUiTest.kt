@@ -99,7 +99,7 @@ class ThreadActionCardQuestionInlineUiTest {
                 applyCard = { _, _ -> },
             )
         val card = ThreadActionCard(type = "question:ask", state = "prepared", confirmationVersion = 3, presentationCardJson = cardJson)
-        val spec = assertNotNull(card.actionCardSpecToRender(specEnabled = true, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
+        val spec = assertNotNull(card.actionCardSpecToRender(capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
         mainClock.autoAdvance = false
         setContent {
             RaftTheme(appearance = RaftAppearance.Light) {
@@ -155,7 +155,7 @@ class ThreadActionCardQuestionInlineUiTest {
     private val names = ThreadActionCardNameLookup { kind, id -> if (kind == ThreadActionCardEntityKind.Human && id == "u-maya") "Maya" else null }
 
     private fun ComposeUiTest.showCard(card: ThreadActionCard, viewer: String, store: ThreadActionCardSpecStore? = null, sender: String = "Fixer") {
-        val spec = assertNotNull(card.actionCardSpecToRender(specEnabled = true, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
+        val spec = assertNotNull(card.actionCardSpecToRender(capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
         val timeContext = RaftTimeContext(localOffsetMinutes = 0, todayEpochDay = raftEpochDayForDate(2026, 11, 9), nowEpochMillis = nowMillis)
         setContent {
             RaftTheme(appearance = RaftAppearance.Light) {

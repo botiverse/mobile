@@ -1839,7 +1839,7 @@ class SharedServerMembersStore internal constructor(
     }
 
     /**
-     * Incremental sync on (`mobile_sync_changes_v0`), socket RE-connect or foreground return: agent
+     * Incremental sync (`GET /api/sync/changes`), socket RE-connect or foreground return: agent
      * online state is not in the change log, so only `/agents` is read again (Ray / Tenny 10-27);
      * humans, machines and lists come from the pull. The fetched agents replace the loaded roster's
      * agents (humans keep their rows) and project their status through the same request-fenced

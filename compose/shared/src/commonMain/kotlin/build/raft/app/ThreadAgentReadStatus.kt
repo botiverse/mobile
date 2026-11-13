@@ -51,7 +51,7 @@ import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.tokens.RaftRadius
 
 /**
- * Agent read progress (`agent_read_progress_v0` with `read_receipts_v0`) as the web draws it
+ * Agent read progress (`agent_read_progress_v0`) as the web draws it
  * (botiverse/slock staging 61eaa22, #13549 and #13513: `packages/web/src/store/agentReadProgressDomain.ts`,
  * `components/message/AgentReadFaces.tsx`, `hooks/useAgentReadProgress.ts`), in a channel or a reply
  * thread, never on a DM surface (it keeps its "Read" line):

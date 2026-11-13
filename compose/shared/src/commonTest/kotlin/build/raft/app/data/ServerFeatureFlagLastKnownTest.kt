@@ -42,7 +42,7 @@ class ServerFeatureFlagLastKnownTest {
             code = 200,
             bodyText =
                 """{"evaluations":[{"key":"mobile_thread_reverse_layout_v0","enabled":$enabled},""" +
-                    """{"key":"read_receipts_v0","enabled":true}]}""",
+                    """{"key":"drafts_section_v0","enabled":true}]}""",
         )
 
     private val offline = HomeNetworkResponse(code = 0, bodyText = null)
@@ -91,8 +91,8 @@ class ServerFeatureFlagLastKnownTest {
         val device = Device().apply { binding = accountA }
         device.onlineSession(enabled = false)
         val coldStart = device.process(ScriptedApi { offline })
-        // read_receipts_v0 was ON online, but it keeps the defaults-off-until-evaluated contract.
-        assertFalse(coldStart.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
+        // drafts_section_v0 was ON online, but it keeps the defaults-off-until-evaluated contract.
+        assertFalse(coldStart.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
     }
 
     @Test

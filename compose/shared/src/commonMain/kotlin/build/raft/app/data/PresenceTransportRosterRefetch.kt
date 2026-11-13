@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
  * presence shows the last roster plus every live presence push of the new socket; a member whose
  * state changed during the outage and who sends no push stays stale until the refetch.
  *
- * Incremental sync on for the server (`agentsOnlyOnReconnect`, `mobile_sync_changes_v0`): a
+ * Incremental sync pulls for the server (`agentsOnlyOnReconnect`): a
  * RE-connect refetches only `/agents` ([SharedServerMembersStore.refreshAgents]) and the machine
  * list ([refreshMachines]), still through [jitter]. Agent presence and machine online status are
  * not in the change log; humans, machine rows and channel rosters are (Ray / Tenny / Scout 10-27).

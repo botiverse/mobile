@@ -27,7 +27,6 @@ import build.raft.app.data.PeerReadReceiptOwner
 import build.raft.app.data.PeerReadReceiptScope
 import build.raft.app.data.AGENT_READ_PROGRESS_FEATURE_FLAG_KEY
 import build.raft.app.data.RaftAgentReadProgressConversation
-import build.raft.app.data.READ_RECEIPTS_FEATURE_FLAG_KEY
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
@@ -222,9 +221,8 @@ internal fun threadManagedAgentIds(serverMembers: List<MemberProfile>): Set<Stri
 
 /**
  * Binds the page to the shell's read-receipt store: hydrates the page's scope once its first page
- * settled (web waits for the same), applies `scope_read:updated` frames for it, and clears every
- * scope when the flag is off (web `useReadReceiptHydrate`). Returns the UI projection, or null while
- * the scope has no hydrate.
+ * settled (web waits for the same) and applies `scope_read:updated` frames for it (web
+ * `useReadReceiptHydrate`). Returns the UI projection, or null while the scope has no hydrate.
  */
 @Composable
 internal fun rememberThreadPeerReadReceipts(
@@ -250,33 +248,25 @@ internal fun rememberThreadPeerReadReceipts(
                 PeerReadReceiptOwner(environmentId, account, server)
             }
         }
-    val enabled =
-        remember(owner, flagRevision) {
-            owner != null && sharedStores.serverFeatureFlags.isEnabled(ServerId(owner.serverId), READ_RECEIPTS_FEATURE_FLAG_KEY)
-        }
     val agentReadProgressEnabled =
-        remember(owner, flagRevision, enabled, payload.surfaceKind) {
-            enabled && owner != null &&
+        remember(owner, flagRevision, payload.surfaceKind) {
+            owner != null &&
                 (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread || payload.surfaceKind == RaftThreadSurfaceKind.Channel) &&
                 sharedStores.serverFeatureFlags.isEnabled(ServerId(owner.serverId), AGENT_READ_PROGRESS_FEATURE_FLAG_KEY)
         }
     val scopeId = payload.peerReadReceiptScopeId()
     val firstPageSettled = payload.status != "loading"
     LaunchedEffect(store, owner) { store.dispatch(PeerReadReceiptIntent.BindOwner(owner)) }
-    LaunchedEffect(store, owner, enabled, scopeId, firstPageSettled, active) {
+    LaunchedEffect(store, owner, scopeId, firstPageSettled, active) {
         val currentOwner = owner ?: return@LaunchedEffect
-        if (!enabled) {
-            store.dispatch(PeerReadReceiptIntent.ClearAll)
-            return@LaunchedEffect
-        }
         if (scopeId != null && firstPageSettled && active) store.hydrate(currentOwner, scopeId)
     }
     val realtimeOwner = remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
-    DisposableEffect(realtimeOwner, store, owner, scopeId, enabled, agentReadProgressEnabled) {
+    DisposableEffect(realtimeOwner, store, owner, scopeId, agentReadProgressEnabled) {
         val currentOwner = owner
         val sink =
             RealtimeGuardedActiveThreadSink { eventServerId, event ->
-                if (!enabled || currentOwner == null) return@RealtimeGuardedActiveThreadSink
+                if (currentOwner == null) return@RealtimeGuardedActiveThreadSink
                 when (threadPeerReadReceiptRealtimeAction(event, eventServerId, currentOwner.serverId, scopeId, agentReadProgressEnabled)) {
                     ThreadPeerReadReceiptRealtimeAction.ApplyReadMove ->
                         store.consumeScopeUpdated(currentOwner, event as ScopeReadUpdated)
@@ -289,7 +279,7 @@ internal fun rememberThreadPeerReadReceipts(
         onDispose { realtimeOwner.unregisterGuardedActiveThreadSink(sink) }
     }
     val state by store.state.collectAsState()
-    val scope = if (enabled && state.owner == owner && scopeId != null) state.scopes[scopeId] else null
+    val scope = if (owner != null && state.owner == owner && scopeId != null) state.scopes[scopeId] else null
     val dmSurface = payload.isPeerReadReceiptDmSurface()
     val membersState = serverMembersStore?.state?.collectAsState()?.value
     val serverMembers =

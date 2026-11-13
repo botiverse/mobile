@@ -76,18 +76,6 @@ class SettingsAccountScreenshotTest {
 
     @Test
     @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun deleteDialogLight() = deleteDialog("settings.account.delete-dialog", RaftAppAppearance.Light, failed = false)
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun deleteDialogDark() = deleteDialog("settings.account.delete-dialog.dark", RaftAppAppearance.Dark, failed = false)
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun deleteDialogFailedLight() = deleteDialog("settings.account.delete-dialog.failed", RaftAppAppearance.Light, failed = true)
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
     fun stepUpDialogLight() = stepUpDialog("settings.account.step-up", RaftAppAppearance.Light, stepUpCode)
 
     @Test
@@ -147,25 +135,10 @@ class SettingsAccountScreenshotTest {
                 SettingsAccountContent(
                     payload = accountFixture,
                     applyTopSafeArea = false,
-                    accountDeletion = SettingsAccountDeletionUi(RaftAccountDeletionRequestState.Idle, {}, {}, {}),
+                    accountDeletion = SettingsAccountDeletionUi {},
                     loginSecurity = loginSecurity?.let { SettingsAccountLoginSecurityUi(it, onOpen = {}, onRetry = {}) },
                     onEvent = { _, _ -> },
                 )
-            }
-        }
-
-    private fun deleteDialog(name: String, appearance: RaftAppAppearance, failed: Boolean) =
-        RaftRobolectricScreenshot.capture(
-            name,
-            appearance,
-            reportDir = "build/reports/home-screenshots",
-            activities = activities,
-            root = { ShadowDialog.getLatestDialog()?.window?.decorView },
-        ) {
-            Page {
-                RaftDesignSystemTheme {
-                    SettingsDeleteAccountDialog(busy = false, failed = failed, onConfirm = {}, onDismiss = {})
-                }
             }
         }
 

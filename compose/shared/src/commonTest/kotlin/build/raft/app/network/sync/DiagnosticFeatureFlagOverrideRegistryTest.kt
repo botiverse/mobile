@@ -1,7 +1,6 @@
 package build.raft.app.network.sync
 
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
-import build.raft.app.data.MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY
 import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
@@ -28,7 +27,6 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
                 SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY,
                 THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
                 MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
-                MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY,
             ).sorted(),
             registry.supportedKeys,
         )
@@ -42,7 +40,7 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
         )
         assertEquals(
             DiagnosticFeatureFlagScopeKind.ServerExact,
-            registry.snapshot(MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY).scopeKind,
+            registry.snapshot(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY).scopeKind,
         )
         assertEquals(
             DiagnosticFeatureFlagScopeKind.ServerExact,
@@ -54,36 +52,36 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
     fun `server exact override is bidirectional and entitlement gated`() {
         // Not entitled (release): mutation rejected, decision follows the server value.
         assertIs<DiagnosticFeatureFlagOverrideMutationResult.Rejected>(
-            registry.setMode(MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+            registry.setMode(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
         )
-        assertFalse(registry.decide(MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY, false, serverScope).finalEffective)
+        assertFalse(registry.decide(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, false, serverScope).finalEffective)
 
         registry.configureEntitlement(true)
         assertIs<DiagnosticFeatureFlagOverrideMutationResult.Applied>(
-            registry.setMode(MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+            registry.setMode(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
         )
-        val forcedOn = registry.decide(MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY, false, serverScope)
+        val forcedOn = registry.decide(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, false, serverScope)
         assertTrue(forcedOn.finalEffective)
         assertFalse(forcedOn.serverEffective) // the server value stays visible next to the override
         assertEquals("diagnostic_override_force_on", forcedOn.precedence)
 
         assertIs<DiagnosticFeatureFlagOverrideMutationResult.Applied>(
-            registry.setMode(MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOff)
+            registry.setMode(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOff)
         )
-        val forcedOff = registry.decide(MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY, true, serverScope)
+        val forcedOff = registry.decide(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, true, serverScope)
         assertFalse(forcedOff.finalEffective)
         assertTrue(forcedOff.serverEffective)
 
         assertIs<DiagnosticFeatureFlagOverrideMutationResult.Applied>(
-            registry.setMode(MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.Server)
+            registry.setMode(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.Server)
         )
-        assertTrue(registry.decide(MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY, true, serverScope).finalEffective)
-        assertFalse(registry.decide(MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY, false, serverScope).finalEffective)
+        assertTrue(registry.decide(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, true, serverScope).finalEffective)
+        assertFalse(registry.decide(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, false, serverScope).finalEffective)
 
         // A read without a server id still gets the override.
-        registry.setMode(MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+        registry.setMode(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
         val processWide = DiagnosticFeatureFlagScope("https://api.example", "account-a", "")
-        assertTrue(registry.decide(MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY, false, processWide).finalEffective)
+        assertTrue(registry.decide(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, false, processWide).finalEffective)
     }
 
     @Test

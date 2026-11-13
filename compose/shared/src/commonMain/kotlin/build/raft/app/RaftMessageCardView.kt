@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.data.RaftLinkCardButtonAction
 import build.raft.app.data.RaftLinkCardButtonVariant
 import build.raft.app.data.RaftLinkCardV2Element
-import build.raft.app.data.MESSAGE_CARDS_FEATURE_FLAG_KEY
 import build.raft.app.data.RaftMessageCard
 import build.raft.app.data.RaftMessageCardElement
 import build.raft.app.data.RaftMessageCardHeader
@@ -37,9 +36,7 @@ import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.app.data.messageCardRevisionOf
-import build.raft.app.data.messageCardToRender
-import build.raft.app.data.rememberServerFeatureLatched
-import build.raft.app.model.ServerId
+import build.raft.app.data.readMessageCardFromMetadata
 import build.raft.app.data.appLinkDomain
 import build.raft.app.data.messageCardButtons
 import build.raft.app.markdown.raftAppLinkKeepEnd
@@ -58,16 +55,13 @@ import build.raft.designsystem.theme.RaftTheme
 internal const val RaftMessageCardTestTag = "thread_message_card"
 
 /**
- * The card a message row draws instead of its text: only a card message's, only where the
- * conversation's Server has `message_cards` on (latched for the row), and only a card that reads.
- * Null otherwise: the row draws the message's text, the card's fallback.
+ * The card a message row draws instead of its text: only a card message's, and only a card that
+ * reads. Null otherwise: the row draws the message's text, the card's fallback.
  */
 @Composable
 internal fun rememberThreadMessageCard(metadata: Map<String, String>): RaftMessageCard? {
     if (messageCardRevisionOf(metadata) == null) return null
-    val host = LocalThreadAppLinkPreviewHost.current
-    val enabled = rememberServerFeatureLatched(host?.featureFlags, host?.serverId?.let(::ServerId), MESSAGE_CARDS_FEATURE_FLAG_KEY)
-    return remember(metadata, enabled) { messageCardToRender(metadata, enabled) }
+    return remember(metadata) { readMessageCardFromMetadata(metadata) }
 }
 
 /**

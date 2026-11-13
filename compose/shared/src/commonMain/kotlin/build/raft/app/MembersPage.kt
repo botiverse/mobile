@@ -96,7 +96,6 @@ import build.raft.app.data.AgentActivityOverviewIntent
 import build.raft.app.data.agentMemoryLimitExit
 import build.raft.app.data.isAgentBackgroundOomActivityTitle
 import build.raft.app.data.parseAgentBackgroundOomActivityText
-import build.raft.app.data.ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY
 import build.raft.app.data.AgentArchiveWorkspaceChoice
 import build.raft.app.data.AgentIssueReportRepository
 import build.raft.app.data.AgentIssueReportResult
@@ -209,7 +208,6 @@ import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.model.MemberId
-import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.model.MessageId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -4210,12 +4208,8 @@ internal fun MemberDetailPageContent(
                 )
             }
         }
-    // The overview gate follows a flag evaluation (or a local override) that lands after first frame.
+    // Flag reads below follow an evaluation that lands after first frame.
     val serverFeatureFlagRevision = provider.serverFeatureFlags?.snapshotRevision?.collectAsState()?.value
-    val activityOverviewOverrideRevision by
-        ProcessDiagnosticFeatureFlagOverrides.registry
-            .revisionFor(ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY)
-            .collectAsState()
     val agentDetailStoreState by provider.agentDetailStore.state.collectAsState()
     val pendingDirectMessageOpens by provider.directMessageOpens.pending.collectAsState()
     // Agent Lounge v0: the profile's Lounge action (web useOpenAgentLounge).
@@ -4894,18 +4888,7 @@ internal fun MemberDetailPageContent(
                                 enabled =
                                     current.accessMode.allowsPrivateAgentSurfaces &&
                                         (current.server.permissions.canManageSettings ||
-                                            selectedAgentDetail?.summary?.creatorId == current.currentUserId) &&
-                                        remember(
-                                            provider.serverFeatureFlags,
-                                            current.server.id,
-                                            serverFeatureFlagRevision,
-                                            activityOverviewOverrideRevision
-                                        ) {
-                                            provider.serverFeatureFlags?.isEnabled(
-                                                current.server.id,
-                                                ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY
-                                            ) == true
-                                        }
+                                            selectedAgentDetail?.summary?.creatorId == current.currentUserId)
                             ),
                         runtimeModels = MembersAgentRuntimeModelInputs(
                             agentMachineRuntimes =

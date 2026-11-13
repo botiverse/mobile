@@ -192,7 +192,6 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.map
 import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
-import build.raft.app.data.ACTION_CARD_SPEC_FEATURE_FLAG_KEY
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.data.featureFlagClientOs
@@ -203,7 +202,6 @@ import build.raft.app.data.resolveThreadComposerDirectUpload
 import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
 import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
-import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
 import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.app.data.taskStatusChoices
 import build.raft.app.data.taskStatusPickAsksBacklogReason
@@ -9066,16 +9064,8 @@ private fun SharedThreadRouteContentContent(
         selectedThreadTab = RaftThreadTab.Chat
         threadViewModel.dispatch(SharedThreadIntent.SelectTab(RaftThreadTab.Chat.wireValue))
     }
-    // Jump pills (ThreadJumpPills.kt): the unread-thread pill follows the web, a channel only and
-    // gated by `thread_unread_badge_v0`; its threads and the conversation's unread come from Home.
-    val threadUnreadBadgeEnabled =
-        remember(featureFlagSnapshotRevision, currentServerId) {
-            currentServerId != null &&
-                sharedStores.serverFeatureFlags.isEnabled(
-                    ServerId(currentServerId),
-                    THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
-                )
-        }
+    // Jump pills (ThreadJumpPills.kt): the unread-thread pill follows the web, a channel only;
+    // its threads and the conversation's unread come from Home.
     val jumpHomeSnapshot =
         (sharedHomeState.content as? SharedHomeContentState.Content)
             ?.snapshot
@@ -9103,7 +9093,6 @@ private fun SharedThreadRouteContentContent(
         remember(
             jumpChannelId,
             jumpSurfaceKind,
-            threadUnreadBadgeEnabled,
             jumpFollowedThreadUnread,
             jumpConversationUnreadCount,
             jumpUnreadThreadParents,
@@ -9113,7 +9102,7 @@ private fun SharedThreadRouteContentContent(
             ThreadJumpInputs(
                 channelId = jumpChannelId,
                 unreadThreadPillEnabled =
-                    threadUnreadBadgeEnabled && jumpChannelId != null && jumpSurfaceKind == RaftThreadSurfaceKind.Channel,
+                    jumpChannelId != null && jumpSurfaceKind == RaftThreadSurfaceKind.Channel,
                 homeFollowedThreadUnread =
                     jumpFollowedThreadUnread?.filterValues { thread -> thread.parentChannelId.value == jumpChannelId },
                 conversationUnreadCount = jumpConversationUnreadCount,
@@ -9822,8 +9811,6 @@ private fun SharedThreadRouteContentContent(
             }
         }
     }
-    // The card's server may not be this page's (a joint channel): its flags are asked for once.
-    val actionCardSpecFlagRequests = remember(threadInstanceKey) { mutableSetOf<String>() }
     val latestActionCardThread by rememberUpdatedState(renderedThread)
     val latestActionCardServerSlug by rememberUpdatedState(currentServerSlug)
     // Home's DM rows: a navigate to a message in a DM opens the DM route.
@@ -9832,19 +9819,10 @@ private fun SharedThreadRouteContentContent(
             (sharedHomeState.content as? SharedHomeContentState.Content)?.baseSnapshot?.directMessages.orEmpty().mapTo(HashSet()) { it.channelId.value }
         }
     val latestActionCardDirectMessageIds by rememberUpdatedState(actionCardDirectMessageIds)
-    // Keyed on flags only: each card selects its own slice of the store's state.
+    // Not keyed on the store's state: each card selects its own slice of it.
     val actionCardSpecHost =
-        remember(featureFlagSnapshotRevision, feedbackCardEntryEnabled, actionCardSpecStore, currentSession?.user?.id) {
+        remember(feedbackCardEntryEnabled, actionCardSpecStore, currentSession?.user?.id) {
             ThreadActionCardSpecHost(
-                specEnabled = { serverId ->
-                    serverId != null && sharedStores.serverFeatureFlags.isEnabled(ServerId(serverId), ACTION_CARD_SPEC_FEATURE_FLAG_KEY)
-                },
-                ensureFlags = { serverId ->
-                    val flags = sharedStores.serverFeatureFlags
-                    if (flags.isDecisionPending(ServerId(serverId), ACTION_CARD_SPEC_FEATURE_FLAG_KEY) && actionCardSpecFlagRequests.add(serverId)) {
-                        coroutineScope.launch { runCatching { flags.prefetch(ServerId(serverId)) } }
-                    }
-                },
                 capabilities = raftAppActionCardCapabilities(feedbackFormAvailable = feedbackCardEntryEnabled),
                 state = actionCardSpecStore.state,
                 onIntent = actionCardSpecStore::dispatch,
@@ -13175,8 +13153,8 @@ private fun SharedThreadRouteContentContent(
                                 webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
                                 screenshots = sharedStores.artifactScreenshotStore,
                             ),
-                        // interactive_link_cards: the batched link-card read (App link cards v2).
-                        featureFlags = sharedStores.serverFeatureFlags,
+                        // The batched link-card read (App link cards v2).
+                        batchedRead = true,
                     )
                 }
             }
@@ -30722,28 +30700,22 @@ private fun ThreadMessageCardContent(
                             }
                         }
                         val forwardBundle = message.forwardBundle
-                        // RFC 082: a card message's card (message_cards on), else its text below.
+                        // RFC 082: a card message's card, else its text below.
                         val messageCard = if (richContentEnabled && actionCard == null) rememberThreadMessageCard(message.metadata) else null
                         if (richContentEnabled && actionCard != null) {
                             // A prepared card past its `expiresAt` by the live clock draws as expired: no button,
                             // no dialog (the server's 409 stays final).
                             val actionCardNowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
                             val shownActionCard = actionCard.expiredAsOf(actionCardNowMillis)
-                            // A4: the spec card when `action_card_spec` is on for the card's
-                            // server; otherwise (and for every card without a spec) the typed card.
+                            // A4: the spec card; for every card without a spec, the typed card.
                             val specHost = LocalThreadActionCardSpecHost.current
                             val viewerServerId = LocalThreadViewerServerId.current
-                            val specFlagServerId = shownActionCard.actionCardSpecFlagServerId(viewerServerId)
-                            val specEnabled = specHost.specEnabled(specFlagServerId)
                             val feedbackTicketVisible =
                                 shownActionCard.showsFeedbackTicket(specHost.viewerUserId, specHost.clientOs)
                             val specCard =
-                                remember(shownActionCard, specEnabled, specHost.capabilities, feedbackTicketVisible) {
-                                    shownActionCard.actionCardSpecToRender(specEnabled, specHost.capabilities, feedbackTicketVisible)
+                                remember(shownActionCard, specHost.capabilities, feedbackTicketVisible) {
+                                    shownActionCard.actionCardSpecToRender(specHost.capabilities, feedbackTicketVisible)
                                 }
-                            if (shownActionCard.presentationCardJson != null && specFlagServerId != null) {
-                                LaunchedEffect(specFlagServerId) { specHost.ensureFlags(specFlagServerId) }
-                            }
                             if (specCard != null) {
                                 ThreadActionCardSpecView(
                                     messageId = message.id,

@@ -15,7 +15,7 @@ import build.raft.app.data.MessageCardActingPage
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.messageCardActingMetadataJson
 import build.raft.app.data.messageCardReadBody
-import build.raft.app.data.messageCardToRender
+import build.raft.app.data.readMessageCardFromMetadata
 import build.raft.app.data.parseMessageCardReadAnswer
 import build.raft.app.data.toMessageItemMetadata
 import build.raft.designsystem.theme.RaftTheme
@@ -49,9 +49,8 @@ class RaftMessageCardActingScreenshotTest {
 
     private val card =
         requireNotNull(
-            messageCardToRender(
-                Json { ignoreUnknownKeys = true }.decodeFromString(WireActionCardMetadata.serializer(), messageCardActingMetadataJson()).toMessageItemMetadata(),
-                cardsEnabled = true,
+            readMessageCardFromMetadata(
+                Json { ignoreUnknownKeys = true }.decodeFromString(WireActionCardMetadata.serializer(), messageCardActingMetadataJson()).toMessageItemMetadata()
             )
         )
 

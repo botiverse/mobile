@@ -8,13 +8,12 @@ import build.raft.app.data.renderActionCardMsgText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 
 /**
  * `action-card.v1` schemaVersion 7 (slock #11937): `forms[].submitLabels`, as the web form sheet
  * reads it (ActionCardFormSheet.tsx): the submit button names the value chosen in the labelled
  * field; nothing chosen, or a value without a label, is the form's own `submitLabel`. And
- * `agent:approve_call`, a spec-only type, draws its spec with the `action_card_spec` flag off.
+ * `agent:approve_call` draws its spec.
  */
 class ActionCardSubmitLabelsTest {
     private fun decisionForm(card: String): ActionCardSpecForm = assertNotNull(ActionCardSpecFixtures.card(card).forms?.get("decision"))
@@ -54,12 +53,10 @@ class ActionCardSubmitLabelsTest {
     }
 
     @Test
-    fun anApproveCallCardDrawsItsSpecWithTheFlagOff() {
+    fun anApproveCallCardDrawsItsSpec() {
         val raw = ActionCardSpecFixtures.rawCard("form_submit_labels").toString()
         val approveCall = ThreadActionCard(type = "agent:approve_call", presentationCardJson = raw)
-        val drawn = assertNotNull(approveCall.actionCardSpecToRender(specEnabled = false, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
+        val drawn = assertNotNull(approveCall.actionCardSpecToRender(capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
         assertNotNull(drawn.forms?.get("decision")?.submitLabels)
-        // Any other type still waits for the flag.
-        assertNull(approveCall.copy(type = "channel:create").actionCardSpecToRender(specEnabled = false, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
     }
 }

@@ -49,12 +49,8 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDialogSheet
 
 /**
- * What a thread page gives its spec cards (task #39, A4). The default is the page without spec
- * cards: [specEnabled] is false for every server, so every card is the typed / legacy one.
+ * What a thread page gives its spec cards (task #39, A4).
  *
- * - [specEnabled]: the `action_card_spec` flag for a server (the card's own,
- *   [actionCardSpecFlagServerId]); [ensureFlags] asks for that server's flags once when this
- *   process has none yet (a joint channel's card from another server).
  * - [capabilities]: what strip keeps ([build.raft.app.data.raftAppActionCardCapabilities]), cut
  *   per card ([actionCardSpecCapabilitiesFor]).
  * - [state] / [onIntent]: [ThreadActionCardSpecStore]; each card reads only its own
@@ -66,8 +62,6 @@ import build.raft.designsystem.components.RaftDialogSheet
  *   that ticket (null: the list).
  */
 internal data class ThreadActionCardSpecHost(
-    val specEnabled: (serverId: String?) -> Boolean = { false },
-    val ensureFlags: (serverId: String) -> Unit = {},
     val capabilities: List<String> = RAFT_APP_ACTION_CARD_CAPABILITIES,
     val state: StateFlow<ThreadActionCardSpecState> = MutableStateFlow(ThreadActionCardSpecState()),
     val onIntent: (ThreadActionCardSpecIntent) -> Unit = {},

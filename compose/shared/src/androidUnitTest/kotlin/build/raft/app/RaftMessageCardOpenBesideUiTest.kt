@@ -8,7 +8,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.messageCardMetadataJson
 import build.raft.app.data.messageCardOpenBesideStoredJson
-import build.raft.app.data.messageCardToRender
+import build.raft.app.data.readMessageCardFromMetadata
 import build.raft.app.data.toMessageItemMetadata
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -35,7 +35,7 @@ class RaftMessageCardOpenBesideUiTest {
     fun aButtonWithOpenBesideIsDrawnAsACardAndOpensThroughTheUsualPath() = runRobolectricComposeUiTest {
         val actionMetadata = messageCardMetadataJson(messageCardOpenBesideStoredJson, 1, "2026-11-11T00:40:00.000Z")
         val metadata = Json { ignoreUnknownKeys = true }.decodeFromString(WireActionCardMetadata.serializer(), actionMetadata).toMessageItemMetadata()
-        val card = requireNotNull(messageCardToRender(metadata, cardsEnabled = true)) { "open: beside must not fall back to the text" }
+        val card = requireNotNull(readMessageCardFromMetadata(metadata)) { "open: beside must not fall back to the text" }
         val opened = mutableListOf<String>()
         setContent {
             RaftDesignSystemTheme {

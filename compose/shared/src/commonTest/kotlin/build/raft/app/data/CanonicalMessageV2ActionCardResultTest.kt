@@ -166,7 +166,7 @@ class CanonicalMessageV2ActionCardResultTest {
 
         assertTrue(card.showsFeedbackTicket(viewerUserId = "user-1", clientOs = "android"))
         val shown = assertNotNull(
-            card.actionCardSpecToRender(specEnabled = true, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES, feedbackTicketVisible = true),
+            card.actionCardSpecToRender(capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES, feedbackTicketVisible = true),
         )
         assertEquals(
             ActionCardSpecAction.Open(ActionCardSpecIntent.FeedbackTicket),
@@ -175,7 +175,7 @@ class CanonicalMessageV2ActionCardResultTest {
         // Another viewer, or the iOS app (the ticket was filed into Android's): the summary alone.
         assertFalse(card.showsFeedbackTicket(viewerUserId = "user-2", clientOs = "android"))
         assertFalse(card.showsFeedbackTicket(viewerUserId = "user-1", clientOs = "ios"))
-        val hidden = assertNotNull(card.actionCardSpecToRender(true, RAFT_APP_ACTION_CARD_CAPABILITIES, feedbackTicketVisible = false))
+        val hidden = assertNotNull(card.actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES, feedbackTicketVisible = false))
         assertNull(hidden.result?.element("openTicket"))
     }
 

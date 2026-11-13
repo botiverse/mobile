@@ -64,7 +64,7 @@ class AppLinkCardView internal constructor(val id: String) {
     }
 }
 
-/** How a message is read with the Server's `interactive_link_cards` flag on: its [view] and the UI language. */
+/** How a message is read with the batched link-card read: its [view] and the UI language. */
 class AppLinkBatchRead(val view: AppLinkCardView, val locale: String) {
     /** The cache key part: what was declared and in which language (a POST is not HTTP-cacheable, so the store is the cache). */
     val mode: String get() = appLinkBatchReadMode(locale)
@@ -232,9 +232,8 @@ class SharedAppLinkPreviewStore internal constructor(
     /**
      * Reads one message's App links unless its answer is current (or a read is on its way). A
      * failed read is not kept, so the row tries again when it is composed again; a read again
-     * after Allow that fails drops that App's pending chips, not the links. With [batch] (the
-     * Server's `interactive_link_cards` flag on) it is the batched link-card read of that message
-     * view, else the GET.
+     * after Allow that fails drops that App's pending chips, not the links. With [batch] it is the
+     * batched link-card read of that message view, else the GET.
      */
     fun read(viewerKey: String, serverId: String, messageId: String, content: String, conversationId: String, batch: AppLinkBatchRead? = null) {
         if (!appLinkPreviewsApply(content)) return

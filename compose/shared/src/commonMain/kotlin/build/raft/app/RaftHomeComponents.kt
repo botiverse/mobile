@@ -450,8 +450,7 @@ data class RaftHomeConversationItem(
     val mentioned: Boolean = false,
     /**
      * Followed threads under this channel with new replies (web `threadUnread[channelId].count`):
-     * the row's `[thread] N` segment. Projected from the Home store's followed-thread unread when
-     * the server enables `thread_unread_badge_v0`; 0 otherwise.
+     * the row's `[thread] N` segment. Projected from the Home store's followed-thread unread.
      */
     val followedThreadUnreadCount: Int = 0,
     /**
@@ -1792,8 +1791,8 @@ internal class RaftStructuralHomeShellCallbacks(
     val onReadToggle: (conversationId: String, markUnread: Boolean) -> Unit = { _, _ -> },
     /**
      * Sidebar "Mark All as Read" for a joined channel and its followed threads (web
-     * `SidebarReadToggleMenuItem` with `includeThreads`). Null while `thread_unread_badge_v0` or
-     * `sidebar_mark_all_read_v0` is off: the row keeps the single-scope read toggle.
+     * `SidebarReadToggleMenuItem` with `includeThreads`). Null: the row keeps the single-scope read
+     * toggle (fixtures).
      */
     val onMarkConversationReadAll: ((conversationId: String) -> Unit)? = null,
     val onChannelActivityMuteToggle: (conversationId: String, muted: Boolean) -> Unit = { _, _ -> },
@@ -4285,7 +4284,7 @@ internal fun raftHomeConversationMenuItems(
     /** Web Sidebar `canLeaveChannel`: see [homeConversationCanLeave]. */
     activeCanLeave: Boolean = false,
     canMoveToSection: Boolean = true,
-    /** Both `thread_unread_badge_v0` and `sidebar_mark_all_read_v0` are on for this server. */
+    /** The row offers "Mark All as Read" (its owner wired [onMarkConversationReadAll]). */
     markAllReadEnabled: Boolean = false,
     /** "Notifications: <choice>" (design §4.3; it stands in for Mute / Unmute); null leaves the row out. */
     notificationLevelLabel: String? = null

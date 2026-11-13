@@ -79,10 +79,9 @@ class MessageCardTest {
     }
 
     @Test
-    fun `the fallback text is drawn when the flag is off or the card does not read`() {
+    fun `the fallback text is drawn when the card does not read`() {
         val valid = metadataOf(messageCardMetadataJson(messageCardBuildStoredJson, 3, "2026-11-03T12:10:00.000Z"))
-        assertNotNull(messageCardToRender(valid, cardsEnabled = true))
-        assertNull(messageCardToRender(valid, cardsEnabled = false), "message_cards off: the text")
+        assertNotNull(readMessageCardFromMetadata(valid))
 
         val textOnly =
             mapOf(
@@ -92,7 +91,7 @@ class MessageCardTest {
                 "a card that is not an object" to """{"kind":"message-card","card":"Raft App","revision":1,"updatedAt":"2026-11-03T12:10:00.000Z"}""",
                 "another kind" to """{"kind":"message-card-v2","card":$messageCardBuildStoredJson,"revision":1}""",
             )
-        for ((case, actionMetadata) in textOnly) assertNull(messageCardToRender(metadataOf(actionMetadata), cardsEnabled = true), case)
+        for ((case, actionMetadata) in textOnly) assertNull(readMessageCardFromMetadata(metadataOf(actionMetadata)), case)
     }
 
     @Test
@@ -186,7 +185,7 @@ class MessageCardTest {
         assertNull(parse(messageCardOpenBesideStoredJson.replace(""""open":"beside"""", """"open":"window"""")))
 
         val metadata = metadataOf(messageCardMetadataJson(messageCardOpenBesideStoredJson, 1, "2026-11-11T00:40:00.000Z"))
-        assertNotNull(messageCardToRender(metadata, cardsEnabled = true), "drawn as a card, not its fallback text")
+        assertNotNull(readMessageCardFromMetadata(metadata), "drawn as a card, not its fallback text")
     }
 
     private fun fiveButtonCard(): String {

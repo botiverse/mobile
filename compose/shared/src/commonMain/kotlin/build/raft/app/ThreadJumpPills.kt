@@ -409,8 +409,8 @@ internal fun threadBottomJumpCount(
 
 /**
  * What the conversation page hands its message list for the jump pills. [unreadThreadPillEnabled]
- * is a channel (the web shows the unread-thread pill in channels only, not DMs or threads) on a
- * server with `thread_unread_badge_v0` on; [homeFollowedThreadUnread] is Home's followed-thread
+ * is a channel (the web shows the unread-thread pill in channels only, not DMs or threads);
+ * [homeFollowedThreadUnread] is Home's followed-thread
  * unread of this channel only (null until Home has this server loaded); [conversationUnreadCount]
  * is Home's unread count of this conversation.
  */

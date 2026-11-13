@@ -9,9 +9,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.compat.pager.Pager
-import build.raft.app.data.ACCOUNT_DELETION_FEATURE_FLAG_KEY
 import build.raft.app.data.AppLocale
-import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedSettingsIntent
@@ -64,35 +62,6 @@ internal fun settingsAccountDeletionHostIntent(kind: String): SharedSettingsInte
         RAFT_HOST_EVENT_SESSION_LOGOUT -> SharedSettingsIntent.Logout
         else -> null
     }
-
-/** What Settings > Account > Delete account does. */
-internal enum class SettingsAccountDeletionEntry {
-    /** No row (the Compose desktop app without the flag: it cannot send the ticket). */
-    Hidden,
-
-    /** The Hands feedback ticket and its confirm dialog (RaftAccountDeletionRequestStore). */
-    Ticket,
-
-    /** The web deletion page in the Settings WebView, on every platform. */
-    WebPage,
-}
-
-/** `account_deletion_v0` on: the web page; off or unresolved: the ticket where the host can send it. */
-internal fun settingsAccountDeletionEntry(
-    deletionFlagOn: Boolean,
-    ticketSupported: Boolean,
-): SettingsAccountDeletionEntry =
-    when {
-        deletionFlagOn -> SettingsAccountDeletionEntry.WebPage
-        ticketSupported -> SettingsAccountDeletionEntry.Ticket
-        else -> SettingsAccountDeletionEntry.Hidden
-    }
-
-/** `account_deletion_v0` evaluated on for [serverId]; off with no server or before it resolves. */
-internal fun settingsAccountDeletionFlagOn(flags: SharedServerFeatureFlags, serverId: String?): Boolean {
-    val id = serverId?.trim()?.takeIf { it.isNotBlank() } ?: return false
-    return flags.isEnabled(ServerId(id), ACCOUNT_DELETION_FEATURE_FLAG_KEY)
-}
 
 @Composable
 internal fun SettingsAccountDeletionWebViewPage(pager: Pager) {

@@ -111,12 +111,6 @@ internal actual fun raftFirstComposedCharacterEnd(text: String): Int? {
 
 internal actual fun raftFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024L
 
-// TODO(desktop): RaftDesktopSettingsCapability has no `submitFeedback` (the native Hands SDK form) yet.
-// Settings > Feedback is still native here: it files through the Raft server (POST /api/product-feedback),
-// without the diagnostics archive (no `feedbackDiagnosticsStart` either); only the signed-out SDK fallback
-// and the account-deletion ticket need this.
-internal actual fun raftPlatformSupportsHandsFeedbackSubmit(): Boolean = false
-
 // The server's feedback sources are web / ios / android / ohos (slock productFeedbackApps.ts); any
 // other X-Raft-Client-Kind is rejected (400 feedback_invalid). With no desktop Hands app, the
 // desktop app reports as the web app (the web and the Electron app send no kind, which is web).

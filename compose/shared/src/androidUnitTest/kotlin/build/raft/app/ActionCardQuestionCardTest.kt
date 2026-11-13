@@ -233,7 +233,7 @@ class ActionCardQuestionCardTest {
     @Test
     fun aRenderedQuestionCardKeepsItsFormForTheButtonRow() {
         val card = ThreadActionCard(type = "question:ask", presentationCardJson = ActionCardSpecFixtures.questionCardJson())
-        val spec = assertNotNull(card.actionCardSpecToRender(specEnabled = true, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
+        val spec = assertNotNull(card.actionCardSpecToRender(capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
         assertEquals(QuestionCardLayout.ButtonRow, card.questionCardLayout(spec))
     }
 }

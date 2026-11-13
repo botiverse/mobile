@@ -48,7 +48,6 @@ import build.raft.app.data.AccountProfileUpdateRequest
 import build.raft.app.data.AccountProviderLinkStartRequest
 import build.raft.app.data.AccountSettingsSnapshot
 import build.raft.app.data.RaftSharedStoreRegistry
-import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SecondFactorStepUpDialogState
 import build.raft.app.data.SecondFactorStepUpIntent
@@ -67,8 +66,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -99,8 +96,6 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
-import build.raft.app.compat.pager.raftPlatformName
-import kotlin.time.Clock
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
 import build.raft.designsystem.components.raftClickable
@@ -293,19 +288,6 @@ private fun SettingsAccountScreen() {
         remember(bridge, environment.storeScope) { RaftSharedStoreRegistry.get(bridge).networkClient(environment.storeScope) }
     val loginSecurityStore = rememberSettingsAccountLoginSecurityStore(loginSecurityNetworkClient)
     val loginSecurityState by loginSecurityStore.state.collectAsState()
-    val accountDeletionStore = rememberAccountDeletionRequestStore(environment)
-    val accountDeletionState by accountDeletionStore.state.collectAsState()
-    // account_deletion_v0 for the current server, live (off until it resolves on).
-    val serverFeatureFlags = remember(bridge) { RaftSharedStoreRegistry.get(bridge).serverFeatureFlags }
-    val featureFlagRevision by serverFeatureFlags.snapshotRevision.collectAsState()
-    val accountDeletionServerId = session.value?.currentServerId
-    val accountDeletionEntry =
-        remember(accountDeletionServerId, featureFlagRevision) {
-            settingsAccountDeletionEntry(
-                deletionFlagOn = settingsAccountDeletionFlagOn(serverFeatureFlags, accountDeletionServerId),
-                ticketSupported = raftPlatformSupportsHandsFeedbackSubmit(),
-            )
-        }
     // A Settings search result opened this page at a setting: its row is brought into view and located.
     ProvideSettingsSearchLocator(pager.pageData.params) {
     SettingsDetailShell(
@@ -330,26 +312,11 @@ private fun SettingsAccountScreen() {
             // logout confirmation row can end under three-button navigation.
             bottomContentPadding =
                 settingsAccountStandaloneBottomContentPadding(raftBottomSafeAreaPadding()),
-            // Flag on: the web deletion page (every platform). Off: the ticket, hidden where the
-            // host can't send it (the Compose desktop app).
+            // The web deletion page, on every platform.
             accountDeletion =
-                when (accountDeletionEntry) {
-                    SettingsAccountDeletionEntry.WebPage ->
-                        SettingsAccountDeletionUi(
-                            state = RaftAccountDeletionRequestState.Idle,
-                            onOpen = { pager.openSettingsAccountDeletionPage(environment.storeScope) },
-                            onConfirm = {},
-                            onDismiss = {}
-                        )
-                    SettingsAccountDeletionEntry.Ticket ->
-                        SettingsAccountDeletionUi(
-                            state = accountDeletionState,
-                            onOpen = accountDeletionStore::open,
-                            onConfirm = { accountDeletionStore.request() },
-                            onDismiss = accountDeletionStore::dismiss
-                        )
-                    SettingsAccountDeletionEntry.Hidden -> null
-                },
+                SettingsAccountDeletionUi(
+                    onOpen = { pager.openSettingsAccountDeletionPage(environment.storeScope) }
+                ),
             onPasswordChange = { currentPassword, newPassword ->
                 settingsViewModel.dispatch(
                     SharedSettingsIntent.ChangeAccountPassword(
@@ -391,42 +358,6 @@ private fun SettingsAccountScreen() {
             }
         )
     }
-    }
-}
-
-/**
- * Delete account sends its ticket through the Hands feedback channel (no server endpoint yet).
- * The session and the host's About facts are read when the user confirms; no network call
- * besides the ticket itself.
- */
-@Composable
-private fun rememberAccountDeletionRequestStore(environment: StandaloneSettingsEnvironment): RaftAccountDeletionRequestStore {
-    val scope = rememberCoroutineScope()
-    val requestedMessage by rememberUpdatedState(
-        stringResource(Res.string.settings_account_delete_requested, RAFT_ACCOUNT_DELETION_DAYS)
-    )
-    val capabilities = environment.settingsCapabilities
-    val authStore = environment.authStore
-    return remember(scope, capabilities, authStore) {
-        RaftAccountDeletionRequestStore(
-            scope = scope,
-            loadDetails = {
-                authStore.readSession()?.let { session ->
-                    raftAccountDeletionRequestDetails(
-                        user = session.user,
-                        about = (capabilities.loadAbout() as? DataResult.Content)?.data,
-                        platform = raftPlatformName(),
-                        requestedAt = Clock.System.now().toString()
-                    )
-                }
-            },
-            // A deletion request must not wait on (or fail with) the diagnostics flush.
-            submit = { message ->
-                capabilities.submitHandsFeedback(message, attachments = emptyList(), flushDiagnostics = false)
-            },
-            onSubmitted = { capabilities.bridgeToast(requestedMessage) },
-            log = capabilities::log
-        )
     }
 }
 
@@ -595,14 +526,6 @@ internal fun SettingsAccountContent(
         if (secondFactorStepUp != null) {
             SecondFactorStepUpDialog(secondFactorStepUp.state, secondFactorStepUp.onIntent)
         }
-        if (accountDeletion != null && accountDeletion.state != RaftAccountDeletionRequestState.Idle) {
-            SettingsDeleteAccountDialog(
-                busy = accountDeletion.state == RaftAccountDeletionRequestState.Submitting,
-                failed = accountDeletion.state is RaftAccountDeletionRequestState.Failed,
-                onConfirm = accountDeletion.onConfirm,
-                onDismiss = accountDeletion.onDismiss
-            )
-        }
     }
 }
 
@@ -612,12 +535,9 @@ internal class SettingsSecondFactorStepUpUi(
     val onIntent: (SecondFactorStepUpIntent) -> Unit
 )
 
-/** The Delete account row's state and actions (see [RaftAccountDeletionRequestStore]). */
+/** The Delete account row's action: open the web deletion page. */
 internal class SettingsAccountDeletionUi(
-    val state: RaftAccountDeletionRequestState,
-    val onOpen: () -> Unit,
-    val onConfirm: () -> Unit,
-    val onDismiss: () -> Unit
+    val onOpen: () -> Unit
 )
 
 /**
@@ -642,58 +562,6 @@ private fun SettingsDeleteAccountRow(onClick: () -> Unit) {
                 )
             }
         )
-    }
-}
-
-/**
- * Confirm dialog for Delete account, built like [SettingsDisconnectProviderDialog]: the
- * consequences in a destructive banner, a failure in a warning banner under it, ghost Cancel
- * and the red Request deletion ("Requesting…" while it runs; tapping it again retries).
- * A scrim tap does not close it; Cancel, the close button and Back do (not while it runs).
- */
-@Composable
-internal fun SettingsDeleteAccountDialog(
-    busy: Boolean,
-    failed: Boolean,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    RaftDialog(
-        onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_account_delete_title),
-        size = RaftDialogSize.Sm,
-        dismissOnClickOutside = false,
-        closeLabel = stringResource(Res.string.common_close),
-        footer = {
-            RaftButton(
-                text = stringResource(Res.string.common_cancel),
-                onClick = onDismiss,
-                variant = RaftButtonVariant.Ghost,
-                size = RaftButtonSize.Lg,
-                enabled = !busy
-            )
-            RaftButton(
-                text = stringResource(Res.string.settings_account_delete_confirm),
-                onClick = onConfirm,
-                variant = RaftButtonVariant.Danger,
-                size = RaftButtonSize.Lg,
-                loading = busy,
-                loadingLabel = stringResource(Res.string.settings_account_delete_requesting)
-            )
-        }
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaftBanner(
-                description = stringResource(Res.string.settings_account_delete_message, RAFT_ACCOUNT_DELETION_DAYS),
-                status = RaftBannerStatus.Destructive
-            )
-            if (failed) {
-                RaftBanner(
-                    description = stringResource(Res.string.settings_account_delete_failed),
-                    status = RaftBannerStatus.Warning
-                )
-            }
-        }
     }
 }
 

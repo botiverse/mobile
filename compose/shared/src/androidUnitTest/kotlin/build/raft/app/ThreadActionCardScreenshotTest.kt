@@ -285,7 +285,7 @@ private fun ThreadQuestionCardsVisualContent(answered: Boolean, ended: Boolean =
 
     @Composable
     fun Show(card: ThreadActionCard, viewer: String) {
-        val spec = requireNotNull(card.actionCardSpecToRender(specEnabled = true, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
+        val spec = requireNotNull(card.actionCardSpecToRender(capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
         CompositionLocalProvider(LocalThreadActionCardSpecHost provides ThreadActionCardSpecHost(viewerUserId = viewer)) {
             ThreadActionCardSpecView(
                 messageId = "m-${card.hashCode()}-$viewer",
@@ -355,7 +355,7 @@ private fun ThreadQuestionConfirmVisualContent() {
 
     @Composable
     fun Show(messageId: String, card: ThreadActionCard, viewer: String, values: Map<String, ActionCardFormValue>? = null) {
-        val spec = requireNotNull(card.actionCardSpecToRender(specEnabled = true, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
+        val spec = requireNotNull(card.actionCardSpecToRender(capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
         val state = remember(messageId, values) { MutableStateFlow(ThreadActionCardSpecState(inlineValues = values?.let { mapOf(messageId to it) }.orEmpty())) }
         CompositionLocalProvider(LocalThreadActionCardSpecHost provides ThreadActionCardSpecHost(state = state, viewerUserId = viewer)) {
             ThreadActionCardSpecView(

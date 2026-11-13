@@ -59,7 +59,7 @@ class ActionCardQuestionInlineTest {
     private fun card(state: String = "prepared", type: String = "question:ask", json: String = questionCardJson()) =
         ThreadActionCard(type = type, state = state, confirmationVersion = 3, presentationCardJson = json)
 
-    private fun ThreadActionCard.spec(): ActionCardSpecCard = assertNotNull(actionCardSpecToRender(specEnabled = true, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
+    private fun ThreadActionCard.spec(): ActionCardSpecCard = assertNotNull(actionCardSpecToRender(capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
 
     private fun ThreadActionCard.inline() = inlineQuestionForm(spec())
 
