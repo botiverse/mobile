@@ -113,17 +113,29 @@ class RaftPaneGridHeadFitTest {
                 val controls = listOf(RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX, RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX)
                 val folded = controls.filter { onAllNodes(hasTestTag(head + it), useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
                 if (folded.isNotEmpty()) {
-                    onNodeWithTag(head + RAFT_PANE_GRID_HEAD_MORE_SUFFIX, useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)
+                    clickable(head + RAFT_PANE_GRID_HEAD_MORE_SUFFIX).performSemanticsAction(SemanticsActions.OnClick)
                     waitForIdle()
-                    folded.forEach { onNodeWithTag(head + it, useUnmergedTree = true).assertExists() }
+                    folded.forEach { suffix ->
+                        assertTrue(
+                            onAllNodes(hasTestTag(head + suffix), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(),
+                            "$id at $at: ${head + suffix} neither in the head nor in its ⋯",
+                        )
+                    }
                     // Closed by its Move Left (a no-op here), so the next head's ⋯ opens on its own.
-                    onNodeWithTag("moveLeft:$id", useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)
+                    clickable("moveLeft:$id").performSemanticsAction(SemanticsActions.OnClick)
                     waitForIdle()
                     folded.forEach { onNodeWithTag(head + it, useUnmergedTree = true).assertDoesNotExist() }
                 }
             }
         }
     }
+
+    /**
+     * The node that takes the click for [tag]: a head's icon button carries its tag on its tooltip's box, the click on
+     * the button inside it; a menu item carries both.
+     */
+    private fun ComposeUiTest.clickable(tag: String) =
+        onNode(hasClickAction() and (hasTestTag(tag) or hasAnyAncestor(hasTestTag(tag))), useUnmergedTree = true)
 
     @Test
     fun aHeadInAClippedColumnFitsWhatShows() =

@@ -470,6 +470,13 @@ class RaftArtifactColumnUiTest {
 
     private val tasksHead = RAFT_PANE_GRID_HEAD_TEST_TAG + "tasks"
 
+    /**
+     * The node that takes the click for [tag]: a head's icon button carries its tag on its tooltip's box, the click on
+     * the button inside it; a menu item carries both.
+     */
+    private fun ComposeUiTest.clickable(tag: String) =
+        onNode(hasClickAction() and (hasTestTag(tag) or hasAnyAncestor(hasTestTag(tag))), useUnmergedTree = true)
+
     // #189 step 5, rule 6 / 7: the head is the title, its own actions, ⋯, Expand, Close, left to right (web
     // ChannelSideCard); ⋯ holds Move Left / Move Right, which move the section in the side layout and keep it, and the
     // row stands anew by it.
@@ -563,20 +570,27 @@ class RaftArtifactColumnUiTest {
             val cardsTabs = RAFT_PANE_GRID_TABS_TEST_TAG + RaftPaneGridColumns.SideCards.id
             onAllNodesWithTag(cardsTabs, useUnmergedTree = true).assertCountEquals(1)
             onNode(hasTestTag(cardsTabs) and hasAnyAncestor(hasTestTag(tasksHead)), useUnmergedTree = true).assertExists()
-            // The head with tabs offers no moves (they keep that room); Close stays in it. About 190 wide by touch with
-            // its fold chevron, Expand is in the head where it fits beside the title slot's floor, else in ⋯
-            // (raftPaneGridHeadFit); either way it works as the head's.
-            onNodeWithTag(tasksHead + RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX, useUnmergedTree = true).assertExists()
-            val more = onAllNodesWithTag(tasksHead + RAFT_PANE_GRID_HEAD_MORE_SUFFIX, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-            if (more) {
-                onNodeWithTag(tasksHead + RAFT_PANE_GRID_HEAD_MORE_SUFFIX, useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)
+            // The head with tabs offers no moves (they keep that room). About 190 wide by touch with its fold chevron,
+            // Expand and Close stand in the head where they fit beside the title slot's floor, else in its ⋯
+            // (raftPaneGridHeadFit: Expand first, then Close); either way Expand works as the head's.
+            val inHead = { suffix: String -> onAllNodesWithTag(tasksHead + suffix, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+            val more = inHead(RAFT_PANE_GRID_HEAD_MORE_SUFFIX)
+            if (!more) {
+                assertTrue(inHead(RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX) && inHead(RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX), "no ⋯: Expand and Close both in the head")
+            } else {
+                clickable(tasksHead + RAFT_PANE_GRID_HEAD_MORE_SUFFIX).performSemanticsAction(SemanticsActions.OnClick)
                 waitForIdle()
-                onNodeWithTag(RAFT_COLUMN_MOVE_LEFT_TEST_TAG + "tasks", useUnmergedTree = true).assertDoesNotExist()
-                onNodeWithTag(RAFT_COLUMN_MOVE_RIGHT_TEST_TAG + "tasks", useUnmergedTree = true).assertDoesNotExist()
+                assertTrue(inHead(RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX), "Expand in the head or in its open ⋯")
+                assertTrue(inHead(RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX), "Close in the head or in its open ⋯")
+                assertTrue(
+                    onAllNodesWithTag(RAFT_COLUMN_MOVE_LEFT_TEST_TAG + "tasks", useUnmergedTree = true).fetchSemanticsNodes().isEmpty() &&
+                        onAllNodesWithTag(RAFT_COLUMN_MOVE_RIGHT_TEST_TAG + "tasks", useUnmergedTree = true).fetchSemanticsNodes().isEmpty(),
+                    "no Move Left / Move Right in the ⋯ of a head showing the row tabs",
+                )
             }
-            onNodeWithTag(tasksHead + RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX, useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)
+            clickable(tasksHead + RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX).performSemanticsAction(SemanticsActions.OnClick)
             waitForIdle()
-            assertEquals("tasks", expand.region)
+            assertEquals("tasks", expand.region, "Expand expanded Tasks / Files")
             runOnIdle { expand.restore() }
             waitForIdle()
             assertSettled()
