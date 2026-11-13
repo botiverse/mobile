@@ -6,11 +6,12 @@ import build.raft.app.data.MviDispatchReceipt
  * Turns composer rows that no upload attempt can finish into failed `upload_interrupted` rows, so
  * the chip offers Retry and the send gate stops waiting for them.
  *
- * Upload attempts belong to the page that started them and publish only against the admission
- * minted in that page's draft store.  When the conversation is left and reopened while an upload
- * is in flight, the recreated page restores the row from the durable draft without an admission:
- * the old attempt's success or failure can no longer land, and the row stayed "uploading" forever
- * (Hands 9cf9735f).  Restored local files are registered for Retry by the caller.
+ * Uploads belong to their draft ([RaftComposerDraftUploads], process-wide): a page recreated after
+ * the user left and came back adopts them ([ownedByDraftUpload] rows are never failed here).  What
+ * is left is a row restored from the durable draft whose upload nothing owns any more: the process
+ * died meanwhile (uploads are not persisted), or the draft-owned upload was cancelled.  Before
+ * uploads were draft-owned that row stayed "uploading" forever (Hands 9cf9735f).  Restored local
+ * files are registered for Retry by the caller.
  *
  * An attempt of this page whose row lost its admission (a remount with another composer instance)
  * is equally unable to publish; it is stopped so Retry is not refused as already uploading.  The
@@ -25,11 +26,13 @@ internal fun recoverOrphanedThreadComposerUploads(
     acceptWithState: (SharedThreadComposerDraftIntent) -> MviDispatchReceipt<SharedThreadComposerDraftState>,
     currentState: () -> SharedThreadComposerDraftState,
     orchestrator: ThreadAttachmentUploadOrchestrator,
-    log: (String) -> Unit
+    log: (String) -> Unit,
+    /** A row whose upload the process still owns (the draft's upload, see [RaftComposerDraftUploads]) is not orphaned. */
+    ownedByDraftUpload: (String) -> Boolean = { false }
 ): Set<String> {
     val normalizedDraftKey = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return emptySet()
     if (normalizeThreadAttachmentUploadDraftKey(state.draftKey) != normalizedDraftKey) return emptySet()
-    val candidates = state.orphanedThreadComposerUploadIds()
+    val candidates = state.orphanedThreadComposerUploadIds().filterNot(ownedByDraftUpload).toSet()
     if (candidates.isEmpty()) return emptySet()
     val receipt =
         acceptWithState(

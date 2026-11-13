@@ -104,7 +104,7 @@ class ThreadComposerOversizeSiblingAdmissionTest {
                                 successAccepted[file.id] =
                                     store.accept(strictUpload(file.id, admission, result.data))
                             is DataResult.Error -> {
-                                // Same sequence as ThreadPage.handleAttachmentUploadFailure.
+                                // One file failed: only its own row is marked (RaftComposerDraftUploadApplier does the same).
                                 val terminalIds = orchestrator.failAttempts(draftKey, setOf(file.id))
                                 failureMarksAccepted[file.id] =
                                     store.accept(
