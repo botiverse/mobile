@@ -30797,6 +30797,8 @@ private fun ThreadMessageCardContent(
                                 card = messageCard,
                                 onOpenUrl = onOpenMarkdownUrl,
                                 modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                                // RFC 086: a message already sent, whose acting buttons are read for this viewer.
+                                messageId = message.id.takeIf { message.pendingSendContext == null },
                             )
                         } else if (richContentEnabled && forwardBundle != null) {
                             // Web MessageItem parity: the server stores the forward

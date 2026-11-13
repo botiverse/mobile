@@ -21,7 +21,8 @@ import kotlin.test.assertEquals
 
 /**
  * Runs every case of the vendored shared message-card.v1 vector (RFC 082 v2.0 §4.8;
- * botiverse/slock #13224 + #13237, staging @ acf01e4f9703975febb80183251c3d7d22b81e01,
+ * botiverse/slock #13224 + #13237, and #14723 (RFC 086 step 1: `acting_buttons_as_stored`) @
+ * 3a036f809943760a0fee9b6250784a3964b2b720,
  * `packages/shared/src/messageCard.v1.vector.json`, pinned by
  * scripts/check_message_card_v1_vector.sh) through this App's card reader and its card Markdown
  * subset check. Compared as JSON values: key order is irrelevant.
@@ -44,11 +45,11 @@ class MessageCardVectorTest {
     @Test
     fun vendoredVectorIsThePinnedSharedArtifact() {
         val digest = sha256(vectorBytes)
-        assertEquals("54907dce3369bb88e06a2c8a2b58189126dd55a6bce52594bbd94e42922e839a", digest)
+        assertEquals("19ec57295301cd1d9edde274776211c99e008020e446b0d560ea70424ee034c1", digest)
         assertEquals(digest, resource("/messagecard/messageCard.v1.vector.sha256").decodeToString().substringBefore(' ').trim())
         assertEquals("message-card.v1", vector.string("contract"))
         assertEquals("1", vector.getValue("schemaVersion").jsonPrimitive.content)
-        assertEquals(listOf(48, 61), listOf("cards", "markdown").map { vector.getValue(it).jsonArray.size })
+        assertEquals(listOf(49, 61), listOf("cards", "markdown").map { vector.getValue(it).jsonArray.size })
     }
 
     @Test
@@ -151,6 +152,45 @@ class MessageCardVectorTest {
      * subset is drawn (checked for every case), and no mention chip: card Markdown accepts no tag
      * ([raftCardMarkdownTagValid]), `&#64;lagoon` included. Markdown never makes a button.
      */
+    /**
+     * RFC 086 (`acting_buttons_as_stored`, slock #14723): the stored card reads unchanged, every acting
+     * button a disabled navigate Button with the reason Raft writes for older clients; with the App's
+     * `actions` and `for` beside it (the server test's `ACTIONS`) this client draws them as acting buttons.
+     */
+    @Test
+    fun actingButtonsAsStoredReadAsTheCardAndActFromTheirActions() {
+        val case = vector.getValue("cards").jsonArray.map { it.jsonObject }.single { it.string("name") == "acting_buttons_as_stored" }
+        val stored = case.getValue("parsed").jsonObject
+        val read = checkNotNull(parseRaftMessageCard(stored))
+        val buttons = read.card.messageCardButtons()
+        assertEquals(listOf("approve", "deny"), buttons.map { it.first })
+        for ((_, button) in buttons) {
+            assertEquals(MESSAGE_CARD_ACTING_BUTTON_DISABLED_REASON, button.disabledReason)
+            assertEquals(RaftLinkCardButtonAction.Navigate("https://vault.example.com/requests/42"), button.action)
+        }
+        val metadata =
+            Json { ignoreUnknownKeys = true }.decodeFromString(
+                WireActionCardMetadata.serializer(),
+                """{"kind":"message-card","card":$stored,"revision":1,"updatedAt":"2026-11-13T09:00:00.000Z",""" +
+                    """"actions":{"approve":{"kind":"execute","action_id":"approve","confirm":"prepare"},"deny":{"kind":"execute","action_id":"deny","undoWindowMs":5000}},"for":"user-alice"}""",
+            ).toMessageItemMetadata()
+        val card = checkNotNull(readMessageCardFromMetadata(metadata))
+        assertEquals(read.card, card.card)
+        assertEquals(
+            mapOf(
+                "approve" to RaftLinkCardButtonAction.Execute("approve", confirm = true),
+                "deny" to RaftLinkCardButtonAction.Execute("deny", confirm = false, undoWindowMs = 5000),
+            ),
+            card.acting?.actions,
+        )
+        assertEquals("user-alice", card.acting?.forUserId)
+        // The notification of such a card leaves out the stored reason.
+        assertEquals(
+            "**Access request: deploy key**\n\nbuilder-bot asks to use the deploy key until 18:00 UTC.\n\nApprove · Deny",
+            messageNotificationText(case.string("fallback"), metadata),
+        )
+    }
+
     private fun hardRule(name: String, content: String, nodes: List<String>): List<String> {
         val failures = mutableListOf<String>()
         val drawn = raftCardMarkdownCheck(raftCardMarkdownRenderSource(content))

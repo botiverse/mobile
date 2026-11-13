@@ -324,6 +324,13 @@ internal data class WireActionCardMetadata(
     val revision: Int? = null,
     /** RFC 082: when the card was posted or last replaced (ISO UTC). */
     val updatedAt: String? = null,
+    /**
+     * RFC 086 (App-sent cards): a card message's acting buttons, Button element id -> RFC 076
+     * execute action, kept as JSON and read leniently ([readMessageCardActingButtons]).
+     */
+    val actions: JsonElement? = null,
+    /** RFC 086: the one person (a user id) a card message's acting buttons are for. */
+    @kotlinx.serialization.SerialName("for") val forUserId: JsonElement? = null,
     /** The card's deadline (served only, absent without one): [ThreadActionCard.expiresAt]. */
     val expiresAt: String? = null,
     /** A person's request: [ThreadActionCard.requesterUserId]. */

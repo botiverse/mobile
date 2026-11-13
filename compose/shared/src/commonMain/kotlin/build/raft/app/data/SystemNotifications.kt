@@ -224,7 +224,8 @@ fun buildSystemUnreadNotificationRequest(
         return null
     }
     val sender = message.shownAuthorName().ifBlank { message.author.handle.ifBlank { "Someone" } }
-    val preview = markdownToPreviewText(message.body, RaftMarkdownPreviewNotificationLength).ifBlank { "Sent a new message." }
+    // RFC 086: a card this client draws with acting buttons never shows the reason stored for older clients.
+    val preview = markdownToPreviewText(messageNotificationText(message.body, message.metadata), RaftMarkdownPreviewNotificationLength).ifBlank { "Sent a new message." }
     // A DM is never "mentioned you" (slock docs/contracts/notifications.md §1.5): every DM is for you.
     val mentioned =
         conversationKind != ConversationKind.DirectMessage &&

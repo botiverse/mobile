@@ -13,6 +13,12 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import build.raft.app.data.AppLinkConsentStatus
+import build.raft.app.data.AppLinkResult
+import build.raft.app.data.RaftMessageCardLive
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -81,6 +87,9 @@ internal fun rememberThreadMessageCard(metadata: Map<String, String>): RaftMessa
  *   wrapping onto more lines rather than hiding any. A button with the sender's `disabledReason`
  *   is disabled (no ↗) and the first reason is a caption under them, as touch has no hover. A URL
  *   this client can't open is never drawn ([onOpenUrl] gets only public HTTPS URLs).
+ * - RFC 086: an App's acting buttons (the card's `actions`) act instead, for this viewer, through
+ *   the batched read of [messageId] ([ThreadMessageCardActing.kt]); the reason Raft stored on them
+ *   for older clients is never shown.
  * - Once replaced (revision > 1) the footer says when ("Updated 3 min ago").
  * - v2.0 (RFC 082 §4.8, web #13225 `MessageCardHeaderView`): the sender's header first, inside
  *   the card under the sender's name: the title in the headline style (700), the subtitle muted,
@@ -93,8 +102,19 @@ internal fun RaftMessageCardView(
     card: RaftMessageCard,
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** The message, whose acting buttons (RFC 086) are read for this viewer; null draws them disabled. */
+    messageId: String? = null,
+    /** Fixtures: the viewer's read of the acting buttons, where no conversation reads it. */
+    actingLive: RaftMessageCardLive? = null,
 ) {
-    val buttons = remember(card.card) { card.card.messageCardButtons().map { it.second } }
+    val buttons = remember(card.card) { card.card.messageCardButtons() }
+    val acting = card.acting
+    val actingHost = if (acting != null) rememberThreadMessageCardActingHost(messageId, card) else null
+    val live = (actingHost?.live ?: actingLive).forCard(card)
+    val press = if (acting != null) rememberThreadAppLinkCardPress(remember(card, live) { messageCardPressCard(card, live) }, actingHost?.actions) else null
+    var asking by remember(messageId) { mutableStateOf<AppLinkResult.Consent?>(null) }
+    val onAllow = rememberThreadMessageCardAllow(actingHost)
+    val actingNote = if (acting != null) messageCardActingNote(live) else null
     val updatedAt = card.updatedAt?.takeIf { card.showsUpdated }
     RaftCard(
         modifier = modifier.widthIn(max = RaftMessageEmbedDefaults.MaxWidth).testTag(RaftMessageCardTestTag),
@@ -110,14 +130,30 @@ internal fun RaftMessageCardView(
             }
             if (buttons.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    buttons.forEach { button -> RaftMessageCardLink(button, onOpenUrl) }
+                    buttons.forEach { (id, button) ->
+                        val action = acting?.actions?.get(id)
+                        if (action != null && press != null) {
+                            val fallbackUrl = (button.action as? RaftLinkCardButtonAction.Navigate)?.url
+                            RaftMessageCardActingButton(id, button, action, messageCardActingState(live, id, fallbackUrl), press, onAsk = { asking = it })
+                        } else {
+                            RaftMessageCardLink(button, onOpenUrl)
+                        }
+                    }
                 }
-                buttons.firstNotNullOfOrNull { it.disabledReason }?.let { reason ->
-                    RaftText(text = reason, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
+                // RFC 086: why the acting buttons are disabled, else the sender's first reason (never Raft's
+                // reason for older clients, which the acting buttons carry).
+                if (actingNote != null) {
+                    RaftMessageCardActingNoteView(actingNote, allowing = actingHost?.status == AppLinkConsentStatus.Allowing, onAllow = onAllow)
+                } else {
+                    buttons.firstNotNullOfOrNull { (id, button) -> button.disabledReason?.takeIf { acting?.actions?.containsKey(id) != true } }?.let { reason ->
+                        RaftText(text = reason, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
+                    }
                 }
             }
         }
     }
+    press?.let { ThreadMessageCardActingConfirmation(it) }
+    ThreadMessageCardActingPrompts(actingHost, asking, onOpenUrl, onDismiss = { asking = null })
 }
 
 /**

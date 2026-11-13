@@ -3,7 +3,7 @@
 # header and the Markdown, Fields and Divider elements) against its pinned digest.
 #
 # Provenance: byte-exact copy of github.com/botiverse/slock
-#   @ WEB_HEAD : WEB_PATH (and its .sha256 sibling), below (slock #13224 and #13237, staging).
+#   @ WEB_HEAD : WEB_PATH (and its .sha256 sibling), below (slock #13224 and #13237, staging; the acting_buttons_as_stored case from slock #14723, RFC 086 step 1).
 # Content at a pinned commit is immutable, so the check is fully local — no
 # network fetch or cross-repo token. To update the vector: fetch the new Web
 # files, vendored-copy both, and bump WEB_HEAD + EXPECTED_SHA256 together (and
@@ -11,9 +11,9 @@
 set -euo pipefail
 
 readonly WEB_REPOSITORY="botiverse/slock"
-readonly WEB_HEAD="acf01e4f9703975febb80183251c3d7d22b81e01"
+readonly WEB_HEAD="3a036f809943760a0fee9b6250784a3964b2b720"
 readonly WEB_PATH="packages/shared/src/messageCard.v1.vector.json"
-readonly EXPECTED_SHA256="54907dce3369bb88e06a2c8a2b58189126dd55a6bce52594bbd94e42922e839a"
+readonly EXPECTED_SHA256="19ec57295301cd1d9edde274776211c99e008020e446b0d560ea70424ee034c1"
 readonly VENDORED_PATH="compose/shared/src/androidUnitTest/resources/messagecard/messageCard.v1.vector.json"
 readonly VENDORED_DIGEST_PATH="compose/shared/src/androidUnitTest/resources/messagecard/messageCard.v1.vector.sha256"
 

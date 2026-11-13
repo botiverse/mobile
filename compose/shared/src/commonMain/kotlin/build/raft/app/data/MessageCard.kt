@@ -51,6 +51,12 @@ private const val MessageCardMetadataCard = "${MessageCardMetadataPrefix}card"
 private const val MessageCardMetadataRevision = "${MessageCardMetadataPrefix}revision"
 private const val MessageCardMetadataUpdatedAt = "${MessageCardMetadataPrefix}updatedAt"
 
+/** RFC 086: the card message's `actions` (JSON), as stored; read with [readMessageCardActingButtons]. */
+internal const val MessageCardMetadataActions = "${MessageCardMetadataPrefix}actions"
+
+/** RFC 086: the card message's `for` (a user id). */
+internal const val MessageCardMetadataFor = "${MessageCardMetadataPrefix}for"
+
 /**
  * A card message's card as this client draws it (web `ReadMessageCard`): the element tree (the
  * link card v2 tree, so the v2 renderer draws it), its [revision] (1 when posted) and when it was
@@ -62,6 +68,11 @@ data class RaftMessageCard(
     val updatedAt: String?,
     /** The sender's header (v2.0), drawn at the top of the card; null when the card has none. */
     val header: RaftMessageCardHeader? = null,
+    /**
+     * RFC 086: an App's acting buttons (its `actions`, read against this card) and the one person
+     * they are for; null when every Button only navigates.
+     */
+    val acting: RaftMessageCardActingButtons? = null,
 ) {
     /** "Updated 3 min ago" once the card has been replaced (RFC 082 §5, web `messageCardShowsUpdated`). */
     val showsUpdated: Boolean get() = revision > 1 && updatedAt != null
@@ -80,6 +91,9 @@ internal fun WireActionCardMetadata.messageCardMetadata(): Map<String, String> {
         put(MessageCardMetadataCard, card.toString())
         put(MessageCardMetadataRevision, revision.toString())
         updatedAt?.let { put(MessageCardMetadataUpdatedAt, it) }
+        // RFC 086: kept as stored; read against the card where it is drawn.
+        (actions as? JsonObject)?.takeIf { it.isNotEmpty() }?.let { put(MessageCardMetadataActions, it.toString()) }
+        forUserId.cardString()?.takeIf { it.isNotEmpty() }?.let { put(MessageCardMetadataFor, it) }
     }
 }
 
@@ -110,7 +124,13 @@ internal fun isOlderMessageCardRevision(held: Map<String, String>, incoming: Map
 
 private const val MESSAGE_CARD_CACHE_SIZE = 64
 
-private data class MessageCardCacheKey(val card: String, val revision: String, val updatedAt: String?)
+private data class MessageCardCacheKey(
+    val card: String,
+    val revision: String,
+    val updatedAt: String?,
+    val actions: String?,
+    val forUserId: String?,
+)
 
 private val messageCardCache = atomic(LinkedHashMap<MessageCardCacheKey, RaftMessageCard?>())
 
@@ -122,7 +142,14 @@ private val messageCardCache = atomic(LinkedHashMap<MessageCardCacheKey, RaftMes
 internal fun readMessageCardFromMetadata(metadata: Map<String, String>): RaftMessageCard? {
     val json = metadata[MessageCardMetadataCard] ?: return null
     val revisionText = metadata[MessageCardMetadataRevision] ?: return null
-    val key = MessageCardCacheKey(json, revisionText, metadata[MessageCardMetadataUpdatedAt])
+    val key =
+        MessageCardCacheKey(
+            json,
+            revisionText,
+            metadata[MessageCardMetadataUpdatedAt],
+            metadata[MessageCardMetadataActions],
+            metadata[MessageCardMetadataFor],
+        )
     val cache = messageCardCache.value
     if (cache.containsKey(key)) return cache[key]
     val revision = revisionText.toIntOrNull()?.takeIf { it >= 1 }
@@ -134,6 +161,7 @@ internal fun readMessageCardFromMetadata(metadata: Map<String, String>): RaftMes
                 revision = revision,
                 updatedAt = key.updatedAt?.takeIf(::isMessageCardTime),
                 header = it.header,
+                acting = readMessageCardActingButtons(it.card, key.actions, key.forUserId),
             )
         }
     messageCardCache.update { current ->

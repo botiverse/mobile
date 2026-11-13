@@ -4197,6 +4197,10 @@
     <string name="artifacts_card_latest_is">Latest is v%1$d</string>
     <string name="artifacts_card_updated_by">%1$s updated %2$s</string>
     <string name="message_card_updated">Updated %1$s</string>
+    <string name="message_card_waiting_for">Waiting for %1$s</string>
+    <string name="message_card_waiting_for_someone">Waiting for someone else</string>
+    <string name="message_card_declined">You turned off %1$s on this server, so these buttons don’t work for you. To use them, allow it again here or in Settings on the web.</string>
+    <string name="message_card_allow_app">Allow %1$s</string>
     <string name="artifacts_card_open_in_new_page">Open in New Page</string>
     <string name="artifacts_card_comments_one">1 comment</string>
     <string name="artifacts_card_comments_many">%1$d comments</string>

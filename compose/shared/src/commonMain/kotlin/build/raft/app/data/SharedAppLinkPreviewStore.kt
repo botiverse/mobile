@@ -87,7 +87,15 @@ data class SharedAppLinkPreviewState(
     val claims: Map<String, String> = emptyMap(),
     /** Moves on [SharedAppLinkPreviewStore.clearAll]: a read asked for before it is not kept. */
     val generation: Int = 0,
+    /**
+     * RFC 086: a card message's acting buttons as last read for this viewer, by
+     * [appLinkMessageCardKey]. Bounded, most recently read last.
+     */
+    val messageCards: Map<String, RaftMessageCardLive> = emptyMap(),
 )
+
+/** `${viewerKey}:${message}` ([appLinkViewerKey]): whose read of which card message ([SharedAppLinkPreviewState.messageCards]). */
+fun appLinkMessageCardKey(viewerKey: String, messageId: String): String = "$viewerKey:$messageId"
 
 /** What a message row shows, and whether it should read (again). */
 data class AppLinkMessageView(
@@ -431,6 +439,37 @@ class SharedAppLinkPreviewStore internal constructor(
             if (state.generation != askedGeneration) return@update state
             val entry = state.entries[readScope]?.takeIf { it.viewId == batch.view.id } ?: return@update state
             state.copy(entries = state.entries + (readScope to entry.copy(results = entry.results + (url to fresh))))
+        }
+        return true
+    }
+
+    /**
+     * Reads a card message's acting buttons for this viewer (RFC 086 §4.2): the batched read of
+     * [view], declaring `card.execute.v1` with the link card capabilities, presenting the view's
+     * tickets (one per fallback page). Its answer replaces what [appLinkMessageCardKey] held, and
+     * the tickets it gives are the view's for its next read. False when the read failed (what is
+     * shown stays); a read superseded by a later one of the view is not a failure.
+     */
+    suspend fun readMessageCard(viewerKey: String, serverId: String, messageId: String, view: AppLinkCardView, locale: String): Boolean {
+        val askedGeneration = _state.value.generation
+        view.seq += 1
+        val seq = view.seq
+        val response = callOrNull("message_card_read_error") { api.readLinkCards(messageId, serverId, messageCardReadRequestBody(view, locale)) }
+        if (seq != view.seq) return true
+        val live = response?.takeIf { it.isSuccessful }?.bodyText?.let { parseMessageCardReadAnswer(it, resolveIcon) }
+        if (live == null) {
+            diagnosticsLogger("message_card_read_failed code=${response?.code ?: -1}")
+            return false
+        }
+        live.handles.forEach { view.tickets[it.url] = it.ticket }
+        val key = appLinkMessageCardKey(viewerKey, messageId)
+        _state.update { state ->
+            if (state.generation != askedGeneration) return@update state
+            val cards = LinkedHashMap(state.messageCards)
+            cards.remove(key)
+            cards[key] = live
+            while (cards.size > APP_LINK_RESULT_CACHE_MAX) cards.remove(cards.keys.first())
+            state.copy(messageCards = cards)
         }
         return true
     }

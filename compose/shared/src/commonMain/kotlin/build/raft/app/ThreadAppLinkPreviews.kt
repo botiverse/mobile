@@ -329,7 +329,7 @@ internal fun openThreadAppLinkAddress(
 }
 
 @Composable
-private fun ThreadAppLinkConsentSheet(
+internal fun ThreadAppLinkConsentSheet(
     host: ThreadAppLinkPreviewHost,
     prompt: AppLinkResult.Consent,
     onOpenLink: (String) -> Unit,
