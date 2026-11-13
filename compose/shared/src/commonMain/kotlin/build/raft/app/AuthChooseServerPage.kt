@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.BridgeRaftAvatarNativeCache
@@ -141,31 +142,12 @@ private fun AuthChooseServerPageContent() {
                 authDataSource = authDataSource,
                 skipInitialLoad = skipInitialLoad,
                 onReady = { readySession ->
-                    val multiShellHostEnabled = raftMultiShellHostEnabled()
-                    val opensDocumentShell =
-                        isMultiShellCrossServerSelection(
-                            sourceStoreScope = sourceStoreScope,
-                            selectedServerId = readySession.selectedServerId,
-                            multiShellHostEnabled = multiShellHostEnabled
-                        )
-                    if (!opensDocumentShell) {
-                        bridge.realtimeDisconnect("server_changed")
-                    }
-                    pager.openAppShellReplacingCurrentPage(
-                        pageData =
-                            appShellPageDataForServerSelection(
-                                sourceStoreScope = sourceStoreScope,
-                                sourceDocumentShell = sourceDocumentShell,
-                                selectedServerId = readySession.selectedServerId,
-                                multiShellHostEnabled = multiShellHostEnabled,
-                                suppressRestoreLanding = true,
-                                routeOwner = AuthenticatedRouteOwner(
-                                    environmentId =
-                                        sharedStores.apiEnvironmentStore.current().apiBaseUrl,
-                                    accountId = readySession.user.id,
-                                    serverId = readySession.selectedServerId.orEmpty()
-                                ).normalizedOrNull()
-                            )
+                    pager.openAppShellForSelectedServer(
+                        readySession = readySession,
+                        sourceStoreScope = sourceStoreScope,
+                        sourceDocumentShell = sourceDocumentShell,
+                        environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                        bridge = bridge,
                     )
                 },
                 onSignOut = {
@@ -175,4 +157,42 @@ private fun AuthChooseServerPageContent() {
                 onBack = closeChooser.takeIf { fromShell }
             )
     }
+}
+
+/**
+ * Opens the app shell on [readySession]'s selected server in place of this page (the server chooser,
+ * the join page): a server window of its own where separate windows are on, else this window's shell.
+ */
+internal fun Pager.openAppShellForSelectedServer(
+    readySession: StoredAuthSession,
+    sourceStoreScope: RaftShellStoreScope,
+    sourceDocumentShell: Boolean,
+    environmentId: String,
+    bridge: BridgeModule,
+) {
+    val multiShellHostEnabled = raftMultiShellHostEnabled()
+    val opensDocumentShell =
+        isMultiShellCrossServerSelection(
+            sourceStoreScope = sourceStoreScope,
+            selectedServerId = readySession.selectedServerId,
+            multiShellHostEnabled = multiShellHostEnabled
+        )
+    if (!opensDocumentShell) {
+        bridge.realtimeDisconnect("server_changed")
+    }
+    openAppShellReplacingCurrentPage(
+        pageData =
+            appShellPageDataForServerSelection(
+                sourceStoreScope = sourceStoreScope,
+                sourceDocumentShell = sourceDocumentShell,
+                selectedServerId = readySession.selectedServerId,
+                multiShellHostEnabled = multiShellHostEnabled,
+                suppressRestoreLanding = true,
+                routeOwner = AuthenticatedRouteOwner(
+                    environmentId = environmentId,
+                    accountId = readySession.user.id,
+                    serverId = readySession.selectedServerId.orEmpty()
+                ).normalizedOrNull()
+            )
+    )
 }

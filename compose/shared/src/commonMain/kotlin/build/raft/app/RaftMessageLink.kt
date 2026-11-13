@@ -128,6 +128,24 @@ internal fun parseRaftExternalInviteLink(
 }
 
 /**
+ * A server join link (the Invite people dialog's link, slock `buildJoinLinkUrl`:
+ * `{web}/join/{token}`): its token, or null when the app must not claim it. The origin is a message
+ * link's (the hosts [parseRaftMessageLink] takes); the path is exactly `/join/{token}` (web App
+ * `joinMatch`), the token percent-decoded. Identity only: the join page reads the rest from the server.
+ */
+internal fun parseRaftServerJoinLink(
+    url: String,
+    configuredWebUrl: String? = null,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): String? {
+    val origin = url.toRaftLinkUrl() ?: return null
+    if (!origin.isAllowedMessageLinkOrigin(configuredWebUrl?.toRaftLinkUrl(), appHosts)) return null
+    val segments = origin.path.removePrefix("/").removeSuffix("/").split('/')
+    if (segments.size != 2 || segments[0] != "join") return null
+    return segments[1].raftLinkPercentDecode()?.takeIf { it.isNotBlank() && '/' !in it && it.length <= 512 }
+}
+
+/**
  * The web link of [link], the inverse of [parseRaftMessageLink]: `{web}/s/{slug}/{channel|dm}/{cid}`
  * with `?msg={mid}` and/or `thread={cid}%3A{pid}` (the path's channel, as the parser requires).
  * [webUrl] is the Developer environment's web URL (AGENTS.md "Environment Web Link URL Rule");
@@ -468,6 +486,39 @@ internal class RaftExternalInviteLinkInbox(
 }
 
 /**
+ * The process-wide single slot for a server join link ([parseRaftServerJoinLink]), tapped in a
+ * message or opened from outside the app: the same rules as [RaftExternalInviteLinkInbox], so a
+ * link opened signed out opens once signed in.
+ */
+internal class RaftServerJoinLinkInbox(
+    private val nowEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val ttlMillis: Long = RaftMessageLinkInbox.DefaultTtlMillis,
+) {
+    private val lock = SynchronizedObject()
+    private var nextId = 1L
+    private val mutablePending = MutableStateFlow<RaftPendingExternalInviteLink?>(null)
+    val pending: StateFlow<RaftPendingExternalInviteLink?> = mutablePending.asStateFlow()
+
+    fun submit(token: String, source: String): RaftPendingExternalInviteLink = synchronized(lock) {
+        RaftPendingExternalInviteLink(nextId++, token, nowEpochMillis(), source).also { mutablePending.value = it }
+    }
+
+    /** Takes the pending link [id]; null when it was already taken, replaced, or expired (then cleared). */
+    fun take(id: Long): RaftPendingExternalInviteLink? = synchronized(lock) {
+        val current = mutablePending.value?.takeIf { it.id == id } ?: return null
+        mutablePending.value = null
+        current.takeIf { nowEpochMillis() - it.receivedAtEpochMillis <= ttlMillis }
+    }
+
+    fun clear() = synchronized(lock) { mutablePending.value = null }
+
+    companion object {
+        /** The slot the platform ingresses, message link taps and every app shell of this process share. */
+        val Process: RaftServerJoinLinkInbox = RaftServerJoinLinkInbox()
+    }
+}
+
+/**
  * Whether a shell takes the pending link now: only with a signed-in, server-ready session
  * ([sessionReady]); before that (signed out, restoring, choosing a server) it keeps waiting.
  */
@@ -480,7 +531,8 @@ internal fun raftMessageLinkShouldTake(pending: RaftPendingMessageLink?, session
  * false when the URL is not a Raft message link this app takes; the caller then leaves it to the
  * browser. On true the link waits in [RaftMessageLinkInbox.Process] for the app shell, or, for an
  * Artifacts home address ([parseRaftArtifactDeepLink]), in [RaftArtifactLinkInbox.Process], or, for
- * an external channel invite ([parseRaftExternalInviteLink]), in [RaftExternalInviteLinkInbox.Process].
+ * an external channel invite ([parseRaftExternalInviteLink]), in [RaftExternalInviteLinkInbox.Process],
+ * or, for a server join link ([parseRaftServerJoinLink]), in [RaftServerJoinLinkInbox.Process].
  */
 object RaftMessageLinkIngress {
     /** [configuredWebUrl] is the Developer environment's web URL; null reads the app-scope one. */
@@ -505,6 +557,12 @@ object RaftMessageLinkIngress {
             if (inviteToken != null) {
                 val pending = RaftExternalInviteLinkInbox.Process.submit(inviteToken, source.raftLinkLogToken())
                 raftLogInfo(RaftMessageLinkLogTag, "external_invite_link_ingress result=pending id=${pending.id} source=${pending.source}")
+                return true
+            }
+            val joinToken = parseRaftServerJoinLink(url, webUrl)
+            if (joinToken != null) {
+                val pending = RaftServerJoinLinkInbox.Process.submit(joinToken, source.raftLinkLogToken())
+                raftLogInfo(RaftMessageLinkLogTag, "server_join_link_ingress result=pending id=${pending.id} source=${pending.source}")
                 return true
             }
             raftLogInfo(RaftMessageLinkLogTag, "message_link_ingress result=not_claimed source=${source.raftLinkLogToken()}")

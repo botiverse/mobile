@@ -44,6 +44,9 @@ internal enum class RaftLinkOpenTarget {
 
     /** Raft's own Artifact viewer ([RaftLinkNavigator]'s Artifact address); never a decision of [resolveRaftLinkOpenDecision]. */
     ArtifactViewer,
+
+    /** Raft's own server join page ([RaftLinkNavigator]'s join link); never a decision of [resolveRaftLinkOpenDecision]. */
+    ServerJoinPage,
 }
 
 internal enum class RaftLinkRejectReason {
@@ -194,6 +197,11 @@ internal class RaftLinkNavigator(
      * true when the in-app viewer opened it; false leaves it to the link setting as any link.
      */
     private val openArtifactAddress: (String) -> Boolean = { false },
+    /**
+     * An ordinary server join link ([raftServerJoinLinkOpener]): true when the app's join page takes
+     * it; false leaves it to the link setting as any link.
+     */
+    private val openServerJoinLink: (String) -> Boolean = { false },
 ) {
     fun open(
         rawUrl: String,
@@ -203,6 +211,10 @@ internal class RaftLinkNavigator(
         // An Artifact's address opens Raft's own viewer, as an Artifact card does, whatever the setting.
         if (intent == RaftLinkOpenIntent.Ordinary && decision.target != RaftLinkOpenTarget.Rejected && openArtifactAddress(decision.url)) {
             return RaftLinkOpenDecision(RaftLinkOpenTarget.ArtifactViewer, decision.url)
+        }
+        // A server join link opens the app's join page (the shell's, through the join link inbox).
+        if (intent == RaftLinkOpenIntent.Ordinary && decision.target != RaftLinkOpenTarget.Rejected && openServerJoinLink(decision.url)) {
+            return RaftLinkOpenDecision(RaftLinkOpenTarget.ServerJoinPage, decision.url)
         }
         return when (decision.target) {
             RaftLinkOpenTarget.InAppBrowser -> {
@@ -225,7 +237,8 @@ internal class RaftLinkNavigator(
                 onRejected(requireNotNull(decision.rejectReason))
                 decision
             }
-            RaftLinkOpenTarget.ArtifactViewer -> decision
+            RaftLinkOpenTarget.ArtifactViewer,
+            RaftLinkOpenTarget.ServerJoinPage -> decision
         }
     }
 }
@@ -248,6 +261,29 @@ internal fun raftArtifactLinkOpener(
     } else {
         RaftArtifactOpenTrace.tap("link", target.id)
         openViewer(target)
+    }
+}
+
+/**
+ * [RaftLinkNavigator]'s join link opener: a tapped server join link, read as an external one is
+ * ([parseRaftServerJoinLink]: `/join/<token>` on Raft's built-in hosts, the client config's
+ * [appHosts] or the Developer environment's [webUrl]), waits in [RaftServerJoinLinkInbox] for the
+ * app shell, which opens the join page over whatever is shown; false (any other link) leaves it to
+ * the link setting.
+ */
+internal fun raftServerJoinLinkOpener(
+    webUrl: () -> String?,
+    appHosts: () -> Set<String> = { RaftClientConfigAppHosts.current },
+    inbox: RaftServerJoinLinkInbox = RaftServerJoinLinkInbox.Process,
+    log: (String) -> Unit = {},
+): (String) -> Boolean = { url ->
+    val token = parseRaftServerJoinLink(url, webUrl(), appHosts())
+    if (token == null) {
+        false
+    } else {
+        val pending = inbox.submit(token, "message_link")
+        log("server_join_link_tap result=pending id=${pending.id}")
+        true
     }
 }
 
@@ -293,6 +329,11 @@ internal fun rememberRaftLinkNavigator(
                         if (!opened) RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_page_scope")
                     }
                 },
+            openServerJoinLink =
+                raftServerJoinLinkOpener(
+                    webUrl = { RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current().webUrl },
+                    log = { bridge.log(it) },
+                ),
         )
     }
 }

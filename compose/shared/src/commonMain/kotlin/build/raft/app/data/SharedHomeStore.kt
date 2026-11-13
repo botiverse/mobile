@@ -846,6 +846,8 @@ internal class SharedHomeStore(
                 reorderSidebar(intent)
             is SharedHomeIntent.ReorderServers ->
                 reorderServers(intent.serverOrder)
+            SharedHomeIntent.SyncSessionServers ->
+                syncSessionServers()
             is SharedHomeIntent.MarkRead ->
                 markConversationRead(intent.conversationId)
             is SharedHomeIntent.MarkUnread ->
@@ -3456,6 +3458,23 @@ internal class SharedHomeStore(
         // do NOT re-project the captured (now-stale) session into home state — that would revive a
         // session the persistence layer just correctly rejected. Only project the APPLIED session.
         val applied = persisted ?: return
+        projectHomeSession(applied)
+    }
+
+    /**
+     * The servers the account's stored session lists now (a server joined from a link, or one the
+     * server list reload found): the server menu and the switcher show them without waiting for
+     * the full list to open. Only the list is taken; the server Home shows stays selected.
+     */
+    private suspend fun syncSessionServers() {
+        val current = _state.value.content.sessionOrNull() ?: return
+        val stored = authStore.readSession() ?: return
+        if (stored.user.id != current.user.id || stored.servers == current.servers) return
+        diagnosticsLogger("home_session_servers_sync from=${current.servers.size} to=${stored.servers.size}")
+        projectHomeSession(current.copy(servers = stored.servers))
+    }
+
+    private fun projectHomeSession(applied: StoredAuthSession) {
         contentByServer.entries.forEach { entry ->
             entry.setValue(entry.value.copy(session = applied))
         }
@@ -5185,6 +5204,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.SetSidebarSectionSortMode -> "${SharedHomeChannelFoldEvent.Patch.wireName}:section-sort:$sectionId:$mode"
         is SharedHomeIntent.ReorderSidebar -> "${SharedHomeChannelFoldEvent.Patch.wireName}:sidebar-order:${channelOrder?.size ?: 0}/${jointChannelOrder?.size ?: 0}/${dmOrder?.size ?: 0}/${pinnedOrder?.size ?: 0}"
         is SharedHomeIntent.ReorderServers -> "${SharedHomeChannelFoldEvent.Patch.wireName}:server-order:${serverOrder.size}"
+        SharedHomeIntent.SyncSessionServers -> "${SharedHomeChannelFoldEvent.Patch.wireName}:session-servers"
         is SharedHomeIntent.MarkRead -> "${SharedHomeChannelFoldEvent.Patch.wireName}:read:$conversationId"
         is SharedHomeIntent.MarkUnread -> "${SharedHomeChannelFoldEvent.Patch.wireName}:unread:$conversationId"
         is SharedHomeIntent.MarkConversationReadAll -> "${SharedHomeChannelFoldEvent.Patch.wireName}:read-all:$conversationId"
@@ -6229,6 +6249,8 @@ sealed interface SharedHomeIntent {
         val pinnedOrder: List<String>? = null
     ) : SharedHomeIntent
     data class ReorderServers(val serverOrder: List<String>) : SharedHomeIntent
+    /** Take the server list the account's stored session has now (see `syncSessionServers`). */
+    data object SyncSessionServers : SharedHomeIntent
     data class MarkRead(val conversationId: String) : SharedHomeIntent
     data class MarkUnread(val conversationId: String) : SharedHomeIntent
 
@@ -6320,6 +6342,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.SetSidebarSectionSortMode,
             is SharedHomeIntent.ReorderSidebar,
             is SharedHomeIntent.ReorderServers,
+            SharedHomeIntent.SyncSessionServers,
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.MarkConversationReadAll,
@@ -6375,6 +6398,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.SetSidebarSectionSortMode,
             is SharedHomeIntent.ReorderSidebar,
             is SharedHomeIntent.ReorderServers,
+            SharedHomeIntent.SyncSessionServers,
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.MarkConversationReadAll,
@@ -6430,6 +6454,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.SetSidebarSectionSortMode,
             is SharedHomeIntent.ReorderSidebar,
             is SharedHomeIntent.ReorderServers,
+            SharedHomeIntent.SyncSessionServers,
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.MarkConversationReadAll,

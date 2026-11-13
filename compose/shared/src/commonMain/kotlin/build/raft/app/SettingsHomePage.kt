@@ -5366,6 +5366,18 @@ private fun RaftAppShellReadyContent(
             )
         }
     }
+    // A server join link (`/join/{token}`), tapped in a message or opened from outside: the join
+    // page, which reads the link and joins for this account.
+    val latestOpenServerJoinLink by rememberUpdatedState<(RaftPendingExternalInviteLink) -> Unit> { taken ->
+        if (!pager.openServerJoinPage(taken.token, navigationStoreScope)) {
+            bridge.log("server_join_link_open result=browser_fallback reason=no_page_scope")
+            linkNavigator.open(
+                sharedSettingsResolvedWebBaseUrl(sharedStores.apiEnvironmentStore.current().webUrl) +
+                    "/join/" + taken.token.encodeInviteTokenSegment(),
+                RaftLinkOpenIntent.RaftWebPage,
+            )
+        }
+    }
     // Phone layout: the conversation page on top of the shell, so a link to it is not pushed twice.
     val latestNavigationTopPageRoute by rememberUpdatedState {
         if (desktopModeOnLargeScreen) null else foregroundBannerStore.visibleRouteIdentity()
@@ -5381,6 +5393,8 @@ private fun RaftAppShellReadyContent(
                 override fun openArtifactLink(taken: RaftPendingArtifactLink) = latestOpenArtifactLink(taken)
 
                 override fun openExternalInviteLink(taken: RaftPendingExternalInviteLink) = latestOpenExternalInviteLink(taken)
+
+                override fun openServerJoinLink(taken: RaftPendingExternalInviteLink) = latestOpenServerJoinLink(taken)
 
                 override fun currentAccountId(): String? = latestNavigationAccountId()
 
@@ -6805,6 +6819,18 @@ private fun RaftAppShellReadyContent(
         }
         serverMenusOpenBefore.panel = now.panel
         serverMenusOpenBefore.homeSwitcher = now.homeSwitcher
+    }
+    // The server panel lists the account's servers as they are now: one joined from a link, on the
+    // web or on another device shows without opening the full list first. The stored list shows at
+    // once; the reloaded one replaces it when it comes.
+    LaunchedEffect(serverMenuState.open) {
+        if (!serverMenuState.open) return@LaunchedEffect
+        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SyncSessionServers))
+        val reloaded = runCatchingPreservingCancellation { authDataSource.loadServers() }.getOrNull()
+        bridge.log("app_shell_server_menu_servers_reload result=${if (reloaded is SharedAuthResult.Success) "success" else "skipped"}")
+        if (reloaded is SharedAuthResult.Success) {
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SyncSessionServers))
+        }
     }
     // A server page's origin lives only while a server page shows; a deep link to one finds none
     // and goes back to Home.

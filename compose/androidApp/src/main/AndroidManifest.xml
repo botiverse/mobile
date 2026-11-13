@@ -174,10 +174,10 @@
             </intent-filter>
             <!--
                 Raft message links (#proj-mobile #25): verified App Links on both hosts, which serve the
-                same assetlinks.json. Only the conversation permalink prefix and the external channel
-                invite link and an Artifact's share address are claimed; MainActivity parses the exact
-                /s/{slug}/channel|dm/{id}, /external-invite/{token} and /artifacts/{id}[/v/{n}] shapes and
-                leaves anything else to the browser.
+                same assetlinks.json. Only the conversation permalink prefix, the external channel
+                invite link, a server join link and an Artifact's share address are claimed; MainActivity
+                parses the exact /s/{slug}/channel|dm/{id}, /external-invite/{token}, /join/{token} and
+                /artifacts/{id}[/v/{n}] shapes and leaves anything else to the browser.
             -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
@@ -191,6 +191,8 @@
                 <data android:pathPrefix="/s/" />
                 <!-- An external channel invite email's link (RaftMessageLinkIngress: parseRaftExternalInviteLink). -->
                 <data android:pathPrefix="/external-invite/" />
+                <!-- A server join link (RaftMessageLinkIngress: parseRaftServerJoinLink). -->
+                <data android:pathPrefix="/join/" />
                 <!-- An Artifact's share address (RaftMessageLinkIngress: parseRaftArtifactDeepLink). -->
                 <data android:pathPrefix="/artifacts/" />
             </intent-filter>

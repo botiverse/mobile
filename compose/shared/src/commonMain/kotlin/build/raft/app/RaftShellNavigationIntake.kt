@@ -28,6 +28,9 @@ internal interface RaftShellNavigationIntakeHost {
     /** Opens a taken external invite link ([RaftExternalInviteLinkInbox]) on the invite page, over whatever is shown. */
     fun openExternalInviteLink(taken: RaftPendingExternalInviteLink) {}
 
+    /** Opens a taken server join link ([RaftServerJoinLinkInbox]) on the join page, over whatever is shown. */
+    fun openServerJoinLink(taken: RaftPendingExternalInviteLink) {}
+
     /** The signed-in account's id, for a link that waits for another account; null when unknown. */
     fun currentAccountId(): String? = null
 
@@ -57,6 +60,7 @@ internal class RaftShellNavigationIntake(
     private val inbox: RaftMessageLinkInbox = RaftMessageLinkInbox.Process,
     private val artifactInbox: RaftArtifactLinkInbox = RaftArtifactLinkInbox.Process,
     private val externalInviteInbox: RaftExternalInviteLinkInbox = RaftExternalInviteLinkInbox.Process,
+    private val serverJoinInbox: RaftServerJoinLinkInbox = RaftServerJoinLinkInbox.Process,
 ) {
     private val wakeups = Channel<Unit>(Channel.CONFLATED)
 
@@ -74,9 +78,11 @@ internal class RaftShellNavigationIntake(
             launch { inbox.pending.collect { pending -> if (pending != null) wake() } }
             launch { artifactInbox.pending.collect { pending -> if (pending != null) wake() } }
             launch { externalInviteInbox.pending.collect { pending -> if (pending != null) wake() } }
+            launch { serverJoinInbox.pending.collect { pending -> if (pending != null) wake() } }
             for (ignored in wakeups) {
                 takeArtifactLink(host)?.let(host::openArtifactLink)
                 takeExternalInviteLink(host)?.let(host::openExternalInviteLink)
+                takeServerJoinLink(host)?.let(host::openServerJoinLink)
                 takeMessageLink(host)?.let { taken ->
                     launch {
                         val intent = host.resolveMessageLink(taken) ?: return@launch
@@ -128,6 +134,18 @@ internal class RaftShellNavigationIntake(
             return null
         }
         host.log("external_invite_link_take id=${taken.id} source=${taken.source}")
+        return taken
+    }
+
+    private fun takeServerJoinLink(host: RaftShellNavigationIntakeHost): RaftPendingExternalInviteLink? {
+        val pending = serverJoinInbox.pending.value ?: return null
+        if (!host.messageLinkSessionReady()) return null
+        val taken = serverJoinInbox.take(pending.id)
+        if (taken == null) {
+            host.log("server_join_link_take_skipped id=${pending.id} reason=taken_replaced_or_expired")
+            return null
+        }
+        host.log("server_join_link_take id=${taken.id} source=${taken.source}")
         return taken
     }
 

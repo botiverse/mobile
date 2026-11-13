@@ -37,6 +37,8 @@ class AuthenticatedProductRouteTest {
                 ARTIFACTS_HOME_PAGE,
                 // An external channel invite link's page (identity: the token only).
                 EXTERNAL_INVITE_PAGE,
+                // A server join link's page (identity: the token only).
+                SERVER_JOIN_PAGE,
             )
 
         assertEquals(expected, authenticatedProductRoutePageNames)

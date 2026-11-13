@@ -36,6 +36,7 @@ internal enum class AuthenticatedProductRoute(val pageName: String) {
     ArtifactViewer(RAFT_ARTIFACT_VIEWER_PAGE),
     ArtifactsHome(ARTIFACTS_HOME_PAGE),
     ExternalInvite(EXTERNAL_INVITE_PAGE),
+    ServerJoin(SERVER_JOIN_PAGE),
 }
 
 internal val authenticatedProductRoutePageNames: Set<String> =
