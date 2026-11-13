@@ -27,10 +27,12 @@ internal enum class RaftLinkOpenIntent {
 
     /**
      * A page of Raft's own web the app has no screen for (an announcement's `/apps`, or Settings
-     * of a server the account is not on). The link setting still decides where it opens, but "Default
-     * browser" asks the host for a real browser (`browser: true`): Raft claims its own origin as
-     * Android App Links / iOS Universal Links, so a plain VIEW of it can route straight back into
-     * the app, which has nothing to show for it.
+     * of a server the account is not on), or one asked for as the web page rather than the app's
+     * screen for it (an Artifact's web page: a card's Open in New Page, a viewer fallback,
+     * [rememberRaftWebPageOpener]). Never the in-app Artifact viewer. The link setting still decides
+     * where it opens, but "Default browser" asks the host for a real browser (`browser: true`): Raft
+     * claims its own origin as Android App Links / iOS Universal Links, so a plain VIEW of it can
+     * route straight back into the app, which is not what was asked for.
      */
     RaftWebPage,
 }
@@ -318,6 +320,23 @@ internal fun ProvideRaftLinkOpening(pager: Pager, content: @Composable () -> Uni
         LocalUriHandler provides uriHandler,
         content = content,
     )
+}
+
+/**
+ * Opens a page of Raft's web as the web page ([RaftLinkOpenIntent.RaftWebPage]): never the in-app
+ * Artifact viewer, in the in-app or a real browser as the link setting says. For an Artifact's
+ * `/artifacts/<id>` page asked for as a page (a card's Open in New Page) or as the viewer's fallback
+ * (no page can open the viewer, already traced: an Ordinary open would trace and try it again).
+ */
+@Composable
+internal fun rememberRaftWebPageOpener(): (String) -> Unit {
+    val navigator = LocalRaftLinkNavigator.current
+    val uriHandler = LocalUriHandler.current
+    return remember(navigator, uriHandler) {
+        { url ->
+            if (navigator != null) navigator.open(url, RaftLinkOpenIntent.RaftWebPage) else uriHandler.openUri(url)
+        }
+    }
 }
 
 /** Opens in the system browser whatever the link setting is: where an account's sign-in lives. */

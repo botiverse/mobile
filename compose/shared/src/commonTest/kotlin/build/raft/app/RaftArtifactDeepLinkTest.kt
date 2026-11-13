@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.RaftClientConfigAppHosts
+import build.raft.app.data.artifactWebUrl
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -149,6 +150,37 @@ class RaftArtifactDeepLinkTest {
                 "in_app:https://evil.example/artifacts/pt_abc123",
                 "in_app:https://app.raft.build/artifacts",
             ),
+            opened,
+        )
+    }
+
+    @Test
+    fun anArtifactsWebPageOpensAsThePageNotTheViewer() {
+        // A card's Open in New Page and the viewer's fallbacks open `artifactWebUrl` as a Raft web
+        // page: never the viewer, in the in-app or a real browser as the link setting says.
+        val opened = mutableListOf<String>()
+        fun navigator(mode: LinkOpenMode) =
+            RaftLinkNavigator(
+                modeProvider = { mode },
+                openInAppBrowser = { opened += "in_app:$it"; true },
+                openExternalBrowser = { opened += "view:$it" },
+                onRejected = { opened += "rejected:$it" },
+                openRaftWebPageInBrowser = { opened += "browser:$it" },
+                openArtifactAddress =
+                    raftArtifactLinkOpener(webUrl = { staging }, appHosts = { emptySet() }) { target ->
+                        opened += "viewer:${target.id}"
+                        true
+                    },
+            )
+        val page = artifactWebUrl("", ArtifactLinkTarget("pt_abc123", 2))
+        val stagingPage = artifactWebUrl(staging, ArtifactLinkTarget("pt_abc123"))
+        assertEquals(RaftLinkOpenTarget.InAppBrowser, navigator(LinkOpenMode.InAppBrowser).open(page, RaftLinkOpenIntent.RaftWebPage).target)
+        assertEquals(RaftLinkOpenTarget.ExternalBrowser, navigator(LinkOpenMode.SystemBrowser).open(page, RaftLinkOpenIntent.RaftWebPage).target)
+        navigator(LinkOpenMode.InAppBrowser).open(stagingPage, RaftLinkOpenIntent.RaftWebPage)
+        // The same address tapped as a link is the viewer's.
+        assertEquals(RaftLinkOpenTarget.ArtifactViewer, navigator(LinkOpenMode.InAppBrowser).open(page).target)
+        assertEquals(
+            listOf("in_app:$page", "browser:$page", "in_app:$stagingPage", "viewer:pt_abc123"),
             opened,
         )
     }

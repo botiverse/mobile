@@ -38062,10 +38062,10 @@ private fun ThreadFilesTab(
             onAuthRequired(payload.errorCode)
         }
     }
-    val uriHandler = LocalUriHandler.current
+    val openArtifactWebPage = rememberRaftWebPageOpener()
     val artifactWebBaseUrl = appLinkHost?.artifacts?.webBaseUrl.orEmpty()
     // The in-app viewer; the browser only when no page can open from here.
-    val artifactOpener = rememberRaftArtifactOpener { uriHandler.openUri(artifactWebUrl(artifactWebBaseUrl, it)) }
+    val artifactOpener = rememberRaftArtifactOpener { openArtifactWebPage(artifactWebUrl(artifactWebBaseUrl, it)) }
     RaftArtifactViewerPrewarm(enabled = active && filesState.artifacts.items.isNotEmpty())
     ThreadFilesContent(
         payload = payload,

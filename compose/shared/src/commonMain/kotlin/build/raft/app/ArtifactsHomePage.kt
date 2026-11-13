@@ -20,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -164,9 +163,9 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
             }
         }
     }
-    val uriHandler = LocalUriHandler.current
+    val openArtifactWebPage = rememberRaftWebPageOpener()
     val webBaseUrl = remember(sharedStores) { standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore) }
-    val opener = rememberRaftArtifactOpener { uriHandler.openUri(artifactWebUrl(webBaseUrl, it)) }
+    val opener = rememberRaftArtifactOpener { openArtifactWebPage(artifactWebUrl(webBaseUrl, it)) }
     RaftArtifactViewerPrewarm(enabled = pageVisible && !state.rows.isNullOrEmpty())
     val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
     val wide = LocalRaftSettingsWideDetail.current || windowWidth.value >= DualPaneMinimumWidthDp

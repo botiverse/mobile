@@ -5347,7 +5347,7 @@ private fun RaftAppShellReadyContent(
         RaftArtifactOpenTrace.tap("deep_link", taken.target.id)
         if (!pager.openRaftArtifactViewerPage(taken.target, navigationStoreScope)) {
             RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_page_scope")
-            linkNavigator.open(artifactWebUrl(sharedStores.apiEnvironmentStore.current().webUrl, taken.target))
+            linkNavigator.open(artifactWebUrl(sharedStores.apiEnvironmentStore.current().webUrl, taken.target), RaftLinkOpenIntent.RaftWebPage)
         }
     }
     val latestNavigationAccountId by rememberUpdatedState { readySession?.user?.id?.takeIf(String::isNotBlank) }

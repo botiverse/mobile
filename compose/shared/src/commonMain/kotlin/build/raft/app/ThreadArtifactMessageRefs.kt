@@ -26,7 +26,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -244,10 +243,10 @@ internal fun ThreadArtifactMessageRefs(
     val links = rememberThreadArtifactLinkAnswers(artifacts, host.serverId, body)
     val view = remember(links) { threadArtifactMessageRefsView(links.targets, links.answers) }
     if (view == ThreadArtifactMessageRefsView.None) return
-    val uriHandler = LocalUriHandler.current
+    val openArtifactWebPage = rememberRaftWebPageOpener()
     val webBaseUrl = artifacts.webBaseUrl
     // A plain tap opens it in place (the in-app viewer); the browser only when no page can open.
-    val opener = rememberRaftArtifactOpener { uriHandler.openUri(artifactWebUrl(webBaseUrl, it)) }
+    val opener = rememberRaftArtifactOpener { openArtifactWebPage(artifactWebUrl(webBaseUrl, it)) }
     val screenshots = remember(artifacts.screenshots, host.serverId) { artifacts.screenshots?.reader(host.serverId) }
     RaftDesignSystemTheme {
         CompositionLocalProvider(LocalArtifactScreenshotReader provides screenshots) {
@@ -257,7 +256,7 @@ internal fun ThreadArtifactMessageRefs(
                     val target = summary.openTarget()
                     opener.open(target, RaftArtifactViewerHeader.of(summary, target), "message_card")
                 },
-                onOpenInNewPage = { summary -> uriHandler.openUri(artifactWebUrl(webBaseUrl, summary.openTarget())) },
+                onOpenInNewPage = { summary -> openArtifactWebPage(artifactWebUrl(webBaseUrl, summary.openTarget())) },
                 modifier = modifier,
             )
         }
