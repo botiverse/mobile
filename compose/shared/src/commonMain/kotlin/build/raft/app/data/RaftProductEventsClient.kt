@@ -15,6 +15,27 @@ interface RaftProductEventsTransport {
     suspend fun fetchConfig(serverId: ServerId): RaftProductEventsConfigResult
 
     suspend fun sendBatch(serverId: ServerId, batch: RaftProductEventBatchRequest): RaftProductEventsSendResult
+
+    /**
+     * True only when `GET /api/auth/me` answers and the account's `shareUsageData` is an explicit
+     * false (the user turned "Share usage data" off); false for "not chosen", on, or no answer.
+     */
+    suspend fun shareUsageDataExplicitlyOff(): Boolean = false
+}
+
+/** What became of a [RaftProductEventsClient.sendOnce] event. */
+sealed interface RaftProductEventOnceResult {
+    /** The server queued it (`accepted >= 1`, or it already had it: `duplicates >= 1`). */
+    data object Delivered : RaftProductEventOnceResult
+
+    /** Not sent because the account explicitly does not share usage data. */
+    data object NotShared : RaftProductEventOnceResult
+
+    /**
+     * Not delivered for any other reason (no signed-in server, no transport, offline, refused,
+     * server analytics off, `accepted: 0`): the caller may try again later.
+     */
+    data object Pending : RaftProductEventOnceResult
 }
 
 /** Batch-level client facts: the registry `source`, the app version and phone/tablet. */
@@ -190,6 +211,74 @@ class RaftProductEventsClient(
             consentEpoch += 1
         }
         log("product_events_consent_invalidated")
+    }
+
+    /**
+     * Sends [event] alone in its own batch to the signed-in server, now, bypassing the queue, and
+     * reports whether the server took it, so a once-per-install event can be marked done only when
+     * it really was. The event is stamped with the send time (ingest refuses events older than
+     * 24 h). It always asks `/product-events/config` first, never a cached answer. [stillAllowed]
+     * is asked again right before the request goes out (for example: the same account is still
+     * signed in); false makes it [RaftProductEventOnceResult.Pending]. Never throws.
+     */
+    suspend fun sendOnce(event: RaftProductEvent<*>, stillAllowed: () -> Boolean = { true }): RaftProductEventOnceResult {
+        val properties = runCatching { event.encodeProperties() }.getOrNull() ?: return RaftProductEventOnceResult.Pending
+        val (currentTransport, serverId, startGeneration) =
+            synchronized(lock) {
+                val currentTransport = transport ?: return RaftProductEventOnceResult.Pending
+                val state = auth as? AuthState.SignedIn ?: return RaftProductEventOnceResult.Pending
+                Triple(currentTransport, state.serverId, generation)
+            }
+        val info = clientInfo() ?: return RaftProductEventOnceResult.Pending
+        when (val answer = safeFetchConfig(currentTransport, serverId)) {
+            RaftProductEventsConfigResult.Unavailable -> return RaftProductEventOnceResult.Pending
+            is RaftProductEventsConfigResult.Answered ->
+                if (!answer.clientEventsAllowed) {
+                    // `false` also means "server analytics off"; only the account's own explicit "no" counts.
+                    val off =
+                        try {
+                            currentTransport.shareUsageDataExplicitlyOff()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Throwable) {
+                            false
+                        }
+                    log("product_events_once_not_allowed event=${event.name} explicitOff=$off")
+                    return if (off) RaftProductEventOnceResult.NotShared else RaftProductEventOnceResult.Pending
+                }
+        }
+        val wire =
+            synchronized(lock) {
+                if (generation != startGeneration || auth != AuthState.SignedIn(serverId) || !stillAllowed()) {
+                    return RaftProductEventOnceResult.Pending
+                }
+                RaftProductEventWire(
+                    uuid = newUuid(),
+                    event = event.name,
+                    timestamp = raftEpochMillisUtcIso(nowEpochMillis()),
+                    clientSessionId = sessionId,
+                    properties = properties,
+                )
+            }
+        val batch =
+            RaftProductEventBatchRequest(
+                source = info.source,
+                appVersion = raftProductEventAppVersion(info.appVersion),
+                events = listOf(wire),
+                deviceClass = info.deviceClass,
+            )
+        val result = safeSend(currentTransport, serverId, batch)
+        log("product_events_once event=${event.name} result=$result")
+        return when (result) {
+            is RaftProductEventsSendResult.Accepted ->
+                if (result.accepted >= 1 || result.duplicates >= 1) {
+                    RaftProductEventOnceResult.Delivered
+                } else {
+                    RaftProductEventOnceResult.Pending
+                }
+            is RaftProductEventsSendResult.Rejected,
+            is RaftProductEventsSendResult.Retryable -> RaftProductEventOnceResult.Pending
+        }
     }
 
     /** A new product session (fresh launch or a return after the session gap). */
@@ -397,4 +486,10 @@ internal class RaftNetworkProductEventsTransport(
                 bodyText = encodeRaftProductEventBatch(batch),
             )
         )
+
+    override suspend fun shareUsageDataExplicitlyOff(): Boolean {
+        val response = networkClient.request(priority = DataRequestPriority.Background, path = "auth/me")
+        if (!response.isSuccessful) return false
+        return parseSharedAccountUsageDataSnapshot(response.bodyText.orEmpty())?.choice == false
+    }
 }

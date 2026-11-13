@@ -896,6 +896,9 @@ dependencies {
     // build type only; Hands APKs (release, alpha, debug) never carry it.
     // String form: the Kotlin DSL has no typed accessor for a build type created in this script.
     add("playImplementation", libs.play.review)
+    // Google Play Install Referrer: where this install came from (RaftAndroidInstallReferrer). All
+    // build types; a build Play did not install reports `direct` without binding the service.
+    implementation(libs.android.installreferrer)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     // Builds real notifications in JVM unit tests.
