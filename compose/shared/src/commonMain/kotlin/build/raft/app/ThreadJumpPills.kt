@@ -122,6 +122,8 @@ internal data class ThreadUnreadThreadJump(
      * (artin: opening the thread right after the jump renders at once).
      */
     val targetThreadChannelId: String,
+    /** The target is a task conversation at its source message ([ThreadUnreadThreadParent.taskConversation]). */
+    val targetTaskConversation: Boolean = false,
     /** What a tap does with a parent past the plan's history window ([threadUnreadJumpHistoryAction]). */
     val historyAction: ThreadUnreadJumpHistoryAction = ThreadUnreadJumpHistoryAction.FocusParent,
 )
@@ -166,26 +168,38 @@ internal data class ThreadUnreadThreadParent(
     /** Followed thread `parentInHistory` / `repliesInHistory` (server #11517); null from an older server. */
     val parentInHistory: Boolean? = null,
     val repliesInHistory: Boolean? = null,
+    /**
+     * A task conversation (task v2) placed at its source message (web `channelAnchorMessageId`):
+     * [parentMessageId] is the source, not a thread parent, so the jump warms no reply thread.
+     */
+    val taskConversation: Boolean = false,
 )
 
 /**
  * The followed-threads rows of [parentChannelId] with unread replies, as pill parents by thread id
- * (web `orderParentUnreadThreadsForJump`'s filter). Rows without a parent message are skipped.
+ * (web `orderParentUnreadThreadsForJump`'s filter). A task conversation (botiverse/slock #12118)
+ * sits at its source message and is placed by that message's time (not the task's own: a task made
+ * today from last week's message hangs last week). Rows without a parent / source message are
+ * skipped.
  */
 internal fun List<InboxItem>.toThreadUnreadThreadParents(parentChannelId: String): Map<String, ThreadUnreadThreadParent> {
     val parents = LinkedHashMap<String, ThreadUnreadThreadParent>()
     for (item in this) {
         if (item.unreadCount <= 0 || item.parentChannelId?.value != parentChannelId) continue
         val threadId = (item.threadChannelId ?: item.channelId).value.takeIf { it.isNotBlank() } ?: continue
-        val parentMessageId = item.parentMessageId?.value?.takeIf { it.isNotBlank() } ?: continue
+        val task = item.taskConversation
+        val parentMessageId =
+            (if (task != null) task.sourceMessageId else item.parentMessageId)?.value?.takeIf { it.isNotBlank() } ?: continue
+        val parentCreatedAt = if (task != null) task.sourceMessageCreatedAt else item.parentMessageCreatedAt
         parents[threadId] =
             ThreadUnreadThreadParent(
                 threadChannelId = threadId,
                 parentChannelId = parentChannelId,
                 parentMessageId = parentMessageId,
-                parentCreatedAtEpochMillis = item.parentMessageCreatedAt?.let(::parseRaftTimestampEpochMillisOrNull),
-                parentInHistory = item.parentInHistory,
-                repliesInHistory = item.repliesInHistory,
+                parentCreatedAtEpochMillis = parentCreatedAt?.let(::parseRaftTimestampEpochMillisOrNull),
+                parentInHistory = if (task != null) null else item.parentInHistory,
+                repliesInHistory = if (task != null) null else item.repliesInHistory,
+                taskConversation = task != null,
             )
     }
     return parents
@@ -328,6 +342,7 @@ internal fun projectThreadUnreadThreadJump(
             count = count,
             targetMessageId = target.first,
             targetThreadChannelId = target.second,
+            targetTaskConversation = unloadedParents[target.second]?.taskConversation == true,
             historyAction = threadUnreadJumpHistoryAction(unloadedParents[target.second]),
         )
     return when {

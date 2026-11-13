@@ -93,6 +93,10 @@ internal fun SharedAnnouncementModal(
                                 modifier = Modifier.fillMaxWidth().height(if (failed) 0.dp else 200.dp),
                                 onImageStateChange = { failed = it is AsyncImagePainter.State.Error },
                                 contentScale = ContentScale.Fit,
+                                // Web AnnouncementModal (slock #12056): an animated GIF / WebP plays
+                                // while the dialog is open. The asset URL names no type, so the
+                                // decoder sniffs the bytes; a still keeps the static decode.
+                                animated = true,
                             )
                         }
                     }

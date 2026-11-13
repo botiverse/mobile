@@ -26350,7 +26350,9 @@ private fun ThreadMessagesListContent(
                                 ThreadUnreadJumpHistoryAction.FocusParentAndRead -> ThreadJumpToUnreadThreadPastHistoryAction
                             },
                             jump.targetMessageId,
-                            threadChannelId = jump.targetThreadChannelId,
+                            // A task conversation's target is its source message, under which no
+                            // reply thread of it hangs: nothing to warm.
+                            threadChannelId = jump.targetThreadChannelId.takeUnless { jump.targetTaskConversation },
                         )
                     }
                 },
