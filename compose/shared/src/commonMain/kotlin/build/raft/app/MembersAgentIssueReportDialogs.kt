@@ -24,10 +24,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.raftCardSurface
 import build.raft.app.data.AgentIssueReportResult
 import build.raft.app.data.AgentIssueTranscriptRequestState
+import build.raft.app.data.ScreenError
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
@@ -74,6 +74,7 @@ internal fun MembersAgentIssueReportDialog(
     canIncludeMachineLog: Boolean,
     busy: Boolean,
     errorMessage: String?,
+    errorTraceId: String? = null,
     onSubmit: (MembersAgentIssueReportSelection) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -96,7 +97,6 @@ internal fun MembersAgentIssueReportDialog(
         } else {
             stringResource(Res.string.member_report_issue_submit)
         }
-    val commitIcon: @Composable () -> Unit = { RaftSlotIcon(RaftLucideIconName.Bug) }
     val commit: () -> Unit = {
         onSubmit(
             MembersAgentIssueReportSelection(
@@ -121,8 +121,7 @@ internal fun MembersAgentIssueReportDialog(
         commitLabel = commitLabel,
         onCommit = commit,
         commitEnabled = consented,
-        commitLoading = busy,
-        commitIcon = commitIcon
+        commitLoading = busy
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
@@ -174,15 +173,18 @@ internal fun MembersAgentIssueReportDialog(
                         enabled = !busy,
                         onCheckedChange = { includeActivityHistory = it }
                     )
-                    RaftCheckboxRow(
-                        label = stringResource(Res.string.member_report_issue_runtime_transcript),
-                        description =
-                            stringResource(Res.string.member_report_issue_runtime_transcript_hint)
-                                .takeIf { includeRuntimeTranscript && runtimeTranscriptAvailable },
-                        checked = includeRuntimeTranscript,
-                        enabled = runtimeTranscriptAvailable && !busy,
-                        onCheckedChange = { includeRuntimeTranscript = it }
-                    )
+                    // Web: the runtime transcript row only exists for an agent on a machine.
+                    if (runtimeTranscriptAvailable) {
+                        RaftCheckboxRow(
+                            label = stringResource(Res.string.member_report_issue_runtime_transcript),
+                            description =
+                                stringResource(Res.string.member_report_issue_runtime_transcript_hint)
+                                    .takeIf { includeRuntimeTranscript },
+                            checked = includeRuntimeTranscript,
+                            enabled = !busy,
+                            onCheckedChange = { includeRuntimeTranscript = it }
+                        )
+                    }
                     if (canIncludeMachineLog) {
                         RaftCheckboxRow(
                             label = stringResource(Res.string.member_report_issue_machine_log_tail),
@@ -190,13 +192,6 @@ internal fun MembersAgentIssueReportDialog(
                             checked = includeMachineLogTail,
                             enabled = includeRuntimeTranscript && !busy,
                             onCheckedChange = { machineLogTailChoice = it }
-                        )
-                    }
-                    if (!runtimeTranscriptAvailable) {
-                        RaftText(
-                            text = stringResource(Res.string.member_report_issue_runtime_transcript_unavailable),
-                            style = typography.caption,
-                            color = colors.foregroundHint
                         )
                     }
                 }
@@ -242,11 +237,14 @@ internal fun MembersAgentIssueReportDialog(
             }
             errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
                 item {
-                    RaftBanner(
-                        description = stringResource(Res.string.member_report_issue_failed, message),
-                        status = RaftBannerStatus.Warning,
-                        size = RaftBannerSize.Sm
-                    )
+                    // Web: the error as is in a warning Banner; the trace ID under it (AGENTS.md).
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        RaftBanner(
+                            description = message,
+                            status = RaftBannerStatus.Warning
+                        )
+                        RaftTraceIdNote(errorTraceId)
+                    }
                 }
             }
         }
@@ -260,7 +258,6 @@ internal fun MembersAgentIssueReportDialog(
             )
             RaftButton(
                 text = commitLabel,
-                leadingIcon = commitIcon,
                 enabled = consented,
                 loading = busy,
                 // Web ReportIssueDialog submits with the pink primary action, lg in the footer.
@@ -269,6 +266,32 @@ internal fun MembersAgentIssueReportDialog(
                 onClick = commit
             )
         }
+    }
+}
+
+/**
+ * The submit error as web ReportIssueDialog words it: the failed step's label, then what went
+ * wrong (`stepError`); a server mismatch is web `serverUnavailable`, an unexpected failure web
+ * `submitFailed`.
+ */
+@Composable
+internal fun membersAgentIssueReportErrorMessage(error: ScreenError, detail: String): String {
+    val code = error.code
+    val step =
+        when {
+            code.startsWith("agent_issue_report_messages_failed") || code == "agent_issue_report_hash_failed" ->
+                Res.string.member_report_issue_step_collect_failed
+            code.startsWith("agent_issue_report_attestation_failed") -> Res.string.member_report_issue_step_attestation_failed
+            code.startsWith("agent_issue_report_create_failed") -> Res.string.member_report_issue_step_create_failed
+            code.startsWith("agent_issue_report_upload_failed") -> Res.string.member_report_issue_step_upload_failed
+            code.startsWith("agent_issue_report_complete_failed") -> Res.string.member_report_issue_step_complete_failed
+            else -> null
+        }
+    return when {
+        step != null -> "${stringResource(step)}: $detail"
+        code == "agent_issue_report_server_mismatch" -> stringResource(Res.string.member_report_issue_server_unavailable)
+        code == "agent_issue_report_failed" -> stringResource(Res.string.member_report_issue_submit_failed)
+        else -> detail
     }
 }
 
@@ -348,11 +371,11 @@ internal fun MembersAgentIssueReportReceiptDialog(
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .raftCardSurface(fill = RaftColor.SuccessSoft),
+                    .raftCardSurface(fill = RaftColor.Success),
                 contentAlignment = Alignment.Center
             ) {
                 RaftLucideIcon(
-                    RaftLucideIconName.CircleCheckBig,
+                    RaftLucideIconName.CircleCheck,
                     modifier = Modifier.size(24.dp),
                     color = RaftColor.TextBlackArgb
                 )

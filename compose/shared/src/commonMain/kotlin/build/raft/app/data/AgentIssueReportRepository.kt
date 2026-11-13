@@ -786,7 +786,11 @@ private fun AgentIssueReportSubmission.bundleFilename(nowMillis: Long): String {
 }
 
 private inline fun <reified T> HomeNetworkResponse.decode(errorCode: String): DataResult<T> {
-    if (!isSuccessful) return DataResult.Error(ScreenError(errorCode, retryable = code == 0 || code >= 500))
+    if (!isSuccessful) {
+        return DataResult.Error(
+            ScreenError(errorCode, retryable = code == 0 || code >= 500, serverMessage = agentIssueErrorTextOrNull())
+        )
+    }
     val body = bodyText?.takeIf { it.isNotBlank() }
         ?: return DataResult.Error(ScreenError(errorCode, retryable = true))
     return try {
@@ -800,8 +804,27 @@ private fun HomeNetworkResponse.toUnitResult(errorCode: String): DataResult<Unit
     if (isSuccessful) {
         DataResult.Content(Unit)
     } else {
-        DataResult.Error(ScreenError(errorCode, retryable = code == 0 || code >= 500))
+        DataResult.Error(
+            ScreenError(errorCode, retryable = code == 0 || code >= 500, serverMessage = agentIssueErrorTextOrNull())
+        )
     }
+
+/** The failed response's `error` / `message` text (web `readNestedErrorMessage`), shown after the step label. */
+@Serializable
+private data class AgentIssueErrorBody(
+    val error: String? = null,
+    val message: String? = null
+)
+
+private fun HomeNetworkResponse.agentIssueErrorTextOrNull(): String? {
+    val payload = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
+    return runCatching {
+        agentIssueReportJson.decodeFromString(AgentIssueErrorBody.serializer(), payload)
+            .let { body -> body.error ?: body.message }
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+    }.getOrNull()
+}
 
 private fun <T> DataResult<T>.toFailure(): DataResult<Nothing> =
     when (this) {

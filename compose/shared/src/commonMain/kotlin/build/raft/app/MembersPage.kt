@@ -3182,7 +3182,6 @@ internal fun membersAgentDetailOwnerForSession(
 
 private class MemberDetailRouteProvider(
     val bridge: BridgeModule,
-    val reportIssueFailedMessage: String,
     val authStore: RaftAuthSessionStore,
     val apiEnvironmentStore: SharedApiEnvironmentStore,
     val memberRepository: MemberRepository,
@@ -3911,9 +3910,7 @@ private class MemberDetailRouteProvider(
                 canIncludeMachineLog = request.canIncludeMachineLog
             )
         )
-        if (result !is DataResult.Content) {
-            bridge.toast(reportIssueFailedMessage)
-        }
+        // Web shows a failed report only inline in the panel (with its trace ID), no toast.
         return result
     }
 
@@ -3927,7 +3924,6 @@ private fun rememberMemberDetailRouteProvider(
     bridge: BridgeModule,
     storeScopeOverride: RaftShellStoreScope? = null
 ): MemberDetailRouteProvider {
-    val reportIssueFailedMessage = stringResource(Res.string.member_error_report_issue)
     val cacheScope = rememberCoroutineScope()
     val sharedStores = remember { build.raft.app.data.RaftSharedStoreRegistry.get(bridge) }
     val storeScope = storeScopeOverride ?: remember(pager.pageData.params.toString(), pager.pagerId) {
@@ -4025,7 +4021,6 @@ private fun rememberMemberDetailRouteProvider(
         }
     return remember(
         bridge,
-        reportIssueFailedMessage,
         authStore,
         sharedStores.apiEnvironmentStore,
         memberRepository,
@@ -4052,7 +4047,6 @@ private fun rememberMemberDetailRouteProvider(
             cacheScope = cacheScope,
             computersOwner = { sharedStores.computersOwner(storeScope) },
             bridge = bridge,
-            reportIssueFailedMessage = reportIssueFailedMessage,
             authStore = authStore,
             apiEnvironmentStore = sharedStores.apiEnvironmentStore,
             memberRepository = memberRepository,
@@ -7961,7 +7955,11 @@ private fun MembersDetailContent(
                 runtimeTranscriptAvailable = detail?.summary?.machineId?.isNotBlank() == true,
                 canIncludeMachineLog = canIncludeMachineLog,
                 busy = reportState?.inProgress == true,
-                errorMessage = reportState?.error?.userFacingMessage(errorStrings),
+                errorMessage =
+                    reportState?.error?.let { error ->
+                        membersAgentIssueReportErrorMessage(error, error.userFacingMessage(errorStrings))
+                    },
+                errorTraceId = reportState?.error?.traceId,
                 onSubmit = { selection -> submitIssueReport(selection, canIncludeMachineLog) },
                 onDismiss = {
                     if (reportState?.inProgress != true) {
