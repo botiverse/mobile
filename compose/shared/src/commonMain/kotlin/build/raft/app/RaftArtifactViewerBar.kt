@@ -58,17 +58,25 @@ internal fun RaftArtifactViewerFrame(
     pageDrawsBar: Boolean = false,
     /** Screenshot fixtures only (no host window there). */
     topSafeAreaOverride: Dp? = null,
+    /**
+     * In the wide layout's Artifact column (#189 step 4): not at the window's top, so where the page draws the only
+     * bar nothing of the window's is touched (the host's native bar, the status bar, its safe area).
+     */
+    inColumn: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val hasMenu = actions.onOpenInBrowser != null || (desktopMode != null && actions.onToggleDesktopMode != null)
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         if (pageDrawsBar) {
-            // No head here: the host's own bar (iOS native navigation) is hidden too.
-            RaftNativeNavBarDecline()
-            val topSafeArea = (topSafeAreaOverride ?: raftTopSafeAreaPadding()).coerceAtLeast(0.dp)
-            RaftStatusBarBackdropClaim(RaftColor.SurfaceWhite, enabled = topSafeArea > 0.dp)
-            Spacer(Modifier.fillMaxWidth().height(topSafeArea))
+            // No head here: the host's own bar (iOS native navigation) is hidden too. In a column the page's toolbar
+            // is the column's head: nothing of the window's to hide or keep clear.
+            if (!inColumn) {
+                RaftNativeNavBarDecline()
+                val topSafeArea = (topSafeAreaOverride ?: raftTopSafeAreaPadding()).coerceAtLeast(0.dp)
+                RaftStatusBarBackdropClaim(RaftColor.SurfaceWhite, enabled = topSafeArea > 0.dp)
+                Spacer(Modifier.fillMaxWidth().height(topSafeArea))
+            }
         } else RaftTopPageHeader(
             title = title,
             backgroundColor = RaftColor.SurfaceWhite,

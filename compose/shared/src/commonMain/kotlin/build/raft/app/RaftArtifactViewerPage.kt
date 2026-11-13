@@ -140,8 +140,9 @@ internal val LocalRaftArtifactOpenStoreScope = compositionLocalOf<RaftShellStore
 
 /**
  * True for the viewer in the wide layout's Artifact column (#189 step 4, RaftWidePanes.kt `RaftArtifactColumnCell`):
- * the column owns Back (its own handler, on only while the column is on screen), the viewer keeps the App's bar so its
- * head has the column's Close, and an Artifact the page navigates to opens in the same column.
+ * the column owns Back (its own handler, on only while the column is on screen), the bar is drawn as on the window
+ * page but without touching the window's top ([RaftArtifactViewerFrame] `inColumn`), and an Artifact the page
+ * navigates to opens in the same column.
  */
 internal val LocalRaftArtifactViewerInColumn = compositionLocalOf { false }
 
@@ -469,8 +470,10 @@ private fun RaftArtifactViewerScreen() {
         title = header?.title?.ifBlank { untitled } ?: untitled,
         onBack = ::closePage,
         desktopMode = desktopMode.takeIf { desktopModeOffered && viewing },
-        // In a column the App's bar stays: its head has the column's Close.
-        pageDrawsBar = pageDrawsBar && viewing && scope != null && !inColumn,
+        // One bar in a column too (#4635, web #14672): where the page draws it, its Back (`#host=close`) closes the
+        // page, and so the column; where it doesn't (an older web), the App's bar has the column's Close.
+        pageDrawsBar = pageDrawsBar && viewing && scope != null,
+        inColumn = inColumn,
         actions =
             RaftArtifactViewerBarActions(
                 onToggleDesktopMode = { toggleDesktopMode("bar") },

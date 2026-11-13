@@ -34,12 +34,16 @@ internal class RaftWideSideColumns {
         artifact = artifact.cleared()
     }
 
-    /** The window left the wide layout: every page reopens on [navigator], the one opened last on top (Back's order). */
+    /**
+     * The window left the wide layout: every page reopens on [navigator] in Back's order, the one opened last on top:
+     * the profile pages open before the Artifact, the Artifact, then those opened after it.
+     */
     fun reopenOn(navigator: RaftCmpNavigator) {
         val artifactEntry = artifact.entry
-        if (artifactEntry != null && !artifact.openedLast) navigator.openPage(artifactEntry.pageName, artifactEntry.pageData)
-        profile.pages.forEach { navigator.openPage(it.pageName, it.pageData) }
-        if (artifactEntry != null && artifact.openedLast) navigator.openPage(artifactEntry.pageName, artifactEntry.pageData)
+        val keys = profile.pagesWithKeys
+        if (artifactEntry != null) keys.filter { it.first in artifact.below }.forEach { navigator.openPage(it.second.pageName, it.second.pageData) }
+        if (artifactEntry != null) navigator.openPage(artifactEntry.pageName, artifactEntry.pageData)
+        keys.filter { artifactEntry == null || it.first !in artifact.below }.forEach { navigator.openPage(it.second.pageName, it.second.pageData) }
         cleared()
     }
 
