@@ -36738,6 +36738,8 @@ private fun ThreadMessageAvatarSlot(
     timestampAccessibilityLabel: String? = null,
 ) {
     val slotLayout = threadMessageMetadataSlotLayout(showAvatar, compactTimestampGutter, showTimestamp)
+    // Wide enough for the whole compact clock at any font scale, the same on every row.
+    val slotWidth = rememberThreadMessageGutterWidth(slotLayout.widthDp.dp)
     // Reduced-motion drag-to-see-times (ThreadMessageTimeReveal.kt): a continuation row's time fades in
     // here, where the pressed (desktop hover) time sits. Only this slot reads `active`.
     val gutterReveal = LocalThreadTimeRevealGutter.current
@@ -36747,7 +36749,7 @@ private fun ThreadMessageAvatarSlot(
     Box(
         modifier =
             Modifier
-                .width(slotLayout.widthDp.dp)
+                .width(slotWidth)
                 .height(slotLayout.heightDp.dp)
                 .then(
                     if (!showAvatar && timestampAccessibilityLabel != null) {
@@ -36799,33 +36801,27 @@ private fun ThreadMessageAvatarSlot(
             slotLayout.timestampVisible || gutterTimeShowing ->
                 Text(
                     text = timestampLabel,
-                    style =
-                        // raft-ui `continuationTime`: font-mono text-mono-meta, 12/16 regular.
-                        RaftType.Caption.copy(
-                            fontFamily = RaftMonoFamily,
-                            fontWeight = FontWeight.Normal,
-                            color = RaftColor.TextBlack.copy(alpha = 0.38f)
-                        ),
+                    style = ThreadMessageGutterClockStyle,
                     color = RaftColor.TextBlack.copy(alpha = 0.38f),
                     maxLines = 1,
-                    overflow = if (slotLayout.timestampVisible) TextOverflow.Ellipsis else TextOverflow.Visible,
-                    softWrap = slotLayout.timestampVisible,
+                    // The whole clock, never "23:…": it may run a few dp into the gap before the body.
+                    overflow = TextOverflow.Visible,
+                    softWrap = false,
                     textAlign = timestampTextAlign,
                     modifier =
-                        if (!slotLayout.timestampVisible && gutterReveal != null) {
-                            // The whole clock: it may run a few dp into the gap before the body, never cut.
-                            Modifier
-                                .align(timestampAlignment)
-                                .wrapContentWidth(
-                                    align = if (timestampTextAlign == TextAlign.End) Alignment.End else Alignment.Start,
-                                    unbounded = true,
-                                )
-                                .graphicsLayer { alpha = gutterReveal.fraction }
-                        } else {
-                            Modifier
-                                .width(slotLayout.widthDp.dp)
-                                .align(timestampAlignment)
-                        }
+                        Modifier
+                            .align(timestampAlignment)
+                            .wrapContentWidth(
+                                align = if (timestampTextAlign == TextAlign.End) Alignment.End else Alignment.Start,
+                                unbounded = true,
+                            )
+                            .then(
+                                if (!slotLayout.timestampVisible && gutterReveal != null) {
+                                    Modifier.graphicsLayer { alpha = gutterReveal.fraction }
+                                } else {
+                                    Modifier
+                                }
+                            )
                 )
         }
     }
