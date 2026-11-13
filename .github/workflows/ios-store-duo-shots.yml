@@ -204,6 +204,12 @@ jobs:
             else
               display=1
             fi
+            # Warm-up: the first launch after install (or after the swap) draws late.
+            SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE="$page" \
+            SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE_DATA="{\"pageName\":\"$page\",\"scene\":\"01-chat\",\"lang\":\"en\",\"duo\":\"$screen\"}" \
+              xcrun simctl launch --console-pty "$SIM_UDID" "$BUNDLE_ID" > "diag/warmup-$screen.log" 2>&1 &
+            wpid=$!; sleep 25; kill "$wpid" 2>/dev/null; wait "$wpid" 2>/dev/null
+            xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null
             for lang in $LANGS; do
               mkdir -p "$out/$screen/$lang"
               for scene in $SCENES; do
@@ -219,10 +225,10 @@ jobs:
                   if grep -q "SLOCK_VISUAL_FIXTURE_READY page=$page" "$log"; then ready=1; break; fi
                   sleep 1
                 done
-                sleep 8
+                sleep 10
                 xcrun simctl io "$SIM_UDID" screenshot --display=$display "$out/$screen/$lang/$scene.png" >/dev/null 2>&1
                 kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
-                facts=$(grep -a "RAFT_WINDOW_FACTS" "$log" | tail -1 | sed -E 's/^.*ios_window_facts //' | cut -c1-220)
+                facts=$(grep -a "RAFT_WINDOW_FACTS" "$log" | tail -1 | sed -E 's/^.*ios_window_facts //' | cut -c1-200)
                 sides=$(grep -a "RAFT_SIDE_ACTIONS shown" "$log" | tail -1 | sed -E 's/^.*RAFT_SIDE_ACTIONS //')
                 echo "$screen/$lang/$scene ready=$ready | $facts | $sides"
                 [ "$ready" = 1 ] || { echo "::warning::$screen/$lang/$scene not ready"; failed=$((failed+1)); }

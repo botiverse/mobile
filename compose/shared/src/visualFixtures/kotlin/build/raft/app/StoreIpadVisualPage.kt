@@ -255,8 +255,13 @@ private fun DuoOuterScene(scene: String) {
             "04-tasks" -> IpadTasksScene(TasksViewMode.List)
             "05-agent" -> IpadAgentScene()
             "06-activity" -> IpadActivityList(selectedKey = null)
-            "07-computers" -> IpadComputersScene()
-            else -> IpadChatScene()
+            "07-computers" -> {
+                // Computers is a pushed page on the phone: its Back is the column's (SettingsHomePage).
+                raftSideColumnControls(back = raftSideColumnBackAction(onBack = {}))
+                IpadComputersScene()
+            }
+            // The channel is a pushed page on the phone: Back, Search and Settings in the column.
+            else -> IpadChatScene(showBack = true)
         }
     }
 }
@@ -562,7 +567,7 @@ private fun IpadMessageList(messages: List<IpadMessage>, modifier: Modifier, idP
 }
 
 @Composable
-private fun IpadChannelHeader() {
+private fun IpadChannelHeader(showBack: Boolean = false) {
     val payload =
         remember {
             RaftThreadScreenPayload(
@@ -592,7 +597,7 @@ private fun IpadChannelHeader() {
         agentStatusResolver = IpadStatusResolver,
         memberAvatarResolver = IpadAvatarResolver,
         applyTopSafeArea = false,
-        showBack = false,
+        showBack = showBack,
         onBack = {},
         onOpenInChannel = {},
         onOpenMemberProfile = {},
@@ -645,9 +650,9 @@ private fun IpadComposer(placeholder: String, surfaceKind: String = RaftThreadSu
 // ---- 1. Team chat ---------------------------------------------------------------------------------
 
 @Composable
-private fun IpadChatScene() {
+private fun IpadChatScene(showBack: Boolean = false) {
     Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-        IpadChannelHeader()
+        IpadChannelHeader(showBack)
         IpadMessageList(IpadChat, Modifier.weight(1f).fillMaxWidth(), "m")
         IpadComposer(stringResource(Res.string.thread_composer_placeholder_channel, IpadChannel))
     }
