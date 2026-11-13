@@ -469,6 +469,8 @@ data class RaftProductEventConfigResponse(
 @Serializable
 data class RaftProductEventBatchResponse(
     val accepted: Int = 0,
+    /** Events this server replica had already queued (same uuid); absent when 0. */
+    val duplicates: Int = 0,
 )
 
 internal val RaftProductEventJson: Json =
@@ -517,7 +519,7 @@ sealed interface RaftProductEventsConfigResult {
 }
 
 sealed interface RaftProductEventsSendResult {
-    data class Accepted(val accepted: Int) : RaftProductEventsSendResult
+    data class Accepted(val accepted: Int, val duplicates: Int = 0) : RaftProductEventsSendResult
 
     /** The server refused this batch for good (400 malformed, 401/403/404/413): drop it. */
     data class Rejected(val code: Int) : RaftProductEventsSendResult
@@ -544,13 +546,12 @@ internal fun parseRaftProductEventsConfig(response: HomeNetworkResponse): RaftPr
 internal fun parseRaftProductEventsSend(response: HomeNetworkResponse): RaftProductEventsSendResult =
     when {
         response.isSuccessful ->
-            RaftProductEventsSendResult.Accepted(
-                runCatching {
-                    RaftProductEventJson
-                        .decodeFromString(RaftProductEventBatchResponse.serializer(), response.bodyText.orEmpty())
-                        .accepted
-                }.getOrDefault(0)
-            )
+            runCatching {
+                RaftProductEventJson
+                    .decodeFromString(RaftProductEventBatchResponse.serializer(), response.bodyText.orEmpty())
+            }.getOrNull().let { body ->
+                RaftProductEventsSendResult.Accepted(accepted = body?.accepted ?: 0, duplicates = body?.duplicates ?: 0)
+            }
         response.isRaftProductEventRetryable() -> RaftProductEventsSendResult.Retryable(response.code)
         else -> RaftProductEventsSendResult.Rejected(response.code)
     }

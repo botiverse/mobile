@@ -125,10 +125,9 @@ object RaftProductEvents {
         recorder.appRatingPromptRequested(trigger)
     }
 
-    /** See [RaftInstallSourceReport]: called once per install, after the first sign-in. */
-    fun appInstallSourceRead(properties: RaftAppInstallSourceReadProperties) {
-        recorder.appInstallSourceRead(properties)
-    }
+    /** See [RaftInstallSourceReport]: sent alone, now, and reports whether the server took it. */
+    suspend fun sendAppInstallSourceRead(properties: RaftAppInstallSourceReadProperties): RaftProductEventOnceResult =
+        recorder.client.sendOnce(RaftProductEvent.AppInstallSourceRead(properties))
 
     fun navEntrySelected(destination: RaftNavDestination?, surface: RaftNavSurface, wasActive: Boolean) {
         if (destination == null) return

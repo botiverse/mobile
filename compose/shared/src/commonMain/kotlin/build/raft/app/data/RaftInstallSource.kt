@@ -2,6 +2,13 @@ package build.raft.app.data
 
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -48,11 +55,13 @@ private val RaftInstallSourceToken = Regex("^[a-z0-9_-]{1,64}$")
 private val RaftInstallSourceCampaignPath =
     Regex("^(?!\\.+(?:/|$))[a-z0-9_.-]{1,128}(?:/(?!\\.+$)[a-z0-9_.-]{1,128})?$")
 
+/** Blank after trimming is left out (null), like any value that fails the token rule. */
 internal fun raftInstallSourceToken(value: String?): String? =
-    value?.trim()?.lowercase()?.takeIf { RaftInstallSourceToken.matches(it) }
+    value?.trim()?.lowercase()?.takeIf { it.isNotEmpty() && RaftInstallSourceToken.matches(it) }
 
+/** Blank after trimming is left out (null), like any value that fails the campaign_path rule. */
 internal fun raftInstallSourceCampaign(value: String?): String? =
-    value?.trim()?.lowercase()?.takeIf { RaftInstallSourceCampaignPath.matches(it) }
+    value?.trim()?.lowercase()?.takeIf { it.isNotEmpty() && RaftInstallSourceCampaignPath.matches(it) }
 
 /**
  * A Google Play install referrer (`utm_source=...&utm_medium=...`) as the stored properties: blank
@@ -112,10 +121,15 @@ private fun raftPercentDecode(value: String): String? {
 
 /**
  * The install source, read once per install and reported once per install (Android only):
- * the host reads it at first launch and calls [recordRead]; after the first sign-in on the install
- * it becomes one `app_install_source_read` event, sent through [RaftProductEvents] and so only to
- * a server whose `/product-events/config` allows client events ("Share usage data"). It is marked
- * sent when handed over and never sent again, even if that account does not share usage data.
+ * the host reads it at first launch and calls [recordRead]. Once the account is signed in to a
+ * server (the shell is Ready with a server: a verified account inside a server, which the batch
+ * route needs), it is sent alone through [RaftProductEvents.sendAppInstallSourceRead], stamped
+ * with the send time.
+ *
+ * The one chance is spent only when the server took it (`accepted >= 1`) or the account explicitly
+ * does not share usage data. Anything else (no server yet, offline, refused, server product
+ * analytics off, `accepted: 0`) keeps it pending: it is tried again a few times with backoff while
+ * signed in, and again on the next sign-in / launch.
  *
  * State lives in the per-install device-state store ([raftDeviceStateKeyValueStore], excluded from
  * backup), so a restored backup reads and reports its own install. Hosts that never call [install]
@@ -124,10 +138,15 @@ private fun raftPercentDecode(value: String): String? {
 object RaftInstallSourceReport {
     private const val PropertiesKey = "installSource:properties"
     private const val SentKey = "installSource:sent"
+    private const val RetryBaseMillis = 60_000L
+    private const val MaxAttemptsPerRun = 6
 
     private val lock = SynchronizedObject()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var store: SharedPreferenceStore? = null
     private var signedIn = false
+    /** One attempt loop at a time; never cancelled, so a send that reached the server is always marked. */
+    private var sendJob: Job? = null
 
     fun install(store: SharedPreferenceStore) {
         synchronized(lock) { this.store = store }
@@ -155,30 +174,58 @@ object RaftInstallSourceReport {
         maybeSend()
     }
 
+    /** Signed in to a server (called from [RaftProductEvents.setSignedIn] with a non-blank server id). */
     internal fun onSignedIn() {
         synchronized(lock) { signedIn = true }
         maybeSend()
     }
 
     internal fun onSignedOut() {
+        // A send in flight finishes (and is marked if delivered); later attempts find no server and stay pending.
         synchronized(lock) { signedIn = false }
     }
 
+    private fun pendingProperties(): RaftAppInstallSourceReadProperties? {
+        val current = store ?: return null
+        if (current.getString(SentKey) != null) return null
+        val raw = current.getString(PropertiesKey) ?: return null
+        val decoded =
+            runCatching {
+                RaftProductEventJson.decodeFromString(RaftAppInstallSourceReadProperties.serializer(), raw)
+            }.getOrNull()
+        // Unreadable stored value: nothing worth sending, ever.
+        if (decoded == null) current.putString(SentKey, "1")
+        return decoded
+    }
+
     private fun maybeSend() {
-        val properties =
-            synchronized(lock) {
-                val current = store ?: return
-                if (!signedIn || current.getString(SentKey) != null) return
-                val raw = current.getString(PropertiesKey) ?: return
-                val decoded =
-                    runCatching {
-                        RaftProductEventJson.decodeFromString(RaftAppInstallSourceReadProperties.serializer(), raw)
-                    }.getOrNull()
-                current.putString(SentKey, "1")
-                decoded
-            } ?: return
-        RaftProductEvents.appInstallSourceRead(properties)
-        raftLogInfoInstallSource("install_source_reported store=${properties.store.wire}")
+        synchronized(lock) {
+            if (!signedIn || sendJob?.isActive == true) return
+            val properties = pendingProperties() ?: return
+            sendJob = scope.launch { attempt(properties) }
+        }
+    }
+
+    private suspend fun attempt(properties: RaftAppInstallSourceReadProperties) {
+        repeat(MaxAttemptsPerRun) { index ->
+            if (index > 0) delay(RetryBaseMillis shl (index - 1))
+            val result =
+                runCatching { RaftProductEvents.sendAppInstallSourceRead(properties) }
+                    .getOrElse { error ->
+                        if (error is CancellationException) throw error
+                        RaftProductEventOnceResult.Pending
+                    }
+            when (result) {
+                RaftProductEventOnceResult.Delivered,
+                RaftProductEventOnceResult.NotShared -> {
+                    synchronized(lock) { store?.putString(SentKey, "1") }
+                    raftLogInfoInstallSource("install_source_reported store=${properties.store.wire} result=$result")
+                    return
+                }
+                RaftProductEventOnceResult.Pending ->
+                    raftLogInfoInstallSource("install_source_pending attempt=${index + 1}")
+            }
+        }
     }
 }
 

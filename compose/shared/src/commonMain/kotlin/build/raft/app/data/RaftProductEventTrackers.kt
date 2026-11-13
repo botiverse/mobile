@@ -377,12 +377,6 @@ class RaftProductEventsRecorder(
         client.track(RaftProductEvent.AppRatingPromptRequested(RaftAppRatingPromptRequestedProperties(trigger)))
     }
 
-    /** The install source read on this install (see [RaftInstallSourceReport]); sent at once, not batched. */
-    fun appInstallSourceRead(properties: RaftAppInstallSourceReadProperties) {
-        client.track(RaftProductEvent.AppInstallSourceRead(properties))
-        client.flushNow()
-    }
-
     /** The next thread page with [instanceId] opens a task (a task opens as a thread on phones). */
     fun markTaskThreadOpening(instanceId: String) {
         val key = instanceId.trim().takeIf { it.isNotEmpty() } ?: return
