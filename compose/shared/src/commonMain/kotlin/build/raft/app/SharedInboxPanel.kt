@@ -168,6 +168,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlin.time.TimeSource
+import build.raft.designsystem.components.RaftEmptyState
+import build.raft.designsystem.components.RaftEmptyStateDefaults
+import build.raft.designsystem.components.RaftButtonSize
 
 
 @Composable
@@ -2786,11 +2789,20 @@ private fun SharedActivityStateBody(
     }
     RaftEmptyState(
         title = title,
-        detail = detail,
-        iconName = RaftLucideIconName.Activity,
-        actionLabel = actionLabel,
-        onAction = onAction.takeIf { actionLabel != null },
-        modifier = modifier.padding(bottom = bottomContentPadding)
+        description = detail,
+        modifier = modifier.padding(bottom = bottomContentPadding).fillMaxSize(),
+        icon = { RaftContentLucideIcon(RaftLucideIconName.Activity, size = RaftEmptyStateDefaults.IconSize) },
+        actions =
+            actionLabel?.let { label ->
+                {
+                    RaftButton(
+                        text = label,
+                        onClick = onAction,
+                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
+                        size = RaftButtonSize.Lg,
+                    )
+                }
+            },
     )
 }
 

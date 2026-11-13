@@ -385,6 +385,8 @@ import build.raft.app.model.isExternalAgentRuntime
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.RaftHoverTier
 import androidx.compose.ui.semantics.selected
+import build.raft.designsystem.components.RaftEmptyState
+import build.raft.designsystem.components.RaftEmptyStateDefaults
 
 const val MEMBERS_PAGE = "compose_members"
 const val MEMBER_DETAIL_PAGE = "compose_member_detail"
@@ -5528,11 +5530,17 @@ private fun MemberDetailErrorPageShell(
     MemberDetailRoutePageShell(onBack = onBack) {
         RaftEmptyState(
             title = title,
-            detail = detail,
-            iconName = RaftLucideIconName.TriangleAlert,
-            actionLabel = stringResource(Res.string.common_retry),
-            onAction = onRetry,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            description = detail,
+            icon = { RaftContentLucideIcon(RaftLucideIconName.TriangleAlert, size = RaftEmptyStateDefaults.IconSize) },
+            actions = {
+                RaftButton(
+                    text = stringResource(Res.string.common_retry),
+                    onClick = onRetry,
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
+                    size = RaftButtonSize.Lg,
+                )
+            },
         )
     }
 }
@@ -13300,11 +13308,12 @@ private fun MembersAgentRemindersTab(
         if (rows.isEmpty()) {
             RaftEmptyState(
                 title = stringResource(Res.string.member_state_no_reminders),
-                detail = stringResource(Res.string.member_hint_no_scheduled_reminders),
-                iconName = RaftLucideIconName.AlarmClock,
+                description = stringResource(Res.string.member_hint_no_scheduled_reminders),
+                icon = { RaftContentLucideIcon(RaftLucideIconName.AlarmClock, size = RaftEmptyStateDefaults.IconSize) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 220.dp, max = 520.dp)
+                    .fillMaxSize()
             )
         } else {
             rows.take(8).forEach { reminder ->
@@ -14096,8 +14105,8 @@ private fun MembersAgentActivityTab(
         } else if (!hasRows && loadState is MembersAgentActivityLoadState.Error) {
             RaftEmptyState(
                 title = stringResource(Res.string.member_error_load_activity),
-                detail = loadState.error.userFacingMessage(errorStrings),
-                iconName = RaftLucideIconName.Activity,
+                description = loadState.error.userFacingMessage(errorStrings),
+                icon = { RaftContentLucideIcon(RaftLucideIconName.Activity, size = RaftEmptyStateDefaults.IconSize) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
@@ -14105,8 +14114,8 @@ private fun MembersAgentActivityTab(
         } else if (rows.isEmpty()) {
             RaftEmptyState(
                 title = stringResource(Res.string.member_state_no_activity),
-                detail = stringResource(Res.string.member_state_activity_start_agent),
-                iconName = RaftLucideIconName.Activity,
+                description = stringResource(Res.string.member_state_activity_start_agent),
+                icon = { RaftContentLucideIcon(RaftLucideIconName.Activity, size = RaftEmptyStateDefaults.IconSize) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)

@@ -87,6 +87,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import build.raft.designsystem.components.RaftEmptyState
+import build.raft.designsystem.components.RaftEmptyStateDefaults
 
 /*
  * Drafts (botiverse/slock #12159, server flag `drafts_section_v0`): every conversation where the person
@@ -903,8 +905,8 @@ internal fun RaftDraftsPanel(
                 item(key = "drafts-empty") {
                     RaftEmptyState(
                         title = stringResource(Res.string.drafts_empty_title),
-                        detail = stringResource(Res.string.drafts_empty_detail),
-                        iconName = RaftLucideIconName.Pencil,
+                        description = stringResource(Res.string.drafts_empty_detail),
+                        icon = { RaftContentLucideIcon(RaftLucideIconName.Pencil, size = RaftEmptyStateDefaults.IconSize) },
                         modifier = Modifier.fillMaxWidth().height(300.dp),
                     )
                 }

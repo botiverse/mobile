@@ -144,6 +144,8 @@ import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.RaftEmptyState
+import build.raft.designsystem.components.RaftEmptyStateDefaults
 
 private const val TasksListMaxBeyondBoundsItemCount = 4
 
@@ -1940,10 +1942,22 @@ private fun SharedTasksStateBody(
     }
     RaftEmptyState(
         title = title,
-        detail = detail,
-        iconName = iconName,
-        actionLabel = actionLabel,
-        onAction = onAction
+        modifier = Modifier.fillMaxSize(),
+        description = detail,
+        icon = { RaftContentLucideIcon(iconName, size = RaftEmptyStateDefaults.IconSize) },
+        actions =
+            if (actionLabel != null && onAction != null) {
+                {
+                    RaftButton(
+                        text = actionLabel,
+                        onClick = onAction,
+                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
+                        size = RaftButtonSize.Lg,
+                    )
+                }
+            } else {
+                null
+            },
     )
 }
 

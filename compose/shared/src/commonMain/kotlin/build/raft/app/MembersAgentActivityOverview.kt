@@ -89,6 +89,10 @@ import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import build.raft.designsystem.components.RaftEmptyState
+import build.raft.designsystem.components.RaftEmptyStateDefaults
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.components.RaftSlotIcon
 
 /*
  * Agent Activity tab "Overview" (web packages/web/src/components/agent/AgentActivityOverview.tsx at
@@ -199,10 +203,16 @@ internal fun MembersAgentActivityOverview(
     if (status is AgentActivityOverviewStatus.Error) {
         RaftEmptyState(
             title = stringResource(Res.string.member_activity_overview_load_error),
-            iconName = RaftLucideIconName.Activity,
-            actionLabel = stringResource(Res.string.common_retry),
-            onAction = { binding.onIntent(AgentActivityOverviewIntent.Refresh) },
-            modifier = modifier,
+            modifier = modifier.fillMaxSize(),
+            icon = { RaftContentLucideIcon(RaftLucideIconName.Activity, size = RaftEmptyStateDefaults.IconSize) },
+            actions = {
+                RaftButton(
+                    text = stringResource(Res.string.common_retry),
+                    onClick = { binding.onIntent(AgentActivityOverviewIntent.Refresh) },
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
+                    size = RaftButtonSize.Lg,
+                )
+            },
         )
         return
     }
