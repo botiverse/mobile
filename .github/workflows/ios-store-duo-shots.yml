@@ -41,36 +41,43 @@ jobs:
         run: |
           set +e
           mkdir -p probe
-          dev=$(xcode-select -p)
-          dt="/Library/Developer/CoreSimulator/Profiles/DeviceTypes/iPhone Duo.simdevicetype"
-          { find "$dt" -maxdepth 4 | head -100
-            for f in $(find "$dt" -name '*.plist'); do echo "== $f"; plutil -p "$f"; done
-          } > probe/devicetype.txt 2>&1
+          dev=$(xcode-select -p); echo "dev=$dev"
+          app="$dev/Applications/Simulator.app"; ls -la "$app/Contents/MacOS" "$app/Contents/Frameworks" 2>&1 | head -30
+          find /Applications/Xcode_27.1.app /Library/Developer -maxdepth 7 -name 'SimulatorKit*' 2>/dev/null | head > probe/simkit-paths.txt
+          cat probe/simkit-paths.txt
+          sk=$(grep -m1 'SimulatorKit.framework$' probe/simkit-paths.txt)
+          skbin="$sk/SimulatorKit"; [ -f "$skbin" ] || skbin="$sk/Versions/A/SimulatorKit"
+          for b in "$skbin" "$app/Contents/MacOS/Simulator"; do
+            echo "== $b"
+            strings -a "$b" | grep -iE 'hinge|fold|posture|angle|duo' | sort -u | head -200
+            echo "-- nm"; nm -gU "$b" 2>/dev/null | grep -iE 'hinge|fold|posture|indigo' | head -80
+          done > probe/simkit-strings.txt 2>&1
+          xcrun swift scripts/store-screenshots/duo_runtime_dump.swift "$skbin" > probe/simkit-objc.txt 2>&1
+          grep -iE 'hinge|fold|posture' probe/simkit-strings.txt probe/simkit-objc.txt | head -120
           udid=$(xcrun simctl create "Probe Duo" com.apple.CoreSimulator.SimDeviceType.iPhone-Duo com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4)
-          echo "udid=$udid"
           xcrun simctl boot "$udid"; xcrun simctl bootstatus "$udid" -b
-          sleep 10
-          xcrun simctl io "$udid" enumerate > probe/io-enumerate.txt 2>&1
-          for d in 1 3; do xcrun simctl io "$udid" screenshot --display=$d probe/boot-d$d.png; done
-          rt=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; print([r["runtimeRoot"] for r in json.load(sys.stdin)["runtimes"] if r["identifier"].endswith("iPhone19-4")][0])')
-          echo "runtimeRoot=$rt"
-          find "$rt" \( -iname '*fold*' -o -iname '*hinge*' -o -iname '*posture*' -o -iname '*duo*' \) 2>/dev/null | head -200 > probe/runtime-names.txt
-          sk="$dev/Library/PrivateFrameworks/SimulatorKit.framework/SimulatorKit"
-          cs=/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/CoreSimulator
-          simapp="$dev/Applications/Simulator.app/Contents/MacOS/Simulator"
-          ls "$dev/Library/PrivateFrameworks" > probe/dev-privateframeworks.txt
-          for b in "$sk" "$cs" "$simapp"; do echo "== $b"; strings -a "$b" | grep -iE 'fold|hinge|posture|clamshell|lid|angle' | sort -u | head -300; done > probe/strings.txt 2>&1
-          xcrun swift scripts/store-screenshots/duo_runtime_dump.swift "$cs" "$sk" > probe/objc.txt 2>&1
-          for f in "$rt/System/Library/PrivateFrameworks/SpringBoard.framework/SpringBoard" "$rt/usr/libexec/backboardd" "$rt/System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices"; do
-            echo "== $f"; strings -a "$f" 2>/dev/null | grep -iE 'fold|hinge|posture' | sort -u | head -200
-          done > probe/runtime-strings.txt 2>&1
-          xcrun simctl spawn "$udid" defaults read com.apple.springboard > probe/sb-defaults.txt 2>&1
-          xcrun simctl spawn "$udid" defaults read com.apple.backboardd > probe/bb-defaults.txt 2>&1
-          xcrun simctl spawn "$udid" launchctl list > probe/launchctl.txt 2>&1
-          wc -l probe/*.txt
-          grep -iE 'fold|hinge|posture' probe/objc.txt | head -150
-          head -80 probe/strings.txt
-          cat probe/runtime-names.txt | head -60
+          open -a "$app" --args -CurrentDeviceUDID "$udid"
+          sleep 25
+          screencapture -x probe/host-1.png
+          osascript -e 'tell application "System Events" to tell process "Simulator" to get name of every menu item of menu 1 of menu bar item "Device" of menu bar 1' > probe/device-menu.txt 2>&1
+          osascript -e 'tell application "System Events" to tell process "Simulator" to get name of every menu bar item of menu bar 1' >> probe/device-menu.txt 2>&1
+          cat probe/device-menu.txt
+          for d in 1 3; do xcrun simctl io "$udid" screenshot --display=$d probe/gui-d$d.png; done
+          # Try every Device menu item that looks like folding.
+          for item in $(tr ',' '\n' < probe/device-menu.txt | sed 's/^ *//' | grep -iE 'fold|open|hinge|flat|unfold' | tr ' ' '_'); do
+            name=$(echo "$item" | tr '_' ' ')
+            echo "### click: $name"
+            osascript -e "tell application \"System Events\" to tell process \"Simulator\" to click menu item \"$name\" of menu 1 of menu bar item \"Device\" of menu bar 1" 2>&1
+            sleep 8
+            tag=$(echo "$item" | tr -cd 'A-Za-z0-9')
+            for d in 1 3; do xcrun simctl io "$udid" screenshot --display=$d "probe/after-$tag-d$d.png"; done
+            screencapture -x "probe/host-$tag.png"
+            osascript -e 'tell application "System Events" to tell process "Simulator" to get name of every menu item of menu 1 of menu bar item "Device" of menu bar 1' 2>&1
+          done
+          python3 -c "
+          import glob, struct
+          for p in sorted(glob.glob('probe/*-d3.png')): print(p, open(p,'rb').read()[16:24].hex())
+          "
           xcrun simctl shutdown "$udid"; xcrun simctl delete "$udid"
       - uses: actions/upload-artifact@v7
         if: always()
