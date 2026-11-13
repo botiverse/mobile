@@ -638,7 +638,7 @@
     <string name="thread_composer_payload_failed">No se pudieron analizar los datos del editor</string>
     <string name="thread_composer_placeholder_message">Enviar mensaje</string>
     <string name="thread_composer_chat_unavailable">El chat no está disponible</string>
-    <string name="thread_app_bot_removed_notice">@%1$s se quitó de este servidor. Un administrador puede volver a agregarlo en Configuración › Aplicaciones.</string>
+    <string name="thread_app_bot_removed_notice">@%1$s se quitó de este servidor. Un administrador puede volver a agregarlo en Configuración › Apps.</string>
     <string name="thread_composer_placeholder_dm">Enviar mensaje a @%1$s</string>
     <string name="thread_composer_placeholder_channel">Enviar mensaje a #%1$s</string>
     <string name="thread_composer_placeholder_reply">Responder en el hilo</string>
@@ -2925,7 +2925,7 @@
     <string name="settings_connected_apps_no_marketplace_match">Ninguna app del Marketplace coincide con esta búsqueda.</string>
     <string name="settings_connected_apps_no_installed_marketplace">No hay apps del Marketplace instaladas en este espacio de trabajo.</string>
     <string name="settings_connected_apps_no_oauth_clients">Aún no hay clientes OAuth locales del servidor.</string>
-    <string name="settings_connected_apps_title">Aplicaciones</string>
+    <string name="settings_connected_apps_title">Apps</string>
     <string name="settings_connected_apps_subtitle">Marketplace, apps instaladas, clientes OAuth</string>
     <string name="settings_connected_apps_unavailable">Las aplicaciones conectadas no están disponibles en este espacio de trabajo.</string>
     <string name="settings_connected_apps_permission_required">Se requiere permiso</string>

@@ -2925,7 +2925,7 @@
     <string name="settings_connected_apps_no_marketplace_match">Nenhum app do Marketplace corresponde a esta pesquisa.</string>
     <string name="settings_connected_apps_no_installed_marketplace">Nenhum app do Marketplace instalado neste espaço de trabalho.</string>
     <string name="settings_connected_apps_no_oauth_clients">Nenhum cliente OAuth local do servidor ainda.</string>
-    <string name="settings_connected_apps_title">Aplicativos</string>
+    <string name="settings_connected_apps_title">Apps</string>
     <string name="settings_connected_apps_subtitle">Marketplace, apps instalados, clientes OAuth</string>
     <string name="settings_connected_apps_unavailable">Os apps conectados não estão disponíveis neste espaço de trabalho.</string>
     <string name="settings_connected_apps_permission_required">Permissão necessária</string>

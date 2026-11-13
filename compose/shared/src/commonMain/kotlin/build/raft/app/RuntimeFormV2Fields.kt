@@ -40,6 +40,16 @@ import build.raft.app.data.runtimeform.v2.isFormRevisionStale
 import build.raft.app.data.runtimeform.v2.isRuntimeFormV2FieldRequired
 import build.raft.app.data.runtimeform.v2.isRuntimeFormV2FieldVisible
 import build.raft.app.data.runtimeform.v2.runtimeFormV2Choices
+import build.raft.app.data.runtimeform.v2.runtimeFormV2AdvancedStartsOpen
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2HintPart
+import build.raft.app.data.runtimeform.v2.parseRuntimeFormV2Hint
+import build.raft.app.data.runtimeform.v2.runtimeFormV2HintHasLinks
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.buildAnnotatedString
+import build.raft.designsystem.components.appendRaftTextLink
+import build.raft.designsystem.text.RaftText
 import build.raft.app.data.runtimeform.v2.runtimeFormV2DependentSourceIds
 import build.raft.app.data.runtimeform.v2.runtimeFormV2SelectedConnection
 import build.raft.app.data.runtimeform.v2.runtimeFormV2SourceStatus
@@ -122,6 +132,13 @@ internal fun RuntimeFormV2Fields(
                     focusManager.clearFocus(force = true)
                 }
             }
+        }
+        // Web renderer convention: Advanced opens whenever a visible field in it has a value (on edit,
+        // or once a value is set, e.g. a picked runtime's default); the user may close it afterwards.
+        val advancedHasValue = runtimeFormV2AdvancedStartsOpen(loaded.form, values, loaded.sources)
+        val currentOnAdvancedOpenChange by rememberUpdatedState(onAdvancedOpenChange)
+        LaunchedEffect(loaded.form.runtimeId, advancedHasValue) {
+            if (advancedHasValue) currentOnAdvancedOpenChange(true)
         }
         if (advanced.isNotEmpty()) {
             AdvancedToggleButton(advancedOpen) {
@@ -299,9 +316,8 @@ private fun RuntimeFormV2FieldRow(
             // Masked input keeps its own TextFieldValue so the editing token survives recomposition.
             var secret by remember(field.key) { mutableStateOf(TextFieldValue(current)) }
             if (secret.text != current) secret = TextFieldValue(current)
-            RaftField(
+            RuntimeFormV2FieldFrame(
                 label = field.label.takeIf { it.isNotBlank() },
-                modifier = Modifier.fillMaxWidth(),
                 description =
                     (if (editing && !connectionOwned) stringResource(Res.string.runtime_form_v2_secret_keep_hint) else hint)
                         ?.takeIf { it.isNotBlank() },
@@ -336,7 +352,7 @@ private fun RuntimeFormV2FieldRow(
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(field.label, style = RaftType.Caption, color = RaftColor.TextBlack)
-                    hint?.let { Text(it, style = RaftType.Caption, color = RaftColor.TextMutedGray) }
+                    hint?.let { RuntimeFormV2HintText(it) }
                     error?.let { Text(it, style = RaftType.Caption, color = RaftColor.AccentRed) }
                 }
             }
@@ -360,7 +376,7 @@ private fun RuntimeFormV2FieldRow(
                     label = field.label,
                     required = required
                 )
-                hint?.let { Text(it, style = RaftType.Caption, color = RaftColor.TextMutedGray) }
+                hint?.let { RuntimeFormV2HintText(it) }
                 error?.let { Text(it, style = RaftType.Caption, color = RaftColor.AccentRed) }
             }
         }
@@ -515,7 +531,7 @@ private fun RuntimeFormV2FieldRow(
                         choices.options.firstOrNull { it.value == current }?.description?.let {
                             Text(it, style = RaftType.Caption, color = RaftColor.TextMutedGray)
                         }
-                        hint?.let { Text(it, style = RaftType.Caption, color = RaftColor.TextMutedGray) }
+                        hint?.let { RuntimeFormV2HintText(it) }
                         sourceStatus?.let { status ->
                             RuntimeFormV2SourceStatusLine(
                                 status = status,
@@ -745,9 +761,8 @@ private fun RuntimeFormV2TextInput(
     error: String?,
     enabled: Boolean
 ) {
-    RaftField(
+    RuntimeFormV2FieldFrame(
         label = label.takeIf { it.isNotBlank() },
-        modifier = Modifier.fillMaxWidth(),
         description = hint?.takeIf { it.isNotBlank() },
         error = error?.takeIf { it.isNotBlank() },
         enabled = enabled,
@@ -775,3 +790,79 @@ private fun rememberRuntimeFormV2Editor(keyboardOptions: KeyboardOptions): RaftD
         onFocus = {},
         onBlur = {}
     )
+
+/**
+ * A runtime form v2 hint under a custom control: plain text as before, or, when the server copy holds
+ * inline `[text](https://…)` links (web RuntimeFormV2HintText), those words as tappable TextLinks that
+ * open the link as any other link in the app does.
+ */
+@Composable
+private fun RuntimeFormV2HintText(hint: String) {
+    if (!runtimeFormV2HintHasLinks(hint)) {
+        Text(hint, style = RaftType.Caption, color = RaftColor.TextMutedGray)
+        return
+    }
+    RaftText(rememberRuntimeFormV2HintText(hint), style = RaftType.Caption, color = RaftColor.TextMutedGray)
+}
+
+@Composable
+private fun rememberRuntimeFormV2HintText(hint: String): androidx.compose.ui.text.AnnotatedString {
+    val uriHandler = LocalUriHandler.current
+    return remember(hint, uriHandler) {
+        buildAnnotatedString {
+            parseRuntimeFormV2Hint(hint).forEach { part ->
+                when (part) {
+                    is RuntimeFormV2HintPart.Plain -> append(part.text)
+                    is RuntimeFormV2HintPart.Link -> appendRaftTextLink(part.text, onClick = { uriHandler.openUri(part.href) })
+                }
+            }
+        }
+    }
+}
+
+/**
+ * [RaftField] for runtime form v2 controls: a [description] with inline https links is drawn by the form
+ * (the design-system description is plain text), in the description's place and look; an error still
+ * replaces it.
+ */
+@Composable
+private fun RuntimeFormV2FieldFrame(
+    label: String?,
+    description: String?,
+    error: String?,
+    enabled: Boolean,
+    required: Boolean,
+    content: @Composable () -> Unit
+) {
+    if (description == null || !runtimeFormV2HintHasLinks(description)) {
+        RaftField(
+            label = label,
+            modifier = Modifier.fillMaxWidth(),
+            description = description,
+            error = error,
+            enabled = enabled,
+            required = required,
+            content = content
+        )
+        return
+    }
+    val linked = rememberRuntimeFormV2HintText(description)
+    // RaftField's own 6dp gap between the control and its description.
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        RaftField(
+            label = label,
+            modifier = Modifier.fillMaxWidth(),
+            error = error,
+            enabled = enabled,
+            required = required,
+            content = content
+        )
+        if (error == null) {
+            RaftText(
+                linked,
+                style = RaftTheme.typography.caption,
+                color = if (enabled) RaftTheme.colors.foregroundHint else RaftTheme.colors.foregroundDisabled
+            )
+        }
+    }
+}

@@ -641,6 +641,26 @@ internal fun runtimeFormV2Submission(
     return JsonObject(out)
 }
 
+/**
+ * Renderer convention (slock `runtimeFormV2AdvancedStartsOpen`): the Advanced section starts open when
+ * any visible field in it has a non-blank value (a non-blank string, a non-empty map, or `true`), so a
+ * value in effect is never collapsed out of sight. Clients open it when this turns true (on edit, or
+ * once a value is set) and let the user collapse it afterwards.
+ */
+internal fun runtimeFormV2AdvancedStartsOpen(
+    form: ParsedRuntimeFormV2,
+    values: RuntimeFormV2Values,
+    sources: RuntimeFormV2Sources? = null
+): Boolean =
+    form.fields.any { field ->
+        if (!field.advanced || !isRuntimeFormV2FieldVisible(field, values, sources)) return@any false
+        when (val value = values[field.key]) {
+            is JsonObject -> value.isNotEmpty()
+            is JsonPrimitive -> if (value.isString) value.content.isNotBlank() else value.booleanOrNull == true
+            else -> false
+        }
+    }
+
 /** A server error pointer `/formValues/<field>` → the field key, else null. */
 internal fun runtimeFormV2FieldForPointer(pointer: String?): String? {
     val prefix = "/formValues/"
