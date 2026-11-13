@@ -19,12 +19,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
@@ -32,6 +36,7 @@ import androidx.compose.ui.test.isFocusable
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
 import build.raft.app.cmp.host.HostBridgeTransport
@@ -45,7 +50,13 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.components.RAFT_PANE_GRID_COLUMN_TEST_TAG
+import build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX
+import build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX
+import build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_MORE_SUFFIX
+import build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_TEST_TAG
 import build.raft.designsystem.components.RAFT_PANE_GRID_MAIN_TEST_TAG
+import build.raft.designsystem.components.RAFT_PANE_GRID_TABS_TEST_TAG
+import build.raft.designsystem.components.RaftPaneGridExpand
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -62,15 +73,19 @@ import org.robolectric.annotation.Config
 /**
  * The Artifact column (#189 step 4; web F41, channelSideLayout's `artifact` section) on a real composition, in the
  * workspace's shape as [RaftProfileColumnUiTest] has it: the split's grid and, one level in, the shell's own
- * [RaftWorkspaceDetailGrid] (the thread, the Artifact and profile columns, Focus), the conversation in its main pane
- * with a grid of its own for Tasks / Files (as ThreadPage's), the pages fixtures opening through the host navigator as
- * the real pages do ([RaftPaneHost] routes the viewer by its Artifact role):
+ * [RaftWorkspaceDetailGrid] (the thread, the Artifact and profile columns, the row's Expand), the conversation in its
+ * main pane with a grid of its own for Tasks / Files (as ThreadPage's, each a production [RaftPaneGridCard] with the
+ * column head), the pages fixtures opening through the host navigator as the real pages do ([RaftPaneHost] routes the
+ * viewer by its Artifact role):
  * - an Artifact opened from the conversation opens in a 480 column beside it, its head with Close, not as a window;
  * - the columns stand in the side layout's order, thread | Tasks / Files | Artifact | profile, and a layout that
  *   stacks the Artifact under the profile draws them in one column;
  * - Back closes the column opened last first;
- * - opening it while the thread fills the row leaves Focus; Focus entered with it open puts it out of sight (inert,
- *   checked on the merged tree) and Back leaves Focus first.
+ * - opening it while the thread is expanded restores the row; expanded with it open, it stays at 160 and Back restores
+ *   the row first;
+ * - #189 step 5, the column head: title, ⋯, Expand, Close in that order; ⋯ holds Move Left / Move Right, which move the
+ *   section in the side layout, keep it and stand the row anew; Expand / Restore and Back; the row tabs in the head's
+ *   title slot (and on top of a column whose page draws its own head).
  * Every scenario checks the row settles (no recomposition loop: the lesson of #4661).
  */
 @OptIn(ExperimentalTestApi::class)
@@ -88,7 +103,8 @@ class RaftArtifactColumnUiTest {
     private var threadOpen by mutableStateOf(false)
     private var cardsOpen by mutableStateOf(false)
     private var rowWidth by mutableStateOf(1280f)
-    private var focused by mutableStateOf(false)
+    /** The row's Expand (the shell's [RaftWideSideColumns.expand]). */
+    private val expand = RaftPaneGridExpand()
     private var artifactShown = false
     private var pageBacks = 0
     private val platformOpened = mutableListOf<String>()
@@ -107,7 +123,7 @@ class RaftArtifactColumnUiTest {
     private fun ComposeUiTest.showWorkspace(): Back {
         panes = RaftProfileColumnPanes()
         artifact = RaftArtifactColumnPane()
-        focused = false
+        expand.restore()
         artifactShown = false
         pageBacks = 0
         platformOpened.clear()
@@ -127,8 +143,8 @@ class RaftArtifactColumnUiTest {
         val sideLayout = layout
         setContent {
             dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-            // The shell's own Back, composed before the columns: it only gets what they leave; Focus is a step of its own.
-            RaftBackHandler(enabled = true, label = "test_page") { if (focused) focused = false else pageBacks++ }
+            // The shell's own Back, composed before the columns: it only gets what they and the row's Expand leave.
+            RaftBackHandler(enabled = true, label = "test_page") { pageBacks++ }
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
             val grid = remember { RaftPaneGridStore() }
             CompositionLocalProvider(
@@ -178,8 +194,7 @@ class RaftArtifactColumnUiTest {
                 tabSelected = true,
                 active = true,
                 sideThreadColumn = threadColumn,
-                threadFocused = focused,
-                onLeaveFocus = { focused = false },
+                expand = expand,
                 reportHost = true,
                 onShown = {},
                 artifact = { artifact },
@@ -213,8 +228,16 @@ class RaftArtifactColumnUiTest {
                     resizeLabel = "Resize Tasks and Files",
                     cells =
                         listOf(
-                            RaftPaneGridCell(id = "tasks") { BasicText("tasks", Modifier.fillMaxSize().testTag("tasks")) },
-                            RaftPaneGridCell(id = "files") { BasicText("files", Modifier.fillMaxSize().testTag("files")) },
+                            RaftPaneGridCell(id = "tasks") {
+                                RaftPaneGridCard(title = "Tasks", closeLabel = "Close Tasks", onClose = { cardsOpen = false }) {
+                                    BasicText("tasks", Modifier.fillMaxSize().testTag("tasks"))
+                                }
+                            },
+                            RaftPaneGridCell(id = "files") {
+                                RaftPaneGridCard(title = "Files", closeLabel = "Close Files", onClose = { cardsOpen = false }) {
+                                    BasicText("files", Modifier.fillMaxSize().testTag("files"))
+                                }
+                            },
                         ),
                     tabLabel = "Tasks · Files",
                 )
@@ -385,21 +408,22 @@ class RaftArtifactColumnUiTest {
             assertSettled()
         }
 
-    // As the profile column (PR #4664 review, A): opening the Artifact while the thread fills the row leaves Focus.
+    // As the profile column (PR #4664 review, A, now for Expand): opening the Artifact while the thread is expanded
+    // restores the row.
     @Test
-    fun anArtifactOpenedWhileTheThreadFillsTheRowLeavesFocus() =
+    fun anArtifactOpenedWhileTheThreadIsExpandedRestoresTheRow() =
         runRobolectricComposeUiTest {
             layout = RaftChannelSideLayoutStore()
             threadOpen = true
             rowWidth = 1280f
             val back = showWorkspace()
-            runOnIdle { focused = true }
+            runOnIdle { expand.toggle("thread") }
             waitForIdle()
-            near(1280f, widthDp(threadTag), "the thread fills the row in Focus")
+            near(1120f, widthDp(threadTag), "the expanded thread")
             assertSettled()
             click("thread-artifact")
             assertTrue(artifact.isOpen)
-            assertFalse(focused, "opening the Artifact left Focus")
+            assertEquals(null, expand.region, "opening the Artifact restored the row")
             near(400f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "the conversation")
             near(400f, widthDp(threadTag), "the thread")
             near(480f, widthDp(column), "the Artifact")
@@ -412,10 +436,10 @@ class RaftArtifactColumnUiTest {
             threadOpen = false
         }
 
-    // As the profile column (PR #4664 review, B): Focus entered with the Artifact open puts it out of sight, inert, and
-    // Back leaves Focus first.
+    // As the profile column (PR #4664 review, B, now for Expand): expanded with the Artifact open, it stays in sight at
+    // 160, and Back restores the row before it closes anything.
     @Test
-    fun focusEnteredWithTheArtifactOpenHidesItAndBackLeavesFocusFirst() =
+    fun expandedWithTheArtifactOpenItStaysAt160AndBackRestoresFirst() =
         runRobolectricComposeUiTest {
             layout = RaftChannelSideLayoutStore()
             threadOpen = true
@@ -423,21 +447,17 @@ class RaftArtifactColumnUiTest {
             val back = showWorkspace()
             click("artifact-card")
             assertTrue(artifactShown)
-            runOnIdle { focused = true }
+            runOnIdle { expand.toggle("thread") }
             waitForIdle()
-            near(0f, widthDp(column), "the Artifact in Focus")
-            near(1280f, widthDp(threadTag), "the thread fills the row")
-            // The merged tree, the one screen readers get: the page is gone and nothing in the column is in reach.
-            onNodeWithTag(viewer).assertDoesNotExist()
-            onAllNodes(hasAnyAncestor(hasTestTag(column)) and (hasClickAction() or isFocusable())).assertCountEquals(0)
-            assertFalse(artifactShown, "the shell's Back step must not count a column out of sight")
+            near(160f, widthDp(column), "the Artifact at 160")
+            near(960f, widthDp(threadTag), "the thread fills the row")
+            onNodeWithTag(viewer).assertExists()
+            assertTrue(artifactShown, "a column at 160 is on screen")
             assertSettled()
             back.press()
-            assertFalse(focused, "Back left Focus")
-            assertTrue(artifact.isOpen, "nothing closed unseen")
-            near(480f, widthDp(column), "back in sight")
-            onNodeWithTag(viewer).assertExists()
-            assertTrue(artifactShown)
+            assertEquals(null, expand.region, "Back restored the row")
+            assertTrue(artifact.isOpen, "nothing closed")
+            near(480f, widthDp(column), "as it was")
             back.press()
             assertFalse(artifact.isOpen)
             assertEquals(0, pageBacks)
@@ -445,6 +465,118 @@ class RaftArtifactColumnUiTest {
             assertEquals(1, pageBacks)
             assertSettled()
             threadOpen = false
+        }
+
+    private val tasksHead = RAFT_PANE_GRID_HEAD_TEST_TAG + "tasks"
+
+    // #189 step 5, rule 6 / 7: the head is the title, its own actions, ⋯, Expand, Close, left to right (web
+    // ChannelSideCard); ⋯ holds Move Left / Move Right, which move the section in the side layout and keep it, and the
+    // row stands anew by it.
+    @Test
+    fun theCardHeadIsTitleMoreExpandCloseAndMoveReordersTheRow() =
+        runRobolectricComposeUiTest {
+            val store = RaftChannelSideLayoutStore()
+            layout = store
+            threadOpen = true
+            cardsOpen = true
+            rowWidth = 1600f
+            showWorkspace()
+            val more = leftDp(tasksHead + RAFT_PANE_GRID_HEAD_MORE_SUFFIX)
+            val expandAt = leftDp(tasksHead + RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX)
+            val close = leftDp(tasksHead + RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX)
+            assertTrue(more < expandAt && expandAt < close, "⋯, Expand, Close: $more, $expandAt, $close")
+            assertTrue(leftDp(tasksHead) < more, "the title first")
+            // ⋯: Move Left and Move Right (Tasks shares its column: either way it gets one of its own).
+            click(tasksHead + RAFT_PANE_GRID_HEAD_MORE_SUFFIX)
+            onNodeWithTag(RAFT_COLUMN_MOVE_RIGHT_TEST_TAG + "tasks", useUnmergedTree = true).assertExists()
+            click(RAFT_COLUMN_MOVE_LEFT_TEST_TAG + "tasks")
+            val moved = store.layout.columns.map { column -> column.sections.map { it.wire } }
+            assertEquals(listOf(listOf("thread"), listOf("tasks"), listOf("files")), moved.take(3), "kept: $moved")
+            assertEquals(store.layout, raftParseChannelSideLayoutText(store.layout.toJson().toString()), "in the web's shape")
+            val tasksColumn = RAFT_PANE_GRID_COLUMN_TEST_TAG + "tasks"
+            val filesColumn = RAFT_PANE_GRID_COLUMN_TEST_TAG + "files"
+            assertTrue(leftDp(tasksColumn) < leftDp(filesColumn), "Tasks stands left of Files")
+            assertSettled()
+            // Alone, Move Right swaps it with Files.
+            click(tasksHead + RAFT_PANE_GRID_HEAD_MORE_SUFFIX)
+            click(RAFT_COLUMN_MOVE_RIGHT_TEST_TAG + "tasks")
+            assertTrue(leftDp(filesColumn) < leftDp(tasksColumn), "Files now left of Tasks")
+            assertEquals(listOf(listOf("thread"), listOf("files"), listOf("tasks")), store.layout.columns.map { c -> c.sections.map { it.wire } }.take(3))
+            // At the row's end (nothing right of Tasks): Move Right is there but disabled.
+            click(tasksHead + RAFT_PANE_GRID_HEAD_MORE_SUFFIX)
+            onNodeWithTag(RAFT_COLUMN_MOVE_RIGHT_TEST_TAG + "tasks", useUnmergedTree = true).assertIsNotEnabled()
+            onNodeWithTag(RAFT_COLUMN_MOVE_LEFT_TEST_TAG + "tasks", useUnmergedTree = true).assertIsEnabled()
+            assertSettled()
+            threadOpen = false
+            cardsOpen = false
+        }
+
+    // Rule 5 from a card's head: Expand fills the row with its column, every other column at 160; pressed again
+    // (Restore), or Back, the row is as it was.
+    @Test
+    fun aCardsExpandFillsTheRowAndRestoreOrBackPutsItBack() =
+        runRobolectricComposeUiTest {
+            layout = RaftChannelSideLayoutStore()
+            threadOpen = true
+            cardsOpen = true
+            rowWidth = 1600f
+            val back = showWorkspace()
+            val cards = RAFT_PANE_GRID_COLUMN_TEST_TAG + RaftPaneGridColumns.SideCards.id
+            val before = widthDp(cards)
+            click(tasksHead + RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX)
+            assertEquals("tasks", expand.region)
+            near(1280f, widthDp(cards), "Tasks / Files fills the row")
+            near(160f, widthDp(threadTag), "the thread at 160")
+            near(160f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "the conversation at 160")
+            assertSettled()
+            // The same button, now Restore.
+            click(tasksHead + RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX)
+            assertEquals(null, expand.region)
+            near(before, widthDp(cards), "as it was")
+            // Expanded again, Back restores it before anything else.
+            click(tasksHead + RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX)
+            back.press()
+            assertEquals(null, expand.region)
+            assertEquals(0, pageBacks)
+            assertTrue(cardsOpen, "nothing closed")
+            assertSettled()
+            threadOpen = false
+            cardsOpen = false
+        }
+
+    // Rule 4 with the head: where the row makes columns tabs, they stand in the shown column's head, in its title's
+    // place; a column whose page draws its own head (the Artifact viewer) gets them on top of it instead, so every tab
+    // stays in reach.
+    @Test
+    fun theRowTabsStandInTheHeadsTitleSlot() =
+        runRobolectricComposeUiTest {
+            layout = RaftChannelSideLayoutStore()
+            cardsOpen = true
+            rowWidth = 1280f
+            showWorkspace()
+            click("artifact-card")
+            // 400: the conversation, Tasks / Files and the Artifact can't have 160 each; the Artifact is a tab in
+            // Tasks / Files' column.
+            rowWidth = 400f
+            waitForIdle()
+            val cardsTabs = RAFT_PANE_GRID_TABS_TEST_TAG + RaftPaneGridColumns.SideCards.id
+            onAllNodesWithTag(cardsTabs, useUnmergedTree = true).assertCountEquals(1)
+            onNode(hasTestTag(cardsTabs) and hasAnyAncestor(hasTestTag(tasksHead)), useUnmergedTree = true).assertExists()
+            // The head with tabs has no ⋯ (no moves while it shows them), and Expand and Close stay.
+            onNodeWithTag(tasksHead + RAFT_PANE_GRID_HEAD_MORE_SUFFIX, useUnmergedTree = true).assertDoesNotExist()
+            onNodeWithTag(tasksHead + RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX, useUnmergedTree = true).assertExists()
+            assertSettled()
+            // The Artifact's tab picked (by its action: the narrow head scrolls it out of view): its column shows, the
+            // tabs on top of it (the viewer draws its own head).
+            onAllNodes(hasAnyAncestor(hasTestTag(cardsTabs)) and isSelectable(), useUnmergedTree = true)[1]
+                .performSemanticsAction(SemanticsActions.OnClick)
+            waitForIdle()
+            assertTrue(widthDp(column) >= 160f, "the Artifact shown in the group's column")
+            near(0f, widthDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + RaftPaneGridColumns.SideCards.id), "Tasks / Files a tab not shown")
+            onNodeWithTag(RAFT_PANE_GRID_TABS_TEST_TAG + RaftPaneGridColumns.Artifact.id, useUnmergedTree = true).assertExists()
+            onNodeWithTag(viewer).assertExists()
+            assertSettled()
+            cardsOpen = false
         }
 
     private companion object {

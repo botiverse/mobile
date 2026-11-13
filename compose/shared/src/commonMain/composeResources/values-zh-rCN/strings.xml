@@ -487,6 +487,11 @@
     <string name="thread_side_thread_resize">调整消息列宽度</string>
     <string name="tasks_task_column_expand">展开</string>
     <string name="tasks_task_column_restore">恢复</string>
+    <string name="pane_grid_column_expand">展开</string>
+    <string name="pane_grid_column_restore">恢复</string>
+    <string name="pane_grid_column_move_left">左移</string>
+    <string name="pane_grid_column_move_right">右移</string>
+    <string name="pane_grid_row_tabs">分栏</string>
     <string name="tasks_task_column_close">关闭任务</string>
     <string name="tasks_task_column_resize">调整面板宽度</string>
     <string name="thread_state_loading">加载中…</string>

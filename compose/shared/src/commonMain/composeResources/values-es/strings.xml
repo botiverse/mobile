@@ -483,6 +483,11 @@
     <string name="thread_side_thread_resize">Cambiar el ancho del hilo</string>
     <string name="tasks_task_column_expand">Ampliar</string>
     <string name="tasks_task_column_restore">Restaurar</string>
+    <string name="pane_grid_column_expand">Ampliar</string>
+    <string name="pane_grid_column_restore">Restaurar</string>
+    <string name="pane_grid_column_move_left">Mover a la izquierda</string>
+    <string name="pane_grid_column_move_right">Mover a la derecha</string>
+    <string name="pane_grid_row_tabs">Columnas</string>
     <string name="tasks_task_column_close">Cerrar panel de la tarea</string>
     <string name="tasks_task_column_resize">Cambiar el ancho del panel</string>
     <string name="thread_state_loading">Cargando…</string>

@@ -487,6 +487,11 @@
     <string name="thread_side_thread_resize">Resize thread</string>
     <string name="tasks_task_column_expand">Expand</string>
     <string name="tasks_task_column_restore">Restore</string>
+    <string name="pane_grid_column_expand">Expand</string>
+    <string name="pane_grid_column_restore">Restore</string>
+    <string name="pane_grid_column_move_left">Move Left</string>
+    <string name="pane_grid_column_move_right">Move Right</string>
+    <string name="pane_grid_row_tabs">Columns</string>
     <string name="tasks_task_column_close">Close task</string>
     <string name="tasks_task_column_resize">Resize panel</string>
     <string name="thread_state_loading">Loading…</string>

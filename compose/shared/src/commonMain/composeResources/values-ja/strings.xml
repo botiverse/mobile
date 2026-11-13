@@ -489,6 +489,11 @@
     <string name="thread_side_thread_resize">スレッドの幅を変更</string>
     <string name="tasks_task_column_expand">拡大</string>
     <string name="tasks_task_column_restore">元に戻す</string>
+    <string name="pane_grid_column_expand">拡大</string>
+    <string name="pane_grid_column_restore">元に戻す</string>
+    <string name="pane_grid_column_move_left">左へ移動</string>
+    <string name="pane_grid_column_move_right">右へ移動</string>
+    <string name="pane_grid_row_tabs">列</string>
     <string name="tasks_task_column_close">タスクを閉じる</string>
     <string name="tasks_task_column_resize">パネルの幅を変更</string>
     <string name="thread_state_loading">読み込み中…</string>

@@ -295,6 +295,45 @@ class RaftChannelSideLayoutTest {
         )
     }
 
+    // #189 step 5, web columnMovePlaces.test.ts: ⋯ > Move Left / Move Right. Out of a column it shares, a section goes
+    // into a new column of its own beside it; alone, its column swaps with its neighbour; only where that changes what
+    // shows.
+    private fun shapeOf(l: RaftChannelSideLayout, open: Set<RaftChannelSideSection>) =
+        l.columns.map { c -> c.sections.filter { it in open }.joinToString("+") { it.wire } }.filter { it.isNotEmpty() }.joinToString(" | ")
+
+    private fun after(l: RaftChannelSideLayout, section: RaftChannelSideSection, open: Set<RaftChannelSideSection>, left: Boolean): String? {
+        val moves = raftColumnMoves(l, open, section)
+        val drop = (if (left) moves.left else moves.right) ?: return null
+        return shapeOf(raftMoveChannelSideSection(l, section, drop), open)
+    }
+
+    @Test
+    fun outOfAColumnItSharesEachMoveMakesItAColumnOfItsOwnOnThatSide() {
+        val shown = setOf(Thread, Tasks, Files)
+        assertEquals("thread | files | tasks", after(default, Files, shown, left = true))
+        assertEquals("thread | tasks | files", after(default, Files, shown, left = false))
+        assertEquals("thread | tasks | files", after(default, Tasks, shown, left = true))
+    }
+
+    @Test
+    fun aloneInItsColumnItSwapsWithItsNeighbourAndAtTheRowsEndHasNoMoveThatWay() {
+        val shown = setOf(Thread, Tasks, Files, Artifact, Profile)
+        assertEquals("thread | artifact | tasks+files | profile", after(default, Artifact, shown, left = true))
+        assertEquals("thread | tasks+files | profile | artifact", after(default, Artifact, shown, left = false))
+        assertNull(raftColumnMoves(default, shown, Profile).right, "the last column")
+        assertNull(raftColumnMoves(default, shown, Thread).left, "the first column")
+        assertEquals("tasks+files | thread | artifact | profile", after(default, Thread, shown, left = false))
+    }
+
+    @Test
+    fun closedSectionsDontCountAndASectionNotShownHasNoMove() {
+        val shown = setOf(Thread, Tasks, Profile)
+        assertEquals("thread | profile | tasks", after(default, Profile, shown, left = true))
+        assertEquals(RaftColumnMoves(null, null), raftColumnMoves(default, shown, Files))
+        // Tasks alone on screen in a column it shares with closed Files: alone as far as what shows goes.
+        assertEquals("tasks | thread | profile", after(default, Tasks, shown, left = true))
+    }
+
     // App-only: the layout is kept per device in the web's shape, completed on read, and the pane grid stands its cells by it.
     @Test
     fun theLayoutIsKeptPerDeviceInTheWebsShape() {

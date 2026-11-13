@@ -483,6 +483,11 @@
     <string name="thread_side_thread_resize">調整討論串寬度</string>
     <string name="tasks_task_column_expand">展開</string>
     <string name="tasks_task_column_restore">還原</string>
+    <string name="pane_grid_column_expand">展開</string>
+    <string name="pane_grid_column_restore">還原</string>
+    <string name="pane_grid_column_move_left">左移</string>
+    <string name="pane_grid_column_move_right">右移</string>
+    <string name="pane_grid_row_tabs">分欄</string>
     <string name="tasks_task_column_close">關閉任務視窗</string>
     <string name="tasks_task_column_resize">調整面板寬度</string>
     <string name="thread_state_loading">載入中…</string>

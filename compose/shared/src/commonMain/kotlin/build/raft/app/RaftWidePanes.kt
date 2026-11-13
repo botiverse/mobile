@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -23,6 +24,7 @@ import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.compat.pager.RaftPaneRole
 import build.raft.app.resources.*
 import build.raft.designsystem.components.LocalRaftPaneGridColumnShown
+import build.raft.designsystem.components.RaftPaneGridExpand
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -127,6 +129,39 @@ internal fun RaftSupportingPaneShownReport(host: Boolean, shown: Boolean, report
             onDispose { report(false) }
         }
     }
+}
+
+/**
+ * Which of a column's cells are on screen (plain memory): [set] reports whether any is, only when that changes, so
+ * one cell leaving (the details closed under the profile) never reports the column gone while another still shows.
+ */
+internal class RaftShownCells {
+    private val shown = mutableSetOf<String>()
+    private var last: Boolean? = null
+
+    fun set(key: String, on: Boolean, report: (Boolean) -> Unit) {
+        if (on) shown += key else shown -= key
+        val any = shown.isNotEmpty()
+        if (any != last) {
+            last = any
+            report(any)
+        }
+    }
+}
+
+/**
+ * PR #4666 review: a cell of a side column reports through [cells] whether it is on screen
+ * ([LocalRaftPaneGridColumnShown]: false while its column is a row tab not shown), so the shell's history Back
+ * (Cmd+[, the top bar: [raftWideBackStep]) and the cell's own Back (Esc, system Back) agree on what is shown. Only the
+ * pane that hosts the columns reports ([host]); leaving the composition, the cell is not shown any more.
+ */
+@Composable
+internal fun RaftColumnCellShownReport(host: Boolean, key: String, cells: RaftShownCells, report: (Boolean) -> Unit) {
+    if (!host) return
+    val shown = LocalRaftPaneGridColumnShown.current
+    val currentReport by rememberUpdatedState(report)
+    SideEffect { cells.set(key, shown) { currentReport(it) } }
+    DisposableEffect(cells, key) { onDispose { cells.set(key, false) { currentReport(it) } } }
 }
 
 /**
@@ -268,7 +303,7 @@ internal data class RaftProfileColumnPanes(
             return if (backCell == RaftProfileColumnCell.Details) profileKeyed + detailsKeyed else detailsKeyed + profileKeyed
         }
 
-    /** Whether this has a page [before] hadn't (one opened, not one closed): the column must show (it leaves Focus). */
+    /** Whether this has a page [before] hadn't (one opened, not one closed): the column must show (it restores an expanded row). */
     fun openedSince(before: RaftProfileColumnPanes): Boolean =
         RaftProfileColumnCell.entries.any { cell ->
             val had = before.stack(cell).entries.map { it.id }.toSet()
@@ -379,7 +414,7 @@ internal fun raftProfileColumn(
  * without a role open on the platform stack. Pages under the top stay composed and inactive, so going back finds
  * them as they were. Back closes the last page opened in the column first ([RaftProfileColumnPanes.backCell]: only
  * that cell's handler is on), and only while the column is on screen ([LocalRaftPaneGridColumnShown]: not while it is
- * a row tab not shown or out of sight in Focus mode, where its pages are inactive too); handlers inside the page (a
+ * a row tab not shown, where its pages are inactive too); handlers inside the page (a
  * dialog) are composed after it and win. [panes] is read when it is needed, so two Backs in a row each act on the
  * pages as they are, not as they were drawn. [page] draws an entry: the page itself ([RaftChildPage]); a test's
  * fixture.
@@ -501,7 +536,7 @@ internal fun raftArtifactColumn(content: @Composable () -> Unit): RaftPaneGridCo
  * The Artifact column's cell: the viewer in [pane] as a child page whose `closePage` closes the column (its head's
  * leading Close: [LocalRaftPaneBackCloses]) and whose `openPage` opens another Artifact in its place, a page with the
  * Supporting role in the profile column ([openSupporting]) and any other page on the platform stack. Back closes it
- * while it is on screen ([LocalRaftPaneGridColumnShown]: not a row tab not shown, not out of sight in Focus) and
+ * while it is on screen ([LocalRaftPaneGridColumnShown]: not a row tab not shown) and
  * [backOn] (the profile column did not open a page after it); the viewer's own Back is off in a column
  * ([LocalRaftArtifactViewerInColumn]), so it is this one. [pane] is read when it is needed.
  */
@@ -560,19 +595,22 @@ internal const val RAFT_ARTIFACT_COLUMN_PAGE_TEST_TAG = "raftArtifactColumnPage"
  * only the selected tab's pane ([tabSelected]) declares it, as the side thread. [reportHost] / [onShown]: see
  * [RaftSupportingPaneShownReport].
  *
- * Focus mode ([threadFocused]: the side thread fills the row) and the column (PR #4664 review):
- * - a page opened in the column while the thread fills the row leaves Focus ([onLeaveFocus]) so that it shows (web
- *   rowLayout `useRowPlan`: a region opening into an expanded row calls `restoreRowExpand`);
- * - Focus entered with the column open puts it out of sight: its pages stay, inert and inactive, the shell's Back
- *   does not count it as shown and its own Back is off, so Back leaves Focus first and the column comes back.
+ * Expand (#189 rule 5, [expand]: the shell's; it replaced the thread's Focus mode, step 5): the region expanded fills
+ * the row, every other column at 160 and clipped, still in sight. A page opened in the columns while a region is
+ * expanded restores the row so that it shows (web rowLayout `useRowPlan`: a region opening into an expanded row calls
+ * `restoreRowExpand`), and Back restores it before anything closes (web: Escape, before the panels' own).
+ *
+ * Each column's cells report whether they are on screen ([RaftColumnCellShownReport], [LocalRaftPaneGridColumnShown]:
+ * not while a row tab not shown), so the shell's history Back (Cmd+[, the top bar) skips a column out of sight as the
+ * column's own Back (Esc, system Back) does (PR #4666 review).
  *
  * [panes] is read where it is needed (the shell's state), so two Backs in a row each act on the pages as they are.
  *
  * The Artifact column (#189 step 4): an Artifact opened under the conversation's host (its messages, the thread, a
  * column beside them) opens in it where [wide] ([RaftPaneRole.Artifact]); [artifact] is its page, [artifactOpen]
  * whether it may show here and has one (as [columnOpen]), [onArtifactShown] reports it as [onShown] does. Like the
- * profile column it leaves Focus when it opens, and is out of sight, inert and without Back while the thread fills the
- * row. Back closes whichever of the two columns opened last first.
+ * profile column it restores an expanded row when it opens. Back closes whichever of the two columns opened last
+ * first.
  */
 @Composable
 internal fun RaftWorkspaceDetailGrid(
@@ -584,8 +622,6 @@ internal fun RaftWorkspaceDetailGrid(
     tabSelected: Boolean,
     active: Boolean,
     sideThreadColumn: RaftPaneGridColumn?,
-    threadFocused: Boolean,
-    onLeaveFocus: () -> Unit,
     reportHost: Boolean,
     onShown: (Boolean) -> Unit,
     openDetail: (String, JsonObject) -> Boolean = { _, _ -> false },
@@ -597,36 +633,38 @@ internal fun RaftWorkspaceDetailGrid(
         val pageData = remember(entry) { entry.pageData.toKuiklyJson() }
         RaftChildPage(pageName = entry.pageName, pageData = pageData, modifier = Modifier.fillMaxSize(), active = pageActive)
     },
+    /** The row's Expand (#189 rule 5): the shell's ([RaftWideSideColumns.expand]). */
+    expand: RaftPaneGridExpand = remember { RaftPaneGridExpand() },
     main: @Composable () -> Unit,
 ) {
-    val filling = threadFocused && sideThreadColumn != null
-    // Only the main detail pane reports whether the columns are shown; out of sight in Focus they aren't.
-    RaftSupportingPaneShownReport(host = reportHost, shown = columnOpen && !filling, report = onShown)
-    RaftSupportingPaneShownReport(host = reportHost, shown = artifactOpen && !filling, report = onArtifactShown)
+    // Rule 5: Back restores an expanded row first (web: Escape, before the panels' own). Composed when it turns on, so
+    // it is the newest handler, ahead of the columns' own.
+    RaftBackHandler(enabled = active && expand.region != null, label = "wide_row_expand", blocksBackSwipe = false) { expand.restore() }
+    // Only the main detail pane reports whether the columns are shown, each of their cells by itself.
+    val profileShownCells = remember { RaftShownCells() }
+    val artifactShownCells = remember { RaftShownCells() }
     val currentPanes by rememberUpdatedState(panes)
     val currentOnPanesChange by rememberUpdatedState(onPanesChange)
     val currentArtifact by rememberUpdatedState(artifact)
     val currentOnArtifactChange by rememberUpdatedState(onArtifactChange)
-    val currentFilling by rememberUpdatedState(filling)
-    val currentOnLeaveFocus by rememberUpdatedState(onLeaveFocus)
     val profileDeclared = columnOpen && tabSelected
     val artifactDeclared = artifactOpen && tabSelected
     val currentProfileDeclared by rememberUpdatedState(profileDeclared)
     val currentArtifactDeclared by rememberUpdatedState(artifactDeclared)
-    // Every change to the columns' pages goes through here: one that opens a page while the thread fills the row
-    // leaves Focus first (web restoreRowExpand).
+    // Every change to the columns' pages goes through here: one that opens a page while a region is expanded restores
+    // the row first (web restoreRowExpand).
     val change: (RaftProfileColumnPanes) -> Unit =
-        remember {
+        remember(expand) {
             { next: RaftProfileColumnPanes ->
-                if (currentFilling && next.openedSince(currentPanes())) currentOnLeaveFocus()
+                if (next.openedSince(currentPanes())) expand.restore()
                 currentOnPanesChange(next)
             }
         }
     val changeArtifact: (RaftArtifactColumnPane) -> Unit =
-        remember {
+        remember(expand) {
             { next: RaftArtifactColumnPane ->
                 val opened = next.entry != null && next.entry.id != currentArtifact().entry?.id
-                if (currentFilling && opened) currentOnLeaveFocus()
+                if (opened) expand.restore()
                 currentOnArtifactChange(next)
             }
         }
@@ -638,6 +676,7 @@ internal fun RaftWorkspaceDetailGrid(
     val profileColumn =
         if (profileDeclared) {
             raftProfileColumn(now.cells) { cell ->
+                RaftColumnCellShownReport(host = reportHost, key = cell.id, cells = profileShownCells, report = onShown)
                 CompositionLocalProvider(LocalRaftHost provides shellHost) {
                     RaftProfileColumnCellStack(
                         cell = cell,
@@ -658,6 +697,7 @@ internal fun RaftWorkspaceDetailGrid(
     val artifactColumn =
         if (artifactDeclared) {
             raftArtifactColumn {
+                RaftColumnCellShownReport(host = reportHost, key = RAFT_ARTIFACT_COLUMN_CELL, cells = artifactShownCells, report = onArtifactShown)
                 CompositionLocalProvider(LocalRaftHost provides shellHost) {
                     RaftArtifactColumnCell(
                         pane = artifact,
@@ -691,7 +731,7 @@ internal fun RaftWorkspaceDetailGrid(
                 // The Artifact's column before the profile's: both trail, in this order (web DEFAULT_CHANNEL_SIDE_LAYOUT).
                 columns = listOfNotNull(sideThreadColumn, artifactColumn, profileColumn),
                 modifier = modifier,
-                fillColumn = RaftPaneGridColumns.Thread.id.takeIf { filling },
+                expand = expand,
                 main = main,
             )
         }

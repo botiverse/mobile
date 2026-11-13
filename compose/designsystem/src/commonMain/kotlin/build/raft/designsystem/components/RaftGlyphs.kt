@@ -25,7 +25,8 @@ import build.raft.designsystem.theme.RaftTheme
  * the top bar's Back arrow, the jump pills' arrows, a sidebar channel's `hash` / `lock`, a group header's sort
  * arrows and an action card's default `zap`, a thread
  * summary's draft `pencil`, a saved message's `bookmark`, a forwarded bundle's `forward` and `file`
- * and a quoted message's thread `message-square`. Each is the 24x24 outline drawn with Lucide's
+ * and a quoted message's thread `message-square`, and a pane grid column head's ⋯, Expand / Restore and
+ * Move Left / Move Right. Each is the 24x24 outline drawn with Lucide's
  * 2-unit round stroke. App icons are not this module's business: pass them through the components' icon
  * slots.
  */
@@ -57,6 +58,21 @@ enum class RaftGlyph(internal vararg val paths: String) {
     /** Lucide `ellipsis`: a "More Actions" overflow ([RaftSideActionColumn], an item card's More menu). */
     Ellipsis(circle(12f, 12f, 1f), circle(19f, 12f, 1f), circle(5f, 12f, 1f)),
     Info(circle(12f, 12f, 10f), "M12 16v-4", "M12 8h.01"),
+
+    /** Lucide `ellipsis-vertical`: a pane grid column head's ⋯ ([RaftPaneGridColumnHead], web ColumnOverflowMenu). */
+    EllipsisVertical(circle(12f, 12f, 1f), circle(12f, 5f, 1f), circle(12f, 19f, 1f)),
+
+    /** Lucide `maximize-2`: a column head's Expand (#189 rule 5, web RowExpandAction). */
+    Maximize2("M15 3h6v6", "m21 3-7 7", "m3 21 7-7", "M9 21H3v-6"),
+
+    /** Lucide `minimize-2`: a column head's Restore, Expand pressed. */
+    Minimize2("m14 10 7-7", "M20 10h-6V4", "m3 21 7-7", "M4 14h6v6"),
+
+    /** Lucide `move-left`: a column head's ⋯ > Move Left (#189 rule 7, web columnMoves). */
+    MoveLeft("M6 8L2 12L6 16", "M2 12H22"),
+
+    /** Lucide `move-right`: a column head's ⋯ > Move Right. */
+    MoveRight("M18 8L22 12L18 16", "M2 12H22"),
     TriangleAlert(
         "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3",
         "M12 9v4",

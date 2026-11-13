@@ -392,4 +392,43 @@ class RaftWidePanesTest {
         assertFalse(columns.profile.isOpen)
         assertFalse(columns.artifact.isOpen)
     }
+
+    // #189 step 5: the shell's history Back (Cmd+[, the top bar) restores an expanded row before it closes anything, as
+    // Esc and system Back do (RaftWorkspaceDetailGrid's handler); never under the Tasks page's task column.
+    @Test
+    fun historyBackRestoresAnExpandedRowFirst() {
+        val columns = RaftWideSideColumns()
+        columns.profile = RaftProfileColumnPanes().open(MEMBER_DETAIL_PAGE, data)
+        columns.profileShown = true
+        columns.expand.expand("thread")
+        val logs = mutableListOf<String>()
+        assertFalse(columns.back(overlayOpen = true, source = "test") { logs += it }, "under the task column Back is the column's")
+        assertEquals("thread", columns.expand.region)
+        assertTrue(columns.back(overlayOpen = false, source = "test") { logs += it })
+        assertEquals(null, columns.expand.region, "restored")
+        assertTrue(columns.profile.isOpen, "nothing closed while restoring")
+        assertTrue(columns.back(overlayOpen = false, source = "test") { logs += it })
+        assertFalse(columns.profile.isOpen, "then the column")
+        assertEquals(listOf("wide_history_back source=test pops=row_expand", "wide_history_back source=test pops=profile_column cell=profile"), logs)
+        // Another conversation picked: the row is restored with its columns closed.
+        columns.expand.expand("tasks")
+        columns.cleared()
+        assertEquals(null, columns.expand.region)
+    }
+
+    // PR #4666 review: a column's cells report whether they show; one cell leaving never reports the column gone while
+    // another still shows, and only changes are reported.
+    @Test
+    fun aColumnIsShownWhileAnyOfItsCellsIs() {
+        val cells = RaftShownCells()
+        val reports = mutableListOf<Boolean>()
+        cells.set("profile", true) { reports += it }
+        cells.set("details", true) { reports += it }
+        cells.set("profile", false) { reports += it }
+        assertEquals(listOf(true), reports, "still shown by the details")
+        cells.set("details", false) { reports += it }
+        assertEquals(listOf(true, false), reports)
+        cells.set("details", false) { reports += it }
+        assertEquals(listOf(true, false), reports, "nothing new, nothing reported")
+    }
 }

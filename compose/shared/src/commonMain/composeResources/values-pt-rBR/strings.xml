@@ -483,6 +483,11 @@
     <string name="thread_side_thread_resize">Ajustar a largura da thread</string>
     <string name="tasks_task_column_expand">Expandir</string>
     <string name="tasks_task_column_restore">Restaurar</string>
+    <string name="pane_grid_column_expand">Expandir</string>
+    <string name="pane_grid_column_restore">Restaurar</string>
+    <string name="pane_grid_column_move_left">Mover para a esquerda</string>
+    <string name="pane_grid_column_move_right">Mover para a direita</string>
+    <string name="pane_grid_row_tabs">Colunas</string>
     <string name="tasks_task_column_close">Fechar detalhes da tarefa</string>
     <string name="tasks_task_column_resize">Ajustar a largura do painel</string>
     <string name="thread_state_loading">Carregando…</string>
