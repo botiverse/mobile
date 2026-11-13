@@ -495,6 +495,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
+import build.raft.app.data.map
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -11195,14 +11196,17 @@ private fun SharedMembersScreen(
                 } else {
                     null
                 }
-            val createAgentSubmit: suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit> = { submit ->
+            // [land] false: the external agent's two-step dialog stays open on its setup and lands it on Done.
+            val createAgentProfile: suspend (SharedCreateAgentDialogSubmit, Boolean) -> DataResult<MemberProfile> = { submit, land ->
                 onForegroundActivity("create_agent_submit")
                 val result =
                     createAgentCoordinator
                         .createAgent(submit.toCreateAgentRequest())
+                var created: MemberProfile? = null
                 if (result is DataResult.Content) {
                     createAgentFormStore.rememberCreatedAgent(serverId, submit)
                     val profile = createdAgentMemberProfile(result.data, submit, computersSlice.machines)
+                    created = profile
                     val nextState =
                         when (val latest = state) {
                             is SharedMembersUiState.Content ->
@@ -11213,7 +11217,7 @@ private fun SharedMembersScreen(
                     (nextState as? SharedMembersUiState.Content)?.let(onContentLoaded)
                     // Stage the landing inside submit, before the dialog's teardown cancels this
                     // coroutine (the same ordering as MembersPage, task #399 / #3140).
-                    pendingCreatedAgent = createdAgentLanding(submit, profile.inCreatingServer(serverId))
+                    if (land) pendingCreatedAgent = createdAgentLanding(submit, profile.inCreatingServer(serverId))
                     // The row above is only a stand-in: replace it with the server's record. Re-entering
                     // the page seeds the store from this cached content, so without a forced refresh the
                     // stand-in was served as a cache hit indefinitely (task #148, HuaTuo 23bc896b).
@@ -11235,12 +11239,44 @@ private fun SharedMembersScreen(
                     }
                 }
                 when (result) {
-                    is DataResult.Content -> DataResult.Content(Unit)
+                    is DataResult.Content -> DataResult.Content(created!!.inCreatingServer(serverId))
                     is DataResult.Empty -> DataResult.Empty(result.reason)
                     is DataResult.Error -> result
                     is DataResult.NoPermission -> result
                 }
             }
+            val createAgentSubmit: suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit> = { submit ->
+                createAgentProfile(submit, true).map { }
+            }
+            val externalAgentsApiClient =
+                remember(sharedStores, storeScope) {
+                    RaftAgentsApiClient(
+                        transport = RaftAgentsNetworkApi(sharedStores.networkClient(storeScope)),
+                        diagnosticsLogger = raftLogger("SlockAgentsApi", "app_shell_external_agent_create")
+                    )
+                }
+            val createExternalAgentHost =
+                RaftExternalAgentCreateHost(
+                    agentsApiClient = externalAgentsApiClient,
+                    serverUrl = sharedStores.apiEnvironmentStore.current().webUrl,
+                    create = { submit -> createAgentProfile(submit, false) },
+                    onFinished = { profile -> pendingCreatedAgent = CreatedAgentLanding.SetupGuide(profile) },
+                    onDiscarded = { profile ->
+                        (state as? SharedMembersUiState.Content)?.let { latest ->
+                            val content = latest.copy(members = latest.members.filterNot { it.id == profile.id })
+                            state = content
+                            onContentLoaded(content)
+                        }
+                        routeScope.launch {
+                            serverMembersStore.refreshMembers(
+                                ServerId(serverId),
+                                DataRequestPriority.Background,
+                                force = true,
+                                reason = "members_agent_discarded"
+                            )
+                        }
+                    },
+                )
             // Task #409: persist per-machine agent-group collapse for the
             // shared members page under the session user id.
             val membersAgentGroupCollapseStore = remember {
@@ -11340,6 +11376,7 @@ private fun SharedMembersScreen(
                         canCreateAgents = membersPayload.canCreateAgents,
                         createAgent = MembersCreateAgentInputs(
                             createAgentSubmit = createAgentSubmit,
+                            createExternalAgent = createExternalAgentHost,
                             createAgentMachines = computersSlice.machines,
                             createAgentMachinesLoading = computersSlice.initialLoadInFlight,
                             createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),

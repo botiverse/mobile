@@ -918,19 +918,33 @@ data class AgentDetailSnapshot(
     val externalStatus: ExternalAgentStatusSnapshot? = null
 )
 
-/** Wire `setupState` of `GET /agents/{id}/external-status`. */
+/**
+ * Wire `setupState` of `GET /agents/{id}/external-status` (server `externalAgentSetupState`,
+ * botiverse/slock #14534): connected (any credential not revoked was used), credential_minted
+ * (one exists, never used), disconnected (none left; a revoked one had been used),
+ * login_token_expired (never connected; the newest CLI login token expired unused),
+ * waiting_for_login (nothing yet).
+ */
 enum class ExternalAgentSetupState {
     WaitingForLogin,
     CredentialMinted,
+    LoginTokenExpired,
     Connected,
+    Disconnected,
     Unknown;
+
+    /** Web `externalSetupNeedsSignIn`: no credential it can sign in with. */
+    val needsSignIn: Boolean
+        get() = this == WaitingForLogin || this == LoginTokenExpired || this == Disconnected
 
     companion object {
         fun fromWireValue(value: String?): ExternalAgentSetupState =
             when (value?.trim()?.lowercase()) {
                 "waiting_for_login" -> WaitingForLogin
                 "credential_minted" -> CredentialMinted
+                "login_token_expired" -> LoginTokenExpired
                 "connected" -> Connected
+                "disconnected" -> Disconnected
                 else -> Unknown
             }
     }
@@ -954,7 +968,12 @@ data class ExternalAgentStatusSnapshot(
     val setupState: ExternalAgentSetupState,
     val credentialLastUsedAt: String? = null,
     val lastActivityAt: String? = null,
-    val hostedRuntime: AgentHostedRuntimeSnapshot? = null
+    val hostedRuntime: AgentHostedRuntimeSnapshot? = null,
+    /**
+     * How its person said it would connect: `existing_agent` or `sdk` (botiverse/slock #14534);
+     * null for an agent made before that, or an older server (shown as an existing agent).
+     */
+    val externalSetupMethod: String? = null
 )
 
 data class AgentDetailSummary(
