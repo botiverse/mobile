@@ -4149,6 +4149,8 @@
     <string name="settings_notifications_quiet_hours_end">종료 시간</string>
     <string name="settings_notifications_sound_title">소리</string>
     <string name="settings_notifications_sound_detail">알림이 올 때 소리를 내요. 모든 기기에 적용돼요.</string>
+    <string name="settings_notifications_followed_thread_replies_title">팔로우한 스레드의 답글</string>
+    <string name="settings_notifications_followed_thread_replies_detail">끄면 팔로우한 스레드나 작업의 답글은 나를 @멘션할 때만 알려요. 스레드는 활동에 그대로 남아요.</string>
     <string name="settings_notifications_account_save_failed">알림 설정을 저장하지 못했어요. 다시 시도해 주세요.</string>
     <string name="settings_notifications_mobile_delay_title">컴퓨터를 쓰는 동안 휴대폰 알림</string>
     <string name="settings_notifications_mobile_delay_always">바로 알림(컴퓨터를 쓰는 중에도)</string>

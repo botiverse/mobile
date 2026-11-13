@@ -227,6 +227,7 @@ internal fun SettingsNotificationsContent(
                             settings = accountSettings,
                             saving = accountState.saving,
                             saveFailed = failedSection == SettingsNotificationsSaveSection.Schedule,
+                            saveFailedTraceId = accountState.errorTraceId.takeIf { failedSection == SettingsNotificationsSaveSection.Schedule },
                             nowEpochMillis = now,
                             timeZoneId = zone,
                             onSave = { patch, onDone -> save(SettingsNotificationsSaveSection.Schedule, patch, onDone) }
@@ -243,6 +244,7 @@ internal fun SettingsNotificationsContent(
                             saveFailed =
                                 failedSection == SettingsNotificationsSaveSection.Content ||
                                     actionState?.action == MOBILE_ACTION_PUSH_PREVIEW_MODE && actionState.errorCode != null,
+                            saveFailedTraceId = accountState.errorTraceId.takeIf { failedSection == SettingsNotificationsSaveSection.Content },
                             onPreviewChange = { mode ->
                                 if (devicePreview) {
                                     onPushPreviewModeChange(mode.wireName)

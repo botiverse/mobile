@@ -204,6 +204,16 @@ internal val RaftSettingsSearchEntries: List<RaftSettingsSearchEntry> =
             words(listOf("sound", "ringtone", "audio"), listOf("提示音", "声音", "铃声")),
             Notifications,
         ),
+        // Added on the web in botiverse/slock #14677 (9b284c6d); its en / zh-cn aliases.
+        RaftSettingsSearchEntry(
+            "notification-followed-thread-replies",
+            "notifications",
+            words(
+                listOf("thread notifications", "followed threads", "task replies", "only mentions", "every device"),
+                listOf("消息列通知", "关注的消息列", "任务回复", "只通知@我", "所有设备"),
+            ),
+            Notifications,
+        ),
         RaftSettingsSearchEntry(
             "theme",
             "theme",

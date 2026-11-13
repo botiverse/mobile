@@ -41,7 +41,7 @@ import org.robolectric.annotation.GraphicsMode
  * Settings › Notifications in the web's order and copy (botiverse/slock
  * packages/web/src/components/settings/notifications): This device, Pause and schedule (quiet
  * hours on, saved for another zone), Content (preview, the phone delay set to Always with its
- * note, sound), Servers (the current server first, one channel customized) and the link to the
+ * note, sound, replies in threads I follow), Servers (the current server first, one channel customized) and the link to the
  * current server's own page, which is also shown on its own. Phone light and dark; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -186,6 +186,7 @@ private fun NotificationsFixture(pausedUntil: String? = null, serverOnly: Boolea
                 previewMode = PushPreviewMode.SenderOnly.wireName,
                 sound = true,
                 mobileDelay = "always",
+                followedThreadReplies = true,
                 version = 3
             ),
         onOpenServerNotifications = {}

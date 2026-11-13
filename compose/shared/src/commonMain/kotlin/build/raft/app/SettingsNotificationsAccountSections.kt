@@ -18,6 +18,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -133,13 +134,17 @@ private fun SettingsNotificationsNote(text: String, hint: Boolean = false) {
     )
 }
 
+/** A failed save: the warning, and under it the request's trace ID when a server answered. */
 @Composable
-private fun SettingsNotificationsSaveFailed() {
-    RaftBanner(
-        description = stringResource(Res.string.settings_notifications_account_save_failed),
-        status = RaftBannerStatus.Warning,
-        size = RaftBannerSize.Sm
-    )
+private fun SettingsNotificationsSaveFailed(traceId: String?) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftBanner(
+            description = stringResource(Res.string.settings_notifications_account_save_failed),
+            status = RaftBannerStatus.Warning,
+            size = RaftBannerSize.Sm
+        )
+        RaftTraceIdNote(traceId)
+    }
 }
 
 /**
@@ -151,6 +156,7 @@ internal fun SettingsNotificationPauseSection(
     settings: RaftNotificationAccountSettings,
     saving: Boolean,
     saveFailed: Boolean,
+    saveFailedTraceId: String? = null,
     nowEpochMillis: Long,
     timeZoneId: String,
     onSave: (RaftNotificationAccountSettingsPatch, (Boolean) -> Unit) -> Unit
@@ -163,7 +169,7 @@ internal fun SettingsNotificationPauseSection(
     SettingsNotificationsSection(RaftLucideIconName.Moon, stringResource(Res.string.settings_notifications_pause_section)) {
         RaftCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (saveFailed) SettingsNotificationsSaveFailed()
+                if (saveFailed) SettingsNotificationsSaveFailed(saveFailedTraceId)
                 Column(Modifier.settingsSearchAnchor("pause-notifications"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SettingsNotificationsControlTitle(pauseTitle)
                     if (pausedUntil != null) {
@@ -351,8 +357,9 @@ private fun SettingsNotificationPauseChoice.localizedLabel(): String =
 
 /**
  * Content (web `ContentCard`): what notifications show, when the phone alerts while a computer is
- * in use, and sound. [previewMode] / [onPreviewChange] are the preview row's value and writer;
- * [mobileDelay] is null on a server without the setting (the row is then not shown).
+ * in use, sound, and replies in threads I follow. [previewMode] / [onPreviewChange] are the preview
+ * row's value and writer; the phone alerts and followed-thread rows are not shown on a server
+ * without those settings.
  */
 @Composable
 internal fun SettingsNotificationContentSection(
@@ -360,6 +367,7 @@ internal fun SettingsNotificationContentSection(
     previewMode: PushPreviewMode,
     saving: Boolean,
     saveFailed: Boolean,
+    saveFailedTraceId: String? = null,
     onPreviewChange: (PushPreviewMode) -> Unit,
     onSave: (RaftNotificationAccountSettingsPatch) -> Unit
 ) {
@@ -367,7 +375,7 @@ internal fun SettingsNotificationContentSection(
     SettingsNotificationsSection(RaftLucideIconName.Eye, stringResource(Res.string.settings_notifications_content_section)) {
         RaftCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (saveFailed) SettingsNotificationsSaveFailed()
+                if (saveFailed) SettingsNotificationsSaveFailed(saveFailedTraceId)
                 val previewTitle = stringResource(Res.string.settings_notifications_preview_mode_title)
                 Column(Modifier.settingsSearchAnchor("notification-preview"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SettingsNotificationsControlTitle(previewTitle)
@@ -421,10 +429,64 @@ internal fun SettingsNotificationContentSection(
                         }
                     )
                 }
+                if (settings.followedThreadRepliesSupported) {
+                    SettingsNotificationFollowedThreadRepliesRow(settings, saving, onSave)
+                }
             }
         }
     }
 }
+
+/** Test tag of the "Replies in threads I follow" switch row. */
+internal const val SettingsNotificationFollowedThreadRepliesTestTag = "settings-notification-followed-thread-replies"
+
+/**
+ * "Replies in threads I follow" (web ContentCard, `followedThreadReplies`, #triage:#357), after
+ * Sound: off, a followed thread or task notifies only when a reply @mentions you; the description
+ * says what off keeps (the thread stays in Activity). Shown only when the server has the setting.
+ */
+@Composable
+internal fun SettingsNotificationFollowedThreadRepliesRow(
+    settings: RaftNotificationAccountSettings,
+    saving: Boolean,
+    onSave: (RaftNotificationAccountSettingsPatch) -> Unit
+) {
+    val title = stringResource(Res.string.settings_notifications_followed_thread_replies_title)
+    RaftListRowGroup(
+        Modifier.settingsSearchAnchor("notification-followed-thread-replies", SettingsSearchCardShape)
+            .testTag(SettingsNotificationFollowedThreadRepliesTestTag)
+    ) {
+        RaftListRow(
+            title = title,
+            variant = RaftListRowVariant.Plain,
+            titleMaxLines = 2,
+            description = stringResource(Res.string.settings_notifications_followed_thread_replies_detail),
+            wrapDescription = true,
+            trailing = {
+                RaftSwitch(
+                    checked = settings.followedThreadRepliesEnabled,
+                    onCheckedChange = { enabled -> settingsFollowedThreadRepliesPatch(settings, enabled)?.let(onSave) },
+                    enabled = !saving,
+                    label = title
+                )
+            }
+        )
+    }
+}
+
+/**
+ * The PATCH for flipping "Replies in threads I follow" to [enabled], or null when the server does
+ * not have the setting or it already reads that way.
+ */
+internal fun settingsFollowedThreadRepliesPatch(
+    settings: RaftNotificationAccountSettings,
+    enabled: Boolean
+): RaftNotificationAccountSettingsPatch? =
+    if (!settings.followedThreadRepliesSupported || settings.followedThreadRepliesEnabled == enabled) {
+        null
+    } else {
+        RaftNotificationAccountSettingsPatch(followedThreadReplies = enabled)
+    }
 
 /**
  * Servers (web `ServersCard`): every server's level, the current server first, and per server the

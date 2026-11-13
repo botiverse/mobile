@@ -21,12 +21,12 @@ internal class ScriptedAgentControlsNetworkClient : RaftNetworkClient {
     private val served = mutableMapOf<String, Int>()
     val requests = mutableListOf<AgentControlsRecordedRequest>()
 
-    fun respond(method: String, path: String, code: Int, body: String) {
+    fun respond(method: String, path: String, code: Int, body: String, headers: Map<String, List<String>> = emptyMap()) {
         val response =
             if (code in 200..299) {
-                HomeNetworkResponse(code = code, bodyText = body)
+                HomeNetworkResponse(code = code, bodyText = body, responseHeaders = headers)
             } else {
-                HomeNetworkResponse(code = code, bodyText = null, errorBodyText = body)
+                HomeNetworkResponse(code = code, bodyText = null, errorBodyText = body, responseHeaders = headers)
             }
         script.getOrPut("$method $path") { mutableListOf() }.add(response)
     }

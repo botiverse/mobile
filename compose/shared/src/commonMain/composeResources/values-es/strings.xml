@@ -4149,6 +4149,8 @@
     <string name="settings_notifications_quiet_hours_end">Hora de fin</string>
     <string name="settings_notifications_sound_title">Sonido</string>
     <string name="settings_notifications_sound_detail">Reproduce un sonido con las notificaciones, en todos los dispositivos.</string>
+    <string name="settings_notifications_followed_thread_replies_title">Respuestas en hilos que sigo</string>
+    <string name="settings_notifications_followed_thread_replies_detail">Desactivado: una respuesta en un hilo o tarea que sigues solo te notifica si te @menciona. El hilo sigue en Actividad.</string>
     <string name="settings_notifications_account_save_failed">No se pudo guardar la configuración de notificaciones. Inténtalo de nuevo.</string>
     <string name="settings_notifications_mobile_delay_title">Mientras uso una computadora, avisar a mi teléfono</string>
     <string name="settings_notifications_mobile_delay_always">Al momento, aunque esté en una computadora</string>
