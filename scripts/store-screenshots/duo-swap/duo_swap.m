@@ -59,7 +59,17 @@ int main(int argc, char **argv) {
         id serviceQueue = MSG(id, id, SEL)((id)objc_getClass("BSServiceDispatchQueue"), sel_registerName("mainQueue"));
         printf("serviceQueue=%s\n", [[serviceQueue description] UTF8String]);
         MSG(void, id, SEL, id)(connection, sel_registerName("configureConnection:"), ^(id config) {
-            dumpClass(object_getClassName(config));
+            Class Quality = objc_getClass("BSServiceQuality");
+            dumpClass("BSServiceQuality");
+            const char *qualities[] = {"userInitiated", "userInteractive", "utility", "background"};
+            for (size_t i = 0; Quality && i < 4; i++) {
+                if ([Quality respondsToSelector:sel_registerName(qualities[i])]) {
+                    id quality = MSG(id, id, SEL)((id)Quality, sel_registerName(qualities[i]));
+                    printf("config setServiceQuality: %s\n", [[quality description] UTF8String]);
+                    MSG(void, id, SEL, id)(config, sel_registerName("setServiceQuality:"), quality);
+                    break;
+                }
+            }
             MSG(void, id, SEL, id)(config, sel_registerName("setInterface:"), interface);
             const char *queueSetters[] = {"setTargetQueue:", "setServiceQueue:", "setQueue:"};
             for (size_t i = 0; i < 3; i++) {
