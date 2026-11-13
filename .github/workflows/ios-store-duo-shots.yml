@@ -47,16 +47,16 @@ jobs:
           xcrun simctl boot "$udid"; xcrun simctl bootstatus "$udid" -b
           sleep 10
           shot() { for d in 1 3; do xcrun simctl io "$udid" screenshot --display=$d "probe/$1-d$d.png" >/dev/null 2>&1; done; }
-          xcrun simctl spawn "$udid" "$tool" inspect 2>&1 | tee probe/inspect.txt | grep -v '^  [-+]' | head -60
           shot before
           xcrun simctl spawn "$udid" log stream --style compact --level debug --predicate 'process == "SpringBoard" OR process == "duo_swap"' > probe/sb-log.txt 2>&1 &
           logpid=$!
           sleep 2
           i=0
-          for id in com.apple.springboard.sbdisplay SBSDisplayToolServiceServerInterface com.apple.springboard.sbdisplay.service; do
+          for mach in auto com.apple.springboard.services com.apple.springboard.sbdisplay.service; do
             i=$((i+1))
-            echo "### identifier $id"
-            xcrun simctl spawn "$udid" "$tool" swap "$id" 2>&1 | grep -E 'completion|returned|interface=' | tee "probe/swap$i.txt"
+            echo "### mach $mach"
+            xcrun simctl spawn "$udid" "$tool" swap com.apple.springboard.sbdisplay.service "$mach" > "probe/swap$i.txt" 2>&1
+            grep -vE '^\s+[-+]' "probe/swap$i.txt" | grep -vE '^\s{2,}[0-9]' | tail -25
             sleep 8; shot "swap$i"
             python3 -c "
           from PIL import Image; im=Image.open('probe/swap$i-d3.png').convert('L'); print('d3 extrema', im.getextrema())" 2>/dev/null || true

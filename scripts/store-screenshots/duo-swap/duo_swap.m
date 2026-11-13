@@ -34,6 +34,29 @@ static id call(id target, const char *sel) {
     return MSG(id, id, SEL)(target, s);
 }
 
+/// The first BSServiceConnectionEndpoint reachable from [obj] through object ivars (depth-limited).
+static id findEndpoint(id obj, int depth) {
+    if (!obj || depth > 4) return nil;
+    if ([obj isKindOfClass:objc_getClass("BSServiceConnectionEndpoint")]) return obj;
+    if ([obj respondsToSelector:sel_registerName("endpoint")]) {
+        id e = MSG(id, id, SEL)(obj, sel_registerName("endpoint"));
+        if ([e isKindOfClass:objc_getClass("BSServiceConnectionEndpoint")]) return e;
+    }
+    for (Class c = object_getClass(obj); c && c != NSObject.class; c = class_getSuperclass(c)) {
+        unsigned n = 0;
+        Ivar *ivars = class_copyIvarList(c, &n);
+        for (unsigned i = 0; i < n; i++) {
+            if (ivar_getTypeEncoding(ivars[i])[0] != '@') continue;
+            id v = object_getIvar(obj, ivars[i]);
+            printf("%*s%s.%s = %s\n", depth * 2, "", class_getName(c), ivar_getName(ivars[i]), [[[v description] substringToIndex:MIN((NSUInteger)200, [[v description] length])] UTF8String]);
+            id e = findEndpoint(v, depth + 1);
+            if (e) { free(ivars); return e; }
+        }
+        free(ivars);
+    }
+    return nil;
+}
+
 int main(int argc, char **argv) {
     @autoreleasepool {
         setvbuf(stdout, NULL, _IONBF, 0);
@@ -67,6 +90,17 @@ int main(int argc, char **argv) {
             return 0;
         }
         NSString *machName = argc > 3 ? @(argv[3]) : @"com.apple.frontboard.systemappservices";
+        if ([machName isEqualToString:@"auto"]) {
+            // SpringBoardServices' own lock screen client knows which endpoint SpringBoard's services are on.
+            id lock = [[objc_getClass("SBSLockScreenService") alloc] init];
+            id lockEndpoint = findEndpoint(lock, 0);
+            printf("lock screen endpoint=%s\n", [[lockEndpoint description] UTF8String]);
+            if ([lockEndpoint respondsToSelector:sel_registerName("machName")]) machName = MSG(id, id, SEL)(lockEndpoint, sel_registerName("machName"));
+            else if ([lockEndpoint respondsToSelector:sel_registerName("targetDescription")]) machName = MSG(id, id, SEL)(lockEndpoint, sel_registerName("targetDescription"));
+            if ([lock respondsToSelector:sel_registerName("invalidate")]) MSG(void, id, SEL)(lock, sel_registerName("invalidate"));
+            printf("machName=%s\n", machName.UTF8String);
+            dumpClass("BSServiceConnectionEndpoint");
+        }
         NSString *service = @"com.apple.springboard.sbdisplay.service";
         NSString *identifier = argc > 2 ? @(argv[2]) : service;
         Class Endpoint = objc_getClass("BSServiceConnectionEndpoint");
