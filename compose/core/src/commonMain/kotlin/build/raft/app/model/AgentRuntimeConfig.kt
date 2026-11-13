@@ -137,8 +137,7 @@ val RUNTIMES: List<RuntimeInfo> = listOf(
     RuntimeInfo(id = "opencode", displayName = "OpenCode", abbreviation = "OC", binary = "opencode", supported = true),
     RuntimeInfo(id = "pi", displayName = "Pi", abbreviation = "PI", binary = "pi", supported = true),
     RuntimeInfo(id = "qwen", displayName = "Qwen Code", abbreviation = "QW", binary = "qwen", supported = true, experimental = true),
-    RuntimeInfo(id = "qoder", displayName = "Qoder", abbreviation = "QD", binary = "qodercli", supported = true, experimental = true),
-    RuntimeInfo(id = "codebuddy", displayName = "CodeBuddy Code", abbreviation = "CB", binary = "codebuddy", supported = true, experimental = true)
+    RuntimeInfo(id = "qoder", displayName = "Qoder", abbreviation = "QD", binary = "qodercli", supported = true, experimental = true)
 )
 
 /** The bundled table's name for [id], else [id] itself. Shared code goes through the catalog first. */
