@@ -4197,9 +4197,9 @@
     <string name="artifacts_card_latest_is">最新は v%1$d</string>
     <string name="artifacts_card_updated_by">%1$s が%2$sに更新</string>
     <string name="message_card_updated">%1$sに更新</string>
-    <string name="message_card_waiting_for">%1$s を待っています</string>
-    <string name="message_card_waiting_for_someone">ほかの人を待っています</string>
-    <string name="message_card_declined">このサーバーで %1$s をオフにしているため、これらのボタンは使えません。使うには、ここで再び許可するか、Web 版の設定で変更してください。</string>
+    <string name="message_card_waiting_for">%1$s さんの対応待ち</string>
+    <string name="message_card_waiting_for_someone">ほかの人の対応待ち</string>
+    <string name="message_card_declined">%1$s をオフにしています。</string>
     <string name="message_card_allow_app">%1$s を許可</string>
     <string name="artifacts_card_open_in_new_page">新しいページで開く</string>
     <string name="artifacts_card_comments_one">コメント 1 件</string>

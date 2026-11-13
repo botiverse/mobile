@@ -48,7 +48,7 @@ import kotlinx.coroutines.launch
  *  - `waiting_for` (the card is for someone else): disabled, "Waiting for {name}" under them;
  *  - `consent: "needed"`: enabled; the first press asks the App's first-view question (the link card
  *    prompt), and once allowed the card is read again;
- *  - `consent: "declined"`: disabled, saying the viewer turned the App off and how to change it,
+ *  - `consent: "declined"`: disabled, "You turned off {App}." (web copy, Kirby),
  *    with Allow {App} (allowing lifts the decline);
  *  - otherwise (not read yet, a failed read, the App can't act now): disabled, no reason.
  */

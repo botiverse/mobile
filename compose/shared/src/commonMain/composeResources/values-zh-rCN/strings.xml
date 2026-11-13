@@ -4197,9 +4197,9 @@
     <string name="artifacts_card_latest_is">最新是 v%1$d</string>
     <string name="artifacts_card_updated_by">%1$s 更新于 %2$s</string>
     <string name="message_card_updated">更新于 %1$s</string>
-    <string name="message_card_waiting_for">等待 %1$s</string>
-    <string name="message_card_waiting_for_someone">等待其他人</string>
-    <string name="message_card_declined">你已在这个服务器上关闭 %1$s，这些按钮对你不可用。要使用它们，请在这里重新允许，或在网页版设置中更改。</string>
+    <string name="message_card_waiting_for">等待 %1$s 处理</string>
+    <string name="message_card_waiting_for_someone">等待其他人处理</string>
+    <string name="message_card_declined">你已关闭 %1$s。</string>
     <string name="message_card_allow_app">允许 %1$s</string>
     <string name="artifacts_card_open_in_new_page">在新页面打开</string>
     <string name="artifacts_card_comments_one">1 条评论</string>
