@@ -664,13 +664,15 @@ internal class RaftPaneGridHost internal constructor() {
                 }
             }
         val first = sources.first().column
+        val minWidthDp = sources.maxOf { it.column.bounds.minWidthDp }
         val column =
             RaftPaneGridColumn(
                 bounds =
                     RaftPaneGridColumnBounds(
                         id = slot.key,
-                        defaultWidthDp = slot.widthDp,
-                        minWidthDp = sources.maxOf { it.column.bounds.minWidthDp },
+                        // Never made narrower than what its cells need to show unclipped (the Artifact's 480).
+                        defaultWidthDp = maxOf(slot.widthDp, minWidthDp),
+                        minWidthDp = minWidthDp,
                     ),
                 resizeLabel = first.resizeLabel,
                 cells = cells,

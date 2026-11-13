@@ -4069,6 +4069,7 @@
     <string name="artifacts_activity_someone">Alguém</string>
     <string name="artifacts_activity_untitled">Artifact sem título</string>
     <string name="artifacts_viewer_more">Mais ações</string>
+    <string name="artifacts_column_title">Artifact</string>
     <string name="artifacts_viewer_unavailable_title">Não é possível abrir este Artifact</string>
     <string name="artifacts_viewer_unavailable_body">Ele não existe ou você não tem acesso.</string>
     <string name="artifacts_viewer_open_in_browser">Abrir no navegador</string>

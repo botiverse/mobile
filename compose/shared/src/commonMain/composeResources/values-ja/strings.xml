@@ -4232,6 +4232,7 @@
     <string name="artifacts_activity_someone">誰か</string>
     <string name="artifacts_activity_untitled">無題の Artifact</string>
     <string name="artifacts_viewer_more">その他の操作</string>
+    <string name="artifacts_column_title">Artifact</string>
     <string name="artifacts_viewer_unavailable_title">この Artifact を開けません</string>
     <string name="artifacts_viewer_unavailable_body">存在しないか、閲覧する権限がありません。</string>
     <string name="artifacts_viewer_open_in_browser">ブラウザで開く</string>

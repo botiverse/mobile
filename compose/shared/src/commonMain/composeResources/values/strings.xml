@@ -4232,6 +4232,7 @@
     <string name="artifacts_activity_someone">Someone</string>
     <string name="artifacts_activity_untitled">Untitled Artifact</string>
     <string name="artifacts_viewer_more">More Actions</string>
+    <string name="artifacts_column_title">Artifact</string>
     <string name="artifacts_viewer_unavailable_title">Can't open this Artifact</string>
     <string name="artifacts_viewer_unavailable_body">It doesn't exist, or you don't have access to it.</string>
     <string name="artifacts_viewer_open_in_browser">Open in Browser</string>

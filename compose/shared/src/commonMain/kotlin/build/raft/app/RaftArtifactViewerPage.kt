@@ -139,6 +139,13 @@ private class RaftArtifactViewerHost(
 internal val LocalRaftArtifactOpenStoreScope = compositionLocalOf<RaftShellStoreScope?> { null }
 
 /**
+ * True for the viewer in the wide layout's Artifact column (#189 step 4, RaftWidePanes.kt `RaftArtifactColumnCell`):
+ * the column owns Back (its own handler, on only while the column is on screen), the viewer keeps the App's bar so its
+ * head has the column's Close, and an Artifact the page navigates to opens in the same column.
+ */
+internal val LocalRaftArtifactViewerInColumn = compositionLocalOf { false }
+
+/**
  * Opens the viewer page for [target] from [this] page, with [storeScope] when given (else the
  * page's own scope). False when no page can be opened from here (no scope): the caller falls back.
  */
@@ -334,7 +341,9 @@ private fun RaftArtifactViewerScreen() {
     val target = remember(params.toString()) { params.raftArtifactViewerTargetOrNull() }
     LaunchedEffect(Unit) { RaftArtifactOpenTrace.mark("page_shown") }
     fun closePage() = pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
-    RaftBackHandler(enabled = true, label = "artifact_viewer", blocksBackSwipe = false, onBack = ::closePage)
+    // In the wide layout's Artifact column the column's Back closes it (only while it is on screen): this one is off.
+    val inColumn = LocalRaftArtifactViewerInColumn.current
+    RaftBackHandler(enabled = !inColumn, label = "artifact_viewer", blocksBackSwipe = false, onBack = ::closePage)
     // Desktop Mode: this device's choice, offered on a touch screen narrower than a desktop.
     val desktopModePreference = remember { raftArtifactViewerDesktopModePreference() }
     var desktopModeChosen by remember { mutableStateOf(desktopModePreference?.read() == true) }
@@ -424,8 +433,12 @@ private fun RaftArtifactViewerScreen() {
         closePage()
         when (val navigation = leaving.navigation) {
             is RaftArtifactViewerNavigation.OpenMessage -> RaftMessageLinkIngress.accept(navigation.url, "artifact_viewer", webBaseUrl)
-            // Another Artifact (a link in the page): the app shell opens it in the viewer.
-            is RaftArtifactViewerNavigation.OpenArtifact -> RaftArtifactLinkInbox.Process.submit(navigation.target, "artifact_viewer")
+            // Another Artifact (a link in the page): in the column, in its place (web: one Artifact at a time); else the
+            // app shell opens it in the viewer.
+            is RaftArtifactViewerNavigation.OpenArtifact ->
+                if (!inColumn || !pager.openRaftArtifactViewerPage(navigation.target, host.openStoreScope)) {
+                    RaftArtifactLinkInbox.Process.submit(navigation.target, "artifact_viewer")
+                }
             else -> Unit
         }
     }
@@ -456,7 +469,8 @@ private fun RaftArtifactViewerScreen() {
         title = header?.title?.ifBlank { untitled } ?: untitled,
         onBack = ::closePage,
         desktopMode = desktopMode.takeIf { desktopModeOffered && viewing },
-        pageDrawsBar = pageDrawsBar && viewing && scope != null,
+        // In a column the App's bar stays: its head has the column's Close.
+        pageDrawsBar = pageDrawsBar && viewing && scope != null && !inColumn,
         actions =
             RaftArtifactViewerBarActions(
                 onToggleDesktopMode = { toggleDesktopMode("bar") },

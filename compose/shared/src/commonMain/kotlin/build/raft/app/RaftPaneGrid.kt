@@ -126,6 +126,12 @@ internal object RaftPaneGridColumns {
     val Profile = RaftPaneGridColumnBounds(id = "profile", defaultWidthDp = 400f, minWidthDp = 320f)
 
     /**
+     * Web channelSideLayout's `[artifact]` column (#189 step 4; F41): the Artifact viewer, 480 by default and at least
+     * 480 (`CHANNEL_SIDE_SECTION_MIN_WIDTH.artifact`); by default between Tasks / Files and the profile column.
+     */
+    val Artifact = RaftPaneGridColumnBounds(id = "artifact", defaultWidthDp = 480f, minWidthDp = 480f)
+
+    /**
      * The main pane, the conversation (web rowLayout `slock:conversationWidth`, #189): none kept until a seam beside
      * it is let go (then the plan gives it what the columns leave, at least 400), kept at least its content's 360.
      */

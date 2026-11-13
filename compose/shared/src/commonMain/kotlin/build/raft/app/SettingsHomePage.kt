@@ -6527,12 +6527,24 @@ private fun RaftAppShellReadyContent(
     var profileColumnPanes by remember { mutableStateOf(RaftProfileColumnPanes()) }
     // Whether the column is declared right now (set where it is); Back goes by this, not the pages alone.
     var profileColumnShown by remember { mutableStateOf(false) }
+    // The Artifact column (RaftWidePanes.kt, #189 step 4): the Artifact the conversation opened, beside it. It belongs
+    // to that conversation too (web F41), and reopens as the viewer page when the window leaves the wide layout.
+    var artifactColumnPane by remember { mutableStateOf(RaftArtifactColumnPane()) }
+    var artifactColumnShown by remember { mutableStateOf(false) }
     val shellHostNavigator = LocalRaftHost.current.navigator
-    LaunchedEffect(adaptiveWorkspaceState?.selection?.identity?.key) { profileColumnPanes = profileColumnPanes.cleared() }
-    LaunchedEffect(navRailActive) {
-        if (navRailActive || !profileColumnPanes.isOpen) return@LaunchedEffect
-        profileColumnPanes.pages.forEach { shellHostNavigator.openPage(it.pageName, it.pageData) }
+    LaunchedEffect(adaptiveWorkspaceState?.selection?.identity?.key) {
         profileColumnPanes = profileColumnPanes.cleared()
+        artifactColumnPane = artifactColumnPane.cleared()
+    }
+    LaunchedEffect(navRailActive) {
+        if (navRailActive) return@LaunchedEffect
+        // In the order Back went through them in the row: the one opened last on top.
+        val artifactEntry = artifactColumnPane.entry
+        if (artifactEntry != null && !artifactColumnPane.openedLast) shellHostNavigator.openPage(artifactEntry.pageName, artifactEntry.pageData)
+        profileColumnPanes.pages.forEach { shellHostNavigator.openPage(it.pageName, it.pageData) }
+        if (artifactEntry != null && artifactColumnPane.openedLast) shellHostNavigator.openPage(artifactEntry.pageName, artifactEntry.pageData)
+        profileColumnPanes = profileColumnPanes.cleared()
+        artifactColumnPane = artifactColumnPane.cleared()
     }
     // stdrc 2026-10-21: Settings is the More tab's root on the phone bar and the pinned rail entry
     // on the wide layout; a selection made for the other layout moves to this layout's root.
@@ -6642,13 +6654,28 @@ private fun RaftAppShellReadyContent(
     fun navigateWideHistory(direction: RaftWideNavDirection, source: String) {
         val serverId = readyServerId ?: return
         if (!navRailActive) return
-        if (
-            direction == RaftWideNavDirection.Back &&
-            raftWideBackStep(profileColumnPanes, profileColumnShown, overlayOpen = tasksDetailColumnOpen) == RaftWideBackStep.PopProfileColumn
-        ) {
-            bridge.log("wide_history_back source=$source pops=profile_column cell=${profileColumnPanes.backCell?.id}")
-            profileColumnPanes = profileColumnPanes.back()
-            return
+        if (direction == RaftWideNavDirection.Back) {
+            val step =
+                raftWideBackStep(
+                    profileColumnPanes,
+                    profileColumnShown,
+                    overlayOpen = tasksDetailColumnOpen,
+                    artifact = artifactColumnPane,
+                    artifactShown = artifactColumnShown,
+                )
+            when (step) {
+                RaftWideBackStep.PopArtifactColumn -> {
+                    bridge.log("wide_history_back source=$source pops=artifact_column")
+                    artifactColumnPane = artifactColumnPane.cleared()
+                    return
+                }
+                RaftWideBackStep.PopProfileColumn -> {
+                    bridge.log("wide_history_back source=$source pops=profile_column cell=${profileColumnPanes.backCell?.id}")
+                    profileColumnPanes = profileColumnPanes.back()
+                    return
+                }
+                RaftWideBackStep.Existing -> Unit
+            }
         }
         val before = wideNavHistories.of(serverId)
         val after = before.go(direction)
@@ -8145,6 +8172,7 @@ private fun RaftAppShellReadyContent(
                         }
                         val profileColumnHost = navRailActive && allowSideColumn
                         val profileColumnOpen = profileColumnHost && detailAccepted && profileColumnPanes.isOpen
+                        val artifactColumnOpen = profileColumnHost && detailAccepted && artifactColumnPane.isOpen
                         Box(
                             modifier =
                                 paneModifier
@@ -8271,6 +8299,11 @@ private fun RaftAppShellReadyContent(
                             // Only the main detail pane reports whether the column is shown (RaftWidePanes.kt).
                             reportHost = profileColumnHost,
                             onShown = { profileColumnShown = it },
+                            // The Artifact column (#189 step 4): an Artifact opened here shows beside the conversation.
+                            artifact = { artifactColumnPane },
+                            onArtifactChange = { artifactColumnPane = it },
+                            artifactOpen = artifactColumnOpen,
+                            onArtifactShown = { artifactColumnShown = it },
                             // A conversation opened in the column (the profile's Message) becomes the main detail and
                             // the column closes, as the web's closeProfile + navigate.
                             openDetail = { _, pageData ->

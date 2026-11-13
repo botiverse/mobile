@@ -357,7 +357,8 @@ class RaftPaneGridTest {
         assertEquals(listOf("thread+tasks+files", "profile+context+details+artifact"), merged.map { it.column.bounds.id })
         assertEquals(listOf("thread", "tasks", "files"), merged[0].column.cells.map { it.id })
         assertEquals(RaftPaneGridColumnBounds("thread+tasks+files", 420f, 360f), merged[0].column.bounds)
-        assertEquals(RaftPaneGridColumnBounds("profile+context+details+artifact", 400f, 480f), merged[1].column.bounds)
+        // Made no narrower by default than the Artifact's 480, though the layout says 400.
+        assertEquals(RaftPaneGridColumnBounds("profile+context+details+artifact", 480f, 480f), merged[1].column.bounds)
         assertEquals(setOf("thread", "sideCards"), merged[0].sourceIds)
         assertEquals("thread · sideCards", merged[0].column.tabLabel)
         assertTrue("thread" in host.fillIds(null) && merged[0].sourceIds.any { it in host.fillIds(null) })
