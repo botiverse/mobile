@@ -1,7 +1,6 @@
 package build.raft.app
 
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
@@ -1821,13 +1820,13 @@ internal fun SharedActivityList(
     // filter that lists unfollowed threads (All, Pinned) keeps them; one followed again shows again.
     var committedUnfollowKeys by remember(presentationOwnerIdentity) { mutableStateOf(emptySet<String>()) }
     var objectUndo by remember { mutableStateOf(ActivityObjectUndoState()) }
-    val activityObjectUriHandler = LocalUriHandler.current
+    val openArtifactWebPage = rememberRaftWebPageOpener()
     val activityObjectWebBaseUrl =
         remember { RaftSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.webUrl.orEmpty() }
     // Workspace Artifacts: an object row opens the in-app viewer; the web page in the browser only
     // when no page can open from here.
     val activityArtifactOpener =
-        rememberRaftArtifactOpener { activityObjectUriHandler.openUri(artifactWebUrl(activityObjectWebBaseUrl, it)) }
+        rememberRaftArtifactOpener { openArtifactWebPage(artifactWebUrl(activityObjectWebBaseUrl, it)) }
     // An Artifact row on screen: boot the in-app viewer's web page ahead of a tap.
     RaftArtifactViewerPrewarm(enabled = presentedItemsState.value.any { it.kind == InboxItemKind.Object })
     var swipeEndUndo by remember { mutableStateOf(ActivitySwipeEndUndoState()) }

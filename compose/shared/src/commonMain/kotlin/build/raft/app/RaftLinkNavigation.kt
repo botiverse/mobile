@@ -9,12 +9,13 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
+import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.PersistentLinkOpenPreferenceRepository
 import build.raft.app.data.RaftClientConfigAppHosts
+import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
-import build.raft.app.data.parseArtifactOpenAddress
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
@@ -26,10 +27,12 @@ internal enum class RaftLinkOpenIntent {
 
     /**
      * A page of Raft's own web the app has no screen for (an announcement's `/apps`, or Settings
-     * of a server the account is not on). The link setting still decides where it opens, but "Default
-     * browser" asks the host for a real browser (`browser: true`): Raft claims its own origin as
-     * Android App Links / iOS Universal Links, so a plain VIEW of it can route straight back into
-     * the app, which has nothing to show for it.
+     * of a server the account is not on), or one asked for as the web page rather than the app's
+     * screen for it (an Artifact's web page: a card's Open in New Page, a viewer fallback,
+     * [rememberRaftWebPageOpener]). Never the in-app Artifact viewer. The link setting still decides
+     * where it opens, but "Default browser" asks the host for a real browser (`browser: true`): Raft
+     * claims its own origin as Android App Links / iOS Universal Links, so a plain VIEW of it can
+     * route straight back into the app, which is not what was asked for.
      */
     RaftWebPage,
 }
@@ -187,7 +190,7 @@ internal class RaftLinkNavigator(
     /** [RaftLinkOpenIntent.RaftWebPage] in the default browser: a browser even for a Raft link. */
     private val openRaftWebPageInBrowser: (String) -> Unit = openExternalBrowser,
     /**
-     * An ordinary link to an Artifact open over the Artifacts home ([parseArtifactOpenAddress]):
+     * An ordinary link to an Artifact ([raftArtifactLinkOpener]):
      * true when the in-app viewer opened it; false leaves it to the link setting as any link.
      */
     private val openArtifactAddress: (String) -> Boolean = { false },
@@ -227,6 +230,27 @@ internal class RaftLinkNavigator(
     }
 }
 
+/**
+ * [RaftLinkNavigator]'s Artifact opener: a tapped link to an Artifact, read as an external one is
+ * ([parseRaftArtifactDeepLink]: the Artifacts home address `/s/<slug>/artifacts?artifact=<id>` or the
+ * share address `/artifacts/<id>[/v/<n>]`, on Raft's built-in hosts, the client config's [appHosts]
+ * or the Developer environment's [webUrl]), starts an open trace and goes to [openViewer]; false
+ * (any other link) leaves it to the link setting.
+ */
+internal fun raftArtifactLinkOpener(
+    webUrl: () -> String?,
+    appHosts: () -> Set<String> = { RaftClientConfigAppHosts.current },
+    openViewer: (ArtifactLinkTarget) -> Boolean,
+): (String) -> Boolean = { url ->
+    val target = parseRaftArtifactDeepLink(url, webUrl(), appHosts())
+    if (target == null) {
+        false
+    } else {
+        RaftArtifactOpenTrace.tap("link", target.id)
+        openViewer(target)
+    }
+}
+
 @Composable
 internal fun rememberRaftLinkNavigator(
     pager: Pager,
@@ -260,17 +284,15 @@ internal fun rememberRaftLinkNavigator(
                 bridge.toast(rejectedMessage)
             },
             openRaftWebPageInBrowser = { url -> bridge.openUrl(url, inBrowser = true) },
-            openArtifactAddress = { url ->
-                val target = parseArtifactOpenAddress(url, RaftClientConfigAppHosts.current)
-                if (target == null) {
-                    false
-                } else {
-                    RaftArtifactOpenTrace.tap("link", target.id)
+            openArtifactAddress =
+                raftArtifactLinkOpener(
+                    // Read at the tap (AGENTS.md "Environment Web Link URL Rule"): the active Developer environment's web.
+                    webUrl = { RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current().webUrl },
+                ) { target ->
                     pager.openRaftArtifactViewerPage(target, artifactStoreScope).also { opened ->
                         if (!opened) RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_page_scope")
                     }
-                }
-            },
+                },
         )
     }
 }
@@ -298,6 +320,23 @@ internal fun ProvideRaftLinkOpening(pager: Pager, content: @Composable () -> Uni
         LocalUriHandler provides uriHandler,
         content = content,
     )
+}
+
+/**
+ * Opens a page of Raft's web as the web page ([RaftLinkOpenIntent.RaftWebPage]): never the in-app
+ * Artifact viewer, in the in-app or a real browser as the link setting says. For an Artifact's
+ * `/artifacts/<id>` page asked for as a page (a card's Open in New Page) or as the viewer's fallback
+ * (no page can open the viewer, already traced: an Ordinary open would trace and try it again).
+ */
+@Composable
+internal fun rememberRaftWebPageOpener(): (String) -> Unit {
+    val navigator = LocalRaftLinkNavigator.current
+    val uriHandler = LocalUriHandler.current
+    return remember(navigator, uriHandler) {
+        { url ->
+            if (navigator != null) navigator.open(url, RaftLinkOpenIntent.RaftWebPage) else uriHandler.openUri(url)
+        }
+    }
 }
 
 /** Opens in the system browser whatever the link setting is: where an account's sign-in lives. */

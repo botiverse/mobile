@@ -11,7 +11,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY
@@ -102,8 +101,8 @@ internal fun rememberChannelAnnouncementSlice(
 /** Opens an announcement in the in-app Artifact viewer (its latest version), the browser only where no page can open. */
 @Composable
 internal fun rememberChannelAnnouncementOpener(webBaseUrl: String): (RaftChannelAnnouncement) -> Unit {
-    val uriHandler = LocalUriHandler.current
-    val opener = rememberRaftArtifactOpener { uriHandler.openUri(artifactWebUrl(webBaseUrl, it)) }
+    val openArtifactWebPage = rememberRaftWebPageOpener()
+    val opener = rememberRaftArtifactOpener { openArtifactWebPage(artifactWebUrl(webBaseUrl, it)) }
     return remember(opener) { { announcement -> opener.open(ArtifactLinkTarget(announcement.artifactId), null, "channel_announcement") } }
 }
 

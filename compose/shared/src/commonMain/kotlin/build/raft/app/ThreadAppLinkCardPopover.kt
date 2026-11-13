@@ -21,7 +21,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import build.raft.app.components.RaftDesignSystemTheme
@@ -120,10 +119,10 @@ internal fun ThreadAppLinkCardPopoverHost(
             if (summary == null) cards.close()
         }
         if (summary == null) return
-        val uriHandler = LocalUriHandler.current
+        val openArtifactWebPage = rememberRaftWebPageOpener()
         val target = ArtifactLinkTarget(summary.id, openedArtifact.substringAfter(";version=", "").toIntOrNull())
         // Open: the in-app viewer (header from this card at once); the browser only when no page can open.
-        val artifactOpener = rememberRaftArtifactOpener { uriHandler.openUri(artifactWebUrl(artifactWebBaseUrl, it)) }
+        val artifactOpener = rememberRaftArtifactOpener { openArtifactWebPage(artifactWebUrl(artifactWebBaseUrl, it)) }
         Modal(onWillDismiss = { cards.close() }) {
             RaftDesignSystemTheme {
                 ThreadAppLinkCardPopoverFrame(
