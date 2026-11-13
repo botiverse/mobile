@@ -4663,4 +4663,11 @@
     <string name="agent_runtime_error_code_message_too_large_title">메시지가 너무 길어요</string>
     <string name="agent_runtime_error_code_message_too_large_member">에이전트에게 보낸 메시지가 너무 길어 런타임이 한 번에 받을 수 없어서 전달되지 않았어요. 메시지를 줄이거나 여러 개로 나눠 주세요.</string>
     <string name="agent_runtime_error_code_message_too_large_manager">메시지가 너무 길어 이 에이전트의 런타임이 한 번에 받을 수 없어서 전달되지 않았어요. 메시지를 줄이거나 여러 개로 나눠 다시 보내 주세요.</string>
+    <string name="message_card_consent_title">%1$s을(를) 허용할까요?</string>
+    <string name="message_card_consent_body">여기서 %1$s의 링크를 보거나 버튼을 사용하면 %1$s이(가) 나임을 알게 돼요. 설정 › 앱에서 끌 수 있어요.</string>
+    <string name="message_card_consent_allow">허용</string>
+    <string name="message_card_consent_not_now">나중에</string>
+    <string name="message_card_press_again">%1$s을(를) 허용했어요. 실행하려면 “%2$s”을(를) 다시 눌러 주세요.</string>
+    <string name="thread_link_preview_action_app_says">%1$s: %2$s</string>
+    <string name="thread_link_preview_action_app_says_unnamed">앱: %1$s</string>
 </resources>

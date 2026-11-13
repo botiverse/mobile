@@ -6,6 +6,7 @@ import build.raft.app.AttachmentOwnerLease
 import build.raft.app.ThreadComposerTemporaryFileRetirement
 import build.raft.app.data.RAFT_SOCKET_BASE_URL
 import build.raft.app.cmp.RaftCmpToasts
+import build.raft.designsystem.components.RaftToastIntent
 import build.raft.app.data.ScreenError
 import build.raft.app.network.RaftFailedRequestTraceIds
 import build.raft.app.network.raftValidTraceIdOrNull
@@ -343,6 +344,14 @@ internal class BridgeModule : Module() {
      */
     fun toast(content: String) {
         if (RaftCmpToasts.post(content, origin = pager?.host?.capabilities)) return
+        val methodArgs = JSONObject()
+        methodArgs.put("content", content)
+        callNativeMethod("toast", methodArgs, null)
+    }
+
+    /** [toast] with raft-ui's [intent] icon (an operation's info / success / warning); the native toast has none. */
+    fun toastWithIntent(content: String, intent: RaftToastIntent?) {
+        if (RaftCmpToasts.post(content, origin = pager?.host?.capabilities, intent = intent)) return
         val methodArgs = JSONObject()
         methodArgs.put("content", content)
         callNativeMethod("toast", methodArgs, null)

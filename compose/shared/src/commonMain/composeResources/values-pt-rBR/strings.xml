@@ -4663,4 +4663,11 @@
     <string name="agent_runtime_error_code_message_too_large_title">Mensagem longa demais</string>
     <string name="agent_runtime_error_code_message_too_large_member">Uma mensagem para o agente era longa demais para o runtime dele receber de uma vez, então não foi entregue. Encurte-a ou divida-a em várias mensagens.</string>
     <string name="agent_runtime_error_code_message_too_large_manager">Uma mensagem era longa demais para o runtime deste agente receber de uma vez, então não foi entregue. Encurte-a ou divida-a em várias mensagens e envie de novo.</string>
+    <string name="message_card_consent_title">Permitir %1$s?</string>
+    <string name="message_card_consent_body">%1$s saberá que é você quando você vir os links ou usar os botões dele aqui. Você pode desativar isso em Configurações › Apps.</string>
+    <string name="message_card_consent_allow">Permitir</string>
+    <string name="message_card_consent_not_now">Agora não</string>
+    <string name="message_card_press_again">%1$s foi permitido. Pressione “%2$s” de novo para executar.</string>
+    <string name="thread_link_preview_action_app_says">%1$s: %2$s</string>
+    <string name="thread_link_preview_action_app_says_unnamed">App: %1$s</string>
 </resources>

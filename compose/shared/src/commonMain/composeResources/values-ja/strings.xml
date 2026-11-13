@@ -5008,4 +5008,7 @@
     <string name="external_agent_card_replace_message">このページで作成した認証情報は使えなくなります。それで %1$s としてログインしていたものは、新しい認証情報を渡すまで切断されます。</string>
     <string name="external_agent_card_revoke_title">この認証情報を取り消しますか？</string>
     <string name="external_agent_card_revoke_message">それで %1$s としてログインしていたものはすぐに動かなくなります。元に戻せません。</string>
+    <string name="message_card_press_again">%1$s を許可しました。もう一度「%2$s」を押すと実行されます。</string>
+    <string name="thread_link_preview_action_app_says">%1$s：%2$s</string>
+    <string name="thread_link_preview_action_app_says_unnamed">アプリ：%1$s</string>
 </resources>

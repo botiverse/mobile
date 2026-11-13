@@ -62,8 +62,19 @@ sealed interface AppLinkActionResult<out T> {
     data class Failed(val message: String?, val code: String?, val outOfDate: Boolean) : AppLinkActionResult<Nothing>
 }
 
-/** An execute that Raft accepted: the operation and its state (`sent`, `accepted`, `done`, `refused`...) with Raft's fixed hint. */
-data class AppLinkExecuted(val operationId: String, val state: String, val hint: String?) {
+/**
+ * An execute that Raft accepted: the operation and its state (`sent`, `accepted`, `done`, `refused`...)
+ * with Raft's fixed hint and its [tone] (`info`, `success`, `warning`: the state's). [appToast] is the
+ * App's own words (`app_result.toast.text`, RFC 076 §6.3), only in the answer to a press whose read
+ * declared `execute.toast.v1` (a card message's), when the App's answer finished the operation.
+ */
+data class AppLinkExecuted(
+    val operationId: String,
+    val state: String,
+    val hint: String?,
+    val tone: String? = null,
+    val appToast: String? = null,
+) {
     /** The App has not finished: read the card again soon. */
     val isOpen: Boolean get() = state !in AppLinkTerminalStates
 }
@@ -103,7 +114,9 @@ internal fun parseAppLinkExecuteAnswer(status: Int, bodyText: String?): AppLinkA
     if (obj == null) return unreadable
     val operation = obj.string("operation_id") ?: return unreadable
     val state = obj.string("state") ?: return unreadable
-    return AppLinkActionResult.Ok(AppLinkExecuted(operation, state, (obj["toast"] as? JsonObject)?.string("text")))
+    val toast = obj["toast"] as? JsonObject
+    val appToast = ((obj["app_result"] as? JsonObject)?.get("toast") as? JsonObject)?.string("text")?.trim()?.takeIf(String::isNotEmpty)
+    return AppLinkActionResult.Ok(AppLinkExecuted(operation, state, toast?.string("text"), toast?.string("tone"), appToast))
 }
 
 private fun failed(status: Int, obj: JsonObject?): AppLinkActionResult.Failed =

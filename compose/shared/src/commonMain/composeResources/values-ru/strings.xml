@@ -4740,4 +4740,11 @@
     <string name="agent_runtime_error_code_message_too_large_title">Слишком длинное сообщение</string>
     <string name="agent_runtime_error_code_message_too_large_member">Сообщение агенту оказалось слишком длинным, чтобы среда выполнения приняла его за один раз, поэтому оно не доставлено. Сократите его или разделите на несколько сообщений.</string>
     <string name="agent_runtime_error_code_message_too_large_manager">Сообщение оказалось слишком длинным, чтобы среда выполнения этого агента приняла его за один раз, поэтому оно не доставлено. Сократите его или разделите на несколько сообщений и отправьте снова.</string>
+    <string name="message_card_consent_title">Разрешить %1$s?</string>
+    <string name="message_card_consent_body">%1$s будет знать, что это вы, когда вы просматриваете его ссылки или используете его кнопки здесь. Это можно отключить в разделе Настройки › Приложения.</string>
+    <string name="message_card_consent_allow">Разрешить</string>
+    <string name="message_card_consent_not_now">Не сейчас</string>
+    <string name="message_card_press_again">Приложение %1$s разрешено. Нажмите «%2$s» ещё раз, чтобы выполнить.</string>
+    <string name="thread_link_preview_action_app_says">%1$s: %2$s</string>
+    <string name="thread_link_preview_action_app_says_unnamed">Приложение: %1$s</string>
 </resources>

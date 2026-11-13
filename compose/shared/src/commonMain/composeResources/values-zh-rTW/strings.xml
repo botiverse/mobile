@@ -4663,4 +4663,11 @@
     <string name="agent_runtime_error_code_message_too_large_title">訊息過長</string>
     <string name="agent_runtime_error_code_message_too_large_member">傳給 Agent 的訊息過長，執行環境無法一次接收，因此未送達。請縮短訊息，或拆成多則傳送。</string>
     <string name="agent_runtime_error_code_message_too_large_manager">訊息過長，此 Agent 的執行環境無法一次接收，因此未送達。請縮短訊息，或拆成多則後重新傳送。</string>
+    <string name="message_card_consent_title">允許 %1$s？</string>
+    <string name="message_card_consent_body">你在這裡查看 %1$s 的連結或使用它的按鈕時，%1$s 會知道是你。可以在 設定 › 應用程式 裡關閉。</string>
+    <string name="message_card_consent_allow">允許</string>
+    <string name="message_card_consent_not_now">暫不</string>
+    <string name="message_card_press_again">已允許 %1$s。請再按一次「%2$s」來執行。</string>
+    <string name="thread_link_preview_action_app_says">%1$s：%2$s</string>
+    <string name="thread_link_preview_action_app_says_unnamed">應用程式：%1$s</string>
 </resources>

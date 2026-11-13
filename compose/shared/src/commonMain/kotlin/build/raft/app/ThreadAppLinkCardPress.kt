@@ -26,6 +26,7 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftPreviewCardButton
 import build.raft.designsystem.components.RaftPreviewCardButtonKind
+import build.raft.designsystem.components.RaftToastIntent
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.CoroutineScope
@@ -46,6 +47,8 @@ internal class ThreadAppLinkCardActionHost(
     /** False: the read failed or was rate limited, the card stays as it was. */
     val reread: suspend (url: String) -> Boolean,
     val toast: (String) -> Unit,
+    /** [toast] with the tone Raft gives an operation's state (web `showToast`); plain where none is wired. */
+    val toastWithIntent: (String, RaftToastIntent?) -> Unit = { text, _ -> toast(text) },
 )
 
 @Composable
@@ -59,7 +62,14 @@ internal fun rememberThreadAppLinkCardPress(
     val failed = stringResource(Res.string.thread_link_preview_action_failed)
     val undo = stringResource(Res.string.common_undo)
     val refreshFailed = stringResource(Res.string.thread_link_preview_refresh_failed)
-    val press = remember(key, actions) { ThreadAppLinkCardPress(card, actions, scope, failed, undo, refreshFailed) }
+    val appSays = stringResource(Res.string.thread_link_preview_action_app_says)
+    val appSaysUnnamed = stringResource(Res.string.thread_link_preview_action_app_says_unnamed)
+    val press =
+        remember(key, actions) {
+            ThreadAppLinkCardPress(card, actions, scope, failed, undo, refreshFailed) { app, text ->
+                if (app.isBlank()) appSaysUnnamed.replace("%1\$s", text) else appSays.replace("%1\$s", app).replace("%2\$s", text)
+            }
+        }
     // The card is read again after a press: its handles and revision are the latest one's.
     press.card = card
     return press
@@ -91,6 +101,8 @@ internal class ThreadAppLinkCardPress(
     private val failedText: String,
     private val undoLabel: String,
     private val refreshFailedText: String,
+    /** "{App}: {text}" (web `message.appLink.action.appSays`): the App's own words, shown as the App's. */
+    private val appSaysText: (app: String, text: String) -> String = { app, text -> if (app.isBlank()) text else "$app: $text" },
 ) {
     /** The action whose prepare or execute is on its way. */
     private var running by mutableStateOf<String?>(null)
@@ -245,7 +257,11 @@ internal class ThreadAppLinkCardPress(
                 running = null
             }
         if (executed == null) return
-        executed.hint?.let(host.toast)
+        // Finished at once: the App's own words when it sent some (`execute.toast.v1`), else Raft's hint;
+        // either in the tone Raft gives the state, never the App's (web `showAppToast`).
+        val appToast = executed.appToast?.takeIf { !executed.isOpen }
+        val text = appToast?.let { appSaysText(card.app.name.trim(), it) } ?: executed.hint
+        text?.let { host.toastWithIntent(it, appLinkToastIntent(executed.tone)) }
         host.reread(card.url)
         // The App may not have finished: the card is read again as the operation would be polled.
         if (executed.isOpen) {
@@ -328,3 +344,12 @@ internal class ThreadAppLinkCardPress(
         val RereadWaitsMs = listOf(2000L, 5000L, 15000L)
     }
 }
+
+/** The tone of Raft's hint for an operation state (`info`, `success`, `warning`) as the toast's intent. */
+internal fun appLinkToastIntent(tone: String?): RaftToastIntent? =
+    when (tone) {
+        "info" -> RaftToastIntent.Info
+        "success" -> RaftToastIntent.Success
+        "warning" -> RaftToastIntent.Warning
+        else -> null
+    }

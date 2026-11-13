@@ -13165,6 +13165,7 @@ private fun SharedThreadRouteContentContent(
                         serverId = serverId,
                         conversationId = appLinkPreviewConversationId,
                         toast = { message -> bridge.toast(message) },
+                        toastWithIntent = { message, intent -> bridge.toastWithIntent(message, intent) },
                         // Workspace Artifacts links (behind workspace_artifacts_v0, read per message).
                         artifacts =
                             ThreadArtifactLinkHost(

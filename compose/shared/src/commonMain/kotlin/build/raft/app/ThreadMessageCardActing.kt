@@ -43,7 +43,9 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.RaftToastIntent
 import kotlinx.coroutines.launch
+import kotlin.time.TimeSource
 
 /*
  * App-sent cards, step 1 (RFC 086 §4.2-§4.4): a card message's acting buttons as this viewer may
@@ -55,7 +57,8 @@ import kotlinx.coroutines.launch
  *    the Undo window, the toast, reading again; [ThreadAppLinkCardPress]);
  *  - `waiting_for` (the card is for someone else): disabled, "Waiting for {name}" under them;
  *  - `consent: "needed"`: enabled; a press asks "Allow {App}?" ([ThreadMessageCardConsentFlow]: Allow,
- *    then the card is read again, or Not now, which sends nothing and asks again next press);
+ *    then the card is read again and the press goes on ([messageCardPressResumes]), or Not now, which
+ *    sends nothing and asks again next press);
  *  - `consent: "declined"`: disabled, "You turned off {App}." (web copy, Kirby),
  *    with Allow {App} (allowing lifts the decline);
  *  - otherwise (not read yet, a failed read, the App can't act now): disabled, no reason.
@@ -104,6 +107,28 @@ internal fun messageCardActingNote(live: RaftMessageCardLive?): RaftMessageCardA
     val app = live.app
     if (live.handles.isEmpty() && live.consent == RaftMessageCardConsent.Declined && app != null) return RaftMessageCardActingNote.Declined(app)
     return null
+}
+
+/** How long after Allow the press that asked still goes on by itself (web `MESSAGE_CARD_RESUME_PRESS_MS`). */
+internal const val MessageCardResumePressMs = 15_000L
+
+/**
+ * Whether the press that asked "Allow {App}?" goes on by itself once the card is read again and the
+ * button has a handle (web `messageCardPressResumes`, AppFather): only where Raft's dialog still
+ * stands before anything runs (a `confirm: "prepare"` button, or any button of an unreviewed App),
+ * for the revision it was pressed on and within [MessageCardResumePressMs]. A reviewed App's
+ * undo-window button is not continued (Allow would be the last tap before it runs): it asks to press
+ * it again.
+ */
+internal fun messageCardPressResumes(
+    action: RaftLinkCardButtonAction.Execute,
+    unreviewed: Boolean,
+    allowedRevision: Int,
+    revision: Int,
+    elapsedMs: Long,
+): Boolean {
+    if (allowedRevision != revision || elapsedMs > MessageCardResumePressMs) return false
+    return action.confirm || unreviewed
 }
 
 /**
@@ -157,6 +182,7 @@ internal fun rememberThreadMessageCardActingHost(messageId: String?, card: RaftM
                 execute = { handle, requestId, prepared -> host.store.executeAction(host.serverId, handle, requestId, prepared) },
                 reread = { _ -> host.store.readMessageCard(host.viewerKey, host.serverId, messageId, view, locale, force = true) },
                 toast = host.toast,
+                toastWithIntent = host.toastWithIntent,
             )
         }
     return ThreadMessageCardActingHost(host, live, actions, status)
@@ -238,31 +264,60 @@ internal fun RaftMessageCardActingNoteView(note: RaftMessageCardActingNote, allo
  * RFC 086 §4.2; web copy, AppFather): Allow (`link-preview-consent`; the App's epoch moves, so the
  * card reads again) or Not now, which only closes it: the next press asks again. Not now is never a
  * decline; only the server's `consent: "declined"` says "You turned off {App}.". Unlike the link
- * card prompt, there is no Don't Allow here.
+ * card prompt, there is no Don't Allow here. Allowed, the press that asked waits in [resuming] until
+ * the card is read again ([ThreadMessageCardResume]).
  */
 internal class ThreadMessageCardConsentFlow(
     private val store: SharedAppLinkPreviewStore,
     private val viewerKey: String,
     private val serverId: String,
 ) {
+    /** The press that asked: the acting button [elementId] on the card's [revision]. */
+    class Press(val elementId: String, val revision: Int)
+
+    /** An allowed [press], waiting for the card's next read; [allowedAt] when Allow was answered. */
+    class Resume(val press: Press, val allowedAt: TimeSource.Monotonic.ValueTimeMark)
+
     /** The question on screen, or null. */
     var asking by mutableStateOf<AppLinkResult.Consent?>(null)
         private set
 
-    fun ask(prompt: AppLinkResult.Consent) {
+    private var asker: Press? = null
+
+    /** The press Allow answered, until the card is read again; null otherwise. */
+    var resuming by mutableStateOf<Resume?>(null)
+        private set
+
+    fun ask(prompt: AppLinkResult.Consent, press: Press? = null) {
         asking = prompt
+        asker = press
+        resuming = null
     }
 
-    /** Not now: closes the question; nothing is sent. */
+    /** Not now: closes the question; nothing is sent, and the press is dropped. */
     fun notNow() {
         asking = null
+        asker = null
     }
 
-    /** Allow ([SharedAppLinkPreviewStore.allow]): the question closes unless allowing failed (then it offers Retry). */
+    /** The waiting press went on, or was dropped. */
+    fun resumed() {
+        resuming = null
+    }
+
+    /**
+     * Allow ([SharedAppLinkPreviewStore.allow]): the question closes unless allowing failed (then it
+     * offers Retry); allowed, the press that asked waits for the card's next read.
+     */
     suspend fun allow(): AppLinkConsentAnswer? {
         val prompt = asking ?: return null
+        val press = asker
         val answer = store.allow(viewerKey, serverId, prompt.app).await()
-        if (answer != AppLinkConsentAnswer.Failed) asking = null
+        if (answer != AppLinkConsentAnswer.Failed) {
+            asking = null
+            asker = null
+            if (answer == AppLinkConsentAnswer.Allowed && press != null) resuming = Resume(press, TimeSource.Monotonic.markNow())
+        }
         return answer
     }
 }
@@ -335,6 +390,58 @@ internal fun ThreadMessageCardConsentPrompt(
         RaftSheet(onDismissRequest = onNotNow, title = title, description = description, actions = actions, content = {})
     } else {
         RaftSheetSurface(title = title, description = description, actions = actions, content = {})
+    }
+}
+
+/**
+ * The press [flow] holds after Allow, once the card is read again: while the read is on its way (no
+ * answer, or one still asking for consent) it waits; a button the new read gives no handle is dropped
+ * quietly; one with a handle is pressed again where [messageCardPressResumes] says so (Raft's
+ * confirmation or the App's prepared dialog opens), else a toast asks to press it again (web).
+ */
+@Composable
+internal fun ThreadMessageCardResume(
+    flow: ThreadMessageCardConsentFlow?,
+    host: ThreadMessageCardActingHost?,
+    card: RaftMessageCard,
+    live: RaftMessageCardLive?,
+    press: ThreadAppLinkCardPress?,
+) {
+    val resuming = flow?.resuming ?: return
+    if (host == null || press == null) return
+    val acting = card.acting ?: return
+    val elementId = resuming.press.elementId
+    val button = card.card.elements[elementId] as? RaftLinkCardV2Element.Button
+    val action = acting.actions[elementId]
+    val pressAgain = stringResource(Res.string.message_card_press_again, live?.app?.name.orEmpty(), button?.label.orEmpty())
+    LaunchedEffect(resuming, live, card.revision) {
+        if (button == null || action == null) {
+            flow.resumed()
+            return@LaunchedEffect
+        }
+        val fallbackUrl = (button.action as? RaftLinkCardButtonAction.Navigate)?.url
+        when (messageCardActingState(live, elementId, fallbackUrl)) {
+            // Not read again yet.
+            is RaftMessageCardActingState.AskConsent -> Unit
+            RaftMessageCardActingState.Disabled -> if (live != null) flow.resumed()
+            is RaftMessageCardActingState.Pressable -> {
+                flow.resumed()
+                val resumes =
+                    messageCardPressResumes(
+                        action = action,
+                        unreviewed = press.card.app.unreviewed,
+                        allowedRevision = resuming.press.revision,
+                        revision = card.revision,
+                        elapsedMs = resuming.allowedAt.elapsedNow().inWholeMilliseconds,
+                    )
+                val pressable = press.button(button.copy(disabledReason = null), action)
+                if (resumes && pressable != null && pressable.enabled) {
+                    pressable.onClick()
+                } else {
+                    host.preview.toastWithIntent(pressAgain, RaftToastIntent.Info)
+                }
+            }
+        }
     }
 }
 

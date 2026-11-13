@@ -5008,4 +5008,7 @@
     <string name="external_agent_card_replace_message">在此页面创建的 credential 会失效。用它以 %1$s 身份登录的程序会断开，直到你给它新的。</string>
     <string name="external_agent_card_revoke_title">撤销这个 credential？</string>
     <string name="external_agent_card_revoke_message">用它以 %1$s 身份登录的程序会立即停止工作。无法恢复。</string>
+    <string name="message_card_press_again">已允许 %1$s。请再按一次“%2$s”来执行。</string>
+    <string name="thread_link_preview_action_app_says">%1$s：%2$s</string>
+    <string name="thread_link_preview_action_app_says_unnamed">应用：%1$s</string>
 </resources>
