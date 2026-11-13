@@ -370,6 +370,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
+import build.raft.app.data.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -2606,15 +2607,18 @@ internal fun MembersPageContent(
         createAgentFormStore.cachedServerRuntimeCatalog(serverId)
         createAgentFormStore.loadServerRuntimeCatalog(serverId, DataRequestPriority.Background)
     }
-    val createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? =
+    // [land] false: the external agent's two-step dialog stays open on its setup and lands it on Done.
+    val createAgentProfile: suspend (SharedCreateAgentDialogSubmit, Boolean) -> DataResult<MemberProfile> =
         remember(createAgentCoordinator, createAgentFormStore, serverId) {
-            { submit ->
+            { submit, land ->
                 val result =
                     createAgentCoordinator
                         .createAgent(submit.toCreateAgentRequest())
+                var created: MemberProfile? = null
                 if (result is DataResult.Content) {
                     createAgentFormStore.rememberCreatedAgent(serverId, submit)
                     val profile = createdAgentMemberProfile(result.data, submit, computersSlice.machines)
+                    created = profile
                     optimisticMembers = optimisticMembers + profile
                     // Hand the created agent to the landing below ([CreatedAgentLanding]).
                     //
@@ -2623,7 +2627,7 @@ internal fun MembersPageContent(
                     // AFTER submit() returns. Staging the landing inside submit — before that
                     // teardown — is what makes the write survive (the #3140 bug: the dismissal
                     // came first and cancelled it).
-                    pendingCreatedAgent = createdAgentLanding(submit, profile.inCreatingServer(serverId))
+                    if (land) pendingCreatedAgent = createdAgentLanding(submit, profile.inCreatingServer(serverId))
                     serverId.trim().takeIf { it.isNotBlank() }?.let { cleanServerId ->
                         serverMembersStore.refreshMembers(
                             ServerId(cleanServerId),
@@ -2633,12 +2637,33 @@ internal fun MembersPageContent(
                     }
                 }
                 when (result) {
-                    is DataResult.Content -> DataResult.Content(Unit)
+                    is DataResult.Content -> DataResult.Content(created!!.inCreatingServer(serverId))
                     is DataResult.Empty -> DataResult.Empty(result.reason)
                     is DataResult.Error -> result
                     is DataResult.NoPermission -> result
                 }
             }
+        }
+    val createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? =
+        remember(createAgentProfile) {
+            { submit -> createAgentProfile(submit, true).map { } }
+        }
+    val createExternalAgentHost =
+        remember(createAgentProfile, agentsApiClient, serverId) {
+            RaftExternalAgentCreateHost(
+                agentsApiClient = agentsApiClient,
+                serverUrl = sharedStores.apiEnvironmentStore.current().webUrl,
+                create = { submit -> createAgentProfile(submit, false) },
+                onFinished = { profile -> pendingCreatedAgent = CreatedAgentLanding.SetupGuide(profile) },
+                onDiscarded = { profile ->
+                    optimisticMembers = optimisticMembers.filterNot { it.id == profile.id }
+                    serverId.trim().takeIf { it.isNotBlank() }?.let { cleanServerId ->
+                        scope.launch {
+                            serverMembersStore.refreshMembers(ServerId(cleanServerId), DataRequestPriority.Background, force = true)
+                        }
+                    }
+                },
+            )
         }
     // MEMBERS_COMPUTERS_ERROR_RETRY_WIRING_START
     val loadMachines: () -> Unit = remember(computersStore, serverId) {
@@ -2788,6 +2813,7 @@ internal fun MembersPageContent(
         canCreateAgents = payload.canCreateAgents,
         createAgent = MembersCreateAgentInputs(
             createAgentSubmit = createAgentSubmit,
+            createExternalAgent = createExternalAgentHost,
             createAgentMachines = computersSlice.machines,
             createAgentMachinesLoading = computersSlice.initialLoadInFlight,
             createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
@@ -5957,6 +5983,11 @@ internal class MembersCreateAgentInputs(
      * payload.
      */
     val createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
+    /**
+     * The external agent's own two-step dialog (web `CreateExternalAgentDialog`, botiverse/slock
+     * #14627): Create agent's "External agent" opens it instead of the create form; null keeps the form.
+     */
+    val createExternalAgent: RaftExternalAgentCreateHost? = null,
     val createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
     val createAgentMachinesLoading: Boolean = false,
     val createAgentMachinesErrorMessage: String? = null,
@@ -6412,7 +6443,11 @@ internal fun MembersListContent(
     }
     val submit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = createAgentSubmit
     val activeCreateAgent = activeCreateAgentMode != null
-    if (activeCreateAgent && submit != null) {
+    val externalCreateHost = createAgent.createExternalAgent
+    if (activeCreateAgentMode == MembersCreateAgentMode.External && externalCreateHost != null) {
+        // The external agent's own two-step dialog (web MembersAddAgentDialogs, botiverse/slock #14627).
+        RaftCreateExternalAgentDialog(host = externalCreateHost, onClose = { activeCreateAgentMode = null })
+    } else if (activeCreateAgent && submit != null) {
         val scope = rememberCoroutineScope()
         SharedCreateAgentDialog(
             external = activeCreateAgentMode == MembersCreateAgentMode.External,
@@ -11794,134 +11829,6 @@ internal fun membersShowsExternalAgentSetup(
 ): Boolean = external && canManage && managedByAppInstallId.isNullOrBlank()
 
 @Composable
-private fun MembersExternalAgentSetupSection(
-    agentId: MemberId,
-    profileName: String,
-    serverUrl: String?,
-    agentsApiClient: build.raft.app.data.RaftAgentsApiClient?,
-    canManage: Boolean,
-    onCopy: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val scope = rememberCoroutineScope()
-    val tokenFailed = stringResource(Res.string.member_external_setup_token_failed)
-    var token by remember(agentId) { mutableStateOf<String?>(null) }
-    var tokenLoading by remember(agentId) { mutableStateOf(false) }
-    var error by remember(agentId) { mutableStateOf<String?>(null) }
-    val cleanServer = serverUrl?.trim()?.trimEnd('/')?.removeSuffix("/api")?.takeIf { it.isNotBlank() }
-        ?: "<server-url>"
-    val profile = profileName.trim().replace(Regex("[^A-Za-z0-9_-]+"), "-").trim('-').ifBlank { agentId.value.take(8) }
-    val loginCommand = "raft agent login --server $cleanServer --agent ${agentId.value} --profile-slug $profile"
-    val installCommand =
-        "npm i -g @botiverse/raft@latest && " +
-            "claude plugin marketplace add botiverse/raft-external-agents && " +
-            "claude plugin marketplace update raft && " +
-            "claude plugin install raft-channel@raft && " +
-            "claude plugin update raft-channel@raft"
-    val startCommand =
-        "RAFT_PROFILE=$profile claude --append-system-prompt 'You are connected to Raft, a shared workspace for humans and agents. Treat Raft as your primary collaboration surface.' --dangerously-load-development-channels plugin:raft-channel@raft"
-    val hermesCommand = "hermes gateway setup"
-    // task #4 (Hands 1c6885d8): each external runtime is a separate harness with its own
-    // setup commands, so they are tabs rather than one flat list. Claude Code and Hermes
-    // share the CLI install and the login step, then diverge on how the runtime is started.
-    var selectedHarness by remember(agentId) {
-        mutableStateOf(MembersExternalHarness.ClaudeCode)
-    }
-    // raft-ui Card with the setup steps as read-only command blocks (CodeBlock + Copy).
-    Column(
-        modifier = modifier.fillMaxWidth().membersRaftCard().padding(RaftAppSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        RaftSectionEyebrow(text = stringResource(Res.string.member_external_setup_title))
-        RaftText(
-            stringResource(Res.string.member_external_setup_description),
-            style = RaftTheme.typography.callout,
-            color = RaftTheme.colors.foregroundMuted
-        )
-        // task #4: the bootstrap token gates every later step, so it comes first. The
-        // generate action must be reachable without scrolling past the copy commands.
-        if (canManage && agentsApiClient != null) {
-            RaftButton(
-                text = stringResource(if (tokenLoading) Res.string.member_external_setup_generating else Res.string.member_external_setup_generate),
-                enabled = !tokenLoading,
-                onClick = {
-                    tokenLoading = true
-                    error = null
-                    scope.launch {
-                        when (val result = agentsApiClient.issueAgentLoginToken(agentId)) {
-                            is DataResult.Content -> {
-                                token = result.data.apiKey
-                            }
-                            else -> error = tokenFailed
-                        }
-                        tokenLoading = false
-                    }
-                }
-            )
-            token?.let { value ->
-                RaftText(
-                    stringResource(Res.string.member_external_setup_token_once),
-                    style = RaftTheme.typography.caption,
-                    color = RaftTheme.colors.foregroundHint
-                )
-                MembersExternalSetupCommand(stringResource(Res.string.member_external_setup_token_label), value, onCopy)
-            }
-            error?.let {
-                RaftText(it, style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold), color = RaftTheme.colors.dangerStrong)
-            }
-        }
-        SegmentedControl(
-            selectedValue = selectedHarness.value,
-            options = MembersExternalHarness.entries.map { harness ->
-                SegmentedControlOption(
-                    value = harness.value,
-                    label = stringResource(harness.labelRes)
-                )
-            },
-            onValueSelected = { value ->
-                MembersExternalHarness.entries.firstOrNull { it.value == value }?.let { selectedHarness = it }
-            }
-        )
-        MembersExternalSetupCommand(stringResource(Res.string.member_external_setup_install), installCommand, onCopy)
-        MembersExternalSetupCommand(stringResource(Res.string.member_external_setup_login), loginCommand, onCopy)
-        when (selectedHarness) {
-            MembersExternalHarness.ClaudeCode ->
-                MembersExternalSetupCommand(stringResource(Res.string.member_external_setup_start), startCommand, onCopy)
-            MembersExternalHarness.Hermes ->
-                MembersExternalSetupCommand(stringResource(Res.string.member_external_setup_hermes), hermesCommand, onCopy)
-        }
-    }
-}
-
-/** External runtimes offered in the setup section, one tab each (task #4). */
-internal enum class MembersExternalHarness(val value: String, val labelRes: StringResource) {
-    ClaudeCode("claude-code", Res.string.member_external_setup_harness_claude),
-    Hermes("hermes", Res.string.member_external_setup_harness_hermes)
-}
-
-@Composable
-private fun MembersExternalSetupCommand(label: String, command: String, onCopy: (String) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        RaftText(
-            label,
-            style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
-            color = RaftTheme.colors.foregroundMuted
-        )
-        RaftCodeBlock(
-            text = command,
-            modifier = Modifier.fillMaxWidth(),
-            action = {
-                RaftButton(
-                    text = stringResource(Res.string.member_external_setup_copy),
-                    onClick = { onCopy(command) },
-                    variant = RaftButtonVariant.Ghost
-                )
-            }
-        )
-    }
-}
-
-@Composable
 private fun MembersAgentProfileTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
@@ -12057,14 +11964,18 @@ private fun MembersAgentProfileTab(
                             )
                         }
                     MembersExternalAgentSection.Setup ->
-                        MembersExternalAgentSetupSection(
-                            agentId = member.id,
-                            profileName = member.displayName,
-                            serverUrl = externalSetupServerUrl,
-                            agentsApiClient = agentsApiClient,
-                            canManage = canManage,
-                            onCopy = onCopyText
-                        )
+                        agentsApiClient?.let { client ->
+                            MembersExternalAgentConnectionCard(
+                                agentId = member.id,
+                                name = summary?.displayName?.takeIf { it.isNotBlank() } ?: member.displayName,
+                                handle = summary?.name?.takeIf { it.isNotBlank() } ?: member.displayName,
+                                initialStatus = detail?.externalStatus,
+                                lastSeenAt = summary?.lastSeenAt,
+                                serverUrl = externalSetupServerUrl,
+                                agentsApiClient = client,
+                                timeContext = timeContext,
+                            )
+                        }
                     MembersExternalAgentSection.NotKnownYet -> Unit
                 }
             }

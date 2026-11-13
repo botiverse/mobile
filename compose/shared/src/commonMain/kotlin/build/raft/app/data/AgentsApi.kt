@@ -200,13 +200,20 @@ internal interface RaftAgentsApi {
     suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse
     /** External-agent login credential mint; unlike bootstrap tokens this is the user-facing login surface. */
     suspend fun issueAgentCredential(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
+    /** `GET /agents/:id/credentials`: `{ agentId, credentials }` (web `useExternalAgentCredentials`). */
+    suspend fun agentCredentials(agentId: MemberId): HomeNetworkResponse = error("unused")
+    /** `DELETE /agents/:id/credentials/:credentialId`: 204 once revoked. */
+    suspend fun revokeAgentCredential(agentId: MemberId, credentialId: String): HomeNetworkResponse = error("unused")
+    /** `PUT /agents/:id/external-setup-method` body `{ method }` (botiverse/slock #14534). */
+    suspend fun setExternalSetupMethod(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
     /** Runtime form protocol v2 for editing: `GET /agents/:id/runtime-form`, the create form plus `values`. */
     suspend fun agentRuntimeFormV2(agentId: MemberId): HomeNetworkResponse =
         error("agentRuntimeFormV2 is not implemented")
 }
 
 internal class RaftAgentsNetworkApi(
-    private val networkClient: RaftNetworkClient,
+    /** Also the step-up's client ([RaftAgentsApiClient.secondFactorStepUpRepository]): the same session. */
+    internal val networkClient: RaftNetworkClient,
     private val runtimeFormLanguageTag: () -> String? = { runtimeFormRequestLanguageTag() }
 ) : RaftAgentsApi {
     override suspend fun agents(): HomeNetworkResponse =
@@ -395,6 +402,27 @@ internal class RaftAgentsNetworkApi(
             priority = DataRequestPriority.Foreground,
             path = "agents/${agentId.value}/credentials",
             method = "POST",
+            bodyText = body
+        )
+
+    override suspend fun agentCredentials(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "agents/${agentId.value}/credentials"
+        )
+
+    override suspend fun revokeAgentCredential(agentId: MemberId, credentialId: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/credentials/$credentialId",
+            method = "DELETE"
+        )
+
+    override suspend fun setExternalSetupMethod(agentId: MemberId, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/external-setup-method",
+            method = "PUT",
             bodyText = body
         )
 }
@@ -612,9 +640,66 @@ internal class RaftAgentsApiClient(
                 setupState = ExternalAgentSetupState.fromWireValue(wire.setupState),
                 credentialLastUsedAt = wire.credentialLastUsedAt?.takeIf { it.isNotBlank() },
                 lastActivityAt = wire.lastActivityAt?.takeIf { it.isNotBlank() },
-                hostedRuntime = wire.hostedRuntime?.toSnapshot()
+                hostedRuntime = wire.hostedRuntime?.toSnapshot(),
+                externalSetupMethod = wire.externalSetupMethod?.takeIf { it.isNotBlank() }
             )
         }
+
+    /** Web `useExternalAgentCredentials`'s list: every credential of [agentId], revoked ones included. */
+    suspend fun agentCredentials(agentId: MemberId): DataResult<List<AgentCredentialRow>> =
+        transport.agentCredentials(agentId).mapAgentsBody(
+            "agent_credentials_contract_mismatch",
+            AgentCredentialListResponseDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
+        ) { wire ->
+            if (wire.agentId != agentId.value) return@mapAgentsBody null
+            wire.credentials.map { row ->
+                AgentCredentialRow(
+                    id = row.id,
+                    name = row.name?.takeIf { it.isNotBlank() },
+                    createdAt = row.createdAt,
+                    lastUsedAt = row.lastUsedAt?.takeIf { it.isNotBlank() },
+                    revokedAt = row.revokedAt?.takeIf { it.isNotBlank() }
+                )
+            }
+        }
+
+    /**
+     * A credential made from the agent's page or the create dialog, named [name]; with
+     * [replacesCredentialId] it replaces that one (web `useExternalAgentCredentials.create`).
+     */
+    suspend fun createAgentCredential(
+        agentId: MemberId,
+        name: String,
+        replacesCredentialId: String? = null
+    ): DataResult<AgentLoginTokenSummary> =
+        issueAgentLoginToken(
+            agentId,
+            agentsApiJson.encodeToString(
+                AgentCredentialCreateRequestDto.serializer(),
+                AgentCredentialCreateRequestDto(name = name, replacesCredentialId = replacesCredentialId)
+            )
+        )
+
+    /** `DELETE /agents/:id/credentials/:credentialId`; an ambiguous failure is not a revocation. */
+    suspend fun revokeAgentCredential(agentId: MemberId, credentialId: String): DataResult<Unit> {
+        val response = transport.revokeAgentCredential(agentId, credentialId)
+        return if (response.isSuccessful) DataResult.Content(Unit) else response.toAgentsDataError()
+    }
+
+    /** `PUT /agents/:id/external-setup-method`: only which instructions its page shows first. */
+    suspend fun setExternalSetupMethod(agentId: MemberId, method: String): DataResult<Unit> {
+        val response =
+            transport.setExternalSetupMethod(
+                agentId,
+                agentsApiJson.encodeToString(ExternalSetupMethodRequestDto.serializer(), ExternalSetupMethodRequestDto(method))
+            )
+        return if (response.isSuccessful) DataResult.Content(Unit) else response.toAgentsDataError()
+    }
+
+    /** "Verify it's you" for a credential mint refused for a fresh second step, on the same session. */
+    fun secondFactorStepUpRepository(): SecondFactorStepUpRepository? =
+        (transport as? RaftAgentsNetworkApi)?.let { SecondFactorStepUpRepository(it.networkClient) }
 
     /** [namesDefaultModel]: a retry after a refused model, on the provider's default. */
     suspend fun retryHostedRuntime(agentId: MemberId, namesDefaultModel: Boolean): DataResult<Unit> =
@@ -801,6 +886,15 @@ internal data class AgentActivityPage(val entryCount: Int)
 internal data class AgentWorkspaceFilePage(val fileCount: Int)
 internal data class AgentWorkspaceFileRead(val path: String, val content: String, val binary: Boolean, val size: Long?)
 internal data class AgentSkillsSummary(val globalCount: Int, val workspaceCount: Int)
+/** One row of `GET /agents/:id/credentials` (web `AgentCredentialRow`). */
+internal data class AgentCredentialRow(
+    val id: String,
+    val name: String?,
+    val createdAt: String,
+    val lastUsedAt: String?,
+    val revokedAt: String?
+)
+
 internal data class AgentLoginTokenSummary(
     val credentialId: String,
     /** Raw login token is returned once and must remain in UI-local state. */
@@ -855,6 +949,13 @@ private class AgentsContractMismatchException : IllegalStateException()
 
 private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> {
     val serverMessage = serverErrorTextOrNull()
+    // Two-step verification on: a credential mint answers with the step-up challenge
+    // (SecondFactorStepUpCoordinator runs "Verify it's you", then the request once more).
+    secondFactorStepUpChallengeOrNull()?.let { challenge ->
+        return DataResult.Error(
+            ScreenError(code = "second_factor_required", retryable = false, serverMessage = serverMessage, secondFactorStepUp = challenge)
+        )
+    }
     return when (code) {
         401 ->
             DataResult.NoPermission(
@@ -1132,6 +1233,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
 private data class ExternalAgentStatusWireDto(
     val setupState: String? = null,
     val credentialLastUsedAt: String? = null,
+    val externalSetupMethod: String? = null,
     val lastActivityAt: String? = null,
     val hostedRuntime: AgentHostedRuntimeWireDto? = null
 )
@@ -1398,6 +1500,30 @@ private data class AgentLoginTokenResponseDto(
     val apiKey: String? = null,
     val scopes: List<String> = emptyList(),
 )
+
+@Serializable
+private data class AgentCredentialRowDto(
+    val id: String,
+    val name: String? = null,
+    val createdAt: String,
+    val lastUsedAt: String? = null,
+    val revokedAt: String? = null,
+)
+
+@Serializable
+private data class AgentCredentialListResponseDto(
+    val agentId: String,
+    val credentials: List<AgentCredentialRowDto>,
+)
+
+@Serializable
+private data class AgentCredentialCreateRequestDto(
+    val name: String,
+    val replacesCredentialId: String? = null,
+)
+
+@Serializable
+private data class ExternalSetupMethodRequestDto(val method: String)
 
 @Serializable
 private data class AgentBootstrapTokenResponseDto(

@@ -285,7 +285,7 @@ internal fun projectHomeAgentStatusIndicatorState(
 
 /** Caption for an external agent's detail-page status (React AgentDetailPanel `AgentStatusBadge` parity). */
 internal sealed interface ExternalAgentDetailCaption {
-    /** `waiting_for_login`: orange dot (a sign-in step needs action); copy tells the user to finish setup on the web app. */
+    /** `waiting_for_login`, `login_token_expired` or `disconnected`: orange dot (a sign-in step needs action). */
     data object SetupRequired : ExternalAgentDetailCaption
     /** `lastSeenAt` within the online window (task #410): lime dot, "Online". */
     data object Online : ExternalAgentDetailCaption
@@ -378,7 +378,9 @@ internal fun externalAgentDetailIndicator(
     }
     val lastAt = parseExternalAgentTimestampOrNull(status.lastActivityAt)
     val ageMs = lastAt?.let { nowEpochMillis - it }
-    val waiting = status.setupState == build.raft.app.data.ExternalAgentSetupState.WaitingForLogin
+    // Web `externalSetupNeedsSignIn` (botiverse/slock #14534): never signed in, its CLI login token
+    // expired, or every credential revoked after use (disconnected) all need someone to act.
+    val waiting = status.setupState.needsSignIn
     // waiting-first: see the KDoc on the two-tier divergence from web before adding a tier.
     val color =
         when {
