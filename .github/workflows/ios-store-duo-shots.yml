@@ -42,22 +42,39 @@ jobs:
           set +e
           mkdir -p probe
           rt=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; print([r["runtimeRoot"] for r in json.load(sys.stdin)["runtimes"] if r["identifier"].endswith("iPhone19-4")][0])')
-          strings -a "$rt/System/Library/PrivateFrameworks/SpringBoard.framework/SpringBoard" | gzip > probe/springboard-strings.txt.gz
-          base=$(dirname "$(dirname "$(dirname "$rt")")")
-          find "$base" "$rt" -maxdepth 6 -iname '*shared_cache*' 2>/dev/null | head -20 > probe/caches.txt
-          find / -maxdepth 9 -name 'dyld_sim_shared_cache_arm64e*' -path '*iPhoneOS*' 2>/dev/null | head -20 >> probe/caches.txt
-          cat probe/caches.txt
-          grep -v '\.[0-9]*$\|map$\|atlas$' probe/caches.txt | sort -u | head -3 | while IFS= read -r c; do
-            echo "== $c $(ls -la "$c")"
+          find "$rt" -iname '*displaytool*' 2>/dev/null | sed "s#^$rt##" | tee probe/displaytool-paths.txt
+          tool=$(grep -m1 -iE '/(s?bin)/[^/]*displaytool$' probe/displaytool-paths.txt)
+          [ -z "$tool" ] && tool=$(grep -m1 -iE 'displaytool$' probe/displaytool-paths.txt)
+          echo "tool=$tool"
+          [ -n "$tool" ] && strings -a "$rt$tool" > probe/displaytool-strings.txt
+          udid=$(xcrun simctl create "Probe Duo" com.apple.CoreSimulator.SimDeviceType.iPhone-Duo com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4)
+          xcrun simctl boot "$udid"; xcrun simctl bootstatus "$udid" -b
+          sleep 10
+          run() { echo "\$ sbdisplaytool $*"; timeout 60 xcrun simctl spawn "$udid" "$tool" "$@" 2>&1 | head -60; echo "exit=$?"; }
+          {
+            run
+            run help
+            run --help
+            run -h
+          } > probe/displaytool-help.txt 2>&1
+          cat probe/displaytool-help.txt
+          shot() { for d in 1 3; do xcrun simctl io "$udid" screenshot --display=$d "probe/$1-d$d.png" >/dev/null 2>&1; done; }
+          shot before
+          # try the likely verbs; the help above says which are real
+          for args in "swap" "swap --wait" "open" "unfold" "swap inner" "flip"; do
+            run $args >> probe/displaytool-try.txt 2>&1
+            sleep 6
+            tag=$(echo "$args" | tr -cd 'a-z')
+            shot "after-$tag"
           done
-          ls "$(grep -m1 dyld_sim_shared_cache probe/caches.txt | xargs -I{} dirname "{}")" > probe/cache-dir.txt 2>&1
-          cat probe/cache-dir.txt
-          dir=$(grep -m1 dyld_sim_shared_cache probe/caches.txt | xargs -I{} dirname "{}")
-          for c in "$dir"/dyld_sim_shared_cache_arm64e*; do
-            case "$c" in *.map|*.atlas) continue;; esac
-            strings -a "$c" | grep -iE 'hinge|posture|unfold|foldstate|fold state|simulatedfold|continuousfold' | grep -viE 'folder|manifold|scaffold'
-          done | sort -u | gzip > probe/cache-hinge.txt.gz
-          zcat probe/cache-hinge.txt.gz | wc -l
+          cat probe/displaytool-try.txt
+          xcrun simctl io "$udid" enumerate 2>&1 | grep -E "Name: LCD|Power state|UI Orientation" | head -20
+          python3 -c "
+          import glob, zlib
+          for p in sorted(glob.glob('probe/*-d3.png')):
+              import struct; d=open(p,'rb').read(); print(p, len(d))
+          "
+          xcrun simctl shutdown "$udid"; xcrun simctl delete "$udid"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
