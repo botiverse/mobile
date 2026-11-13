@@ -199,6 +199,11 @@
                 (`/?auth_callback=social`) land there. Not the whole origin: once app.raft.build is a
                 verified App Link host, every path an intent filter names opens the app, and other web
                 pages must stay in the browser.
+                No slock.ai host in any web intent filter: app.slock.ai's assetlinks.json redirects to
+                app.raft.build, Android verification doesn't follow redirects, and on Android 11 and
+                earlier one unverifiable host fails autoVerify for every host the app names (so
+                app.raft.build links stopped opening the app). Old slock.ai links tapped inside messages
+                still open in the app (RaftMessageLinks); RaftAppLinkHostsTest guards this.
             -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -207,7 +212,6 @@
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data android:scheme="https" />
-                <data android:host="app.slock.ai" />
                 <data android:host="app.raft.build" />
                 <data android:path="/" />
                 <data android:path="" />
