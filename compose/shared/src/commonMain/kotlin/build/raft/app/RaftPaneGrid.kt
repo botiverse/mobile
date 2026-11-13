@@ -30,6 +30,13 @@ import build.raft.designsystem.components.LocalRaftPaneGridSizes
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.LocalRaftPaneGridColumnControls
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftPaneGridColumnControls
+import build.raft.designsystem.components.RaftPaneGridColumnHead
+import build.raft.designsystem.components.RaftPaneGridExpand
+import build.raft.designsystem.components.RaftPaneGridHeadAction
+import build.raft.designsystem.components.RaftPaneGridHeadLabels
 import build.raft.designsystem.components.RaftPaneGridPlatform
 import build.raft.designsystem.components.RaftPaneGrid as DsRaftPaneGrid
 import build.raft.designsystem.components.RaftPaneGridSideColumn as DsRaftPaneGridSideColumn
@@ -274,6 +281,8 @@ internal fun RaftPaneGrid(
     mainTabLabel: String? = null,
     /** Where the main pane's width is kept (the innermost grid naming it decides); null: the conversation's. */
     mainBounds: RaftPaneGridColumnBounds? = null,
+    /** The row's Expand (#189 rule 5), handed up to the outermost grid: the shell's ([RaftWideSideColumns.expand]). */
+    expand: RaftPaneGridExpand? = null,
     main: @Composable () -> Unit,
 ) {
     // The main pane's tab where the row makes columns tabs in its head (#189 rule 4): the conversation, web "Chat".
@@ -287,6 +296,7 @@ internal fun RaftPaneGrid(
             leading = leading,
             mainTabLabel = mainTab,
             mainBounds = mainBounds,
+            expand = expand,
             main = main,
         )
     }
@@ -322,26 +332,92 @@ internal fun RaftPaneGridAppLocals(content: @Composable () -> Unit) {
     )
 }
 
+/** A column head's words ([RaftPaneGridColumnHead]), the web's (`layout.row.more`, `artifacts.viewer.expand` / `restore`, `layout.row.tabs`). */
+@Composable
+internal fun raftPaneGridHeadLabels(): RaftPaneGridHeadLabels =
+    RaftPaneGridHeadLabels(
+        more = stringResource(Res.string.common_more_actions),
+        expand = stringResource(Res.string.pane_grid_column_expand),
+        restore = stringResource(Res.string.pane_grid_column_restore),
+        tabs = stringResource(Res.string.pane_grid_row_tabs),
+    )
+
 /**
- * A card in a grid cell (web ChannelSideCard): the 56dp panel head (the collapse chevron where it
- * shares its column, the title, [actions], the ×), then [body]. Folded, the head stays where it is
- * unfolded, its actions hidden, and the body stays composed with no height (web keeps it mounted).
+ * #189 rule 7's keyboard path (web columnMoves `useColumnMoveItems`): [cell]'s Move Left / Move Right as ⋯ items, by
+ * this device's side layout ([layoutStore]) among the sections open in the row ([RaftPaneGridColumnControls.rowCells]);
+ * picked, the section moves there and the layout is kept, so the row stands anew. None outside a planned row, while a
+ * region is expanded, in a head that shows the row tabs (they keep that room), for a cell that is no section, or where
+ * it can go neither way; where it can go one way only, the other shows disabled (at the row's end).
+ */
+internal fun raftColumnMoveItems(
+    cell: String,
+    controls: RaftPaneGridColumnControls?,
+    layoutStore: RaftChannelSideLayoutStore,
+    moveLeft: String,
+    moveRight: String,
+    showsTabs: Boolean = false,
+): List<RaftPaneGridHeadAction> {
+    if (controls == null || controls.expanded != null || showsTabs) return emptyList()
+    val section = RaftChannelSideSection.ofWire(cell) ?: return emptyList()
+    val open = controls.rowCells.flatten().mapNotNull(RaftChannelSideSection::ofWire).toSet()
+    if (section !in open) return emptyList()
+    val layout = layoutStore.layout
+    val moves = raftColumnMoves(layout, open, section)
+    if (moves.left == null && moves.right == null) return emptyList()
+    return listOf(
+        RaftPaneGridHeadAction(
+            id = "move-left",
+            label = moveLeft,
+            onSelect = { moves.left?.let { layoutStore.move(section, it) } },
+            glyph = RaftGlyph.MoveLeft,
+            enabled = moves.left != null,
+            testTag = "$RAFT_COLUMN_MOVE_LEFT_TEST_TAG$cell",
+        ),
+        RaftPaneGridHeadAction(
+            id = "move-right",
+            label = moveRight,
+            onSelect = { moves.right?.let { layoutStore.move(section, it) } },
+            glyph = RaftGlyph.MoveRight,
+            enabled = moves.right != null,
+            testTag = "$RAFT_COLUMN_MOVE_RIGHT_TEST_TAG$cell",
+        ),
+    )
+}
+
+/** Test tags of a head's ⋯ > Move Left / Move Right (`+` the cell id; web `column-move-left-<section>`). */
+internal const val RAFT_COLUMN_MOVE_LEFT_TEST_TAG = "columnMoveLeft:"
+internal const val RAFT_COLUMN_MOVE_RIGHT_TEST_TAG = "columnMoveRight:"
+
+/**
+ * A card in a grid cell (web ChannelSideCard): the column head ([RaftPaneGridColumnHead], #189 rule 6: the collapse
+ * chevron where it shares its column, the title or the row tabs, [ownActions], ⋯ with what didn't fit and Move Left /
+ * Move Right, Expand, Close), then [body]. Folded, the head stays where it is unfolded, its own actions hidden, and the
+ * body stays composed with no height (web keeps it mounted).
  */
 @Composable
 internal fun RaftPaneGridCellScope.RaftPaneGridCard(
     title: String,
     closeLabel: String,
     onClose: () -> Unit,
-    actions: (@Composable () -> Unit)? = null,
+    ownActions: List<RaftPaneGridHeadAction> = emptyList(),
     body: @Composable () -> Unit,
 ) {
     val folded = collapsible && collapsed
+    val controls = LocalRaftPaneGridColumnControls.current
+    val layoutStore = LocalRaftChannelSideLayoutStore.current
+    val moveLeft = stringResource(Res.string.pane_grid_column_move_left)
+    val moveRight = stringResource(Res.string.pane_grid_column_move_right)
+    // The head showing the row tabs offers no moves (web: its ⋯ isn't there for them alone).
+    val showsTabs = controls?.tabs != null && controls.tabsCell == cellId
+    val moves = raftColumnMoveItems(cellId, controls, layoutStore, moveLeft, moveRight, showsTabs)
     Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-        RaftPanelBackHeader(
+        RaftPaneGridColumnHead(
             title = title,
-            subtitle = null,
-            onBack = null,
-            leadingContent =
+            labels = raftPaneGridHeadLabels(),
+            cellId = cellId.ifEmpty { null },
+            closeLabel = closeLabel,
+            onClose = onClose,
+            lead =
                 if (collapsible) {
                     {
                         val label = stringResource(if (folded) Res.string.thread_side_card_expand else Res.string.thread_side_card_collapse, title)
@@ -362,14 +438,9 @@ internal fun RaftPaneGridCellScope.RaftPaneGridCard(
                 } else {
                     null
                 },
-            trailingContent = {
-                if (!folded) actions?.invoke()
-                RaftIconButton(onClick = onClose, tooltip = closeLabel, variant = RaftButtonVariant.Ghost, size = RaftIconButtonSize.Lg) {
-                    RaftSlotIcon(RaftLucideIconName.X)
-                }
-            },
+            ownActions = if (folded) emptyList() else ownActions,
+            menuItems = moves,
         )
         Box(Modifier.weight(1f).fillMaxWidth()) { body() }
     }
 }
-

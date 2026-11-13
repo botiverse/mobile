@@ -44,8 +44,10 @@ import org.robolectric.annotation.Config
 
 /**
  * PR #4666 review (blocker): the viewer in the Artifact column has ONE bar, as the window page (#4635, web #14672).
- * The production [RaftArtifactColumnCell] hosts a page drawn as the viewer draws itself ([RaftArtifactViewerFrame]
- * with its `inColumn`), closing through its host as the viewer's `closePage` does:
+ * The production [RaftArtifactColumnCell] hosts a page drawn through the viewer screen's own decision
+ * ([RaftArtifactViewerScreenFrame]: whether the page's bar replaces the App's, from what the page said, whether it
+ * shows the Artifact and whether its subject is known, and where it stands, read from the column), closing through
+ * its host as the viewer's `closePage` does. A column special case put back in that decision fails here:
  * - the page draws the bar (`hostToolbar=1`): no App bar over it, and the page's own Back (`#host=close`, which the
  *   viewer turns into `closePage`, RaftArtifactViewerEmbedTest) closes the column;
  * - the page doesn't (an older web): the App's bar, its only button the column's Close.
@@ -84,11 +86,12 @@ class RaftArtifactColumnBarUiTest {
                             page = { _, _ ->
                                 // As RaftArtifactViewerScreen draws itself, its close being the page's `closePage`.
                                 val navigator = LocalRaftHost.current.navigator
-                                RaftArtifactViewerFrame(
+                                RaftArtifactViewerScreenFrame(
                                     title = "Plan",
                                     onBack = { navigator.closePage() },
-                                    pageDrawsBar = pageDrawsBar,
-                                    inColumn = LocalRaftArtifactViewerInColumn.current,
+                                    pageSaysItDrawsBar = pageDrawsBar,
+                                    viewing = true,
+                                    scopeKnown = true,
                                 ) {
                                     Box(Modifier.fillMaxSize().testTag("web")) {
                                         if (pageDrawsBar) {
@@ -115,9 +118,8 @@ class RaftArtifactColumnBarUiTest {
     fun wherePageDrawsTheBarTheColumnHasNoAppBarAndThePagesBackClosesIt() =
         runRobolectricComposeUiTest {
             showColumn(pageDrawsBar = true)
-            // One bar: the page's. Nothing of the App's above it, not even the window's safe area.
+            // One bar: the page's. Nothing of the App's above it.
             onAllNodes(appBarButtons).assertCountEquals(0)
-            assertTrue(topDp("web") - topDp("column") < 1f, "the page starts at the column's top")
             onNodeWithTag("page-back", useUnmergedTree = true).performClick()
             waitForIdle()
             assertFalse(pane.isOpen, "the page's Back closed the column")

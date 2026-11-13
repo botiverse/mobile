@@ -477,6 +477,11 @@
     <string name="thread_side_thread_resize">스레드 너비 조절</string>
     <string name="tasks_task_column_expand">확대</string>
     <string name="tasks_task_column_restore">원래대로</string>
+    <string name="pane_grid_column_expand">확대</string>
+    <string name="pane_grid_column_restore">원래대로</string>
+    <string name="pane_grid_column_move_left">왼쪽으로 이동</string>
+    <string name="pane_grid_column_move_right">오른쪽으로 이동</string>
+    <string name="pane_grid_row_tabs">열</string>
     <string name="tasks_task_column_close">작업 창 닫기</string>
     <string name="tasks_task_column_resize">패널 너비 조절</string>
     <string name="thread_state_loading">불러오는 중…</string>

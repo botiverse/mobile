@@ -111,11 +111,16 @@ fun RaftTabs(
  *
  * Only the strip's own horizontal scroll moves to show the selected tab: a scrolling
  * page around the strip stays where it is.
+ *
+ * [inHead]: the strip stands in a head's title slot (a pane grid column's row tabs, #189 rule 4, web RowTabs in
+ * `PanelHeaderContent`): no seam under it (the head has its own), no padding round the tabs, no safe-area padding (the
+ * head keeps its content out of it); it still scrolls and fades.
  */
 @Composable
 fun RaftTabStrip(
     modifier: Modifier = Modifier,
     variant: RaftTabsVariant = RaftTabsVariant.Default,
+    inHead: Boolean = false,
     content: @Composable RowScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -134,19 +139,23 @@ fun RaftTabStrip(
         ) {
             CompositionLocalProvider(LocalRaftTabStripScroll provides strip) {
                 RaftTabs(
-                    Modifier
-                        .onPlaced { strip.content = it }
-                        // The canvas and seam run edge to edge; the tabs start past the
-                        // horizontal safe area (and scroll under it, like any content).
-                        .raftSafeAreaHorizontalPadding()
-                        .padding(horizontal = RaftTabStripInset, vertical = if (variant == RaftTabsVariant.Default) 8.dp else 0.dp),
+                    if (inHead) {
+                        Modifier.onPlaced { strip.content = it }
+                    } else {
+                        Modifier
+                            .onPlaced { strip.content = it }
+                            // The canvas and seam run edge to edge; the tabs start past the
+                            // horizontal safe area (and scroll under it, like any content).
+                            .raftSafeAreaHorizontalPadding()
+                            .padding(horizontal = RaftTabStripInset, vertical = if (variant == RaftTabsVariant.Default) 8.dp else 0.dp)
+                    },
                     variant = variant,
                     content = content,
                 )
             }
         }
         // Flattened onto the canvas so the seam rounds like the web's (a draw-time blend lands a level dark).
-        Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam.compositeOver(colors.layerCanvas)))
+        if (!inHead) Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam.compositeOver(colors.layerCanvas)))
     }
 }
 

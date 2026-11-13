@@ -477,6 +477,11 @@
     <string name="thread_side_thread_resize">Изменить ширину ветки</string>
     <string name="tasks_task_column_expand">Развернуть</string>
     <string name="tasks_task_column_restore">Восстановить размер</string>
+    <string name="pane_grid_column_expand">Развернуть</string>
+    <string name="pane_grid_column_restore">Восстановить размер</string>
+    <string name="pane_grid_column_move_left">Переместить влево</string>
+    <string name="pane_grid_column_move_right">Переместить вправо</string>
+    <string name="pane_grid_row_tabs">Колонки</string>
     <string name="tasks_task_column_close">Закрыть панель задачи</string>
     <string name="tasks_task_column_resize">Изменить ширину панели</string>
     <string name="thread_state_loading">Загрузка…</string>

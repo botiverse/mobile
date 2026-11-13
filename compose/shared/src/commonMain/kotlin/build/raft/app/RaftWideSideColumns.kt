@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.RaftCmpNavigator
+import build.raft.designsystem.components.RaftPaneGridExpand
 import kotlinx.serialization.json.JsonObject
 
 /*
@@ -20,18 +21,23 @@ import kotlinx.serialization.json.JsonObject
  * on the platform stack, as they would have opened there.
  */
 
-/** The side columns' pages and whether each column is declared right now (Back goes by that, not the pages alone). */
+/**
+ * The side columns' pages, whether each column is on screen right now (Back goes by that, not the pages alone), and
+ * the row's Expand (#189 rule 5, [expand]; it replaced the thread's Focus mode).
+ */
 @Stable
 internal class RaftWideSideColumns {
     var profile by mutableStateOf(RaftProfileColumnPanes())
     var profileShown by mutableStateOf(false)
     var artifact by mutableStateOf(RaftArtifactColumnPane())
     var artifactShown by mutableStateOf(false)
+    val expand = RaftPaneGridExpand()
 
-    /** Another conversation was picked: its columns close. */
+    /** Another conversation was picked: its columns close and the row is restored. */
     fun cleared() {
         profile = profile.cleared()
         artifact = artifact.cleared()
+        expand.restore()
     }
 
     /**
@@ -48,11 +54,16 @@ internal class RaftWideSideColumns {
     }
 
     /**
-     * The shell's history Back (Cmd+[, the top bar) on the wide layout: closes the column opened last
-     * ([raftWideBackStep]) and returns true, else false (the history steps). [overlayOpen]: the Tasks page's task column.
+     * The shell's history Back (Cmd+[, the top bar) on the wide layout: restores an expanded row first (rule 5, as Esc
+     * and system Back do), else closes the column opened last ([raftWideBackStep]), and returns true; else false (the
+     * history steps). [overlayOpen]: the Tasks page's task column.
      */
-    fun back(overlayOpen: Boolean, source: String, log: (String) -> Unit): Boolean =
-        when (raftWideBackStep(profile, profileShown, overlayOpen = overlayOpen, artifact = artifact, artifactShown = artifactShown)) {
+    fun back(overlayOpen: Boolean, source: String, log: (String) -> Unit): Boolean {
+        if (!overlayOpen && expand.restore()) {
+            log("wide_history_back source=$source pops=row_expand")
+            return true
+        }
+        return when (raftWideBackStep(profile, profileShown, overlayOpen = overlayOpen, artifact = artifact, artifactShown = artifactShown)) {
             RaftWideBackStep.PopArtifactColumn -> {
                 log("wide_history_back source=$source pops=artifact_column")
                 artifact = artifact.cleared()
@@ -65,6 +76,7 @@ internal class RaftWideSideColumns {
             }
             RaftWideBackStep.Existing -> false
         }
+    }
 }
 
 /**
@@ -95,8 +107,6 @@ internal fun RaftWorkspaceDetailRow(
     tabSelected: Boolean,
     active: Boolean,
     sideThreadColumn: RaftPaneGridColumn?,
-    threadFocused: Boolean,
-    onLeaveFocus: () -> Unit,
     openDetail: (JsonObject) -> Boolean,
     main: @Composable () -> Unit,
 ) {
@@ -109,8 +119,6 @@ internal fun RaftWorkspaceDetailRow(
         tabSelected = tabSelected,
         active = active,
         sideThreadColumn = sideThreadColumn,
-        threadFocused = threadFocused,
-        onLeaveFocus = onLeaveFocus,
         // Only the main detail pane reports whether the columns are shown.
         reportHost = columnHost,
         onShown = { columns.profileShown = it },
@@ -120,6 +128,7 @@ internal fun RaftWorkspaceDetailRow(
         onArtifactChange = { columns.artifact = it },
         artifactOpen = columnHost && detailAccepted && columns.artifact.isOpen,
         onArtifactShown = { columns.artifactShown = it },
+        expand = columns.expand,
         main = main,
     )
 }

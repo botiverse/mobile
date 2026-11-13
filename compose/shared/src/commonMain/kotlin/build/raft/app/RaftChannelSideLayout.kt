@@ -297,6 +297,43 @@ private fun foldFollowerOnlyColumns(layout: RaftChannelSideLayout): RaftChannelS
     return RaftChannelSideLayout(columns.map { it.frozen() })
 }
 
+/** Where ⋯ > Move Left / Move Right put a section ([raftColumnMoves]); null where it can't go that way. */
+@Immutable
+internal data class RaftColumnMoves(val left: RaftChannelSideDrop?, val right: RaftChannelSideDrop?)
+
+/**
+ * Web columnMovePlaces `columnMoves` (#189 rule 7's keyboard path, the prototype's keyMoves): where Move Left and Move
+ * Right put [section] among the columns showing [open]'s sections. Out of a column it shares, into a new column of its
+ * own beside it; alone in its column, the column swaps places with its neighbour. Only where it changes what shows,
+ * and never past four side columns.
+ */
+internal fun raftColumnMoves(layout: RaftChannelSideLayout, open: Set<RaftChannelSideSection>, section: RaftChannelSideSection): RaftColumnMoves {
+    val shown = raftVisibleChannelSideColumns(layout, open)
+    val at = shown.indexOfFirst { section in it.sections }
+    if (at < 0) return RaftColumnMoves(null, null)
+    val own = shown[at]
+    val shared = own.sections.size > 1
+    val left =
+        when {
+            shared -> RaftChannelSideDrop.NewColumn(own.column)
+            at > 0 -> RaftChannelSideDrop.NewColumn(shown[at - 1].column)
+            else -> null
+        }
+    val right =
+        when {
+            shared -> RaftChannelSideDrop.NewColumn(own.column + 1)
+            at < shown.lastIndex -> RaftChannelSideDrop.NewColumn(shown[at + 1].column + 1)
+            else -> null
+        }
+    fun shownSections(of: RaftChannelSideLayout) = raftVisibleChannelSideColumns(of, open).map { it.sections }
+    fun ok(drop: RaftChannelSideDrop?): RaftChannelSideDrop? {
+        if (drop == null) return null
+        val moved = raftMoveChannelSideSection(layout, section, drop)
+        return if (moved === layout || shownSections(moved) == shownSections(layout)) null else drop
+    }
+    return RaftColumnMoves(ok(left), ok(right))
+}
+
 /** Web `resizeChannelSideColumn`: column [column] [width] wide (rounded, within the saved range); [layout] itself when unchanged. */
 internal fun raftResizeChannelSideColumn(layout: RaftChannelSideLayout, column: Int, width: Float): RaftChannelSideLayout {
     if (column < 0 || column >= layout.columns.size) return layout

@@ -5552,13 +5552,6 @@ private fun RaftAppShellReadyContent(
             membersDetailSelection.value = null
             return true
         }
-        // task #180 (web parity): Focus mode is one step of its own. Back leaves Focus and restores
-        // the two columns; only the next Back closes the thread. Matches the web menu's model where
-        // maximise is a reversible view state, not a new screen.
-        if (!tasksDetailColumnOpen && adaptiveWorkspaceStore.snapshot().sideThreadFocusActive()) {
-            adaptiveWorkspaceStore.update { it.copy(sideThreadFocused = false) }
-            return true
-        }
         // task #36: an open side thread closes first; the main detail stays.
         if (!tasksDetailColumnOpen && adaptiveWorkspaceStore.snapshot().backClosesSideThreadFirst(desktopModeOnLargeScreen)) {
             adaptiveWorkspaceStore.update { it.copy(sideThread = null) }
@@ -8120,10 +8113,6 @@ private fun RaftAppShellReadyContent(
                             sideThread != null &&
                                 (adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen) ||
                                     listPaneResizeDefersFold)
-                        // task #180: web parity (#9172/#9335). Focus mode lets the side thread take the
-                        // whole row. It only relaxes layout -- it never creates a column the window
-                        // cannot host, so it is gated on the same availability the column uses.
-                        val sideThreadFocusActive = adaptiveWorkspaceSession.sideThreadFocusActive()
                         LaunchedEffect(active, allowSideColumn) {
                             if (active && !allowSideColumn) {
                                 adaptiveWorkspaceStore.update {
@@ -8253,13 +8242,12 @@ private fun RaftAppShellReadyContent(
                         // conversation is down to 360; the width is kept), then the columns the
                         // conversation declares (Task v2's Tasks / Files), laid out by the #189 row
                         // plan (all give way in proportion, then clip, then become tabs). Inside the
-                        // list + detail split they all stand in its row. In Focus
-                        // mode the thread takes the row (task #180: the conversation is collapsed by
-                        // width and stays composed).
+                        // list + detail split they all stand in its row. A column's Expand (#189 rule 5, the
+                        // thread's Focus mode) fills the row with it, every other column at 160.
                         // The profile column (RaftWidePanes.kt, #189 step 3): the profile over the channel details,
                         // the row's last column (web DEFAULT_CHANNEL_SIDE_LAYOUT), with the conversation's host that
-                        // opens pages in it. A page opened in it leaves Focus; Focus entered with it open puts it out
-                        // of sight, and Back leaves Focus first (RaftWorkspaceDetailGrid).
+                        // opens pages in it. A page opened in it restores an expanded row, and Back restores it first
+                        // (RaftWorkspaceDetailGrid).
                         RaftWorkspaceDetailRow(
                             modifier = detailModifier,
                             columns = sideColumns,
@@ -8268,11 +8256,6 @@ private fun RaftAppShellReadyContent(
                             tabSelected = tabSelected,
                             active = active,
                             sideThreadColumn = sideThreadColumn,
-                            threadFocused = sideThreadFocusActive,
-                            onLeaveFocus = {
-                                bridge.log("wide_profile_column_open leaves=thread_focus")
-                                adaptiveWorkspaceStore.update { it.copy(sideThreadFocused = false) }
-                            },
                             // A conversation opened in the column (the profile's Message) becomes the main detail and
                             // the column closes, as the web's closeProfile + navigate.
                             openDetail = { pageData ->

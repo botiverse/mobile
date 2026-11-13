@@ -104,9 +104,7 @@ import build.raft.app.data.RaftShellOverlayItem
 import build.raft.app.data.cancelRaftShellOverlayJson
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
-import build.raft.app.data.sideThreadFocusActive
-import build.raft.app.data.showsSideThreadFocusEntry
-import build.raft.app.data.toggleSideThreadFocusFromPanel
+import build.raft.designsystem.components.raftPaneGridCellExpand
 import build.raft.app.data.RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
 import build.raft.app.data.AdaptiveParentFocusOutcome
 import build.raft.app.data.AdaptiveParentFocusRequest
@@ -7195,27 +7193,13 @@ private fun SharedThreadRouteContentContent(
         bridge.toast(externalAuthorHintText(message, externalAuthorHintTemplate, externalAuthorGenericHint))
     }
     val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
-    // task #180: the thread panel's overflow menu toggles Focus mode on the shared workspace.
-    // Read reactively so the label flips between Focus and Standard when it changes.
-    // The side page never receives the shell's desktopModeOnLargeScreen, so ownership of the
-    // column (adoption by it) plus a visible side thread stands in for that gate -- a column can
-    // only exist if it already passed the width/posture checks.
-    val focusWorkspaceStore =
-        remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
-    val focusWorkspaceSession by focusWorkspaceStore.state.collectAsState()
-    val threadFocusModeActive = focusWorkspaceSession.sideThreadFocusActive()
-    // Shared with the tests so "no column host renders no entry" is guarded, not just asserted.
-    val isSideColumnOwner = data.adaptiveCloseRequest != null
-    val threadFocusModeToggle: (() -> Unit)? =
-        if (focusWorkspaceSession.showsSideThreadFocusEntry(isSideColumnOwner)) {
-            {
-                focusWorkspaceStore.update { current ->
-                    current.toggleSideThreadFocusFromPanel(isSideColumnOwner)
-                }
-            }
-        } else {
-            null
-        }
+    // task #180 / #189 step 5: the thread panel's overflow menu has Focus mode, which is the thread column's Expand
+    // (rule 5, web RowExpandAction "the thread, whose Focus Mode it is"): the column fills the row, every other column
+    // at 160; pressed again, Back or Esc, the row is restored. Offered only where the thread stands in a column of the
+    // planned row with more than one column (or is the one expanded): its column's controls say so.
+    val threadExpand = raftPaneGridCellExpand(RaftChannelSideSection.Thread.wire)?.takeIf { it.shown }
+    val threadFocusModeActive = threadExpand?.pressed == true
+    val threadFocusModeToggle: (() -> Unit)? = threadExpand?.let { expand -> { expand.toggle() } }
     val messageBodyFontSizeState by sharedStores.messageBodyFontSizeStore.state.collectAsState()
     val messageBodySettingsNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val messageBodySettingsRepository =
