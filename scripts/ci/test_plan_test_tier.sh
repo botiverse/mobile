@@ -21,6 +21,10 @@ empty="$(paths empty)"
 common="$(paths common compose/shared/src/commonMain/kotlin/A.kt)"
 ios_app="$(paths ios_app compose/iosApp/iosApp/App.swift)"
 ios_main="$(paths ios_main compose/shared/src/iosMain/kotlin/A.kt)"
+ios_test="$(paths ios_test compose/shared/src/iosTest/kotlin/ATest.kt)"
+ios_test_other="$(paths ios_test_other compose/ui-cmp/src/iosTest/kotlin/ATest.kt)"
+ios_app_tests="$(paths ios_app_tests compose/iosApp/iosAppTests/RaftRouterLoginTransitionTests.swift)"
+ios_ui_tests="$(paths ios_ui_tests compose/iosApp/iosAppUITests/HarnessTests.swift)"
 android_only="$(paths android_only compose/androidApp/src/main/A.kt)"
 docs="$(paths docs docs/readme.md)"
 unknown="$(paths unknown __CI_CHANGED_PATHS_UNKNOWN__)"
@@ -81,7 +85,8 @@ expect_reject() {
 #                                    android ios  27.1  lanes device canonical attach ios-tests
 # ios-tests (iOS test steps in the iOS compile job) is true only on the full
 # tier: nightly, release-* pushes, scope=full, premerge into a release base and
-# full-ci PRs. Premerge, scope=ios, main pushes and the merge queue compile only.
+# full-ci PRs. Premerge, scope=ios, main pushes and the merge queue compile only,
+# except that a premerge or main push touching iOS test sources runs the tests.
 expect "pr commonMain"              "true false false [] false false [] false"        -- pull_request "$common" false feature
 expect "pr iosApp (no iOS on PRs)"  "false false false [] false false [] false"       -- pull_request "$ios_app" false feature
 expect "pr docs-only"               "false false false [] false false [] false"       -- pull_request "$docs" false feature
@@ -92,6 +97,10 @@ expect "merge_group"                "true true false $B false false [] false"   
 expect "main push commonMain"       "true false false [] false false [] false"        -- push "$common" false main
 expect "main push iosMain"          "false true false $B false false [] false"        -- push "$ios_main" false main
 expect "main push iosApp (no 27.1)" "false true false $B false false [] false"        -- push "$ios_app" false main
+expect "main push iosTest"          "false true false $B false false [] true"         -- push "$ios_test" false main
+expect "main push ui-cmp iosTest"   "true true false $B false false [] true"         -- push "$ios_test_other" false main
+expect "main push iosAppTests"      "false true false $B false false [] true"         -- push "$ios_app_tests" false main
+expect "main push iosAppUITests"    "false true false $B false false [] true"         -- push "$ios_ui_tests" false main
 expect "main push android-only"     "true false false [] false false [] false"        -- push "$android_only" false main
 expect "release push"               "true true true $BG false false [] true"         -- push "$common" false release-1.20
 expect "release push iosApp"        "true true true $BG false false [] true"         -- push "$ios_app" false release-1.20
@@ -103,6 +112,11 @@ expect "dispatch scope=full (no 27.1)" "true true false $B true true [29,31,34] 
 expect "premerge commonMain"        "false false false [] false false [] false"        -- workflow_dispatch "$common" false feature premerge "" main
 expect "premerge iosApp"            "false true false $B false false [] false"        -- workflow_dispatch "$ios_app" false feature premerge "" main
 expect "premerge iosMain"            "false true false $B false false [] false"        -- workflow_dispatch "$ios_main" false feature premerge "" main
+expect "premerge iosTest"           "false true false $B false false [] true"         -- workflow_dispatch "$ios_test" false feature premerge "" main
+expect "premerge ui-cmp iosTest"    "false true false $B false false [] true"         -- workflow_dispatch "$ios_test_other" false feature premerge "" main
+expect "premerge iosAppTests"       "false true false $B false false [] true"         -- workflow_dispatch "$ios_app_tests" false feature premerge "" main
+expect "premerge iosAppUITests"     "false true false $B false false [] true"         -- workflow_dispatch "$ios_ui_tests" false feature premerge "" main
+expect "pr iosTest (no iOS on PRs)" "false false false [] false false [] false"       -- pull_request "$ios_test" false feature
 expect "premerge android-only"      "false false false [] false false [] false"       -- workflow_dispatch "$android_only" false feature premerge "" main
 expect "premerge docs-only"         "false false false [] false false [] false"       -- workflow_dispatch "$docs" false feature premerge "" main
 expect "premerge ci-control"        "false true false $B false false [] false"        -- workflow_dispatch "$ci_control" false feature premerge "" main

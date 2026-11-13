@@ -44,8 +44,11 @@ adaptive editor snapshots and the UI-test harness build. `scope=premerge`,
 `scope=ios`, main pushes and the merge queue compile the iOS targets, link the
 shared framework and build the host app only, so a green premerge iOS compile
 is not an iOS test result; iOS-only behaviour regressions surface in the
-nightly within 24h. To run the iOS tests on a branch before merge, dispatch
-`scope=full` (it also runs the Android device suite).
+nightly within 24h. Exception: a premerge or main push whose diff touches iOS
+test sources (`*/iosTest/*`, `compose/iosApp/iosAppTests/**`,
+`compose/iosApp/iosAppUITests/**`) runs the iOS tests too. To run the iOS
+tests on a PR before merge, add the `full-ci` label; do not dispatch
+`scope=full` for that (see below, it is for release candidates).
 
 So an ordinary PR never proves the iOS build, and that is intended
 (wg-cost, 2026-11-12: about $1 per iOS compile; 76 a day was 5x the budget).

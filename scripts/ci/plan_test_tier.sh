@@ -47,7 +47,25 @@ change_keeps_ios() {
       return 0
     fi
     case "$path" in
-      compose/iosApp/*|compose/shared/src/iosMain/*|compose/shared/src/iosTest/*|compose/shared/src/nativeMain/*|compose/shared/src/nativeInterop/*|compose/core/src/iosMain/*|compose/core/src/iosTest/*|compose/ui-cmp/src/iosMain/*)
+      compose/iosApp/*|compose/shared/src/iosMain/*|compose/shared/src/nativeMain/*|compose/shared/src/nativeInterop/*|compose/core/src/iosMain/*|compose/ui-cmp/src/iosMain/*|*/iosTest/*)
+        return 0
+        ;;
+    esac
+  done < "$changed_paths_file"
+  return 1
+}
+
+# iOS test sources: any iosTest source set, the iosAppTests XCTest bundle and
+# the iosAppUITests harness. A change to one of these is about the iOS tests,
+# so an iOS compile that would otherwise skip the tests (premerge, main push)
+# runs them; a test-only iOS change must not go green on a compile alone.
+change_touches_ios_tests() {
+  local changed_paths_file="$1"
+  local path
+  while IFS= read -r path || test -n "$path"; do
+    path="${path%$'\r'}"
+    case "$path" in
+      */iosTest/*|compose/iosApp/iosAppTests/*|compose/iosApp/iosAppUITests/*)
         return 0
         ;;
     esac
@@ -170,7 +188,9 @@ emit_plan() {
   # pushes, scope=full, premerge into a release base and full-ci PRs. Every
   # other iOS run (premerge, scope=ios, main push, merge queue) compiles the
   # iOS targets, links the framework and builds the host app only; iOS-only
-  # behaviour regressions surface in the nightly within 24h.
+  # behaviour regressions surface in the nightly within 24h. Exception: a
+  # premerge or main push whose diff touches iOS test sources
+  # (change_touches_ios_tests) runs the iOS tests too.
   local run_ios_tests=false
   local ios_lanes="[]"
   reason=""
@@ -237,6 +257,10 @@ emit_plan() {
             case "$reason" in
               main-push-paths:*) reason="main-push-paths:$(platform_summary)" ;;
             esac
+          fi
+          # A main push touching iOS test sources runs the iOS tests.
+          if test "$run_ios" = true && change_touches_ios_tests "$changed_paths_file"; then
+            run_ios_tests=true
           fi
           # Task #26 closure: routine main pushes no longer run the device
           # suite; nightly and explicit manual dispatch keep the readback.
@@ -342,6 +366,10 @@ emit_plan() {
                   if test "$run_ios" = true && ! change_keeps_ios "$changed_paths_file"; then
                     run_ios=false
                   fi
+                  # A premerge touching iOS test sources runs the iOS tests.
+                  if test "$run_ios" = true && change_touches_ios_tests "$changed_paths_file"; then
+                    run_ios_tests=true
+                  fi
                   if test "$run_ios" = true; then
                     reason="workflow_dispatch-premerge:ios"
                   else
@@ -396,6 +424,10 @@ emit_plan() {
   # on the nightly schedule and release-* pushes (run_ios_xcode271 above); GitHub
   # Macs are the most expensive runner and share one concurrency cap with
   # ios-release.yml / ios-simulator-app.yml.
+  # Defensive clamp: no branch above sets run_ios_xcode271/run_ios_tests
+  # without iOS today, but both only make sense inside the iOS job, so a future
+  # branch that drops iOS cannot leave them true (verify_test_tier_results.mjs
+  # rejects either flag without run_ios).
   if test "$run_ios" != true; then
     run_ios_xcode271=false
     run_ios_tests=false
