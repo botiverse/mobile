@@ -30,6 +30,10 @@ import kotlinx.coroutines.flow.first
  * Here: the Compose desktop app always; a phone or tablet only while a hardware keyboard is
  * connected. A touch-only device never takes focus on open, so no soft keyboard comes up by itself.
  * The request is focus only; it never asks for the soft keyboard ([ComposerAutofocusOnOpenEffect]).
+ *
+ * An open that lands on one message (a message link, an Activity row, a search result, a
+ * permalink: the route's focused message) leaves the composer alone on a phone or tablet
+ * ([composerAutofocusSkipsMessageOpen]).
  */
 
 /** Whether opening a conversation focuses its composer: a desktop host, or a connected hardware keyboard. */
@@ -43,6 +47,17 @@ internal fun composerAutofocusOnOpen(desktopHost: Boolean, hardwareKeyboardConne
  */
 @Composable
 internal expect fun rememberRaftHardwareKeyboardConnected(): Boolean
+
+/**
+ * Whether an open that lands on one message ([opensOnMessage]: the route has a focused message)
+ * leaves the composer unfocused: on every host but desktop. On a phone or tablet the focus can
+ * still raise the soft keyboard (Android shows it beside a hardware keyboard when the user's
+ * setting says so, and cloud phones and emulators report a keyboard), and its inset pushed the
+ * message the user came for off the screen. Desktop has no soft keyboard and keeps the web's
+ * focus on open.
+ */
+internal fun composerAutofocusSkipsMessageOpen(desktopHost: Boolean, opensOnMessage: Boolean): Boolean =
+    opensOnMessage && !desktopHost
 
 @Composable
 internal fun rememberComposerAutofocusOnOpen(): Boolean =
@@ -82,7 +97,14 @@ internal const val ComposerAutofocusSettleFrames = 6
  */
 internal const val ComposerFocusRestoreSettleFrames = 2
 
-internal enum class ComposerAutofocusOutcome { Focused, Blocked, Disabled }
+internal enum class ComposerAutofocusOutcome {
+    Focused,
+    Blocked,
+    Disabled,
+
+    /** The open lands on one message: the composer stays unfocused ([composerAutofocusSkipsMessageOpen]). */
+    OpensOnMessage,
+}
 
 /**
  * One conversation page's automatic composer focus (raft-design "Moving focus"), remembered by the
@@ -106,12 +128,20 @@ internal class ComposerFocusOnOpen(
     enabled: Boolean = false,
     shown: Boolean = true,
     yieldsToSideThread: Boolean = false,
+    opensOnMessage: Boolean = false,
 ) {
     /** The platform allows it (desktop / hardware keyboard) and no reply thread beside takes it. */
     var enabled: Boolean by mutableStateOf(enabled)
 
     /** The page is on screen. */
     var shown: Boolean by mutableStateOf(shown)
+
+    /**
+     * The open lands on one message and the host can raise a soft keyboard
+     * ([composerAutofocusSkipsMessageOpen]): the open request leaves the composer alone. Read when
+     * the request runs, like [enabled]; a side thread closing still restores the focus it took.
+     */
+    var opensOnMessage: Boolean by mutableStateOf(opensOnMessage)
 
     /** +1 each time the reply thread beside this conversation closes. */
     var restoreGeneration: Int by mutableStateOf(0)
@@ -129,8 +159,9 @@ internal class ComposerFocusOnOpen(
     internal var openedConversation: Any? = null
 
     /** The page's current answers; a side thread that stops being shown beside it asks for a restore. */
-    internal fun update(enabled: Boolean, shown: Boolean, yieldsToSideThread: Boolean) {
+    internal fun update(enabled: Boolean, shown: Boolean, yieldsToSideThread: Boolean, opensOnMessage: Boolean = false) {
         if (this.enabled != enabled) this.enabled = enabled
+        if (this.opensOnMessage != opensOnMessage) this.opensOnMessage = opensOnMessage
         if (this.shown != shown) this.shown = shown
         if (this.yieldsToSideThread && !yieldsToSideThread) restoreGeneration += 1
         if (this.yieldsToSideThread != yieldsToSideThread) this.yieldsToSideThread = yieldsToSideThread
@@ -165,7 +196,8 @@ internal fun Modifier.composerReportsFocus(focus: ComposerFocusOnOpen?): Modifie
 /**
  * The page's [ComposerFocusOnOpen]: [policy] (desktop or a hardware keyboard,
  * [rememberComposerAutofocusOnOpen]), [shown] (the page is on screen) and [yieldsToSideThread]
- * ([composerAutofocusYieldsToSideThread]). Updated after each composition; the composer reads it
+ * ([composerAutofocusYieldsToSideThread]), and [opensOnMessage] ([composerAutofocusSkipsMessageOpen]).
+ * Updated after each composition; the composer reads it
  * when its requests run, so a change here never recomposes the composer.
  */
 @Composable
@@ -173,13 +205,24 @@ internal fun rememberComposerFocusOnOpen(
     policy: Boolean,
     shown: Boolean,
     yieldsToSideThread: Boolean,
+    opensOnMessage: Boolean = false,
 ): ComposerFocusOnOpen {
     val focus =
         remember {
-            ComposerFocusOnOpen(enabled = policy && !yieldsToSideThread, shown = shown, yieldsToSideThread = yieldsToSideThread)
+            ComposerFocusOnOpen(
+                enabled = policy && !yieldsToSideThread,
+                shown = shown,
+                yieldsToSideThread = yieldsToSideThread,
+                opensOnMessage = opensOnMessage,
+            )
         }
     SideEffect {
-        focus.update(enabled = policy && !yieldsToSideThread, shown = shown, yieldsToSideThread = yieldsToSideThread)
+        focus.update(
+            enabled = policy && !yieldsToSideThread,
+            shown = shown,
+            yieldsToSideThread = yieldsToSideThread,
+            opensOnMessage = opensOnMessage,
+        )
     }
     return focus
 }
@@ -217,6 +260,7 @@ internal fun ComposerAutofocusOnOpenEffect(
             when {
                 blocked() -> ComposerAutofocusOutcome.Blocked
                 !focus.enabled || !focus.shown -> ComposerAutofocusOutcome.Disabled
+                focus.opensOnMessage -> ComposerAutofocusOutcome.OpensOnMessage
                 currentRequester.tryRequestFocus() -> ComposerAutofocusOutcome.Focused
                 else -> ComposerAutofocusOutcome.Blocked
             }

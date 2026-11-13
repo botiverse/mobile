@@ -17452,12 +17452,14 @@ private fun ThreadPageContentContent(
     val adaptiveStoreScope = data.adaptiveStoreScope
     val adaptiveEventBus = data.adaptiveEventBus
     // Desktop / hardware keyboard: the composer takes the focus when the conversation opens; the
-    // wide detail's conversation leaves it to the reply thread shown beside it.
+    // wide detail's conversation leaves it to the reply thread shown beside it, and a phone or
+    // tablet leaves it alone when the open lands on one message (a message link, Activity, search).
     val composerAutofocusOnOpen =
         rememberThreadComposerAutofocusOnOpen(
             routeActive = routeActive,
             adaptiveCloseRequest = adaptiveCloseRequest,
             adaptiveStoreScope = adaptiveStoreScope,
+            opensOnMessage = !timelineSlice.focusedMessageId.isNullOrBlank(),
         )
     val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
     val onViewportFollowsLatestChange = callbacks.onViewportFollowsLatestChange
@@ -20319,7 +20321,9 @@ private fun ConversationHeaderToggle(
  * This page's composer focus ([ComposerFocusOnOpen]): the platform policy
  * ([rememberComposerAutofocusOnOpen]), the page shown, and, in the wide detail, no reply thread
  * beside it ([composerAutofocusYieldsToSideThread]: the thread panel gets the focus, and gives it
- * back when it closes only if the focus was lost). The composer reads it when its request runs,
+ * back when it closes only if the focus was lost), and on a phone or tablet no focused message
+ * ([opensOnMessage]: the open lands on one message, which the soft keyboard would push off the
+ * screen; [composerAutofocusSkipsMessageOpen]). The composer reads it when its request runs,
  * so a later change here (a keyboard reconnected, the page shown again) never re-runs the open.
  */
 @Composable
@@ -20327,11 +20331,17 @@ private fun rememberThreadComposerAutofocusOnOpen(
     routeActive: Boolean,
     adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest?,
     adaptiveStoreScope: RaftShellStoreScope,
+    opensOnMessage: Boolean,
 ): ComposerFocusOnOpen {
     val policy = rememberComposerAutofocusOnOpen()
     val yieldsToSideThread =
         if (adaptiveCloseRequest == null) false else rememberThreadComposerYieldsToSideThread(adaptiveCloseRequest, adaptiveStoreScope)
-    return rememberComposerFocusOnOpen(policy = policy, shown = routeActive, yieldsToSideThread = yieldsToSideThread)
+    return rememberComposerFocusOnOpen(
+        policy = policy,
+        shown = routeActive,
+        yieldsToSideThread = yieldsToSideThread,
+        opensOnMessage = composerAutofocusSkipsMessageOpen(desktopHost = raftPlatformHasFinePointer(), opensOnMessage = opensOnMessage),
+    )
 }
 
 /** [composerAutofocusYieldsToSideThread] for the wide detail's page [adaptiveCloseRequest], live. */
