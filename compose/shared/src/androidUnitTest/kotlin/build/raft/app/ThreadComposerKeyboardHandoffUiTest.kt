@@ -35,8 +35,9 @@ import org.robolectric.annotation.Config
  * keyboard back up over it. Composed the way ThreadPage does it: the app's [TextField] as the
  * composer in a stack page ([RaftStackPageActivity], whose lifecycle cap is what a page opening
  * over it changes), and [rememberThreadComposerKeyboardHandoff] in that page, its return focusing
- * the composer and showing the keyboard as the draft store's RequestFocus does. See AGENTS.md
- * "Compose UI tests".
+ * the composer and showing the keyboard as the draft store's RequestFocus does. The
+ * cancelled-picker path (nothing opened, the keyboard back at once) is
+ * [ThreadComposerKeyboardHandoffTest]'s. See AGENTS.md "Compose UI tests".
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -137,22 +138,6 @@ class ThreadComposerKeyboardHandoffUiTest {
             runOnIdle { page.covered = false }
             waitForIdle()
             assertEquals(1, page.returns)
-        }
-
-    @Test
-    fun aCancelledPickerBringsTheKeyboardBackAtOnce() =
-        runRobolectricComposeUiTest {
-            val page = Page()
-            val handoff = showFocusedComposer(page)
-
-            runOnIdle { handoff.leave(keyboardOpen = true) }
-            assertFalse(page.focused, "the composer kept the focus: ${page.focusEvents}")
-            runOnIdle { handoff.settle() }
-            waitForIdle()
-
-            assertEquals(1, page.returns)
-            assertTrue(page.focused, "the composer is not focused")
-            assertEquals(1, page.keyboard.shown)
         }
 
     @Test
