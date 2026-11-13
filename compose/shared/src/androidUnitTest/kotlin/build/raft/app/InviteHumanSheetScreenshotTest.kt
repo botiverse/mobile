@@ -38,7 +38,7 @@ class InviteHumanSheetScreenshotTest {
     private val invitees =
         listOf(
             InviteHumanInvitee(id = 1, email = "maria@acme.com"),
-            InviteHumanInvitee(id = 2, email = "", role = InviteHumanRoleGuest),
+            InviteHumanInvitee(id = 2, email = ""),
         )
 
     @Test

@@ -3508,9 +3508,6 @@
     <string name="invite_human_email_label">電子郵件地址</string>
     <string name="invite_human_add_invitee">再新增一位</string>
     <string name="invite_human_remove_invitee">移除第 %1$d 位受邀者</string>
-    <string name="invite_human_role_label">角色</string>
-    <string name="invite_human_role_member">成員</string>
-    <string name="invite_human_role_guest">訪客</string>
     <string name="invite_human_link_label">邀請連結</string>
     <string name="invite_human_preparing_link">正在準備邀請連結…</string>
     <string name="invite_human_link_unavailable">邀請連結無法使用</string>
@@ -4703,4 +4700,11 @@
     <string name="server_join_humans_other">%1$d 位真人成員</string>
     <string name="server_join_agents_one">%1$d 個 Agent</string>
     <string name="server_join_agents_other">%1$d 個 Agent</string>
+    <string name="member_label_channel">頻道</string>
+    <string name="member_guest_in_channel">#%1$s 的訪客</string>
+    <string name="member_action_promote_to_member">升為伺服器成員</string>
+    <string name="member_promote_dialog_title">讓 %1$s 成為 %2$s 的成員？</string>
+    <string name="member_promote_dialog_message">對方將像其他成員一樣使用 %1$s，並佔用一個席位。</string>
+    <string name="member_promote_dialog_confirm">設為成員</string>
+    <string name="member_promote_dialog_promoting">正在設為成員…</string>
 </resources>

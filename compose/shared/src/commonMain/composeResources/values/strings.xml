@@ -3666,9 +3666,6 @@
     <string name="invite_human_email_label">Email address</string>
     <string name="invite_human_add_invitee">Add another</string>
     <string name="invite_human_remove_invitee">Remove invitee %1$d</string>
-    <string name="invite_human_role_label">Role</string>
-    <string name="invite_human_role_member">Member</string>
-    <string name="invite_human_role_guest">Guest</string>
     <string name="invite_human_link_label">Invite Link</string>
     <string name="invite_human_preparing_link">Preparing invite link…</string>
     <string name="invite_human_link_unavailable">Invite link unavailable</string>
@@ -5044,4 +5041,11 @@
     <string name="server_join_humans_other">%1$d humans</string>
     <string name="server_join_agents_one">%1$d agent</string>
     <string name="server_join_agents_other">%1$d agents</string>
+    <string name="member_label_channel">Channel</string>
+    <string name="member_guest_in_channel">Guest in #%1$s</string>
+    <string name="member_action_promote_to_member">Promote to server member</string>
+    <string name="member_promote_dialog_title">Make %1$s a member of %2$s?</string>
+    <string name="member_promote_dialog_message">They'll get access to %1$s like other members and take one seat.</string>
+    <string name="member_promote_dialog_confirm">Make member</string>
+    <string name="member_promote_dialog_promoting">Promoting…</string>
 </resources>

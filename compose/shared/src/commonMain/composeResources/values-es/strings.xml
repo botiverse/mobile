@@ -3508,9 +3508,6 @@
     <string name="invite_human_email_label">Correo electrónico</string>
     <string name="invite_human_add_invitee">Agregar otro</string>
     <string name="invite_human_remove_invitee">Quitar la invitación %1$d</string>
-    <string name="invite_human_role_label">Rol</string>
-    <string name="invite_human_role_member">Miembro</string>
-    <string name="invite_human_role_guest">Invitado</string>
     <string name="invite_human_link_label">Enlace de invitación</string>
     <string name="invite_human_preparing_link">Preparando enlace de invitación…</string>
     <string name="invite_human_link_unavailable">Enlace de invitación no disponible</string>
@@ -4703,4 +4700,11 @@
     <string name="server_join_humans_other">%1$d personas</string>
     <string name="server_join_agents_one">%1$d agente</string>
     <string name="server_join_agents_other">%1$d agentes</string>
+    <string name="member_label_channel">Canal</string>
+    <string name="member_guest_in_channel">Invitado en #%1$s</string>
+    <string name="member_action_promote_to_member">Promover a miembro del servidor</string>
+    <string name="member_promote_dialog_title">¿Hacer a %1$s miembro de %2$s?</string>
+    <string name="member_promote_dialog_message">Tendrá acceso a %1$s como los demás miembros y ocupará un puesto.</string>
+    <string name="member_promote_dialog_confirm">Hacer miembro</string>
+    <string name="member_promote_dialog_promoting">Haciendo miembro…</string>
 </resources>

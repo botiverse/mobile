@@ -56,16 +56,16 @@ import kotlinx.coroutines.launch
 
 internal enum class InviteHumanTab { Email, Link }
 
+/**
+ * Every invite grants Member (web `InviteHumanDialog`): a Guest belongs to exactly one channel
+ * and is never created by a server invite (the server refuses `role: "guest"` with 400,
+ * #wg-rbac:#15), so there is no role to choose. The role is stated rather than left to a default.
+ */
 internal const val InviteHumanRoleMember = "member"
-internal const val InviteHumanRoleGuest = "guest"
-
-/** Server feature flag that lets an inviter offer the Guest role (`server_guest_v0`). */
-internal const val InviteHumanGuestFeatureFlagKey = "server_guest_v0"
 
 internal data class InviteHumanInvitee(
     val id: Int,
     val email: String = "",
-    val role: String = InviteHumanRoleMember,
 )
 
 /** Link-limit select values: "keep" = the current link's limit, else unlimited/never or a number. */
@@ -200,7 +200,7 @@ internal fun serverSwitcherShowsInviteHuman(server: ServerSummary?): Boolean =
  * The Invite Human dialog, opened by the Members humans "+" and the server switcher's
  * "Invite Human". Mirrors web `packages/web/src/components/member/InviteHumanDialog.tsx`:
  * the agent-reach notice, an Email / Link segmented switch, per-row emails (with a
- * Member / Guest role when [canOfferGuest]) sent through `POST /servers/{id}/invites`,
+ * always granting Member) sent through `POST /servers/{id}/invites`,
  * and the shareable link with its usage cap / expiry, Update (revoke + create) and
  * Revoke (`GET/POST/DELETE /servers/{id}/join-links`). The link is built from the
  * Developer environment web URL ([loadWebBaseUrl]).
@@ -209,7 +209,6 @@ internal fun serverSwitcherShowsInviteHuman(server: ServerSummary?): Boolean =
 internal fun SharedServerInviteHumanDialogHost(
     serverId: String,
     membersDataSource: SharedMembersDataSource,
-    canOfferGuest: Boolean,
     loadWebBaseUrl: suspend () -> String?,
     copyToPasteboard: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -351,7 +350,7 @@ internal fun SharedServerInviteHumanDialogHost(
         error = null
         sending = true
         scope.launch {
-            val results = targets.map { membersDataSource.sendInvite(serverId, it.email, it.role) }
+            val results = targets.map { membersDataSource.sendInvite(serverId, it.email, InviteHumanRoleMember) }
             val failed = results.firstOrNull { it !is DataResult.Content }
             val failure = failed?.failureMessage(failedSend, sendInvitesForbidden)
             sending = false
@@ -373,7 +372,6 @@ internal fun SharedServerInviteHumanDialogHost(
                     }
                 },
             invitees = invitees,
-            canOfferGuest = canOfferGuest,
             onInviteeChange = { updated ->
                 invitees = invitees.map { if (it.id == updated.id) updated else it }
             },
@@ -439,7 +437,6 @@ private fun InviteHumanDialogContent(
     error: String?,
     errorAction: (() -> Unit)? = null,
     invitees: List<InviteHumanInvitee>,
-    canOfferGuest: Boolean,
     onInviteeChange: (InviteHumanInvitee) -> Unit,
     onAddInvitee: () -> Unit,
     onRemoveInvitee: (Int) -> Unit,
@@ -500,7 +497,6 @@ private fun InviteHumanDialogContent(
                 error = error,
                 errorAction = errorAction,
                 invitees = invitees,
-                canOfferGuest = canOfferGuest,
                 onInviteeChange = onInviteeChange,
                 onAddInvitee = onAddInvitee,
                 onRemoveInvitee = onRemoveInvitee,
@@ -530,7 +526,6 @@ internal fun InviteHumanSheetSurfaceForFixture(
     invitees: List<InviteHumanInvitee>,
     joinUrl: String?,
     modifier: Modifier = Modifier,
-    canOfferGuest: Boolean = true,
 ) {
     RaftDialogSheetSurface(
         title = stringResource(Res.string.agent_invite_title),
@@ -550,7 +545,6 @@ internal fun InviteHumanSheetSurfaceForFixture(
                 onTabChange = {},
                 error = null,
                 invitees = invitees,
-                canOfferGuest = canOfferGuest,
                 onInviteeChange = {},
                 onAddInvitee = {},
                 onRemoveInvitee = {},
@@ -580,7 +574,6 @@ private fun InviteHumanDialogBody(
     error: String?,
     errorAction: (() -> Unit)? = null,
     invitees: List<InviteHumanInvitee>,
-    canOfferGuest: Boolean,
     onInviteeChange: (InviteHumanInvitee) -> Unit,
     onAddInvitee: () -> Unit,
     onRemoveInvitee: (Int) -> Unit,
@@ -644,7 +637,6 @@ private fun InviteHumanDialogBody(
                         InviteHumanInviteeRow(
                             invitee = invitee,
                             index = index,
-                            canOfferGuest = canOfferGuest,
                             canRemove = invitees.size > 1,
                             enabled = !sending,
                             onChange = onInviteeChange,
@@ -761,14 +753,11 @@ private fun InviteHumanDialogBody(
 private fun InviteHumanInviteeRow(
     invitee: InviteHumanInvitee,
     index: Int,
-    canOfferGuest: Boolean,
     canRemove: Boolean,
     enabled: Boolean,
     onChange: (InviteHumanInvitee) -> Unit,
     onRemove: () -> Unit,
 ) {
-    val roleMember = stringResource(Res.string.invite_human_role_member)
-    val roleGuest = stringResource(Res.string.invite_human_role_guest)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -781,17 +770,6 @@ private fun InviteHumanInviteeRow(
             enabled = enabled,
             modifier = Modifier.weight(1f),
         )
-        if (canOfferGuest) {
-            RaftSelect(
-                value = invitee.role,
-                options = listOf(InviteHumanRoleMember, InviteHumanRoleGuest),
-                onValueChange = { onChange(invitee.copy(role = it)) },
-                optionLabel = { if (it == InviteHumanRoleGuest) roleGuest else roleMember },
-                label = stringResource(Res.string.invite_human_role_label),
-                enabled = enabled,
-                modifier = Modifier.width(112.dp),
-            )
-        }
         if (canRemove) {
             RaftIconButton(
                 onClick = onRemove,
