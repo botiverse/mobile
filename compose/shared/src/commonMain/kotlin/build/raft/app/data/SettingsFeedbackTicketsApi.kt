@@ -292,8 +292,10 @@ class NetworkSettingsFeedbackTicketsRepository(
                 // One list across every app the person files into (slock #14722).
                 add("sources" to "all")
                 add("limit" to limit.toString())
-                // Only the first page may degrade (server #12566); a later page keeps its 503.
-                if (cursor != null) add("cursor" to cursor) else add("degraded_ok" to "1")
+                // Only the first page may degrade (server #12566); a later page keeps its 503. A blank
+                // cursor is never sent: the server reads `cursor=` as a first page.
+                val next = cursor?.takeIf { it.isNotBlank() }
+                if (next != null) add("cursor" to next) else add("degraded_ok" to "1")
             }
         return call("list") {
             networkClient.requestWithHeaders(DataRequestPriority.Foreground, "$FEEDBACK_ROUTE/tickets", headers, query = query)

@@ -196,6 +196,31 @@ class RaftFeedbackUnreadStoreTest {
     }
 
     @Test
+    fun aFirstPageWithAnAppUnavailableShowsTheSumOfTheAppsThatAnswered() = runTest {
+        // `unread_total` null (iOS unavailable) but `unread_by_source` sent: the dot is the map's sum,
+        // never 0 and never an older total.
+        val reads = FakeReads().also { it.answer(9) }
+        val store = store(reads, "android")
+        store.onSession("user-1")
+        runCurrent()
+        assertEquals(9, store.unreadTotal.value)
+        reads.answerBySource(mapOf("web" to 2, "android" to 1), total = null)
+        advanceTimeBy(FEEDBACK_UNREAD_RECONNECT_WINDOW_MILLIS + 1)
+        store.onReconnected()
+        runCurrent()
+        assertEquals(3, store.unreadTotal.value)
+
+        // The same from a fresh start, and from the Feedback list's own first page.
+        val fresh = FakeReads().also { it.answerBySource(mapOf("web" to 2, "android" to 1), total = null) }
+        val other = store(fresh, "ios")
+        other.onSession("user-1")
+        runCurrent()
+        assertEquals(3, other.unreadTotal.value)
+        other.applyRead(FeedbackUnreadRead(null, mapOf("web" to 0, "ios" to 5)))
+        assertEquals(6, other.unreadTotal.value)
+    }
+
+    @Test
     fun aTicketReadReplacesItsAppsTotal() = runTest {
         val reads = FakeReads().also { it.answerBySource(mapOf("web" to 2, "android" to 1), total = 3) }
         val store = store(reads, "android")

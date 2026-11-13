@@ -332,6 +332,20 @@ class SettingsFeedbackTicketsApiTest {
     }
 
     @Test
+    fun aBlankCursorIsNeverSentTheFirstPageHasNone() = runTest {
+        // The server reads an empty `cursor=` as a first page: omitted on the first page, never blank.
+        val network = FakeNetwork { HomeNetworkResponse(200, """{"tickets":[],"next_cursor":"","unread_total":0}""") }
+        val repository = NetworkSettingsFeedbackTicketsRepository(network, "android")
+        repository.listTickets(cursor = null)
+        repository.listTickets(cursor = "")
+        repository.listTickets(cursor = "  ")
+        assertTrue(network.calls.all { call -> call.query.none { it.first == "cursor" } })
+        // A blank `next_cursor` is the end of the list, not a page to ask for.
+        val read = assertIs<FeedbackResult.Ok<FeedbackTicketListRead>>(repository.listTickets(cursor = null)).value
+        assertNull(assertIs<FeedbackTicketListRead.Page>(read).page.nextCursor)
+    }
+
+    @Test
     fun aDegradedFirstPageIsReadAsRetryLaterNotAsNoFeedback() = runTest {
         val network =
             FakeNetwork {
