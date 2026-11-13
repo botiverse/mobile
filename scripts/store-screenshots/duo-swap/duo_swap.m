@@ -56,7 +56,9 @@ int main(int argc, char **argv) {
         id proto = MSG(id, id, SEL, Protocol *)((id)objc_getClass("BSObjCProtocol"), sel_registerName("protocolForProtocol:"), @protocol(SBSDisplayToolServiceServerInterface));
         MSG(void, id, SEL, id)(interface, sel_registerName("setServer:"), proto);
         printf("interface=%s\n", [[interface description] UTF8String]);
-        id serviceQueue = MSG(id, id, SEL)((id)objc_getClass("BSServiceDispatchQueue"), sel_registerName("mainQueue"));
+        // The configuration's target queue is a plain dispatch queue (activate wraps it with the
+        // service quality); replies arrive there.
+        id serviceQueue = dispatch_queue_create("duo_swap", DISPATCH_QUEUE_SERIAL);
         printf("serviceQueue=%s\n", [[serviceQueue description] UTF8String]);
         MSG(void, id, SEL, id)(connection, sel_registerName("configureConnection:"), ^(id config) {
             Class Quality = objc_getClass("BSServiceQuality");
