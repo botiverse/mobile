@@ -26,7 +26,10 @@ object RaftGeneralLogRing {
     private const val LogMaxSessions = 5
     private const val LogMaxTotalBytes = DiagnosticsLogMaxTotalMiB * 1024L * 1024L
     private const val LogExportMaxFiles = LogMaxFiles
-    private const val MemoryEntryLimit = 512
+    // The full-detail ring behind `recent-memory.jsonl`: every line of the last few minutes,
+    // including the ones the volume policy summarized out of the persistent log (1.25).
+    private const val MemoryEntryLimit = 1_536
+    internal const val RecentMaxAgeMillis = 3L * 60L * 1_000L
     private const val MessageMaxChars = 2_048
     private const val RecentDiagnosticsMaxChars = 120_000
     private val LogHistoryMaxAgeMs = TimeUnit.DAYS.toMillis(2)
@@ -76,22 +79,31 @@ object RaftGeneralLogRing {
 
     internal fun record(record: SanitizedDiagnosticLog) {
         executor.execute {
-            val truncated = record.message.length > MessageMaxChars
-            val entry =
-                DiagnosticEntry(
-                    timestamp = diagnosticsTimestamp(record.timestampMillis),
-                    level = record.level.trim().lowercase(Locale.US).ifBlank { "info" },
-                    tag = record.tag,
-                    event = record.message.substringBefore(' ', missingDelimiterValue = record.message).take(96),
-                    message = record.message.take(MessageMaxChars),
-                    thread = record.threadName,
-                    seq = record.sequence,
-                    dropped = droppedEntries.get() + record.droppedBeforeDispatch,
-                    truncated = truncated,
-                )
+            val entry = entryOf(record)
             remember(entry)
             append(entry)
         }
+    }
+
+    /** A line summarized out of the persistent log: kept only in the in-memory full-detail ring. */
+    internal fun recordRecentOnly(record: SanitizedDiagnosticLog) {
+        executor.execute { remember(entryOf(record)) }
+    }
+
+    private fun entryOf(record: SanitizedDiagnosticLog): DiagnosticEntry {
+        val truncated = record.message.length > MessageMaxChars
+        return DiagnosticEntry(
+            timestamp = diagnosticsTimestamp(record.timestampMillis),
+            level = record.level.trim().lowercase(Locale.US).ifBlank { "info" },
+            tag = record.tag,
+            event = record.message.substringBefore(' ', missingDelimiterValue = record.message).take(96),
+            message = record.message.take(MessageMaxChars),
+            thread = record.threadName,
+            seq = record.sequence,
+            dropped = droppedEntries.get() + record.droppedBeforeDispatch,
+            truncated = truncated,
+            timestampMillis = record.timestampMillis,
+        )
     }
 
     fun hasFiles(context: Context): Boolean =
@@ -145,10 +157,24 @@ object RaftGeneralLogRing {
         return (newestFromEachLaunch + remainingByRecency).distinct().take(LogExportMaxFiles)
     }
 
-    fun exportRecentJsonl(maxChars: Int = RecentDiagnosticsMaxChars): String =
-        snapshotMemoryEntries()
-            .joinToString(separator = "\n") { it.toJsonLine() }
-            .takeLast(maxChars)
+    /**
+     * The ring's lines of the last [RecentMaxAgeMillis], newest kept first when they exceed
+     * [maxChars]; whole lines only, oldest first.
+     */
+    fun exportRecentJsonl(maxChars: Int = RecentDiagnosticsMaxChars): String {
+        val entries = snapshotMemoryEntries()
+        val newest = entries.lastOrNull()?.timestampMillis ?: return ""
+        val lines = ArrayList<String>()
+        var chars = 0
+        for (entry in entries.asReversed()) {
+            if (newest - entry.timestampMillis > RecentMaxAgeMillis) break
+            val line = entry.toJsonLine()
+            if (chars + line.length + 1 > maxChars) break
+            lines += line
+            chars += line.length + 1
+        }
+        return lines.asReversed().joinToString(separator = "\n")
+    }
 
     fun exportRecentText(context: Context, maxChars: Int = RecentDiagnosticsMaxChars): String {
         flush()
@@ -347,7 +373,8 @@ object RaftGeneralLogRing {
         val thread: String,
         val seq: Long,
         val dropped: Long,
-        val truncated: Boolean
+        val truncated: Boolean,
+        val timestampMillis: Long = 0L
     ) {
         fun toJsonLine(): String =
             JSONObject()

@@ -31,9 +31,17 @@ data class RaftFeedbackLogPick(
  * A shard that does not fit whole contributes its tail when at least [MinTailBytes] remain
  * (the reader skips to the first full line); selection stops at the first shard that does not
  * fit. The newest shard is always included, as a tail if it alone exceeds the budget.
+ *
+ * 1.25: a report passes [ReportBudgetBytes] (768 KiB, the in-memory `recent-memory.jsonl`
+ * included) and [ReportMaxAgeMillis] (6 h): a shard last written longer ago is left out, except
+ * the newest shard of the newest launch and of the launch before it (the end of a launch that
+ * crashed or was killed). With the 1.25 writer (about a third fewer bytes per active minute in the
+ * 1.24 sample reports) 768 KiB covers about as much active time as 1 MiB did.
  */
 object RaftFeedbackDiagnosticsBudget {
     const val DefaultBudgetBytes: Long = 1024L * 1024L
+    const val ReportBudgetBytes: Long = 768L * 1024L
+    const val ReportMaxAgeMillis: Long = 6L * 60L * 60L * 1_000L
     const val MinTailBytes: Long = 16L * 1024L
     private const val LaunchPrefix = "launch-"
 
@@ -47,7 +55,12 @@ object RaftFeedbackDiagnosticsBudget {
         }
     }
 
-    fun select(files: List<RaftFeedbackLogFile>, budgetBytes: Long = DefaultBudgetBytes): List<RaftFeedbackLogPick> {
+    fun select(
+        files: List<RaftFeedbackLogFile>,
+        budgetBytes: Long = DefaultBudgetBytes,
+        nowMillis: Long = 0L,
+        maxAgeMillis: Long = 0L,
+    ): List<RaftFeedbackLogPick> {
         val candidates = files.filter { it.sizeBytes > 0L }
         if (candidates.isEmpty() || budgetBytes <= 0L) return emptyList()
         // Rotation order, not mtime: the active file is newest, then .1, .2, ... (mtimes can be
@@ -67,6 +80,15 @@ object RaftFeedbackDiagnosticsBudget {
                         .thenByDescending { it.first().launchId }
                         .thenByDescending { group -> group.maxOf { it.modifiedMillis } }
                 )
+                .let { all ->
+                    if (maxAgeMillis <= 0L) return@let all
+                    // The newest shard of the newest launch and of the one before always qualify.
+                    val protected = all.take(2).map { it.first() }.toSet()
+                    all.mapNotNull { launch ->
+                        launch.filter { file -> file in protected || nowMillis - file.modifiedMillis <= maxAgeMillis }
+                            .takeIf { it.isNotEmpty() }
+                    }
+                }
         val newestLaunch = launches.first()
         val earlierLaunches = launches.drop(1)
         val reserve = earlierLaunches.firstOrNull()?.first()?.sizeBytes?.coerceAtMost(budgetBytes / 4) ?: 0L

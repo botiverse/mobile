@@ -550,6 +550,11 @@ internal fun formatMergedSettingsDiagnosticsExportText(
             appendLine(recentLogs.trim().ifBlank { "No local diagnostics log files are currently available." })
         }
 
+/** The "Recent logs" section of the summary inside a feedback zip: the logs are files next to it. */
+internal const val FeedbackZipRecentLogsPointer =
+    "In this zip: app_logs/ (recent-memory.jsonl = last minutes at full detail; launch-*/ = log shards, " +
+        "see app_logs/feedback-selection.txt) and auth_logs/."
+
 internal fun settingsDiagnosticsEnvironmentSection(exportText: String): String {
     val environmentStart = exportText.indexOf("Environment")
     if (environmentStart < 0) return ""
@@ -6933,7 +6938,9 @@ internal class RaftBridgeModule(
     }
 
     private fun writeDiagnosticsFeedbackFile(): DiagnosticsFeedbackFile {
-        val summaryText = buildMergedSettingsDiagnosticsExportText()
+        // The zip carries the logs themselves (app_logs/, auth_logs/): its summary leaves out the
+        // ~120 KB "Recent logs" copy of them that the copy/share text needs.
+        val summaryText = buildMergedSettingsDiagnosticsExportText(includeRecentLogs = false)
         val archive = RaftAndroidLocalDiagnostics.prepareDiagnosticsFeedbackArchive(appContext, summaryText)
         RaftAndroidLocalDiagnostics.uploadDiagnostics(
                 context = appContext,
@@ -7163,10 +7170,15 @@ internal class RaftBridgeModule(
                 else -> "text/plain"
             }
 
-    private fun buildMergedSettingsDiagnosticsExportText(): String {
+    private fun buildMergedSettingsDiagnosticsExportText(includeRecentLogs: Boolean = true): String {
         val about = loadSettingsAbout()
         recordSettingsDiagnosticsEnvironment(about)
-        val recentLogs = RaftAndroidLocalDiagnostics.exportRecentDiagnosticsText(appContext)
+        val recentLogs =
+                if (includeRecentLogs) {
+                    RaftAndroidLocalDiagnostics.exportRecentDiagnosticsText(appContext)
+                } else {
+                    FeedbackZipRecentLogsPointer
+                }
         val base = formatMergedSettingsDiagnosticsExportText(
                 about = about,
                 recentLogs = recentLogs,

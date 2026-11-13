@@ -30,7 +30,7 @@ app_logs/launch-<id>/raft-diagnostics.jsonl[.N], recent-memory.jsonl
 app_logs/feedback-selection.txt      (1.23+: which shards were attached / omitted)
 auth_logs/raft-auth-critical.jsonl   (when present)
 ```
-From 1.23 a report attaches at most 1 MiB of app logs, newest launch first (a
+From 1.23 a report attaches at most 1 MiB (768 KiB from 1.25) of app logs, newest launch first (a
 shard may be a tail that starts at a full line); older shards stay on the
 device. iOS applies the same 1 MiB budget to its attachments.
 iOS (separate attachments, not one zip): summary, then
@@ -80,6 +80,15 @@ Warnings, errors, failures, auth, sends, navigation, artifact viewer/WebView,
 thread reads, activity, tasks and lifecycle lines are never summarized. An
 absent routine line is therefore not proof it never happened: check the
 summaries. Builds up to 1.22 wrote `diagnostics_coalesced` counts instead.
+
+From 1.25: budget 768 KiB and shards older than 6 h are left out (except the
+newest shard of the newest launch and of the one before); routine keys keep 2
+lines/min; routine warn lines (`scroll_frames`, `ime_animation_end`, cancelled
+requests) and per-keystroke composer lines are summarized, entries may carry
+`{metric=min..max,last=v}`; info failures without a request/trace id keep 5/min
+(`failed:<key>` in the summary). `app_logs/recent-memory.jsonl` is the last
+3 minutes at full detail (summarized lines included; dedupe by `seq`). Details:
+`docs/quiver-feedback-diagnostics-zip.md` § 1.25 writer.
 
 ## 5. Close the loop
 

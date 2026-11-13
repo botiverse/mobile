@@ -24,6 +24,8 @@ internal data class PendingDiagnosticLog(
     val persist: Boolean = true,
     /** A shared line: the shared queue's volume policy already admitted it. */
     val volumeAdmitted: Boolean = false,
+    /** Not [persist] but summarized: still kept in the in-memory full-detail ring of the last minutes. */
+    val recent: Boolean = persist,
 )
 
 internal data class SanitizedDiagnosticLog(

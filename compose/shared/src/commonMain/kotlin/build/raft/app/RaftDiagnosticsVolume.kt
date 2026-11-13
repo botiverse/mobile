@@ -34,8 +34,11 @@ object RaftVerboseDiagnostics {
  * launch alone wrote 10k lines / 4 MB, a line every 65 ms, most of it per-frame or per-row
  * probes and repeated parse/merge bookkeeping. Per line, in order:
  *
- * 1. warn / error lines, and info lines that read like a failure or belong to the auth trail,
- *    are always written;
+ * 1. auth-trail lines and error lines are always written; warn lines too, except the routine
+ *    warn-level markers of [WarnSummarizedRules] (per-scroll frame timings, IME animation timings,
+ *    caller-cancelled requests), which are summarized like rule 3 with min..max / last of their
+ *    timings; info lines that read like a failure are written when they carry a request / trace
+ *    id, otherwise [FailureBudget] per key and minute (counted as `failed:<key>`);
  * 2. [VerboseCategories] (by event) are written only while [RaftVerboseDiagnostics] is on; off,
  *    one `diagnostics_verbose_off` line per minute carries their counts per category;
  * 3. [SummarizedRules] (high-frequency routine events): the first `budget` lines of each key per
@@ -48,6 +51,13 @@ object RaftVerboseDiagnostics {
  * 5. every other info line has a [routineBudget] per key and minute, summarized the same way, so
  *    a new chatty log point cannot flood the ring.
  *
+ * 1.25 (Hands fb-93123592 / 7e198cab / 9cf9735f, Android 1.24.0): the 1.24 writer still wrote
+ * 400-700 lines (~250 KB) per active minute, so the 1 MiB report budget held only the last 3-5
+ * minutes. Routine budget 10 -> 2, per-keystroke / per-scroll / perf lines summarized, failure
+ * look-alikes (`failedAttachments=false`) no longer count as failures: about a third fewer bytes
+ * per active minute on those reports. Lines summarized out of the log ([Admission.recent]) still
+ * go to the platform's in-memory ring, which a report attaches as the last minutes at full detail.
+ *
  * A key is `event` or, for a `prefix sub_event key=value` family, `event:sub_event`. The minute is
  * one window for all keys, opened by the first counted line.
  * Thread-safe; [admit] and [drain] may run on different threads.
@@ -58,9 +68,27 @@ class RaftDiagnosticsVolumePolicy(
     private val maxKeys: Int = DefaultMaxKeys,
     private val maxSampleIds: Int = DefaultMaxSampleIds,
 ) {
-    class Admission(val persist: Boolean, val summaries: List<String>)
+    /**
+     * [persist]: written to the persistent log. [recent]: worth the in-memory full-detail ring of
+     * the last minutes (`recent-memory.jsonl`) even though it was summarized out of the log; false
+     * for verbose-gated categories, which stay out of the report unless the developer switch is on.
+     */
+    class Admission(val persist: Boolean, val summaries: List<String>, val recent: Boolean = persist)
 
-    internal data class Rule(val budget: Int = 1, val keepWhen: List<String> = emptyList())
+    /**
+     * [budget] lines per key and window are written, the rest counted. [keepWhen]: a line carrying
+     * one of these is always written. [onlyWhen] (warn rules): the rule applies only to lines
+     * carrying one of these, every other line of the event is written. [metrics]: numeric
+     * `name=value` fields whose min..max and last value over the window go into the summary.
+     */
+    internal data class Rule(
+        val budget: Int = 1,
+        val keepWhen: List<String> = emptyList(),
+        val onlyWhen: List<String> = emptyList(),
+        val metrics: List<String> = emptyList(),
+    )
+
+    private class Metric(var min: Double, var max: Double, var last: Double)
 
     private class Counter {
         var seen = 0L
@@ -68,6 +96,7 @@ class RaftDiagnosticsVolumePolicy(
         var suppressed = 0L
         val sampleIds = ArrayList<String>(DefaultMaxSampleIds)
         val distinctIds = HashSet<String>()
+        val metrics = LinkedHashMap<String, Metric>()
     }
 
     private val lock = SynchronizedObject()
@@ -80,13 +109,15 @@ class RaftDiagnosticsVolumePolicy(
 
     fun admit(level: String, tag: String, message: String, nowMillis: Long, verbose: Boolean): Admission {
         val summaries = ArrayList<String>(0)
-        val persist =
+        val decision =
             synchronized(lock) {
                 if (windowExpired(nowMillis)) closeWindowLocked(nowMillis, summaries)
                 admitLocked(level, tag, message, nowMillis, verbose)
             }
-        return Admission(persist, summaries)
+        return Admission(persist = decision == Decision.Persist, summaries = summaries, recent = decision != Decision.Gated)
     }
+
+    private enum class Decision { Persist, Summarized, Gated }
 
     /** Closes the window once it is a minute old (the periodic flush while the stream is quiet). */
     fun sweep(nowMillis: Long): List<String> =
@@ -109,47 +140,80 @@ class RaftDiagnosticsVolumePolicy(
         message: String,
         nowMillis: Long,
         verbose: Boolean,
-    ): Boolean {
-        if (tag == SummaryTag) return true
+    ): Decision {
+        if (tag == SummaryTag) return Decision.Persist
         val normalizedLevel = level.trim().lowercase()
-        if (normalizedLevel != "info" && normalizedLevel != "debug" && normalizedLevel != "verbose") return true
-        if (looksLikeFailure(message) || isAuthRelated(message)) return true
+        if (isAuthRelated(message)) return Decision.Persist
         val tokens = message.split(' ', limit = 3)
         val event = tokens[0]
         val sub = tokens.getOrNull(1)?.takeIf { it.isNotEmpty() && !it.contains('=') }
+        val key = if (sub == null) event else "$event:$sub"
+        val failure = looksLikeFailure(message)
+        if (normalizedLevel != "info" && normalizedLevel != "debug" && normalizedLevel != "verbose") {
+            // Warnings and errors are written, except the routine warn-level markers (frame
+            // timings, cancelled requests) of [WarnSummarizedRules].
+            if (normalizedLevel != "warn" || failure) return Decision.Persist
+            val rule =
+                (sub?.let { WarnSummarizedRules["$event $it"] } ?: WarnSummarizedRules[event])
+                    ?.takeIf { rule -> rule.onlyWhen.isEmpty() || rule.onlyWhen.any(message::contains) }
+                    ?: return Decision.Persist
+            if (rule.keepWhen.any(message::contains)) return Decision.Persist
+            return countLocked(key, rule, message, nowMillis)
+        }
+        if (failure) {
+            // An info line that reads like a failure: written with its trace / request id; without
+            // one, [FailureBudget] per key and window (offline retries repeat the same failure for
+            // every channel), the rest counted under `failed:<key>`.
+            if (TraceIdPattern.containsMatchIn(message)) return Decision.Persist
+            return countLocked("failed:$key", FailureRule, message, nowMillis)
+        }
         val verboseCategory = verboseCategory(event, sub, message)
         if (verboseCategory != null) {
-            if (verbose) return true
+            if (verbose) return Decision.Persist
             if (windowStartMillis == Long.MIN_VALUE) windowStartMillis = nowMillis
             verboseOffCounts[verboseCategory] = (verboseOffCounts[verboseCategory] ?: 0L) + 1L
-            return false
+            return Decision.Gated
         }
         val rule =
             (sub?.let { SummarizedRules["$event $it"] } ?: SummarizedRules[event])
-                ?: if (isKept(tag, event)) return true else Rule(budget = routineBudget)
-        if (rule.keepWhen.any(message::contains)) return true
-        val key = if (sub == null) event else "$event:$sub"
+                ?: if (isKept(tag, event)) return Decision.Persist else Rule(budget = routineBudget)
+        if (rule.keepWhen.any(message::contains)) return Decision.Persist
+        return countLocked(key, rule, message, nowMillis)
+    }
+
+    private fun countLocked(key: String, rule: Rule, message: String, nowMillis: Long): Decision {
         val counter =
             counters[key] ?: run {
-                if (counters.size >= maxKeys) return true
+                if (counters.size >= maxKeys) return Decision.Persist
                 Counter().also { counters[key] = it }
             }
         if (windowStartMillis == Long.MIN_VALUE) windowStartMillis = nowMillis
         counter.seen += 1
+        rule.metrics.forEach { name ->
+            val value = metricValue(message, name) ?: return@forEach
+            val metric = counter.metrics[name]
+            if (metric == null) {
+                counter.metrics[name] = Metric(value, value, value)
+            } else {
+                if (value < metric.min) metric.min = value
+                if (value > metric.max) metric.max = value
+                metric.last = value
+            }
+        }
         if (counter.kept < rule.budget) {
             counter.kept += 1
-            return true
+            return Decision.Persist
         }
         counter.suppressed += 1
         sampleId(message)?.let { id ->
             if (counter.distinctIds.size < MaxDistinctIds) counter.distinctIds.add(id)
             if (counter.sampleIds.size < maxSampleIds && id !in counter.sampleIds) counter.sampleIds.add(id)
         }
-        return false
+        return Decision.Summarized
     }
 
     /**
-     * `diagnostics_summary windowMs=… keys=… suppressed=… <key>=<suppressed>/<seen>[ids;distinct] …`
+     * `diagnostics_summary windowMs=… keys=… suppressed=… <key>=<suppressed>/<seen>[ids;distinct]{metric=min..max,last=v} …`
      * (most suppressed first; `part=i/n` when split), then `diagnostics_verbose_off windowMs=…
      * <category>=<count> …`. Resets every key's budget.
      */
@@ -194,17 +258,36 @@ class RaftDiagnosticsVolumePolicy(
                 val distinct = if (distinctIds.size >= MaxDistinctIds) "$MaxDistinctIds+" else distinctIds.size.toString()
                 "[${sampleIds.joinToString(",")};$distinct]"
             }
-        return "$key=$suppressed/$seen$ids"
+        val values =
+            if (metrics.isEmpty()) {
+                ""
+            } else {
+                metrics.entries.joinToString(";", prefix = "{", postfix = "}") { (name, metric) ->
+                    "$name=${metric.min.metricText()}..${metric.max.metricText()},last=${metric.last.metricText()}"
+                }
+            }
+        return "$key=$suppressed/$seen$ids$values"
     }
+
+    private fun Double.metricText(): String = if (this == toLong().toDouble()) toLong().toString() else toString()
 
     companion object {
         const val SummaryTag = "RaftDiagnostics"
         const val SummaryEvent = "diagnostics_summary"
         const val VerboseOffEvent = "diagnostics_verbose_off"
         const val DefaultWindowMillis = 60_000L
-        const val DefaultRoutineBudget = 10
+        // 1.25: 10 -> 2. With 10 the 1.24 reports still wrote 400-700 lines a minute of active use
+        // (fb-93123592 / 7e198cab / 9cf9735f: the 1 MiB budget held only the last 3-5 minutes),
+        // spread over ~200 keys, each under its own budget. The last minutes at full detail are
+        // in the in-memory ring (`recent-memory.jsonl`), not here.
+        const val DefaultRoutineBudget = 2
         const val DefaultMaxKeys = 256
-        const val DefaultMaxSampleIds = 3
+        const val DefaultMaxSampleIds = 2
+
+        /** Info lines that read like a failure but carry no trace / request id: per key and window. */
+        const val FailureBudget = 5
+        private val FailureRule = Rule(budget = FailureBudget)
+        private val FrameMetrics = listOf("durationMs", "jankFrames", "longestFrameMs")
         private const val MaxDistinctIds = 32
         private const val MaxSummaryChars = 1_700
 
@@ -265,7 +348,7 @@ class RaftDiagnosticsVolumePolicy(
                 "shared_activity_thread_warning" to Rule(),
                 "shared_activity_thread_prewarm" to Rule(),
                 "shared_activity_persist" to Rule(),
-                "shared_home_activity" to Rule(budget = 10),
+                "shared_home_activity" to Rule(budget = 3),
                 // Thread data: summary joins and parse bookkeeping (loads and results are kept).
                 "thread_conversation_repository summary_join" to Rule(),
                 "thread_conversation_repository conversation_network_body_received" to Rule(),
@@ -279,7 +362,7 @@ class RaftDiagnosticsVolumePolicy(
                 "thread_realtime_fold" to Rule(),
                 "thread_realtime_apply_result" to Rule(keepWhen = listOf("emitted=true")),
                 "canonical_v2_realtime" to Rule(budget = 3),
-                "canonical_v2_canary" to Rule(budget = 5),
+                "canonical_v2_canary" to Rule(budget = 3),
                 "sync_core_shadow" to Rule(),
                 // Per-frame / per-scroll layout probes.
                 "thread_composer_layout_decision" to Rule(),
@@ -297,6 +380,19 @@ class RaftDiagnosticsVolumePolicy(
                 "thread_composer_draft_transition_prepared" to Rule(),
                 "thread_composer_draft_transition_finalized" to Rule(),
                 "thread_composer_draft_transition_completed" to Rule(),
+                // Per keystroke (1.25): change / change result / draft save / saved. Send lines
+                // (gate, snapshot, result) stay always written.
+                "thread_composer_change" to Rule(budget = 3),
+                "thread_composer_change_result" to Rule(budget = 3),
+                "thread_composer_draft_persist_save" to Rule(budget = 3),
+                "thread_composer_draft_persist_saved" to Rule(budget = 3),
+                // Per scroll position (1.25); thread read start / result / skip stay always written.
+                "thread_read_tail" to Rule(budget = 3),
+                // Shell re-checks on every home state emission (1.25); tab dispatches stay written.
+                "app_shell_parent_home_start_check" to Rule(budget = 2),
+                "app_shell_child_tab_render" to Rule(budget = 2),
+                // Realtime task events for tasks no longer shown (1.25).
+                "tasks_realtime_ignore" to Rule(),
                 // Members / presence / read receipts.
                 "shell_server_members_repository" to Rule(),
                 "process_server_members_repository" to Rule(),
@@ -304,7 +400,23 @@ class RaftDiagnosticsVolumePolicy(
                 "store_load" to Rule(budget = 3),
                 "roster_presence_projection" to Rule(),
                 "process_read_receipt" to Rule(),
-                "scroll_frames" to Rule(budget = 3),
+                "scroll_frames" to Rule(budget = 3, metrics = FrameMetrics),
+            )
+
+        /**
+         * Routine warn-level lines (1.25): per-scroll frame timings, IME animation timings and
+         * requests the caller cancelled. `budget` per key and window, the rest summarized with
+         * min..max / last of the metrics. Slow and failed requests, frame stalls carried in
+         * `keepWhen`, and every other warning are always written. Navigation transition frames
+         * (`nav_transition_frames`, from / to route) are navigation, not summarized.
+         */
+        internal val WarnSummarizedRules: Map<String, Rule> =
+            mapOf(
+                "scroll_frames" to Rule(budget = 3, metrics = FrameMetrics),
+                "ime_animation_end" to Rule(budget = 2, keepWhen = listOf("timedOut=true"), metrics = listOf("durationMs", "progressFrames")),
+                "shared_network slock_http_execute_finish" to
+                    Rule(budget = 2, onlyWhen = listOf("kind=CANCELLED"), metrics = listOf("durationMs")),
+                "slock_http_execute_finish" to Rule(budget = 2, onlyWhen = listOf("kind=CANCELLED"), metrics = listOf("durationMs")),
             )
 
         /**
@@ -338,9 +450,32 @@ class RaftDiagnosticsVolumePolicy(
         private val FailureMarkers =
             listOf("fail", "exception", "result=error", "_error", "timed out", "timeout=true", "crash")
 
+        /** `failedAttachments=false`, `mainLoadFailed=false`, `error=none`: fields that say "no failure". */
+        private val NeutralFailureField = Regex("""\S*(?:fail|error|exception|timeout|crash)\S*=(?:false|0|none|null)(?=\s|$)""", RegexOption.IGNORE_CASE)
+
         internal fun looksLikeFailure(message: String): Boolean {
             val lower = message.lowercase()
-            return FailureMarkers.any(lower::contains)
+            if (FailureMarkers.none(lower::contains)) return false
+            return FailureMarkers.any(NeutralFailureField.replace(lower, "")::contains)
+        }
+
+        /** A request / trace id that ties a failure to the server side: such lines are always written. */
+        private val TraceIdPattern =
+            Regex("""(?:^|\s)(?:traceId|trace_id|requestId|request_id|clientRequestId|xRequestId|x-request-id)=\S""", RegexOption.IGNORE_CASE)
+
+        internal fun metricValue(message: String, name: String): Double? {
+            var from = 0
+            while (true) {
+                val at = message.indexOf("$name=", from)
+                if (at < 0) return null
+                if (at == 0 || message[at - 1] == ' ') {
+                    val start = at + name.length + 1
+                    var end = start
+                    while (end < message.length && (message[end].isDigit() || message[end] == '.' || message[end] == '-')) end++
+                    return message.substring(start, end).toDoubleOrNull()
+                }
+                from = at + 1
+            }
         }
 
         /** The verbose category of an info line, or null when it is not gated. */

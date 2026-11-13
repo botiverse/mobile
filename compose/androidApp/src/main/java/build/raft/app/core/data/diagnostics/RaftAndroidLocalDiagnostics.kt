@@ -33,9 +33,14 @@ object RaftAndroidLocalDiagnostics {
     private const val FeedbackSnapshotName = "raft-diagnostics-summary.txt"
     private const val RecentDiagnosticsMaxChars = 120_000
     /** Raw bytes of app logs (in-memory tail + shards) a feedback zip carries. */
-    private const val FeedbackLogBudgetBytes = RaftFeedbackDiagnosticsBudget.DefaultBudgetBytes
+    private const val FeedbackLogBudgetBytes = RaftFeedbackDiagnosticsBudget.ReportBudgetBytes
     /** The in-memory tail duplicates the newest shard; it is the fallback when file writes failed. */
-    private const val RecentMemoryMaxChars = 48_000
+    /**
+     * `recent-memory.jsonl`: the last [RaftGeneralLogRing.RecentMaxAgeMillis] at full detail
+     * (including the lines the volume policy summarized out of the log), at most this many chars.
+     */
+    private const val RecentMemoryMaxChars = 192_000
+    private const val MaxUnfinishedRequestLines = 8
     private const val MaxValueLength = 512
     private const val MaxQueuedMessageLength = 8_192
     private const val MaxQueuedThreadNameLength = 128
@@ -85,8 +90,11 @@ object RaftAndroidLocalDiagnostics {
         enqueueLog(level, tag, message, includeNonCritical, DiagnosticCriticalHint.None)
     }
 
-    /** A line from the shared log queue; [persist] false keeps it out of the ring (logcat only). */
-    fun recordSharedLog(level: String, tag: String, message: String, persist: Boolean) {
+    /**
+     * A line from the shared log queue; [persist] false keeps it out of the persistent log, and
+     * [recent] (a summarized line) still puts it in the in-memory ring of the last minutes.
+     */
+    fun recordSharedLog(level: String, tag: String, message: String, persist: Boolean, recent: Boolean = persist) {
         enqueueLog(
             level,
             tag,
@@ -95,6 +103,7 @@ object RaftAndroidLocalDiagnostics {
             criticalHint = DiagnosticCriticalHint.None,
             persist = persist,
             volumeAdmitted = true,
+            recent = recent,
         )
     }
 
@@ -124,6 +133,7 @@ object RaftAndroidLocalDiagnostics {
         criticalHint: DiagnosticCriticalHint?,
         persist: Boolean = true,
         volumeAdmitted: Boolean = false,
+        recent: Boolean = persist,
     ) {
         val queuedMessage = message.take(MaxQueuedMessageLength)
         dispatchQueue.enqueue(
@@ -144,6 +154,7 @@ object RaftAndroidLocalDiagnostics {
                         },
                 persist = persist,
                 volumeAdmitted = volumeAdmitted,
+                recent = recent,
             )
         )
     }
@@ -167,7 +178,12 @@ object RaftAndroidLocalDiagnostics {
         inFlightRequests.observe(sanitized.message, sanitized.timestampMillis)
         if (authEvent != null) {
             RaftAuthCriticalJournal.record(sanitized, authEvent)
-        } else if (entry.persist && RaftPersistentDiagnosticsPolicy.shouldPersist(sanitized.level, sanitized.message)) {
+        } else if (!entry.persist) {
+            // Summarized out of the log by the shared policy: the full-detail ring only.
+            if (entry.recent && RaftPersistentDiagnosticsPolicy.shouldPersist(sanitized.level, sanitized.message)) {
+                RaftGeneralLogRing.recordRecentOnly(sanitized)
+            }
+        } else if (RaftPersistentDiagnosticsPolicy.shouldPersist(sanitized.level, sanitized.message)) {
             // Logcat above still gets every line; only the persistent ring is rate limited.
             if (entry.volumeAdmitted) {
                 RaftGeneralLogRing.record(sanitized)
@@ -186,7 +202,11 @@ object RaftAndroidLocalDiagnostics {
                     sanitized.copy(level = "info", tag = RaftDiagnosticsVolumePolicy.SummaryTag, message = summary)
                 )
             }
-            if (admission.persist) RaftGeneralLogRing.record(sanitized)
+            if (admission.persist) {
+                RaftGeneralLogRing.record(sanitized)
+            } else if (admission.recent) {
+                RaftGeneralLogRing.recordRecentOnly(sanitized)
+            }
         }
     }
 
@@ -199,7 +219,18 @@ object RaftAndroidLocalDiagnostics {
         volumePolicy.drain(now).forEach { summary ->
             recordLog("info", RaftDiagnosticsVolumePolicy.SummaryTag, summary)
         }
-        inFlightRequests.unfinished(now).forEach { line -> recordLog("warn", InFlightTag, line) }
+        // Requests that hang stay open across exports (fb-93123592: 20 such lines per report, some
+        // 4.7 h old, repeated in every report): the newest few, and one line for the rest.
+        val unfinished = inFlightRequests.unfinished(now)
+        if (unfinished.size > MaxUnfinishedRequestLines) {
+            recordLog(
+                "warn",
+                InFlightTag,
+                "network_request_unfinished_more count=${unfinished.size - MaxUnfinishedRequestLines} " +
+                    "listed=$MaxUnfinishedRequestLines total=${unfinished.size}"
+            )
+        }
+        unfinished.takeLast(MaxUnfinishedRequestLines).forEach { line -> recordLog("warn", InFlightTag, line) }
     }
 
     /** Writes the summaries of closed windows (memory-telemetry thread, every 30s in foreground). */
@@ -417,7 +448,13 @@ object RaftAndroidLocalDiagnostics {
                 )
             }
         val budget = budgetBytes.coerceAtLeast(RaftFeedbackDiagnosticsBudget.MinTailBytes)
-        val picks = RaftFeedbackDiagnosticsBudget.select(candidates, budget)
+        val picks =
+            RaftFeedbackDiagnosticsBudget.select(
+                candidates,
+                budget,
+                nowMillis = System.currentTimeMillis(),
+                maxAgeMillis = RaftFeedbackDiagnosticsBudget.ReportMaxAgeMillis,
+            )
         val description =
             RaftFeedbackDiagnosticsBudget.describe(candidates, picks, budget) { entryNames.getValue(it.path) }
         return FeedbackLogSelection(picks, entryNames, description)
