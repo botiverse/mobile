@@ -31,7 +31,7 @@ import org.jetbrains.skia.Image
 
 internal actual fun logPixelAvatarDrawCache(message: String) = Unit
 
-internal actual suspend fun raftPlatformCompleteQaBootstrapRouteReady(authDataSource: SharedAuthDataSource) = Unit
+internal actual suspend fun raftPlatformCompleteQaBootstrapRouteReady(authDataSource: SharedAuthDataSource): Boolean = false
 
 internal actual fun raftPlatformTextMotion(): TextMotion? = null
 

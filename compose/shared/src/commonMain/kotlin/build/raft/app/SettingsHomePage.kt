@@ -4029,14 +4029,13 @@ private fun RaftAppShellReadyContent(
                 ?: SharedServerMembersEntry(serverId = readyServerId.orEmpty())
         }
     )
-    LaunchedEffect(readySession?.qaBootstrap?.ticketDigest, homeState.content) {
-        if (
-            readySession?.qaBootstrap != null &&
-            (homeState.content is SharedHomeContentState.Content || homeState.content is SharedHomeContentState.Empty)
-        ) {
-            raftPlatformCompleteQaBootstrapRouteReady(authDataSource)
-        }
-    }
+    // QA bootstrap READY + waiting diagnostics + bounded Home retry (no-op unless session.qaBootstrap is set).
+    QaBootstrapShellEffects(
+        authGateState = authGateState,
+        homeContent = homeState.content,
+        authDataSource = authDataSource,
+        onRefreshHome = { homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh)) },
+    )
     LaunchedEffect(storeScope.shellInstanceId, authGateState, readyServerId) {
         when (val state = authGateState) {
             is SharedAuthGateState.Ready -> {
@@ -4789,6 +4788,11 @@ private fun RaftAppShellReadyContent(
             return
         }
         is SharedAuthGateState.BootstrapRecoveryRequired -> {
+            QaBootstrapRecoveryEffect(
+                session = gate.session,
+                authDataSource = authDataSource,
+                dispatch = authGateViewModel::dispatch,
+            )
             AppShellSilentRestoreContent()
             return
         }
@@ -16931,7 +16935,7 @@ internal fun appShellAuthSessionEventRestoreIntent(event: AuthSessionEvent): Sha
         null
     }
 
-private fun SharedAuthGateState.authGateDiagnosticsName(): String =
+internal fun SharedAuthGateState.authGateDiagnosticsName(): String =
     when (this) {
         SharedAuthGateState.Restoring -> "restoring"
         SharedAuthGateState.AuthRequired -> "auth_required"

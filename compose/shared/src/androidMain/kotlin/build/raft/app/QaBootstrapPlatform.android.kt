@@ -16,34 +16,34 @@ private const val QaBootstrapLogTag = "SlockQaBootstrap"
 private val qaBootstrapProcessInstanceId by lazy { UUID.randomUUID().toString() }
 private val qaBootstrapProcessGeneration by lazy { Process.getStartUptimeMillis().toString() }
 
-internal actual suspend fun raftPlatformCompleteQaBootstrapRouteReady(authDataSource: SharedAuthDataSource) {
-    var session = authDataSource.readStoredSession() ?: return
-    var metadata = session.qaBootstrap ?: return
+internal actual suspend fun raftPlatformCompleteQaBootstrapRouteReady(authDataSource: SharedAuthDataSource): Boolean {
+    var session = authDataSource.readStoredSession() ?: return false
+    var metadata = session.qaBootstrap ?: return false
     qaBootstrapStage("route_ready_started")
     if (metadata.readyReceipt == null) {
         when (val result = authDataSource.readyQaBootstrap()) {
             is SharedAuthResult.Success -> qaBootstrapStage("ready_receipt_persisted")
             SharedAuthResult.Unauthenticated -> {
                 qaBootstrapFailure("ready_receipt", "unauthenticated")
-                return
+                return false
             }
             is SharedAuthResult.Failure -> {
                 qaBootstrapFailure("ready_receipt", result.code.name.lowercase())
-                return
+                return false
             }
         }
         session = authDataSource.readStoredSession() ?: run {
             qaBootstrapFailure("ready_session_reload", "missing")
-            return
+            return false
         }
         metadata = session.qaBootstrap ?: run {
             qaBootstrapFailure("ready_metadata_reload", "missing")
-            return
+            return false
         }
     }
     val receipt = metadata.readyReceipt ?: run {
         qaBootstrapFailure("ready_receipt_reload", "missing")
-        return
+        return false
     }
     val envelope = resolveQaBootstrapRuntimeEnvelope(
         metadata = metadata,
@@ -56,15 +56,15 @@ internal actual suspend fun raftPlatformCompleteQaBootstrapRouteReady(authDataSo
     )
     val persisted = authDataSource.saveQaBootstrapRuntimeEnvelope(metadata, envelope) ?: run {
         qaBootstrapFailure("runtime_envelope_persist", "binding_changed")
-        return
+        return false
     }
     metadata = persisted.qaBootstrap ?: run {
         qaBootstrapFailure("runtime_metadata_reload", "missing")
-        return
+        return false
     }
     val persistedEnvelope = metadata.runtimeEnvelope ?: run {
         qaBootstrapFailure("runtime_envelope_reload", "missing")
-        return
+        return false
     }
     qaBootstrapStage("runtime_envelope_persisted")
     Log.i(
@@ -86,6 +86,7 @@ internal actual suspend fun raftPlatformCompleteQaBootstrapRouteReady(authDataSo
             "routeReadyProofDigest=${persistedEnvelope.routeReadyProofDigest}" +
             (persistedEnvelope.recoveryOf?.let { " recoveryOf=$it" } ?: "")
     )
+    return true
 }
 
 private fun qaBootstrapStage(stage: String) {
