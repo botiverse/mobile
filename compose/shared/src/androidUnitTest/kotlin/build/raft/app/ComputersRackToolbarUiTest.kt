@@ -30,8 +30,9 @@ import org.robolectric.annotation.Config
 /**
  * The Computers page's toolbar and list on a real composition, driven through the real toolbar
  * store (web features/computer/tests/computersRackToolbar.behavior.test.tsx, phone): the default
- * Mine first order (web #14479) and a chosen Name sort, with the offline computers folded away at the end, the search and Status narrowing
- * the list, Clear all and the no-match state, and Group's fold titles.
+ * Mine first order (web #14479) and a chosen Name sort, with the offline computers open at the end
+ * until their title folds them, the search and Status narrowing the list, Clear all and the no-match
+ * state, and Group's fold titles.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -92,17 +93,23 @@ class ComputersRackToolbarUiTest {
     private fun ComposeUiTest.top(name: String): Float = onNodeWithText(name).fetchSemanticsNode().boundsInRoot.top
 
     @Test
-    fun theListPutsMineFirstUntilANameSortIsChosenAndOfflineComputersWaitFoldedAtTheEnd() = runRobolectricComposeUiTest {
+    fun theListPutsMineFirstUntilANameSortIsChosenAndOfflineComputersWaitOpenAtTheEndUntilFolded() = runRobolectricComposeUiTest {
         val store = show()
         assertTrue(top("alpha-1") < top("beta") && top("beta") < top("alpha-2"), "Mine first, then the server's order")
         runOnIdle { store.dispatch(RaftComputersRackToolbarIntent.ChooseSortKey(ComputersRackSortKey.Name, null)) }
         waitForIdle()
         assertTrue(top("alpha-1") < top("alpha-2") && top("alpha-2") < top("beta"), "Name, A to Z")
-        assertTrue(!shown("zeta"), "an offline computer is folded away while others are online")
+        onNodeWithText("zeta").assertIsDisplayed()
+        assertTrue(top("beta") < top("zeta"), "the Offline section comes last, open by default")
         onNodeWithTag(RaftComputersRackTags.OfflineTitle).assertIsDisplayed().performClick()
         waitForIdle()
+        assertTrue(!shown("zeta"), "tapping the Offline title folds it")
+        runOnIdle { store.dispatch(RaftComputersRackToolbarIntent.ChooseSortKey(ComputersRackSortKey.Name, null)) }
+        waitForIdle()
+        assertTrue(!shown("zeta"), "the folded choice is remembered across sorts")
+        onNodeWithTag(RaftComputersRackTags.OfflineTitle).performClick()
+        waitForIdle()
         onNodeWithText("zeta").assertIsDisplayed()
-        assertTrue(top("beta") < top("zeta"), "the Offline section comes last")
     }
 
     @Test

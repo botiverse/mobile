@@ -181,9 +181,7 @@ class ComputersRackCardsListUiTest {
     @Test
     fun anOfflineBlockSaysWhenItWasLastSeenAndHasNoCells() = runRobolectricComposeUiTest {
         show(ComputersRackView.List)
-        // Nothing else is offline-only: the Offline section is folded while studio is online.
-        onNodeWithTag(RaftComputersRackTags.OfflineTitle).performClick()
-        waitForIdle()
+        // The Offline section is open by default, even while studio is online.
         onNodeWithTag("rack-row-m-laptop").assertIsDisplayed()
         assertTrue(onAllNodes(hasTestTag("rack-metrics-m-laptop"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty(), "an offline computer reads no usage")
         assertTrue(onAllNodes(hasText("Last seen", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
