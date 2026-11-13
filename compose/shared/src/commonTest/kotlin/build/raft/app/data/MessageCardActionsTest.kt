@@ -73,7 +73,7 @@ class MessageCardActionsTest {
     }
 
     @Test
-    fun `the read answer names who the card waits for, the consent asked and the unreviewed App`() {
+    fun `the read answer names who the card waits for and the consent asked and the unreviewed App`() {
         val waiting = assertNotNull(parseMessageCardReadAnswer(messageCardReadBody("""{"card_revision":"1","actions":[],"waiting_for":{"id":"user-alice","name":"Alice"}}""")))
         assertEquals(RaftMessageCardWaitingFor("user-alice", "Alice"), waiting.waitingFor)
         assertEquals(emptyList(), waiting.handles)
@@ -108,7 +108,7 @@ class MessageCardActionsTest {
     }
 
     @Test
-    fun `an answer without message_card is not a card read, and a handle entry it can't read is left out`() {
+    fun `an answer without message_card is not a card read and a handle entry it cannot read is left out`() {
         assertNull(parseMessageCardReadAnswer("""{"items":[],"prompts":[]}"""))
         assertNull(parseMessageCardReadAnswer("not json"))
         val live =
