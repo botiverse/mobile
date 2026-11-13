@@ -4192,7 +4192,7 @@
     <string name="message_card_declined">You turned off %1$s.</string>
     <string name="message_card_allow_app">Allow %1$s</string>
     <string name="message_card_consent_title">Allow %1$s?</string>
-    <string name="message_card_consent_body">%1$s will know it's you when you view its links or use its buttons here. You can turn this off in Settings › Applications.</string>
+    <string name="message_card_consent_body">%1$s will know it's you when you view its links or use its buttons here. You can turn this off in Settings › Apps.</string>
     <string name="message_card_consent_allow">Allow</string>
     <string name="message_card_consent_not_now">Not now</string>
     <string name="artifacts_card_open_in_new_page">Open in New Page</string>
@@ -5008,4 +5008,7 @@
     <string name="external_agent_card_replace_message">The credential created on this page stops working. Whatever signed in as %1$s with it disconnects until you give it the new one.</string>
     <string name="external_agent_card_revoke_title">Revoke this credential?</string>
     <string name="external_agent_card_revoke_message">Whatever signed in as %1$s with it stops working right away. This can't be undone.</string>
+    <string name="message_card_press_again">%1$s is allowed. Press “%2$s” again to run it.</string>
+    <string name="thread_link_preview_action_app_says">%1$s: %2$s</string>
+    <string name="thread_link_preview_action_app_says_unnamed">App: %1$s</string>
 </resources>

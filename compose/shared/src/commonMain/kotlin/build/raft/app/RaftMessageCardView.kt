@@ -139,7 +139,14 @@ internal fun RaftMessageCardView(
                         val action = acting?.actions?.get(id)
                         if (action != null && press != null) {
                             val fallbackUrl = (button.action as? RaftLinkCardButtonAction.Navigate)?.url
-                            RaftMessageCardActingButton(id, button, action, messageCardActingState(live, id, fallbackUrl), press, onAsk = { prompt -> consent?.ask(prompt) })
+                            RaftMessageCardActingButton(
+                                id,
+                                button,
+                                action,
+                                messageCardActingState(live, id, fallbackUrl),
+                                press,
+                                onAsk = { prompt -> consent?.ask(prompt, ThreadMessageCardConsentFlow.Press(id, card.revision)) },
+                            )
                         } else {
                             RaftMessageCardLink(button, onOpenUrl)
                         }
@@ -159,6 +166,7 @@ internal fun RaftMessageCardView(
     }
     press?.let { ThreadMessageCardActingConfirmation(it) }
     ThreadMessageCardConsentSheet(consent, actingHost)
+    ThreadMessageCardResume(consent, actingHost, card, live, press)
 }
 
 /**

@@ -128,7 +128,7 @@ class MessageCardActionsTest {
     fun `the read declares card execute with the link card capabilities and presents the view's tickets`() {
         val view = AppLinkCardView("6f1c1f86-5a83-4b1e-9b1a-0d2f0e0c0a01").apply { tickets[MessageCardActingPage] = "t-1" }
         val body = messageCardReadRequestBody(view, "ja")
-        assertEquals(APP_LINK_CARD_READ_CAPABILITIES + "card.execute.v1", body.capabilities)
+        assertEquals(APP_LINK_CARD_READ_CAPABILITIES + "card.execute.v1" + "execute.toast.v1", body.capabilities)
         assertEquals(true, "unreviewed_app.v1" in body.capabilities)
         assertEquals(mapOf(MessageCardActingPage to "t-1"), body.tickets)
         assertNull(body.urls)

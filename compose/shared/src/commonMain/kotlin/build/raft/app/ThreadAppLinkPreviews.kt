@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.designsystem.components.RaftToastIntent
 import build.raft.app.data.AppLinkConsentAnswer
 import build.raft.app.data.AppLinkConsentStatus
 import build.raft.app.data.AppLinkPromptApp
@@ -77,6 +78,8 @@ internal data class ThreadAppLinkPreviewHost(
     val serverId: String,
     val conversationId: String,
     val toast: (String) -> Unit,
+    /** [toast] with an intent (an operation state's tone); plain where none is wired (fixtures). */
+    val toastWithIntent: (String, RaftToastIntent?) -> Unit = { text, _ -> toast(text) },
     /** Workspace Artifacts links; null where they aren't read (fixtures, no provider). */
     val artifacts: ThreadArtifactLinkHost? = null,
     /** Where `interactive_link_cards` is read (the batched link-card read); null: always the GET (fixtures). */
@@ -250,6 +253,7 @@ internal fun ThreadAppLinkPreviewScope(
                     execute = { handle, requestId, prepared -> host.store.executeAction(host.serverId, handle, requestId, prepared) },
                     reread = { url -> host.store.rereadLink(host.viewerKey, host.serverId, messageId, body, batchRead, url) },
                     toast = host.toast,
+                    toastWithIntent = host.toastWithIntent,
                 )
             }
         }

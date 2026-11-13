@@ -50,7 +50,7 @@ class AppLinkCardActionsTest {
     @Test
     fun anExecuteAnswerCarriesTheStateAndOnlyRaftsHint() {
         val ok = parseAppLinkExecuteAnswer(200, """{"operation_id":"op-1","state":"accepted","toast":{"tone":"info","text":"Sent to Stamp."}}""") as AppLinkActionResult.Ok
-        assertEquals(AppLinkExecuted("op-1", "accepted", "Sent to Stamp."), ok.value)
+        assertEquals(AppLinkExecuted("op-1", "accepted", "Sent to Stamp.", tone = "info"), ok.value)
         assertTrue(ok.value.isOpen)
         val done = parseAppLinkExecuteAnswer(200, """{"operation_id":"op-1","state":"done"}""") as AppLinkActionResult.Ok
         assertTrue(!done.value.isOpen)

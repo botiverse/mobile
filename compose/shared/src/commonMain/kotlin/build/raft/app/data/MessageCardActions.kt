@@ -31,8 +31,14 @@ import kotlinx.serialization.json.JsonObject
 /** The capability a client declares on the batched read when it draws a card message's acting buttons (RFC 086 §4.4). */
 internal const val MESSAGE_CARD_EXECUTE_CAPABILITY = "card.execute.v1"
 
-/** What a card message read declares: the link card read's list (`unreviewed_app.v1` included) and `card.execute.v1`. */
-internal val MESSAGE_CARD_READ_CAPABILITIES: List<String> = APP_LINK_CARD_READ_CAPABILITIES + MESSAGE_CARD_EXECUTE_CAPABILITY
+/**
+ * `execute.toast.v1` (RFC 076 §6.3, slock `EXECUTE_TOAST_CAPABILITY`): execute's answer may carry the
+ * App's own toast (`app_result: { toast }`), which execute learns from the handle this read bound.
+ */
+internal const val EXECUTE_TOAST_CAPABILITY = "execute.toast.v1"
+
+/** What a card message read declares: the link card read's list (`unreviewed_app.v1` included), `card.execute.v1` and `execute.toast.v1`. */
+internal val MESSAGE_CARD_READ_CAPABILITIES: List<String> = APP_LINK_CARD_READ_CAPABILITIES + MESSAGE_CARD_EXECUTE_CAPABILITY + EXECUTE_TOAST_CAPABILITY
 
 /** The one stored text of an acting button (`MESSAGE_CARD_ACTING_BUTTON_DISABLED_REASON`), for older clients only. */
 internal const val MESSAGE_CARD_ACTING_BUTTON_DISABLED_REASON = "Update Raft to use this button"
