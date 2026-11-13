@@ -30,6 +30,12 @@ data class RaftAppInstallSourceReadProperties(
     @SerialName("utm_source") val utmSource: String? = null,
     @SerialName("utm_medium") val utmMedium: String? = null,
     @SerialName("utm_campaign") val utmCampaign: String? = null,
+    /**
+     * True when this is the first version installed (`firstInstallTime == lastUpdateTime` at read
+     * time), false when the install had been updated before the read (an existing user reaching
+     * this build). Null (omitted) only if the platform could not tell.
+     */
+    @SerialName("fresh_install") val freshInstall: Boolean? = null,
 )
 
 /** Server `PRODUCT_EVENT_STRING_TOKEN` (`campaignToken`, max 64): no dot. */

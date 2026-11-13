@@ -20,6 +20,8 @@ import kotlin.concurrent.thread
  * - Play answered with an empty referrer: `direct`; otherwise `google_play` + validated utm_*.
  * - FEATURE_NOT_SUPPORTED / SERVICE_UNAVAILABLE / DEVELOPER_ERROR (and any other failure): `unknown`.
  * - A disconnect before an answer stores nothing; the next launch reads again.
+ * - `fresh_install`: `PackageInfo.firstInstallTime == lastUpdateTime` (existing users updating to
+ *   this build report too, with false). Only that comparison is kept, never the times.
  *
  * Only the parsed result is stored; the raw referrer and the install/click timestamps are not
  * kept. Everything runs off the main thread and never throws into startup.
@@ -42,8 +44,11 @@ internal object RaftAndroidInstallReferrer {
     }
 
     private fun read(app: Context) {
+        val freshInstall = readFreshInstall(app)
         if (installerPackage(app) != PlayStorePackage) {
-            RaftInstallSourceReport.recordRead(RaftAppInstallSourceReadProperties(RaftInstallStore.Direct))
+            RaftInstallSourceReport.recordRead(
+                RaftAppInstallSourceReadProperties(RaftInstallStore.Direct, freshInstall = freshInstall)
+            )
             return
         }
         val client = InstallReferrerClient.newBuilder(app).build()
@@ -54,7 +59,7 @@ internal object RaftAndroidInstallReferrer {
                     if (!answered.compareAndSet(false, true)) return
                     // Delivered on the main thread; the referrer call is a binder IPC.
                     runCatching {
-                        thread(name = "RaftInstallReferrer", isDaemon = true) { finish(client, responseCode) }
+                        thread(name = "RaftInstallReferrer", isDaemon = true) { finish(client, responseCode, freshInstall) }
                     }.onFailure { runCatching { client.endConnection() } }
                 }
 
@@ -65,7 +70,7 @@ internal object RaftAndroidInstallReferrer {
         )
     }
 
-    private fun finish(client: InstallReferrerClient, responseCode: Int) {
+    private fun finish(client: InstallReferrerClient, responseCode: Int, freshInstall: Boolean?) {
         try {
             if (responseCode == InstallReferrerClient.InstallReferrerResponse.SERVICE_DISCONNECTED) return
             val properties =
@@ -76,13 +81,19 @@ internal object RaftAndroidInstallReferrer {
                     // FEATURE_NOT_SUPPORTED, SERVICE_UNAVAILABLE, DEVELOPER_ERROR, PERMISSION_ERROR.
                     RaftAppInstallSourceReadProperties(RaftInstallStore.Unknown)
                 }
-            RaftInstallSourceReport.recordRead(properties)
+            RaftInstallSourceReport.recordRead(properties.copy(freshInstall = freshInstall))
         } catch (_: Throwable) {
             // Failure-safe: nothing stored, the next launch reads again.
         } finally {
             runCatching { client.endConnection() }
         }
     }
+
+    private fun readFreshInstall(app: Context): Boolean? =
+        runCatching {
+            val info = app.packageManager.getPackageInfo(app.packageName, 0)
+            info.firstInstallTime == info.lastUpdateTime
+        }.getOrNull()
 
     private fun installerPackage(app: Context): String? =
         runCatching {
