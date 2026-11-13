@@ -26,6 +26,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import build.raft.designsystem.components.RaftCheckbox
 import build.raft.app.data.DataResult
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Choice
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Choices
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2ErrorCode
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Field
@@ -141,6 +142,58 @@ internal fun RuntimeFormV2Fields(
         }
     }
 }
+
+/**
+ * Web RuntimeChoiceCombobox `renderOption`: the line under a model's name is its stored id (for Pi
+ * `provider/modelId`), only when it differs from the name. Only real model / provider ids get it
+ * (runtime owner, PR #4682; web slock #14728): the runtime default (""), a placeholder value
+ * (`__...`, e.g. a default row) and a saved provider connection's internal `connection:<id>` have
+ * none, nor does a value the list does not have (shown as itself).
+ */
+internal fun runtimeChoiceIdentifier(value: String, label: String): String? =
+    value.takeIf {
+        it.isNotEmpty() &&
+            it != label &&
+            !it.startsWith(RUNTIME_CHOICE_PLACEHOLDER_PREFIX) &&
+            !it.startsWith(RUNTIME_CHOICE_CONNECTION_PREFIX)
+    }
+
+/** A placeholder value (the web's `__runtime_form_v2_default__`), never a real id. */
+private const val RUNTIME_CHOICE_PLACEHOLDER_PREFIX = "__"
+
+/** `provider.saved_connection`: a saved connection's option value is `connection:<connectionId>`. */
+private const val RUNTIME_CHOICE_CONNECTION_PREFIX = "connection:"
+
+/**
+ * One listed choice of a runtime form select. A bound connection that is unavailable stays visible
+ * but cannot be picked again. With [showsIdentifiers], the row has its id under the name, unless the
+ * choice has a description (web shows the description in the row instead; here it goes under the
+ * field): then the value is a search keyword, so search still finds the model id, as web
+ * `runtimeChoiceMatches` always searches the value.
+ */
+internal fun runtimeFormV2ListedOption(
+    option: RuntimeFormV2Choice,
+    group: String?,
+    showsIdentifiers: Boolean
+): RaftComboboxOption<String> {
+    val described = !option.description.isNullOrBlank()
+    return RaftComboboxOption(
+        value = option.value,
+        label = option.label,
+        group = group,
+        enabled = !option.unavailable,
+        identifier = if (showsIdentifiers && !described) runtimeChoiceIdentifier(option.value, option.label) else null,
+        keywords = if (showsIdentifiers && described) listOf(option.value) else emptyList()
+    )
+}
+
+/**
+ * Web RuntimeFormV2FieldControl: a select takes the searchable list whose rows carry the id line when
+ * it accepts a typed value or lists what an option source reports (models); a derived select (an
+ * effort menu) and a fixed list stay a plain select without it.
+ */
+internal fun runtimeFormV2ShowsChoiceIdentifiers(field: RuntimeFormV2Field, choices: RuntimeFormV2Choices.Select): Boolean =
+    choices.allowCustom || (field.optionSourceId != null && field.kind != RuntimeFormV2FieldKind.DerivedSelect)
 
 /**
  * The combobox value for a select whose stored value is [current]. "" means "nothing chosen" unless the
@@ -344,17 +397,17 @@ private fun RuntimeFormV2FieldRow(
                     // selected by its own label and reason, never rewritten; validation blocks the save.
                     val unavailableSelected =
                         if (unlisted) unavailableChoices.firstOrNull { it.value == current.trim() } else null
+                    // Web draws a searchable list (RuntimeChoiceCombobox) for these, each row with its id under the name.
+                    val showsIdentifiers = runtimeFormV2ShowsChoiceIdentifiers(field, choices)
                     // One option list for both pickers; "" is the runtime default.
                     val options = buildList {
                         if (choices.allowEmpty) add(RaftComboboxOption("", defaultLabel))
                         choices.options.forEach { option ->
                             add(
-                                RaftComboboxOption(
-                                    value = option.value,
-                                    label = option.label,
+                                runtimeFormV2ListedOption(
+                                    option = option,
                                     group = option.group?.takeIf { grouped }?.let { if (it == "saved") savedGroupLabel else directGroupLabel },
-                                    // A bound connection that is unavailable stays visible but cannot be picked again.
-                                    enabled = !option.unavailable
+                                    showsIdentifiers = showsIdentifiers
                                 )
                             )
                         }
@@ -371,7 +424,9 @@ private fun RuntimeFormV2FieldRow(
                                             "direct" -> directGroupLabel
                                             else -> unavailableGroupLabel
                                         },
-                                        enabled = false
+                                        enabled = false,
+                                        // Shown only without a reason (the reason takes its line).
+                                        identifier = if (showsIdentifiers) runtimeChoiceIdentifier(entry.value, entry.label) else null
                                     )
                                 )
                             }

@@ -57,6 +57,18 @@ class RaftComboboxFilterTest {
             )
         cases.forEach { (query, expected) -> assertEquals(expected, matches(query), "query \"$query\"") }
     }
+
+    @Test
+    fun matchesTheIdentifierShownUnderTheLabel() {
+        // Web runtimeChoiceMatches searches the stored id (`provider/modelId`) too.
+        val pi =
+            listOf(
+                RaftComboboxOption("anthropic/claude-sonnet-4-5", "Claude Sonnet 4.5", identifier = "anthropic/claude-sonnet-4-5"),
+                RaftComboboxOption("openai/gpt-5", "GPT-5", identifier = "openai/gpt-5"),
+            )
+        assertEquals(listOf("openai/gpt-5"), raftComboboxFilter(pi, "openai").map { it.value })
+        assertEquals(listOf("anthropic/claude-sonnet-4-5"), raftComboboxFilter(pi, "sonnet-4-5").map { it.value })
+    }
 }
 
 class RaftComboboxRowsTest {

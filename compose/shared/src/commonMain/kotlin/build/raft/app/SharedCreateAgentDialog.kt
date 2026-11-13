@@ -1061,9 +1061,13 @@ private fun CreateAgentHostedModelField(
     }
 }
 
-/** The provider's default first, under the empty value (web `emptyOption`); then the offered models. */
+/**
+ * The provider's default first, under the empty value (web `emptyOption`); then the offered models,
+ * each with its id under its name (web RuntimeChoiceCombobox).
+ */
 internal fun createAgentHostedModelOptions(models: HostedRuntimeModels, defaultLabel: String): List<RaftComboboxOption<String>> =
-    listOf(RaftComboboxOption("", defaultLabel)) + models.models.map { RaftComboboxOption(it.id, it.label) }
+    listOf(RaftComboboxOption("", defaultLabel)) +
+        models.models.map { RaftComboboxOption(it.id, it.label, identifier = runtimeChoiceIdentifier(it.id, it.label)) }
 
 /**
  * Web CreateAgentDialog's needs-computer gate (`!isExternalMode && machines.length === 0`): a

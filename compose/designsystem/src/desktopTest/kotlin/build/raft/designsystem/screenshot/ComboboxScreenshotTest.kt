@@ -50,11 +50,12 @@ class ComboboxScreenshotTest {
 
     private val models =
         listOf(
-            RaftComboboxOption("opus", "Claude Opus", group = "Anthropic", description = "Best for long, careful work"),
-            RaftComboboxOption("sonnet", "Claude Sonnet", group = "Anthropic"),
-            RaftComboboxOption("codex", "GPT-5 Codex", group = "OpenAI"),
+            // A description takes the identifier's place; o3 has no identifier, so no second line.
+            RaftComboboxOption("opus", "Claude Opus", group = "Anthropic", description = "Best for long, careful work", identifier = "anthropic/claude-opus-4-1"),
+            RaftComboboxOption("sonnet", "Claude Sonnet", group = "Anthropic", identifier = "anthropic/claude-sonnet-4-5"),
+            RaftComboboxOption("codex", "GPT-5 Codex", group = "OpenAI", identifier = "openai/gpt-5-codex"),
             RaftComboboxOption("o3", "o3", group = "OpenAI", enabled = false),
-            RaftComboboxOption("gemini", "Gemini 2.5 Pro", group = "Google"),
+            RaftComboboxOption("gemini", "Gemini 2.5 Pro", group = "Google", identifier = "google/gemini-2.5-pro-preview-06-05-long-context-experimental"),
         )
 
     private val people =
@@ -96,7 +97,7 @@ class ComboboxScreenshotTest {
         }
 
     /**
-     * The open sheet: groups with a description, a disabled row and the chosen value (and
+     * The open sheet: groups with a description and identifiers (one truncating), a disabled row and the chosen value (and
      * Clear); a search narrowing a multiple pick with avatars and Done; nothing matching;
      * a create combobox offering the typed text first.
      */
