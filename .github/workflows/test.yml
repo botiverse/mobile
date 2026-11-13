@@ -110,6 +110,24 @@ jobs:
           .github/actions/git-safe-workspace/test_configure.sh
           scripts/ci/test_git_diff_path_state.sh
 
+      # The realtime event names live in compose/realtime-contract/realtime_contract.json; the
+      # Kotlin (compose/core) and Swift (compose/iosApp) constants are generated from it
+      # (skill raft-realtime-event). Regenerate on every run and fail if a checked-in output
+      # differs, so an edited JSON without a regenerate, or a hand edit of a generated file,
+      # cannot merge. Python only, about a second.
+      - name: Check generated realtime contract matches realtime_contract.json
+        run: |
+          set -euo pipefail
+          python3 compose/realtime-contract/generate_realtime_contract.py
+          generated=(
+            compose/core/src/commonMain/kotlin/build/raft/app/data/realtime/GeneratedRealtimeContract.kt
+            compose/iosApp/iosApp/GeneratedRealtimeContract.swift
+          )
+          if ! git diff --exit-code -- "${generated[@]}" || test -n "$(git status --porcelain -- "${generated[@]}")"; then
+            echo "::error::Generated realtime contract files are out of date with compose/realtime-contract/realtime_contract.json. Run: python3 compose/realtime-contract/generate_realtime_contract.py and commit the result."
+            exit 1
+          fi
+
       - name: Self-test the execution tier planner
         run: scripts/ci/test_plan_test_tier.sh
 
@@ -541,7 +559,13 @@ jobs:
             --console=plain \
             --stacktrace
           "$GRADLE_HEAP" 4g
+          # :shared:verifySqlDelightMigration applies every checked-in migration (.sqm) to each
+          # schema snapshot (src/commonMain/sqldelight/databases/<n>.db) and fails if the result
+          # differs from the current RaftDatabase.sq schema (verifyMigrations is on in
+          # compose/shared/build.gradle.kts). CI never runs `check`, the only thing depending on
+          # verifySqlDelightMigration, so it is invoked explicitly.
           tasks+=(
+            :shared:verifySqlDelightMigration
             :core:testAndroidHostTest
             :shared:testDebugUnitTest
             :androidApp:testDebugUnitTest
