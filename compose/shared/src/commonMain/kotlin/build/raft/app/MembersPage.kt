@@ -6457,7 +6457,7 @@ internal fun MembersListContent(
                         groupedAgentMembers(
                             agents,
                             // Web groupAgents: the reader's own computers first, then A-Z, no computer last.
-                            machineOrder = membersAgentGroupMachineOrder(createAgentMachines, membersCurrentUserId),
+                            machineOrder = membersAgentGroupMachineOrder(createAgentMachines),
                             noComputerLabel = noComputerGroupLabel
                         ) { machineId ->
                             createAgentMachines.firstOrNull { it.id == machineId }?.name
@@ -15466,7 +15466,7 @@ private fun MembersListActionRow(
     member: MemberProfile,
     rowActions: MembersRowActions?,
     rowDialogs: MembersRowDialogState,
-    machines: List<ComputerSummary>,
+    machines: List<SharedCreateAgentMachineOption>,
     selected: Boolean = false,
     isSelf: Boolean = false,
     runtimeLine: Boolean = false,
@@ -16307,20 +16307,12 @@ private fun ErrorBanner(text: String, action: String? = null, onAction: (() -> U
 
 /**
  * Web `groupAgents` (membersPageModel.ts): the computer groups in order, the reader's own computers
- * first (`isMyComputer`: attached by them or theirs), then the rest, each A-Z by name; the group without a computer stays last ([groupedAgentMembers]).
+ * first (`isMyComputer`: attached or owned, [SharedCreateAgentMachineOption.mine]), then the rest, each A-Z by name; the group without a computer stays last ([groupedAgentMembers]).
  */
-internal fun membersAgentGroupMachineOrder(machines: List<ComputerSummary>, currentUserId: String?): List<String> {
-    val me = currentUserId?.trim()?.takeIf { it.isNotEmpty() }
-    return machines
-        .sortedWith(
-            compareBy<ComputerSummary>(
-                { if (it.attachedByCurrentUser || (me != null && it.ownerUserId == me)) 0 else 1 },
-                { it.name.lowercase() },
-                { it.id },
-            )
-        )
+internal fun membersAgentGroupMachineOrder(machines: List<SharedCreateAgentMachineOption>): List<String> =
+    machines
+        .sortedWith(compareBy<SharedCreateAgentMachineOption>({ if (it.mine) 0 else 1 }, { it.name.lowercase() }, { it.id }))
         .map { it.id }
-}
 
 /**
  * A group's heading on the Members page (web MembersPage `heading`): the label in footnote bold

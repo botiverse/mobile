@@ -13,8 +13,6 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.data.AgentLifecycleActionResult
 import build.raft.app.data.AgentResetMode
 import build.raft.app.data.AgentResetRequest
-import build.raft.app.data.ComputerStatus
-import build.raft.app.data.ComputerSummary
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.RaftSharedStoreRegistry
@@ -140,13 +138,13 @@ internal fun membersRowAgentOnline(status: AgentStatus?): Boolean? =
     }
 
 /** Web `isMachineOffline`: the agent's computer is known and not online. */
-internal fun membersRowComputerOffline(member: MemberProfile, machines: List<ComputerSummary>): Boolean {
+internal fun membersRowComputerOffline(member: MemberProfile, machines: List<SharedCreateAgentMachineOption>): Boolean {
     val id =
         member.permissionBadges.firstNotNullOfOrNull { badge ->
             badge.removePrefix("computer-id:").takeIf { badge.startsWith("computer-id:") && it.isNotBlank() }
         } ?: return false
     val machine = machines.firstOrNull { it.id == id } ?: return false
-    return machine.status != ComputerStatus.Online
+    return machine.status != "online"
 }
 
 /** The Stop confirmation and the Restart / reset chooser a row's menu opens (one at a time, page-wide). */
@@ -268,7 +266,7 @@ internal fun MembersRowMenu(
     onDismiss: () -> Unit,
     actions: MembersRowActions,
     dialogs: MembersRowDialogState,
-    machines: List<ComputerSummary>,
+    machines: List<SharedCreateAgentMachineOption>,
     agentStatusResolver: RaftAgentStatusResolver,
 ) {
     RaftDropdownMenu(expanded = expanded, onDismissRequest = onDismiss, minWidth = 192.dp) {
