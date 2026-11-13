@@ -33,6 +33,16 @@ class ComposerAutofocusPolicyTest {
     }
 
     @Test
+    fun anOpenOnAMessageSkipsTheFocusOnPhonesAndTabletsOnly() {
+        // A message link, an Activity row, a search result: the soft keyboard would push the
+        // message off the screen. Desktop has none and keeps the web's focus on open.
+        assertTrue(composerAutofocusSkipsMessageOpen(desktopHost = false, opensOnMessage = true))
+        assertFalse(composerAutofocusSkipsMessageOpen(desktopHost = true, opensOnMessage = true))
+        assertFalse(composerAutofocusSkipsMessageOpen(desktopHost = false, opensOnMessage = false))
+        assertFalse(composerAutofocusSkipsMessageOpen(desktopHost = true, opensOnMessage = false))
+    }
+
+    @Test
     fun channelYieldsToTheThreadPanelBesideIt() {
         val session = sessionWithSideThread()
         val side = session.sideThread!!

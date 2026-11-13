@@ -86,12 +86,24 @@ class ComposerAutofocusOnOpenUiTest {
     }
 
     /** A conversation page opened with the platform policy, as ThreadPage decides it. */
-    private fun ComposeUiTest.openConversationWithPlatformPolicy(): String {
+    private fun ComposeUiTest.openConversationWithPlatformPolicy(
+        opensOnMessage: Boolean = false,
+        outcomes: MutableList<ComposerAutofocusOutcome>? = null,
+    ): String {
         var seen = ""
         setContent {
             val configuration = androidx.compose.ui.platform.LocalConfiguration.current
             seen = "keyboard=${configuration.keyboard} hardKeyboardHidden=${configuration.hardKeyboardHidden}"
-            Composer(COMPOSER, conversation = "ch-1", focus = pageFocus(policy = rememberComposerAutofocusOnOpen()))
+            val focus =
+                rememberComposerFocusOnOpen(
+                    policy = rememberComposerAutofocusOnOpen(),
+                    shown = true,
+                    yieldsToSideThread = false,
+                    // As ThreadPage decides it: the route's focused message, on this (non-desktop) host.
+                    opensOnMessage =
+                        composerAutofocusSkipsMessageOpen(desktopHost = raftPlatformHasFinePointer(), opensOnMessage = opensOnMessage),
+                )
+            Composer(COMPOSER, conversation = "ch-1", focus = focus, outcomes = outcomes)
         }
         mainClock.advanceTimeByFrame()
         waitForIdle()
@@ -105,6 +117,21 @@ class ComposerAutofocusOnOpenUiTest {
             val seen = openConversationWithPlatformPolicy()
             assertTrue(seen.startsWith("keyboard=${Configuration.KEYBOARD_QWERTY} "), seen)
             onNodeWithTag(COMPOSER).assertIsFocused()
+        }
+
+    // 1.24.0 on a cloud phone (it reports a keyboard, and its IME still came up): opening a message
+    // link focused the composer about a second after the list had scrolled to the message, and the
+    // soft keyboard pushed the message off the screen. An open that lands on one message (a link,
+    // Activity, a search result) leaves the composer alone on a phone or tablet.
+    @Test
+    @Config(qualifiers = "keysexposed-qwerty")
+    fun openOnAMessageLeavesTheComposerUnfocusedEvenWithAHardwareKeyboard() =
+        runRobolectricComposeUiTest {
+            val outcomes = mutableListOf<ComposerAutofocusOutcome>()
+            val seen = openConversationWithPlatformPolicy(opensOnMessage = true, outcomes = outcomes)
+            assertTrue(seen.startsWith("keyboard=${Configuration.KEYBOARD_QWERTY} "), seen)
+            onNodeWithTag(COMPOSER).assertIsNotFocused()
+            assertEquals(listOf(ComposerAutofocusOutcome.OpensOnMessage), outcomes)
         }
 
     @Test
