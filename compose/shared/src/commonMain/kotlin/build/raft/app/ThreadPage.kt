@@ -7423,8 +7423,8 @@ private fun SharedThreadRouteContentContent(
                 parentChannelId = parentChannelId,
                 parentMessageId = parentMessageId,
                 present = parentRow != null,
-                joined = parentRow?.joined == true && parentRow.archived == false,
-                canSend = parentRow?.permissions?.canSend == true,
+                joined = parentRow?.joined == true,
+                canSend = parentRow?.permissions?.canSend == true && parentRow.archived == false,
                 // Only a live network snapshot (not the durable identity cache,
                 // and not one still awaiting refresh) may attest that a missing
                 // parent row means the channel was deleted.

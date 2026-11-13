@@ -3911,7 +3911,11 @@ internal class SharedThreadDataSource(
                                 ids = setOf(parentId),
                                 conversationKind = parentKind,
                                 surfaceKind = "channel",
-                                joined = detail.joined && !detail.archived,
+                                // Membership only (web useThreadParentChannel `parentJoined =
+                                // parentChannel.joined`): an archived parent the viewer is a member of
+                                // must not read as "not joined" and offer a Join (fb 93123592);
+                                // `archived` still closes sending below.
+                                joined = detail.joined,
                                 archived = detail.archived,
                                 permissions = detail.permissions,
                             ),
@@ -10887,7 +10891,7 @@ internal class SharedThreadStore(
                                 parentChannelId = parentChannelId,
                                 parentMessageId = parentMessageId,
                                 present = true,
-                                joined = candidate.joined && !candidate.archived,
+                                joined = candidate.joined,
                                 canSend = candidate.permissions.canSend && !candidate.archived,
                                 authoritative = true,
                             )
