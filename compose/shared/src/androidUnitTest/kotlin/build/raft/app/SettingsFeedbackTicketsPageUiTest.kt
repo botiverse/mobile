@@ -161,6 +161,7 @@ class SettingsFeedbackTicketsPageUiTest {
                         onBack = store::closeTicketView,
                         onNewFeedback = onNewFeedback,
                         onRetryList = store::retryList,
+                        onLoadMore = store::loadMore,
                         onFilter = store::setFilter,
                         onOpenTicket = store::openTicket,
                         onReplyChange = store::setReplyDraft,
