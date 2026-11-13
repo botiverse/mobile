@@ -977,7 +977,22 @@ data class MessageNew(
     // shadow fold+persist lane so it is not re-decoded there. @Transient — never serialized (not part of the
     // wire/cache shape), so a deserialized event carries null and the shadow lane simply skips it (fail-open).
     @Transient val decodedCanonical: CanonicalMessageCarry? = null,
+    /**
+     * The persisted row's provenance columns when the frame carries them (rich `message:new`
+     * payloads keep `systemSubtype` / `causalActorType` / `causalActorId`; the allowlisted
+     * projection drops them). Null: the frame had no `systemSubtype` key, so a system message's
+     * unread on a thread row cannot be judged here (web `threadSystemMessageCounts`). In-process
+     * only, like [decodedCanonical].
+     */
+    @Transient val systemProvenance: MessageSystemProvenance? = null,
 ) : RealtimeEvent
+
+/** Wire `systemSubtype` / `causalActorType` / `causalActorId` of a `message:new` frame (each may be null). */
+data class MessageSystemProvenance(
+    val systemSubtype: String?,
+    val causalActorType: String?,
+    val causalActorId: String?,
+)
 
 @Serializable
 data class MessageUpdated(

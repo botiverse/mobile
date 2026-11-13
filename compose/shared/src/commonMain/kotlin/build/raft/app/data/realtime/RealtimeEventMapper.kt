@@ -59,6 +59,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.MessageReaction
 import build.raft.app.model.MessageMention
 import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageSystemProvenance
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.NotificationAccountSettingsChanged
 import build.raft.app.model.NotificationLevelChanged
@@ -270,7 +271,9 @@ class RealtimeEventMapper(
         when (eventName) {
             RealtimeSocketEvents.MessageNew ->
                 decodeMessageWire(element)?.toDomain(diagnosticsLogger)
-                    ?.let { mapped -> MessageNew(mapped, observeShadow(eventName, element, mapped)) }
+                    ?.let { mapped ->
+                        MessageNew(mapped, observeShadow(eventName, element, mapped), element.systemProvenanceOrNull())
+                    }
             RealtimeSocketEvents.MessageUpdated ->
                 decodeMessageWire(element)?.toDomain(diagnosticsLogger)
                     ?.withRealtimeReactionsClearedIfExplicitNull(element)
@@ -1286,6 +1289,21 @@ internal fun ConversationContextWireDto.toDomain(): MessageConversationContext? 
             it.parentChannelId != null ||
             it.parentChannelKind != null
     }
+}
+
+/**
+ * The provenance columns a rich `message:new` payload keeps (slock messageRealtimeEvents.ts
+ * `projectRichMessageSocketPayload` strips only storage keys): present only when the frame has a
+ * `systemSubtype` key, explicit null included (web `"systemSubtype" in message`).
+ */
+private fun JsonObject.systemProvenanceOrNull(): MessageSystemProvenance? {
+    if (!containsKey("systemSubtype")) return null
+    fun text(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
+    return MessageSystemProvenance(
+        systemSubtype = text("systemSubtype"),
+        causalActorType = text("causalActorType"),
+        causalActorId = text("causalActorId"),
+    )
 }
 
 // A `message:updated` event that omits the `reactions` field is a partial update
