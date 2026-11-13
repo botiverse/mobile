@@ -2099,7 +2099,7 @@
     <string name="member_hosted_runtime_state_failed">Сбой настройки</string>
     <string name="member_hosted_runtime_state_deleting">Удаление</string>
     <string name="member_hosted_runtime_state_deleted">Удалён</string>
-    <string name="members_agent_group_no_computer">внешние и облачные</string>
+    <string name="members_agent_group_no_computer">Внешние и облачные</string>
     <string name="members_group_none">Без группировки</string>
     <string name="members_group_by_computer">По компьютеру</string>
     <string name="members_group_trigger_label">Группировка агентов: %1$s</string>
@@ -2119,6 +2119,9 @@
     <string name="list_toolbar_sort">Сортировка</string>
     <string name="list_toolbar_view">Вид</string>
     <string name="members_no_matches">Нет участников по запросу «%1$s».</string>
+    <string name="members_page_empty">Здесь пока никого нет.</string>
+    <string name="members_tag_you">Вы</string>
+    <string name="members_tag_you_with_role">Вы · %1$s</string>
     <string name="member_hosted_runtime_location">Работает в облаке</string>
     <string name="member_hosted_runtime_free">Временно бесплатно</string>
     <string name="member_hosted_runtime_last_error">Последняя ошибка (%1$s): %2$s</string>

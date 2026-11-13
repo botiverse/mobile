@@ -77,7 +77,7 @@ class MembersHostedAgentProfileAndGroupTest {
         assertEquals("外部与云端", noComputer.label)
         assertEquals(listOf("cloud", "external"), noComputer.members.map { it.id.value })
         // The English default (non-UI callers) is the web's label, not "no computer".
-        assertEquals("external & cloud", groupedAgentMembers(agents).last().label)
+        assertEquals("External & cloud", groupedAgentMembers(agents).last().label)
     }
 
     private fun agent(id: String, vararg badges: String): MemberProfile =
