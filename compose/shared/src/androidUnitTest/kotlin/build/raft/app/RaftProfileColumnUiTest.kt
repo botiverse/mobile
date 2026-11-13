@@ -22,6 +22,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.isFocusable
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
@@ -441,8 +446,12 @@ class RaftProfileColumnUiTest {
             // Out of sight: no width, nothing a screen reader or the keyboard can reach, not counted as shown.
             near(0f, widthDp(column), "the column in Focus")
             near(1280f, widthDp(threadTag), "the thread fills the row")
-            onNodeWithTag("page:$MEMBER_DETAIL_PAGE", useUnmergedTree = true).assertDoesNotExist()
-            onNodeWithTag("page:$CHANNEL_SETTINGS_PAGE", useUnmergedTree = true).assertDoesNotExist()
+            // Checked on the merged tree, the one screen readers get: clearAndSetSemantics drops the column's pages
+            // from it, while the unmerged tree keeps the nodes it replaced (CI run 43332547832), so "unreachable"
+            // can't be asked of that one. Nothing in the column can be clicked or focused either.
+            onNodeWithTag("page:$MEMBER_DETAIL_PAGE").assertDoesNotExist()
+            onNodeWithTag("page:$CHANNEL_SETTINGS_PAGE").assertDoesNotExist()
+            onAllNodes(hasAnyAncestor(hasTestTag(column)) and (hasClickAction() or isFocusable())).assertCountEquals(0)
             assertFalse(columnShown, "the shell's Back step must not count a column out of sight")
             assertSettled()
             // Back leaves Focus; the pages are as they were and show again.
@@ -450,7 +459,8 @@ class RaftProfileColumnUiTest {
             assertFalse(focused, "Back left Focus")
             assertEquals(listOf(RaftProfileColumnCell.Profile, RaftProfileColumnCell.Details), panes.cells, "nothing closed unseen")
             near(400f, widthDp(column), "the column back in sight")
-            onNodeWithTag("page:$MEMBER_DETAIL_PAGE", useUnmergedTree = true).assertExists()
+            onNodeWithTag("page:$MEMBER_DETAIL_PAGE").assertExists()
+            assertTrue(onAllNodes(hasAnyAncestor(hasTestTag(column)) and hasClickAction()).fetchSemanticsNodes().isNotEmpty(), "in reach again")
             assertTrue(columnShown)
             // Then Back is the column's: the details (opened last), then the profile, then the shell's.
             back.press()
