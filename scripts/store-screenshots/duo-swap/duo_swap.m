@@ -10,7 +10,7 @@
 #import <objc/runtime.h>
 
 @protocol SBSDisplayToolServiceServerInterface
-- (void)swapDisplayWithOptions:(id)options completion:(void (^)(NSError *error))completion;
+- (oneway void)swapDisplayWithOptions:(NSDictionary *)options completion:(void (^)(NSError *error))completion;
 @end
 
 #define MSG(ret, ...) ((ret(*)(__VA_ARGS__))objc_msgSend)
@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
         if (!remote) return 2;
         dispatch_semaphore_t done = dispatch_semaphore_create(0);
         __block int status = 0;
-        [(id<SBSDisplayToolServiceServerInterface>)remote swapDisplayWithOptions:nil completion:^(NSError *error) {
+        [(id<SBSDisplayToolServiceServerInterface>)remote swapDisplayWithOptions:@{} completion:^(NSError *error) {
             printf("completion error=%s\n", error ? [[error description] UTF8String] : "nil");
             status = error ? 1 : 0;
             dispatch_semaphore_signal(done);
