@@ -119,6 +119,12 @@ internal object RaftPaneGridColumns {
     val Detail = RaftPaneGridColumnBounds(id = "detail", defaultWidthDp = 400f, minWidthDp = 320f)
 
     /**
+     * Web channelSideLayout's `[profile, context, details]` column (#189 step 3): a member's profile over the channel
+     * details, 400 by default, at least 320 (`CHANNEL_SIDE_SECTION_MIN_WIDTH`); the row's last column.
+     */
+    val Profile = RaftPaneGridColumnBounds(id = "profile", defaultWidthDp = 400f, minWidthDp = 320f)
+
+    /**
      * The main pane, the conversation (web rowLayout `slock:conversationWidth`, #189): none kept until a seam beside
      * it is let go (then the plan gives it what the columns leave, at least 400), kept at least its content's 360.
      */

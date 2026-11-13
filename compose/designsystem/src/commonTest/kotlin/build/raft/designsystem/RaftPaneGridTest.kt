@@ -118,6 +118,24 @@ class RaftPaneGridTest {
         assertEquals(emptyList(), host.placed(emptyList(), 0.dp))
     }
 
+    // #189 step 3: the app's profile / details column, declared with the thread one level in, stands after Tasks / Files.
+    @Test
+    fun aTrailingColumnStandsAfterEveryOtherWhereverItIsDeclared() {
+        val host = RaftPaneGridHost()
+        val profile = RaftPaneGridColumnBounds(id = "profile", defaultWidthDp = 400f, minWidthDp = 320f)
+        val trailing = RaftPaneGridColumn(bounds = profile, resizeLabel = "profile", cells = emptyList(), trailing = true)
+        host.handUp("conversation", RaftPaneGridHandedUp(depth = 2, columns = listOf(column(cards))))
+        host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(column(thread), trailing)))
+        assertEquals(listOf("thread", "sideCards", "profile"), host.placed(emptyList(), 0.dp).map { it.column.bounds.id })
+        // An outermost grid's own trailing column too.
+        val own = RaftPaneGridHost()
+        own.handUp("conversation", RaftPaneGridHandedUp(depth = 1, columns = listOf(column(cards))))
+        assertEquals(listOf("thread", "sideCards", "profile"), own.placed(listOf(column(thread), trailing), 0.dp).map { it.column.bounds.id })
+        // Whether it trails is part of what the row is laid out by: a change re-lays the row.
+        val plain = RaftPaneGridColumn(bounds = profile, resizeLabel = "profile", cells = emptyList())
+        assertTrue(RaftPaneGridHandedUp(depth = 1, columns = listOf(plain)).shape != RaftPaneGridHandedUp(depth = 1, columns = listOf(trailing)).shape)
+    }
+
     private fun row(roomDp: Float, own: List<RaftPaneGridColumn> = emptyList()) =
         RaftPaneGridRow(
             roomDp = roomDp,
@@ -181,11 +199,41 @@ class RaftPaneGridTest {
             snapshot.enter { host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(again))) }
             assertFalse(written.any { it === host.handedUp }, "the same shape again leaves the row alone")
             // Where the column is drawn it is the latest (its cells' content may have changed with the same shape).
-            assertTrue(written.any { it === host.fresh }, "the latest is kept for the column's drawing")
+            assertTrue(written.any { it === host.freshState("workspace") }, "the latest is kept for the column's drawing")
             assertTrue(snapshot.enter { host.freshColumn("workspace", thread.id) } === again)
             // A column more changes the row.
             snapshot.enter { host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(again, column(cards)))) }
             assertTrue(written.any { it === host.handedUp }, "a new column is a change to the row")
+        } finally {
+            snapshot.dispose()
+        }
+    }
+
+    @Test
+    fun aHandUpWritesOnlyItsOwnGridsLatestAndNothingForTheSameObjects() {
+        // Lagoon (#4661): the latest hand-ups were one map, observed whole, so the conversation's grid handing up (every
+        // time it composes) redrew the thread's column too. Each grid has its own now, and the same objects again
+        // write nothing.
+        val host = RaftPaneGridHost()
+        val threadColumn = column(thread)
+        host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(threadColumn)))
+        host.handUp("conversation", RaftPaneGridHandedUp(depth = 2, columns = listOf(column(cards))))
+        val written = mutableListOf<Any>()
+        val snapshot = Snapshot.takeMutableSnapshot(writeObserver = { written += it })
+        try {
+            val newCards = column(cards)
+            snapshot.enter { host.handUp("conversation", RaftPaneGridHandedUp(depth = 2, columns = listOf(newCards))) }
+            assertTrue(written.any { it === host.freshState("conversation") }, "the conversation's own latest is written")
+            assertFalse(written.any { it === host.freshState("workspace") }, "the thread's column is left alone")
+            assertTrue(snapshot.enter { host.freshColumn("conversation", cards.id) } === newCards)
+            // The workspace hands up the very same column object again (it remembers it): nothing is written.
+            written.clear()
+            snapshot.enter { host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(threadColumn))) }
+            assertTrue(written.isEmpty(), "the same objects again write nothing: $written")
+            // Gone, its latest goes too.
+            snapshot.enter { host.handUp("conversation", null) }
+            assertEquals(null, snapshot.enter { host.freshColumn("conversation", cards.id) })
+            assertEquals(null, host.freshState("conversation"))
         } finally {
             snapshot.dispose()
         }

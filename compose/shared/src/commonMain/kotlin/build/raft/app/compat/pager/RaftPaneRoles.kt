@@ -14,12 +14,15 @@ enum class RaftPaneRole {
     /** A page of its own on the platform stack (Activity, view controller, desktop page). */
     Window,
 
-    /** A pane right of the open conversation, the conversation staying beside it (web drawer). */
+    /**
+     * The profile column right of the open conversation, in its row (web channelSideLayout's profile / details
+     * column; RaftWidePanes.kt), the conversation staying beside it.
+     */
     Supporting,
 
     /**
      * The main conversation slot. No registry entry has it: only a page opened from inside the
-     * supporting pane is routed there (raftSupportingPaneRole), as the web's profile Message
+     * profile column is routed there (raftProfileColumnRole), as the web's profile Message
      * closes the panel and opens the conversation.
      */
     Detail,

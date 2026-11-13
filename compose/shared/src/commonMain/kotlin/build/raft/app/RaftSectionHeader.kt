@@ -107,9 +107,9 @@ internal fun raftTopPageHeaderFrameMetrics(
 }
 
 /**
- * A top bar's leading Back. On the first page of the wide supporting pane Back closes the pane,
- * so it is the design system's leading Close (web drawer ×); pages pushed in the pane, and every
- * page elsewhere, keep Back. For heads that place the Back themselves (the member profile).
+ * A top bar's leading Back. On the first page of a cell of the wide profile column Back closes the
+ * cell, so it is the design system's leading Close (web ChannelSideCard ×); pages pushed in the
+ * cell, and every page elsewhere, keep Back. For heads that place the Back themselves (the member profile).
  */
 @Composable
 internal fun RaftPaneAwareBackButton(onClick: () -> Unit) {

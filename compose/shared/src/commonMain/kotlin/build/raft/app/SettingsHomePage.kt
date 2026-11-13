@@ -6520,18 +6520,19 @@ private fun RaftAppShellReadyContent(
             desktopModeEnabled = desktopModeOnLargeScreen,
             paneState = shellScope.adaptivePane
         )
-    // Wide pane roles (RaftWidePanes.kt): the pages the conversation opened in the supporting pane
-    // beside it. They belong to that conversation: picking another one closes them. When the window
-    // leaves the wide layout they reopen as pages on the platform stack, as they would have opened there.
-    var supportingPanes by remember { mutableStateOf(RaftPaneStack()) }
-    // Whether the pane is drawn right now (set where it is drawn); Back goes by this, not the stack alone.
-    var supportingPaneShown by remember { mutableStateOf(false) }
+    // Wide pane roles (RaftWidePanes.kt): the pages the conversation opened in the profile column
+    // (a member's profile over the channel details, #189 step 3). They belong to that conversation:
+    // picking another one closes them. When the window leaves the wide layout they reopen as pages on
+    // the platform stack, as they would have opened there.
+    var profileColumnPanes by remember { mutableStateOf(RaftProfileColumnPanes()) }
+    // Whether the column is declared right now (set where it is); Back goes by this, not the pages alone.
+    var profileColumnShown by remember { mutableStateOf(false) }
     val shellHostNavigator = LocalRaftHost.current.navigator
-    LaunchedEffect(adaptiveWorkspaceState?.selection?.identity?.key) { supportingPanes = supportingPanes.cleared() }
+    LaunchedEffect(adaptiveWorkspaceState?.selection?.identity?.key) { profileColumnPanes = profileColumnPanes.cleared() }
     LaunchedEffect(navRailActive) {
-        if (navRailActive || !supportingPanes.isOpen) return@LaunchedEffect
-        supportingPanes.entries.forEach { shellHostNavigator.openPage(it.pageName, it.pageData) }
-        supportingPanes = supportingPanes.cleared()
+        if (navRailActive || !profileColumnPanes.isOpen) return@LaunchedEffect
+        profileColumnPanes.pages.forEach { shellHostNavigator.openPage(it.pageName, it.pageData) }
+        profileColumnPanes = profileColumnPanes.cleared()
     }
     // stdrc 2026-10-21: Settings is the More tab's root on the phone bar and the pinned rail entry
     // on the wide layout; a selection made for the other layout moves to this layout's root.
@@ -6643,10 +6644,10 @@ private fun RaftAppShellReadyContent(
         if (!navRailActive) return
         if (
             direction == RaftWideNavDirection.Back &&
-            raftWideBackStep(supportingPanes, supportingPaneShown, overlayOpen = tasksDetailColumnOpen) == RaftWideBackStep.PopSupportingPane
+            raftWideBackStep(profileColumnPanes, profileColumnShown, overlayOpen = tasksDetailColumnOpen) == RaftWideBackStep.PopProfileColumn
         ) {
-            bridge.log("wide_history_back source=$source pops=supporting_pane")
-            supportingPanes = supportingPanes.pop()
+            bridge.log("wide_history_back source=$source pops=profile_column cell=${profileColumnPanes.backCell?.id}")
+            profileColumnPanes = profileColumnPanes.back()
             return
         }
         val before = wideNavHistories.of(serverId)
@@ -8142,11 +8143,9 @@ private fun RaftAppShellReadyContent(
                                 else it.copy(detailPaneWidthDp = gridRoomDp, sideThreadFolds = gridThreadFolds)
                             }
                         }
-                        val supportingPaneHost = navRailActive && allowSideColumn
-                        val supportingOpen = supportingPaneHost && detailAccepted && supportingPanes.isOpen
-                        // Only the main detail pane reports whether the pane is shown (RaftWidePanes.kt).
-                        RaftSupportingPaneShownReport(host = supportingPaneHost, shown = supportingOpen) { supportingPaneShown = it }
-                        RaftSupportingPaneLayout(
+                        val profileColumnHost = navRailActive && allowSideColumn
+                        val profileColumnOpen = profileColumnHost && detailAccepted && profileColumnPanes.isOpen
+                        Box(
                             modifier =
                                 paneModifier
                                     .fillMaxSize()
@@ -8159,38 +8158,8 @@ private fun RaftAppShellReadyContent(
                                             else it.copy(detailPaneWidthDp = widthDp, sideThreadFolds = null)
                                         }
                                     },
-                            supporting =
-                                if (supportingOpen) {
-                                    {
-                                        RaftSupportingPaneStack(
-                                            supportingPanes,
-                                            active,
-                                            onStackChange = { supportingPanes = it },
-                                            // A conversation opened in the pane (the profile's
-                                            // Message) becomes the main detail and the pane
-                                            // closes, as the web's closeProfile + navigate.
-                                            openDetail = { _, pageData ->
-                                                val opened =
-                                                    threadLaunchPayloadOrNull(pageData)?.let(::openLaunchPayloadInAdaptiveDetail)
-                                                if (opened != null) {
-                                                    supportingPanes = supportingPanes.cleared()
-                                                    homeShellStore.dispatch(
-                                                        SharedHomeShellIntent.SetSelectedConversation(opened.identity.threadId)
-                                                    )
-                                                }
-                                                bridge.log("wide_supporting_pane_open_detail opened=${opened != null}")
-                                                opened != null
-                                            },
-                                        )
-                                    }
-                                } else {
-                                    null
-                                },
-                        ) { detailModifier ->
-                        RaftPaneHost(
-                            wide = supportingPaneHost,
-                            openInPane = { _, pageName, pageData -> supportingPanes = supportingPanes.replace(pageName, pageData) },
                         ) {
+                        val detailModifier = Modifier.fillMaxSize()
                         val workspace = adaptiveWorkspaceState
                         // task #33: a surface may decline the shared selection (the DMs tab shows only
                         // DMs); a declined selection renders the empty placeholder, never its composer.
@@ -8228,10 +8197,10 @@ private fun RaftAppShellReadyContent(
                                 generation = mounted.generation,
                             )
                         }
-                        // One right-hand column at a time: the side thread steps aside while the
-                        // supporting pane is open and comes back when it closes.
+                        // The side thread stays beside the profile column: the row plan gives both room, or
+                        // folds the thread into the conversation (#189 rule 3), clips or makes tabs.
                         val sideThreadColumn: RaftPaneGridColumn? =
-                            if (showSideColumn && sideThread != null && workspace != null && !supportingOpen) {
+                            if (showSideColumn && sideThread != null && workspace != null) {
                                 // task #180: the page data key is deliberately independent of Focus mode.
                                 // Toggling re-lays-out the same child page instead of recreating it, which is
                                 // what keeps the reader's scroll position across Focus <-> Standard.
@@ -8281,22 +8250,38 @@ private fun RaftAppShellReadyContent(
                         // list + detail split they all stand in its row. In Focus
                         // mode the thread takes the row (task #180: the conversation is collapsed by
                         // width and stays composed).
-                        // The pane beside the conversation, for its header's Settings toggle. Kept
-                        // across recompositions so ThreadPage, which reads it, only recomposes when
-                        // the pane's root changes.
-                        val supportingPaneRoot = supportingPanes.entries.firstOrNull()?.takeIf { supportingOpen }
-                        val supportingPaneState =
-                            remember(supportingPaneRoot) {
-                                RaftSupportingPaneState(
-                                    root = supportingPaneRoot,
-                                    close = { supportingPanes = supportingPanes.cleared() },
-                                )
-                            }
-                        CompositionLocalProvider(LocalRaftSupportingPane provides supportingPaneState) {
-                        RaftPaneGrid(
-                            columns = listOfNotNull(sideThreadColumn),
+                        // The profile column (RaftWidePanes.kt, #189 step 3): the profile over the channel details,
+                        // the row's last column (web DEFAULT_CHANNEL_SIDE_LAYOUT), with the conversation's host that
+                        // opens pages in it. A page opened in it leaves Focus; Focus entered with it open puts it out
+                        // of sight, and Back leaves Focus first (RaftWorkspaceDetailGrid).
+                        RaftWorkspaceDetailGrid(
                             modifier = detailModifier,
-                            fillColumn = RaftPaneGridColumns.Thread.id.takeIf { sideThreadFocusActive && sideThreadColumn != null },
+                            wide = profileColumnHost,
+                            panes = { profileColumnPanes },
+                            onPanesChange = { profileColumnPanes = it },
+                            columnOpen = profileColumnOpen,
+                            tabSelected = tabSelected,
+                            active = active,
+                            sideThreadColumn = sideThreadColumn,
+                            threadFocused = sideThreadFocusActive,
+                            onLeaveFocus = {
+                                bridge.log("wide_profile_column_open leaves=thread_focus")
+                                adaptiveWorkspaceStore.update { it.copy(sideThreadFocused = false) }
+                            },
+                            // Only the main detail pane reports whether the column is shown (RaftWidePanes.kt).
+                            reportHost = profileColumnHost,
+                            onShown = { profileColumnShown = it },
+                            // A conversation opened in the column (the profile's Message) becomes the main detail and
+                            // the column closes, as the web's closeProfile + navigate.
+                            openDetail = { _, pageData ->
+                                val opened = threadLaunchPayloadOrNull(pageData)?.let(::openLaunchPayloadInAdaptiveDetail)
+                                if (opened != null) {
+                                    profileColumnPanes = profileColumnPanes.cleared()
+                                    homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(opened.identity.threadId))
+                                }
+                                bridge.log("wide_profile_column_open_detail opened=${opened != null}")
+                                opened != null
+                            },
                         ) {
                             if (detailPageData == null) {
                                 // The wide detail with nothing open: the shared empty state (icon,
@@ -8320,8 +8305,6 @@ private fun RaftAppShellReadyContent(
                                     },
                                 )
                             }
-                        }
-                        }
                         }
                         }
                     }

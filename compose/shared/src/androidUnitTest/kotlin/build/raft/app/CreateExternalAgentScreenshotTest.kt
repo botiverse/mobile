@@ -33,7 +33,7 @@ import org.robolectric.shadows.ShadowDialog
 /**
  * JVM screenshots of Add Member's "Create External Agent" (web ChannelMembers, slock staging
  * 947bd94), in English: the one Create agent row (closed, menu open, and disabled without create permission with its reason),
- * the add panel in the wide layout's supporting pane, and the Create External Agent dialog
+ * the add panel in the wide layout's profile column, and the Create External Agent dialog
  * opened from it (no Computer or runtime, the channel it joins said on the info wash), as the
  * phone sheet and the wide centred card, plus its submit error and the plan's agent limit. Verify / record as
  * [RaftRobolectricScreenshot]; reports land in `build/reports/home-screenshots/`.
@@ -156,13 +156,13 @@ private fun Page(content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { RaftDesignSystemTheme { content() } }
 }
 
-/** The wide layout: the members page as the supporting pane at its full width, beside the conversation. */
+/** The wide layout: the members page in the profile column at its default width, beside the conversation. */
 @Composable
 private fun WideSupportingPane(content: @Composable () -> Unit) {
     Row(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         Box(Modifier.weight(1f).fillMaxHeight())
         Box(Modifier.width(1.dp).fillMaxHeight().background(RaftTheme.colors.lineSeam))
-        Box(Modifier.width(RAFT_SUPPORTING_PANE_MAX_DP.dp).fillMaxHeight()) { content() }
+        Box(Modifier.width(RaftPaneGridColumns.Profile.defaultWidthDp.dp).fillMaxHeight()) { content() }
     }
 }
 

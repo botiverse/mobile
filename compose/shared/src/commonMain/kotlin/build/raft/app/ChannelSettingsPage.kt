@@ -947,8 +947,8 @@ internal fun channelSettingsFailureMessage(
 /**
  * The details' frame (raft-design channel.md, "The channel details"): on a phone a pushed page
  * whose head is Back and Details (the channel's name is the page's first line, so the head doesn't
- * repeat it); on the wide layout the first page of the supporting pane, a column beside the
- * conversation whose head is Details and Close (×), with no Expand. The panel head is 44 under a
+ * repeat it); on the wide layout the first page of the profile column's details cell, beside the
+ * conversation in its row, whose head is Details and Close (×), with no Expand. The panel head is 44 under a
  * mouse or trackpad and 56 with a finger ([RaftPanelBackHeader]), over the canvas.
  */
 @Composable

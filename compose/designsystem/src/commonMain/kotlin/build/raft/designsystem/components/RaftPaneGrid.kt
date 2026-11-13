@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -427,6 +428,11 @@ class RaftPaneGridColumn(
     val shortSwitch: (@Composable () -> Unit)? = null,
     /** Its tab's label where the row makes it a tab (#189 rule 4; web RowTabs): its sections' titles, ` · ` between. */
     val tabLabel: String? = null,
+    /**
+     * It stands after every column without it, whichever grid declared it (web DEFAULT_CHANNEL_SIDE_LAYOUT: the
+     * profile / context / details column is the row's last, right of Tasks / Files a page declares further in).
+     */
+    val trailing: Boolean = false,
 )
 
 // ---------------------------------------------------------------- the leading column
@@ -482,6 +488,7 @@ internal class RaftPaneGridHandedUp(
                     column.tabLabel,
                     column.shortShownCell,
                     column.shortSwitch != null,
+                    column.trailing,
                     column.cells.map { it.id to it.defaultShare },
                 )
             }
@@ -508,11 +515,14 @@ internal class RaftPaneGridHost internal constructor() {
     internal val handedUp = mutableStateMapOf<Any, RaftPaneGridHandedUp>()
 
     /**
-     * Each nested grid's latest hand-up, written every time it hands up: the cells' content (new lambdas, with
-     * whatever they captured) and labels as they are now. Read only where a column is drawn ([freshColumn]), never by
-     * the row or a page, so a write recomposes the columns' drawing and nothing that hands up again.
+     * Each nested grid's latest hand-up, one state per grid: the cells' content (new lambdas, with whatever they
+     * captured) and labels as they are now. Read only where a column is drawn ([freshColumn]), never by the row or a
+     * page, so a write recomposes the columns' drawing and nothing that hands up again. One state per grid, not one
+     * map: a map is observed whole, so the conversation's grid handing up (every time it composes) redrew the thread's
+     * and the profile's columns too (Lagoon, #4661). Plain memory holds the states; each is created before its grid
+     * enters [handedUp], so a column is never drawn before its state exists.
      */
-    internal val fresh = mutableStateMapOf<Any, RaftPaneGridHandedUp>()
+    private val fresh = mutableMapOf<Any, MutableState<RaftPaneGridHandedUp?>>()
 
     /**
      * [token]'s grid hands up [up] (null: nothing any more). A nested grid does so every time it composes, with new
@@ -523,23 +533,36 @@ internal class RaftPaneGridHost internal constructor() {
      */
     internal fun handUp(token: Any, up: RaftPaneGridHandedUp?) {
         if (up == null || (up.columns.isEmpty() && up.fillColumn == null && up.mainBounds == null)) {
-            if (token in fresh) fresh.remove(token)
+            fresh.remove(token)?.let { if (it.value != null) it.value = null }
             if (token in handedUp) handedUp.remove(token)
             return
         }
-        if (fresh[token] !== up) fresh[token] = up
+        val latest = fresh.getOrPut(token) { mutableStateOf(null) }
+        // The same column objects handed up again (a page that remembers its columns): nothing to draw anew.
+        if (!latest.value.sameColumns(up)) latest.value = up
         if (handedUp[token]?.shape != up.shape) handedUp[token] = up
     }
 
-    /** The latest [id] column [token]'s grid handed up; null where it no longer does. Read where the column is drawn. */
-    internal fun freshColumn(token: Any, id: String): RaftPaneGridColumn? = fresh[token]?.columns?.firstOrNull { it.bounds.id == id }
+    private fun RaftPaneGridHandedUp?.sameColumns(other: RaftPaneGridHandedUp): Boolean =
+        this != null && columns.size == other.columns.size && columns.indices.all { columns[it] === other.columns[it] }
 
-    /** Left to right: the outermost grid's [own] columns, then the handed-up ones, outer levels first. */
+    /** [token]'s state of [fresh], for tests: what a hand-up writes. */
+    internal fun freshState(token: Any): Any? = fresh[token]
+
+    /** The latest [id] column [token]'s grid handed up; null where it no longer does. Read where the column is drawn. */
+    internal fun freshColumn(token: Any, id: String): RaftPaneGridColumn? = fresh[token]?.value?.columns?.firstOrNull { it.bounds.id == id }
+
+    /**
+     * Left to right: the outermost grid's [own] columns, then the handed-up ones, outer levels first; the
+     * [RaftPaneGridColumn.trailing] ones after all the others, in the same order among themselves.
+     */
     internal fun placed(own: List<RaftPaneGridColumn>, ownTopInset: Dp): List<RaftPaneGridPlaced> =
-        own.map { RaftPaneGridPlaced(it, ownTopInset, null) } +
-            handedUp.entries.sortedBy { it.value.depth }.flatMap { (token, up) ->
-                up.columns.map { RaftPaneGridPlaced(it, up.topInset, up.locals, token) }
-            }
+        (
+            own.map { RaftPaneGridPlaced(it, ownTopInset, null) } +
+                handedUp.entries.sortedBy { it.value.depth }.flatMap { (token, up) ->
+                    up.columns.map { RaftPaneGridPlaced(it, up.topInset, up.locals, token) }
+                }
+        ).sortedBy { it.column.trailing }
 
     /**
      * Where the main pane's width is kept: the innermost grid that names it (the page the main pane shows: the Tasks
@@ -603,6 +626,13 @@ internal data class RaftPaneGridRow(
 internal val LocalRaftPaneGridRow = compositionLocalOf<RaftPaneGridRow?> { null }
 
 internal val LocalRaftPaneGridHost = compositionLocalOf<RaftPaneGridHost?> { null }
+
+/**
+ * Whether the column a cell stands in is on screen: false while it is a row tab not shown (#189 rule 4) or out of
+ * sight because another column fills the row (Focus mode). Its pages stay composed; what acts on what the person sees
+ * (Back, a page's foreground work) goes by this. True outside any column.
+ */
+val LocalRaftPaneGridColumnShown = compositionLocalOf { true }
 
 /** How many grids' main panes enclose this point (0: none). */
 private val LocalRaftPaneGridDepth = compositionLocalOf { 0 }
@@ -771,7 +801,11 @@ fun RaftPaneGrid(
         val row =
             if (outer != null) LocalRaftPaneGridRow.current
             else if (availableDp <= 0f) null
-            else RaftPaneGridRow(roomDp, columns.map { it.planColumn(store) }, fitted.take(columns.size).sum(), keptMain)
+            else {
+                // The own columns' widths wherever they stand (a trailing one stands after the handed-up ones).
+                val ownWidthsDp = placed.indices.filter { placed[it].token == null && placed[it].column in columns }.sumOf { fitted[it].toDouble() }.toFloat()
+                RaftPaneGridRow(roomDp, columns.map { it.planColumn(store) }, ownWidthsDp, keptMain)
+            }
         Row(Modifier.fillMaxSize()) {
             if (leading != null) RaftPaneGridLeadingView(leading)
             // Collapsed by width, never weight(0f) (Compose rejects it): see raftParentPaneLayout.
@@ -891,9 +925,10 @@ fun RowScope.RaftPaneGridSideColumn(
             .fillMaxHeight()
             .testTag(RAFT_PANE_GRID_COLUMN_TEST_TAG + column.bounds.id)
             .background(RaftTheme.colors.layerCanvas)
-            // A tab not shown is out of reach (web `inert`): no semantics, no focus.
-            .then(if (tabHidden) Modifier.clearAndSetSemantics {} else Modifier)
-            .raftPaneGridInert(tabHidden)
+            // A tab not shown, or a column out of sight while another fills the row (Focus), is out of reach (web
+            // `inert`): no semantics, no focus.
+            .then(if (gone) Modifier.clearAndSetSemantics {} else Modifier)
+            .raftPaneGridInert(gone)
     ) {
         val seam = if (fill) 0.dp else RaftStroke.Hairline
         Column(Modifier.fillMaxSize()) {
@@ -908,7 +943,7 @@ fun RowScope.RaftPaneGridSideColumn(
                 Row(Modifier.fillMaxSize().raftPaneGridContentMinWidth(if (fill) 0f else minWidth)) {
                     Spacer(Modifier.width(seam).fillMaxHeight())
                     // A page in a cell is not in the main pane: a grid it declares is its own.
-                    CompositionLocalProvider(LocalRaftPaneGridHost provides null) {
+                    CompositionLocalProvider(LocalRaftPaneGridHost provides null, LocalRaftPaneGridColumnShown provides !gone) {
                         RaftPaneGridStackView(column, Modifier.weight(1f).fillMaxHeight())
                     }
                 }
