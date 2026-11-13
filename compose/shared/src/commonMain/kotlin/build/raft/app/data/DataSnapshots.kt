@@ -1427,7 +1427,11 @@ data class SearchSnapshot(
     val hasMore: Boolean = false,
     val nextOffset: Int? = null,
     /** Server walk cursor for the next page; when set it is used instead of [nextOffset]. */
-    val nextCursor: String? = null
+    val nextCursor: String? = null,
+    /** Server `relaxedSkipped: "too_broad"`: the page is empty because the search is too broad. */
+    val tooBroad: Boolean = false,
+    /** Server `relevanceFallback: "too_broad"`: too many matches to rank, sorted newest first. */
+    val relevanceFallback: Boolean = false
 )
 
 data class SettingsConnectedAppsSnapshot(

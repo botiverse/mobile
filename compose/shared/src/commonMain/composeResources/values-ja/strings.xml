@@ -2404,6 +2404,8 @@
     <string name="search_empty_results">一致するメッセージがありません</string>
     <string name="search_empty_query_detail">別のキーワードや短いフレーズをお試しください。</string>
     <string name="search_empty_filters_detail">別のフィルターの組み合わせをお試しください。</string>
+    <string name="search_too_broad_hint">これらの語をすべて含むメッセージはありません。いずれかの語を含むメッセージが多すぎるため、個別には照合していません。より具体的な語を使うか、チャンネルや送信者で絞り込んでください。</string>
+    <string name="search_relevance_fallback_note">一致するメッセージが多すぎて関連度順に並べられないため、新しい順に表示しています。より具体的な語を使うか、チャンネルや送信者で絞り込んでください。</string>
     <string name="search_section_channels_dms">チャンネルと DM</string>
     <string name="search_section_entities">サーバー内の項目</string>
     <string name="search_overlay_search_for">「%1$s」を検索</string>

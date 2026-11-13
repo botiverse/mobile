@@ -226,6 +226,8 @@ internal class SharedHomeSearchSavedStore(
                         hasMore = false,
                         nextOffset = null,
                         nextCursor = null,
+                        tooBroad = false,
+                        relevanceFallback = false,
                         errorCode = null,
                         noPermissionCode = null,
                         resultQuery = null,
@@ -832,6 +834,8 @@ internal class SharedHomeSearchSavedStore(
                         hasMore = false,
                         nextOffset = null,
                         nextCursor = null,
+                        tooBroad = false,
+                        relevanceFallback = false,
                         errorCode = null,
                         noPermissionCode = null,
                         resultQuery = null,
@@ -1201,6 +1205,8 @@ internal class SharedHomeSearchSavedStore(
                                 hasMore = result.data.hasMore,
                                 nextOffset = result.data.nextOffset,
                                 nextCursor = result.data.nextCursor,
+                                tooBroad = result.data.tooBroad,
+                                relevanceFallback = result.data.relevanceFallback,
                                 searched = true,
                                 empty = items.isEmpty(),
                                 loading = false,
@@ -1220,6 +1226,8 @@ internal class SharedHomeSearchSavedStore(
                                 hasMore = false,
                                 nextOffset = null,
                                 nextCursor = null,
+                                tooBroad = false,
+                                relevanceFallback = false,
                                 loading = false,
                                 refreshing = false,
                                 loadingMore = false,
@@ -1749,6 +1757,10 @@ data class SharedHomeSearchPanelState(
     val nextOffset: Int? = null,
     /** Server walk cursor for the next page (recent-sort text search); preferred over [nextOffset]. */
     val nextCursor: String? = null,
+    /** Last page's `relaxedSkipped: "too_broad"` (web `continuation.tooBroad`): explains an empty result. */
+    val tooBroad: Boolean = false,
+    /** Last page's `relevanceFallback: "too_broad"` (web `continuation.relevanceFallback`): sorted newest first. */
+    val relevanceFallback: Boolean = false,
     val errorCode: String? = null,
     val noPermissionCode: String? = null,
     val resultQuery: String? = null,
@@ -1915,7 +1927,9 @@ internal suspend fun loadSearchSnapshotToDepth(
                         totalCount = items.size,
                         hasMore = page.data.hasMore,
                         nextOffset = page.data.nextOffset,
-                        nextCursor = page.data.nextCursor
+                        nextCursor = page.data.nextCursor,
+                        tooBroad = page.data.tooBroad,
+                        relevanceFallback = page.data.relevanceFallback
                     )
                 // A page of rows already shown cannot make progress; stop instead of looping.
                 if (!grew) break

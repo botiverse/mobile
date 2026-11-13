@@ -663,6 +663,10 @@ private data class WireSearchResponse(
     val hasMore: Boolean = false,
     val nextCursor: String? = null,
     val incomplete: Boolean = false,
+    /** `"too_broad"`: no message has every word and the any-word search was skipped (slock #14398). */
+    val relaxedSkipped: String? = null,
+    /** `"too_broad"`: too many matches to rank, so the page is sorted newest first (slock #14480). */
+    val relevanceFallback: String? = null,
 )
 
 data class SharedSearchItems(
@@ -674,6 +678,13 @@ data class SharedSearchItems(
     val hasMore: Boolean,
     /** Rows the server sent, before dropping unknown kinds or duplicates: what an offset advances by. */
     val rawResultCount: Int = items.size,
+    /**
+     * `relaxedSkipped: "too_broad"` (web `SearchContinuation.tooBroad`): an empty page here does not
+     * mean nothing matches; the any-word search was skipped as too broad.
+     */
+    val tooBroad: Boolean = false,
+    /** `relevanceFallback: "too_broad"`: a relevance search answered newest first (too many matches to rank). */
+    val relevanceFallback: Boolean = false,
     val nextCursor: String? = null,
 )
 
@@ -689,8 +700,13 @@ fun parseSharedSearchItems(
         hasMore = decoded.hasMore || (decoded.incomplete && nextCursor != null),
         rawResultCount = decoded.results.size,
         nextCursor = nextCursor,
+        tooBroad = decoded.relaxedSkipped == SearchTooBroadWireValue,
+        relevanceFallback = decoded.relevanceFallback == SearchTooBroadWireValue,
     )
 }.getOrNull()
+
+private const val SearchTooBroadWireValue = "too_broad"
+
 
 private fun WireSearchResult.toInboxItem(diagnostics: (String) -> Unit): InboxItem? {
     val conversationKind = parseConversationKindOrNull(channelType)

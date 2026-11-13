@@ -2377,6 +2377,8 @@
     <string name="search_empty_results">No hay mensajes que coincidan</string>
     <string name="search_empty_query_detail">Prueba con otras palabras clave o una frase más corta.</string>
     <string name="search_empty_filters_detail">Prueba con otra combinación de filtros.</string>
+    <string name="search_too_broad_hint">Ningún mensaje contiene todas estas palabras, y demasiados contienen alguna de ellas para revisarlos uno por uno. Prueba con palabras más específicas o limita la búsqueda a un canal o remitente.</string>
+    <string name="search_relevance_fallback_note">Hay demasiadas coincidencias para ordenarlas por relevancia, así que se muestran de la más reciente a la más antigua. Prueba con palabras más específicas o limita la búsqueda a un canal o remitente.</string>
     <string name="search_section_channels_dms">Canales y MD</string>
     <string name="search_section_entities">Elementos del servidor</string>
     <string name="search_overlay_search_for">Buscar “%1$s”</string>

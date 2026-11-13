@@ -2402,6 +2402,8 @@
     <string name="search_empty_results">没有匹配的消息</string>
     <string name="search_empty_query_detail">请尝试其他关键词或更短的短语。</string>
     <string name="search_empty_filters_detail">请尝试其他筛选组合。</string>
+    <string name="search_too_broad_hint">没有消息同时包含这些词；包含其中某个词的消息太多，未逐条匹配。试试更具体的词，或限定频道、发送者。</string>
+    <string name="search_relevance_fallback_note">匹配的消息太多，无法按相关度排序，已按时间从新到旧排列。试试更具体的词，或限定频道、发送者。</string>
     <string name="search_section_channels_dms">频道和私信</string>
     <string name="search_section_entities">服务器内容</string>
     <string name="search_overlay_search_for">搜索「%1$s」</string>

@@ -452,7 +452,8 @@ class RealSearchRepository(
                     serverId
                 )
             },
-            emptyWhen = { it.items.isEmpty() },
+            // A too-broad empty page stays Content so its explanation reaches the empty state.
+            emptyWhen = { it.items.isEmpty() && !it.tooBroad },
             errorTextDecoder = HomeNetworkResponse::searchRouteErrorTextOrNull,
             errorCodeDecoder = HomeNetworkResponse::searchRouteErrorCodeOrNull,
             source = "search_messages",
@@ -474,7 +475,9 @@ class RealSearchRepository(
                         } else {
                             offset + parsed.rawResultCount
                         },
-                    nextCursor = parsed.nextCursor?.takeIf { searchWalkCursorApplies(trimmedQuery, options.sort) }
+                    nextCursor = parsed.nextCursor?.takeIf { searchWalkCursorApplies(trimmedQuery, options.sort) },
+                    tooBroad = parsed.tooBroad,
+                    relevanceFallback = parsed.relevanceFallback
                 )
             }
         )
