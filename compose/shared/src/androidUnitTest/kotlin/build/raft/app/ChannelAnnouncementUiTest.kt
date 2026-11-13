@@ -8,9 +8,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -31,6 +33,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -198,6 +201,29 @@ class ChannelAnnouncementUiTest {
                 assertEquals(1, replaces)
                 assertEquals(1, removes)
             }
+        }
+
+    /**
+     * raft-ui 0.95.1 (raft-design #1201): the item opens, so the row of Remove and Replace under it
+     * keeps its top inset (and a hairline): the item's press fill doesn't end against the buttons.
+     */
+    @Test
+    fun removeAndReplaceSitBelowTheItemsPressAreaWithTheirTopInset() =
+        runRobolectricComposeUiTest {
+            show {
+                ChannelAnnouncementDetailsRow(
+                    slice = ChannelAnnouncementSlice(read = true, announcement = channelAnnouncementFixture),
+                    canEdit = true,
+                    onOpen = {},
+                    onSet = {},
+                    onReplace = {},
+                    onRemove = {},
+                )
+            }
+            val item = onNodeWithTag(ChannelAnnouncementTestTags.DetailsItem).getBoundsInRoot()
+            val replace = onNodeWithTag(ChannelAnnouncementTestTags.DetailsReplace).getBoundsInRoot()
+            val gap = replace.top - item.bottom
+            assertTrue(gap >= 12.dp, "12dp inset (and the 1dp hairline) between the item and its buttons: $gap")
         }
 
     @Test

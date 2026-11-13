@@ -49,6 +49,7 @@ import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuSeparator
+import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.text.RaftText
@@ -309,9 +310,13 @@ internal fun ChannelAnnouncementDetailsRow(
                 trailing = { RaftListRowChevron() },
             )
             if (canEdit) {
-                // A row that belongs to the item above (ListRow `attached`): no hairline between them.
+                // A row that belongs to the item above (ListRow `attached`). The item is a target (it
+                // opens), so the row keeps its hairline and top inset (raft-ui 0.95.1, raft-design
+                // #1201): without them the item's press fill ended on an edge you couldn't see, right
+                // against Remove and Replace.
+                RaftSeparator(Modifier.padding(start = 16.dp))
                 Row(
-                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 ) {
                     RaftButton(
