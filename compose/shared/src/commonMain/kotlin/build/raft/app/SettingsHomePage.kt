@@ -4029,13 +4029,69 @@ private fun RaftAppShellReadyContent(
                 ?: SharedServerMembersEntry(serverId = readyServerId.orEmpty())
         }
     )
+    // QA bootstrap only (session.qaBootstrap != null; never set for real sign-ins): the READY digest
+    // this shell already emitted, so the waiting diagnostics below stop once the harness has READY.
+    var qaBootstrapReadyTicketDigest by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(readySession?.qaBootstrap?.ticketDigest, homeState.content) {
         if (
             readySession?.qaBootstrap != null &&
             (homeState.content is SharedHomeContentState.Content || homeState.content is SharedHomeContentState.Empty)
         ) {
-            raftPlatformCompleteQaBootstrapRouteReady(authDataSource)
+            if (raftPlatformCompleteQaBootstrapRouteReady(authDataSource)) {
+                qaBootstrapReadyTicketDigest = readySession?.qaBootstrap?.ticketDigest
+            }
         }
+    }
+    // QA bootstrap diagnostics (qa-acceptance run 43294979101): READY used to wait silently on the
+    // gate/home condition above. Log what it waits on, on change and every 5 s while still waiting.
+    val qaBootstrapGateSession =
+        when (val gate = authGateState) {
+            is SharedAuthGateState.Ready -> gate.session
+            is SharedAuthGateState.BootstrapRecoveryRequired -> gate.session
+            else -> null
+        }
+    val qaBootstrapPendingDigest =
+        qaBootstrapGateSession?.qaBootstrap?.ticketDigest?.takeIf { it != qaBootstrapReadyTicketDigest }
+    val qaBootstrapGateName = qaBootstrapPendingDigest?.let { authGateState.authGateDiagnosticsName() }
+    val qaBootstrapHomeName = qaBootstrapPendingDigest?.let { homeState.content.qaBootstrapHomeDiagnosticsName() }
+    LaunchedEffect(qaBootstrapPendingDigest, qaBootstrapGateName, qaBootstrapHomeName) {
+        if (qaBootstrapPendingDigest == null) return@LaunchedEffect
+        val routeReadyAdmitted =
+            authGateState is SharedAuthGateState.Ready &&
+                (homeState.content is SharedHomeContentState.Content || homeState.content is SharedHomeContentState.Empty)
+        if (routeReadyAdmitted) return@LaunchedEffect
+        while (true) {
+            raftTraceToPlatformLog(
+                QA_BOOTSTRAP_LOG_TAG,
+                "QA_BOOTSTRAP_STAGE stage=route_ready_waiting gate=$qaBootstrapGateName home=$qaBootstrapHomeName"
+            )
+            delay(QA_BOOTSTRAP_WAITING_LOG_INTERVAL_MILLIS)
+        }
+    }
+    // QA bootstrap only: a Home load error would otherwise park the harness until its timeout.
+    // Retry it a bounded number of times with backoff; production sessions never enter this.
+    var qaBootstrapHomeRetries by remember { mutableStateOf(0) }
+    val qaBootstrapHomeError =
+        (homeState.content as? SharedHomeContentState.Error)?.takeIf { readySession?.qaBootstrap != null }
+    LaunchedEffect(qaBootstrapHomeError, qaBootstrapHomeRetries) {
+        val error = qaBootstrapHomeError ?: return@LaunchedEffect
+        val attempt = qaBootstrapHomeRetries + 1
+        if (attempt > QA_BOOTSTRAP_HOME_RETRY_LIMIT) {
+            raftTraceToPlatformLog(
+                QA_BOOTSTRAP_LOG_TAG,
+                "QA_BOOTSTRAP_FAILURE stage=home_load code=${error.code.qaBootstrapDiagnosticsToken()} retries=${qaBootstrapHomeRetries}"
+            )
+            return@LaunchedEffect
+        }
+        val backoffMillis = QA_BOOTSTRAP_HOME_RETRY_BASE_DELAY_MILLIS shl (attempt - 1)
+        raftTraceToPlatformLog(
+            QA_BOOTSTRAP_LOG_TAG,
+            "QA_BOOTSTRAP_STAGE stage=home_load_retry attempt=$attempt/$QA_BOOTSTRAP_HOME_RETRY_LIMIT " +
+                "code=${error.code.qaBootstrapDiagnosticsToken()} delayMs=$backoffMillis"
+        )
+        delay(backoffMillis)
+        qaBootstrapHomeRetries = attempt
+        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
     }
     LaunchedEffect(storeScope.shellInstanceId, authGateState, readyServerId) {
         when (val state = authGateState) {
@@ -4789,6 +4845,26 @@ private fun RaftAppShellReadyContent(
             return
         }
         is SharedAuthGateState.BootstrapRecoveryRequired -> {
+            // Only a stored QA bootstrap session (never a real sign-in) lands here: the process-only
+            // launch authorization was lost (process restart). Nothing dispatched ResumeQaBootstrap, so
+            // this was a silent splash forever. Re-run the server-checked recovery and resume.
+            LaunchedEffect(gate.session.qaBootstrap?.ticketDigest) {
+                raftTraceToPlatformLog(QA_BOOTSTRAP_LOG_TAG, "QA_BOOTSTRAP_FAILURE stage=shell_gate code=recovery_required")
+                when (val outcome = recoverQaBootstrapLaunch(authDataSource)) {
+                    is QaBootstrapShellRecovery.Resumed -> {
+                        raftTraceToPlatformLog(QA_BOOTSTRAP_LOG_TAG, "QA_BOOTSTRAP_STAGE stage=shell_gate_recovered")
+                        authGateViewModel.dispatch(SharedAuthGateIntent.ResumeQaBootstrap(outcome.session))
+                    }
+                    is QaBootstrapShellRecovery.Failed -> {
+                        raftTraceToPlatformLog(
+                            QA_BOOTSTRAP_LOG_TAG,
+                            "QA_BOOTSTRAP_FAILURE stage=shell_gate_recovery code=${outcome.code}"
+                        )
+                        // Leave the splash for sign-in instead of hanging; the harness sees the failure line.
+                        authGateViewModel.dispatch(SharedAuthGateIntent.ShowSignIn)
+                    }
+                }
+            }
             AppShellSilentRestoreContent()
             return
         }
