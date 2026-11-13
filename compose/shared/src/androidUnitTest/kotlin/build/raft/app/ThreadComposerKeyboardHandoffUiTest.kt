@@ -1,6 +1,9 @@
 package build.raft.app
 
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -15,6 +18,7 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import build.raft.app.nav.RaftStackPageActivity
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -61,6 +65,12 @@ class ThreadComposerKeyboardHandoffUiTest {
         var handoff: ThreadComposerKeyboardHandoff? = null
         var returns = 0
         var focused = false
+        val focusEvents = mutableListOf<Boolean>()
+
+        fun focusChanged(isFocused: Boolean) {
+            focused = isFocused
+            focusEvents += isFocused
+        }
     }
 
     private fun ComposeUiTest.showFocusedComposer(page: Page): ThreadComposerKeyboardHandoff {
@@ -73,8 +83,12 @@ class ThreadComposerKeyboardHandoffUiTest {
                             page.composerFocus.requestFocus()
                             page.keyboard.show()
                         }
+                    // The page's other focusable content, ahead of the composer. Out of touch mode
+                    // (Robolectric's) Android gives a cleared window focus straight back to the
+                    // first focusable; on a phone, in touch mode, nothing takes it.
+                    Box(Modifier.size(1.dp).focusable())
                     TextField(
-                        modifier = Modifier.testTag(COMPOSER).fillMaxWidth().onFocusChanged { page.focused = it.isFocused },
+                        modifier = Modifier.testTag(COMPOSER).fillMaxWidth().onFocusChanged { page.focusChanged(it.isFocused) },
                         value = "",
                         autoFocus = false,
                         onValueChange = {},
@@ -83,8 +97,6 @@ class ThreadComposerKeyboardHandoffUiTest {
                 }
             }
         }
-        // A tap, as the user focuses it: that also puts the window in touch mode, where a cleared
-        // focus stays cleared (out of touch mode Android hands the view its default focus back).
         onNodeWithTag(COMPOSER).performClick()
         waitForIdle()
         assertTrue(page.focused, "the composer is not focused")
@@ -99,7 +111,7 @@ class ThreadComposerKeyboardHandoffUiTest {
 
             // The image button: down before the picker.
             runOnIdle { handoff.leave(keyboardOpen = true) }
-            assertFalse(page.focused, "the composer kept the focus")
+            assertFalse(page.focused, "the composer kept the focus: ${page.focusEvents}")
             assertEquals(1, page.keyboard.hidden, "the keyboard stayed up for the picker")
 
             // The picker returns and the editor opens over the conversation.
@@ -109,7 +121,7 @@ class ThreadComposerKeyboardHandoffUiTest {
                 page.covered = true
             }
             waitForIdle()
-            assertFalse(page.focused, "the composer kept the focus")
+            assertFalse(page.focused, "the composer kept the focus: ${page.focusEvents}")
             assertEquals(0, page.returns, "the keyboard came back over the editor")
 
             // The editor closes: the conversation page is resumed again.
@@ -134,7 +146,7 @@ class ThreadComposerKeyboardHandoffUiTest {
             val handoff = showFocusedComposer(page)
 
             runOnIdle { handoff.leave(keyboardOpen = true) }
-            assertFalse(page.focused, "the composer kept the focus")
+            assertFalse(page.focused, "the composer kept the focus: ${page.focusEvents}")
             runOnIdle { handoff.settle() }
             waitForIdle()
 
