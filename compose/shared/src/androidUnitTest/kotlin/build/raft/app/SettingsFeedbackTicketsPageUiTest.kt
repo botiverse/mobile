@@ -284,6 +284,23 @@ class SettingsFeedbackTicketsPageUiTest {
         }
 
     @Test
+    fun anEmptyFirstPageWithMoreToReadIsNotNoFeedback() =
+        runRobolectricComposeUiTest {
+            // slock #14722: a merged page may hold no tickets and still have a next cursor. The store
+            // reads on (bounded); with still nothing, the list offers Load More, not "No feedback yet".
+            val repository = FakeRepository(FeedbackResult.Ok(FeedbackTicketListRead.Page(FeedbackTicketPage(emptyList(), "more", 2))))
+            setContent { Page(repository) }
+            waitForIdle()
+            onNodeWithText("No feedback yet").assertDoesNotExist()
+            onNodeWithText("Load More").assertIsDisplayed()
+            // Once the list ends with nothing, it is the empty state.
+            repository.list = pageOf()
+            onNodeWithText("Load More").performClick()
+            waitForIdle()
+            onNodeWithText("No feedback yet").assertIsDisplayed()
+        }
+
+    @Test
     fun aFailedListSaysSoAndTryAgainReadsItAgain() =
         runRobolectricComposeUiTest {
             val repository = FakeRepository(FeedbackResult.Failed(FeedbackFailure(FeedbackErrorKind.Unavailable, "feedback_service_unavailable")))
