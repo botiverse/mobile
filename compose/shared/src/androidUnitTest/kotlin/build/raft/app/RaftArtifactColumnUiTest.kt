@@ -240,6 +240,7 @@ class RaftArtifactColumnUiTest {
                             },
                         ),
                     tabLabel = "Tasks · Files",
+                    headCarriesTabs = true,
                 )
             }
         RaftPaneGrid(columns = if (cardsOpen) listOf(cards) else emptyList()) {
@@ -562,9 +563,22 @@ class RaftArtifactColumnUiTest {
             val cardsTabs = RAFT_PANE_GRID_TABS_TEST_TAG + RaftPaneGridColumns.SideCards.id
             onAllNodesWithTag(cardsTabs, useUnmergedTree = true).assertCountEquals(1)
             onNode(hasTestTag(cardsTabs) and hasAnyAncestor(hasTestTag(tasksHead)), useUnmergedTree = true).assertExists()
-            // The head with tabs has no ⋯ (no moves while it shows them), and Expand and Close stay.
-            onNodeWithTag(tasksHead + RAFT_PANE_GRID_HEAD_MORE_SUFFIX, useUnmergedTree = true).assertDoesNotExist()
+            // The head with tabs offers no moves (they keep that room); Close stays in it. About 190 wide by touch with
+            // its fold chevron, Expand is in the head where it fits beside the title slot's floor, else in ⋯
+            // (raftPaneGridHeadFit); either way it works as the head's.
             onNodeWithTag(tasksHead + RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX, useUnmergedTree = true).assertExists()
+            val more = onAllNodesWithTag(tasksHead + RAFT_PANE_GRID_HEAD_MORE_SUFFIX, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            if (more) {
+                onNodeWithTag(tasksHead + RAFT_PANE_GRID_HEAD_MORE_SUFFIX, useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)
+                waitForIdle()
+                onNodeWithTag(RAFT_COLUMN_MOVE_LEFT_TEST_TAG + "tasks", useUnmergedTree = true).assertDoesNotExist()
+                onNodeWithTag(RAFT_COLUMN_MOVE_RIGHT_TEST_TAG + "tasks", useUnmergedTree = true).assertDoesNotExist()
+            }
+            onNodeWithTag(tasksHead + RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX, useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)
+            waitForIdle()
+            assertEquals("tasks", expand.region)
+            runOnIdle { expand.restore() }
+            waitForIdle()
             assertSettled()
             // The Artifact's tab picked (by its action: the narrow head scrolls it out of view): its column shows, the
             // tabs on top of it (the viewer draws its own head).

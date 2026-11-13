@@ -460,6 +460,12 @@ class RaftPaneGridColumn(
     /** Its tab's label where the row makes it a tab (#189 rule 4; web RowTabs): its sections' titles, ` · ` between. */
     val tabLabel: String? = null,
     /**
+     * Its cells draw their heads with [RaftPaneGridColumnHead]: where the row makes it hold tabs (#189 rule 4), they
+     * stand in its top cell's head, in the title's place (web RowTabs), not as a strip on top of it. False: its pages
+     * draw their own heads, and the grid draws the strip.
+     */
+    val headCarriesTabs: Boolean = false,
+    /**
      * It stands after every column without it, whichever grid declared it (web DEFAULT_CHANNEL_SIDE_LAYOUT: the
      * profile / context / details column is the row's last, right of Tasks / Files a page declares further in).
      */
@@ -522,6 +528,7 @@ internal class RaftPaneGridHandedUp(
                     column.shortShownCell,
                     column.shortSwitch != null,
                     column.trailing,
+                    column.headCarriesTabs,
                     column.cells.map { it.id to it.defaultShare },
                 )
             }
@@ -720,6 +727,7 @@ internal class RaftPaneGridHost internal constructor() {
                 shortShownCell = first.shortShownCell.takeIf { sources.size == 1 },
                 shortSwitch = first.shortSwitch.takeIf { sources.size == 1 },
                 tabLabel = sources.mapNotNull { it.column.tabLabel }.distinct().joinToString(" · ").ifEmpty { null },
+                headCarriesTabs = sources.all { it.column.headCarriesTabs },
             )
         return RaftPaneGridPlaced(
             column = column,
@@ -743,11 +751,6 @@ internal class RaftPaneGridHost internal constructor() {
 
     /** Which unit each group of row tabs shows: one per outermost grid. */
     internal val tabPicks = RaftPaneGridTabPicks()
-
-    /** Each column's [RaftPaneGridTabsSlot], by its key; plain memory, each slot kept for the column's key. */
-    private val tabsSlots = mutableMapOf<String, RaftPaneGridTabsSlot>()
-
-    internal fun tabsSlot(column: String): RaftPaneGridTabsSlot = tabsSlots.getOrPut(column) { RaftPaneGridTabsSlot() }
 
     /** The cells of the planned row the last time it was laid out (plain memory): a cell new since opened into it. */
     internal var lastRowCells: Set<String>? = null
@@ -853,20 +856,11 @@ data class RaftPaneGridExpandControl(val region: String, val shown: Boolean, val
 }
 
 /**
- * Which cell's head carries its column's row tabs (#189 rule 4, web RowTabs: the head of the column's top region, in
- * place of its title). A [RaftPaneGridColumnHead] claims it; while none does the grid draws the tabs as a strip on top
- * of the column, so they are never out of reach under a page that draws its own head.
- */
-@Stable
-class RaftPaneGridTabsSlot {
-    var owner: String? by mutableStateOf(null)
-}
-
-/**
  * What the outermost grid tells the cells of one of its columns, for their heads (#189 step 5): [rowCells], every
  * column of the planned row by its cells' ids, left to right (the sections open in the row, for Move Left / Move
- * Right); [expandShown] and [expanded] for Expand ([expandFor]); the column's row [tabs], carried by the head that
- * holds [tabsSlot]. Values only, compared by value.
+ * Right); [expandShown] and [expanded] for Expand ([expandFor]); the column's row [tabs], carried in the head of
+ * [tabsCell] (web RowTabs: the column's top region, in the title's place; null: the grid draws them as a strip on top
+ * of the column, its pages drawing their own heads). Values only, compared by value.
  */
 @Immutable
 data class RaftPaneGridColumnControls(
@@ -875,7 +869,7 @@ data class RaftPaneGridColumnControls(
     val expanded: String?,
     val expandState: RaftPaneGridExpand?,
     val tabs: RaftPaneGridRowTabs?,
-    val tabsSlot: RaftPaneGridTabsSlot?,
+    val tabsCell: String?,
 ) {
     /** [region]'s Expand; null where the row has no expand state. */
     fun expandFor(region: String): RaftPaneGridExpandControl? =
@@ -1144,7 +1138,8 @@ fun RaftPaneGrid(
                                     expanded = plan.expanded,
                                     expandState = expandState,
                                     tabs = tabsOf[id],
-                                    tabsSlot = host.tabsSlot(id),
+                                    // Decided here, not claimed by the head a frame later: no frame with both.
+                                    tabsCell = column.cells.firstOrNull()?.id?.takeIf { column.headCarriesTabs },
                                 )
                             }
                         RaftPaneGridSideColumn(
@@ -1201,8 +1196,8 @@ private fun RowScope.RaftPaneGridLeadingView(leading: RaftPaneGridLeadingColumn)
  * own main pane ([RaftPaneGrid] does the rest). [widthDp] is its planned width, [mainWidthDp] the
  * main pane's beside it, which a drag may take down to 360. Narrower than its minimum (#189 rule
  * 2: to 160) its content keeps the minimum and is clipped. [tabs] are its group's row tabs (rule 4): in the head
- * of its top cell where that is a [RaftPaneGridColumnHead] (which claims [RaftPaneGridColumnControls.tabsSlot]),
- * else drawn on top of it; [tabHidden] is a tab not shown: no width, no semantics, no focus (web
+ * of its top cell where its cells draw [RaftPaneGridColumnHead]s ([RaftPaneGridColumn.headCarriesTabs]), else drawn
+ * on top of it; [tabHidden] is a tab not shown: no width, no semantics, no focus (web
  * `inert`), still composed. [onCommitWidth] saves a width let go on its seam (the grid's: the whole
  * row as shown, rule 1); without it the column saves only its own. A double click resets only its own.
  * [controls] go to its cells ([LocalRaftPaneGridColumnControls]); not [resizable] (a row expanded), it has no seam
@@ -1248,7 +1243,7 @@ fun RowScope.RaftPaneGridSideColumn(
             if (topInset > 0.dp) Spacer(Modifier.fillMaxWidth().height(topInset))
             // The row tabs at the column's own width, so every tab stays in reach while the content clips; in its top
             // cell's head instead where that head carries them (web RowTabs in place of the title).
-            if (tabs != null && controls?.tabsSlot?.owner == null) {
+            if (tabs != null && !column.headCarriesTabs) {
                 Box(Modifier.fillMaxWidth().padding(start = seam)) {
                     RaftPaneGridTabStrip(tabs, RAFT_PANE_GRID_TABS_TEST_TAG + column.bounds.id)
                 }
@@ -1322,7 +1317,11 @@ private fun RaftPaneGridStackView(column: RaftPaneGridColumn, modifier: Modifier
             val shown = cells.firstOrNull { it.id == column.shortShownCell } ?: cells.first()
             Column(Modifier.fillMaxSize()) {
                 column.shortSwitch?.invoke()
-                Box(Modifier.weight(1f).fillMaxWidth()) { RaftPaneGridCellHost(shown, canFold = false, folded = false) {} }
+                // Only one cell shows: its head is the column's top and carries the row tabs.
+                val controls = LocalRaftPaneGridColumnControls.current
+                CompositionLocalProvider(LocalRaftPaneGridColumnControls provides controls?.let { it.copy(tabsCell = it.tabsCell?.let { shown.id }) }) {
+                    Box(Modifier.weight(1f).fillMaxWidth()) { RaftPaneGridCellHost(shown, canFold = false, folded = false) {} }
+                }
             }
             return@BoxWithConstraints
         }

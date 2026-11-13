@@ -11,9 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -204,13 +202,8 @@ fun RaftPaneGridColumnHead(
     val colors = RaftTheme.colors
     val metrics = RaftTheme.controls
     val grid = LocalRaftPaneGridColumnControls.current
-    val slot = grid?.tabsSlot
-    if (slot != null && cellId != null) {
-        // The column's top head carries its row tabs: the first head composed claims them, written only when free.
-        SideEffect { if (slot.owner == null) slot.owner = cellId }
-        DisposableEffect(slot, cellId) { onDispose { if (slot.owner == cellId) slot.owner = null } }
-    }
-    val tabs = grid?.tabs?.takeIf { cellId != null && slot?.owner == cellId }
+    // The column's top head carries its row tabs, as the grid decided ([RaftPaneGridColumnControls.tabsCell]).
+    val tabs = grid?.tabs?.takeIf { cellId != null && grid?.tabsCell == cellId }
     val expand = if (expandable && cellId != null) grid?.expandFor(cellId)?.takeIf { it.shown } else null
     val tag = RAFT_PANE_GRID_HEAD_TEST_TAG + (cellId ?: title)
     // In a column clipped under its minimum the cell is laid out wider than what shows: the head takes only what shows.

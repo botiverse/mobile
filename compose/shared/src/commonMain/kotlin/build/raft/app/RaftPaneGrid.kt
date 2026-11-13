@@ -408,7 +408,7 @@ internal fun RaftPaneGridCellScope.RaftPaneGridCard(
     val moveLeft = stringResource(Res.string.pane_grid_column_move_left)
     val moveRight = stringResource(Res.string.pane_grid_column_move_right)
     // The head showing the row tabs offers no moves (web: its ⋯ isn't there for them alone).
-    val showsTabs = controls?.tabs != null && controls.tabsSlot?.owner == cellId
+    val showsTabs = controls?.tabs != null && controls.tabsCell == cellId
     val moves = raftColumnMoveItems(cellId, controls, layoutStore, moveLeft, moveRight, showsTabs)
     Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         RaftPaneGridColumnHead(

@@ -97,19 +97,21 @@ class PaneGridScreenshotTest {
                         RaftPaneGrid(
                             columns =
                                 listOf(
-                                    RaftPaneGridColumn(thread, "Resize thread", listOf(RaftPaneGridCell("thread") { cell("Thread") }), tabLabel = "Thread"),
+                                    RaftPaneGridColumn(thread, "Resize thread", listOf(RaftPaneGridCell("thread") { cell("Thread") }), tabLabel = "Thread", headCarriesTabs = heads),
                                     RaftPaneGridColumn(
                                         side,
                                         "Resize cards",
                                         listOf(RaftPaneGridCell("tasks", 0.6f) { cell("Tasks") }, RaftPaneGridCell("files", 0.4f) { cell("Files") }),
                                         tabLabel = "Tasks · Files",
+                                        headCarriesTabs = heads,
                                     ),
-                                    RaftPaneGridColumn(artifact, "Resize artifact", listOf(RaftPaneGridCell("artifact") { cell("Artifact") }), tabLabel = "Artifact"),
+                                    RaftPaneGridColumn(artifact, "Resize artifact", listOf(RaftPaneGridCell("artifact") { cell("Artifact") }), tabLabel = "Artifact", headCarriesTabs = heads),
                                     RaftPaneGridColumn(
                                         profile,
                                         "Resize profile",
                                         listOf(RaftPaneGridCell("profile", 0.5f) { cell("Profile") }, RaftPaneGridCell("details", 0.5f) { cell("Details") }),
                                         tabLabel = "Profile · Details",
+                                        headCarriesTabs = heads,
                                     ),
                                 ),
                             mainTabLabel = "Chat",

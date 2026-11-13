@@ -13,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasAnyAncestor
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftPaneGridSizes
@@ -72,7 +74,7 @@ class RaftPaneGridHeadFitTest {
                 CompositionLocalProvider(LocalRaftPaneGridSizes provides sizes) {
                     Box(Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(rowWidth.dp, 600.dp)) {
                         RaftPaneGrid(
-                            columns = columns.map { bounds -> RaftPaneGridColumn(bounds, "Resize", cells.getValue(bounds).map { id -> RaftPaneGridCell(id) { Head(id) } }) },
+                            columns = columns.map { bounds -> RaftPaneGridColumn(bounds, "Resize", cells.getValue(bounds).map { id -> RaftPaneGridCell(id) { Head(id) } }, headCarriesTabs = true) },
                             expand = expand,
                         ) { Box(Modifier.fillMaxSize()) }
                     }
@@ -83,10 +85,11 @@ class RaftPaneGridHeadFitTest {
     }
 
     /**
-     * Every head's buttons (its own action, ⋯, Expand, Close) lie inside its column, as laid out (not as clipped), and
-     * its title keeps at least its floor and its whole text; with [allControls], ⋯, Expand and Close are in the bar.
+     * Every head's buttons (its own action, ⋯, Expand, Close) lie inside its column, as laid out (not as clipped); its
+     * title keeps at least its floor and its whole text; ⋯ is always there, and Expand and Close are each in the head
+     * or, where the head is too narrow for them beside the title's floor, in its ⋯ (raftPaneGridHeadFit).
      */
-    private fun ComposeUiTest.assertHeadsInsideTheirColumns(at: Float, allControls: Boolean = true) {
+    private fun ComposeUiTest.assertHeadsInsideTheirColumns(at: Float) {
         columns.forEach { bounds ->
             val column = onNodeWithTag(RAFT_PANE_GRID_COLUMN_TEST_TAG + bounds.id, useUnmergedTree = true).fetchSemanticsNode()
             val left = column.positionInRoot.x
@@ -103,9 +106,21 @@ class RaftPaneGridHeadFitTest {
                 val floor = with(density) { RAFT_PANE_GRID_HEAD_TITLE_FLOOR_DP.dp.toPx() }
                 assertTrue(title.size.width >= floor - 1f, "$id at $at: its title is ${title.size.width}px, under its floor $floor")
                 onNode(hasText(id) and isHeading(), useUnmergedTree = true).assertExists()
-                // ⋯ never folds; with room, Expand and Close stand beside it.
-                val suffixes = if (allControls) listOf(RAFT_PANE_GRID_HEAD_MORE_SUFFIX, RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX, RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX) else listOf(RAFT_PANE_GRID_HEAD_MORE_SUFFIX)
-                suffixes.forEach { suffix -> onNodeWithTag(RAFT_PANE_GRID_HEAD_TEST_TAG + id + suffix, useUnmergedTree = true).assertExists() }
+                // ⋯ never folds.
+                val head = RAFT_PANE_GRID_HEAD_TEST_TAG + id
+                onNodeWithTag(head + RAFT_PANE_GRID_HEAD_MORE_SUFFIX, useUnmergedTree = true).assertExists()
+                // Expand and Close: in the head, else in its ⋯ (the menu's items carry the same tags).
+                val controls = listOf(RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX, RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX)
+                val folded = controls.filter { onAllNodes(hasTestTag(head + it), useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
+                if (folded.isNotEmpty()) {
+                    onNodeWithTag(head + RAFT_PANE_GRID_HEAD_MORE_SUFFIX, useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)
+                    waitForIdle()
+                    folded.forEach { onNodeWithTag(head + it, useUnmergedTree = true).assertExists() }
+                    // Closed by its Move Left (a no-op here), so the next head's ⋯ opens on its own.
+                    onNodeWithTag("moveLeft:$id", useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)
+                    waitForIdle()
+                    folded.forEach { onNodeWithTag(head + it, useUnmergedTree = true).assertDoesNotExist() }
+                }
             }
         }
     }
@@ -124,7 +139,7 @@ class RaftPaneGridHeadFitTest {
             // before the title would.
             rowWidth = 800f
             waitForIdle()
-            assertHeadsInsideTheirColumns(800f, allControls = false)
+            assertHeadsInsideTheirColumns(800f)
         }
 }
 
@@ -139,7 +154,7 @@ private fun RaftPaneGridCellScope.Head(id: String) {
             closeLabel = "Close",
             onClose = {},
             ownActions = listOf(RaftPaneGridHeadAction(id = "new", label = "New", onSelect = {}, glyph = RaftGlyph.Plus)),
-            menuItems = listOf(RaftPaneGridHeadAction(id = "move-left", label = "Move Left", onSelect = {}, glyph = RaftGlyph.MoveLeft)),
+            menuItems = listOf(RaftPaneGridHeadAction(id = "move-left", label = "Move Left", onSelect = {}, glyph = RaftGlyph.MoveLeft, testTag = "moveLeft:$id")),
         )
     }
 }

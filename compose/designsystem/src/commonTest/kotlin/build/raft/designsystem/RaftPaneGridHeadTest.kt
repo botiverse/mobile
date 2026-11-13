@@ -144,7 +144,7 @@ class RaftPaneGridHeadTest {
     @Test
     fun aHeadsExpandIsPressedOnlyOnTheRegionExpandedAndComparesByValue() {
         val expand = RaftPaneGridExpand()
-        val controls = RaftPaneGridColumnControls(listOf(listOf("tasks", "files")), expandShown = true, expanded = "files", expandState = expand, tabs = null, tabsSlot = null)
+        val controls = RaftPaneGridColumnControls(listOf(listOf("tasks", "files")), expandShown = true, expanded = "files", expandState = expand, tabs = null, tabsCell = null)
         assertTrue(controls.expandFor("files")!!.pressed)
         assertFalse(controls.expandFor("tasks")!!.pressed, "another head in its column shows it unpressed")
         controls.expandFor("tasks")!!.toggle()
