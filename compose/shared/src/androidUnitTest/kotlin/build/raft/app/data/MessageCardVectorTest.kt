@@ -96,7 +96,7 @@ class MessageCardVectorTest {
             }
         }
         assertEquals(emptyList(), failures)
-        assertEquals(listOf(23, 25), listOf(accepted, refused))
+        assertEquals(listOf(24, 25), listOf(accepted, refused))
     }
 
     @Test
