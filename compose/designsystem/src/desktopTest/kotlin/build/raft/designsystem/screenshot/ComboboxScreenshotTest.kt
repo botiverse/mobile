@@ -50,7 +50,7 @@ class ComboboxScreenshotTest {
 
     private val models =
         listOf(
-            // A description takes the identifier's place; o3's id is its label, so no second line.
+            // A description takes the identifier's place; o3 has no identifier, so no second line.
             RaftComboboxOption("opus", "Claude Opus", group = "Anthropic", description = "Best for long, careful work", identifier = "anthropic/claude-opus-4-1"),
             RaftComboboxOption("sonnet", "Claude Sonnet", group = "Anthropic", identifier = "anthropic/claude-sonnet-4-5"),
             RaftComboboxOption("codex", "GPT-5 Codex", group = "OpenAI", identifier = "openai/gpt-5-codex"),

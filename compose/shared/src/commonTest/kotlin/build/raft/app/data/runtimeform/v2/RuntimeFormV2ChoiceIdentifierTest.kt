@@ -1,7 +1,9 @@
 package build.raft.app.data.runtimeform.v2
 
 import build.raft.app.runtimeChoiceIdentifier
+import build.raft.app.runtimeFormV2ListedOption
 import build.raft.app.runtimeFormV2ShowsChoiceIdentifiers
+import build.raft.designsystem.components.raftComboboxFilter
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -33,10 +35,26 @@ class RuntimeFormV2ChoiceIdentifierTest {
         // A saved provider connection's value is internal (`connection:<id>`), never shown.
         assertNull(runtimeChoiceIdentifier("connection:conn_8f2a", "DeepSeek (work)"))
         assertNull(runtimeChoiceIdentifier("connection:", "Saved"))
-        // The default row stays without one.
+        // The default row stays without one, stored as "" or as a placeholder (web slock #14728).
         assertNull(runtimeChoiceIdentifier("", "Default (DeepSeek Flash)"))
+        assertNull(runtimeChoiceIdentifier("__runtime_form_v2_default__", "Default"))
+        assertNull(runtimeChoiceIdentifier("__hosted_default__", "Default (DeepSeek Flash)"))
         // A provider id that merely contains the word keeps its line.
         assertEquals("deepseek/connection-test", runtimeChoiceIdentifier("deepseek/connection-test", "Connection Test"))
+    }
+
+    @Test
+    fun aDescribedChoiceIsStillFoundByItsId() {
+        val described = RuntimeFormV2Choice("anthropic/claude-opus-4-1", "Claude Opus", description = "Best for long, careful work")
+        val plain = RuntimeFormV2Choice("openai/gpt-5", "GPT-5")
+        val options = listOf(described, plain).map { runtimeFormV2ListedOption(it, group = null, showsIdentifiers = true) }
+        // The description takes the line, so no identifier; the id stays searchable (web runtimeChoiceMatches).
+        assertNull(options[0].identifier)
+        assertEquals("openai/gpt-5", options[1].identifier)
+        assertEquals(listOf("anthropic/claude-opus-4-1"), raftComboboxFilter(options, "claude-opus-4").map { it.value })
+        assertEquals(listOf("openai/gpt-5"), raftComboboxFilter(options, "openai").map { it.value })
+        // A plain select (no id line) adds nothing to search.
+        assertEquals(emptyList<String>(), runtimeFormV2ListedOption(described, group = null, showsIdentifiers = false).keywords)
     }
 
     @Test
