@@ -35,6 +35,7 @@ static id call(id target, const char *sel) {
 
 int main(int argc, char **argv) {
     @autoreleasepool {
+        setvbuf(stdout, NULL, _IONBF, 0);
         dlopen("/System/Library/PrivateFrameworks/BoardServices.framework/BoardServices", RTLD_NOW);
         dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_NOW);
         NSString *cmd = argc > 1 ? @(argv[1]) : @"dump";
@@ -51,29 +52,15 @@ int main(int argc, char **argv) {
         printf("endpoint=%s\n", [[endpoint description] UTF8String]);
         id connection = MSG(id, id, SEL, id)((id)objc_getClass("BSServiceConnection"), sel_registerName("connectionWithEndpoint:"), endpoint);
         printf("connection=%s\n", [[connection description] UTF8String]);
-        id interface = MSG(id, id, SEL, id)((id)objc_getClass("BSServiceInterface"), sel_registerName("interfaceWithIdentifier:"), service);
+        id interface = MSG(id, id, SEL, id)((id)objc_getClass("BSMutableServiceInterface"), sel_registerName("interfaceWithIdentifier:"), service);
         id proto = MSG(id, id, SEL, Protocol *)((id)objc_getClass("BSObjCProtocol"), sel_registerName("protocolForProtocol:"), @protocol(SBSDisplayToolServiceServerInterface));
         MSG(void, id, SEL, id)(interface, sel_registerName("setServer:"), proto);
         printf("interface=%s\n", [[interface description] UTF8String]);
-        dispatch_queue_t q = dispatch_queue_create("duo_swap", DISPATCH_QUEUE_SERIAL);
-        id serviceQueue = nil;
-        Class DQ = objc_getClass("BSServiceDispatchQueue");
-        if (DQ) {
-            const char *sels[] = {"queueWithDispatchQueue:", "queueWithName:serviceQuality:"};
-            for (size_t i = 0; i < 2; i++) {
-                const char *s = sels[i];
-                if ([DQ respondsToSelector:sel_registerName(s)]) {
-                    serviceQueue = strcmp(s, "queueWithDispatchQueue:") == 0
-                        ? MSG(id, id, SEL, id)((id)DQ, sel_registerName(s), q)
-                        : MSG(id, id, SEL, id, id)((id)DQ, sel_registerName(s), @"duo_swap", nil);
-                    break;
-                }
-            }
-        }
+        id serviceQueue = MSG(id, id, SEL, id)((id)objc_getClass("BSServiceDispatchQueue"), sel_registerName("queueWithName:"), @"duo_swap");
         printf("serviceQueue=%s\n", [[serviceQueue description] UTF8String]);
         MSG(void, id, SEL, id)(connection, sel_registerName("configureConnection:"), ^(id config) {
             MSG(void, id, SEL, id)(config, sel_registerName("setInterface:"), interface);
-            if (serviceQueue) MSG(void, id, SEL, id)(config, sel_registerName("setTargetQueue:"), serviceQueue);
+            if (serviceQueue && [config respondsToSelector:sel_registerName("setTargetQueue:")]) MSG(void, id, SEL, id)(config, sel_registerName("setTargetQueue:"), serviceQueue);
             MSG(void, id, SEL, id)(config, sel_registerName("setInterruptionHandler:"), ^(id c) { printf("interrupted\n"); });
             MSG(void, id, SEL, id)(config, sel_registerName("setInvalidationHandler:"), ^(id c) { printf("invalidated\n"); });
         });
