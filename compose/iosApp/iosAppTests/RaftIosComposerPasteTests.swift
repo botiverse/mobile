@@ -59,54 +59,132 @@ final class RaftIosComposerPasteTests: XCTestCase {
     }
 
     // MARK: The edit menu a long press shows (iOS 16+: UIEditMenuInteraction on CMPEditMenuView)
+    //
+    // With only images on the clipboard the menu has exactly one Paste, as WeChat / Slack / Messages
+    // do: the composer's, in the system Paste's place and with its title. UIKit's own Paste is in
+    // the menu it builds every time (its suggested actions), but whether UIKit shows it for
+    // images-only varies (on this iPhone simulator not in an empty field, yes with text; on iPad
+    // iOS 26.1 yes), so it is replaced, never shown next to ours. Choosing it opens the image in the
+    // composer (a host image paste is delivered).
 
-    /// Empty composer, only an image on the clipboard: CMP offers no item at all, so before the
-    /// host's menu hook a long press showed nothing. The menu now offers Paste Image, it is on
-    /// screen, and choosing it opens the image in the composer (a host image paste is delivered).
-    func testEmptyComposerMenuOffersPasteImageForAnImage() throws {
+    /// (a) Empty composer, only an image on the clipboard: the menu UIKit gets has the system's
+    /// Paste, which UIKit would not show here; exactly one Paste on screen, ours, titled as the
+    /// system's, and choosing it opens the image in the composer.
+    func testEmptyComposerMenuOffersOnePasteForAnImage() throws {
         try assertMenuPastesImage(initialText: "")
     }
 
-    /// Text in the composer, only an image on the clipboard: Select All and Paste Image.
-    func testComposerWithTextMenuOffersPasteImageForAnImage() throws {
+    /// (a) Text in the composer, only an image on the clipboard (UIKit would show its own Paste
+    /// here): still exactly one Paste on screen.
+    func testComposerWithTextMenuOffersOnePasteForAnImage() throws {
         try assertMenuPastesImage(initialText: "hello")
     }
 
-    /// Text on the clipboard: the system's Paste, and no Paste Image next to it.
+    /// (b) The system's Paste in the suggested actions (as on iPad, iOS 26.1, where UIKit shows it),
+    /// only an image on the clipboard: one Paste, ours in its place with its title (not a second
+    /// item); choosing it, and the system's `paste:` sent through the responder chain as UIKit does
+    /// for the command (⌘V too), both open the image in the composer.
+    func testSystemPasteIsTheOnlyPasteForAnImage() throws {
+        guard #available(iOS 16.0, *) else { throw XCTSkip("UIEditMenuInteraction is iOS 16+") }
+        UIPasteboard.general.items = []
+        UIPasteboard.general.image = Self.redImage()
+        let editor = try focusedEditor(composerClipboard: false, reportsFocus: true)
+        // Compose builds its menu for a pending toolbar request: make one, as a long press does.
+        _ = try showEditMenu()
+        let delegate = try XCTUnwrap(editor as? UIEditMenuInteractionDelegate, "the editor is the edit menu's delegate")
+        // A title of its own, to tell that ours takes the system command's title.
+        let systemPaste = UICommand(title: "System Paste", action: Self.paste)
+        let suggested: [UIMenuElement] = [
+            UIMenu(title: "", options: .displayInline, children: [
+                UICommand(title: "Select All", action: #selector(UIResponderStandardEditActions.selectAll(_:))),
+                systemPaste,
+            ]),
+        ]
+        let interaction = UIEditMenuInteraction(delegate: nil)
+        let configuration = UIEditMenuConfiguration(identifier: nil, sourcePoint: .zero)
+        let menu = try XCTUnwrap(
+            delegate.editMenuInteraction?(interaction, menuFor: configuration, suggestedActions: suggested),
+            "a menu"
+        )
+        let pastes = Self.pasteItems(in: menu.children)
+        XCTAssertEqual(pastes.count, 1, "one Paste: \(Self.describe(menu))")
+        let ours = try XCTUnwrap(pastes.first as? UIAction, "the composer's Paste: \(Self.describe(menu))")
+        XCTAssertEqual(ours.identifier, Self.composerPasteIdentifier)
+        XCTAssertEqual(ours.title, systemPaste.title, "titled as the system's Paste")
+        XCTAssertFalse(Self.commands(in: menu.children).contains { $0.action == Self.paste },
+                       "no system Paste next to it: \(Self.describe(menu))")
+        let titles = Self.titles(in: menu.children)
+        XCTAssertEqual(titles.firstIndex(of: "System Paste").map { $0 > (titles.firstIndex(of: "Select All") ?? -1) }, true,
+                       "in the system Paste's place: \(titles)")
+
+        var count = RaftIosComposerPasteProbeKt.raftComposerPasteProbeImagePasteCount()
+        Self.run(ours)
+        XCTAssertTrue(
+            waitFor(seconds: 5) { RaftIosComposerPasteProbeKt.raftComposerPasteProbeImagePasteCount() > count },
+            "our Paste: the image went to the composer (image editor flow)"
+        )
+        // The next paste is its own press (one claim per press).
+        _ = waitFor(seconds: 1) { false }
+        count = RaftIosComposerPasteProbeKt.raftComposerPasteProbeImagePasteCount()
+        XCTAssertTrue(UIApplication.shared.sendAction(Self.paste, to: nil, from: systemPaste, for: nil), "paste: has a target")
+        XCTAssertTrue(
+            waitFor(seconds: 5) { RaftIosComposerPasteProbeKt.raftComposerPasteProbeImagePasteCount() > count },
+            "system paste: the image went to the composer (image editor flow)"
+        )
+        XCTAssertEqual(editorText(editor), "", "the field's text unchanged")
+    }
+
+    /// (c) Text on the clipboard: the system's Paste only, the composer adds none.
     func testComposerMenuKeepsSystemPasteForText() throws {
         guard #available(iOS 16.0, *) else { throw XCTSkip("UIEditMenuInteraction is iOS 16+") }
         UIPasteboard.general.items = []
         UIPasteboard.general.string = "raft menu text"
-        let editor = try focusedEditor(composerClipboard: true, reportsFocus: true)
-        let menu = try showEditMenu()
-        let paste = #selector(UIResponderStandardEditActions.paste(_:))
-        let commands = Self.commands(in: menu.children)
-        XCTAssertTrue(commands.contains { $0.action == paste }, "Paste offered: \(Self.describe(menu))")
-        XCTAssertFalse(Self.actions(in: menu.children).contains { $0.title == Self.pasteImageTitle }, "no Paste Image: \(Self.describe(menu))")
-        XCTAssertTrue(waitFor(seconds: 3) { self.visibleMenuLabels().contains { $0.localizedCaseInsensitiveContains("paste") } },
-                      "Paste on screen; visible \(visibleMenuLabels())")
-        XCTAssertFalse(visibleMenuLabels().contains(Self.pasteImageTitle), "no Paste Image on screen")
-        _ = editor
+        _ = try focusedEditor(composerClipboard: true, reportsFocus: true)
+        let menu = try showEditMenu().menu
+        let pastes = Self.pasteItems(in: menu.children)
+        XCTAssertEqual(pastes.count, 1, "one Paste: \(Self.describe(menu))")
+        XCTAssertTrue((pastes.first as? UICommand)?.action == Self.paste, "the system's Paste: \(Self.describe(menu))")
+        XCTAssertFalse(Self.actions(in: menu.children).contains { $0.identifier == Self.composerPasteIdentifier },
+                       "the composer adds no Paste: \(Self.describe(menu))")
+        XCTAssertTrue(waitFor(seconds: 3) { self.visiblePasteLabels().count == 1 },
+                      "one Paste on screen; visible \(visibleMenuLabels())")
     }
 
-    private static var pasteImageTitle: String { RaftIosComposerImagePasteKt.raftComposerPasteImageLabel() }
+    private static let paste = #selector(UIResponderStandardEditActions.paste(_:))
+    private static let composerPasteIdentifier = UIAction.Identifier("build.raft.composer.paste")
+
+    /// The title the composer gives its own Paste (RaftIosImagePaste.pasteTitle): UIKit's, else the app's.
+    private static var expectedPasteTitle: String {
+        let missing = "\u{0}"
+        for bundle in [Bundle(for: UIView.self), Bundle(identifier: "com.apple.UIKitCore"), Bundle(identifier: "com.apple.UIKit")] {
+            guard let bundle else { continue }
+            let title = bundle.localizedString(forKey: "Paste", value: missing, table: nil)
+            if title != missing, !title.isEmpty { return title }
+        }
+        return RaftIosComposerImagePasteKt.raftComposerPasteLabel()
+    }
 
     private func assertMenuPastesImage(initialText: String, file: StaticString = #filePath, line: UInt = #line) throws {
         guard #available(iOS 16.0, *) else { throw XCTSkip("UIEditMenuInteraction is iOS 16+") }
         UIPasteboard.general.items = []
         UIPasteboard.general.image = Self.redImage()
         let editor = try focusedEditor(composerClipboard: false, reportsFocus: true, initialText: initialText)
-        let menu = try showEditMenu(file: file, line: line)
-        let pasteImage = Self.actions(in: menu.children).first { $0.title == Self.pasteImageTitle }
-        XCTAssertNotNil(pasteImage, "Paste Image: \(Self.describe(menu))", file: file, line: line)
+        let shown = try showEditMenu(file: file, line: line)
+        let menu = shown.menu
+        let pastes = Self.pasteItems(in: menu.children)
+        XCTAssertEqual(pastes.count, 1, "one Paste: \(Self.describe(menu))", file: file, line: line)
+        let ours = try XCTUnwrap(pastes.first as? UIAction, "the composer's Paste: \(Self.describe(menu))", file: file, line: line)
+        XCTAssertEqual(ours.identifier, Self.composerPasteIdentifier, file: file, line: line)
+        XCTAssertEqual(ours.title, Self.systemPasteTitle(in: shown.original?.children ?? shown.suggested) ?? Self.expectedPasteTitle,
+                       "titled as the system's Paste", file: file, line: line)
         XCTAssertTrue(
-            waitFor(seconds: 3) { self.visibleMenuLabels().contains(Self.pasteImageTitle) },
-            "Paste Image on screen; visible \(visibleMenuLabels())",
+            waitFor(seconds: 3) { self.visiblePasteLabels() == [ours.title] },
+            "exactly one Paste (\(ours.title)) on screen; visible \(visibleMenuLabels())",
             file: file, line: line
         )
         // Choosing it runs its handler (as UIKit does on a tap).
         let before = RaftIosComposerPasteProbeKt.raftComposerPasteProbeImagePasteCount()
-        if let pasteImage { Self.run(pasteImage) }
+        Self.run(ours)
         XCTAssertTrue(
             waitFor(seconds: 5) { RaftIosComposerPasteProbeKt.raftComposerPasteProbeImagePasteCount() > before },
             "the image went to the composer (image editor flow)",
@@ -115,19 +193,61 @@ final class RaftIosComposerPasteTests: XCTestCase {
         XCTAssertEqual(editorText(editor), initialText, "the field's text unchanged", file: file, line: line)
     }
 
+    private struct ShownMenu {
+        let menu: UIMenu
+        let suggested: [UIMenuElement]
+        let original: UIMenu?
+    }
+
     /// Shows the probe field's menu as CMP does after a long press and returns the menu UIKit got
-    /// from the editor (RaftIosImagePaste's hook posts it).
+    /// from the editor (RaftIosImagePaste's hook posts it, with UIKit's suggested actions and
+    /// Compose's own menu).
     @available(iOS 16.0, *)
-    private func showEditMenu(file: StaticString = #filePath, line: UInt = #line) throws -> UIMenu {
-        var received: UIMenu?
+    private func showEditMenu(file: StaticString = #filePath, line: UInt = #line) throws -> ShownMenu {
+        var received: ShownMenu?
         let observer = NotificationCenter.default.addObserver(
             forName: Notification.Name("RaftComposerEditMenu"), object: nil, queue: .main
-        ) { received = $0.object as? UIMenu }
+        ) { note in
+            guard let menu = note.object as? UIMenu else { return }
+            received = ShownMenu(
+                menu: menu,
+                suggested: note.userInfo?["suggested"] as? [UIMenuElement] ?? [],
+                original: note.userInfo?["original"] as? UIMenu
+            )
+        }
         defer { NotificationCenter.default.removeObserver(observer) }
         XCTAssertTrue(waitFor(seconds: 3) { RaftIosComposerPasteProbeKt.raftComposerPasteProbeShowEditMenu() },
                       "probe laid out", file: file, line: line)
         _ = waitFor(seconds: 5) { received != nil }
         return try XCTUnwrap(received, "UIKit asked the composer editor for its edit menu", file: file, line: line)
+    }
+
+    /// Every Paste in [elements]: the system's (`paste:` command, or an action UIKit identifies as
+    /// paste) and the composer's own.
+    private static func pasteItems(in elements: [UIMenuElement]) -> [UIMenuElement] {
+        elements.flatMap { element -> [UIMenuElement] in
+            if let command = element as? UICommand { return command.action == paste ? [command] : [] }
+            if let action = element as? UIAction {
+                let id = action.identifier.rawValue.lowercased()
+                return action.identifier == composerPasteIdentifier || id == "paste" || id.hasSuffix(".paste") ? [action] : []
+            }
+            if let menu = element as? UIMenu { return pasteItems(in: menu.children) }
+            return []
+        }
+    }
+
+    private static func systemPasteTitle(in elements: [UIMenuElement]) -> String? {
+        for element in pasteItems(in: elements) {
+            if let command = element as? UICommand, !command.title.isEmpty { return command.title }
+            if let action = element as? UIAction, action.identifier != composerPasteIdentifier, !action.title.isEmpty { return action.title }
+        }
+        return nil
+    }
+
+    /// The distinct Paste labels on screen (any label that says paste, in English or the expected title).
+    private func visiblePasteLabels() -> Set<String> {
+        let expected = Self.expectedPasteTitle
+        return Set(visibleMenuLabels().filter { $0 == expected || $0.localizedCaseInsensitiveContains("paste") })
     }
 
     private static func commands(in elements: [UIMenuElement]) -> [UICommand] {
@@ -151,6 +271,13 @@ final class RaftIosComposerPasteTests: XCTestCase {
         }
     }
 
+    private static func titles(in elements: [UIMenuElement]) -> [String] {
+        elements.flatMap { element -> [String] in
+            if let menu = element as? UIMenu { return titles(in: menu.children) }
+            return [element.title]
+        }
+    }
+
     private static func actions(in elements: [UIMenuElement]) -> [UIAction] {
         elements.flatMap { element -> [UIAction] in
             if let action = element as? UIAction { return [action] }
@@ -159,16 +286,18 @@ final class RaftIosComposerPasteTests: XCTestCase {
         }
     }
 
-    private static func describe(_ menu: UIMenu) -> String {
+    private static func describe(_ menu: UIMenu) -> String { describe(menu.children) }
+
+    private static func describe(_ elements: [UIMenuElement]) -> String {
         func walk(_ elements: [UIMenuElement]) -> [String] {
             elements.flatMap { element -> [String] in
                 if let command = element as? UICommand { return ["\(command.title)(\(NSStringFromSelector(command.action)))"] }
-                if let action = element as? UIAction { return ["\(action.title)[action]"] }
+                if let action = element as? UIAction { return ["\(action.title)[\(action.identifier.rawValue)]"] }
                 if let submenu = element as? UIMenu { return walk(submenu.children) }
                 return [element.title]
             }
         }
-        return walk(menu.children).joined(separator: ", ")
+        return walk(elements).joined(separator: ", ")
     }
 
     /// Labels on screen in every window: the presented edit menu's items among them.
@@ -266,3 +395,4 @@ final class RaftIosComposerPasteTests: XCTestCase {
         return condition()
     }
 }
+
