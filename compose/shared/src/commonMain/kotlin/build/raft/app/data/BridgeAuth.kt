@@ -402,8 +402,14 @@ internal class BridgeSettingsPlatformCapabilities(
         diagnosticsSettingsCapability("prepareDiagnosticsFeedback")
             ?.toDiagnosticsFeedbackDraft()
 
-    suspend fun pickFeedbackAttachment(imageOnly: Boolean): DataResult<List<PlatformFile>> {
-        val response = host.threadAttachmentUpload(channelId = "settings-hands-feedback", imageOnly = imageOnly)
+    /** [capture]: take a photo with the camera (an image) instead of picking from the library. */
+    suspend fun pickFeedbackAttachment(imageOnly: Boolean, capture: Boolean = false): DataResult<List<PlatformFile>> {
+        val response =
+            host.threadAttachmentUpload(
+                channelId = "settings-hands-feedback",
+                imageOnly = imageOnly || capture,
+                capture = capture
+            )
         val code = response?.optInt("code", 0) ?: 0
         if (code == 204) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         if (code !in 200..299) {
