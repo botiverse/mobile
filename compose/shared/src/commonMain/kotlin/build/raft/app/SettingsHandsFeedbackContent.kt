@@ -339,7 +339,8 @@ internal fun SharedHandsFeedbackContent(
         }
     }
 
-    fun pickAttachment(imageOnly: Boolean) {
+    /** [capture]: the camera (the composer's camera button / long-pressed Add image), an image. */
+    fun pickAttachment(imageOnly: Boolean, capture: Boolean = false) {
         if (busy) return
         if (remainingSlots <= 0) {
             error = copy.attachmentLimitReached(attachmentLimit)
@@ -354,12 +355,12 @@ internal fun SharedHandsFeedbackContent(
         abortAllOwnedImageEditSessions()
         pendingImageEditSession = null
         scope.launch {
-            when (val result = settingsCapabilities.pickFeedbackAttachment(imageOnly)) {
+            when (val result = settingsCapabilities.pickFeedbackAttachment(imageOnly, capture)) {
                 is DataResult.Content -> {
                     val pickedFiles =
                         normalizeSettingsHandsFeedbackPickerFiles(
                             files = result.data,
-                            imageOnly = imageOnly
+                            imageOnly = imageOnly || capture
                         )
                     // Picks mount straight into the form; a picked image then opens in the
                     // annotation editor. Done there replaces it in place, Cancel keeps it.
@@ -904,7 +905,11 @@ internal fun SharedHandsFeedbackContent(
                 settingsCapabilities.log("settings_hands_feedback_composer_send")
                 submitFeedback()
             }
-            "attachImage" -> pickAttachment(imageOnly = true)
+            ThreadComposerAttachImageAction -> pickAttachment(imageOnly = true)
+            // The camera button, and Add image long-pressed (as in the chat composer): a photo
+            // taken now goes into the form like a picked one (limit, size cap, editor). The
+            // composer shows neither where there is no camera (desktop).
+            ThreadComposerCaptureImageAction -> pickAttachment(imageOnly = true, capture = true)
             // The Raft server takes only PNG/JPEG/GIF/WebP images, so signed in the paperclip
             // picks images too; any other file would only block the send.
             "attachFile" -> pickAttachment(imageOnly = proxySubmitter != null)
