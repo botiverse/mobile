@@ -485,7 +485,9 @@ fun RaftSheet(
  * compose (a whole conversation) does not eat the slide's first frames; and [visible] false
  * slides the surface down again with the scrim fading out (180ms), then calls [onHidden], so the
  * caller keeps the window composed until then. [overlay] is drawn over the scrim and the surface,
- * across the whole window (not padded for the status bar).
+ * across the whole window (not padded for the status bar). [capHeight] false hands the surface the
+ * window's whole height under the status bar (a drawer with snap points sizes itself); [scrimAlpha]
+ * fades the scrim with a drag toward dismiss (raft-ui `--drawer-swipe-progress`).
  */
 @Composable
 internal fun RaftSheetWindow(
@@ -495,6 +497,8 @@ internal fun RaftSheetWindow(
     visible: Boolean = true,
     onHidden: () -> Unit = {},
     overlay: @Composable BoxScope.() -> Unit = {},
+    capHeight: Boolean = true,
+    scrimAlpha: () -> Float = { 1f },
     surface: @Composable (Modifier) -> Unit,
 ) {
     val dismiss by rememberUpdatedState(onDismissRequest)
@@ -529,7 +533,7 @@ internal fun RaftSheetWindow(
                     Modifier
                         .fillMaxSize()
                         .testTag(RaftSheetScrimTestTag)
-                        .graphicsLayer { alpha = 1f - slide.value }
+                        .graphicsLayer { alpha = (1f - slide.value) * scrimAlpha().coerceIn(0f, 1f) }
                         .background(scrim),
                 )
             }
@@ -546,7 +550,7 @@ internal fun RaftSheetWindow(
                         .graphicsLayer { translationY = size.height * slide.value }
                         .pointerInput(Unit) { detectTapGestures { } }
                         .layout { measurable, constraints ->
-                            val placeable = measurable.measure(raftSheetConstraints(constraints))
+                            val placeable = measurable.measure(if (capHeight) raftSheetConstraints(constraints) else constraints)
                             layout(placeable.width, placeable.height) { placeable.place(0, 0) }
                         },
                 )

@@ -24,6 +24,9 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import build.raft.app.HomeMessageOpenRequest
 import build.raft.app.RaftForegroundBannerHost
@@ -277,6 +280,56 @@ class ThreadAssistantPanelSheetUiTest {
             onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
             onNode(hasTestTag(PANEL_DM)).assertDoesNotExist()
         }
+
+    /**
+     * #proj-mobile:#134: the sheet has snap points (raft-ui Drawer `snapPoints`). A drag up on the
+     * panel's head takes it to the whole window; Back there brings it back to 82%; a long drag down
+     * from there closes the panel. The grab handle's strip drags it too (same drag area).
+     */
+    @Test
+    fun theHeadDragsTheSheetToTheWholeWindowBackReturnsAndALongDragDownCloses() =
+        runRobolectricComposeUiTest {
+            var open by mutableStateOf(true)
+            show { Page(open, { open = it }, banner = null) }
+            mainClock.advanceTimeBy(600)
+            val panel = onNode(hasTestTag(ThreadAssistantPanelTestTag))
+            val head = onNode(hasTestTag(ThreadAssistantPanelHeaderTestTag))
+            val seated = panel.getBoundsInRoot()
+
+            head.performTouchInput { swipeUp(startY = centerY, endY = centerY - 120.dp.toPx(), durationMillis = 200) }
+            mainClock.advanceTimeBy(600)
+            val full = panel.getBoundsInRoot()
+            assertTrue(full.top < seated.top - 100.dp, "dragged up, the sheet fills the window: ${full.top} vs ${seated.top}")
+            assertClose(seated.bottom.value, full.bottom.value, "its bottom (the composer) stays on the window's bottom")
+            assertTrue(open)
+
+            // Back from the whole window: back to 82%, still open.
+            val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.activity.ComponentDialog
+            runOnIdle { dialog.onBackPressedDispatcher.onBackPressed() }
+            mainClock.advanceTimeBy(600)
+            assertBoundsClose(seated, panel.getBoundsInRoot(), "Back from full returns to the default height")
+            runOnIdle { assertTrue(open, "Back from the whole window does not close the panel") }
+
+            // A short slow drag down settles back where it was.
+            head.performTouchInput { swipeDown(startY = centerY, endY = centerY + 60.dp.toPx(), durationMillis = 1_000) }
+            mainClock.advanceTimeBy(600)
+            assertBoundsClose(seated, panel.getBoundsInRoot(), "a short drag down settles back at the default height")
+            runOnIdle { assertTrue(open) }
+
+            // Further down: it closes.
+            head.performTouchInput { swipeDown(startY = centerY, endY = centerY + 560.dp.toPx(), durationMillis = 400) }
+            mainClock.advanceTimeBy(1_000)
+            runOnIdle { assertFalse(open, "a long drag down closes the panel") }
+            onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
+        }
+
+    private fun assertClose(expected: Float, actual: Float, message: String) =
+        assertTrue(kotlin.math.abs(expected - actual) <= 2f, "$message: expected $expected, was $actual")
+
+    private fun assertBoundsClose(expected: DpRect, actual: DpRect, message: String) {
+        assertClose(expected.top.value, actual.top.value, "$message (top)")
+        assertClose(expected.bottom.value, actual.bottom.value, "$message (bottom)")
+    }
 
     private companion object {
         const val PAGE = "page"
