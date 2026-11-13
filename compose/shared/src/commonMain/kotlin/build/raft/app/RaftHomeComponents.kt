@@ -1691,6 +1691,8 @@ internal data class RaftStructuralHomeShellData(
     val inlineError: RaftHomeInlineError? = null,
     /** Task #164: the unread counts may be old (read warehouse behind); shows the stale notice. */
     val unreadStale: Boolean = false,
+    /** botiverse/slock #12066: the unread reads failed with `503 rw_unconfigured`; the notice says unavailable. */
+    val unreadUnavailable: Boolean = false,
     val contentRefreshing: Boolean = false,
     val contentRefreshEnabled: Boolean = true,
     val serverSwitcherExpanded: Boolean = false,
@@ -1827,6 +1829,7 @@ internal fun RaftStructuralHomeShell(
     notifications: List<RaftHomeNotificationItem> = emptyList(),
     inlineError: RaftHomeInlineError? = null,
     unreadStale: Boolean = false,
+    unreadUnavailable: Boolean = false,
     contentRefreshing: Boolean = false,
     contentRefreshEnabled: Boolean = true,
     serverSwitcherExpanded: Boolean = false,
@@ -1959,6 +1962,7 @@ internal fun RaftStructuralHomeShell(
                 notifications = notifications,
                 inlineError = inlineError,
                 unreadStale = unreadStale,
+                unreadUnavailable = unreadUnavailable,
                 contentRefreshing = contentRefreshing,
                 contentRefreshEnabled = contentRefreshEnabled,
                 serverSwitcherExpanded = serverSwitcherExpanded,
@@ -2081,6 +2085,7 @@ private fun RaftStructuralHomeShellContent(
     val notifications = data.notifications
     val inlineError = data.inlineError
     val unreadStale = data.unreadStale
+    val unreadUnavailable = data.unreadUnavailable
     val contentRefreshing = data.contentRefreshing
     val contentRefreshEnabled = data.contentRefreshEnabled
     val serverSwitcherExpanded = data.serverSwitcherExpanded
@@ -2751,7 +2756,9 @@ private fun RaftStructuralHomeShellContent(
                 }
                 RaftAppShellBodyTopBanner()
                 // Task #164 (stdrc O2): under the head, above the list; the counts stay as they are.
-                if (unreadStale) {
+                if (unreadStale && unreadUnavailable) {
+                    RaftReadWarehouseUnavailableNotice(stringResource(Res.string.home_unread_unavailable_notice))
+                } else if (unreadStale) {
                     RaftReadWarehouseStaleNotice(stringResource(Res.string.home_unread_stale_notice))
                 }
                 appUpdateBanner?.let { update ->

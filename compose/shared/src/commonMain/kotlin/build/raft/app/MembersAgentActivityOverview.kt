@@ -32,6 +32,7 @@ import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.compat.ui.NestedScrollMode
 import build.raft.app.compat.ui.nestedScroll
 import build.raft.app.data.AgentActivityActionCount
+import build.raft.app.data.AgentActivityDetailKindClaudeRootPrivileges
 import build.raft.app.data.AgentActivityDetailKindWakeCrashLoopBlocked
 import build.raft.app.data.AgentActivityActionKind
 import build.raft.app.data.AgentActivityOverviewIntent
@@ -407,6 +408,10 @@ private fun MembersAgentActivityNow.headline(): String {
     // The server paused automatic wakes; a manual start lifts it (web `activity.status.wakeCrashLoopBlocked`).
     if (wakeCrashLoop != null || detailKind == AgentActivityDetailKindWakeCrashLoopBlocked) {
         return stringResource(Res.string.agent_activity_wake_crash_loop_blocked)
+    }
+    // botiverse/slock #12892: Claude Code refused to start as root; say how to fix it, not "Offline".
+    if (detailKind == AgentActivityDetailKindClaudeRootPrivileges) {
+        return stringResource(Res.string.agent_runtime_error_root_privileges)
     }
     agentMemoryLimitExit(label, detailKind)?.let { exit ->
         return exit.memoryLimit?.let { stringResource(Res.string.agent_activity_memory_limit_stopped_with_limit, it) }

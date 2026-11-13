@@ -12232,6 +12232,7 @@ private fun SharedHomeScreen(
                 notifications = notificationItems,
                 contentRefreshing = sharedHomeHeaderRefreshing(state),
                 unreadStale = state.unreadStale,
+                unreadUnavailable = state.unreadUnavailable,
                 channelOrder = snapshot.sidebarOrder?.channelOrder.orEmpty(),
                 channelSortMode = snapshot.sidebarOrder?.channelSortMode ?: "manual",
                 jointChannelSortMode = snapshot.sidebarOrder?.jointChannelSortMode ?: "manual",

@@ -21,3 +21,17 @@ internal fun RaftReadWarehouseStaleNotice(message: String, modifier: Modifier = 
         pending = true,
     )
 }
+
+/**
+ * botiverse/slock #12066: the server has no read warehouse (`503 rw_unconfigured`, a self-hosted
+ * server without RisingWave), so the reads will not catch up on their own. The same place as the
+ * stale notice, as a warning without the spinner (web StaleCountsNotice's `rw_unconfigured` case).
+ */
+@Composable
+internal fun RaftReadWarehouseUnavailableNotice(message: String, modifier: Modifier = Modifier) {
+    RaftPanelNotice(
+        message = message,
+        modifier = modifier,
+        status = RaftBannerStatus.Warning,
+    )
+}

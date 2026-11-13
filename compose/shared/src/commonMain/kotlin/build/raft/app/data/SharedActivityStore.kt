@@ -3252,7 +3252,8 @@ class SharedActivityStore internal constructor(
                             errorCode = null,
                             loadMoreErrorCode = null,
                             // A page appended after the first is never remembered by the server.
-                            stale = if (append) current.stale else result.data.staleReason != null
+                            stale = if (append) current.stale else result.data.staleReason != null,
+                            unavailable = if (append) current.unavailable else false
                         )
                     nextState
                 }
@@ -3309,7 +3310,8 @@ class SharedActivityStore internal constructor(
                             loadingMore = false,
                             errorCode = null,
                             loadMoreErrorCode = null,
-                            stale = if (append) current.stale else false
+                            stale = if (append) current.stale else false,
+                            unavailable = if (append) current.unavailable else false
                         )
                     nextState
                 }
@@ -3317,8 +3319,11 @@ class SharedActivityStore internal constructor(
                     // Task #164: an overload while rows are shown keeps them and marks them stale;
                     // with nothing shown the page keeps its load-failed state with Retry.
                     val stale = current.stale || (!append && result.error.isRwOverloaded && current.snapshot != null)
+                    // botiverse/slock #12066: a server without the read warehouse (`503 rw_unconfigured`)
+                    // will not catch up on its own; the page says Activity is temporarily unavailable.
+                    val unavailable = if (append) current.unavailable else result.error.isRwUnconfigured
                     if (backgroundRefresh) {
-                        current.copy(stale = stale)
+                        current.copy(stale = stale, unavailable = unavailable)
                     } else {
                         current.copy(
                             loading = false,
@@ -3327,7 +3332,8 @@ class SharedActivityStore internal constructor(
                             loadingMore = false,
                             errorCode = if (append) null else result.error.code,
                             loadMoreErrorCode = if (append) result.error.code else null,
-                            stale = stale
+                            stale = stale,
+                            unavailable = unavailable
                         )
                     }
                 }
@@ -4921,7 +4927,13 @@ data class SharedActivityState(
      * rw_overloaded` while rows were shown. The list keeps its last good rows; the page shows the
      * stale notice until a fresh read clears it.
      */
-    val stale: Boolean = false
+    val stale: Boolean = false,
+    /**
+     * botiverse/slock #12066: the last canonical read failed with `503 rw_unconfigured` (a
+     * self-hosted server without RisingWave). Waiting will not help, so the page says Activity is
+     * temporarily unavailable (web `thread.unavailableNotice`) instead of "may be out of date".
+     */
+    val unavailable: Boolean = false
 ) {
     val items: List<InboxItem>
         get() = snapshot?.items.orEmpty()

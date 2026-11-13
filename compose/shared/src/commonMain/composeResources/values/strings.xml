@@ -1228,7 +1228,9 @@
     <string name="inbox_action_mark_all_read">Mark All Read</string>
     <string name="inbox_error_load_activity">Could not load activity</string>
     <string name="activity_stale_notice">Activity may be out of date. It'll update on its own when Raft catches up.</string>
+    <string name="activity_unavailable_notice">Activity is temporarily unavailable.</string>
     <string name="home_unread_stale_notice">Unread counts may be out of date. They'll update on their own when Raft catches up.</string>
+    <string name="home_unread_unavailable_notice">Unread counts are temporarily unavailable.</string>
     <string name="inbox_state_activity_empty">No conversations</string>
     <string name="inbox_state_no_mentions">No mentions</string>
     <string name="inbox_state_no_unread_chats">No unread conversations</string>
@@ -1536,6 +1538,7 @@
     <string name="agent_runtime_error_code_message_too_large_member">A message to the agent was too long for its runtime to take at once, so it was not delivered. Shorten it, or split it into several messages.</string>
     <string name="agent_runtime_error_code_message_too_large_manager">A message was too long for this agent's runtime to take at once, so it was not delivered. Shorten it, or split it into several messages, and send again.</string>
     <string name="agent_runtime_error_tool_args_invalid">The model produced tool-call arguments in an invalid format, so Codex rejected the tool call — try a different model.</string>
+    <string name="agent_runtime_error_root_privileges">Claude Code cannot start with root or sudo privileges while permission checks are disabled. Run Raft Computer as a non-root user, then start the agent again.</string>
     <string name="agent_activity_error">Error</string>
     <string name="agent_activity_error_with_detail">Error: %1$s</string>
     <string name="member_state_profile_loading">Loading agent profile...</string>
@@ -3735,6 +3738,7 @@
     <string name="joint_disconnect_action">Disconnect</string>
     <string name="joint_disconnecting">Disconnecting…</string>
     <string name="joint_disconnect_failed">Failed to disconnect joint channel</string>
+    <string name="joint_disconnect_guests_present">%1$s has guests, so this server can't disconnect from it. Remove the guests first, or archive the channel.</string>
     <string name="joint_connections_role_host">Host</string>
     <string name="joint_host_archive_hint">This also archives it for every other server in the channel.</string>
     <string name="joint_disconnected_toast">%1$s disconnected from #%2$s</string>

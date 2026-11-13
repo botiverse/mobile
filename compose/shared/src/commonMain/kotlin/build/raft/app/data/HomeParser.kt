@@ -351,6 +351,7 @@ fun parseRaftHome(
             // endpoints were unavailable.
             unreadEnrichmentAvailable = payload.unreadEnrichmentAvailable,
             unreadStale = payload.unreadStale,
+            unreadUnavailable = payload.unreadUnavailable,
             unreadRetryAfterMillis = payload.unreadRetryAfterMillis
         )
     )

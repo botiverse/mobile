@@ -199,6 +199,7 @@ import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentStatus
+import build.raft.app.data.AgentActivityDetailKindClaudeRootPrivileges
 import build.raft.app.data.AgentActivityDetailKindWakeCrashLoopBlocked
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
@@ -14209,6 +14210,11 @@ private data class MembersActivityRowText(val title: String, val body: String)
 @Composable
 private fun membersActivityRowMemoryLimitText(activity: AgentActivityEntry): MembersActivityRowText? {
     if (activity.type == "status") {
+        // botiverse/slock #12892 (web StatusEntry): "Crashed" with how to fix the root refusal in
+        // this locale instead of the daemon's English detail.
+        if (activity.statusDetailKind == AgentActivityDetailKindClaudeRootPrivileges) {
+            return MembersActivityRowText(activity.title, stringResource(Res.string.agent_runtime_error_root_privileges))
+        }
         val exit = if (activity.statusDetailKind == "runtime_crashed") agentMemoryLimitExit(activity.statusDetail, "runtime_crashed") else null
         if (exit != null) {
             val title = exit.memoryLimit?.let { stringResource(Res.string.agent_activity_memory_limit_stopped_with_limit, it) }

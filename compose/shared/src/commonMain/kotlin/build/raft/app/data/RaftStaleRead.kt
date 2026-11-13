@@ -41,6 +41,14 @@ internal const val RaftStaleResponseHeader = "X-Raft-Stale"
 /** `code` of the server's overload body (`errorResponse.ts` `respondToRisingWaveOverload`). */
 internal const val RwOverloadedErrorCode = "rw_overloaded"
 
+/**
+ * `code` of the server's "RisingWave is not configured" body (`errorResponse.ts`
+ * `respondToRisingWaveUnconfigured`, botiverse/slock #12066): a self-hosted server without the read
+ * warehouse answers its reads `503` with no `Retry-After`. Waiting will not bring it back, so the
+ * surfaces say the reads are temporarily unavailable rather than "may be out of date".
+ */
+internal const val RwUnconfiguredErrorCode = "rw_unconfigured"
+
 /** `X-Raft-Stale`'s value (`rwStaleRead.ts` `StaleReason`); an unknown value still means stale. */
 enum class RaftStaleReason(val wireValue: String?) {
     RwOverloaded("rw_overloaded"),
@@ -84,6 +92,20 @@ private fun HomeNetworkResponse.rwOverloadedErrorOrNull(): RwOverloadedErrorDto?
             ?: return null
     return error.takeIf { it.code == RwOverloadedErrorCode }
 }
+
+/** The `503` body's `code`, whatever it is; null for every other answer. */
+private fun HomeNetworkResponse.rw503CodeOrNull(): String? {
+    if (code != 503) return null
+    val payload = errorBodyText?.takeIf { it.isNotBlank() } ?: bodyText?.takeIf { it.isNotBlank() } ?: return null
+    return runCatching { rwOverloadJson.decodeFromString(RwOverloadedErrorDto.serializer(), payload) }.getOrNull()?.code
+}
+
+/** True for the server's `503 {code:"rw_unconfigured"}`: this server has no read warehouse. */
+internal fun HomeNetworkResponse.isRwUnconfigured(): Boolean = rw503CodeOrNull() == RwUnconfiguredErrorCode
+
+/** The typed error of a failed read whose server has no read warehouse configured. */
+val ScreenError.isRwUnconfigured: Boolean
+    get() = serverCode == RwUnconfiguredErrorCode
 
 /** True for the server's `503 {code:"rw_overloaded"}`: the read warehouse is behind, retry later. */
 internal fun HomeNetworkResponse.isRwOverloaded(): Boolean = rwOverloadedErrorOrNull() != null

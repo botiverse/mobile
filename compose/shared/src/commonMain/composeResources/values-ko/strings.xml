@@ -1221,7 +1221,9 @@
     <string name="inbox_action_mark_all_read">모두 읽음</string>
     <string name="inbox_error_load_activity">활동을 불러오지 못했어요</string>
     <string name="activity_stale_notice">활동이 최신이 아닐 수 있어요. Raft가 따라잡으면 자동으로 업데이트돼요.</string>
+    <string name="activity_unavailable_notice">활동을 일시적으로 사용할 수 없어요.</string>
     <string name="home_unread_stale_notice">읽지 않은 수가 최신이 아닐 수 있어요. Raft가 따라잡으면 자동으로 업데이트돼요.</string>
+    <string name="home_unread_unavailable_notice">읽지 않은 수를 일시적으로 사용할 수 없어요.</string>
     <string name="inbox_state_activity_empty">대화가 없어요</string>
     <string name="inbox_state_no_mentions">멘션이 없어요</string>
     <string name="inbox_state_no_unread_chats">읽지 않은 대화가 없어요</string>
@@ -1508,6 +1510,7 @@
     <string name="agent_runtime_error_not_installed">이 런타임이 이 컴퓨터에 설치되어 있지 않아요.</string>
     <string name="agent_runtime_error_auth_failed">런타임 인증에 실패했어요.</string>
     <string name="agent_runtime_error_tool_args_invalid">모델이 잘못된 형식의 도구 호출 인수를 생성해서 Codex가 도구 호출을 거부했어요. 다른 모델을 사용해 보세요.</string>
+    <string name="agent_runtime_error_root_privileges">권한 검사가 꺼져 있으면 Claude Code를 root 또는 sudo 권한으로 시작할 수 없어요. Raft Computer를 root가 아닌 사용자로 실행한 뒤 에이전트를 다시 시작해 주세요.</string>
     <string name="agent_activity_error">오류</string>
     <string name="agent_activity_error_with_detail">오류: %1$s</string>
     <string name="member_state_profile_loading">에이전트 프로필을 불러오는 중…</string>
@@ -3577,6 +3580,7 @@
     <string name="joint_disconnect_action">연결 해제</string>
     <string name="joint_disconnecting">연결 해제 중…</string>
     <string name="joint_disconnect_failed">공동 채널 연결을 해제하지 못했어요</string>
+    <string name="joint_disconnect_guests_present">%1$s 채널에 게스트가 있어서 이 서버의 연결을 해제할 수 없어요. 먼저 게스트를 내보내거나 채널을 보관해 주세요.</string>
     <string name="joint_connections_role_host">호스트</string>
     <string name="joint_host_archive_hint">채널에 참여한 다른 모든 서버에서도 이 채널이 보관돼요.</string>
     <string name="joint_disconnected_toast">%1$s 서버와 #%2$s 채널의 연결을 해제했어요</string>
