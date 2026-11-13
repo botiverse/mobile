@@ -286,8 +286,9 @@ class SettingsFeedbackTicketsApiTest {
     }
 
     /**
-     * `unread_by_source` on the first page (announced by Archer, #triage:#364, for a follow-up to slock
-     * #14722; pending contract verification): each app's own total, an app that failed has no key.
+     * `unread_by_source` on the first page (slock #14732 @ 2ad6333bc87c8ef257de9d63d64534af5346ca19,
+     * productFeedback.mergedList.api.test.ts "an app that fails is left out": `{ web: 2, android: 1 }`
+     * with `unread_total: null`): each app's own total; an app that failed has no key.
      */
     @Test
     fun theFirstPageMayNameEachAppsUnreadTotal() = runTest {
@@ -296,13 +297,26 @@ class SettingsFeedbackTicketsApiTest {
                 HomeNetworkResponse(
                     200,
                     """{"tickets":[],"next_cursor":null,"unread_total":null,"unavailable_sources":["ios"],
-                        "unread_by_source":{"web":2,"android":1,"ohos":null,"windows":5}}""",
+                        "unread_by_source":{"web":2,"android":1}}""",
                 )
             }
         val repository = NetworkSettingsFeedbackTicketsRepository(network, "android")
         val read = assertIs<FeedbackResult.Ok<FeedbackUnreadRead>>(repository.unreadTotal()).value
-        // A null value and a source the server does not have are left out, as a missing key.
         assertEquals(FeedbackUnreadRead(null, mapOf("web" to 2, "android" to 1)), read)
+
+        // The first-page shape of "sources=all reads every configured app" (ohos has no app: no key).
+        val full =
+            FakeNetwork { HomeNetworkResponse(200, """{"tickets":[],"next_cursor":null,"unread_total":3,"unread_by_source":{"web":2,"android":1,"ios":0},"unavailable_sources":[]}""") }
+        assertEquals(
+            FeedbackUnreadRead(3, mapOf("web" to 2, "android" to 1, "ios" to 0)),
+            assertIs<FeedbackResult.Ok<FeedbackUnreadRead>>(NetworkSettingsFeedbackTicketsRepository(full, "ios").unreadTotal()).value,
+        )
+        // Defensive: a null value or an app the server does not know is read as a missing key.
+        val odd = FakeNetwork { HomeNetworkResponse(200, """{"tickets":[],"next_cursor":null,"unread_total":null,"unread_by_source":{"web":2,"ohos":null,"windows":5}}""") }
+        assertEquals(
+            FeedbackUnreadRead(null, mapOf("web" to 2)),
+            assertIs<FeedbackResult.Ok<FeedbackUnreadRead>>(NetworkSettingsFeedbackTicketsRepository(odd, "ios").unreadTotal()).value,
+        )
 
         // Without it (as #14722 answers): the sum only.
         val older = FakeNetwork { HomeNetworkResponse(200, """{"tickets":[],"next_cursor":null,"unread_total":3,"unavailable_sources":[]}""") }

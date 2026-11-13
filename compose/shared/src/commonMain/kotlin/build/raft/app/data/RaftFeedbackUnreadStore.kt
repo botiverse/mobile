@@ -45,8 +45,8 @@ internal fun feedbackUnreadEventIsMine(ownerUserId: String, event: ProductFeedba
  * - A push ([applyRealtime]) carries one app's whole total: it replaces that app's (`product_feedback:unread`
  *   is the web app's, `product_feedback:app_unread` its `source`'s).
  * - A ticket read here ([onTicketRead]) answers its own app's total: it replaces that app's.
- * Without `unread_by_source` (a server before it; announced by Archer, #triage:#364, as a follow-up
- * to slock #14722) only the sum is known: it is `unread_total`, a "not known now" answer (null: an
+ * Without `unread_by_source` (slock #14732; a server with only #14722 does not send it) only the
+ * sum is known: it is `unread_total`, a "not known now" answer (null: an
  * app unavailable, or degraded) or a failure keeps the value held, and a push or a ticket read reads
  * the sum again ([refresh]).
  * A newer value always wins over a read started before it, and a refresh asked for while a read is

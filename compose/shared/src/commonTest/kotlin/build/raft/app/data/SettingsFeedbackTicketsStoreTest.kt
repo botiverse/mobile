@@ -284,15 +284,15 @@ class SettingsFeedbackTicketsStoreTest {
         // A degraded page knows no total: nothing is handed on.
         assertEquals(emptyList<Int?>(), totals)
         advanceTimeBy(5_001)
-        assertEquals(listOf(3), totals)
+        assertEquals(listOf<Int?>(3), totals)
         store.loadMore()
         runCurrent()
         assertEquals(listOf("a", "b"), store.state.value.list.tickets.map { it.id })
-        assertEquals(listOf(3), totals, "a cursor page's null total is not 0")
+        assertEquals(listOf<Int?>(3), totals, "a cursor page's null total is not 0")
 
         store.openTicket("a")
         runCurrent()
-        assertEquals(listOf(3), totals, "a ticket's total is its app's, not the sum")
+        assertEquals(listOf<Int?>(3), totals, "a ticket's total is its app's, not the sum")
         // Its own app's total, for that app (no source named: this app's).
         assertEquals(listOf<Pair<String?, Int?>>(null to 0), ticketReads)
         // A failed read hands nothing on.
@@ -367,7 +367,7 @@ class SettingsFeedbackTicketsStoreTest {
         store.openAttachment(FeedbackAttachment("f1", "a.png", "image/png", 1, 1)) {}
         runCurrent()
         assertEquals(
-            listOf("detail" to "web", "reply" to "web", "detail" to "web", "close" to "web", "detail" to "web", "attachment" to "web"),
+            listOf<Pair<String, String?>>("detail" to "web", "reply" to "web", "detail" to "web", "close" to "web", "detail" to "web", "attachment" to "web"),
             repository.sources,
         )
 
@@ -376,7 +376,7 @@ class SettingsFeedbackTicketsStoreTest {
         store.closeTicketView()
         store.openTicket("own")
         runCurrent()
-        assertEquals(listOf("detail" to null), repository.sources)
+        assertEquals(listOf<Pair<String, String?>>("detail" to null), repository.sources)
     }
 
     @Test

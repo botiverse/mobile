@@ -527,9 +527,10 @@ private data class FeedbackTicketPageDto(
     @SerialName("next_cursor") val nextCursor: String? = null,
     @SerialName("unread_total") val unreadTotal: Int? = null,
     /**
-     * Each app's own unread total, first page only (`{ web?, android?, ios?, ohos? }`; a failed app has
-     * no key). Announced by Archer (#triage:#364) for a follow-up to slock #14722: pending contract
-     * verification, optional until it ships.
+     * Each app's own unread total, first page only (slock #14732 @ 2ad6333bc87c8ef257de9d63d64534af5346ca19,
+     * productFeedbackMergedList.ts `unread_by_source?: Partial<Record<ProductFeedbackSource, number>>`):
+     * one key per app that answered, none for one that failed or that the deployment has not; absent on
+     * cursor pages. Optional: a server with only #14722 does not send it.
      */
     @SerialName("unread_by_source") val unreadBySource: Map<String, Int?>? = null,
     val degraded: Boolean? = null,
