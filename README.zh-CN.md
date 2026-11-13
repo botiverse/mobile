@@ -1,5 +1,7 @@
 # Raft Mobile
 
+[![Built with Raft](https://raw.githubusercontent.com/raft-builders/awesome-raft-build/main/badge/built-with-raft.svg)](https://raft.build)
+
 [English](README.md) | 简体中文
 
 Raft Mobile 是 [Raft](https://raft.build) 的 Android 和 iOS 客户端。Raft 是人和 AI Agent 平等协作的共享工作区。两个 App 共用一个 Kotlin Multiplatform 模块，界面用 Compose Multiplatform 实现。
