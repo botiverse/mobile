@@ -106,11 +106,12 @@ class SettingsFeedbackTicketsStore(
      */
     private val agentDraftSent: Flow<Boolean> = flowOf(true),
     /**
-     * The unread totals as the list's first page answered them (`unread_by_source`, each app's, and
-     * `unread_total`, their sum; a cursor page carries neither and passes nothing): the Settings /
-     * Feedback dot ([RaftFeedbackUnreadStore.applyRead]).
+     * Called as each list request is sent; what it returns takes that page's unread totals
+     * (`unread_by_source`, each app's, and `unread_total`, their sum; a cursor page carries neither
+     * and passes nothing): the Settings / Feedback dot ([RaftFeedbackUnreadStore.captureListRead],
+     * which drops them when a push or ticket read landed while the request was out).
      */
-    private val onUnreadTotal: (FeedbackUnreadRead) -> Unit = {},
+    private val captureUnreadListRead: () -> (FeedbackUnreadRead) -> Unit = { {} },
     /**
      * A ticket's first page was read (which moves its read receipt): its answer's `unread_total` is
      * that ticket's app's own (source, total; source null: this app's), which the dot takes for that
@@ -204,13 +205,14 @@ class SettingsFeedbackTicketsStore(
                 var pageCursor = cursor
                 var emptyPagesFollowed = 0
                 while (true) {
+                    val onUnread = captureUnreadListRead()
                     val result = repository.listTickets(cursor = pageCursor)
                     if (generation != listGeneration) return@launch
                     when (result) {
                         is FeedbackResult.Ok ->
                             when (val read = result.value) {
                                 is FeedbackTicketListRead.Page -> {
-                                    read.page.unread.takeUnless { it.isUnknown }?.let(onUnreadTotal)
+                                    read.page.unread.takeUnless { it.isUnknown }?.let(onUnread)
                                     val next = read.page.nextCursor
                                     if (read.page.tickets.isEmpty() && next != null && emptyPagesFollowed < emptyPageFollowMax) {
                                         emptyPagesFollowed++

@@ -27,7 +27,9 @@ internal const val FEEDBACK_UNREAD_RECONNECT_WINDOW_MILLIS: Long = 10_000L
  * - `product_feedback:unread` (the web app's, which Raft Desktop shares): names whose total it is.
  */
 internal fun feedbackUnreadEventIsMine(ownerUserId: String, event: ProductFeedbackUnreadUpdated): Boolean =
-    event.source != ProductFeedbackUnreadUpdated.WebSource || event.userId == ownerUserId
+    // An app the server does not have would add a count nothing ever clears.
+    event.source in FeedbackTicketSources &&
+        (event.source != ProductFeedbackUnreadUpdated.WebSource || event.userId == ownerUserId)
 
 /**
  * The signed-in person's unread feedback replies summed over every Hands app they file into (web,
@@ -139,6 +141,7 @@ class RaftFeedbackUnreadStore(
 
     /** Under [lock]: [source]'s total replaced and the sum shown; false when only the sum is known. */
     private fun replaceSource(source: String, total: Int): Boolean {
+        if (source !in FeedbackTicketSources) return false
         val held = bySource ?: return false
         val next = held + (source to total.coerceAtLeast(0))
         bySource = next
@@ -174,14 +177,31 @@ class RaftFeedbackUnreadStore(
         read(reason = reason, coalesce = false, rereadWhenBusy = true)
     }
 
-    /** This app's own Feedback list's first page answered [read] (`unread_by_source` / `unread_total`). */
-    fun applyRead(read: FeedbackUnreadRead) {
-        val applied =
+    /**
+     * For a Feedback list read about to be sent: what to call with its first page's figures. They are
+     * dropped when a push, a ticket read or another read landed after it was sent (or the account
+     * changed), as those are newer (web `captureFeedbackUnreadListRead`).
+     */
+    fun captureListRead(): (FeedbackUnreadRead) -> Unit {
+        val sentAt = synchronized(lock) { generation }
+        return { read -> applyRead(read, sentAt) }
+    }
+
+    /**
+     * This app's own Feedback list's first page answered [read] (`unread_by_source` / `unread_total`);
+     * [sentAt]: the generation when its request was sent ([captureListRead]), null: apply as is.
+     */
+    fun applyRead(read: FeedbackUnreadRead, sentAt: Long? = null) {
+        val outcome =
             synchronized(lock) {
-                if (ownerUserId == null) return
-                applyCounts(read)
+                when {
+                    ownerUserId == null -> return
+                    sentAt != null && generation != sentAt -> "stale"
+                    applyCounts(read) -> "applied"
+                    else -> "unknown"
+                }
             }
-        logger("feedback_unread_local applied=$applied total=${mutableTotal.value}")
+        logger("feedback_unread_local outcome=$outcome total=${mutableTotal.value}")
     }
 
     private fun write(total: Int) {

@@ -1356,8 +1356,8 @@ data class UserProfileUpdated(
  * - `product_feedback:app_unread` `{ source, unreadTotal }`: a mobile app's ([source] `android`,
  *   `ios` or `ohos`; [userId] null: the room says whose).
  * Always one app's whole total, never a change. Every connection of the person receives every
- * one; as the dot sums every app (slock #14722), each of the person's own reads the sum again
- * (build.raft.app.data.feedbackUnreadEventIsMine, RaftFeedbackUnreadStore).
+ * one; the dot sums every app (slock #14722 / #14732), so each of the person's own replaces that
+ * app's total in the dot (build.raft.app.data.feedbackUnreadEventIsMine, RaftFeedbackUnreadStore).
  */
 @Serializable
 data class ProductFeedbackUnreadUpdated(

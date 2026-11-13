@@ -187,7 +187,7 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
                     },
                 // The Settings / Feedback dot follows the list's first page (each app's total, and
                 // their sum), and a ticket read here answers its app's total (a reply read clears it).
-                onUnreadTotal = sharedStores.feedbackUnread::applyRead,
+                captureUnreadListRead = sharedStores.feedbackUnread::captureListRead,
                 onTicketRead = sharedStores.feedbackUnread::onTicketRead,
             )
         }

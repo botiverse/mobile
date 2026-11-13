@@ -278,7 +278,7 @@ class SettingsFeedbackTicketsStoreTest {
         val totals = mutableListOf<Int?>()
         val ticketReads = mutableListOf<Pair<String?, Int?>>()
         val store =
-            SettingsFeedbackTicketsStore(repository, backgroundScope, onUnreadTotal = { totals += it.total }, onTicketRead = { source, total -> ticketReads += source to total })
+            SettingsFeedbackTicketsStore(repository, backgroundScope, captureUnreadListRead = { { totals += it.total } }, onTicketRead = { source, total -> ticketReads += source to total })
         store.start()
         runCurrent()
         // A degraded page knows no total: nothing is handed on.
@@ -313,11 +313,23 @@ class SettingsFeedbackTicketsStoreTest {
         repository.listAnswers += page(next = "c4")
         repository.listAnswers += page(next = null)
         val totals = mutableListOf<FeedbackUnreadRead>()
-        val store = SettingsFeedbackTicketsStore(repository, backgroundScope, onUnreadTotal = { totals += it })
+        // Captured as each request goes out, before its answer (RaftFeedbackUnreadStore.captureListRead).
+        val capturedBeforeRequest = mutableListOf<Int>()
+        val store =
+            SettingsFeedbackTicketsStore(
+                repository,
+                backgroundScope,
+                captureUnreadListRead = {
+                    capturedBeforeRequest += repository.listCursors.size
+                    val take: (FeedbackUnreadRead) -> Unit = { totals += it }
+                    take
+                },
+            )
         store.start()
         runCurrent()
         assertEquals(listOf(null, "c1", "c2"), repository.listCursors)
         assertEquals(listOf(FeedbackUnreadRead(3, mapOf("web" to 2, "ios" to 1))), totals, "the first page's totals are kept")
+        assertEquals(listOf(0, 1, 2), capturedBeforeRequest)
         val list = store.state.value.list
         assertEquals(FeedbackTicketsListPhase.Ready, list.phase)
         assertEquals(listOf("a"), list.tickets.map { it.id })

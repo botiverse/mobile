@@ -323,6 +323,72 @@ class RaftFeedbackUnreadStoreTest {
     }
 
     @Test
+    fun aPushNewerThanAReadInFlightWins() = runTest {
+        // Each app's total known: a push replaces one app's while a reconnect read is on its way;
+        // that read (sent before the push) does not land over it.
+        val reads = FakeReads().also { it.answerBySource(mapOf("web" to 1, "android" to 2), total = 3) }
+        val store = store(reads, "android")
+        store.onSession("user-1")
+        runCurrent()
+        assertEquals(3, store.unreadTotal.value)
+
+        val gate = CompletableDeferred<Unit>()
+        reads.answerBySource(mapOf("web" to 1, "android" to 2), total = 3, gate = gate)
+        advanceTimeBy(FEEDBACK_UNREAD_RECONNECT_WINDOW_MILLIS + 1)
+        store.onReconnected()
+        runCurrent()
+        // The Android ticket's reply was read on another device meanwhile.
+        assertTrue(store.applyRealtime("user-1", app("android", 0)))
+        assertEquals(1, store.unreadTotal.value)
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(2, reads.count)
+        assertEquals(1, store.unreadTotal.value)
+    }
+
+    @Test
+    fun aListReadSentBeforeAPushOrATicketReadDoesNotLandOverIt() = runTest {
+        // Web captureFeedbackUnreadListRead: the Feedback list's figures are as old as its request.
+        val reads = FakeReads().also { it.answerBySource(mapOf("web" to 2, "ios" to 1), total = 3) }
+        val store = store(reads, "ios")
+        store.onSession("user-1")
+        runCurrent()
+
+        val listRead = store.captureListRead()
+        // While the list request is out: a push, then the list answers with the older figures.
+        assertTrue(store.applyRealtime("user-1", web("user-1", 0)))
+        assertEquals(1, store.unreadTotal.value)
+        listRead(FeedbackUnreadRead(3, mapOf("web" to 2, "ios" to 1)))
+        assertEquals(1, store.unreadTotal.value, "the push wins")
+
+        val afterTicket = store.captureListRead()
+        store.onTicketRead("ios", 0)
+        afterTicket(FeedbackUnreadRead(1, mapOf("web" to 0, "ios" to 1)))
+        assertEquals(0, store.unreadTotal.value, "the ticket read wins")
+
+        // Nothing newer: a list read lands.
+        val quiet = store.captureListRead()
+        quiet(FeedbackUnreadRead(4, mapOf("web" to 3, "ios" to 1)))
+        assertEquals(4, store.unreadTotal.value)
+        assertEquals(1, reads.count)
+    }
+
+    @Test
+    fun aPushOfAnAppTheServerDoesNotHaveAddsNothing() = runTest {
+        val reads = FakeReads().also { it.answerBySource(mapOf("web" to 1, "android" to 1), total = 2) }
+        val store = store(reads, "android")
+        store.onSession("user-1")
+        runCurrent()
+        assertFalse(store.applyRealtime("user-1", app("windows", 5)))
+        // A ticket read naming an unknown app replaces nothing (the sum is read again instead).
+        reads.answerBySource(mapOf("web" to 1, "android" to 1), total = 2)
+        store.onTicketRead("windows", 7)
+        runCurrent()
+        assertEquals(2, store.unreadTotal.value)
+        assertEquals(2, reads.count)
+    }
+
+    @Test
     fun aLocalReadNewerThanAReadInFlightWins() = runTest {
         val reads = FakeReads()
         reads.answer(2)
