@@ -2377,6 +2377,8 @@
     <string name="search_empty_results">일치하는 메시지가 없어요</string>
     <string name="search_empty_query_detail">다른 키워드나 더 짧은 문구로 검색해 보세요.</string>
     <string name="search_empty_filters_detail">다른 필터 조합을 사용해 보세요.</string>
+    <string name="search_too_broad_hint">이 단어를 모두 포함한 메시지가 없어요. 그중 한 단어를 포함한 메시지가 너무 많아 하나씩 확인하지 않았어요. 더 구체적인 단어를 쓰거나 채널이나 보낸 사람으로 범위를 좁혀 보세요.</string>
+    <string name="search_relevance_fallback_note">일치하는 메시지가 너무 많아 관련도순으로 정렬하지 못하고 최신순으로 보여 드려요. 더 구체적인 단어를 쓰거나 채널이나 보낸 사람으로 범위를 좁혀 보세요.</string>
     <string name="search_section_channels_dms">채널 및 DM</string>
     <string name="search_section_entities">서버 항목</string>
     <string name="search_overlay_search_for">‘%1$s’ 검색</string>

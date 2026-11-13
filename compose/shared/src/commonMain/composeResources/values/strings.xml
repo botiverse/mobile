@@ -2402,6 +2402,8 @@
     <string name="search_empty_results">No matching messages</string>
     <string name="search_empty_query_detail">Try different keywords or a shorter phrase.</string>
     <string name="search_empty_filters_detail">Try a different filter set.</string>
+    <string name="search_too_broad_hint">No message contains all of these words, and too many contain one of them to check each one. Try more specific words, or narrow the search to a channel or sender.</string>
+    <string name="search_relevance_fallback_note">Too many matches to rank by relevance, so these are sorted newest first. Try more specific words, or narrow the search to a channel or sender.</string>
     <string name="search_section_channels_dms">Channels &amp; DMs</string>
     <string name="search_section_entities">Server entities</string>
     <string name="search_overlay_search_for">Search for “%1$s”</string>

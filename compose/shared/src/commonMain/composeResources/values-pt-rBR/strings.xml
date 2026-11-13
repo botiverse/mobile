@@ -2377,6 +2377,8 @@
     <string name="search_empty_results">Nenhuma mensagem encontrada</string>
     <string name="search_empty_query_detail">Tente outras palavras-chave ou uma frase mais curta.</string>
     <string name="search_empty_filters_detail">Tente outra combinação de filtros.</string>
+    <string name="search_too_broad_hint">Nenhuma mensagem contém todas estas palavras, e mensagens demais contêm alguma delas para verificar uma a uma. Tente palavras mais específicas ou limite a busca a um canal ou remetente.</string>
+    <string name="search_relevance_fallback_note">Há correspondências demais para ordenar por relevância, então elas aparecem da mais recente para a mais antiga. Tente palavras mais específicas ou limite a busca a um canal ou remetente.</string>
     <string name="search_section_channels_dms">Canais e mensagens diretas</string>
     <string name="search_section_entities">Itens do servidor</string>
     <string name="search_overlay_search_for">Pesquisar “%1$s”</string>

@@ -2377,6 +2377,8 @@
     <string name="search_empty_results">沒有相符的訊息</string>
     <string name="search_empty_query_detail">試試其他關鍵字或較短的詞句。</string>
     <string name="search_empty_filters_detail">試試其他篩選條件組合。</string>
+    <string name="search_too_broad_hint">沒有訊息同時包含這些詞；包含其中某個詞的訊息太多，未逐一比對。試試更具體的詞，或限定頻道、傳送者。</string>
+    <string name="search_relevance_fallback_note">符合的訊息太多，無法依相關度排序，已依時間由新到舊排列。試試更具體的詞，或限定頻道、傳送者。</string>
     <string name="search_section_channels_dms">頻道和私訊</string>
     <string name="search_section_entities">伺服器內容</string>
     <string name="search_overlay_search_for">搜尋「%1$s」</string>

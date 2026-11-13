@@ -13374,7 +13374,10 @@ internal fun SharedHomeSearchPanel(
                                         stringResource(Res.string.search_empty_results)
                                     },
                                 detail =
-                                    if (trimmedQuery.isNotBlank()) {
+                                    if (state.tooBroad) {
+                                        // web SearchNoResultsState: relaxedSkipped=too_broad is not "nothing matches".
+                                        stringResource(Res.string.search_too_broad_hint)
+                                    } else if (trimmedQuery.isNotBlank()) {
                                         stringResource(Res.string.search_empty_query_detail)
                                     } else {
                                         stringResource(Res.string.search_empty_filters_detail)
@@ -13514,6 +13517,21 @@ internal fun SharedHomeSearchPanel(
                                 stringResource(Res.string.search_section_messages),
                                 count = state.totalCount.takeIf { it > 0 && !state.loading },
                             )
+                        }
+                        if (state.relevanceFallback && state.sort != SearchSort.Recent && !state.loading) {
+                            item(key = "search-relevance-fallback") {
+                                // web SearchMessageResultsSection `search-relevance-fallback`: too many
+                                // matches to rank, so the server sorted this page newest first.
+                                RaftText(
+                                    text = stringResource(Res.string.search_relevance_fallback_note),
+                                    style = RaftTheme.typography.caption,
+                                    color = RaftColor.ForegroundHint,
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = SearchMessagesHorizontalPadding, end = SearchMessagesHorizontalPadding, bottom = 4.dp),
+                                )
+                            }
                         }
                     }
                     groupedResults.forEachIndexed { groupIndex, group ->

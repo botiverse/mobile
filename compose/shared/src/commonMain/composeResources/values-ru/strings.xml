@@ -2374,6 +2374,8 @@
     <string name="search_empty_results">Подходящих сообщений нет</string>
     <string name="search_empty_query_detail">Попробуйте другие ключевые слова или более короткую фразу.</string>
     <string name="search_empty_filters_detail">Попробуйте другое сочетание фильтров.</string>
+    <string name="search_too_broad_hint">Ни одно сообщение не содержит все эти слова, а сообщений с одним из них слишком много, чтобы проверить каждое. Попробуйте более точные слова или ограничьте поиск каналом или отправителем.</string>
+    <string name="search_relevance_fallback_note">Совпадений слишком много, чтобы упорядочить их по релевантности, поэтому они показаны от новых к старым. Попробуйте более точные слова или ограничьте поиск каналом или отправителем.</string>
     <string name="search_section_channels_dms">Каналы и личные сообщения</string>
     <string name="search_section_entities">Объекты сервера</string>
     <string name="search_overlay_search_for">Искать «%1$s»</string>
