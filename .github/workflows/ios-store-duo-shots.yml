@@ -7,11 +7,12 @@
 name: iPhone Duo store screenshots
 
 on:
-  push:
-    branches: [agent/lagoon/duo-store-shots]
-    paths: [.github/workflows/ios-store-duo-shots.yml, compose/**, scripts/store-screenshots/**]
   workflow_dispatch:
     inputs:
+      mode:
+        description: "probe = no build, look for the simulator's fold control; shots = build and capture"
+        type: string
+        default: shots
       real_walk:
         description: "Also run the real-app walk (fake backend)"
         type: boolean
@@ -25,7 +26,60 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  fold-probe:
+    name: Fold probe (no build)
+    if: ${{ inputs.mode == 'probe' }}
+    runs-on: xcode-27
+    timeout-minutes: 40
+    env:
+      XCODE_APP_PATH: /Applications/Xcode_27.1.app
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pin Xcode
+        run: bash scripts/ci/select_ios_xcode.sh
+      - name: Probe
+        run: |
+          set +e
+          mkdir -p probe
+          dev=$(xcode-select -p)
+          dt="/Library/Developer/CoreSimulator/Profiles/DeviceTypes/iPhone Duo.simdevicetype"
+          { find "$dt" -maxdepth 4 | head -100
+            for f in $(find "$dt" -name '*.plist'); do echo "== $f"; plutil -p "$f"; done
+          } > probe/devicetype.txt 2>&1
+          udid=$(xcrun simctl create "Probe Duo" com.apple.CoreSimulator.SimDeviceType.iPhone-Duo com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4)
+          echo "udid=$udid"
+          xcrun simctl boot "$udid"; xcrun simctl bootstatus "$udid" -b
+          sleep 10
+          xcrun simctl io "$udid" enumerate > probe/io-enumerate.txt 2>&1
+          for d in 1 3; do xcrun simctl io "$udid" screenshot --display=$d probe/boot-d$d.png; done
+          rt=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; print([r["runtimeRoot"] for r in json.load(sys.stdin)["runtimes"] if r["identifier"].endswith("iPhone19-4")][0])')
+          echo "runtimeRoot=$rt"
+          find "$rt" \( -iname '*fold*' -o -iname '*hinge*' -o -iname '*posture*' -o -iname '*duo*' \) 2>/dev/null | head -200 > probe/runtime-names.txt
+          sk="$dev/Library/PrivateFrameworks/SimulatorKit.framework/SimulatorKit"
+          cs=/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/CoreSimulator
+          simapp="$dev/Applications/Simulator.app/Contents/MacOS/Simulator"
+          ls "$dev/Library/PrivateFrameworks" > probe/dev-privateframeworks.txt
+          for b in "$sk" "$cs" "$simapp"; do echo "== $b"; strings -a "$b" | grep -iE 'fold|hinge|posture|clamshell|lid|angle' | sort -u | head -300; done > probe/strings.txt 2>&1
+          xcrun swift scripts/store-screenshots/duo_runtime_dump.swift "$cs" "$sk" > probe/objc.txt 2>&1
+          for f in "$rt/System/Library/PrivateFrameworks/SpringBoard.framework/SpringBoard" "$rt/usr/libexec/backboardd" "$rt/System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices"; do
+            echo "== $f"; strings -a "$f" 2>/dev/null | grep -iE 'fold|hinge|posture' | sort -u | head -200
+          done > probe/runtime-strings.txt 2>&1
+          xcrun simctl spawn "$udid" defaults read com.apple.springboard > probe/sb-defaults.txt 2>&1
+          xcrun simctl spawn "$udid" defaults read com.apple.backboardd > probe/bb-defaults.txt 2>&1
+          xcrun simctl spawn "$udid" launchctl list > probe/launchctl.txt 2>&1
+          wc -l probe/*.txt
+          grep -iE 'fold|hinge|posture' probe/objc.txt | head -150
+          head -80 probe/strings.txt
+          cat probe/runtime-names.txt | head -60
+          xcrun simctl shutdown "$udid"; xcrun simctl delete "$udid"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: fold-probe
+          path: probe/
+
   capture:
+    if: ${{ inputs.mode != 'probe' }}
     name: Capture on iPhone Duo (Xcode 27.1)
     runs-on: xcode-27
     timeout-minutes: 120
@@ -176,7 +230,7 @@ jobs:
               w, h = struct.unpack('>II', open(p, 'rb').read()[16:24]); print(p, w, h)
           "
       - name: Real app walk (fabricated backend)
-        if: ${{ github.event_name == 'push' || inputs.real_walk }}
+        if: ${{ inputs.real_walk }}
         run: |
           set +e
           out=probe/real; mkdir -p "$out"
