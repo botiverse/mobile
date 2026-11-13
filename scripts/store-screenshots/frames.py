@@ -200,21 +200,22 @@ DUO5_KEYS = ["01-chat", "05-agent", "04-tasks", "06-activity", "07-computers"]
 DUO5_SCREENS = {"inner": ("duo-inner-portrait", (2007, 2853), 34), "outer": ("duo-outer", (1398, 2034), 44)}
 # The simulator draws the outer screen's camera cutout (a black disc in the system strip, above the
 # clock) in some captures and not others: it is painted over with the strip's own paper so every
-# shot looks the same. (box in px, a strip pixel beside it to sample)
-DUO5_CAMERA = {"outer": ((1196, 84, 1312, 202), (1170, 143))}
+# shot looks the same. (the disc's box, the band painted over (disc and its soft halo, the strip
+# above the clock), a strip pixel to sample) in px
+DUO5_CAMERA = {"outer": ((1196, 84, 1312, 202), (1150, 30, 1398, 250), (1170, 143))}
 
 
 def duo5_clean(shot, screen, tmpdir):
     """[shot] without the camera disc (DUO5_CAMERA), as a temp PNG; [shot] when there is none."""
     if screen not in DUO5_CAMERA:
         return shot
-    (x0, y0, x1, y1), sample = DUO5_CAMERA[screen]
+    (x0, y0, x1, y1), band, sample = DUO5_CAMERA[screen]
     im = Image.open(shot).convert("RGB")
     dark = sum(1 for y in range(y0, y1, 4) for x in range(x0, x1, 4) if max(im.getpixel((x, y))) < 30)
     if dark < 20:
         return shot
     from PIL import ImageDraw
-    ImageDraw.Draw(im).rectangle((x0, y0, x1, y1), fill=im.getpixel(sample))
+    ImageDraw.Draw(im).rectangle(band, fill=im.getpixel(sample))
     out = os.path.join(tmpdir, f"{screen}-{os.path.basename(os.path.dirname(shot))}-{os.path.basename(shot)}")
     im.save(out)
     print("camera disc painted over:", shot)
