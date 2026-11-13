@@ -2094,6 +2094,10 @@
     <string name="agent_create_action_add_computer">新增電腦</string>
     <string name="agent_create_hint_required_computer">必須使用的電腦：%1$s</string>
     <string name="agent_create_hint_suggested_computer">建議使用的電腦：%1$s</string>
+    <string name="agent_create_runtime_suggested_by">由 %1$s 建議</string>
+    <string name="agent_create_runtime_suggested_by_action_card">由操作卡片建議。</string>
+    <string name="agent_create_suggested_runtime_unavailable">%2$s 上無法使用 %1$s，請選擇執行環境。</string>
+    <string name="agent_create_suggested_runtime_not_admitted">這裡的新 Agent 不能使用 %1$s，請選擇執行環境。</string>
     <string name="agent_create_hosted_option">雲端 Agent，在雲端執行 · 限時免費</string>
     <string name="agent_create_hosted_hint">Raft 會在雲端建立這個 Agent 並為你完成連接，不需要使用命令列。</string>
     <string name="agent_create_hosted_model_label">模型</string>

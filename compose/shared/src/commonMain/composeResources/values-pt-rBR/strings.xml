@@ -2094,6 +2094,10 @@
     <string name="agent_create_action_add_computer">Adicionar computador</string>
     <string name="agent_create_hint_required_computer">Computador obrigatório: %1$s</string>
     <string name="agent_create_hint_suggested_computer">Computador sugerido: %1$s</string>
+    <string name="agent_create_runtime_suggested_by">Sugerido por %1$s</string>
+    <string name="agent_create_runtime_suggested_by_action_card">Sugerido pelo cartão de ação.</string>
+    <string name="agent_create_suggested_runtime_unavailable">%1$s não está disponível em %2$s. Escolha um runtime.</string>
+    <string name="agent_create_suggested_runtime_not_admitted">%1$s não pode ser usado para novos agentes aqui. Escolha um runtime.</string>
     <string name="agent_create_hosted_option">Agente na nuvem, executado na nuvem · Gratuito por tempo limitado</string>
     <string name="agent_create_hosted_hint">O Raft cria o agente na nuvem e faz a conexão para você. Não é preciso usar a linha de comando.</string>
     <string name="agent_create_hosted_model_label">Modelo</string>

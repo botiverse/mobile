@@ -2124,6 +2124,10 @@
     <string name="agent_create_action_add_computer">コンピューターを追加</string>
     <string name="agent_create_hint_required_computer">必須のコンピューター: %1$s</string>
     <string name="agent_create_hint_suggested_computer">推奨のコンピューター: %1$s</string>
+    <string name="agent_create_runtime_suggested_by">%1$s が推奨</string>
+    <string name="agent_create_runtime_suggested_by_action_card">アクションカードで推奨されています。</string>
+    <string name="agent_create_suggested_runtime_unavailable">%1$s は %2$s では使えません。ランタイムを選んでください。</string>
+    <string name="agent_create_suggested_runtime_not_admitted">ここでは新しいエージェントに %1$s を使えません。ランタイムを選んでください。</string>
     <string name="agent_create_hosted_option">クラウドで実行されるクラウドエージェント · 期間限定で無料</string>
     <string name="agent_create_hosted_hint">Raft がクラウド上にエージェントを作成し、接続まで自動で行います。コマンドラインでの操作は不要です。</string>
     <string name="agent_create_hosted_model_label">モデル</string>

@@ -37,6 +37,12 @@ internal data class ThreadActionCard(
     val channel: String? = null,
     val suggestedComputer: String? = null,
     val requiredComputer: String? = null,
+    /**
+     * `agent:create`: the runtime the Create Agent dialog starts on, as the preparing agent's
+     * suggestion (wire `action.suggestedRuntime`, optional). Read leniently: absent, blank or not a
+     * string is none. A suggestion only; the person still picks.
+     */
+    val suggestedRuntime: String? = null,
     val humans: List<String> = emptyList(),
     val agents: List<String> = emptyList(),
     val initialHumans: List<String> = emptyList(),
@@ -476,6 +482,7 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         channel = action.channel?.takeIf { it.isNotBlank() },
         suggestedComputer = action.suggestedComputer?.takeIf { it.isNotBlank() },
         requiredComputer = action.requiredComputer?.takeIf { it.isNotBlank() },
+        suggestedRuntime = actionObject.actionCardStringOrNull("suggestedRuntime")?.trim(),
         humans = action.humans,
         agents = action.agents,
         initialHumans = action.initialHumans,
@@ -566,6 +573,7 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("channel", channel)
         putString("suggestedComputer", suggestedComputer)
         putString("requiredComputer", requiredComputer)
+        putString("suggestedRuntime", suggestedRuntime)
         putList("humans", humans)
         putList("agents", agents)
         putList("initialHumans", initialHumans)
@@ -633,6 +641,7 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         channel = metadata["${ActionCardMetadataPrefix}channel"]?.takeIf { it.isNotBlank() },
         suggestedComputer = metadata["${ActionCardMetadataPrefix}suggestedComputer"]?.takeIf { it.isNotBlank() },
         requiredComputer = metadata["${ActionCardMetadataPrefix}requiredComputer"]?.takeIf { it.isNotBlank() },
+        suggestedRuntime = metadata["${ActionCardMetadataPrefix}suggestedRuntime"]?.trim()?.takeIf { it.isNotEmpty() },
         humans = metadata.decodeList("humans"),
         agents = metadata.decodeList("agents"),
         initialHumans = metadata.decodeList("initialHumans"),
