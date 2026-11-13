@@ -2149,6 +2149,9 @@
     <string name="list_toolbar_view">视图</string>
     <string name="members_no_matches">没有符合「%1$s」的成员。</string>
     <string name="members_page_empty">这里还没有人。</string>
+    <string name="members_menu_direct_message">私信</string>
+    <string name="members_menu_edit_agent">编辑 Agent</string>
+    <string name="members_edit_agent_named">编辑 %1$s</string>
     <string name="members_tag_you">你</string>
     <string name="members_tag_you_with_role">你 · %1$s</string>
     <string name="member_hosted_runtime_location">在云端运行</string>

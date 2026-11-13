@@ -2123,6 +2123,9 @@
     <string name="list_toolbar_view">Visualização</string>
     <string name="members_no_matches">Nenhum membro corresponde a “%1$s”.</string>
     <string name="members_page_empty">Ainda não há ninguém aqui.</string>
+    <string name="members_menu_direct_message">Mensagem direta</string>
+    <string name="members_menu_edit_agent">Editar agente</string>
+    <string name="members_edit_agent_named">Editar %1$s</string>
     <string name="members_tag_you">Você</string>
     <string name="members_tag_you_with_role">Você · %1$s</string>
     <string name="member_hosted_runtime_location">Executado na nuvem</string>

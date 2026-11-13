@@ -11289,12 +11289,13 @@ private fun SharedMembersScreen(
                     build.raft.app.data.raftSharedPreferenceStore()
                 )
             }
-            val openMemberDetail: (MemberProfile) -> Unit = { member ->
+            // [openRuntimeEditor]: a row's Edit agent, the profile with its Edit runtime config open.
+            val openMemberDetailWith: (MemberProfile, Boolean) -> Unit = { member, openRuntimeEditor ->
                 onForegroundActivity("open_member")
                 if (showMemberSplit) {
                     // Resolve local fallback now, never from a later selected server.
                     val identity = MemberDetailIdentity(member.id, member.kind, member.serverId ?: ServerId(serverId))
-                    selectedDetail = membersPayload.toMemberDetailPageData(identity)?.toRaftMemberDetailPayload()
+                    selectedDetail = membersPayload.toMemberDetailPageData(identity, openRuntimeEditor)?.toRaftMemberDetailPayload()
                 } else routeScope.launch {
                     val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
                     val accessMode = identity.memberDetailAccessMode(serverId)
@@ -11320,7 +11321,8 @@ private fun SharedMembersScreen(
                         }
                     val pageData =
                         launchPayload.toMemberDetailPageData(
-                            identity
+                            identity,
+                            openRuntimeEditor
                         )
                     if (pageData == null) {
                         bridge.toast(openProfileFailedMessage)
@@ -11345,6 +11347,20 @@ private fun SharedMembersScreen(
                     }
                 }
             }
+            val openMemberDetail: (MemberProfile) -> Unit = { member -> openMemberDetailWith(member, false) }
+            // Web MemberActions: the rows' menus and Edit agent.
+            val membersRowActions =
+                rememberMembersRowActions(
+                    pager = pager,
+                    bridge = bridge,
+                    storeScope = storeScope,
+                    viewerRole = current.server.role,
+                    currentUserId = current.currentUserId,
+                    currentServerId = serverId,
+                    onEditAgent = { member -> openMemberDetailWith(member, true) },
+                    openInShell = openDirectMessageInShell,
+                    timeContext = timeContext,
+                )
             val createdAgentReceipt =
                 rememberRaftCreatedAgentReceipt(
                     pager = pager,
@@ -11378,6 +11394,7 @@ private fun SharedMembersScreen(
                         onAddHuman = { onForegroundActivity("add_human") },
                         agentStatusResolver = agentStatusResolver,
                         onOpenMemberDetail = openMemberDetail,
+                        rowActions = membersRowActions,
                         canCreateAgents = membersPayload.canCreateAgents,
                         createAgent = MembersCreateAgentInputs(
                             createAgentSubmit = createAgentSubmit,

@@ -1836,6 +1836,11 @@ internal data class RaftMemberDetailPayload(
      * of the opener only; the servers come from the read.
      */
     val profileChannelId: String? = null,
+    /**
+     * Opened by a Members row's Edit agent (web `requestEdit`): the agent's Profile tab with its
+     * Edit runtime config dialog open, as soon as it can open.
+     */
+    val openRuntimeEditor: Boolean = false,
 )
 
 @Serializable
@@ -2738,7 +2743,7 @@ internal fun MembersPageContent(
     // above), separate from ChannelMembersCreateAgentDialog used by the thread member panel.
     // #3132/#3140 only fixed the thread panel, so creating here still landed on the list.
     // Defined here so both the row tap and the post-create path share one navigation.
-    fun openMemberDetail(member: MemberProfile) {
+    fun openMemberDetail(member: MemberProfile, openRuntimeEditor: Boolean = false) {
         scope.launch {
             val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
             val accessMode = identity.memberDetailAccessMode(serverId)
@@ -2762,7 +2767,7 @@ internal fun MembersPageContent(
                 } else {
                     membersPayload
                 }
-            val pageData = launchPayload.toMemberDetailPageData(identity)
+            val pageData = launchPayload.toMemberDetailPageData(identity, openRuntimeEditor)
             if (pageData == null) {
                 bridge.toast(openProfileFailed)
                 bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
@@ -2790,7 +2795,7 @@ internal fun MembersPageContent(
             pager = pager,
             bridge = bridge,
             storeScope = storeScope,
-            openSetupGuide = ::openMemberDetail,
+            openSetupGuide = { openMemberDetail(it) },
             timeContext = payload.toRaftTimeContext(),
         )
     // Lands a just-created agent once the dialog has closed (no toast with an action over a modal,
@@ -2810,7 +2815,18 @@ internal fun MembersPageContent(
         onRefresh = refreshMembers,
         paneLayout = paneLayout,
         onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
-        onOpenMemberDetail = ::openMemberDetail,
+        onOpenMemberDetail = { openMemberDetail(it) },
+        // Web MemberActions: the rows' menus and Edit agent.
+        rowActions = rememberMembersRowActions(
+            pager = pager,
+            bridge = bridge,
+            storeScope = storeScope,
+            viewerRole = serverMembersEntry.server?.role,
+            currentUserId = membersCurrentUserId,
+            currentServerId = serverId,
+            onEditAgent = { openMemberDetail(it, openRuntimeEditor = true) },
+            timeContext = payload.toRaftTimeContext(),
+        ),
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
         canCreateAgents = payload.canCreateAgents,
@@ -5082,6 +5098,8 @@ internal fun MemberDetailPageContent(
                         timeContext = timeContext,
                         presentation = MembersAgentDetailPresentation(
                             pageVisibleTick = pageVisibleTick,
+                            // A Members row's Edit agent (only where the reader may see the private tabs).
+                            openRuntimeEditor = payload.openRuntimeEditor && current.accessMode.allowsPrivateAgentSurfaces,
                             initialAgentTab =
                                 if (current.accessMode.allowsPrivateAgentSurfaces) {
                                     initialAgentTabForRender
@@ -5951,7 +5969,9 @@ internal fun String.toRaftMembersPayload(): RaftMembersPayload {
 }
 
 internal fun RaftMembersPayload.toMemberDetailPageData(
-    identity: MemberDetailIdentity
+    identity: MemberDetailIdentity,
+    /** A row's Edit agent: open the Profile tab with the Edit runtime config dialog. */
+    openRuntimeEditor: Boolean = false
 ): JSONObject? {
     val selected = identity.memberId.value.trim().takeIf { it.isNotBlank() } ?: return null
     val selectedMember = members.firstOrNull { it.id.value == selected }
@@ -5969,7 +5989,12 @@ internal fun RaftMembersPayload.toMemberDetailPageData(
         (identity.sourceServerId ?: selectedMember?.serverId)?.value?.trim()?.takeIf { it.isNotBlank() }?.let {
             put("sourceServerId", it)
         }
-        launchInitialAgentTab?.let { put("initialAgentTab", it.serverOrderKey) }
+        if (openRuntimeEditor && identity.kind == MemberKind.Agent) {
+            put("initialAgentTab", MembersAgentDetailTab.Profile.serverOrderKey)
+            put(MemberDetailOpenRuntimeEditorKey, true)
+        } else {
+            launchInitialAgentTab?.let { put("initialAgentTab", it.serverOrderKey) }
+        }
         put("localOffsetMinutes", localOffsetMinutes)
         todayEpochDay?.let { put("todayEpochDay", it) }
         nowEpochMillis?.let { put("nowEpochMillis", it) }
@@ -6005,9 +6030,13 @@ internal fun JSONObject.toRaftMemberDetailPayload(): RaftMemberDetailPayload {
         timeFormat = payload.optString("timeFormat").ifBlank { RaftTimeFormat24Hour },
         agentPanelTabOrder = payload.optStringArray("agentPanelTabOrder"),
         sourceServerName = payload.optNullableString("sourceServerName"),
-        profileChannelId = payload.optNullableString(MemberDetailProfileChannelIdKey)
+        profileChannelId = payload.optNullableString(MemberDetailProfileChannelIdKey),
+        openRuntimeEditor = payload.optBoolean(MemberDetailOpenRuntimeEditorKey)
     )
 }
+
+/** Page-data key of [RaftMemberDetailPayload.openRuntimeEditor]. */
+internal const val MemberDetailOpenRuntimeEditorKey = "openRuntimeEditor"
 
 private fun JSONObject.optNullableString(key: String): String? =
     optString(key).takeIf { it.isNotBlank() && it != "null" }
@@ -6110,10 +6139,13 @@ internal fun MembersRouteContent(
     paneLayout: RaftAdaptivePaneLayout = RaftAdaptivePaneLayout.Compact,
     selectedIdentity: MemberDetailIdentity? = null,
     selectedLocalServerId: ServerId? = null,
+    /** The rows' menus and Edit agent buttons (web MemberActions); null: a row only opens the profile. */
+    rowActions: MembersRowActions? = null,
     onRefresh: () -> Unit = {}
 ) {
     MembersListContent(
         payload = payload,
+        rowActions = rowActions,
         selectedIdentity = selectedIdentity,
         selectedLocalServerId = selectedLocalServerId,
         refreshing = refreshing,
@@ -6161,7 +6193,10 @@ internal fun MembersListContent(
     agentGroupCollapseStore: build.raft.app.data.MembersAgentMachineGroupCollapseStore? = null,
     /** The tab the page opens on (screenshots); the reader's taps move it. */
     initialTab: MembersTab = MembersTab.All,
+    /** The rows' menus and Edit agent buttons (web MemberActions); null: a row only opens the profile. */
+    rowActions: MembersRowActions? = null,
 ) {
+    val rowDialogs = remember { MembersRowDialogState() }
     val createAgentSubmit = createAgent.createAgentSubmit
     val createAgentMachines = createAgent.createAgentMachines
     val createAgentMachinesLoading = createAgent.createAgentMachinesLoading
@@ -6222,21 +6257,10 @@ internal fun MembersListContent(
             ?: member.membersComputerName
     val showAgents = tab != MembersTab.Humans
     val showHumans = payload.showHumanDirectory && tab != MembersTab.Agents
-    var agentsExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.agentsExpanded) }
-    var humansExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.humansExpanded) }
+    // Web: the group headings are not toggles; the shell's snapshot keeps what it was given.
+    val agentsExpanded = initialListState.agentsExpanded
+    val humansExpanded = initialListState.humansExpanded
     val membersCurrentUserId = currentUserId?.trim().orEmpty()
-    // Task #409: collapse state = persisted default + this page's user taps.
-    // The members payload and the session user id both arrive asynchronously,
-    // so the stored state cannot be read once eagerly: a group that does not
-    // exist yet when the store is read would render expanded forever. Resolve
-    // per group at render instead: user taps this session override the stored
-    // value, untouched groups read the store. This survives members arriving
-    // after the user id (and vice versa) on the standalone members page.
-    var agentGroupCollapseOverrides by remember(payload.instanceId, membersCurrentUserId) {
-        mutableStateOf<Map<String, Boolean>>(emptyMap())
-    }
-    fun isAgentGroupCollapsed(groupKey: String): Boolean =
-        resolveAgentGroupCollapsed(groupKey, agentGroupCollapseOverrides, membersCurrentUserId, agentGroupCollapseStore)
     // slock #14068: one list of agents by default; By computer once the reader picks it (kept per user).
     var agentsGrouping by remember(membersCurrentUserId, agentGroupCollapseStore) {
         mutableStateOf(agentGroupCollapseStore?.agentsGrouping(membersCurrentUserId) ?: MembersAgentsGrouping.Default)
@@ -6385,50 +6409,40 @@ internal fun MembersListContent(
             ) {
                 // `pt-2` with no head under the top bar.
                 item { Spacer(Modifier.height(if (underTopBar) RaftAppSpacing.Sm else RaftAppSpacing.Xs)) }
-                // The All tab heads each kind (Humans first, as on web); a kind's own tab lists it bare.
+                // The All tab heads each kind (Humans first, as on web) with a group heading, not a
+                // toggle (web MembersPage); a kind's own tab lists it bare.
                 if (showHumans && humans.isNotEmpty()) {
                     if (tab == MembersTab.All) {
-                        item {
-                            RaftSidebarSectionHeader(
-                                title = displayHumansLabel,
-                                count = humans.size,
-                                expanded = humansExpanded,
-                                onExpandedChange = { humansExpanded = it },
-                            )
-                        }
+                        item("heading_humans") { MembersListGroupHeading(label = displayHumansLabel, count = humans.size) }
                     }
-                    if (humansExpanded || tab != MembersTab.All) {
-                        items(humans.size, key = { "human_${humans[it].id.value}" }) { index ->
-                            val member = humans[index]
-                            MembersListRow(
-                                member = member,
-                                selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
-                                isSelf = membersHumanIsSelf(member, membersCurrentUserId),
-                                agentStatusResolver = agentStatusResolver,
-                                memberAvatarResolver = memberAvatarResolver,
-                                onClick = { onOpenMember(member) }
-                            )
-                        }
+                    items(humans.size, key = { "human_${humans[it].id.value}" }) { index ->
+                        val member = humans[index]
+                        MembersListActionRow(
+                            member = member,
+                            rowActions = rowActions,
+                            rowDialogs = rowDialogs,
+                            machines = createAgentMachines,
+                            selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
+                            isSelf = membersHumanIsSelf(member, membersCurrentUserId),
+                            agentStatusResolver = agentStatusResolver,
+                            memberAvatarResolver = memberAvatarResolver,
+                            onClick = { onOpenMember(member) }
+                        )
                     }
                 }
                 if (showAgents && agents.isNotEmpty()) {
                     if (tab == MembersTab.All) {
-                        item {
-                            RaftSidebarSectionHeader(
-                                title = displayAgentsLabel,
-                                count = agents.size,
-                                expanded = agentsExpanded,
-                                onExpandedChange = { agentsExpanded = it },
-                            )
-                        }
+                        item("heading_agents") { MembersListGroupHeading(label = displayAgentsLabel, count = agents.size) }
                     }
-                    val agentsShown = agentsExpanded || tab != MembersTab.All
                     // Grouping is the Agents tab's choice; the All tab lists them by name.
-                    if (agentsShown && (tab != MembersTab.Agents || agentsGrouping == MembersAgentsGrouping.None)) {
+                    if ((tab != MembersTab.Agents || agentsGrouping == MembersAgentsGrouping.None)) {
                         items(agents.size, key = { "agent_${agents[it].id.value}" }) { index ->
                             val member = agents[index]
-                            MembersListRow(
+                            MembersListActionRow(
                                 member = member,
+                                rowActions = rowActions,
+                                rowDialogs = rowDialogs,
+                                machines = createAgentMachines,
                                 selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
                                 // Web MemberPhoneRow `runtimeLine={tab === "agents"}`, with the computer.
                                 runtimeLine = tab == MembersTab.Agents,
@@ -6439,48 +6453,31 @@ internal fun MembersListContent(
                             )
                         }
                     }
-                    if (agentsShown && tab == MembersTab.Agents && agentsGrouping == MembersAgentsGrouping.Computer) {
+                    if (tab == MembersTab.Agents && agentsGrouping == MembersAgentsGrouping.Computer) {
                         groupedAgentMembers(
                             agents,
-                            machineOrder = createAgentMachines.map { it.id },
+                            // Web groupAgents: the reader's own computers first, then A-Z, no computer last.
+                            machineOrder = membersAgentGroupMachineOrder(createAgentMachines, membersCurrentUserId),
                             noComputerLabel = noComputerGroupLabel
                         ) { machineId ->
                             createAgentMachines.firstOrNull { it.id == machineId }?.name
                         }.forEach { group ->
-                            item("group_${group.key}") {
-                                MembersListMachineGroupLabel(
-                                    label = group.label,
-                                    count = group.members.size,
-                                    expanded = !isAgentGroupCollapsed(group.key),
-                                    onToggle = {
-                                        // Slot stores *collapsed*; toggling writes !collapsed
-                                        // (writing !groupExpanded stored the old value and made the
-                                        // row a no-op — task #409 regression).
-                                        val collapseNow =
-                                            resolveAgentGroupCollapseToggle(isAgentGroupCollapsed(group.key))
-                                        agentGroupCollapseOverrides =
-                                            agentGroupCollapseOverrides + (group.key to collapseNow)
-                                        agentGroupCollapseStore?.setCollapsed(
-                                            membersCurrentUserId,
-                                            group.key,
-                                            collapseNow
-                                        )
-                                    }
+                            // Web: a heading over each computer's agents, not a toggle.
+                            item("group_${group.key}") { MembersListGroupHeading(label = group.label, count = group.members.size) }
+                            items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
+                                val member = group.members[index]
+                                MembersListActionRow(
+                                    member = member,
+                                    rowActions = rowActions,
+                                    rowDialogs = rowDialogs,
+                                    machines = createAgentMachines,
+                                    selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
+                                    // By computer: the group's heading names the computer.
+                                    runtimeLine = true,
+                                    agentStatusResolver = agentStatusResolver,
+                                    memberAvatarResolver = memberAvatarResolver,
+                                    onClick = { onOpenMember(member) }
                                 )
-                            }
-                            if (!isAgentGroupCollapsed(group.key)) {
-                                items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
-                                    val member = group.members[index]
-                                    MembersListRow(
-                                        member = member,
-                                        selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
-                                        // By computer: the group's heading names the computer.
-                                        runtimeLine = true,
-                                        agentStatusResolver = agentStatusResolver,
-                                        memberAvatarResolver = memberAvatarResolver,
-                                        onClick = { onOpenMember(member) }
-                                    )
-                                }
                             }
                         }
                     }
@@ -6583,6 +6580,9 @@ internal fun MembersListContent(
     }
     if (activeInviteHuman && canInviteHumans) {
         inviteHumanDialog?.invoke { activeInviteHuman = false }
+    }
+    if (rowActions != null) {
+        MembersRowActionDialogs(rowDialogs, rowActions)
     }
 }
 
@@ -6752,6 +6752,8 @@ private class MembersAgentDetailPresentation(
     val pageVisibleTick: Int = 0,
     val initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile,
     val initialAgentTab: MembersAgentDetailTab? = null,
+    /** A Members row's Edit agent: open the runtime editor once it can (as Change model does). */
+    val openRuntimeEditor: Boolean = false,
     val agentPanelTabOrder: List<String> = emptyList(),
     /** False while a cold-start open still waits for the user's tab order (task #22). */
     val agentPanelTabOrderReady: Boolean = true,
@@ -7025,7 +7027,9 @@ private fun MembersDetailContent(
     // Web AgentDetailPanel `openModelSettings` (botiverse/slock #13435, #13460): Change model on the
     // status and View model settings on the billing banner open the Profile tab's runtime editor,
     // for whoever may configure the agent (`canManageAgent && !deletedAt && !isExternalAgent`).
-    var runtimeEditorOpenRequested by remember(member.id.value) { mutableStateOf(false) }
+    var runtimeEditorOpenRequested by remember(member.id.value, presentation.openRuntimeEditor) {
+        mutableStateOf(presentation.openRuntimeEditor)
+    }
     val openModelSettings: (() -> Unit)? =
         if (membersAgentCanOpenModelSettings(canManage = canManage, isExternalAgent = isExternalAgent)) {
             {
@@ -15369,54 +15373,6 @@ internal fun MembersMenuIcon(name: RaftLucideIconName) {
     RaftLucideIcon(name, Modifier.size(16.dp), color = raftArgbHex(LocalRaftContentColor.current))
 }
 
-/**
- * A computer's group of agents (web members machine-group toggle): the 12dp chevron and
- * monitor, the computer's name as it was typed and the count, in Space Mono 12/16
- * `foreground-hint`, 6dp apart; `mt-1.5 mb-0.5 px-2`. The whole line toggles the group.
- */
-@Composable
-private fun MembersListMachineGroupLabel(
-    label: String,
-    count: Int,
-    expanded: Boolean,
-    onToggle: () -> Unit
-) {
-    val colors = RaftTheme.colors
-    val hint = raftArgbHex(colors.foregroundHint)
-    val style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Normal)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = MembersListMachineLabelTop, bottom = MembersListMachineLabelBottom)
-            .raftClickable(onClick = onToggle, tier = RaftHoverTier.Subtle)
-            .semantics { if (expanded) collapse { onToggle(); true } else expand { onToggle(); true } }
-            .padding(horizontal = MembersListMachineLabelInset),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(MembersListMachineLabelGap)
-    ) {
-        RaftLucideIcon(
-            RaftLucideIconName.ChevronRight,
-            modifier = Modifier.size(MembersListMachineLabelIconSize),
-            color = hint,
-            rotationDegrees = if (expanded) 90f else 0f,
-            rotationAnimationDurationSeconds = RaftCollapsibleSectionTokens.AnimationDurationSeconds
-        )
-        RaftLucideIcon(
-            RaftLucideIconName.Monitor,
-            modifier = Modifier.size(MembersListMachineLabelIconSize),
-            color = hint
-        )
-        RaftText(
-            text = label,
-            style = style,
-            color = colors.foregroundHint,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false)
-        )
-        RaftText(text = count.toString(), style = style, color = colors.foregroundHint, maxLines = 1)
-    }
-}
 
 /**
  * A member on a phone (web `MemberPhoneRow`): raft-ui SidebarItem at its phone size
@@ -15437,6 +15393,9 @@ private fun MembersListRow(
     modifier: Modifier = Modifier,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    onLongClick: (() -> Unit)? = null,
+    menuOpen: Boolean = false,
+    onEditAgent: ((MemberProfile) -> Unit)? = null,
     onClick: () -> Unit = {}
 ) {
     val tag = membersRowTag(member, isSelf)
@@ -15467,6 +15426,12 @@ private fun MembersListRow(
         onClick = onClick,
         selected = selected,
         subtitle = subtitle,
+        // Web MemberMenuTrigger: a long press opens the row's menu.
+        onLongClick = onLongClick,
+        onLongClickLabel = onLongClick?.let { stringResource(Res.string.home_sidebar_row_menu_action) },
+        menuOpen = menuOpen,
+        // Web EditAgentButton at the row's end, for an agent the reader may edit.
+        trailing = if (onEditAgent != null) { { MembersRowEditAgentButton(member, onEditAgent) } } else null,
         leading = {
             MembersListRowAvatar(
                 member = member,
@@ -15489,6 +15454,55 @@ private fun MembersListRow(
                 null
             }
     )
+}
+
+/**
+ * [MembersListRow] with what it can do beyond opening the profile ([MembersRowActions]): its
+ * long-press menu ([MembersRowMenu]; none when there is nothing to offer, as for a Guest) and an
+ * editable agent's Edit agent button. Without [rowActions] it is the plain row.
+ */
+@Composable
+private fun MembersListActionRow(
+    member: MemberProfile,
+    rowActions: MembersRowActions?,
+    rowDialogs: MembersRowDialogState,
+    machines: List<ComputerSummary>,
+    selected: Boolean = false,
+    isSelf: Boolean = false,
+    runtimeLine: Boolean = false,
+    machineName: String? = null,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    onClick: () -> Unit
+) {
+    val canMessage = rowActions != null && membersRowCanMessage(member, rowActions)
+    var menuOpen by remember(member.id.value) { mutableStateOf(false) }
+    Box {
+        MembersListRow(
+            member = member,
+            selected = selected,
+            isSelf = isSelf,
+            runtimeLine = runtimeLine,
+            machineName = machineName,
+            agentStatusResolver = agentStatusResolver,
+            memberAvatarResolver = memberAvatarResolver,
+            onLongClick = if (canMessage) ({ menuOpen = true }) else null,
+            menuOpen = menuOpen && canMessage,
+            onEditAgent = rowActions?.takeIf { membersRowCanEditAgent(member, it) }?.editAgent,
+            onClick = onClick
+        )
+        if (canMessage && rowActions != null) {
+            MembersRowMenu(
+                member = member,
+                expanded = menuOpen,
+                onDismiss = { menuOpen = false },
+                actions = rowActions,
+                dialogs = rowDialogs,
+                machines = machines,
+                agentStatusResolver = agentStatusResolver
+            )
+        }
+    }
 }
 
 /**
@@ -16288,6 +16302,56 @@ private fun ErrorBanner(text: String, action: String? = null, onAction: (() -> U
                 size = RaftButtonSize.Md
             )
         }
+    }
+}
+
+/**
+ * Web `groupAgents` (membersPageModel.ts): the computer groups in order, the reader's own computers
+ * first (`isMyComputer`: attached by them or theirs), then the rest, each A-Z by name; the group without a computer stays last ([groupedAgentMembers]).
+ */
+internal fun membersAgentGroupMachineOrder(machines: List<ComputerSummary>, currentUserId: String?): List<String> {
+    val me = currentUserId?.trim()?.takeIf { it.isNotEmpty() }
+    return machines
+        .sortedWith(
+            compareBy<ComputerSummary>(
+                { if (it.attachedByCurrentUser || (me != null && it.ownerUserId == me)) 0 else 1 },
+                { it.name.lowercase() },
+                { it.id },
+            )
+        )
+        .map { it.id }
+}
+
+/**
+ * A group's heading on the Members page (web MembersPage `heading`): the label in footnote bold
+ * `foreground-hint`, truncated, then the count in the machine type; `px-5 pt-3` over its rows. Not
+ * a toggle: a group is always open.
+ */
+@Composable
+private fun MembersListGroupHeading(label: String, count: Int) {
+    val colors = RaftTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = MembersListMachineLabelInset, end = MembersListMachineLabelInset, top = RaftAppSpacing.Md, bottom = RaftAppSpacing.Xs)
+            .semantics { heading() },
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+    ) {
+        RaftText(
+            text = label,
+            style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold),
+            color = colors.foregroundHint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false).alignByBaseline()
+        )
+        RaftText(
+            text = count.toString(),
+            style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Normal),
+            color = colors.foregroundHint,
+            maxLines = 1,
+            modifier = Modifier.alignByBaseline()
+        )
     }
 }
 

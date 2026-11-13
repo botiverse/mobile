@@ -2120,6 +2120,9 @@
     <string name="list_toolbar_view">Вид</string>
     <string name="members_no_matches">Нет участников по запросу «%1$s».</string>
     <string name="members_page_empty">Здесь пока никого нет.</string>
+    <string name="members_menu_direct_message">Написать</string>
+    <string name="members_menu_edit_agent">Изменить агента</string>
+    <string name="members_edit_agent_named">Изменить: %1$s</string>
     <string name="members_tag_you">Вы</string>
     <string name="members_tag_you_with_role">Вы · %1$s</string>
     <string name="member_hosted_runtime_location">Работает в облаке</string>
