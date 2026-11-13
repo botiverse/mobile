@@ -126,6 +126,10 @@ private fun raftPercentDecode(value: String): String? {
  * route needs), it is sent alone through [RaftProductEvents.sendAppInstallSourceRead], stamped
  * with the send time.
  *
+ * The pending values belong to the FIRST account signed in on this install: its id is stored with
+ * them, they are only sent while that account is signed in, and if a different account signs in
+ * first they are dropped for good (never reported under another person).
+ *
  * The one chance is spent only when the server took it (`accepted >= 1`) or the account explicitly
  * does not share usage data. Anything else (no server yet, offline, refused, server product
  * analytics off, `accepted: 0`) keeps it pending: it is tried again a few times with backoff while
@@ -138,18 +142,24 @@ private fun raftPercentDecode(value: String): String? {
 object RaftInstallSourceReport {
     private const val PropertiesKey = "installSource:properties"
     private const val SentKey = "installSource:sent"
+    /** The first account signed in on this install while the report was still pending. */
+    private const val AccountKey = "installSource:accountId"
     private const val RetryBaseMillis = 60_000L
     private const val MaxAttemptsPerRun = 6
 
     private val lock = SynchronizedObject()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var store: SharedPreferenceStore? = null
-    private var signedIn = false
+    /** The account signed in to a server now, or null. */
+    private var signedInUserId: String? = null
     /** One attempt loop at a time; never cancelled, so a send that reached the server is always marked. */
     private var sendJob: Job? = null
 
     fun install(store: SharedPreferenceStore) {
-        synchronized(lock) { this.store = store }
+        synchronized(lock) {
+            this.store = store
+            claimForSignedInAccount()
+        }
         maybeSend()
     }
 
@@ -174,15 +184,42 @@ object RaftInstallSourceReport {
         maybeSend()
     }
 
-    /** Signed in to a server (called from [RaftProductEvents.setSignedIn] with a non-blank server id). */
-    internal fun onSignedIn() {
-        synchronized(lock) { signedIn = true }
+    /**
+     * Signed in to a server as [userId] (from [RaftProductEvents.setSignedIn], non-blank server id).
+     * The first account seen while the report is pending becomes its owner; any other account
+     * drops it for good. An unknown account (null) sends nothing and claims nothing.
+     */
+    internal fun onSignedIn(userId: String?) {
+        synchronized(lock) {
+            signedInUserId = userId?.trim()?.takeIf { it.isNotEmpty() }
+            claimForSignedInAccount()
+        }
         maybeSend()
+    }
+
+    /**
+     * While the report is pending: the first signed-in account becomes its owner; a different
+     * account drops the values for good. Call under [lock].
+     */
+    private fun claimForSignedInAccount() {
+        val account = signedInUserId ?: return
+        val current = store ?: return
+        if (current.getString(SentKey) != null) return
+        when (current.getString(AccountKey)) {
+            null -> current.putString(AccountKey, account)
+            account -> Unit
+            else -> {
+                current.putString(SentKey, "dropped")
+                current.putString(PropertiesKey, null)
+                current.putString(AccountKey, null)
+                raftLogInfoInstallSource("install_source_dropped reason=other_account")
+            }
+        }
     }
 
     internal fun onSignedOut() {
         // A send in flight finishes (and is marked if delivered); later attempts find no server and stay pending.
-        synchronized(lock) { signedIn = false }
+        synchronized(lock) { signedInUserId = null }
     }
 
     private fun pendingProperties(): RaftAppInstallSourceReadProperties? {
@@ -198,9 +235,15 @@ object RaftInstallSourceReport {
         return decoded
     }
 
+    /** The owner (first account) is the one signed in now. Call under [lock]. */
+    private fun ownerSignedIn(): Boolean {
+        val account = signedInUserId ?: return false
+        return store?.getString(AccountKey) == account
+    }
+
     private fun maybeSend() {
         synchronized(lock) {
-            if (!signedIn || sendJob?.isActive == true) return
+            if (!ownerSignedIn() || sendJob?.isActive == true) return
             val properties = pendingProperties() ?: return
             sendJob = scope.launch { attempt(properties) }
         }
@@ -209,8 +252,14 @@ object RaftInstallSourceReport {
     private suspend fun attempt(properties: RaftAppInstallSourceReadProperties) {
         repeat(MaxAttemptsPerRun) { index ->
             if (index > 0) delay(RetryBaseMillis shl (index - 1))
+            // Only while the first account is signed in; another account dropped the values already.
+            if (synchronized(lock) { !ownerSignedIn() || store?.getString(SentKey) != null }) return
             val result =
-                runCatching { RaftProductEvents.sendAppInstallSourceRead(properties) }
+                runCatching {
+                    RaftProductEvents.sendAppInstallSourceRead(properties) {
+                        synchronized(lock) { ownerSignedIn() && store?.getString(SentKey) == null }
+                    }
+                }
                     .getOrElse { error ->
                         if (error is CancellationException) throw error
                         RaftProductEventOnceResult.Pending
@@ -218,7 +267,10 @@ object RaftInstallSourceReport {
             when (result) {
                 RaftProductEventOnceResult.Delivered,
                 RaftProductEventOnceResult.NotShared -> {
-                    synchronized(lock) { store?.putString(SentKey, "1") }
+                    synchronized(lock) {
+                        store?.putString(SentKey, "1")
+                        store?.putString(AccountKey, null)
+                    }
                     raftLogInfoInstallSource("install_source_reported store=${properties.store.wire} result=$result")
                     return
                 }

@@ -4047,7 +4047,7 @@ private fun RaftAppShellReadyContent(
                     val lease = ProcessAttachmentAuthScopes.bind(storeScope, state.session, serverId)
                     bridge.attachmentDownloadOwnerChanged(lease)
                     // Product analytics: events go to the server the signed-in shell shows.
-                    RaftProductEvents.setSignedIn(serverId)
+                    RaftProductEvents.setSignedIn(serverId, userId = state.session.user.id)
                 }
             }
             SharedAuthGateState.AuthRequired,

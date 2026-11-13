@@ -60,10 +60,11 @@ object RaftProductEvents {
         recorder.onAppBackground()
     }
 
-    fun setSignedIn(serverId: String) {
+    /** [userId]: the signed-in account, which the install-source report is tied to (null: not known). */
+    fun setSignedIn(serverId: String, userId: String? = null) {
         val normalized = serverId.trim().takeIf { it.isNotEmpty() } ?: return
         recorder.client.setSignedIn(ServerId(normalized))
-        RaftInstallSourceReport.onSignedIn()
+        RaftInstallSourceReport.onSignedIn(userId)
     }
 
     fun setSignedOut() {
@@ -126,8 +127,11 @@ object RaftProductEvents {
     }
 
     /** See [RaftInstallSourceReport]: sent alone, now, and reports whether the server took it. */
-    suspend fun sendAppInstallSourceRead(properties: RaftAppInstallSourceReadProperties): RaftProductEventOnceResult =
-        recorder.client.sendOnce(RaftProductEvent.AppInstallSourceRead(properties))
+    suspend fun sendAppInstallSourceRead(
+        properties: RaftAppInstallSourceReadProperties,
+        stillAllowed: () -> Boolean,
+    ): RaftProductEventOnceResult =
+        recorder.client.sendOnce(RaftProductEvent.AppInstallSourceRead(properties), stillAllowed)
 
     fun navEntrySelected(destination: RaftNavDestination?, surface: RaftNavSurface, wasActive: Boolean) {
         if (destination == null) return

@@ -217,9 +217,11 @@ class RaftProductEventsClient(
      * Sends [event] alone in its own batch to the signed-in server, now, bypassing the queue, and
      * reports whether the server took it, so a once-per-install event can be marked done only when
      * it really was. The event is stamped with the send time (ingest refuses events older than
-     * 24 h). It always asks `/product-events/config` first, never a cached answer. Never throws.
+     * 24 h). It always asks `/product-events/config` first, never a cached answer. [stillAllowed]
+     * is asked again right before the request goes out (for example: the same account is still
+     * signed in); false makes it [RaftProductEventOnceResult.Pending]. Never throws.
      */
-    suspend fun sendOnce(event: RaftProductEvent<*>): RaftProductEventOnceResult {
+    suspend fun sendOnce(event: RaftProductEvent<*>, stillAllowed: () -> Boolean = { true }): RaftProductEventOnceResult {
         val properties = runCatching { event.encodeProperties() }.getOrNull() ?: return RaftProductEventOnceResult.Pending
         val (currentTransport, serverId, startGeneration) =
             synchronized(lock) {
@@ -247,7 +249,7 @@ class RaftProductEventsClient(
         }
         val wire =
             synchronized(lock) {
-                if (generation != startGeneration || auth != AuthState.SignedIn(serverId)) {
+                if (generation != startGeneration || auth != AuthState.SignedIn(serverId) || !stillAllowed()) {
                     return RaftProductEventOnceResult.Pending
                 }
                 RaftProductEventWire(
