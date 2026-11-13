@@ -68,6 +68,8 @@ jobs:
           import glob
           for p in sorted(glob.glob('probe/*.png')): print(p, len(open(p,'rb').read()))
           "
+          mkdir -p probe/crash; cp ~/Library/Logs/DiagnosticReports/duo_swap* probe/crash/ 2>/dev/null; ls probe/crash
+          for f in probe/crash/*; do head -c 6000 "$f" | grep -E 'exception|signal|frame|imageOffset|symbol' | head -40; done
           xcrun simctl shutdown "$udid"; xcrun simctl delete "$udid"
       - uses: actions/upload-artifact@v7
         if: always()
