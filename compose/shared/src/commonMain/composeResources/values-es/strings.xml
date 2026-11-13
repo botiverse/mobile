@@ -2647,7 +2647,7 @@
     <string name="settings_computers_bulk_stop_title">Detener agentes</string>
     <string name="settings_computers_bulk_stop_confirm">Detener</string>
     <string name="settings_computers_bulk_stopping">Deteniendo…</string>
-    <string name="settings_computers_bulk_stop_message_one">¿Detener el agente en línea seleccionado? Dejará de procesar mensajes.</string>
+    <string name="settings_computers_bulk_stop_message_one">¿Detener %1$d agente en línea seleccionado? Dejará de procesar mensajes.</string>
     <string name="settings_computers_bulk_stop_message_many">¿Detener los %1$d agentes en línea seleccionados? Dejarán de procesar mensajes.</string>
     <string name="settings_computers_bulk_model_button">Cambiar modelo</string>
     <string name="settings_computers_bulk_model_title_one">Cambiar el modelo de %1$d agente</string>
