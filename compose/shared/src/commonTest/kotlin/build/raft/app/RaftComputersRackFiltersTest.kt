@@ -197,7 +197,7 @@ class RaftComputersRackFiltersTest {
     fun offlineComputersWaitInOneSectionAtTheEndExceptUnderStatusOffline() {
         val all = layout(toolbarFleet, RaftComputersRackToolbarState())
         assertEquals(listOf("old"), ids(all.offline))
-        assertFalse(all.offlineOpenByDefault, "folded while something is online")
+        assertTrue(all.offlineOpenByDefault, "open by default even while something is online")
         // Whatever the sort: Name Z to A still leaves it at the end.
         val reversed = layout(toolbarFleet, RaftComputersRackToolbarState(storedSort = ComputersRackSort(ComputersRackSortKey.Name, Desc)))
         assertEquals(listOf("mac", "ax2", "ax1", "gpu", "old"), rows(reversed))

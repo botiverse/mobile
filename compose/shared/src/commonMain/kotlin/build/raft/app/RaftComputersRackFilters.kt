@@ -547,8 +547,8 @@ internal data class RaftComputersRackLayout(
     /** Nothing matches the search and filters (web `data-empty="filters"`). */
     val empty: Boolean get() = offline.isEmpty() && groups.all { it.computers.isEmpty() }
 
-    /** Web: the Offline section is open by default when nothing else is online. */
-    val offlineOpenByDefault: Boolean get() = groups.all { it.computers.isEmpty() }
+    /** The Offline section opens by default (artin 2026-11-13, #proj-mobile:0095da7c; web follows). */
+    val offlineOpenByDefault: Boolean get() = true
 }
 
 /**
