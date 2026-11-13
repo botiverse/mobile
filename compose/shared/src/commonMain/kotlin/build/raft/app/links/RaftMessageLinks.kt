@@ -7,6 +7,7 @@ import build.raft.app.data.parseArtifactLinkTarget
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageId
+import build.raft.app.raftLogWarn
 import build.raft.app.raftSchemeLinkToWebLink
 import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import org.intellij.markdown.MarkdownElementTypes
@@ -18,7 +19,7 @@ import org.intellij.markdown.parser.MarkdownParser
 
 /*
  * The one place the app recognises the links of a message, a port of the web's pipeline:
- *  - slock packages/shared/src/appLinkPreview.ts `messageBareLinks` / `visibleBareLinks`;
+ *  - slock packages/shared/src/appLinkPreview.ts `messageBareLinks` / `messageVisibleLinks` / `visibleBareLinks`;
  *  - packages/shared/src/raftPermalinks.ts `parseRaftPermalink`;
  *  - packages/web/src/components/message/quotedMessagePermalink.ts `extractFirstQuotedMessagePermalink`;
  *  - packages/web/src/components/message/useMessageLinkCards.ts (the split into objects and Apps,
@@ -116,6 +117,32 @@ internal fun raftMessageBareLinks(content: String): List<String> {
  * autolink itself; its `parent`s say which paragraph, list item, quote or table it is in).
  */
 internal fun scanRaftBareLinks(content: String, onLink: (href: String, node: ASTNode) -> Unit) {
+    scanRaftLinks(content, labelled = false) { href, node, _ -> onLink(href, node) }
+}
+
+/** One visible http(s) link of a message (web `messageVisibleLinks`): [bare] false when the author gave it words. */
+internal data class RaftVisibleLink(val href: String, val bare: Boolean)
+
+/**
+ * web `messageVisibleLinks` (#proj-workspace:#289): every visible http(s) link of [content], bare
+ * or with words the author gave it, once each in message order; an address written both ways is
+ * bare. Code, math and image destinations don't count, as for [raftMessageBareLinks]. For Raft's own
+ * objects only: an Artifact linked with words still gets its card under the message, while an App's
+ * link previews stay bare-only.
+ */
+internal fun raftMessageVisibleLinks(content: String): List<RaftVisibleLink> {
+    val links = LinkedHashMap<String, Boolean>()
+    scanRaftLinks(content, labelled = true) { href, _, bare -> links[href] = (links[href] ?: false) || bare }
+    return links.map { (href, bare) -> RaftVisibleLink(href, bare) }
+}
+
+/**
+ * The scan behind [scanRaftBareLinks] and [raftMessageVisibleLinks]: each bare link (and, with
+ * [labelled], each link the author gave words to, `bare` false) as it occurs. A destination that
+ * isn't an http(s) URL (`[words](<https://a b>)`, written by hand) is skipped, never thrown
+ * (#triage:#351: on the web such a throw took a whole conversation down).
+ */
+private fun scanRaftLinks(content: String, labelled: Boolean, onLink: (href: String, node: ASTNode, bare: Boolean) -> Unit) {
     if ("://" !in content) return
     val text = content.take(MESSAGE_LINK_SCAN_LIMIT)
     val tree = markdownParser.buildMarkdownTreeFromString(text)
@@ -137,8 +164,8 @@ internal fun scanRaftBareLinks(content: String, onLink: (href: String, node: AST
 
     fun accept(raw: String, linkText: String, node: ASTNode) {
         val target = parseRaftHttpUrl(raw) ?: return
-        val shown = parseRaftHttpUrl(linkText.trim()) ?: return
-        if (shown.href == target.href) onLink(target.href, node)
+        val bare = parseRaftHttpUrl(linkText.trim())?.href == target.href
+        if (bare || labelled) onLink(target.href, node, bare)
     }
     fun visit(node: ASTNode) {
         when (node.type) {
@@ -197,8 +224,9 @@ private fun String.referenceLabelKey(): String =
 // --- classification (web useMessageLinkCards) ---------------------------------------------------
 
 /**
- * What a message's bare links become (web `useMessageLinkCards`): first-party [objects] (Artifacts,
- * [MESSAGE_OBJECT_LINK_LIMIT] distinct references at most, the first link of each reference in
+ * What a message's visible links become (web `useMessageLinkCards`): first-party [objects] (Artifacts,
+ * bare or with the author's words, #proj-workspace:#289; [MESSAGE_OBJECT_LINK_LIMIT] distinct
+ * references at most, the first link of each reference in
  * [objectCards]) and the third-party [appLinks] the App link read covers. A first-party link is never an
  * App's, and a first-party link past the limit stays the author's link (no chip, no card, no App).
  */
@@ -221,12 +249,30 @@ internal fun planRaftMessageLinks(
     content: String,
     appHosts: Collection<String>,
     artifactsEnabled: Boolean = true,
+): RaftMessageLinkPlan =
+    // Never thrown out of a message's render (#triage:#351): if reading its links fails, the message has no cards.
+    try {
+        planRaftMessageLinksUnguarded(content, appHosts, artifactsEnabled)
+    } catch (error: Exception) {
+        raftLogWarn("RaftMessageLinks", "reading the message's links failed: ${error::class.simpleName}: ${error.message}")
+        NoRaftMessageLinks
+    }
+
+private val NoRaftMessageLinks = RaftMessageLinkPlan(emptyList(), emptyMap(), emptyList(), emptyList())
+
+private fun planRaftMessageLinksUnguarded(
+    content: String,
+    appHosts: Collection<String>,
+    artifactsEnabled: Boolean,
 ): RaftMessageLinkPlan {
-    val bare = raftMessageBareLinks(content)
-    if (bare.isEmpty()) return RaftMessageLinkPlan(emptyList(), emptyMap(), emptyList(), emptyList())
+    val visible = raftMessageVisibleLinks(content)
+    if (visible.isEmpty()) return NoRaftMessageLinks
+    val bare = visible.filter { it.bare }.map { it.href }
     val firstParty = LinkedHashMap<String, ArtifactLinkTarget>()
     if (artifactsEnabled) {
-        for (url in bare) parseArtifactLinkTarget(url, appHosts)?.let { firstParty[url] = it }
+        // Raft's own objects from every visible link, one the author gave words to included (#proj-workspace:#289):
+        // its card goes under the message, and its words stay as written (only a bare one becomes a chip).
+        for (link in visible) parseArtifactLinkTarget(link.href, appHosts)?.let { firstParty[link.href] = it }
     }
     val accepted = LinkedHashMap<String, ArtifactLinkTarget>()
     for (target in firstParty.values) {

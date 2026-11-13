@@ -77,6 +77,12 @@ internal data class RaftAppLinkChipHost(
     val onOpenArtifact: ((ArtifactLinkTarget) -> Unit)? = null,
     /** Marks an Artifact chip's mark, by [ArtifactLinkTarget.key], as its item card's anchor. */
     val artifactAnchor: ((String) -> Modifier)? = null,
+    /**
+     * A tap on an Artifact link the author gave words to (web `ObjectLabelledLink`,
+     * #proj-workspace:#289): the words stay as written and open the Artifact in place, as its card
+     * under the message does. Null: the author's link opens as any link.
+     */
+    val onOpenArtifactInPlace: ((ArtifactLinkTarget, ArtifactSummary) -> Unit)? = null,
 )
 
 /**
@@ -126,11 +132,12 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
             links.mapNotNull { range ->
                 val link = range.item as? LinkAnnotation.Url ?: return@mapNotNull null
                 val target = parseArtifactLinkTarget(link.url, host.artifactHosts) ?: return@mapNotNull null
-                // Only a bare link becomes a chip: its text (without the layout-only break marks) is
-                // its own address.
-                if (parseArtifactLinkTarget(text.substring(range.start, range.end).raftCopyText().trim(), host.artifactHosts) != target) return@mapNotNull null
                 val summary = host.artifacts[target.key] ?: return@mapNotNull null
-                range to RaftArtifactLinkChip(target, summary)
+                // Only a bare link becomes a chip: its text (without the layout-only break marks) is
+                // its own address. One the author gave words to keeps them (#proj-workspace:#289).
+                val bare = parseArtifactLinkTarget(text.substring(range.start, range.end).raftCopyText().trim(), host.artifactHosts) == target
+                if (!bare && host.onOpenArtifactInPlace == null) return@mapNotNull null
+                range to RaftArtifactLinkChip(target, summary, labelled = !bare)
             }
         }
     val artifactChipStarts = artifactChips.mapTo(mutableSetOf()) { (range, _) -> range.start }
@@ -158,7 +165,11 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
         if (range.start < cursor || range.end <= range.start) return@forEach
         if (chip is RaftArtifactLinkChip) {
             builder.append(this, cursor, range.start)
-            builder.appendRaftArtifactLinkChip(range, chip, host, inlineContent, openUri)
+            if (chip.labelled) {
+                builder.appendRaftArtifactLabelledLink(this, range, chip, host)
+            } else {
+                builder.appendRaftArtifactLinkChip(range, chip, host, inlineContent, openUri)
+            }
             cursor = range.end
             return@forEach
         }
@@ -252,8 +263,46 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
     return RaftAppLinkChipContent(builder.toAnnotatedString(), inlineContent)
 }
 
-/** One Artifact link of the message answered `ok`. */
-internal data class RaftArtifactLinkChip(val target: ArtifactLinkTarget, val summary: ArtifactSummary)
+/** One Artifact link of the message answered `ok`; [labelled] when the author gave it words (no chip). */
+internal data class RaftArtifactLinkChip(val target: ArtifactLinkTarget, val summary: ArtifactSummary, val labelled: Boolean = false)
+
+/**
+ * An Artifact link the author gave words to (web `AppLinkChip.tsx` `ObjectLabelledLink`,
+ * #proj-workspace:#289): the author's words and their link styles as written, and a tap opens the
+ * Artifact in place ([RaftAppLinkChipHost.onOpenArtifactInPlace]), as its card under the message
+ * does. A long press still offers the link's own address.
+ */
+private fun AnnotatedString.Builder.appendRaftArtifactLabelledLink(
+    source: AnnotatedString,
+    range: AnnotatedString.Range<LinkAnnotation>,
+    chip: RaftArtifactLinkChip,
+    host: RaftAppLinkChipHost,
+) {
+    val open = host.onOpenArtifactInPlace
+    val link = range.item as LinkAnnotation.Url
+    val words = source.subSequence(range.start, range.end)
+    if (open == null) {
+        append(words)
+        return
+    }
+    // The words without their URL link (the tap is the Artifact's now), their styles and string annotations kept.
+    val unlinked =
+        AnnotatedString.Builder(words.length).apply {
+            append(AnnotatedString(words.text, words.spanStyles, words.paragraphStyles))
+            words.getStringAnnotations(0, words.length).forEach { addStringAnnotation(it.tag, it.item, it.start, it.end) }
+        }.toAnnotatedString()
+    pushStringAnnotation(RaftMarkdownLinkUrlTag, link.url)
+    withLink(
+        LinkAnnotation.Clickable(
+            tag = RaftArtifactLabelledLinkTag,
+            styles = link.styles,
+            linkInteractionListener = LinkInteractionListener { open(chip.target, chip.summary) },
+        ),
+    ) {
+        append(unlinked)
+    }
+    pop()
+}
 
 /**
  * An Artifact link's chip (web `AppLinkChip.tsx` `ObjectLinkChip`): the same cyan chip as an App
@@ -327,6 +376,9 @@ internal fun ArtifactKind.lucideIcon(): RaftLucideIconName =
     }
 
 internal const val RaftArtifactLinkTag = "raft.build.markdown.artifactLink"
+
+/** The tag of an Artifact link the author gave words to: a tap opens the Artifact in place. */
+internal const val RaftArtifactLabelledLinkTag = "raft.build.markdown.artifactLabelledLink"
 internal const val RaftAppLinkConsentTag = "raft.build.markdown.appLinkConsent"
 internal const val RaftAppLinkCardTag = "raft.build.markdown.appLinkCard"
 

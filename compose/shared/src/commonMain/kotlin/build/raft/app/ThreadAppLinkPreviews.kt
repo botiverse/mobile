@@ -110,8 +110,8 @@ internal data class ThreadArtifactLinks(
 }
 
 /**
- * One message's Artifact references (web core `useMessageLinkCards`: its bare links on the app
- * hosts, in message order, each reference once, at most [build.raft.app.links.MESSAGE_OBJECT_LINK_LIMIT])
+ * One message's Artifact references (web core `useMessageLinkCards`: its visible links on the app
+ * hosts, bare or with the author's words, in message order, each reference once, at most [build.raft.app.links.MESSAGE_OBJECT_LINK_LIMIT])
  * and their answers so far, by [build.raft.app.data.ArtifactLinkTarget.key]; a target with no
  * answer is still loading.
  */
@@ -217,8 +217,12 @@ internal fun ThreadAppLinkPreviewScope(
     // #proj-mobile: a chip whose App sent a card body opens its item card beside it.
     val cards = rememberThreadAppLinkCards(messageId, onOpenLink)
     val artifactWebBaseUrl = host.artifacts?.webBaseUrl.orEmpty()
+    // An Artifact link the author gave words to opens in place, as its card under the message does
+    // (#proj-workspace:#289); the browser only when no page can open.
+    val openArtifactWebPage = rememberRaftWebPageOpener()
+    val artifactOpener = rememberRaftArtifactOpener { openArtifactWebPage(artifactWebUrl(artifactWebBaseUrl, it)) }
     val chipHost =
-        remember(view.results, cards, artifacts, artifactWebBaseUrl) {
+        remember(view.results, cards, artifacts, artifactWebBaseUrl, artifactOpener) {
             RaftAppLinkChipHost(
                 view.results,
                 onAsk = { asking = it },
@@ -228,6 +232,9 @@ internal fun ThreadAppLinkPreviewScope(
                 artifactHosts = artifacts.appHosts,
                 onOpenArtifact = { target -> cards.openArtifact(target, artifactWebUrl(artifactWebBaseUrl, target)) },
                 artifactAnchor = { key -> cards.anchor(threadArtifactCardKey(key)) },
+                onOpenArtifactInPlace = { target, summary ->
+                    artifactOpener.open(target, RaftArtifactViewerHeader.of(summary, target), "message_labelled_link")
+                },
             )
         }
     // raft-design #1010: the block cards of this message, drawn after their paragraphs. Only the

@@ -93,7 +93,8 @@ class ArtifactLinksTest {
     }
 
     @Test
-    fun aMessagesBareLinksAreItsTargetsOnceInOrder() {
+    fun aMessagesVisibleLinksAreItsTargetsOnceInOrder() {
+        // #proj-workspace:#289: a link the author gave words to is a target too (its card goes under the message).
         val content =
             """
             See https://app.raft.build/artifacts/$id and <https://app.raft.build/artifacts/$id/v/2>.
@@ -102,7 +103,7 @@ class ArtifactLinksTest {
             `https://app.raft.build/artifacts/pt_code` and https://evil.example/artifacts/pt_evil
             """.trimIndent()
         assertEquals(
-            listOf(ArtifactLinkTarget(id), ArtifactLinkTarget(id, 2), ArtifactLinkTarget("pt_bare")),
+            listOf(ArtifactLinkTarget(id), ArtifactLinkTarget(id, 2), ArtifactLinkTarget("pt_other"), ArtifactLinkTarget("pt_bare")),
             planRaftMessageLinks(content, hosts).objectTargets,
         )
     }
