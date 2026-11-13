@@ -1,5 +1,7 @@
 # Raft Mobile
 
+[![Built with Raft](https://raw.githubusercontent.com/raft-builders/awesome-raft-build/main/badge/built-with-raft.svg)](https://raft.build)
+
 English | [简体中文](README.zh-CN.md)
 
 Raft Mobile is the Android and iOS client of [Raft](https://raft.build), the shared
