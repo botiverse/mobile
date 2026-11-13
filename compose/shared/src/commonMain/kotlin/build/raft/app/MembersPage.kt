@@ -270,7 +270,6 @@ import build.raft.designsystem.components.RaftFitToolbarScope
 import build.raft.designsystem.components.RaftFitToolbarSearch
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftSidebarItem
-import build.raft.designsystem.components.RaftSidebarItemMeta
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftPanelNotice
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -6217,6 +6216,10 @@ internal fun MembersListContent(
     // Web `layout.sidebar.noMachineGroupLabel`: external and cloud agents share this group.
     val noComputerGroupLabel = stringResource(Res.string.members_agent_group_no_computer)
     val humans = remember(allHumans, membersQuery) { allHumans.filter { membersMatchesSearch(it, membersQuery) } }
+    // The computer an agent's runtime line names (web `machinesById.get(machineId)?.name`).
+    fun agentMachineName(member: MemberProfile): String? =
+        member.membersComputerId?.let { id -> createAgentMachines.firstOrNull { it.id == id }?.name?.takeIf { it.isNotBlank() } }
+            ?: member.membersComputerName
     val showAgents = tab != MembersTab.Humans
     val showHumans = payload.showHumanDirectory && tab != MembersTab.Agents
     var agentsExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.agentsExpanded) }
@@ -6427,6 +6430,9 @@ internal fun MembersListContent(
                             MembersListRow(
                                 member = member,
                                 selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
+                                // Web MemberPhoneRow `runtimeLine={tab === "agents"}`, with the computer.
+                                runtimeLine = tab == MembersTab.Agents,
+                                machineName = if (tab == MembersTab.Agents) agentMachineName(member) else null,
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
                                 onClick = { onOpenMember(member) }
@@ -6468,6 +6474,8 @@ internal fun MembersListContent(
                                     MembersListRow(
                                         member = member,
                                         selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
+                                        // By computer: the group's heading names the computer.
+                                        runtimeLine = true,
                                         agentStatusResolver = agentStatusResolver,
                                         memberAvatarResolver = memberAvatarResolver,
                                         onClick = { onOpenMember(member) }
@@ -6477,10 +6485,16 @@ internal fun MembersListContent(
                         }
                     }
                 }
-                if (membersQuery.isNotBlank() && (!showHumans || humans.isEmpty()) && (!showAgents || agents.isEmpty())) {
+                val nothingShown = (!showHumans || humans.isEmpty()) && (!showAgents || agents.isEmpty())
+                if (nothingShown && (membersQuery.isNotBlank() || membersLoaded)) {
                     item {
                         RaftText(
-                            stringResource(Res.string.members_no_matches, membersQuery.trim()),
+                            // Web `members.page.noMatches`, or `members.page.empty` with no search.
+                            if (membersQuery.isNotBlank()) {
+                                stringResource(Res.string.members_no_matches, membersQuery.trim())
+                            } else {
+                                stringResource(Res.string.members_page_empty)
+                            },
                             Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Md),
                             style = RaftTheme.typography.callout,
                             color = RaftTheme.colors.foregroundMuted,
@@ -15405,37 +15419,54 @@ private fun MembersListMachineGroupLabel(
 }
 
 /**
- * A member in the list (web `MemberAgentRow` / `MemberHumanRow`): raft-ui SidebarItem at its
- * phone size ([RaftSidebarItem]), led by the 19dp avatar. An agent's status is the light on
- * the avatar's corner (web `AvatarSlot badge={<SidebarAgentActivityBadge/>}`); an app-managed
- * bot has none. The name is followed by "(you)" on the viewer's own row and the outline Guest
- * badge for a guest; the description, when there is one, is the subtitle. An agent's row ends with
- * its short status word (web `MembersAgentList` Status column: "Working…", "Offline", "Computer
- * update required"), so the state never rests on the light's colour alone.
+ * A member on a phone (web `MemberPhoneRow`): raft-ui SidebarItem at its phone size
+ * ([RaftSidebarItem]), led by the 19dp avatar. An agent's status is the light on the avatar's
+ * corner (web `MemberEntryAvatar`); an app-managed bot has none. After the name: the App Bot's
+ * badge and the role tag (web `useMemberTileTag`: Owner, Admin or Guest, never Member; "You" or
+ * "You · Owner" on the viewer's own row). The second line is, on the Agents tab ([runtimeLine]),
+ * what the agent runs on (runtime · model · computer, the computer left out when [machineName] is
+ * null); elsewhere an agent's model, a Guest's channel, or a person's description.
  */
 @Composable
 private fun MembersListRow(
     member: MemberProfile,
     selected: Boolean = false,
     isSelf: Boolean = false,
+    runtimeLine: Boolean = false,
+    machineName: String? = null,
     modifier: Modifier = Modifier,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     onClick: () -> Unit = {}
 ) {
-    val isGuest =
-        member.kind == MemberKind.Human &&
-            membersHumanRoleBadge(member.serverRole, member.roleDescription) == MembersHumanRoleBadge.Guest
-    val youSuffix = stringResource(Res.string.member_label_you_suffix)
-    val guestLabel = stringResource(Res.string.channel_member_role_guest)
+    val tag = membersRowTag(member, isSelf)
     // botiverse/slock #11273 `MemberAgentRow`: an App Bot's name carries the Bot badge.
     val appBot = remember(member) { member.appBotIdentityOrNull() }
+    val subtitle =
+        when {
+            member.kind == MemberKind.Agent && runtimeLine -> {
+                val runtime =
+                    if (appBot != null) {
+                        null
+                    } else {
+                        (if (member.isExternal) "external" else member.roleDescription?.trim()?.takeIf { it.isNotEmpty() })
+                            ?.let { runtimeLabelWithStatus(it, member.serverId?.value) }
+                    }
+                listOfNotNull(runtime, member.modelLabel(), machineName?.takeIf { it.isNotBlank() })
+                    .joinToString(" · ")
+                    .takeIf { it.isNotEmpty() }
+            }
+            member.kind == MemberKind.Agent -> member.modelLabel()
+            membersHumanRoleBadge(member.serverRole, member.roleDescription) == MembersHumanRoleBadge.Guest &&
+                !member.guestChannel?.name.isNullOrBlank() -> "#${member.guestChannel?.name}"
+            else -> member.description?.takeIf { it.isNotBlank() }
+        }
     RaftSidebarItem(
         title = member.displayName,
         modifier = modifier,
         onClick = onClick,
         selected = selected,
-        subtitle = member.description?.takeIf { it.isNotBlank() },
+        subtitle = subtitle,
         leading = {
             MembersListRowAvatar(
                 member = member,
@@ -15443,30 +15474,15 @@ private fun MembersListRow(
                 memberAvatarResolver = memberAvatarResolver
             )
         },
-        trailing =
-            if (member.membersListShowsAgentStatus()) {
-                { MembersListRowStatusWord(member = member, agentStatusResolver = agentStatusResolver) }
-            } else {
-                null
-            },
         titleTrailing =
-            if (isSelf || isGuest || appBot != null) {
+            if (tag != null || appBot != null) {
                 {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (appBot != null) RaftAppBotBadge(identity = appBot, botName = member.displayName)
-                        if (isSelf) {
-                            // `ml-1 font-normal text-foreground-hint` (sticker ink when selected).
-                            RaftText(
-                                text = youSuffix,
-                                style = RaftTheme.typography.body.copy(fontWeight = FontWeight.Normal),
-                                color = LocalRaftContentColor.current,
-                                maxLines = 1
-                            )
-                        }
-                        if (isGuest) RaftBadge(text = guestLabel, appearance = RaftBadgeAppearance.Outline)
+                        if (tag != null) RaftBadge(text = tag, appearance = RaftBadgeAppearance.Outline)
                     }
                 }
             } else {
@@ -15475,34 +15491,37 @@ private fun MembersListRow(
     )
 }
 
-/** A managed agent's row shows its status (light and word); a human's or an App Bot's does not. */
-private fun MemberProfile.membersListShowsAgentStatus(): Boolean =
-    kind == MemberKind.Agent && managedByAppInstallId.isNullOrBlank()
-
 /**
- * The row's short status word (web `MembersAgentList` `statusWord`): the coarse state, as the
- * light on the avatar, in the row's quiet meta ([RaftSidebarItemMeta]). It reads the status on its
- * own, like the avatar, so an agent:activity push recomposes only this. Nothing while the status
- * is unknown (no light either).
+ * Web `useMemberTileTag`: the role word (Owner, Admin or Guest; Member is most of the server, so
+ * it says nothing), with "You" before it on the viewer's own row. An agent's role is its
+ * `serverRole`; a person's falls back to the role label the list carries.
  */
 @Composable
-private fun MembersListRowStatusWord(
-    member: MemberProfile,
-    agentStatusResolver: RaftAgentStatusResolver
-) {
-    val status =
-        rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value)
-            ?.withoutActivityDetail()
-            ?: return
-    RaftSidebarItemMeta(
-        text = status.localizedMemberStatusLabel(),
-        modifier = Modifier.widthIn(max = MembersListStatusWordMaxWidth),
-        overflow = TextOverflow.Ellipsis
-    )
+private fun membersRowTag(member: MemberProfile, isSelf: Boolean): String? {
+    val role =
+        if (member.kind == MemberKind.Human) {
+            membersHumanRoleBadge(member.serverRole, member.roleDescription)
+        } else {
+            membersHumanRoleBadge(member.serverRole, null)
+        }
+    val roleWord =
+        when (role) {
+            MembersHumanRoleBadge.Owner -> stringResource(Res.string.member_role_owner)
+            MembersHumanRoleBadge.Admin -> stringResource(Res.string.member_role_admin)
+            MembersHumanRoleBadge.Guest -> stringResource(Res.string.channel_member_role_guest)
+            MembersHumanRoleBadge.Member, MembersHumanRoleBadge.Unknown -> null
+        }
+    if (!isSelf) return roleWord
+    return if (roleWord != null) {
+        stringResource(Res.string.members_tag_you_with_role, roleWord)
+    } else {
+        stringResource(Res.string.members_tag_you)
+    }
 }
 
-/** The status word gives way to the name: at most this wide, then it ends in an ellipsis. */
-private val MembersListStatusWordMaxWidth = 120.dp
+/** A managed agent's row shows its status light; a human's or an App Bot's does not. */
+private fun MemberProfile.membersListShowsAgentStatus(): Boolean =
+    kind == MemberKind.Agent && managedByAppInstallId.isNullOrBlank()
 
 /**
  * The row's avatar. An agent's status light reads only here, so an agent:activity push
@@ -16319,13 +16338,13 @@ internal fun groupedAgentMembers(
 }
 
 /**
- * Web `layout.sidebar.noMachineGroupLabel` ("external & cloud"): the one group of every agent without
+ * Web `members.page.group.noComputer` ("External & cloud"): the one group of every agent without
  * a computer -- external agents and cloud (hosted) agents alike. The web keeps them together on
  * purpose (SidebarMembersRail): `hostedRuntime` reaches managers only, so splitting on it would put
  * the same agent in different groups for different viewers. Localized at the render site
  * (`members_agent_group_no_computer`); this is the English default for non-UI callers.
  */
-internal const val membersNoComputerGroupLabel = "external & cloud"
+internal const val membersNoComputerGroupLabel = "External & cloud"
 
 /**
  * The Members page's list: the store's roster, then the rows this page added for just-created
