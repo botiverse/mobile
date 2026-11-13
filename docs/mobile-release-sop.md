@@ -362,6 +362,16 @@ Signing secrets: `SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64`/`_PASSWORD`,
 `_PROVISIONING_PROFILE_SPECIFIER`, `_CODE_SIGN_IDENTITY`,
 `_EXPORT_OPTIONS_PLIST_BASE64`), plus `HANDS_BEARER_TOKEN`.
 
+The first step after checkout decodes the profile (`security cms -D`) and
+fails unless it grants every entitlement in
+`compose/iosApp/iosApp/iosApp.entitlements` (Associated Domains
+`applinks:app.raft.build` / `applinks:open.raft.build`, Sign In with Apple,
+Push). Fix it in the Apple Developer portal: enable the named capability on
+the `build.raft.app` App ID, edit + save the App Store profile, download it,
+`base64 -i <file> | gh secret set SLOCK_IOS_PROVISIONING_PROFILE_BASE64`, and
+re-run. Never strip the entitlement to get a build out; validation also fails
+if the signed app lacks a declared domain.
+
 ## 6. Verify
 
 ### 6.1 Bytes
