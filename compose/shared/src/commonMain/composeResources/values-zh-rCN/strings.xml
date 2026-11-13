@@ -3386,6 +3386,7 @@
     <string name="runtime_form_v2_error_secret_reentry_required">API 密钥与你修改的已保存设置绑定，请输入新的密钥。</string>
     <string name="runtime_form_v2_option_default">默认</string>
     <string name="runtime_form_v2_use_custom">使用“%1$s”</string>
+    <string name="runtime_form_v2_custom_value">自定义</string>
     <string name="runtime_form_v2_secret_keep_hint">留空则保留当前值。</string>
     <string name="runtime_form_v2_load_failed">运行时表单加载失败（%1$s）。</string>
     <string name="runtime_form_v2_unavailable">运行时配置不可用。</string>

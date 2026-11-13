@@ -403,6 +403,7 @@ private fun RuntimeFormV2FieldRow(
                     val noMatches = stringResource(Res.string.common_no_matches)
                     val searchLabel = stringResource(Res.string.search_filter_search)
                     val useCustomLabel = stringResource(Res.string.runtime_form_v2_use_custom, "%1\$s")
+                    val customValueLabel = stringResource(Res.string.runtime_form_v2_custom_value)
                     // `provider.saved_connection`: headings only when the list mixes saved and direct choices.
                     val grouped = choices.options.mapNotNull { it.group }.distinct().size > 1
                     val unlisted = current.isNotEmpty() && choices.options.none { it.value == current }
@@ -475,9 +476,21 @@ private fun RuntimeFormV2FieldRow(
                             // `select.custom_value` is raft-ui's ComboboxSelect with `create`: the list
                             // with search, and typed text that is not a choice offered as "Use “…”".
                             // A stored value the list does not offer shows as itself.
+                            // A value not in the list of a field that takes a typed one is the person's own
+                            // value (e.g. a model id): listed first, selected, and marked "Custom" (slock web
+                            // RuntimeFormV2FieldControl `customValue` / isTypedCustomValue).
+                            val typedCustom = unlisted && unavailableSelected == null
                             RaftCombobox(
                                 value = runtimeFormV2ComboboxValue(current, options),
-                                options = options,
+                                options =
+                                    if (typedCustom) {
+                                        val defaults = if (choices.allowEmpty) 1 else 0
+                                        options.take(defaults) +
+                                            RaftComboboxOption(current, current, description = customValueLabel) +
+                                            options.drop(defaults)
+                                    } else {
+                                        options
+                                    },
                                 onValueChange = { next ->
                                     clearFocus()
                                     onChange(field.key, JsonPrimitive(next))

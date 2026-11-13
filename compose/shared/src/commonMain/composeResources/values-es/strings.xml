@@ -3229,6 +3229,7 @@
     <string name="runtime_form_v2_error_secret_reentry_required">La clave de API está vinculada a la configuración guardada que cambiaste. Ingresa una nueva.</string>
     <string name="runtime_form_v2_option_default">Predeterminado</string>
     <string name="runtime_form_v2_use_custom">Usar “%1$s”</string>
+    <string name="runtime_form_v2_custom_value">Personalizado</string>
     <string name="runtime_form_v2_secret_keep_hint">Déjalo en blanco para mantener el valor actual.</string>
     <string name="runtime_form_v2_load_failed">No se pudo cargar el formulario del runtime (%1$s).</string>
     <string name="runtime_form_v2_unavailable">La configuración del runtime no está disponible.</string>

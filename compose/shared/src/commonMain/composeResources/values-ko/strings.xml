@@ -3229,6 +3229,7 @@
     <string name="runtime_form_v2_error_secret_reentry_required">이 API 키는 변경한 저장 설정에 연결되어 있어요. 새 API 키를 입력해 주세요.</string>
     <string name="runtime_form_v2_option_default">기본값</string>
     <string name="runtime_form_v2_use_custom">‘%1$s’ 사용</string>
+    <string name="runtime_form_v2_custom_value">사용자 지정</string>
     <string name="runtime_form_v2_secret_keep_hint">현재 값을 유지하려면 비워 두세요.</string>
     <string name="runtime_form_v2_load_failed">런타임 양식을 불러오지 못했어요(%1$s).</string>
     <string name="runtime_form_v2_unavailable">런타임 설정을 사용할 수 없어요.</string>
