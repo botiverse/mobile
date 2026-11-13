@@ -20,7 +20,8 @@ class RuntimeFormV2WriteOnlyKeepTest {
     private val claudeEdit = form(CLAUDE_V2_EDIT_JSON)
     private val claudeSources = mapOf(
         "provider" to source(CLAUDE_V2_PROVIDER_SOURCE_JSON),
-        "model" to source(CLAUDE_V2_FALLBACK_SOURCE_JSON)
+        "model" to source(CLAUDE_V2_FALLBACK_SOURCE_JSON),
+        "authType" to source(CLAUDE_AUTH_TYPE_SOURCE_JSON)
     )
     private val builtinEdit = form(BUILTIN_V2_EDIT_JSON)
 
