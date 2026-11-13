@@ -23208,6 +23208,69 @@ private fun ThreadMessagesListContent(
             null
         }
     val activeInlineSearchMessageId = activeInlineSearchMatch?.messageId
+    // Adjacent system messages fold into one row (ThreadSystemMessageGroups.kt, web
+    // systemMessageGrouping). Render-only: every message keeps its own lazy item, key and index.
+    // Groups are closed by default; the open ones are kept while this conversation is shown.
+    val systemMessageFolds =
+        remember(renderPayload.messages) { threadSystemMessageFolds(renderPayload.messages) }
+    var expandedSystemMessageGroups by remember(threadInstanceKey) { mutableStateOf(emptySet<String>()) }
+    // A jump or a search match on a message folded into a closed group opens the group, so the
+    // target is a drawn row (web lands on the group's row). Only state: the focus anchor effect
+    // and its growth retries own the scroll. Once per request, so the reader can close it again.
+    var openedSystemGroupTargets by remember(threadInstanceKey) { mutableStateOf(emptySet<String>()) }
+    LaunchedEffect(
+        systemMessageFolds,
+        renderPayload.focusedMessageId,
+        renderPayload.focusedMessageRequestNonce,
+        activeInlineSearchMessageId
+    ) {
+        val targets =
+            listOfNotNull(
+                renderPayload.focusedMessageId?.let { "focus:$it:${renderPayload.focusedMessageRequestNonce}" to it },
+                activeInlineSearchMessageId?.let { "search:$it" to it },
+            ).filter { (identity, _) -> identity !in openedSystemGroupTargets }
+        val opened = mutableSetOf<String>()
+        val groups = mutableSetOf<String>()
+        for ((identity, messageId) in targets) {
+            val group = systemMessageFolds.threadSystemGroupOf(renderPayload.messages, messageId) ?: continue
+            opened += identity
+            groups += group
+        }
+        if (opened.isEmpty()) return@LaunchedEffect
+        openedSystemGroupTargets = openedSystemGroupTargets + opened
+        expandedSystemMessageGroups = expandedSystemMessageGroups + groups
+    }
+    // Direct user action (docs/programmatic-scroll-ownership-contract.md), like the long-message
+    // toggle: the group's summary row keeps its top and the change grows/shrinks below it. The
+    // viewport controller is anchored on the summary row, so the HeightChange replays of the rows
+    // that open or close agree. Fences: the summary row is laid out and no scroll is active; a
+    // close while following the latest row leaves bottom ownership alone.
+    val toggleSystemMessageGroup: (String, String) -> Unit = { groupId, summaryMessageId ->
+        val expanding = groupId !in expandedSystemMessageGroups
+        expandedSystemMessageGroups =
+            if (expanding) expandedSystemMessageGroups + groupId else expandedSystemMessageGroups - groupId
+        val listItemIndex = renderPayload.threadMessageListItemIndex(summaryMessageId)
+        val summaryItem = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == listItemIndex }
+        val ownsViewport =
+            listItemIndex >= 0 &&
+                summaryItem != null &&
+                !listState.isScrollInProgress &&
+                (expanding || viewportControllerState.intent != LazyViewportIntent.FollowingLatest)
+        if (ownsViewport && summaryItem != null) {
+            dispatchViewportEvent(
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message(summaryMessageId),
+                    offset = summaryItem.offset,
+                    layoutGeneration = viewportLayoutGeneration,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        }
+        diagnosticsLogger(
+            "thread_system_group_toggle messageId=${summaryMessageId.take(8)} expanded=$expanding " +
+                "anchored=$ownsViewport reverse=$reverseLayout"
+        )
+    }
     val activeInlineSearchMessage =
         activeInlineSearchMessageId?.let { messageId ->
             renderPayload.originMessage?.takeIf { it.id == messageId }
@@ -25698,6 +25761,18 @@ private fun ThreadMessagesListContent(
                 SideEffect {
                     firstViewportProbe.recordComposedMessage(message.id, absoluteMessageIndex)
                 }
+                val systemFold = systemMessageFolds.getOrNull(index)
+                val systemGroupExpanded = systemFold != null && systemFold.groupId in expandedSystemMessageGroups
+                if (systemFold is ThreadSystemMessageFold.Member && !systemGroupExpanded) {
+                    // Folded into its group's closed summary row: the item stays (key and index
+                    // unchanged for anchoring and jumps) but draws nothing.
+                    Box(
+                        Modifier.fillMaxWidth().onGloballyPositioned { coordinates ->
+                            recordMessageItemHeight(message.id, coordinates.size.height)
+                        }
+                    )
+                    return@items
+                }
                 val messagePerformanceKey =
                     remember(message.id, absoluteMessageIndex) {
                         threadMessagePerformanceKey(message.id, absoluteMessageIndex)
@@ -25885,7 +25960,22 @@ private fun ThreadMessagesListContent(
                                 onShareSelectionBounds(message.id, null)
                             }
                         }
-                        if (isSystemMessage && actionCard == null) {
+                        if (systemFold is ThreadSystemMessageFold.Summary) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                ThreadSystemMessageGroupHeader(
+                                    summary = threadSystemMessageGroupSummary(systemFold.categories),
+                                    expanded = systemGroupExpanded,
+                                    onToggle = { toggleSystemMessageGroup(systemFold.groupId, message.id) },
+                                )
+                                if (systemGroupExpanded) {
+                                    ThreadSystemMessageRow(
+                                        message = displayMessage,
+                                        timestampValue = message.timestampLabel,
+                                        timeline = renderPayload.messages,
+                                    )
+                                }
+                            }
+                        } else if (isSystemMessage && actionCard == null) {
                             ThreadSystemMessageRow(
                                 message = displayMessage,
                                 timestampValue = message.timestampLabel,
