@@ -79,6 +79,15 @@ check(
 check(C.simulatorUdid(environment: ["SIMULATOR_UDID": "nope"], homeDirectory: "/var/mobile") == nil, "no udid on device")
 check((C.hostBootTimeSeconds() ?? 0) > 0, "host boot time readable")
 
+let exeDir = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true).appendingPathComponent("bundle", isDirectory: true)
+try! FileManager.default.createDirectory(at: exeDir, withIntermediateDirectories: true)
+let exe = exeDir.appendingPathComponent("iosApp")
+FileManager.default.createFile(atPath: exe.path, contents: Data("stub".utf8))
+check(C.codeIdentityDigest(executableURL: exe) == C.sha256Digest(Data("stub".utf8)), "code identity without debug dylib")
+FileManager.default.createFile(atPath: exe.path + ".debug.dylib", contents: Data("code".utf8))
+check(C.codeIdentityDigest(executableURL: exe) == C.sha256Digest(Data("stubcode".utf8)), "code identity covers the debug dylib")
+check(C.codeIdentityDigest(executableURL: exeDir.appendingPathComponent("missing")) == nil, "missing executable")
+
 // MARK: inbox
 let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
 let inbox = C.inboxDirectory(applicationSupport: root)

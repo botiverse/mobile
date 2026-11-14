@@ -191,7 +191,7 @@ enum RaftIosQaSessionBootstrapContract {
     /// distribution certificate (see docs/qa-acceptance/session-bootstrap.md).
     struct Binding: Equatable {
         let applicationId: String
-        /// `sha256:` of the installed main executable (CFBundleExecutable) bytes.
+        /// `codeIdentityDigest(executableURL:)` of the installed main executable (+ its debug dylib).
         let codeIdentitySha256: String
         /// `bootGeneration(simulatorUdid:hostBootTimeSeconds:)`.
         let bootGeneration: String
@@ -224,16 +224,27 @@ enum RaftIosQaSessionBootstrapContract {
         return Int(bootTime.tv_sec)
     }
 
-    static func fileSha256Digest(_ url: URL) -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
+    /// Code identity of the installed app: sha256 over the main executable's bytes followed by the
+    /// bytes of `<executable>.debug.dylib` when present (Xcode Debug builds move the app code into
+    /// that dylib and leave a stub executable). The harness computes the same from the installed bundle.
+    static func codeIdentityDigest(executableURL: URL) -> String? {
         var hasher = SHA256()
-        while true {
-            let chunk = handle.readData(ofLength: 1 << 20)
-            if chunk.isEmpty { break }
-            hasher.update(data: chunk)
+        guard hash(executableURL, into: &hasher) else { return nil }
+        let debugDylib = URL(fileURLWithPath: executableURL.path + ".debug.dylib")
+        if FileManager.default.fileExists(atPath: debugDylib.path) {
+            guard hash(debugDylib, into: &hasher) else { return nil }
         }
         return "sha256:" + hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func hash(_ url: URL, into hasher: inout SHA256) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        while true {
+            let chunk = handle.readData(ofLength: 1 << 20)
+            if chunk.isEmpty { return true }
+            hasher.update(data: chunk)
+        }
     }
 
     // MARK: Envelope

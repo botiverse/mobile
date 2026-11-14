@@ -8,6 +8,7 @@ import {
   buildSmokeLogin,
   hasBootstrapLine,
   iosBootGeneration,
+  iosCodeImages,
   iosInboxPaths,
   iosLaunchArgs,
   launchctlAppAlive,
@@ -41,6 +42,11 @@ test("inbox paths stay inside the app data container", () => {
   assert.equal(paths.tmp, `${paths.dir}/.req-1.session.tmp`);
   assert.throws(() => iosInboxPaths("/data", "../escape"), /request id/);
   assert.throws(() => iosInboxPaths("relative", "req"), /container/);
+});
+
+test("code identity covers the Xcode Debug dylib when present", () => {
+  assert.deepEqual(iosCodeImages("/a/iosApp", () => false), ["/a/iosApp"]);
+  assert.deepEqual(iosCodeImages("/a/iosApp", (p) => p === "/a/iosApp.debug.dylib"), ["/a/iosApp", "/a/iosApp.debug.dylib"]);
 });
 
 test("launch arguments carry only the request id and digest", () => {

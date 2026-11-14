@@ -119,7 +119,7 @@ enum RaftIosQaSessionBootstrapHost {
     private static func currentBinding() -> RaftIosQaSessionBootstrapContract.Binding? {
         guard let applicationId = Bundle.main.bundleIdentifier,
               let executable = Bundle.main.executableURL,
-              let codeIdentity = Contract.fileSha256Digest(executable),
+              let codeIdentity = Contract.codeIdentityDigest(executableURL: executable),
               let udid = Contract.simulatorUdid(
                   environment: ProcessInfo.processInfo.environment,
                   homeDirectory: NSHomeDirectory()

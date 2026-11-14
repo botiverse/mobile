@@ -27,6 +27,7 @@ import {
   buildSmokeLogin,
   hasBootstrapLine,
   iosBootGeneration,
+  iosCodeImages,
   iosInboxPaths,
   iosLaunchArgs,
   launchctlAppAlive,
@@ -82,16 +83,19 @@ function deviceBinding(udid, bundleId) {
   const plist = path.join(app, "Info.plist");
   const applicationId = plistValue(plist, "CFBundleIdentifier");
   if (applicationId !== bundleId) throw new Error(`installed bundle id ${applicationId} != ${bundleId}`);
-  const executable = fs.readFileSync(path.join(app, plistValue(plist, "CFBundleExecutable")));
+  const executablePath = path.join(app, plistValue(plist, "CFBundleExecutable"));
+  const images = iosCodeImages(executablePath, fs.existsSync);
+  const bytes = images.map((image) => fs.readFileSync(image));
   // Pre-flight (Android checks application-debuggable): only the Debug configuration compiles the
   // bootstrap host in; a Release/TestFlight build would ignore the envelope and time out at READY.
-  if (!executable.includes(Buffer.from(IOS_QA_BOOTSTRAP_MARKER, "utf8"))) {
-    throw new Error(`${bundleId} on ${udid} is not a Debug QA build (no ${IOS_QA_BOOTSTRAP_MARKER} in its executable); build the Debug configuration`);
+  const marker = Buffer.from(IOS_QA_BOOTSTRAP_MARKER, "utf8");
+  if (!bytes.some((image) => image.includes(marker))) {
+    throw new Error(`${bundleId} on ${udid} is not a Debug QA build (no ${IOS_QA_BOOTSTRAP_MARKER} in ${images.map((i) => path.basename(i)).join(", ")}); build the Debug configuration`);
   }
   const bootTime = parseKernBootTime(run("sysctl", ["-n", "kern.boottime"]).stdout);
   return {
     applicationId,
-    signingCertSha256: sha256Digest(executable),
+    signingCertSha256: sha256Digest(Buffer.concat(bytes)),
     bootGeneration: iosBootGeneration(udid, bootTime),
   };
 }

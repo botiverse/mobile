@@ -41,6 +41,15 @@ export function iosInboxPaths(dataContainer, requestId) {
   return { dir, file: path.join(dir, `${requestId}.session`), tmp: path.join(dir, `.${requestId}.session.tmp`) };
 }
 
+/**
+ * Files whose bytes, concatenated in this order, make the app's code identity: the main executable,
+ * then `<executable>.debug.dylib` when present (Xcode Debug builds keep the app code there).
+ */
+export function iosCodeImages(executablePath, exists) {
+  const dylib = `${executablePath}.debug.dylib`;
+  return exists(dylib) ? [executablePath, dylib] : [executablePath];
+}
+
 /** argv for `xcrun simctl launch`: a fresh process carrying only the request id and the digest. */
 export function iosLaunchArgs(udid, bundleId, requestId, envelopeDigest) {
   if (!REQUEST_ID.test(requestId ?? "")) throw new Error("request id is invalid");

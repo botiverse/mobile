@@ -71,7 +71,7 @@ Exactly these 13 keys. `envelope_digest` is `sha256:` + lowercase hex of those b
 | Field | Android | iOS Simulator |
 |---|---|---|
 | `application_id` | package name (`build.raft.app.alpha`) | `CFBundleIdentifier` of the installed app (`build.raft.app`) |
-| `signing_cert_sha256` | `sha256:` of the APK signing certificate for the device SDK | **code identity**: `sha256:` of the installed main executable (`<app>/<CFBundleExecutable>`, from `xcrun simctl get_app_container <udid> <bundle> app`). Simulator builds carry no distribution certificate, so the field binds the exact binary instead |
+| `signing_cert_sha256` | `sha256:` of the APK signing certificate for the device SDK | **code identity**: `sha256:` over the installed main executable's bytes (`<app>/<CFBundleExecutable>`, from `xcrun simctl get_app_container <udid> <bundle> app`) followed by `<app>/<CFBundleExecutable>.debug.dylib` when present (Xcode Debug builds keep the app code in that dylib behind a stub executable). Simulator builds carry no distribution certificate, so the field binds the exact binary instead |
 | `boot_generation` | `sha256:` of `/proc/sys/kernel/random/boot_id` | `sha256("ios-simulator-boot/v1|<SIMULATOR UDID, uppercase>|<kern.boottime seconds>")`. The Simulator shares the host kernel, so the app (`sysctlbyname("kern.boottime")`) and the harness (`sysctl -n kern.boottime` on the Mac) read the same value; the UDID comes from `SIMULATOR_UDID` (or the CoreSimulator path of the app home) |
 
 For iOS, Stamp issues the envelope exactly as for Android, with `application_id` set
