@@ -141,15 +141,19 @@ export async function run(ctx) {
     await waitUntil("the Tasks card (Close Tasks)", (x) => hasText(x, "Close Tasks") || hasText(x, (n) => n.text === "Tasks" && n.bounds[1] < 400), { timeoutMs: 15_000 });
     return { card: "opened" };
   }
-  async function findInTasksCard(title, { sectionToggle = false } = {}) {
-    for (let i = 0; i < 10; i += 1) {
+  async function findInTasksCard(title, { sectionToggle = false, tries = 10 } = {}) {
+    const tapped = new Set();
+    for (let i = 0; i < tries; i += 1) {
       await sleep(1500);
       const list = nodes();
       const row = lastTitleNode(list, title);
       if (row && row.bounds[1] > 250) return { row, list };
-      const section = sectionToggle ? hasText(list, (n) => /^Backlog\b/.test(n.text) && n.clickable) : null;
-      if (section && i % 3 === 1) tapNode(section);
-      else if (i >= 1) swipeUp();
+      // Backlog is its own group after the active ones (SharedTasksPage listColumns); expand it once if folded.
+      const section = sectionToggle ? hasText(list, (n) => /^Backlog\b/.test(n.text) && n.bounds[1] > 450 && n.bounds[1] < 1300) : null;
+      if (section && !tapped.has(i - 1) && tapped.size < 2) {
+        tapped.add(i);
+        tapNode(section);
+      } else if (i >= 1) swipeUp();
     }
     return { row: null, list: nodes() };
   }
@@ -284,8 +288,12 @@ export async function run(ctx) {
       });
 
       // The task conversation page must be on screen for s2 / s3; reopen it if s1 stopped early.
-      const ensureTaskOpen = async () => {
+      const ensureTaskOpen = async (id) => {
         if (statusChip(nodes())) return;
+        if ((await findTaskHead()).chip) return;
+        await sstep(id, "reopen-task-conversation", () => reopenTask());
+      };
+      const reopenTask = async () => {
         deepLink(channelUrl(channel.id));
         await sleep(3000);
         await openTasksCard();
@@ -295,11 +303,12 @@ export async function run(ctx) {
         await waitUntil("the task conversation", (l) => statusChip(l) || hasText(l, "Message this task"), { timeoutMs: 45_000 });
         const { chip } = await findTaskHead();
         if (!chip) throw new Error(`the task head is not on screen; on screen: ${visible()}`);
+        return { reopened: true };
       };
 
       // ---------- s2 ----------
       await scenario("s2", async () => {
-        await ensureTaskOpen();
+        await ensureTaskOpen("s2");
         const before = await getTask(task.id, channel.id);
         await sstep("s2", "open-assignee-picker", async () => {
           const { list } = await findTaskHead();
@@ -341,7 +350,7 @@ export async function run(ctx) {
 
       // ---------- s3 ----------
       await scenario("s3", async () => {
-        await ensureTaskOpen();
+        await ensureTaskOpen("s3");
         const offered = {};
         const moveTo = async (target) => {
           await sstep("s3", `menu-from-${(statusOf((await findTaskHead()).chip) ?? "unknown").toLowerCase().replace(/\s+/g, "-")}`, async () => {
@@ -383,7 +392,7 @@ export async function run(ctx) {
           await waitUntil("the channel", channelReady, { timeoutMs: 45_000 });
           const inline = hasText(nodes(), (n) => n.desc.startsWith(`Open task #${backlog.number}:`));
           const opened = await openTasksCard();
-          const { row, list } = await findInTasksCard(backlog.title, { sectionToggle: true });
+          const { row, list } = await findInTasksCard(backlog.title, { sectionToggle: true, tries: 30 });
           if (row) {
             const backlogLabel = hasText(list, (n) => (/^Backlog\b/.test(n.text) || /Backlog/.test(n.desc) || n.text === "暂缓") && n.bounds[1] > 250);
             if (!backlogLabel) throw new Error(`the backlog task is listed but nothing on screen reads Backlog; on screen: ${visible(list)}`);
@@ -449,6 +458,13 @@ export async function run(ctx) {
       if (hasText(list, "Drafts") && hasText(list, "More")) break;
       if (!list.some((n) => n.pkg === PKG)) break;
       await back();
+    }
+    try {
+      const crash = ctx.adb(["logcat", "-d", "-b", "crash"], { allowFailure: true });
+      (await import("node:fs")).writeFileSync(`${ctx.OUT}/logcat-crash.txt`, String(crash ?? ""));
+      report.app_crash_logged = /build\.raft\.app/.test(String(crash ?? ""));
+    } catch (e) {
+      log(`crash log: ${e.message}`);
     }
     ctx.launchApp();
     await sleep(2500);
