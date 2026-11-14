@@ -242,6 +242,44 @@ class SharedRaftNetworkClientTest {
     }
 
     @Test
+    fun threadSummaryReadsAskForCutReplyPreviews() = runBlocking {
+        // botiverse/slock #14921: the messages page asks for `latestReplies[].preview` cut to 200
+        // characters; a cut preview comes back `truncated: true` (an Activity seed loads it, never shows it).
+        val executor = RecordingExecutor { ok() }
+        val client =
+            SharedRaftNetworkClient(
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                executor = executor
+            )
+
+        client.request(
+            priority = DataRequestPriority.Visible,
+            path = "messages/channel/channel-1",
+            method = "GET",
+            query = listOf("limit" to "30"),
+            serverIdOverride = null,
+            bodyText = null
+        )
+        client.request(
+            priority = DataRequestPriority.Visible,
+            path = "messages/sync",
+            method = "GET",
+            query = listOf("limit" to "30"),
+            serverIdOverride = null,
+            bodyText = null
+        )
+
+        assertEquals(
+            listOf(
+                "https://api.slock.test/api/messages/channel/channel-1?limit=30&threadPreviewChars=200",
+                "https://api.slock.test/api/messages/sync?limit=30",
+            ),
+            executor.requests.map { it.url },
+        )
+    }
+
+    @Test
     fun syncChangesPullSendsItsServerAsXServerIdNotTheSelectedOne() = runBlocking {
         // The server's requireServer (middleware/auth.ts) scopes `GET /api/sync/changes` by X-Server-Id.
         val executor = RecordingExecutor { ok("""{"cursor":"c1.2.1","hasMore":false,"changes":[],"reset":null}""") }

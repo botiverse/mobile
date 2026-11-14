@@ -742,6 +742,7 @@
     <string name="thread_member_role_agent">エージェント</string>
     <string name="thread_quoted_permalink_loading">メッセージを読み込み中…</string>
     <string name="thread_message_loading_full">メッセージ全文を読み込み中…</string>
+    <string name="thread_message_load_full_failed">メッセージ全文を読み込めませんでした</string>
     <string name="thread_quoted_permalink_no_content">（内容なし）</string>
     <string name="thread_quoted_permalink_unavailable_link">リンク先のメッセージを利用できません</string>
     <string name="thread_quoted_permalink_thread">スレッド</string>

@@ -164,6 +164,8 @@ private data class WireThreadReplyPreview(
     val senderAvatarUrl: String? = null,
     val createdAt: String = "",
     val updatedAt: String? = null,
+    /** botiverse/slock #14921: `true` only when the server cut [preview] (asked with `threadPreviewChars`). */
+    val truncated: Boolean? = null,
 )
 
 @Serializable
@@ -509,6 +511,7 @@ private fun WireThreadReplyPreview.toDomain(): ReplyPreview? {
         createdAt = createdAt.trim(),
         senderDisplayName = senderDisplayName?.trim()?.takeIf { it.isNotBlank() },
         updatedAt = updatedAt?.trim()?.takeIf { it.isNotBlank() },
+        truncated = truncated,
     )
 }
 

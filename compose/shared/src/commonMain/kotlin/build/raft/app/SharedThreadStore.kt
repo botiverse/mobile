@@ -17580,6 +17580,7 @@ internal fun RaftThreadMessageItem.mergeRealtimeUpdate(
         body = update.body.ifBlank { body },
         // A realtime update with a body carries the full text: a cut Activity seed is no longer cut.
         activityPreviewTruncated = activityPreviewTruncated && update.body.isBlank(),
+        activityPreviewLoadFailed = activityPreviewLoadFailed && update.body.isBlank(),
         threadChannelId = update.threadChannelId ?: threadChannelId,
         replyCount = maxOf(replyCount, update.replyCount),
         unreadReplyCount = maxOf(unreadReplyCount, update.unreadReplyCount),

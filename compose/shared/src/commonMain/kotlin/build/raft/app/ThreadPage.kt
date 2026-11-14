@@ -888,6 +888,8 @@ internal data class ThreadNewMessageMenuActionAvailability(
     val partialSelection: Boolean = false,
     /** A right-click menu opened over selected text in the message: "Copy" copies that text. */
     val copySelection: Boolean = false,
+    /** Select Text (the sheet for picking and quoting text); off for a cut Activity preview. */
+    val selectText: Boolean = true,
     /**
      * A long press on a link opened the menu, so the link's own "Copy link" shows above: the
      * message's Copy Link reads "Copy Message Link" (artin, 1.25).
@@ -912,7 +914,7 @@ internal data class ThreadNewMessageMenuActionAvailability(
             ThreadNewMessageMenuTool.TaskStatus -> taskStatus
             ThreadNewMessageMenuTool.ConvertToTask -> convertToTask
             // The sheet is for picking text; an in-place selection already does that.
-            ThreadNewMessageMenuTool.SelectText -> !selectionContext
+            ThreadNewMessageMenuTool.SelectText -> selectText && !selectionContext
             ThreadNewMessageMenuTool.SelectAll -> selectionContext && partialSelection
             ThreadNewMessageMenuTool.CopySelection -> copySelection && !selectionContext
         }
@@ -939,7 +941,8 @@ internal fun ThreadMessageMenuCapabilities.toThreadNewMessageMenuActionAvailabil
 ): ThreadNewMessageMenuActionAvailability =
     ThreadNewMessageMenuActionAvailability(
         reactions = quickReactions,
-        copy = true,
+        copy = copyText,
+        selectText = copyText,
         reply = reply,
         forward = forward,
         save = save,
@@ -3437,6 +3440,12 @@ internal data class RaftThreadMessageItem(
      * Activity open seed sets it; a message read from the server or a cache never does.
      */
     val activityPreviewTruncated: Boolean = false,
+    /**
+     * A cut Activity stand-in ([activityPreviewTruncated]) whose canonical load failed (offline, an
+     * error): the card says the full message couldn't load instead of showing the cut text as the
+     * message. Only [withActivityPreviewSettled] sets it; the canonical message replaces it.
+     */
+    val activityPreviewLoadFailed: Boolean = false,
     val randomId: String? = null,
     val threadChannelId: String? = null,
     val replyCount: Int = 0,
@@ -26942,7 +26951,7 @@ private fun ThreadMessagesListContent(
                         anchor = resolvedActionAnchor,
                         availability =
                             capabilities.toThreadNewMessageMenuActionAvailability(message, replyMetadata)
-                                .copy(copySelection = onCopySelection != null),
+                                .copy(copySelection = onCopySelection != null && capabilities.copyText),
                         onDismiss = closeActionMenu,
                         onReact = actions.onReact,
                         onCopy = actions.tools.onCopy,
@@ -31082,7 +31091,9 @@ private fun ThreadMessageCardContent(
                                                 wholeMessageText = threadMessageSelectionSourceText(message),
                                                 diagnosticsLogger = diagnosticsLogger
                                             ) {
-                                                if (richContentEnabled) {
+                                                // A cut Activity preview is plain text: no Markdown,
+                                                // link chips or mentions made from the cut text.
+                                                if (threadMessageRendersRichBody(message, richContentEnabled)) {
                                                     val markdownRenderSignature =
                                                         remember(message.id, bodyForRender) {
                                                             if (bodyForRender == message.body) {
@@ -31164,15 +31175,20 @@ private fun ThreadMessageCardContent(
                                     }
                                 }
                                 // artin 10-26: a body cut from an Activity preview ends in a loading
-                                // indicator until the canonical load replaces the message.
+                                // indicator until the canonical load replaces the message, or says
+                                // the full message couldn't load when that load failed.
                                 val messageBodyBlock: @Composable () -> Unit = {
-                                    if (message.activityPreviewTruncated) {
+                                    if (message.hasActivityCutBody()) {
                                         Column(
                                             horizontalAlignment =
                                                 if (alignOwnMessageRight) Alignment.End else Alignment.Start
                                         ) {
                                             messageBodyContent()
-                                            ThreadMessageFullBodyLoadingIndicator()
+                                            if (message.activityPreviewTruncated) {
+                                                ThreadMessageFullBodyLoadingIndicator()
+                                            } else {
+                                                ThreadMessageFullBodyLoadFailedNote()
+                                            }
                                         }
                                     } else {
                                         messageBodyContent()
@@ -32011,6 +32027,27 @@ internal fun ThreadMessageFullBodyLoadingIndicator(modifier: Modifier = Modifier
         size = RaftSpinnerSize.Xs,
         color = RaftColor.TextMutedGray,
         contentDescription = stringResource(Res.string.thread_message_loading_full),
+    )
+}
+
+/**
+ * Whether a message body renders as Markdown (links, mentions, tags, app link chips). A cut Activity
+ * preview ([hasActivityCutBody]) never does: it is plain text under its loading or failed note.
+ */
+internal fun threadMessageRendersRichBody(message: RaftThreadMessageItem, richContentEnabled: Boolean): Boolean =
+    richContentEnabled && !message.hasActivityCutBody()
+
+/**
+ * Ends a cut Activity preview whose full message failed to load
+ * ([RaftThreadMessageItem.activityPreviewLoadFailed]): a muted note, so the cut text never reads as
+ * the whole message.
+ */
+@Composable
+internal fun ThreadMessageFullBodyLoadFailedNote(modifier: Modifier = Modifier) {
+    Text(
+        text = stringResource(Res.string.thread_message_load_full_failed),
+        style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+        modifier = modifier.padding(top = RaftAppSpacing.Xs),
     )
 }
 
@@ -35264,7 +35301,12 @@ internal data class ThreadMessageMenuCapabilities(
      * botiverse/slock #14222: "Mark channel/DM as unread" on a message in a channel's or DM's list
      * (web messageMenuMarkUnread), labelled by the conversation's kind; null where there is none.
      */
-    val markConversationUnread: ThreadMarkConversationUnreadKind? = null
+    val markConversationUnread: ThreadMarkConversationUnreadKind? = null,
+    /**
+     * Copy, Select Text (and its quote) and a selection's Copy: off while the body is only a cut
+     * Activity preview ([hasActivityCutBody]), so the cut text is never copied or quoted as the message.
+     */
+    val copyText: Boolean = true
 )
 
 /** Which conversation a message menu's "Mark … as unread" names (web `markChannelAsUnread` / `markDmAsUnread`). */
@@ -35332,6 +35374,9 @@ internal fun threadMessageMenuCapabilities(
     // panel's parent (`showThreadFollowAction`); mobile's origin message is that parent.
     val threadFollowSurface =
         slice.showReplyActions || slice.originMessage?.id == message.id
+    // A cut Activity preview stands in for a message whose text has not loaded: nothing may copy,
+    // quote, translate, forward or make a task of the cut text until the full message replaces it.
+    val cutBody = message.hasActivityCutBody()
     return ThreadMessageMenuCapabilities(
         quickReactions = canReact,
         // Web's quick-reaction row ends with a SmilePlus "Add Reaction" (`reaction-add-any`) that
@@ -35340,13 +35385,14 @@ internal fun threadMessageMenuCapabilities(
         // (artin, 2026-10-21), which left the picker unreachable (Lagoon smoke, 2026-10-29).
         addReaction = canReact,
         copyLink = !localSend,
-        selectMessage = !localSend && !system && !slice.viewerIsGuest,
-        translate = if (localSend) ThreadMessageMenuTranslateState.Hidden else translate,
+        selectMessage = !localSend && !system && !slice.viewerIsGuest && !cutBody,
+        translate = if (localSend || cutBody) ThreadMessageMenuTranslateState.Hidden else translate,
         reply = slice.showReplyActions && !localSend,
         forward =
             writeActionsEnabled &&
                 slice.showForwardAction &&
                 !system &&
+                !cutBody &&
                 message.isForwardableOrdinaryChatMessage(),
         save = slice.showMessageSaveAction && !localSend,
         follow =
@@ -35364,13 +35410,15 @@ internal fun threadMessageMenuCapabilities(
             slice.canConvertMessagesToTasks &&
                 !taskConvertPending &&
                 !external &&
+                !cutBody &&
                 if (taskV2Enabled) message.canCreateTaskFromMessage() else message.canConvertToTask(),
         cancelLocalSend = writeActionsEnabled && message.isSendingLocalSend(),
         deleteLocalSend = writeActionsEnabled && message.isFailedLocalSend(),
         createTaskFromMessage = taskV2Enabled,
         markThreadUnreadChannelId =
             if (localSend) null else threadMessageMarkThreadUnreadChannelId(slice, replyMetadata, originReplyMetadata),
-        markConversationUnread = if (localSend) null else threadListMarkConversationUnreadKind(slice)
+        markConversationUnread = if (localSend) null else threadListMarkConversationUnreadKind(slice),
+        copyText = !cutBody
     )
 }
 
@@ -35441,9 +35489,11 @@ internal fun threadMessageMenuActions(
     // task), take it elsewhere (copy, forward, select), just for me (save, translate); a local
     // send's own Delete / Cancel close the menu.
     buildList {
+        // A cut Activity preview is not the message's text: nothing copies or quotes it.
+        val copyText = !message.hasActivityCutBody()
         // A right-click over selected text leads with Copy for it (artin, 2026-10-29), before
         // the sections (web: the browser's own Copy).
-        if (onCopySelection != null) {
+        if (onCopySelection != null && copyText) {
             add(ThreadMessageMenuAction(Res.string.common_copy.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopySelection))
         }
         if (showReplyAction) {
@@ -35522,8 +35572,8 @@ internal fun threadMessageMenuActions(
                 )
             )
         }
-        add(ThreadMessageMenuAction(Res.string.thread_action_copy_markdown.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopy))
-        add(ThreadMessageMenuAction(Res.string.thread_action_select_text.desc(), RaftLucideIconName.SquareDashedText, "copy", onClick = onSelectText))
+        add(ThreadMessageMenuAction(Res.string.thread_action_copy_markdown.desc(), RaftLucideIconName.Copy, "copy", enabled = copyText, onClick = onCopy))
+        add(ThreadMessageMenuAction(Res.string.thread_action_select_text.desc(), RaftLucideIconName.SquareDashedText, "copy", enabled = copyText, onClick = onSelectText))
         if (showForwardAction) {
             // Web uses the select-mode Forward glyph (lucide forward) for the per-message entry.
             add(ThreadMessageMenuAction(Res.string.thread_action_forward.desc(), RaftLucideIconName.Forward, "copy", onClick = onForward))

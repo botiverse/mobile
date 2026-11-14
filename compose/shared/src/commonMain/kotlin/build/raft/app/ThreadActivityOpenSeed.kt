@@ -56,18 +56,30 @@ internal fun threadActivityOpenSeedMessages(
         .forEach { item ->
             item.activitySeedMessages(principalId, names).forEach { message ->
                 val existing = byId[message.id]
-                // A reply window entry carries the server seq; it wins over a row-derived copy, and a
-                // full body wins over a cut preview of the same message.
-                if (
-                    existing == null ||
-                        (existing.seq == null && message.seq != null) ||
-                        (existing.activityPreviewTruncated && !message.activityPreviewTruncated)
-                ) {
-                    byId[message.id] = message
-                }
+                byId[message.id] = if (existing == null) message else activitySeedPreferred(existing, message)
             }
         }
     return byId.values.toList().sortedByThreadTimeline()
+}
+
+/**
+ * Two seeded copies of the same message: a full body always wins over a cut preview (a cut copy never
+ * beats a whole one, whichever carries the server seq); between copies equally cut or whole, a reply
+ * window entry with the server seq wins over a row-derived copy. The winner keeps the other's seq when
+ * it has none, so the timeline still orders it by the server.
+ */
+internal fun activitySeedPreferred(
+    existing: RaftThreadMessageItem,
+    candidate: RaftThreadMessageItem,
+): RaftThreadMessageItem {
+    val (winner, loser) =
+        when {
+            existing.activityPreviewTruncated != candidate.activityPreviewTruncated ->
+                if (existing.activityPreviewTruncated) candidate to existing else existing to candidate
+            existing.seq == null && candidate.seq != null -> candidate to existing
+            else -> existing to candidate
+        }
+    return if (winner.seq == null && loser.seq != null) winner.copy(seq = loser.seq) else winner
 }
 
 /**
@@ -79,12 +91,12 @@ internal fun threadActivityOpenSeedMessages(
 internal fun List<RaftThreadMessageItem>.withLocalFullMessages(
     localMessages: Collection<RaftThreadMessageItem>,
 ): List<RaftThreadMessageItem> {
-    if (none { it.activityPreviewTruncated } || localMessages.isEmpty()) return this
+    if (none { it.hasActivityCutBody() } || localMessages.isEmpty()) return this
     val fullById =
         localMessages
-            .filter { local -> !local.activityPreviewTruncated && local.body.isNotBlank() }
+            .filter { local -> !local.hasActivityCutBody() && local.body.isNotBlank() }
             .associateBy { it.id }
-    return map { seed -> if (seed.activityPreviewTruncated) fullById[seed.id] ?: seed else seed }
+    return map { seed -> if (seed.hasActivityCutBody()) fullById[seed.id] ?: seed else seed }
 }
 
 /**
@@ -97,7 +109,7 @@ internal fun List<RaftThreadMessageItem>.withLocalFullMessages(
 internal fun RaftThreadScreenPayload.withActivitySeedBodiesFrom(
     superseded: RaftThreadScreenPayload,
 ): RaftThreadScreenPayload {
-    if (messages.none { it.activityPreviewTruncated }) return this
+    if (messages.none { it.hasActivityCutBody() }) return this
     val stream = resolveThreadRouteIdentity().timelineChannelId ?: return this
     if (superseded.resolveThreadRouteIdentity().timelineChannelId != stream) return this
     val filled = messages.withLocalFullMessages(superseded.messages)
@@ -124,12 +136,29 @@ internal fun activitySeedPreviewIsTruncated(preview: String): Boolean =
         preview.length == ActivityPreviewMaxLength + ActivityPreviewEllipsis.length
 
 /**
+ * Whether a thread summary reply preview is the server's cut of a longer reply. The app asks for cut
+ * previews (`threadPreviewChars`, [build.raft.app.data.ThreadPreviewCharsQueryValue]); the server then marks each cut one
+ * `truncated: true` and leaves whole ones unflagged (botiverse/slock #14921). Without the request a
+ * preview is the reply's full content, so only the explicit flag counts: a whole reply that happens to
+ * end in "…" is never mistaken for a cut.
+ */
+internal fun activitySeedReplyPreviewIsTruncated(truncated: Boolean?): Boolean = truncated == true
+
+/**
+ * Whether this message's body is only an Activity preview cut, loading or failed to load: the card
+ * shows it as plain text (no Markdown, links or mentions of the cut text) and offers no action that
+ * would copy, quote, translate or reuse the cut text as the message.
+ */
+internal fun RaftThreadMessageItem.hasActivityCutBody(): Boolean =
+    activityPreviewTruncated || activityPreviewLoadFailed
+
+/**
  * A cut seed message whose full copy did not arrive (the main load failed, or the page is offline):
- * no loading indicator that would spin forever. The body still ends in the server's "…", so the cut
- * text does not read as the whole message.
+ * no loading indicator that would spin forever; the card says the full message couldn't load instead,
+ * still without rendering the cut text as the message.
  */
 internal fun RaftThreadMessageItem.withActivityPreviewSettled(): RaftThreadMessageItem =
-    if (activityPreviewTruncated) copy(activityPreviewTruncated = false) else this
+    if (activityPreviewTruncated) copy(activityPreviewTruncated = false, activityPreviewLoadFailed = true) else this
 
 internal fun RaftThreadScreenPayload.withActivityPreviewsSettled(): RaftThreadScreenPayload =
     if (messages.none { it.activityPreviewTruncated }) {
@@ -322,6 +351,9 @@ private fun ReplyPreview.toActivitySeedMessage(
         seq = seq,
         messageType = if (kind == "system") "System" else "Chat",
         body = content,
+        // Asked for (`threadPreviewChars`), the server cuts `latestReplies[].preview` and flags it
+        // `truncated`; a cut reply loads its full text like a cut row preview does.
+        activityPreviewTruncated = activitySeedReplyPreviewIsTruncated(truncated),
     )
 }
 

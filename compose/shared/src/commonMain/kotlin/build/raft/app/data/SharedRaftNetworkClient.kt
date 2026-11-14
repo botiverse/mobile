@@ -248,7 +248,7 @@ internal class SharedRaftNetworkClient(
                         val response =
                             executor.execute(
                                 priority = priority.toNetworkPriority(),
-                                url = absoluteUrl(requestBaseUrl, path, query),
+                                url = absoluteUrl(requestBaseUrl, path, query.withThreadPreviewChars(method, path)),
                                 method = method.uppercase(),
                                 headers =
                                     buildMap {
@@ -1596,6 +1596,41 @@ private fun String.jsonString(): String =
                 else -> append(char)
             }
         }
+    }
+
+/** botiverse/slock #14921 `?threadPreviewChars=N`: thread summaries' `latestReplies[].preview` cut to N characters. */
+internal const val ThreadPreviewCharsQueryKey = "threadPreviewChars"
+
+/** Mobile shows a reply preview as one row (and a cut one as a loading stand-in), so 200 is plenty. */
+internal const val ThreadPreviewCharsQueryValue = "200"
+
+/**
+ * Whether a request reads thread summaries the server can cut on request: `GET /messages/channel/:id`
+ * (and its `/by-activity` page), `GET /messages/context/:id` and `GET /channels/:id/threads`
+ * (botiverse/slock #14921). The activity inbox builds no thread summaries of its own.
+ */
+internal fun isThreadPreviewCharsRequest(method: String, path: String): Boolean {
+    if (!method.equals("GET", ignoreCase = true)) return false
+    val segments = path.trim().trimStart('/').trimEnd('/').split('/')
+    if (segments.any { it.isBlank() }) return false
+    return when {
+        segments.size == 3 && segments[0] == "messages" && segments[1] in setOf("channel", "context") -> true
+        segments.size == 4 && segments[0] == "messages" && segments[1] == "channel" && segments[3] == "by-activity" -> true
+        segments.size == 3 && segments[0] == "channels" && segments[1] != "threads" && segments[2] == "threads" -> true
+        else -> false
+    }
+}
+
+/**
+ * Every read of cuttable thread summaries asks for cut previews ([ThreadPreviewCharsQueryKey]); the
+ * server marks each cut preview `truncated: true`, which the Activity open seed shows as a loading
+ * stand-in, never as the reply's body. A query that already names the key is left as it is.
+ */
+internal fun List<Pair<String, String>>.withThreadPreviewChars(method: String, path: String): List<Pair<String, String>> =
+    if (isThreadPreviewCharsRequest(method, path) && none { it.first == ThreadPreviewCharsQueryKey }) {
+        this + (ThreadPreviewCharsQueryKey to ThreadPreviewCharsQueryValue)
+    } else {
+        this
     }
 
 private fun String.networkDiagnosticsCategory(): String {

@@ -742,6 +742,7 @@
     <string name="thread_member_role_agent">Agent</string>
     <string name="thread_quoted_permalink_loading">Loading message…</string>
     <string name="thread_message_loading_full">Loading full message…</string>
+    <string name="thread_message_load_full_failed">Couldn't load the full message</string>
     <string name="thread_quoted_permalink_no_content">(no content)</string>
     <string name="thread_quoted_permalink_unavailable_link">Unavailable linked message</string>
     <string name="thread_quoted_permalink_thread">Thread</string>

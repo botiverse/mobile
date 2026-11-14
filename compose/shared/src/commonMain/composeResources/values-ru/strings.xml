@@ -738,6 +738,7 @@
     <string name="thread_member_role_agent">Агент</string>
     <string name="thread_quoted_permalink_loading">Загрузка сообщения…</string>
     <string name="thread_message_loading_full">Загрузка полного сообщения…</string>
+    <string name="thread_message_load_full_failed">Не удалось загрузить полное сообщение</string>
     <string name="thread_quoted_permalink_no_content">(нет содержимого)</string>
     <string name="thread_quoted_permalink_unavailable_link">Связанное сообщение недоступно</string>
     <string name="thread_quoted_permalink_thread">Ветка</string>
