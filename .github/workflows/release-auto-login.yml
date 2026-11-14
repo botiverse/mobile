@@ -258,7 +258,7 @@ jobs:
           BT="$(ls -d "${ANDROID_HOME}"/build-tools/* | sort -V | tail -1)"
           badging() { "${BT}/aapt" dump badging "$1"; }
           B="$(badging "${APK}")"; A="$(badging "${MAIN_APK}")"
-          field() { sed -n "s/^package: .* $2='\([^']*\)'.*/\1/p" <<<"$1" | head -1; }
+          field() { sed -n "s/^package:.* $2='\([^']*\)'.*/\1/p" <<<"$1" | head -1; }
           [ "$(field "$B" name)" = build.raft.app ] || { echo "::error::extra APK is not build.raft.app"; exit 1; }
           if grep -q "application-debuggable" <<<"${B}"; then echo "::error::extra APK is debuggable"; exit 1; fi
           [ "$(field "$B" versionCode)" -gt "$(field "$A" versionCode)" ] || { echo "::error::extra APK versionCode must exceed the installed APK's"; exit 1; }
