@@ -83,3 +83,56 @@ export function callbackSchemeFor(packageId) {
   const suffix = /^build\.raft\.app\.([a-z]+)$/.exec(packageId)?.[1];
   return suffix ? `raft-${suffix}` : "raft";
 }
+
+/**
+ * Each cleanup step records one status; these are the ones that count as cleaned up. Anything
+ * else (including a missing step) is a cleanup failure.
+ *   capture_file    – the captured login URL file on the device
+ *   browser         – default browser role restored / browsers disabled for the run re-enabled
+ *   capture_browser – the QA capture browser package
+ *   web_session     – the web session the script opened to approve the login
+ *   app_session     – the app's own session (only touched with --revoke-app-session)
+ */
+export const CLEANUP_OK = {
+  capture_file: ["deleted", "not_applicable"],
+  browser: ["restored", "not_changed"],
+  capture_browser: ["uninstalled", "kept", "not_installed_by_run"],
+  web_session: ["signed_out", "not_opened"],
+  app_session: ["not_requested", "not_signed_in", "signed_out_via_app"],
+};
+
+/** Which cleanup steps failed, and whether the run may still exit 0. */
+export function summarizeCleanup(cleanup = {}) {
+  const failures = Object.keys(CLEANUP_OK)
+    .filter((key) => !CLEANUP_OK[key].includes(cleanup[key]))
+    .map((key) => ({ step: key, status: cleanup[key] ?? "missing" }));
+  return { ok: failures.length === 0, failures };
+}
+
+/**
+ * The run's result and exit code. Sign-in failing is always a failure. With strict cleanup (the
+ * Testbed mode) a signed-in run whose cleanup did not fully succeed also exits non-zero.
+ */
+export function runOutcome({ signedIn, cleanup, strict }) {
+  const { ok, failures } = summarizeCleanup(cleanup);
+  if (!signedIn) return { result: "failed", exitCode: 1, cleanupOk: ok, cleanupFailures: failures };
+  if (!ok && strict) return { result: "cleanup_failed", exitCode: 1, cleanupOk: ok, cleanupFailures: failures };
+  return { result: "signed_in", exitCode: 0, cleanupOk: ok, cleanupFailures: failures };
+}
+
+/**
+ * The app's own verdict on the callback, from its `SlockAppLogin` lines
+ * (`app_login_complete result=<r> reason=<why>`, AppLogin.kt: one line per exit of complete()).
+ *   exchanged – some line says result=app_shell reason=exchanged (the code is single-use, so a
+ *               later duplicate-callback "ignored" line does not undo it)
+ *   pending   – the last line is result=retry (the app will try the callback again)
+ *   refused   – the last line is any other result (login_error, stale, ignored, …)
+ *   absent    – no such line (yet)
+ */
+export function parseAppLoginComplete(logText) {
+  const lines = [...String(logText ?? "").matchAll(/app_login_complete result=(\S+) reason=(\S+)/g)].map((m) => ({ result: m[1], reason: m[2] }));
+  if (lines.some((l) => l.result === "app_shell" && l.reason === "exchanged")) return { status: "exchanged", result: "app_shell", reason: "exchanged" };
+  const last = lines[lines.length - 1];
+  if (!last) return { status: "absent", result: null, reason: null };
+  return { status: last.result === "retry" ? "pending" : "refused", result: last.result, reason: last.reason };
+}

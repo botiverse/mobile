@@ -24,6 +24,16 @@ on:
         required: false
         type: string
         default: android-release-apk
+      strict_cleanup:
+        description: "Fail the run when any cleanup step does not succeed (required for Testbed)"
+        required: false
+        type: boolean
+        default: true
+      revoke_app_session:
+        description: "Sign the app out through its own Sign out at the end (fallback: pm clear)"
+        required: false
+        type: boolean
+        default: true
   workflow_call:
     inputs:
       environment:
@@ -38,6 +48,14 @@ on:
         required: false
         type: string
         default: android-release-apk
+      strict_cleanup:
+        required: false
+        type: boolean
+        default: true
+      revoke_app_session:
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -53,16 +71,24 @@ jobs:
       apk_run_id: ${{ steps.p.outputs.apk_run_id }}
       apk_artifact: ${{ steps.p.outputs.apk_artifact }}
       environment: ${{ steps.p.outputs.environment }}
+      cleanup_flags: ${{ steps.p.outputs.cleanup_flags }}
     steps:
       - id: p
         env:
           ENVIRONMENT: ${{ inputs.environment || 'staging' }}
           APK_RUN_ID: ${{ inputs.apk_run_id }}
           APK_ARTIFACT: ${{ inputs.apk_artifact || 'android-release-apk' }}
+          # Both default on; only an explicit false turns them off.
+          STRICT_CLEANUP: ${{ inputs.strict_cleanup != false }}
+          REVOKE_APP_SESSION: ${{ inputs.revoke_app_session != false }}
         run: |
           set -euo pipefail
           case "${ENVIRONMENT}" in staging|production) ;; *) echo "::error::environment must be staging or production"; exit 1;; esac
           echo "environment=${ENVIRONMENT}" >> "$GITHUB_OUTPUT"
+          FLAGS=""
+          [ "${STRICT_CLEANUP}" = true ] && FLAGS="${FLAGS} --strict-cleanup"
+          [ "${REVOKE_APP_SESSION}" = true ] && FLAGS="${FLAGS} --revoke-app-session"
+          echo "cleanup_flags=${FLAGS# }" >> "$GITHUB_OUTPUT"
           if [ -n "${APK_RUN_ID}" ]; then
             [[ "${APK_RUN_ID}" =~ ^[0-9]+$ ]] || { echo "::error::apk_run_id must be a run id"; exit 1; }
             { echo "build=false"; echo "apk_run_id=${APK_RUN_ID}"; echo "apk_artifact=${APK_ARTIFACT}"; } >> "$GITHUB_OUTPUT"
@@ -157,7 +183,7 @@ jobs:
           emulator-boot-timeout: 1200
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: node scripts/qa/release_auto_login.mjs --apk "${{ steps.apk.outputs.apk }}" --capture-browser-apk "${{ runner.temp }}/capture-browser.apk" --env "${{ needs.plan.outputs.environment }}" --out "${{ env.EVIDENCE }}"
+          script: node scripts/qa/release_auto_login.mjs --apk "${{ steps.apk.outputs.apk }}" --capture-browser-apk "${{ runner.temp }}/capture-browser.apk" --env "${{ needs.plan.outputs.environment }}" --out "${{ env.EVIDENCE }}" ${{ needs.plan.outputs.cleanup_flags }}
 
       - name: Summary
         if: always()
@@ -167,6 +193,7 @@ jobs:
             echo "| | |"; echo "|---|---|"
             echo "| APK | \`${{ steps.apk.outputs.version }}\` from run \`${{ needs.plan.outputs.apk_run_id }}\` |"
             echo "| Server | ${{ needs.plan.outputs.environment }} |"
+            echo "| Cleanup flags | \`${{ needs.plan.outputs.cleanup_flags || 'none' }}\` |"
             if [ -f "${EVIDENCE}/summary.json" ]; then echo; echo '```json'; cat "${EVIDENCE}/summary.json"; echo '```'; fi
           } >> "$GITHUB_STEP_SUMMARY"
 

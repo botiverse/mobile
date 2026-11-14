@@ -3,7 +3,10 @@ import test from "node:test";
 import {
   callbackSchemeFor,
   createRedactor,
+  parseAppLoginComplete,
   parseCredentialFile,
+  runOutcome,
+  summarizeCleanup,
   validateCallbackUrl,
   validateCapturedLoginUrl,
 } from "./release_auto_login_lib.mjs";
@@ -42,4 +45,53 @@ test("credential file and callback scheme", () => {
   assert.throws(() => parseCredentialFile("nope"));
   assert.equal(callbackSchemeFor("build.raft.app"), "raft");
   assert.equal(callbackSchemeFor("build.raft.app.alpha"), "raft-alpha");
+});
+
+const cleanAll = {
+  capture_file: "deleted",
+  browser: "restored",
+  capture_browser: "uninstalled",
+  web_session: "signed_out",
+  app_session: "signed_out_via_app",
+};
+
+test("cleanup aggregation: every step must report an ok status", () => {
+  assert.deepEqual(summarizeCleanup(cleanAll), { ok: true, failures: [] });
+  assert.deepEqual(
+    summarizeCleanup({ capture_file: "not_applicable", browser: "not_changed", capture_browser: "kept", web_session: "not_opened", app_session: "not_requested" }),
+    { ok: true, failures: [] },
+  );
+  assert.deepEqual(summarizeCleanup({ ...cleanAll, browser: "failed", app_session: "local_cleared_server_unconfirmed" }), {
+    ok: false,
+    failures: [
+      { step: "browser", status: "failed" },
+      { step: "app_session", status: "local_cleared_server_unconfirmed" },
+    ],
+  });
+  const { web_session, ...missing } = cleanAll;
+  assert.deepEqual(summarizeCleanup(missing).failures, [{ step: "web_session", status: "missing" }]);
+});
+
+test("strict cleanup turns a cleanup failure into a non-zero exit; sign-in failure always fails", () => {
+  const dirty = { ...cleanAll, capture_browser: "failed" };
+  assert.equal(runOutcome({ signedIn: true, cleanup: cleanAll, strict: true }).exitCode, 0);
+  assert.deepEqual(
+    [runOutcome({ signedIn: true, cleanup: dirty, strict: true }).result, runOutcome({ signedIn: true, cleanup: dirty, strict: true }).exitCode],
+    ["cleanup_failed", 1],
+  );
+  const lenient = runOutcome({ signedIn: true, cleanup: dirty, strict: false });
+  assert.deepEqual([lenient.result, lenient.exitCode, lenient.cleanupOk], ["signed_in", 0, false]);
+  assert.deepEqual([runOutcome({ signedIn: false, cleanup: cleanAll, strict: false }).result, runOutcome({ signedIn: false, cleanup: cleanAll, strict: false }).exitCode], ["failed", 1]);
+});
+
+test("the exchange verdict comes from the app's own app_login_complete line", () => {
+  const line = (r, why) => `11-14 11:46:40.373  4313  4346 I SlockAppLogin: app_login_complete result=${r} reason=${why}\n`;
+  assert.deepEqual(parseAppLoginComplete(line("app_shell", "exchanged")), { status: "exchanged", result: "app_shell", reason: "exchanged" });
+  // A retry first, then the exchange; a duplicate callback afterwards does not undo it.
+  assert.equal(parseAppLoginComplete(line("retry", "runtime_unavailable") + line("app_shell", "exchanged") + line("ignored", "no_pending")).status, "exchanged");
+  assert.deepEqual(parseAppLoginComplete(line("retry", "runtime_unavailable")), { status: "pending", result: "retry", reason: "runtime_unavailable" });
+  assert.deepEqual(parseAppLoginComplete(line("login_error", "exchange_failed")), { status: "refused", result: "login_error", reason: "exchange_failed" });
+  assert.equal(parseAppLoginComplete("I SlockAppLogin: app_login_complete exchange_threw type=IOException\n" + line("login_error", "exchange_failed")).status, "refused");
+  assert.deepEqual(parseAppLoginComplete("I SlockAppLogin: web_login_attempt phase=awaiting_callback\n"), { status: "absent", result: null, reason: null });
+  assert.equal(parseAppLoginComplete("").status, "absent");
 });
