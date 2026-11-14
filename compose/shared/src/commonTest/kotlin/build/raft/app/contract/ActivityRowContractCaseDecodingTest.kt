@@ -59,8 +59,9 @@ class ActivityRowContractCaseDecodingTest {
         val absent = assertIs<ActivityRowCaseDecoding.Decoded>(decodeActivityRowContractCase("p", predicateMessage("")))
         val nullSubtype =
             assertIs<ActivityRowCaseDecoding.Decoded>(decodeActivityRowContractCase("p", predicateMessage(""","systemSubtype":null""")))
-        assertNull(absent.case.given.message?.systemSubtype, "absent: no provenance")
-        assertEquals(JsonNull, nullSubtype.case.given.message?.systemSubtype, "null: provenance without a subtype")
+        assertEquals(false, absent.case.given.message?.carriesSystemProvenance, "absent: no provenance")
+        assertEquals(true, nullSubtype.case.given.message?.carriesSystemProvenance, "null: provenance carried")
+        assertNull(nullSubtype.case.given.message?.systemSubtype, "null: no subtype")
     }
 
     @Test

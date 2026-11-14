@@ -38,10 +38,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 
 /**
  * App-side policy for the vendored Activity row contract cases, beside the case's own `knownGaps`
@@ -392,12 +390,10 @@ private fun ActivityRowMessage.toMessageNew(streamChannelId: String): MessageNew
         )
     // Absent `systemSubtype`: the frame carried no provenance (README "Predicate inputs").
     val provenance =
-        systemSubtype?.let { subtype ->
-            MessageSystemProvenance(
-                systemSubtype = (subtype as? JsonPrimitive)?.takeUnless { it is JsonNull }?.contentOrNull,
-                causalActorType = causalActorType,
-                causalActorId = causalActorId,
-            )
+        if (carriesSystemProvenance) {
+            MessageSystemProvenance(systemSubtype = systemSubtype, causalActorType = causalActorType, causalActorId = causalActorId)
+        } else {
+            null
         }
     return MessageNew(live, systemProvenance = provenance)
 }
@@ -410,7 +406,7 @@ private fun predicateDriver() =
                 case.rule != "predicate" -> "not a predicate case"
                 case.given.viewer == null || case.given.scope == null || case.given.message == null ->
                     "no given viewer/scope/message"
-                case.given.viewer.type != "user" -> "the app's Activity reader is a user, not '${case.given.viewer.type}'"
+                case.given.viewer?.type != "user" -> "the app's Activity reader is a user, not '${case.given.viewer?.type}'"
                 case.steps.isNotEmpty() -> "a predicate case has no steps"
                 case.expect?.verdict == null -> "no expected verdict"
                 else -> null

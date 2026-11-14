@@ -3,6 +3,7 @@ package build.raft.app.contract
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.Transient
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -87,8 +88,9 @@ internal data class ActivityRowScope(
 internal data class ActivityRowMention(val type: String, val id: String)
 
 /**
- * [systemSubtype] stays a [JsonElement]: absent (null here: the event carried no system provenance)
- * and JSON `null` (no subtype, provenance carried) mean different things.
+ * An absent `systemSubtype` (the event carried no system provenance) and JSON `null` (no subtype,
+ * provenance carried) mean different things; the decoder can tell them apart only from the raw
+ * JSON, so it sets [carriesSystemProvenance] from the key's presence.
  */
 @Serializable
 internal data class ActivityRowMessage(
@@ -97,8 +99,9 @@ internal data class ActivityRowMessage(
     val messageType: String,
     val causalActorType: String? = null,
     val causalActorId: String? = null,
-    val systemSubtype: JsonElement? = null,
+    val systemSubtype: String? = null,
     val mentions: List<ActivityRowMention> = emptyList(),
+    @Transient val carriesSystemProvenance: Boolean = false,
 )
 
 /** One act; `act` is the class discriminator. */
@@ -189,8 +192,12 @@ internal fun decodeActivityRowContractCase(fileId: String, text: String): Activi
     rowKeys.firstOrNull { it !in ActivityRowStateKeys }?.let { key ->
         return ActivityRowCaseDecoding.Unreadable(fileId, "unknown row key '$key' (the vendored copy is newer than this loader)")
     }
+    val carriesProvenance =
+        ((root["given"] as? JsonObject)?.get("message") as? JsonObject)?.containsKey("systemSubtype") == true
     return try {
-        ActivityRowCaseDecoding.Decoded(fileId, activityRowCaseJson.decodeFromJsonElement(ActivityRowContractCase.serializer(), root))
+        val case = activityRowCaseJson.decodeFromJsonElement(ActivityRowContractCase.serializer(), root)
+        val message = case.given.message?.copy(carriesSystemProvenance = carriesProvenance)
+        ActivityRowCaseDecoding.Decoded(fileId, case.copy(given = case.given.copy(message = message)))
     } catch (error: SerializationException) {
         ActivityRowCaseDecoding.Unreadable(fileId, "cannot decode with this loader: ${error.message?.lineSequence()?.first()}")
     } catch (error: IllegalArgumentException) {
