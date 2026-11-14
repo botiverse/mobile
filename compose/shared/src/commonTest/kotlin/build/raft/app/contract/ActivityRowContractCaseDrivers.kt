@@ -1,0 +1,466 @@
+package build.raft.app.contract
+
+import build.raft.app.data.ActivityRealtimeBackgroundRefreshIntervalMillis
+import build.raft.app.data.DataResult
+import build.raft.app.data.FakeInboxRepository
+import build.raft.app.data.InMemoryRaftAuthSessionStore
+import build.raft.app.data.InboxFetchReason
+import build.raft.app.data.InboxFetchReasonContext
+import build.raft.app.data.InboxFilter
+import build.raft.app.data.InboxItem
+import build.raft.app.data.InboxRepository
+import build.raft.app.data.InboxSnapshot
+import build.raft.app.data.InboxTaskConversation
+import build.raft.app.data.SharedActivityIntent
+import build.raft.app.data.SharedActivityStore
+import build.raft.app.data.activityItem
+import build.raft.app.data.activityStore
+import build.raft.app.data.message
+import build.raft.app.data.sampleSession
+import build.raft.app.data.snapshot
+import build.raft.app.data.threadItem
+import build.raft.app.model.ChannelId
+import build.raft.app.model.InboxItemKind
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MessageId
+import build.raft.app.model.MessageMention
+import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageSystemProvenance
+import build.raft.app.model.MessageType
+import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.model.PerReceiverReadStateScope
+import build.raft.app.model.ServerId
+import build.raft.app.model.TaskId
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+
+/**
+ * App-side policy for the vendored Activity row contract cases, beside the case's own `knownGaps`
+ * (the vendored files stay byte-identical to slock, so the app's gaps live here).
+ *
+ * An agreed case the app currently disagrees with: skipped with the reason (this loader does not
+ * change product behaviour). The runner still drives it and reports whether it still differs, so a
+ * gap the product closes is noticed.
+ */
+internal val AppActivityRowKnownGaps: Map<String, String> =
+    mapOf(
+        // ---- position: SharedActivityStore applyChannelMessageNewPatch / reconcileRealtimeChannelRow ----
+        "duplicate_covered_by_answer_rereads" to
+            "a live seq at or below the row's position is ignored (RealtimeRowPatch.Unchanged), never re-read: " +
+            "the app keeps no applied set per answer, so a copy of a seq the answer covered is a no-op",
+        "reverse_commit_live_after_answer" to
+            "a live seq below the served position is ignored (Unchanged) instead of re-reading the row, so the " +
+            "lower seq that committed after the answer is never asked for (the next list read brings it)",
+        "reverse_commit_live_before_answer" to
+            "a live seq below one already applied is ignored (Unchanged): it is neither counted nor treated as " +
+            "an inversion, so the row shows 1 instead of 2 and the answer is not followed by a re-read",
+        "unjudged_live_rereads" to
+            "the app has no 'cannot judge' verdict on a channel/DM row: a system line without provenance counts " +
+            "in place (InPlaceUnreadContext.unreadFor) and the row is not re-read",
+        "mention_only_stays_on_mention" to
+            "a mention past the conversation's Activity mute is not applied in place: the shell passes " +
+            "allowLocalPatch = false (SharedHomeShellStore.allowsLocalActivityPatch), so the row is re-read " +
+            "instead of moving to the mention's seq",
+        // ---- predicate: SharedActivityStore InPlaceUnreadContext.unreadFor / threadSystemMessageCounts ----
+        "predicate_channel_own_caused_system" to
+            "the system-line rule (threadSystemMessageCounts) applies on thread rows only, so a system line the " +
+            "viewer caused counts on a channel row",
+        "predicate_dm_own_caused_system" to
+            "the system-line rule (threadSystemMessageCounts) applies on thread rows only, so a system line the " +
+            "viewer caused counts on a DM row",
+        "predicate_channel_self_unfollow_subtype" to
+            "UncountedThreadSystemSubtypes applies on thread rows only, so channel.self_unfollow_thread counts " +
+            "on a channel row",
+        "predicate_channel_uncounted_subtype" to
+            "UncountedThreadSystemSubtypes applies on thread rows only, so task.deleted_summary counts on a " +
+            "channel row",
+        "predicate_muted_channel_message" to
+            "a message past the Activity mute is not judged in place (allowLocalPatch = false): the row is " +
+            "re-read and the server's answer decides (verdict null, not false)",
+        "predicate_muted_channel_mention" to
+            "a mention past the Activity mute is not judged in place (allowLocalPatch = false): the @ is not " +
+            "lit live; the row is re-read and the server's answer decides",
+        "predicate_thread_system_without_provenance" to
+            "a thread system line without provenance is judged 'does not count' and patched in place " +
+            "(threadSystemMessageCounts returns false for null provenance), not 'cannot judge' with a re-read",
+    )
+
+/** One way the app can run a case: [decline] says why it cannot (null = it can). */
+internal class ActivityRowCaseDriver(
+    val name: String,
+    val decline: (ActivityRowContractCase) -> String?,
+    val run: suspend TestScope.(ActivityRowContractCase) -> List<String>,
+)
+
+internal sealed interface ActivityRowCasePlan {
+    data class Run(val driver: ActivityRowCaseDriver) : ActivityRowCasePlan
+
+    /** [driver] is set when the app could run it anyway, so the report can tell whether the gap still holds. */
+    data class Skip(val reason: String, val driver: ActivityRowCaseDriver? = null) : ActivityRowCasePlan
+
+    /** No driver for an agreed case nobody listed: a new kind of case this loader must learn. */
+    data class Misconfigured(val reason: String) : ActivityRowCasePlan
+}
+
+internal val ActivityRowCaseDrivers: List<ActivityRowCaseDriver> = listOf(positionDriver(), predicateDriver())
+
+internal fun planActivityRowCase(case: ActivityRowContractCase): ActivityRowCasePlan {
+    if (case.status == "pending-product-decision") {
+        return ActivityRowCasePlan.Skip(
+            "pending product decision: ${case.decision?.question} (owner ${case.decision?.owner})"
+        )
+    }
+    if (case.status != "agreed") return ActivityRowCasePlan.Skip("status '${case.status}' is not one this loader knows")
+    val misses = mutableListOf<String>()
+    val driver =
+        ActivityRowCaseDrivers.firstOrNull { candidate ->
+            val reason = candidate.decline(case)
+            if (reason != null) misses += "${candidate.name}: $reason"
+            reason == null
+        }
+    case.knownGaps.firstOrNull { it.client == "app" }?.let { gap ->
+        return ActivityRowCasePlan.Skip("app gap: ${gap.reason}", driver)
+    }
+    AppActivityRowKnownGaps[case.id]?.let { reason -> return ActivityRowCasePlan.Skip("app gap: $reason", driver) }
+    return if (driver != null) {
+        ActivityRowCasePlan.Run(driver)
+    } else {
+        ActivityRowCasePlan.Misconfigured("${case.id}: no app driver (${misses.joinToString("; ")})")
+    }
+}
+
+// ---- The harness: the real SharedActivityStore, one row, scripted inbox answers ------------------
+
+private const val ViewerId = "viewer-1"
+private const val ServerIdValue = "server-1"
+
+/**
+ * The inbox the store reads. The first read (the entry load) answers with the given row; every later
+ * read waits for the case's next `answer`. A read the store starts on its own (not the harness's
+ * `Refresh` for an answer, not the once-a-minute in-place reconcile) is the case's re-read: the app
+ * re-reads the first window, which covers the case's one row.
+ */
+private class ScriptedInbox(
+    private val first: InboxSnapshot,
+) : InboxRepository by FakeInboxRepository(initialSnapshots = listOf(first)) {
+    data class Read(val reason: InboxFetchReason?, val byHarness: Boolean)
+
+    val reads = mutableListOf<Read>()
+    var harnessAsking = false
+    var pending: CompletableDeferred<InboxSnapshot>? = null
+        private set
+
+    val rereadAsked: Boolean
+        get() = reads.drop(1).any { !it.byHarness && it.reason != InboxFetchReason.InPlaceReconcile }
+
+    override suspend fun loadInitial(serverId: ServerId, filter: InboxFilter, limit: Int): DataResult<InboxSnapshot> {
+        val reason = currentCoroutineContext()[InboxFetchReasonContext]?.reason
+        reads += Read(reason, byHarness = harnessAsking)
+        harnessAsking = false
+        if (reads.size == 1) return DataResult.Content(first)
+        val answer = CompletableDeferred<InboxSnapshot>()
+        pending = answer
+        try {
+            return DataResult.Content(answer.await())
+        } finally {
+            if (pending === answer) pending = null
+        }
+    }
+}
+
+private class ActivityRowHarness(val store: SharedActivityStore, val inbox: ScriptedInbox, val rowKey: String) {
+    private var readStateVersion = 1L
+
+    fun observed(): ActivityRowObserved? =
+        store.state.value.items.firstOrNull { it.key == rowKey }?.let { row ->
+            ActivityRowObserved(row.unreadCount, row.hasMention, row.latestActivitySeq)
+        }
+
+    fun row(): InboxItem? = store.state.value.items.firstOrNull { it.key == rowKey }
+
+    fun nextReadStateVersion(): Long = ++readStateVersion
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun TestScope.loadedHarness(row: InboxItem): ActivityRowHarness {
+    val inbox = ScriptedInbox(snapshot(listOf(row), serverId = ServerIdValue))
+    val store =
+        activityStore(
+            scope = backgroundScope,
+            inboxRepository = inbox,
+            authStore = InMemoryRaftAuthSessionStore(sampleSession(userId = ViewerId, serverId = ServerIdValue)),
+            realtimeBackgroundRefreshIntervalMillis = ActivityRealtimeBackgroundRefreshIntervalMillis,
+            nowMillis = { testScheduler.currentTime },
+            inboxInPlaceEnabled = { true },
+        )
+    store.dispatch(SharedActivityIntent.LoadInitial)
+    runCurrent()
+    return ActivityRowHarness(store, inbox, row.key)
+}
+
+/**
+ * Lets the step settle: whatever re-read it asked for starts (the store's throttle window is
+ * [ActivityRealtimeBackgroundRefreshIntervalMillis]); far inside the in-place reconcile minute and the
+ * live patch's hold.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun TestScope.settle() {
+    runCurrent()
+    advanceTimeBy(ActivityRealtimeBackgroundRefreshIntervalMillis + 1L)
+    runCurrent()
+}
+
+// ---- position ------------------------------------------------------------------------------------
+
+private const val PositionChannel = "channel-1"
+
+/** A served channel row; `position` is both its `latestActivitySeq` and its read-state frontier. */
+private fun ActivityRowServed.toChannelRow(): InboxItem =
+    activityItem(PositionChannel, unreadCount = unreadCount).copy(
+        hasMention = hasMention,
+        firstMentionMessageId = if (hasMention) MessageId("mention-$position") else null,
+        lastMessageId = MessageId("m-${position ?: "unpaired"}"),
+        latestActivitySeq = position,
+        readStateLatestActivitySeq = position,
+    )
+
+/**
+ * The live message the app judges the way the step's verdict says (the predicate's own inputs):
+ * counts → another member's message (@ the viewer when [ActivityRowStep.LiveMessage.mentionsViewer]);
+ * does not count, no @ → the viewer's own; does not count, @ → a mention past the Activity mute (the
+ * README's example, delivered with `allowLocalPatch = false` as the shell does); cannot judge → a
+ * system line without its provenance.
+ */
+private fun ActivityRowStep.LiveMessage.toIntent(seq: Long): SharedActivityIntent.ApplyRealtimeEvent {
+    val id = "m-${this.seq}"
+    val mentions = if (mentionsViewer) listOf(MessageMention(type = "user", id = ViewerId)) else emptyList()
+    return when (counts) {
+        true ->
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message(id, channelId = PositionChannel, seq = seq).copy(mentions = mentions))
+            )
+        false ->
+            if (mentionsViewer) {
+                SharedActivityIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id, channelId = PositionChannel, seq = seq).copy(mentions = mentions)),
+                    allowLocalPatch = false,
+                )
+            } else {
+                SharedActivityIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id, channelId = PositionChannel, authorId = ViewerId, seq = seq))
+                )
+            }
+        null ->
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(id, channelId = PositionChannel, authorId = "system", seq = seq).let {
+                        it.copy(
+                            messageType = MessageType.System,
+                            author = it.author.copy(kind = MemberKind.System),
+                            mentions = mentions,
+                        )
+                    },
+                    systemProvenance = null,
+                )
+            )
+    }
+}
+
+private fun positionDriver() =
+    ActivityRowCaseDriver(
+        name = "position",
+        decline = { case ->
+            when {
+                case.rule != "position" -> "not a position case"
+                case.given.row == null -> "no given.row"
+                case.expect?.reread == null -> "no expected reread"
+                case.checkpoints.any { it.afterStep !in 1..case.steps.size } -> "a checkpoint is out of range"
+                else -> null
+            }
+        },
+        run = { case -> runPositionCase(case) },
+    )
+
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun TestScope.runPositionCase(case: ActivityRowContractCase): List<String> {
+    val failures = mutableListOf<String>()
+    val h = loadedHarness(case.given.row!!.toChannelRow())
+    val shown = activityRowMismatches("as served", case.given.row.toExpectation(), h.observed())
+    if (shown.isNotEmpty()) return listOf("the harness did not show the given row: $shown")
+
+    fun check(where: String, row: JsonObject?, reread: Boolean?) {
+        row?.let { failures += activityRowMismatches(where, it, h.observed()) }
+        if (reread != null && reread != h.inbox.rereadAsked) {
+            failures += "$where: reread: expected $reread, got ${h.inbox.rereadAsked}"
+        }
+    }
+
+    case.steps.forEachIndexed { index, step ->
+        when (step) {
+            is ActivityRowStep.LiveMessage -> {
+                val seq = step.seq.toLongOrNull() ?: return listOf("step ${index + 1}: seq ${step.seq} is not a 64-bit seq")
+                h.store.dispatch(step.toIntent(seq))
+            }
+            is ActivityRowStep.Answer -> {
+                // The answer to a re-read already in flight, or else a list read the harness asks for.
+                if (h.inbox.pending == null) {
+                    h.inbox.harnessAsking = true
+                    h.store.dispatch(SharedActivityIntent.Refresh)
+                    runCurrent()
+                }
+                val pending = h.inbox.pending ?: return listOf("step ${index + 1}: the store started no read to answer")
+                pending.complete(snapshot(listOf(step.row.toChannelRow()), serverId = ServerIdValue))
+            }
+            is ActivityRowStep.Read -> {
+                val seq = step.seq.toLongOrNull() ?: return listOf("step ${index + 1}: seq ${step.seq} is not a 64-bit seq")
+                h.store.dispatch(
+                    SharedActivityIntent.ApplyRealtimeEvent(
+                        PerReceiverReadStateChanged(
+                            serverId = ServerId(ServerIdValue),
+                            scopes =
+                                listOf(
+                                    PerReceiverReadStateScope(
+                                        ChannelId(PositionChannel),
+                                        maxReadSeq = seq,
+                                        readStateVersion = h.nextReadStateVersion(),
+                                    )
+                                ),
+                        )
+                    )
+                )
+            }
+        }
+        settle()
+        case.checkpoints.filter { it.afterStep == index + 1 }.forEach { checkpoint ->
+            check("after step ${index + 1}", checkpoint.row, checkpoint.reread)
+        }
+    }
+    check("at the end", case.expect!!.row, case.expect.reread)
+    return failures
+}
+
+private fun ActivityRowServed.toExpectation() =
+    JsonObject(
+        mapOf(
+            "unreadCount" to JsonPrimitive(unreadCount),
+            "hasMention" to JsonPrimitive(hasMention),
+            "position" to JsonPrimitive(position),
+        )
+    )
+
+// ---- predicate -----------------------------------------------------------------------------------
+
+private const val PredicateRowSeq = 10L
+
+/** The row a predicate case's message lands on, read and unmentioned, with a position to order by. */
+private fun ActivityRowScope.toRow(): InboxItem =
+    when (rowKind) {
+        ActivityRowKind.Channel -> activityItem("channel-1")
+        ActivityRowKind.Dm -> activityItem("dm-1").copy(key = "dm:dm-1", kind = InboxItemKind.DirectMessage)
+        ActivityRowKind.Thread -> threadItem("thread-1").copy(isFollowing = threadFollowed ?: true)
+        ActivityRowKind.Task ->
+            threadItem("thread-1").copy(
+                isFollowing = threadFollowed ?: true,
+                taskConversation = InboxTaskConversation(taskId = TaskId("task-1"), taskTitle = "Task"),
+            )
+    }.copy(latestActivitySeq = PredicateRowSeq.toString(), readStateLatestActivitySeq = PredicateRowSeq.toString())
+
+private val InboxItem.streamChannelId: String get() = (threadChannelId ?: channelId).value
+
+private fun ActivityRowMessage.toMessageNew(streamChannelId: String): MessageNew {
+    val kind =
+        when (senderType) {
+            "agent" -> MemberKind.Agent
+            "system" -> MemberKind.System
+            else -> MemberKind.Human
+        }
+    val base = message("live-1", channelId = streamChannelId, authorId = senderId, seq = PredicateRowSeq + 1)
+    val live =
+        base.copy(
+            messageType = if (messageType == "system") MessageType.System else MessageType.Chat,
+            author = base.author.copy(id = MemberId(senderId), kind = kind),
+            mentions = mentions.map { MessageMention(type = it.type, id = it.id) },
+        )
+    // Absent `systemSubtype`: the frame carried no provenance (README "Predicate inputs").
+    val provenance =
+        if (carriesSystemProvenance) {
+            MessageSystemProvenance(systemSubtype = systemSubtype, causalActorType = causalActorType, causalActorId = causalActorId)
+        } else {
+            null
+        }
+    return MessageNew(live, systemProvenance = provenance)
+}
+
+private fun predicateDriver() =
+    ActivityRowCaseDriver(
+        name = "predicate",
+        decline = { case ->
+            when {
+                case.rule != "predicate" -> "not a predicate case"
+                case.given.viewer == null || case.given.scope == null || case.given.message == null ->
+                    "no given viewer/scope/message"
+                case.given.viewer?.type != "user" -> "the app's Activity reader is a user, not '${case.given.viewer?.type}'"
+                case.steps.isNotEmpty() -> "a predicate case has no steps"
+                case.expect?.verdict == null -> "no expected verdict"
+                else -> null
+            }
+        },
+        run = { case -> runPredicateCase(case) },
+    )
+
+/**
+ * The verdict as the app's live patch reaches it: the message arrives on a read row the list shows
+ * and the store judges it in place (SharedActivityStore `InPlaceUnreadContext.unreadFor`). `counts`
+ * is the unread it added; a message the store does not apply in place and re-reads the row for is
+ * `counts: null` (cannot judge here). `mention` is the @ it lit.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun TestScope.runPredicateCase(case: ActivityRowContractCase): List<String> {
+    val viewer = case.given.viewer!!
+    val scope = case.given.scope!!
+    // The harness signs in as ViewerId; the case's ids are mapped onto it.
+    val message =
+        case.given.message!!.let { m ->
+            m.copy(
+                senderId = if (m.senderId == viewer.id) ViewerId else m.senderId,
+                causalActorId = if (m.causalActorId == viewer.id) ViewerId else m.causalActorId,
+                mentions = m.mentions.map { if (it.id == viewer.id) it.copy(id = ViewerId) else it },
+            )
+        }
+    val row = scope.toRow()
+    val h = loadedHarness(row)
+    val before = h.row() ?: return listOf("the harness did not show the row")
+    if (before.unreadCount != 0 || before.hasMention) return listOf("the harness row is not read: $before")
+
+    h.store.dispatch(
+        SharedActivityIntent.ApplyRealtimeEvent(
+            message.toMessageNew(row.streamChannelId),
+            allowLocalPatch = scope.activityMuted != true,
+            activeConversationId = if (scope.readOnArrival == true) row.streamChannelId else null,
+        )
+    )
+    settle()
+
+    val after = h.row() ?: return listOf("the row left the list")
+    val applied = after.latestActivitySeq == (PredicateRowSeq + 1).toString()
+    val counts: Boolean? =
+        when {
+            applied && !h.inbox.rereadAsked -> after.unreadCount > 0
+            !applied && h.inbox.rereadAsked -> null
+            else ->
+                return listOf(
+                    "no verdict: applied=$applied rereadAsked=${h.inbox.rereadAsked} " +
+                        "(row seq ${after.latestActivitySeq}, unread ${after.unreadCount})"
+                )
+        }
+    val actual = ActivityRowVerdict(counts = counts, mention = after.hasMention)
+    val expected = case.expect!!.verdict!!
+    return if (actual == expected) emptyList() else listOf("verdict: expected $expected, got $actual")
+}

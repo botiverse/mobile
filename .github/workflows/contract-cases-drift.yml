@@ -1,15 +1,16 @@
 name: Unread contract cases drift
 
-# The app runs a pinned copy of botiverse/slock's shared unread contract cases
-# (packages/shared/contract-cases/unread → compose/shared/src/commonTest/resources/
-# contract-cases/unread, SOURCE_SHA beside it; task #proj-mobile:#70). This job
+# The app runs pinned copies of botiverse/slock's shared contract cases
+# (packages/shared/contract-cases/{unread,activity-row} → compose/shared/src/commonTest/
+# resources/contract-cases/<set>, SOURCE_SHA beside each; task #proj-mobile:#70,
+# #triage:#244). This job
 # fails when slock `staging` has cases the copy does not, so a rule web and the
 # app agreed on cannot change upstream without the app noticing (Tenny: daily
 # and on app PRs touching unread code; red, not a log line).
 #
 # Fix a red run: SLOCK_SOURCE_REPO=<slock checkout> python3
 # scripts/sync_slock_contract_cases.py --ref origin/staging, run
-# UnreadContractCasesTest, and open a PR with the new copy.
+# UnreadContractCasesTest and ActivityRowContractCasesTest, and open a PR with the new copy.
 
 on:
   schedule:
@@ -33,6 +34,9 @@ on:
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedHomeStore.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/SharedThreadStore.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/RaftHomeComponents.kt"
+      # The app code the Activity row cases drive (in-place row patch, live unread predicate).
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedActivityStore.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedActivityLocalMutationOverlay.kt"
       - "scripts/sync_slock_contract_cases.py"
       # Notification level fixture (slock docs/contracts/fixtures/notification-levels.json).
       - "compose/shared/src/androidUnitTest/kotlin/build/raft/app/contract/NotificationLevelContractCasesTest.kt"
@@ -85,10 +89,11 @@ jobs:
         if: failure()
         run: |
           {
-            echo "## Unread contract cases drifted from botiverse/slock"
+            echo "## Contract cases drifted from botiverse/slock"
             echo
-            echo "Vendored from: \`$(cat compose/shared/src/commonTest/resources/contract-cases/unread/SOURCE_SHA 2>/dev/null || echo none)\`"
+            echo "unread vendored from: \`$(cat compose/shared/src/commonTest/resources/contract-cases/unread/SOURCE_SHA 2>/dev/null || echo none)\`"
+            echo "activity-row vendored from: \`$(cat compose/shared/src/commonTest/resources/contract-cases/activity-row/SOURCE_SHA 2>/dev/null || echo none)\`"
             echo "slock now: \`$(git -C slock-source rev-parse HEAD 2>/dev/null || echo unavailable)\`"
             echo
-            echo "Re-vendor: \`SLOCK_SOURCE_REPO=<slock> python3 scripts/sync_slock_contract_cases.py --ref origin/staging\`, then run \`UnreadContractCasesTest\`. Owner: @Lagoon (#proj-mobile:#70)."
+            echo "Re-vendor: \`SLOCK_SOURCE_REPO=<slock> python3 scripts/sync_slock_contract_cases.py --ref origin/staging\`, then run \`UnreadContractCasesTest\` / \`ActivityRowContractCasesTest\`. Owner: @Lagoon (#proj-mobile:#70)."
           } >> "$GITHUB_STEP_SUMMARY"
