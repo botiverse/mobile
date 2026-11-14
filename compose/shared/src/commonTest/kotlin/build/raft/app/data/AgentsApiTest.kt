@@ -597,6 +597,23 @@ class AgentsApiTest {
     }
 
     @Test
+    fun typedAgentsApiKeepsBuiltInSavedProviderConnection() = runPortableCoroutineTest {
+        val client =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody =
+                        """{"id":"agent-1","name":"Pi","runtimeConfig":{"version":1,"runtime":"builtin","provider":{"kind":"connection","connectionId":"conn-1"},"model":{"kind":"custom","name":"deepseek-v4"},"mode":{"kind":"default"}}}"""
+                )
+            )
+
+        val detail = assertIs<DataResult.Content<AgentSummary>>(client.agent(MemberId("agent-1"))).data
+
+        assertEquals("builtin", detail.runtime)
+        // slock BuiltInRuntimeProviderConfig: a saved connection, not "Default".
+        assertEquals(RuntimeProviderConfig.Connection("conn-1"), detail.runtimeProvider)
+    }
+
+    @Test
     fun typedAgentsApiRejectsGuessedWrappersAndAliases() = runPortableCoroutineTest {
         val client =
             RaftAgentsApiClient(

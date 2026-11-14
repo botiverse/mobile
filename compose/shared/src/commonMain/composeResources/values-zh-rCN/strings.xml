@@ -1574,6 +1574,7 @@
     <string name="member_label_reasoning">推理强度</string>
     <string name="member_label_mode">模式</string>
     <string name="member_label_provider">提供方</string>
+    <string name="member_label_saved_provider">已保存的提供方</string>
     <string name="member_label_command">命令</string>
     <string name="member_label_default">默认</string>
     <string name="member_label_fast">快速</string>

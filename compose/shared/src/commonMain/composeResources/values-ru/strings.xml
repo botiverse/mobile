@@ -1545,6 +1545,7 @@
     <string name="member_label_reasoning">Глубина рассуждений</string>
     <string name="member_label_mode">Режим</string>
     <string name="member_label_provider">Провайдер</string>
+    <string name="member_label_saved_provider">Сохранённый провайдер</string>
     <string name="member_label_command">Команда</string>
     <string name="member_label_default">По умолчанию</string>
     <string name="member_label_fast">Быстрый</string>

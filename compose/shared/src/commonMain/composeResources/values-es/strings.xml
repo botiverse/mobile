@@ -1548,6 +1548,7 @@
     <string name="member_label_reasoning">Razonamiento</string>
     <string name="member_label_mode">Modo</string>
     <string name="member_label_provider">Proveedor</string>
+    <string name="member_label_saved_provider">Proveedor guardado</string>
     <string name="member_label_command">Comando</string>
     <string name="member_label_default">Predeterminado</string>
     <string name="member_label_fast">Rápido</string>
