@@ -90,9 +90,18 @@ internal class RaftShellNavigationIntake(
             launch { externalInviteInbox.pending.collect { pending -> if (pending != null) wake() } }
             launch { serverJoinInbox.pending.collect { pending -> if (pending != null) wake() } }
             for (ignored in wakeups) {
-                takeArtifactLink(host)?.let(host::openArtifactLink)
-                takeExternalInviteLink(host)?.let(host::openExternalInviteLink)
-                takeServerJoinLink(host)?.let(host::openServerJoinLink)
+                takeArtifactLink(host)?.let { taken ->
+                    host.closeIncomingNavigationCover()
+                    host.openArtifactLink(taken)
+                }
+                takeExternalInviteLink(host)?.let { taken ->
+                    host.closeIncomingNavigationCover()
+                    host.openExternalInviteLink(taken)
+                }
+                takeServerJoinLink(host)?.let { taken ->
+                    host.closeIncomingNavigationCover()
+                    host.openServerJoinLink(taken)
+                }
                 takeMessageLink(host)?.let { taken ->
                     launch {
                         val intent = host.resolveMessageLink(taken) ?: return@launch
@@ -163,7 +172,11 @@ internal class RaftShellNavigationIntake(
         while (true) {
             val readiness = host.readiness() ?: return
             val action = coordinator.advance(readiness) ?: return
-            val covered = false
+            // A task surface is a window over the top page, not a page: it closes first, and the
+            // page under it is not what the reader sees, so a link into it still opens (its anchor).
+            val covered =
+                (action is WindowNavigationAction.OpenConversation || action is WindowNavigationAction.Reject) &&
+                    host.closeIncomingNavigationCover()
             if (
                 action is WindowNavigationAction.OpenConversation &&
                 !covered &&
