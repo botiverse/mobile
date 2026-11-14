@@ -136,7 +136,7 @@ class RaftServerSwitchReloadTest {
         job.join()
 
         assertEquals(
-            listOf(RaftServerScopeKey("user-1", "server-a"), RaftServerScopeKey("user-1", "server-b")),
+            listOf<RaftServerScopeKey?>(RaftServerScopeKey("user-1", "server-a"), RaftServerScopeKey("user-1", "server-b")),
             collected,
         )
     }
