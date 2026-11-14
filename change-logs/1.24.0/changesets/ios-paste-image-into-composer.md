@@ -3,7 +3,7 @@ type: added
 area: composer
 platforms:
   - ios
-pull_request: 4619
+pull_request: 4609
 rollout: full
 ---
 

@@ -3,7 +3,6 @@ type: fixed
 area: thread
 platforms:
   - android
-  - ios
 pull_request: 4541
 rollout: full
 ---
