@@ -16,30 +16,25 @@ import UIKit
 // Because the manifest names a custom scene delegate, SwiftUI no longer creates
 // the window for `WindowGroup` — willConnectTo installs the UIHostingController
 // itself.
+/// Root SwiftUI view of every window (scene delegate and the App's WindowGroup alike). In Debug QA
+/// launches it holds ContentView back until the QA session bootstrap has persisted the session
+/// (docs/qa-acceptance/session-bootstrap.md); everywhere else it is ContentView.
+struct RaftIosRootView: View {
+    var body: some View {
+        #if RAFT_QA_SESSION_BOOTSTRAP
+        RaftIosQaSessionBootstrapGateView { ContentView() }
+        #else
+        ContentView()
+        #endif
+    }
+}
+
 final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
     /// Shell identity resolved for this scene. ContentView reaches it through
     /// the registry keyed by session.persistentIdentifier.
     let shellContext = RaftIosShellContext()
-
-    private func installRootViewController(in window: UIWindow) {
-        #if RAFT_QA_SESSION_BOOTSTRAP
-        // Debug Simulator QA harness only (docs/qa-acceptance/session-bootstrap.md): hold the shell
-        // back until the launch's QA session envelope is consumed and persisted, so the shell's
-        // first session read sees it (Android starts its shell after the bootstrap activity, too).
-        if let request = RaftIosQaSessionBootstrapHost.takeLaunchRequest() {
-            let placeholder = UIViewController()
-            placeholder.view.backgroundColor = UIColor(raftArgb: RaftAppAppearanceRuntime.shared.canvasArgb)
-            window.rootViewController = placeholder
-            RaftIosQaSessionBootstrapHost.run(request) { [weak window] in
-                window?.rootViewController = UIHostingController(rootView: ContentView())
-            }
-            return
-        }
-        #endif
-        window.rootViewController = UIHostingController(rootView: ContentView())
-    }
 
     func scene(
         _ scene: UIScene,
@@ -63,7 +58,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         // delegate owns window creation.
         if let windowScene = scene as? UIWindowScene {
             let window = UIWindow(windowScene: windowScene)
-            installRootViewController(in: window)
+            window.rootViewController = UIHostingController(rootView: RaftIosRootView())
             // Settings > Appearance > Theme: an explicit Light/Dark choice overrides the OS
             // style for the whole window (keyboards, system menus, the native tab bar);
             // System leaves it unspecified. The dark canvas behind the first frame avoids a

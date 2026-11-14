@@ -31,7 +31,7 @@ BINARY_MARKERS = (
     b"RaftIosQaSessionBootstrapHost",
     b"RaftIosQaSessionBootstrapContract",
 )
-SWIFT_REFERENCE = re.compile(r"RaftIosQaSessionBootstrap(Host|Contract|Bridge)")
+SWIFT_REFERENCE = re.compile(r"RaftIosQaSessionBootstrap\w*")
 
 
 def fail(message: str) -> None:

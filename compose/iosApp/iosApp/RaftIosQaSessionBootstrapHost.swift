@@ -1,14 +1,16 @@
 #if RAFT_QA_SESSION_BOOTSTRAP
 // iOS Simulator QA session bootstrap host: the iOS counterpart of Android's QaSessionBootstrapActivity.
 // scripts/qa/ios_qa_bootstrap.mjs installs the envelope in the app's private inbox and launches the app
-// with `-qaBootstrapRequestId <id> -qaBootstrapEnvelopeDigest sha256:<hex>`; the scene delegate then
-// holds the shell back until run(_:completion:) has consumed, validated and persisted the session.
+// with `-qaBootstrapRequestId <id> -qaBootstrapEnvelopeDigest sha256:<hex>`. iOSApp.init starts the
+// gate; RaftIosRootView holds the shell back until run(_:completion:) has consumed, validated and
+// persisted the session.
 // Debug configuration only (RAFT_QA_SESSION_BOOTSTRAP) and Simulator only. Log lines carry
 // stage/code/digest tokens and paths, never envelope contents or tokens.
 // Contract: docs/qa-acceptance/session-bootstrap.md.
 
 import Foundation
 import shared
+import SwiftUI
 import UIKit
 
 enum RaftIosQaSessionBootstrapHost {
@@ -149,6 +151,39 @@ enum RaftIosQaSessionBootstrapHost {
     /// the harness from the Simulator's unified log.
     private static func log(_ line: String) {
         NSLog("%@", "[SlockQaBootstrap][info] \(line)")
+    }
+}
+/// Process-wide bootstrap state the root view observes: holds the shell while a launch request runs.
+final class RaftIosQaSessionBootstrapGate: ObservableObject {
+    static let shared = RaftIosQaSessionBootstrapGate()
+
+    @Published private(set) var holdsShell = false
+
+    /// Called once from iOSApp.init, before any scene connects.
+    func start() {
+        guard let request = RaftIosQaSessionBootstrapHost.takeLaunchRequest() else { return }
+        holdsShell = true
+        RaftIosQaSessionBootstrapHost.run(request) { [weak self] in
+            self?.holdsShell = false
+        }
+    }
+}
+
+/// Shows [content] (the app shell) only once no QA session bootstrap is pending.
+struct RaftIosQaSessionBootstrapGateView<Content: View>: View {
+    @ObservedObject private var gate = RaftIosQaSessionBootstrapGate.shared
+    private let content: () -> Content
+
+    init(@ViewBuilder content: @escaping () -> Content) {
+        self.content = content
+    }
+
+    var body: some View {
+        if gate.holdsShell {
+            Color(UIColor(raftArgb: RaftAppAppearanceRuntime.shared.canvasArgb)).ignoresSafeArea()
+        } else {
+            content()
+        }
     }
 }
 #endif

@@ -167,7 +167,8 @@ contents.
 ## Release exclusion (iOS)
 
 - The Swift host and contract files are wrapped whole in `#if RAFT_QA_SESSION_BOOTSTRAP`;
-  the scene delegate's only call sits inside the same `#if`. The condition is set in
+  the only call sites (`iOSApp.init` starting the gate, `RaftIosRootView` holding the shell) sit
+  inside the same `#if`. The condition is set in
   `SWIFT_ACTIVE_COMPILATION_CONDITIONS` of the `iosApp` target's **Debug** configuration
   only; the Release configuration (`ios-release.yml` archive → TestFlight / App Store)
   never defines it.
