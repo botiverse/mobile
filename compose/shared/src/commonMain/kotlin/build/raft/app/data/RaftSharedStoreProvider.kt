@@ -3541,71 +3541,15 @@ internal class RaftSharedStoreProvider private constructor(
                     // see processPresenceBindingTransition.
                     onAuthRevisionAdvanced = {},
                     onAuthBindingAdvanced =
-                        processAccountBindingTransition(
+                        processAccountBindingTransitionWithPendingSends(
                             presenceAuthContext = presenceAuthContext,
                             accountBinding = accountBinding,
                             registry = processMemberPresenceRegistry,
+                            journal = threadPendingSendJournal,
                             currentEnvironmentId = {
                                 apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
                             },
-                            // Retire only the exact environment/principal/auth revision that
-                            // previously owned sends.  A late terminal event can never erase a
-                            // successor login's rows because its authGeneration is different.
-                            onBindingRetired = { retired ->
-                                val cleared = threadPendingSendJournal.clearForAuthRevision(
-                                    environmentId = retired.environmentId,
-                                    principalId = retired.accountId,
-                                    authGeneration = retired.authorityGeneration,
-                                )
-                                if (!cleared) {
-                                    realtimeAuthorityDiagnosticsLogger(
-                                        "thread_pending_send_auth_revision_cleanup_failed " +
-                                            "environmentId=${retired.environmentId} " +
-                                            "principalId=${retired.accountId} " +
-                                            "authGeneration=${retired.authorityGeneration}"
-                                    )
-                                }
-                            },
-                            // A cold process has no in-memory predecessor to retire.  Remove
-                            // only rows from older generations and preserve the exact current
-                            // generation, so a successor login cannot be erased by restoration.
-                            onBindingBound = { bound ->
-                                val cleared = threadPendingSendJournal.clearForPrincipalBeforeAuthRevision(
-                                    environmentId = bound.environmentId,
-                                    principalId = bound.accountId,
-                                    authGeneration = bound.authorityGeneration,
-                                )
-                                if (!cleared) {
-                                    realtimeAuthorityDiagnosticsLogger(
-                                        "thread_pending_send_stale_generation_cleanup_failed " +
-                                            "environmentId=${bound.environmentId} " +
-                                            "principalId=${bound.accountId} " +
-                                            "authGeneration=${bound.authorityGeneration}"
-                                    )
-                                }
-                            },
-                            // Same-binding token rotation (401 -> silent refresh): rehome the
-                            // principal's journaled pending sends into the successor auth
-                            // revision instead of retiring them, so an offline send admitted
-                            // before the refresh stays reachable for drain/restore. Binding
-                            // changes (logout/account switch) keep delete semantics via
-                            // onBindingRetired above.
-                            onBindingAuthRevisionRotated = { retired, bound ->
-                                val rehomed = threadPendingSendJournal.rehomeAuthRevision(
-                                    environmentId = retired.environmentId,
-                                    principalId = retired.accountId,
-                                    fromAuthGeneration = retired.authorityGeneration,
-                                    toAuthGeneration = bound.authorityGeneration,
-                                )
-                                realtimeAuthorityDiagnosticsLogger(
-                                    "thread_pending_send_auth_revision_rehomed " +
-                                        "environmentId=${retired.environmentId} " +
-                                        "principalId=${retired.accountId} " +
-                                        "fromAuthGeneration=${retired.authorityGeneration} " +
-                                        "toAuthGeneration=${bound.authorityGeneration} " +
-                                        "rehomed=$rehomed"
-                                )
-                            },
+                            diagnosticsLogger = realtimeAuthorityDiagnosticsLogger,
                         ),
                 )
             // Pixel-avatar runtime table (task #352): apply the MMKV-cached document

@@ -213,6 +213,12 @@ internal class RaftForegroundBannerHandoff(
 
 internal val LocalRaftForegroundBannerHandoff = compositionLocalOf<RaftForegroundBannerHandoff?> { null }
 
+/**
+ * The server whose roster resolves the banner sender's profile (avatar, name).
+ */
+internal fun foregroundBannerMemberServerId(banner: RaftForegroundMessageBanner?, hostServerId: ServerId?): ServerId? =
+    hostServerId
+
 @Composable
 internal fun RaftForegroundBannerHost(
     banner: RaftForegroundMessageBanner?,
@@ -230,7 +236,7 @@ internal fun RaftForegroundBannerHost(
             currentServerStore?.observeSession() ?: flowOf(null)
         }
     val currentSession by currentSessionFlow.collectAsState(null)
-    val currentServerId = currentServerIdOverride ?: currentSession?.currentServerId
+    val currentServerId = foregroundBannerMemberServerId(banner, currentServerIdOverride ?: currentSession?.currentServerId)
     Box(modifier = Modifier.fillMaxSize()) {
         if (handoff == null) {
             content()

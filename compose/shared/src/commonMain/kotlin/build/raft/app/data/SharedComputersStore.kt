@@ -156,6 +156,13 @@ class SharedComputersStore internal constructor(
     private val ownerProvider: suspend () -> SharedComputersOwner? = {
         SharedComputersOwner("test-environment", "test-account", "test-session")
     },
+    /**
+     * The owner as a typed account binding (architecture review B, site 9). Defaults to
+     * [ownerProvider]: an owner is signed in, none is signed out.
+     */
+    private val ownerBinding: suspend () -> RaftAccountBinding<SharedComputersOwner> = {
+        ownerProvider()?.let { RaftAccountBinding.SignedIn(it) } ?: RaftAccountBinding.SignedOut
+    },
     /** Durable last-known machine lists (data-layer plan step 5); null keeps the store memory-only. */
     private val durableStore: RaftKeyedDurableSnapshotStore<RaftComputersDurableRecord>? = null,
     /** Per-store memory cap: least recently used servers leave first and re-seed from disk. */
@@ -239,7 +246,7 @@ class SharedComputersStore internal constructor(
     }
 
     internal suspend fun reconcileOwner() {
-        val owner = ownerProvider()
+        val owner = ownerBinding().accountOrNull
         mutex.withLock {
             if (owner == null) clearOwnerLocked() else installOwnerLocked(owner)
         }

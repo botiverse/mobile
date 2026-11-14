@@ -47,6 +47,13 @@ internal class SharedCreateAgentFormStore(
     private val ownerProvider: suspend () -> SharedCreateAgentFormOwner? = {
         SharedCreateAgentFormOwner("test-environment", "test-account", "test-session")
     },
+    /**
+     * The owner as a typed account binding (architecture review B, site 9). Defaults to
+     * [ownerProvider]: an owner is signed in, none is signed out.
+     */
+    private val ownerBinding: suspend () -> RaftAccountBinding<SharedCreateAgentFormOwner> = {
+        ownerProvider()?.let { RaftAccountBinding.SignedIn(it) } ?: RaftAccountBinding.SignedOut
+    },
     private val runtimeFormV2Loader: RuntimeFormV2Loader? = null,
     /** The server runtime catalog (`GET servers/:id/runtimes`); null: the bundled table only. */
     private val serverRuntimeCatalogs: SharedServerRuntimeCatalogRepository? = null,
@@ -121,7 +128,7 @@ internal class SharedCreateAgentFormStore(
     private var currentOwner: SharedCreateAgentFormOwner? = null
 
     suspend fun reconcileOwner() {
-        val owner = ownerProvider()
+        val owner = ownerBinding().accountOrNull
         mutex.withLock {
             if (owner == null) clearOwnerLocked() else installOwner(owner)
         }
