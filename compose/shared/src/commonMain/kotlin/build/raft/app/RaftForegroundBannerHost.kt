@@ -143,6 +143,9 @@ internal class SharedForegroundBannerStore(
 
     val banner: StateFlow<RaftForegroundMessageBanner?> = mutableBanner.asStateFlow()
 
+    /** This window's task surfaces, closed before an incoming navigation opens ([RaftShellNavigationIntake]). */
+    val incomingNavigation = RaftIncomingNavigationSignal()
+
     fun show(next: RaftForegroundMessageBanner) {
         synchronized(lock) {
             if (mutableBanner.value?.id == next.id) return

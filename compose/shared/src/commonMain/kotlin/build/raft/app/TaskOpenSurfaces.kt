@@ -34,6 +34,9 @@ import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftWindowDialog
 import build.raft.designsystem.components.RaftWindowDialogProperties
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -253,6 +256,7 @@ internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::new
         drafts[key] = text
         val randomId = randomIds.getOrPut(key, newRandomId)
         sending = true
+        sendRunning.value = true
         errorText = null
         try {
             val started = startTaskConversation(task, ServerId(serverId), text, tasksDataSource, randomId, sendMessage)
@@ -274,7 +278,25 @@ internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::new
             }
         } finally {
             sending = false
+            sendRunning.value = false
         }
+    }
+
+    /** [sending] for [closeForIncomingNavigation], which waits on it outside composition. */
+    private val sendRunning = MutableStateFlow(false)
+
+    /**
+     * Something else opens in the window ([RaftIncomingNavigationSignal]): the surface closes and
+     * its draft stays. A running first send is not cut off (the message may already be posted, and
+     * its conversation page is on the way): the open waits until the send ends, then the surface
+     * closes either way through [requestClose] (a finished first send's hand-off ends; after a
+     * failure the typed text is kept as the draft). True when a surface was open.
+     */
+    suspend fun closeForIncomingNavigation(): Boolean {
+        if (surface == null) return false
+        sendRunning.first { running -> !running }
+        requestClose()
+        return true
     }
 }
 
@@ -770,3 +792,12 @@ internal class TaskOpenGate(
 }
 
 private val TaskOpenGateEpoch = kotlin.time.TimeSource.Monotonic.markNow()
+
+/** While composed, [flow]'s surface closes before something else opens in the window ([signal]). */
+@Composable
+internal fun TaskOpenSurfaceIncomingNavigationEffect(flow: TaskOpenSurfaceFlow, signal: RaftIncomingNavigationSignal) {
+    DisposableEffect(flow, signal) {
+        val unregister = signal.register { flow.closeForIncomingNavigation() }
+        onDispose { unregister() }
+    }
+}
