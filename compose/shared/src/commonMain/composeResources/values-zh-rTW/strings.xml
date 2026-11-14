@@ -738,6 +738,7 @@
     <string name="thread_member_role_agent">Agent</string>
     <string name="thread_quoted_permalink_loading">正在載入訊息…</string>
     <string name="thread_message_loading_full">正在載入完整訊息…</string>
+    <string name="thread_message_load_full_failed">無法載入完整訊息</string>
     <string name="thread_quoted_permalink_no_content">（無內容）</string>
     <string name="thread_quoted_permalink_unavailable_link">連結的訊息無法使用</string>
     <string name="thread_quoted_permalink_thread">討論串</string>

@@ -1559,6 +1559,8 @@ private fun ThreadLatestReplyDto.toReplyPreview(): ReplyPreview? {
         createdAt = createdAt.trim(),
         senderDisplayName = senderDisplayName?.trim()?.takeIf { it.isNotBlank() },
         updatedAt = updatedAt?.trim()?.takeIf { it.isNotBlank() },
+        // The realtime payload carries the message's whole `content`, never a cut preview.
+        truncated = false,
     )
 }
 

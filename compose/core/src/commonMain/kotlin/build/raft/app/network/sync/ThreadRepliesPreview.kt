@@ -40,6 +40,12 @@ data class ReplyPreview(
     val senderDisplayName: String? = null,
     /** Last content change (slock `ThreadSummaryLatestReply.updatedAt`); null falls back to [createdAt]. */
     val updatedAt: String? = null,
+    /**
+     * Whether [content] is the server's cut of a longer reply (thread summary `latestReplies[].truncated`,
+     * additive and optional). Null when the server does not say; then the cut is read from the text
+     * itself (shared `activitySeedReplyPreviewIsTruncated`).
+     */
+    val truncated: Boolean? = null,
 )
 
 /** The maintained latest-N reply-preview window pushed by `listenLatestNReplies`. */
