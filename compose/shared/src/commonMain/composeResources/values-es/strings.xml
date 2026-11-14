@@ -4302,6 +4302,8 @@
     <string name="settings_notifications_mobile_delay_minute_1">1 minuto después de dejar la computadora</string>
     <string name="settings_notifications_mobile_delay_minutes">Después de %1$d minutos sin usar una computadora</string>
     <string name="message_mention_sender">Mencionar a @%1$s</string>
+    <string name="thread_message_avatar_view_profile">Ver perfil de %1$s</string>
+    <string name="thread_message_avatar_mention">Mencionar a %1$s</string>
     <string name="rail_tab_move_up">Mover arriba</string>
     <string name="rail_tab_move_down">Mover abajo</string>
     <string name="rail_tab_drag_picked_up">Tomaste %1$s.</string>

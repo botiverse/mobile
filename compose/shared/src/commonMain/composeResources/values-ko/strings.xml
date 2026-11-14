@@ -4302,6 +4302,8 @@
     <string name="settings_notifications_mobile_delay_minute_1">컴퓨터를 떠나고 1분 후</string>
     <string name="settings_notifications_mobile_delay_minutes">컴퓨터에서 %1$d분 동안 자리를 비우면</string>
     <string name="message_mention_sender">@%1$s 멘션</string>
+    <string name="thread_message_avatar_view_profile">%1$s 프로필 보기</string>
+    <string name="thread_message_avatar_mention">%1$s 멘션</string>
     <string name="rail_tab_move_up">위로 이동</string>
     <string name="rail_tab_move_down">아래로 이동</string>
     <string name="rail_tab_drag_picked_up">‘%1$s’ 탭을 집었어요.</string>

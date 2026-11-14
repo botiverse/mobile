@@ -567,6 +567,9 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.platform.testTag
@@ -30785,6 +30788,7 @@ private fun ThreadMessageCardContent(
                         // device check of #4091); no profile, mention or hover card meanwhile.
                         onClick = if (shareSelectionActive) onToggleShareSelection else { { openAuthorProfile("avatar") } },
                         onLongPress = if (shareSelectionActive) ({}) else { { onMentionAuthor(message) } },
+                        profileActions = !shareSelectionActive,
                         previewCard = authorPreviewCard.takeUnless { shareSelectionActive },
                         // Lagoon 11-02: a finger gets what a hover gets; the card replaces the hint toast.
                         previewCardPinOnClick = message.externalAuthor != null && !shareSelectionActive,
@@ -36943,6 +36947,8 @@ private fun ThreadMessageAvatarSlot(
     originServers: List<MemberServerRef> = emptyList(),
     onClick: () -> Unit,
     onLongPress: () -> Unit = {},
+    /** [onClick] opens the profile and [onLongPress] mentions (false: both toggle a share selection). */
+    profileActions: Boolean = true,
     /** The author's profile card under a mouse or trackpad pointer resting on the avatar; null: none. */
     previewCard: (@Composable ColumnScope.(RaftPreviewCardState) -> Unit)? = null,
     /**
@@ -37002,7 +37008,8 @@ private fun ThreadMessageAvatarSlot(
                             delegatedSurface = delegatedSurface,
                             originServers = originServers,
                             onClick = onClick,
-                            onLongPress = onLongPress
+                            onLongPress = onLongPress,
+                            profileActions = profileActions
                         )
                     }
                     if (previewCard == null) {
@@ -37046,8 +37053,11 @@ private fun ThreadMessageAvatarSlot(
     }
 }
 
+/** Tests and UI automation: a message's sender avatar (tap: profile; the name next to it mentions). */
+internal const val ThreadMessageAvatarTestTag = "message-avatar"
+
 @Composable
-private fun ThreadMessageAvatar(
+internal fun ThreadMessageAvatar(
     interactionIdentity: String,
     avatarLabel: String,
     avatarKind: RaftAvatarKind,
@@ -37060,7 +37070,13 @@ private fun ThreadMessageAvatar(
     delegatedSurface: Color = RaftColor.Canvas,
     originServers: List<MemberServerRef> = emptyList(),
     onClick: () -> Unit,
-    onLongPress: () -> Unit = {}
+    onLongPress: () -> Unit = {},
+    /**
+     * [onClick] opens the author's profile and [onLongPress] mentions them: screen readers hear
+     * "View profile of …" and get "Mention …" as an action. False (selecting messages): the avatar
+     * is a button named after the author.
+     */
+    profileActions: Boolean = true,
 ) {
     val gestureOwner =
         rememberRaftGestureOwner(
@@ -37068,10 +37084,34 @@ private fun ThreadMessageAvatar(
             semanticIdentity = interactionIdentity,
             callbacks = ThreadMessageAvatarGestureCallbacks(onClick, onLongPress)
         )
+    // VoiceOver / TalkBack reach the tap (the profile) and the long press (a mention) too; the
+    // pointer gestures below don't publish either.
+    val accessibilityName =
+        if (profileActions) stringResource(Res.string.thread_message_avatar_view_profile, avatarLabel) else avatarLabel
+    val mentionActionLabel = stringResource(Res.string.thread_message_avatar_mention, avatarLabel)
     Box(
         modifier =
             Modifier
                 .size(RaftAvatarSize.Md.edge)
+                .semantics(mergeDescendants = true) {
+                    testTag = ThreadMessageAvatarTestTag
+                    role = Role.Button
+                    contentDescription = accessibilityName
+                    // `this.`: the composable's own onClick parameter shadows the semantics action.
+                    this.onClick(label = null) {
+                        gestureOwner.beginGesture().currentCallbacksOrNull()?.onClick()
+                        true
+                    }
+                    if (profileActions) {
+                        customActions =
+                            listOf(
+                                CustomAccessibilityAction(mentionActionLabel) {
+                                    gestureOwner.beginGesture().currentCallbacksOrNull()?.onLongPress()
+                                    true
+                                }
+                            )
+                    }
+                }
                 .raftGesturePointerInput(gestureOwner) { owner ->
                     var gesture: RaftGestureSession<ThreadMessageAvatarGestureCallbacks>? = null
                     detectTapGestures(

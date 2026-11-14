@@ -4494,6 +4494,8 @@
     <string name="settings_notifications_mobile_delay_minute_1">パソコンから離れて 1 分後</string>
     <string name="settings_notifications_mobile_delay_minutes">パソコンから離れて %1$d 分後</string>
     <string name="message_mention_sender">@%1$s をメンション</string>
+    <string name="thread_message_avatar_view_profile">%1$s のプロフィールを表示</string>
+    <string name="thread_message_avatar_mention">%1$s をメンション</string>
     <string name="rail_tab_move_up">上へ移動</string>
     <string name="rail_tab_move_down">下へ移動</string>
     <string name="rail_tab_drag_picked_up">%1$sをつかみました。</string>

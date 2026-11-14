@@ -4494,6 +4494,8 @@
     <string name="settings_notifications_mobile_delay_minute_1">电脑上停手 1 分钟后</string>
     <string name="settings_notifications_mobile_delay_minutes">电脑上停手 %1$d 分钟后</string>
     <string name="message_mention_sender">提及 @%1$s</string>
+    <string name="thread_message_avatar_view_profile">查看 %1$s 的资料</string>
+    <string name="thread_message_avatar_mention">提及 %1$s</string>
     <string name="rail_tab_move_up">上移</string>
     <string name="rail_tab_move_down">下移</string>
     <string name="rail_tab_drag_picked_up">已拿起 %1$s。</string>
