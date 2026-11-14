@@ -2485,6 +2485,18 @@ internal data class RaftThreadScreenPayload(
     val showComposer: Boolean = true,
     val joined: Boolean = true,
     val canSend: Boolean = true,
+    /**
+     * The channel this page shows (a reply thread: its parent) is archived: read-only, its
+     * composer replaced by the archived banner (web ChatPanel `isArchived`). From the canonical
+     * load (`GET /messages/...` `channelArchived`, `GET /channels/:id` `archivedAt`), never from
+     * the Home directory: `GET /channels` leaves archived channels out.
+     */
+    val channelArchived: Boolean = false,
+    /**
+     * Web `effectiveChannelCapabilities.archiveChannels` from `GET /channels/:id`; null when the
+     * load carried no capabilities (the banner then falls back to the server role).
+     */
+    val channelCanUnarchive: Boolean? = null,
     val membersCount: Int = 0,
     val members: List<RaftThreadMemberItem> = emptyList(),
     val memberCandidates: List<RaftThreadMemberItem> = emptyList(),
@@ -18821,6 +18833,18 @@ private fun ThreadPageContentContent(
                     inputs = data.lounge,
                     modifier = Modifier.padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm),
                 )
+            } else if (pageLounge == null && threadFooterShowsArchived(payload)) {
+                // Web ChatPanel `isArchived`: the archived banner in place of the composer or the
+                // Join button, for members and non-members alike (the server refuses every write).
+                val archived = data.lounge?.archivedChannel
+                ThreadArchivedChannelNotice(
+                    canUnarchive = archived?.canUnarchive == true,
+                    unarchiving = archived?.unarchiving == true,
+                    onUnarchive = {
+                        archived?.onUnarchive?.invoke { onThreadEvent("retryThreadLoad", null, null, null) }
+                    },
+                    modifier = Modifier.padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm),
+                )
             } else if (!writeActionsEnabled) {
                 Unit
             } else if (threadFooterShowsJoin(payload.joined, conversationLounge)) {
@@ -19778,6 +19802,12 @@ internal fun ThreadPageHeader(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (
+                        loungeHeader == null &&
+                            threadHeaderShowsArchivedBadge(payload, directoryArchived = headerDisplay.channelArchived)
+                    ) {
+                        ThreadArchivedChannelBadge()
+                    }
                     if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel && loungeHeader == null) {
                         RaftExternalBridgeBadge(headerDisplay.bridgeProvider)
                     }

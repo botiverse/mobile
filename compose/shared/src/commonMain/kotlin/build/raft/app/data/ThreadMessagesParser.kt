@@ -248,6 +248,7 @@ internal fun buildSharedThreadPayloadFromMessagesPage(
         messages = messages,
         canLoadMoreBefore = basePayload.canLoadMoreBefore || (page.canLoadMoreBefore ?: false),
         canLoadMoreAfter = page.canLoadMoreAfter ?: basePayload.canLoadMoreAfter,
+        channelArchived = page.channelArchived ?: basePayload.channelArchived,
         errorCode = null
     )
 }
