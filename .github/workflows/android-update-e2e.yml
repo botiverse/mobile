@@ -14,6 +14,9 @@ name: Android Update E2E
 # cleanup step removes the emulator from the group and cancels B's release.
 
 on:
+  # TEMP(dev): workflow_dispatch needs the file on main; iterate via push. Remove before merge.
+  push:
+    branches: [agent/lagoon/android-update-e2e]
   workflow_dispatch:
     inputs:
       source_sha:
@@ -66,7 +69,7 @@ jobs:
           HANDS_AUTH_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
           HANDS_API: https://hands.build
           SOURCE_SHA: ${{ inputs.source_sha }}
-          FIXTURE_RUN_ID: ${{ inputs.fixture_run_id }}
+          FIXTURE_RUN_ID: ${{ inputs.fixture_run_id || '' }}  # TEMP-DEV-FIXTURE
         run: |
           set -euo pipefail
           if [ -n "${FIXTURE_RUN_ID}" ]; then
@@ -108,7 +111,7 @@ jobs:
       - name: Download A and B
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ inputs.fixture_run_id || github.run_id }}
+          RUN_ID: ${{ inputs.fixture_run_id || '' || github.run_id }}  # TEMP-DEV-FIXTURE
         run: |
           set -euo pipefail
           mkdir -p apks/a apks/b
