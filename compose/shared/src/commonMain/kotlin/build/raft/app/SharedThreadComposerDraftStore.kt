@@ -2145,6 +2145,11 @@ internal class SharedThreadComposerDraftPersistSlice(
         safeDiagnostics("thread_composer_draft_account_retired droppedPending=${cancelled.size}")
     }
 
+    /** The first account of this process is bound: re-read the Drafts projection for it. */
+    fun refreshForAccountBinding() {
+        refreshActiveDraftRecords(reason = "account_bound")
+    }
+
     private fun consumeStagedUploadedAttachments(draftKey: String?): List<SharedThreadComposerAttachment> {
         val key = draftKey?.takeIf { it.isNotBlank() } ?: return emptyList()
         return stateLock.withLock { stagedUploadedAttachmentsByDraftKey.remove(key).orEmpty() }
