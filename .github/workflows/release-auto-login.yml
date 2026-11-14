@@ -1,0 +1,184 @@
+name: Android Release Auto Login
+
+# Signs a RELEASE (non-Alpha) Android build in on a GitHub-hosted emulator through the product's
+# real browser login (no QA hook in the app): scripts/qa/release_auto_login.mjs with the QA capture
+# browser (scripts/qa/capture-browser). docs/qa-acceptance/release-auto-login.md explains the flow.
+# Other emulator workflows can copy the two steps "Build the QA capture browser" and "Sign in".
+
+on:
+  # TEMP(dev): workflow_dispatch needs the file on main; iterate via push. Remove before merge.
+  push:
+    branches: [agent/lagoon/release-auto-login]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Server the app signs in to"
+        required: true
+        type: choice
+        options: [staging, production]
+        default: staging
+      apk_run_id:
+        description: "Optional: reuse a release APK artifact from this run instead of building one"
+        required: false
+        type: string
+        default: ""
+      apk_artifact:
+        description: "Artifact name holding the APK in apk_run_id"
+        required: false
+        type: string
+        default: android-release-apk
+  workflow_call:
+    inputs:
+      environment:
+        required: false
+        type: string
+        default: staging
+      apk_run_id:
+        required: false
+        type: string
+        default: ""
+      apk_artifact:
+        required: false
+        type: string
+        default: android-release-apk
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.p.outputs.build }}
+      source_sha: ${{ steps.p.outputs.source_sha }}
+      apk_run_id: ${{ steps.p.outputs.apk_run_id }}
+      apk_artifact: ${{ steps.p.outputs.apk_artifact }}
+      environment: ${{ steps.p.outputs.environment }}
+    steps:
+      - id: p
+        env:
+          ENVIRONMENT: ${{ inputs.environment || 'staging' }}
+          # TEMP-DEV-FIXTURE: release APK pair from android-update-qa run 43586035527 (expires 2026-11-28).
+          APK_RUN_ID: ${{ inputs.apk_run_id || (github.event_name == 'push' && '43586035527' || '') }}
+          APK_ARTIFACT: ${{ inputs.apk_artifact || (github.event_name == 'push' && 'android-update-qa-a-apk' || 'android-release-apk') }}
+        run: |
+          set -euo pipefail
+          case "${ENVIRONMENT}" in staging|production) ;; *) echo "::error::environment must be staging or production"; exit 1;; esac
+          echo "environment=${ENVIRONMENT}" >> "$GITHUB_OUTPUT"
+          if [ -n "${APK_RUN_ID}" ]; then
+            [[ "${APK_RUN_ID}" =~ ^[0-9]+$ ]] || { echo "::error::apk_run_id must be a run id"; exit 1; }
+            { echo "build=false"; echo "apk_run_id=${APK_RUN_ID}"; echo "apk_artifact=${APK_ARTIFACT}"; } >> "$GITHUB_OUTPUT"
+          else
+            { echo "build=true"; echo "source_sha=${GITHUB_SHA}"; echo "apk_run_id=${GITHUB_RUN_ID}"; echo "apk_artifact=release-auto-login-apk"; } >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    uses: ./.github/workflows/android-release.yml
+    secrets: inherit
+    with:
+      source_sha: ${{ needs.plan.outputs.source_sha }}
+      artifact_name: release-auto-login-apk
+      version_major: "2000"
+      version_minor: "0"
+      version_patch: "0"
+      version_build: ${{ github.run_number }}
+      version_suffix: auto-login
+      hands_channel: debug
+      android_variant: release
+      release_mode: draft
+      create_hands_draft: false
+      create_share_page: false
+
+  sign-in:
+    needs: [plan, build]
+    if: ${{ always() && needs.plan.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EVIDENCE: release-auto-login-evidence
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download the release APK
+        id: apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ needs.plan.outputs.apk_run_id }}
+          ARTIFACT: ${{ needs.plan.outputs.apk_artifact }}
+        run: |
+          set -euo pipefail
+          mkdir -p apk
+          gh run download "${RUN_ID}" -R "${GITHUB_REPOSITORY}" -n "${ARTIFACT}" -D apk
+          APK="$(find apk -name '*.apk' | head -1)"
+          [ -s "${APK}" ] || { echo "::error::no APK in ${ARTIFACT} of run ${RUN_ID}"; exit 1; }
+          BT="$(ls -d "${ANDROID_HOME}"/build-tools/* | sort -V | tail -1)"
+          BADGING="$("${BT}/aapt" dump badging "${APK}")"
+          PKG="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<<"${BADGING}")"
+          [ "${PKG}" = build.raft.app ] || { echo "::error::expected the release package build.raft.app, got ${PKG}"; exit 1; }
+          if grep -q "application-debuggable" <<<"${BADGING}"; then echo "::error::APK is debuggable; this lane is for release builds"; exit 1; fi
+          { echo "apk=${APK}"; echo "version=$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"${BADGING}" | head -1)"; } | tee -a "$GITHUB_OUTPUT"
+
+      - name: Build the QA capture browser
+        run: bash scripts/qa/capture-browser/build.sh "${RUNNER_TEMP}/capture-browser.apk"
+
+      - name: Expose QA credentials
+        env:
+          # A staging-only account may be set as QA_STAGING_TEST_EMAIL / QA_STAGING_TEST_PASSWORD;
+          # otherwise the QA account (it exists with the same password on staging and production).
+          EMAIL: ${{ (needs.plan.outputs.environment == 'staging' && secrets.QA_STAGING_TEST_EMAIL) || secrets.QA_TEST_EMAIL }}
+          PASSWORD: ${{ (needs.plan.outputs.environment == 'staging' && secrets.QA_STAGING_TEST_PASSWORD) || secrets.QA_TEST_PASSWORD }}
+        run: |
+          [ -n "${EMAIL}" ] && [ -n "${PASSWORD}" ] || { echo "::error::QA credentials secret is missing (QA_TEST_EMAIL / QA_TEST_PASSWORD)"; exit 1; }
+          echo "::add-mask::${EMAIL}"
+          python3 - <<'PY'
+          import os, uuid
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as out:
+              for name, key in (("QA_LOGIN_EMAIL", "EMAIL"), ("QA_LOGIN_PASSWORD", "PASSWORD")):
+                  delimiter = f"QA_{uuid.uuid4().hex}"
+                  out.write(f"{name}<<{delimiter}\n{os.environ[key]}\n{delimiter}\n")
+          PY
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Sign in on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          ram-size: 4096M
+          cores: 2
+          disk-size: 6000M
+          emulator-boot-timeout: 1200
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: node scripts/qa/release_auto_login.mjs --apk "${{ steps.apk.outputs.apk }}" --capture-browser-apk "${{ runner.temp }}/capture-browser.apk" --env "${{ needs.plan.outputs.environment }}" --out "${{ env.EVIDENCE }}"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Release auto login"
+            echo "| | |"; echo "|---|---|"
+            echo "| APK | \`${{ steps.apk.outputs.version }}\` from run \`${{ needs.plan.outputs.apk_run_id }}\` |"
+            echo "| Server | ${{ needs.plan.outputs.environment }} |"
+            if [ -f "${EVIDENCE}/summary.json" ]; then echo; echo '```json'; cat "${EVIDENCE}/summary.json"; echo '```'; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-auto-login-evidence
+          path: ${{ env.EVIDENCE }}
+          if-no-files-found: warn
+          retention-days: 14
