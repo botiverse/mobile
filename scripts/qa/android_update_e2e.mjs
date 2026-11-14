@@ -428,7 +428,24 @@ async function main() {
       await sleep(5000);
       const onDisk = draftFilesOnDisk();
       if (!onDisk.length) log("warning: the draft text is not in any app-private file before the update");
-      return { channel: channelName, draft: DRAFT_TOKEN, draft_files_before_update: onDisk };
+      const grepSanity = shell(`grep -rl ${SERVER} /data/data/${PKG}/ 2>/dev/null | wc -l`, { allowFailure: true }).trim();
+      // Control (no update involved): does the draft survive a plain cold restart of A?
+      shell(`am force-stop ${PKG}`);
+      await sleep(1000);
+      launchApp();
+      await waitFor("Home after a cold restart of A", isHome, { timeoutMs: 60_000 });
+      await tap(`the channel row "${channelName}"`, (n) => n.pkg === PKG && n.text === channelName, { timeoutMs: 30_000 });
+      await sleep(4000);
+      const survivesColdRestart = nodes().some((n) => n.text.includes(DRAFT_TOKEN));
+      evidence("draft-after-cold-restart-A");
+      await backToHome();
+      return {
+        channel: channelName,
+        draft: DRAFT_TOKEN,
+        draft_files_before_update: onDisk,
+        files_mentioning_server: grepSanity,
+        draft_survives_cold_restart_on_A: survivesColdRestart,
+      };
     });
 
     await step("update-prompt-offers-B", async () => {
