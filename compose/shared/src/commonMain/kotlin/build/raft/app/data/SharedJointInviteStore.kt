@@ -63,6 +63,12 @@ internal sealed interface SharedJointInviteIntent {
      */
     data class Load(val serverId: String?, val canBeInvited: Boolean) : SharedJointInviteIntent
 
+    /**
+     * `joint-invites:changed` for [serverId] (botiverse/slock #12939): read the list again now, if it
+     * is the one shown and its reader can be invited (web `usePendingJointInvites` change listener).
+     */
+    data class Changed(val serverId: String) : SharedJointInviteIntent
+
     data class Accept(val inviteId: String) : SharedJointInviteIntent
 
     /** Local only, like the web notification center's dismissal; the invite stays pending server-side. */
@@ -88,10 +94,20 @@ internal class SharedJointInviteStore(
     private var loadJob: Job? = null
     private var loadingServerId: String? = null
     private var acceptJob: Job? = null
+    private var lastLoad: SharedJointInviteIntent.Load? = null
 
     fun dispatch(intent: SharedJointInviteIntent) {
         when (intent) {
             is SharedJointInviteIntent.Load -> load(intent)
+            is SharedJointInviteIntent.Changed -> {
+                val last = lastLoad
+                if (last != null && last.canBeInvited && last.serverId?.trim() == intent.serverId) {
+                    // A read already in flight may predate the change: start over.
+                    loadJob?.cancel()
+                    loadJob = null
+                    load(last)
+                }
+            }
             is SharedJointInviteIntent.Accept -> accept(intent.inviteId)
             is SharedJointInviteIntent.Dismiss -> {
                 val current = mutableState.value
@@ -105,6 +121,7 @@ internal class SharedJointInviteStore(
     }
 
     private fun load(intent: SharedJointInviteIntent.Load) {
+        lastLoad = intent
         val serverId = intent.serverId?.trim()?.takeIf(String::isNotBlank)
         if (serverId == null || !intent.canBeInvited) {
             loadGeneration += 1L

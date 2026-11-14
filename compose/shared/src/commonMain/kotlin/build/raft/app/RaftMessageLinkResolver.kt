@@ -98,7 +98,8 @@ internal class RaftMessageLinkResolver(
                         else -> link.routeKind.confirmedBy(probe.type) ?: return notFound("route_kind_mismatch")
                     }
                 }
-                RaftLinkProbeOutcome.NotFound -> return notFound("channel_${channelResponse?.code}")
+                RaftLinkProbeOutcome.NotFound ->
+                    return openThroughOtherServer(link, server, servers) ?: notFound("channel_${channelResponse?.code}")
                 RaftLinkProbeOutcome.Unavailable -> link.routeKind
             }
         if (focusMessageId == null) return open(server.id, link, conversationKind, threadChannelId = null)
@@ -158,6 +159,49 @@ internal class RaftMessageLinkResolver(
             }
         }
         return resolution
+    }
+
+    /**
+     * botiverse/slock #12371 (web `useOtherServerMessageLink`): a link to a joint channel names the
+     * copy on the server it was copied from; a reader who takes part only through another of their
+     * servers can't read it there. Asks each other server of the account, one at a time, whether it
+     * can show the message (`GET /messages/context/:id?channelId`, as a link from another server is
+     * resolved) and opens the link on the first that can, with that server's copy of the channel
+     * and the thread. Null: none can (or the link is a DM, or names no message): not found.
+     */
+    private suspend fun openThroughOtherServer(
+        link: RaftMessageLink,
+        linkServer: StoredAuthServer,
+        servers: List<StoredAuthServer>,
+    ): RaftMessageLinkResolution.Open? {
+        if (link.routeKind != ConversationKind.Channel) return null
+        // What to look up: the message, or for a thread-only link its parent.
+        val lookupId = link.focusMessageId ?: return null
+        for (other in servers.filter { it.id != linkServer.id }) {
+            val response =
+                request(
+                    ServerId(other.id),
+                    path = "messages/context/$lookupId",
+                    query = listOf("channelId" to link.channelId),
+                )
+            // Not readable from this server either (or it didn't answer): ask the next.
+            if (response.linkOutcome() != RaftLinkProbeOutcome.Found) continue
+            val context = parseSharedMessageContext(response?.bodyText.orEmpty(), ThreadId(link.channelId))
+            val thread = context.canonicalTarget?.takeIf { it.kind == "thread" }
+            val localChannelId = (if (thread != null) thread.channelId else context.channelId)?.value ?: continue
+            val localThreadParentId = if (thread != null) thread.threadParentMessageId?.value else link.threadParentMessageId
+            val moved =
+                link.copy(
+                    serverSlug = other.slug ?: link.serverSlug,
+                    channelId = localChannelId,
+                    // A thread-only link moves without gaining a message.
+                    messageId = link.messageId?.let { context.targetMessageId?.value ?: it },
+                    threadParentMessageId = localThreadParentId,
+                )
+            diagnosticsLogger("message_link_other_server result=found thread=${moved.isThread}")
+            return open(other.id, moved, link.routeKind, threadChannelId = thread?.threadChannelId?.value)
+        }
+        return null
     }
 
     private suspend fun request(
