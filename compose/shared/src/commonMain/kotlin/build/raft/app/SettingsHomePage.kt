@@ -396,6 +396,8 @@ import build.raft.app.compat.ui.withKuiklyIdleContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -443,6 +445,7 @@ import androidx.compose.material3.Text
 import build.raft.app.components.RaftPullToRefreshBox
 import build.raft.app.components.raftHeaderRefreshIndicatorVisible
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import build.raft.app.components.RaftMetrics
 import build.raft.app.components.RaftUiControlledMenu
@@ -14388,17 +14391,28 @@ internal fun SharedHomeSearchFilters(
     val scopeLabel = stringResource(Res.string.search_filter_scope)
     val channelLabel = stringResource(Res.string.search_filter_channel)
     // raft-ui PickerTriggerButton: an applied filter (web `appliedFilterProps`) is the
-    // `info-soft` wash. Web SearchFilterBar labels every chip (From, Scope, Channel, the time
-    // range, the sort, Clear All) in a `flex flex-wrap gap-2` row: the chips wrap onto more
-    // lines, 8dp apart both ways, 16dp in from the edges. A chip is never wider than the row
-    // (web `max-w-full`): a long sender or channel name ends in an ellipsis.
+    // `info-soft` wash. Web SearchFilterBar (raft-design responsive.md › The toolbar over a
+    // list) is ONE line, 8dp gaps, 16dp in from the edges: the filter strip (From, Scope,
+    // Channel, the time range) fills it and scrolls sideways with its labels kept, Clear all
+    // pinned at the strip's end, the sort pinned at the line's end. A chip naming a person or
+    // a channel is capped (web `max-w-60`): a long name ends in an ellipsis.
     SharedHomeSearchControlsBlock {
-        BoxWithConstraints(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding()) {
-            val chipModifier = Modifier.widthIn(max = (maxWidth - horizontalPadding * 2).coerceAtLeast(0.dp))
-            FlowRow(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = horizontalPadding),
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .raftSafeAreaHorizontalPadding()
+                .padding(horizontal = horizontalPadding),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val chipModifier = Modifier.widthIn(max = SearchFilterNameChipMaxWidth)
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("search-filter-strip")
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 homeSearchFilterOrder(showSenderFilter).forEach { filter ->
                     key("search-filter-${filter.id}") {
@@ -14458,30 +14472,32 @@ internal fun SharedHomeSearchFilters(
                         }
                     }
                 }
-                RaftAnchoredPickerTrigger(
-                    modifier = chipModifier,
-                    label = state.sort.localizedSearchLabel(),
-                    anchorIdentity = "search_filter:sort",
-                    hasValue = sortActive,
-                    iconName = RaftLucideIconName.ArrowDownUp,
-                    onAnchorChanged = sortAnchorChanged,
-                    onClick = { anchor ->
-                        onOpenFilter("sort", anchor)
-                    }
-                )
-                if (hasActiveFilters) {
-                    // web SearchFilterBar: Clear All is a `ghost` `md` Button, not a picker chip.
-                    RaftButton(
-                        text = stringResource(Res.string.search_filter_clear_all),
-                        onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) },
-                        variant = RaftButtonVariant.Ghost,
-                        size = RaftButtonSize.Md
-                    )
-                }
             }
+            if (hasActiveFilters) {
+                // web SearchFilterBar: Clear all is a `ghost` `md` Button, not a picker chip.
+                RaftButton(
+                    text = stringResource(Res.string.search_filter_clear_all),
+                    onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) },
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Md
+                )
+            }
+            RaftAnchoredPickerTrigger(
+                label = state.sort.localizedSearchLabel(),
+                anchorIdentity = "search_filter:sort",
+                hasValue = sortActive,
+                iconName = RaftLucideIconName.ArrowDownUp,
+                onAnchorChanged = sortAnchorChanged,
+                onClick = { anchor ->
+                    onOpenFilter("sort", anchor)
+                }
+            )
         }
     }
 }
+
+/** web SearchFilterBar `CHIP_MAX_WIDTH_CLASS` (`max-w-60`): a phone's strip shows the chip whole. */
+private val SearchFilterNameChipMaxWidth = 240.dp
 
 internal enum class HomeSearchFilter(val id: String) {
     Sender("sender"),
