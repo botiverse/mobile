@@ -102,6 +102,15 @@ internal expect fun raftPlatformImagePasteClipEntry(): ClipEntry?
 internal expect fun raftPlatformComposerUsesImagePasteClipboard(): Boolean
 
 /**
+ * Whether the composer's own key handler takes the paste shortcut (⌘V / Ctrl+V) when the clipboard
+ * holds attachments ([threadComposerPasteShortcutDecision]). Desktop: yes, it is the only path.
+ * iOS: no, ⌘V is left to the system `paste:` action the host hooks (RaftIosImagePaste.swift),
+ * which reads the clipboard inside the paste action (no "Allow Paste" prompt); a read from the key
+ * handler is outside it and can prompt or come back empty. Android: no attachments to paste.
+ */
+internal expect fun raftPlatformComposerKeyHandlerPastesAttachments(): Boolean
+
+/**
  * Whether pasted images open in the composer's image editor first, as picked photos do (iOS,
  * artin 2026-11-12). Desktop pastes straight into the tray, as the web composer does.
  */

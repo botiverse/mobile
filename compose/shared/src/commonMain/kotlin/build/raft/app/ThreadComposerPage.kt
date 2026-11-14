@@ -3205,7 +3205,7 @@ internal fun ThreadComposerContentLeaf(
                                 if (imagePasteClipboard?.consumePlaceholderPaste() == true &&
                                     threadComposerIsImagePastePlaceholderEdit(fieldValue, next)
                                 ) {
-                                    if (ThreadComposerImagePasteRequests.claim()) {
+                                    if (ThreadComposerImagePasteRequests.claim(ThreadComposerImagePasteRoute.Placeholder)) {
                                         onEvent(ThreadComposerPasteAttachmentsAction, null, null, null)
                                     }
                                     return@onValueChange
@@ -5572,10 +5572,36 @@ internal fun threadComposerIsPasteShortcut(
     alt: Boolean,
 ): Boolean = keyDown && key == Key.V && (meta || ctrl) && !shift && !alt
 
+/** What the composer's key handler does with a key press, for paste ([threadComposerPasteShortcutDecision]). */
+internal enum class ThreadComposerPasteShortcutDecision(val wire: String, val consumesKey: Boolean) {
+    /** Not the paste shortcut. */
+    NotPasteShortcut("not_paste_shortcut", consumesKey = false),
+    /** The paste shortcut with no attachments on the clipboard: the text field pastes text. */
+    PasteText("paste_text", consumesKey = false),
+    /** The paste shortcut with attachments, left to the platform's paste action (iOS `paste:`). */
+    LeaveToSystemPaste("leave_to_system_paste", consumesKey = false),
+    /** The paste shortcut with attachments: the key handler attaches them (desktop). */
+    PasteAttachments("paste_attachments", consumesKey = true),
+}
+
+internal fun threadComposerPasteShortcutDecision(
+    shortcut: Boolean,
+    clipboardHasAttachments: () -> Boolean,
+    keyHandlerPastesAttachments: Boolean,
+): ThreadComposerPasteShortcutDecision =
+    when {
+        !shortcut -> ThreadComposerPasteShortcutDecision.NotPasteShortcut
+        !clipboardHasAttachments() -> ThreadComposerPasteShortcutDecision.PasteText
+        !keyHandlerPastesAttachments -> ThreadComposerPasteShortcutDecision.LeaveToSystemPaste
+        else -> ThreadComposerPasteShortcutDecision.PasteAttachments
+    }
+
 /**
  * Paste of files / an image by shortcut (web MessageInput `handlePaste`): when the clipboard holds
  * them, the paste shortcut attaches them ([onPaste]) instead of pasting text. Plain text, and
- * Android ([raftPlatformClipboardHasAttachments] is false there), paste as before.
+ * Android ([raftPlatformClipboardHasAttachments] is false there), paste as before. On iOS the key
+ * passes through to the system paste action, which the host hooks
+ * ([raftPlatformComposerKeyHandlerPastesAttachments]).
  */
 private fun Modifier.threadComposerPasteAttachments(onPaste: () -> Unit): Modifier =
     onPreviewKeyEvent { event ->
@@ -5588,8 +5614,32 @@ private fun Modifier.threadComposerPasteAttachments(onPaste: () -> Unit): Modifi
                 shift = event.isShiftPressed,
                 alt = event.isAltPressed,
             )
-        if (!shortcut || !raftPlatformClipboardHasAttachments()) return@onPreviewKeyEvent false
-        // One paste per press: the system paste action may have taken this ⌘V already (iOS).
-        if (ThreadComposerImagePasteRequests.claim()) onPaste()
-        true
+        threadComposerHandlePasteShortcut(
+            shortcut = shortcut,
+            clipboardHasAttachments = ::raftPlatformClipboardHasAttachments,
+            keyHandlerPastesAttachments = raftPlatformComposerKeyHandlerPastesAttachments(),
+            onPaste = onPaste,
+        )
     }
+
+/**
+ * The composer key handler's paste step: decides ([threadComposerPasteShortcutDecision]), logs a
+ * paste shortcut's decision, claims the press when it attaches, and returns whether the key is
+ * consumed.
+ */
+internal fun threadComposerHandlePasteShortcut(
+    shortcut: Boolean,
+    clipboardHasAttachments: () -> Boolean,
+    keyHandlerPastesAttachments: Boolean,
+    onPaste: () -> Unit,
+): Boolean {
+    val decision = threadComposerPasteShortcutDecision(shortcut, clipboardHasAttachments, keyHandlerPastesAttachments)
+    if (decision == ThreadComposerPasteShortcutDecision.NotPasteShortcut) return false
+    ThreadComposerImagePasteLog.record("composer_paste_key route=key_handler decision=${decision.wire}")
+    if (decision == ThreadComposerPasteShortcutDecision.PasteAttachments &&
+        ThreadComposerImagePasteRequests.claim(ThreadComposerImagePasteRoute.KeyHandler)
+    ) {
+        onPaste()
+    }
+    return decision.consumesKey
+}

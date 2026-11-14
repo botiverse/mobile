@@ -86,6 +86,9 @@ internal actual fun raftPlatformPastedImagesOpenEditor(): Boolean = true
 // editor view (RaftIosImagePaste.swift).
 internal actual fun raftPlatformComposerUsesImagePasteClipboard(): Boolean = false
 
+// ⌘V with only images is the system paste action's (RaftIosImagePaste.swift), never the key handler's.
+internal actual fun raftPlatformComposerKeyHandlerPastesAttachments(): Boolean = false
+
 internal actual fun raftPlatformComposerMinimumBottomPaddingDp(): Float = 0f
 
 internal actual fun raftPlatformSupportsAppleSignIn(): Boolean = true

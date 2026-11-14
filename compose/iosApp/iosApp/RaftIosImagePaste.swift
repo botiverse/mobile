@@ -38,8 +38,12 @@ import UniformTypeIdentifiers
 ///
 /// The clipboard is read inside `paste(_:)`, for ⌘V the system paste action, so iOS shows no
 /// "Allow Paste" prompt; the images are downscaled and encoded off the main thread and handed to
-/// the composer (`raftComposerImagesPasted`). ⌘V can also reach the composer's key handler; one
-/// claim per press (`raftComposerImagePasteClaim`) keeps it to one paste.
+/// the composer (`raftComposerImagesPasted`). ⌘V is this path's alone: the composer's key handler
+/// leaves it to the system paste action on iOS (`raftPlatformComposerKeyHandlerPastesAttachments`),
+/// since its own read would be outside the paste action. One claim per press
+/// (`raftComposerImagePasteClaim`) still keeps a menu tap or key press to one paste. Each step logs
+/// (`RaftImagePaste` lines and `composer_image_paste_claim` / `composer_paste_key`), kinds and
+/// counts only.
 enum RaftIosImagePaste {
     /// Longest side of a pasted image; larger ones are downscaled on read.
     static let maxPixelSize = 4096
@@ -135,11 +139,17 @@ enum RaftIosImagePaste {
             typealias Can = @convention(c) (AnyObject, Selector, Selector, Any?) -> Bool
             let original = unsafeBitCast(method_getImplementation(method), to: Can.self)
             let replacement: @convention(block) (AnyObject, Selector, Any?) -> Bool = { view, action, sender in
-                if action == #selector(UIResponderStandardEditActions.paste(_:)) && isComposerEditor(view)
-                    && RaftIosComposerImagePasteKt.raftIosClipboardHoldsOnlyImages() {
-                    return true
+                guard action == #selector(UIResponderStandardEditActions.paste(_:)), isComposerEditor(view) else {
+                    return original(view, canSelector, action, sender)
                 }
-                return original(view, canSelector, action, sender)
+                let onlyImages = RaftIosComposerImagePasteKt.raftIosClipboardHoldsOnlyImages()
+                let result = onlyImages || original(view, canSelector, action, sender)
+                RaftIosDiagnosticsRecord(
+                    "info", "RaftImagePaste",
+                    "canPerformAction paste composer=true \(clipboardSummary()) onlyImages=\(onlyImages) " +
+                        "sender=\(senderKind(sender)) result=\(result)"
+                )
+                return result
             }
             let imp = imp_implementationWithBlock(replacement)
             if !class_addMethod(cls, canSelector, imp, method_getTypeEncoding(method)) {
@@ -154,7 +164,16 @@ enum RaftIosImagePaste {
         let method = class_getInstanceMethod(cls, pasteSelector)
         let original = method.map { unsafeBitCast(method_getImplementation($0), to: Paste.self) }
         let replacement: @convention(block) (AnyObject, Any?) -> Void = { view, sender in
-            guard isComposerEditor(view), RaftIosComposerImagePasteKt.raftIosClipboardHoldsOnlyImages() else {
+            let composer = isComposerEditor(view)
+            let onlyImages = composer && RaftIosComposerImagePasteKt.raftIosClipboardHoldsOnlyImages()
+            if composer {
+                RaftIosDiagnosticsRecord(
+                    "info", "RaftImagePaste",
+                    "paste: composer=true \(clipboardSummary()) onlyImages=\(onlyImages) " +
+                        "sender=\(senderKind(sender)) route=\(onlyImages ? "image" : "original")"
+                )
+            }
+            guard onlyImages else {
                 original?(view, pasteSelector, sender)
                 return
             }
@@ -273,10 +292,27 @@ enum RaftIosImagePaste {
 
     private static let pasteIdentifier = UIAction.Identifier("build.raft.composer.paste")
 
+    /// The clipboard for a diagnostics line: kinds and item count only. None of these read the
+    /// clipboard's content, so none shows the "Allow Paste" prompt.
+    private static func clipboardSummary() -> String {
+        let board = UIPasteboard.general
+        return "hasImages=\(board.hasImages) hasStrings=\(board.hasStrings) items=\(board.numberOfItems)"
+    }
+
+    /// What sent an edit action, for a diagnostics line: ⌘V (a key command), a menu item, or nil.
+    private static func senderKind(_ sender: Any?) -> String {
+        guard let sender else { return "nil" }
+        return NSStringFromClass(type(of: sender as AnyObject))
+    }
+
     /// Inside `paste(_:)`: from ⌘V or the system's Paste (no prompt), or from the composer's own
     /// Paste item (iOS may prompt): read now, encode off the main thread.
     private static func pasteImagesIntoComposer() {
-        guard RaftIosComposerImagePasteKt.raftComposerImagePasteClaim() else { return }
+        // Logs `composer_image_paste_claim route=system_paste granted=…` (ThreadComposerImagePaste.kt).
+        guard RaftIosComposerImagePasteKt.raftComposerImagePasteClaim() else {
+            RaftIosDiagnosticsRecord("info", "RaftImagePaste", "paste dropped reason=claimed_by_other_route")
+            return
+        }
         let sources = captureClipboardImages()
         RaftIosDiagnosticsRecord("info", "RaftImagePaste", "paste images=\(sources.count)")
         guard !sources.isEmpty else { return }
@@ -377,8 +413,8 @@ enum RaftIosImagePaste {
     }
 }
 
-/// Blocking clipboard read for the composer's own paste paths (its callout menu, ⌘V when the
-/// system paste action did not take it). Called off the main thread.
+/// Blocking clipboard read for a composer paste that the host did not deliver (no pending images,
+/// e.g. the composer's attachment paste event from another path). Called off the main thread.
 private final class RaftIosPastedImageClipboardReader: NSObject, RaftIosPastedImageReader {
     func read() -> [RaftIosPastedImage] {
         RaftIosImagePaste.encode(RaftIosImagePaste.captureClipboardImages())

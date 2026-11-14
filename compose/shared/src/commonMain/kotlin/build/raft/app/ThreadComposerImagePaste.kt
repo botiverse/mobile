@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.NativeClipboard
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.app.data.PlatformFile
+import build.raft.app.base.BridgeModule
 import kotlin.time.TimeSource
 
 /**
@@ -75,6 +76,27 @@ internal fun threadComposerIsImagePastePlaceholderEdit(previous: TextFieldValue,
         changed.selection == TextRange(start + ThreadComposerImagePastePlaceholder.length)
 }
 
+/** Which path asked for a press's one image paste ([ThreadComposerImagePasteRequests.claim]). */
+internal enum class ThreadComposerImagePasteRoute(val wire: String) {
+    /** The host's hook on the editor's `paste:` (iOS: ⌘V, the edit menu's Paste). */
+    SystemPaste("system_paste"),
+    /** The composer's own paste-shortcut key handler (desktop). */
+    KeyHandler("key_handler"),
+    /** The composer clipboard's placeholder pasted by the text field. */
+    Placeholder("placeholder"),
+}
+
+/**
+ * Always-on diagnostics for image paste into the composer: which path ran, what the clipboard
+ * holds by kind and count, and which path claimed or lost a press. Never clipboard content.
+ * Goes to the same channel as `bridge.log` (iOS and Android diagnostics ring).
+ */
+internal object ThreadComposerImagePasteLog {
+    var sink: (String) -> Unit = { raftLogInfo(BridgeModule.BRIDGE_LOG_TAG, it) }
+
+    fun record(line: String) = sink(line)
+}
+
 /**
  * Image pastes into the composer from outside Compose (iOS: the editor's system edit menu and ⌘V,
  * RaftIosImagePaste.swift). The host reads the images inside the paste action (no "Allow Paste"
@@ -87,6 +109,7 @@ internal object ThreadComposerImagePasteRequests {
 
     private var pending: List<PlatformFile>? = null
     private var lastClaim: TimeSource.Monotonic.ValueTimeMark? = null
+    private var lastClaimRoute: ThreadComposerImagePasteRoute? = null
 
     /** The composer editor that has focus, and who to tell when that changes (iOS host). */
     var focusedOwner: Any? = null
@@ -94,13 +117,25 @@ internal object ThreadComposerImagePasteRequests {
     var focusListener: ((Boolean) -> Unit)? = null
 
     /**
-     * One image paste per key press / menu tap: ⌘V can reach both the system paste action and the
-     * composer's key handler, so whichever comes first claims it and the other is dropped.
+     * One image paste per key press / menu tap: whichever path comes first claims it and a second
+     * one within [ThreadComposerImagePasteDedupeMs] is dropped. On iOS the composer's key handler
+     * leaves ⌘V to the system paste action ([raftPlatformComposerKeyHandlerPastesAttachments]), so
+     * there the key handler never takes a press from it. Logs the route and the outcome.
      */
-    fun claim(now: TimeSource.Monotonic.ValueTimeMark = TimeSource.Monotonic.markNow()): Boolean {
+    fun claim(
+        route: ThreadComposerImagePasteRoute,
+        now: TimeSource.Monotonic.ValueTimeMark = TimeSource.Monotonic.markNow(),
+    ): Boolean {
         val last = lastClaim
-        if (last != null && (now - last).inWholeMilliseconds in 0 until ThreadComposerImagePasteDedupeMs) return false
+        val sinceLastMs = last?.let { (now - it).inWholeMilliseconds }
+        val granted = sinceLastMs == null || sinceLastMs !in 0 until ThreadComposerImagePasteDedupeMs
+        ThreadComposerImagePasteLog.record(
+            "composer_image_paste_claim route=${route.wire} granted=$granted " +
+                "previousRoute=${lastClaimRoute?.wire ?: "none"} sinceLastMs=${sinceLastMs ?: -1}"
+        )
+        if (!granted) return false
         lastClaim = now
+        lastClaimRoute = route
         return true
     }
 
