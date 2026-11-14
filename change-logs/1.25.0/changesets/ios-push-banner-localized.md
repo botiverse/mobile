@@ -3,7 +3,7 @@ type: improved
 area: notifications
 platforms:
   - ios
-pull_request: 0
+pull_request: 4727
 rollout: full
 ---
 
