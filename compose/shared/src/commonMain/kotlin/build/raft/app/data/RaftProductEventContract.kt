@@ -71,6 +71,14 @@ const val RAFT_PRODUCT_EVENTS_GATED_FEATURES_SLOCK_SHA: String = "a5a145f9fe3ce4
 const val RAFT_PRODUCT_EVENTS_APP_RATING_SLOCK_SHA: String = "9da0de7879d8c8290363e6ab3719d73f2d7bb483"
 
 /**
+ * botiverse/slock #14904 head (native app settings, approved by Nova 2026-11-14):
+ * `app_settings_snapshot` and `app_setting_changed` (`APP_SETTINGS`, `APP_SETTING_VALUES`,
+ * `APP_SETTING_SURFACES`), sources `NATIVE_CLIENTS`. The server validates names and values strictly;
+ * a build that sends them must not ship before a server with #14904 is in production.
+ */
+const val RAFT_PRODUCT_EVENTS_APP_SETTINGS_SLOCK_SHA: String = "0147fb5a08c5c5b2b289258566ca0e2a034e1309"
+
+/**
  * botiverse/slock #10790 head, where `clientEventBatchSchema` gained the optional batch-level
  * `device_class: "phone" | "tablet"` (`packages/server/src/services/productEventIngest.ts`).
  */
@@ -307,6 +315,105 @@ enum class RaftAppRatingPromptTrigger(val wire: String) {
     @SerialName("action_card_approved") ActionCardApproved("action_card_approved"),
 }
 
+/** `APP_SETTINGS`: the Settings > Mobile cards, by the key both settings events use. */
+@Serializable
+enum class RaftAppSettingKey(val wire: String) {
+    @SerialName("message_alignment") MessageAlignment("message_alignment"),
+    @SerialName("link_open_mode") LinkOpenMode("link_open_mode"),
+    @SerialName("compact_messages") CompactMessages("compact_messages"),
+    @SerialName("long_message_collapse") LongMessageCollapse("long_message_collapse"),
+    @SerialName("new_message_menu") NewMessageMenu("new_message_menu"),
+    @SerialName("conversation_forward_gesture") ConversationForwardGesture("conversation_forward_gesture"),
+    @SerialName("ios_native_nav") IosNativeNav("ios_native_nav"),
+    @SerialName("activity_task_status_badges") ActivityTaskStatusBadges("activity_task_status_badges"),
+    @SerialName("composer_enter_sends") ComposerEnterSends("composer_enter_sends"),
+    @SerialName("multi_shell_host") MultiShellHost("multi_shell_host"),
+    @SerialName("desktop_mode_large_screen") DesktopModeLargeScreen("desktop_mode_large_screen"),
+    @SerialName("server_drawer") ServerDrawer("server_drawer"),
+    @SerialName("home_server_avatar") HomeServerAvatar("home_server_avatar"),
+}
+
+/** `APP_SETTING_MESSAGE_ALIGNMENTS`. */
+@Serializable
+enum class RaftAppSettingMessageAlignment(val wire: String) {
+    @SerialName("left") Left("left"),
+    @SerialName("right") Right("right"),
+}
+
+/** `APP_SETTING_LINK_OPEN_MODES`. */
+@Serializable
+enum class RaftAppSettingLinkOpenMode(val wire: String) {
+    @SerialName("system_browser") SystemBrowser("system_browser"),
+    @SerialName("in_app_browser") InAppBrowser("in_app_browser"),
+}
+
+/**
+ * `APP_SETTING_VALUES`: one list for every setting. The registry does not check that a value
+ * belongs to its setting, so only [raftAppSettingValueOf] / [raftAppSettingToggleValue] make them.
+ */
+@Serializable
+enum class RaftAppSettingValue(val wire: String) {
+    @SerialName("on") On("on"),
+    @SerialName("off") Off("off"),
+    @SerialName("left") Left("left"),
+    @SerialName("right") Right("right"),
+    @SerialName("system_browser") SystemBrowser("system_browser"),
+    @SerialName("in_app_browser") InAppBrowser("in_app_browser"),
+}
+
+fun raftAppSettingToggleValue(enabled: Boolean): RaftAppSettingValue =
+    if (enabled) RaftAppSettingValue.On else RaftAppSettingValue.Off
+
+fun raftAppSettingValueOf(alignment: RaftAppSettingMessageAlignment): RaftAppSettingValue =
+    when (alignment) {
+        RaftAppSettingMessageAlignment.Left -> RaftAppSettingValue.Left
+        RaftAppSettingMessageAlignment.Right -> RaftAppSettingValue.Right
+    }
+
+fun raftAppSettingValueOf(mode: RaftAppSettingLinkOpenMode): RaftAppSettingValue =
+    when (mode) {
+        RaftAppSettingLinkOpenMode.SystemBrowser -> RaftAppSettingValue.SystemBrowser
+        RaftAppSettingLinkOpenMode.InAppBrowser -> RaftAppSettingValue.InAppBrowser
+    }
+
+/** `APP_SETTING_SURFACES`: Settings > Mobile, or the same cards under Settings > Appearance (fine pointer). */
+@Serializable
+enum class RaftAppSettingSurface(val wire: String) {
+    @SerialName("settings_mobile") SettingsMobile("settings_mobile"),
+    @SerialName("settings_appearance") SettingsAppearance("settings_appearance"),
+}
+
+/**
+ * `app_settings_snapshot`: a setting the platform does not show is null, so it is left out of the
+ * event (absent, never false). [iosNativeNavChosen]: the person set that switch (false: it follows
+ * the server flag).
+ */
+@Serializable
+data class RaftAppSettingsSnapshotProperties(
+    @SerialName("message_alignment") val messageAlignment: RaftAppSettingMessageAlignment,
+    @SerialName("link_open_mode") val linkOpenMode: RaftAppSettingLinkOpenMode? = null,
+    @SerialName("compact_messages") val compactMessages: Boolean,
+    @SerialName("long_message_collapse") val longMessageCollapse: Boolean,
+    @SerialName("new_message_menu") val newMessageMenu: Boolean,
+    @SerialName("conversation_forward_gesture") val conversationForwardGesture: Boolean? = null,
+    @SerialName("ios_native_nav") val iosNativeNav: Boolean? = null,
+    @SerialName("ios_native_nav_chosen") val iosNativeNavChosen: Boolean? = null,
+    @SerialName("activity_task_status_badges") val activityTaskStatusBadges: Boolean,
+    @SerialName("composer_enter_sends") val composerEnterSends: Boolean,
+    @SerialName("multi_shell_host") val multiShellHost: Boolean? = null,
+    @SerialName("desktop_mode_large_screen") val desktopModeLargeScreen: Boolean,
+    @SerialName("server_drawer") val serverDrawer: Boolean,
+    @SerialName("home_server_avatar") val homeServerAvatar: Boolean,
+)
+
+@Serializable
+data class RaftAppSettingChangedProperties(
+    val setting: RaftAppSettingKey,
+    val value: RaftAppSettingValue,
+    @SerialName("previous_value") val previousValue: RaftAppSettingValue,
+    val surface: RaftAppSettingSurface,
+)
+
 @Serializable
 data class RaftAppRatingPromptRequestedProperties(
     val trigger: RaftAppRatingPromptTrigger,
@@ -415,6 +522,19 @@ sealed class RaftProductEvent<P>(val name: String, private val serializer: KSeri
         RaftProductEvent<RaftAppRatingPromptRequestedProperties>(
             "app_rating_prompt_requested",
             RaftAppRatingPromptRequestedProperties.serializer(),
+        )
+
+    /** The Settings > Mobile values, at most once per install per UTC day ([RaftAppSettingsSnapshotReport]). */
+    data class AppSettingsSnapshot(override val properties: RaftAppSettingsSnapshotProperties) :
+        RaftProductEvent<RaftAppSettingsSnapshotProperties>(
+            "app_settings_snapshot",
+            RaftAppSettingsSnapshotProperties.serializer(),
+        )
+
+    data class AppSettingChanged(override val properties: RaftAppSettingChangedProperties) :
+        RaftProductEvent<RaftAppSettingChangedProperties>(
+            "app_setting_changed",
+            RaftAppSettingChangedProperties.serializer(),
         )
 
     /** Android: where this install came from (store + validated utm_*), once per install after first sign-in. */

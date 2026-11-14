@@ -543,19 +543,55 @@ sealed interface SharedSettingsIntent {
         val result: SystemNotificationActionResult
     ) : SharedSettingsIntent
     data class SetLocale(val localeTag: String) : SharedSettingsIntent
-    data class SetMessageAlignment(val alignment: String) : SharedSettingsIntent
-    data class SetLinkOpenMode(val mode: String) : SharedSettingsIntent
-    data class SetCompactConsecutiveMessages(val enabled: Boolean) : SharedSettingsIntent
-    data class SetLongMessageCollapseEnabled(val enabled: Boolean) : SharedSettingsIntent
-    data class SetNewMessageMenuEnabled(val enabled: Boolean) : SharedSettingsIntent
-    data class SetConversationForwardGestureEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetMessageAlignment(
+        val alignment: String,
+        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
+    ) : SharedSettingsIntent
+    data class SetLinkOpenMode(
+        val mode: String,
+        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
+    ) : SharedSettingsIntent
+    data class SetCompactConsecutiveMessages(
+        val enabled: Boolean,
+        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
+    ) : SharedSettingsIntent
+    data class SetLongMessageCollapseEnabled(
+        val enabled: Boolean,
+        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
+    ) : SharedSettingsIntent
+    data class SetNewMessageMenuEnabled(
+        val enabled: Boolean,
+        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
+    ) : SharedSettingsIntent
+    data class SetConversationForwardGestureEnabled(
+        val enabled: Boolean,
+        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
+    ) : SharedSettingsIntent
     data class SetForegroundMessageBanners(val enabled: Boolean) : SharedSettingsIntent
-    data class SetActivityTaskStatusBadges(val enabled: Boolean) : SharedSettingsIntent
-    data class SetComposerSendKey(val enabled: Boolean) : SharedSettingsIntent
-    data class SetMultiShellHostEnabled(val enabled: Boolean) : SharedSettingsIntent
-    data class SetDesktopModeOnLargeScreen(val enabled: Boolean) : SharedSettingsIntent
-    data class SetServerDrawerEnabled(val enabled: Boolean) : SharedSettingsIntent
-    data class SetHomeServerAvatarEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetActivityTaskStatusBadges(
+        val enabled: Boolean,
+        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
+    ) : SharedSettingsIntent
+    data class SetComposerSendKey(
+        val enabled: Boolean,
+        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
+    ) : SharedSettingsIntent
+    data class SetMultiShellHostEnabled(
+        val enabled: Boolean,
+        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
+    ) : SharedSettingsIntent
+    data class SetDesktopModeOnLargeScreen(
+        val enabled: Boolean,
+        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
+    ) : SharedSettingsIntent
+    data class SetServerDrawerEnabled(
+        val enabled: Boolean,
+        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
+    ) : SharedSettingsIntent
+    data class SetHomeServerAvatarEnabled(
+        val enabled: Boolean,
+        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
+    ) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
@@ -2067,6 +2103,17 @@ class SharedSettingsStore(
     }
 
     suspend fun accept(intent: SharedSettingsIntent) {
+        val change = intent.appSettingChange() ?: return acceptIntent(intent)
+        val before = (_state.value.mobile as? ScreenLoadState.Content)?.data?.appSettingValue(change.first)
+        acceptIntent(intent)
+        val after = (_state.value.mobile as? ScreenLoadState.Content)?.data?.appSettingValue(change.first)
+        // Only a saved write moves the snapshot: a failed one keeps the previous content.
+        if (before != null && after != null && before != after) {
+            RaftProductEvents.appSettingChanged(change.first, previous = before, value = after, surface = change.second)
+        }
+    }
+
+    private suspend fun acceptIntent(intent: SharedSettingsIntent) {
         when (intent) {
             SharedSettingsIntent.Start -> loadHome()
             is SharedSettingsIntent.LoadPageContent -> {
@@ -4887,3 +4934,49 @@ private fun String.titleLabel(): String =
 private fun StoredAuthSession.currentServer(): StoredAuthServer? =
     currentServerId?.let { serverId -> servers.firstOrNull { it.id == serverId } }
         ?: servers.firstOrNull()
+
+/** The `app_setting_changed` setting and surface an intent writes, or null for any other intent. */
+private fun SharedSettingsIntent.appSettingChange(): Pair<RaftAppSettingKey, RaftAppSettingSurface>? =
+    when (this) {
+        is SharedSettingsIntent.SetMessageAlignment -> RaftAppSettingKey.MessageAlignment to surface
+        is SharedSettingsIntent.SetLinkOpenMode -> RaftAppSettingKey.LinkOpenMode to surface
+        is SharedSettingsIntent.SetCompactConsecutiveMessages -> RaftAppSettingKey.CompactMessages to surface
+        is SharedSettingsIntent.SetLongMessageCollapseEnabled -> RaftAppSettingKey.LongMessageCollapse to surface
+        is SharedSettingsIntent.SetNewMessageMenuEnabled -> RaftAppSettingKey.NewMessageMenu to surface
+        is SharedSettingsIntent.SetConversationForwardGestureEnabled -> RaftAppSettingKey.ConversationForwardGesture to surface
+        is SharedSettingsIntent.SetActivityTaskStatusBadges -> RaftAppSettingKey.ActivityTaskStatusBadges to surface
+        is SharedSettingsIntent.SetComposerSendKey -> RaftAppSettingKey.ComposerEnterSends to surface
+        is SharedSettingsIntent.SetMultiShellHostEnabled -> RaftAppSettingKey.MultiShellHost to surface
+        is SharedSettingsIntent.SetDesktopModeOnLargeScreen -> RaftAppSettingKey.DesktopModeLargeScreen to surface
+        is SharedSettingsIntent.SetServerDrawerEnabled -> RaftAppSettingKey.ServerDrawer to surface
+        is SharedSettingsIntent.SetHomeServerAvatarEnabled -> RaftAppSettingKey.HomeServerAvatar to surface
+        else -> null
+    }
+
+/** The value [setting] shows in this snapshot, in `app_setting_changed` terms; null when it is not shown here. */
+internal fun SettingsMobileSnapshot.appSettingValue(setting: RaftAppSettingKey): RaftAppSettingValue? =
+    when (setting) {
+        RaftAppSettingKey.MessageAlignment ->
+            messageAlignmentPreference.takeIf { it.available }?.let {
+                raftAppSettingValueOf(MyMessageAlignmentPreference.fromStorageKey(it.selectedKey).toRaftAppSetting())
+            }
+        RaftAppSettingKey.LinkOpenMode ->
+            linkOpenMode.takeIf { it.available }?.let {
+                raftAppSettingValueOf(LinkOpenMode.fromStorageKey(it.selectedKey).toRaftAppSetting())
+            }
+        RaftAppSettingKey.CompactMessages -> compactConsecutiveMessages.appSettingToggleValue()
+        RaftAppSettingKey.LongMessageCollapse -> longMessageCollapse.appSettingToggleValue()
+        RaftAppSettingKey.NewMessageMenu -> newMessageMenu.appSettingToggleValue()
+        RaftAppSettingKey.ConversationForwardGesture -> conversationForwardGesture.appSettingToggleValue()
+        RaftAppSettingKey.ActivityTaskStatusBadges -> activityTaskStatusBadges.appSettingToggleValue()
+        RaftAppSettingKey.ComposerEnterSends -> composerSendKey.appSettingToggleValue()
+        RaftAppSettingKey.MultiShellHost -> multiShellHost.appSettingToggleValue()
+        RaftAppSettingKey.DesktopModeLargeScreen -> desktopModeOnLargeScreen.appSettingToggleValue()
+        RaftAppSettingKey.ServerDrawer -> serverDrawer.appSettingToggleValue()
+        RaftAppSettingKey.HomeServerAvatar -> homeServerAvatar.appSettingToggleValue()
+        // Not in this snapshot: the card writes RaftIosNativeNavFlag itself and reports its own change.
+        RaftAppSettingKey.IosNativeNav -> null
+    }
+
+private fun SettingsMobileToggleSnapshot.appSettingToggleValue(): RaftAppSettingValue? =
+    takeIf { it.available }?.let { raftAppSettingToggleValue(it.enabled) }

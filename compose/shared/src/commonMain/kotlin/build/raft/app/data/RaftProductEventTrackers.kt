@@ -377,6 +377,21 @@ class RaftProductEventsRecorder(
         client.track(RaftProductEvent.AppRatingPromptRequested(RaftAppRatingPromptRequestedProperties(trigger)))
     }
 
+    /** A Settings > Mobile setting was saved with a new value; nothing when [value] equals [previous]. */
+    fun appSettingChanged(
+        setting: RaftAppSettingKey,
+        previous: RaftAppSettingValue,
+        value: RaftAppSettingValue,
+        surface: RaftAppSettingSurface,
+    ) {
+        if (previous == value) return
+        client.track(
+            RaftProductEvent.AppSettingChanged(
+                RaftAppSettingChangedProperties(setting = setting, value = value, previousValue = previous, surface = surface)
+            )
+        )
+    }
+
     /** The next thread page with [instanceId] opens a task (a task opens as a thread on phones). */
     fun markTaskThreadOpening(instanceId: String) {
         val key = instanceId.trim().takeIf { it.isNotEmpty() } ?: return

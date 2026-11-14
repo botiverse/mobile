@@ -45,6 +45,7 @@ object RaftProductEvents {
 
     fun onAppForeground(via: RaftAppOpenVia? = null) {
         recorder.onAppForeground(via)
+        RaftAppSettingsSnapshotReport.onAppForeground()
     }
 
     /** How the app is being opened (launcher icon, notification tap): `app_opened.via`. */
@@ -65,10 +66,12 @@ object RaftProductEvents {
         val normalized = serverId.trim().takeIf { it.isNotEmpty() } ?: return
         recorder.client.setSignedIn(ServerId(normalized))
         RaftInstallSourceReport.onSignedIn(userId)
+        RaftAppSettingsSnapshotReport.onSignedIn()
     }
 
     fun setSignedOut() {
         RaftInstallSourceReport.onSignedOut()
+        RaftAppSettingsSnapshotReport.onSignedOut()
         recorder.client.setSignedOut()
     }
 
@@ -125,6 +128,23 @@ object RaftProductEvents {
     fun appRatingPromptRequested(trigger: RaftAppRatingPromptTrigger) {
         recorder.appRatingPromptRequested(trigger)
     }
+
+    /** See [RaftProductEventsRecorder.appSettingChanged]. */
+    fun appSettingChanged(
+        setting: RaftAppSettingKey,
+        previous: RaftAppSettingValue,
+        value: RaftAppSettingValue,
+        surface: RaftAppSettingSurface,
+    ) {
+        recorder.appSettingChanged(setting, previous, value, surface)
+    }
+
+    /** See [RaftAppSettingsSnapshotReport]: sent alone, now, and reports whether the server took it. */
+    suspend fun sendAppSettingsSnapshot(
+        properties: RaftAppSettingsSnapshotProperties,
+        stillAllowed: () -> Boolean,
+    ): RaftProductEventOnceResult =
+        recorder.client.sendOnce(RaftProductEvent.AppSettingsSnapshot(properties), stillAllowed)
 
     /** See [RaftInstallSourceReport]: sent alone, now, and reports whether the server took it. */
     suspend fun sendAppInstallSourceRead(
