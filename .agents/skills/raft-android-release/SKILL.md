@@ -11,7 +11,8 @@ smoke, §7.2 finalize + `vX.Y.Z` tag, §7.3 Play tracks, §8 interval reminder,
 §9 merge-back and lock.
 
 - CI only makes drafts. `main` activation, Play beyond internal, and
-  announcements each need artin's explicit go.
+  announcements each need an explicit release go from the mobile DRI (SOP
+  §Release decisions). Rollback and `--cancel-in-review` go to the release owner.
 - One APK per Hands channel; publish only with
   `scripts/finalize_android_hands_release.sh`.
 - Never publish the Hands draft that carries a Play promotion.

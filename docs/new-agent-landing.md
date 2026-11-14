@@ -52,7 +52,7 @@ Useful docs:
 - Android emulator setup: `docs/android-emulator-setup.md`
 - Mobile device automation: `docs/mobile-device-automation.md`
 - Visual testing provider: `docs/visual-testing-android-provider.md`
-- Release procedure: `docs/mobile-release-sop.md`
+- Release procedure: `docs/mobile-release-sop.md`; release retros: `docs/retros/` (latest: `docs/retros/2026-11-14-1.25.md`)
 
 ## Collaboration
 

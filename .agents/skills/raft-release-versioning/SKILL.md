@@ -12,4 +12,5 @@ versionCode formula) and §3 (release branch, what may enter it).
   `main`; build = same content, new build number. A feature never ships as a
   patch or build.
 - Internal/preview channels need no approval; every external release needs
-  artin's OK for that version and a smoke of the exact build (SOP hard rule 2).
+  a release go (the mobile DRI's, by delegation) for that version and
+  a smoke of the exact build (SOP hard rule 2).
