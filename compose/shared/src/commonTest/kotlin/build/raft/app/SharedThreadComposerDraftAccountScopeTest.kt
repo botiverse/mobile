@@ -240,6 +240,59 @@ class SharedThreadComposerDraftAccountScopeTest {
         assertEquals("keep me", recreated.state.value.seedText)
     }
 
+    @Test
+    fun draftSurvivesProcessDeathWhenTheBindingStartsUnknownAtColdStart() {
+        val base = InMemoryRaftKeyValueStore()
+        // Process 1: the binding follower first sees the initial (null) binding, then the sign-in.
+        Harness(base).apply {
+            bind(null)
+            bind(accountA)
+            val composer = composer()
+            composer.dispatch(SharedThreadComposerDraftIntent.Start(RaftThreadComposerPayload(instanceId = "p1"), draftKey))
+            composer.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "typed before force-stop"))
+            scheduler.runAll()
+        }
+
+        // Process 2 over the same storage: a session is stored, so onNoStoredSessionAtStart is not
+        // called; the follower again sees null first (session not restored yet), then account A.
+        val next = Harness(base)
+        next.bind(null)
+        assertEquals(
+            "typed before force-stop",
+            base.getString(
+                SharedThreadComposerDraftAccountKeys.scopedKey(
+                    accountA,
+                    SharedThreadComposerDraftPersistence.DraftStoragePrefix + draftKey + ":text"
+                )
+            ),
+            "the initial unknown binding must not delete stored drafts"
+        )
+        next.bind(accountA)
+
+        assertEquals(setOf(draftKey), next.slice.activeDraftRecordsState.value.map { it.key }.toSet())
+        assertEquals("typed before force-stop", next.persistence.read(draftKey)?.text)
+        val reopened = next.composer()
+        reopened.dispatch(SharedThreadComposerDraftIntent.Start(RaftThreadComposerPayload(instanceId = "p2"), draftKey))
+        assertEquals("typed before force-stop", reopened.state.value.seedText)
+    }
+
+    @Test
+    fun rowsOfAnEndedSessionAreDeletedAtStartWhenNoSessionIsStored() {
+        // A's sign-out cleanup never ran (process died) and nobody is signed in at the next start.
+        val base = InMemoryRaftKeyValueStore()
+        Harness(base).apply {
+            bind(accountA)
+            persistence.save(key = draftKey, text = "A", asTask = false)
+        }
+        val next = Harness(base)
+        next.accounts.onNoStoredSessionAtStart()
+        next.bind(null)
+
+        assertNull(base.getString(SharedThreadComposerDraftAccountKeys.OwnersKey))
+        next.bind(accountA)
+        assertNull(next.persistence.read(draftKey))
+    }
+
     private class ManualScheduler : SharedThreadComposerDraftPersistenceScheduler {
         private val tasks = mutableListOf<Pair<() -> Unit, BooleanArray>>()
 

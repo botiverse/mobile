@@ -259,12 +259,23 @@ internal class SharedThreadComposerDraftAccounts(
         val previous = synchronized(lock) { lastBound.also { lastBound = account } }
         // Drafts' GET /channels/:id answers are this account's too: another account (or none) starts empty.
         SharedRaftDraftPlaceLookups.bindAccount(account?.storageToken)
+        if (previous == null && account == null) {
+            // Nobody has been bound in this process yet.  This is the binding's initial value at
+            // cold start, before the stored session is restored: it is "not known yet", not a
+            // sign-out, so the stored drafts stay.  (Deleting here wiped every draft on each cold
+            // start.)  Rows left by a session that really ended are deleted by
+            // [onNoStoredSessionAtStart], or when another account is bound.
+            store.rebind(null)
+            return
+        }
         if (previous != null && previous != account) {
             slice.retireAccountSession { store.rebind(account) }
         } else {
             // First binding of this process (cold start or a sign-in after signed-out): composers
-            // already started for this account keep writing.
+            // already started for this account keep writing, and the Drafts projection, read
+            // before the account was known, is re-read for it.
             store.rebind(account)
+            slice.refreshForAccountBinding()
         }
         val keep = account?.storageToken
         (store.owners() + listOfNotNull(previous?.storageToken))
@@ -272,10 +283,17 @@ internal class SharedThreadComposerDraftAccounts(
             .forEach(::deleteOwner)
     }
 
-    /** At start with no stored session: drafts from older versions belong to no one; delete them. */
+    /**
+     * At start with no stored session: drafts from older versions belong to no one, and any
+     * account's rows still on the device outlived their session (e.g. the process died before the
+     * sign-out cleanup finished); delete them.
+     */
     fun onNoStoredSessionAtStart() {
         store.discardLegacyDraftsIfUnbound {
             clearEveryDraft(persistenceFor(base))
+        }
+        if (synchronized(lock) { lastBound } == null && store.currentAccount() == null) {
+            store.owners().forEach(::deleteOwner)
         }
     }
 
