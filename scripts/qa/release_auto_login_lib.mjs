@@ -24,7 +24,7 @@ export function createRedactor() {
     let text = String(value);
     for (const secret of [...secrets].sort((a, b) => b.length - a.length)) text = text.split(secret).join("[masked]");
     return text
-      .replace(/\b(code|request|requestId|state|token|access_token|refresh_token)=[^&\s"']+/gi, "$1=[masked]")
+      .replace(/\b(code|request|requestId|state|token|access_token|refresh_token)=(?!\d{3}\b)[^&\s"']+/gi, "$1=[masked]")
       .replace(/"(accessToken|refreshToken|password|code|redirectUrl)"\s*:\s*"[^"]*"/g, '"$1":"[masked]"')
       .replace(/\b(raft(?:-[a-z]+)?):\/\/login\/callback\S*/gi, "$1://login/callback?[masked]");
   };

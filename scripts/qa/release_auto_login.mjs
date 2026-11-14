@@ -455,8 +455,9 @@ async function main() {
         const failed = find(list, (n) => n.text.startsWith("Unable to finish sign-in"));
         if (failed) stop("the app shows \"Unable to finish sign-in\"");
         const home = find(list, (n) => n.pkg === PKG && n.text === "Drafts");
-        if (inApp && !signInVisible && (home || complete)) {
-          return { exchange: complete ? "app_shell" : "not logged", home_visible: Boolean(home) };
+        const chooser = find(list, (n) => n.pkg === PKG && n.text.startsWith("Signed in as "));
+        if (inApp && !signInVisible && (home || chooser || complete)) {
+          return { exchange: complete ? "app_shell" : "not logged", screen: home ? "home" : chooser ? "choose_server" : "other" };
         }
         if (!inApp) launchApp();
         lastLabels = list.map(label).filter(Boolean).slice(0, 30).join(" | ");
