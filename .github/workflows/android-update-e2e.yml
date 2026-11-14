@@ -190,7 +190,7 @@ jobs:
           emulator-boot-timeout: 1200
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: node scripts/qa/android_update_e2e.mjs --apk-a "${{ steps.ids.outputs.a_apk }}" --a-code "${{ steps.ids.outputs.a_code }}" --b-code "${{ steps.ids.outputs.b_code }}" --b-name "${{ steps.ids.outputs.b_name }}" --hands-group "${{ steps.hands.outputs.group }}" --device-id-file "${{ runner.temp }}/hands-device-id" --out "${{ env.EVIDENCE }}"
+          script: node scripts/qa/android_update_e2e.mjs --apk-a "${{ steps.ids.outputs.a_apk }}" --a-code "${{ steps.ids.outputs.a_code }}" --b-code "${{ steps.ids.outputs.b_code }}" --b-name "${{ steps.ids.outputs.b_name }}" --hands-group "${{ steps.hands.outputs.group }}" --hands-release "${{ steps.hands.outputs.release_id }}" --device-id-file "${{ runner.temp }}/hands-device-id" --out "${{ env.EVIDENCE }}"
 
       - name: Hands cleanup (remove emulator from group, cancel B)
         if: always() && steps.hands.outputs.group != ''

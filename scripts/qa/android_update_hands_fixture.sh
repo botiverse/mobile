@@ -12,7 +12,11 @@
 #                                   fixture_generation for the next unused QA versionCodes
 #   group                        -> prints the e2e device group id (created once if missing)
 #   publish APK NAME CODE GROUP SHA
-#                                -> prints release_id of B on debug, active, scoped to GROUP
+#                                -> prints release_id of B on debug, active, scoped to GROUP;
+#                                   B's installable asset must be ${E2E_ARCH} and B's bytes
+#   assert-asset RELEASE_ID ABI [APK]
+#                                -> fails unless the release's installable APK asset is for ABI
+#                                   (and, with APK, has that file's sha256)
 #   add-member GROUP DEVICE_ID LABEL
 #   cleanup GROUP RELEASE_ID DEVICE_ID   (best effort, every step attempted)
 set -euo pipefail
@@ -24,6 +28,8 @@ GROUP_NAME="${HANDS_E2E_GROUP_NAME:-GitHub Actions update e2e emulators}"
 # Reserved QA versionCode window: majors 200..209 with minor = patch = 0.
 RANGE_LO=2000000000
 RANGE_HI=2100000000
+# ABI of the emulator android-update-e2e.yml boots (reactivecircus arch: x86_64).
+E2E_ARCH="${HANDS_E2E_ARCH:-x86_64}"
 
 die() { echo "android-update-hands: $*" >&2; exit 1; }
 [ -n "${HANDS_AUTH_TOKEN:-}" ] || die "HANDS_AUTH_TOKEN is required"
@@ -39,6 +45,29 @@ print(next(a["id"] for a in d.get("apps", []) if a.get("slug") == slug))' "${APP
 
 releases_json() {
   hands --json api GET "/api/apps/$(app_id)/releases?limit=1000"
+}
+
+# assert_asset RELEASE_ID ABI [APK]: Hands only offers a release whose installable
+# asset matches the device ABI ("matched release has no compatible asset"), and
+# a reused versionCode can carry someone else's upload. Check both up front.
+assert_asset() {
+  local rid="$1" abi="$2" apk="${3:-}" sha=""
+  [ -z "${apk}" ] || sha="$(sha256sum "${apk}" | cut -d' ' -f1)"
+  hands releases show "${APP_SLUG}" "${rid}" --json | python3 -c '
+import json, sys
+abi, sha, rid = sys.argv[1], sys.argv[2], sys.argv[3]
+d = json.load(sys.stdin)
+apks = [a for a in d.get("assets", []) if a.get("filetype") == "apk" and a.get("artifact_kind", "installable") == "installable"]
+def desc(a):
+    return "%s %sB sha256=%s" % (a.get("arch"), a.get("size_bytes"), str(a.get("file_hash"))[:12])
+have = ", ".join(desc(a) for a in apks) or "none"
+match = [a for a in apks if a.get("arch") == abi]
+if not match:
+    sys.exit(f"Hands release {rid} has no installable APK for ABI {abi} (has: {have}); Hands would answer \"matched release has no compatible asset\"")
+if sha and not any(a.get("file_hash") == sha for a in match):
+    sys.exit(f"Hands release {rid} {abi} APK is not B (want sha256={sha[:12]}, has: {have})")
+print(f"Hands release {rid}: installable APK for {abi} OK ({have})", file=sys.stderr)
+' "${abi}" "${sha}" "${rid}"
 }
 
 cmd="${1:-}"
@@ -87,7 +116,7 @@ rs.sort(key=lambda r: r.get("created_at") or 0, reverse=True)
 print(" ".join([rs[0]["id"], rs[0]["status"]]) if rs else "")' "${code}")"
     if [ -z "${existing}" ]; then
       out="$(hands builds publish-android "${APP_SLUG}" --apk "${apk}" --version-name "${name}" --version-code "${code}" \
-        --channel "${CHANNEL}" --arch x86_64 --draft --source-commit "${sha}" --ci-provider github-actions \
+        --channel "${CHANNEL}" --arch "${E2E_ARCH}" --draft --source-commit "${sha}" --ci-provider github-actions \
         --ci-run-id "${GITHUB_RUN_ID:-local}" --ci-url "${GITHUB_SERVER_URL:-}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}" \
         --changelog "Android update e2e fixture B (${name}); device-group scoped test release." --json)"
       rid="$(printf '%s' "${out}" | python3 -c '
@@ -101,6 +130,8 @@ print((r or {}).get("id") or d.get("release_id") or d.get("releaseId") or "")')"
       read -r rid status <<<"${existing}"
       echo "reusing Hands release ${rid} (${status}) for versionCode ${code}" >&2
     fi
+    # Before any activation: B must be served as the emulator's ABI, with B's bytes.
+    assert_asset "${rid}" "${E2E_ARCH}" "${apk}" || die "refusing to serve release ${rid} as B for versionCode ${code}"
     case "${status}" in
       draft)
         hands releases update "${APP_SLUG}" "${rid}" --device-group "${group}" --json >/dev/null
@@ -130,6 +161,11 @@ assert not r.get("is_full"), "release is full-scope; it must be device-group sco
     echo "${rid}"
     ;;
 
+  assert-asset)
+    [ -n "${1:-}" ] && [ -n "${2:-}" ] || die "usage: $0 assert-asset RELEASE_ID ABI [APK]"
+    assert_asset "$1" "$2" "${3:-}"
+    ;;
+
   add-member)
     hands device-groups add-member "${APP_SLUG}" "$1" --device-id "$2" --label "$3" --json >/dev/null
     ;;
@@ -146,6 +182,6 @@ assert not r.get("is_full"), "release is full-scope; it must be device-group sco
     ;;
 
   *)
-    die "usage: $0 plan|group|publish|add-member|cleanup ..."
+    die "usage: $0 plan|group|publish|assert-asset|add-member|cleanup ..."
     ;;
 esac
