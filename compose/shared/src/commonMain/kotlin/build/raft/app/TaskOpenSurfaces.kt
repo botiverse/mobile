@@ -289,13 +289,13 @@ internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::new
      * Something else opens in the window ([RaftIncomingNavigationSignal]): the surface closes and
      * its draft stays. A running first send is not cut off (the message may already be posted, and
      * its conversation page is on the way): the open waits until the send ends, then the surface
-     * closes either way (after a failure the typed text is kept as the draft). True when a surface
-     * was open.
+     * closes either way through [requestClose] (a finished first send's hand-off ends; after a
+     * failure the typed text is kept as the draft). True when a surface was open.
      */
     suspend fun closeForIncomingNavigation(): Boolean {
         if (surface == null) return false
         sendRunning.first { running -> !running }
-        dismiss()
+        requestClose()
         return true
     }
 }
