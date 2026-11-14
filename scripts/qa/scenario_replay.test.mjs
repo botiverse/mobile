@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { run as runTaskV2 } from "./scenarios/task_v2.mjs";
 
@@ -118,13 +118,13 @@ test("task_v2: two channels with the exact name -> nothing written", async () =>
 
 // ---------- old_cli_task.mjs with a fake fetch (preloaded) and a fake npm ----------
 const TITLE = "QA: 老版本 CLI 建的任务（task v2 放量前验证，可删）";
-function oldCliRun({ revoke = 204, revokedAt = "2026-11-14T00:00:00Z", logout = 200, refresh = 401, mint = 201, args = ["--server-name", "OranixSlockTest", "--channel", "qa-test-create-7842"] } = {}) {
+function oldCliFake({ revoke = 204, revokedAt = "2026-11-14T00:00:00Z", logout = 200, refresh = 401, mint = 201, mintDelay = 0, listNone = false, args = ["--server-name", "OranixSlockTest", "--channel", "qa-test-create-7842"] } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "old-cli-replay-"));
   const tmp = path.join(dir, "tmp");
   fs.mkdirSync(tmp);
   const trace = path.join(dir, "trace");
   const stub = path.join(dir, "fake-net.cjs");
-  const config = { revoke, revokedAt, logout, refresh, mint, title: TITLE };
+  const config = { revoke, revokedAt, logout, refresh, mint, mintDelay, listNone, title: TITLE };
   fs.writeFileSync(stub, `
 const fs = require("fs");
 const C = ${JSON.stringify(config)};
@@ -140,8 +140,8 @@ global.fetch = async (url, opts = {}) => {
   if (p.endsWith("/channels")) return res(200, [{ id: "fake-channel", name: "qa-test-create-7842", type: "channel" }, { id: "general", name: "general", type: "channel" }]);
   if (p.endsWith("/members")) return res(200, { ok: true });
   if (p.includes("/tasks/channel/")) return res(200, [{ id: "fake-task", taskNumber: 42, createdById: "fake-agent", title: C.title, sourceMessageId: "fake-source", createdAt: "2026-11-14T00:00:00Z" }]);
-  if (p.endsWith("/credentials") && method === "POST") { mintedName = body.name; return C.mint === 201 ? res(201, { apiKey: "sk_agent_fakefakefake", credentialId: "fake-credential-id", scopes: ["tasks"] }) : res(C.mint, { error: "lost" }); }
-  if (p.endsWith("/credentials") && method === "GET") return res(200, { credentials: [{ id: "fake-credential-id", name: mintedName, revokedAt: C.revokedAt }] });
+  if (p.endsWith("/credentials") && method === "POST") { mintedName = body.name; if (C.mintDelay) await new Promise((r) => setTimeout(r, C.mintDelay)); if (C.mint === "noid") return res(201, { apiKey: "sk_agent_fakefakefake", scopes: ["tasks"] }); return C.mint === 201 ? res(201, { apiKey: "sk_agent_fakefakefake", credentialId: "fake-credential-id", scopes: ["tasks"] }) : res(C.mint, { error: "lost" }); }
+  if (p.endsWith("/credentials") && method === "GET") return res(200, { credentials: C.listNone ? [{ id: "someone-elses", name: "another run", revokedAt: null }] : [{ id: "fake-credential-id", name: mintedName, revokedAt: C.revokedAt }] });
   if (p.includes("/credentials/") && method === "DELETE") return res(C.revoke, C.revoke === 204 ? null : { error: "fake failed" });
   if (p.includes("/messages/context/")) return res(200, { id: "fake-source", senderId: "fake-agent", content: C.title });
   if (p.endsWith("/auth/logout")) return res(C.logout, { ok: C.logout === 200 });
@@ -151,20 +151,49 @@ global.fetch = async (url, opts = {}) => {
   const bin = path.join(dir, "bin");
   fs.mkdirSync(bin);
   fs.writeFileSync(path.join(bin, "npm"), `#!/bin/sh
+echo "NPM $*" >> "$FAKE_TRACE"
 mkdir -p node_modules/@botiverse/raft/dist
 printf '%s' '{"version":"synthetic"}' > node_modules/@botiverse/raft/package.json
 printf '%s\\n' 'console.log("Created by: @qa-old-cli-task");console.log("Source: msg=fake in #qa-test-create-7842 — @qa-old-cli-task: x")' > node_modules/@botiverse/raft/dist/raft.js
 `, { mode: 0o755 });
   const outFile = path.join(dir, "out.json");
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, NODE_OPTIONS: `--require=${stub}`, TMPDIR: tmp, FAKE_TRACE: trace, QA_LOGIN_EMAIL: "synthetic@example.invalid", QA_LOGIN_PASSWORD: "fakepassword", GITHUB_STEP_SUMMARY: "" };
-  const r = spawnSync(process.execPath, [path.join(ROOT, "scripts/qa/old_cli_task.mjs"), "--env", "staging", ...args, "--out", outFile], { env, encoding: "utf8", timeout: 60_000 });
-  const keyFiles = [];
-  const walk = (p) => { for (const e of fs.readdirSync(p, { withFileTypes: true })) { const v = path.join(p, e.name); if (e.isDirectory()) walk(v); else if (e.name === "credential.json") keyFiles.push(v); } };
-  walk(tmp);
-  const summary = fs.existsSync(outFile) ? JSON.parse(fs.readFileSync(outFile, "utf8")) : null;
-  const calls = fs.existsSync(trace) ? fs.readFileSync(trace, "utf8").trim().split("\n") : [];
-  fs.rmSync(dir, { recursive: true, force: true });
-  return { exit: r.status, summary, keyFiles, calls, stdout: r.stdout + r.stderr };
+  const argv = [path.join(ROOT, "scripts/qa/old_cli_task.mjs"), "--env", "staging", ...args, "--out", outFile];
+  const collect = (status, output) => {
+    const keyFiles = [];
+    const walk = (p) => { for (const e of fs.readdirSync(p, { withFileTypes: true })) { const v = path.join(p, e.name); if (e.isDirectory()) walk(v); else if (e.name === "credential.json") keyFiles.push(v); } };
+    walk(tmp);
+    const read = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : null);
+    const summary = read(outFile);
+    const intent = read(path.join(dir, "old-cli-key-intent.json"));
+    const calls = fs.existsSync(trace) ? fs.readFileSync(trace, "utf8").trim().split("\n").filter(Boolean) : [];
+    fs.rmSync(dir, { recursive: true, force: true });
+    return { exit: status, summary, intent, keyFiles, calls, stdout: output };
+  };
+  return { env, argv, trace, collect };
+}
+function oldCliRun(options) {
+  const f = oldCliFake(options);
+  const r = spawnSync(process.execPath, f.argv, { env: f.env, encoding: "utf8", timeout: 60_000 });
+  return f.collect(r.status, r.stdout + r.stderr);
+}
+// SIGTERM once the fake server has received the mint request (its answer is still delayed).
+async function oldCliRunKilledDuringMint(options) {
+  const f = oldCliFake(options);
+  const child = spawn(process.execPath, f.argv, { env: f.env });
+  let output = "";
+  child.stdout.on("data", (d) => { output += d; });
+  child.stderr.on("data", (d) => { output += d; });
+  const exited = new Promise((resolve) => child.on("exit", (code) => resolve(code)));
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const t = fs.existsSync(f.trace) ? fs.readFileSync(f.trace, "utf8") : "";
+    if (t.includes("POST /api/agents/fake-agent/credentials")) break;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  child.kill("SIGTERM");
+  const code = await Promise.race([exited, new Promise((r) => setTimeout(() => { child.kill("SIGKILL"); r("killed"); }, 40_000))]);
+  return f.collect(code, output);
 }
 
 test("old_cli_task positive control: key revoked (read back), web session refused, key file gone -> pass, exit 0", () => {
@@ -223,4 +252,65 @@ test("old_cli_task: no --channel -> refuses to start, writes nothing", () => {
   const r = oldCliRun({ args: ["--server-name", "OranixSlockTest"] });
   assert.notEqual(r.exit, 0);
   assert.deepEqual(r.calls, []);
+});
+
+test("old_cli_task (Argus round 2): SIGTERM during a slow mint -> no profile / CLI after it; the minted key is revoked and read back", async () => {
+  const r = await oldCliRunKilledDuringMint({ mintDelay: 2500 });
+  assert.equal(r.exit, 1);
+  assert.equal(r.summary.result, "unknown");
+  assert.match(r.summary.error, /stopped by SIGTERM/);
+  // The intent was recorded before the call.
+  assert.equal(r.intent.credential_name, r.summary.credential_name);
+  // After the signal: no key file, no npm install, no CLI.
+  assert.equal(r.keyFiles.length, 0);
+  assert.ok(!r.calls.some((c) => c.startsWith("NPM")), r.calls.join("\n"));
+  // The key the slow mint made is revoked and read back; never minted twice.
+  assert.equal(r.summary.key_mint, "ok");
+  assert.ok(r.calls.includes("DELETE /api/agents/fake-agent/credentials/fake-credential-id"));
+  assert.equal(r.summary.key_revoked, true);
+  assert.equal(r.calls.filter((c) => c === "POST /api/agents/fake-agent/credentials").length, 1);
+});
+
+test("old_cli_task (Argus round 2): SIGTERM while the mint never answers -> key unknown with its run name, exit 1, no retry", async () => {
+  const r = await oldCliRunKilledDuringMint({ mintDelay: 600_000, args: ["--server-name", "OranixSlockTest", "--channel", "qa-test-create-7842", "--mint-settle-ms", "800"] });
+  assert.equal(r.exit, 1);
+  assert.equal(r.summary.key_mint, "pending");
+  assert.equal(r.summary.key_revoked, "unknown");
+  assert.match(r.summary.key_unknown_reason, /reconcile by credential_name/);
+  assert.equal(r.summary.cleanup.key, "unknown");
+  assert.ok(r.summary.credential_name && r.intent.credential_name === r.summary.credential_name);
+  assert.equal(r.calls.filter((c) => c === "POST /api/agents/fake-agent/credentials").length, 1);
+  assert.ok(!r.calls.some((c) => c.startsWith("DELETE")));
+  assert.equal(r.keyFiles.length, 0);
+  // The web session is still signed out and checked.
+  assert.equal(r.summary.web_session_signed_out, true);
+});
+
+test("old_cli_task (Argus round 2): mint 201 with apiKey but no credentialId -> unknown; exact per-run key found by name, revoked, read back; exit 1", () => {
+  const r = oldCliRun({ mint: "noid" });
+  assert.equal(r.exit, 1);
+  assert.equal(r.summary.result, "unknown");
+  assert.equal(r.summary.key_mint, "incomplete");
+  assert.match(r.summary.mint_reconciliation, /1 key\(s\) named for this run/);
+  assert.ok(r.calls.includes("DELETE /api/agents/fake-agent/credentials/fake-credential-id"));
+  assert.equal(r.summary.key_revoked, true);
+  assert.equal(r.keyFiles.length, 0);
+  assert.equal(r.calls.filter((c) => c === "POST /api/agents/fake-agent/credentials").length, 1);
+});
+
+test("old_cli_task (Argus round 2): mint 201 without credentialId and no key of this run's name -> key unknown, nothing revoked, exit 1", () => {
+  const r = oldCliRun({ mint: "noid", listNone: true });
+  assert.equal(r.exit, 1);
+  assert.notEqual(r.summary.result, "pass");
+  assert.equal(r.summary.key_revoked, "unknown");
+  assert.equal(r.summary.cleanup.key, "unknown");
+  assert.equal(r.summary.cleanup_complete, false);
+  assert.ok(!r.calls.some((c) => c.startsWith("DELETE")), "another run's key is never touched");
+});
+
+test("old_cli_task: a mint never sent (login refused before it) -> key not_applicable; the run still fails", () => {
+  const r = oldCliRun({ args: ["--server-name", "NoSuchServer", "--channel", "qa-test-create-7842"] });
+  assert.equal(r.exit, 1);
+  assert.equal(r.summary.cleanup.key, "not_applicable");
+  assert.ok(!r.calls.some((c) => c.includes("/credentials")));
 });

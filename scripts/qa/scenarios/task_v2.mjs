@@ -208,17 +208,22 @@ export async function run(ctx) {
 
   // ---------- 0. server, channel, test data ----------
   let setup = null;
+  // The ONE channel this run is bound to, once matched; s5 looks only there.
+  let boundChannel = null;
   try {
     setup = await step("scenario-setup", async () => {
       const servers = listOf(ok(await web("GET", "servers"), "list servers"), "servers");
-      server = servers.find((s) => s.name === serverName) ?? servers.find((s) => s.slug === serverName.toLowerCase());
-      if (!server) throw new Error(`the QA account is not a member of "${serverName}" (its servers: ${servers.map((s) => s.name).join(", ")})`);
+      // Exactly one server with that name (no slug fallback, never the first of duplicates).
+      const named = servers.filter((s) => s.name === serverName);
+      if (named.length !== 1) throw new Error(`${named.length} servers named "${serverName}" for the QA account; not writing anywhere`);
+      server = named[0];
       const channels = listOf(ok(await api("GET", "channels"), "list channels"), "channels")
         .filter((c) => !["dm", "thread", "task"].includes(c.type) && !c.archived && !c.archivedAt);
       // Exactly the requested channel, by name or id; never another one.
       const matches = channels.filter((c) => c.name === channelName || c.id === channelName);
       if (matches.length !== 1) throw new Error(`#${channelName} on ${serverName}: ${matches.length} channels match exactly; not writing anywhere`);
       const channel = matches[0];
+      boundChannel = { id: channel.id, name: channel.name };
       const taskTitle = `${TEST_PREFIX} task v2 mobile check ${runTag}`;
       let task;
       try {
@@ -476,10 +481,12 @@ export async function run(ctx) {
     // ---------- s5 ----------
     if (!unknownWrites.length) await scenario("s5", async () => {
       if (!server) throw notCovered("server not resolved");
+      // Only the bound channel: never read, open or screenshot another channel's task or message.
+      if (!boundChannel) throw notCovered(`#${channelName} was not resolved, so no channel to look in`);
       const candidate = await step("s5-find-old-cli-task", async () => {
         const json = ok(await api("GET", "tasks/server?detail=summary&limit=200&sort=created"), "list server tasks");
         const tasks = listOf(json, "tasks").length ? listOf(json, "tasks") : listOf(json, "items");
-        const agentMade = tasks.filter((t) => t.createdByType === "agent" && t.sourceSenderType === "agent" && t.sourceSenderId === t.createdById && typeof t.sourceMessageId === "string" && !t.isLegacy);
+        const agentMade = tasks.filter((t) => t.channelId === boundChannel.id && t.createdByType === "agent" && t.sourceSenderType === "agent" && t.sourceSenderId === t.createdById && typeof t.sourceMessageId === "string" && !t.isLegacy);
         const checked = [];
         for (const t of agentMade.slice(0, 25)) {
           const out = await api("GET", `messages/context/${t.sourceMessageId}`);

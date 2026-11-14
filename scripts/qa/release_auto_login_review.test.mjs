@@ -121,7 +121,9 @@ test("artifact_reuse overall: unconfirmed content, missing session evidence or s
 
 test("artifact_reuse: the background step asserts the viewer still shows A", () => {
   const src = fs.readFileSync(path.join(ROOT, "scripts/qa/scenarios/artifact_reuse.mjs"), "utf8");
-  assert.match(src, /if \(shown\.key !== "A"\) throw new Error\(`after the background the viewer shows/);
+  assert.match(src, /if \(onScreen && shown\.key !== "A"\) throw new Error\(`after the background the viewer shows/);
+  // The earlier open's log line alone is not "still shows A": unconfirmed (partial).
+  assert.match(src, /bg\.result = bg\.shows === "A" \? "pass" : "pass_unconfirmed_content";/);
 });
 
 test("Argus probes for the Hands serve path: removed from this lane", () => {

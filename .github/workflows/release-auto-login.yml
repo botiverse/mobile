@@ -134,7 +134,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: old-cli-task-result
-          path: old-cli-task.json
+          path: |
+            old-cli-task.json
+            old-cli-key-intent.json
           if-no-files-found: warn
           retention-days: 14
 

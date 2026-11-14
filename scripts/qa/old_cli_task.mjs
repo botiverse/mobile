@@ -72,14 +72,22 @@ class Unknown extends Stop {}
 const stop = (message) => { throw new Stop(message); };
 // A write whose outcome is not known: recorded, and the run stops (no retry, no other target).
 const unknownWrites = [];
+// Set synchronously by SIGTERM / SIGINT: from then on no step may start a side effect (no write,
+// no profile, no CLI install or run); cleanup alone runs.
+let shuttingDown = false;
+const guard = (what) => {
+  if (shuttingDown) throw new Stop(`shutting down: ${what} not started`);
+};
 const stopUnknown = (what, detail) => {
   unknownWrites.push(`${what}: ${detail}`);
   throw new Unknown(`${what}: no clear answer (${detail}); stopping, not retrying`);
 };
 // A server write: ok -> its JSON; refused -> stop; unknown -> stopUnknown.
-async function write(method, pathname, options, what) {
+async function write(method, pathname, options, what, { onSend } = {}) {
+  guard(what);
   let out;
   try {
+    onSend?.();
     out = await api(method, pathname, options);
   } catch (error) {
     if (error instanceof Stop && !/HTTP 429/.test(error.message)) throw error;
@@ -133,12 +141,14 @@ function findMessage(json, id) {
 const listOf = (json, key) => (Array.isArray(json) ? json : Array.isArray(json?.[key]) ? json[key] : []);
 
 function runCli(dir, cliArgs, env, input) {
+  guard(`raft ${cliArgs.slice(0, 2).join(" ")}`);
   const result = spawnSync(process.execPath, [path.join(dir, "node_modules/@botiverse/raft/dist/raft.js"), ...cliArgs], {
     env, encoding: "utf8", timeout: 120_000, ...(input !== undefined ? { input } : {}),
   });
   return { status: result.status, stdout: redact(result.stdout), stderr: redact(result.stderr) };
 }
 function installCli(spec) {
+  guard(`npm install ${spec}`);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "raft-cli-"));
   fs.writeFileSync(path.join(dir, "package.json"), "{\"private\":true}\n");
   const out = spawnSync("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--silent", spec], { cwd: dir, encoding: "utf8", timeout: 300_000 });
@@ -223,6 +233,17 @@ let raftHome = null;
 const summary = { env: ENV_NAME, action: ACTION, server: SERVER_NAME, agent: AGENT_NAME, channel: `#${CHANNEL}`, ...(ACTION === "task" ? { title: TITLE } : {}) };
 let credential = null;
 let agentId = null;
+// The key mint: "none" (never sent) | "pending" | "ok" | "incomplete" (2xx without the fields
+// that name the exact key) | "unknown" | "refused". Once sent, the key is a mandatory cleanup item:
+// revoked + read back, or reported unknown. Cleanup waits (bounded) for a pending mint to settle;
+// it never mints again.
+const mint = { state: "none", sent: false, promise: null };
+// A mint answer names the exact key when it has its id (for this agent, when the agent is given);
+// it is complete only with the key itself too.
+const mintKeyId = (m) => (m && typeof m.credentialId === "string" && /^[A-Za-z0-9-]{4,}$/.test(m.credentialId)
+  && (m.agentId === undefined || m.agentId === agentId) ? m.credentialId : null);
+const mintComplete = (m) => Boolean(mintKeyId(m)) && typeof m.apiKey === "string" && m.apiKey.length > 0;
+const MINT_SETTLE_MS = Number(option("mint-settle-ms", "20000"));
 let cleanupStarted = null;
 function cleanupOnce() {
   cleanupStarted ??= cleanup();
@@ -231,6 +252,7 @@ function cleanupOnce() {
 // A cancelled / killed job still cleans up (SIGTERM / SIGINT), then exits non-zero.
 for (const signal of ["SIGTERM", "SIGINT"]) {
   process.once(signal, () => {
+    shuttingDown = true;
     summary.result = "unknown";
     summary.error = `stopped by ${signal}`;
     cleanupOnce().finally(() => process.exit(1));
@@ -252,8 +274,10 @@ try {
   log("signed in as the QA account");
 
   const servers = listOf(ok(await api("GET", "servers", { server: false }), "list servers"), "servers");
-  const server = servers.find((s) => s.name === SERVER_NAME) ?? servers.find((s) => s.slug === SERVER_NAME.toLowerCase());
-  if (!server) stop(`the QA account is not in ${SERVER_NAME}`);
+  // Exactly one server with that name (no slug fallback, never the first of duplicates).
+  const named = servers.filter((s) => s.name === SERVER_NAME);
+  if (named.length !== 1) stop(`${named.length} servers named "${SERVER_NAME}" for the QA account; not writing anywhere`);
+  const server = named[0];
   serverId = server.id;
   log(`server ${server.name} (${server.id})`);
 
@@ -296,21 +320,32 @@ try {
   // A unique name per attempt: if the answer is lost, that exact key is found by name and revoked
   // (never a second mint).
   summary.credential_name = RUN_KEY_NAME;
-  let minted;
-  try {
-    minted = await write("POST", `agents/${agentId}/credentials`, { body: { name: RUN_KEY_NAME } }, "mint the agent key");
-  } catch (error) {
-    if (error instanceof Unknown) {
-      const listed = await api("GET", `agents/${agentId}/credentials`, { server: false }).catch(() => null);
-      const mine = listOf(listed?.json, "credentials").filter((c) => c.name === RUN_KEY_NAME);
-      summary.mint_reconciliation = listed?.status === 200 ? `${mine.length} key(s) named for this run` : "could not list the agent's keys";
-      if (mine.length === 1) credential = { id: mine[0].id };
-    }
-    throw error;
-  }
-  if (typeof minted?.apiKey !== "string") stop("the credential mint answered without a key");
-  mask(minted.apiKey);
-  credential = { id: minted.credentialId };
+  // Before the call: a non-secret intent record next to the run's result, so even a hard kill
+  // leaves the per-run key name to reconcile by.
+  writeKeyIntent();
+  guard("mint the agent key");
+  mint.state = "pending";
+  mint.promise = write("POST", `agents/${agentId}/credentials`, { body: { name: RUN_KEY_NAME } }, "mint the agent key", { onSend: () => { mint.sent = true; } }).then(
+    (m) => {
+      if (typeof m?.apiKey === "string") mask(m.apiKey);
+      // The exact key, whenever the answer names it: cleanup revokes it by id even if the rest is off.
+      if (mintKeyId(m)) credential = { id: mintKeyId(m) };
+      if (!mintComplete(m)) {
+        // 2xx is not complete data: without the exact key's id it can't be revoked by id.
+        mint.state = "incomplete";
+        stopUnknown("mint the agent key", "2xx without a usable credentialId / apiKey");
+      }
+      mint.state = "ok";
+      credential = { id: m.credentialId };
+      return m;
+    },
+    (error) => {
+      if (mint.state === "pending") mint.state = !mint.sent ? "none" : error instanceof Unknown ? "unknown" : "refused";
+      throw error;
+    },
+  );
+  const minted = await mint.promise;
+  guard("write the key profile");
   log(`minted a key for ${AGENT_NAME} (credential ${minted.credentialId}, scopes ${(minted.scopes ?? []).join(",")})`);
   raftHome = fs.mkdtempSync(path.join(os.tmpdir(), "raft-home-"));
   const profileDir = path.join(raftHome, "profiles", "qa-old-cli");
@@ -369,9 +404,11 @@ try {
   summary.result = task.sourceMessageId && sourceOk ? "pass" : "check";
   }
 } catch (error) {
-  summary.result = error instanceof Unknown ? "unknown" : "fail";
-  summary.error = redact(error instanceof Stop ? error.message : error?.stack ?? String(error));
-  console.error(`[old-cli-task] FAILED: ${summary.error}`);
+  if (!shuttingDown) {
+    summary.result = error instanceof Unknown ? "unknown" : "fail";
+    summary.error = redact(error instanceof Stop ? error.message : error?.stack ?? String(error));
+  }
+  console.error(`[old-cli-task] FAILED: ${redact(error instanceof Stop ? error.message : String(error?.message ?? error))}`);
 } finally {
   await cleanupOnce();
 }
@@ -379,8 +416,25 @@ try {
 // ---------- cleanup: exact key, exact web session, local key file; proven or reported ----------
 async function cleanup() {
   const done = {};
+  // A mint still in flight (e.g. a signal arrived mid-call): wait for it, bounded; never retry it.
+  if (mint.state === "pending") {
+    await Promise.race([mint.promise.catch(() => {}), new Promise((r) => setTimeout(r, MINT_SETTLE_MS).unref())]);
+  }
+  summary.key_mint = mint.state;
+  if (mint.sent && mint.state !== "ok" && mint.state !== "pending" && !credential?.id && agentId) {
+    // Sent, but no exact key id (answer lost, incomplete or refused): the key named for this run,
+    // if the server made it (read-only lookup); only exactly one match is revoked.
+    const listed = await api("GET", `agents/${agentId}/credentials`, { server: false }).catch(() => null);
+    const mine = listOf(listed?.json, "credentials").filter((c) => c.name === RUN_KEY_NAME);
+    summary.mint_reconciliation = listed?.status === 200 ? `${mine.length} key(s) named for this run` : "could not list the agent's keys";
+    if (mine.length === 1) credential = { id: mine[0].id };
+  }
   // The run's key: revoked (DELETE) and read back as revoked.
-  if (credential?.id && agentId) {
+  if (mint.state === "pending") {
+    summary.key_revoked = "unknown";
+    summary.key_unknown_reason = `the mint had not answered ${MINT_SETTLE_MS} ms into shutdown; reconcile by credential_name`;
+    done.key = "unknown";
+  } else if (credential?.id && agentId) {
     summary.credential_id_prefix = String(credential.id).slice(0, 8);
     const del = await api("DELETE", `agents/${agentId}/credentials/${credential.id}`, { server: false }).catch((e) => e);
     summary.key_revoke_http = del instanceof Error ? "request_failed" : del.status;
@@ -389,8 +443,13 @@ async function cleanup() {
     summary.key_revoked = listed?.status === 200 && row ? Boolean(row.revokedAt) : "unknown";
     done.key = summary.key_revoked === true ? "ok" : summary.key_revoked === false ? "failed" : "unknown";
     log(`revoke the run's key: HTTP ${summary.key_revoke_http}, read back ${summary.key_revoked === true ? "revoked" : summary.key_revoked}`);
-  } else if (summary.mint_reconciliation && !credential?.id) {
+  } else if (mint.sent) {
+    // Sent, and no single key to revoke: unknown (reconcile by credential_name).
+    summary.key_revoked = "unknown";
+    summary.key_unknown_reason ??= "the mint was sent but no single key could be identified; reconcile by credential_name";
     done.key = "unknown";
+  } else {
+    done.key = "not_applicable"; // never sent
   }
   // The web session: logout, proven by its refresh token being refused afterwards.
   if (session?.refreshToken) {
@@ -425,7 +484,7 @@ async function cleanup() {
   }
   const states = Object.values(done);
   summary.cleanup = done;
-  summary.cleanup_complete = states.every((s) => s === "ok");
+  summary.cleanup_complete = states.every((s) => s === "ok" || s === "not_applicable");
   if (unknownWrites.length) summary.unknown_writes = unknownWrites;
   if (summary.result === "pass" && !summary.cleanup_complete) {
     summary.result = states.includes("unknown") ? "unknown" : "cleanup_incomplete";
@@ -438,6 +497,15 @@ async function cleanup() {
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Old CLI task\n\n\`\`\`json\n${text}\n\`\`\`\n`);
   }
   process.exitCode = summary.result === "pass" ? 0 : 1;
+}
+
+// The per-run key's intent, written before the mint call (non-secret: name, agent, time), next to
+// the run's --out result so the uploaded evidence keeps it even after a hard kill.
+function writeKeyIntent() {
+  const out = option("out", "");
+  const file = path.join(out ? path.dirname(path.resolve(out)) : process.cwd(), "old-cli-key-intent.json");
+  fs.writeFileSync(file, `${JSON.stringify({ credential_name: RUN_KEY_NAME, agent_id: agentId, mint_requested_at: new Date().toISOString(), run: process.env.GITHUB_RUN_ID ?? null }, null, 2)}\n`);
+  summary.key_intent_file = path.basename(file);
 }
 
 // The session family id from the access token's payload (an id, not a credential), 8 characters.

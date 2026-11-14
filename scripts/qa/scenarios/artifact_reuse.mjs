@@ -187,8 +187,9 @@ export async function run(ctx) {
     await step("artifact-setup", async () => {
       const servers = await web("GET", "servers");
       const list = Array.isArray(servers.json) ? servers.json : servers.json?.servers ?? [];
-      const server = list.find((s) => s.name === serverName) ?? list.find((s) => s.slug === serverName.toLowerCase());
-      if (!server) throw new Error(`the QA account is not in ${serverName}`);
+      const named = list.filter((s) => s.name === serverName);
+      if (named.length !== 1) throw new Error(`${named.length} servers named "${serverName}" for the QA account`);
+      const server = named[0];
       shell(`pm grant ${PKG} android.permission.POST_NOTIFICATIONS`, { allowFailure: true });
       await sleep(500);
       await answerPermissionPrompt(nodes());
@@ -232,10 +233,15 @@ export async function run(ctx) {
           shows: shown.key, shows_by: shown.by, closed_lines: lines.filter((l) => /artifact_viewer_closed/.test(l)).length, on_screen: visible(list).slice(0, 240),
         });
         if (!bg.viewer_still_open) throw new Error("after 10 s in the background the viewer is no longer open");
-        if (shown.key !== "A") throw new Error(`after the background the viewer shows ${shown.key ?? "nothing identifiable"}, expected A`);
-        return { shows: shown.key };
+        // What is on screen NOW: only the page itself (marker / title) counts; the earlier open's
+        // log line says what was opened, not what is shown after the return.
+        const onScreen = shown.by === "page_marker" || shown.by === "title_text";
+        if (onScreen && shown.key !== "A") throw new Error(`after the background the viewer shows ${shown.key}, expected A`);
+        if (!onScreen) bg.shows = null;
+        return { shows: bg.shows, by: shown.by };
       });
-      bg.result = "pass";
+      // Not identified on screen after the return: unconfirmed (partial), not a pass.
+      bg.result = bg.shows === "A" ? "pass" : "pass_unconfirmed_content";
     } catch (error) {
       bg.result = "fail";
       bg.error = String(error?.message ?? error).slice(0, 400);

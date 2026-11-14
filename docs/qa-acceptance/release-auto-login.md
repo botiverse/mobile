@@ -154,15 +154,17 @@ Only `result: "pass"` (every requested step covered and passed, test data cleane
 exit 0; `partial` (something not covered / unconfirmed, listed in `not_pass_reasons`), `unknown` (a
 write with no clear answer: stopped, reported, never retried), `fail` or a throw exit non-zero.
 The scenario is bound to ONE test server and channel: workflow inputs `test_server` +
-`test_channel` (required with a scenario; passed as `--server-name` / `--channel`, matched exactly,
-never another channel; not accepted inside `scenario_args`).
+`test_channel` (required with a scenario; passed as `--server-name` / `--channel`, matched exactly —
+exactly one server and one channel by that name, else nothing is written; never another channel;
+not accepted inside `scenario_args`).
 
 - `task_v2.mjs` — task v2 conversations on a release build: channel Tasks
   tab → task conversation (head + messages) → reply; assignee; status Todo → In Progress → Done
   with no "In Review" offered; a Backlog task; s5: a task an old CLI created without a source (made
   once with `mode=old_cli_task`), reached from Home → its channel → its title message → its task
   entry, with a diagnostic (never failing s5) of whether the message's link opens it over a task
-  page and from Home. It creates two `[QA test data, please ignore]` tasks with the QA account
+  page and from Home. s5 only looks in the bound channel: if that channel was not resolved, or it
+  holds no such task, s5 is not covered (it never reads, opens or screenshots another channel). It creates two `[QA test data, please ignore]` tasks with the QA account
   and deletes them at the end; the source messages the server posts for them stay.
 
 ```sh
@@ -175,7 +177,8 @@ gh workflow run release-auto-login.yml -f environment=production -f apk_run_id=<
   a 10 s background, and once after the app logs a token refresh while the viewer page is kept
   (else NOT COVERED); each open screenshotted 5 s after the tap with whether the viewer stayed and
   which Artifact it shows. Viewer lines in `artifact-viewer-logcat.txt`. Creates and deletes nothing.
-  `pass` only when every open showed the expected Artifact, the background step came back to A, and
+  `pass` only when every open showed the expected Artifact, the background step came back to A
+  (identified on screen after the return; the earlier open's log line alone is unconfirmed), and
   the session step saw the refresh AND the viewer dropping its kept page for it; content not
   confirmed, no session evidence or the session step not covered make it `partial`.
 
@@ -203,7 +206,13 @@ A write with no clear answer (5xx / timeout, or a CLI write that fails) stops th
 revoked, never minted again). Cleanup must be proven or the run fails (non-zero, never `pass`): the
 run's key revoked and read back as revoked (`key_revoked`), the web session's refresh token refused
 after logout (`web_session_signed_out`; a logout 200 alone does not count), the temp key file
-deleted (`local_key_file_removed`, also on SIGTERM / SIGINT). The summary keeps non-secret
+deleted (`local_key_file_removed`). Once the mint request was sent the key is a mandatory cleanup
+item: a 2xx without the key's `credentialId` (or a lost answer) is `unknown`, and only exactly one
+key of this run's name is revoked and read back; otherwise `key: unknown`, non-zero. Before the
+mint call the run writes `old-cli-key-intent.json` (the per-run key name, agent, time; uploaded with
+the result) so even a hard kill leaves what to reconcile. On SIGTERM / SIGINT no further step starts
+a side effect (no write, profile, npm or CLI); cleanup waits (bounded, `--mint-settle-ms`) for an
+in-flight mint and revokes that exact key, or records it as unknown; it never mints again. The summary keeps non-secret
 correlation for reconciling that exact key / session by hand (`credential_id_prefix`,
 `credential_name`, `web_session_family_prefix`). The agent, the task and the Artifacts stay (the
 device scenarios use them). Result in the `old-cli-task-result` artifact.
