@@ -3392,6 +3392,7 @@ internal class RaftSharedStoreProvider private constructor(
                     onEvaluation = { _, key, enabled, _, _, _, _ ->
                         build.raft.app.nav.RaftNav3StackFlag.recordServerEvaluation(sharedPreferenceStore, key, enabled)
                         build.raft.app.nav.RaftIosNativeNavFlag.recordServerEvaluation(sharedPreferenceStore, key, enabled)
+                        build.raft.app.data.realtime.RaftRealtimeKmpClientFlag.recordServerEvaluation(sharedPreferenceStore, key, enabled)
                         if (key == MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY) RaftAppSettingsSnapshotReport.onIosNativeNavFlagRead()
                     },
                 )

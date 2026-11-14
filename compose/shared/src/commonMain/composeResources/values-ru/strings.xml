@@ -3264,6 +3264,8 @@
     <string name="settings_developer_nav3_stack_detail">Открывать уже перенесённые страницы внутри окна приложения (Android). Вступит в силу при следующем запуске приложения.</string>
     <string name="settings_developer_multi_server_realtime">Обновления в реальном времени в каждом окне</string>
     <string name="settings_developer_multi_server_realtime_detail">Когда включено «Несколько окон приложения», рабочее пространство каждого окна держит своё подключение в реальном времени (до 3), и окно на заднем плане тоже получает новые сообщения. Выключено: подключено только рабочее пространство на переднем плане.</string>
+    <string name="settings_developer_kmp_realtime">Новое подключение в реальном времени (бета)</string>
+    <string name="settings_developer_kmp_realtime_detail">Использовать собственный клиент реального времени приложения вместо библиотеки Socket.IO на этом устройстве. Применяется при следующем подключении. Выключено: как задано на сервере.</string>
     <string name="settings_mobile_ios_native_nav">Нативная навигация iOS</string>
     <string name="settings_mobile_ios_native_nav_detail">Показывать заголовки и кнопки страниц в системной панели навигации и использовать системный жест «назад». Вступит в силу при следующем запуске приложения.</string>
     <string name="settings_developer_presets">Пресеты</string>

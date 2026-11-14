@@ -3424,6 +3424,8 @@
     <string name="settings_developer_nav3_stack_detail">已迁移的页面在应用窗口内打开（安卓）。下次启动应用时生效。</string>
     <string name="settings_developer_multi_server_realtime">每个窗口都实时更新</string>
     <string name="settings_developer_multi_server_realtime_detail">开启“多应用窗口”后，每个窗口的工作空间各自保持实时连接（最多 3 个），在后面的窗口也能收到新消息。关闭时只有最前面的工作空间保持连接。</string>
+    <string name="settings_developer_kmp_realtime">新的实时连接（Beta）</string>
+    <string name="settings_developer_kmp_realtime_detail">在这台设备上用应用自带的实时客户端，代替 Socket.IO 库。下次建立连接时生效。关闭时跟随服务器设置。</string>
     <string name="settings_mobile_ios_native_nav">iOS 原生导航</string>
     <string name="settings_mobile_ios_native_nav_detail">页面的标题和按钮显示在系统导航栏中，使用系统的滑动返回。下次启动应用时生效。</string>
     <string name="settings_developer_presets">预设</string>
