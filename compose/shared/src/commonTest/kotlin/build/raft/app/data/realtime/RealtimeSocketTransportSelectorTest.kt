@@ -98,7 +98,7 @@ class RealtimeSocketTransportSelectorTest {
 
         harness.enabled = true
         harness.selector.emit("presence:activity")
-        assertEquals("a flag change never moves a live socket", "emit:presence:activity", harness.legacy.calls.last())
+        assertEquals("emit:presence:activity", harness.legacy.calls.last(), "a flag change never moves a live socket")
 
         harness.selector.connect(mapOf("serverId" to "server-2"), harness.context("server-2"))
         assertEquals("disconnect", harness.legacy.calls.last())
@@ -106,12 +106,12 @@ class RealtimeSocketTransportSelectorTest {
         assertEquals("kmp", harness.selector.activeImplementation)
         harness.kmp.receive("message:new", "m2")
         harness.legacy.receive("message:new", "stale")
-        assertEquals("listeners registered before the common client existed reach it", listOf("m2"), received)
+        assertEquals(listOf("m2"), received, "listeners registered before the common client existed reach it")
         assertTrue(harness.logs.last().contains("selected=kmp") && harness.logs.last().contains("switched=true"))
 
         harness.enabled = false
         harness.selector.connect(mapOf("serverId" to "server-1"), harness.context("server-1"))
-        assertEquals("rollback on the next connection", "disconnect", harness.kmp.calls.last())
+        assertEquals("disconnect", harness.kmp.calls.last(), "rollback on the next connection")
         assertEquals("connect:server-1", harness.legacy.calls.last())
         assertEquals(1, harness.kmpCreated)
     }
