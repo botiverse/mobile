@@ -242,6 +242,7 @@ internal fun SharedServerInviteHumanDialogHost(
     var linkLoading by remember(serverId) { mutableStateOf(true) }
     var regenerating by remember(serverId) { mutableStateOf(false) }
     var confirmingRevoke by remember(serverId) { mutableStateOf(false) }
+    var confirmingUpdate by remember(serverId) { mutableStateOf(false) }
     var copied by remember(serverId) { mutableStateOf(false) }
     var sending by remember(serverId) { mutableStateOf(false) }
     var error by remember(serverId) { mutableStateOf<String?>(null) }
@@ -289,7 +290,7 @@ internal fun SharedServerInviteHumanDialogHost(
 
     val joinUrl = normalizeInviteHumanJoinUrl(joinLink?.url, webBaseUrl)
 
-    fun regenerateLink() {
+    fun regenerateLink(onFinished: () -> Unit = {}) {
         if (regenerating) return
         regenerating = true
         error = null
@@ -302,6 +303,7 @@ internal fun SharedServerInviteHumanDialogHost(
                 if (revokeError != null) {
                     error = revokeError
                     regenerating = false
+                    onFinished()
                     return@launch
                 }
                 // Hide the revoked token but keep the draft for a retry.
@@ -315,6 +317,7 @@ internal fun SharedServerInviteHumanDialogHost(
                 error = created.failureMessage(failedPrepareLink, manageInvitesForbidden)
             }
             regenerating = false
+            onFinished()
         }
     }
 
@@ -394,12 +397,42 @@ internal fun SharedServerInviteHumanDialogHost(
             onMaxUsesChoice = { maxUsesChoice = it },
             expiryChoice = expiryChoice,
             onExpiryChoice = { expiryChoice = it },
-            onRegenerate = ::regenerateLink,
+            // Web InviteHumanDialog: Update replaces the current link, so the old one stops working for
+            // whoever holds it; while a link exists it asks first, as Revoke does. With no link yet
+            // there is nothing to invalidate, so it just makes one.
+            onRegenerate = { if (joinLink != null) confirmingUpdate = true else regenerateLink() },
             onRevoke = { confirmingRevoke = true },
             sending = sending,
             onSubmit = ::submit,
             onDismiss = { if (!sending) onDismiss() },
         )
+        if (confirmingUpdate) {
+            RaftDialog(
+                onDismissRequest = { if (!regenerating) confirmingUpdate = false },
+                title = stringResource(Res.string.invite_human_update_confirm_title),
+                description = stringResource(Res.string.invite_human_update_confirm_message),
+                size = RaftDialogSize.Sm,
+                dismissOnClickOutside = false,
+                closeLabel = stringResource(Res.string.common_close),
+                footer = {
+                    RaftButton(
+                        text = stringResource(Res.string.common_cancel),
+                        onClick = { confirmingUpdate = false },
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftButtonSize.Lg,
+                        enabled = !regenerating,
+                    )
+                    RaftButton(
+                        text = stringResource(Res.string.invite_human_apply_link_options),
+                        onClick = { regenerateLink { confirmingUpdate = false } },
+                        variant = RaftButtonVariant.Danger,
+                        size = RaftButtonSize.Lg,
+                        loading = regenerating,
+                        loadingLabel = stringResource(Res.string.invite_human_updating),
+                    )
+                },
+            )
+        }
         if (confirmingRevoke) {
             RaftDialog(
                 onDismissRequest = { if (!regenerating) confirmingRevoke = false },

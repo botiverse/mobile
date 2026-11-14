@@ -2054,6 +2054,7 @@
     <string name="auth_title_verify_email">Подтвердите электронную почту</string>
     <string name="auth_hint_verify_email_address">Мы отправили ссылку для подтверждения на %1$s. Подтвердите адрес, чтобы начать пользоваться Raft, затем обновите экран.</string>
     <string name="auth_hint_verify_email">Подтвердите адрес электронной почты, чтобы начать пользоваться Raft. Отправьте ссылку для подтверждения ещё раз, затем обновите экран.</string>
+    <string name="auth_hint_verify_email_check_spam">Не видите письма? Проверьте папку «Спам».</string>
     <string name="auth_title_email_sent">Письмо отправлено</string>
     <string name="auth_action_resend_verification">Отправить письмо ещё раз</string>
     <string name="auth_action_verified_refresh">Адрес подтверждён — обновить</string>
@@ -2887,6 +2888,10 @@
     <string name="settings_computers_error_refresh_title">Не удалось обновить</string>
     <string name="settings_computers_error_refresh_saved">Не удалось обновить список компьютеров. Показаны сохранённые данные.</string>
     <string name="settings_computers_restart">Перезапустить</string>
+    <string name="settings_computers_restart_confirm_title">Перезапустить компьютер</string>
+    <string name="settings_computers_restart_confirm_message_none">При перезапуске компьютер %1$s будет отключён, пока он снова не появится в сети.</string>
+    <string name="settings_computers_restart_confirm_message_one">При перезапуске компьютер %1$s и %2$d агент на нём будут отключены, пока он снова не появится в сети.</string>
+    <string name="settings_computers_restart_confirm_message_many">При перезапуске компьютер %1$s и агенты на нём (%2$d) будут отключены, пока он снова не появится в сети.</string>
     <string name="settings_computers_restarting">Перезапуск…</string>
     <string name="settings_computers_restarted">Перезапуск выполнен.</string>
     <string name="settings_computers_restart_failed">Не удалось перезапустить.</string>
@@ -2895,6 +2900,10 @@
     <string name="settings_computers_restart_timed_out">Истекло время ожидания перезапуска. Убедитесь, что компьютер в сети, и попробуйте ещё раз.</string>
     <string name="settings_computers_up_to_date">Последняя версия</string>
     <string name="settings_computers_upgrade_to_version">Обновить до v%1$s</string>
+    <string name="settings_computers_upgrade_confirm">Обновить</string>
+    <string name="settings_computers_upgrade_confirm_message_none">Компьютер %1$s перезапустится с версией v%2$s. Он будет отключён до повторного подключения.</string>
+    <string name="settings_computers_upgrade_confirm_message_one">Компьютер %1$s перезапустится с версией v%2$s. Он и %3$d агент на нём будут отключены до повторного подключения.</string>
+    <string name="settings_computers_upgrade_confirm_message_many">Компьютер %1$s перезапустится с версией v%2$s. Он и агенты на нём (%3$d) будут отключены до повторного подключения.</string>
     <string name="settings_computers_upgrading">Обновление…</string>
     <string name="settings_computers_upgrade_status_reinstall">Эту версию нельзя обновить из веб-интерфейса. Переустановите её командой в начале страницы.</string>
     <string name="settings_computers_upgrade_status_reading">Определяем версию — загляните чуть позже.</string>
@@ -3609,6 +3618,9 @@
     <string name="invite_human_revoke_confirm_message">Отозвать эту ссылку-приглашение? Присоединиться по ней больше не получится, даже если она у кого-то сохранилась.</string>
     <string name="invite_human_revoke_confirm_label">Отозвать ссылку</string>
     <string name="invite_human_revoking">Отзыв ссылки…</string>
+    <string name="invite_human_update_confirm_title">Обновить ссылку-приглашение</string>
+    <string name="invite_human_update_confirm_message">Обновить эту ссылку-приглашение? По старой ссылке больше нельзя будет присоединиться.</string>
+    <string name="invite_human_updating">Обновление…</string>
     <string name="joint_connections_title">Подключённые серверы</string>
     <string name="joint_connections_rule">В общем канале может быть до 30 серверов, из них до 2 — на тарифе Free</string>
     <string name="joint_connections_this_server">Этот сервер</string>

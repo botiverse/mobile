@@ -2057,6 +2057,7 @@
     <string name="auth_title_verify_email">Verifica tu correo</string>
     <string name="auth_hint_verify_email_address">Enviamos un enlace de verificación a %1$s. Verifica tu correo para desbloquear Raft y luego actualiza.</string>
     <string name="auth_hint_verify_email">Verifica tu correo para desbloquear Raft. Reenvía el enlace de verificación y luego actualiza.</string>
+    <string name="auth_hint_verify_email_check_spam">¿No lo encuentras? Revisa la carpeta de spam.</string>
     <string name="auth_title_email_sent">Correo enviado</string>
     <string name="auth_action_resend_verification">Reenviar correo de verificación</string>
     <string name="auth_action_verified_refresh">Ya verifiqué - actualizar</string>
@@ -2890,6 +2891,10 @@
     <string name="settings_computers_error_refresh_title">No se pudo actualizar</string>
     <string name="settings_computers_error_refresh_saved">No se pudieron actualizar las computadoras. Se muestran los resultados guardados.</string>
     <string name="settings_computers_restart">Reiniciar</string>
+    <string name="settings_computers_restart_confirm_title">Reiniciar Computer</string>
+    <string name="settings_computers_restart_confirm_message_none">Al reiniciar %1$s, se desconecta hasta que vuelva a estar en línea.</string>
+    <string name="settings_computers_restart_confirm_message_one">Al reiniciar %1$s, se desconectan él y su %2$d agente hasta que vuelva a estar en línea.</string>
+    <string name="settings_computers_restart_confirm_message_many">Al reiniciar %1$s, se desconectan él y sus %2$d agentes hasta que vuelva a estar en línea.</string>
     <string name="settings_computers_restarting">Reiniciando…</string>
     <string name="settings_computers_restarted">Se reinició.</string>
     <string name="settings_computers_restart_failed">No se pudo reiniciar.</string>
@@ -2898,6 +2903,10 @@
     <string name="settings_computers_restart_timed_out">Se agotó el tiempo de espera del reinicio. Comprueba que la computadora esté en línea e inténtalo de nuevo.</string>
     <string name="settings_computers_up_to_date">Al día</string>
     <string name="settings_computers_upgrade_to_version">Actualizar a la v%1$s</string>
+    <string name="settings_computers_upgrade_confirm">Actualizar</string>
+    <string name="settings_computers_upgrade_confirm_message_none">%1$s se reinicia con la v%2$s, así que se desconecta hasta que se vuelva a conectar.</string>
+    <string name="settings_computers_upgrade_confirm_message_one">%1$s se reinicia con la v%2$s, así que se desconectan él y su %3$d agente hasta que se vuelva a conectar.</string>
+    <string name="settings_computers_upgrade_confirm_message_many">%1$s se reinicia con la v%2$s, así que se desconectan él y sus %3$d agentes hasta que se vuelva a conectar.</string>
     <string name="settings_computers_upgrading">Actualizando…</string>
     <string name="settings_computers_upgrade_status_reinstall">Esta versión no se puede actualizar desde la web. Reinstálala con el comando que aparece al principio de esta página.</string>
     <string name="settings_computers_upgrade_status_reading">Leyendo la versión; vuelve a consultar en un momento.</string>
@@ -3612,6 +3621,9 @@
     <string name="invite_human_revoke_confirm_message">¿Revocar este enlace de invitación? Quien todavía tenga la URL ya no podrá usarla para unirse.</string>
     <string name="invite_human_revoke_confirm_label">Revocar enlace</string>
     <string name="invite_human_revoking">Revocando…</string>
+    <string name="invite_human_update_confirm_title">Actualizar enlace de invitación</string>
+    <string name="invite_human_update_confirm_message">¿Actualizar este enlace de invitación? Quien todavía tenga la URL anterior ya no podrá usarla para unirse.</string>
+    <string name="invite_human_updating">Actualizando…</string>
     <string name="joint_connections_title">Servidores conectados</string>
     <string name="joint_connections_rule">Cada canal compartido admite hasta 30 servidores, de los cuales hasta 2 pueden tener el plan Free</string>
     <string name="joint_connections_this_server">Este servidor</string>

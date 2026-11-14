@@ -475,6 +475,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
         }
     var openUsage by remember { mutableStateOf<RaftComputersOpenUsage?>(null) }
     var deleteComputerId by remember { mutableStateOf<String?>(null) }
+    var actionConfirm by remember { mutableStateOf<RaftComputerActionConfirm?>(null) }
     fun refresh() {
         settingsViewModel.dispatch(SharedSettingsIntent.RefreshComputers)
         if (usageKeys.isNotEmpty()) usageScope.launch { usageSession.pullToRefresh(usageKeys, onUsageResult) }
@@ -577,10 +578,10 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                 rackView = rackView,
                 summaryInHeader = wideHead,
                 computerControl = settingsState.computerControl,
-                onUpgradeComputer = { machineId, version -> settingsViewModel.dispatch(SharedSettingsIntent.UpgradeComputer(machineId, version)) },
+                onUpgradeComputer = { machineId, version -> actionConfirm = RaftComputerActionConfirm.Upgrade(machineId, version) },
                 onCopyCommand = { command -> settingsViewModel.dispatch(SharedSettingsIntent.CopyComputerCommand(command)) },
                 onCreateAgent = if (createAgentOwner != null) { machineId -> createAgentMachineId = machineId } else null,
-                onRestartComputer = { machineId -> settingsViewModel.dispatch(SharedSettingsIntent.RestartComputer(machineId)) },
+                onRestartComputer = { machineId -> actionConfirm = RaftComputerActionConfirm.Restart(machineId) },
                 onDeleteComputer = { machineId -> deleteComputerId = machineId },
                 onOpenInstallGuide = { settingsViewModel.dispatch(SharedSettingsIntent.OpenComputerInstallGuide) },
                 actionError =
@@ -660,6 +661,27 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                         settingsViewModel.dispatch(SharedSettingsIntent.DeleteComputer(machineId))
                     },
                     onDismiss = { deleteComputerId = null },
+                )
+            }
+        }
+    }
+    // A card's Restart or Upgrade (web ComputersRack → ComputerActionConfirms): one confirmation first.
+    // It closes when the Computer is gone or offline, so it can no longer take the action.
+    actionConfirm?.let { confirm ->
+        val row = (model as? RaftComputersListModel.Content)?.rows?.firstOrNull { it.id == confirm.machineId }
+        if (row == null || !row.online) {
+            actionConfirm = null
+        } else {
+            RaftComputersTheme {
+                RaftComputerActionConfirmDialog(
+                    confirm = confirm,
+                    name = row.name,
+                    agentCount = agentsByMachine[confirm.machineId]?.size ?: 0,
+                    onConfirm = {
+                        actionConfirm = null
+                        settingsViewModel.dispatch(confirm.intent())
+                    },
+                    onDismiss = { actionConfirm = null },
                 )
             }
         }
@@ -2642,6 +2664,7 @@ private fun RaftComputerDetailBody(
     val canRemove = model.canRemove
     val currentAction = actionState?.takeIf { it.itemId == machineId }
     var confirmDelete by remember(machineId) { mutableStateOf(false) }
+    var actionConfirm by remember(machineId) { mutableStateOf<RaftComputerActionConfirm?>(null) }
     // Computer owner v1: the Transfer owner dialog, or a Make it mine in flight (its failure is a toast).
     var transferOwnerOpen by remember(machineId) { mutableStateOf(false) }
     var claimingOwner by remember(machineId) { mutableStateOf(false) }
@@ -2669,8 +2692,8 @@ private fun RaftComputerDetailBody(
             restart = computerControl.restart,
             canManage = snapshot.canManageMachines,
             commandContext = snapshot.commandContext,
-            onRestart = { onIntent(SharedSettingsIntent.RestartComputer(machineId)) },
-            onUpgrade = { version -> onIntent(SharedSettingsIntent.UpgradeComputer(machineId, version)) },
+            onRestart = { actionConfirm = RaftComputerActionConfirm.Restart(machineId) },
+            onUpgrade = { version -> actionConfirm = RaftComputerActionConfirm.Upgrade(machineId, version) },
             onCopy = { command -> onIntent(SharedSettingsIntent.CopyComputerCommand(command)) },
             onOpenInstallGuide = { onIntent(SharedSettingsIntent.OpenComputerInstallGuide) },
         )
@@ -2957,6 +2980,23 @@ private fun RaftComputerDetailBody(
             }
         }
     }
+    actionConfirm?.let { confirm ->
+        // Web: the question goes once the action stops being offered (offline, a restart running).
+        if (!snapshot.computer.online || computerControl.restart?.machineId == machineId) {
+            actionConfirm = null
+        } else {
+            RaftComputerActionConfirmDialog(
+                confirm = confirm,
+                name = computer.name,
+                agentCount = model.assignedAgentCount,
+                onConfirm = {
+                    actionConfirm = null
+                    onIntent(confirm.intent())
+                },
+                onDismiss = { actionConfirm = null },
+            )
+        }
+    }
     if (confirmDelete) {
         RaftComputerDeleteDialog(
             name = computer.name,
@@ -2968,6 +3008,83 @@ private fun RaftComputerDetailBody(
             onDismiss = { confirmDelete = false },
         )
     }
+}
+
+/** A Computer's Restart or Upgrade waiting for its confirmation ([RaftComputerActionConfirmDialog]). */
+internal sealed interface RaftComputerActionConfirm {
+    val machineId: String
+
+    fun intent(): SharedSettingsIntent
+
+    data class Restart(override val machineId: String) : RaftComputerActionConfirm {
+        override fun intent(): SharedSettingsIntent = SharedSettingsIntent.RestartComputer(machineId)
+    }
+
+    data class Upgrade(override val machineId: String, val version: String) : RaftComputerActionConfirm {
+        override fun intent(): SharedSettingsIntent = SharedSettingsIntent.UpgradeComputer(machineId, version)
+    }
+}
+
+/**
+ * Web `ComputerActionConfirms`, wherever Restart and Upgrade are offered (the Computer page, a card
+ * and its ⋯): both restart the Computer, so every agent on it disconnects until it is back. Orange
+ * (Warning): disruptive, and the agents come back on their own.
+ */
+@Composable
+internal fun RaftComputerActionConfirmDialog(
+    confirm: RaftComputerActionConfirm,
+    name: String,
+    agentCount: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val title: String
+    val message: String
+    val label: String
+    when (confirm) {
+        is RaftComputerActionConfirm.Restart -> {
+            title = stringResource(Res.string.settings_computers_restart_confirm_title)
+            message =
+                when (agentCount) {
+                    0 -> stringResource(Res.string.settings_computers_restart_confirm_message_none, name)
+                    1 -> stringResource(Res.string.settings_computers_restart_confirm_message_one, name, agentCount)
+                    else -> stringResource(Res.string.settings_computers_restart_confirm_message_many, name, agentCount)
+                }
+            label = stringResource(Res.string.settings_computers_restart)
+        }
+        is RaftComputerActionConfirm.Upgrade -> {
+            title = stringResource(Res.string.settings_computers_upgrade_to_version, confirm.version)
+            message =
+                when (agentCount) {
+                    0 -> stringResource(Res.string.settings_computers_upgrade_confirm_message_none, name, confirm.version)
+                    1 -> stringResource(Res.string.settings_computers_upgrade_confirm_message_one, name, confirm.version, agentCount)
+                    else -> stringResource(Res.string.settings_computers_upgrade_confirm_message_many, name, confirm.version, agentCount)
+                }
+            label = stringResource(Res.string.settings_computers_upgrade_confirm)
+        }
+    }
+    RaftDialog(
+        onDismissRequest = onDismiss,
+        title = title,
+        description = message,
+        dismissOnClickOutside = false,
+        closeLabel = stringResource(Res.string.common_close),
+        footer = {
+            RaftButton(
+                text = stringResource(Res.string.common_cancel),
+                onClick = onDismiss,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg,
+            )
+            RaftButton(
+                text = label,
+                onClick = onConfirm,
+                variant = RaftButtonVariant.Warning,
+                size = RaftButtonSize.Lg,
+                leadingIcon = { RaftComputersIcon(RaftLucideIconName.TriangleAlert, size = 14.dp) },
+            )
+        },
+    )
 }
 
 /**

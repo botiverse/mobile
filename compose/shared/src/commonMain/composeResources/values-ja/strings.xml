@@ -2087,6 +2087,7 @@
     <string name="auth_title_verify_email">メールアドレスを確認</string>
     <string name="auth_hint_verify_email_address">%1$s に確認リンクを送信しました。メールアドレスを確認して Raft を利用できるようにしてから、更新してください。</string>
     <string name="auth_hint_verify_email">メールアドレスを確認して Raft を利用できるようにしてください。確認リンクを再送信してから、更新してください。</string>
+    <string name="auth_hint_verify_email_check_spam">見つからない場合は迷惑メールフォルダーを確認してください。</string>
     <string name="auth_title_email_sent">メールを送信しました</string>
     <string name="auth_action_resend_verification">確認メールを再送信</string>
     <string name="auth_action_verified_refresh">確認しました - 更新</string>
@@ -3045,6 +3046,10 @@
     <string name="settings_computers_error_refresh_title">更新できませんでした</string>
     <string name="settings_computers_error_refresh_saved">コンピューターを更新できませんでした。保存済みの結果を表示しています。</string>
     <string name="settings_computers_restart">再起動</string>
+    <string name="settings_computers_restart_confirm_title">Computer を再起動</string>
+    <string name="settings_computers_restart_confirm_message_none">%1$s を再起動すると、オンラインに戻るまで接続が切れます。</string>
+    <string name="settings_computers_restart_confirm_message_one">%1$s を再起動すると、オンラインに戻るまでその上の %2$d 個のエージェントとともに接続が切れます。</string>
+    <string name="settings_computers_restart_confirm_message_many">%1$s を再起動すると、オンラインに戻るまでその上の %2$d 個のエージェントとともに接続が切れます。</string>
     <string name="settings_computers_restarting">再起動中…</string>
     <string name="settings_computers_restarted">再起動しました。</string>
     <string name="settings_computers_restart_failed">再起動に失敗しました。</string>
@@ -3053,6 +3058,10 @@
     <string name="settings_computers_restart_timed_out">再起動がタイムアウトしました。コンピューターがオンラインか確認して、再試行してください。</string>
     <string name="settings_computers_up_to_date">最新です</string>
     <string name="settings_computers_upgrade_to_version">v%1$s にアップグレード</string>
+    <string name="settings_computers_upgrade_confirm">アップグレード</string>
+    <string name="settings_computers_upgrade_confirm_message_none">%1$s は v%2$s で再起動し、再接続するまで接続が切れます。</string>
+    <string name="settings_computers_upgrade_confirm_message_one">%1$s は v%2$s で再起動し、再接続するまでその上の %3$d 個のエージェントとともに接続が切れます。</string>
+    <string name="settings_computers_upgrade_confirm_message_many">%1$s は v%2$s で再起動し、再接続するまでその上の %3$d 個のエージェントとともに接続が切れます。</string>
     <string name="settings_computers_upgrading">更新中…</string>
     <string name="settings_computers_upgrade_status_reinstall">このバージョンはウェブからアップグレードできません。このページ上部のコマンドで再インストールしてください。</string>
     <string name="settings_computers_upgrade_status_reading">バージョンを読み取り中です。しばらくしてから確認してください。</string>
@@ -3770,6 +3779,9 @@
     <string name="invite_human_revoke_confirm_message">この招待リンクを取り消しますか？URL を知っている人も、このリンクからは参加できなくなります。</string>
     <string name="invite_human_revoke_confirm_label">リンクを取り消す</string>
     <string name="invite_human_revoking">取り消し中…</string>
+    <string name="invite_human_update_confirm_title">招待リンクを更新</string>
+    <string name="invite_human_update_confirm_message">この招待リンクを更新しますか？古い URL を知っている人も、そのリンクからは参加できなくなります。</string>
+    <string name="invite_human_updating">更新中…</string>
     <string name="joint_connections_title">接続済みのサーバー</string>
     <string name="joint_connections_rule">1 つの共同チャンネルには最大 30 個のサーバーが参加でき、そのうち無料プランのサーバー枠は 2 個です</string>
     <string name="joint_connections_this_server">このサーバー</string>

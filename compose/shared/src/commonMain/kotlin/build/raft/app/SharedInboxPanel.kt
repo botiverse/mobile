@@ -2019,11 +2019,18 @@ internal fun SharedActivityList(
         latestOnIntent(activityReadToggleIntent(currentItem))
     }
     // The row menu's items and the row's screen-reader actions (raft-design #776 / #777): one write each,
-    // with the menu's analytics.
+    // with the menu's analytics. Done and Unfollow take the row out of the list, so on every route they
+    // wait out the swipe's Undo toast (web #12107, Raft DS › Feedback, "Confirming").
     fun runRowAction(item: InboxItem, actionId: String) {
         if (item.kind == InboxItemKind.Object && actionId == "done") return objectRowDone(item)
         if (item.kind == InboxItemKind.Object && actionId == "unfollow-object") return objectRowUnfollow(item)
         if (actionId == "unfollow-thread") return deferThreadUnfollow(item)
+        if (actionId == "done") {
+            // One toast at a time: an end swipe's toast gives way (its action stands).
+            swipeEndUndo = swipeEndUndo.dismiss()
+            applySwipeDone(swipeDoneUndo.swipe(item))
+            return
+        }
         val write = activityRowActionWrite(item, actionId)
         write.markAction?.let(RaftProductEvents::activityMark)
         runSwipeEndCommand(write.command)
@@ -2037,7 +2044,7 @@ internal fun SharedActivityList(
         runRowAction(currentItem, actionId)
     }
     // The row's hover Done button (mouse / trackpad, web ThreadsInbox `InboxItemActions reveal="hover"`):
-    // the menu's Done, at once and without Undo, as on the web.
+    // the menu's Done, with the same Undo toast, as on the web.
     fun hoverRowDone(renderedItemKey: String) = accessibilityRowAction(renderedItemKey, "done")
     fun undoSwipeEnd(token: Long) {
         val transition = swipeEndUndo.undo(token)

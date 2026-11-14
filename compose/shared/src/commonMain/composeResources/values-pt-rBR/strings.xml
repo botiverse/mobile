@@ -2057,6 +2057,7 @@
     <string name="auth_title_verify_email">Verifique seu e-mail</string>
     <string name="auth_hint_verify_email_address">Enviamos um link de verificação para %1$s. Verifique seu e-mail para desbloquear o Raft e depois atualize.</string>
     <string name="auth_hint_verify_email">Verifique seu e-mail para desbloquear o Raft. Reenvie o link de verificação e depois atualize.</string>
+    <string name="auth_hint_verify_email_check_spam">Não encontrou? Verifique a pasta de spam.</string>
     <string name="auth_title_email_sent">E-mail enviado</string>
     <string name="auth_action_resend_verification">Reenviar e-mail de verificação</string>
     <string name="auth_action_verified_refresh">Já verifiquei - atualizar</string>
@@ -2890,6 +2891,10 @@
     <string name="settings_computers_error_refresh_title">Não foi possível atualizar</string>
     <string name="settings_computers_error_refresh_saved">Não foi possível atualizar os computadores. Mostrando resultados salvos.</string>
     <string name="settings_computers_restart">Reiniciar</string>
+    <string name="settings_computers_restart_confirm_title">Reiniciar Computer</string>
+    <string name="settings_computers_restart_confirm_message_none">Ao reiniciar %1$s, ele se desconecta até voltar a ficar online.</string>
+    <string name="settings_computers_restart_confirm_message_one">Ao reiniciar %1$s, ele e seu %2$d agente se desconectam até voltar a ficar online.</string>
+    <string name="settings_computers_restart_confirm_message_many">Ao reiniciar %1$s, ele e seus %2$d agentes se desconectam até voltar a ficar online.</string>
     <string name="settings_computers_restarting">Reiniciando…</string>
     <string name="settings_computers_restarted">Reiniciado.</string>
     <string name="settings_computers_restart_failed">Não foi possível reiniciar.</string>
@@ -2898,6 +2903,10 @@
     <string name="settings_computers_restart_timed_out">A reinicialização excedeu o tempo limite. Verifique se o computador está online e tente novamente.</string>
     <string name="settings_computers_up_to_date">Atualizado</string>
     <string name="settings_computers_upgrade_to_version">Atualizar para a v%1$s</string>
+    <string name="settings_computers_upgrade_confirm">Atualizar</string>
+    <string name="settings_computers_upgrade_confirm_message_none">%1$s reinicia na v%2$s, então ele se desconecta até se reconectar.</string>
+    <string name="settings_computers_upgrade_confirm_message_one">%1$s reinicia na v%2$s, então ele e seu %3$d agente se desconectam até se reconectar.</string>
+    <string name="settings_computers_upgrade_confirm_message_many">%1$s reinicia na v%2$s, então ele e seus %3$d agentes se desconectam até se reconectar.</string>
     <string name="settings_computers_upgrading">Atualizando…</string>
     <string name="settings_computers_upgrade_status_reinstall">Esta versão não pode ser atualizada pela web. Reinstale-a com o comando no topo desta página.</string>
     <string name="settings_computers_upgrade_status_reading">Lendo a versão; volte daqui a pouco.</string>
@@ -3612,6 +3621,9 @@
     <string name="invite_human_revoke_confirm_message">Revogar este link de convite? Quem ainda tiver a URL não poderá mais usá-la para entrar.</string>
     <string name="invite_human_revoke_confirm_label">Revogar link</string>
     <string name="invite_human_revoking">Revogando…</string>
+    <string name="invite_human_update_confirm_title">Atualizar link de convite</string>
+    <string name="invite_human_update_confirm_message">Atualizar este link de convite? Quem ainda tiver a URL antiga não poderá mais usá-la para entrar.</string>
+    <string name="invite_human_updating">Atualizando…</string>
     <string name="joint_connections_title">Servidores conectados</string>
     <string name="joint_connections_rule">Cada canal compartilhado pode ter até 30 servidores, com 2 vagas para servidores do plano gratuito</string>
     <string name="joint_connections_this_server">Este servidor</string>
