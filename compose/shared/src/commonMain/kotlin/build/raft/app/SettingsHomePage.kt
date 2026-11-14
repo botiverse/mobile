@@ -2940,7 +2940,7 @@ private fun RaftAppShellReadyContent(
             )
         }
     val composerDraftPersistSlice = sharedStores.composerDraftPersistSlice
-    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
     val draftProjection =
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
@@ -11696,7 +11696,7 @@ private fun rememberProjectedDirectMessageItems(
     val snapshot = (state.content as? SharedHomeContentState.Content)?.snapshot
     val restoredRowHints = (state.content as? SharedHomeContentState.Content)?.displayRowHints().orEmpty()
     val activeDraftRecords by (draftPersistSlice?.activeDraftRecordsState ?: EmptyComposerDraftRecordsFlow)
-        .collectAsState(emptySet())
+        .collectAsState()
     val draftProjection =
         remember(activeDraftRecords, draftPersistSlice) {
             if (draftPersistSlice != null) {
@@ -12077,7 +12077,7 @@ private fun SharedHomeScreen(
                 }
             }
             val activeDraftRecords by (draftPersistSlice?.activeDraftRecordsState ?: EmptyComposerDraftRecordsFlow)
-                .collectAsState(emptySet())
+                .collectAsState()
             val draftProjection =
                 remember(activeDraftRecords, draftPersistSlice) {
                     if (draftPersistSlice != null) {
@@ -12257,7 +12257,7 @@ private fun SharedHomeScreen(
                     activityTotalCount = activityTotalCount
                 ),
                 savedCount = savedCount,
-                draftsCount = draftListing.count.takeIf { draftDirectory != null },
+                draftsCount = draftListing.count.takeIf { draftDirectory != null && draftListing.recordsKnown },
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 serverDrawerEnabled = serverDrawerEnabled,
                 homeServerAvatarEnabled = homeServerAvatarEnabled,

@@ -2305,6 +2305,11 @@ internal class RaftSharedStoreProvider private constructor(
             sharedComputersOwner(session, apiEnvironmentStore.current().apiBaseUrl, authLoginGeneration(scope).current())
         }
 
+    private suspend fun computersOwnerBinding(scope: RaftShellStoreScope): RaftAccountBinding<SharedComputersOwner> =
+        authStore(scope).readAccountBinding { session ->
+            sharedComputersOwner(session, apiEnvironmentStore.current().apiBaseUrl, authLoginGeneration(scope).current())
+        }
+
     /**
      * Runtime account usage reads and refreshes for this shell (the computer detail's runtime
      * chips): one cache and one refresh window per shell, whichever page asks.
@@ -2348,6 +2353,8 @@ internal class RaftSharedStoreProvider private constructor(
                 scope = threadSendScope,
                 logger = sharedInfoLogger("SlockComputers", "shell_computers"),
                 ownerProvider = { computersOwner(scope) },
+                // Typed (architecture review B, site 9): an unreadable session is not a sign-out.
+                ownerBinding = { computersOwnerBinding(scope) },
                 durableStore = computersDurableStore
             )
         }
@@ -2388,6 +2395,16 @@ internal class RaftSharedStoreProvider private constructor(
                 },
                 ownerProvider = {
                     shellAuthStore.readSession()?.let { session ->
+                        sharedCreateAgentFormOwner(
+                            session = session,
+                            environmentId = apiEnvironmentStore.current().apiBaseUrl,
+                            loginGeneration = loginGeneration.current()
+                        )
+                    }
+                },
+                // Typed (architecture review B, site 9): an unreadable session is not a sign-out.
+                ownerBinding = {
+                    shellAuthStore.readAccountBinding { session ->
                         sharedCreateAgentFormOwner(
                             session = session,
                             environmentId = apiEnvironmentStore.current().apiBaseUrl,
@@ -3541,71 +3558,15 @@ internal class RaftSharedStoreProvider private constructor(
                     // see processPresenceBindingTransition.
                     onAuthRevisionAdvanced = {},
                     onAuthBindingAdvanced =
-                        processAccountBindingTransition(
+                        processAccountBindingTransitionWithPendingSends(
                             presenceAuthContext = presenceAuthContext,
                             accountBinding = accountBinding,
                             registry = processMemberPresenceRegistry,
+                            journal = threadPendingSendJournal,
                             currentEnvironmentId = {
                                 apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
                             },
-                            // Retire only the exact environment/principal/auth revision that
-                            // previously owned sends.  A late terminal event can never erase a
-                            // successor login's rows because its authGeneration is different.
-                            onBindingRetired = { retired ->
-                                val cleared = threadPendingSendJournal.clearForAuthRevision(
-                                    environmentId = retired.environmentId,
-                                    principalId = retired.accountId,
-                                    authGeneration = retired.authorityGeneration,
-                                )
-                                if (!cleared) {
-                                    realtimeAuthorityDiagnosticsLogger(
-                                        "thread_pending_send_auth_revision_cleanup_failed " +
-                                            "environmentId=${retired.environmentId} " +
-                                            "principalId=${retired.accountId} " +
-                                            "authGeneration=${retired.authorityGeneration}"
-                                    )
-                                }
-                            },
-                            // A cold process has no in-memory predecessor to retire.  Remove
-                            // only rows from older generations and preserve the exact current
-                            // generation, so a successor login cannot be erased by restoration.
-                            onBindingBound = { bound ->
-                                val cleared = threadPendingSendJournal.clearForPrincipalBeforeAuthRevision(
-                                    environmentId = bound.environmentId,
-                                    principalId = bound.accountId,
-                                    authGeneration = bound.authorityGeneration,
-                                )
-                                if (!cleared) {
-                                    realtimeAuthorityDiagnosticsLogger(
-                                        "thread_pending_send_stale_generation_cleanup_failed " +
-                                            "environmentId=${bound.environmentId} " +
-                                            "principalId=${bound.accountId} " +
-                                            "authGeneration=${bound.authorityGeneration}"
-                                    )
-                                }
-                            },
-                            // Same-binding token rotation (401 -> silent refresh): rehome the
-                            // principal's journaled pending sends into the successor auth
-                            // revision instead of retiring them, so an offline send admitted
-                            // before the refresh stays reachable for drain/restore. Binding
-                            // changes (logout/account switch) keep delete semantics via
-                            // onBindingRetired above.
-                            onBindingAuthRevisionRotated = { retired, bound ->
-                                val rehomed = threadPendingSendJournal.rehomeAuthRevision(
-                                    environmentId = retired.environmentId,
-                                    principalId = retired.accountId,
-                                    fromAuthGeneration = retired.authorityGeneration,
-                                    toAuthGeneration = bound.authorityGeneration,
-                                )
-                                realtimeAuthorityDiagnosticsLogger(
-                                    "thread_pending_send_auth_revision_rehomed " +
-                                        "environmentId=${retired.environmentId} " +
-                                        "principalId=${retired.accountId} " +
-                                        "fromAuthGeneration=${retired.authorityGeneration} " +
-                                        "toAuthGeneration=${bound.authorityGeneration} " +
-                                        "rehomed=$rehomed"
-                                )
-                            },
+                            diagnosticsLogger = realtimeAuthorityDiagnosticsLogger,
                         ),
                 )
             // Pixel-avatar runtime table (task #352): apply the MMKV-cached document
@@ -3771,7 +3732,10 @@ internal class RaftSharedStoreProvider private constructor(
                     scheduler =
                         CoroutineThreadComposerDraftPersistenceScheduler(
                             CoroutineScope(SupervisorJob())
-                        )
+                        ),
+                    // Account-scoped: nothing is read until the binding follower below binds an
+                    // account (or finds nobody signed in), so "no drafts" is not known before.
+                    recordsKnownAtStart = false
                 )
             CoroutineScope(SupervisorJob()).launch {
                 composerDraftAccounts.onStoredSessionReadAtStart(authStore)

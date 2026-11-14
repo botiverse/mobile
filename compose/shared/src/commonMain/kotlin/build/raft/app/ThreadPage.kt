@@ -13077,7 +13077,7 @@ private fun SharedThreadRouteContentContent(
                             banner = banner,
                             topSafeArea = handoff.topSafeArea,
                             serverMembersStore = handoff.serverMembersStore,
-                            currentServerId = handoff.currentServerId,
+                            currentServerId = foregroundBannerMemberServerId(banner, handoff.currentServerId),
                             onClick = { handoff.onClick(banner) },
                             onDismiss = { handoff.onDismiss(banner) },
                         )
@@ -18044,7 +18044,7 @@ private fun ThreadPageContentContent(
             taskChannelId
                 ?: ChannelId(threadInstanceKey)
         }
-    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
     val draftProjection =
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
@@ -21588,7 +21588,7 @@ private fun ThreadChatTabContent(
         )
     }
     val userFacingErrorLabels = threadUserFacingErrorLabels()
-    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
     val activeReplyDraftParentMessageIds =
         remember(activeDraftRecords) {
             activeDraftRecords.toReplyComposerDraftParentMessageIds()

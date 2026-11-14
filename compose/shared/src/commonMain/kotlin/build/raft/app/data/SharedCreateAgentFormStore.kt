@@ -47,6 +47,13 @@ internal class SharedCreateAgentFormStore(
     private val ownerProvider: suspend () -> SharedCreateAgentFormOwner? = {
         SharedCreateAgentFormOwner("test-environment", "test-account", "test-session")
     },
+    /**
+     * The owner as a typed account binding (architecture review B, site 9). Defaults to
+     * [ownerProvider]: an owner is signed in, none is signed out.
+     */
+    private val ownerBinding: suspend () -> RaftAccountBinding<SharedCreateAgentFormOwner> = {
+        ownerProvider()?.let { RaftAccountBinding.SignedIn(it) } ?: RaftAccountBinding.SignedOut
+    },
     private val runtimeFormV2Loader: RuntimeFormV2Loader? = null,
     /** The server runtime catalog (`GET servers/:id/runtimes`); null: the bundled table only. */
     private val serverRuntimeCatalogs: SharedServerRuntimeCatalogRepository? = null,
@@ -120,10 +127,20 @@ internal class SharedCreateAgentFormStore(
     private val runtimeCatalogGenerations = mutableMapOf<SharedCreateAgentMachineFormKey, Long>()
     private var currentOwner: SharedCreateAgentFormOwner? = null
 
+    /** Typed owner read: a throwing read is [RaftAccountBinding.Unknown], never a sign-out. */
+    private suspend fun readOwnerBinding(): RaftAccountBinding<SharedCreateAgentFormOwner> =
+        runCatchingPreservingCancellation { ownerBinding() }.getOrElse { RaftAccountBinding.Unknown }
+
+    /**
+     * Follows the signed-in owner. Only a sign-out clears the form session; a session that is not
+     * known yet or cannot be read keeps it (architecture review B, site 9).
+     */
     suspend fun reconcileOwner() {
-        val owner = ownerProvider()
-        mutex.withLock {
-            if (owner == null) clearOwnerLocked() else installOwner(owner)
+        when (val binding = readOwnerBinding()) {
+            is RaftAccountBinding.SignedIn -> mutex.withLock { installOwner(binding.account) }
+            RaftAccountBinding.SignedOut -> mutex.withLock { clearOwnerLocked() }
+            RaftAccountBinding.Unknown, is RaftAccountBinding.Corrupt ->
+                logger("shared_create_agent_form_owner_kept reason=${binding.unknownReason()}")
         }
     }
 
@@ -132,8 +149,14 @@ internal class SharedCreateAgentFormStore(
         machineId: String,
         force: Boolean = false
     ): DataResult<SharedCreateAgentRuntimeCatalog> {
-        val owner = ownerProvider()
-            ?: return clearForMissingOwner("runtime_options_owner_required")
+        val owner =
+            when (val binding = readOwnerBinding()) {
+                is RaftAccountBinding.SignedIn -> binding.account
+                RaftAccountBinding.SignedOut -> return clearForMissingOwner("runtime_options_owner_required")
+                // Not known yet / unreadable: fail this load, keep the form session.
+                RaftAccountBinding.Unknown, is RaftAccountBinding.Corrupt ->
+                    return DataResult.Error(ScreenError("runtime_options_owner_required", retryable = true))
+            }
         val key = normalizedMachineKey(serverId, machineId)
             ?: return DataResult.Error(ScreenError("runtime_options_identity_required", retryable = false))
         val deferred = mutex.withLock {
@@ -163,7 +186,12 @@ internal class SharedCreateAgentFormStore(
      * caller reloads them whenever the agent's runtime changes, so a switch never reads stale rows.
      */
     suspend fun loadAgentRuntimeOptions(serverId: String, agentId: String): DataResult<ExistingAgentRuntimeOptions> {
-        ownerProvider() ?: return clearForMissingOwner("agent_runtime_options_owner_required")
+        when (readOwnerBinding()) {
+            is RaftAccountBinding.SignedIn -> Unit
+            RaftAccountBinding.SignedOut -> return clearForMissingOwner("agent_runtime_options_owner_required")
+            RaftAccountBinding.Unknown, is RaftAccountBinding.Corrupt ->
+                return DataResult.Error(ScreenError("agent_runtime_options_owner_required", retryable = true))
+        }
         val cleanServerId = serverId.trim()
         if (cleanServerId.isBlank() || agentId.isBlank()) {
             return DataResult.Error(ScreenError("agent_runtime_options_identity_required", retryable = false))
