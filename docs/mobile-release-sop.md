@@ -415,7 +415,9 @@ if the signed app lacks a declared domain.
 ### 6.1 Bytes
 
 Android, record and independently check: run/artifact ids; APK and symbols size
-and SHA-256; package, version, min/target SDK, signer lineage (v2/v3/v3.1);
+and SHA-256; package, version, min/target SDK, signer lineage (v2/v3/v3.1),
+the v1 (JAR) signature by the legacy signer (`apksigner verify --min-sdk-version 23
+--max-sdk-version 23`; the API 24 pass prints v1 `false` because it does not use v1);
 `zipalign -P 16`, compressed DEX, every 64-bit ELF at 16 KiB; native Build IDs;
 byte equality between GitHub and Hands assets.
 
