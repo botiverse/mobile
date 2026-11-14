@@ -101,6 +101,7 @@ import build.raft.app.cmp.host.RaftHostEvents
 import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.cmp.host.RaftCmpPageArgs
+import build.raft.app.cmp.host.RaftPageOpenTransition
 import build.raft.app.nav.RaftPageStack
 import build.raft.app.nav.RaftPageStackSavedState
 import build.raft.app.nav.RaftStackOpenRoute
@@ -998,6 +999,8 @@ internal open class RaftCmpActivity :
         applyHostCanvasColor(hostWindowBackgroundColor())
         prepareScreenshotFeedbackObserver()
         registerAndroidShellWindow(intent)
+        // task #151: this page is the top of its task now (Activity-path push rules, RaftActivityPageOpens).
+        RaftActivityPageOpens.Process.created(this, taskId, pageName, activityRoutePageData(resolvedPageData(intent).text))
         serverSwitchTapEpochMillis = pendingServerSwitchTapEpochMillis(intent)
         hostCreatedAtMillis = SystemClock.elapsedRealtime()
         whiteScreenHandler.postDelayed(whiteScreenWatch, RAFT_WHITE_SCREEN_SUSPECT_MS)
@@ -1230,6 +1233,8 @@ internal open class RaftCmpActivity :
             navigator =
                 object : RaftCmpNavigator {
                     override fun openPage(pageName: String, pageData: JsonObject) = openPageFrom(page, pageName, pageData)
+
+                    override fun openTransition(pageName: String, pageData: JsonObject) = openTransitionFrom(page, pageName, pageData)
 
                     override fun closePage() = stack.close(page)
                 },
@@ -1615,6 +1620,7 @@ internal open class RaftCmpActivity :
     }
 
     override fun onDestroy() {
+        RaftActivityPageOpens.Process.destroyed(this)
         AndroidLoginTransitionRouting.onDestroyed(
             this, loginTransitionToken, isChangingConfigurations,
         )
@@ -1981,6 +1987,32 @@ internal open class RaftCmpActivity :
      */
     override fun openPage(pageName: String, pageData: JsonObject) = openPageFrom(null, pageName, pageData)
 
+    override fun openTransition(pageName: String, pageData: JsonObject) = openTransitionFrom(null, pageName, pageData)
+
+    /**
+     * The open guard's window for an open from [from] ([RaftCmpNavigator.openTransition]): the
+     * stack's push slide is timed; an Activity push is held by [RaftActivityPageOpens] for as long
+     * as the new Activity's enter animation really runs, so the guard adds no fixed window.
+     */
+    private fun openTransitionFrom(from: RaftStackPage?, pageName: String, pageData: JsonObject): RaftPageOpenTransition {
+        val stack = nav3Stack
+        return if (stack != null && raftAndroidNav3OpenRoute(stack, pageName, pageData, from) == RaftStackOpenRoute.Stack) {
+            RaftPageOpenTransition.Timed
+        } else {
+            RaftPageOpenTransition.Untimed
+        }
+    }
+
+    override fun onEnterAnimationComplete() {
+        super.onEnterAnimationComplete()
+        // A push into this task has ended: an open held meanwhile goes now (RaftActivityPageOpens).
+        RaftActivityPageOpens.Process.entered(this)
+    }
+
+    /** [pageDataText] as the page's route pageData (what [RaftActivityPageOpens] compares). */
+    private fun activityRoutePageData(pageDataText: String): JsonObject =
+        parseRaftJsonObjectOrNull(pageDataText) ?: JsonObject(emptyMap())
+
     /**
      * An open from the shell (or this page, [from] null) or from a stack page ([from]): onto the
      * stack for an allowlisted page with the stack on ([raftAndroidNav3OpenRoute]), else the Activity
@@ -2018,6 +2050,20 @@ internal open class RaftCmpActivity :
             if (!AndroidLoginTransitionRouting.afterSuccessfulAuthentication(
                     this, launchDestination = startDestination,
                 )) return
+        } else if (!replaceCurrent && pageName != RaftPages.APP_SHELL) {
+            // task #151: a push of a page: not the page already on top of this task, not twice
+            // while the last push is still coming in (a different page waits for it: latest wins).
+            RaftActivityPageOpens.Process.open(
+                taskId,
+                pageName,
+                activityRoutePageData(data.withAndroidHostPageData(pageName).toString()),
+            ) {
+                if (isFinishing || isDestroyed) {
+                    RaftAppLog.record(TAG, "activity_open_dropped page=$pageName reason=opener_gone")
+                } else {
+                    startDestination()
+                }
+            }
         } else {
             startDestination()
         }

@@ -16,6 +16,24 @@ interface RaftCmpNavigator {
 
     /** Closes the page hosting this composition (Android: finish the Activity; iOS: pop/dismiss). */
     fun closePage()
+
+    /**
+     * What an [openPage] of [pageName] with [pageData] does to the page's open guard
+     * ([RaftPageOpenGuard]): [RaftPageOpenTransition.Timed] (the default) holds its fixed push
+     * window; [RaftPageOpenTransition.Untimed] holds none, because the open runs no transition (a
+     * stack without push motion: the desktop) or the host holds opens itself for as long as its real
+     * transition runs (the iOS router, the Android Activity path: [RaftNativePageOpenGate]).
+     */
+    fun openTransition(pageName: String, pageData: JsonObject): RaftPageOpenTransition = RaftPageOpenTransition.Timed
+}
+
+/** See [RaftCmpNavigator.openTransition]. */
+enum class RaftPageOpenTransition {
+    /** A push slide the host does not report: the guard holds its fixed window ([RaftPageOpenTransitionMillis]). */
+    Timed,
+
+    /** No push slide, or one the host gates itself: the guard holds nothing. */
+    Untimed,
 }
 
 /**

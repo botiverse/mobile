@@ -1,5 +1,6 @@
 package build.raft.app.desktop
 
+import build.raft.app.cmp.host.RaftPageOpenTransition
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -125,5 +126,10 @@ class RaftDesktopNavigatorTest {
         assertTrue(received.isEmpty())
         assertTrue(navigator.history(RaftDesktopHistoryDirection.Back))
         assertEquals(listOf(RaftDesktopHistoryInput.EVENT_NAME), received)
+    }
+
+    @Test fun `a push holds no open guard window since the desktop has no push slide`() {
+        val shell = navigator.pages.single()
+        assertEquals(RaftPageOpenTransition.Untimed, navigator.navigatorFor(shell).openTransition("thread", data("id" to "t1")))
     }
 }

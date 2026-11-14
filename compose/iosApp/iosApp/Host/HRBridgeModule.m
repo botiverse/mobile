@@ -6439,20 +6439,37 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
             RaftDiagnosticsRecord(@"warn", @"RaftIosShellWindow", @"document_shell_fallback source=server_switch");
         }
         UIViewController *controller = [self raft_currentViewController];
-        UIViewController *renderViewController =
-            [RaftPageControllerFactory controllerForPageName:pageName pageData:pageData ?: @{}];
+        NSDictionary *openPageData = pageData ?: @{};
         UINavigationController *navigationController = controller.navigationController;
         if (navigationController) {
             if (replaceCurrent && navigationController.viewControllers.count > 0) {
+                UIViewController *renderViewController =
+                    [RaftPageControllerFactory controllerForPageName:pageName pageData:openPageData];
                 NSMutableArray<UIViewController *> *viewControllers = [navigationController.viewControllers mutableCopy];
                 [viewControllers removeLastObject];
                 [viewControllers addObject:renderViewController];
                 [navigationController setViewControllers:viewControllers animated:YES];
             } else {
-                [navigationController pushViewController:renderViewController animated:YES];
+                // task #151: the router's push rules (RaftIosPageOpenGate).
+                __weak UINavigationController *weakNavigationController = navigationController;
+                [RaftIosPageOpenGate openPageWithName:pageName
+                                             pageData:openPageData
+                                 navigationController:navigationController
+                                                 push:^UIViewController *{
+                    UINavigationController *strongNavigationController = weakNavigationController;
+                    if (!strongNavigationController) {
+                        return nil;
+                    }
+                    UIViewController *renderViewController =
+                        [RaftPageControllerFactory controllerForPageName:pageName pageData:openPageData];
+                    [strongNavigationController pushViewController:renderViewController animated:YES];
+                    return renderViewController;
+                }];
             }
             return;
         }
+        UIViewController *renderViewController =
+            [RaftPageControllerFactory controllerForPageName:pageName pageData:openPageData];
         UINavigationController *presentedNavigationController =
             [[UINavigationController alloc] initWithRootViewController:renderViewController];
         [controller presentViewController:presentedNavigationController animated:YES completion:nil];

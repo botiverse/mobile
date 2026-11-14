@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		N0CE00010000000000000001 /* RaftIosPageOpenGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = N0CE00020000000000000001 /* RaftIosPageOpenGate.swift */; };
+		N0CE00010000000000000002 /* RaftIosPageOpenGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = N0CE00020000000000000001 /* RaftIosPageOpenGate.swift */; };
+		N0CE00010000000000000003 /* RaftIosPageOpenGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = N0CE00020000000000000002 /* RaftIosPageOpenGateTests.swift */; };
 		A51000010000000000000003 /* RaftCmpBridgeHost.m in Sources */ = {isa = PBXBuildFile; fileRef = A51000020000000000000003 /* RaftCmpBridgeHost.m */; };
 		A51000010000000000000004 /* RaftPageControllerFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51000020000000000000004 /* RaftPageControllerFactory.swift */; };
 		A47400010000000000000001 /* RaftIosSideActionHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47400020000000000000001 /* RaftIosSideActionHost.swift */; };
@@ -100,6 +103,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		N0CE00020000000000000001 /* RaftIosPageOpenGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosPageOpenGate.swift; sourceTree = "<group>"; };
+		N0CE00020000000000000002 /* RaftIosPageOpenGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosPageOpenGateTests.swift; sourceTree = "<group>"; };
 		A51000020000000000000002 /* RaftCmpBridgeHost.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RaftCmpBridgeHost.h; sourceTree = "<group>"; };
 		A51000020000000000000003 /* RaftCmpBridgeHost.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RaftCmpBridgeHost.m; sourceTree = "<group>"; };
 		A51000020000000000000004 /* RaftPageControllerFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftPageControllerFactory.swift; sourceTree = "<group>"; };
@@ -242,6 +247,7 @@
 			isa = PBXGroup;
 			children = (
 				A51000020000000000000004 /* RaftPageControllerFactory.swift */,
+				N0CE00020000000000000001 /* RaftIosPageOpenGate.swift */,
 				A47400020000000000000001 /* RaftIosSideActionHost.swift */,
 				A47400040000000000000001 /* RaftIosSideActionItems.swift */,
 				A51000020000000000000002 /* RaftCmpBridgeHost.h */,
@@ -392,6 +398,7 @@
 				RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */,
 				J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */,
 				DU0R00020000000000000001 /* RaftIosDuoRuntimeTests.m */,
+				N0CE00020000000000000002 /* RaftIosPageOpenGateTests.swift */,
 			);
 			path = iosAppTests;
 			sourceTree = "<group>";
@@ -796,6 +803,7 @@
 				04E32B3E29F01975000A6BC5 /* RaftPageRouter.m in Sources */,
 				A51000010000000000000003 /* RaftCmpBridgeHost.m in Sources */,
 				A51000010000000000000004 /* RaftPageControllerFactory.swift in Sources */,
+				N0CE00010000000000000001 /* RaftIosPageOpenGate.swift in Sources */,
 				A47400010000000000000001 /* RaftIosSideActionHost.swift in Sources */,
 				A47400030000000000000001 /* RaftIosSideActionItems.swift in Sources */,
 				0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */,
@@ -861,6 +869,8 @@
 				RCB100010000000000000001 /* RaftCmpBridgeSelectorTests.m in Sources */,
 				J0NY00030000000000000001 /* RaftIosOpenAttachmentTests.m in Sources */,
 				DU0R00010000000000000001 /* RaftIosDuoRuntimeTests.m in Sources */,
+				N0CE00010000000000000002 /* RaftIosPageOpenGate.swift in Sources */,
+				N0CE00010000000000000003 /* RaftIosPageOpenGateTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

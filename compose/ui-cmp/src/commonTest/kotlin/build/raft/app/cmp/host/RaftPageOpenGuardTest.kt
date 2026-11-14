@@ -111,4 +111,35 @@ class RaftPageOpenGuardTest {
         byThread.open("thread", data("id" to "t1", "anchor" to "b")) { name, _ -> opened += name }
         assertEquals(listOf("thread"), opened)
     }
+
+    private fun openUntimed(pageName: String, pageData: JsonObject) =
+        guard.open(pageName, pageData, RaftPageOpenTransition.Untimed) { name, sent ->
+            opened += "$name ${(sent["id"] as? JsonPrimitive)?.content.orEmpty()}".trim()
+        }
+
+    @Test fun `an untimed open holds no window so a different page opens at once`() {
+        openUntimed("profile", data("id" to "p1"))
+        advanceTo(50)
+        openUntimed("profile", data("id" to "p2"))
+        assertEquals(listOf("profile p1", "profile p2"), opened)
+        assertTrue(scheduled.isEmpty())
+    }
+
+    @Test fun `an untimed open leaves repeats to the host`() {
+        openUntimed("thread", data("id" to "t1"))
+        advanceTo(50)
+        openUntimed("thread", data("id" to "t1"))
+        assertEquals(listOf("thread t1", "thread t1"), opened)
+    }
+
+    @Test fun `a timed push after an untimed open opens a window again`() {
+        openUntimed("profile", data("id" to "p1"))
+        open("thread", data("id" to "t1"))
+        advanceTo(100)
+        open("thread", data("id" to "t1"))
+        open("thread", data("id" to "t2"))
+        assertEquals(listOf("profile p1", "thread t1"), opened)
+        advanceTo(450)
+        assertEquals(listOf("profile p1", "thread t1", "thread t2"), opened)
+    }
 }

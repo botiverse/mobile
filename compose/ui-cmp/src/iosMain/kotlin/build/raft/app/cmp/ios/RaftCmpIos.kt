@@ -15,6 +15,8 @@ import build.raft.app.cmp.host.RaftHostEvents
 import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.cmp.host.RaftCmpPageArgs
+import build.raft.app.cmp.host.RaftPageOpenTransition
+import build.raft.app.cmp.host.RaftPageRouteIdentities
 import build.raft.app.parseRaftJsonObjectOrNull
 import build.raft.app.toRaftJsonString
 import build.raft.designsystem.components.RaftPageCoverSignal
@@ -183,6 +185,17 @@ object RaftCmpIos {
     fun rendersOnCmp(pageName: String): Boolean = RaftCmpRouter.rendersOnCmp(pageName)
 
     /**
+     * Whether two opens show the same page ([RaftPageRouteIdentities]: the thread page by thread and
+     * message anchor, other pages by pageData minus per-open facts). The router's push rules
+     * (`RaftIosPageOpenGate.swift`, task #151) compare the page on top with an open through it.
+     */
+    fun sameRoute(pageName: String, pageDataJson: String, otherPageName: String, otherPageDataJson: String): Boolean {
+        val data = parseRaftJsonObjectOrNull(pageDataJson) ?: return false
+        val otherData = parseRaftJsonObjectOrNull(otherPageDataJson) ?: return false
+        return RaftPageRouteIdentities.of(pageName, data) == RaftPageRouteIdentities.of(otherPageName, otherData)
+    }
+
+    /**
      * A page rendering [pageName] with [pageDataJson] (the page's pageData as JSON text). The host
      * embeds [RaftIosPage.viewController] in its page container and pushes the container.
      */
@@ -294,6 +307,9 @@ private class BridgeCallback(private val onResult: (String?) -> Unit) : RaftCmpI
 private class IosNavigator(private val navigator: RaftCmpIosNavigator) : RaftCmpNavigator {
     override fun openPage(pageName: String, pageData: JsonObject) =
         navigator.openPage(pageName, pageData.toRaftJsonString())
+
+    // The router holds pushes itself for as long as UIKit's transition runs (RaftIosPageOpenGate).
+    override fun openTransition(pageName: String, pageData: JsonObject) = RaftPageOpenTransition.Untimed
 
     override fun closePage() = navigator.closePage()
 }
