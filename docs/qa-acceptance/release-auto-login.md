@@ -212,7 +212,21 @@ key of this run's name is revoked and read back; otherwise `key: unknown`, non-z
 mint call the run writes `old-cli-key-intent.json` (the per-run key name, agent, time; uploaded with
 the result) so even a hard kill leaves what to reconcile. On SIGTERM / SIGINT no further step starts
 a side effect (no write, profile, npm or CLI); cleanup waits (bounded, `--mint-settle-ms`) for an
-in-flight mint and revokes that exact key, or records it as unknown; it never mints again. The summary keeps non-secret
+in-flight mint and revokes that exact key, or records it as unknown; it never mints again.
+The web session is handled the same way: before `POST auth/login` the run writes
+`old-cli-session-intent.json` (time, run id; uploaded with the result); a login answer is usable only
+with both an access and a refresh token; a login still in flight at SIGTERM / SIGINT is waited for
+(same bound) and, if it answers, that exact session is signed out and its refresh proven refused;
+a login that was sent but answered nothing usable (lost, incomplete, refused, or still pending) is
+`web: unknown`. `cleanup_complete` is true only when every item (key, web, local key file) is a
+confirmed outcome or provably not applicable (its request was never sent); any `unknown` makes it
+false and the run non-zero.
+
+**Limit:** a hard kill or a lost runner (no chance to clean up) can leave an upstream web session or
+agent key that nothing local can prove absent: the intent records and the uploaded result may be
+missing too. The run never retries a login or a mint and never signs the shared QA account out
+everywhere; such a leftover is reconciled by hand (the key by its per-run name on the agent's key
+list; the web session expires on its own). The summary keeps non-secret
 correlation for reconciling that exact key / session by hand (`credential_id_prefix`,
 `credential_name`, `web_session_family_prefix`). The agent, the task and the Artifacts stay (the
 device scenarios use them). Result in the `old-cli-task-result` artifact.

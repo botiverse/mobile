@@ -244,6 +244,10 @@ const mintKeyId = (m) => (m && typeof m.credentialId === "string" && /^[A-Za-z0-
   && (m.agentId === undefined || m.agentId === agentId) ? m.credentialId : null);
 const mintComplete = (m) => Boolean(mintKeyId(m)) && typeof m.apiKey === "string" && m.apiKey.length > 0;
 const MINT_SETTLE_MS = Number(option("mint-settle-ms", "20000"));
+// The web login, tracked the same way: "none" (never sent) | "pending" | "ok" (well-formed: access
+// AND refresh token) | "incomplete" (2xx without them) | "unknown" | "refused". Once sent, the web
+// session is a mandatory cleanup item: logged out and its refresh refused, or reported unknown.
+const login = { state: "none", sent: false, promise: null };
 let cleanupStarted = null;
 function cleanupOnce() {
   cleanupStarted ??= cleanup();
@@ -264,13 +268,36 @@ try {
   if (!email || !password) stop("QA_LOGIN_EMAIL / QA_LOGIN_PASSWORD are not set");
   mask(email); // the password is a GitHub secret: already masked, never echoed here
 
-  const login = await api("POST", "auth/login", { body: { email, password } });
-  if (login.status !== 200) stop(`POST /auth/login: HTTP ${login.status} ${login.json?.code ?? ""}`);
-  if (login.json?.secondFactorRequired || login.json?.challenge) stop("the QA account asks for a second factor; not answering it");
-  if (!login.json?.accessToken) stop("POST /auth/login answered without an access token");
-  mask(login.json.accessToken);
-  mask(login.json.refreshToken);
-  session = { accessToken: login.json.accessToken, refreshToken: login.json.refreshToken ?? "" };
+  // Before the call: a non-secret intent record (time, run), uploaded with the result.
+  writeIntent("old-cli-session-intent.json", { login_requested_at: new Date().toISOString(), run: process.env.GITHUB_RUN_ID ?? null });
+  guard("sign in");
+  login.state = "pending";
+  login.promise = (async () => {
+    let out;
+    try {
+      login.sent = true;
+      out = await api("POST", "auth/login", { body: { email, password } });
+    } catch (error) {
+      login.state = "unknown";
+      unknownWrites.push("sign in (POST auth/login): request failed");
+      throw new Unknown(`POST /auth/login: no clear answer (${error instanceof Stop ? error.message : "request failed"})`);
+    }
+    const j = out.json ?? {};
+    for (const t of [j.accessToken, j.refreshToken]) if (typeof t === "string") mask(t);
+    const kind = classifyWrite(out);
+    if (kind === "unknown") { login.state = "unknown"; unknownWrites.push(`sign in (POST auth/login): HTTP ${out.status}`); throw new Unknown(`POST /auth/login: no clear answer (HTTP ${out.status})`); }
+    if (kind === "refused") { login.state = "refused"; throw new Stop(`POST /auth/login: HTTP ${out.status} ${j.code ?? ""}`); }
+    if (j.secondFactorRequired || j.challenge) { login.state = "incomplete"; throw new Stop("the QA account asks for a second factor; not answering it"); }
+    // Usable only when well-formed: without both tokens there may be a session this run can't end.
+    if (typeof j.accessToken !== "string" || !j.accessToken || typeof j.refreshToken !== "string" || !j.refreshToken) {
+      login.state = "incomplete";
+      throw new Unknown("POST /auth/login answered 2xx without both an access and a refresh token");
+    }
+    session = { accessToken: j.accessToken, refreshToken: j.refreshToken };
+    login.state = "ok";
+  })();
+  await login.promise;
+  guard("use the web session");
   log("signed in as the QA account");
 
   const servers = listOf(ok(await api("GET", "servers", { server: false }), "list servers"), "servers");
@@ -451,8 +478,17 @@ async function cleanup() {
   } else {
     done.key = "not_applicable"; // never sent
   }
-  // The web session: logout, proven by its refresh token being refused afterwards.
-  if (session?.refreshToken) {
+  // The web session: logout, proven by its refresh token being refused afterwards. A login still in
+  // flight is waited for (same bound); one sent without a usable answer is unknown, never retried.
+  if (login.state === "pending") {
+    await Promise.race([login.promise.catch(() => {}), new Promise((r) => setTimeout(r, MINT_SETTLE_MS).unref())]);
+  }
+  summary.web_login = login.state;
+  if (login.state === "pending") {
+    summary.web_session_signed_out = "unknown";
+    summary.web_unknown_reason = `the login had not answered ${MINT_SETTLE_MS} ms into shutdown`;
+    done.web = "unknown";
+  } else if (session?.refreshToken) {
     summary.web_session_family_prefix = jwtFamilyPrefix(session.accessToken);
     const out = await api("POST", "auth/logout", { body: { refreshToken: session.refreshToken }, server: false }).catch((e) => e);
     summary.web_logout_http = out instanceof Error ? "request_failed" : out.status;
@@ -475,12 +511,21 @@ async function cleanup() {
       done.web = "unknown";
     }
     log(`sign the web session out: HTTP ${summary.web_logout_http}, refresh after: ${summary.web_refresh_check}`);
+  } else if (login.sent) {
+    // Sent, but no session this run can end (lost answer, incomplete or refused): unknown.
+    summary.web_session_signed_out = "unknown";
+    summary.web_unknown_reason ??= `the login was sent (${login.state}) but returned no session this run can sign out`;
+    done.web = "unknown";
+  } else {
+    done.web = "not_applicable"; // never sent
   }
   // The local key file: always removed.
   if (raftHome) {
     try { fs.rmSync(raftHome, { recursive: true, force: true }); } catch {}
     summary.local_key_file_removed = !fs.existsSync(raftHome);
     done.local = summary.local_key_file_removed ? "ok" : "failed";
+  } else {
+    done.local = "not_applicable"; // no key file was written
   }
   const states = Object.values(done);
   summary.cleanup = done;
@@ -501,11 +546,14 @@ async function cleanup() {
 
 // The per-run key's intent, written before the mint call (non-secret: name, agent, time), next to
 // the run's --out result so the uploaded evidence keeps it even after a hard kill.
-function writeKeyIntent() {
+function writeIntent(name, data) {
   const out = option("out", "");
-  const file = path.join(out ? path.dirname(path.resolve(out)) : process.cwd(), "old-cli-key-intent.json");
-  fs.writeFileSync(file, `${JSON.stringify({ credential_name: RUN_KEY_NAME, agent_id: agentId, mint_requested_at: new Date().toISOString(), run: process.env.GITHUB_RUN_ID ?? null }, null, 2)}\n`);
-  summary.key_intent_file = path.basename(file);
+  const file = path.join(out ? path.dirname(path.resolve(out)) : process.cwd(), name);
+  fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+  return path.basename(file);
+}
+function writeKeyIntent() {
+  summary.key_intent_file = writeIntent("old-cli-key-intent.json", { credential_name: RUN_KEY_NAME, agent_id: agentId, mint_requested_at: new Date().toISOString(), run: process.env.GITHUB_RUN_ID ?? null });
 }
 
 // The session family id from the access token's payload (an id, not a credential), 8 characters.
