@@ -200,6 +200,13 @@ function installedVersionName() {
   return /versionName=(\S+)/.exec(shell(`dumpsys package ${PKG}`, { allowFailure: true }))?.[1] ?? "";
 }
 
+// Which app-private files hold the draft text (names only; root). Tells "never written to disk"
+// apart from "written, then lost by the upgrade".
+function draftFilesOnDisk() {
+  return shell(`grep -rl ${DRAFT_TOKEN} /data/data/${PKG}/ 2>/dev/null`, { allowFailure: true })
+    .split(/\s+/).filter(Boolean).map((f) => f.replace(`/data/data/${PKG}/`, ""));
+}
+
 function launchApp() {
   shell(`monkey -p ${PKG} -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1`, { allowFailure: true });
 }
@@ -417,7 +424,11 @@ async function main() {
       await sleep(800);
       evidence("draft-typed");
       await backToHome();
-      return { channel: channelName, draft: DRAFT_TOKEN };
+      // Let the draft store flush, then record where it lives on disk.
+      await sleep(5000);
+      const onDisk = draftFilesOnDisk();
+      if (!onDisk.length) log("warning: the draft text is not in any app-private file before the update");
+      return { channel: channelName, draft: DRAFT_TOKEN, draft_files_before_update: onDisk };
     });
 
     await step("update-prompt-offers-B", async () => {
@@ -526,7 +537,7 @@ async function main() {
       })();
       if (find(list, "Sign in to Raft")) fail("B opened signed out: the session did not survive the update");
       if (!serverVisible(list)) fail(`B opened on Home but not on server ${SERVER}`);
-      return { version_code: code, version_name: installedVersionName() };
+      return { version_code: code, version_name: installedVersionName(), draft_files_after_update: draftFilesOnDisk() };
     });
 
     await step("draft-preserved", async () => {
