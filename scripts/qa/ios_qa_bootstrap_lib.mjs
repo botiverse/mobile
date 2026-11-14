@@ -175,6 +175,11 @@ const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  *             app process is listed;
  *   unknown — ps failure/timeout, a cut listing, no (or an ambiguous) launchd_sim, or no executable
  *             name to look for.
+ * EVIDENCE CEILING: completeness of a process listing cannot be proven. A listing cut exactly at a
+ * newline right after the launchd_sim line is indistinguishable from a whole one and reads absent.
+ * So this "absent" is never proof on its own: the cleanup receipt is clean only when it agrees with
+ * launchctl (combineProcessStates) AND uninstall succeeded AND the data container is confirmed absent
+ * through the allowlisted not-installed result (classifyAppContainerRead); otherwise unknown.
  */
 export function classifyHostProcessRead(result, udid, executableName) {
   const device = requireSimulatorUdid(udid);
@@ -190,7 +195,7 @@ export function classifyHostProcessRead(result, udid, executableName) {
   } catch {
     return { state: "unknown", reason: "no_positive_control" };
   }
-  return { state: "absent", reason: "app_process_not_listed", positive_control: "launchd_sim" };
+  return { state: "absent", reason: "app_process_not_listed", positive_control: "launchd_sim", evidence_ceiling: "listing_completeness_unprovable" };
 }
 
 /** Both independent process reads must agree on absence; any present wins; otherwise unknown. */
@@ -203,40 +208,50 @@ export function combineProcessStates(launchctl, host) {
 const containerErrorSignature = (stderr, bundleId) => String(stderr).split(bundleId).join("<bundle>").replace(/\s+/g, " ").trim();
 
 /**
- * Error texts of Simulator/CoreSimulator infrastructure failures. Such an error says nothing about
- * whether the app is installed, even when the control read fails with exactly the same text (a
- * shut-down device, a dead CoreSimulatorService or a timed-out XPC call fails every lookup alike).
+ * ALLOWLIST of `simctl get_app_container` results recognized as "this bundle is not installed".
+ * Only results actually observed from simctl in CI are listed; any other error — even one that the
+ * app read and the never-installed control return identically — is unknown, never absent.
+ *   - exit 2, NSPOSIXErrorDomain code=2 (ENOENT): observed for the uninstalled app and the
+ *     never-installed control in qa-acceptance-ios.yml bootstrap-smoke run 43628962682 attempt 2
+ *     (cleanup error_signature), exit status 2 for this domain/code as in the same run's
+ *     `simctl spawn` ENOENT ("unavailable (exit 2: … domain=NSPOSIXErrorDomain, code=2 …)").
  */
-const INFRASTRUCTURE_ERROR = /current state|shutdown|shutting down|booting|invalid device|no devices|unable to (?:lookup|locate|connect)|timed? ?out|timeout|interrupted|connection|xpc|coresimulatorservice|service is unavailable|not responding|permission denied|operation not permitted|killed|crash/i;
+export const IOS_NOT_INSTALLED_RESULTS = [
+  {
+    status: 2,
+    signature: /^An error was encountered processing the command \(domain=NSPOSIXErrorDomain, code=2\): (?:The operation couldn[’']t be completed\. )?No such file or directory(?: No such file or directory)?$/,
+  },
+];
+
+export function isRecognizedNotInstalled(result, bundleId) {
+  const signature = containerErrorSignature(result?.stderr ?? "", bundleId);
+  return IOS_NOT_INSTALLED_RESULTS.some((known) => result?.status === known.status && known.signature.test(signature));
+}
+
+const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
 /**
- * Parses `xcrun simctl listapps <udid>` (an old-style plist dictionary keyed by bundle id) into the
- * set of CFBundleIdentifier values, or null when the text is not ONE structurally complete
- * dictionary (braces/parentheses balanced outside quoted strings, nothing after the closing brace):
- * a cut read must never read as "not installed".
+ * Validates `xcrun simctl listapps <udid>` AFTER the host converted it to JSON
+ * (`plutil -convert json -o - -`, which fails on anything that is not one complete property list).
+ * Returns the set of installed bundle ids, or null unless it is a non-empty dictionary whose every
+ * value is a dictionary carrying a CFBundleIdentifier string equal to its key. No text scanning:
+ * an unparseable or mistyped listing is unknown.
  */
-export function parseSimctlListApps(text) {
-  const value = String(text).trim();
-  if (!value.startsWith("{") || !value.endsWith("}")) return null;
-  let depth = 0;
-  let quoted = false;
-  for (let index = 0; index < value.length; index += 1) {
-    const char = value[index];
-    if (quoted) {
-      if (char === "\\") index += 1;
-      else if (char === "\"") quoted = false;
-      continue;
-    }
-    if (char === "\"") quoted = true;
-    else if (char === "{" || char === "(") depth += 1;
-    else if (char === "}" || char === ")") {
-      depth -= 1;
-      if (depth < 0) return null;
-      if (depth === 0 && index !== value.length - 1) return null;
-    }
+export function parseListAppsJson(conversion) {
+  if (!conversion || conversion.error || conversion.timedOut || conversion.status !== 0) return null;
+  let value;
+  try {
+    value = JSON.parse(String(conversion.stdout));
+  } catch {
+    return null;
   }
-  if (quoted || depth !== 0) return null;
-  return new Set([...value.matchAll(/CFBundleIdentifier\s*=\s*"?([A-Za-z0-9][A-Za-z0-9.-]*)"?\s*;/g)].map((match) => match[1]));
+  if (!isPlainObject(value)) return null;
+  const entries = Object.entries(value);
+  if (entries.length === 0) return null;
+  for (const [key, app] of entries) {
+    if (!isPlainObject(app) || typeof app.CFBundleIdentifier !== "string" || app.CFBundleIdentifier !== key) return null;
+  }
+  return new Set(entries.map(([key]) => key));
 }
 
 /** System apps present on every iOS Simulator runtime: the listapps positive control. */
@@ -266,16 +281,15 @@ export function classifyDeviceBooted(result, udid) {
  * Classifies the data container after uninstall. Inputs (all read at the same moment, after uninstall):
  *   result   — `xcrun simctl get_app_container <udid> <bundle> data`;
  *   control  — the same command for a bundle id that was never installed;
- *   listApps — `xcrun simctl listapps <udid>`;
+ *   listApps — `xcrun simctl listapps <udid>` converted by `plutil -convert json -o - -`;
  *   device   — `xcrun simctl list devices -j`.
- *   present — the app read exits 0 with an absolute path, or listapps lists the bundle;
- *   absent  — ONLY when the not-installed condition is validated twice over and independently
- *             confirmed: the app read and the never-installed control fail with the same exit status
- *             and the same non-empty error text (bundle id masked) that is not an infrastructure
- *             error, AND the device is listed Booted, AND a structurally complete listapps read
- *             lists a system positive-control app and not the bundle;
- *   unknown — everything else: timeouts, spawn errors, identical generic/infrastructure errors,
- *             a non-booted device, a failed/cut listapps, a listing without the positive control.
+ *   present — the app read exits 0 with an absolute path, or the validated listapps lists the bundle;
+ *   absent  — ONLY when the app read AND the never-installed control are each an allowlisted
+ *             not-installed result (IOS_NOT_INSTALLED_RESULTS) with the same exit status and text,
+ *             AND the device is listed Booted, AND the structurally validated listapps lists a
+ *             system positive-control app and not the bundle;
+ *   unknown — everything else: timeouts, spawn errors, ANY unrecognized error (identical or not),
+ *             a non-booted device, a failed/unparseable/mistyped listapps, no positive control.
  */
 export function classifyAppContainerRead(result, bundleId, control, controlBundleId, { listApps, device, udid } = {}) {
   requireBundleId(bundleId);
@@ -284,17 +298,16 @@ export function classifyAppContainerRead(result, bundleId, control, controlBundl
   if (result?.status === 0) {
     return path.isAbsolute(String(result.stdout).trim()) ? { state: "present", reason: "container_path" } : { state: "unknown", reason: "exit_0_without_path" };
   }
-  const apps = listApps && !listApps.error && !listApps.timedOut && listApps.status === 0 ? parseSimctlListApps(listApps.stdout) : null;
+  const apps = parseListAppsJson(listApps);
   if (apps?.has(bundleId)) return { state: "present", reason: "listed_by_listapps" };
   if (!control || control.error || control.timedOut || control.status === 0 || typeof control.status !== "number") {
     return { state: "unknown", reason: "control_not_refused" };
   }
-  const expected = containerErrorSignature(control.stderr, controlBundleId);
-  if (!expected) return { state: "unknown", reason: "control_without_error" };
-  if (result.status !== control.status || containerErrorSignature(result.stderr, bundleId) !== expected) {
-    return { state: "unknown", reason: `unexpected_error_exit_${result.status}` };
+  if (!isRecognizedNotInstalled(result, bundleId)) return { state: "unknown", reason: `unrecognized_error_exit_${result.status}` };
+  if (!isRecognizedNotInstalled(control, controlBundleId)) return { state: "unknown", reason: "control_unrecognized_error" };
+  if (result.status !== control.status || containerErrorSignature(result.stderr, bundleId) !== containerErrorSignature(control.stderr, controlBundleId)) {
+    return { state: "unknown", reason: "control_differs" };
   }
-  if (INFRASTRUCTURE_ERROR.test(expected)) return { state: "unknown", reason: "infrastructure_error" };
   if (!device || !udid) return { state: "unknown", reason: "device_unread" };
   const booted = classifyDeviceBooted(device, udid);
   if (!booted.booted) return { state: "unknown", reason: booted.reason };

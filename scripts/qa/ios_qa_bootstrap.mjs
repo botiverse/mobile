@@ -69,9 +69,10 @@ function argument(name, required = true) {
   return value;
 }
 
-function run(command, args, { allowFailure = false, timeoutMs = commandTimeoutMs, env } = {}) {
+function run(command, args, { allowFailure = false, timeoutMs = commandTimeoutMs, env, input } = {}) {
   const result = spawnSync(command, args, {
     encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: timeoutMs, killSignal: "SIGKILL", ...(env ? { env } : {}),
+    ...(input !== undefined ? { input } : {}),
   });
   if (!allowFailure && (result.error || result.status !== 0)) {
     const detail = String(result.stderr ?? "").trim().slice(0, 2_048);
@@ -361,11 +362,16 @@ function deviceCleanup(udid, bundleId) {
   const controlBundleId = `build.raft.qa.never-installed.${crypto.randomBytes(6).toString("hex")}`;
   const control = simctl(["get_app_container", udid, controlBundleId, "data"], { allowFailure: true, timeoutMs: 30_000 });
   const read = simctl(["get_app_container", udid, bundleId, "data"], { allowFailure: true, timeoutMs: 30_000 });
-  const listApps = simctl(["listapps", udid], { allowFailure: true, timeoutMs: 30_000 });
+  // listapps prints an old-style property list; the host's plutil parses it completely (and fails on
+  // anything malformed or cut) and converts it to JSON, which classifyAppContainerRead type-checks.
+  const listAppsRaw = simctl(["listapps", udid], { allowFailure: true, timeoutMs: 30_000 });
+  const listApps = listAppsRaw.status === 0 && !listAppsRaw.timedOut && !listAppsRaw.error
+    ? run("plutil", ["-convert", "json", "-o", "-", "-"], { allowFailure: true, timeoutMs: 30_000, input: listAppsRaw.stdout })
+    : listAppsRaw;
   const device = simctl(["list", "devices", "-j"], { allowFailure: true, timeoutMs: 30_000 });
   const container = classifyAppContainerRead(read, bundleId, control, controlBundleId, { listApps, device, udid });
   const receipt = iosCleanupReceipt({ processState: processCheck.state, uninstallStatus: uninstall.timedOut ? -1 : uninstall.status, containerState: container.state });
-  const describe = (check) => ({ state: check.state, reason: check.reason, ...(check.positive_control ? { positive_control: check.positive_control } : {}) });
+  const describe = (check) => ({ state: check.state, reason: check.reason, ...(check.positive_control ? { positive_control: check.positive_control } : {}), ...(check.evidence_ceiling ? { evidence_ceiling: check.evidence_ceiling } : {}) });
   return {
     cleanup_receipt: receipt,
     app_process: {
@@ -376,7 +382,11 @@ function deviceCleanup(udid, bundleId) {
     },
     app_uninstall: { method: "xcrun simctl uninstall", exit_status: uninstall.status, timed_out: uninstall.timedOut },
     app_data_container: {
-      method: "xcrun simctl get_app_container <udid> <bundle> data vs a never-installed control bundle id, confirmed by simctl list (Booted) and a complete simctl listapps with a system positive control",
+      method: "xcrun simctl get_app_container <udid> <bundle> data and a never-installed control, both an allowlisted not-installed result, confirmed by simctl list (Booted) and simctl listapps parsed by plutil -convert json (system positive control, bundle not listed)",
+      exit_status: read.status,
+      control_exit_status: control.status,
+      listapps_exit_status: listAppsRaw.status,
+      ...(listApps !== listAppsRaw ? { listapps_plutil_exit_status: listApps.status, listapps_plutil_error: String(listApps.stderr ?? "").trim().slice(0, 200) } : {}),
       state: container.state,
       reason: container.reason,
       ...(container.positive_control ? { positive_control: container.positive_control } : {}),

@@ -14,6 +14,7 @@ import {
   classifyHostProcessRead,
   classifyLaunchctlRead,
   combineProcessStates,
+  isRecognizedNotInstalled,
   findLaunchdSimPid,
   hasBootstrapLine,
   iosBootGeneration,
@@ -23,7 +24,7 @@ import {
   iosLaunchArgs,
   launchctlAppAlive,
   parsePsLstartUtc,
-  parseSimctlListApps,
+  parseListAppsJson,
   requireRunOwnedSimulator,
   requireSimulatorUdid,
   simulatorOwnershipReceipt,
@@ -180,7 +181,7 @@ const appLine = `5150 ${DEVICE_DIR}/data/Containers/Bundle/Application/AAAA-BBBB
 test("host process query: independent of launchctl, fails closed on process-query failures", () => {
   const ok = (stdout) => ({ status: 0, stdout });
   assert.deepEqual(classifyHostProcessRead(ok(`  1 /sbin/launchd\n${launchdSimLine}\n`), udid, "iosApp"),
-    { state: "absent", reason: "app_process_not_listed", positive_control: "launchd_sim" });
+    { state: "absent", reason: "app_process_not_listed", positive_control: "launchd_sim", evidence_ceiling: "listing_completeness_unprovable" });
   assert.equal(classifyHostProcessRead(ok(`${launchdSimLine}\n${appLine}\n`), udid, "iosApp").state, "present");
   // Process-query failures are unknown.
   assert.deepEqual(classifyHostProcessRead({ status: 1, stdout: "" }, udid, "iosApp"), { state: "unknown", reason: "exit_1" });
@@ -208,6 +209,7 @@ test("process state is absent only when launchctl AND the host query both show a
   assert.equal(combineProcessStates(present, unknown), "present");
 });
 
+// `simctl listapps` text (old-style plist) and what the host's `plutil -convert json -o - -` makes of it.
 const LISTAPPS = `{
     "com.apple.Preferences" =     {
         ApplicationType = System;
@@ -225,58 +227,73 @@ const LISTAPPS = `{
     };
 }
 `;
+const LISTAPPS_JSON = JSON.stringify({
+  "com.apple.Preferences": { ApplicationType: "System", Bundle: "file:///x/Preferences.app/", CFBundleIdentifier: "com.apple.Preferences", GroupContainers: { "group.com.apple.settings": "file:///x/" }, SBAppTags: [] },
+  "com.apple.mobilesafari": { ApplicationType: "System", CFBundleIdentifier: "com.apple.mobilesafari" },
+});
+const converted = (value) => ({ status: 0, stdout: typeof value === "string" ? value : JSON.stringify(value) });
 const bootedList = (state = "Booted") => ({ status: 0, stdout: JSON.stringify({ devices: { "iOS-27-0": [{ udid, name: "raft-qa-run-222-1", state }] } }) });
+// The not-installed result simctl actually printed in qa-acceptance-ios.yml run 43628962682 attempt 2.
+const OBSERVED_NOT_INSTALLED = "An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=2):\nThe operation couldn’t be completed. No such file or directory\nNo such file or directory\n";
 
-test("simctl listapps parsing refuses cut or malformed listings", () => {
-  assert.deepEqual([...parseSimctlListApps(LISTAPPS)].sort(), ["com.apple.Preferences", "com.apple.mobilesafari"]);
-  assert.equal(parseSimctlListApps(LISTAPPS.slice(0, LISTAPPS.indexOf("mobilesafari\" ="))), null, "cut mid-listing");
-  assert.equal(parseSimctlListApps(""), null);
-  assert.equal(parseSimctlListApps(`${LISTAPPS}}`), null, "unbalanced");
-  assert.equal(parseSimctlListApps(`${LISTAPPS}\n{}`), null, "trailing content");
-  assert.equal(parseSimctlListApps('{ "a" = "unterminated; }'), null);
+test("listapps: only a plutil-converted, fully typed dictionary of apps counts", () => {
+  assert.deepEqual([...parseListAppsJson(converted(LISTAPPS_JSON))].sort(), ["com.apple.Preferences", "com.apple.mobilesafari"]);
+  // Conversion failed (plutil rejects malformed/cut plists), timed out or never ran.
+  assert.equal(parseListAppsJson({ status: 1, stdout: "", stderr: "Property List error: Unexpected character ) at line 1" }), null);
+  assert.equal(parseListAppsJson({ status: -1, stdout: LISTAPPS_JSON, timedOut: true }), null);
+  assert.equal(parseListAppsJson(undefined), null);
+  // Not JSON / cut JSON / wrong top-level type / empty.
+  assert.equal(parseListAppsJson(converted(LISTAPPS_JSON.slice(0, 80))), null);
+  assert.equal(parseListAppsJson(converted("[]")), null);
+  assert.equal(parseListAppsJson(converted("{}")), null);
+  // Mistyped entries: value not a dictionary, missing/non-string id, id not equal to its key.
+  assert.equal(parseListAppsJson(converted({ "com.apple.Preferences": "x" })), null);
+  assert.equal(parseListAppsJson(converted({ "com.apple.Preferences": [] })), null);
+  assert.equal(parseListAppsJson(converted({ "com.apple.Preferences": {} })), null);
+  assert.equal(parseListAppsJson(converted({ "com.apple.Preferences": { CFBundleIdentifier: 7 } })), null);
+  assert.equal(parseListAppsJson(converted({ "com.apple.Preferences": { CFBundleIdentifier: "com.apple.mobilesafari" } })), null);
   assert.equal(classifyDeviceBooted(bootedList(), udid).booted, true);
   assert.deepEqual(classifyDeviceBooted(bootedList("Shutdown"), udid), { booted: false, reason: "device_shutdown" });
   assert.deepEqual(classifyDeviceBooted({ status: 1, stdout: "" }, udid), { booted: false, reason: "list_exit_1" });
   assert.deepEqual(classifyDeviceBooted({ status: 0, stdout: "{" }, udid), { booted: false, reason: "list_unparseable" });
 });
 
-test("app container read: absent only for a validated not-installed answer plus independent positive controls", () => {
+test("not-installed allowlist: only the exact simctl result observed in CI is recognized", () => {
+  const bundle = "build.raft.app";
+  assert.equal(isRecognizedNotInstalled({ status: 2, stderr: OBSERVED_NOT_INSTALLED }, bundle), true);
+  assert.equal(isRecognizedNotInstalled({ status: 2, stderr: "An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=2):\nNo such file or directory\n" }, bundle), true);
+  assert.equal(isRecognizedNotInstalled({ status: 1, stderr: OBSERVED_NOT_INSTALLED }, bundle), false, "other exit status");
+  assert.equal(isRecognizedNotInstalled({ status: 7, stderr: "Simulator processing error domain=synthetic.example code=7\n" }, bundle), false);
+  assert.equal(isRecognizedNotInstalled({ status: 2, stderr: `${OBSERVED_NOT_INSTALLED}extra trailing text` }, bundle), false);
+  assert.equal(isRecognizedNotInstalled({ status: 2, stderr: "An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=20):\nNot a directory\n" }, bundle), false);
+  assert.equal(isRecognizedNotInstalled({ status: 2, stderr: "" }, bundle), false);
+});
+
+test("app container read: absent only for an allowlisted not-installed result plus independent positive controls", () => {
   const bundle = "build.raft.app";
   const controlId = "build.raft.qa.never-installed.abc123";
-  const notInstalled = (id) => ({ status: 2, stdout: "", stderr: `An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=2):\nFailed to get container for ${id}\nNo such file or directory\n` });
-  const control = notInstalled(controlId);
-  const confirmed = { listApps: { status: 0, stdout: LISTAPPS }, device: bootedList(), udid };
-  assert.deepEqual(classifyAppContainerRead(notInstalled(bundle), bundle, control, controlId, confirmed),
+  const notInstalled = { status: 2, stdout: "", stderr: OBSERVED_NOT_INSTALLED };
+  const confirmed = { listApps: converted(LISTAPPS_JSON), device: bootedList(), udid };
+  assert.deepEqual(classifyAppContainerRead(notInstalled, bundle, notInstalled, controlId, confirmed),
     { state: "absent", reason: "not_installed_confirmed", positive_control: "com.apple.Preferences" });
-  assert.equal(classifyAppContainerRead({ status: 0, stdout: "/Users/r/data/Containers/Data/Application/X\n" }, bundle, control, controlId, confirmed).state, "present");
-  // listapps still lists the bundle: present, whatever the container read said.
-  const stillListed = { ...confirmed, listApps: { status: 0, stdout: LISTAPPS.replace('"com.apple.mobilesafari";', `"${bundle}";`) } };
-  assert.deepEqual(classifyAppContainerRead(notInstalled(bundle), bundle, control, controlId, stillListed), { state: "present", reason: "listed_by_listapps" });
+  assert.equal(classifyAppContainerRead({ status: 0, stdout: "/Users/r/data/Containers/Data/Application/X\n" }, bundle, notInstalled, controlId, confirmed).state, "present");
+  const stillListed = { ...confirmed, listApps: converted({ ...JSON.parse(LISTAPPS_JSON), [bundle]: { CFBundleIdentifier: bundle } }) };
+  assert.deepEqual(classifyAppContainerRead(notInstalled, bundle, notInstalled, controlId, stillListed), { state: "present", reason: "listed_by_listapps" });
 
-  // THE FINDING: identical target/control infrastructure errors are not "not installed".
+  // Argus (b1c6af1d): identical UNRECOGNIZED errors with a Booted device and healthy listapps.
+  const synthetic = { status: 7, stdout: "", stderr: "Simulator processing error domain=synthetic.example code=7\n" };
+  assert.deepEqual(classifyAppContainerRead(synthetic, bundle, synthetic, controlId, confirmed), { state: "unknown", reason: "unrecognized_error_exit_7" });
   const shutdown = { status: 149, stdout: "", stderr: "Unable to lookup in current state: Shutdown" };
-  assert.deepEqual(classifyAppContainerRead(shutdown, bundle, shutdown, controlId, confirmed), { state: "unknown", reason: "infrastructure_error" });
-  // Identical GENERIC errors (no infrastructure keyword) are unknown without the positive controls.
-  const generic = { status: 1, stdout: "", stderr: "An error was encountered processing the command (domain=com.example, code=7)" };
-  assert.equal(classifyAppContainerRead(generic, bundle, generic, controlId).state, "unknown");
-  assert.deepEqual(classifyAppContainerRead(generic, bundle, generic, controlId, { ...confirmed, device: bootedList("Shutdown") }), { state: "unknown", reason: "device_shutdown" });
-  assert.deepEqual(classifyAppContainerRead(generic, bundle, generic, controlId, { ...confirmed, device: { status: 1, stdout: "" } }), { state: "unknown", reason: "list_exit_1" });
-  assert.deepEqual(classifyAppContainerRead(generic, bundle, generic, controlId, { ...confirmed, listApps: { status: 1, stdout: "", stderr: "x" } }), { state: "unknown", reason: "listapps_unavailable" });
-  assert.deepEqual(classifyAppContainerRead(generic, bundle, generic, controlId, { ...confirmed, listApps: { status: 0, stdout: LISTAPPS.slice(0, 200) } }), { state: "unknown", reason: "listapps_unavailable" });
-  assert.deepEqual(classifyAppContainerRead(generic, bundle, generic, controlId, { ...confirmed, listApps: { status: 0, stdout: "{\n}\n" } }), { state: "unknown", reason: "listapps_no_positive_control" });
-  assert.deepEqual(classifyAppContainerRead(generic, bundle, generic, controlId, { ...confirmed, listApps: { status: -1, stdout: LISTAPPS, timedOut: true } }), { state: "unknown", reason: "listapps_unavailable" });
-  for (const text of ["Operation timed out", "Connection interrupted", "CoreSimulatorService connection became invalid", "Invalid device: X"]) {
-    const same = { status: 2, stdout: "", stderr: text };
-    assert.equal(classifyAppContainerRead(same, bundle, same, controlId, confirmed).state, "unknown", text);
-  }
-
-  assert.equal(classifyAppContainerRead(shutdown, bundle, control, controlId, confirmed).state, "unknown");
-  assert.equal(classifyAppContainerRead({ ...notInstalled(bundle), status: 1 }, bundle, control, controlId, confirmed).state, "unknown");
-  assert.equal(classifyAppContainerRead(notInstalled(bundle), bundle, shutdown, controlId, confirmed).state, "unknown", "control must fail the same way");
-  assert.equal(classifyAppContainerRead(notInstalled(bundle), bundle, { status: 0, stdout: "/x" }, controlId, confirmed).state, "unknown");
-  assert.equal(classifyAppContainerRead(notInstalled(bundle), bundle, { status: 2, stdout: "", stderr: "" }, controlId, confirmed).state, "unknown");
-  assert.equal(classifyAppContainerRead({ status: -1, stdout: "", stderr: "", timedOut: true }, bundle, control, controlId, confirmed).state, "unknown");
-  assert.equal(classifyAppContainerRead({ status: 0, stdout: "" }, bundle, control, controlId, confirmed).state, "unknown");
+  assert.equal(classifyAppContainerRead(shutdown, bundle, shutdown, controlId, confirmed).state, "unknown");
+  assert.deepEqual(classifyAppContainerRead(notInstalled, bundle, synthetic, controlId, confirmed), { state: "unknown", reason: "control_unrecognized_error" });
+  // The allowlisted result, but without the independent positive controls: unknown.
+  assert.equal(classifyAppContainerRead(notInstalled, bundle, notInstalled, controlId).state, "unknown");
+  assert.deepEqual(classifyAppContainerRead(notInstalled, bundle, notInstalled, controlId, { ...confirmed, device: bootedList("Shutdown") }), { state: "unknown", reason: "device_shutdown" });
+  assert.deepEqual(classifyAppContainerRead(notInstalled, bundle, notInstalled, controlId, { ...confirmed, listApps: { status: 1, stdout: "", stderr: "Property List error" } }), { state: "unknown", reason: "listapps_unavailable" });
+  assert.deepEqual(classifyAppContainerRead(notInstalled, bundle, notInstalled, controlId, { ...confirmed, listApps: converted({ "com.example.other": { CFBundleIdentifier: "com.example.other" } }) }), { state: "unknown", reason: "listapps_no_positive_control" });
+  assert.equal(classifyAppContainerRead({ status: -1, stdout: "", stderr: "", timedOut: true }, bundle, notInstalled, controlId, confirmed).state, "unknown");
+  assert.equal(classifyAppContainerRead({ status: 0, stdout: "" }, bundle, notInstalled, controlId, confirmed).state, "unknown");
+  assert.equal(classifyAppContainerRead(notInstalled, bundle, { status: 0, stdout: "/x" }, controlId, confirmed).state, "unknown");
 });
 
 test("cleanup receipt is clean only for confirmed absence; unknown never reads as clean", () => {
@@ -359,7 +376,13 @@ const root = ${JSON.stringify(root)};
 fs.appendFileSync(root + "/calls", ${JSON.stringify(path.basename("x"))}.slice(0, 0) + process.argv[1].split("/").pop() + " " + args.join(" ") + "\\n");
 const scenario = JSON.parse(fs.readFileSync(root + "/scenario.json", "utf8"));
 const key = (${keyExpr})(args);
-const r = scenario[key] ?? { status: 97, stderr: "fake: no scenario for " + key };
+let r = scenario[key] ?? { status: 97, stderr: "fake: no scenario for " + key };
+if (key === "plutil-convert") {
+  // Stands in for the host's plutil: converts ONLY the listings it was taught (scenario.conversions,
+  // keyed by the exact input text); anything else fails like plutil does on a malformed plist.
+  const input = fs.readFileSync(0, "utf8");
+  r = (scenario.conversions ?? {})[input] ?? { status: 1, stderr: "<stdin>: Property List error: Unexpected character / JSON error: not a property list\\n" };
+}
 if (r.stdout) process.stdout.write(r.stdout);
 if (r.stderr) process.stderr.write(r.stderr);
 process.exitCode = r.status ?? 0;
@@ -371,7 +394,7 @@ process.exitCode = r.status ?? 0;
     return c;
   }`), { mode: 0o755 });
   fs.writeFileSync(path.join(bin, "ps"), fake(`() => "ps"`), { mode: 0o755 });
-  fs.writeFileSync(path.join(bin, "plutil"), fake(`() => "plutil"`), { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, "plutil"), fake(`(a) => (a[0] === "-convert" ? "plutil-convert" : "plutil")`), { mode: 0o755 });
   fs.writeFileSync(path.join(bin, "sleep"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
   const login = buildSmokeLogin({
     applicationId: BUNDLE, signingCertSha256: digest("exe"), bootGeneration: digest("boot"),
@@ -406,9 +429,10 @@ const healthyCleanup = {
   "container:app": { status: 0, stdout: `${DEVICE_DIR}/data/Containers/Bundle/Application/AAAA-BBBB/iosApp.app\n` },
   plutil: { status: 0, stdout: "iosApp\n" },
   uninstall: { status: 0 },
-  "container:data": { status: 2, stderr: `An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=2):\nNo such file or directory\n` },
-  control: { status: 2, stderr: `An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=2):\nNo such file or directory\n` },
+  "container:data": { status: 2, stderr: OBSERVED_NOT_INSTALLED },
+  control: { status: 2, stderr: OBSERVED_NOT_INSTALLED },
   listapps: { status: 0, stdout: LISTAPPS },
+  conversions: { [LISTAPPS]: { status: 0, stdout: LISTAPPS_JSON } },
 };
 
 test("entry point: record-ownership then cleanup of this job's Simulator ends clean (positive control)", () => {
@@ -455,6 +479,72 @@ test("entry point: identical infrastructure errors on both container reads never
     assert.equal(record.cleanup_receipt, "unknown", name);
     assert.equal(record.app_data_container.state, "unknown", name);
     assert.doesNotMatch(result.stdout, /cleanup_receipt=clean|device cleanup confirmed/, name);
+  }
+});
+
+// Argus's replays against b1c6af1d (both reported exit=0, receipt=clean, container=absent there).
+test("independent: matching unknown generic errors with positive controls must not be clean", () => {
+  const generic = { status: 7, stderr: "Simulator processing error domain=synthetic.example code=7\n" };
+  const host = fakeHost({ ...healthyCleanup, "container:data": generic, control: generic });
+  assert.equal(host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 0);
+  const result = host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1"));
+  const record = JSON.parse(fs.readFileSync(path.join(host.root, "cleanup.json"), "utf8"));
+  assert.notEqual(result.status, 0);
+  assert.equal(record.cleanup_receipt, "unknown");
+  assert.equal(record.app_data_container.state, "unknown");
+  assert.equal(record.app_data_container.reason, "unrecognized_error_exit_7");
+});
+
+test("independent: malformed listapps with balanced overall depth must not be clean", () => {
+  const bad = '{ "com.apple.Preferences" = { CFBundleIdentifier = "com.apple.Preferences"; )}';
+  const host = fakeHost({ ...healthyCleanup, listapps: { status: 0, stdout: bad } });
+  assert.equal(host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 0);
+  const result = host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1"));
+  const record = JSON.parse(fs.readFileSync(path.join(host.root, "cleanup.json"), "utf8"));
+  assert.notEqual(result.status, 0);
+  assert.equal(record.cleanup_receipt, "unknown");
+  assert.equal(record.app_data_container.reason, "listapps_unavailable");
+  assert.equal(record.app_data_container.listapps_plutil_exit_status, 1);
+  // The listing went through plutil (structural parse), not a text scan.
+  assert.ok(host.calls().some((line) => line.startsWith("plutil -convert json -o - -")));
+});
+
+test("entry point: listapps cut at a line boundary, or converted to a mistyped document, is not clean", () => {
+  const cut = LISTAPPS.slice(0, LISTAPPS.indexOf('    "com.apple.mobilesafari"'));
+  for (const [name, overrides] of [
+    ["cut at a line boundary after the positive control", { listapps: { status: 0, stdout: cut } }],
+    ["plutil output mistyped", { conversions: { [LISTAPPS]: { status: 0, stdout: JSON.stringify({ "com.apple.Preferences": { CFBundleIdentifier: ["com.apple.Preferences"] } }) } } }],
+    ["plutil fails", { conversions: {} }],
+  ]) {
+    const host = fakeHost({ ...healthyCleanup, ...overrides });
+    assert.equal(host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 0);
+    const result = host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1"));
+    const record = JSON.parse(fs.readFileSync(path.join(host.root, "cleanup.json"), "utf8"));
+    assert.notEqual(result.status, 0, name);
+    assert.equal(record.cleanup_receipt, "unknown", name);
+  }
+});
+
+test("entry point: a host ps listing cut exactly at the newline after launchd_sim is never proof on its own", () => {
+  // The evidence ceiling: such a cut is indistinguishable from a whole listing, so the host query
+  // reads absent (and says so in evidence_ceiling).
+  const cutPs = { status: 0, stdout: `  1 /sbin/launchd\n${launchdSimLine}\n` };
+  assert.deepEqual(classifyHostProcessRead(cutPs, udid, "iosApp"),
+    { state: "absent", reason: "app_process_not_listed", positive_control: "launchd_sim", evidence_ceiling: "listing_completeness_unprovable" });
+  // It cannot carry the receipt alone: with launchctl not proving absence, or with the container
+  // not confirmed through the allowlisted not-installed result, the cleanup is unknown.
+  const unrecognized = { status: 7, stderr: "Simulator processing error domain=synthetic.example code=7\n" };
+  for (const [name, overrides] of [
+    ["launchctl failing", { ps: cutPs, launchctl: { status: 1, stderr: "spawn failed\n" } }],
+    ["container not confirmed", { ps: cutPs, "container:data": unrecognized, control: unrecognized }],
+  ]) {
+    const host = fakeHost({ ...healthyCleanup, ...overrides });
+    assert.equal(host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 0);
+    const result = host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1"));
+    const record = JSON.parse(fs.readFileSync(path.join(host.root, "cleanup.json"), "utf8"));
+    assert.notEqual(result.status, 0, name);
+    assert.equal(record.cleanup_receipt, "unknown", name);
+    assert.equal(record.app_process.host_process.evidence_ceiling, "listing_completeness_unprovable", name);
   }
 });
 

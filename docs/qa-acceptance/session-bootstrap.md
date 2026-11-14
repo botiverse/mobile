@@ -35,23 +35,30 @@ lines and the same harness output files. Only the device channel differs.
    `stamp-bootstrap-login-outcome-<run_case_id>.json` **before** calling the endpoint, and
    replaces it with the outcome afterwards (copied to
    `qa-evidence/bootstrap-login-outcome.json`; no secrets):
-   - `issued` — 2xx whose body is a well-formed envelope for this run case (request id,
-     `sha256:` digest, `envelope.run_case_id`, non-empty refresh token; `prepare` then
-     validates it exactly);
-   - `rejected` — **only** a 4xx whose body is the server's exact-attempt credential-rejection
-     receipt: exactly `{contract:"qa-bootstrap-login-rejection/v1", issued:false,
-     reason:"credential_rejected", run_case_id, attempt, ci_job_ref,
-     signing_cert_sha256, boot_generation}` with this run case, this CI job and the posted
-     binding. Testbed does not emit this receipt yet, so today every 4xx is `unknown`;
-   - `unknown` (exit 3) — everything else: generic 4xx (including `409
-     BOOTSTRAP_LOGIN_RETRY_REQUIRES_NEW_ATTEMPT`, which may mean an earlier issuance exists),
-     5xx, partial/unproven 2xx, timeout, reset, empty reply, and local connect failures
-     (a local connect result is not proof that nothing was issued).
-   A sender killed at any point leaves the lock and the `in_flight` intent: the next
-   invocation refuses to issue, and nothing falls back to "not sent". On anything but
-   `issued`/`rejected` the run stops: `bootstrap-failure-terminal` refuses to post the "no
-   material issued" terminal, and the attempt is left for operator reconciliation with
-   Testbed. Shared QA sessions are never touched.
+   The body is received into `stamp-bootstrap-login-<run_case_id>.json.partial` (0600) and
+   is only renamed to `stamp-bootstrap-login-<run_case_id>.json` (the name `prepare` and the
+   terminal consume) after it validated completely; the outcome is recorded after the rename.
+   - `issued` — 2xx whose body passes the full `validateLoginResponse` check (the one
+     `prepare` runs): request id, `expires_at`, exact envelope key set and types, version and
+     target route, this run case and CI job, the posted `signing_cert_sha256`/`boot_generation`,
+     `principal_id == user.id`, non-empty tokens, and `envelope_digest ==
+     sha256(canonical envelope)`. The envelope `attempt` is only checked to be a positive
+     integer: no trusted Testbed attempt exists client-side, and `GITHUB_RUN_ATTEMPT` (a
+     different counter) is never substituted for it;
+   - `unknown` (exit 3) — everything else: **every 4xx** (including `409
+     BOOTSTRAP_LOGIN_RETRY_REQUIRES_NEW_ATTEMPT` and any rejection-receipt-shaped body: no
+     "nothing was issued" receipt is accepted until Testbed carries an authoritative run-case
+     attempt in the claim/spec and verifies the same attempt/binding server-side at the
+     no-material terminal), 5xx, partial/unproven/tampered 2xx, timeout, reset, empty reply,
+     and local connect failures. Any received body stays in the `.partial` file as
+     reconciliation evidence.
+   A sender killed at any point leaves the lock and the `in_flight` intent (and possibly a
+   `.partial` body): the next invocation refuses to issue, and nothing falls back to "not
+   sent". `bootstrap-failure-terminal` proceeds only when no issuance was attempted on this
+   runner, or when the recorded outcome is `issued` AND the response file still validates
+   completely; otherwise it calls nothing (no no-material terminal, no status, no cleanup),
+   deletes nothing, and leaves the attempt for operator reconciliation with Testbed. Shared
+   QA sessions are never touched.
    **Scope:** this is a local, per-runner guarantee. It does not prove one-shot issuance
    across runner loss (a re-run on a new runner has a fresh `RUNNER_TEMP`); that needs a
    Testbed server-side, attempt-bound issuance fence and reconciliation path (follow-up).
@@ -172,18 +179,25 @@ as **present / absent / unknown**:
   so the host `ps -axww -o pid=,args=` must also succeed, end with a newline, list this
   Simulator's launchd_sim (positive control) and no `<App>.app/<CFBundleExecutable>`
   process under this device's bundle containers. Non-zero exit, timeout, truncated or
-  control-less output of either read is `unknown`.
+  control-less output of either read is `unknown`. **Evidence ceiling:** the completeness of
+  a process listing cannot be proven — a listing cut exactly at a newline after the
+  launchd_sim line reads absent. Process absence therefore never carries the receipt on its
+  own: `clean` additionally needs uninstall exit 0 and the container confirmed absent through
+  the allowlisted not-installed result and the validated listapps above.
 - data container — `xcrun simctl get_app_container <udid> <bundle> data`: `present` on
-  exit 0 with a path (or when `simctl listapps` still lists the bundle). `absent` only if
-  ALL hold: a control read of a never-installed bundle id (same command, same moment)
-  fails with the same exit status and the same non-empty error text (bundle id masked);
-  that text is not an infrastructure error (shutdown/state, timeout, connection, XPC,
-  CoreSimulatorService, invalid device, …: identical errors from a broken service prove
-  nothing); a fresh `simctl list devices -j` shows the device `Booted`; and a structurally
-  complete `simctl listapps <udid>` lists a system positive-control app
-  (`com.apple.Preferences` or `com.apple.mobilesafari`) and not the bundle. Anything else
-  (timeouts, spawn errors, generic matching errors without the positive controls) is
-  `unknown`.
+  exit 0 with a path (or when the validated `simctl listapps` still lists the bundle).
+  `absent` only if ALL hold: the app read AND a control read of a never-installed bundle id
+  (same command, same moment) are each an **allowlisted** not-installed result
+  (`IOS_NOT_INSTALLED_RESULTS`: today only exit 2 with `An error was encountered processing
+  the command (domain=NSPOSIXErrorDomain, code=2): [The operation couldn’t be completed.]
+  No such file or directory`, the text simctl printed in run 43628962682) with the same
+  status and text; a fresh `simctl list devices -j` shows the device `Booted`; and
+  `simctl listapps <udid>`, parsed by the host's `plutil -convert json -o - -` (which fails
+  on a malformed or cut property list) and type-checked as a non-empty dictionary whose
+  every value is a dictionary with `CFBundleIdentifier` equal to its key, lists a system
+  positive-control app (`com.apple.Preferences` or `com.apple.mobilesafari`) and not the
+  bundle. Any other error — even one identical on both reads — and any parse/type failure
+  is `unknown`. New simctl error formats stay `unknown` until observed and added.
 
 The record is:
 
@@ -195,7 +209,8 @@ The record is:
    "launchctl":{"state":"absent","reason":"app_job_not_listed","positive_control":"com.apple.SpringBoard"},
    "host_process":{"state":"absent","reason":"app_process_not_listed","positive_control":"launchd_sim"}},
  "app_uninstall":{"method":"xcrun simctl uninstall","exit_status":0,"timed_out":false},
- "app_data_container":{"method":"…","state":"absent","reason":"not_installed_confirmed","positive_control":"com.apple.Preferences","error_signature":"…"}}
+ "app_data_container":{"method":"…","state":"absent","reason":"not_installed_confirmed","positive_control":"com.apple.Preferences",
+   "exit_status":2,"control_exit_status":2,"listapps_exit_status":0,"listapps_plutil_exit_status":0,"listapps_plutil_error":"","error_signature":"…"}}
 ```
 
 `cleanup_receipt` is `clean` only for process `absent`, uninstall exit 0 and container

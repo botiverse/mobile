@@ -3,7 +3,20 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { canonicalJson, sha256Digest } from "./mobile_login_bootstrap_lib.mjs";
+
+/** A complete, digest-correct issuance response bound to the given run case, CI job and device binding. */
+function issuedLogin({ runCaseId, runId, binding, requestId = "request-1", applicationId = "build.raft.app.alpha" }) {
+  const envelope = {
+    version: "qa-bootstrap-login/v1", run_case_id: runCaseId, attempt: 1,
+    ci_job_ref: `https://github.com/botiverse/mobile/actions/runs/${runId}`, principal_id: "user-1", server_id: "server-1",
+    target_route: "compose_slock_app_shell", application_id: applicationId,
+    signing_cert_sha256: binding.signing_cert_sha256, boot_generation: binding.boot_generation,
+    user: { id: "user-1", email: "qa@example.invalid" }, access_token: "access-secret", refresh_token: "refresh-secret",
+  };
+  return { request_id: requestId, envelope_digest: sha256Digest(Buffer.from(canonicalJson(envelope), "utf8")), envelope, expires_at: "2026-11-14T00:10:00Z" };
+}
 
 test("review agent fails closed on an invalid frozen timeout before any network call", () => {
   // Every spawn runs in (and writes its record to) a throwaway directory so
@@ -568,6 +581,8 @@ test("login bootstrap keeps session material private and deletes it after termin
   fs.mkdirSync(bin);
   fs.mkdirSync(runnerTemp);
   const terminalPayload = path.join(root, "terminal.json");
+  const deviceBinding = { signing_cert_sha256: `sha256:${"c".repeat(64)}`, boot_generation: "sha256:boot" };
+  const issued = issuedLogin({ runCaseId: "rc-login", runId: "321", binding: deviceBinding });
   fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
 out=""; payload=""; url=""
 trap '[ -z "$w" ] || printf 200' EXIT
@@ -582,7 +597,7 @@ while [ "$#" -gt 0 ]; do
 done
 case "$url" in
   */claim) printf '%s' '{"run_case_id":"rc-login","claim_token":"lease-token","auth_bootstrap":{"required":true,"contract_version":"qa-bootstrap-login/v1","login_endpoint":"/login","ready_endpoint":"/ready","capture_proof_endpoint":"/api/agent/run-cases/rc-login/auth-bootstrap/capture-proof","terminal_endpoint":"/terminal"}}' > "$out";;
-  */login) printf '%s' '{"request_id":"request-1","envelope":{"run_case_id":"rc-login","attempt":1,"refresh_token":"refresh-secret"},"envelope_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expires_at":"soon"}' > "$out";;
+  */login) printf '%s' '${JSON.stringify(issued)}' > "$out";;
   */ready) printf '%s' '{"capture_window_nonce":"nonce-1","scope_generation":"generation-1"}' > "$out";;
   */terminal) cp "\${payload#@}" "${terminalPayload}";;
 esac
@@ -590,11 +605,11 @@ esac
   const binding = path.join(root, "binding.json");
   const ready = path.join(root, "ready.json");
   const cleanup = path.join(root, "cleanup.json");
-  fs.writeFileSync(binding, JSON.stringify({ signing_cert_sha256: "sha256:cert", boot_generation: "sha256:boot" }));
+  fs.writeFileSync(binding, JSON.stringify(deviceBinding));
   fs.writeFileSync(ready, JSON.stringify({
     request_id: "request-1",
-    envelope_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    runtime_envelope: { ready_receipt_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    envelope_digest: issued.envelope_digest,
+    runtime_envelope: { ready_receipt_digest: issued.envelope_digest },
   }));
   fs.writeFileSync(cleanup, JSON.stringify({
     application_id: "build.raft.app.alpha", boot_generation: "sha256:boot", request_id: "request-1",
@@ -676,7 +691,13 @@ const rejectionReceipt = (overrides = {}) => JSON.stringify({
   contract: "qa-bootstrap-login-rejection/v1", issued: false, reason: "credential_rejected", run_case_id: "rc-x",
   attempt: 1, ci_job_ref: JOB_REF_X, signing_cert_sha256: `sha256:${"a".repeat(64)}`, boot_generation: "boot-1", ...overrides,
 });
-const ISSUED_BODY = JSON.stringify({ request_id: "r", envelope: { run_case_id: "rc-x", refresh_token: "x" }, envelope_digest: `sha256:${"b".repeat(64)}`, expires_at: "soon" });
+const X_BINDING = { signing_cert_sha256: `sha256:${"a".repeat(64)}`, boot_generation: "boot-1" };
+const ISSUED = issuedLogin({ runCaseId: "rc-x", runId: "1", binding: X_BINDING });
+const ISSUED_BODY = JSON.stringify(ISSUED);
+// The shallow body b1c6af1d accepted as "issued" (Argus's replay): right field names, but no
+// version/attempt/CI job/binding/access token/user, and a digest that is not the envelope's.
+const SHALLOW_BODY = JSON.stringify({ request_id: "r", envelope: { run_case_id: "rc-x", refresh_token: "x" }, envelope_digest: `sha256:${"b".repeat(64)}`, expires_at: "soon" });
+const withEnvelope = (edit) => { const v = structuredClone(ISSUED); edit(v.envelope); return JSON.stringify(v); };
 
 test("bootstrap login is one call: no retry, and a lost reply is an unknown outcome that blocks the no-material terminal", () => {
   const scenario = (name, curlBody) => {
@@ -733,9 +754,17 @@ test("bootstrap login: generic 4xx (incl. 409 RETRY_REQUIRES_NEW_ATTEMPT) and pa
     ["receipt-extra-key", `printf '%s' '${rejectionReceipt({ note: "x" })}' > "$out"; printf 403`],
     ["receipt-on-200", `printf '%s' '${rejectionReceipt()}' > "$out"; printf 200`],
     // Partial / unproven 2xx.
-    ["2xx-wrong-case", `printf '%s' '${ISSUED_BODY.replace('"rc-x"', '"rc-other"')}' > "$out"; printf 200`],
-    ["2xx-bad-digest", `printf '%s' '${ISSUED_BODY.replace(/sha256:b+/, "sha256:a")}' > "$out"; printf 201`],
-    ["2xx-no-refresh", `printf '%s' '${ISSUED_BODY.replace('"refresh_token":"x"', '"refresh_token":""')}' > "$out"; printf 200`],
+    // Partial / unproven 2xx: everything must validate (shape, digest, run case, CI job, device binding).
+    ["2xx-shallow (Argus)", `printf '%s' '${SHALLOW_BODY}' > "$out"; printf 200`],
+    ["2xx-wrong-case", `printf '%s' '${withEnvelope((e) => { e.run_case_id = "rc-other"; })}' > "$out"; printf 200`],
+    ["2xx-wrong-job", `printf '%s' '${withEnvelope((e) => { e.ci_job_ref = "https://github.com/botiverse/mobile/actions/runs/2"; })}' > "$out"; printf 200`],
+    ["2xx-wrong-device", `printf '%s' '${withEnvelope((e) => { e.boot_generation = "boot-2"; })}' > "$out"; printf 200`],
+    ["2xx-wrong-cert", `printf '%s' '${withEnvelope((e) => { e.signing_cert_sha256 = `sha256:${"f".repeat(64)}`; })}' > "$out"; printf 200`],
+    ["2xx-digest-not-of-envelope", `printf '%s' '${JSON.stringify({ ...ISSUED, envelope_digest: `sha256:${"b".repeat(64)}` })}' > "$out"; printf 201`],
+    ["2xx-no-refresh", `printf '%s' '${withEnvelope((e) => { e.refresh_token = ""; })}' > "$out"; printf 200`],
+    ["2xx-missing-user", `printf '%s' '${withEnvelope((e) => { delete e.user; })}' > "$out"; printf 200`],
+    ["2xx-no-expiry", `printf '%s' '${JSON.stringify({ ...ISSUED, expires_at: undefined })}' > "$out"; printf 200`],
+    ["2xx-truncated-json", `printf '%s' '${ISSUED_BODY.slice(0, 150)}' > "$out"; printf 200`],
     ["2xx-empty", `printf 204`],
   ]) {
     const h = bootstrapLoginHarness(name, body);
@@ -747,16 +776,28 @@ test("bootstrap login: generic 4xx (incl. 409 RETRY_REQUIRES_NEW_ATTEMPT) and pa
   }
 });
 
-test("bootstrap login: only the exact-attempt credential-rejection receipt proves no material", () => {
-  const h = bootstrapLoginHarness("receipt", `case "$url" in */login) printf '%s' '${rejectionReceipt()}' > "$out"; printf 403;; *) :;; esac; exit 0`);
-  assert.equal(h.login(), 1);
-  assert.equal(h.outcome().outcome, "rejected");
-  assert.equal(h.outcome().detail, "credential_rejection_receipt");
-  assert.equal(h.failureTerminal(), 0);
-  assert.equal(h.callLines().length, 2);
-  assert.match(h.callLines()[1], /login-failure-terminal/);
-  assert.equal(h.login(), 1, "a rejected run case is not issued again either");
-  assert.equal(h.callLines().length, 2);
+test("bootstrap login: no 4xx body is accepted as 'nothing issued' (receipt deferred until Testbed carries an authoritative attempt)", () => {
+  // Argus's replay (review of b1c6af1d): an otherwise exact receipt for attempt 999 while the local
+  // GitHub run attempt is 1 used to be "rejected" and then posted the no-material terminal.
+  const h = bootstrapLoginHarness("different-attempt", `case "$url" in */login) printf '%s' '${rejectionReceipt({ attempt: 999 })}' > "$out"; printf 403;; *) printf 200;; esac; exit 0`);
+  assert.equal(h.login(), 3);
+  assert.equal(h.outcome().outcome, "unknown");
+  assert.equal(h.outcome().detail, "unproven_4xx");
+  assert.equal(h.failureTerminal(), 1);
+  assert.equal(h.callLines().length, 1, "no no-material terminal call");
+  // Even a receipt that matches every locally known value (attempt 1 = GITHUB_RUN_ATTEMPT) is unknown:
+  // the GitHub run attempt is not the Testbed run-case attempt, and no trusted attempt exists yet.
+  const exact = bootstrapLoginHarness("exact-receipt", `case "$url" in */login) printf '%s' '${rejectionReceipt()}' > "$out"; printf 403;; *) printf 200;; esac; exit 0`);
+  assert.equal(exact.login(), 3);
+  assert.equal(exact.outcome().outcome, "unknown");
+  assert.equal(exact.failureTerminal(), 1);
+  assert.equal(exact.callLines().length, 1);
+  // Positive control: a run case where bootstrap-login was never attempted may still post the
+  // no-material terminal (exactly one call, to the canonical endpoint).
+  const never = bootstrapLoginHarness("never-attempted", `printf 200; exit 0`);
+  assert.equal(never.failureTerminal(), 0);
+  assert.equal(never.callLines().length, 1);
+  assert.match(never.callLines()[0], /\/api\/agent\/run-cases\/rc-x\/auth-bootstrap\/login-failure-terminal/);
 });
 
 test("bootstrap login: the in_flight intent is persisted before the call; a killed sender never re-issues or claims 'not sent'", () => {
@@ -778,6 +819,41 @@ test("bootstrap login: the in_flight intent is persisted before the call; a kill
   assert.equal(early.login(), 1);
   assert.equal(early.failureTerminal(), 1);
   assert.equal(early.callLines().length, 0);
+});
+
+// Argus's replays against b1c6af1d (supplementary package).
+test("independent: well-shaped but tampered 2xx is unknown, not issued", () => {
+  const h = bootstrapLoginHarness("tampered", `printf '%s' '${SHALLOW_BODY}' > "$out"; printf 200`);
+  assert.equal(h.login(), 3);
+  assert.equal(h.outcome().outcome, "unknown");
+  assert.equal(h.outcome().detail, "unproven_2xx");
+  assert.equal(fs.existsSync(path.join(h.runnerTemp, "stamp-bootstrap-login-rc-x.json")), false, "never under the consumed name");
+  assert.equal(fs.readFileSync(path.join(h.runnerTemp, "stamp-bootstrap-login-rc-x.json.partial"), "utf8"), SHALLOW_BODY, "body kept as evidence");
+  // Positive control: the complete, digest-correct, bound response is issued and moved into place.
+  const ok = bootstrapLoginHarness("complete", `printf '%s' '${ISSUED_BODY}' > "$out"; printf 200`);
+  assert.equal(ok.login(), 0);
+  assert.equal(ok.outcome().outcome, "issued");
+  assert.equal(fs.readFileSync(path.join(ok.runnerTemp, "stamp-bootstrap-login-rc-x.json"), "utf8"), ISSUED_BODY);
+  assert.equal(fs.existsSync(path.join(ok.runnerTemp, "stamp-bootstrap-login-rc-x.json.partial")), false);
+});
+
+test("independent: killed curl after writing partial body must never invoke logout cleanup as if issued", () => {
+  for (const [name, body] of [["partial", ISSUED_BODY.slice(0, 184)], ["complete-but-unrecorded", ISSUED_BODY], ["shallow", SHALLOW_BODY]]) {
+    const h = bootstrapLoginHarness(`killed-${name}`, `case "$url" in */login) printf '%s' '${body}' > "$out"; p=$PPID; pp=$(ps -o ppid= -p "$p" | tr -d " "); case "$(ps -o args= -p "$pp")" in *stamp_report.sh*) kill -9 "$pp";; esac; kill -9 "$p"; sleep 1;; */status) printf '%s' '{"contract_version":"qa-bootstrap-login/v1","required":true,"status":"issued"}' > "$out";; esac`);
+    const spec = path.join(h.runnerTemp, "stamp-bootstrap-spec-rc-x.json");
+    fs.writeFileSync(spec, JSON.stringify({ ...JSON.parse(fs.readFileSync(spec, "utf8")), status_endpoint: "/status", terminal_endpoint: "/terminal" }));
+    assert.notEqual(h.login(), 0, name);
+    assert.equal(h.outcome().outcome, "in_flight", name);
+    const partial = path.join(h.runnerTemp, "stamp-bootstrap-login-rc-x.json.partial");
+    assert.equal(fs.readFileSync(partial, "utf8"), body, name);
+    assert.equal(fs.existsSync(path.join(h.runnerTemp, "stamp-bootstrap-login-rc-x.json")), false, name);
+    const run = spawnSync("bash", [h.reporter, "bootstrap-failure-terminal", h.binding], { cwd: h.root, env: h.env, encoding: "utf8" });
+    assert.equal(run.status, 1, name);
+    assert.match(run.stderr, /operator reconciliation required/, name);
+    assert.equal(h.callLines().length, 1, `${name}: no status, cleanup or terminal call after a killed sender`);
+    assert.equal(fs.readFileSync(partial, "utf8"), body, `${name}: the received bytes are kept, not deleted`);
+    assert.equal(h.login(), 1, `${name}: never re-issued`);
+  }
 });
 
 test("bootstrap login: concurrent invocations call issuance exactly once", async () => {
@@ -916,6 +992,7 @@ test("READY response loss resolves server authority before choosing completed ve
   fs.mkdirSync(runnerTemp); fs.mkdirSync(bin);
   const reporter = path.join(root, "stamp_report.sh");
   fs.copyFileSync(new URL("./stamp_report.sh", import.meta.url), reporter);
+  fs.copyFileSync(new URL("./mobile_login_bootstrap_lib.mjs", import.meta.url), path.join(root, "mobile_login_bootstrap_lib.mjs"));
   fs.chmodSync(reporter, 0o755);
   const calls = path.join(root, "calls");
   const serverState = path.join(root, "server-state");
@@ -940,8 +1017,9 @@ esac
   const binding = path.join(root, "binding.json");
   const ready = path.join(root, "ready.json");
   fs.writeFileSync(spec, JSON.stringify({ required: true, status_endpoint: "/status", terminal_endpoint: "/terminal" }), { mode: 0o600 });
-  const writeLogin = () => fs.writeFileSync(login, JSON.stringify({ request_id: "request", envelope_digest: "sha256:digest", envelope: { refresh_token: "refresh" } }), { mode: 0o600 });
-  writeLogin(); fs.writeFileSync(binding, "{}"); fs.writeFileSync(ready, "{}");
+  const lossBinding = { signing_cert_sha256: `sha256:${"d".repeat(64)}`, boot_generation: "boot-loss" };
+  const writeLogin = () => fs.writeFileSync(login, JSON.stringify(issuedLogin({ runCaseId: "rc-loss", runId: "901", binding: lossBinding })), { mode: 0o600 });
+  writeLogin(); fs.writeFileSync(binding, JSON.stringify(lossBinding)); fs.writeFileSync(ready, "{}");
   const env = {
     ...process.env, PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
     RUNNER_TEMP: runnerTemp, STAMP_RUN_CASE_ID: "rc-loss", STAMP_URL: "https://stamp.test", STAMP_TOKEN: "token",
@@ -956,6 +1034,27 @@ esac
   fs.writeFileSync(calls, ""); writeLogin(); fs.writeFileSync(serverState, "issued");
   execFileSync(reporter, ["bootstrap-failure-terminal", binding, ready], { cwd: root, env });
   assert.deepEqual(fs.readFileSync(calls, "utf8").trim().split("\n"), ["status", "cleanup:aborted", "terminal"]);
+
+  // Positive control: this runner's recorded "issued" outcome + a completely validated response.
+  const outcomeFile = path.join(runnerTemp, "stamp-bootstrap-login-outcome-rc-loss.json");
+  fs.writeFileSync(calls, ""); writeLogin();
+  fs.writeFileSync(outcomeFile, JSON.stringify({ contract: "qa-bootstrap-login-outcome/v1", outcome: "issued" }));
+  execFileSync(reporter, ["bootstrap-failure-terminal", binding, ready], { cwd: root, env });
+  assert.deepEqual(fs.readFileSync(calls, "utf8").trim().split("\n"), ["status", "cleanup:aborted", "terminal"]);
+
+  // Negative: killed between the rename and recording "issued" (outcome still in_flight): even a
+  // valid response file does not drive status/cleanup, and it is not deleted.
+  fs.writeFileSync(calls, ""); writeLogin();
+  fs.writeFileSync(outcomeFile, JSON.stringify({ contract: "qa-bootstrap-login-outcome/v1", outcome: "in_flight" }));
+  assert.throws(() => execFileSync(reporter, ["bootstrap-failure-terminal", binding, ready], { cwd: root, env, stdio: "pipe" }));
+  assert.equal(fs.readFileSync(calls, "utf8"), "");
+  assert.equal(fs.existsSync(login), true);
+  // Negative: a recorded "issued" but a response that no longer validates (tampered/partial).
+  fs.writeFileSync(outcomeFile, JSON.stringify({ contract: "qa-bootstrap-login-outcome/v1", outcome: "issued" }));
+  fs.writeFileSync(login, JSON.stringify(issuedLogin({ runCaseId: "rc-loss", runId: "901", binding: lossBinding })).slice(0, 200), { mode: 0o600 });
+  assert.throws(() => execFileSync(reporter, ["bootstrap-failure-terminal", binding, ready], { cwd: root, env, stdio: "pipe" }));
+  assert.equal(fs.readFileSync(calls, "utf8"), "");
+  assert.equal(fs.existsSync(login), true, "partial material is reconciliation evidence, never deleted");
 });
 
 test("capture-proof reporting rejects missing scope, stale generation, proof SHA mismatch, and generation replay with new bytes", () => {
