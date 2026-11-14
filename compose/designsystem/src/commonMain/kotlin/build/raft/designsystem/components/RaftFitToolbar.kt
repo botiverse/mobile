@@ -725,8 +725,9 @@ private fun RaftFitToolbarFilterRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (filters.isNotEmpty()) {
+            val scroll = rememberScrollState()
             Row(
-                Modifier.weight(1f, fill = false).horizontalScroll(rememberScrollState()),
+                Modifier.weight(1f, fill = false).raftScrollEdgeFade(scroll).horizontalScroll(scroll),
                 horizontalArrangement = Arrangement.spacedBy(RaftFitToolbarDefaults.Gap),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
