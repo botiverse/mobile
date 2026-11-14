@@ -21,6 +21,10 @@ enum RaftIosQaSessionBootstrapHost {
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> RaftIosQaSessionBootstrapContract.LaunchRequest? {
         guard !claimed else { return nil }
+        // Every Debug launch: which bootstrap flags (names only) this process received. Not a
+        // QA_BOOTSTRAP_ line, so ordinary runs add nothing to the harness's stage summary.
+        let flags = arguments.filter { $0.hasPrefix("-qaBootstrap") }
+        NSLog("%@", "[SlockQaBootstrap][debug] launch_check argc=\(arguments.count) flags=\(flags.joined(separator: ","))")
         let parsed = Contract.parseLaunchArguments(arguments)
         if parsed == .absent { return nil }
         claimed = true

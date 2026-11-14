@@ -61,7 +61,7 @@ export function iosLaunchArgs(udid, bundleId, requestId, envelopeDigest) {
 }
 
 /** Predicate for `xcrun simctl spawn <udid> log stream`: the app's QA bootstrap lines only. */
-export const IOS_LOG_PREDICATE = 'eventMessage CONTAINS "QA_BOOTSTRAP_"';
+export const IOS_LOG_PREDICATE = 'eventMessage CONTAINS "SlockQaBootstrap"';
 
 export function hasBootstrapLine(text, kind, stage, code) {
   const suffix = code === undefined ? "(?:\\s|$)" : ` code=${code}(?:\\s|$)`;

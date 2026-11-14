@@ -17,7 +17,7 @@ lines and the same harness output files. Only the device channel differs.
 | Built into | `alpha` / `connectedTest` (`qa_session_bootstrap_enabled`), debuggable only | the **Debug** configuration only (`RAFT_QA_SESSION_BOOTSTRAP`), Simulator only |
 | Envelope delivery | `run-as` into `files/qa-bootstrap/inbox/<request_id>.session` | write into the app data container: `Library/Application Support/qa-bootstrap/inbox/<request_id>.session` |
 | Trigger | `am start -n <pkg>/…QaSessionBootstrapActivity --es qaBootstrapRequestId <id> --es qaBootstrapEnvelopeDigest <digest>` | `xcrun simctl launch --terminate-running-process <udid> <bundle> -qaBootstrapRequestId <id> -qaBootstrapEnvelopeDigest <digest>` |
-| Log channel | logcat, tag `SlockQaBootstrap` | unified log via NSLog, `[SlockQaBootstrap][info] …`; read with `xcrun simctl spawn <udid> log stream --predicate 'eventMessage CONTAINS "QA_BOOTSTRAP_"'` |
+| Log channel | logcat, tag `SlockQaBootstrap` | unified log via NSLog, `[SlockQaBootstrap][info] …`; read with `xcrun simctl spawn <udid> log stream --predicate 'eventMessage CONTAINS "SlockQaBootstrap"'` |
 
 ## Flow
 
@@ -108,7 +108,7 @@ bash scripts/qa/stamp_report.sh bootstrap-terminal completed "$RUNNER_TEMP/stamp
 2. `mkdir -p "<data>/Library/Application Support/qa-bootstrap/inbox"` (mode 0700).
 3. Write the canonical envelope bytes to `.<request_id>.session.tmp` (mode 0600),
    rename to `<request_id>.session`, read back mode/size/sha256.
-4. Start `xcrun simctl spawn <udid> log stream --style compact --predicate 'eventMessage CONTAINS "QA_BOOTSTRAP_"'`.
+4. Start `xcrun simctl spawn <udid> log stream --style compact --predicate 'eventMessage CONTAINS "SlockQaBootstrap"'`.
 5. `xcrun simctl launch --terminate-running-process <udid> <bundle> -qaBootstrapRequestId <request_id> -qaBootstrapEnvelopeDigest <envelope_digest>`.
 6. Wait (≤ 120 s) for the exact-bound `QA_BOOTSTRAP_READY` line; on timeout report the
    `QA_BOOTSTRAP_STAGE`/`FAILURE` stages and the app's `QA_BOOTSTRAP_DIAG` line.

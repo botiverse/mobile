@@ -283,6 +283,13 @@ async function smoke() {
     const seen = await waitFor(stream, from, (text) => expect.every(([kind, stage, code]) => hasBootstrapLine(text, kind, stage, code)), 90_000);
     const left = fs.existsSync(paths.file);
     const pass = seen && left === fileLeft;
+    if (!pass) {
+      // Host view of the Simulator app process: did the launch arguments reach it?
+      const ps = run("ps", ["-axww", "-o", "pid=,args="], { allowFailure: true }).stdout
+        .split("\n").filter((line) => line.includes(`/${bundleId}`) || line.includes(".app/")).filter((line) => line.includes("qaBootstrap") || /iosApp|Raft/.test(line));
+      console.log(`ios-qa-bootstrap smoke: process view ${JSON.stringify(ps.slice(0, 5))}`);
+      console.log(`ios-qa-bootstrap smoke: app log ${JSON.stringify(stream.text().slice(from).slice(-1500))}`);
+    }
     const stages = parseBootstrapDiagnostics(stream.text().slice(from));
     results.push({ name, pass, expected: expect.map((e) => e.filter(Boolean).join(" ")), stages, inbox_file_left: left });
     console.log(`ios-qa-bootstrap smoke: ${pass ? "PASS" : "FAIL"} ${name} stages=${stages.join(",") || "none"} inboxFileLeft=${left}`);
