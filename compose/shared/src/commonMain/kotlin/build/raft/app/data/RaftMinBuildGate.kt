@@ -13,7 +13,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
@@ -348,8 +347,8 @@ object RaftMinBuildGate {
             logger = { line -> runCatching { build.raft.app.raftLogInfo("SlockMinBuildGate", line) } },
         ).also { gate ->
             processScope.launch {
+                // A StateFlow is already distinct: the first value is the current one, not a return.
                 RaftStaleReadRecoverySignals.foreground
-                    .distinctUntilChanged()
                     .drop(1)
                     .filter { it }
                     .collect {
