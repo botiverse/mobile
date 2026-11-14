@@ -1140,6 +1140,7 @@
     <string name="thread_forward_destination">Destino</string>
     <string name="thread_forward_messages_selected">%1$d mensajes seleccionados</string>
     <string name="thread_forward_destinations_selected">%1$d destinos seleccionados</string>
+    <string name="thread_forward_remove_destination">Quitar %1$s</string>
     <string name="thread_forward_add_note">Agregar nota</string>
     <string name="thread_forward_search_results">Buscar resultados</string>
     <string name="thread_forward_loading_targets">CARGANDO DESTINOS</string>

@@ -1147,6 +1147,7 @@
     <string name="thread_forward_destination">転送先</string>
     <string name="thread_forward_messages_selected">%1$d 件のメッセージを選択中</string>
     <string name="thread_forward_destinations_selected">%1$d 件の転送先を選択中</string>
+    <string name="thread_forward_remove_destination">%1$s を削除</string>
     <string name="thread_forward_add_note">メモを追加</string>
     <string name="thread_forward_search_results">検索結果</string>
     <string name="thread_forward_loading_targets">転送先を読み込み中</string>

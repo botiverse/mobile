@@ -39624,8 +39624,11 @@ internal fun <T> RaftForwardTargetPicker(
                     LazyRow(state = backSwipeRowState, userScrollEnabled = backSwipeRow.userScrollEnabled, modifier = backSwipeRow.modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(state.selectedItems.size, key = { state.selectedItems[it].rowKey }) { index ->
                             val selected = state.selectedItems[index]
+                            val removeLabel = stringResource(Res.string.thread_forward_remove_destination, selected.title)
                             RaftModalActionButton(
-                                label = "${selected.title} ×",
+                                label = selected.title,
+                                trailingIcon = RaftLucideIconName.X,
+                                modifier = Modifier.semantics { contentDescription = removeLabel },
                                 onClick = {
                                     onIntent(RaftForwardTargetPickerIntent.RemoveSelection(selected.stableKey))
                                 },

@@ -1140,6 +1140,7 @@
     <string name="thread_forward_destination">전달 대상</string>
     <string name="thread_forward_messages_selected">메시지 %1$d개 선택됨</string>
     <string name="thread_forward_destinations_selected">전달 대상 %1$d개 선택됨</string>
+    <string name="thread_forward_remove_destination">%1$s 제거</string>
     <string name="thread_forward_add_note">메모 추가</string>
     <string name="thread_forward_search_results">결과 검색</string>
     <string name="thread_forward_loading_targets">대상을 불러오는 중</string>

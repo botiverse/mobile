@@ -1140,6 +1140,7 @@
     <string name="thread_forward_destination">轉傳目標</string>
     <string name="thread_forward_messages_selected">已選取 %1$d 則訊息</string>
     <string name="thread_forward_destinations_selected">已選取 %1$d 個目標</string>
+    <string name="thread_forward_remove_destination">移除 %1$s</string>
     <string name="thread_forward_add_note">新增備註</string>
     <string name="thread_forward_search_results">搜尋結果</string>
     <string name="thread_forward_loading_targets">正在載入目標</string>
