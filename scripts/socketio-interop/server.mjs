@@ -49,9 +49,11 @@ function wire(io, label) {
 
     socket.on("disconnect-me", () => socket.disconnect());
 
+    // Drops the transport (not a namespace disconnect) and emits "missed" while the client is away. With
+    // connectionStateRecovery the server replays it before its CONNECT answer on the client's return.
     socket.on("drop-transport", () => {
+      socket.once("disconnect", () => io.to("all").emit("missed", { n: 1 }));
       socket.conn.close();
-      setTimeout(() => io.to("all").emit("missed", { n: 1 }), 150);
     });
   });
 

@@ -49,6 +49,12 @@ These override anything below that disagrees.
    - Per-message deflate: OkHttp offers `permessage-deflate` and uses it when the server accepts;
      NSURLSessionWebSocketTask negotiates on its own. Covered by the interop server B (deflate on).
 
+6. **Recovery replays before the CONNECT answer** (found by the interop suite): a socket.io server with
+   `connectionStateRecovery` sends the missed packets from the `Socket` constructor, before `0{sid,pid}`.
+   socket.io-client buffers events that arrive while a CONNECT is pending (`receiveBuffer`) and delivers them
+   right after `connect`; `RaftSocketIoNamespace` does the same (dropped with `buffered_<reason>` if the CONNECT
+   fails or the connection ends).
+
 ### Phase 0 status (PR "realtime-socket: Socket.IO v5 client core")
 
 - Module `compose/realtime-socket` (`build.raft.realtime.socket`), commonMain + Ktor (OkHttp / Darwin).

@@ -275,6 +275,45 @@ class RaftSocketIoClientReconnectTest {
     }
 
     @Test
+    fun eventsSentBeforeTheConnectAnswerAreDeliveredRightAfterIt() = runTest {
+        // A recovering socket.io server replays the missed packets before its CONNECT answer.
+        val harness = SocketHarness(this)
+        val first = harness.connectRoot(pid = "pid-1")
+        first.fail()
+        runCurrent()
+        advanceTimeBy(harness.listener.scheduledDelays.last() + 1)
+        runCurrent()
+        val second = harness.server.last
+        second.open()
+        runCurrent()
+        second.push("42[\"message:new\",{\"seq\":7},\"offset-7\"]")
+        second.push("42[\"heartbeat\",{\"seq\":7}]")
+        runCurrent()
+        assertEquals(emptyList(), harness.listener.events, "held until the socket is connected")
+        second.acceptConnect(sid = "sio-1", pid = "pid-1")
+        runCurrent()
+        assertEquals(listOf("message:new", "heartbeat"), harness.listener.events.map { it.name })
+        val connectedAt = harness.listener.calls.indexOfLast { it.startsWith("connected:") }
+        assertTrue(connectedAt < harness.listener.calls.indexOf("event:message:new"), harness.listener.calls.toString())
+        assertTrue(harness.listener.connections.last().recovered)
+    }
+
+    @Test
+    fun eventsBufferedForARejectedConnectAreDroppedWithAReason() = runTest {
+        val harness = SocketHarness(this)
+        harness.root.connect()
+        runCurrent()
+        val session = harness.server.last
+        session.open()
+        runCurrent()
+        session.push("42[\"message:new\",{}]")
+        session.push("44{\"message\":\"SSO_REQUIRED\"}")
+        runCurrent()
+        assertEquals(emptyList(), harness.listener.events)
+        assertTrue("dropped:message:new:buffered_connect_error" in harness.listener.calls, harness.listener.calls.toString())
+    }
+
+    @Test
     fun aSocketWithoutPidNeverSendsRecoveryFields() = runTest {
         val harness = SocketHarness(this)
         val first = harness.connectRoot()

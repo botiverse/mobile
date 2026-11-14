@@ -590,6 +590,12 @@ class RaftSocketIoNamespace internal constructor(
     private var lastOffset: String? = null
     private var nextAckId = 0L
     private val pendingAcks = linkedMapOf<Long, PendingAck>()
+    /**
+     * Events that arrived while this socket's CONNECT was pending. A recovering server sends the missed
+     * packets before its CONNECT answer (socket.io `Socket` constructor), so socket.io-client buffers them
+     * (`receiveBuffer`) and delivers them right after connect; so does this socket.
+     */
+    private val receiveBuffer = mutableListOf<SocketIoPacket.Event>()
 
     /** Connects (and keeps reconnecting) until [disconnect]. No-op while active. */
     fun connect() {
@@ -710,6 +716,7 @@ class RaftSocketIoNamespace internal constructor(
     }
 
     internal fun engineClosedLocked(generation: Long, reason: RaftSocketDisconnectReason, detail: String) {
+        dropReceiveBuffer("connection_closed")
         connectJob?.cancel()
         connectTimer?.cancel()
         retryJob?.cancel()
@@ -740,6 +747,7 @@ class RaftSocketIoNamespace internal constructor(
         if (!active) return
         active = false
         waitingForKick = false
+        dropReceiveBuffer("client_disconnect")
         retryJob?.cancel()
         connectJob?.cancel()
         connectTimer?.cancel()
@@ -839,7 +847,12 @@ class RaftSocketIoNamespace internal constructor(
                     client.namespaceDeactivated()
                 }
             }
-            is SocketIoPacket.Event -> onEvent(packet)
+            is SocketIoPacket.Event ->
+                if (connection == null && pendingGeneration == generation && active) {
+                    receiveBuffer += packet
+                } else {
+                    onEvent(packet)
+                }
             is SocketIoPacket.Ack -> {
                 val pending = pendingAcks[packet.ackId]
                 if (pending == null || pending.connectionSeq != connectionSeq || connection == null) {
@@ -893,6 +906,9 @@ class RaftSocketIoNamespace internal constructor(
         )
         setState(RaftSocketState.Connected(established))
         client.safely("on_connected") { options.listener.onConnected(established) }
+        val buffered = receiveBuffer.toList()
+        receiveBuffer.clear()
+        buffered.forEach { if (connection === established) onEvent(it) }
     }
 
     private fun onConnectError(generation: Long, packet: SocketIoPacket.ConnectError) {
@@ -902,6 +918,7 @@ class RaftSocketIoNamespace internal constructor(
         }
         pendingGeneration = null
         connectTimer?.cancel()
+        dropReceiveBuffer("connect_error")
         val error = RaftSocketHandshakeError.fromMessage(packet.message)
         lastError = error
         client.countHandshakeError(error.kind)
@@ -958,6 +975,13 @@ class RaftSocketIoNamespace internal constructor(
         }
         val ack = packet.ackId?.let { RaftSocketIncomingAck(this, connectionSeq, it, packet.name) }
         client.safely("on_event") { options.listener.onEvent(current, RaftSocketEvent(packet.name, packet.args, packet.attachments), ack) }
+    }
+
+    private fun dropReceiveBuffer(reason: String) {
+        if (receiveBuffer.isEmpty()) return
+        val dropped = receiveBuffer.toList()
+        receiveBuffer.clear()
+        dropped.forEach { client.drop(it.name, "buffered_$reason", this) }
     }
 
     private fun failPendingAcks(reason: String) {
