@@ -119,3 +119,20 @@ export function runOutcome({ signedIn, cleanup, strict }) {
   if (!ok && strict) return { result: "cleanup_failed", exitCode: 1, cleanupOk: ok, cleanupFailures: failures };
   return { result: "signed_in", exitCode: 0, cleanupOk: ok, cleanupFailures: failures };
 }
+
+/**
+ * The app's own verdict on the callback, from its `SlockAppLogin` lines
+ * (`app_login_complete result=<r> reason=<why>`, AppLogin.kt: one line per exit of complete()).
+ *   exchanged – some line says result=app_shell reason=exchanged (the code is single-use, so a
+ *               later duplicate-callback "ignored" line does not undo it)
+ *   pending   – the last line is result=retry (the app will try the callback again)
+ *   refused   – the last line is any other result (login_error, stale, ignored, …)
+ *   absent    – no such line (yet)
+ */
+export function parseAppLoginComplete(logText) {
+  const lines = [...String(logText ?? "").matchAll(/app_login_complete result=(\S+) reason=(\S+)/g)].map((m) => ({ result: m[1], reason: m[2] }));
+  if (lines.some((l) => l.result === "app_shell" && l.reason === "exchanged")) return { status: "exchanged", result: "app_shell", reason: "exchanged" };
+  const last = lines[lines.length - 1];
+  if (!last) return { status: "absent", result: null, reason: null };
+  return { status: last.result === "retry" ? "pending" : "refused", result: last.result, reason: last.reason };
+}

@@ -18,7 +18,8 @@
 //      file deleted, the browser role restored / browsers re-enabled, the capture browser
 //      uninstalled when this run installed it, and with --revoke-app-session the app is signed out
 //      through its own Sign out (fallback: `pm clear`). With --strict-cleanup any cleanup step that
-//      did not succeed makes the run exit non-zero (required for Testbed; on in the workflow).
+//      did not succeed makes the run exit non-zero, and so does a signed-in screen without the
+//      app's own app_login_complete exchange line (required for Testbed; on in the workflow).
 //
 // It stops instead of working around any server check: two-step verification, a rate limit, or
 // an unexpected response ends the run. Credentials, tokens, the request id, the code and the
@@ -37,6 +38,7 @@ import {
   ENVIRONMENTS,
   callbackSchemeFor,
   createRedactor,
+  parseAppLoginComplete,
   parseCredentialFile,
   runOutcome,
   validateCallbackUrl,
@@ -602,27 +604,40 @@ async function main() {
     }, { screenshot: false });
 
     await step("verify-signed-in", async () => {
+      // The app's own verdict (app_login_complete) is read from a logcat dump on every poll: the
+      // streamed file can lag the screen (adb's output to a file is buffered), which made an
+      // exchanged sign-in read as "not logged".
+      const appLog = () =>
+        `${fs.existsSync(logcatFile) ? fs.readFileSync(logcatFile, "utf8") : ""}\n${adb(["logcat", "-d", "-v", "threadtime", "-s", "SlockAppLogin:*"], { allowFailure: true })}`;
       const deadline = Date.now() + 120_000;
       let lastLabels = "";
+      let screenSince = 0;
+      let screen = "";
       while (Date.now() < deadline) {
-        const lines = fs.existsSync(logcatFile) ? fs.readFileSync(logcatFile, "utf8") : "";
-        const complete = /app_login_complete result=(\S+) reason=(\S+)/.exec(lines);
-        if (complete && complete[1] !== "app_shell") stop(`the app refused the callback: result=${complete[1]} reason=${complete[2]}`);
+        const verdict = parseAppLoginComplete(appLog());
+        if (verdict.status === "refused") stop(`the app refused the callback: result=${verdict.result} reason=${verdict.reason}`);
         const list = nodes();
         await dismissSystemDialog(list);
         const inApp = list.some((n) => n.pkg === PKG);
         const signInVisible = list.some((n) => n.pkg === PKG && /^(Sign in to Raft|Signing in…)$/.test(n.text));
-        const failed = find(list, (n) => n.text.startsWith("Unable to finish sign-in"));
-        if (failed) stop("the app shows \"Unable to finish sign-in\"");
+        if (find(list, (n) => n.text.startsWith("Unable to finish sign-in"))) stop("the app shows \"Unable to finish sign-in\"");
         const home = find(list, (n) => n.pkg === PKG && n.text === "Drafts");
         const chooser = find(list, (n) => n.pkg === PKG && n.text.startsWith("Signed in as "));
-        if (inApp && !signInVisible && (home || chooser || complete)) {
-          if (!complete) await sleep(3000); // logcat reaches the file a moment after the screen
-          const logged = /app_login_complete result=(\S+)/.exec(fs.existsSync(logcatFile) ? fs.readFileSync(logcatFile, "utf8") : "")?.[1];
-          if (logged && logged !== "app_shell") stop(`the app refused the callback: result=${logged}`);
-          return { exchange: logged ?? "not logged", screen: home ? "home" : chooser ? "choose_server" : "other" };
+        if (inApp && !signInVisible && (home || chooser)) {
+          screen = home ? "home" : "choose_server";
+          screenSince ||= Date.now();
+          if (verdict.status === "exchanged") return { exchange: "exchanged", exchange_log: `result=${verdict.result} reason=${verdict.reason}`, screen };
+          // Signed-in screen but no verdict line yet: give the log 30s to catch up, then say so.
+          if (Date.now() - screenSince > 30_000) {
+            const note = `signed-in screen (${screen}) but the app logged no app_login_complete line (last: ${verdict.status})`;
+            if (STRICT_CLEANUP) stop(`${note}; strict mode needs the app's own exchange verdict`);
+            log(`WARNING: ${note}`);
+            return { exchange: "not_logged", exchange_verified: false, screen };
+          }
+        } else {
+          screenSince = 0;
+          if (!inApp) launchApp();
         }
-        if (!inApp) launchApp();
         lastLabels = list.map(label).filter(Boolean).slice(0, 30).join(" | ");
         await sleep(2000);
       }

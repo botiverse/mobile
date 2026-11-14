@@ -55,9 +55,13 @@ It does **not** mean:
    `am start -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d <callback> build.raft.app`
    (explicit package), as a browser redirect would. The app checks the request id against its pending
    request and exchanges code + its own verifier (`POST /api/auth/app-login/complete`).
-6. **Verify.** Signed in = the app's `SlockAppLogin` line `app_login_complete result=app_shell` and/or
-   Home ("Drafts") or "Choose server … Signed in as …" on screen, with no "Sign in to Raft". Any other `app_login_complete` result fails
-   the run.
+6. **Verify.** Signed in = Home ("Drafts") or "Choose server … Signed in as …" on screen with no
+   "Sign in to Raft", **and** the app's own `SlockAppLogin` line
+   `app_login_complete result=app_shell reason=exchanged` (read from a logcat dump on each poll;
+   `verify-signed-in` → `exchange: "exchanged"`, `exchange_log`). Any other final result
+   (`login_error`, `stale`, `ignored`) fails the run at once. If the screen is signed in but the line
+   never appears within 30s, strict mode fails the run; without strict mode it passes with
+   `exchange: "not_logged"`, `exchange_verified: false` and a warning.
 7. **Clean up (always)**, each step with its own status: see [Cleanup](#cleanup).
 
 ## Guarantees
@@ -85,7 +89,8 @@ one status in `summary.json` → `cleanup`. `cleanup_ok` is true only when every
 
 **Strict mode (`--strict-cleanup`) is required for Testbed** and on in the workflow
 (`strict_cleanup: true`): a signed-in run with any cleanup failure ends with `result: "cleanup_failed"`
-and exit 1. Without it the run still records the statuses but exits 0 on a sign-in pass.
+and exit 1, and a signed-in screen without the app's own exchange line fails the run (see step 6).
+Without it the run still records the statuses but exits 0 on a sign-in pass.
 
 **Server-side revocation is not independently verified for the app's session.** The server (slock
 staging) has no API to list a user's sessions or revoke one by id: only `POST /auth/logout` with the
@@ -95,9 +100,11 @@ back on its sign-in page) and, for the script's own web session, `signed_out` (r
 the refused refresh). There is no `server_revoked` status for the app session until such an API
 exists.
 
-Example (`cleanup` from a strict staging run, credentials masked):
+Example (from a strict staging run, credentials masked):
 
 ```json
+{ "step": 7, "name": "verify-signed-in", "result": "pass",
+  "detail": { "exchange": "exchanged", "exchange_log": "result=app_shell reason=exchanged", "screen": "choose_server" } },
 "cleanup": {
   "capture_file": "deleted",
   "browser": "restored",
