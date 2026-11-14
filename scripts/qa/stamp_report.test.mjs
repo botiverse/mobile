@@ -570,8 +570,10 @@ test("login bootstrap keeps session material private and deletes it after termin
   const terminalPayload = path.join(root, "terminal.json");
   fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
 out=""; payload=""; url=""
+trap '[ -z "$w" ] || printf 200' EXIT
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    -w) w="$2"; shift 2;;
     -o) out="$2"; shift 2;;
     --data-binary) payload="$2"; shift 2;;
     http*) url="$1"; shift;;
@@ -623,6 +625,85 @@ esac
   assert.equal(output.includes("refresh-secret"), false);
   assert.equal(JSON.parse(fs.readFileSync(terminalPayload, "utf8")).refresh_token, "refresh-secret");
   assert.equal(fs.existsSync(path.join(runnerTemp, "stamp-bootstrap-login-rc-login.json")), false);
+});
+
+test("bootstrap login is one call: no retry, and a lost reply is an unknown outcome that blocks the no-material terminal", () => {
+  const reporter = new URL("./stamp_report.sh", import.meta.url).pathname;
+  const scenario = (name, curlBody) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), `stamp-login-${name}-`));
+    const bin = path.join(root, "bin");
+    const runnerTemp = path.join(root, "runner-temp");
+    fs.mkdirSync(bin); fs.mkdirSync(runnerTemp); fs.mkdirSync(path.join(root, "qa-evidence"));
+    const calls = path.join(root, "calls");
+    fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "${calls}"
+out=""; url=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2;;
+    http*) url="$1"; shift;;
+    *) shift;;
+  esac
+done
+${curlBody}
+`, { mode: 0o755 });
+    fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-x"), "claim-token", { mode: 0o600 });
+    fs.writeFileSync(path.join(runnerTemp, "stamp-bootstrap-spec-rc-x.json"), JSON.stringify({
+      required: true, contract_version: "qa-bootstrap-login/v1", login_endpoint: "/login",
+      failure_terminal_endpoint: "/api/agent/run-cases/rc-x/auth-bootstrap/login-failure-terminal",
+    }), { mode: 0o600 });
+    const binding = path.join(root, "binding.json");
+    fs.writeFileSync(binding, JSON.stringify({ signing_cert_sha256: `sha256:${"a".repeat(64)}`, boot_generation: "boot-1" }));
+    const env = {
+      ...process.env, PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+      RUNNER_TEMP: runnerTemp, STAMP_RUN_CASE_ID: "rc-x", STAMP_URL: "https://stamp.test", STAMP_TOKEN: "t",
+      GITHUB_RUN_ID: "1", GITHUB_REPOSITORY: "botiverse/mobile",
+    };
+    let status = 0;
+    try { execFileSync("bash", [reporter, "bootstrap-login", binding], { cwd: root, env, stdio: "pipe" }); } catch (error) { status = error.status; }
+    const outcome = JSON.parse(fs.readFileSync(path.join(runnerTemp, "stamp-bootstrap-login-outcome-rc-x.json"), "utf8"));
+    const callLines = () => fs.readFileSync(calls, "utf8").trim().split("\n");
+    const failureTerminal = () => {
+      try { execFileSync("bash", [reporter, "bootstrap-failure-terminal", binding], { cwd: root, env, stdio: "pipe" }); return 0; } catch (error) { return error.status; }
+    };
+    const again = () => {
+      try { execFileSync("bash", [reporter, "bootstrap-login", binding], { cwd: root, env, stdio: "pipe" }); return 0; } catch (error) { return error.status; }
+    };
+    return { root, runnerTemp, status, outcome, callLines, failureTerminal, again };
+  };
+
+  // Response lost after the request was sent (curl 52 empty reply): unknown, exit 3, exactly one call.
+  const lost = scenario("lost", `printf 000; exit 52`);
+  assert.equal(lost.status, 3);
+  assert.equal(lost.outcome.outcome, "unknown");
+  assert.equal(lost.outcome.retried, false);
+  assert.equal(lost.callLines().length, 1);
+  assert.doesNotMatch(lost.callLines()[0], /--retry/);
+  assert.equal(fs.existsSync(path.join(lost.runnerTemp, "stamp-bootstrap-login-rc-x.json")), false);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(lost.root, "qa-evidence", "bootstrap-login-outcome.json"), "utf8")), lost.outcome);
+  // No second login for this run case, and no "no material was issued" terminal.
+  assert.equal(lost.again(), 1);
+  assert.equal(lost.failureTerminal(), 1);
+  assert.equal(lost.callLines().length, 1, "neither a second login nor the no-material terminal may be called");
+
+  // 5xx and an unreadable 2xx may follow a committed issuance: unknown too.
+  assert.equal(scenario("5xx", `printf 502; exit 0`).outcome.outcome, "unknown");
+  assert.equal(scenario("timeout", `printf 000; exit 28`).outcome.outcome, "unknown");
+  assert.equal(scenario("garbled", `printf '{"partial":' > "$out"; printf 200; exit 0`).outcome.outcome, "unknown");
+
+  // A definitive 4xx answer or a request that never left (connect failure) issued nothing: the
+  // no-material failure terminal is still allowed.
+  const rejected = scenario("rejected", `case "$url" in */login) printf 409;; *) :;; esac; exit 0`);
+  assert.equal(rejected.status, 1);
+  assert.equal(rejected.outcome.outcome, "rejected");
+  assert.equal(rejected.failureTerminal(), 0);
+  assert.equal(rejected.callLines().length, 2);
+  assert.equal(scenario("not-sent", `printf 000; exit 7`).outcome.outcome, "not_sent");
+
+  const issued = scenario("issued", `printf '%s' '{"request_id":"r","envelope":{"refresh_token":"x"},"envelope_digest":"sha256:a","expires_at":"soon"}' > "$out"; printf 200`);
+  assert.equal(issued.status, 0);
+  assert.equal(issued.outcome.outcome, "issued");
+  assert.equal(fs.existsSync(path.join(issued.runnerTemp, "stamp-bootstrap-login-rc-x.json")), true);
 });
 
 test("no-material bootstrap failure confirms only the exact server terminal binding", () => {

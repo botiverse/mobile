@@ -130,12 +130,12 @@ enum RaftIosQaSessionBootstrapHost {
                   environment: ProcessInfo.processInfo.environment,
                   homeDirectory: NSHomeDirectory()
               ),
-              let bootTime = Contract.hostBootTimeSeconds()
+              let launchdSimStart = Contract.launchdSimStartSeconds()
         else { return nil }
         return Contract.Binding(
             applicationId: applicationId,
             codeIdentitySha256: codeIdentity,
-            bootGeneration: Contract.bootGeneration(simulatorUdid: udid, hostBootTimeSeconds: bootTime)
+            bootGeneration: Contract.bootGeneration(simulatorUdid: udid, launchdSimStartSeconds: launchdSimStart)
         )
     }
 

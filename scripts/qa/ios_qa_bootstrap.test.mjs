@@ -6,31 +6,52 @@ import { fileURLToPath } from "node:url";
 import { validateLoginResponse } from "./mobile_login_bootstrap_lib.mjs";
 import {
   buildSmokeLogin,
+  classifyAppContainerRead,
+  classifyLaunchctlRead,
+  findLaunchdSimPid,
   hasBootstrapLine,
   iosBootGeneration,
+  iosCleanupReceipt,
   iosCodeImages,
   iosInboxPaths,
   iosLaunchArgs,
   launchctlAppAlive,
-  parseKernBootTime,
+  parsePsLstartUtc,
+  requireRunOwnedSimulator,
   requireSimulatorUdid,
 } from "./ios_qa_bootstrap_lib.mjs";
 
 const udid = "0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0";
 const digest = (text) => `sha256:${crypto.createHash("sha256").update(text).digest("hex")}`;
 
-test("kern.boottime parses the macOS sysctl rendering", () => {
-  assert.equal(parseKernBootTime("{ sec = 1731500000, usec = 123456 } Wed Nov 13 12:13:20 2024\n"), 1731500000);
-  assert.throws(() => parseKernBootTime(""), /kern.boottime/);
-  assert.throws(() => parseKernBootTime("{ sec = 0, usec = 1 }"), /kern.boottime/);
+test("launchd_sim of exactly this Simulator is found in the host process list", () => {
+  const ps = [
+    "  1 /sbin/launchd",
+    `4242 /Library/Developer/PrivateFrameworks/CoreSimulator.framework/Resources/bin/launchd_sim /Users/r/Library/Developer/CoreSimulator/Devices/${udid}/data/var/run/launchd_bootstrap.plist`,
+    "4300 /Library/Developer/PrivateFrameworks/CoreSimulator.framework/Resources/bin/launchd_sim /Users/r/Library/Developer/CoreSimulator/Devices/11111111-2222-3333-4444-555555555555/data/var/run/launchd_bootstrap.plist",
+    `4400 /usr/bin/grep launchd_sim /Devices/${udid}/`,
+  ].join("\n");
+  assert.equal(findLaunchdSimPid(ps, udid.toLowerCase()), 4242);
+  assert.throws(() => findLaunchdSimPid("  1 /sbin/launchd", udid), /found 0/);
+  const twice = `${ps}\n4500 /x/launchd_sim /Users/r/Library/Developer/CoreSimulator/Devices/${udid}/data/y`;
+  assert.throws(() => findLaunchdSimPid(twice, udid), /found 2/);
 });
 
-test("boot generation matches the app formula (uppercased UDID)", () => {
+test("ps lstart (C locale, UTC) parses to epoch seconds", () => {
+  assert.equal(parsePsLstartUtc("Sat Nov 14 10:00:00 2026\n"), Date.UTC(2026, 10, 14, 10, 0, 0) / 1000);
+  assert.equal(parsePsLstartUtc("Wed Jan  7 09:05:03 2026"), Date.UTC(2026, 0, 7, 9, 5, 3) / 1000);
+  assert.throws(() => parsePsLstartUtc(""), /launchd_sim start/);
+  assert.throws(() => parsePsLstartUtc("Sa 14 Nov 2026 10:00:00"), /launchd_sim start/);
+});
+
+test("boot generation matches the app formula and changes with the launchd_sim start", () => {
   // Same vector as compose/iosApp/scripts/test_qa_session_bootstrap_contract.sh.
   assert.equal(
     iosBootGeneration(udid.toLowerCase(), 1731500000),
-    digest(`ios-simulator-boot/v1|${udid}|1731500000`),
+    digest(`ios-simulator-boot/v2|${udid}|1731500000`),
   );
+  assert.notEqual(iosBootGeneration(udid, 1731500001), iosBootGeneration(udid, 1731500000));
+  assert.throws(() => iosBootGeneration(udid, 0), /launchd_sim/);
   assert.throws(() => iosBootGeneration("booted", 1), /UDID/);
   assert.throws(() => requireSimulatorUdid("../x"), /UDID/);
 });
@@ -102,4 +123,64 @@ test("Release-exclusion source check passes on this tree", () => {
   const script = fileURLToPath(new URL("../ci/check_ios_qa_bootstrap_exclusion.py", import.meta.url));
   const result = spawnSync("python3", [script, "source"], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
+});
+
+const LAUNCHCTL_HEADER = "PID\tStatus\tLabel";
+const springboard = "88\t0\tcom.apple.SpringBoard";
+
+test("launchctl read: absence needs a successful read with a running positive control", () => {
+  const bundle = "build.raft.app";
+  assert.deepEqual(classifyLaunchctlRead({ status: 0, stdout: `${LAUNCHCTL_HEADER}\n${springboard}\n` }, bundle),
+    { state: "absent", reason: "app_job_not_listed", positive_control: "com.apple.SpringBoard" });
+  assert.equal(classifyLaunchctlRead({ status: 0, stdout: `${LAUNCHCTL_HEADER}\n${springboard}\n777\t0\tUIKitApplication:build.raft.app[d4][rb-legacy]` }, bundle).state, "present");
+  // The finding: a failed spawn with empty stdout used to read as "process gone".
+  assert.deepEqual(classifyLaunchctlRead({ status: 1, stdout: "" }, bundle), { state: "unknown", reason: "exit_1" });
+  assert.deepEqual(classifyLaunchctlRead({ status: 0, stdout: "" }, bundle), { state: "unknown", reason: "no_positive_control" });
+  assert.deepEqual(classifyLaunchctlRead({ status: -1, stdout: "", timedOut: true }, bundle), { state: "unknown", reason: "timeout" });
+  assert.deepEqual(classifyLaunchctlRead({ status: -1, stdout: "", error: "ENOENT" }, bundle), { state: "unknown", reason: "spawn_error" });
+  // A positive control that is not running (no PID) does not count.
+  assert.equal(classifyLaunchctlRead({ status: 0, stdout: `${LAUNCHCTL_HEADER}\n-\t0\tcom.apple.SpringBoard` }, bundle).state, "unknown");
+  // Even with a failed exit status, a listed running app is not "absent"; it is unknown.
+  assert.equal(classifyLaunchctlRead({ status: 1, stdout: "777\t0\tUIKitApplication:build.raft.app[d4]" }, bundle).state, "unknown");
+});
+
+test("app container read: absent only when it fails exactly like a never-installed control", () => {
+  const bundle = "build.raft.app";
+  const controlId = "build.raft.qa.never-installed.abc123";
+  const notInstalled = (id) => ({ status: 2, stdout: "", stderr: `An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=2):\nFailed to get container for ${id}\nNo such file or directory\n` });
+  const control = notInstalled(controlId);
+  assert.deepEqual(classifyAppContainerRead(notInstalled(bundle), bundle, control, controlId), { state: "absent", reason: "not_installed_matches_control" });
+  assert.equal(classifyAppContainerRead({ status: 0, stdout: "/Users/r/data/Containers/Data/Application/X\n" }, bundle, control, controlId).state, "present");
+  // The finding: any nonzero used to read as "container absent".
+  const shutdown = { status: 149, stdout: "", stderr: "Unable to lookup in current state: Shutdown" };
+  assert.equal(classifyAppContainerRead(shutdown, bundle, control, controlId).state, "unknown");
+  assert.equal(classifyAppContainerRead({ ...notInstalled(bundle), status: 1 }, bundle, control, controlId).state, "unknown");
+  assert.equal(classifyAppContainerRead(notInstalled(bundle), bundle, shutdown, controlId).state, "unknown", "control must fail the same way");
+  assert.equal(classifyAppContainerRead(notInstalled(bundle), bundle, { status: 0, stdout: "/x" }, controlId).state, "unknown");
+  assert.equal(classifyAppContainerRead(notInstalled(bundle), bundle, { status: 2, stdout: "", stderr: "" }, controlId).state, "unknown");
+  assert.equal(classifyAppContainerRead({ status: -1, stdout: "", stderr: "", timedOut: true }, bundle, control, controlId).state, "unknown");
+  assert.equal(classifyAppContainerRead({ status: 0, stdout: "" }, bundle, control, controlId).state, "unknown");
+});
+
+test("cleanup receipt is clean only for confirmed absence; unknown never reads as clean", () => {
+  assert.equal(iosCleanupReceipt({ processState: "absent", uninstallStatus: 0, containerState: "absent" }), "clean");
+  assert.equal(iosCleanupReceipt({ processState: "unknown", uninstallStatus: 0, containerState: "absent" }), "unknown");
+  assert.equal(iosCleanupReceipt({ processState: "absent", uninstallStatus: 0, containerState: "unknown" }), "unknown");
+  assert.equal(iosCleanupReceipt({ processState: "absent", uninstallStatus: 1, containerState: "absent" }), "unknown");
+  assert.equal(iosCleanupReceipt({ processState: "present", uninstallStatus: 0, containerState: "absent" }), "failed");
+  assert.equal(iosCleanupReceipt({ processState: "absent", uninstallStatus: 0, containerState: "present" }), "failed");
+});
+
+test("cleanup and smoke refuse a Simulator this run does not own", () => {
+  const list = JSON.stringify({ devices: {
+    "com.apple.CoreSimulator.SimRuntime.iOS-27-0": [
+      { udid, name: "raft-qa-run-123-1", state: "Booted" },
+      { udid: "11111111-2222-3333-4444-555555555555", name: "iPhone 14", state: "Booted" },
+    ],
+  } });
+  assert.equal(requireRunOwnedSimulator(list, udid.toLowerCase(), "raft-qa-run-123-1").name, "raft-qa-run-123-1");
+  assert.throws(() => requireRunOwnedSimulator(list, udid, "raft-qa-run-124-1"), /not the run-owned/);
+  assert.throws(() => requireRunOwnedSimulator(list, "11111111-2222-3333-4444-555555555555", "iPhone 14"), /not a run-owned name/);
+  assert.throws(() => requireRunOwnedSimulator(list, "11111111-2222-3333-4444-555555555555", "raft-qa-run-123-1"), /not the run-owned/);
+  assert.throws(() => requireRunOwnedSimulator(list, "22222222-2222-3333-4444-555555555555", "raft-qa-run-123-1"), /not listed/);
 });

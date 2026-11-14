@@ -63,9 +63,14 @@ check(C.sha256Digest(Data("abc".utf8)) == "sha256:ba7816bf8f01cfea414140de5dae22
 
 // MARK: binding
 check(
-    C.bootGeneration(simulatorUdid: "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0", hostBootTimeSeconds: 1_731_500_000)
-        == C.sha256Digest(Data("ios-simulator-boot/v1|0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0|1731500000".utf8)),
-    "boot generation formula (uppercased udid)"
+    C.bootGeneration(simulatorUdid: "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0", launchdSimStartSeconds: 1_731_500_000)
+        == C.sha256Digest(Data("ios-simulator-boot/v2|0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0|1731500000".utf8)),
+    "boot generation formula (uppercased udid, launchd_sim start)"
+)
+check(
+    C.bootGeneration(simulatorUdid: "0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0", launchdSimStartSeconds: 1_731_500_001)
+        != C.bootGeneration(simulatorUdid: "0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0", launchdSimStartSeconds: 1_731_500_000),
+    "a new launchd_sim start is a new boot generation"
 )
 let udid = "0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0"
 check(C.simulatorUdid(environment: ["SIMULATOR_UDID": udid.lowercased()], homeDirectory: "/") == udid, "udid from env")
@@ -77,7 +82,12 @@ check(
     "udid from home path"
 )
 check(C.simulatorUdid(environment: ["SIMULATOR_UDID": "nope"], homeDirectory: "/var/mobile") == nil, "no udid on device")
-check((C.hostBootTimeSeconds() ?? 0) > 0, "host boot time readable")
+let me = C.processRecord(pid: getpid())
+check(me != nil && me!.startSeconds > 0 && me!.parentPid == getppid(), "own process record readable")
+check(me?.name == "contract-tests", "own process name from p_comm")
+check((me?.startSeconds ?? 0) >= (C.processRecord(pid: getppid())?.startSeconds ?? Int.max), "child starts no earlier than its parent")
+check(C.processRecord(pid: -1) == nil, "invalid pid has no record")
+check(C.launchdSimStartSeconds() == nil, "no launchd_sim ancestor on the macOS host")
 
 let exeDir = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true).appendingPathComponent("bundle", isDirectory: true)
 try! FileManager.default.createDirectory(at: exeDir, withIntermediateDirectories: true)
