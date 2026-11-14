@@ -463,7 +463,11 @@ private data class WireActivityEntry(
     val activityKind: String? = null,
     val detail: String? = null,
     val detailKind: String? = null,
-    val summary: String? = null,
+    /**
+     * Any shape: a `turn_summary` row carries an object (slock `ActivityTurnSummary`), and reading it
+     * as a string failed the whole response, so the Raw log opened empty (#proj-mobile:#148).
+     */
+    val summary: JsonElement? = null,
     val toolName: String? = null,
     val toolInput: JsonElement? = null,
     val name: String? = null,
@@ -493,17 +497,28 @@ private fun WireSubagentLineage.toDomain(): AgentActivitySubagentLineage =
         outcome = outcome?.takeIf { it.isNotBlank() },
     )
 
+/**
+ * `GET /agents/:id/activity-log`: a bare array of `{ timestamp, entry }` rows, oldest first. Null only
+ * when the body is not an array. Each row is read on its own: one row this client cannot read is left
+ * out (and counted in [AgentActivitySnapshot.droppedRowCount]), never the whole log.
+ */
 fun parseSharedAgentActivity(
     bodyText: String,
     agentId: MemberId,
-): AgentActivitySnapshot? = runCatching {
-    AgentActivitySnapshot(
+): AgentActivitySnapshot? {
+    val rawRows = runCatching { memberAgentJson.decodeFromString(ListSerializer(JsonElement.serializer()), bodyText) }
+        .getOrNull() ?: return null
+    val rows = rawRows.mapNotNull { raw ->
+        runCatching { memberAgentJson.decodeFromJsonElement(WireActivityLogEntry.serializer(), raw) }.getOrNull()
+    }
+    return AgentActivitySnapshot(
         agentId = agentId,
-        activity = memberAgentJson.decodeFromString(ListSerializer(WireActivityLogEntry.serializer()), bodyText)
+        activity = rows
             .withActivityRowKeys()
             .mapNotNull { (row, rowKey) -> row.toDomain(rowKey) },
+        droppedRowCount = rawRows.size - rows.size,
     )
-}.getOrNull()
+}
 
 /**
  * Each log row's key, from the row itself: its content's hash and which repeat of identical content at
@@ -605,6 +620,8 @@ private fun WireActivityLogEntry.toDomain(rowKey: String): AgentActivityEntry? =
                 type = "compaction_finished",
                 title = "Context Compaction Finished"
             )
+        // Web RawActivityLog renders nothing for a finished turn's summary: the Overview reads those.
+        "turn_summary" -> null
         "status", "agent_status" -> {
             val display = resolveTrajectoryStatusDisplay(
                 activity = entry.activityKind ?: entry.activity,
@@ -628,7 +645,8 @@ private fun WireActivityLogEntry.toDomain(rowKey: String): AgentActivityEntry? =
             trajectoryEntry(
                 rowKey = rowKey,
                 type = entry.kind,
-                title = entry.summary ?: entry.activity?.toAgentActivityTitle() ?: entry.kind.toAgentActivityTitle(),
+                title = (entry.summary as? JsonPrimitive)?.takeIf { it.isString }?.content
+                    ?: entry.activity?.toAgentActivityTitle() ?: entry.kind.toAgentActivityTitle(),
                 body = entry.detail ?: entry.message ?: entry.text ?: entry.toolName ?: entry.name,
                 details = listOfNotNull(
                     (entry.detail ?: entry.message ?: entry.text)?.let { "Detail" to it },

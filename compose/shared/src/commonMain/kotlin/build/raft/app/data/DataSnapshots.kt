@@ -1091,9 +1091,17 @@ data class AgentReminderSnapshot(
     val reminders: List<AgentReminderSummary>
 )
 
+/**
+ * Most raw activity rows one read asks for and the page keeps: web `MAX_TRAJECTORY_ENTRIES`, the server's
+ * `/activity-log` cap, so the Raw log and Sub-agents list match the web's.
+ */
+const val AgentActivityLogMaxEntries = 500
+
 data class AgentActivitySnapshot(
     val agentId: MemberId,
-    val activity: List<AgentActivityEntry>
+    val activity: List<AgentActivityEntry>,
+    /** Log rows the response carried that this client could not read (left out, logged). */
+    val droppedRowCount: Int = 0
 )
 
 // #89 React parity: agent permissions (scope grants) snapshot.

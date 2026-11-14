@@ -879,7 +879,8 @@ class RealMemberRepository(
         currentContext() ?: return authRequired()
         return executeMember(
             emptyReason = EmptyReason.NoMembers,
-            block = { networkClient.agentActivityLog(priority, agentId, limit = 50) },
+            // Web loadTrajectoryLog: as many rows as the live log keeps (MAX_TRAJECTORY_ENTRIES).
+            block = { networkClient.agentActivityLog(priority, agentId, limit = AgentActivityLogMaxEntries) },
             source = "agent_activity",
             mapper = { bodyText ->
                 parseSharedAgentActivity(bodyText, agentId)
@@ -887,7 +888,16 @@ class RealMemberRepository(
             }
         ).also { result ->
             (result as? DataResult.Content)?.data?.let { snapshot ->
-                logger("agent_activity_log_fetch agentId=${agentId.value} mappedCount=${snapshot.activity.size}")
+                logger(
+                    "agent_activity_log_fetch agentId=${agentId.value} mappedCount=${snapshot.activity.size} " +
+                        "droppedRows=${snapshot.droppedRowCount}"
+                )
+                if (snapshot.droppedRowCount > 0) {
+                    warningLogger(
+                        "projection_value_rejected source=agent_activity field=row agentId=${agentId.value} " +
+                            "count=${snapshot.droppedRowCount}"
+                    )
+                }
             }
         }
     }
