@@ -53,7 +53,7 @@ class RaftPageOpenGuardTest {
         assertEquals(listOf("thread t1"), opened)
     }
 
-    @Test fun `a different route during the push is queued, the latest one wins`() {
+    @Test fun `a different route during the push is queued and the latest one wins`() {
         open("thread", data("id" to "t1"))
         advanceTo(100)
         open("thread", data("id" to "t2"))
@@ -77,7 +77,7 @@ class RaftPageOpenGuardTest {
         assertEquals(listOf("thread t1", "thread t2"), opened)
     }
 
-    @Test fun `the same route after the push opens again, as Back then the same row`() {
+    @Test fun `the same route after the push opens again as Back then the same row`() {
         open("thread", data("id" to "t1"))
         advanceTo(900)
         open("thread", data("id" to "t1"))

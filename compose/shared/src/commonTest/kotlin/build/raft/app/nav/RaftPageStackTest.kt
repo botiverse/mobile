@@ -109,7 +109,7 @@ class RaftPageStackTest {
         assertEquals(1, changes)
     }
 
-    @Test fun `a different route, or the same one after Back, still opens`() {
+    @Test fun `a different route and the same one after Back still open`() {
         val shell = stack.pages.single()
         stack.navigatorFor(shell).openPage("thread", data("id" to "t1"))
         stack.navigatorFor(shell).openPage("thread", data("id" to "t2"))
@@ -121,7 +121,7 @@ class RaftPageStackTest {
         assertEquals(listOf(RAFT_APP_SHELL_PAGE, "thread"), names())
     }
 
-    @Test fun `thread opens compare the thread and anchor, not the per-open payload facts`() {
+    @Test fun `thread opens compare the thread and anchor and not the per-open payload facts`() {
         fun thread(threadId: String, focused: String?, now: Long) =
             JsonObject(
                 mapOf(
