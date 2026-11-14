@@ -36,7 +36,6 @@ import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.data.runtimeCatalogDisplayName
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.designsystem.components.RaftAvatarGroupCount
-import build.raft.designsystem.components.RaftAvatarKind
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftChoiceList
