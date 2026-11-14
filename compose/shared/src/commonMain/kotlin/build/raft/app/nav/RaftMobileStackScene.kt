@@ -24,6 +24,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavEntry
@@ -109,6 +111,9 @@ class RaftMobileStackScene<T : Any>(
         }
         entries.forEach { entry ->
             key(entry.contentKey) {
+                // task #151: the page being covered stays drawn under the push slide; it takes no
+                // taps until the push settles (a second tap on a replies row opened the thread twice).
+                val coveredInPush = entry === below && pushed && (entering || sliding)
                 val modifier =
                     when {
                         entry === top ->
@@ -120,11 +125,14 @@ class RaftMobileStackScene<T : Any>(
                                     exit = RaftMobileStackPopExit,
                                 )
                             }
-                        entry === below && pushed && (entering || sliding) -> Modifier.fillMaxSize()
+                        coveredInPush -> Modifier.fillMaxSize()
                         entry.raftStackCoveredKeepsSize() -> RaftMobileStackCoveredKeepsSize
                         else -> Modifier.size(0.dp)
                     }
-                Box(modifier) { entry.Content() }
+                Box(modifier) {
+                    entry.Content()
+                    if (coveredInPush) Box(Modifier.matchParentSize().then(RaftMobileStackSwallowPointers))
+                }
             }
         }
     }
@@ -203,6 +211,16 @@ private val RaftMobileStackCoveredKeepsSize: Modifier =
     Modifier.layout { measurable, constraints ->
         measurable.measure(constraints)
         layout(0, 0) {}
+    }
+
+/** Takes every pointer event over a page being covered by a push: nothing under it is hit. */
+private val RaftMobileStackSwallowPointers: Modifier =
+    Modifier.pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+            }
+        }
     }
 
 private const val RaftMobileStackMotionMillis = 300

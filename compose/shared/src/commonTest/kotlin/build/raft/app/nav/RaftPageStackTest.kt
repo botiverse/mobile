@@ -88,9 +88,73 @@ class RaftPageStackTest {
 
     @Test fun `every entry has its own content key even for the same page and data`() {
         stack.open("thread", data("id" to "t1"), from = null)
+        stack.open("thread", data("id" to "t2"), from = null)
         stack.open("thread", data("id" to "t1"), from = null)
         val keys = stack.pages.map { it.contentKey }
+        assertEquals(4, keys.size)
         assertEquals(keys.size, keys.toSet().size)
+    }
+
+    // task #151: a double tap on a replies row stacked the same thread twice.
+    @Test fun `opening the route already on top is a no-op`() {
+        val shell = stack.pages.single()
+        var changes = 0
+        stack.onChangeRequested = { changes++ }
+        stack.navigatorFor(shell).openPage("thread", data("id" to "t1"))
+        val thread = stack.pages.last()
+        stack.navigatorFor(shell).openPage("thread", data("id" to "t1"))
+        stack.navigatorFor(thread).openPage("thread", data("id" to "t1", "slockOpenWithoutAnimation" to true))
+        assertEquals(listOf(RAFT_APP_SHELL_PAGE, "thread"), names())
+        assertTrue(stack.pages.last() === thread)
+        assertEquals(1, changes)
+    }
+
+    @Test fun `a different route, or the same one after Back, still opens`() {
+        val shell = stack.pages.single()
+        stack.navigatorFor(shell).openPage("thread", data("id" to "t1"))
+        stack.navigatorFor(shell).openPage("thread", data("id" to "t2"))
+        assertEquals(listOf("t1", "t2"), stack.pages.drop(1).map { (it.key.pageData["id"] as JsonPrimitive).content })
+
+        assertTrue(stack.back())
+        assertTrue(stack.back())
+        stack.navigatorFor(shell).openPage("thread", data("id" to "t1"))
+        assertEquals(listOf(RAFT_APP_SHELL_PAGE, "thread"), names())
+    }
+
+    @Test fun `thread opens compare the thread and anchor, not the per-open payload facts`() {
+        fun thread(threadId: String, focused: String?, now: Long) =
+            JsonObject(
+                mapOf(
+                    "pageName" to JsonPrimitive("compose_thread"),
+                    "instanceId" to JsonPrimitive("i-$now"),
+                    "payload" to
+                        JsonPrimitive(
+                            """{"instanceId":"i-$now","threadId":"$threadId","parentChannelId":"c1",""" +
+                                (focused?.let { "\"focusedMessageId\":\"$it\"," } ?: "") +
+                                """"nowEpochMillis":$now}""",
+                        ),
+                ),
+            )
+        val shell = stack.pages.single()
+        stack.open("compose_thread", thread("t1", null, now = 1), from = shell)
+        stack.open("compose_thread", thread("t1", null, now = 2), from = shell)
+        assertEquals(2, stack.pages.size)
+        stack.open("compose_thread", thread("t1", "m9", now = 3), from = shell)
+        assertEquals(3, stack.pages.size, "a new message anchor is a new page")
+    }
+
+    @Test fun `replace and the app shell are not deduplicated`() {
+        stack.open("login", data(), from = null)
+        val login = stack.pages.last()
+        stack.open("login", data("slockReplaceCurrentPage" to true), from = login)
+        assertEquals(listOf(RAFT_APP_SHELL_PAGE, "login"), names())
+        assertTrue(stack.pages.last() !== login)
+
+        val shell = stack.pages.first()
+        stack.open(RAFT_APP_SHELL_PAGE, data(), from = stack.pages.last())
+        stack.open(RAFT_APP_SHELL_PAGE, data(), from = stack.pages.last())
+        assertEquals(listOf(RAFT_APP_SHELL_PAGE), names())
+        assertTrue(stack.pages.single() !== shell)
     }
 
     @Test fun `keys hold identity only and args add the host facts`() {

@@ -1,6 +1,10 @@
 package build.raft.app.compat.pager
 
 import build.raft.app.data.RaftAppAppearanceRuntime
+import build.raft.app.cmp.host.RaftPageRouteIdentities
+import build.raft.app.cmp.host.RaftPageRouteIdentity
+import build.raft.app.nav.raftPageRouteIdentity
+import build.raft.app.raftLogInfo
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.displayCutout
@@ -94,6 +98,7 @@ object RaftPageRegistry {
     fun install() {
         raftInstallImageLoader()
         RaftCmpRouter.installPageProvider(RaftPageProvider { pageName -> content(pageName) })
+        RaftPageRouteIdentities.install(RaftPageRouteIdentity(::raftPageRouteIdentity)) { line -> raftLogInfo("RaftPageOpenGuard", line) }
     }
 }
 

@@ -69,7 +69,7 @@ class RaftPageStackSavedStateTest {
     }
 
     @Test fun `size guard skips saving and decoding a stack that is too large`() {
-        val many = RaftPageStack().apply { repeat(RAFT_PAGE_STACK_SAVED_MAX_PAGES + 1) { open("p", data(), from = pages.last()) } }
+        val many = RaftPageStack().apply { repeat(RAFT_PAGE_STACK_SAVED_MAX_PAGES + 1) { i -> open("p", data("i" to "$i"), from = pages.last()) } }
         assertNull(RaftPageStackSavedState.encode(many.savedKeys()))
 
         val big = RaftPageStack().apply { open("p", data("blob" to "x".repeat(RAFT_PAGE_STACK_SAVED_MAX_CHARS)), from = pages.last()) }

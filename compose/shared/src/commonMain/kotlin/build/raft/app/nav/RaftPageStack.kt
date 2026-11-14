@@ -31,7 +31,9 @@ class RaftStackPage internal constructor(
 /**
  * A window's page back stack ([pages], drawn by a `NavDisplay` with [RaftStackSceneStrategy]). Same
  * routing contract as the Android host (RaftCmpActivity): `slockReplaceCurrentPage` replaces the
- * opener and opening the app shell starts a fresh stack. Unlike Android, the root page never
+ * opener and opening the app shell starts a fresh stack. Opening the route already on top
+ * ([raftPageRouteIdentity]: same thread / conversation / anchor) is a no-op (task #151).
+ * Unlike Android, the root page never
  * closes: Back on it does nothing, closePage from the root page is ignored even while pages are
  * open over it (Tenny; artin's Esc in a chat quit the desktop app). Shared pages reach it through
  * [navigatorFor] (the unchanged [RaftCmpNavigator] `openPage` / `closePage`).
@@ -65,6 +67,15 @@ class RaftPageStack(
     fun open(pageName: String, pageData: JsonObject, from: RaftStackPage?) {
         log("open page=$pageName from=${from?.args?.pageName} data=${pageData.toString().take(200)}")
         val replace = (pageData[RAFT_REPLACE_CURRENT_PAGE] as? JsonPrimitive)?.booleanOrNull == true
+        val top = pages.lastOrNull()
+        if (!replace && pageName != RAFT_APP_SHELL_PAGE && top != null &&
+            raftPageRouteIdentity(top.key.pageName, top.key.pageData) == raftPageRouteIdentity(pageName, pageData)
+        ) {
+            // task #151: the page is already on screen (a double tap, a notification or link for
+            // the page shown): a second entry would stack the same page twice.
+            log("open page=$pageName ignored: same route as the top page ${top.contentKey}")
+            return
+        }
         val next = page(pageName, pageData)
         onChangeRequested?.invoke()
         when {
