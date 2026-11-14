@@ -31093,7 +31093,7 @@ private fun ThreadMessageCardContent(
                                             ) {
                                                 // A cut Activity preview is plain text: no Markdown,
                                                 // link chips or mentions made from the cut text.
-                                                if (richContentEnabled && !message.hasActivityCutBody()) {
+                                                if (threadMessageRendersRichBody(message, richContentEnabled)) {
                                                     val markdownRenderSignature =
                                                         remember(message.id, bodyForRender) {
                                                             if (bodyForRender == message.body) {
@@ -32029,6 +32029,13 @@ internal fun ThreadMessageFullBodyLoadingIndicator(modifier: Modifier = Modifier
         contentDescription = stringResource(Res.string.thread_message_loading_full),
     )
 }
+
+/**
+ * Whether a message body renders as Markdown (links, mentions, tags, app link chips). A cut Activity
+ * preview ([hasActivityCutBody]) never does: it is plain text under its loading or failed note.
+ */
+internal fun threadMessageRendersRichBody(message: RaftThreadMessageItem, richContentEnabled: Boolean): Boolean =
+    richContentEnabled && !message.hasActivityCutBody()
 
 /**
  * Ends a cut Activity preview whose full message failed to load

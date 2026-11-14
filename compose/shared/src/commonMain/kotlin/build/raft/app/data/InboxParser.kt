@@ -164,7 +164,7 @@ private data class WireThreadReplyPreview(
     val senderAvatarUrl: String? = null,
     val createdAt: String = "",
     val updatedAt: String? = null,
-    /** The server cut [preview] (≤200 chars ending in "…"); additive, absent on older servers. */
+    /** botiverse/slock #14921: `true` only when the server cut [preview] (asked with `threadPreviewChars`). */
     val truncated: Boolean? = null,
 )
 

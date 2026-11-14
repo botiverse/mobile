@@ -135,20 +135,14 @@ internal fun activitySeedPreviewIsTruncated(preview: String): Boolean =
     preview.endsWith(ActivityPreviewEllipsis) &&
         preview.length == ActivityPreviewMaxLength + ActivityPreviewEllipsis.length
 
-/** A thread summary reply preview's cut (`latestReplies[].preview`): at most 200 characters, then "…". */
-internal const val ActivityReplyPreviewMaxLength = 200
-
 /**
- * Whether a thread summary reply preview is the server's cut of a longer reply. The server's explicit
- * `truncated` decides when it is present; without it (older servers), a preview ending in "…" within
- * the cut's length ([ActivityReplyPreviewMaxLength], plus one for the "…" counted outside it) counts as
- * cut. A short whole reply that ends in "…" then shows the loading state until the canonical load
- * replaces it: a moment's indicator, never cut text shown as the whole reply.
+ * Whether a thread summary reply preview is the server's cut of a longer reply. The app asks for cut
+ * previews (`threadPreviewChars`, [build.raft.app.data.ThreadPreviewCharsQueryValue]); the server then marks each cut one
+ * `truncated: true` and leaves whole ones unflagged (botiverse/slock #14921). Without the request a
+ * preview is the reply's full content, so only the explicit flag counts: a whole reply that happens to
+ * end in "…" is never mistaken for a cut.
  */
-internal fun activitySeedReplyPreviewIsTruncated(preview: String, truncated: Boolean?): Boolean =
-    truncated
-        ?: (preview.endsWith(ActivityPreviewEllipsis) &&
-            preview.length <= ActivityReplyPreviewMaxLength + ActivityPreviewEllipsis.length)
+internal fun activitySeedReplyPreviewIsTruncated(truncated: Boolean?): Boolean = truncated == true
 
 /**
  * Whether this message's body is only an Activity preview cut, loading or failed to load: the card
@@ -357,9 +351,9 @@ private fun ReplyPreview.toActivitySeedMessage(
         seq = seq,
         messageType = if (kind == "system") "System" else "Chat",
         body = content,
-        // The server cuts `latestReplies[].preview` to 200 characters + "…" and may say so in
+        // Asked for (`threadPreviewChars`), the server cuts `latestReplies[].preview` and flags it
         // `truncated`; a cut reply loads its full text like a cut row preview does.
-        activityPreviewTruncated = activitySeedReplyPreviewIsTruncated(content, truncated),
+        activityPreviewTruncated = activitySeedReplyPreviewIsTruncated(truncated),
     )
 }
 

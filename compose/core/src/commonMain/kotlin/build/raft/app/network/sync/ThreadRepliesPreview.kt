@@ -42,8 +42,8 @@ data class ReplyPreview(
     val updatedAt: String? = null,
     /**
      * Whether [content] is the server's cut of a longer reply (thread summary `latestReplies[].truncated`,
-     * additive and optional). Null when the server does not say; then the cut is read from the text
-     * itself (shared `activitySeedReplyPreviewIsTruncated`).
+     * botiverse/slock #14921): true only on a cut preview the app asked for with `threadPreviewChars`;
+     * null (absent) or false means [content] is the whole reply.
      */
     val truncated: Boolean? = null,
 )
