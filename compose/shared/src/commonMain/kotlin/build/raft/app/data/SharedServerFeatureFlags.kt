@@ -411,6 +411,9 @@ class SharedServerFeatureFlags(
      * known after the first frames of a cold start.
      */
     fun onLastKnownBindingChanged() {
+        // Readers keyed on snapshotRevision (the server setup gate) re-read isEnabled, which now
+        // finds the stored value for the bound account.
+        if (lastKnown != null) snapshotRevisionState.value += 1
     }
 
     private fun markAttemptSettledWithoutSnapshot(serverId: ServerId) {

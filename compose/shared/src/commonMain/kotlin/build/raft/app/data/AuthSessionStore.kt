@@ -37,7 +37,18 @@ enum class AuthSessionClearOutcome {
 }
 
 interface RaftAuthSessionStore {
+    /** The stored session, or null when there is none OR it cannot be decoded; see [readSessionState]. */
     suspend fun readSession(): StoredAuthSession?
+
+    /**
+     * Like [readSession], but tells "no session stored" ([RaftAuthSessionState.SignedOut]) apart from
+     * "stored but undecodable" ([RaftAuthSessionState.Corrupt]). Anything that deletes or clears
+     * account data on an absent session must use this and act only on SignedOut. Stores without a
+     * decode step answer SignedIn/SignedOut.
+     */
+    suspend fun readSessionState(): RaftAuthSessionState =
+        readSession()?.let { RaftAuthSessionState.SignedIn(it) } ?: RaftAuthSessionState.SignedOut
+
     suspend fun saveSession(session: StoredAuthSession)
     suspend fun updateTokens(accessToken: String, refreshToken: String)
     suspend fun updateSelectedServer(serverId: String?, serverSlug: String?)
@@ -1273,15 +1284,18 @@ class KeyValueAuthSessionStore(
         newFingerprint?.let { changes.emit(it) }
     }
 
-    override suspend fun readSession(): StoredAuthSession? =
+    override suspend fun readSession(): StoredAuthSession? = readSessionState().sessionOrNull
+
+    override suspend fun readSessionState(): RaftAuthSessionState =
         mutex.withLock {
             val (record, cacheHit) = readSessionRecordStateLocked()
-            if (record.decodeFailure != null) {
+            val decodeFailure = record.decodeFailure
+            if (decodeFailure != null) {
                 diagnosticsLogger(
                     "auth_session_read result=null rawLen=${record.encodedLength ?: 0} " +
-                        "decode=failure errorType=${record.decodeFailure} caller=${authSessionDiagnosticsCaller()}"
+                        "decode=failure errorType=$decodeFailure caller=${authSessionDiagnosticsCaller()}"
                 )
-                return@withLock null
+                return@withLock RaftAuthSessionState.Corrupt(decodeFailure)
             }
             val session = record.session
             if (session == null) {
@@ -1289,7 +1303,7 @@ class KeyValueAuthSessionStore(
                     "auth_session_read result=null raw=null cacheHit=$cacheHit " +
                         "caller=${authSessionDiagnosticsCaller()}"
                 )
-                return@withLock null
+                return@withLock RaftAuthSessionState.SignedOut
             }
             if (!cacheHit) {
                 diagnosticsLogger(
@@ -1298,7 +1312,7 @@ class KeyValueAuthSessionStore(
                         "servers=${session.servers.size} cacheHit=false"
                 )
             }
-            session
+            RaftAuthSessionState.SignedIn(session)
         }
 
     override suspend fun saveSession(session: StoredAuthSession) {

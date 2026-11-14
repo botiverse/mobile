@@ -75,6 +75,10 @@ internal class RealtimeAuthorityProvider(
     // collector survives, nothing publishes on top of the already-advanced
     // registry, and the first successful retry republishes current truth.
     private val onAuthRevisionAdvanced: (RealtimeAuthRevision) -> Unit = {},
+    // Same hook with the session read the revision was advanced from, so the binding can tell an
+    // undecodable session (Corrupt: keep data) from a sign-out. When set, it replaces
+    // [onAuthRevisionAdvanced].
+    private val onAuthBindingAdvanced: ((RealtimeAuthRevision, RaftAuthSessionState) -> Unit)? = null,
 ) {
     internal class PreparedCanonicalFinalCommit internal constructor(
         internal val exactGrant: RealtimeGrantRecord,
@@ -160,6 +164,7 @@ internal class RealtimeAuthorityProvider(
     private val pendingBindingGeneration = MutableStateFlow<Long?>(null)
     private var lastObservedAuthEventGeneration = 0L
     private var currentSession: StoredAuthSession? = null
+    private var currentSessionState: RaftAuthSessionState = RaftAuthSessionState.SignedOut
     private var lifecycleJob: Job? = null
     private val preparedCanonicalFinalMintAuthority by lazy { Any() }
     private val nextPreparedCanonicalFinalNonce by lazy { atomic(0L) }
@@ -490,12 +495,15 @@ internal class RealtimeAuthorityProvider(
                 val fullPublish = needsFullPublishLocked()
                 if (!ensureInitializedLocked()) return@withLock false
                 val grantsBeforeMutation = if (fullPublish) emptySet() else currentGrantSet()
-                currentSession = authStore.readSession()
-                registry.advanceAuthFromCurrentSession(
-                    session = currentSession.toRealtimeAuthoritySession(currentEnvironmentId()),
-                    force = false,
-                )
-                if (!runBindingHookLocked()) return@withLock false
+                val sessionState = readSessionForAdvanceLocked(event = null)
+                if (sessionState != null) {
+                    acceptSessionReadLocked(sessionState)
+                    registry.advanceAuthFromCurrentSession(
+                        session = currentSession.toRealtimeAuthoritySession(currentEnvironmentId()),
+                        force = false,
+                    )
+                    if (!runBindingHookLocked()) return@withLock false
+                }
                 publishAndInvalidateIfGrantSetChangedLocked(grantsBeforeMutation)
                 true
             } catch (cancellation: CancellationException) {
@@ -563,7 +571,14 @@ internal class RealtimeAuthorityProvider(
             // final state (round-6 audit — no obsolete intermediate authority
             // for lock-free flow readers).
             val grantsBeforeMutation = if (fullPublish) emptySet() else currentGrantSet()
-            currentSession = authStore.readSession()
+            val sessionState = readSessionForAdvanceLocked(event)
+            if (sessionState == null) {
+                // Held: the bound session stays (no advance, no binding change); the event is consumed.
+                lastObservedAuthEventGeneration = event.generation
+                if (fullPublish) publishAndInvalidateIfGrantSetChangedLocked(emptySet())
+                return@run
+            }
+            acceptSessionReadLocked(sessionState)
             registry.advanceAuthFromCurrentSession(
                 session = currentSession.toRealtimeAuthoritySession(currentEnvironmentId()),
                 force = true,
@@ -587,7 +602,12 @@ internal class RealtimeAuthorityProvider(
     private fun runBindingHookLocked(): Boolean {
         val revision = registry.snapshot.value.authRevision
         return try {
-            onAuthRevisionAdvanced(revision)
+            val stateAwareHook = onAuthBindingAdvanced
+            if (stateAwareHook != null) {
+                stateAwareHook(revision, currentSessionState)
+            } else {
+                onAuthRevisionAdvanced(revision)
+            }
             pendingBindingGeneration.value = null
             true
         } catch (throwable: Throwable) {
@@ -629,14 +649,50 @@ internal class RealtimeAuthorityProvider(
      *  API callers, who retry). */
     private suspend fun reconcilePendingAuthLocked(): Boolean {
         if (!pendingAuthReconciliation.value) return true
-        currentSession = authStore.readSession()
-        registry.advanceAuthFromCurrentSession(
-            session = currentSession.toRealtimeAuthoritySession(currentEnvironmentId()),
-            force = true,
-        )
-        if (!runBindingHookLocked()) return false
+        val sessionState = readSessionForAdvanceLocked(event = null)
+        if (sessionState != null) {
+            acceptSessionReadLocked(sessionState)
+            registry.advanceAuthFromCurrentSession(
+                session = currentSession.toRealtimeAuthoritySession(currentEnvironmentId()),
+                force = true,
+            )
+            if (!runBindingHookLocked()) return false
+        }
         pendingAuthReconciliation.value = false
         return true
+    }
+
+    /**
+     * Architecture review B: reads the stored session for a revision advance, or returns null to
+     * HOLD the session this process has bound (no advance, no binding hook). An absent session is a
+     * sign-out only when it is trustworthy as one: the store found no record ([RaftAuthSessionState.SignedOut])
+     * and the entry is the typed `Cleared` event or a state-based reconcile (no event). An
+     * undecodable record ([RaftAuthSessionState.Corrupt]) or a record missing on a non-clear event
+     * (a transient read failure) never retires the bound account, whose pending sends, drafts and
+     * caches the binding's followers would otherwise delete. With nothing bound in this process
+     * (cold start) there is nothing to hold, and the read is used as is.
+     */
+    private suspend fun readSessionForAdvanceLocked(event: AuthSessionEvent?): RaftAuthSessionState? {
+        val state = authStore.readSessionState()
+        if (currentSession == null) return state
+        val hold =
+            when (state) {
+                is RaftAuthSessionState.SignedIn -> false
+                is RaftAuthSessionState.Corrupt -> true
+                RaftAuthSessionState.SignedOut -> event != null && event !is AuthSessionEvent.Cleared
+            }
+        if (!hold) return state
+        safeDiagnostics(
+            "realtime_authority_session_read result=held " +
+                "state=${if (state is RaftAuthSessionState.Corrupt) "corrupt" else "absent"} " +
+                "event=${event?.let { it::class.simpleName } ?: "none"} generation=${event?.generation ?: "none"}"
+        )
+        return null
+    }
+
+    private fun acceptSessionReadLocked(state: RaftAuthSessionState) {
+        currentSessionState = state
+        currentSession = state.sessionOrNull
     }
 
     private suspend fun ensureInitializedLocked(): Boolean {
@@ -652,7 +708,7 @@ internal class RealtimeAuthorityProvider(
             registry.initialize()
             registryInitialized = true
         }
-        currentSession = authStore.readSession()
+        acceptSessionReadLocked(authStore.readSessionState())
         // Duplicate-safe on retry: the durable revision already matches, so
         // the registry advance is a no-op while leases stay intact.
         registry.advanceAuthFromCurrentSession(

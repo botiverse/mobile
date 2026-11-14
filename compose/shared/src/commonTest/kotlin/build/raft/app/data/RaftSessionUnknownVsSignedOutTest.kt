@@ -103,6 +103,71 @@ class RaftSessionUnknownVsSignedOutTest {
         assertEquals(emptySet(), next.store.owners())
     }
 
+    @Test
+    fun keyValueStoreTellsAnUndecodableSessionApartFromNoSession() = runBlocking {
+        val corrupt =
+            KeyValueAuthSessionStore(InMemoryRaftKeyValueStore(mapOf(RAFT_AUTH_SESSION_RECORD_KEY to "{\"user\":")))
+        assertTrue(corrupt.readSessionState() is RaftAuthSessionState.Corrupt)
+        assertNull(corrupt.readSession())
+        assertEquals(RaftAuthSessionState.SignedOut, KeyValueAuthSessionStore(InMemoryRaftKeyValueStore()).readSessionState())
+    }
+
+    @Test
+    fun unknownAndCorruptBindingsNeverDeleteDrafts() {
+        val drafts = draftTypedBeforeProcessDeath()
+        val next = DraftDevice(drafts)
+        next.accounts.onAccountBinding(RaftAccountBinding.Unknown, next.slice)
+        next.accounts.onAccountBinding(RaftAccountBinding.Corrupt("SerializationException"), next.slice)
+        assertEquals("unsent reply", next.storedText(accountA, draftKey))
+
+        next.live = accountA
+        next.accounts.onAccountBinding(RaftAccountBinding.SignedIn(accountA), next.slice)
+        assertEquals("unsent reply", next.persistence.read(draftKey)?.text)
+        // A corrupt read while A is bound changes nothing either.
+        next.accounts.onAccountBinding(RaftAccountBinding.Corrupt("SerializationException"), next.slice)
+        assertEquals("unsent reply", next.storedText(accountA, draftKey))
+
+        // Sign-out keeps deleting them.
+        next.live = null
+        next.accounts.onAccountBinding(RaftAccountBinding.SignedOut, next.slice)
+        assertNull(next.storedText(accountA, draftKey))
+    }
+
+    @Test
+    fun accountBindingTransitionPublishesCorruptAndNeverRetiresOnIt() {
+        val context = MutableStateFlow<ProcessPresenceAuthContext?>(null)
+        val binding = MutableStateFlow<RaftAccountBinding<ProcessPresenceAuthContext>>(RaftAccountBinding.Unknown)
+        val retired = mutableListOf<ProcessPresenceAuthContext>()
+        val transition =
+            processAccountBindingTransition(
+                presenceAuthContext = context,
+                accountBinding = binding,
+                registry = ProcessMemberPresenceRegistry(),
+                onBindingRetired = { retired += it },
+                currentEnvironmentId = { "env-1" },
+            )
+        val signedIn =
+            RealtimeAuthRevision(
+                generation = 2L,
+                session = RealtimeAuthoritySession(principalId = "user-1", serverIds = listOf("s"), environmentId = "env-test"),
+            )
+
+        transition(RealtimeAuthRevision(generation = 1L, session = null), RaftAuthSessionState.Corrupt("SerializationException"))
+        assertEquals(RaftAccountBinding.Corrupt("SerializationException"), binding.value)
+
+        transition(signedIn, RaftAuthSessionState.SignedIn(signedInSession("token-1")))
+        assertEquals("user-1", binding.value.accountOrNull?.accountId)
+
+        transition(RealtimeAuthRevision(generation = 3L, session = null), RaftAuthSessionState.Corrupt("SerializationException"))
+        assertEquals(emptyList(), retired)
+        assertEquals("user-1", context.value?.accountId)
+
+        transition(RealtimeAuthRevision(generation = 4L, session = null), RaftAuthSessionState.SignedOut)
+        assertEquals(listOf("user-1"), retired.map { it.accountId })
+        assertEquals(RaftAccountBinding.SignedOut, binding.value)
+        assertNull(context.value)
+    }
+
     // --- Risks 2 and 3: one session read that came back empty was treated as a sign-out ---
 
     private class FlakyTypedAuthSessionStore : RaftAuthSessionStore, RaftAuthSessionEventSource {

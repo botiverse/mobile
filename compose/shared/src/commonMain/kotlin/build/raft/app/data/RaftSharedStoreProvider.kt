@@ -216,6 +216,9 @@ internal fun createSharedRealtimeAuthorityProvider(
     // test-only constructions use the RealtimeAuthorityProvider constructor
     // default directly.
     onAuthRevisionAdvanced: (RealtimeAuthRevision) -> Unit,
+    // Production passes the typed account binding transition here (it then replaces
+    // [onAuthRevisionAdvanced]); see processAccountBindingTransition.
+    onAuthBindingAdvanced: ((RealtimeAuthRevision, RaftAuthSessionState) -> Unit)? = null,
 ): RealtimeAuthorityProvider =
     RealtimeAuthorityProvider(
         registry = registry,
@@ -225,6 +228,7 @@ internal fun createSharedRealtimeAuthorityProvider(
         diagnosticsLogger = diagnosticsLogger,
         canonicalFinalIntegration = canonicalFinalIntegration,
         onAuthRevisionAdvanced = onAuthRevisionAdvanced,
+        onAuthBindingAdvanced = onAuthBindingAdvanced,
     )
 
 /**
@@ -499,6 +503,8 @@ internal class RaftSharedStoreProvider private constructor(
     private val presenceOwnerFlowResolver: (String) -> Flow<ProcessServerMembersOwner?>,
     private val presenceWriteResolver: (String) -> ProcessPresenceWrite?,
     private val replyCacheAuthContext: StateFlow<ProcessPresenceAuthContext?>,
+    /** [replyCacheAuthContext], typed: destructive followers key on this (architecture review B). */
+    private val accountBinding: StateFlow<RaftAccountBinding<ProcessPresenceAuthContext>>,
     private val memberPresenceRealtimeSink: (RealtimePresenceAdmission, MemberPresenceUpdated) -> Unit,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     private val activityPersistSlice: MviPersistSlice<SharedActivityState, SharedActivityIntent>,
@@ -1016,6 +1022,26 @@ internal class RaftSharedStoreProvider private constructor(
         syncTransientRetry.cancelWhere(reason = "server_unselected") { scopesForServer(it.serverId).isEmpty() }
     }
 
+    private val syncPullBindingGate = RaftSyncPullBindingGate()
+
+    /** A pull asked for before the binding is known runs once the account is bound (review B, site 4). */
+    private fun requestSyncChangesPullWhenBound(serverId: String, trigger: String) {
+        if (requestSyncChangesPull(serverId, trigger = trigger)) return
+        if (syncPullBindingGate.deferUntilBound(serverId, trigger, accountBinding.value)) {
+            sharedInfoLogger("SlockSync", "sync_changes")(
+                "sync_pull_deferred reason=binding_unknown server=$serverId trigger=$trigger"
+            )
+            // The binding may have become known in between: run now rather than wait for a change.
+            runDeferredSyncPulls(accountBinding.value)
+        }
+    }
+
+    private fun runDeferredSyncPulls(binding: RaftAccountBinding<ProcessPresenceAuthContext>) {
+        syncPullBindingGate.onBinding(binding).forEach { pull ->
+            requestSyncChangesPull(pull.serverId, trigger = pull.trigger)
+        }
+    }
+
     private fun currentSyncScope(serverId: String): RaftSyncScope? {
         val context = replyCacheAuthContext.value ?: return null
         return RaftSyncScope.of(context.environmentId, context.accountId, serverId)
@@ -1303,7 +1329,16 @@ internal class RaftSharedStoreProvider private constructor(
     private fun installServerMembersBindingFollower() {
         threadSendScope.launch {
             var previous: ProcessPresenceAuthContext? = null
-            replyCacheAuthContext.collect { context ->
+            accountBinding.collect { binding ->
+                runDeferredSyncPulls(binding)
+                // Typed (architecture review B, site 3): only a sign-out or another account retires
+                // the rosters. Unknown (not read yet) and Corrupt (unreadable session) change nothing.
+                val context =
+                    when (binding) {
+                        is RaftAccountBinding.SignedIn -> binding.account
+                        RaftAccountBinding.SignedOut -> null
+                        RaftAccountBinding.Unknown, is RaftAccountBinding.Corrupt -> return@collect
+                    }
                 val before = previous
                 previous = context
                 // Step 4: Home rows staged before this binding existed (cold start) are applied
@@ -1927,7 +1962,7 @@ internal class RaftSharedStoreProvider private constructor(
                                     // Server select: one incremental pull once this server's flags are read.
                                     if (!syncPullRequested) {
                                         syncPullRequested = true
-                                        requestSyncChangesPull(serverId, trigger = "server_selected")
+                                        requestSyncChangesPullWhenBound(serverId, trigger = "server_selected")
                                     }
                                 }
                             }
@@ -3285,6 +3320,11 @@ internal class RaftSharedStoreProvider private constructor(
             //    against the new account.
             val processMemberPresenceRegistry = ProcessMemberPresenceRegistry()
             val presenceAuthContext = MutableStateFlow<ProcessPresenceAuthContext?>(null)
+            // The same binding, typed (architecture review B): Unknown until the stored session is
+            // read, then SignedIn / SignedOut / Corrupt. Followers that delete or retire data key on
+            // this, never on presenceAuthContext being null (null is also "not known yet").
+            val accountBinding =
+                MutableStateFlow<RaftAccountBinding<ProcessPresenceAuthContext>>(RaftAccountBinding.Unknown)
             val resolvePresenceOwner: (String) -> ProcessServerMembersOwner? = { rawServerId ->
                 presenceAuthContext.value?.ownerFor(rawServerId)
             }
@@ -3396,6 +3436,14 @@ internal class RaftSharedStoreProvider private constructor(
                         if (key == MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY) RaftAppSettingsSnapshotReport.onIosNativeNavFlagRead()
                     },
                 )
+            // An offline cold start may read last-known flags before the binding is known (they read
+            // as defaults then); re-read them whenever the binding they are keyed by changes.
+            CoroutineScope(SupervisorJob()).launch {
+                accountBinding
+                    .map { binding -> binding.accountOrNull?.toServerFeatureFlagLastKnownBinding() }
+                    .distinctUntilChanged()
+                    .collect { serverFeatureFlags.onLastKnownBindingChanged() }
+            }
             val attachmentCommentsReadCacheV2 = AttachmentCommentsReadCacheV2()
             val canonicalMessageV2Store =
                 SqlDelightCanonicalMessageV2Store(
@@ -3491,9 +3539,11 @@ internal class RaftSharedStoreProvider private constructor(
                     // presenceAuthContext/clearAll, synchronous with every auth
                     // revision advance and ordered before grant publication —
                     // see processPresenceBindingTransition.
-                    onAuthRevisionAdvanced =
-                        processPresenceBindingTransition(
+                    onAuthRevisionAdvanced = {},
+                    onAuthBindingAdvanced =
+                        processAccountBindingTransition(
                             presenceAuthContext = presenceAuthContext,
+                            accountBinding = accountBinding,
                             registry = processMemberPresenceRegistry,
                             currentEnvironmentId = {
                                 apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
@@ -3725,11 +3775,13 @@ internal class RaftSharedStoreProvider private constructor(
                 )
             CoroutineScope(SupervisorJob()).launch {
                 composerDraftAccounts.onStoredSessionReadAtStart(authStore)
-                presenceAuthContext
-                    .map { context -> context?.toComposerDraftAccount() }
+                // Typed: Unknown (not read yet) and Corrupt (unreadable) never delete drafts; only
+                // SignedOut or another account does.
+                accountBinding
+                    .map { binding -> binding.map { context -> context.toComposerDraftAccount() } }
                     .distinctUntilChanged()
-                    .collect { account ->
-                        runCatching { composerDraftAccounts.onAccountBinding(account, composerDraftPersistSlice) }
+                    .collect { binding ->
+                        runCatching { composerDraftAccounts.onAccountBinding(binding, composerDraftPersistSlice) }
                             .onFailure { error ->
                                 composerDraftLogger(
                                     "thread_composer_draft_account_binding_failed " +
@@ -3779,6 +3831,7 @@ internal class RaftSharedStoreProvider private constructor(
                 presenceOwnerFlowResolver = resolvePresenceOwnerFlow,
                 presenceWriteResolver = resolvePresenceWrite,
                 replyCacheAuthContext = presenceAuthContext,
+                accountBinding = accountBinding,
                 memberPresenceRealtimeSink = memberPresenceRealtimeSink,
                 composerDraftPersistSlice = composerDraftPersistSlice,
                 activityPersistSlice =
